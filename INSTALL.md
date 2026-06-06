@@ -58,7 +58,7 @@ You'll type commands here. When this guide shows a command in a grey box, type i
 In Terminal, type:
 
 ```
-cd ~/Downloads && git clone https://github.com/[owner]/watchdog.git
+cd ~/Downloads && git clone https://github.com/tomcardoso/watchdog.git
 ```
 
 Wait for it to finish. You'll see a message saying "done."
@@ -256,7 +256,7 @@ If you're ingesting many documents at once and Claude hits a rate limit, it will
 If something isn't working, the best place to get help is the Watchdog GitHub repository at:
 
 ```
-https://github.com/YOUR_USERNAME/watchdog/issues
+https://github.com/tomcardoso/watchdog/issues
 ```
 
 When reporting a problem, include:

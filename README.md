@@ -57,7 +57,7 @@ A Claude.ai Pro subscription is the recommended path. No API key setup, no per-t
 ## Installation
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/watchdog.git
+git clone https://github.com/tomcardoso/watchdog.git
 cd watchdog
 bash setup.sh
 ```
