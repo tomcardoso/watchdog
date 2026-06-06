@@ -1,0 +1,275 @@
+#!/usr/bin/env python3
+"""watchdog — investigative journalism document intelligence CLI"""
+
+import argparse
+import json
+import os
+import re
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+WATCHDOG_HOME = Path.home() / ".watchdog"
+PROJECTS_FILE = WATCHDOG_HOME / "projects.json"
+DEFAULT_PROJECTS_DIR = Path.home() / "Investigations"
+
+
+def slugify(name: str) -> str:
+    s = name.lower().strip()
+    s = re.sub(r"[^\w\s-]", "", s)
+    s = re.sub(r"[\s_]+", "-", s)
+    s = re.sub(r"-+", "-", s)
+    return s.strip("-")
+
+
+def load_projects() -> dict:
+    if not PROJECTS_FILE.exists():
+        return {}
+    with open(PROJECTS_FILE) as f:
+        return json.load(f)
+
+
+def save_projects(projects: dict) -> None:
+    WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
+    with open(PROJECTS_FILE, "w") as f:
+        json.dump(projects, f, indent=2)
+        f.write("\n")
+
+
+def cmd_new(args) -> None:
+    name = args.name
+    slug = slugify(name)
+
+    if not slug:
+        sys.exit("Error: project name is invalid.")
+
+    parent = Path(args.dir).expanduser().resolve() if args.dir else DEFAULT_PROJECTS_DIR
+    vault = parent / slug
+
+    if vault.exists():
+        sys.exit(f"Error: {vault} already exists.")
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    # --- Directory structure ---
+    for d in [
+        "Incoming/Processed",
+        "Incoming/Failed",
+        "Registry",
+        "entities/person",
+        "entities/company",
+        "entities/address",
+        "documents",
+        "briefings",
+        "queries",
+        ".obsidian/plugins",
+        ".obsidian/snippets",
+        ".claude",
+    ]:
+        (vault / d).mkdir(parents=True)
+
+    # --- Registry files ---
+    (vault / "Registry" / "documents.json").write_text("{}\n")
+    (vault / "Registry" / "entities.json").write_text("{}\n")
+    (vault / "Registry" / "registry.json").write_text(
+        json.dumps(
+            {"created_at": now, "last_updated": now, "document_count": 0, "entity_count": 0},
+            indent=2,
+        )
+        + "\n"
+    )
+    (vault / "Registry" / "ingest.log").write_text("")
+
+    # --- Obsidian: exclude internal dirs from vault index ---
+    (vault / ".obsidian" / "app.json").write_text(
+        json.dumps(
+            {"userIgnoreFilters": ["Incoming/Processed", "Incoming/Failed", "Registry"]},
+            indent=2,
+        )
+        + "\n"
+    )
+
+    # --- Obsidian: graph view color coding (Person=blue, Company=green, Address=orange, Document=grey) ---
+    # rgb values are 24-bit packed integers: (R << 16) | (G << 8) | B
+    (vault / ".obsidian" / "graph.json").write_text(
+        json.dumps(
+            {
+                "colorGroups": [
+                    {"query": f"path:entities/person", "color": {"a": 1, "rgb": 4886745}},   # #4A90D9 blue
+                    {"query": f"path:entities/company", "color": {"a": 1, "rgb": 5999451}},  # #5BA95B green
+                    {"query": f"path:entities/address", "color": {"a": 1, "rgb": 15238714}}, # #E8863A orange
+                    {"query": f"path:documents", "color": {"a": 1, "rgb": 9145227}},         # #8B8B8B grey
+                ]
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+
+    # --- index.md ---
+    (vault / "index.md").write_text(
+        f"# {name}\n\n"
+        f"*Watchdog investigation vault — created {today}.*\n\n"
+        "## Recent documents\n\n"
+        "```dataview\n"
+        'TABLE document_type, date_of_document\n'
+        'FROM "documents"\n'
+        "SORT date_ingested DESC\n"
+        "LIMIT 10\n"
+        "```\n\n"
+        "## Entities\n\n"
+        "```dataview\n"
+        'TABLE type, aliases\n'
+        'FROM "entities"\n'
+        "SORT date_last_updated DESC\n"
+        "```\n"
+    )
+
+    # --- CLAUDE.md ---
+    (vault / "CLAUDE.md").write_text(
+        f"# {name} — Watchdog\n\n"
+        "At the start of every session, check `Incoming/` for unprocessed files. "
+        "If any are present, run `/ingest` before doing anything else.\n\n"
+        "## Vault layout\n\n"
+        "| Path | Purpose |\n"
+        "|------|---------|\n"
+        "| `Incoming/` | Drop zone — drag files here to ingest |\n"
+        "| `Incoming/Processed/` | Moved here after successful ingest |\n"
+        "| `Incoming/Failed/` | Moved here on pipeline error |\n"
+        "| `Registry/` | Internal state — do not edit manually |\n"
+        "| `entities/` | One note per real-world entity |\n"
+        "| `documents/` | One note per ingested document |\n"
+        "| `briefings/` | Post-ingest briefing notes |\n\n"
+        "## Hard rules\n\n"
+        "1. Registry updates are atomic with note creation — never one without the other.\n"
+        "2. No duplicate entities — check `Registry/entities.json` before creating.\n"
+        "3. Entity IDs are kebab-case: `john-doe`, `shell-co-ltd`, `123-main-st`.\n"
+        "4. Every extracted fact must carry a confidence level: `high`, `medium`, `low`, or `disputed`.\n"
+        "5. The `## Notes` section in any note is reserved for journalist annotations — never overwrite it.\n"
+        "6. Acquire `Registry/.ingest-lock` before any vault writes; release it on completion or failure.\n\n"
+        "## Commands\n\n"
+        "| Command | Action |\n"
+        "|---------|--------|\n"
+        "| `/ingest` | Process all files in `Incoming/` |\n"
+        "| `/ingest [file]` | Process a specific file |\n"
+        "| `/query [question]` | Answer a question from the vault |\n"
+        "| `/surface` | Find connections and anomalies across the vault |\n"
+        "| `/health` | Check vault integrity |\n\n"
+        "## Confidence levels\n\n"
+        "| Level | When to use |\n"
+        "|-------|-------------|\n"
+        "| `high` | Fact directly stated in the source document |\n"
+        "| `medium` | Fact stated but requires one short inference |\n"
+        "| `low` | Fact inferred across multiple sources |\n"
+        "| `disputed` | Fact contradicted by another source in the vault |\n"
+    )
+
+    # --- .claude/settings.json — notify Claude when files are waiting in Incoming/ ---
+    (vault / ".claude" / "settings.json").write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "UserPromptSubmit": [
+                        {
+                            "matcher": "",
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": (
+                                        "python3 -c \""
+                                        "import os, glob; "
+                                        "pending = [f for f in glob.glob('Incoming/*') "
+                                        "if os.path.isfile(f) and not f.endswith('.yml')]; "
+                                        "print('WATCHDOG: ' + str(len(pending)) + ' file(s) pending in Incoming/') if pending else None"
+                                        "\""
+                                    ),
+                                }
+                            ],
+                        }
+                    ]
+                }
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+
+    # --- Register project globally ---
+    projects = load_projects()
+    projects[slug] = {"name": name, "path": str(vault), "created_at": now}
+    save_projects(projects)
+
+    print(f"Created: {vault}")
+    print()
+    print("Next steps:")
+    print(f"  1. Open {vault} as a new vault in Obsidian")
+    print(f"  2. Open {vault} in Claude Code")
+    print(f"  3. Drop documents into Incoming/ to begin ingesting")
+    print()
+    print(f"To reopen: watchdog open {slug}")
+
+
+def cmd_open(args) -> None:
+    projects = load_projects()
+    slug = slugify(args.name)
+
+    if slug not in projects:
+        # Try prefix match
+        matches = [k for k in projects if k.startswith(slug)]
+        if len(matches) == 1:
+            slug = matches[0]
+        elif len(matches) > 1:
+            sys.exit(f"Ambiguous name — matches: {', '.join(sorted(matches))}")
+        else:
+            sys.exit(
+                f"Project not found: {args.name}\n"
+                "Run 'watchdog list' to see all projects."
+            )
+
+    path = projects[slug]["path"]
+    if not Path(path).exists():
+        sys.exit(f"Error: project directory not found: {path}")
+
+    print(f"Opening {projects[slug]['name']} at {path}")
+    os.chdir(path)
+    os.execvp("claude", ["claude", "."])
+
+
+def cmd_list(_args) -> None:
+    projects = load_projects()
+    if not projects:
+        print("No projects. Create one with: watchdog new <name>")
+        return
+    col = max(len(info["name"]) for info in projects.values()) + 2
+    print(f"{'Project':<{col}} Path")
+    print("-" * (col + 50))
+    for info in sorted(projects.values(), key=lambda x: x["name"]):
+        print(f"{info['name']:<{col}} {info['path']}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        prog="watchdog",
+        description="Investigative journalism document intelligence tool",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_new = sub.add_parser("new", help="Create a new investigation vault")
+    p_new.add_argument("name", help="Investigation name (e.g. 'Shell Company Investigation')")
+    p_new.add_argument("--dir", help=f"Parent directory (default: {DEFAULT_PROJECTS_DIR})")
+    p_new.set_defaults(func=cmd_new)
+
+    p_open = sub.add_parser("open", help="Open an investigation in Claude Code")
+    p_open.add_argument("name", help="Investigation name or slug")
+    p_open.set_defaults(func=cmd_open)
+
+    p_list = sub.add_parser("list", help="List all registered investigations")
+    p_list.set_defaults(func=cmd_list)
+
+    args = parser.parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

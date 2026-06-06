@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+.claude/
+pipeline/batch_results.json
