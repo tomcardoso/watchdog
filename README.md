@@ -1,4 +1,4 @@
-# Watchdog
+# 🔍🐕 Watchdog
 
 **Investigative journalism document intelligence — drop records, find connections.**
 
