@@ -240,14 +240,14 @@ The pipeline scripts aren't installed. Run:
 bash ~/Downloads/watchdog/setup.sh
 ```
 
-**A document lands in `Incoming/Failed/`**
+**A document lands in `Incoming/_Failed/`**
 The document couldn't be processed. Common reasons:
 - Password-protected PDF — remove the password and try again
 - Corrupted file — try re-downloading the document
 - Unsupported format — check the supported file types list above
 
 **Rate limit errors during a large ingest**
-If you're ingesting many documents at once and Claude hits a rate limit, it will stop and log where it paused. Files that were successfully processed will be in `Incoming/Processed/`. Files that weren't processed will still be in `Incoming/`. Start a new Claude Code session and run `/ingest` again — it will pick up where it left off, skipping any already-processed files.
+If you're ingesting many documents at once and Claude hits a rate limit, it will stop and log where it paused. Files that were successfully processed will be in `Incoming/_Processed/`. Files that weren't processed will still be in `Incoming/`. Start a new Claude Code session and run `/ingest` again — it will pick up where it left off, skipping any already-processed files.
 
 ---
 

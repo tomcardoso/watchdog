@@ -26,7 +26,7 @@ From this point, every exit path — including errors — must release the lock 
 If `$ARGUMENTS` names a specific file, process only that file. Otherwise:
 
 List all files in `Incoming/` that are:
-- Not in `Incoming/Processed/` or `Incoming/Failed/`
+- Not in `Incoming/_Processed/` or `Incoming/_Failed/`
 - Not a `.yml` sidecar (`.yml` extension)
 - Not the lock file
 
@@ -55,7 +55,7 @@ Or run the full preprocess step first (step 2b) and extract the sha256 from its 
 watchdog-preprocess "<file_path>"
 ```
 
-Capture the JSON output. If the output contains `"error"`, move the file to `Incoming/Failed/`, log the error, and continue to the next file.
+Capture the JSON output. If the output contains `"error"`, move the file to `Incoming/_Failed/`, log the error, and continue to the next file.
 
 The output gives you: `filename`, `sha256`, `page_count`, `text`, `pages[]`, `metadata`.
 
@@ -310,7 +310,7 @@ Update `last_updated` to now, and recount `document_count` and `entity_count` fr
 
 ### 4d. Move the file
 
-Move `Incoming/<filename>` (and the `.yml` sidecar if it exists) to `Incoming/Processed/`.
+Move `Incoming/<filename>` (and the `.yml` sidecar if it exists) to `Incoming/_Processed/`.
 
 ---
 
@@ -426,7 +426,7 @@ Frame questions explicitly as optional: the journalist can answer, defer, or say
 
 If any step fails for a specific file:
 1. Log the error to `Registry/ingest.log`: `[<ISO 8601>] ERROR <filename>: <error message>`
-2. Move the file to `Incoming/Failed/`
+2. Move the file to `Incoming/_Failed/`
 3. Continue to the next file — do not abort the entire batch
 
 Always release the lock at the end, even if every file failed.

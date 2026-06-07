@@ -52,8 +52,8 @@ def cmd_new(args) -> None:
     today = datetime.now().strftime("%Y-%m-%d")
 
     for d in [
-        "Incoming/Processed",
-        "Incoming/Failed",
+        "Incoming/_Processed",
+        "Incoming/_Failed",
         "Registry",
         "entities/person",
         "entities/company",
@@ -80,7 +80,7 @@ def cmd_new(args) -> None:
 
     (vault / ".obsidian" / "app.json").write_text(
         json.dumps(
-            {"userIgnoreFilters": ["Incoming/Processed", "Incoming/Failed", "Registry"]},
+            {"userIgnoreFilters": ["Incoming/_Processed", "Incoming/_Failed", "Registry"]},
             indent=2,
         ) + "\n"
     )
@@ -126,8 +126,8 @@ def cmd_new(args) -> None:
         "| Path | Purpose |\n"
         "|------|---------|\n"
         "| `Incoming/` | Drop zone — drag files here to ingest |\n"
-        "| `Incoming/Processed/` | Moved here after successful ingest |\n"
-        "| `Incoming/Failed/` | Moved here on pipeline error |\n"
+        "| `Incoming/_Processed/` | Moved here after successful ingest |\n"
+        "| `Incoming/_Failed/` | Moved here on pipeline error |\n"
         "| `Registry/` | Internal state — do not edit manually |\n"
         "| `entities/` | One note per real-world entity |\n"
         "| `documents/` | One note per ingested document |\n"

@@ -328,7 +328,7 @@ All entity types share the universal fields: `name`, `type`, `aliases`, `appears
     └── snippets/
 ```
 
-`Incoming/Processed/`, `Incoming/Failed/`, and `Registry/` are excluded from Obsidian's file index via `.obsidian/app.json` so they don't clutter the vault view.
+`Incoming/_Processed/`, `Incoming/_Failed/`, and `Registry/` are excluded from Obsidian's file index via `.obsidian/app.json` so they don't clutter the vault view.
 
 ---
 

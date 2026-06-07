@@ -24,7 +24,7 @@ die()     { printf '\033[0;31m✗\033[0m  %s\n' "$*" >&2; exit 1; }
 require_confirm() {
     local prompt="$1"
     read -rp "$prompt [y/N] " answer
-    [[ "${answer,,}" == "y" ]] || die "Aborted."
+    [[ "$answer" =~ ^[yY] ]] || die "Aborted."
 }
 
 # ─── Banner ───────────────────────────────────────────────────────────────────
@@ -56,7 +56,7 @@ printf '  Nothing will be installed without your confirmation.\n'
 printf '  Press Ctrl-C at any time to abort.\n'
 printf '\n'
 read -rp "  Ready to install? [y/N] " answer
-[[ "${answer,,}" == "y" ]] || { echo "Aborted."; exit 0; }
+[[ "$answer" =~ ^[yY] ]] || { echo "Aborted."; exit 0; }
 printf '\n'
 
 # ─── 1. Homebrew ──────────────────────────────────────────────────────────────
