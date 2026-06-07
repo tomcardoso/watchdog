@@ -344,6 +344,14 @@ def test_find_project_not_found_exits(configured):
 
 # ── aliases ───────────────────────────────────────────────────────────────────
 
+def test_about_prints_version_and_links(capsys, wdg_home):
+    cli.cmd_about(None)
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Watchdog" in out
+    assert "github.com/tomcardoso/watchdog" in out
+    assert "issues" in out
+
+
 @pytest.mark.parametrize("alias,canonical", [
     ("init",    "new"),
     ("create",  "new"),
@@ -351,6 +359,7 @@ def test_find_project_not_found_exits(configured):
     ("info",    "status"),
     ("inspect", "status"),
     ("cd",      "open"),
+    ("version", "about"),
 ])
 def test_aliases_remap_argv(alias, canonical, monkeypatch):
     import sys

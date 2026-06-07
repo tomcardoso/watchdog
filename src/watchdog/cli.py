@@ -14,12 +14,13 @@ PROJECTS_FILE = WATCHDOG_HOME / "projects.json"
 CONFIG_FILE   = WATCHDOG_HOME / "config.json"
 
 _ALIASES = {
-    "init":   "new",
-    "create": "new",
-    "ls":     "list",
+    "init":    "new",
+    "create":  "new",
+    "ls":      "list",
     "info":    "status",
     "inspect": "status",
-    "cd":     "open",
+    "cd":      "open",
+    "version": "about",
 }
 
 _PIPELINE_COMMANDS = {
@@ -340,6 +341,18 @@ def cmd_new(args) -> None:
     print(f"  {_DIM}To reopen: {_RESET}{_CYAN}watchdog open {slug}{_RESET}")
 
 
+def cmd_about(_args) -> None:
+    from watchdog import __version__
+    print()
+    print(f"  {_BOLD}Watchdog{_RESET}  {_DIM}v{__version__}{_RESET}")
+    print(f"  {_DIM}Investigative journalism document intelligence{_RESET}")
+    print()
+    print(f"  {_DIM}GitHub   {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog{_RESET}")
+    print(f"  {_DIM}Issues   {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog/issues{_RESET}")
+    print(f"  {_DIM}Install  {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog/blob/main/INSTALL.md{_RESET}")
+    print()
+
+
 def cmd_open(args) -> None:
     _, info = _find_project(args.name)
     path = info["path"]
@@ -488,13 +501,16 @@ def main() -> None:
     p_setup.add_argument("--force", action="store_true", help="Re-run setup even if already complete")
     p_setup.set_defaults(func=cmd_setup)
 
+    p_about = sub.add_parser("about", help="Show version and project links")
+    p_about.set_defaults(func=cmd_about)
+
     args = parser.parse_args()
 
     if args.command is None:
         _print_banner()
         return
 
-    if args.command != "setup" and not CONFIG_FILE.exists():
+    if args.command not in ("setup", "about") and not CONFIG_FILE.exists():
         sys.exit("Watchdog isn't set up yet. Run:\n  watchdog setup")
 
     args.func(args)
