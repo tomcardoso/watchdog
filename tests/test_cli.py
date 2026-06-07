@@ -397,6 +397,21 @@ def test_configure_set_projects_dir(wdg_home, tmp_path, capsys):
     assert new_dir.exists()
 
 
+def test_configure_key_only_shows_value(wdg_home, capsys):
+    cli.cmd_configure(args(key="ocr_languages", value="en-US,fr-FR"))
+    capsys.readouterr()
+    cli.cmd_configure(args(key="ocr_languages"))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "en-US" in out
+    assert "fr-FR" in out
+
+
+def test_configure_key_only_unset_shows_default(wdg_home, capsys):
+    cli.cmd_configure(args(key="ocr_languages"))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "auto-detect" in out
+
+
 def test_configure_unknown_key_exits(wdg_home):
     with pytest.raises(SystemExit, match="unknown key"):
         cli.cmd_configure(args(key="nonexistent_key", value="foo"))

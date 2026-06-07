@@ -470,25 +470,27 @@ def cmd_configure(args) -> None:
     key   = getattr(args, "key",   None)
     value = getattr(args, "value", None)
 
+    def _display_value(k, v):
+        if k == "ocr_languages":
+            return f"{_CYAN}{', '.join(v)}{_RESET}" if v else f"{_DIM}auto-detect (default){_RESET}"
+        return f"{_CYAN}{v}{_RESET}" if v is not None else f"{_DIM}(not set){_RESET}"
+
     if key is None:
         print()
         print(f"  {_BOLD}Configuration{_RESET}  {_DIM}{CONFIG_FILE}{_RESET}")
         print()
         for k, desc in _CONFIGURE_KEYS.items():
-            v = config.get(k)
-            if k == "ocr_languages":
-                display = f"{_CYAN}{', '.join(v)}{_RESET}" if v else f"{_DIM}auto-detect (default){_RESET}"
-            elif v is not None:
-                display = f"{_CYAN}{v}{_RESET}"
-            else:
-                display = f"{_DIM}(not set){_RESET}"
-            print(f"  {_DIM}{k:<20}{_RESET} {display}")
+            print(f"  {_DIM}{k:<20}{_RESET} {_display_value(k, config.get(k))}")
             print(f"  {' ' * 20} {_DIM}{desc}{_RESET}")
             print()
         return
 
     if key not in _CONFIGURE_KEYS:
         sys.exit(f"Error: unknown key '{key}'. Known keys: {', '.join(_CONFIGURE_KEYS)}")
+
+    if value is None:
+        print(f"\n  {_BOLD}{key}{_RESET} = {_display_value(key, config.get(key))}\n")
+        return
 
     if key == "ocr_languages":
         langs = [lang.strip() for lang in value.split(",") if lang.strip()]
