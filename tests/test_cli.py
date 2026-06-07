@@ -352,6 +352,16 @@ def test_about_prints_version_and_links(capsys, wdg_home):
     assert "issues" in out
 
 
+@pytest.mark.parametrize("flag", ["-v", "--version"])
+def test_version_flags_invoke_about(capsys, monkeypatch, flag):
+    import sys
+    monkeypatch.setattr(sys, "argv", ["watchdog", flag])
+    cli.main()
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Watchdog" in out
+    assert "github.com/tomcardoso/watchdog" in out
+
+
 @pytest.mark.parametrize("alias,canonical", [
     ("init",    "new"),
     ("create",  "new"),

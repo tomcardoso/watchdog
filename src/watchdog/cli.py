@@ -347,9 +347,9 @@ def cmd_about(_args) -> None:
     print(f"  {_BOLD}Watchdog{_RESET}  {_DIM}v{__version__}{_RESET}")
     print(f"  {_DIM}Investigative journalism document intelligence{_RESET}")
     print()
-    print(f"  {_DIM}GitHub   {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog{_RESET}")
-    print(f"  {_DIM}Issues   {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog/issues{_RESET}")
-    print(f"  {_DIM}Install  {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog/blob/main/INSTALL.md{_RESET}")
+    print(f"  🐙  {_DIM}GitHub   {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog{_RESET}")
+    print(f"  🐛  {_DIM}Issues   {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog/issues{_RESET}")
+    print(f"  📖  {_DIM}Install  {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog/blob/main/INSTALL.md{_RESET}")
     print()
 
 
@@ -465,6 +465,10 @@ def _print_banner() -> None:
 
 
 def main() -> None:
+    if len(sys.argv) >= 2 and sys.argv[1] in ("-v", "--version"):
+        cmd_about(None)
+        return
+
     if len(sys.argv) >= 2 and sys.argv[1] in _ALIASES:
         sys.argv[1] = _ALIASES[sys.argv[1]]
 
