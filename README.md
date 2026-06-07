@@ -29,6 +29,9 @@ Every document Watchdog processes is read by an AI. There is no way to take that
 - **Extracts entities** — people, companies, addresses, properties, court cases, transactions — with page-level citations and confidence levels on every fact
 - **Builds timelines** — datable events are extracted per entity and assembled into a global chronological view across the entire investigation
 - **Finds connections** — shared addresses, overlapping directors, unusual role combinations, entities appearing across unrelated documents
+- **Flags contradictions** — when a new document conflicts with a known fact (different address, conflicting date, mismatched role), Watchdog adds a `[!contradiction]` callout to the entity note with both sources cited
+- **Tracks session state** — `hot.md` is rewritten after every ingest with a current-state summary so Claude can orient itself instantly at the start of a new session without re-reading the vault
+- **Logs every ingest** — `log.md` is a human-readable append-only record of every ingest session, visible in Obsidian
 - **Seeds investigation context** — drop prior published stories into `_CONTEXT/` and Watchdog interviews you to build a rich `context.md` that orients every subsequent ingest
 - **Handles large documents** — 400+ page PDFs are split and processed in parallel; no truncation
 - **Auto-OCRs scanned documents** — detects missing or garbled text layers and applies OCR automatically; falls back to encrypted/malformed PDF repair
@@ -187,6 +190,8 @@ my-investigation/
 ├── briefings/              ← Post-ingest briefing notes
 ├── wiki/                   ← Investigation thread pages
 ├── timeline.md             ← Global chronological view across all entities
+├── hot.md                  ← Current session state — rewritten after every ingest
+├── log.md                  ← Append-only human-readable ingest history
 ├── context.md              ← Your investigation intent and key questions
 └── index.md                ← Dataview index
 ```
