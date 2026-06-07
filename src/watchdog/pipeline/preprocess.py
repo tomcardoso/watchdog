@@ -187,7 +187,7 @@ def build_converter(force_ocr: bool):
 
 def _run_chunk_subprocess(chunk_path: Path, page_offset: int, force_ocr: bool) -> dict:
     """Process a single chunk PDF in a subprocess and return adjusted results."""
-    cmd = [sys.executable, str(Path(__file__).resolve()), str(chunk_path)]
+    cmd = [sys.executable, "-m", "watchdog.pipeline.preprocess", str(chunk_path)]
     if force_ocr:
         cmd.append("--force-ocr")
     try:

@@ -3,4 +3,8 @@ __pycache__/
 *.pyo
 .DS_Store
 .claude/
-pipeline/batch_results.json
+dev/batch_results.json
+*.egg-info/
+dist/
+build/
+.venv/

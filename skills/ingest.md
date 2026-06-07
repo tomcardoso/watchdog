@@ -2,8 +2,6 @@
 
 Process all uningested files in `Incoming/` (or a specific file if one is named: `$ARGUMENTS`).
 
-**Pipeline path:** Scripts are at `${WATCHDOG_PIPELINE:-~/.watchdog/pipeline}/`. If the environment variable `WATCHDOG_PIPELINE` is set, use that path instead.
-
 ---
 
 ## 0. Pre-flight checks
@@ -42,7 +40,7 @@ If nothing is found, print: `Incoming/ is empty — nothing to ingest.` Release 
 
 Read `Registry/documents.json`. Compute the SHA-256 of the file:
 ```bash
-python3 ${WATCHDOG_PIPELINE:-~/.watchdog/pipeline}/preprocess.py "<file_path>" 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('sha256',''))"
+watchdog-preprocess "<file_path>" 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('sha256',''))"
 ```
 
 Or run the full preprocess step first (step 2b) and extract the sha256 from its output — whichever is more efficient. If the SHA-256 already exists in `documents.json`, skip this file:
@@ -54,7 +52,7 @@ Or run the full preprocess step first (step 2b) and extract the sha256 from its 
 ### 2b. Run preprocessing
 
 ```bash
-python3 ${WATCHDOG_PIPELINE:-~/.watchdog/pipeline}/preprocess.py "<file_path>"
+watchdog-preprocess "<file_path>"
 ```
 
 Capture the JSON output. If the output contains `"error"`, move the file to `Incoming/Failed/`, log the error, and continue to the next file.
@@ -64,7 +62,7 @@ The output gives you: `filename`, `sha256`, `page_count`, `text`, `pages[]`, `me
 **Special case — arrows.app JSON:**
 If the filename ends in `.json` and the JSON contains `"nodes"` and `"relationships"` keys at the top level, this is an arrows.app file. Run instead:
 ```bash
-python3 ${WATCHDOG_PIPELINE:-~/.watchdog/pipeline}/arrows_parser.py "<file_path>"
+watchdog-arrows "<file_path>"
 ```
 Then skip to [Section 5: arrows.app import](#5-arrowsapp-import).
 
@@ -81,7 +79,7 @@ Check for `Incoming/<filename>.yml` (same name as the document, with `.yml` appe
 Write the extracted text to a temp file, then run the near-duplicate check against it. Using a file avoids shell argument size limits on large documents.
 
 ```bash
-python3 ${WATCHDOG_PIPELINE:-~/.watchdog/pipeline}/near_dup.py \
+watchdog-near-dup \
   --text-file /tmp/watchdog_neardup.txt \
   --registry Registry/documents.json
 ```

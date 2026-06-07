@@ -62,7 +62,13 @@ cd watchdog
 bash setup.sh
 ```
 
-The setup script installs Python dependencies (Docling, pypdf), PDF preprocessing tools (qpdf, Ghostscript), Claude Code skills, and the `watchdog` CLI. Takes 5–10 minutes on first run.
+The setup script installs everything: system dependencies (qpdf, Ghostscript), the Watchdog Python package via [pipx](https://pipx.pypa.io), and the Claude Code skills. Takes 5–10 minutes on first run.
+
+Once Watchdog is on PyPI, installation will be:
+```bash
+pipx install watchdog-intel
+bash setup.sh  # for Claude Code skills only
+```
 
 For step-by-step instructions written for journalists who have never used a terminal, see [INSTALL.md](INSTALL.md).
 

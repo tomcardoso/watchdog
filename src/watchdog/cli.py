@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """watchdog — investigative journalism document intelligence CLI"""
 
 import argparse
@@ -52,7 +51,6 @@ def cmd_new(args) -> None:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     today = datetime.now().strftime("%Y-%m-%d")
 
-    # --- Directory structure ---
     for d in [
         "Incoming/Processed",
         "Incoming/Failed",
@@ -69,45 +67,39 @@ def cmd_new(args) -> None:
     ]:
         (vault / d).mkdir(parents=True)
 
-    # --- Registry files ---
     (vault / "Registry" / "documents.json").write_text("{}\n")
     (vault / "Registry" / "entities.json").write_text("{}\n")
     (vault / "Registry" / "registry.json").write_text(
         json.dumps(
-            {"created_at": now, "last_updated": now, "document_count": 0, "entity_count": 0},
+            {"schema_version": "1", "created_at": now, "last_updated": now,
+             "document_count": 0, "entity_count": 0},
             indent=2,
-        )
-        + "\n"
+        ) + "\n"
     )
     (vault / "Registry" / "ingest.log").write_text("")
 
-    # --- Obsidian: exclude internal dirs from vault index ---
     (vault / ".obsidian" / "app.json").write_text(
         json.dumps(
             {"userIgnoreFilters": ["Incoming/Processed", "Incoming/Failed", "Registry"]},
             indent=2,
-        )
-        + "\n"
+        ) + "\n"
     )
 
-    # --- Obsidian: graph view color coding (Person=blue, Company=green, Address=orange, Document=grey) ---
     # rgb values are 24-bit packed integers: (R << 16) | (G << 8) | B
     (vault / ".obsidian" / "graph.json").write_text(
         json.dumps(
             {
                 "colorGroups": [
-                    {"query": f"path:entities/person", "color": {"a": 1, "rgb": 4886745}},   # #4A90D9 blue
-                    {"query": f"path:entities/company", "color": {"a": 1, "rgb": 5999451}},  # #5BA95B green
-                    {"query": f"path:entities/address", "color": {"a": 1, "rgb": 15238714}}, # #E8863A orange
-                    {"query": f"path:documents", "color": {"a": 1, "rgb": 9145227}},         # #8B8B8B grey
+                    {"query": "path:entities/person",  "color": {"a": 1, "rgb": 4886745}},   # #4A90D9 blue
+                    {"query": "path:entities/company", "color": {"a": 1, "rgb": 5999451}},   # #5BA95B green
+                    {"query": "path:entities/address", "color": {"a": 1, "rgb": 15238714}},  # #E8863A orange
+                    {"query": "path:documents",        "color": {"a": 1, "rgb": 9145227}},   # #8B8B8B grey
                 ]
             },
             indent=2,
-        )
-        + "\n"
+        ) + "\n"
     )
 
-    # --- index.md ---
     (vault / "index.md").write_text(
         f"# {name}\n\n"
         f"*Watchdog investigation vault — created {today}.*\n\n"
@@ -126,7 +118,6 @@ def cmd_new(args) -> None:
         "```\n"
     )
 
-    # --- CLAUDE.md ---
     (vault / "CLAUDE.md").write_text(
         f"# {name} — Watchdog\n\n"
         "At the start of every session, check `Incoming/` for unprocessed files. "
@@ -165,7 +156,6 @@ def cmd_new(args) -> None:
         "| `disputed` | Fact contradicted by another source in the vault |\n"
     )
 
-    # --- .claude/settings.json — notify Claude when files are waiting in Incoming/ ---
     (vault / ".claude" / "settings.json").write_text(
         json.dumps(
             {
@@ -191,11 +181,9 @@ def cmd_new(args) -> None:
                 }
             },
             indent=2,
-        )
-        + "\n"
+        ) + "\n"
     )
 
-    # --- Register project globally ---
     projects = load_projects()
     projects[slug] = {"name": name, "path": str(vault), "created_at": now}
     save_projects(projects)
@@ -215,7 +203,6 @@ def cmd_open(args) -> None:
     slug = slugify(args.name)
 
     if slug not in projects:
-        # Try prefix match
         matches = [k for k in projects if k.startswith(slug)]
         if len(matches) == 1:
             slug = matches[0]

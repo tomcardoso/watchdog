@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+# Note: "watchdog" is taken on PyPI (filesystem events library).
+# Package name is "watchdog-intel"; the CLI command is still "watchdog".
+name = "watchdog-intel"
+version = "0.1.0a1"
+description = "Investigative journalism document intelligence — drop records, find connections"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+keywords = ["journalism", "documents", "ocr", "investigative", "obsidian", "public-records"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Other Audience",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Text Processing :: General",
+]
+dependencies = [
+    "docling>=2.0",
+    "pypdf>=4.0",
+]
+
+[project.optional-dependencies]
+macos = ["ocrmac"]          # Apple Vision OCR — faster on Apple Silicon
+asr   = ["docling[asr]"]   # Audio/video transcription — requires ffmpeg
+
+[project.scripts]
+watchdog            = "watchdog.cli:main"
+watchdog-preprocess = "watchdog.pipeline.preprocess:main"
+watchdog-near-dup   = "watchdog.pipeline.near_dup:main"
+watchdog-arrows     = "watchdog.pipeline.arrows_parser:main"
+
+[project.urls]
+Homepage   = "https://github.com/tomcardoso/watchdog"
+Repository = "https://github.com/tomcardoso/watchdog"
+Issues     = "https://github.com/tomcardoso/watchdog/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/watchdog"]

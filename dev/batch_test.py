@@ -51,7 +51,7 @@ def run_preprocess(path: Path, preprocess_script: Path) -> dict:
     start = time.time()
     try:
         r = subprocess.run(
-            [sys.executable, str(preprocess_script), str(path)],
+            [sys.executable, str(path)],
             capture_output=True,
             text=True,
             timeout=TIMEOUT_PER_FILE,
