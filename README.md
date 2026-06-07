@@ -290,6 +290,39 @@ Project names tab-complete in zsh, bash, and fish after installation.
 
 ---
 
+## Configuration
+
+`watchdog configure` reads and writes `~/.watchdog/config.json`. Run it with no arguments to see current values:
+
+```bash
+watchdog configure
+```
+
+To set a value:
+
+```bash
+watchdog configure <key> <value>
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `projects_dir` | `~/Investigations` | Where new investigation vaults are created. Set during `watchdog setup`, change here afterwards. |
+| `ocr_languages` | *(auto-detect)* | Language codes for Apple Vision OCR, comma-separated (e.g. `en-US,fr-FR`). Leave unset to let macOS 13+ detect the document language automatically from the image. Set explicitly if auto-detection produces poor results or you are on macOS 12. |
+
+**Examples:**
+
+```bash
+# Override OCR languages for a collection of French and Arabic documents
+watchdog configure ocr_languages "fr-FR,ar-SA"
+
+# Move investigation storage to an external drive
+watchdog configure projects_dir /Volumes/SecureDrive/Investigations
+```
+
+Aliases: `config`, `setting`, `settings` all resolve to `configure`.
+
+---
+
 ## A note on AI and hallucination
 
 Watchdog uses Claude to read documents and extract facts. AI can make mistakes — confabulate specificity, misread names, or draw incorrect inferences.
