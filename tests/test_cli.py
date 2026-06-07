@@ -110,6 +110,15 @@ def test_count_incoming_excludes_failed(tmp_path):
     assert cli._count_incoming(tmp_path) == 1
 
 
+def test_count_incoming_not_fooled_by_failed_in_vault_path(tmp_path):
+    # The vault path itself contains "_FAILED" — should still count files correctly.
+    vault = tmp_path / "_FAILED_projects" / "investigation"
+    incoming = vault / "_INCOMING"
+    incoming.mkdir(parents=True)
+    (incoming / "real.pdf").write_text("")
+    assert cli._count_incoming(vault) == 1
+
+
 # ── _load_registry ────────────────────────────────────────────────────────────
 
 def test_load_registry_missing(tmp_path):
@@ -298,6 +307,14 @@ def test_cmd_status_no_registry(configured, capsys):
 def test_cmd_status_unknown_project_exits(configured):
     with pytest.raises(SystemExit):
         cli.cmd_status(args(name="does not exist"))
+
+
+def test_cmd_status_corrupt_registry_exits(configured):
+    cli.cmd_new(args(name="Test Proj", dir=str(configured)))
+    reg = configured / "test-proj" / ".watchdog" / "Registry"
+    (reg / "documents.json").write_text("not valid json {{{")
+    with pytest.raises(SystemExit, match="corrupt"):
+        cli.cmd_status(args(name="Test Proj"))
 
 
 # ── setup gate ────────────────────────────────────────────────────────────────

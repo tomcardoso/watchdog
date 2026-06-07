@@ -93,7 +93,8 @@ def _count_incoming(vault: Path) -> int:
         return 0
     count = 0
     for root, dirs, files in os.walk(incoming):
-        if "_FAILED" in root:
+        rel_parts = Path(root).relative_to(incoming).parts
+        if any(p in ("_FAILED", "_failed") for p in rel_parts):
             dirs.clear()
             continue
         count += sum(1 for f in files if not f.startswith(".") and not f.endswith(".yml"))
@@ -409,8 +410,11 @@ def cmd_status(args) -> None:
 
     docs_file = vault / ".watchdog" / "Registry" / "documents.json"
     ents_file = vault / ".watchdog" / "Registry" / "entities.json"
-    docs_data = json.loads(docs_file.read_text()) if docs_file.exists() else {}
-    ents_data = json.loads(ents_file.read_text()) if ents_file.exists() else {}
+    try:
+        docs_data = json.loads(docs_file.read_text()) if docs_file.exists() else {}
+        ents_data = json.loads(ents_file.read_text()) if ents_file.exists() else {}
+    except json.JSONDecodeError as e:
+        sys.exit(f"Error: registry file is corrupt — {e}\nRun '/watchdog-health' to diagnose.")
 
     total_pages = sum(d.get("page_count", 0) for d in docs_data.values())
     doc_types   = Counter(d["document_type"] for d in docs_data.values() if d.get("document_type"))

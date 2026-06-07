@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from watchdog.pipeline.write_vault import run
+from watchdog.pipeline.write_vault import run, _doc_slug
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -719,3 +719,43 @@ def test_nonempty_incoming_subdirs_preserved(tmp_path):
 
     assert subdir.exists()
     assert (subdir / "other.pdf").exists()
+
+
+# ── _doc_slug ─────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("filename,expected", [
+    ("annual-report.pdf",          "annual-report"),
+    ("Annual Report 2024.pdf",     "annual-report-2024"),
+    ("report [final] (v2).pdf",    "report-final-v2"),
+    ("Q1 Results & Summary!.pdf",  "q1-results-summary"),
+    ("  spaced  .pdf",             "spaced"),
+    ("[].pdf",                     "document"),        # all chars stripped → fallback
+])
+def test_doc_slug_strips_special_chars(filename, expected):
+    assert _doc_slug(filename) == expected
+
+
+# ── slug collision ────────────────────────────────────────────────────────────
+
+def test_slug_collision_appends_sha_prefix(tmp_path, capsys):
+    vault = make_vault(tmp_path)
+
+    # Ingest first document
+    run(make_extraction(tmp_path, overrides={
+        "document": {"sha256": "aaa111", "filename": "annual-report.pdf",
+                     "original_path": "_INCOMING/annual-report.pdf"}
+    }), vault)
+
+    # Ingest a second document that slugifies to the same name but is a different file
+    (vault / "_INCOMING" / "annual-report.docx").write_text("dummy")
+    run(make_extraction(tmp_path, overrides={
+        "document": {"sha256": "bbb222", "filename": "annual-report.docx",
+                     "original_path": "_INCOMING/annual-report.docx"}
+    }), vault)
+
+    notes = list((vault / "documents").iterdir())
+    slugs = {n.stem for n in notes}
+    # Both notes must exist — neither should have overwritten the other
+    assert any(s == "annual-report" for s in slugs)
+    assert any(s.startswith("annual-report-") for s in slugs)
+    assert len(notes) == 2

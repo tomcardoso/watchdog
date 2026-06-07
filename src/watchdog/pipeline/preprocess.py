@@ -27,6 +27,7 @@ Exits non-zero on unrecoverable error; writes error JSON to stdout:
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -96,9 +97,14 @@ def pdf_extract_chunk(src: Path, start: int, end: int) -> Path:
     writer = pypdf.PdfWriter()
     for i in range(start, min(end, len(reader.pages))):
         writer.add_page(reader.pages[i])
-    tmp = Path(tempfile.mktemp(suffix=".pdf"))
-    with open(tmp, "wb") as f:
-        writer.write(f)
+    fd, tmp_str = tempfile.mkstemp(suffix=".pdf")
+    tmp = Path(tmp_str)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            writer.write(f)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
     return tmp
 
 
@@ -121,10 +127,14 @@ def pdf_preprocess(src: Path) -> "Path | None":
     Returns a cleaned temp file path, or None if unavailable/failed.
     Caller is responsible for deleting the returned file.
     """
-    tmp = Path(tempfile.mktemp(suffix=".pdf"))
+    fd, tmp_str = tempfile.mkstemp(suffix=".pdf")
+    os.close(fd)
+    tmp = Path(tmp_str)
     mid = src
 
-    qpdf_tmp = Path(tempfile.mktemp(suffix=".pdf"))
+    fd2, qpdf_tmp_str = tempfile.mkstemp(suffix=".pdf")
+    os.close(fd2)
+    qpdf_tmp = Path(qpdf_tmp_str)
     r = subprocess.run(
         ["qpdf", "--decrypt", "--no-warn", str(src), str(qpdf_tmp)],
         capture_output=True,

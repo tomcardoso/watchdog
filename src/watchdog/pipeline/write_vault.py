@@ -73,9 +73,10 @@ def _type_dir(entity_type: str) -> str:
 def _doc_slug(filename: str) -> str:
     stem = Path(filename).stem
     slug = stem.lower()
+    slug = re.sub(r"[^\w\s-]", "", slug)
     slug = re.sub(r"[\s_]+", "-", slug)
     slug = re.sub(r"-+", "-", slug)
-    return slug.strip("-")
+    return slug.strip("-") or "document"
 
 
 def _frontmatter(data: dict) -> str:
@@ -489,6 +490,18 @@ def run(extraction_path: Path, vault_path: Path) -> None:
     doc_sha256 = doc["sha256"]
     slug = _doc_slug(doc["filename"])
     doc_title = doc.get("title", doc["filename"])
+
+    # Detect slug collision: if a note with this slug already exists for a different file,
+    # append a short SHA prefix to disambiguate.
+    _candidate = vault_path / "documents" / f"{slug}.md"
+    if _candidate.exists():
+        try:
+            _head = _candidate.read_text(encoding="utf-8", errors="replace")[:500]
+            if f"file: {doc['filename']}" not in _head:
+                slug = f"{slug}-{doc_sha256[:6]}"
+                print(f"WARN  slug collision — using documents/{slug}.md for {doc['filename']}")
+        except OSError:
+            pass
 
     registry_dir = vault_path / ".watchdog" / "Registry"
     entities_path  = registry_dir / "entities.json"
