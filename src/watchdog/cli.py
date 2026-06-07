@@ -458,6 +458,7 @@ def _print_banner() -> None:
         ("list",   "List all registered investigations"),
         ("status", "Show detailed status for an investigation"),
         ("setup",  "Set up Watchdog after installation"),
+        ("about",  "Show version and project links"),
     ]
     for cmd, desc in cmds:
         print(f"  {_CYAN}{cmd:<8}{_RESET} {desc}")
