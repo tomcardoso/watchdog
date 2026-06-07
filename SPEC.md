@@ -18,22 +18,24 @@ This tool ingests those records, extracts structured entities and relationships,
 
 ## Design Principles
 
-1. **Drop and forget.** A journalist drops a file. It gets processed. No command to run, no form to fill.
-2. **Provenance is sacred.** Every extracted fact links to a specific document and page number. Nothing is asserted without a citation.
-3. **Emergent structure.** The entity schema is not rigidly pre-defined. Claude infers types and fields from the document. A small set of universal fields is enforced; everything else is discovered.
-4. **Obsidian is a view layer, not the truth.** The document registry and extracted data are the source of truth. Obsidian notes are generated outputs. Deleting a note doesn't lose data.
-5. **Surface, don't bury.** After every ingest batch, produce a short briefing: what was found, what connects to existing entities, what looks anomalous.
-6. **Journalism-grade duplication handling.** Two scans of the same record are flagged, not silently discarded. The journalist decides what to keep.
+1. **Public records only.** Watchdog is designed for publicly available documents — court filings, corporate records, government contracts, regulatory filings. Confidential source material, private correspondence, and leaked documents must never be dropped into `_INCOMING/`. If a document cannot be identified as a public record, Watchdog stops and asks before processing.
+2. **Drop and forget.** A journalist drops a file. It gets processed. No command to run, no form to fill.
+3. **Provenance is sacred.** Every extracted fact links to a specific document and page number. Nothing is asserted without a citation.
+4. **Emergent structure.** The entity schema is not rigidly pre-defined. Claude infers types and fields from the document. A small set of universal fields is enforced; everything else is discovered.
+5. **Obsidian is a view layer, not the truth.** The document registry and extracted data are the source of truth. Obsidian notes are generated outputs. Deleting a note doesn't lose data.
+6. **Surface, don't bury.** After every ingest batch, produce a short briefing: what was found, what connects to existing entities, what looks anomalous.
+7. **Journalism-grade duplication handling.** Two scans of the same record are flagged, not silently discarded. The journalist decides what to keep.
+8. **Leads, not findings.** Low-confidence extractions are starting points for reporting, not publishable facts. Watchdog surfaces patterns; the journalist verifies what they mean.
 
 ---
 
 ## Architecture Overview
 
 ```
-Drop zone (Incoming/)
+Drop zone (_INCOMING/)
      │
      ▼
-Concurrency lock acquired (Registry/.ingest-lock)
+Concurrency lock acquired (.watchdog/Registry/.ingest-lock)
      │
      ▼
 Preprocessing (Python / Docling)
@@ -67,7 +69,7 @@ Post-ingest briefing
   └── Anomalies and things worth a closer look
 ```
 
-Auto-ingest is triggered by a `SessionStart` hook: every time Claude Code opens in the project directory, it checks `Incoming/` for files that have not yet been processed and ingests them before any other work begins. The journalist drops files at any point; they are processed at the start of the next session.
+Auto-ingest is triggered by a `SessionStart` hook: every time Claude Code opens in the project directory, it checks `_INCOMING/` for files that have not yet been processed and ingests them before any other work begins. The journalist drops files at any point; they are processed at the start of the next session.
 
 ### Ingest hard rules
 
@@ -78,7 +80,7 @@ Adapted from Spotlight's ingest skill. These apply unconditionally:
 3. **IDs are kebab-case.** Lowercase, hyphens, no spaces: `john-doe`, `shell-co-ltd`, `123-main-st`.
 4. **Frontmatter is the contract.** Every note must have complete frontmatter. Agents and Dataview queries rely on it programmatically. Never omit or rename fields.
 5. **Confidence is required.** Every extracted fact must carry a confidence level. No fact enters the vault unclassified.
-6. **Only one writer at a time.** The ingest lock (`Registry/.ingest-lock`) must be acquired before any vault writes and released — even on failure — before the session ends.
+6. **Only one writer at a time.** The ingest lock (`.watchdog/Registry/.ingest-lock`) must be acquired before any vault writes and released — even on failure — before the session ends.
 7. **The journalist's Notes sections are sacred.** The ingestion agent never overwrites content in any `## Notes` section.
 
 ---
@@ -147,13 +149,13 @@ This is the preferred input for manually-built relationship diagrams.
 
 ### Document registry
 
-Stored at `Registry/documents.json`. Records every file that has been ingested.
+Stored at `.watchdog/Registry/documents.json`. Records every file that has been ingested.
 
 ```json
 {
   "sha256": "a3f9...",
   "filename": "shell-co-annual-report-2023.pdf",
-  "original_path": ".raw/shell-co-annual-report-2023.pdf",
+  "original_path": "_INCOMING/shell-co-annual-report-2023.pdf",
   "ingested_at": "2026-06-05T14:32:00Z",
   "page_count": 47,
   "document_type": "Annual Report",
@@ -243,7 +245,7 @@ A journalist can optionally drop a `.yml` sidecar file alongside any document to
 The sidecar must share the document's filename with a `.yml` extension:
 
 ```
-Incoming/
+_INCOMING/
   shell-co-annual-report-2023.pdf
   shell-co-annual-report-2023.yml   ← optional
 ```
@@ -274,9 +276,75 @@ Every extracted fact carries a confidence level. Rules adapted from Spotlight's 
 
 **Never upgrade a claim beyond its weakest element.** If the entity name is directly stated but the date is inferred, the whole claim is medium at most.
 
+This maps directly onto the three epistemic tiers a journalist uses when assessing any source: (a) what the document directly states → `high`; (b) what can reasonably be inferred from it → `medium`; (c) what still needs independent reporting → `low`. A fact at `low` confidence is a lead, not a finding.
+
+### Investigation context
+
+`context.md` lives at the vault root and is written by the journalist before (or early in) an investigation. It tells every Watchdog skill what this investigation is about — what questions it's trying to answer, what entities are already known to be relevant, and what gaps exist in the journalist's current understanding.
+
+Every skill reads `context.md` before running. It shapes emphasis without narrowing extraction: Watchdog still extracts everything from every document, but briefings, leads, surface reports, and wiki threads are all oriented toward the stated questions.
+
+```markdown
+# [Investigation name] — context
+
+## What I'm investigating
+<!-- One paragraph. What is the story? What pattern, question, or wrongdoing are you pursuing? -->
+
+## Key questions I'm trying to answer
+- 
+
+## Entities I already know are relevant
+<!-- People, companies, addresses you know matter to this story. -->
+- 
+
+## Documents I'm expecting or looking for
+<!-- Types of records that would be useful but you don't have yet. -->
+- 
+
+## What I don't yet understand
+<!-- Gaps in your current knowledge of the subject. -->
+- 
+```
+
+`context.md` is a living document — the journalist updates it as the investigation evolves. It is never overwritten by any skill.
+
+### Investigation thread notes
+
+One Obsidian note per active investigative angle. Filed under `wiki/`. Created and updated by `/watchdog-wiki`.
+
+```yaml
+---
+id: offshore-accounts-shell-co
+title: Offshore accounts — Shell Co Ltd
+type: InvestigationThread
+entities:
+  - "[[entities/company/shell-co-ltd]]"
+  - "[[entities/person/john-doe]]"
+documents:
+  - "[[documents/shell-co-annual-report-2023]]"
+  - "[[documents/court-doc-2023-06-01]]"
+created: 2026-06-05
+last_updated: 2026-06-06
+---
+
+## What the evidence shows
+
+[Synthesized narrative — what do the documents collectively establish about this angle? Written in plain language with inline citations to entity and document notes.]
+
+## Open questions
+
+[What's unresolved: missing documents, ambiguous entities, gaps in the timeline.]
+
+## Notes
+
+<!-- Journalist annotations — never overwritten. -->
+```
+
+Thread pages are the journalist's working theory. They sit on top of the evidence layer — every claim in a thread links back to an entity note or document note that supports it. Unlike entity notes (which are factual inventories) and briefings (which are point-in-time summaries), thread pages are living documents that deepen as more evidence arrives.
+
 ### Registries
 
-Watchdog maintains four JSON registries in `Registry/`:
+Watchdog maintains four JSON registries in `.watchdog/Registry/`:
 
 - `documents.json` — every ingested file (hash, path, type, entities extracted)
 - `entities.json` — every unique real-world entity (ID, type, name, aliases, appears_in)
@@ -307,12 +375,11 @@ All entity types share the universal fields: `name`, `type`, `aliases`, `appears
 
 ```
 [project-name]/
-├── Incoming/                    # Drop zone — drag files here to ingest
-│   ├── Processed/               # Moved here after successful ingest
-│   └── Failed/                  # Moved here if pipeline errors
-├── Registry/                    # Internal state (excluded from Obsidian)
-│   ├── documents.json           # Document registry
-│   └── ingest.log               # Append-only operation log
+├── _INCOMING/                    # Drop zone — drag files here to ingest
+│   └── _FAILED/                 # Created on first pipeline error; removed when empty
+├── morgue/                      # Original files after successful ingest
+│   └── [entity-id]/
+│       └── [document-type]/
 ├── entities/                    # Entity notes
 │   ├── person/
 │   ├── company/
@@ -320,15 +387,23 @@ All entity types share the universal fields: `name`, `type`, `aliases`, `appears
 │   └── [other types as discovered]
 ├── documents/                   # Document notes
 ├── briefings/                   # Post-ingest briefing notes
+├── wiki/                        # Investigation thread pages
 ├── queries/                     # Saved query results (optional)
+├── context.md                   # Reporter's intent and investigation questions
 ├── index.md                     # Master index (auto-maintained)
 ├── CLAUDE.md                    # Project instructions for Claude Code
-└── .obsidian/                   # Obsidian configuration (standard Obsidian folder, cannot be renamed)
-    ├── plugins/
-    └── snippets/
+├── .obsidian/                   # Obsidian configuration (standard Obsidian folder, cannot be renamed)
+│   ├── plugins/
+│   └── snippets/
+└── .watchdog/                   # Internal state — hidden from Finder by default
+    └── Registry/
+        ├── documents.json       # Document registry
+        ├── entities.json        # Entity registry
+        ├── registry.json        # Master index
+        └── ingest.log           # Append-only operation log
 ```
 
-`Incoming/_Processed/`, `Incoming/_Failed/`, and `Registry/` are excluded from Obsidian's file index via `.obsidian/app.json` so they don't clutter the vault view.
+`.watchdog/` is excluded from Obsidian's file index via `.obsidian/app.json` so it doesn't clutter the vault view. It is also hidden in Finder by default (dot-prefix).
 
 ---
 
@@ -336,11 +411,12 @@ All entity types share the universal fields: `name`, `type`, `aliases`, `appears
 
 | Invocation | What it does |
 |------------|-------------|
-| *(session start)* | Auto-checks `.raw/` and ingests any unprocessed files |
-| `/ingest` | Manually trigger ingest of everything in `.raw/` |
+| *(session start)* | Auto-checks `_INCOMING/` and ingests any unprocessed files |
+| `/ingest` | Manually trigger ingest of everything in `_INCOMING/` |
 | `/ingest [filename]` | Ingest a specific file |
 | `/query [question]` | Answer a natural language question from the vault |
 | `/surface` | Run connection and anomaly analysis across the full vault on demand |
+| `/wiki` | Create or update investigation thread pages from current vault contents |
 | `/find-duplicates` | Scan for near-duplicates across all ingested documents |
 | `/health` | Check vault integrity: orphan notes, missing links, stale entries |
 
@@ -398,7 +474,7 @@ Claude translates these into edits: updating `source` or `obtained` frontmatter 
 
 ### Exact duplicates (always on)
 
-Before any processing, SHA-256 hash of the file is checked against `Registry/documents.json`. If a match is found, the file is skipped and a note is logged. The file remains in `.raw/` and is not moved to `_processed/`.
+Before any processing, SHA-256 hash of the file is checked against `Registry/documents.json`. If a match is found, the file is skipped and a note is logged. The file remains in `_INCOMING/` and is not moved.
 
 ### Near-duplicates (flagged for review)
 
@@ -485,7 +561,7 @@ Color configuration is set in `.obsidian/graph.json` by the setup script.
 
 A Claude.ai Pro or Max subscription is the recommended path for most journalists — no API key setup, no per-token billing. Raw API key access is an option for users who need higher rate limits or want to manage costs explicitly.
 
-**Rate limits and resilience:** On a Pro plan, very large batch ingests (50+ documents in one session) may hit rate limits mid-session. The ingest pipeline must handle this gracefully: log the stopping point, move successfully processed files to `_processed/`, leave unprocessed files in `.raw/`, and resume automatically at the next session start.
+**Rate limits and resilience:** On a Pro plan, very large batch ingests (50+ documents in one session) may hit rate limits mid-session. The ingest pipeline must handle this gracefully: log the stopping point, move successfully processed files to `morgue/`, leave unprocessed files in `_INCOMING/`, and resume automatically at the next session start.
 
 ### Setup script
 
@@ -515,7 +591,7 @@ Watchdog is installed once. Each investigation is a separate vault folder create
 watchdog new "shell-company-investigation"
 ```
 
-This scaffolds a new vault folder, creates `CLAUDE.md`, and registers the `SessionStart` hook for that directory. Open the new folder in Obsidian as a vault and in Claude Code as a project. Each vault is fully independent — separate `Incoming/`, `Registry/`, entities, documents, and briefings.
+This scaffolds a new vault folder, creates `CLAUDE.md`, and registers the `SessionStart` hook for that directory. Open the new folder in Obsidian as a vault and in Claude Code as a project. Each vault is fully independent — separate `_INCOMING/`, `Registry/`, entities, documents, and briefings.
 
 To switch between investigations, open a different folder in Obsidian and Claude Code. Both applications support multiple vaults/projects natively.
 
@@ -545,9 +621,10 @@ These define what Claude does. They live in the Watchdog plugin directory and ar
 
 | Skill | Invocation | What it does |
 |-------|------------|-------------|
-| `ingest` | auto / `/ingest` | Process documents from `Incoming/`, extract entities, write vault notes, update registries, produce briefing |
+| `ingest` | auto / `/ingest` | Process documents from `_INCOMING/`, extract entities, write vault notes, update registries, produce briefing |
 | `query` | `/query [question]` | Answer natural language questions from the vault |
 | `surface` | `/surface` | Find connections and anomalies across the full vault |
+| `wiki` | `/wiki` | Create or update investigation thread pages — narrative scaffolding around the evidence graph |
 | `health` | `/health` | Check vault integrity: orphan notes, missing registry entries, stale links |
 
 ### Domain knowledge skills
@@ -584,7 +661,7 @@ Domain skills are not required for Watchdog to function — the ingest agent wor
 
 The following is in scope for the first release:
 
-- [ ] Operational skill files: `ingest`, `query`, `surface`, `health`
+- [ ] Operational skill files: `ingest`, `query`, `surface`, `wiki`, `health`
 - [ ] At least one domain knowledge skill (corporate filings) generated through journalist interview
 - [ ] Document pipeline: Docling preprocessing with garbled text detection
 - [ ] Ingest concurrency lock
@@ -599,6 +676,7 @@ The following is in scope for the first release:
 - [ ] Post-ingest briefing
 - [ ] Natural language query skill (`/query`)
 - [ ] On-demand connection surfacing (`/surface`)
+- [ ] Investigation thread pages (`/wiki`)
 - [ ] Vault health check (`/health`)
 - [ ] Obsidian vault with Dataview, graph view, color-coded node types
 - [ ] macOS setup script

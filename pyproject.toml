@@ -26,17 +26,16 @@ classifiers = [
 dependencies = [
     "docling>=2.0",
     "pypdf>=4.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
 macos = ["ocrmac"]          # Apple Vision OCR — faster on Apple Silicon
 asr   = ["docling[asr]"]   # Audio/video transcription — requires ffmpeg
+dev   = ["pytest>=8.0"]
 
 [project.scripts]
-watchdog            = "watchdog.cli:main"
-watchdog-preprocess = "watchdog.pipeline.preprocess:main"
-watchdog-near-dup   = "watchdog.pipeline.near_dup:main"
-watchdog-arrows     = "watchdog.pipeline.arrows_parser:main"
+watchdog = "watchdog.cli:main"
 
 [project.urls]
 Homepage   = "https://github.com/tomcardoso/watchdog"
@@ -45,3 +44,8 @@ Issues     = "https://github.com/tomcardoso/watchdog/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/watchdog"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+

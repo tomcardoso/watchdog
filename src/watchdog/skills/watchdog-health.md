@@ -1,4 +1,4 @@
-# /health — Check vault integrity
+# /watchdog-health — Check vault integrity
 
 Audit the vault for structural problems: orphaned notes, broken links, registry mismatches, and missing required fields.
 
@@ -8,22 +8,22 @@ Audit the vault for structural problems: orphaned notes, broken links, registry 
 
 ### Documents
 
-Read `Registry/documents.json`. For each entry:
+Read `.watchdog/Registry/documents.json`. For each entry:
 - Check that `documents/<document_note>.md` exists
 - If the file is missing, report: `MISSING NOTE: documents/<slug>.md (registered as <sha256>)`
 
 List all files in `documents/`. For each:
-- Check that it has a corresponding entry in `Registry/documents.json` (match on `file` frontmatter field)
+- Check that it has a corresponding entry in `.watchdog/Registry/documents.json` (match on `file` frontmatter field)
 - If no registry entry, report: `ORPHANED NOTE: documents/<filename> (no registry entry)`
 
 ### Entities
 
-Read `Registry/entities.json`. For each entry:
+Read `.watchdog/Registry/entities.json`. For each entry:
 - Check that `entities/<type-lowercase>/<id>.md` exists
 - If missing, report: `MISSING NOTE: entities/<type>/<id>.md (registered as entity)`
 
 List all files in `entities/` recursively. For each:
-- Check that it has a corresponding entry in `Registry/entities.json` (match on `id` frontmatter)
+- Check that it has a corresponding entry in `.watchdog/Registry/entities.json` (match on `id` frontmatter)
 - If no registry entry, report: `ORPHANED NOTE: <path> (no registry entry)`
 
 ---
@@ -46,30 +46,32 @@ Scan all `.md` files in `entities/` and `documents/` for `[[...]]` links.
 
 For each link, check that the target file exists:
 ```bash
-grep -r '\[\[' entities/ documents/ --include="*.md" -h | grep -oP '\[\[\K[^\]]+' | sort -u
+grep -r '\[\[' entities/ documents/ --include="*.md" -h | grep -oP '\[\[\K[^\]|]+' | sort -u
 ```
 
-For each unique link target, check if the corresponding file exists. Report broken links: `DEAD LINK: <source file> → [[<target>]] (file not found)`
+Note: links use pipe-alias syntax (`[[path|Display Name]]`). Extract only the path portion before any `|` when checking file existence. Report broken links: `DEAD LINK: <source file> → [[<target>]] (file not found)`
 
 ---
 
 ## 4. Lock file check
 
-Check whether `Registry/.ingest-lock` exists. If it does, check its timestamp. If older than 30 minutes, report:
-`STALE LOCK: Registry/.ingest-lock (created <timestamp>) — safe to delete`
+Check whether `.watchdog/Registry/.ingest-lock` exists. If it does, check its timestamp. If older than 30 minutes, report:
+`STALE LOCK: .watchdog/Registry/.ingest-lock (created <timestamp>) — safe to delete`
 
 ---
 
 ## 5. Registry counts
 
-Read `Registry/registry.json`. Compare `document_count` and `entity_count` against the actual counts in `documents.json` and `entities.json`. If they differ, report:
+Read `.watchdog/Registry/registry.json`. Compare `document_count` and `entity_count` against the actual counts in `documents.json` and `entities.json`. If they differ, report:
 `COUNT MISMATCH: registry.json says <n> documents but documents.json has <m>`
+
+Also check that `timeline.md` exists at the vault root. If missing, report: `MISSING FILE: timeline.md (rebuild by running /watchdog-entity on any entity)`
 
 ---
 
 ## 6. Entities with no relationships
 
-Find all entity notes where `roles` is empty or absent. These entities appear in documents but haven't been connected to any other entity. Report as a low-priority list: `ISOLATED ENTITY: <id> — appears in <n> documents but has no relationships`
+Find all entities in `entities.json` where `roles` is an empty list or absent. These entities appear in documents but haven't been connected to any other entity via a relationship. Report as a low-priority list: `ISOLATED ENTITY: <id> — appears in <n> documents but has no relationships`
 
 ---
 
@@ -92,7 +94,7 @@ Issues:
 
 <list of issues>
 
-Run `/surface` to find connections and anomalies.
+Run `/watchdog-surface` to find connections and anomalies.
 ```
 
 If no issues are found: `Vault is healthy. No issues found.`

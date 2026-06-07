@@ -1,8 +1,14 @@
-# /surface — Find connections and anomalies across the vault
+# /watchdog-surface — Find connections and anomalies across the vault
 
 Perform a full connection and anomaly analysis across every entity and document in the vault. Surface things the journalist may have missed.
 
 Run this on demand. It is computationally expensive on large vaults; run after major ingest batches.
+
+---
+
+## 0. Read investigation context
+
+Read `context.md` if it exists. This tells you what the journalist is pursuing and what questions they are trying to answer. Use it to prioritise which connections and anomalies to surface — findings that speak directly to the stated questions or known entities go first. If `context.md` is empty or missing, proceed without it.
 
 ---
 
@@ -18,11 +24,13 @@ Read all document notes:
 find documents/ -name "*.md" | sort
 ```
 
-Read `Registry/entities.json` and `Registry/documents.json` for the structured view.
+Read `.watchdog/Registry/entities.json` and `.watchdog/Registry/documents.json` for the structured view.
 
 Build a working index in memory:
-- Entity ID → type, name, aliases, roles, appears_in
+- Entity ID → type, name, aliases, roles (from `entities.json`), appears_in
 - Document slug → type, date, entities_mentioned
+
+Also read `timeline.md` for a global chronological view of all events.
 
 ---
 
@@ -45,7 +53,7 @@ Find every Person entity with a `Director` or `Officer` role. Find all companies
 
 ### Recurring names without explicit relationships
 
-Find entities that appear in 3 or more documents but have no `roles` defined in their entity note. These are entities the vault knows about but hasn't mapped into the relationship graph.
+Find entities in `entities.json` that appear in 3 or more documents but have an empty `roles` list. These are entities the vault knows about but haven't been mapped into the relationship graph.
 
 ### Company clusters
 
@@ -53,9 +61,10 @@ Find groups of companies that share 2 or more of: the same address, the same dir
 
 ### Timeline anomalies
 
-For entities with `date_first_seen` in their note, look for:
-- An entity that appears in a document dated significantly earlier than the vault's record of it (may indicate a missed prior document)
+Read each entity's `## Timeline` section and the global `timeline.md`. Look for:
+- An entity that appears in a document dated significantly earlier than `date_first_seen` in the registry (may indicate a missed prior document)
 - A company formed or dissolved within 30 days of a large transaction involving it
+- Clusters of events from multiple entities that all fall within a narrow date window — these often indicate a coordinated action worth examining
 
 ---
 
@@ -98,9 +107,9 @@ document_count: <n>
 <For each significant connection discovered:>
 
 ### <Connection title>
-- **Entities involved:** [[entity-1]], [[entity-2]]
+- **Entities involved:** [[entities/person/entity-id|Entity Name]], [[entities/company/entity-id|Company Name]]
 - **Nature of connection:** <what they share or how they relate>
-- **Documents:** [[doc-1]] (p. X), [[doc-2]] (p. Y)
+- **Documents:** [[documents/doc-slug|Doc Title]] (p. X), [[documents/doc-slug|Doc Title]] (p. Y)
 - **Why it matters:** <one sentence on investigative significance>
 
 ## Anomalies
@@ -108,10 +117,21 @@ document_count: <n>
 <For each anomaly:>
 
 ### <Anomaly title>
-- **Entity:** [[entity-id]]
+- **Entity:** [[entities/<type>/<id>|Entity Name]]
 - **What's unusual:** <specific description>
-- **Source:** [[document]] (p. N)
+- **Source:** [[documents/<slug>|Document Title]] (p. N)
 - **Suggested follow-up:** <one concrete next step>
+
+## Leads and follow-up ideas
+
+<Actionable leads the full vault suggests, typed and cited:>
+
+- **[Question]** <Open question the vault raises but can't answer.> *Source: [[entities/<type>/<id>|Name]] or [[documents/<slug>|Title]]*
+- **[Contact]** <Person or entity worth reaching out to, and why.>
+- **[Document]** <Specific document that appears to exist but isn't in the vault.>
+- **[FOI]** <Records request worth filing, based on a gap in the evidence.>
+
+If context.md is filled in, prioritise leads that speak directly to the journalist's stated questions.
 
 ## Gaps in the vault
 
@@ -120,7 +140,7 @@ document_count: <n>
 
 ---
 
-*Run `/query` to dig into any of these. Run `/health` to check vault integrity.*
+*Run `/watchdog-query` to dig into any of these. Run `/watchdog-health` to check vault integrity.*
 ```
 
 Print a summary to the terminal: connection count, anomaly count, gap count.

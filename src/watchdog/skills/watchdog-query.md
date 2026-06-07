@@ -1,4 +1,4 @@
-# /query — Answer a question from the vault
+# /watchdog-query — Answer a question from the vault
 
 Answer the journalist's question using only information in this vault.
 
@@ -21,9 +21,10 @@ Identify:
 Read the relevant vault files. Prioritise in this order:
 
 1. **Registry/entities.json** — to find entities matching names in the question
-2. **Entity notes** (`entities/<type>/<id>.md`) — for the specific entities identified
-3. **Document notes** (`documents/*.md`) — for the source documents those entities appear in
-4. **Briefings** (`briefings/*.md`) — for previous analysis that may be relevant
+2. **Entity notes** (`entities/<type>/<id>.md`) — each note has a `## Summary` (who this entity is and their significance), `## Timeline` (datable events), `## Analysis` (accumulated investigative observations), and `## Relationships` (links to other entities)
+3. **timeline.md** — global chronological view across all entities; use this for "when did X happen?" or "what happened in year Y?" questions
+4. **Document notes** (`documents/*.md`) — for the source documents those entities appear in
+5. **Briefings** (`briefings/*.md`) — for previous analysis that may be relevant
 
 Use Bash `grep -r` across the vault if you need to find entities by alias or partial name:
 ```bash
@@ -47,7 +48,7 @@ grep -ri "<search term>" entities/ documents/ --include="*.md" -l
 ### 4. Suggest follow-up
 
 If the question reveals a gap — an entity that appears but has no document note, a relationship that's implied but not explicitly confirmed — note it briefly:
-> "This relationship is inferred from two separate documents but no direct confirmation was found. Run `/surface` for a broader connection analysis."
+> "This relationship is inferred from two separate documents but no direct confirmation was found. Run `/watchdog-surface` for a broader connection analysis."
 
 ---
 

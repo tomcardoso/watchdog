@@ -5,12 +5,37 @@ import json
 import os
 import re
 import sys
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
 WATCHDOG_HOME = Path.home() / ".watchdog"
 PROJECTS_FILE = WATCHDOG_HOME / "projects.json"
-DEFAULT_PROJECTS_DIR = Path.home() / "Investigations"
+CONFIG_FILE   = WATCHDOG_HOME / "config.json"
+
+_PIPELINE_COMMANDS = {
+    "preprocess":       ("watchdog.pipeline.preprocess",       "watchdog-preprocess"),
+    "preprocess-batch": ("watchdog.pipeline.preprocess_batch", "watchdog-preprocess-batch"),
+    "near-dup":         ("watchdog.pipeline.near_dup",         "watchdog-near-dup"),
+    "arrows":           ("watchdog.pipeline.arrows_parser",    "watchdog-arrows"),
+    "batch-get":        ("watchdog.pipeline.batch_get",        "watchdog-batch-get"),
+    "write-vault":      ("watchdog.pipeline.write_vault",      "watchdog-write-vault"),
+    "write-entity":     ("watchdog.pipeline.write_entity",     "watchdog-write-entity"),
+}
+
+_BOLD   = "\033[1m"
+_DIM    = "\033[2m"
+_CYAN   = "\033[0;36m"
+_YELLOW = "\033[0;33m"
+_GREEN  = "\033[0;32m"
+_RESET  = "\033[0m"
+
+
+def _projects_dir() -> Path:
+    if CONFIG_FILE.exists():
+        config = json.loads(CONFIG_FILE.read_text())
+        return Path(config["projects_dir"]).expanduser()
+    return Path.home() / "Investigations"
 
 
 def slugify(name: str) -> str:
@@ -35,6 +60,50 @@ def save_projects(projects: dict) -> None:
         f.write("\n")
 
 
+def _fmt_date(iso: str) -> str:
+    try:
+        return iso[:10]
+    except Exception:
+        return "—"
+
+
+def _load_registry(vault: Path) -> dict | None:
+    reg = vault / ".watchdog" / "Registry" / "registry.json"
+    if not reg.exists():
+        return None
+    try:
+        return json.loads(reg.read_text())
+    except Exception:
+        return None
+
+
+def _count_incoming(vault: Path) -> int:
+    incoming = vault / "_INCOMING"
+    if not incoming.exists():
+        return 0
+    count = 0
+    for root, dirs, files in os.walk(incoming):
+        if "_FAILED" in root:
+            dirs.clear()
+            continue
+        count += sum(1 for f in files if not f.startswith(".") and not f.endswith(".yml"))
+    return count
+
+
+def _find_project(name: str) -> tuple[str, dict]:
+    projects = load_projects()
+    slug = slugify(name)
+    if slug not in projects:
+        matches = [k for k in projects if k.startswith(slug)]
+        if len(matches) == 1:
+            slug = matches[0]
+        elif len(matches) > 1:
+            sys.exit(f"Ambiguous name — matches: {', '.join(sorted(matches))}")
+        else:
+            sys.exit(f"Project not found: {name}\nRun 'watchdog list' to see all projects.")
+    return slug, projects[slug]
+
+
 def cmd_new(args) -> None:
     name = args.name
     slug = slugify(name)
@@ -42,7 +111,7 @@ def cmd_new(args) -> None:
     if not slug:
         sys.exit("Error: project name is invalid.")
 
-    parent = Path(args.dir).expanduser().resolve() if args.dir else DEFAULT_PROJECTS_DIR
+    parent = Path(args.dir).expanduser().resolve() if args.dir else _projects_dir()
     vault = parent / slug
 
     if vault.exists():
@@ -52,14 +121,16 @@ def cmd_new(args) -> None:
     today = datetime.now().strftime("%Y-%m-%d")
 
     for d in [
-        "Incoming/_Processed",
-        "Incoming/_Failed",
-        "Registry",
+        "_INCOMING",
+        "_CONTEXT",
+        "morgue",
+        ".watchdog/Registry",
         "entities/person",
         "entities/company",
         "entities/address",
         "documents",
         "briefings",
+        "wiki",
         "queries",
         ".obsidian/plugins",
         ".obsidian/snippets",
@@ -67,20 +138,20 @@ def cmd_new(args) -> None:
     ]:
         (vault / d).mkdir(parents=True)
 
-    (vault / "Registry" / "documents.json").write_text("{}\n")
-    (vault / "Registry" / "entities.json").write_text("{}\n")
-    (vault / "Registry" / "registry.json").write_text(
+    (vault / ".watchdog" / "Registry" / "documents.json").write_text("{}\n")
+    (vault / ".watchdog" / "Registry" / "entities.json").write_text("{}\n")
+    (vault / ".watchdog" / "Registry" / "registry.json").write_text(
         json.dumps(
             {"schema_version": "1", "created_at": now, "last_updated": now,
              "document_count": 0, "entity_count": 0},
             indent=2,
         ) + "\n"
     )
-    (vault / "Registry" / "ingest.log").write_text("")
+    (vault / ".watchdog" / "Registry" / "ingest.log").write_text("")
 
     (vault / ".obsidian" / "app.json").write_text(
         json.dumps(
-            {"userIgnoreFilters": ["Incoming/_Processed", "Incoming/_Failed", "Registry"]},
+            {"userIgnoreFilters": [".watchdog"], "showInlineTitle": False},
             indent=2,
         ) + "\n"
     )
@@ -98,6 +169,26 @@ def cmd_new(args) -> None:
             },
             indent=2,
         ) + "\n"
+    )
+
+    (vault / "context.md").write_text(
+        f"# {name} — context\n\n"
+        "> Fill this in before your first ingest. The more specific you are, the more "
+        "targeted Watchdog's briefings, leads, and analysis will be. Update it any time "
+        "your understanding of the story evolves.\n\n"
+        "## What I'm investigating\n\n"
+        "<!-- One paragraph. What is the story? What pattern, question, or wrongdoing are you pursuing? -->\n\n"
+        "## Key questions I'm trying to answer\n\n"
+        "- \n\n"
+        "## Entities I already know are relevant\n\n"
+        "<!-- People, companies, addresses you know matter to this story. -->\n\n"
+        "- \n\n"
+        "## Documents I'm expecting or looking for\n\n"
+        "<!-- Types of records that would be useful but you don't have yet. -->\n\n"
+        "- \n\n"
+        "## What I don't yet understand\n\n"
+        "<!-- Gaps in your current knowledge of the subject. -->\n\n"
+        "- \n"
     )
 
     (vault / "index.md").write_text(
@@ -120,33 +211,39 @@ def cmd_new(args) -> None:
 
     (vault / "CLAUDE.md").write_text(
         f"# {name} — Watchdog\n\n"
-        "At the start of every session, check `Incoming/` for unprocessed files. "
-        "If any are present, run `/ingest` before doing anything else.\n\n"
+        "At the start of every session: (1) read `context.md` to understand what this investigation is about; "
+        "(2) check `_INCOMING/` for unprocessed files — if any are present, run `/watchdog-ingest` before doing anything else.\n\n"
         "## Vault layout\n\n"
         "| Path | Purpose |\n"
         "|------|---------|\n"
-        "| `Incoming/` | Drop zone — drag files here to ingest |\n"
-        "| `Incoming/_Processed/` | Moved here after successful ingest |\n"
-        "| `Incoming/_Failed/` | Moved here on pipeline error |\n"
-        "| `Registry/` | Internal state — do not edit manually |\n"
+        "| `_INCOMING/` | Drop zone — drag files here to ingest |\n"
+        "| `_INCOMING/_FAILED/` | Created on failure — files that could not be processed |\n"
+        "| `_CONTEXT/` | Background material (prior stories, notes) — run `/watchdog-context` to seed context.md |\n"
+        "| `morgue/` | Original files after successful ingest |\n"
+        "| `.watchdog/Registry/` | Internal state — do not edit manually |\n"
         "| `entities/` | One note per real-world entity |\n"
         "| `documents/` | One note per ingested document |\n"
-        "| `briefings/` | Post-ingest briefing notes |\n\n"
+        "| `briefings/` | Post-ingest briefing notes |\n"
+        "| `wiki/` | Investigation thread pages |\n"
+        "| `context.md` | Your investigation intent and key questions — read this before every skill |\n\n"
         "## Hard rules\n\n"
-        "1. Registry updates are atomic with note creation — never one without the other.\n"
-        "2. No duplicate entities — check `Registry/entities.json` before creating.\n"
-        "3. Entity IDs are kebab-case: `john-doe`, `shell-co-ltd`, `123-main-st`.\n"
-        "4. Every extracted fact must carry a confidence level: `high`, `medium`, `low`, or `disputed`.\n"
-        "5. The `## Notes` section in any note is reserved for journalist annotations — never overwrite it.\n"
-        "6. Acquire `Registry/.ingest-lock` before any vault writes; release it on completion or failure.\n\n"
+        "1. Public records only — never process confidential source material, private correspondence, or leaked documents. If a document cannot be identified as a public record, stop and ask before proceeding.\n"
+        "2. Registry updates are atomic with note creation — never one without the other.\n"
+        "3. No duplicate entities — check `.watchdog/Registry/entities.json` before creating.\n"
+        "4. Entity IDs are kebab-case: `john-doe`, `shell-co-ltd`, `123-main-st`.\n"
+        "5. Every extracted fact must carry a confidence level: `high`, `medium`, `low`, or `disputed`. A `low`-confidence fact is a lead, not a finding.\n"
+        "6. The `## Notes` section in any note is reserved for journalist annotations — never overwrite it.\n"
+        "7. Acquire `.watchdog/Registry/.ingest-lock` before any vault writes; release it on completion or failure.\n\n"
         "## Commands\n\n"
         "| Command | Action |\n"
         "|---------|--------|\n"
-        "| `/ingest` | Process all files in `Incoming/` |\n"
-        "| `/ingest [file]` | Process a specific file |\n"
-        "| `/query [question]` | Answer a question from the vault |\n"
-        "| `/surface` | Find connections and anomalies across the vault |\n"
-        "| `/health` | Check vault integrity |\n\n"
+        "| `/watchdog-context` | Seed context.md from background files in `_CONTEXT/` |\n"
+        "| `/watchdog-ingest` | Process all files in `_INCOMING/` |\n"
+        "| `/watchdog-ingest [file]` | Process a specific file |\n"
+        "| `/watchdog-query [question]` | Answer a question from the vault |\n"
+        "| `/watchdog-surface` | Find connections and anomalies across the vault |\n"
+        "| `/watchdog-wiki` | Create or update investigation thread pages |\n"
+        "| `/watchdog-health` | Check vault integrity |\n\n"
         "## Confidence levels\n\n"
         "| Level | When to use |\n"
         "|-------|-------------|\n"
@@ -159,6 +256,25 @@ def cmd_new(args) -> None:
     (vault / ".claude" / "settings.json").write_text(
         json.dumps(
             {
+                "permissions": {
+                    "allow": [
+                        "Bash(watchdog preprocess-batch *)",
+                        "Bash(watchdog preprocess *)",
+                        "Bash(watchdog batch-get *)",
+                        "Bash(watchdog near-dup *)",
+                        "Bash(watchdog arrows *)",
+                        "Bash(find _INCOMING/ *)",
+                        "Bash(find _CONTEXT/ *)",
+                        "Bash(mv _INCOMING*)",
+                        "Bash(mkdir -p *)",
+                        "Bash(watchdog write-vault *)",
+                        "Bash(watchdog write-entity *)",
+                        "Bash(rm /tmp/watchdog-extraction-*)",
+                        "Bash(rm /tmp/entity-refresh-*)",
+                        "Bash(rm .watchdog/Registry/.ingest-lock)",
+                        "Bash(rm .watchdog/ingest.json)",
+                    ]
+                },
                 "hooks": {
                     "UserPromptSubmit": [
                         {
@@ -168,17 +284,20 @@ def cmd_new(args) -> None:
                                     "type": "command",
                                     "command": (
                                         "python3 -c \""
-                                        "import os, glob; "
-                                        "pending = [f for f in glob.glob('Incoming/*') "
-                                        "if os.path.isfile(f) and not f.endswith('.yml')]; "
-                                        "print('WATCHDOG: ' + str(len(pending)) + ' file(s) pending in Incoming/') if pending else None"
+                                        "import os; "
+                                        "files = []; "
+                                        "[files.extend([f for f in fnames if not f.startswith('.') and not f.endswith('.yml')]) "
+                                        "for root, dirs, fnames in os.walk('_INCOMING/') "
+                                        "if '_FAILED' not in root]; "
+                                        "n = len(files); "
+                                        "print('WATCHDOG: ' + str(n) + ' file(s) pending in _INCOMING/') if n else None"
                                         "\""
                                     ),
                                 }
                             ],
                         }
                     ]
-                }
+                },
             },
             indent=2,
         ) + "\n"
@@ -188,39 +307,29 @@ def cmd_new(args) -> None:
     projects[slug] = {"name": name, "path": str(vault), "created_at": now}
     save_projects(projects)
 
-    print(f"Created: {vault}")
+    print(f"{_GREEN}Created:{_RESET} {_BOLD}{vault}{_RESET}")
     print()
-    print("Next steps:")
-    print(f"  1. Open {vault} as a new vault in Obsidian")
-    print(f"  2. Open {vault} in Claude Code")
-    print(f"  3. Drop documents into Incoming/ to begin ingesting")
+    print(f"{_BOLD}Next steps:{_RESET}")
+    print(f"  1. Open {_DIM}{vault}{_RESET} as a new vault in Obsidian")
+    print(f"  2. Open {_DIM}{vault}{_RESET} in Claude Code")
+    print(f"  3. Drop documents into {_CYAN}_INCOMING/{_RESET} to begin ingesting")
     print()
-    print(f"To reopen: watchdog open {slug}")
+    print(f"{_DIM}To reopen: watchdog open {slug}{_RESET}")
 
 
 def cmd_open(args) -> None:
-    projects = load_projects()
-    slug = slugify(args.name)
-
-    if slug not in projects:
-        matches = [k for k in projects if k.startswith(slug)]
-        if len(matches) == 1:
-            slug = matches[0]
-        elif len(matches) > 1:
-            sys.exit(f"Ambiguous name — matches: {', '.join(sorted(matches))}")
-        else:
-            sys.exit(
-                f"Project not found: {args.name}\n"
-                "Run 'watchdog list' to see all projects."
-            )
-
-    path = projects[slug]["path"]
+    _, info = _find_project(args.name)
+    path = info["path"]
     if not Path(path).exists():
         sys.exit(f"Error: project directory not found: {path}")
-
-    print(f"Opening {projects[slug]['name']} at {path}")
+    print(f"Opening {info['name']} at {path}")
     os.chdir(path)
     os.execvp("claude", ["claude", "."])
+
+
+def cmd_setup(args) -> None:
+    from watchdog.setup_cmd import run as run_setup
+    run_setup(force=getattr(args, "force", False))
 
 
 def cmd_list(_args) -> None:
@@ -228,23 +337,113 @@ def cmd_list(_args) -> None:
     if not projects:
         print("No projects. Create one with: watchdog new <name>")
         return
-    col = max(len(info["name"]) for info in projects.values()) + 2
-    print(f"{'Project':<{col}} Path")
-    print("-" * (col + 50))
+
+    rows = []
     for info in sorted(projects.values(), key=lambda x: x["name"]):
-        print(f"{info['name']:<{col}} {info['path']}")
+        reg = _load_registry(Path(info["path"]))
+        docs     = str(reg["document_count"]) if reg else "—"
+        entities = str(reg["entity_count"])   if reg else "—"
+        updated  = _fmt_date(reg["last_updated"]) if reg else "—"
+        rows.append((info["name"], docs, entities, updated))
+
+    name_w = max(len(r[0]) for r in rows) + 2
+    header = f"  {_BOLD}{'Project':<{name_w}} {'Docs':>6}  {'Entities':>8}  Updated{_RESET}"
+    print(f"\n{header}")
+    print(f"  {_DIM}{'─' * (name_w + 28)}{_RESET}")
+    for name, docs, entities, updated in rows:
+        print(f"  {_BOLD}{name:<{name_w}}{_RESET} {docs:>6}  {entities:>8}  {_DIM}{updated}{_RESET}")
+    print()
+
+
+def cmd_status(args) -> None:
+    _, info = _find_project(args.name)
+    vault = Path(info["path"])
+
+    if not vault.exists():
+        sys.exit(f"Error: project directory not found: {vault}")
+
+    reg = _load_registry(vault)
+    if not reg:
+        print(f"\n  {_BOLD}{info['name']}{_RESET}")
+        print(f"  {_DIM}{info['path']}{_RESET}")
+        print(f"  {_DIM}Created {_fmt_date(info['created_at'])}{_RESET}")
+        print(f"\n  No registry found — open this vault in Claude Code to begin ingesting.\n")
+        return
+
+    docs_file = vault / ".watchdog" / "Registry" / "documents.json"
+    ents_file = vault / ".watchdog" / "Registry" / "entities.json"
+    docs_data = json.loads(docs_file.read_text()) if docs_file.exists() else {}
+    ents_data = json.loads(ents_file.read_text()) if ents_file.exists() else {}
+
+    total_pages = sum(d.get("page_count", 0) for d in docs_data.values())
+    doc_types   = Counter(d["document_type"] for d in docs_data.values() if d.get("document_type"))
+    ent_types   = Counter(e["type"]          for e in ents_data.values() if e.get("type"))
+    pending     = _count_incoming(vault)
+
+    print(f"\n  {_BOLD}{info['name']}{_RESET}")
+    print(f"  {_DIM}{info['path']}{_RESET}")
+    print(f"  {_DIM}Created {_fmt_date(info['created_at'])}{_RESET}")
+    print()
+
+    pages_note = f" ({total_pages} pages)" if total_pages else ""
+    print(f"  {_BOLD}{reg['document_count']}{_RESET} documents{pages_note} · {_BOLD}{reg['entity_count']}{_RESET} entities · {_DIM}last updated {_fmt_date(reg['last_updated'])}{_RESET}")
+
+    if doc_types:
+        print()
+        print(f"  {_BOLD}Documents by type:{_RESET}")
+        for dtype, count in sorted(doc_types.items(), key=lambda x: -x[1]):
+            print(f"    {dtype:<40} {count:>4}")
+
+    if ent_types:
+        print()
+        print(f"  {_BOLD}Entities by type:{_RESET}")
+        for etype, count in sorted(ent_types.items(), key=lambda x: -x[1]):
+            print(f"    {etype:<40} {count:>4}")
+
+    print()
+    if pending:
+        pending_label = f"{_YELLOW}{pending} file{'s' if pending != 1 else ''} pending{_RESET}"
+    else:
+        pending_label = f"{_DIM}none{_RESET}"
+    print(f"  Pending in {_CYAN}_INCOMING/{_RESET}:  {pending_label}")
+    print()
+
+
+def _print_banner() -> None:
+    print(f"🔍🐕  {_BOLD}Watchdog{_RESET} — investigative document intelligence")
+    print()
+    print(f"{_DIM}Usage:  watchdog <command> [options]{_RESET}")
+    print()
+    print("Commands:")
+    cmds = [
+        ("new",    "Create a new investigation vault"),
+        ("open",   "Open an investigation in Claude Code"),
+        ("list",   "List all registered investigations"),
+        ("status", "Show detailed status for an investigation"),
+        ("setup",  "Set up Watchdog after installation"),
+    ]
+    for cmd, desc in cmds:
+        print(f"  {_CYAN}{cmd:<8}{_RESET} {desc}")
+    print()
 
 
 def main() -> None:
+    if len(sys.argv) >= 2 and sys.argv[1] in _PIPELINE_COMMANDS:
+        import importlib
+        module_path, prog_name = _PIPELINE_COMMANDS[sys.argv[1]]
+        sys.argv = [prog_name] + sys.argv[2:]
+        importlib.import_module(module_path).main()
+        return
+
     parser = argparse.ArgumentParser(
         prog="watchdog",
         description="Investigative journalism document intelligence tool",
     )
-    sub = parser.add_subparsers(dest="command", required=True)
+    sub = parser.add_subparsers(dest="command", required=False)
 
     p_new = sub.add_parser("new", help="Create a new investigation vault")
     p_new.add_argument("name", help="Investigation name (e.g. 'Shell Company Investigation')")
-    p_new.add_argument("--dir", help=f"Parent directory (default: {DEFAULT_PROJECTS_DIR})")
+    p_new.add_argument("--dir", help=f"Parent directory (default: projects_dir from config)")
     p_new.set_defaults(func=cmd_new)
 
     p_open = sub.add_parser("open", help="Open an investigation in Claude Code")
@@ -254,7 +453,23 @@ def main() -> None:
     p_list = sub.add_parser("list", help="List all registered investigations")
     p_list.set_defaults(func=cmd_list)
 
+    p_status = sub.add_parser("status", help="Show detailed status for an investigation")
+    p_status.add_argument("name", help="Investigation name or slug")
+    p_status.set_defaults(func=cmd_status)
+
+    p_setup = sub.add_parser("setup", help="Set up Watchdog after installation")
+    p_setup.add_argument("--force", action="store_true", help="Re-run setup even if already complete")
+    p_setup.set_defaults(func=cmd_setup)
+
     args = parser.parse_args()
+
+    if args.command is None:
+        _print_banner()
+        return
+
+    if args.command != "setup" and not CONFIG_FILE.exists():
+        sys.exit("Watchdog isn't set up yet. Run:\n  watchdog setup")
+
     args.func(args)
 
 

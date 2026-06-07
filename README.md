@@ -2,20 +2,37 @@
 
 **Investigative journalism document intelligence — drop records, find connections.**
 
-Watchdog is a [Claude Code](https://claude.ai/download) tool for journalists who accumulate large sets of public records. You drop documents into a folder. Watchdog extracts every person, company, address, and relationship it finds, stores them as structured notes in an [Obsidian](https://obsidian.md) vault, and proactively surfaces connections you might have missed.
+Watchdog is a [Claude Code](https://claude.ai/download) tool for journalists who accumulate large sets of public records. Drop documents into a folder. Watchdog reads every page, extracts every person, company, address, and relationship it finds, stores them as linked notes in an [Obsidian](https://obsidian.md) vault, and proactively surfaces connections you might have missed.
 
 > **Alpha.** Core pipeline works. Tested on macOS with real investigation documents. Not yet battle-hardened for production use. Feedback and contributions welcome.
 
 ---
 
+## ⚠️ Public records only
+
+**Watchdog is designed exclusively for publicly available documents** — court filings, corporate registrations, government contracts, regulatory filings, land registry records, and similar public-interest material.
+
+**Do not use Watchdog with:**
+- Confidential source communications
+- Unpublished tips or leaked documents
+- Private correspondence
+- Any material that could identify a confidential source
+- Documents obtained under a promise of confidentiality
+
+Every document Watchdog processes is read by an AI. There is no way to take that back. If you are unsure whether a document is safe to process, do not process it.
+
+---
+
 ## What it does
 
-- **Ingests anything** — PDFs (scanned or machine-readable), Word documents, spreadsheets, web pages, images, court documents, corporate filings, financial statements, and more
+- **Ingests anything** — PDFs (scanned or text), Word documents, spreadsheets, images, court documents, corporate filings, financial statements, and more, powered by [Docling](https://github.com/DS4SD/docling)
 - **Extracts entities** — people, companies, addresses, properties, court cases, transactions — with page-level citations and confidence levels on every fact
+- **Builds timelines** — datable events are extracted per entity and assembled into a global chronological view across the entire investigation
 - **Finds connections** — shared addresses, overlapping directors, unusual role combinations, entities appearing across unrelated documents
+- **Seeds investigation context** — drop prior published stories into `_CONTEXT/` and Watchdog interviews you to build a rich `context.md` that orients every subsequent ingest
 - **Handles large documents** — 400+ page PDFs are split and processed in parallel; no truncation
 - **Auto-OCRs scanned documents** — detects missing or garbled text layers and applies OCR automatically; falls back to encrypted/malformed PDF repair
-- **Preserves provenance** — every extracted fact links to the specific document and page it came from; nothing is asserted without a citation
+- **Preserves provenance** — every extracted fact, timeline event, and relationship links to the source document and page; every vault note is directly linked to the original file
 - **Domain knowledge built in** — dedicated extraction skills for corporate filings, court documents, real estate records, financial statements, bankruptcy filings, and government contracts
 - **Stores everything in Obsidian** — your vault is yours; Watchdog writes to it, you query and annotate it
 
@@ -24,19 +41,34 @@ Watchdog is a [Claude Code](https://claude.ai/download) tool for journalists who
 ## How it works
 
 ```
-Drop file into Incoming/
+Drop file into _INCOMING/
         ↓
-preprocess.py — SHA-256 dedup · OCR detection · Docling extraction · near-duplicate check
+watchdog preprocess — SHA-256 dedup · OCR detection · Docling extraction · near-duplicate check
         ↓
-Claude extracts entities and relationships from the text
+Claude extracts entities, relationships, timeline events, and key facts
         ↓
-Entity notes and document notes written to the Obsidian vault
-Registries updated atomically
+watchdog write-vault writes everything atomically:
+  entity notes · document notes · global timeline · registries · morgue move
         ↓
-Post-ingest briefing: new entities · connections · anomalies
+Post-ingest briefing: new entities · connections · leads · anomalies
 ```
 
-The ingest pipeline is a [Claude Code skill](skills/ingest.md) — Claude reads the document text, applies domain knowledge, and writes structured notes. The Python pipeline handles the mechanical work (OCR, hashing, similarity detection). You keep the Obsidian vault.
+The ingest pipeline is a [Claude Code skill](src/watchdog/skills/watchdog-ingest.md) — Claude reads the document, applies domain knowledge, and produces a structured extraction JSON. The Python pipeline handles the mechanical work (OCR, hashing, similarity detection, vault writes). You keep the Obsidian vault and every original file.
+
+---
+
+## Docling
+
+Watchdog uses [Docling](https://github.com/DS4SD/docling) for all document conversion. Docling is an open-source document understanding library from IBM Research that extracts text, tables, and layout from PDFs, Word documents, spreadsheets, HTML, and images.
+
+Why Docling matters for investigative work:
+
+- **Table extraction** — financial statements and creditor lists are full of tables. Docling reconstructs them as structured data rather than garbled text, so Claude can reason about rows and columns correctly.
+- **Layout awareness** — multi-column layouts, footnotes, headers, and sidebars are handled correctly. A court document's header fields don't bleed into the body text.
+- **OCR integration** — when text extraction fails or produces garbled output, Docling falls back to OCR automatically. On macOS, Apple Vision is used (fast, hardware-accelerated); on Linux, EasyOCR.
+- **Large document handling** — 400+ page PDFs are chunked into 40-page segments, processed in parallel, and reassembled in order with correct page numbers throughout.
+
+Docling runs locally. Your documents never leave your machine during preprocessing.
 
 ---
 
@@ -49,6 +81,7 @@ The ingest pipeline is a [Claude Code skill](skills/ingest.md) — Claude reads 
 | [Claude Code](https://claude.ai/download) | Free to install |
 | Claude.ai Pro or Max subscription | Required (~$20–40/month) |
 | Python 3.10+ | Installed by setup script if missing |
+| qpdf + Ghostscript | Installed by setup script |
 
 A Claude.ai Pro subscription is the recommended path. No API key setup, no per-token billing.
 
@@ -62,12 +95,18 @@ cd watchdog
 bash setup.sh
 ```
 
-The setup script installs everything: system dependencies (qpdf, Ghostscript), the Watchdog Python package via [pipx](https://pipx.pypa.io), and the Claude Code skills. Takes 5–10 minutes on first run.
+The setup script installs system dependencies (qpdf, Ghostscript) and the Watchdog Python package via [pipx](https://pipx.pypa.io). Then run:
+
+```bash
+watchdog setup
+```
+
+This installs the Claude Code skills and configures your shell completions. Takes 5–10 minutes on first run (Docling downloads ML models).
 
 Once Watchdog is on PyPI, installation will be:
 ```bash
 pipx install watchdog-intel
-bash setup.sh  # for Claude Code skills only
+watchdog setup
 ```
 
 For step-by-step instructions written for journalists who have never used a terminal, see [INSTALL.md](INSTALL.md).
@@ -84,13 +123,16 @@ watchdog new "Shell Company Investigation"
 watchdog open shell-company-investigation
 ```
 
-Drop documents into `~/Investigations/shell-company-investigation/Incoming/`. At the start of every Claude Code session, Watchdog automatically checks for new files and ingests them.
+**Optional but recommended:** before ingesting records, seed your investigation context from prior published stories or notes:
 
-You can also trigger ingest manually:
+1. Drop background files (clips, notes, screenshots) into `_CONTEXT/`
+2. Run `/watchdog-context` — Watchdog reads the material, asks you questions, and writes `context.md`
+
+Then drop public records into `_INCOMING/`. At the start of every Claude Code session, Watchdog automatically checks for new files and ingests them. You can also trigger ingest manually:
 
 ```
-/ingest
-/ingest specific-document.pdf
+/watchdog-ingest
+/watchdog-ingest specific-document.pdf
 ```
 
 ---
@@ -99,36 +141,23 @@ You can also trigger ingest manually:
 
 | Command | What it does |
 |---------|-------------|
-| `/ingest` | Process all files in `Incoming/` |
-| `/ingest [file]` | Process a specific file |
-| `/query [question]` | Answer a question from your vault |
-| `/surface` | Find connections and anomalies across the full vault |
-| `/health` | Check vault integrity — orphaned notes, broken links, registry mismatches |
+| `/watchdog-context` | Seed `context.md` from background files in `_CONTEXT/` |
+| `/watchdog-ingest` | Process all files in `_INCOMING/` |
+| `/watchdog-ingest [file]` | Process a specific file |
+| `/watchdog-entity [id ...]` | Refresh entity Summary and Timeline from all source documents |
+| `/watchdog-query [question]` | Answer a question from your vault |
+| `/watchdog-surface` | Find connections and anomalies across the full vault |
+| `/watchdog-wiki` | Create or update investigation thread pages |
+| `/watchdog-health` | Check vault integrity — orphaned notes, broken links, registry mismatches |
 
-**Examples:**
+**Query examples:**
 
 ```
-/query Who are the directors of Shell Co Ltd?
-/query Which companies share the address 123 Main St?
-/query When did John Doe first appear in these documents?
-/surface
+/watchdog-query Who are the directors of Shell Co Ltd?
+/watchdog-query Which companies share the address 123 Main St?
+/watchdog-query What happened in 2019 involving Alice Smith?
+/watchdog-surface
 ```
-
----
-
-## Supported file types
-
-| Type | Handler |
-|------|---------|
-| PDF (machine-readable) | Docling |
-| PDF (scanned) | Docling + auto-OCR |
-| PDF (garbled text layer) | Detected automatically → forced OCR |
-| DOCX, PPTX, XLSX | Docling |
-| HTML, XML (XBRL, JATS) | Docling |
-| Images (JPG, PNG, TIFF, etc.) | Docling + OCR |
-| TXT, CSV, Markdown | Direct read |
-| arrows.app JSON | Dedicated parser |
-| Audio/video | Requires `--with-asr` flag at install time + ffmpeg |
 
 ---
 
@@ -138,18 +167,41 @@ Each investigation is an independent Obsidian vault:
 
 ```
 my-investigation/
-├── Incoming/          ← Drop files here
-│   ├── Processed/     ← Moved here after successful ingest
-│   └── Failed/        ← Moved here on pipeline error
-├── Registry/          ← Internal state (excluded from Obsidian)
+├── _INCOMING/              ← Drop public records here
+│   └── _FAILED/           ← Files that could not be processed
+├── _CONTEXT/               ← Background material (prior stories, notes)
+├── morgue/                 ← Original files after successful ingest
+│   └── <entity>/
+│       └── <doc-type>/
+├── .watchdog/
+│   └── Registry/           ← Internal state — do not edit manually
+│       ├── entities.json
+│       ├── documents.json
+│       ├── registry.json
+│       └── ingest.log
 ├── entities/
-│   ├── person/        ← One note per person
-│   ├── company/       ← One note per company
-│   └── address/       ← One note per address
-├── documents/         ← One note per ingested document
-├── briefings/         ← Post-ingest briefing notes
-└── index.md           ← Auto-maintained master index
+│   ├── person/             ← One note per person
+│   ├── company/            ← One note per company
+│   └── address/            ← One note per address
+├── documents/              ← One note per ingested document
+├── briefings/              ← Post-ingest briefing notes
+├── wiki/                   ← Investigation thread pages
+├── timeline.md             ← Global chronological view across all entities
+├── context.md              ← Your investigation intent and key questions
+└── index.md                ← Dataview index
 ```
+
+### Entity notes
+
+Each entity note has a consistent structure:
+
+- **`## Summary`** — synthesized overview of who this entity is and their significance; replaced on each ingest
+- **`## Analysis`** — accumulated investigative observations, dated and linked to source documents; never overwritten
+- **`## Timeline`** — chronological list of datable events involving this entity, linked to source pages
+- **`## Relationships`** — connections to other entities, with source citations
+- **`## Notes`** — reserved for journalist annotations; never touched by Watchdog
+
+Every link to a source document includes a direct page link into the original file (`[[morgue/.../file.pdf#page=3|p. 3]]`), so you can jump from any fact straight to the page it came from.
 
 ---
 
@@ -166,7 +218,7 @@ Watchdog ships with extraction skills for six document types. When Claude identi
 | `records/bankruptcy` | BIA/CCAA filings, creditor lists, trustee reports |
 | `records/government-contracts` | RFPs, sole-source justifications, proactive disclosure |
 
-These skills encode real investigative knowledge — what fields are always present, what patterns are anomalous, what investigators typically miss. See [skills/records/](skills/records/) to read them or contribute new ones.
+These skills encode real investigative knowledge — what fields are always present, what patterns are anomalous, what investigators typically miss. See [src/watchdog/skills/records/](src/watchdog/skills/records/) to read them or contribute new ones.
 
 ---
 
@@ -178,19 +230,33 @@ Watchdog is installed once. Each investigation is a separate vault:
 watchdog new "Municipal Contracts Investigation"
 watchdog new "Healthcare Funding Investigation"
 watchdog list
+watchdog status municipal-contracts-investigation
 watchdog open municipal-contracts-investigation
 ```
 
-Project names tab-complete in zsh and bash after installation.
+Project names tab-complete in zsh, bash, and fish after installation.
+
+---
+
+## A note on AI and hallucination
+
+Watchdog uses Claude to read documents and extract facts. AI can make mistakes — confabulate specificity, misread names, or draw incorrect inferences.
+
+A few safeguards are built in:
+- Every extracted fact carries a **confidence level** (`high`, `medium`, `low`, `disputed`)
+- Every claim links to the **source document and page** so you can verify it directly
+- `low`-confidence facts are **leads**, not findings — they belong in the vault but must not be treated as established
+- `/watchdog-entity` lets you refresh an entity's Summary and Timeline at any time, re-synthesizing from all source documents rather than relying on a chain of incremental updates
+
+Treat everything Watchdog produces as a structured first read, not a finished product. The vault is a tool for your reporting, not a replacement for it.
 
 ---
 
 ## Alpha limitations
 
 - **macOS only** for the scripted installer. Linux and Windows (WSL2) work but require manual setup — see [INSTALL.md](INSTALL.md).
-- **No end-to-end test suite yet.** The pipeline is tested against real documents but automated tests are not written.
 - **Domain skills are v1.** The extraction skills are well-researched but have not yet been validated in a live investigation. Expect rough edges — and please contribute improvements.
-- **No global entity registry.** Entities are scoped to a single vault. Cross-investigation matching is planned for v2.
+- **No global entity registry.** Entities are scoped to a single vault. Cross-investigation entity matching is planned for a future release.
 - **Audio/video requires extra setup.** Speech-to-text (`--with-asr`) adds significant install time and disk space.
 
 ---
@@ -199,9 +265,9 @@ Project names tab-complete in zsh and bash after installation.
 
 Contributions most welcome in three areas:
 
-**Domain knowledge skills** — if you have deep expertise reading a document type that isn't covered (regulatory filings, immigration records, tax documents, election filings, etc.), open an issue or submit a pull request to `skills/records/`. The format is plain markdown — no code required.
+**Domain knowledge skills** — if you have deep expertise reading a document type that isn't covered (regulatory filings, immigration records, tax documents, election filings, etc.), open an issue or submit a pull request to `src/watchdog/skills/records/`. The format is plain markdown — no code required.
 
-**Pipeline fixes** — `pipeline/` contains the Python preprocessing code. Bug reports with a sample document (redacted if needed) are especially useful.
+**Pipeline fixes** — `src/watchdog/pipeline/` contains the Python preprocessing code. Bug reports with a sample document (redacted if needed) are especially useful.
 
 **Installation and documentation** — `INSTALL.md` is written for non-technical journalists. Corrections, clarifications, and translations are welcome.
 
@@ -211,12 +277,13 @@ Please open an issue before starting significant work so we can discuss approach
 
 ## Architecture notes
 
-- **Docling** handles document conversion — layout analysis, table extraction, OCR. Watchdog uses Docling's structured output rather than raw text, which is important for table-heavy documents (financial statements, creditor lists).
-- **Large PDFs** are split into 40-page chunks and processed in parallel. Page numbers are preserved and reassembled in order.
+- **[Docling](https://github.com/DS4SD/docling)** handles all document conversion — layout analysis, table extraction, OCR. Structured output (not raw text) is important for table-heavy documents like financial statements and creditor lists.
+- **Large PDFs** are split into 40-page chunks and processed in parallel via `watchdog preprocess-batch`. Page numbers are preserved and reassembled in order.
 - **OCR engine:** Apple Vision on macOS (fast, hardware-accelerated); EasyOCR on Linux/Windows.
 - **Near-duplicate detection** uses Jaccard similarity on word 3-gram shingles — no ML dependencies, runs locally.
-- **Registries** (`Registry/documents.json`, `Registry/entities.json`) are the source of truth. Obsidian notes are generated outputs. Deleting a note doesn't lose data.
-- **Ingest lock** (`Registry/.ingest-lock`) prevents concurrent writes to the vault.
+- **Registries** (`.watchdog/Registry/documents.json`, `entities.json`) are the source of truth. Obsidian notes are generated outputs — deleting a note doesn't lose data.
+- **Vault writes are atomic** — `watchdog write-vault` handles entity notes, document notes, timeline, registries, and the morgue move in a single operation behind an ingest lock.
+- **Single CLI entry point** — `watchdog` is the only command installed on your PATH. Pipeline utilities (`watchdog preprocess`, `watchdog write-vault`, etc.) are subcommands, not separate binaries.
 
 ---
 

@@ -10,7 +10,7 @@ This guide assumes you have never used a terminal before. Read through it once b
 
 | What | Why | Free? |
 |------|-----|-------|
-| A Mac running macOS 12 or later | Watchdog runs on your computer, not in the cloud | n/a |
+| A computer running macOS, Linux, or Windows | Watchdog runs on your computer, not in the cloud | n/a |
 | [Obsidian](https://obsidian.md) | The app where you'll read and explore your documents | Free |
 | [Claude Code](https://claude.ai/download) | The AI assistant that reads and connects your documents | Free to install |
 | A Claude.ai Pro or Max subscription | Powers the AI — required for document processing | ~$20–40/month |
@@ -33,8 +33,8 @@ This guide assumes you have never used a terminal before. Read through it once b
 
 ## Step 2: Install Claude Code
 
-1. Go to [claude.ai/download](https://claude.ai/download) and download the Mac app
-2. Open the downloaded file and drag Claude Code to your Applications folder
+1. Go to [claude.ai/download](https://claude.ai/download) and download the app
+2. Open the downloaded file and follow the installation instructions
 3. Open Claude Code and sign in with your Claude.ai account
 
 If you don't have a Claude.ai account yet, create one at [claude.ai](https://claude.ai) and subscribe to Pro or Max before continuing.
@@ -43,60 +43,72 @@ If you don't have a Claude.ai account yet, create one at [claude.ai](https://cla
 
 ## Step 3: Open Terminal
 
-Terminal is a built-in Mac app that lets you type commands to your computer. You'll only need it for the next few steps.
+Terminal is a built-in app that lets you type commands to your computer. You'll only need it for the next few steps.
 
-1. Press **Command + Space** to open Spotlight
-2. Type **Terminal** and press Return
-3. A window with a blinking cursor will appear
+**macOS:** Press **Command + Space**, type **Terminal**, press Return.
 
-You'll type commands here. When this guide shows a command in a grey box, type it exactly as shown and press Return.
+**Linux:** Press **Ctrl + Alt + T**, or search for Terminal in your application menu.
 
----
-
-## Step 4: Download Watchdog
-
-In Terminal, type:
-
-```
-cd ~/Downloads && git clone https://github.com/tomcardoso/watchdog.git
-```
-
-Wait for it to finish. You'll see a message saying "done."
+**Windows:** Press **Windows + R**, type **cmd**, press Return. Or install [Windows Terminal](https://apps.microsoft.com/detail/9n0dx20hk701) for a better experience.
 
 ---
 
-## Step 5: Run the installer
+## Step 4: Install prerequisites
 
+Watchdog requires two tools for processing PDFs: **qpdf** and **ghostscript**. It also requires **pipx** to install Python tools.
+
+**macOS:**
 ```
-bash ~/Downloads/watchdog/setup.sh
+brew install qpdf ghostscript pipx
+```
+If you don't have Homebrew, install it first: [brew.sh](https://brew.sh)
+
+**Ubuntu / Debian Linux:**
+```
+sudo apt install qpdf ghostscript pipx
 ```
 
-The installer will:
-- Check that Python is installed (and install it if not)
-- Install Docling, the document processing library
-- Set up the `watchdog` command so you can use it from anywhere
-
-It will ask for your permission before installing anything. Type `y` and press Return when prompted.
-
-This takes 5–10 minutes the first time. You'll see progress messages. When it finishes, you'll see:
-
+**Fedora / RHEL Linux:**
 ```
-  Watchdog is installed.
+sudo dnf install qpdf ghostscript pipx
 ```
+
+**Windows:**
+- qpdf: [github.com/qpdf/qpdf/releases](https://github.com/qpdf/qpdf/releases) — download the installer
+- ghostscript: [ghostscript.com/releases/gsdnld.html](https://ghostscript.com/releases/gsdnld.html) — download the installer
+- pipx: open Terminal and run `pip install pipx`, then `pipx ensurepath`
 
 ---
 
-## Step 6: Reload your shell
-
-Close the Terminal window and open a new one. Then type:
+## Step 5: Install Watchdog
 
 ```
-watchdog list
+pipx install watchdog-intel
 ```
 
-You should see: `No projects. Create one with: watchdog new <name>`
+Wait for it to finish. You'll see a message saying the installation is complete.
 
-If you see an error instead, see [Troubleshooting](#troubleshooting) below.
+---
+
+## Step 6: Run setup
+
+```
+watchdog setup
+```
+
+This will:
+- Verify that qpdf and ghostscript are installed
+- Install the Watchdog skills into Claude Code
+- Ask where you want to store your investigation projects
+- Set up tab completion in your shell
+
+It will ask one question: where to store your projects. Press Return to accept the default, or type a different path.
+
+When it finishes, reload your shell as instructed (e.g. `source ~/.zshrc`), then:
+
+```
+watchdog new "My Investigation"
+```
 
 ---
 
@@ -113,18 +125,18 @@ Use a descriptive name — it will become the name of your Obsidian vault. For e
 watchdog new "Shell Company Investigation"
 ```
 
-Watchdog will create a folder at `~/Investigations/shell-company-investigation/` and print instructions.
+Watchdog will create a folder in your projects directory and print instructions.
 
 **To open the investigation in Obsidian:**
 1. Open Obsidian
 2. Click the vault icon in the bottom-left corner
 3. Click **Open folder as vault**
-4. Navigate to `~/Investigations/shell-company-investigation/` and click Open
+4. Navigate to your investigation folder and click Open
 
 **To open the investigation in Claude Code:**
 1. Open Claude Code
 2. Click **Open project** or use File → Open
-3. Navigate to `~/Investigations/shell-company-investigation/` and click Open
+3. Navigate to your investigation folder and click Open
 
 You're ready to start ingesting documents.
 
@@ -134,7 +146,7 @@ You're ready to start ingesting documents.
 
 **Drop files into the Incoming folder:**
 
-In Finder, navigate to your investigation folder (e.g. `~/Investigations/shell-company-investigation/`). You'll see a folder called `Incoming`. Drag any documents you want to process into this folder.
+In your file manager, navigate to your investigation folder. You'll see a folder called `_INCOMING`. Drag any documents you want to process into this folder.
 
 Supported file types: PDF, Word documents, Excel spreadsheets, images (JPG, PNG, TIFF), web pages (HTML), and plain text files.
 
@@ -142,7 +154,7 @@ Supported file types: PDF, Word documents, Excel spreadsheets, images (JPG, PNG,
 
 With Claude Code open and your investigation folder as the project, simply open a session. Claude will automatically check the Incoming folder for files at the start of every session and process them before anything else.
 
-You can also type `/ingest` at any time to process files manually.
+You can also type `/watchdog-ingest` at any time to process files manually.
 
 **Watch for the briefing:**
 
@@ -158,9 +170,9 @@ After processing, Claude will produce a briefing showing:
 
 Once documents are ingested, you can ask questions in plain English:
 
-- `/query Who are the directors of Shell Co Ltd?`
-- `/query What address does John Doe use?`
-- `/query Which companies share the address 123 Main St?`
+- `/watchdog-query Who are the directors of Shell Co Ltd?`
+- `/watchdog-query What address does John Doe use?`
+- `/watchdog-query Which companies share the address 123 Main St?`
 
 Claude will answer using only the documents in your vault and will cite the specific page it's drawing from.
 
@@ -168,7 +180,7 @@ Claude will answer using only the documents in your vault and will cite the spec
 
 ## Finding connections
 
-Type `/surface` to run a full connection analysis across your entire vault. Claude will look for:
+Type `/watchdog-surface` to run a full connection analysis across your entire vault. Claude will look for:
 
 - Addresses shared by companies that have no other apparent connection
 - People appearing in unusual roles
@@ -178,7 +190,7 @@ Type `/surface` to run a full connection analysis across your entire vault. Clau
 
 ## Checking vault health
 
-Type `/health` to check for any problems with your vault — missing files, broken links, or incomplete records.
+Type `/watchdog-health` to check for any problems with your vault — missing files, broken links, or incomplete records.
 
 ---
 
@@ -224,36 +236,54 @@ watchdog open shell-company-investigation
 **`watchdog: command not found`**
 The install didn't add `watchdog` to your path. Try:
 ```
-source ~/.zshrc
+pipx ensurepath
 ```
-If that doesn't work, run the installer again: `bash ~/Downloads/watchdog/setup.sh`
+Then close and reopen your terminal, and try again.
 
-**`Docling is not installed` when running /ingest**
+**`Watchdog isn't set up yet`**
 Run:
 ```
-pip install docling
+watchdog setup
 ```
 
-**Claude says it can't find `preprocess.py`**
-The pipeline scripts aren't installed. Run:
+**`qpdf not found` or `ghostscript not found` during setup**
+Install the missing tool for your platform (see Step 4 above), then run `watchdog setup` again.
+
+**`Docling is not installed` when running /watchdog-ingest**
+Run:
 ```
-bash ~/Downloads/watchdog/setup.sh
+pipx inject watchdog-intel docling
 ```
 
-**A document lands in `Incoming/_Failed/`**
+**A document lands in `_FAILED/`**
 The document couldn't be processed. Common reasons:
 - Password-protected PDF — remove the password and try again
 - Corrupted file — try re-downloading the document
 - Unsupported format — check the supported file types list above
 
 **Rate limit errors during a large ingest**
-If you're ingesting many documents at once and Claude hits a rate limit, it will stop and log where it paused. Files that were successfully processed will be in `Incoming/_Processed/`. Files that weren't processed will still be in `Incoming/`. Start a new Claude Code session and run `/ingest` again — it will pick up where it left off, skipping any already-processed files.
+If you're ingesting many documents at once and Claude hits a rate limit, it will stop and log where it paused. Files that were successfully processed will be in `morgue/`. Files that weren't processed will still be in `_INCOMING/`. Start a new Claude Code session and run `/watchdog-ingest` again — it will pick up where it left off, skipping any already-processed files.
+
+---
+
+## Audio and video transcription (optional)
+
+Watchdog can transcribe audio and video files if you install support for it. This requires **ffmpeg** and adds roughly 2 GB of dependencies.
+
+**macOS:** `brew install ffmpeg`
+**Ubuntu/Debian:** `sudo apt install ffmpeg`
+**Windows:** [ffmpeg.org/download.html](https://ffmpeg.org/download.html)
+
+Then reinstall Watchdog with transcription support:
+```
+pipx install watchdog-intel[asr] --force
+```
 
 ---
 
 ## Getting help
 
-If something isn't working, the best place to get help is the Watchdog GitHub repository at:
+If something isn't working, the best place to get help is the Watchdog GitHub repository:
 
 ```
 https://github.com/tomcardoso/watchdog/issues
@@ -263,4 +293,4 @@ When reporting a problem, include:
 - What you typed or did
 - What you expected to happen
 - What actually happened (copy and paste any error messages)
-- Your macOS version (Apple menu → About This Mac)
+- Your operating system and version
