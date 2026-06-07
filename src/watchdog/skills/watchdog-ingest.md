@@ -199,8 +199,31 @@ Inspect the document text to determine its type. If it matches one of the follow
 | Balance sheet, income statement, auditor report | `records/financial-statements.md` |
 | Creditor list, trustee report, discharge document | `records/bankruptcy.md` |
 | Procurement record, tender, contract award | `records/government-contracts.md` |
+| Campaign finance return, donor list, third-party advertising return | `records/election-filings.md` |
+| Lobbyist registration, communication report, lobbying disclosure | `records/lobbying-records.md` |
+| ATI / FOI / FOIA response package, exemption index, severance log | `records/foi-responses.md` |
+| IRB/immigration tribunal decision, deportation order, refugee ruling | `records/immigration-refugee.md` |
+| Charity return, T3010, 990, T3, nonprofit tax filing | `records/tax-documents.md` |
+| Securities disclosure, insider trading report, prospectus, SEDAR/EDGAR filing | `records/regulatory-filings.md` |
+| NPRI/TRI/PRTR emissions report, environmental assessment, spill record | `records/environmental-filings.md` |
+| Health regulatory college decision, fitness to practise finding, inspection report | `records/healthcare-licensing.md` |
+| Council minutes, development permit, variance application, zoning amendment | `records/municipal-records.md` |
+| Auditor general report, value-for-money audit, inspector general report | `records/audit-reports.md` |
+| Standing offer call-up, task authorization, vendor performance report | `records/procurement-records.md` |
+| Police occurrence report, use-of-force report, disciplinary decision, parole ruling | `records/police-records.md` |
+| Criminal charge, bail decision, trial decision, sentencing decision | `records/criminal-proceedings.md` |
+| Land register extract, title deed, hypothec, property conveyance | `records/land-registries.md` |
+| Labour arbitration award, grievance decision, collective agreement | `records/labour-arbitration.md` |
+| Grant application, research ethics decision, retraction notice | `records/academic-research.md` |
+| OSFI return, reinsurance treaty, actuarial report | `records/insurance-filings.md` |
+| Public inquiry report, royal commission report, task force report | `records/government-reports.md` |
+| Parliamentary transcript, Hansard, committee hearing, legislative debate | `records/legislature-transcripts.md` |
+| Aircraft registration, flight log, ADS-B data, aviation safety report | `records/aircraft-logs.md` |
+| WHOIS record, DNS data, domain registration, IP allocation | `records/dns-whois.md` |
+| News article, press clipping, wire story, press release | `records/news-clippings.md` |
+| YouTube transcript, podcast transcript, earnings call transcript, broadcast | `records/audio-video.md` |
 
-If no skill file is found for a type, proceed with general extraction.
+If no skill file matches the document type, proceed with general extraction.
 
 ### 3b. Infer document metadata
 
@@ -250,6 +273,30 @@ Pull out the 5–15 most important facts from the document, with:
 - The fact stated in one clear sentence
 - Page number citation
 - Confidence level
+
+### 3f. Contradiction check
+
+For each entity you extracted that already exists in `.watchdog/Registry/entities.json`, read its existing entity note from `entities/<type>/<id>.md`.
+
+Compare the following against what the new document states:
+- Key dates (incorporation, appointment, transaction dates in the timeline)
+- Roles and relationships (a person listed as director in one document but officer in another is worth noting; a person listed as director of Company A in one document but not in another is a potential contradiction if the dates overlap)
+- Addresses and identifying details
+
+If a **material discrepancy** exists — the same fact stated differently in the new document vs. the existing note, both at `high` or `medium` confidence — record it in the entity's `analysis` field using this callout format:
+
+```
+> [!contradiction] <short label, e.g. "Date of incorporation disputed">
+> - **<value from existing note>** — [[documents/<slug>|<title>]], p. <n> (confidence: <level>)
+> - **<value from new document>** — [[documents/<new-slug>|<new title>]], p. <n> (confidence: <level>)
+```
+
+Do not flag discrepancies where:
+- One or both facts are `low` confidence
+- The difference is trivially explainable (e.g. a company using both its full and abbreviated name)
+- The existing note already contains a `[!contradiction]` callout for the same fact
+
+`watchdog write-vault` will merge the `analysis` field into the entity note automatically.
 
 ---
 
@@ -437,6 +484,48 @@ If nothing warrants a lead, omit this section.
 ```
 
 Print the briefing summary to the terminal (the "What was ingested", "New entities", and "Connections" sections — omit the full anomaly section unless something was flagged).
+
+### Update hot.md
+
+After writing the briefing, overwrite `hot.md` with a current-state summary. This is the file Claude reads at the start of the next session to orient itself without re-reading everything.
+
+```markdown
+# Hot cache
+
+*Last updated: <YYYY-MM-DD> — [[briefings/<briefing-slug>|Briefing <date>]]*
+
+## Investigation status
+
+<One sentence describing where the investigation stands, drawing on context.md and what was just ingested. E.g. "Three filings processed; focus is on directorship network around Shell Co Ltd.">
+
+## Recent additions
+
+<Bullet list of new entities and documents added in this session, with type and source document.>
+
+## Emerging patterns
+
+<Any new connections, contradictions, or anomalies surfaced in this ingest that should stay top of mind. Omit if nothing notable.>
+
+## Open questions
+
+<The leads from the briefing condensed to short bullets — questions to pursue, documents to find, FOIs to file.>
+```
+
+Keep hot.md under ~40 lines. It is a prompt, not a report — the full briefing is in `briefings/`.
+
+### Append to log.md
+
+Append the following block to `log.md`:
+
+```markdown
+## <YYYY-MM-DD HH:MM> — Ingest
+
+- **Files:** <n> processed, <n> skipped, <n> failed
+- **New entities:** <n> (<n> new, <n> updated)
+- **Briefing:** [[briefings/<briefing-slug>|<date>]]
+<If contradictions were flagged:>
+- **Contradictions flagged:** <n> — see entity notes for details
+```
 
 ---
 

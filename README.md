@@ -207,16 +207,63 @@ Every link to a source document includes a direct page link into the original fi
 
 ## Domain knowledge skills
 
-Watchdog ships with extraction skills for six document types. When Claude identifies a matching document, it loads the relevant skill before extracting — applying journalist expertise about what to look for, what constitutes a red flag, and what fields matter.
+Watchdog ships with extraction skills for 28 document types. When Claude identifies a matching document, it loads the relevant skill before extracting — applying journalist expertise about what to look for, what constitutes a red flag, and what fields matter.
+
+Skills are jurisdiction-agnostic by default: universal principles come first, with specific jurisdictions (Canada, US, UK, Australia, EU) treated as examples, not as defaults.
+
+### Financial and corporate
 
 | Skill | Covers |
 |-------|--------|
-| `records/corporate-filings` | Annual reports, registrations, director filings (Canada + US) |
-| `records/court-documents` | Claims, affidavits, judgments, orders |
-| `records/real-estate` | Title transfers, mortgages, liens, assessments |
-| `records/financial-statements` | Audited statements, MD&A, related-party disclosures |
-| `records/bankruptcy` | BIA/CCAA filings, creditor lists, trustee reports |
-| `records/government-contracts` | RFPs, sole-source justifications, proactive disclosure |
+| `records/corporate-filings` | Annual reports, registrations, director filings, beneficial ownership |
+| `records/financial-statements` | Audited statements, MD&A, auditor opinions, related-party disclosures |
+| `records/regulatory-filings` | Securities disclosures, insider trading reports, SEDAR+/EDGAR filings |
+| `records/bankruptcy` | Bankruptcy filings, creditor lists, trustee reports, restructuring proceedings |
+| `records/insurance-filings` | Regulatory returns, actuarial reports, reinsurance treaties, market conduct reviews |
+| `records/tax-documents` | Charity information returns (T3010, Form 990), nonprofit filings, trust returns |
+
+### Legal and regulatory
+
+| Skill | Covers |
+|-------|--------|
+| `records/court-documents` | Civil claims, affidavits, judgments, orders, injunctions |
+| `records/criminal-proceedings` | Charging documents, bail decisions, trial decisions, sentencing, forfeiture orders |
+| `records/labour-arbitration` | Grievance awards, labour board decisions, collective agreements |
+| `records/immigration-refugee` | Asylum decisions, detention reviews, deportation orders, judicial reviews |
+| `records/healthcare-licensing` | Discipline decisions, fitness to practise, facility inspections |
+
+### Government and public records
+
+| Skill | Covers |
+|-------|--------|
+| `records/government-contracts` | RFPs, sole-source justifications, contract award notices |
+| `records/procurement-records` | Post-award contracts, amendments, vendor performance, standing offer call-ups |
+| `records/audit-reports` | Auditor general reports, performance audits, inspector general reports |
+| `records/government-reports` | Royal commissions, public inquiries, parliamentary committee reports |
+| `records/foi-responses` | FOI/ATI response packages, exemption indexes, redaction logs |
+| `records/legislature-transcripts` | Hansard, committee transcripts, question period, congressional hearings |
+| `records/lobbying-records` | Lobbyist registrations, communication reports, revolving door disclosures |
+| `records/election-filings` | Campaign finance returns, donor lists, third-party advertising disclosures |
+| `records/municipal-records` | Council minutes, zoning decisions, conflict-of-interest declarations |
+| `records/police-records` | Occurrence reports, use-of-force records, complaint decisions, parole rulings |
+| `records/environmental-filings` | Pollutant release inventories, environmental assessments, compliance orders |
+
+### Property
+
+| Skill | Covers |
+|-------|--------|
+| `records/real-estate` | Title transfers, mortgages, liens, assessments, market transactions |
+| `records/land-registries` | Land registry and title systems — common law and civil law; deeds, charges, caveats |
+
+### Specialized
+
+| Skill | Covers |
+|-------|--------|
+| `records/academic-research` | Grant applications, ethics decisions, conflict-of-interest disclosures, retraction notices |
+| `records/aircraft-logs` | Aircraft registrations, ADS-B flight tracks, safety investigation reports |
+| `records/dns-whois` | WHOIS records, DNS data, IP allocation, SSL certificate transparency logs |
+| `records/news-clippings` | News articles, press releases, wire stories, corrections, retractions |
+| `records/audio-video` | YouTube transcripts, podcast transcripts, earnings calls, press conference recordings |
 
 These skills encode real investigative knowledge — what fields are always present, what patterns are anomalous, what investigators typically miss. See [src/watchdog/skills/records/](src/watchdog/skills/records/) to read them or contribute new ones.
 
@@ -284,6 +331,12 @@ Please open an issue before starting significant work so we can discuss approach
 - **Registries** (`.watchdog/Registry/documents.json`, `entities.json`) are the source of truth. Obsidian notes are generated outputs — deleting a note doesn't lose data.
 - **Vault writes are atomic** — `watchdog write-vault` handles entity notes, document notes, timeline, registries, and the morgue move in a single operation behind an ingest lock.
 - **Single CLI entry point** — `watchdog` is the only command installed on your PATH. Pipeline utilities (`watchdog preprocess`, `watchdog write-vault`, etc.) are subcommands, not separate binaries.
+
+---
+
+## Acknowledgements
+
+Watchdog's vault structure and session-context approach were partly inspired by [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian) by Daniel Agrici — a PKM framework built on Claude Code that demonstrated how to make an AI assistant genuinely vault-aware across sessions. The `hot.md` session state file and the general principle of teaching Claude to orient itself from structured vault context both draw on ideas in that project.
 
 ---
 

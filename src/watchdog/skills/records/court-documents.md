@@ -6,7 +6,7 @@ Loaded by `/ingest` when the document type is a statement of claim, affidavit, j
 
 ## Document types covered
 
-- Statements of claim and defence
+- Statements of claim and defence (or complaints and answers)
 - Affidavits and sworn declarations
 - Court orders and injunctions
 - Judgments (trial and appellate)
@@ -23,14 +23,14 @@ Loaded by `/ingest` when the document type is a statement of claim, affidavit, j
 | Field | What to look for |
 |-------|-----------------|
 | **Court file number** | Unique identifier for the proceeding — appears at the top of every document |
-| **Court and jurisdiction** | Which court (Superior Court of Justice, Federal Court, etc.) and province/state |
+| **Court and jurisdiction** | Which court and country/province/state |
 | **Parties** | Full legal name of every plaintiff, defendant, applicant, respondent |
 | **Counsel** | Lawyers for each party — name, firm, and which party they represent |
 | **Date of document** | Date the document was sworn, issued, or filed |
 | **Relief sought** | What the plaintiff/applicant is asking the court to do |
 | **Monetary amounts** | All dollar figures — damages claimed, amounts in dispute, costs awarded |
 | **Addresses** | All addresses referenced — residential, business, registered |
-| **Properties** | Any real property described, including legal description and PIN |
+| **Properties** | Any real property described, including legal description |
 
 ---
 
@@ -46,7 +46,7 @@ Loaded by `/ingest` when the document type is a statement of claim, affidavit, j
 
 ### Monetary patterns
 
-- **Claim far exceeding apparent company size** — a $10M claim against a company with $500K in annual revenue raises questions about either the claim or the company's solvency.
+- **Claim far exceeding apparent company size** — a large claim against a company with modest revenue raises questions about either the claim or the company's solvency.
 - **Costs awards** — a costs award against a party signals the court found their position frivolous or their conduct improper.
 - **Prejudgment interest claimed from a very early date** — indicates long-running dispute or early notice of the issue.
 
@@ -64,8 +64,8 @@ Loaded by `/ingest` when the document type is a statement of claim, affidavit, j
 
 | Term | Meaning |
 |------|---------|
-| **Statement of claim** | Document that starts a lawsuit; sets out the plaintiff's allegations and damages sought |
-| **Statement of defence** | The defendant's response |
+| **Statement of claim** | Document that starts a lawsuit; sets out the plaintiff's allegations and damages sought (called "complaint" in the US) |
+| **Statement of defence** | The defendant's response (called "answer" in the US) |
 | **Affidavit** | A sworn written statement; the deponent swears it is true |
 | **Deponent** | The person who swears an affidavit |
 | **Exhibits** | Documents attached to an affidavit and referred to in it |
@@ -73,18 +73,23 @@ Loaded by `/ingest` when the document type is a statement of claim, affidavit, j
 | **Interlocutory order** | An order made during the proceeding, before final judgment |
 | **Injunction** | A court order requiring someone to do or not do something |
 | **Mareva injunction** | Freezes assets pending judgment — very significant |
-| **Anton Piller order** | Allows a party to enter premises and seize evidence without notice |
+| **Anton Piller order** | Allows a party to enter premises and seize evidence without notice (called a "search order" in some jurisdictions) |
 | **Summary judgment** | Judgment without a full trial, where there is no genuine issue requiring trial |
 | **Without prejudice** | Communications made in settlement discussions; generally not admissible |
 | **Costs** | Court's award of legal fees, usually against the losing party |
-| **Solicitor-client costs** | Full indemnity costs — awarded when conduct is particularly bad |
 | **Certificate of pending litigation (CPL)** | Registered against a property to signal a lawsuit affecting title |
 
-## Canadian court hierarchy
+## Court hierarchy examples
 
-Superior Court of Justice (Ontario) → Divisional Court → Court of Appeal for Ontario → Supreme Court of Canada
+**Canada (Ontario):** Ontario Court of Justice → Superior Court of Justice → Divisional Court → Court of Appeal for Ontario → Supreme Court of Canada
 
-Federal Court → Federal Court of Appeal → Supreme Court of Canada
+**Federal Court (Canada):** Federal Court → Federal Court of Appeal → Supreme Court of Canada
+
+**United States (federal):** US District Court → US Court of Appeals (Circuit) → US Supreme Court
+
+**United Kingdom:** Magistrates Court / County Court → High Court → Court of Appeal → UK Supreme Court
+
+**Australia:** Magistrates/Local Court → District/County Court → Supreme Court → Court of Appeal → High Court of Australia
 
 ---
 

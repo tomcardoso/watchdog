@@ -68,7 +68,31 @@ Read each entity's `## Timeline` section and the global `timeline.md`. Look for:
 
 ---
 
-## 3. Anomaly analysis
+## 3. Contradiction scan
+
+Scan every entity note in `entities/` for `[!contradiction]` callouts. These are inserted by the ingest pipeline when a new document contradicts an existing fact.
+
+For each callout found:
+- Record the entity, the disputed fact, both values, and both source documents
+- Note the confidence levels of each claim
+
+Also perform a cross-document scan for contradictions not yet flagged:
+
+For each entity that appears in 3 or more documents, compare the following fields across all documents it appears in (read from the `## Timeline` and `## Relationships` sections of the entity note, and from the source documents if needed):
+- Date of incorporation / formation / registration
+- Registered address or business address
+- Director or officer appointments (is the person listed as the same role in all documents?)
+- Transaction amounts (does the same transaction appear with different values in different documents?)
+
+Flag any case where the same fact is stated differently in two documents at `medium` or higher confidence, and that discrepancy is not already captured in a `[!contradiction]` callout.
+
+Add new `[!contradiction]` callouts to the relevant entity notes for any newly found discrepancies.
+
+Include all contradictions (pre-existing and newly found) in the surface report under a dedicated section.
+
+---
+
+## 4. Anomaly analysis
 
 ### Disproportionate transactions
 
@@ -101,6 +125,18 @@ document_count: <n>
 ---
 
 # Surface report — <date>
+
+## Contradictions
+
+<For each contradiction found — pre-existing callouts and newly flagged:>
+
+### <Entity name> — <disputed fact>
+- **[[entities/<type>/<id>|Entity Name]]**
+- <Value A> — [[documents/<slug>|Document Title]], p. <n> (confidence: <level>)
+- <Value B> — [[documents/<slug>|Document Title]], p. <n> (confidence: <level>)
+- **Suggested follow-up:** <what would resolve this discrepancy>
+
+<If no contradictions found: "No contradictions found.">
 
 ## Connections found
 
@@ -143,7 +179,7 @@ If context.md is filled in, prioritise leads that speak directly to the journali
 *Run `/watchdog-query` to dig into any of these. Run `/watchdog-health` to check vault integrity.*
 ```
 
-Print a summary to the terminal: connection count, anomaly count, gap count.
+Print a summary to the terminal: contradiction count, connection count, anomaly count, gap count.
 
 ---
 

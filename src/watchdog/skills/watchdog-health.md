@@ -65,7 +65,10 @@ Check whether `.watchdog/Registry/.ingest-lock` exists. If it does, check its ti
 Read `.watchdog/Registry/registry.json`. Compare `document_count` and `entity_count` against the actual counts in `documents.json` and `entities.json`. If they differ, report:
 `COUNT MISMATCH: registry.json says <n> documents but documents.json has <m>`
 
-Also check that `timeline.md` exists at the vault root. If missing, report: `MISSING FILE: timeline.md (rebuild by running /watchdog-entity on any entity)`
+Also check that the following files exist at the vault root. Report any that are missing:
+- `timeline.md` — `MISSING FILE: timeline.md (rebuild by running /watchdog-entity on any entity)`
+- `hot.md` — `MISSING FILE: hot.md (created automatically by /watchdog-ingest; create manually if needed)`
+- `log.md` — `MISSING FILE: log.md (created automatically by /watchdog-ingest; create manually if needed)`
 
 ---
 

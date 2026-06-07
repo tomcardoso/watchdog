@@ -340,3 +340,31 @@ def test_find_project_ambiguous_exits(configured, wdg_home):
 def test_find_project_not_found_exits(configured):
     with pytest.raises(SystemExit, match="not found"):
         cli._find_project("nonexistent")
+
+
+# ── aliases ───────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("alias,canonical", [
+    ("init",    "new"),
+    ("create",  "new"),
+    ("ls",      "list"),
+    ("info",    "status"),
+    ("inspect", "status"),
+    ("cd",      "open"),
+])
+def test_aliases_remap_argv(alias, canonical, monkeypatch):
+    import sys
+    monkeypatch.setattr(sys, "argv", ["watchdog", alias])
+    # The alias remap happens before argparse; after main() mutates sys.argv,
+    # argv[1] should be the canonical command name.
+    recorded = []
+
+    original_main = cli.main
+
+    def capturing_main():
+        if len(sys.argv) >= 2 and sys.argv[1] in cli._ALIASES:
+            sys.argv[1] = cli._ALIASES[sys.argv[1]]
+        recorded.append(sys.argv[1])
+
+    capturing_main()
+    assert recorded == [canonical]

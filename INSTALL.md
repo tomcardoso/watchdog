@@ -196,6 +196,9 @@ Type `/watchdog-health` to check for any problems with your vault — missing fi
 
 ## Tips
 
+**Ingesting web pages directly from your browser:**
+Install the [Obsidian Web Clipper](https://obsidian.md/clipper) browser extension. Point it at your investigation vault and set the destination folder to `_INCOMING`. You can then clip any web page — news articles, company profiles, government announcements — directly into the ingest pipeline with one click, without downloading anything manually.
+
 **Naming your documents before ingesting:**
 Watchdog uses the filename to organize documents. A filename like `shell-co-annual-report-2023.pdf` is much more useful than `scan0042.pdf`. Rename files before dropping them into Incoming when possible.
 

@@ -11,3 +11,76 @@ pipx run pytest
 Tests use `tmp_path` and `monkeypatch` to redirect `WATCHDOG_HOME`, `PROJECTS_FILE`, and `CONFIG_FILE` away from the real home directory — patch all three when testing anything that touches the registry or projects list. See the `wdg_home` and `configured` fixtures in `tests/test_cli.py` for the pattern.
 
 CI runs on every push and PR via `.github/workflows/ci.yml`.
+
+---
+
+## Adding new record skills
+
+### Where skills live
+
+Skill files live in `src/watchdog/skills/records/`. They are plain markdown. No code changes are needed — skills are automatically picked up by the setup process when a new file is added to that directory.
+
+### Standard structure
+
+Every skill file should follow this structure in order:
+
+1. **Intro paragraph** — one or two sentences explaining when this skill is loaded by `/ingest`. Name the document types that trigger it.
+2. **Document types covered** — a bulleted list of the specific document types the skill applies to. This is the one section where it is acceptable to list jurisdiction-specific document names (since those are the literal names of the documents). Group by jurisdiction if there are many.
+3. **Always-present fields table** — a two-column table (`Field` | `What to look for`) listing the fields that appear in virtually every document of this type. Extract these even when not prominently displayed.
+4. **Red flags section** — the most important section. Use sub-headings to group related red flags. Each red flag should be a bolded label followed by a sentence or two explaining what to look for and why it matters. Write for pattern recognition, not just field extraction.
+5. **Terminology table(s)** — one or more two-column tables (`Term` | `Meaning`) covering jargon a journalist would encounter. If the terminology varies significantly by jurisdiction, use a three-column table (`Term` | `Jurisdiction` | `Meaning`) or separate tables per jurisdiction.
+6. **Relationships to extract** — a numbered list of entity relationships the skill should produce (e.g. `Person → Company: Director`). Use the `→` notation.
+7. **What investigators typically miss** — a numbered list of six to eight specific things that experienced journalists often overlook when reading this document type. Be concrete and specific.
+
+### Authoring principles
+
+- **Jurisdiction-agnostic by default.** Lead with principles and patterns that apply anywhere. Specific jurisdictions are examples, not the default frame. A journalist in Brazil or Germany should find the skill useful.
+- **Jurisdiction-specific terminology tables are valuable** — but position them clearly as jurisdiction guides, not as the primary content. The always-present fields and red flags sections must be universal.
+- **The red flags section is the most important.** This is where the skill earns its value. Think about what a twenty-year veteran investigative journalist would notice that a first-year reporter would miss.
+- **Write for a smart investigative journalist, not a specialist.** Assume the reader knows how journalism works but may not know the specific document type deeply. Explain jargon; don't assume it.
+- **Be specific.** "Look for unusual transactions" is useless. "A property transferred three or more times in 12 months may be involved in title fraud, mortgage fraud, or money laundering" is useful.
+
+### Before writing a new skill, ask the user
+
+1. What document type are you working with? (Get a sample if possible.)
+2. What jurisdiction(s) are most common for your work? (This shapes the terminology table.)
+3. Are there existing skills that overlap? (Check `src/watchdog/skills/records/` first — some document types are covered from a related angle by an existing skill.)
+
+If the new skill would overlap significantly with an existing one, consider extending the existing skill rather than creating a new file.
+
+---
+
+## CLI style guide
+
+All terminal output in `cli.py` follows a consistent visual language. The colour constants are defined at the top of the file — use them, never raw ANSI codes.
+
+### Colour semantics
+
+| Constant | Use for |
+|----------|---------|
+| `_BOLD` | Project names, important counts, section headers |
+| `_DIM` | Secondary metadata: dates, slugs, path labels, quiet prompts |
+| `_CYAN` | Actionable items: file paths, commands the user should type, directory names like `_INCOMING/` |
+| `_GREEN` | Success states (`Created:`) |
+| `_YELLOW` | Warnings (pending files, things that need attention) |
+| `_RESET` | Always close every coloured span |
+
+### Layout conventions
+
+- **Indent everything 2 spaces** — all output lines start with `"  "`. The banner and list headers set this pattern; every command should match it.
+- **Bold name, dim slug** — when showing a project, display its human name in bold and its slug in dim on the same line: `  **My Project**  [dim]my-project[/dim]`.
+- **Cyan for paths, never dim** — file system paths and `watchdog …` commands the user should run are always `_CYAN`, not `_DIM`. Dim is for decorative/secondary text only.
+- **Section headers: bold, no trailing colon** — e.g. `  **Documents by type**` not `Documents by type:`. The colon was dropped in the consistency pass.
+- **Dim labels, normal counts** — in type-breakdown tables, the label is `_DIM`, the count is unstyled (so it reads at normal brightness).
+- **No trailing colons on "Pending in" lines** — format is `Pending in _CYAN__INCOMING/_RESET  <label>`.
+
+### Adding a new command
+
+1. Print a blank line before the first content line and after the last, matching the spacing in `cmd_status`.
+2. Use `_find_project` for any command that takes a project name — it handles prefix matching and exits cleanly.
+3. Never call `print(f"Error: …")` and continue — use `sys.exit(f"Error: …")`.
+4. If the command produces a success confirmation, use `_GREEN` for the label and `_BOLD` for the key value.
+
+### Adding a new CLI alias
+
+Add the alias → canonical mapping to `_ALIASES` at the top of `cli.py`. Aliases are resolved before argparse sees `sys.argv`, so they are invisible to `--help`. Add a parametrized test case to the `test_aliases_remap_argv` test in `tests/test_cli.py`.

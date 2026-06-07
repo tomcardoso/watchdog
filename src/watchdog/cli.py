@@ -13,6 +13,15 @@ WATCHDOG_HOME = Path.home() / ".watchdog"
 PROJECTS_FILE = WATCHDOG_HOME / "projects.json"
 CONFIG_FILE   = WATCHDOG_HOME / "config.json"
 
+_ALIASES = {
+    "init":   "new",
+    "create": "new",
+    "ls":     "list",
+    "info":    "status",
+    "inspect": "status",
+    "cd":     "open",
+}
+
 _PIPELINE_COMMANDS = {
     "preprocess":       ("watchdog.pipeline.preprocess",       "watchdog-preprocess"),
     "preprocess-batch": ("watchdog.pipeline.preprocess_batch", "watchdog-preprocess-batch"),
@@ -171,6 +180,17 @@ def cmd_new(args) -> None:
         ) + "\n"
     )
 
+    (vault / "hot.md").write_text(
+        "# Hot cache\n\n"
+        "*No sessions yet. This file is updated after every ingest.*\n"
+    )
+
+    (vault / "log.md").write_text(
+        "# Ingest log\n\n"
+        "*Append-only. Updated automatically after every ingest.*\n\n"
+        "---\n"
+    )
+
     (vault / "context.md").write_text(
         f"# {name} — context\n\n"
         "> Fill this in before your first ingest. The more specific you are, the more "
@@ -211,8 +231,9 @@ def cmd_new(args) -> None:
 
     (vault / "CLAUDE.md").write_text(
         f"# {name} — Watchdog\n\n"
-        "At the start of every session: (1) read `context.md` to understand what this investigation is about; "
-        "(2) check `_INCOMING/` for unprocessed files — if any are present, run `/watchdog-ingest` before doing anything else.\n\n"
+        "At the start of every session: (1) read `hot.md` for a summary of recent activity and open questions; "
+        "(2) read `context.md` to understand what this investigation is about; "
+        "(3) check `_INCOMING/` for unprocessed files — if any are present, run `/watchdog-ingest` before doing anything else.\n\n"
         "## Vault layout\n\n"
         "| Path | Purpose |\n"
         "|------|---------|\n"
@@ -225,6 +246,8 @@ def cmd_new(args) -> None:
         "| `documents/` | One note per ingested document |\n"
         "| `briefings/` | Post-ingest briefing notes |\n"
         "| `wiki/` | Investigation thread pages |\n"
+        "| `hot.md` | Session-to-session context cache — updated after every ingest |\n"
+        "| `log.md` | Append-only ingest history — human-readable in Obsidian |\n"
         "| `context.md` | Your investigation intent and key questions — read this before every skill |\n\n"
         "## Hard rules\n\n"
         "1. Public records only — never process confidential source material, private correspondence, or leaked documents. If a document cannot be identified as a public record, stop and ask before proceeding.\n"
@@ -310,11 +333,11 @@ def cmd_new(args) -> None:
     print(f"{_GREEN}Created:{_RESET} {_BOLD}{vault}{_RESET}")
     print()
     print(f"{_BOLD}Next steps:{_RESET}")
-    print(f"  1. Open {_DIM}{vault}{_RESET} as a new vault in Obsidian")
-    print(f"  2. Open {_DIM}{vault}{_RESET} in Claude Code")
+    print(f"  1. Open {_CYAN}{vault}{_RESET} as a new vault in Obsidian")
+    print(f"  2. Open {_CYAN}{vault}{_RESET} in Claude Code")
     print(f"  3. Drop documents into {_CYAN}_INCOMING/{_RESET} to begin ingesting")
     print()
-    print(f"{_DIM}To reopen: watchdog open {slug}{_RESET}")
+    print(f"  {_DIM}To reopen: {_RESET}{_CYAN}watchdog open {slug}{_RESET}")
 
 
 def cmd_open(args) -> None:
@@ -322,7 +345,7 @@ def cmd_open(args) -> None:
     path = info["path"]
     if not Path(path).exists():
         sys.exit(f"Error: project directory not found: {path}")
-    print(f"Opening {info['name']} at {path}")
+    print(f"  {_BOLD}{info['name']}{_RESET}  {_CYAN}{path}{_RESET}")
     os.chdir(path)
     os.execvp("claude", ["claude", "."])
 
@@ -335,23 +358,24 @@ def cmd_setup(args) -> None:
 def cmd_list(_args) -> None:
     projects = load_projects()
     if not projects:
-        print("No projects. Create one with: watchdog new <name>")
+        print(f"No projects. Create one with: {_CYAN}watchdog new <name>{_RESET}")
         return
 
     rows = []
-    for info in sorted(projects.values(), key=lambda x: x["name"]):
+    for slug, info in sorted(projects.items(), key=lambda x: x[1]["name"]):
         reg = _load_registry(Path(info["path"]))
         docs     = str(reg["document_count"]) if reg else "—"
         entities = str(reg["entity_count"])   if reg else "—"
         updated  = _fmt_date(reg["last_updated"]) if reg else "—"
-        rows.append((info["name"], docs, entities, updated))
+        rows.append((info["name"], slug, docs, entities, updated))
 
     name_w = max(len(r[0]) for r in rows) + 2
-    header = f"  {_BOLD}{'Project':<{name_w}} {'Docs':>6}  {'Entities':>8}  Updated{_RESET}"
+    slug_w = max(len(r[1]) for r in rows) + 2
+    header = f"  {_BOLD}{'Project':<{name_w}}{_RESET}  {_DIM}{'Slug':<{slug_w}}{'Docs':>6}  {'Entities':>8}  Updated{_RESET}"
     print(f"\n{header}")
-    print(f"  {_DIM}{'─' * (name_w + 28)}{_RESET}")
-    for name, docs, entities, updated in rows:
-        print(f"  {_BOLD}{name:<{name_w}}{_RESET} {docs:>6}  {entities:>8}  {_DIM}{updated}{_RESET}")
+    print(f"  {_DIM}{'─' * (name_w + slug_w + 30)}{_RESET}")
+    for name, slug, docs, entities, updated in rows:
+        print(f"  {_BOLD}{name:<{name_w}}{_RESET}  {_DIM}{slug:<{slug_w}}{docs:>6}  {entities:>8}  {updated}{_RESET}")
     print()
 
 
@@ -365,9 +389,9 @@ def cmd_status(args) -> None:
     reg = _load_registry(vault)
     if not reg:
         print(f"\n  {_BOLD}{info['name']}{_RESET}")
-        print(f"  {_DIM}{info['path']}{_RESET}")
+        print(f"  {_CYAN}{info['path']}{_RESET}")
         print(f"  {_DIM}Created {_fmt_date(info['created_at'])}{_RESET}")
-        print(f"\n  No registry found — open this vault in Claude Code to begin ingesting.\n")
+        print(f"\n  {_DIM}No registry found — open this vault in Claude Code to begin ingesting.{_RESET}\n")
         return
 
     docs_file = vault / ".watchdog" / "Registry" / "documents.json"
@@ -380,32 +404,32 @@ def cmd_status(args) -> None:
     ent_types   = Counter(e["type"]          for e in ents_data.values() if e.get("type"))
     pending     = _count_incoming(vault)
 
-    print(f"\n  {_BOLD}{info['name']}{_RESET}")
-    print(f"  {_DIM}{info['path']}{_RESET}")
+    print(f"\n  {_BOLD}{info['name']}{_RESET}  {_DIM}{slugify(info['name'])}{_RESET}")
+    print(f"  {_CYAN}{info['path']}{_RESET}")
     print(f"  {_DIM}Created {_fmt_date(info['created_at'])}{_RESET}")
     print()
 
-    pages_note = f" ({total_pages} pages)" if total_pages else ""
+    pages_note = f" {_DIM}({total_pages} pages){_RESET}" if total_pages else ""
     print(f"  {_BOLD}{reg['document_count']}{_RESET} documents{pages_note} · {_BOLD}{reg['entity_count']}{_RESET} entities · {_DIM}last updated {_fmt_date(reg['last_updated'])}{_RESET}")
 
     if doc_types:
         print()
-        print(f"  {_BOLD}Documents by type:{_RESET}")
+        print(f"  {_BOLD}Documents by type{_RESET}")
         for dtype, count in sorted(doc_types.items(), key=lambda x: -x[1]):
-            print(f"    {dtype:<40} {count:>4}")
+            print(f"  {_DIM}  {dtype:<40}{_RESET} {count:>4}")
 
     if ent_types:
         print()
-        print(f"  {_BOLD}Entities by type:{_RESET}")
+        print(f"  {_BOLD}Entities by type{_RESET}")
         for etype, count in sorted(ent_types.items(), key=lambda x: -x[1]):
-            print(f"    {etype:<40} {count:>4}")
+            print(f"  {_DIM}  {etype:<40}{_RESET} {count:>4}")
 
     print()
     if pending:
         pending_label = f"{_YELLOW}{pending} file{'s' if pending != 1 else ''} pending{_RESET}"
     else:
         pending_label = f"{_DIM}none{_RESET}"
-    print(f"  Pending in {_CYAN}_INCOMING/{_RESET}:  {pending_label}")
+    print(f"  {_DIM}Pending in{_RESET} {_CYAN}_INCOMING/{_RESET}  {pending_label}")
     print()
 
 
@@ -428,6 +452,9 @@ def _print_banner() -> None:
 
 
 def main() -> None:
+    if len(sys.argv) >= 2 and sys.argv[1] in _ALIASES:
+        sys.argv[1] = _ALIASES[sys.argv[1]]
+
     if len(sys.argv) >= 2 and sys.argv[1] in _PIPELINE_COMMANDS:
         import importlib
         module_path, prog_name = _PIPELINE_COMMANDS[sys.argv[1]]

@@ -72,7 +72,7 @@ Loaded by `/ingest` when the document type is a balance sheet, income statement,
 
 ### Related party transactions
 
-Canadian and US accounting standards require disclosure of transactions with related parties (directors, officers, controlling shareholders, affiliated entities). These disclosures are in the notes, often late in the document, and are frequently the most newsworthy content:
+IFRS, US GAAP, ASPE, and virtually all other accounting standards require disclosure of transactions with related parties (directors, officers, controlling shareholders, affiliated entities). These disclosures are in the notes, often late in the document, and are frequently the most newsworthy content:
 
 - Consulting fees paid to a company controlled by a director
 - Loans to or from officers
@@ -87,9 +87,9 @@ Extract every related party transaction. Note the party, the nature of the trans
 
 | Term | Meaning |
 |------|---------|
-| **IFRS** | International Financial Reporting Standards — used by Canadian public companies |
+| **IFRS** | International Financial Reporting Standards — used by public companies in Canada, the EU, UK, Australia, and over 140 other jurisdictions |
 | **ASPE** | Accounting Standards for Private Enterprises — used by most Canadian private companies |
-| **US GAAP** | United States Generally Accepted Accounting Principles |
+| **US GAAP** | United States Generally Accepted Accounting Principles — used by US public companies and many US private companies |
 | **Consolidated statements** | Financials that include subsidiaries as if the group were one entity |
 | **Equity method** | Accounting for investments where the investor has significant influence but not control |
 | **Fair value** | The price that would be received in an orderly market transaction |
