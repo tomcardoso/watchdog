@@ -25,16 +25,62 @@ From this point, every exit path — including errors — must release the lock 
 
 If `$ARGUMENTS` names a specific file, process only that file. Otherwise:
 
-List all files in `Incoming/` that are:
+List all files in `Incoming/` recursively (including subdirectories) that are:
 - Not in `Incoming/_Processed/` or `Incoming/_Failed/`
 - Not a `.yml` sidecar (`.yml` extension)
+- Not a `.DS_Store` or other hidden system file
 - Not the lock file
 
+```bash
+find Incoming/ -type f \
+  -not -path "*/_Processed/*" \
+  -not -path "*/_Failed/*" \
+  -not -name "*.yml" \
+  -not -name ".*"
+```
+
 If nothing is found, print: `Incoming/ is empty — nothing to ingest.` Release the lock and stop.
+
+**Record the batch start time and file count:**
+```bash
+python3 -c "import time; print(int(time.time()))"
+```
+Store this as `BATCH_START`. Store the total file count as `TOTAL`. Print:
+```
+Ingest starting: <TOTAL> file(s)
+Rough estimate: ~<TOTAL × 30> seconds (<TOTAL × 0.5> min) — updates as files complete
+```
+The 30s-per-file estimate is conservative and will be refined as each file finishes.
 
 ---
 
 ## 2. For each file — preprocessing
+
+**At the start of each file**, print a progress line:
+```
+[<N>/<TOTAL>] Processing: <filename> ...
+```
+Record the file start time:
+```bash
+python3 -c "import time; print(int(time.time()))"
+```
+
+**After each file completes** (whether OK, skipped, or failed), print a completion line and updated ETA:
+```bash
+python3 -c "
+import time
+file_elapsed = int(time.time()) - FILE_START
+completed = N  # files done so far including this one
+remaining = TOTAL - completed
+# rolling average over all completed files
+avg = (int(time.time()) - BATCH_START) / completed
+eta_sec = int(remaining * avg)
+eta_str = f'{eta_sec // 60}m {eta_sec % 60}s' if eta_sec >= 60 else f'{eta_sec}s'
+print(f'[{completed}/{TOTAL}] Done: <filename> — <entity_count> entities, <elapsed>s elapsed | ETA: ~{eta_str}')
+"
+```
+
+---
 
 ### 2a. Exact duplicate check
 
@@ -352,6 +398,15 @@ Relationship diagram imported from arrows.app. Contains <N> entities and <M> rel
 ---
 
 ## 6. Post-ingest briefing
+
+**Before writing the briefing**, print a batch completion summary:
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Ingest complete: <ok> processed, <skipped> skipped, <failed> failed
+Total time: <elapsed>
+Entities in vault: <total entity count from registry.json>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
 
 After all files are processed, write a briefing note to `briefings/<YYYY-MM-DD-HH-MM>.md`.
 
