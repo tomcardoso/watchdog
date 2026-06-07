@@ -157,6 +157,19 @@ def pdf_preprocess(src: Path) -> "Path | None":
     return None
 
 
+_DEFAULT_OCR_LANGUAGES = ["en-US", "fr-FR", "es-ES", "pt-BR", "de-DE", "it-IT", "nl-NL"]
+
+
+def _ocr_languages() -> list[str]:
+    """Return OCR language list from ~/.watchdog/config.json, or a broad international default."""
+    config_path = Path.home() / ".watchdog" / "config.json"
+    try:
+        config = json.loads(config_path.read_text())
+        return config.get("ocr_languages", _DEFAULT_OCR_LANGUAGES)
+    except Exception:
+        return _DEFAULT_OCR_LANGUAGES
+
+
 def build_converter(force_ocr: bool):
     """Build a Docling DocumentConverter for PDFs with the best available OCR engine.
 
@@ -170,19 +183,13 @@ def build_converter(force_ocr: bool):
 
     ocr_opts = None
 
-    # Try Apple Vision on macOS
+    # Try Apple Vision on macOS — check by importing ocrmac directly rather than
+    # instantiating a throwaway DocumentConverter (which loads all ML models).
     if sys.platform == "darwin":
         try:
+            import ocrmac as _ocrmac  # noqa: F401
             from docling.datamodel.pipeline_options import OcrMacOptions
-            ocr_opts = OcrMacOptions(lang=["en-US", "fr-FR"], force_full_page_ocr=force_ocr)
-            # Validate it actually loads (ocrmac package must be installed)
-            DocumentConverter(
-                format_options={
-                    InputFormat.PDF: PdfFormatOption(
-                        pipeline_options=PdfPipelineOptions(do_ocr=True, ocr_options=ocr_opts)
-                    )
-                }
-            )
+            ocr_opts = OcrMacOptions(lang=_ocr_languages(), force_full_page_ocr=force_ocr)
         except Exception:
             ocr_opts = None  # fall through to EasyOCR
 

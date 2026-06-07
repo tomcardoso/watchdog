@@ -154,12 +154,20 @@ def _merge_timeline_events(existing: list[dict], incoming: list[dict], doc_sha25
     return result
 
 
-def _build_timeline_section(events: list[dict], docs_reg: dict, entity_name: str | None = None) -> str:
+def _build_timeline_section(
+    events: list[dict],
+    docs_reg: dict,
+    entity_name: str | None = None,
+    year_heading: str = "###",
+    include_section_header: bool = True,
+) -> str:
     """
-    Render a ## Timeline section from a list of timeline event dicts.
+    Render a timeline section from a list of timeline event dicts.
 
-    If entity_name is None (global timeline), each line includes an entity link.
-    Events are sorted chronologically and grouped by year.
+    entity_name=None → global mode: each line includes an entity link.
+    year_heading controls the markdown heading level for year groups.
+    include_section_header=False → omit the leading '## Timeline' line
+    (used when the caller writes its own top-level heading).
     """
     if not events:
         return ""
@@ -185,10 +193,8 @@ def _build_timeline_section(events: list[dict], docs_reg: dict, entity_name: str
             source_part = ""
 
         if entity_name is not None:
-            # Per-entity timeline: no entity link needed
             line = f"- **{rendered_date}** — {ev['event']}{source_part}{conf}"
         else:
-            # Global timeline: include entity link
             etype = _type_dir(ev.get("entity_type", ""))
             eid = ev.get("entity_id", "")
             ename = ev.get("entity_name", "")
@@ -200,9 +206,12 @@ def _build_timeline_section(events: list[dict], docs_reg: dict, entity_name: str
     sections = []
     for year in sorted(lines_by_year):
         block = "\n".join(lines_by_year[year])
-        sections.append(f"### {year}\n{block}")
+        sections.append(f"{year_heading} {year}\n{block}")
 
-    return "\n## Timeline\n\n" + "\n\n".join(sections) + "\n"
+    body = "\n\n".join(sections) + "\n"
+    if include_section_header:
+        return "\n## Timeline\n\n" + body
+    return body
 
 
 def _rebuild_global_timeline(vault_path: Path, entities_reg: dict, docs_reg: dict) -> None:
@@ -226,38 +235,12 @@ def _rebuild_global_timeline(vault_path: Path, entities_reg: dict, docs_reg: dic
         )
         return
 
-    sorted_events = sorted(all_events, key=lambda e: _date_sort_key(e.get("date", "")))
-
-    lines_by_year: dict[str, list[str]] = {}
-    for ev in sorted_events:
-        date_str = ev.get("date", "")
-        year = date_str[:4] if date_str else "Unknown"
-        rendered_date = _render_date(date_str)
-        conf = f" — confidence: {ev['confidence']}" if ev.get("confidence") else ""
-
-        source_sha = ev.get("source_sha256", "")
-        doc_entry = docs_reg.get(source_sha, {})
-        doc_note = doc_entry.get("document_note", "")
-        doc_title = doc_entry.get("title") or doc_entry.get("filename", "")
-        if doc_note and doc_title:
-            pg = _page_link(doc_entry.get("morgue_path", ""), ev.get("page"))
-            page_part = f", {pg}" if pg else ""
-            source_part = f" — *[[{doc_note}|{doc_title}]]{page_part}*"
-        else:
-            source_part = ""
-
-        etype = _type_dir(ev.get("entity_type", ""))
-        eid = ev.get("entity_id", "")
-        ename = ev.get("entity_name", "")
-        entity_link = f"[[entities/{etype}/{eid}|{ename}]]" if etype and eid and ename else ename
-
-        line = f"- **{rendered_date}** — {entity_link} — {ev['event']}{source_part}{conf}"
-        lines_by_year.setdefault(year, []).append(line)
-
-    body = "# Timeline\n\n"
-    for year in sorted(lines_by_year):
-        body += f"## {year}\n\n" + "\n".join(lines_by_year[year]) + "\n\n"
-
+    body = "# Timeline\n\n" + _build_timeline_section(
+        all_events, docs_reg,
+        entity_name=None,
+        year_heading="##",
+        include_section_header=False,
+    )
     timeline_path.write_text(body.rstrip() + "\n", encoding="utf-8")
 
 
