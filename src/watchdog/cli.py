@@ -344,7 +344,7 @@ def cmd_new(args) -> None:
 def cmd_about(_args) -> None:
     from watchdog import __version__
     print()
-    print(f"  {_BOLD}Watchdog{_RESET}  {_DIM}v{__version__}{_RESET}")
+    print(f"  🔍🐕  {_BOLD}Watchdog{_RESET}  {_DIM}v{__version__}{_RESET}")
     print(f"  {_DIM}Investigative journalism document intelligence{_RESET}")
     print()
     print(f"  🐙  {_DIM}GitHub   {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog{_RESET}")
