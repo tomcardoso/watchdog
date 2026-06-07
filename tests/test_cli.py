@@ -36,7 +36,7 @@ def configured(wdg_home, tmp_path):
 
 
 def args(**kwargs):
-    return argparse.Namespace(**{"dir": None, "force": False, **kwargs})
+    return argparse.Namespace(**{"dir": None, "force": False, "key": None, "value": None, **kwargs})
 
 
 # ── slugify ───────────────────────────────────────────────────────────────────
@@ -359,6 +359,49 @@ def test_find_project_not_found_exits(configured):
         cli._find_project("nonexistent")
 
 
+# ── cmd_configure ────────────────────────────────────────────────────────────
+
+def test_configure_show_no_config(wdg_home, capsys):
+    cli.cmd_configure(args())
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "projects_dir" in out
+    assert "ocr_languages" in out
+
+
+def test_configure_show_existing_config(configured, capsys):
+    cli.cmd_configure(args())
+    out = _strip_ansi(capsys.readouterr().out)
+    assert str(configured) in out
+
+
+def test_configure_set_ocr_languages(wdg_home, capsys):
+    cli.cmd_configure(args(key="ocr_languages", value="en-US,fr-FR"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["ocr_languages"] == ["en-US", "fr-FR"]
+
+
+def test_configure_set_ocr_languages_shown_on_display(wdg_home, capsys):
+    cli.cmd_configure(args(key="ocr_languages", value="en-US,fr-FR"))
+    capsys.readouterr()
+    cli.cmd_configure(args())
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "en-US" in out
+    assert "fr-FR" in out
+
+
+def test_configure_set_projects_dir(wdg_home, tmp_path, capsys):
+    new_dir = tmp_path / "MyProjects"
+    cli.cmd_configure(args(key="projects_dir", value=str(new_dir)))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["projects_dir"] == str(new_dir)
+    assert new_dir.exists()
+
+
+def test_configure_unknown_key_exits(wdg_home):
+    with pytest.raises(SystemExit, match="unknown key"):
+        cli.cmd_configure(args(key="nonexistent_key", value="foo"))
+
+
 # ── aliases ───────────────────────────────────────────────────────────────────
 
 def test_about_prints_version_and_links(capsys, wdg_home):
@@ -380,13 +423,16 @@ def test_version_flags_invoke_about(capsys, monkeypatch, flag):
 
 
 @pytest.mark.parametrize("alias,canonical", [
-    ("init",    "new"),
-    ("create",  "new"),
-    ("ls",      "list"),
-    ("info",    "status"),
-    ("inspect", "status"),
-    ("cd",      "open"),
-    ("version", "about"),
+    ("init",     "new"),
+    ("create",   "new"),
+    ("ls",       "list"),
+    ("info",     "status"),
+    ("inspect",  "status"),
+    ("cd",       "open"),
+    ("version",  "about"),
+    ("config",   "configure"),
+    ("setting",  "configure"),
+    ("settings", "configure"),
 ])
 def test_aliases_remap_argv(alias, canonical, monkeypatch):
     import sys

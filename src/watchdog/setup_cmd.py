@@ -102,7 +102,7 @@ def _zsh_snippet() -> str:
 # Watchdog tab completion
 _watchdog_complete() {
     local -a subcmds
-    subcmds=(new open list status setup about)
+    subcmds=(new open list status setup configure about)
     if (( CURRENT == 2 )); then
         compadd -a subcmds
     elif (( CURRENT == 3 )) && [[ "${words[2]}" == "open" ]]; then
@@ -129,7 +129,7 @@ _watchdog_bash_complete() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     if [[ ${COMP_CWORD} -eq 1 ]]; then
-        COMPREPLY=($(compgen -W "new open list status setup about" -- "${cur}"))
+        COMPREPLY=($(compgen -W "new open list status setup configure about" -- "${cur}"))
     elif [[ "${prev}" == "open" ]]; then
         local projects
         projects=$(python3 -c "
@@ -149,14 +149,15 @@ complete -F _watchdog_bash_complete watchdog
 def _fish_completion() -> str:
     return """\
 # Watchdog tab completion
-set -l cmds new open list status setup about
+set -l cmds new open list status setup configure about
 complete -c watchdog -f
-complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a new    -d 'Create a new investigation vault'
-complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a open   -d 'Open an investigation in Claude Code'
-complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a list   -d 'List all investigations'
-complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a status -d 'Show detailed status for an investigation'
-complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a setup  -d 'Set up Watchdog'
-complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a about  -d 'Show version and project links'
+complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a new       -d 'Create a new investigation vault'
+complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a open      -d 'Open an investigation in Claude Code'
+complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a list      -d 'List all investigations'
+complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a status    -d 'Show detailed status for an investigation'
+complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a setup     -d 'Set up Watchdog'
+complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a configure -d 'View or change configuration'
+complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a about     -d 'Show version and project links'
 """
 
 

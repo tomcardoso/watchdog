@@ -14,13 +14,16 @@ PROJECTS_FILE = WATCHDOG_HOME / "projects.json"
 CONFIG_FILE   = WATCHDOG_HOME / "config.json"
 
 _ALIASES = {
-    "init":    "new",
-    "create":  "new",
-    "ls":      "list",
-    "info":    "status",
-    "inspect": "status",
-    "cd":      "open",
-    "version": "about",
+    "init":     "new",
+    "create":   "new",
+    "ls":       "list",
+    "info":     "status",
+    "inspect":  "status",
+    "cd":       "open",
+    "version":  "about",
+    "config":   "configure",
+    "setting":  "configure",
+    "settings": "configure",
 }
 
 _PIPELINE_COMMANDS = {
@@ -450,6 +453,61 @@ def cmd_status(args) -> None:
     print()
 
 
+_CONFIGURE_KEYS = {
+    "projects_dir":  "Path where new investigation vaults are created",
+    "ocr_languages": "Apple Vision OCR languages — comma-separated codes (e.g. 'en-US,fr-FR'). Leave unset for auto-detect.",
+}
+
+
+def cmd_configure(args) -> None:
+    config = {}
+    if CONFIG_FILE.exists():
+        try:
+            config = json.loads(CONFIG_FILE.read_text())
+        except json.JSONDecodeError:
+            sys.exit("Error: config file is corrupt. Try running 'watchdog setup --force'.")
+
+    key   = getattr(args, "key",   None)
+    value = getattr(args, "value", None)
+
+    if key is None:
+        print()
+        print(f"  {_BOLD}Configuration{_RESET}  {_DIM}{CONFIG_FILE}{_RESET}")
+        print()
+        for k, desc in _CONFIGURE_KEYS.items():
+            v = config.get(k)
+            if k == "ocr_languages":
+                display = f"{_CYAN}{', '.join(v)}{_RESET}" if v else f"{_DIM}auto-detect (default){_RESET}"
+            elif v is not None:
+                display = f"{_CYAN}{v}{_RESET}"
+            else:
+                display = f"{_DIM}(not set){_RESET}"
+            print(f"  {_DIM}{k:<20}{_RESET} {display}")
+            print(f"  {' ' * 20} {_DIM}{desc}{_RESET}")
+            print()
+        return
+
+    if key not in _CONFIGURE_KEYS:
+        sys.exit(f"Error: unknown key '{key}'. Known keys: {', '.join(_CONFIGURE_KEYS)}")
+
+    if key == "ocr_languages":
+        langs = [lang.strip() for lang in value.split(",") if lang.strip()]
+        config[key] = langs
+        display = ", ".join(langs) if langs else "auto-detect"
+    elif key == "projects_dir":
+        path = Path(value).expanduser().resolve()
+        path.mkdir(parents=True, exist_ok=True)
+        config[key] = str(path)
+        display = str(path)
+    else:
+        config[key] = value
+        display = value
+
+    WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
+    CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")
+    print(f"\n  {_GREEN}Set:{_RESET} {_BOLD}{key}{_RESET} = {_CYAN}{display}{_RESET}\n")
+
+
 def _print_banner() -> None:
     print(f"🔍🐕  {_BOLD}Watchdog{_RESET} — investigative document intelligence")
     print()
@@ -461,8 +519,9 @@ def _print_banner() -> None:
         ("open",   "Open an investigation in Claude Code"),
         ("list",   "List all registered investigations"),
         ("status", "Show detailed status for an investigation"),
-        ("setup",  "Set up Watchdog after installation"),
-        ("about",  "Show version and project links"),
+        ("setup",     "Set up Watchdog after installation"),
+        ("configure", "View or change configuration"),
+        ("about",     "Show version and project links"),
     ]
     for cmd, desc in cmds:
         print(f"  {_CYAN}{cmd:<8}{_RESET} {desc}")
@@ -513,13 +572,18 @@ def main() -> None:
     p_about = sub.add_parser("about", help="Show version and project links")
     p_about.set_defaults(func=cmd_about)
 
+    p_configure = sub.add_parser("configure", help="View or change configuration")
+    p_configure.add_argument("key",   nargs="?", help=f"Config key ({', '.join(_CONFIGURE_KEYS)})")
+    p_configure.add_argument("value", nargs="?", help="Value to set")
+    p_configure.set_defaults(func=cmd_configure)
+
     args = parser.parse_args()
 
     if args.command is None:
         _print_banner()
         return
 
-    if args.command not in ("setup", "about") and not CONFIG_FILE.exists():
+    if args.command not in ("setup", "about", "configure") and not CONFIG_FILE.exists():
         sys.exit("Watchdog isn't set up yet. Run:\n  watchdog setup")
 
     args.func(args)

@@ -157,17 +157,19 @@ def pdf_preprocess(src: Path) -> "Path | None":
     return None
 
 
-_DEFAULT_OCR_LANGUAGES = ["en-US", "fr-FR", "es-ES", "pt-BR", "de-DE", "it-IT", "nl-NL"]
-
-
 def _ocr_languages() -> list[str]:
-    """Return OCR language list from ~/.watchdog/config.json, or a broad international default."""
+    """Return OCR language list from ~/.watchdog/config.json.
+
+    Defaults to [] — Apple Vision auto-detects the language from the image
+    (requires macOS 13+). Set ocr_languages in config to override, e.g. for
+    older macOS or when auto-detection produces poor results.
+    """
     config_path = Path.home() / ".watchdog" / "config.json"
     try:
         config = json.loads(config_path.read_text())
-        return config.get("ocr_languages", _DEFAULT_OCR_LANGUAGES)
+        return config.get("ocr_languages", [])
     except Exception:
-        return _DEFAULT_OCR_LANGUAGES
+        return []
 
 
 def build_converter(force_ocr: bool):
