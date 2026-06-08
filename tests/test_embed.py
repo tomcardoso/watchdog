@@ -1,5 +1,6 @@
 """Tests for the embedding index (embed.py). Fastembed is monkeypatched out."""
 
+import hashlib
 import numpy as np
 import pytest
 from pathlib import Path
@@ -7,13 +8,18 @@ from watchdog.pipeline import embed as embed_mod
 
 
 class _FakeEmbedder:
-    """Returns a deterministic unit vector for each text (based on text hash)."""
+    """Returns a deterministic unit vector for each text.
+
+    Uses hashlib.md5 rather than hash() so the dimension index is stable
+    across processes regardless of PYTHONHASHSEED.
+    """
     DIM = 8
 
     def embed(self, texts):
         for text in texts:
             v = np.zeros(self.DIM, dtype=np.float32)
-            v[hash(text) % self.DIM] = 1.0
+            idx = int(hashlib.md5(text.encode()).hexdigest(), 16) % self.DIM
+            v[idx] = 1.0
             yield v
 
 
