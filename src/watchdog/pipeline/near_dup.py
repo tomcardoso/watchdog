@@ -40,14 +40,18 @@ DEFAULT_THRESHOLD = 0.85
 SHINGLE_SIZE = 3  # word 3-grams
 
 
+_config_cache: dict | None = None
+
+
 def _config_get(key: str, default):
-    """Read a value from ~/.watchdog/config.json, returning default on any error."""
-    config_path = Path.home() / ".watchdog" / "config.json"
-    try:
-        config = json.loads(config_path.read_text())
-        return config.get(key, default)
-    except Exception:
-        return default
+    """Read ~/.watchdog/config.json once per process, then serve from cache."""
+    global _config_cache
+    if _config_cache is None:
+        try:
+            _config_cache = json.loads((Path.home() / ".watchdog" / "config.json").read_text())
+        except Exception:
+            _config_cache = {}
+    return _config_cache.get(key, default)
 
 
 def tokenize(text: str) -> list[str]:
@@ -114,6 +118,7 @@ def main() -> None:
 
     candidate_sh = shingles_from_text(text)
     matches = []
+    exact_threshold = _config_get("dup_exact_threshold", 0.99)
 
     for sha, doc in documents.items():
         stored_sh = doc.get("shingles")
@@ -130,6 +135,8 @@ def main() -> None:
                     "document_note": doc.get("document_note", ""),
                 }
             )
+            if sim >= exact_threshold:
+                break  # near-exact match — no need to scan further
 
     matches.sort(key=lambda x: x["similarity"], reverse=True)
 

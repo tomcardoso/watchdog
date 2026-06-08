@@ -70,13 +70,17 @@ def _type_dir(entity_type: str) -> str:
     return entity_type.lower()
 
 
+def slugify(text: str) -> str:
+    """Convert arbitrary text to a URL-safe kebab-case slug."""
+    s = text.lower().strip()
+    s = re.sub(r"[^\w\s-]", "", s)
+    s = re.sub(r"[\s_]+", "-", s)
+    s = re.sub(r"-+", "-", s)
+    return s.strip("-")
+
+
 def _doc_slug(filename: str) -> str:
-    stem = Path(filename).stem
-    slug = stem.lower()
-    slug = re.sub(r"[^\w\s-]", "", slug)
-    slug = re.sub(r"[\s_]+", "-", slug)
-    slug = re.sub(r"-+", "-", slug)
-    return slug.strip("-") or "document"
+    return slugify(Path(filename).stem) or "document"
 
 
 def _frontmatter(data: dict) -> str:
@@ -326,11 +330,11 @@ def _new_entity(entity: dict, doc_sha256: str) -> dict:
 
 def _merge_entity(existing: dict, incoming: dict, doc_sha256: str) -> None:
     """Mutate existing registry entry with data from incoming extraction entity."""
-    known = set(existing.get("aliases", []))
+    known_lower = {a.lower() for a in existing.get("aliases", [])}
     for alias in incoming.get("aliases", []):
-        if alias not in known and alias != existing["name"]:
+        if alias.lower() not in known_lower and alias.lower() != existing["name"].lower():
             existing.setdefault("aliases", []).append(alias)
-            known.add(alias)
+            known_lower.add(alias.lower())
 
     if doc_sha256 not in existing.get("appears_in", []):
         existing.setdefault("appears_in", []).append(doc_sha256)
@@ -484,7 +488,7 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
 
 # ── Main operation ────────────────────────────────────────────────────────────
 
-def run(extraction_path: Path, vault_path: Path) -> None:
+def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False) -> None:
     extraction = json.loads(extraction_path.read_text(encoding="utf-8"))
     doc = extraction["document"]
     incoming_entities = extraction.get("entities", [])
@@ -629,7 +633,8 @@ def run(extraction_path: Path, vault_path: Path) -> None:
 
     # ── 6. Rebuild global timeline ────────────────────────────────────────────
 
-    _rebuild_global_timeline(vault_path, entities_reg, documents_reg)
+    if not skip_timeline:
+        _rebuild_global_timeline(vault_path, entities_reg, documents_reg)
 
     # ── 7. Move source file to morgue ─────────────────────────────────────────
 
@@ -665,6 +670,8 @@ def main() -> None:
     )
     parser.add_argument("--extraction", required=True, help="Path to extraction JSON")
     parser.add_argument("--vault", default=".", help="Vault root directory (default: .)")
+    parser.add_argument("--skip-timeline", action="store_true",
+                        help="Skip rebuilding timeline.md (use for mid-batch writes; rebuild after last document)")
     args = parser.parse_args()
 
     extraction_path = Path(args.extraction)
@@ -675,7 +682,7 @@ def main() -> None:
     if not vault_path.exists():
         sys.exit(f"Error: vault directory {vault_path} not found")
 
-    run(extraction_path, vault_path)
+    run(extraction_path, vault_path, skip_timeline=args.skip_timeline)
 
 
 if __name__ == "__main__":

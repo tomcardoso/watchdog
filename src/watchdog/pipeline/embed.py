@@ -37,7 +37,7 @@ def _load(vault_path: Path) -> tuple["np.ndarray | None", list[dict]]:
     mp = d / "meta.json"
     if not vp.exists() or not mp.exists():
         return None, []
-    return np.load(vp), json.loads(mp.read_text())
+    return np.load(vp, mmap_mode="r"), json.loads(mp.read_text())
 
 
 def _save(vault_path: Path, vectors: "np.ndarray", meta: list[dict]) -> None:

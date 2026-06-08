@@ -3,7 +3,6 @@
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 from collections import Counter
@@ -52,12 +51,7 @@ def _projects_dir() -> Path:
     return Path.home() / "Investigations"
 
 
-def slugify(name: str) -> str:
-    s = name.lower().strip()
-    s = re.sub(r"[^\w\s-]", "", s)
-    s = re.sub(r"[\s_]+", "-", s)
-    s = re.sub(r"-+", "-", s)
-    return s.strip("-")
+from watchdog.pipeline.write_vault import slugify  # noqa: E402 — after constants
 
 
 def load_projects() -> dict:
@@ -259,7 +253,7 @@ def cmd_new(args) -> None:
         "## Hard rules\n\n"
         "1. Public records only — never process confidential source material, private correspondence, or leaked documents. If a document cannot be identified as a public record, stop and ask before proceeding.\n"
         "2. Registry updates are atomic with note creation — never one without the other.\n"
-        "3. No duplicate entities — check `.watchdog/Registry/entities.json` before creating.\n"
+        "3. No duplicate entities — check `.watchdog/Registry/manifest.json` before creating (it is lighter than `entities.json` and contains id, name, type, aliases, and note_path).\n"
         "4. Entity IDs are kebab-case: `john-doe`, `shell-co-ltd`, `123-main-st`.\n"
         "5. Every extracted fact must carry a confidence level: `high`, `medium`, `low`, or `disputed`. A `low`-confidence fact is a lead, not a finding.\n"
         "6. The `## Notes` section in any note is reserved for journalist annotations — never overwrite it.\n"
@@ -295,7 +289,7 @@ def cmd_new(args) -> None:
                         "Bash(watchdog arrows *)",
                         "Bash(find _INCOMING/ *)",
                         "Bash(find _CONTEXT/ *)",
-                        "Bash(mv _INCOMING*)",
+                        "Bash(mv _INCOMING/* *)",
                         "Bash(mkdir -p *)",
                         "Bash(watchdog write-vault *)",
                         "Bash(watchdog write-entity *)",
@@ -366,7 +360,10 @@ def cmd_open(args) -> None:
         sys.exit(f"Error: project directory not found: {path}")
     print(f"  {_BOLD}{info['name']}{_RESET}  {_CYAN}{path}{_RESET}")
     os.chdir(path)
-    os.execvp("claude", ["claude", "."])
+    try:
+        os.execvp("claude", ["claude", "."])
+    except FileNotFoundError:
+        sys.exit("Error: Claude Code not found — install from https://claude.ai/download")
 
 
 def cmd_setup(args) -> None:
@@ -409,7 +406,7 @@ def cmd_status(args) -> None:
     if not reg:
         print(f"\n  {_BOLD}{info['name']}{_RESET}")
         print(f"  {_CYAN}{info['path']}{_RESET}")
-        print(f"  {_DIM}Created {_fmt_date(info['created_at'])}{_RESET}")
+        print(f"  {_DIM}Created {_fmt_date(info.get('created_at', ''))}{_RESET}")
         print(f"\n  {_DIM}No registry found — open this vault in Claude Code to begin ingesting.{_RESET}\n")
         return
 
@@ -428,7 +425,7 @@ def cmd_status(args) -> None:
 
     print(f"\n  {_BOLD}{info['name']}{_RESET}  {_DIM}{slugify(info['name'])}{_RESET}")
     print(f"  {_CYAN}{info['path']}{_RESET}")
-    print(f"  {_DIM}Created {_fmt_date(info['created_at'])}{_RESET}")
+    print(f"  {_DIM}Created {_fmt_date(info.get('created_at', ''))}{_RESET}")
     print()
 
     pages_note = f" {_DIM}({total_pages} pages){_RESET}" if total_pages else ""

@@ -376,8 +376,10 @@ Write the JSON to a temp file using the Write tool:
 
 Then run:
 ```bash
-watchdog write-vault --extraction /tmp/watchdog-extraction-<sha256>.json
+watchdog write-vault --extraction /tmp/watchdog-extraction-<sha256>.json [--skip-timeline]
 ```
+
+Pass `--skip-timeline` for every file **except the last** in the batch. Rebuilding `timeline.md` on every file is O(N) in vault size — skip it for mid-batch files and let the final write do it once.
 
 Clean up:
 ```bash

@@ -14,17 +14,17 @@ Read `context.md` if it exists. This tells you what the journalist is pursuing, 
 
 ## 1. Load the vault
 
-Read all entity notes:
+Read the lightweight index files first — these are small and give you a complete picture without loading every note:
+
 ```bash
-find entities/ -name "*.md" | sort
+# Entity index: id, name, type, aliases, note_path
+cat .watchdog/Registry/manifest.json
+
+# Document index: sha256 → title, document_type, date, entities_mentioned, page_count, document_note
+cat .watchdog/Registry/documents.json
 ```
 
-Read all document notes:
-```bash
-find documents/ -name "*.md" | sort
-```
-
-Read all briefing notes:
+Read all briefing notes (these are small and inform which angles are already active):
 ```bash
 find briefings/ -name "*.md" | sort
 ```
@@ -34,9 +34,9 @@ Read existing thread pages:
 find wiki/ -name "*.md" | sort
 ```
 
-Read `.watchdog/Registry/entities.json` and `.watchdog/Registry/documents.json` for the structured view.
+Do **not** load all entity notes or document notes upfront. Read individual notes on demand as you identify angles worth a thread. Use `note_path` from the manifest and `document_note` from documents.json to read specific notes when needed.
 
-For each central entity, read its `## Summary` section — this is the synthesized overview of who the entity is and their significance, and is useful starting material for thread narratives.
+For each central entity you decide to write about, read its note to get the `## Summary` section — this is the synthesized overview of who the entity is and their significance.
 
 ---
 

@@ -157,14 +157,18 @@ def pdf_preprocess(src: Path) -> "Path | None":
     return None
 
 
+_config_cache: dict | None = None
+
+
 def _config_get(key: str, default):
-    """Read a value from ~/.watchdog/config.json, returning default on any error."""
-    config_path = Path.home() / ".watchdog" / "config.json"
-    try:
-        config = json.loads(config_path.read_text())
-        return config.get(key, default)
-    except Exception:
-        return default
+    """Read ~/.watchdog/config.json once per process, then serve from cache."""
+    global _config_cache
+    if _config_cache is None:
+        try:
+            _config_cache = json.loads((Path.home() / ".watchdog" / "config.json").read_text())
+        except Exception:
+            _config_cache = {}
+    return _config_cache.get(key, default)
 
 
 def _ocr_languages() -> list[str]:

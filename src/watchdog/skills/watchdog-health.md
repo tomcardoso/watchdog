@@ -74,7 +74,28 @@ rm /tmp/watchdog-extraction-*.json
 
 ---
 
-## 5. Registry counts
+## 5. Manifest consistency
+
+Read `.watchdog/Registry/manifest.json` and `.watchdog/Registry/entities.json`.
+
+For each entity in `entities.json`, check that:
+- An entry with the same `id` exists in `manifest.json`
+- The `name` matches
+- The `type` matches
+- All aliases in `entities.json` are present in the manifest's `aliases` list
+- The `note_path` in the manifest resolves to an existing file
+
+For each entry in `manifest.json`, check that a corresponding entity exists in `entities.json`.
+
+Report mismatches as warnings:
+- `MANIFEST STALE: entity <id> — name mismatch (manifest: "<a>", entities.json: "<b>")`
+- `MANIFEST STALE: entity <id> — missing from manifest.json`
+- `MANIFEST STALE: entity <id> — alias "<alias>" in entities.json but not in manifest`
+- `MANIFEST ORPHAN: entity <id> in manifest.json but not in entities.json`
+
+---
+
+## 6. Registry counts
 
 Read `.watchdog/Registry/registry.json`. Compare `document_count` and `entity_count` against the actual counts in `documents.json` and `entities.json`. If they differ, report:
 `COUNT MISMATCH: registry.json says <n> documents but documents.json has <m>`
@@ -86,13 +107,13 @@ Also check that the following files exist at the vault root. Report any that are
 
 ---
 
-## 6. Entities with no relationships
+## 7. Entities with no relationships
 
 Find all entities in `entities.json` where `roles` is an empty list or absent. These entities appear in documents but haven't been connected to any other entity via a relationship. Report as a low-priority list: `ISOLATED ENTITY: <id> — appears in <n> documents but has no relationships`
 
 ---
 
-## 7. Report
+## 8. Report
 
 Print a health summary to the terminal:
 

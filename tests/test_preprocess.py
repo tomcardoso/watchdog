@@ -1,6 +1,11 @@
 """Tests for preprocess helpers that don't require Docling to be installed."""
 
-from watchdog.pipeline.preprocess import is_garbled, process_large_pdf
+from watchdog.pipeline.preprocess import (
+    is_garbled,
+    process_direct_text,
+    process_large_pdf,
+    _markdown_pages,
+)
 
 
 def test_garbled_clean_text():
@@ -23,6 +28,65 @@ def test_garbled_mixed_borderline():
 
 def test_garbled_numbers_and_spaces_count_as_readable():
     assert not is_garbled("12345 67890 page 4 of 12")
+
+
+# ── process_direct_text ───────────────────────────────────────────────────────
+
+def test_process_direct_text_returns_expected_shape(tmp_path):
+    f = tmp_path / "doc.txt"
+    f.write_text("hello world")
+    result = process_direct_text(f)
+    assert result["filename"] == "doc.txt"
+    assert result["page_count"] == 1
+    assert result["pages"] == [{"page": 1, "markdown": "hello world"}]
+    assert result["metadata"]["source_type"] == "direct_text"
+    assert result["metadata"]["ocr_used"] is False
+
+
+def test_process_direct_text_has_sha256(tmp_path):
+    f = tmp_path / "doc.txt"
+    f.write_text("content")
+    result = process_direct_text(f)
+    assert len(result["sha256"]) == 64  # hex SHA-256
+
+
+# ── _markdown_pages ───────────────────────────────────────────────────────────
+
+class _FakeDoc:
+    """Minimal stub for a Docling document that has export_to_markdown."""
+    def __init__(self, text):
+        self._text = text
+
+    def export_to_markdown(self, **kw):
+        return self._text
+
+
+def test_markdown_pages_splits_on_page_break():
+    sep = "\n\n<!-- page-break -->\n\n"
+    doc = _FakeDoc(f"page one{sep}page two{sep}page three")
+    pages = _markdown_pages(doc)
+    assert len(pages) == 3
+    assert pages[0] == {"page": 1, "markdown": "page one"}
+    assert pages[2] == {"page": 3, "markdown": "page three"}
+
+
+def test_markdown_pages_filters_empty_parts():
+    sep = "\n\n<!-- page-break -->\n\n"
+    doc = _FakeDoc(f"page one{sep}{sep}page three")
+    pages = _markdown_pages(doc)
+    assert len(pages) == 2
+
+
+def test_markdown_pages_single_page_fallback():
+    doc = _FakeDoc("no page breaks here")
+    pages = _markdown_pages(doc)
+    assert pages == [{"page": 1, "markdown": "no page breaks here"}]
+
+
+def test_markdown_pages_empty_doc_fallback():
+    doc = _FakeDoc("")
+    pages = _markdown_pages(doc)
+    assert pages == [{"page": 1, "markdown": ""}]
 
 
 # ── process_large_pdf ────────────────────────────────────────────────────────
