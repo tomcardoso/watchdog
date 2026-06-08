@@ -386,6 +386,8 @@ rm /tmp/watchdog-extraction-<sha256>.json
 
 **Context compaction check** — after each successful `watchdog write-vault` call, add the file's `char_count` (from the batch `--meta` result) to `CUMULATIVE_CHARS`. If `CUMULATIVE_CHARS > 500000`, run `/compact` and reset `CUMULATIVE_CHARS = 0`.
 
+**After `/compact` resumes** — your in-context variables (`N`, `CUMULATIVE_CHARS`, `BATCH_START`) are gone. Do not restart `preprocess-batch`. Instead, resume the extraction loop from index 0: step 2a's SHA-256 duplicate check will skip already-registered files cheaply. The batch file (`.watchdog/ingest.json`) is still on disk and is the source of truth for which files are in the batch.
+
 ---
 
 ## 5. arrows.app import
