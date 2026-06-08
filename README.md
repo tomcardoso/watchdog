@@ -77,14 +77,12 @@ Docling runs locally. Your documents never leave your machine during preprocessi
 
 ## Requirements
 
-| | |
-|---|---|
-| macOS 12+ | Linux supported (manual setup); Windows via WSL2 |
-| [Obsidian](https://obsidian.md) v1.6+ | Free |
-| [Claude Code](https://claude.ai/download) | Free to install |
-| Claude.ai Pro or Max subscription | Required (~$20–40/month) |
-| Python 3.10+ | Installed by setup script if missing |
-| qpdf + Ghostscript | Installed by setup script |
+- **macOS 12+** — Linux supported (manual setup); Windows via WSL2
+- **[Obsidian](https://obsidian.md) v1.6+** — free
+- **[Claude Code](https://claude.ai/download)** — free to install
+- **Claude.ai Pro or Max subscription** — required (~$20–40/month)
+- **Python 3.10+** — installed by setup script if missing
+- **qpdf + Ghostscript** — installed by setup script
 
 A Claude.ai Pro subscription is the recommended path. No API key setup, no per-token billing.
 
