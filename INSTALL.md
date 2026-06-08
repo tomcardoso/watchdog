@@ -13,13 +13,13 @@ This guide assumes you have never used a terminal before. Read through it once b
 | A computer running macOS, Linux, or Windows | Watchdog runs on your computer, not in the cloud | n/a |
 | [Obsidian](https://obsidian.md) | The app where you'll read and explore your documents | Free |
 | [Claude Code](https://claude.ai/download) | The AI assistant that reads and connects your documents | Free to install |
-| A Claude.ai Pro or Max subscription | Powers the AI — required for document processing | ~$20–40/month |
+| A Claude.ai Pro or Max subscription | Powers the AI — required for document processing | Pro ~$20/month; Max from $100/month |
 
 **Obsidian** is a note-taking app that Watchdog uses to organize and display your research. You don't need to know how to use it before starting — Watchdog sets it up for you.
 
 **Claude Code** is the AI assistant that does the document processing. It's made by Anthropic, the same company that makes Claude. You install it once on your computer.
 
-**A subscription** is required because processing documents requires AI. A Pro subscription ($20/month) is enough for most journalism work. If you're ingesting hundreds of documents at a time, Max ($40/month) gives you higher limits.
+**A subscription** is required because processing documents requires AI. A Pro subscription ($20/month) is enough for most journalism work. If you're ingesting hundreds of documents at a time, Max (from $100/month) gives you higher limits.
 
 ---
 
@@ -65,12 +65,12 @@ If you don't have Homebrew, install it first: [brew.sh](https://brew.sh)
 
 **Ubuntu / Debian Linux:**
 ```
-sudo apt install qpdf ghostscript pipx
+sudo apt install qpdf ghostscript pipx tesseract-ocr libtesseract-dev
 ```
 
 **Fedora / RHEL Linux:**
 ```
-sudo dnf install qpdf ghostscript pipx
+sudo dnf install qpdf ghostscript pipx tesseract tesseract-devel
 ```
 
 **Windows:**
@@ -251,12 +251,6 @@ watchdog setup
 
 **`qpdf not found` or `ghostscript not found` during setup**
 Install the missing tool for your platform (see Step 4 above), then run `watchdog setup` again.
-
-**`Docling is not installed` when running /watchdog-ingest**
-Run:
-```
-pipx inject watchdog-intel docling
-```
 
 **A document lands in `_FAILED/`**
 The document couldn't be processed. Common reasons:

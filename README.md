@@ -77,38 +77,26 @@ Docling runs locally. Your documents never leave your machine during preprocessi
 
 ## Requirements
 
-- **macOS 12+** — Linux supported (manual setup); Windows via WSL2
+- **macOS 12+** — Linux supported; Windows via WSL2
 - **[Obsidian](https://obsidian.md) v1.6+** — free
 - **[Claude Code](https://claude.ai/download)** — free to install
-- **Claude.ai Pro or Max subscription** — required (~$20–40/month)
-- **Python 3.10+** — installed by setup script if missing
-- **qpdf + Ghostscript** — installed by setup script
+- **Claude.ai Pro or Max subscription** — required (Pro ~$20/month; Max from $100/month)
+- **Python 3.10+**
+- **qpdf + Ghostscript** — PDF decryption and repair
+- **Tesseract OCR** — Linux/Windows only (macOS uses Apple Vision)
 
-A Claude.ai Pro subscription is the recommended path. No API key setup, no per-token billing.
+A Claude.ai Pro subscription is the recommended starting point. No API key setup, no per-token billing.
 
 ---
 
 ## Installation
 
 ```bash
-git clone https://github.com/tomcardoso/watchdog.git
-cd watchdog
-bash setup.sh
-```
-
-The setup script installs system dependencies (qpdf, Ghostscript) and the Watchdog Python package via [pipx](https://pipx.pypa.io). Then run:
-
-```bash
-watchdog setup
-```
-
-This installs the Claude Code skills and configures your shell completions. Takes 5–10 minutes on first run (Docling downloads ML models).
-
-Once Watchdog is on PyPI, installation will be:
-```bash
 pipx install watchdog-intel
 watchdog setup
 ```
+
+`watchdog setup` installs the Claude Code skills, verifies system dependencies (qpdf, Ghostscript, Tesseract on Linux), and configures shell completions. Takes 5–10 minutes on first run — Docling downloads its ML models and fastembed downloads the embedding model (~50 MB, one-time).
 
 For step-by-step instructions written for journalists who have never used a terminal, see [INSTALL.md](INSTALL.md).
 
@@ -190,6 +178,7 @@ my-investigation/
 │   └── Registry/           ← Internal state — do not edit manually
 │       ├── entities.json
 │       ├── documents.json
+│       ├── manifest.json   ← Lightweight entity lookup index
 │       ├── registry.json
 │       └── ingest.log
 ├── entities/
@@ -396,7 +385,7 @@ Please open an issue before starting significant work so we can discuss approach
 - **Large PDFs** are split into 40-page chunks and processed in parallel via `watchdog preprocess-batch`. Page numbers are preserved and reassembled in order.
 - **OCR engine:** Apple Vision on macOS (fast, hardware-accelerated); Tesseract on Linux/Windows (requires system install). Configurable via `watchdog configure ocr_engine`.
 - **Near-duplicate detection** uses Jaccard similarity on word 3-gram shingles — no ML dependencies, runs locally.
-- **Registries** (`.watchdog/Registry/documents.json`, `entities.json`) are the source of truth. Obsidian notes are generated outputs — deleting a note doesn't lose data.
+- **Registries** (`.watchdog/Registry/documents.json`, `entities.json`, `manifest.json`) are the source of truth. Obsidian notes are generated outputs — deleting a note doesn't lose data. `manifest.json` is a lightweight id/name/type/aliases index used for entity lookup without loading full registry data.
 - **Vault writes are atomic** — `watchdog write-vault` handles entity notes, document notes, timeline, registries, and the morgue move in a single operation behind an ingest lock.
 - **Single CLI entry point** — `watchdog` is the only command installed on your PATH. Pipeline utilities (`watchdog preprocess`, `watchdog write-vault`, etc.) are subcommands, not separate binaries.
 
