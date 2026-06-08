@@ -384,7 +384,26 @@ def process_with_docling(path: Path, force_ocr: bool = False) -> dict:
     if is_pdf:
         total_pages = pdf_page_count(path)
         if total_pages > _config_get("chunk_size", CHUNK_SIZE):
-            return process_large_pdf(path, force_ocr, total_pages)
+            large_result = process_large_pdf(path, force_ocr, total_pages)
+            if "error" not in large_result:
+                return large_result
+            # Fallback: clean the whole file with qpdf/gs and retry chunking,
+            # mirroring the small-PDF fallback path below.
+            try:
+                cleaned = pdf_preprocess(path)
+            except Exception:
+                cleaned = None
+            if cleaned is None:
+                return large_result
+            try:
+                cleaned_pages = pdf_page_count(cleaned) or total_pages
+                retry = process_large_pdf(cleaned, force_ocr, cleaned_pages)
+            finally:
+                cleaned.unlink(missing_ok=True)
+            if "error" not in retry:
+                retry["filename"] = path.name
+                retry["sha256"] = sha256_file(path)
+            return retry
 
     # Small PDFs and all other formats: single Docling conversion
     if is_pdf:
