@@ -50,7 +50,8 @@ def main() -> None:
     entry = batch[args.index]
 
     if args.text:
-        print(entry.get("text", ""))
+        pages = entry.get("pages", [])
+        print("\n\n".join(p.get("markdown", "") for p in pages))
     elif args.field:
         if args.field not in entry:
             sys.exit(f"Error: field '{args.field}' not found in entry {args.index}")

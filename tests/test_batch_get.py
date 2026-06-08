@@ -24,8 +24,10 @@ def run(*argv, capsys):
 @pytest.fixture
 def batch_file(tmp_path):
     data = [
-        {"filename": "a.pdf", "sha256": "aaa111", "page_count": 3, "text": "text of a"},
-        {"filename": "b.pdf", "sha256": "bbb222", "page_count": 1, "text": "text of b", "document_type": "Court Order"},
+        {"filename": "a.pdf", "sha256": "aaa111", "page_count": 3,
+         "pages": [{"page": 1, "markdown": "text of a"}]},
+        {"filename": "b.pdf", "sha256": "bbb222", "page_count": 1,
+         "pages": [{"page": 1, "markdown": "text of b"}], "document_type": "Court Order"},
         {"filename": "c.pdf", "error": "OCR failed", "source_path": "_INCOMING/c.pdf"},
     ]
     p = tmp_path / "ingest.json"
@@ -71,13 +73,23 @@ def test_meta_second_entry(batch_file, capsys):
 
 # ── --text ────────────────────────────────────────────────────────────────────
 
-def test_text_returns_content(batch_file, capsys):
-    out, _, code = run(str(batch_file), "--index", "0", "--text", capsys=capsys)
+def test_text_returns_content(tmp_path, capsys):
+    data = [
+        {"filename": "a.pdf", "pages": [
+            {"page": 1, "markdown": "page one text"},
+            {"page": 2, "markdown": "page two text"},
+        ]},
+    ]
+    p = tmp_path / "batch.json"
+    p.write_text(json.dumps(data))
+    out, _, code = run(str(p), "--index", "0", "--text", capsys=capsys)
     assert code == 0
-    assert out.strip() == "text of a"
+    assert "page one text" in out
+    assert "page two text" in out
 
 
-def test_text_missing_field_returns_empty(batch_file, capsys):
+def test_text_no_pages_returns_empty(batch_file, capsys):
+    # entry 2 has an error and no pages field
     out, _, code = run(str(batch_file), "--index", "2", "--text", capsys=capsys)
     assert code == 0
     assert out.strip() == ""

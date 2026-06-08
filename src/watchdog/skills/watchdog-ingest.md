@@ -61,7 +61,7 @@ against already-finished results rather than waiting file-by-file.
 Run in the **foreground** (not background). Redirect only stdout to the batch file — do **not** redirect stderr, so progress lines stream to the terminal:
 
 ```bash
-watchdog preprocess-batch _INCOMING/ --workers 4 > .watchdog/ingest.json
+watchdog preprocess-batch _INCOMING/ --workers 4 --vault-path "$(pwd)" > .watchdog/ingest.json
 ```
 
 When that command returns, print:
@@ -119,15 +119,17 @@ If the SHA-256 already exists in `documents.json`, skip this file:
 - Leave the file in `_INCOMING/` (do not move it)
 - Continue to the next file
 
-### 2b. Run preprocessing
+### 2b. Load page content from batch
 
 ```bash
-watchdog preprocess "<file_path>" --vault-path "$(pwd)"
+watchdog batch-get .watchdog/ingest.json --index <N> --text
 ```
 
-Capture the JSON output. If the output contains `"error"`, move the file to `_INCOMING/_FAILED/` (create if needed), log the error, and continue to the next file.
+This returns the concatenated page markdown for this file. If the batch entry has `"error"`, you already handled that in step 2a — no need to check again here.
 
-The output gives you: `filename`, `sha256`, `page_count`, `pages[]` (each with `page` number and `markdown` content), `metadata`.
+The batch entry (from `--meta`) gives you: `filename`, `sha256`, `page_count`, `pages[]` (each with `page` number and `markdown` content), `metadata`. Use `--text` for the full text, or `--meta` when you need individual page numbers.
+
+**Do not re-run `watchdog preprocess` per file.** The batch already preprocessed and embedded all files in parallel. Re-running would double the processing time.
 
 **Special case — arrows.app JSON:**
 If the filename ends in `.json` and the JSON contains `"nodes"` and `"relationships"` keys at the top level, this is an arrows.app file. Run instead:
@@ -168,6 +170,8 @@ watchdog near-dup \
 ```
 
 Write the extracted text to `/tmp/watchdog_neardup.txt` using the Write tool before running this command. Delete the temp file afterwards.
+
+**Capture the full JSON output** — you will need `candidate_shingles_sample` from it when building the extraction JSON in step 4. Store it in memory as `NEARDUP_RESULT`.
 
 If `near_duplicates` is non-empty, pause ingest for this file and show the journalist:
 
@@ -321,7 +325,7 @@ Build the extraction JSON from everything gathered in step 3. The JSON must matc
     "source": "<from sidecar or null>",
     "obtained": "<from sidecar or null>",
     "near_duplicate_of": "<sha256 or null>",
-    "shingles": [],
+    "shingles": "<candidate_shingles_sample from NEARDUP_RESULT>",
     "summary": "<one paragraph summary>",
     "key_facts": [
       {"fact": "<text>", "page": <n or null>, "confidence": "<level>"}

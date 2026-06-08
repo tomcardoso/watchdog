@@ -50,13 +50,13 @@ def find_files(paths: list[str]) -> list[Path]:
     return files
 
 
-def preprocess_one(path: Path) -> dict:
+def preprocess_one(path: Path, vault_path: str | None = None) -> dict:
     t0 = time.time()
+    cmd = [sys.executable, "-m", "watchdog.pipeline.preprocess", str(path)]
+    if vault_path:
+        cmd += ["--vault-path", vault_path]
     try:
-        r = subprocess.run(
-            ["watchdog-preprocess", str(path)],
-            capture_output=True, text=True, timeout=600,
-        )
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         elapsed = round(time.time() - t0, 1)
         if not r.stdout.strip():
             result = {"error": r.stderr.strip()[:300] or "Empty output from preprocessor"}
@@ -71,7 +71,7 @@ def preprocess_one(path: Path) -> dict:
 
     result["source_path"] = str(path)
     result["elapsed_s"] = elapsed
-    result["char_count"] = len(result.get("text", ""))
+    result["char_count"] = sum(len(p.get("markdown", "")) for p in result.get("pages", []))
     return result
 
 
@@ -82,7 +82,12 @@ def main() -> None:
         "--workers", type=int, default=DEFAULT_WORKERS,
         help=f"Parallel workers (default: {DEFAULT_WORKERS})",
     )
+    parser.add_argument(
+        "--vault-path", metavar="PATH",
+        help="Vault directory — when set, pages are added to the embedding index",
+    )
     args = parser.parse_args()
+    vault_path = args.vault_path
 
     files = find_files(args.paths)
     total = len(files)
@@ -100,7 +105,7 @@ def main() -> None:
     results_map: dict[str, dict] = {}
 
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        futures = {pool.submit(preprocess_one, f): f for f in files}
+        futures = {pool.submit(preprocess_one, f, vault_path): f for f in files}
         completed = 0
         for future in as_completed(futures):
             path = futures[future]
@@ -109,7 +114,7 @@ def main() -> None:
             completed += 1
             elapsed_wall = time.time() - batch_start
             status = "ERR" if "error" in result else "OK "
-            chars = len(result.get("text", ""))
+            chars = result.get("char_count", 0)
             pages = result.get("page_count", "?")
             elapsed_file = result.get("elapsed_s", "?")
             remaining = total - completed
