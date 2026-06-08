@@ -55,6 +55,7 @@ def parse_arrows(path: Path) -> dict:
 
     # Map arrows internal IDs to kebab-case entity IDs
     id_map: dict[str, str] = {}
+    seen_ids: set[str] = set()
     entities = []
 
     for node in nodes:
@@ -63,10 +64,14 @@ def parse_arrows(path: Path) -> dict:
         entity_type = labels[0].capitalize() if labels else "Entity"
         entity_id = slugify(caption)
 
-        # Deduplicate: if the same slug appears twice, append arrows node id
-        if entity_id in id_map.values():
-            entity_id = f"{entity_id}-{slugify(node['id'])}"
+        # Deduplicate: suffix with a counter until the slug is unique
+        if entity_id in seen_ids:
+            counter = 1
+            while f"{entity_id}-{counter}" in seen_ids:
+                counter += 1
+            entity_id = f"{entity_id}-{counter}"
 
+        seen_ids.add(entity_id)
         id_map[node["id"]] = entity_id
         entities.append(
             {

@@ -497,7 +497,7 @@ def run(extraction_path: Path, vault_path: Path) -> None:
     _candidate = vault_path / "documents" / f"{slug}.md"
     if _candidate.exists():
         try:
-            _head = _candidate.read_text(encoding="utf-8", errors="replace")[:500]
+            _head = _candidate.read_text(encoding="utf-8", errors="replace")
             if f"file: {doc['filename']}" not in _head:
                 slug = f"{slug}-{doc_sha256[:6]}"
                 print(f"WARN  slug collision — using documents/{slug}.md for {doc['filename']}")

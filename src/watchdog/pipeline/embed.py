@@ -125,4 +125,6 @@ def search(vault_path: Path, query: str, top_n: int = 5) -> list[dict]:
 
 def index_stats(vault_path: Path) -> dict:
     _, meta = _load(vault_path)
-    return {"pages": len(meta)}
+    pages = sum(1 for m in meta if m.get("type", "page") == "page")
+    notes = sum(1 for m in meta if m.get("type") == "note")
+    return {"pages": pages, "notes": notes, "total": len(meta)}

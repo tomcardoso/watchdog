@@ -29,11 +29,11 @@ dependencies = [
     "pyyaml>=6.0",
     "fastembed>=0.4",
     "ocrmac; sys_platform == 'darwin'",
-    "tesserocr; sys_platform != 'darwin'",
 ]
 
 [project.optional-dependencies]
-asr = ["docling[asr]"]   # Audio/video transcription — requires ffmpeg
+asr = ["docling[asr]"]          # Audio/video transcription — requires ffmpeg
+tesseract = ["tesserocr"]       # Faster Tesseract OCR; requires system Tesseract headers
 dev = ["pytest>=8.0", "numpy>=1.24"]
 
 [project.scripts]

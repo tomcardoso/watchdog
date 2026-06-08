@@ -106,7 +106,7 @@ Cross-reference `entities_mentioned` in document frontmatter against the `entiti
 
 ---
 
-## 4. Write a surface report
+## 5. Write a surface report
 
 Write to `briefings/surface-<YYYY-MM-DD>.md`:
 

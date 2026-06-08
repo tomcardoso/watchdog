@@ -133,20 +133,22 @@ def pdf_preprocess(src: Path) -> "Path | None":
     fd2, qpdf_tmp_str = tempfile.mkstemp(suffix=".pdf")
     os.close(fd2)
     qpdf_tmp = Path(qpdf_tmp_str)
-    r = subprocess.run(
-        ["qpdf", "--decrypt", "--no-warn", str(src), str(qpdf_tmp)],
-        capture_output=True,
-    )
-    if r.returncode == 0 and qpdf_tmp.exists():
-        mid = qpdf_tmp
+    try:
+        r = subprocess.run(
+            ["qpdf", "--decrypt", "--no-warn", str(src), str(qpdf_tmp)],
+            capture_output=True,
+        )
+        if r.returncode == 0 and qpdf_tmp.exists():
+            mid = qpdf_tmp
 
-    r = subprocess.run(
-        ["gs", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-sDEVICE=pdfwrite",
-         "-dCompatibilityLevel=1.4", f"-sOutputFile={tmp}", str(mid)],
-        capture_output=True,
-    )
-    if mid != src and mid.exists():
-        mid.unlink()
+        r = subprocess.run(
+            ["gs", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-sDEVICE=pdfwrite",
+             "-dCompatibilityLevel=1.4", f"-sOutputFile={tmp}", str(mid)],
+            capture_output=True,
+        )
+    finally:
+        if mid != src and mid.exists():
+            mid.unlink()
 
     if r.returncode == 0 and tmp.exists() and tmp.stat().st_size > 0:
         return tmp
@@ -308,6 +310,9 @@ def process_large_pdf(path: Path, force_ocr: bool, total_pages: int) -> dict:
 
     if failed_chunks:
         result["metadata"]["failed_chunks"] = failed_chunks
+
+    if not all_pages:
+        return {"error": f"All chunks failed: {'; '.join(failed_chunks)}"}
 
     return result
 

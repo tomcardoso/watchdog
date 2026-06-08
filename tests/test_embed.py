@@ -40,12 +40,24 @@ def _pages(*texts):
 # --- index_stats ---
 
 def test_stats_empty(vault):
-    assert embed_mod.index_stats(vault) == {"pages": 0}
+    assert embed_mod.index_stats(vault) == {"pages": 0, "notes": 0, "total": 0}
 
 
 def test_stats_after_add(vault):
     embed_mod.add_document(vault, "doc.pdf", _pages("a", "b", "c"))
-    assert embed_mod.index_stats(vault)["pages"] == 3
+    s = embed_mod.index_stats(vault)
+    assert s["pages"] == 3
+    assert s["notes"] == 0
+    assert s["total"] == 3
+
+
+def test_stats_notes_counted_separately(vault):
+    embed_mod.add_document(vault, "doc.pdf", _pages("page text"))
+    embed_mod.add_note(vault, "entities/alice.md", "Alice is a person")
+    s = embed_mod.index_stats(vault)
+    assert s["pages"] == 1
+    assert s["notes"] == 1
+    assert s["total"] == 2
 
 
 # --- add_document ---
@@ -118,7 +130,7 @@ def test_search_scores_descending(vault):
 
 def test_add_note_basic(vault):
     embed_mod.add_note(vault, "entities/person/john-doe", "John Doe is a director of Shell Co.")
-    assert embed_mod.index_stats(vault)["pages"] == 1
+    assert embed_mod.index_stats(vault)["notes"] == 1
 
 
 def test_add_note_strips_frontmatter(vault):
@@ -131,13 +143,13 @@ def test_add_note_strips_frontmatter(vault):
 
 def test_add_note_empty_body_skipped(vault):
     embed_mod.add_note(vault, "entities/person/empty", "---\nid: empty\n---\n")
-    assert embed_mod.index_stats(vault)["pages"] == 0
+    assert embed_mod.index_stats(vault)["total"] == 0
 
 
 def test_add_note_deduplicates(vault):
     embed_mod.add_note(vault, "entities/person/john-doe", "first version")
     embed_mod.add_note(vault, "entities/person/john-doe", "updated version")
-    assert embed_mod.index_stats(vault)["pages"] == 1
+    assert embed_mod.index_stats(vault)["notes"] == 1
     _, meta = embed_mod._load(vault)
     assert "updated" in meta[0]["preview"]
 
@@ -145,14 +157,20 @@ def test_add_note_deduplicates(vault):
 def test_page_and_note_coexist(vault):
     embed_mod.add_document(vault, "doc.pdf", _pages("page text"))
     embed_mod.add_note(vault, "entities/person/alice", "Alice is a director")
-    assert embed_mod.index_stats(vault)["pages"] == 2
+    s = embed_mod.index_stats(vault)
+    assert s["pages"] == 1
+    assert s["notes"] == 1
+    assert s["total"] == 2
 
 
 def test_note_reingest_does_not_remove_pages(vault):
     embed_mod.add_document(vault, "doc.pdf", _pages("a", "b"))
     embed_mod.add_note(vault, "entities/person/alice", "Alice")
     embed_mod.add_note(vault, "entities/person/alice", "Alice updated")
-    assert embed_mod.index_stats(vault)["pages"] == 3  # 2 pages + 1 note
+    s = embed_mod.index_stats(vault)
+    assert s["pages"] == 2
+    assert s["notes"] == 1
+    assert s["total"] == 3
 
 
 def test_strip_frontmatter_with_frontmatter():

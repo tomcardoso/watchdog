@@ -651,7 +651,7 @@ def cmd_search(args) -> None:
 
     from watchdog.pipeline.embed import search, index_stats
     stats = index_stats(vault)
-    if stats["pages"] == 0:
+    if stats["total"] == 0:
         print(f"\n  {_DIM}No embeddings found. Index is built automatically during ingest.{_RESET}\n")
         return
 
