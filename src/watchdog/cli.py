@@ -810,7 +810,7 @@ def _print_banner() -> None:
         ("about",     "Show version and project links"),
     ]
     for cmd, desc in cmds:
-        print(f"  {_CYAN}{cmd:<8}{_RESET} {desc}")
+        print(f"  {_CYAN}{cmd:<10}{_RESET} {desc}")
     print()
 
 
