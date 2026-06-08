@@ -496,7 +496,7 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
 
 # ── Main operation ────────────────────────────────────────────────────────────
 
-def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False) -> None:
+def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False, neardup_file: Path | None = None) -> None:
     extraction = json.loads(extraction_path.read_text(encoding="utf-8"))
     doc = extraction.get("document")
     if not doc:
@@ -552,6 +552,15 @@ def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False) ->
 
     # ── 2. Update document registry ───────────────────────────────────────────
 
+    # Prefer shingles from a dedicated neardup sidecar (bypasses LLM data path).
+    if neardup_file and neardup_file.exists():
+        try:
+            shingles = json.loads(neardup_file.read_text()).get("candidate_shingles_sample", [])
+        except Exception:
+            shingles = doc.get("shingles", [])
+    else:
+        shingles = doc.get("shingles", [])
+
     documents_reg[doc_sha256] = {
         "sha256":           doc_sha256,
         "filename":         doc["filename"],
@@ -563,7 +572,7 @@ def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False) ->
         "document_type":    doc.get("document_type"),
         "entities_extracted": [e["id"] for e in incoming_entities],
         "near_duplicate_of": doc.get("near_duplicate_of"),
-        "shingles":         doc.get("shingles", []),
+        "shingles":         shingles,
         "morgue_path":      morgue_relative,
     }
 
@@ -686,17 +695,20 @@ def main() -> None:
     parser.add_argument("--vault", default=".", help="Vault root directory (default: .)")
     parser.add_argument("--skip-timeline", action="store_true",
                         help="Skip rebuilding timeline.md (use for mid-batch writes; rebuild after last document)")
+    parser.add_argument("--neardup-file", metavar="PATH",
+                        help="Path to near-dup JSON output — shingles are read from here instead of the extraction JSON")
     args = parser.parse_args()
 
     extraction_path = Path(args.extraction)
     vault_path = Path(args.vault).resolve()
+    neardup_file = Path(args.neardup_file) if args.neardup_file else None
 
     if not extraction_path.exists():
         sys.exit(f"Error: {extraction_path} not found")
     if not vault_path.exists():
         sys.exit(f"Error: vault directory {vault_path} not found")
 
-    run(extraction_path, vault_path, skip_timeline=args.skip_timeline)
+    run(extraction_path, vault_path, skip_timeline=args.skip_timeline, neardup_file=neardup_file)
 
 
 if __name__ == "__main__":

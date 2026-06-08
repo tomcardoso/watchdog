@@ -171,7 +171,11 @@ watchdog near-dup \
 
 Write the extracted text to `/tmp/watchdog_neardup.txt` using the Write tool before running this command. Delete the temp file afterwards.
 
-**Capture the full JSON output** — you will need `candidate_shingles_sample` from it when building the extraction JSON in step 4. Store it in memory as `NEARDUP_RESULT`.
+**Capture the full JSON output** and store it in memory as `NEARDUP_RESULT`. Also save it to a temp file — `write-vault` will read the shingles directly from there:
+
+```bash
+# Write tool: /tmp/watchdog-neardup-<sha256>.json  ← write NEARDUP_RESULT here
+```
 
 If `near_duplicates` is non-empty, pause ingest for this file and show the journalist:
 
@@ -325,7 +329,6 @@ Build the extraction JSON from everything gathered in step 3. The JSON must matc
     "source": "<from sidecar or null>",
     "obtained": "<from sidecar or null>",
     "near_duplicate_of": "<sha256 or null>",
-    "shingles": "<candidate_shingles_sample from NEARDUP_RESULT>",
     "summary": "<one paragraph summary>",
     "key_facts": [
       {"fact": "<text>", "page": <n or null>, "confidence": "<level>"}
@@ -390,14 +393,17 @@ Write the JSON to a temp file using the Write tool:
 
 Then run:
 ```bash
-watchdog write-vault --extraction /tmp/watchdog-extraction-<sha256>.json [--skip-timeline]
+watchdog write-vault \
+  --extraction /tmp/watchdog-extraction-<sha256>.json \
+  --neardup-file /tmp/watchdog-neardup-<sha256>.json \
+  [--skip-timeline]
 ```
 
 Pass `--skip-timeline` for every file **except the last** in the batch. Rebuilding `timeline.md` on every file is O(N) in vault size — skip it for mid-batch files and let the final write do it once.
 
 Clean up:
 ```bash
-rm /tmp/watchdog-extraction-<sha256>.json
+rm /tmp/watchdog-extraction-<sha256>.json /tmp/watchdog-neardup-<sha256>.json
 ```
 
 `watchdog write-vault` handles all vault writes atomically: entity notes (new or merged), document note, all 4 registry files (`entities.json`, `documents.json`, `registry.json`, `ingest.log`), and the morgue move. Do not perform any of these writes manually.

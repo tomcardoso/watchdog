@@ -43,6 +43,11 @@ SHINGLE_SIZE = 3  # word 3-grams
 _config_cache: dict | None = None
 
 
+def _reset_config_cache() -> None:
+    global _config_cache
+    _config_cache = None
+
+
 def _config_get(key: str, default):
     """Read ~/.watchdog/config.json once per process, then serve from cache."""
     global _config_cache
