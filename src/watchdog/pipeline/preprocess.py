@@ -133,10 +133,12 @@ def pdf_preprocess(src: Path) -> "Path | None":
     fd2, qpdf_tmp_str = tempfile.mkstemp(suffix=".pdf")
     os.close(fd2)
     qpdf_tmp = Path(qpdf_tmp_str)
+    preprocess_timeout = _config_get("preprocess_timeout", 120)
     try:
         r = subprocess.run(
             ["qpdf", "--decrypt", "--no-warn", str(src), str(qpdf_tmp)],
             capture_output=True,
+            timeout=preprocess_timeout,
         )
         if r.returncode == 0 and qpdf_tmp.exists():
             mid = qpdf_tmp
@@ -145,6 +147,7 @@ def pdf_preprocess(src: Path) -> "Path | None":
             ["gs", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-sDEVICE=pdfwrite",
              "-dCompatibilityLevel=1.4", f"-sOutputFile={tmp}", str(mid)],
             capture_output=True,
+            timeout=preprocess_timeout,
         )
     finally:
         if mid != src and mid.exists():
@@ -485,8 +488,8 @@ def main() -> None:
         try:
             from watchdog.pipeline.embed import add_document
             add_document(Path(args.vault_path), result["filename"], result["pages"])
-        except Exception:
-            pass  # embedding is best-effort; never fail the preprocess
+        except Exception as e:
+            print(f"Warning: embed index update failed: {e}", file=sys.stderr)
 
     print(json.dumps(result, ensure_ascii=False))
 

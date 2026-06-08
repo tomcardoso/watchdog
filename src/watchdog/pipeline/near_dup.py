@@ -7,7 +7,7 @@ using Jaccard similarity on word 3-grams (shingles). No external dependencies.
 
 Usage:
     python3 near_dup.py --text <extracted_text> --registry <path/to/documents.json>
-                        [--threshold 0.85] [--shingles-file <path>]
+                        [--threshold 0.85]
 
 Or pipe text via stdin:
     cat text.txt | python3 near_dup.py --stdin --registry <path/to/documents.json>
@@ -111,14 +111,10 @@ def main() -> None:
         sys.exit(1)
 
     registry_path = Path(args.registry)
-    documents = {}
-    if registry_path.exists():
-        with open(registry_path) as f:
-            documents = json.load(f)
+    documents = json.loads(registry_path.read_text()) if registry_path.exists() else {}
 
     candidate_sh = shingles_from_text(text)
     matches = []
-    exact_threshold = _config_get("dup_exact_threshold", 0.99)
 
     for sha, doc in documents.items():
         stored_sh = doc.get("shingles")
@@ -135,8 +131,6 @@ def main() -> None:
                     "document_note": doc.get("document_note", ""),
                 }
             )
-            if sim >= exact_threshold:
-                break  # near-exact match — no need to scan further
 
     matches.sort(key=lambda x: x["similarity"], reverse=True)
 
@@ -145,7 +139,7 @@ def main() -> None:
             {
                 "near_duplicates": matches,
                 "candidate_shingles_count": len(candidate_sh),
-                "candidate_shingles_sample": list(candidate_sh)[:200],  # stored in registry
+                "candidate_shingles_sample": sorted(candidate_sh)[:200],  # stored in registry
             },
             ensure_ascii=False,
         )

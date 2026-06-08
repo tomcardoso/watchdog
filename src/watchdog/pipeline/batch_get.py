@@ -58,7 +58,7 @@ def main() -> None:
         value = entry[args.field]
         print(value if isinstance(value, str) else json.dumps(value, ensure_ascii=False))
     elif args.meta:
-        meta = {k: v for k, v in entry.items() if k != "text"}
+        meta = {k: v for k, v in entry.items() if k not in {"pages"}}
         print(json.dumps(meta, ensure_ascii=False))
     else:
         sys.exit("Error: specify one of --meta, --text, --field NAME, or --count")

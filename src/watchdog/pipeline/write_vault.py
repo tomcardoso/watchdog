@@ -118,6 +118,14 @@ def _extract_analysis(note_path: Path) -> str:
     return _extract_section(note_path.read_text(encoding="utf-8"), "Analysis")
 
 
+def _extract_summary(note_path: Path) -> str | None:
+    """Return the existing ## Summary body, or None if absent."""
+    if not note_path.exists():
+        return None
+    text = _extract_section(note_path.read_text(encoding="utf-8"), "Summary")
+    return text or None
+
+
 # ── Timeline helpers ──────────────────────────────────────────────────────────
 
 def _date_sort_key(date_str: str) -> str:
@@ -490,7 +498,9 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
 
 def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False) -> None:
     extraction = json.loads(extraction_path.read_text(encoding="utf-8"))
-    doc = extraction["document"]
+    doc = extraction.get("document")
+    if not doc:
+        sys.exit(f"Error: extraction JSON missing required 'document' key ({extraction_path.name})")
     incoming_entities = extraction.get("entities", [])
     doc_sha256 = doc["sha256"]
     slug = _doc_slug(doc["filename"])
@@ -569,7 +579,7 @@ def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False) ->
         notes_section = _extract_notes_section(note_path)
 
         incoming = incoming_by_id.get(eid, {})
-        new_summary = incoming.get("summary") or None
+        new_summary = incoming.get("summary") or _extract_summary(note_path)
 
         existing_analysis = _extract_analysis(note_path)
         new_analysis_text = incoming.get("analysis") or ""
@@ -587,39 +597,43 @@ def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False) ->
         try:
             from watchdog.pipeline.embed import add_note
             add_note(vault_path, entry["note_path"], note_content)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"  Warning: embed index update failed for {entry['note_path']}: {e}", file=sys.stderr)
 
     # ── 4. Write document note ────────────────────────────────────────────────
 
     doc_note_path = vault_path / "documents" / f"{slug}.md"
     doc_note_path.parent.mkdir(parents=True, exist_ok=True)
-    doc_note_content = _build_document_note(doc, [entities_reg[e["id"]] for e in incoming_entities], morgue_relative)
+    entity_entries_for_note = [entities_reg[e["id"]] for e in incoming_entities if e["id"] in entities_reg]
+    doc_note_content = _build_document_note(doc, entity_entries_for_note, morgue_relative)
     doc_note_path.write_text(doc_note_content, encoding="utf-8")
     try:
         from watchdog.pipeline.embed import add_note
         add_note(vault_path, f"documents/{slug}", doc_note_content)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"  Warning: embed index update failed for documents/{slug}: {e}", file=sys.stderr)
 
-    # ── 5. Persist registries ─────────────────────────────────────────────────
+    # ── 5. Persist registries (atomic temp-then-rename) ──────────────────────
 
-    entities_path.write_text(
-        json.dumps(entities_reg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
-    documents_path.write_text(
-        json.dumps(documents_reg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
+    def _write_atomic(path: Path, data) -> None:
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        tmp.rename(path)
 
-    registry = json.loads(registry_path.read_text()) if registry_path.exists() else {}
-    registry.update({
+    registry_dir.mkdir(parents=True, exist_ok=True)
+    _write_atomic(entities_path, entities_reg)
+    _write_atomic(documents_path, documents_reg)
+
+    try:
+        existing_registry = json.loads(registry_path.read_text()) if registry_path.exists() else {}
+    except json.JSONDecodeError:
+        existing_registry = {}
+    existing_registry.update({
         "last_updated":   _now_iso(),
         "document_count": len(documents_reg),
         "entity_count":   len(entities_reg),
     })
-    registry_path.write_text(
-        json.dumps(registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
+    _write_atomic(registry_path, existing_registry)
 
     _update_manifest(vault_path, entities_reg)
 

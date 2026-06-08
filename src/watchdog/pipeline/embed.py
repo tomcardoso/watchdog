@@ -43,8 +43,12 @@ def _load(vault_path: Path) -> tuple["np.ndarray | None", list[dict]]:
 def _save(vault_path: Path, vectors: "np.ndarray", meta: list[dict]) -> None:
     d = _dir(vault_path)
     d.mkdir(parents=True, exist_ok=True)
-    np.save(d / "vectors.npy", vectors)
-    (d / "meta.json").write_text(json.dumps(meta, ensure_ascii=False))
+    vp, mp = d / "vectors.npy", d / "meta.json"
+    tmp_v, tmp_m = d / "vectors.tmp.npy", d / "meta.tmp.json"
+    np.save(tmp_v, vectors)
+    tmp_m.write_text(json.dumps(meta, ensure_ascii=False))
+    tmp_v.rename(vp)
+    tmp_m.rename(mp)
 
 
 def _normalise(v: "np.ndarray") -> "np.ndarray":

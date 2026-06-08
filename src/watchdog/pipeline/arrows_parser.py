@@ -33,17 +33,10 @@ Output JSON:
 """
 
 import json
-import re
 import sys
 from pathlib import Path
 
-
-def slugify(text: str) -> str:
-    s = text.lower().strip()
-    s = re.sub(r"[^\w\s-]", "", s)
-    s = re.sub(r"[\s_]+", "-", s)
-    s = re.sub(r"-+", "-", s)
-    return s.strip("-") or "unknown-entity"
+from watchdog.pipeline.write_vault import slugify
 
 
 def parse_arrows(path: Path) -> dict:

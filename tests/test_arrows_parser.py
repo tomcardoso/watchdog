@@ -21,7 +21,7 @@ def test_slugify_special_chars():
     assert slugify("Acme Corp.") == "acme-corp"
 
 def test_slugify_empty():
-    assert slugify("") == "unknown-entity"
+    assert slugify("") == ""
 
 
 # ── deduplication ────────────────────────────────────────────────────────────

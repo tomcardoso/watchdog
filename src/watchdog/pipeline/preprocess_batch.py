@@ -23,6 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 DEFAULT_WORKERS = 4
+DEFAULT_FILE_TIMEOUT = 600
 
 SKIP_NAMES   = {".ds_store", ".ingest-lock"}
 SKIP_SUFFIXES = {".yml"}
@@ -50,13 +51,13 @@ def find_files(paths: list[str]) -> list[Path]:
     return files
 
 
-def preprocess_one(path: Path, vault_path: str | None = None) -> dict:
+def preprocess_one(path: Path, vault_path: str | None = None, timeout: int = DEFAULT_FILE_TIMEOUT) -> dict:
     t0 = time.time()
     cmd = [sys.executable, "-m", "watchdog.pipeline.preprocess", str(path)]
     if vault_path:
         cmd += ["--vault-path", vault_path]
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         elapsed = round(time.time() - t0, 1)
         if not r.stdout.strip():
             result = {"error": r.stderr.strip()[:300] or "Empty output from preprocessor"}
@@ -64,7 +65,7 @@ def preprocess_one(path: Path, vault_path: str | None = None) -> dict:
             result = json.loads(r.stdout)
     except subprocess.TimeoutExpired:
         elapsed = round(time.time() - t0, 1)
-        result = {"error": f"Preprocessing timed out after {600}s"}
+        result = {"error": f"Preprocessing timed out after {timeout}s"}
     except Exception as e:
         elapsed = round(time.time() - t0, 1)
         result = {"error": str(e)}
@@ -86,6 +87,10 @@ def main() -> None:
         "--vault-path", metavar="PATH",
         help="Vault directory — when set, pages are added to the embedding index",
     )
+    parser.add_argument(
+        "--file-timeout", type=int, default=DEFAULT_FILE_TIMEOUT, metavar="SECONDS",
+        help=f"Per-file subprocess timeout in seconds (default: {DEFAULT_FILE_TIMEOUT})",
+    )
     args = parser.parse_args()
     vault_path = args.vault_path
 
@@ -105,7 +110,7 @@ def main() -> None:
     results_map: dict[str, dict] = {}
 
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        futures = {pool.submit(preprocess_one, f, vault_path): f for f in files}
+        futures = {pool.submit(preprocess_one, f, vault_path, args.file_timeout): f for f in files}
         completed = 0
         for future in as_completed(futures):
             path = futures[future]
