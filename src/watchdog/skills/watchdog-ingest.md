@@ -347,6 +347,20 @@ Build the extraction JSON from everything gathered in step 3. The JSON must matc
           "confidence": "<level>"
         }
       ],
+
+**What to include in timeline_events — two tracks:**
+
+*Track 1 — investigative relevance.* If `context.md` states research questions or named entities of interest, extract events that bear directly on those questions: transactions, appointments, filings with legal effect, regulatory decisions, contradictions of existing vault entries, connections between entities the journalist is following.
+
+*Track 2 — biographical record.* Regardless of research focus, extract events that materially define the entity's history: incorporation or dissolution, appointment or resignation of key officers, major transactions (acquisition, sale, merger), criminal charges or civil judgments, licensing actions, name changes. These form a useful factual record even when a document isn't directly on-topic.
+
+**Do not extract:**
+- Routine procedural filing dates with no substantive content (e.g. "Document filed with registry on 2019-03-12" when the filing content is already captured elsewhere)
+- Standard administrative deadlines, notice periods, and boilerplate effective dates
+- Dates that appear only in form headers, footers, or metadata fields
+- Events already present in this entity's existing timeline (avoid duplicating what `write-vault` will de-duplicate anyway)
+
+The resulting timeline may be long — a large investigation legitimately has thousands of material events. The filter is about substance, not length.
       "roles": [
         {
           "relationship": "<type>",
