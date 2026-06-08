@@ -212,7 +212,7 @@ Every link to a source document includes a direct page link into the original fi
 
 ## Domain knowledge skills
 
-Watchdog ships with extraction skills for 28 document types. When Claude identifies a matching document, it loads the relevant skill before extracting — applying journalist expertise about what to look for, what constitutes a red flag, and what fields matter.
+Watchdog ships with extraction skills for 33 document types. When Claude identifies a matching document, it loads the relevant skill before extracting — applying journalist expertise about what to look for, what constitutes a red flag, and what fields matter.
 
 Skills are jurisdiction-agnostic by default: universal principles come first, with specific jurisdictions (Canada, US, UK, Australia, EU) treated as examples, not as defaults.
 
@@ -220,55 +220,60 @@ Skills are jurisdiction-agnostic by default: universal principles come first, wi
 
 | Skill | Covers |
 |-------|--------|
-| `records/corporate-filings` | Annual reports, registrations, director filings, beneficial ownership |
-| `records/financial-statements` | Audited statements, MD&A, auditor opinions, related-party disclosures |
-| `records/regulatory-filings` | Securities disclosures, insider trading reports, SEDAR+/EDGAR filings |
-| `records/bankruptcy` | Bankruptcy filings, creditor lists, trustee reports, restructuring proceedings |
-| `records/insurance-filings` | Regulatory returns, actuarial reports, reinsurance treaties, market conduct reviews |
-| `records/tax-documents` | Charity information returns (T3010, Form 990), nonprofit filings, trust returns |
+| [`records/corporate-filings`](src/watchdog/skills/records/corporate-filings.md) | Annual reports, registrations, director filings, beneficial ownership |
+| [`records/financial-statements`](src/watchdog/skills/records/financial-statements.md) | Audited statements, MD&A, auditor opinions, related-party disclosures |
+| [`records/regulatory-filings`](src/watchdog/skills/records/regulatory-filings.md) | Securities disclosures, insider trading reports, SEDAR+/EDGAR filings |
+| [`records/bankruptcy`](src/watchdog/skills/records/bankruptcy.md) | Bankruptcy filings, creditor lists, trustee reports, restructuring proceedings |
+| [`records/insurance-filings`](src/watchdog/skills/records/insurance-filings.md) | Regulatory returns, actuarial reports, reinsurance treaties, market conduct reviews |
+| [`records/tax-documents`](src/watchdog/skills/records/tax-documents.md) | Charity information returns (T3010, Form 990), nonprofit filings, trust returns |
 
 ### Legal and regulatory
 
 | Skill | Covers |
 |-------|--------|
-| `records/court-documents` | Civil claims, affidavits, judgments, orders, injunctions |
-| `records/criminal-proceedings` | Charging documents, bail decisions, trial decisions, sentencing, forfeiture orders |
-| `records/labour-arbitration` | Grievance awards, labour board decisions, collective agreements |
-| `records/immigration-refugee` | Asylum decisions, detention reviews, deportation orders, judicial reviews |
-| `records/healthcare-licensing` | Discipline decisions, fitness to practise, facility inspections |
+| [`records/court-documents`](src/watchdog/skills/records/court-documents.md) | Civil claims, affidavits, judgments, orders, injunctions |
+| [`records/criminal-proceedings`](src/watchdog/skills/records/criminal-proceedings.md) | Charging documents, bail decisions, trial decisions, sentencing, forfeiture orders |
+| [`records/administrative-tribunals`](src/watchdog/skills/records/administrative-tribunals.md) | Quasi-judicial administrative bodies: human rights, competition, environmental review, privacy, utility regulation |
+| [`records/labour-arbitration`](src/watchdog/skills/records/labour-arbitration.md) | Grievance awards, labour board decisions, unfair labour practices, collective agreements |
+| [`records/immigration-refugee`](src/watchdog/skills/records/immigration-refugee.md) | Asylum decisions, detention reviews, deportation orders, judicial reviews |
+| [`records/healthcare-licensing`](src/watchdog/skills/records/healthcare-licensing.md) | Discipline decisions, fitness to practise, facility inspections (medicine, nursing, pharmacy) |
+| [`records/professional-licensing`](src/watchdog/skills/records/professional-licensing.md) | Discipline decisions for lawyers, accountants, engineers, financial advisers, real estate agents |
+| [`records/legislation`](src/watchdog/skills/records/legislation.md) | Statutes, regulations, orders-in-council, policy directives, white papers |
 
 ### Government and public records
 
 | Skill | Covers |
 |-------|--------|
-| `records/government-contracts` | RFPs, sole-source justifications, contract award notices |
-| `records/procurement-records` | Post-award contracts, amendments, vendor performance, standing offer call-ups |
-| `records/audit-reports` | Auditor general reports, performance audits, inspector general reports |
-| `records/government-reports` | Royal commissions, public inquiries, parliamentary committee reports |
-| `records/foi-responses` | FOI/ATI response packages, exemption indexes, redaction logs |
-| `records/legislature-transcripts` | Hansard, committee transcripts, question period, congressional hearings |
-| `records/lobbying-records` | Lobbyist registrations, communication reports, revolving door disclosures |
-| `records/election-filings` | Campaign finance returns, donor lists, third-party advertising disclosures |
-| `records/municipal-records` | Council minutes, zoning decisions, conflict-of-interest declarations |
-| `records/police-records` | Occurrence reports, use-of-force records, complaint decisions, parole rulings |
-| `records/environmental-filings` | Pollutant release inventories, environmental assessments, compliance orders |
+| [`records/government-contracts`](src/watchdog/skills/records/government-contracts.md) | RFPs, sole-source justifications, contract award notices |
+| [`records/procurement-records`](src/watchdog/skills/records/procurement-records.md) | Post-award contracts, amendments, vendor performance, standing offer call-ups |
+| [`records/audit-reports`](src/watchdog/skills/records/audit-reports.md) | Auditor general reports, performance audits, inspector general reports |
+| [`records/government-reports`](src/watchdog/skills/records/government-reports.md) | Royal commissions, public inquiries, parliamentary committee reports |
+| [`records/foi-responses`](src/watchdog/skills/records/foi-responses.md) | FOI/ATI response packages, exemption indexes, redaction logs |
+| [`records/legislature-transcripts`](src/watchdog/skills/records/legislature-transcripts.md) | Hansard, committee transcripts, question period, congressional hearings |
+| [`records/lobbying-records`](src/watchdog/skills/records/lobbying-records.md) | Lobbyist registrations, communication reports, revolving door disclosures |
+| [`records/election-filings`](src/watchdog/skills/records/election-filings.md) | Campaign finance returns, donor lists, third-party advertising disclosures |
+| [`records/municipal-records`](src/watchdog/skills/records/municipal-records.md) | Council minutes, zoning decisions, conflict-of-interest declarations |
+| [`records/police-records`](src/watchdog/skills/records/police-records.md) | Occurrence reports, use-of-force records, public complaint decisions, coroner's inquests |
+| [`records/corrections-records`](src/watchdog/skills/records/corrections-records.md) | Parole board decisions, probation orders, prison inspection reports, correctional oversight |
+| [`records/environmental-filings`](src/watchdog/skills/records/environmental-filings.md) | Pollutant release inventories, environmental assessments, compliance orders |
 
 ### Property
 
 | Skill | Covers |
 |-------|--------|
-| `records/real-estate` | Title transfers, mortgages, liens, assessments, market transactions |
-| `records/land-registries` | Land registry and title systems — common law and civil law; deeds, charges, caveats |
+| [`records/real-estate`](src/watchdog/skills/records/real-estate.md) | Title transfers, mortgages, liens, assessments, market transactions |
+| [`records/land-registries`](src/watchdog/skills/records/land-registries.md) | Land registry and title systems — common law and civil law; deeds, charges, caveats |
+| [`records/vehicle-registrations`](src/watchdog/skills/records/vehicle-registrations.md) | Motor vehicle and vessel registrations, title transfers, liens, fleet records |
 
 ### Specialized
 
 | Skill | Covers |
 |-------|--------|
-| `records/academic-research` | Grant applications, ethics decisions, conflict-of-interest disclosures, retraction notices |
-| `records/aircraft-logs` | Aircraft registrations, ADS-B flight tracks, safety investigation reports |
-| `records/dns-whois` | WHOIS records, DNS data, IP allocation, SSL certificate transparency logs |
-| `records/news-clippings` | News articles, press releases, wire stories, corrections, retractions |
-| `records/audio-video` | YouTube transcripts, podcast transcripts, earnings calls, press conference recordings |
+| [`records/academic-research`](src/watchdog/skills/records/academic-research.md) | Grant applications, ethics decisions, conflict-of-interest disclosures, retraction notices |
+| [`records/aircraft-logs`](src/watchdog/skills/records/aircraft-logs.md) | Aircraft registrations, ADS-B flight tracks, safety investigation reports |
+| [`records/dns-whois`](src/watchdog/skills/records/dns-whois.md) | WHOIS records, DNS data, IP allocation, SSL certificate transparency logs |
+| [`records/news-clippings`](src/watchdog/skills/records/news-clippings.md) | News articles, press releases, wire stories, corrections, retractions |
+| [`records/audio-video`](src/watchdog/skills/records/audio-video.md) | YouTube transcripts, podcast transcripts, earnings calls, press conference recordings |
 
 These skills encode real investigative knowledge — what fields are always present, what patterns are anomalous, what investigators typically miss. See [src/watchdog/skills/records/](src/watchdog/skills/records/) to read them or contribute new ones.
 
@@ -307,7 +312,7 @@ watchdog configure <key> <value>
 | Key | Default | Description |
 |-----|---------|-------------|
 | `projects_dir` | `~/Investigations` | Where new investigation vaults are created. Set during `watchdog setup`, change here afterwards. |
-| `ocr_languages` | *(auto-detect)* | Language codes for Apple Vision OCR, comma-separated (e.g. `en-US,fr-FR`). Leave unset to let macOS 13+ detect the document language automatically from the image. Set explicitly if auto-detection produces poor results or you are on macOS 12. |
+| `ocr_languages` | *(auto-detect)* | Language codes for Apple Vision OCR, comma-separated (e.g. `en-US,fr-FR`). Leave unset to let macOS 13+ detect the document language automatically from the image. Set explicitly if auto-detection produces poor results or you are on macOS 12. Codes use the [BCP 47](https://www.iana.org/assignments/language-subtag-registry/language-subtag-registry) format; supported languages are listed in Apple's [Vision framework documentation](https://developer.apple.com/documentation/vision/vnrecognizetextrequest). |
 
 **Examples:**
 

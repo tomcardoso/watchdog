@@ -1,6 +1,6 @@
-# Domain knowledge — Police and corrections records
+# Domain knowledge — Police records
 
-This skill is loaded by `/ingest` when the document type is a police occurrence report, use-of-force report, disciplinary decision, public complaint decision, parole board ruling, corrections record, or similar law enforcement or corrections document.
+This skill is loaded by `/ingest` when the document type is a police occurrence report, use-of-force report, disciplinary decision, public complaint decision, coroner's inquest, or similar law enforcement document. For parole board decisions, probation records, prison inspection reports, and corrections oversight documents, use `corrections-records` instead.
 
 Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
 
