@@ -67,7 +67,7 @@ def is_garbled(text: str) -> bool:
     if not text.strip():
         return False
     readable = sum(1 for c in text if c.isalnum() or c.isspace())
-    return (readable / len(text)) < GARBLED_THRESHOLD
+    return (readable / len(text)) < _config_get("garbled_threshold", GARBLED_THRESHOLD)
 
 
 def pdf_page_count(path: Path) -> int:
@@ -157,19 +157,18 @@ def pdf_preprocess(src: Path) -> "Path | None":
     return None
 
 
-def _ocr_languages() -> list[str]:
-    """Return OCR language list from ~/.watchdog/config.json.
-
-    Defaults to [] — Apple Vision auto-detects the language from the image
-    (requires macOS 13+). Set ocr_languages in config to override, e.g. for
-    older macOS or when auto-detection produces poor results.
-    """
+def _config_get(key: str, default):
+    """Read a value from ~/.watchdog/config.json, returning default on any error."""
     config_path = Path.home() / ".watchdog" / "config.json"
     try:
         config = json.loads(config_path.read_text())
-        return config.get("ocr_languages", [])
+        return config.get(key, default)
     except Exception:
-        return []
+        return default
+
+
+def _ocr_languages() -> list[str]:
+    return _config_get("ocr_languages", [])
 
 
 def build_converter(force_ocr: bool):
@@ -210,7 +209,8 @@ def _run_chunk_subprocess(chunk_path: Path, page_offset: int, force_ocr: bool) -
     if force_ocr:
         cmd.append("--force-ocr")
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=CHUNK_TIMEOUT)
+        r = subprocess.run(cmd, capture_output=True, text=True,
+                           timeout=_config_get("chunk_timeout", CHUNK_TIMEOUT))
         if not r.stdout.strip():
             return {"error": f"Empty output from chunk subprocess: {r.stderr[:200]}"}
         result = json.loads(r.stdout)
@@ -227,10 +227,12 @@ def _run_chunk_subprocess(chunk_path: Path, page_offset: int, force_ocr: bool) -
 
 
 def process_large_pdf(path: Path, force_ocr: bool, total_pages: int) -> dict:
-    """Split a large PDF into CHUNK_SIZE-page chunks and process in parallel."""
+    """Split a large PDF into chunk_size-page chunks and process in parallel."""
+    chunk_size    = _config_get("chunk_size",    CHUNK_SIZE)
+    chunk_workers = _config_get("chunk_workers", CHUNK_WORKERS)
     chunks = [
-        (start, min(start + CHUNK_SIZE, total_pages))
-        for start in range(0, total_pages, CHUNK_SIZE)
+        (start, min(start + chunk_size, total_pages))
+        for start in range(0, total_pages, chunk_size)
     ]
 
     chunk_results: dict[int, dict] = {}
@@ -243,7 +245,7 @@ def process_large_pdf(path: Path, force_ocr: bool, total_pages: int) -> dict:
             if chunk_path.exists():
                 chunk_path.unlink()
 
-    with ThreadPoolExecutor(max_workers=CHUNK_WORKERS) as pool:
+    with ThreadPoolExecutor(max_workers=chunk_workers) as pool:
         futures = {pool.submit(process_one, s, e): (s, e) for s, e in chunks}
         for future in as_completed(futures):
             start, result = future.result()
@@ -258,7 +260,7 @@ def process_large_pdf(path: Path, force_ocr: bool, total_pages: int) -> dict:
     for start in sorted(chunk_results.keys()):
         r = chunk_results[start]
         if "error" in r:
-            failed_chunks.append(f"pages {start+1}-{start+CHUNK_SIZE}: {r['error']}")
+            failed_chunks.append(f"pages {start+1}-{start+chunk_size}: {r['error']}")
             continue
         all_pages.extend(r.get("pages", []))
         if r.get("metadata", {}).get("garbled_detected"):
@@ -310,7 +312,7 @@ def process_with_docling(path: Path, force_ocr: bool = False) -> dict:
     # Large PDFs: split into chunks and process in parallel
     if is_pdf:
         total_pages = pdf_page_count(path)
-        if total_pages > CHUNK_SIZE:
+        if total_pages > _config_get("chunk_size", CHUNK_SIZE):
             return process_large_pdf(path, force_ocr, total_pages)
 
     # Small PDFs and all other formats: single Docling conversion

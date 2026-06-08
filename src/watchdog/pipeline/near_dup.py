@@ -40,6 +40,16 @@ DEFAULT_THRESHOLD = 0.85
 SHINGLE_SIZE = 3  # word 3-grams
 
 
+def _config_get(key: str, default):
+    """Read a value from ~/.watchdog/config.json, returning default on any error."""
+    config_path = Path.home() / ".watchdog" / "config.json"
+    try:
+        config = json.loads(config_path.read_text())
+        return config.get(key, default)
+    except Exception:
+        return default
+
+
 def tokenize(text: str) -> list[str]:
     """Lowercase, strip punctuation, split into words."""
     return re.findall(r"\b[a-z0-9]+\b", text.lower())
@@ -60,8 +70,10 @@ def jaccard(a: set[str], b: set[str]) -> float:
     return len(a & b) / len(a | b)
 
 
-def shingles_from_text(text: str) -> set[str]:
-    return shingles(tokenize(text))
+def shingles_from_text(text: str, k: int | None = None) -> set[str]:
+    if k is None:
+        k = _config_get("shingle_size", SHINGLE_SIZE)
+    return shingles(tokenize(text), k=k)
 
 
 def main() -> None:
@@ -73,10 +85,16 @@ def main() -> None:
     parser.add_argument(
         "--threshold",
         type=float,
-        default=DEFAULT_THRESHOLD,
-        help=f"Similarity threshold (default: {DEFAULT_THRESHOLD})",
+        default=None,
+        help=f"Similarity threshold (default: from config or {DEFAULT_THRESHOLD})",
     )
     args = parser.parse_args()
+
+    threshold = (
+        args.threshold
+        if args.threshold is not None
+        else _config_get("dup_threshold", DEFAULT_THRESHOLD)
+    )
 
     if args.stdin:
         text = sys.stdin.read()
@@ -103,7 +121,7 @@ def main() -> None:
             continue
         stored_set = set(stored_sh)
         sim = jaccard(candidate_sh, stored_set)
-        if sim >= args.threshold:
+        if sim >= threshold:
             matches.append(
                 {
                     "sha256": sha,

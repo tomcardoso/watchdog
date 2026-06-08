@@ -223,11 +223,23 @@ def run(force: bool = False) -> None:
     else:
         print("Shell not detected — skipping tab completions.")
 
-    # 5. Write config
-    WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
-    CONFIG_FILE.write_text(json.dumps({"projects_dir": str(projects_dir)}, indent=2) + "\n")
+    # 5. Machine capabilities
+    cores = os.cpu_count() or 1
+    chunk_workers = max(2, cores // 2)
+    print()
+    print("Detecting machine capabilities...")
+    _ok(f"CPU cores: {cores} → chunk_workers set to {chunk_workers}")
 
-    # 6. Done
+    # 6. Write config
+    WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
+    CONFIG_FILE.write_text(
+        json.dumps(
+            {"projects_dir": str(projects_dir), "chunk_workers": chunk_workers},
+            indent=2,
+        ) + "\n"
+    )
+
+    # 7. Done
     reload_hint = f"source {profile}" if profile else "reload your shell"
     print()
     print(f"{_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{_RESET}")

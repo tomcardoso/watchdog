@@ -454,8 +454,101 @@ def cmd_status(args) -> None:
 
 
 _CONFIGURE_KEYS = {
-    "projects_dir":  "Path where new investigation vaults are created",
-    "ocr_languages": "Apple Vision OCR languages — comma-separated codes (e.g. 'en-US,fr-FR'). Leave unset for auto-detect.",
+    "projects_dir": {
+        "short": "Path where new investigation vaults are created",
+        "help": (
+            "The directory where `watchdog new` creates investigation vaults.\n"
+            "  Set during setup; change here to move future vaults to a different location.\n"
+            "  Existing vaults are not moved."
+        ),
+        "type": "path",
+    },
+    "ocr_languages": {
+        "short": "Apple Vision OCR languages (comma-separated BCP 47 codes, e.g. en-US,fr-FR)",
+        "help": (
+            "Languages Apple Vision should try when reading scanned documents.\n"
+            "  Leave unset to auto-detect from the image (macOS 13+).\n"
+            "  Set explicitly if auto-detection produces poor results or you are on macOS 12.\n"
+            "  Codes: https://developer.apple.com/documentation/vision/vnrecognizetextrequest"
+        ),
+        "type": "lang_list",
+    },
+    "garbled_threshold": {
+        "short": "OCR trigger threshold — alphanumeric ratio below which a PDF text layer is garbled (default: 0.75)",
+        "help": (
+            "When reading a PDF, Watchdog samples the text layer and measures what fraction of\n"
+            "  characters are alphanumeric or whitespace. If the ratio falls below this threshold,\n"
+            "  the text layer is considered garbled and OCR is applied automatically.\n"
+            "  Lower = more aggressive OCR. Higher may miss subtly garbled pages.\n"
+            "  Valid range: 0.0–1.0. Default: 0.75."
+        ),
+        "type": "float",
+        "default": 0.75,
+        "min": 0.0,
+        "max": 1.0,
+    },
+    "chunk_size": {
+        "short": "Pages per chunk when splitting large PDFs for parallel processing (default: 40)",
+        "help": (
+            "PDFs with more pages than this value are split into chunks and processed in parallel.\n"
+            "  Smaller chunks reduce peak memory per worker but add per-chunk overhead.\n"
+            "  Larger chunks are more efficient on fast machines with ample RAM.\n"
+            "  Default: 40."
+        ),
+        "type": "int",
+        "default": 40,
+        "min": 1,
+    },
+    "chunk_workers": {
+        "short": "Parallel subprocesses for large-PDF chunk processing (default: half your CPU core count)",
+        "help": (
+            "Number of parallel subprocesses used when processing large PDFs (>chunk_size pages).\n"
+            "  Higher values speed up ingestion on multi-core machines but increase CPU and memory use.\n"
+            "  Recommended: half your CPU core count. Set to 1 to disable parallelism."
+        ),
+        "type": "int",
+        "default": max(2, (os.cpu_count() or 2) // 2),
+        "min": 1,
+    },
+    "chunk_timeout": {
+        "short": "Seconds before a chunk subprocess is killed (default: 300)",
+        "help": (
+            "Each chunk subprocess is given this many seconds to complete before being killed.\n"
+            "  Increase for very large or complex PDFs on slow machines.\n"
+            "  Default: 300 (5 minutes)."
+        ),
+        "type": "int",
+        "default": 300,
+        "min": 1,
+    },
+    "dup_threshold": {
+        "short": "Near-duplicate Jaccard similarity threshold — score at which documents are flagged (default: 0.85)",
+        "help": (
+            "Watchdog fingerprints each document and compares it to all previously ingested documents\n"
+            "  using Jaccard similarity on word n-grams. If the score meets or exceeds this threshold,\n"
+            "  the document is flagged as a near-duplicate.\n"
+            "  Higher = stricter matching (fewer false positives, may miss near-duplicates).\n"
+            "  Lower = looser matching (more matches, more false positives).\n"
+            "  Valid range: 0.0–1.0. Default: 0.85."
+        ),
+        "type": "float",
+        "default": 0.85,
+        "min": 0.0,
+        "max": 1.0,
+    },
+    "shingle_size": {
+        "short": "Word n-gram size for near-duplicate fingerprinting (default: 3)",
+        "help": (
+            "Documents are fingerprinted using overlapping sequences of n consecutive words.\n"
+            "  Larger n is more precise but slower and uses more registry storage per document.\n"
+            "  Smaller n is faster but produces more false positives.\n"
+            "  Changing this invalidates existing shingle data — re-ingest to rebuild fingerprints.\n"
+            "  Default: 3 (word trigrams)."
+        ),
+        "type": "int",
+        "default": 3,
+        "min": 1,
+    },
 }
 
 
@@ -471,26 +564,55 @@ def cmd_configure(args) -> None:
     value = getattr(args, "value", None)
 
     def _display_value(k, v):
+        meta = _CONFIGURE_KEYS.get(k, {})
+        if v is None:
+            if k == "ocr_languages":
+                return f"{_DIM}auto-detect (default){_RESET}"
+            d = meta.get("default")
+            if d is not None:
+                return f"{_DIM}(not set — default: {d}){_RESET}"
+            return f"{_DIM}(not set){_RESET}"
         if k == "ocr_languages":
             return f"{_CYAN}{', '.join(v)}{_RESET}" if v else f"{_DIM}auto-detect (default){_RESET}"
-        return f"{_CYAN}{v}{_RESET}" if v is not None else f"{_DIM}(not set){_RESET}"
+        return f"{_CYAN}{v}{_RESET}"
 
     if key is None:
         print()
         print(f"  {_BOLD}Configuration{_RESET}  {_DIM}{CONFIG_FILE}{_RESET}")
         print()
-        for k, desc in _CONFIGURE_KEYS.items():
+        for k, meta in _CONFIGURE_KEYS.items():
             print(f"  {_DIM}{k:<20}{_RESET} {_display_value(k, config.get(k))}")
-            print(f"  {' ' * 20} {_DIM}{desc}{_RESET}")
+            print(f"  {' ' * 20} {_DIM}{meta['short']}{_RESET}")
             print()
         return
 
     if key not in _CONFIGURE_KEYS:
         sys.exit(f"Error: unknown key '{key}'. Known keys: {', '.join(_CONFIGURE_KEYS)}")
 
+    meta = _CONFIGURE_KEYS[key]
+
     if value is None:
-        print(f"\n  {_BOLD}{key}{_RESET} = {_display_value(key, config.get(key))}\n")
-        return
+        if sys.stdin.isatty():
+            print(f"\n  {_BOLD}{key}{_RESET}\n")
+            for line in meta["help"].split("\n"):
+                print(f"  {_DIM}{line.strip()}{_RESET}")
+            print()
+            print(f"  Current value:  {_display_value(key, config.get(key))}")
+            if key == "chunk_workers":
+                print(f"  Machine cores:  {os.cpu_count() or 1}")
+            print()
+            answer = input("  Change this value? [y/N] ").strip().lower()
+            if answer not in ("y", "yes"):
+                print()
+                return
+            print()
+            value = input("  New value: ").strip()
+            if not value:
+                print(f"\n  {_DIM}No change.{_RESET}\n")
+                return
+        else:
+            print(f"\n  {_BOLD}{key}{_RESET} = {_display_value(key, config.get(key))}\n")
+            return
 
     if key == "ocr_languages":
         langs = [lang.strip() for lang in value.split(",") if lang.strip()]
@@ -501,6 +623,28 @@ def cmd_configure(args) -> None:
         path.mkdir(parents=True, exist_ok=True)
         config[key] = str(path)
         display = str(path)
+    elif meta["type"] == "float":
+        try:
+            v = float(value)
+        except ValueError:
+            sys.exit(f"Error: '{key}' must be a number (e.g. 0.85)")
+        lo, hi = meta.get("min"), meta.get("max")
+        if lo is not None and v < lo:
+            sys.exit(f"Error: '{key}' must be >= {lo}")
+        if hi is not None and v > hi:
+            sys.exit(f"Error: '{key}' must be <= {hi}")
+        config[key] = v
+        display = str(v)
+    elif meta["type"] == "int":
+        try:
+            v = int(value)
+        except ValueError:
+            sys.exit(f"Error: '{key}' must be a whole number")
+        lo = meta.get("min")
+        if lo is not None and v < lo:
+            sys.exit(f"Error: '{key}' must be >= {lo}")
+        config[key] = v
+        display = str(v)
     else:
         config[key] = value
         display = value

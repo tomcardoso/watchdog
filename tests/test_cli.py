@@ -465,3 +465,186 @@ def test_aliases_remap_argv(alias, canonical, monkeypatch):
 
     capturing_main()
     assert recorded == [canonical]
+
+
+# ── configure — int / float keys ─────────────────────────────────────────────
+
+def test_configure_set_garbled_threshold(wdg_home):
+    cli.cmd_configure(args(key="garbled_threshold", value="0.6"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["garbled_threshold"] == 0.6
+
+
+def test_configure_float_invalid_exits(wdg_home):
+    with pytest.raises(SystemExit, match="must be a number"):
+        cli.cmd_configure(args(key="garbled_threshold", value="not-a-number"))
+
+
+def test_configure_float_out_of_range_exits(wdg_home):
+    with pytest.raises(SystemExit):
+        cli.cmd_configure(args(key="garbled_threshold", value="1.5"))
+
+
+def test_configure_float_below_range_exits(wdg_home):
+    with pytest.raises(SystemExit):
+        cli.cmd_configure(args(key="dup_threshold", value="-0.1"))
+
+
+def test_configure_set_chunk_size(wdg_home):
+    cli.cmd_configure(args(key="chunk_size", value="20"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["chunk_size"] == 20
+
+
+def test_configure_int_invalid_exits(wdg_home):
+    with pytest.raises(SystemExit, match="whole number"):
+        cli.cmd_configure(args(key="chunk_size", value="3.5"))
+
+
+def test_configure_int_below_min_exits(wdg_home):
+    with pytest.raises(SystemExit):
+        cli.cmd_configure(args(key="chunk_workers", value="0"))
+
+
+def test_configure_set_chunk_workers(wdg_home):
+    cli.cmd_configure(args(key="chunk_workers", value="6"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["chunk_workers"] == 6
+
+
+def test_configure_set_chunk_timeout(wdg_home):
+    cli.cmd_configure(args(key="chunk_timeout", value="600"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["chunk_timeout"] == 600
+
+
+def test_configure_set_dup_threshold(wdg_home):
+    cli.cmd_configure(args(key="dup_threshold", value="0.9"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["dup_threshold"] == 0.9
+
+
+def test_configure_set_shingle_size(wdg_home):
+    cli.cmd_configure(args(key="shingle_size", value="4"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["shingle_size"] == 4
+
+
+def test_configure_show_all_includes_new_keys(wdg_home, capsys):
+    cli.cmd_configure(args())
+    out = _strip_ansi(capsys.readouterr().out)
+    for key in ("garbled_threshold", "chunk_size", "chunk_workers",
+                "chunk_timeout", "dup_threshold", "shingle_size"):
+        assert key in out, f"'{key}' missing from configure output"
+
+
+def test_configure_new_key_shows_default_when_unset(wdg_home, capsys):
+    cli.cmd_configure(args(key="garbled_threshold"))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "0.75" in out
+
+
+# ── configure — interactive mode ─────────────────────────────────────────────
+
+class _FakeTTY:
+    @staticmethod
+    def isatty(): return True
+
+
+def test_configure_interactive_yes_changes_value(wdg_home, monkeypatch, capsys):
+    import sys
+    monkeypatch.setattr(sys, "stdin", _FakeTTY())
+    responses = iter(["y", "0.6"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(responses))
+    cli.cmd_configure(args(key="garbled_threshold"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["garbled_threshold"] == 0.6
+
+
+def test_configure_interactive_no_leaves_value_unchanged(wdg_home, monkeypatch):
+    import sys
+    (wdg_home / "config.json").write_text(
+        json.dumps({"garbled_threshold": 0.75}) + "\n"
+    )
+    monkeypatch.setattr(sys, "stdin", _FakeTTY())
+    monkeypatch.setattr("builtins.input", lambda prompt="": "n")
+    cli.cmd_configure(args(key="garbled_threshold"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config.get("garbled_threshold") == 0.75
+
+
+def test_configure_interactive_empty_input_no_change(wdg_home, monkeypatch):
+    import sys
+    monkeypatch.setattr(sys, "stdin", _FakeTTY())
+    responses = iter(["y", ""])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(responses))
+    cli.cmd_configure(args(key="chunk_size"))
+    # No config.json written — nothing changed
+    assert not (wdg_home / "config.json").exists()
+
+
+def test_configure_non_tty_shows_value_without_prompt(wdg_home, capsys):
+    """When stdin is not a TTY, key-only shows value without prompting."""
+    import sys
+    # Default pytest stdin is not a TTY — no mock needed, but be explicit
+    class _NonTTY:
+        @staticmethod
+        def isatty(): return False
+    monkeypatch_obj = None  # use real sys.stdin which is non-TTY in pytest
+    (wdg_home / "config.json").write_text(
+        json.dumps({"chunk_timeout": 600}) + "\n"
+    )
+    cli.cmd_configure(args(key="chunk_timeout"))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "600" in out
+
+
+# ── setup — machine-aware defaults ───────────────────────────────────────────
+
+def test_setup_writes_chunk_workers_based_on_cores(tmp_path, monkeypatch):
+    import os
+    import watchdog.setup_cmd as sc
+
+    home = tmp_path / ".watchdog"
+    home.mkdir()
+    monkeypatch.setattr(sc, "WATCHDOG_HOME", home)
+    monkeypatch.setattr(sc, "CONFIG_FILE",   home / "config.json")
+    monkeypatch.setattr(sc, "COMMANDS_DIR",  tmp_path / ".claude" / "commands")
+    monkeypatch.setattr(os,  "cpu_count",    lambda: 8)
+
+    investigations = tmp_path / "Investigations"
+    investigations.mkdir()
+    monkeypatch.setattr(sc, "_check_deps",         lambda: [])
+    monkeypatch.setattr(sc, "_install_skills",     lambda: None)
+    monkeypatch.setattr(sc, "_ask_projects_dir",   lambda: investigations)
+    monkeypatch.setattr(sc, "_detect_shell",       lambda: (None, None))
+
+    sc.run()
+
+    config = json.loads((home / "config.json").read_text())
+    assert config["chunk_workers"] == 4   # max(2, 8 // 2)
+    assert config["projects_dir"] == str(investigations)
+
+
+def test_setup_chunk_workers_minimum_is_two(tmp_path, monkeypatch):
+    import os
+    import watchdog.setup_cmd as sc
+
+    home = tmp_path / ".watchdog"
+    home.mkdir()
+    monkeypatch.setattr(sc, "WATCHDOG_HOME", home)
+    monkeypatch.setattr(sc, "CONFIG_FILE",   home / "config.json")
+    monkeypatch.setattr(sc, "COMMANDS_DIR",  tmp_path / ".claude" / "commands")
+    monkeypatch.setattr(os,  "cpu_count",    lambda: 1)
+
+    investigations = tmp_path / "Investigations"
+    investigations.mkdir()
+    monkeypatch.setattr(sc, "_check_deps",       lambda: [])
+    monkeypatch.setattr(sc, "_install_skills",   lambda: None)
+    monkeypatch.setattr(sc, "_ask_projects_dir", lambda: investigations)
+    monkeypatch.setattr(sc, "_detect_shell",     lambda: (None, None))
+
+    sc.run()
+
+    config = json.loads((home / "config.json").read_text())
+    assert config["chunk_workers"] == 2   # max(2, 1 // 2) → max(2, 0) → 2
