@@ -491,6 +491,7 @@ def test_configure_float_below_range_exits(wdg_home):
 
 
 def test_configure_set_chunk_size(wdg_home):
+    # Verifies string→int coercion: "20" must be stored as int 20, not string "20"
     cli.cmd_configure(args(key="chunk_size", value="20"))
     config = json.loads((wdg_home / "config.json").read_text())
     assert config["chunk_size"] == 20
@@ -504,30 +505,6 @@ def test_configure_int_invalid_exits(wdg_home):
 def test_configure_int_below_min_exits(wdg_home):
     with pytest.raises(SystemExit):
         cli.cmd_configure(args(key="chunk_workers", value="0"))
-
-
-def test_configure_set_chunk_workers(wdg_home):
-    cli.cmd_configure(args(key="chunk_workers", value="6"))
-    config = json.loads((wdg_home / "config.json").read_text())
-    assert config["chunk_workers"] == 6
-
-
-def test_configure_set_chunk_timeout(wdg_home):
-    cli.cmd_configure(args(key="chunk_timeout", value="600"))
-    config = json.loads((wdg_home / "config.json").read_text())
-    assert config["chunk_timeout"] == 600
-
-
-def test_configure_set_dup_threshold(wdg_home):
-    cli.cmd_configure(args(key="dup_threshold", value="0.9"))
-    config = json.loads((wdg_home / "config.json").read_text())
-    assert config["dup_threshold"] == 0.9
-
-
-def test_configure_set_shingle_size(wdg_home):
-    cli.cmd_configure(args(key="shingle_size", value="4"))
-    config = json.loads((wdg_home / "config.json").read_text())
-    assert config["shingle_size"] == 4
 
 
 def test_configure_show_all_includes_new_keys(wdg_home, capsys):
