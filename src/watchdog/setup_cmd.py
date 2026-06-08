@@ -108,7 +108,7 @@ def _zsh_snippet() -> str:
 # Watchdog tab completion
 _watchdog_complete() {
     local -a subcmds
-    subcmds=(new open list status search setup configure about)
+    subcmds=(new open list status search unlock setup configure about)
     local projects
     projects=$(python3 -c "
 import json, os
@@ -119,7 +119,7 @@ if os.path.exists(p):
 " 2>/dev/null)
     if (( CURRENT == 2 )); then
         compadd -a subcmds
-    elif (( CURRENT == 3 )) && [[ "${words[2]}" == (open|status|search) ]]; then
+    elif (( CURRENT == 3 )) && [[ "${words[2]}" == (open|status|search|unlock) ]]; then
         compadd ${=projects}
     fi
 }
@@ -135,8 +135,8 @@ _watchdog_bash_complete() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     if [[ ${COMP_CWORD} -eq 1 ]]; then
-        COMPREPLY=($(compgen -W "new open list status search setup configure about" -- "${cur}"))
-    elif [[ "${prev}" == "open" || "${prev}" == "status" || "${prev}" == "search" ]]; then
+        COMPREPLY=($(compgen -W "new open list status search unlock setup configure about" -- "${cur}"))
+    elif [[ "${prev}" == "open" || "${prev}" == "status" || "${prev}" == "search" || "${prev}" == "unlock" ]]; then
         local projects
         projects=$(python3 -c "
 import json, os
@@ -155,8 +155,8 @@ complete -F _watchdog_bash_complete watchdog
 def _fish_completion() -> str:
     return """\
 # Watchdog tab completion
-set -l cmds new open list status search setup configure about
-set -l proj_cmds open status search
+set -l cmds new open list status search unlock setup configure about
+set -l proj_cmds open status search unlock
 set -l projects (python3 -c "
 import json, os
 p = os.path.expanduser('~/.watchdog/projects.json')
@@ -170,6 +170,7 @@ complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a open      -d 
 complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a list      -d 'List all investigations'
 complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a status    -d 'Show detailed status for an investigation'
 complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a search    -d 'Semantic search across ingested documents'
+complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a unlock    -d 'Release a stale ingest lock'
 complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a setup     -d 'Set up Watchdog'
 complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a configure -d 'View or change configuration'
 complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a about     -d 'Show version and project links'

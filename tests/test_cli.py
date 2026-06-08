@@ -2,6 +2,7 @@ import argparse
 import json
 import re
 import pytest
+from datetime import datetime, timezone
 from pathlib import Path
 
 import watchdog.cli as cli
@@ -691,3 +692,52 @@ def test_setup_chunk_workers_minimum_is_two(tmp_path, monkeypatch):
 
     config = json.loads((home / "config.json").read_text())
     assert config["chunk_workers"] == 2   # max(2, 1 // 2) → max(2, 0) → 2
+
+
+# ── cmd_unlock ────────────────────────────────────────────────────────────────
+
+def _make_vault_with_lock(configured, timestamp_str):
+    """Helper: register a project and write a lock file with the given timestamp."""
+    vault = configured / "test-proj"
+    lock_dir = vault / ".watchdog" / "Registry"
+    lock_dir.mkdir(parents=True)
+    lock_path = lock_dir / ".ingest-lock"
+    lock_path.write_text(f"pid: claude-session\nstarted_at: {timestamp_str}\n")
+    projects = {"test-proj": {"name": "Test Proj", "path": str(vault), "created": "2026-01-01T00:00:00Z"}}
+    cli.save_projects(projects)
+    return lock_path
+
+
+def test_unlock_no_lock(configured, capsys):
+    vault = configured / "test-proj"
+    (vault / ".watchdog" / "Registry").mkdir(parents=True)
+    cli.save_projects({"test-proj": {"name": "Test Proj", "path": str(vault), "created": "2026-01-01"}})
+    cli.cmd_unlock(args(project="test-proj"))
+    assert "nothing to do" in capsys.readouterr().out
+
+
+def test_unlock_stale_lock_removed(configured, capsys):
+    from datetime import timedelta
+    old_ts = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    lock_path = _make_vault_with_lock(configured, old_ts)
+    cli.cmd_unlock(args(project="test-proj"))
+    assert not lock_path.exists()
+    assert "Removed" in capsys.readouterr().out
+
+
+def test_unlock_recent_lock_not_removed(configured, capsys):
+    from datetime import timedelta
+    recent_ts = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+    lock_path = _make_vault_with_lock(configured, recent_ts)
+    cli.cmd_unlock(args(project="test-proj"))
+    assert lock_path.exists()
+    assert "recent" in capsys.readouterr().out
+
+
+def test_unlock_recent_lock_force_removes(configured, capsys):
+    from datetime import timedelta
+    recent_ts = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+    lock_path = _make_vault_with_lock(configured, recent_ts)
+    cli.cmd_unlock(args(project="test-proj", force=True))
+    assert not lock_path.exists()
+    assert "Removed" in capsys.readouterr().out

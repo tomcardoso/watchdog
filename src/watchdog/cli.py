@@ -671,6 +671,43 @@ def cmd_search(args) -> None:
         print()
 
 
+def cmd_unlock(args) -> None:
+    _, info = _find_project(args.project)
+    vault = Path(info["path"])
+    lock_path = vault / ".watchdog" / "Registry" / ".ingest-lock"
+
+    print()
+    if not lock_path.exists():
+        print(f"  {_DIM}No ingest lock found — nothing to do.{_RESET}\n")
+        return
+
+    content = lock_path.read_text()
+    started_at = None
+    for line in content.splitlines():
+        if line.startswith("started_at:"):
+            started_at = line.split(":", 1)[1].strip()
+            break
+
+    age_str = "unknown age"
+    is_stale = True
+    if started_at:
+        try:
+            t = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+            age_secs = (datetime.now(timezone.utc) - t).total_seconds()
+            mins = int(age_secs // 60)
+            age_str = f"{mins}m ago"
+            is_stale = age_secs >= 1800
+        except ValueError:
+            pass
+
+    if is_stale or args.force:
+        lock_path.unlink()
+        print(f"  {_GREEN}Removed:{_RESET} {_BOLD}.ingest-lock{_RESET}  {_DIM}({age_str}){_RESET}\n")
+    else:
+        print(f"  {_YELLOW}Lock is recent{_RESET} ({age_str}) — an ingest may still be running.")
+        print(f"  Use {_CYAN}watchdog unlock {args.project} --force{_RESET} to remove it anyway.\n")
+
+
 def cmd_configure(args) -> None:
     config = {}
     if CONFIG_FILE.exists():
@@ -800,11 +837,12 @@ def _print_banner() -> None:
     print()
     print("Commands:")
     cmds = [
-        ("new",    "Create a new investigation vault"),
-        ("open",   "Open an investigation in Claude Code"),
-        ("list",   "List all registered investigations"),
-        ("status", "Show detailed status for an investigation"),
+        ("new",       "Create a new investigation vault"),
+        ("open",      "Open an investigation in Claude Code"),
+        ("list",      "List all registered investigations"),
+        ("status",    "Show detailed status for an investigation"),
         ("search",    "Semantic search across ingested documents"),
+        ("unlock",    "Release a stale ingest lock"),
         ("setup",     "Set up Watchdog after installation"),
         ("configure", "View or change configuration"),
         ("about",     "Show version and project links"),
@@ -865,6 +903,11 @@ def main() -> None:
                           help="Number of results to return (default: 5)")
     p_search.set_defaults(func=cmd_search)
 
+    p_unlock = sub.add_parser("unlock", help="Release a stale ingest lock")
+    p_unlock.add_argument("project", help="Investigation name or slug")
+    p_unlock.add_argument("--force", action="store_true", help="Remove lock even if recent")
+    p_unlock.set_defaults(func=cmd_unlock)
+
     p_configure = sub.add_parser("configure", help="View or change configuration")
     p_configure.add_argument("key",   nargs="?", help=f"Config key ({', '.join(_CONFIGURE_KEYS)})")
     p_configure.add_argument("value", nargs="?", help="Value to set")
@@ -876,7 +919,7 @@ def main() -> None:
         _print_banner()
         return
 
-    if args.command not in ("setup", "about", "configure", "search") and not CONFIG_FILE.exists():
+    if args.command not in ("setup", "about", "configure", "search", "unlock") and not CONFIG_FILE.exists():
         sys.exit("Watchdog isn't set up yet. Run:\n  watchdog setup")
 
     args.func(args)
