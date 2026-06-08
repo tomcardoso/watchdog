@@ -108,18 +108,18 @@ def _zsh_snippet() -> str:
 # Watchdog tab completion
 _watchdog_complete() {
     local -a subcmds
-    subcmds=(new open list status setup configure about)
-    if (( CURRENT == 2 )); then
-        compadd -a subcmds
-    elif (( CURRENT == 3 )) && [[ "${words[2]}" == "open" ]]; then
-        local projects
-        projects=$(python3 -c "
+    subcmds=(new open list status search setup configure about)
+    local projects
+    projects=$(python3 -c "
 import json, os
 p = os.path.expanduser('~/.watchdog/projects.json')
 if os.path.exists(p):
     data = json.load(open(p))
     print(' '.join(data.keys()))
 " 2>/dev/null)
+    if (( CURRENT == 2 )); then
+        compadd -a subcmds
+    elif (( CURRENT == 3 )) && [[ "${words[2]}" == (open|status|search) ]]; then
         compadd ${=projects}
     fi
 }
@@ -135,8 +135,8 @@ _watchdog_bash_complete() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     if [[ ${COMP_CWORD} -eq 1 ]]; then
-        COMPREPLY=($(compgen -W "new open list status setup configure about" -- "${cur}"))
-    elif [[ "${prev}" == "open" ]]; then
+        COMPREPLY=($(compgen -W "new open list status search setup configure about" -- "${cur}"))
+    elif [[ "${prev}" == "open" || "${prev}" == "status" || "${prev}" == "search" ]]; then
         local projects
         projects=$(python3 -c "
 import json, os
@@ -155,15 +155,25 @@ complete -F _watchdog_bash_complete watchdog
 def _fish_completion() -> str:
     return """\
 # Watchdog tab completion
-set -l cmds new open list status setup configure about
+set -l cmds new open list status search setup configure about
+set -l proj_cmds open status search
+set -l projects (python3 -c "
+import json, os
+p = os.path.expanduser('~/.watchdog/projects.json')
+if os.path.exists(p):
+    data = json.load(open(p))
+    print(' '.join(data.keys()))
+" 2>/dev/null)
 complete -c watchdog -f
 complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a new       -d 'Create a new investigation vault'
 complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a open      -d 'Open an investigation in Claude Code'
 complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a list      -d 'List all investigations'
 complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a status    -d 'Show detailed status for an investigation'
+complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a search    -d 'Semantic search across ingested documents'
 complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a setup     -d 'Set up Watchdog'
 complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a configure -d 'View or change configuration'
 complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a about     -d 'Show version and project links'
+complete -c watchdog -n "__fish_seen_subcommand_from $proj_cmds" -a "$projects"
 """
 
 
