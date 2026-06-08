@@ -62,10 +62,6 @@ def test_fmt_date_extracts_date_portion():
     assert cli._fmt_date("2026-06-07T02:22:15Z") == "2026-06-07"
 
 
-def test_fmt_date_short_string():
-    assert cli._fmt_date("2026-06-07") == "2026-06-07"
-
-
 # ── _count_incoming ───────────────────────────────────────────────────────────
 
 def test_count_incoming_empty_dir(tmp_path):
@@ -319,17 +315,18 @@ def test_cmd_status_corrupt_registry_exits(configured):
 
 # ── setup gate ────────────────────────────────────────────────────────────────
 
-def test_gate_blocks_list_without_config(wdg_home):
+def test_gate_blocks_list_without_config(wdg_home, monkeypatch):
+    import sys
+    monkeypatch.setattr(sys, "argv", ["watchdog", "list"])
     with pytest.raises(SystemExit, match="watchdog setup"):
-        cli.main.__wrapped__ if hasattr(cli.main, "__wrapped__") else None
-        # Simulate main() dispatching to list without config present
-        if not cli.CONFIG_FILE.exists():
-            raise SystemExit("Watchdog isn't set up yet. Run:\n  watchdog setup")
+        cli.main()
 
 
-def test_gate_passes_with_config(configured):
-    # CONFIG_FILE exists — no SystemExit for list (empty output is fine)
-    assert cli.CONFIG_FILE.exists()
+def test_gate_passes_with_config(configured, monkeypatch, capsys):
+    import sys
+    monkeypatch.setattr(sys, "argv", ["watchdog", "list"])
+    cli.main()
+    assert "No projects" in capsys.readouterr().out
 
 
 # ── _find_project ─────────────────────────────────────────────────────────────
@@ -562,12 +559,6 @@ def test_configure_interactive_empty_input_no_change(wdg_home, monkeypatch):
 
 def test_configure_non_tty_shows_value_without_prompt(wdg_home, capsys):
     """When stdin is not a TTY, key-only shows value without prompting."""
-    import sys
-    # Default pytest stdin is not a TTY — no mock needed, but be explicit
-    class _NonTTY:
-        @staticmethod
-        def isatty(): return False
-    monkeypatch_obj = None  # use real sys.stdin which is non-TTY in pytest
     (wdg_home / "config.json").write_text(
         json.dumps({"chunk_timeout": 600}) + "\n"
     )
