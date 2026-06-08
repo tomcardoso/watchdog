@@ -251,7 +251,8 @@ def _run_chunk_subprocess(chunk_path: Path, page_offset: int, force_ocr: bool) -
             page["page"] += page_offset
         return result
     except subprocess.TimeoutExpired:
-        return {"error": f"Chunk timed out after {CHUNK_TIMEOUT}s"}
+        timeout = _config_get("chunk_timeout", CHUNK_TIMEOUT)
+        return {"error": f"Chunk timed out after {timeout}s"}
     except Exception as e:
         return {"error": str(e)}
 
@@ -268,7 +269,10 @@ def process_large_pdf(path: Path, force_ocr: bool, total_pages: int) -> dict:
     chunk_results: dict[int, dict] = {}
 
     def process_one(start: int, end: int) -> tuple[int, dict]:
-        chunk_path = pdf_extract_chunk(path, start, end)
+        try:
+            chunk_path = pdf_extract_chunk(path, start, end)
+        except Exception as e:
+            return start, {"error": f"Failed to extract pages {start+1}-{end}: {e}"}
         try:
             return start, _run_chunk_subprocess(chunk_path, start, force_ocr)
         finally:
@@ -287,10 +291,11 @@ def process_large_pdf(path: Path, force_ocr: bool, total_pages: int) -> dict:
     garbled_detected = False
     ocr_used = force_ocr
 
+    chunk_end = {s: e for s, e in chunks}
     for start in sorted(chunk_results.keys()):
         r = chunk_results[start]
         if "error" in r:
-            failed_chunks.append(f"pages {start+1}-{start+chunk_size}: {r['error']}")
+            failed_chunks.append(f"pages {start+1}-{chunk_end[start]}: {r['error']}")
             continue
         all_pages.extend(r.get("pages", []))
         if r.get("metadata", {}).get("garbled_detected"):
@@ -396,7 +401,10 @@ def process_with_docling(path: Path, force_ocr: bool = False) -> dict:
         if not is_pdf:
             return {"error": f"Docling conversion failed: {first_err}"}
         # Fallback: decrypt + re-render, then retry
-        cleaned = pdf_preprocess(path)
+        try:
+            cleaned = pdf_preprocess(path)
+        except Exception:
+            cleaned = None
         if cleaned is None:
             return {"error": f"Docling conversion failed: {first_err}"}
         try:
