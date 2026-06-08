@@ -214,6 +214,24 @@ def _build_timeline_section(
     return body
 
 
+def _update_manifest(vault_path: Path, entities_reg: dict) -> None:
+    """Write a lightweight lookup index: id → name, type, aliases, note_path only."""
+    manifest = {
+        eid: {
+            "name":      entry["name"],
+            "type":      entry["type"],
+            "aliases":   entry.get("aliases", []),
+            "note_path": entry["note_path"],
+        }
+        for eid, entry in entities_reg.items()
+    }
+    manifest_path = vault_path / ".watchdog" / "Registry" / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+
 def _rebuild_global_timeline(vault_path: Path, entities_reg: dict, docs_reg: dict) -> None:
     """Collect all timeline events from all entities and write timeline.md."""
     all_events: list[dict] = []
@@ -560,19 +578,25 @@ def run(extraction_path: Path, vault_path: Path) -> None:
         else:
             accumulated = existing_analysis
 
-        note_path.write_text(
-            build_entity_note(entry, notes_section, documents_reg, new_summary, accumulated),
-            encoding="utf-8",
-        )
+        note_content = build_entity_note(entry, notes_section, documents_reg, new_summary, accumulated)
+        note_path.write_text(note_content, encoding="utf-8")
+        try:
+            from watchdog.pipeline.embed import add_note
+            add_note(vault_path, entry["note_path"], note_content)
+        except Exception:
+            pass
 
     # ── 4. Write document note ────────────────────────────────────────────────
 
     doc_note_path = vault_path / "documents" / f"{slug}.md"
     doc_note_path.parent.mkdir(parents=True, exist_ok=True)
-    doc_note_path.write_text(
-        _build_document_note(doc, [entities_reg[e["id"]] for e in incoming_entities], morgue_relative),
-        encoding="utf-8",
-    )
+    doc_note_content = _build_document_note(doc, [entities_reg[e["id"]] for e in incoming_entities], morgue_relative)
+    doc_note_path.write_text(doc_note_content, encoding="utf-8")
+    try:
+        from watchdog.pipeline.embed import add_note
+        add_note(vault_path, f"documents/{slug}", doc_note_content)
+    except Exception:
+        pass
 
     # ── 5. Persist registries ─────────────────────────────────────────────────
 
@@ -592,6 +616,8 @@ def run(extraction_path: Path, vault_path: Path) -> None:
     registry_path.write_text(
         json.dumps(registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
+
+    _update_manifest(vault_path, entities_reg)
 
     with open(log_path, "a", encoding="utf-8") as f:
         f.write(

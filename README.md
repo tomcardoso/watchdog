@@ -68,7 +68,7 @@ Why Docling matters for investigative work:
 
 - **Table extraction** — financial statements and creditor lists are full of tables. Docling reconstructs them as structured data rather than garbled text, so Claude can reason about rows and columns correctly.
 - **Layout awareness** — multi-column layouts, footnotes, headers, and sidebars are handled correctly. A court document's header fields don't bleed into the body text.
-- **OCR integration** — when text extraction fails or produces garbled output, Docling falls back to OCR automatically. On macOS, Apple Vision is used (fast, hardware-accelerated); on Linux, EasyOCR.
+- **OCR integration** — when text extraction fails or produces garbled output, Docling falls back to OCR automatically. On macOS, Apple Vision is used (fast, hardware-accelerated); on other platforms, Tesseract is the default (install via `brew install tesseract` or `apt install tesseract-ocr`). The engine is configurable — see [Configuration](#configuration).
 - **Large document handling** — 400+ page PDFs are chunked into 40-page segments, processed in parallel, and reassembled in order with correct page numbers throughout.
 
 Docling runs locally. Your documents never leave your machine during preprocessing.
@@ -152,6 +152,18 @@ Then drop public records into `_INCOMING/`. At the start of every Claude Code se
 | `/watchdog-surface` | Find connections and anomalies across the full vault |
 | `/watchdog-wiki` | Create or update investigation thread pages |
 | `/watchdog-health` | Check vault integrity — orphaned notes, broken links, registry mismatches |
+
+**CLI search** (outside the vault, from any terminal):
+
+```bash
+watchdog search <investigation> "<query>"
+watchdog search my-investigation "offshore account transfers"
+watchdog search my-investigation "shell company director" --top 10
+```
+
+Returns the top matching results — raw document pages (with file name and page number) and vault notes (entity and document summaries) — ranked by semantic similarity. The index is built automatically during `/watchdog-ingest`; no separate step required.
+
+The first ingest after installation triggers a one-time ~50 MB model download (the `BAAI/bge-small-en-v1.5` embedding model via fastembed). Subsequent runs use the cached model.
 
 **Query examples:**
 
@@ -312,11 +324,26 @@ watchdog configure <key> <value>
 | Key | Default | Description |
 |-----|---------|-------------|
 | `projects_dir` | `~/Investigations` | Where new investigation vaults are created. Set during `watchdog setup`, change here afterwards. |
-| `ocr_languages` | *(auto-detect)* | Language codes for Apple Vision OCR, comma-separated (e.g. `en-US,fr-FR`). Leave unset to let macOS 13+ detect the document language automatically from the image. Set explicitly if auto-detection produces poor results or you are on macOS 12. Codes use the [BCP 47](https://www.iana.org/assignments/language-subtag-registry/language-subtag-registry) format; supported languages are listed in Apple's [Vision framework documentation](https://developer.apple.com/documentation/vision/vnrecognizetextrequest). |
+| `ocr_languages` | *(auto-detect)* | Language codes for Apple Vision OCR, comma-separated (e.g. `en-US,fr-FR`). Only applies when using Apple Vision (`auto` mode on macOS or `ocr_engine=apple_vision`). Leave unset to let macOS 13+ detect the language automatically. Codes use [BCP 47](https://www.iana.org/assignments/language-subtag-registry/language-subtag-registry) format. |
+| `ocr_engine` | `auto` | OCR engine for scanned documents. `auto` uses Apple Vision on macOS (if `ocrmac` is installed) and Tesseract elsewhere. Options: `auto`, `apple_vision`, `tesseract`, `easyocr`, `rapidocr`. Tesseract must be installed at the system level: `brew install tesseract` on macOS or `sudo apt install tesseract-ocr` on Debian/Ubuntu. |
+| `table_structure` | `true` | Whether Docling runs its table detection model on PDFs. Set to `false` to speed up ingestion of text-only documents (court decisions, contracts, regulatory filings) that contain no meaningful tables. |
+| `garbled_threshold` | `0.75` | Fraction of alphanumeric characters below which a PDF text layer is considered garbled and OCR is triggered automatically. Range: 0.0–1.0. |
+| `chunk_size` | `40` | Pages per chunk when splitting large PDFs for parallel processing. |
+| `chunk_workers` | *(half CPU cores)* | Parallel subprocesses for large-PDF processing. Set automatically at `watchdog setup` based on your machine. |
+| `chunk_timeout` | `300` | Seconds before a chunk subprocess is killed. Increase for very large or complex PDFs on slow machines. |
+| `dup_threshold` | `0.85` | Jaccard similarity score at which two documents are flagged as near-duplicates. Range: 0.0–1.0. |
+| `shingle_size` | `3` | Word n-gram size for near-duplicate fingerprinting. Changing this invalidates existing shingle data — re-ingest to rebuild. |
+| `embed_images` | `false` | Embed figures and images as base64 in the markdown output so Claude can read charts and image-based tables. Significantly increases token usage and processing time. Only enable for document sets where visual content carries investigative value. |
 
 **Examples:**
 
 ```bash
+# Switch to Tesseract on a non-Mac machine where it is already installed
+watchdog configure ocr_engine tesseract
+
+# Disable table detection for a project that is all court decisions
+watchdog configure table_structure false
+
 # Override OCR languages for a collection of French and Arabic documents
 watchdog configure ocr_languages "fr-FR,ar-SA"
 
@@ -369,7 +396,7 @@ Please open an issue before starting significant work so we can discuss approach
 
 - **[Docling](https://github.com/DS4SD/docling)** handles all document conversion — layout analysis, table extraction, OCR. Structured output (not raw text) is important for table-heavy documents like financial statements and creditor lists.
 - **Large PDFs** are split into 40-page chunks and processed in parallel via `watchdog preprocess-batch`. Page numbers are preserved and reassembled in order.
-- **OCR engine:** Apple Vision on macOS (fast, hardware-accelerated); EasyOCR on Linux/Windows.
+- **OCR engine:** Apple Vision on macOS (fast, hardware-accelerated); Tesseract on Linux/Windows (requires system install). Configurable via `watchdog configure ocr_engine`.
 - **Near-duplicate detection** uses Jaccard similarity on word 3-gram shingles — no ML dependencies, runs locally.
 - **Registries** (`.watchdog/Registry/documents.json`, `entities.json`) are the source of truth. Obsidian notes are generated outputs — deleting a note doesn't lose data.
 - **Vault writes are atomic** — `watchdog write-vault` handles entity notes, document notes, timeline, registries, and the morgue move in a single operation behind an ingest lock.
@@ -380,6 +407,8 @@ Please open an issue before starting significant work so we can discuss approach
 ## Acknowledgements
 
 Watchdog's vault structure and session-context approach were partly inspired by [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian) by Daniel Agrici — a PKM framework built on Claude Code that demonstrated how to make an AI assistant genuinely vault-aware across sessions. The `hot.md` session state file and the general principle of teaching Claude to orient itself from structured vault context both draw on ideas in that project.
+
+The semantic search index uses [fastembed](https://github.com/qdrant/fastembed) (by Qdrant) with the `BAAI/bge-small-en-v1.5` model — a lightweight ONNX-based embedding library that avoids the PyTorch dependency footprint while matching the quality of heavier alternatives. The idea of embedding raw document pages for retroactive search across a large corpus, separate from the extracted knowledge graph, was partly informed by [obsidian-smart-connections](https://github.com/brianpetro/obsidian-smart-connections) by Brian Petro. The pattern of using a structured vault index for entity lookup — rather than embedding everything — was informed by [obsidian-claude-code](https://github.com/Roasbeef/obsidian-claude-code).
 
 ---
 

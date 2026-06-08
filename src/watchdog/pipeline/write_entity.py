@@ -35,6 +35,7 @@ from watchdog.pipeline.write_vault import (
     _extract_notes_section,
     _extract_analysis,
     _rebuild_global_timeline,
+    _update_manifest,
     build_entity_note,
     _today,
     _now_iso,
@@ -72,15 +73,19 @@ def run(extraction_path: Path, vault_path: Path) -> None:
     notes_section = _extract_notes_section(note_path)
 
     note_path.parent.mkdir(parents=True, exist_ok=True)
-    note_path.write_text(
-        build_entity_note(entry, notes_section, documents_reg, new_summary, existing_analysis),
-        encoding="utf-8",
-    )
+    note_content = build_entity_note(entry, notes_section, documents_reg, new_summary, existing_analysis)
+    note_path.write_text(note_content, encoding="utf-8")
+    try:
+        from watchdog.pipeline.embed import add_note
+        add_note(vault_path, entry["note_path"], note_content)
+    except Exception:
+        pass
 
     entities_path.write_text(
         json.dumps(entities_reg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
 
+    _update_manifest(vault_path, entities_reg)
     _rebuild_global_timeline(vault_path, entities_reg, documents_reg)
 
     print(f"OK  {entity_id}  timeline_events={len(new_events)}")

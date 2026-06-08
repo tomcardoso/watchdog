@@ -483,6 +483,58 @@ def test_ingest_log_appended(tmp_path):
     assert "abc123" in log
 
 
+# ── Manifest ──────────────────────────────────────────────────────────────────
+
+def test_manifest_created_on_ingest(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    run(make_extraction(tmp_path), vault)
+
+    manifest_path = vault / ".watchdog" / "Registry" / "manifest.json"
+    assert manifest_path.exists()
+    manifest = json.loads(manifest_path.read_text())
+    assert "alice-smith" in manifest
+    assert "acme-corp" in manifest
+
+
+def test_manifest_contains_only_lookup_fields(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    run(make_extraction(tmp_path), vault)
+
+    manifest = json.loads(
+        (vault / ".watchdog" / "Registry" / "manifest.json").read_text()
+    )
+    entry = manifest["alice-smith"]
+    assert set(entry.keys()) == {"name", "type", "aliases", "note_path"}
+    # Must NOT contain timeline_events or roles
+    assert "timeline_events" not in entry
+    assert "roles" not in entry
+    assert "appears_in" not in entry
+
+
+def test_manifest_includes_aliases(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    run(make_extraction(tmp_path), vault)
+
+    manifest = json.loads(
+        (vault / ".watchdog" / "Registry" / "manifest.json").read_text()
+    )
+    assert "A. Smith" in manifest["alice-smith"]["aliases"]
+
+
+def test_manifest_note_path_is_correct(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    run(make_extraction(tmp_path), vault)
+
+    manifest = json.loads(
+        (vault / ".watchdog" / "Registry" / "manifest.json").read_text()
+    )
+    assert manifest["alice-smith"]["note_path"] == "entities/person/alice-smith"
+
+
 # ── Morgue move ───────────────────────────────────────────────────────────────
 
 def test_source_file_moved_to_morgue(tmp_path):

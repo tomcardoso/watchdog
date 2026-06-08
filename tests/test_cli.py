@@ -504,11 +504,86 @@ def test_configure_int_below_min_exits(wdg_home):
         cli.cmd_configure(args(key="chunk_workers", value="0"))
 
 
+# ── configure — bool keys ─────────────────────────────────────────────────────
+
+def test_configure_set_table_structure_false(wdg_home):
+    # Verifies string→bool coercion: "false" must be stored as Python False, not string
+    cli.cmd_configure(args(key="table_structure", value="false"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["table_structure"] is False
+
+
+def test_configure_set_table_structure_accepts_variants(wdg_home, capsys):
+    for truthy in ("true", "yes", "1", "on"):
+        cli.cmd_configure(args(key="table_structure", value=truthy))
+        config = json.loads((wdg_home / "config.json").read_text())
+        assert config["table_structure"] is True, f"'{truthy}' should map to True"
+
+
+def test_configure_bool_invalid_exits(wdg_home):
+    with pytest.raises(SystemExit, match="true or false"):
+        cli.cmd_configure(args(key="table_structure", value="maybe"))
+
+
+# ── configure — enum keys ─────────────────────────────────────────────────────
+
+def test_configure_set_ocr_engine(wdg_home, monkeypatch):
+    monkeypatch.setattr(cli, "_ensure_ocr_engine", lambda engine: None)
+    cli.cmd_configure(args(key="ocr_engine", value="tesseract"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["ocr_engine"] == "tesseract"
+
+
+def test_configure_ocr_engine_invalid_exits(wdg_home):
+    with pytest.raises(SystemExit, match="must be one of"):
+        cli.cmd_configure(args(key="ocr_engine", value="badengine"))
+
+
+# ── _ensure_ocr_engine ────────────────────────────────────────────────────────
+
+def test_ensure_ocr_engine_noop_for_auto(monkeypatch):
+    # auto and easyocr have no package to install — should return immediately
+    called = []
+    monkeypatch.setattr(cli.subprocess, "run", lambda *a, **kw: called.append(a))
+    cli._ensure_ocr_engine("auto")
+    cli._ensure_ocr_engine("easyocr")
+    assert called == []
+
+
+def test_ensure_ocr_engine_skips_if_already_importable(monkeypatch):
+    # Point to a module guaranteed to be importable so we can test the skip logic
+    monkeypatch.setitem(cli._OCR_ENGINE_PACKAGES, "tesseract", ("json", "fake-pkg"))
+    calls = []
+    monkeypatch.setattr(cli.subprocess, "run", lambda cmd, **kw: calls.append(cmd))
+    cli._ensure_ocr_engine("tesseract")
+    assert calls == []  # json is importable, so no pip install should happen
+
+
+def test_ensure_ocr_engine_installs_missing_package(monkeypatch):
+    # Simulate missing package: __import__ raises ImportError, subprocess succeeds
+    import types
+    monkeypatch.setitem(
+        cli._OCR_ENGINE_PACKAGES, "tesseract", ("_no_such_pkg_xyz", "fake-pkg")
+    )
+    result = types.SimpleNamespace(returncode=0, stderr="")
+    calls = []
+    monkeypatch.setattr(cli.subprocess, "run", lambda cmd, **kw: calls.append(cmd) or result)
+    cli._ensure_ocr_engine("tesseract")
+    assert any("fake-pkg" in str(c) for c in calls)
+
+
+def test_ensure_ocr_engine_apple_vision_non_mac_exits(monkeypatch):
+    monkeypatch.setattr(cli.sys, "platform", "linux")
+    with pytest.raises(SystemExit, match="only available on macOS"):
+        cli._ensure_ocr_engine("apple_vision")
+
+
 def test_configure_show_all_includes_new_keys(wdg_home, capsys):
     cli.cmd_configure(args())
     out = _strip_ansi(capsys.readouterr().out)
     for key in ("garbled_threshold", "chunk_size", "chunk_workers",
-                "chunk_timeout", "dup_threshold", "shingle_size"):
+                "chunk_timeout", "dup_threshold", "shingle_size",
+                "table_structure", "embed_images", "ocr_engine"):
         assert key in out, f"'{key}' missing from configure output"
 
 

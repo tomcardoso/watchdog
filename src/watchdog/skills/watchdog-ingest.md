@@ -122,12 +122,12 @@ If the SHA-256 already exists in `documents.json`, skip this file:
 ### 2b. Run preprocessing
 
 ```bash
-watchdog preprocess "<file_path>"
+watchdog preprocess "<file_path>" --vault-path "$(pwd)"
 ```
 
 Capture the JSON output. If the output contains `"error"`, move the file to `_INCOMING/_FAILED/` (create if needed), log the error, and continue to the next file.
 
-The output gives you: `filename`, `sha256`, `page_count`, `text`, `pages[]`, `metadata`.
+The output gives you: `filename`, `sha256`, `page_count`, `pages[]` (each with `page` number and `markdown` content), `metadata`.
 
 **Special case — arrows.app JSON:**
 If the filename ends in `.json` and the JSON contains `"nodes"` and `"relationships"` keys at the top level, this is an arrows.app file. Run instead:
@@ -234,13 +234,17 @@ From the document text, determine:
 
 ### 3c. Extract entities
 
+Before extracting, read `.watchdog/Registry/manifest.json`. It lists every entity already in the vault: `id`, `name`, `type`, `aliases`, and `note_path`. Use it to:
+- Assign the correct existing `id` when the document mentions an entity already in the vault (match on name or any alias — be thorough, OCR errors are common)
+- Avoid creating a new entity that is a variation of an existing one ("Shell Co." and "Shell Company Ltd." are the same entity if the aliases match)
+
 Read through the full text carefully. For every real-world entity:
 
 **Extract:**
 - `name` — canonical full name as it appears most completely in the document
 - `type` — Person / Company / Address / Property / CourtCase / Transaction / or a new type you determine is appropriate
 - `aliases` — every other name or abbreviation used for this entity in the document
-- `id` — kebab-case slug: `john-doe`, `shell-co-ltd`, `123-main-st-toronto-on`
+- `id` — use the existing manifest ID if the entity is already in the vault; otherwise generate a new kebab-case slug: `john-doe`, `shell-co-ltd`, `123-main-st-toronto-on`
 
 **Record appearances:**
 - Which pages the entity appears on
@@ -276,7 +280,7 @@ Pull out the 5–15 most important facts from the document, with:
 
 ### 3f. Contradiction check
 
-For each entity you extracted that already exists in `.watchdog/Registry/entities.json`, read its existing entity note from `entities/<type>/<id>.md`.
+For each entity you extracted that already exists in the manifest, read its entity note from the `note_path` listed there (append `.md`).
 
 Compare the following against what the new document states:
 - Key dates (incorporation, appointment, transaction dates in the timeline)
@@ -377,6 +381,8 @@ rm /tmp/watchdog-extraction-<sha256>.json
 ```
 
 `watchdog write-vault` handles all vault writes atomically: entity notes (new or merged), document note, all 4 registry files (`entities.json`, `documents.json`, `registry.json`, `ingest.log`), and the morgue move. Do not perform any of these writes manually.
+
+**Graph colour check** — after `watchdog write-vault` completes, check whether any entity type you extracted is missing from `.obsidian/graph.json`'s `colorGroups` array. If so, add a colour entry for it. The query pattern is `path:entities/<type_lowercase>` and the colour format is `{"a": 1, "rgb": <24-bit packed integer>}` where the integer is `(R << 16) | (G << 8) | B`. Pick a colour that is visually distinct from the ones already in use. Read the existing file first, update the `colorGroups` array, and write it back.
 
 **Context compaction check** — after each successful `watchdog write-vault` call, add the file's `char_count` (from the batch `--meta` result) to `CUMULATIVE_CHARS`. If `CUMULATIVE_CHARS > 500000`, run `/compact` and reset `CUMULATIVE_CHARS = 0`.
 

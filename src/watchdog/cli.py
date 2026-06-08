@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 from collections import Counter
 from datetime import datetime, timezone
@@ -154,6 +155,7 @@ def cmd_new(args) -> None:
 
     (vault / ".watchdog" / "Registry" / "documents.json").write_text("{}\n")
     (vault / ".watchdog" / "Registry" / "entities.json").write_text("{}\n")
+    (vault / ".watchdog" / "Registry" / "manifest.json").write_text("{}\n")
     (vault / ".watchdog" / "Registry" / "registry.json").write_text(
         json.dumps(
             {"schema_version": "1", "created_at": now, "last_updated": now,
@@ -549,7 +551,124 @@ _CONFIGURE_KEYS = {
         "default": 3,
         "min": 1,
     },
+    "table_structure": {
+        "short": "Run table detection model on PDFs (default: true)",
+        "help": (
+            "When enabled, Docling runs a dedicated ML model to detect and reconstruct tables.\n"
+            "  Disable to speed up ingestion of text-only documents (court decisions, contracts).\n"
+            "  Does not affect text extraction — only the table structure model.\n"
+            "  Default: true."
+        ),
+        "type": "bool",
+        "default": True,
+    },
+    "embed_images": {
+        "short": "Embed images as base64 in markdown output so Claude can see figures (default: false)",
+        "help": (
+            "When enabled, images and figures in documents are embedded as base64 data\n"
+            "  in the markdown output, allowing Claude to read charts, graphs, and other\n"
+            "  visual content directly. Significantly increases token usage and processing\n"
+            "  time per document. Only useful when documents contain charts, image-based\n"
+            "  tables, or diagrams that carry investigative value.\n"
+            "  Default: false."
+        ),
+        "type": "bool",
+        "default": False,
+    },
+    "ocr_engine": {
+        "short": "OCR engine for scanned documents (default: auto)",
+        "help": (
+            "OCR engine used when processing scanned documents.\n"
+            "  auto:         Apple Vision on macOS (if ocrmac installed), Tesseract elsewhere.\n"
+            "  apple_vision: Apple Vision only — macOS with ocrmac required.\n"
+            "  tesseract:    Tesseract — requires system install (brew or apt install tesseract-ocr).\n"
+            "  easyocr:      EasyOCR — pure pip install, no system deps, less accurate on forms.\n"
+            "  rapidocr:     RapidOCR — lightweight, no C deps, fast.\n"
+            "  Valid values: auto, apple_vision, tesseract, easyocr, rapidocr."
+        ),
+        "type": "enum",
+        "default": "auto",
+        "choices": ["auto", "apple_vision", "tesseract", "easyocr", "rapidocr"],
+    },
 }
+
+
+_OCR_ENGINE_PACKAGES = {
+    # engine → (import_name, pip_package) or None if bundled with docling
+    "apple_vision": ("ocrmac",               "ocrmac"),
+    "tesseract":    ("tesserocr",            "tesserocr"),
+    "rapidocr":     ("rapidocr_onnxruntime", "rapidocr-onnxruntime"),
+    "easyocr":      None,
+    "auto":         None,
+}
+
+_TESSERACT_HEADERS_HINT = (
+    "Tesseract system headers are required to build tesserocr:\n"
+    "  Ubuntu/Debian:  sudo apt install tesseract-ocr libtesseract-dev\n"
+    "  Fedora:         sudo dnf install tesseract tesseract-devel\n"
+    "  macOS:          brew install tesseract\n"
+    "Then re-run: watchdog configure ocr_engine tesseract"
+)
+
+
+def _ensure_ocr_engine(engine: str) -> None:
+    """Install the Python binding for the requested OCR engine if not already present."""
+    if engine == "apple_vision" and sys.platform != "darwin":
+        sys.exit("Error: apple_vision OCR is only available on macOS.")
+
+    spec = _OCR_ENGINE_PACKAGES.get(engine)
+    if spec is None:
+        return
+
+    import_name, pip_name = spec
+    try:
+        __import__(import_name)
+        return  # already installed
+    except ImportError:
+        pass
+
+    print(f"\n  {_DIM}Installing {pip_name}...{_RESET}")
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", pip_name],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        msg = f"\n  {_YELLOW}Warning:{_RESET} could not install {pip_name}.\n"
+        if "tesserocr" in pip_name and ("gcc" in stderr or "compile" in stderr.lower() or "build" in stderr.lower()):
+            msg += f"\n  {_DIM}{_TESSERACT_HEADERS_HINT}{_RESET}\n"
+        else:
+            msg += f"\n  {_DIM}{stderr[:300]}{_RESET}\n"
+        print(msg)
+    else:
+        print(f"  {_GREEN}Installed:{_RESET} {_BOLD}{pip_name}{_RESET}\n")
+
+
+def cmd_search(args) -> None:
+    _, info = _find_project(args.project)
+    vault = Path(info["path"])
+
+    from watchdog.pipeline.embed import search, index_stats
+    stats = index_stats(vault)
+    if stats["pages"] == 0:
+        print(f"\n  {_DIM}No embeddings found. Index is built automatically during ingest.{_RESET}\n")
+        return
+
+    results = search(vault, args.query, top_n=args.top_n)
+    print()
+    if not results:
+        print(f"  {_DIM}No results.{_RESET}\n")
+        return
+    for r in results:
+        score = f"{r['score']:.2f}"
+        if r.get("type") == "note":
+            print(f"  {_BOLD}{r['note_path']}{_RESET}  {_DIM}score {score}{_RESET}")
+        else:
+            print(f"  {_BOLD}{r.get('filename', '?')}{_RESET}  {_DIM}p.{r.get('page')}  score {score}{_RESET}")
+        preview = r["preview"].replace("\n", " ").strip()
+        print(f"  {_DIM}{preview[:200]}{_RESET}")
+        print()
 
 
 def cmd_configure(args) -> None:
@@ -570,10 +689,13 @@ def cmd_configure(args) -> None:
                 return f"{_DIM}auto-detect (default){_RESET}"
             d = meta.get("default")
             if d is not None:
-                return f"{_DIM}(not set — default: {d}){_RESET}"
+                d_str = "true" if d is True else "false" if d is False else str(d)
+                return f"{_DIM}(not set — default: {d_str}){_RESET}"
             return f"{_DIM}(not set){_RESET}"
         if k == "ocr_languages":
             return f"{_CYAN}{', '.join(v)}{_RESET}" if v else f"{_DIM}auto-detect (default){_RESET}"
+        if isinstance(v, bool):
+            return f"{_CYAN}{'true' if v else 'false'}{_RESET}"
         return f"{_CYAN}{v}{_RESET}"
 
     if key is None:
@@ -645,6 +767,23 @@ def cmd_configure(args) -> None:
             sys.exit(f"Error: '{key}' must be >= {lo}")
         config[key] = v
         display = str(v)
+    elif meta["type"] == "bool":
+        if value.lower() in ("true", "yes", "1", "on"):
+            v = True
+        elif value.lower() in ("false", "no", "0", "off"):
+            v = False
+        else:
+            sys.exit(f"Error: '{key}' must be true or false")
+        config[key] = v
+        display = "true" if v else "false"
+    elif meta["type"] == "enum":
+        choices = meta.get("choices", [])
+        if value not in choices:
+            sys.exit(f"Error: '{key}' must be one of: {', '.join(choices)}")
+        config[key] = value
+        display = value
+        if key == "ocr_engine":
+            _ensure_ocr_engine(value)
     else:
         config[key] = value
         display = value
@@ -665,6 +804,7 @@ def _print_banner() -> None:
         ("open",   "Open an investigation in Claude Code"),
         ("list",   "List all registered investigations"),
         ("status", "Show detailed status for an investigation"),
+        ("search",    "Semantic search across ingested documents"),
         ("setup",     "Set up Watchdog after installation"),
         ("configure", "View or change configuration"),
         ("about",     "Show version and project links"),
@@ -718,6 +858,13 @@ def main() -> None:
     p_about = sub.add_parser("about", help="Show version and project links")
     p_about.set_defaults(func=cmd_about)
 
+    p_search = sub.add_parser("search", help="Semantic search across ingested documents")
+    p_search.add_argument("project", help="Investigation name or slug")
+    p_search.add_argument("query", help="Search query")
+    p_search.add_argument("--top", dest="top_n", type=int, default=5, metavar="N",
+                          help="Number of results to return (default: 5)")
+    p_search.set_defaults(func=cmd_search)
+
     p_configure = sub.add_parser("configure", help="View or change configuration")
     p_configure.add_argument("key",   nargs="?", help=f"Config key ({', '.join(_CONFIGURE_KEYS)})")
     p_configure.add_argument("value", nargs="?", help="Value to set")
@@ -729,7 +876,7 @@ def main() -> None:
         _print_banner()
         return
 
-    if args.command not in ("setup", "about", "configure") and not CONFIG_FILE.exists():
+    if args.command not in ("setup", "about", "configure", "search") and not CONFIG_FILE.exists():
         sys.exit("Watchdog isn't set up yet. Run:\n  watchdog setup")
 
     args.func(args)

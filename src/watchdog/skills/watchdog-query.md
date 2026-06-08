@@ -20,13 +20,13 @@ Identify:
 
 Read the relevant vault files. Prioritise in this order:
 
-1. **Registry/entities.json** — to find entities matching names in the question
-2. **Entity notes** (`entities/<type>/<id>.md`) — each note has a `## Summary` (who this entity is and their significance), `## Timeline` (datable events), `## Analysis` (accumulated investigative observations), and `## Relationships` (links to other entities)
+1. **Registry/manifest.json** — lightweight index of every entity: `id`, `name`, `type`, `aliases`, `note_path`. Read this first to find which entities are relevant to the question. Match on name and all aliases.
+2. **Entity notes** — read only the specific notes identified in step 1 (use the `note_path` field, append `.md`). Each note has a `## Summary`, `## Timeline`, `## Analysis`, and `## Relationships`.
 3. **timeline.md** — global chronological view across all entities; use this for "when did X happen?" or "what happened in year Y?" questions
 4. **Document notes** (`documents/*.md`) — for the source documents those entities appear in
 5. **Briefings** (`briefings/*.md`) — for previous analysis that may be relevant
 
-Use Bash `grep -r` across the vault if you need to find entities by alias or partial name:
+If the manifest doesn't surface the right entity by name, fall back to grep:
 ```bash
 grep -ri "<search term>" entities/ documents/ --include="*.md" -l
 ```

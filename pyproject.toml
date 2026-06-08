@@ -27,12 +27,14 @@ dependencies = [
     "docling>=2.0",
     "pypdf>=4.0",
     "pyyaml>=6.0",
+    "fastembed>=0.4",
+    "ocrmac; sys_platform == 'darwin'",
+    "tesserocr; sys_platform != 'darwin'",
 ]
 
 [project.optional-dependencies]
-macos = ["ocrmac"]          # Apple Vision OCR — faster on Apple Silicon
-asr   = ["docling[asr]"]   # Audio/video transcription — requires ffmpeg
-dev   = ["pytest>=8.0"]
+asr = ["docling[asr]"]   # Audio/video transcription — requires ffmpeg
+dev = ["pytest>=8.0", "numpy>=1.24"]
 
 [project.scripts]
 watchdog = "watchdog.cli:main"

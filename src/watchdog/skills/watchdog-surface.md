@@ -14,23 +14,17 @@ Read `context.md` if it exists. This tells you what the journalist is pursuing a
 
 ## 1. Load the vault
 
-Read all entity notes:
-```bash
-find entities/ -name "*.md" | sort
-```
+Read these files to build your working index:
 
-Read all document notes:
-```bash
-find documents/ -name "*.md" | sort
-```
-
-Read `.watchdog/Registry/entities.json` and `.watchdog/Registry/documents.json` for the structured view.
+1. **`.watchdog/Registry/manifest.json`** — every entity's `id`, `name`, `type`, `aliases`, `note_path`. This is your entity directory. Do not read individual entity notes yet.
+2. **`.watchdog/Registry/documents.json`** — every document's `sha256`, `filename`, `title`, `document_type`, `entities_extracted`, `appears_in`, `page_count`.
+3. **`timeline.md`** — global chronological view of all events across all entities.
 
 Build a working index in memory:
-- Entity ID → type, name, aliases, roles (from `entities.json`), appears_in
-- Document slug → type, date, entities_mentioned
+- Entity ID → type, name, aliases, note_path (from manifest)
+- Document slug → type, date, entities_mentioned (from documents.json)
 
-Also read `timeline.md` for a global chronological view of all events.
+**Read individual entity notes on demand** — only when a specific analysis step requires the full `## Summary`, `## Timeline`, `## Analysis`, or `## Relationships` content. Do not read all notes upfront.
 
 ---
 

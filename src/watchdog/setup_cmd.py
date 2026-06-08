@@ -15,10 +15,16 @@ _BOLD   = "\033[1m"
 _RESET  = "\033[0m"
 
 _DEPS = [
-    ("qpdf",  "qpdf",        "macOS: brew install qpdf  |  Ubuntu/Debian: sudo apt install qpdf  |  Windows: scoop install qpdf"),
-    ("gs",    "ghostscript", "macOS: brew install ghostscript  |  Ubuntu/Debian: sudo apt install ghostscript  |  Windows: https://ghostscript.com/releases/gsdnld.html"),
-    ("claude","Claude Code", "https://claude.ai/download"),
+    ("qpdf", "qpdf",        "macOS: brew install qpdf  |  Ubuntu/Debian: sudo apt install qpdf  |  Windows: scoop install qpdf"),
+    ("gs",   "ghostscript", "macOS: brew install ghostscript  |  Ubuntu/Debian: sudo apt install ghostscript  |  Windows: https://ghostscript.com/releases/gsdnld.html"),
 ]
+if sys.platform != "darwin":
+    _DEPS.append((
+        "tesseract",
+        "Tesseract OCR",
+        "Ubuntu/Debian: sudo apt install tesseract-ocr libtesseract-dev  |  Fedora: sudo dnf install tesseract tesseract-devel  |  Windows: https://github.com/UB-Mannheim/tesseract/wiki",
+    ))
+_DEPS.append(("claude", "Claude Code", "https://claude.ai/download"))
 
 
 def _ok(msg):   print(f"  {_GREEN}✓{_RESET}  {msg}")
@@ -229,6 +235,23 @@ def run(force: bool = False) -> None:
     print()
     print("Detecting machine capabilities...")
     _ok(f"CPU cores: {cores} → chunk_workers set to {chunk_workers}")
+
+    # 6. OCR engine
+    print()
+    print("Detecting OCR engine...")
+    if sys.platform == "darwin":
+        try:
+            import ocrmac  # noqa: F401
+            _ok("Apple Vision (ocrmac) — hardware-accelerated OCR on macOS")
+        except ImportError:
+            _warn("ocrmac not importable — OCR will fall back to EasyOCR (run: pip install ocrmac)")
+    else:
+        try:
+            import tesserocr  # noqa: F401
+            _ok("Tesseract (tesserocr) — OCR engine ready")
+        except ImportError:
+            _warn("tesserocr not importable — OCR will fall back to EasyOCR"
+                  " (install Tesseract system package first, then: pip install tesserocr)")
 
     # 6. Write config
     WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)

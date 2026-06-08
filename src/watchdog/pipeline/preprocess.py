@@ -10,8 +10,7 @@ Outputs a single JSON object to stdout:
   "filename": str,
   "sha256": str,
   "page_count": int,
-  "text": str,               # full document text
-  "pages": [{"page": int, "text": str}, ...],
+  "pages": [{"page": int, "markdown": str}, ...],
   "metadata": {
     "ocr_used": bool,
     "garbled_detected": bool,
@@ -114,8 +113,7 @@ def process_direct_text(path: Path) -> dict:
         "filename": path.name,
         "sha256": sha256_file(path),
         "page_count": 1,
-        "text": text,
-        "pages": [{"page": 1, "text": text}],
+        "pages": [{"page": 1, "markdown": text}],
         "metadata": {"ocr_used": False, "garbled_detected": False,
                      "source_type": "direct_text", "chunked": False},
     }
@@ -171,33 +169,59 @@ def _ocr_languages() -> list[str]:
     return _config_get("ocr_languages", [])
 
 
-def build_converter(force_ocr: bool):
-    """Build a Docling DocumentConverter for PDFs with the best available OCR engine.
+def _make_tesseract_opts(force_ocr: bool):
+    """Return TesseractOcrOptions if tesserocr is importable, else OcrAutoOptions."""
+    try:
+        import tesserocr  # noqa: F401
+        from docling.datamodel.pipeline_options import TesseractOcrOptions
+        return TesseractOcrOptions(force_full_page_ocr=force_ocr)
+    except ImportError:
+        from docling.datamodel.pipeline_options import OcrAutoOptions
+        return OcrAutoOptions(force_full_page_ocr=force_ocr)
 
-    Engine priority:
-      1. Apple Vision (macOS only, ocrmac package) — fastest
-      2. EasyOCR (OcrAutoOptions) — universal fallback
+
+def build_converter(force_ocr: bool):
+    """Build a Docling DocumentConverter with the configured OCR engine.
+
+    Engine selection (auto mode):
+      1. Apple Vision (macOS only, requires ocrmac) — fast, hardware-accelerated
+      2. Tesseract (if system binary found) — accurate on document text
+      3. EasyOCR (OcrAutoOptions) — universal fallback, no system deps
     """
     from docling.document_converter import DocumentConverter, PdfFormatOption
     from docling.datamodel.pipeline_options import PdfPipelineOptions, OcrAutoOptions
     from docling.datamodel.base_models import InputFormat
 
-    ocr_opts = None
+    engine    = _config_get("ocr_engine", "auto")
+    do_tables = _config_get("table_structure", True)
+    ocr_opts  = None
 
-    # Try Apple Vision on macOS — check by importing ocrmac directly rather than
-    # instantiating a throwaway DocumentConverter (which loads all ML models).
-    if sys.platform == "darwin":
-        try:
-            import ocrmac as _ocrmac  # noqa: F401
-            from docling.datamodel.pipeline_options import OcrMacOptions
-            ocr_opts = OcrMacOptions(lang=_ocr_languages(), force_full_page_ocr=force_ocr)
-        except Exception:
-            ocr_opts = None  # fall through to EasyOCR
+    if engine in ("auto", "apple_vision"):
+        if sys.platform == "darwin":
+            try:
+                import ocrmac as _ocrmac  # noqa: F401
+                from docling.datamodel.pipeline_options import OcrMacOptions
+                ocr_opts = OcrMacOptions(lang=_ocr_languages(), force_full_page_ocr=force_ocr)
+            except Exception:
+                if engine == "apple_vision":
+                    sys.exit("Error: apple_vision OCR requires macOS and the ocrmac package.")
+        elif engine == "apple_vision":
+            sys.exit("Error: apple_vision OCR is only available on macOS.")
 
     if ocr_opts is None:
-        ocr_opts = OcrAutoOptions(lang=[], force_full_page_ocr=force_ocr)
+        if engine == "easyocr":
+            ocr_opts = OcrAutoOptions(force_full_page_ocr=force_ocr)
+        elif engine == "rapidocr":
+            from docling.datamodel.pipeline_options import RapidOcrOptions
+            ocr_opts = RapidOcrOptions(force_full_page_ocr=force_ocr)
+        else:  # auto or tesseract
+            ocr_opts = _make_tesseract_opts(force_ocr)
 
-    pipeline_options = PdfPipelineOptions(do_ocr=True, ocr_options=ocr_opts)
+    pipeline_options = PdfPipelineOptions(
+        do_ocr=True,
+        do_table_structure=do_tables,
+        ocr_options=ocr_opts,
+    )
     return DocumentConverter(
         format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
     )
@@ -268,13 +292,10 @@ def process_large_pdf(path: Path, force_ocr: bool, total_pages: int) -> dict:
         if r.get("metadata", {}).get("ocr_used"):
             ocr_used = True
 
-    full_text = "\n\n".join(p["text"] for p in all_pages)
-
     result = {
         "filename": path.name,
         "sha256": sha256_file(path),
         "page_count": total_pages,
-        "text": full_text,
         "pages": all_pages,
         "metadata": {
             "ocr_used": ocr_used,
@@ -289,6 +310,42 @@ def process_large_pdf(path: Path, force_ocr: bool, total_pages: int) -> dict:
         result["metadata"]["failed_chunks"] = failed_chunks
 
     return result
+
+
+_PAGE_BREAK = "\n\n<!-- page-break -->\n\n"
+
+
+def _markdown_pages(doc) -> list[dict]:
+    """Export a Docling document to per-page markdown using the native API."""
+    try:
+        from docling_core.types.doc.document import ContentLayer, ImageRefMode
+        layers     = {ContentLayer.BODY, ContentLayer.FURNITURE}
+        image_mode = (
+            ImageRefMode.EMBEDDED if _config_get("embed_images", False)
+            else ImageRefMode.PLACEHOLDER
+        )
+    except ImportError:
+        layers     = None
+        image_mode = None
+
+    kwargs = dict(
+        page_break_placeholder=_PAGE_BREAK,
+        image_placeholder="[image]",
+        traverse_pictures=True,
+        included_content_layers=layers,
+    )
+    if image_mode is not None:
+        kwargs["image_mode"] = image_mode
+
+    md = doc.export_to_markdown(**kwargs)
+
+    parts = [p.strip() for p in md.split(_PAGE_BREAK)]
+    pages = [
+        {"page": i + 1, "markdown": part}
+        for i, part in enumerate(parts)
+        if part
+    ]
+    return pages or [{"page": 1, "markdown": md.strip()}]
 
 
 def process_with_docling(path: Path, force_ocr: bool = False) -> dict:
@@ -342,37 +399,13 @@ def process_with_docling(path: Path, force_ocr: bool = False) -> dict:
                 cleaned.unlink()
 
     doc = result.document
-
-    pages_dict: dict[int, list[str]] = {}
-    try:
-        for item, _level in doc.iterate_items():
-            text = getattr(item, "text", None)
-            if not text:
-                continue
-            page_no = 1
-            if getattr(item, "prov", None):
-                page_no = item.prov[0].page_no
-            pages_dict.setdefault(page_no, []).append(text)
-    except Exception:
-        pass
-
-    if pages_dict:
-        pages = [
-            {"page": pno, "text": " ".join(parts)}
-            for pno, parts in sorted(pages_dict.items())
-        ]
-        full_text = "\n\n".join(p["text"] for p in pages)
-        page_count = max(pages_dict.keys())
-    else:
-        full_text = doc.export_to_markdown()
-        pages = [{"page": 1, "text": full_text}]
-        page_count = 1
+    pages = _markdown_pages(doc)
+    page_count = max(p["page"] for p in pages)
 
     return {
         "filename": path.name,
         "sha256": sha256_file(path),
         "page_count": page_count,
-        "text": full_text,
         "pages": pages,
         "metadata": {
             "ocr_used": force_ocr,
@@ -387,6 +420,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Watchdog document preprocessor")
     parser.add_argument("file", help="Path to the document")
     parser.add_argument("--force-ocr", action="store_true", help="Force full-page OCR")
+    parser.add_argument("--vault-path", metavar="PATH",
+                        help="Vault directory — when set, pages are added to the embedding index")
     args = parser.parse_args()
 
     path = Path(args.file).resolve()
@@ -409,6 +444,13 @@ def main() -> None:
     if "error" in result:
         print(json.dumps(result))
         sys.exit(1)
+
+    if args.vault_path:
+        try:
+            from watchdog.pipeline.embed import add_document
+            add_document(Path(args.vault_path), result["filename"], result["pages"])
+        except Exception:
+            pass  # embedding is best-effort; never fail the preprocess
 
     print(json.dumps(result, ensure_ascii=False))
 
