@@ -291,7 +291,22 @@ def test_cmd_status_pending_files(configured, capsys):
     (vault / "_INCOMING" / "pending.pdf").write_text("")
     (vault / "_INCOMING" / "also.pdf").write_text("")
     cli.cmd_status(args(name="Test Proj"))
-    assert "2 files pending" in _strip_ansi(capsys.readouterr().out)
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "2 files pending" in out
+    assert "documents processed" in out
+
+
+def test_cmd_status_no_pending_no_processed_label(configured, capsys):
+    cli.cmd_new(args(name="Test Proj", dir=str(configured)))
+    _make_vault_with_data(
+        configured / "test-proj",
+        docs=[{"document_type": "Court Order", "page_count": 2}],
+        entities=[],
+    )
+    cli.cmd_status(args(name="Test Proj"))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "documents processed" not in out
+    assert "1 documents" in out
 
 
 def test_cmd_status_no_registry(configured, capsys):

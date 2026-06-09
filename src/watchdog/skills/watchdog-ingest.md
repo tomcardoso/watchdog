@@ -2,6 +2,14 @@
 
 Process all uningested files in `_INCOMING/` (or a specific file if one is named: `$ARGUMENTS`).
 
+**Argument parsing** — parse `$ARGUMENTS` before doing anything else:
+- If `$ARGUMENTS` is empty: `TARGET_FILE = null`, `LIMIT = null`
+- If `$ARGUMENTS` matches `--limit <N>` (e.g. `/watchdog-ingest --limit 50`): `TARGET_FILE = null`, `LIMIT = N`
+- If `$ARGUMENTS` is a file path: `TARGET_FILE = $ARGUMENTS`, `LIMIT = null`
+- If `$ARGUMENTS` contains both a file and `--limit`: `TARGET_FILE = <path>`, `LIMIT = N`
+
+`LIMIT` caps how many files are **extracted** this run (duplicates and skipped files do not count toward the limit). When the limit is reached, stop cleanly and report how many files remain.
+
 ---
 
 ## 0. Pre-flight checks
@@ -33,7 +41,7 @@ From this point, every exit path — including errors — must release the lock 
 
 ## 1. Discover files
 
-If `$ARGUMENTS` names a specific file, process only that file. Otherwise:
+If `TARGET_FILE` is set, process only that file. Otherwise:
 
 List all files in `_INCOMING/` recursively (including subdirectories) that are:
 - Not in `_FAILED/`
@@ -75,7 +83,7 @@ Store `BATCH_START` (capture with `date +%s`) and `TOTAL` (file count). Do not l
 
 ## 2. For each file — extraction
 
-Before the loop, initialize: `CUMULATIVE_CHARS = 0`
+Before the loop, initialize: `CUMULATIVE_CHARS = 0`, `EXTRACTED = 0`
 
 Iterate over the batch results **one file at a time**, by index. For file at index N (0-based), load only that file's data:
 
@@ -410,9 +418,17 @@ rm /tmp/watchdog-extraction-<sha256>.json /tmp/watchdog-neardup-<sha256>.json
 
 **Graph colour check** — after `watchdog write-vault` completes, check whether any entity type you extracted is missing from `.obsidian/graph.json`'s `colorGroups` array. If so, add a colour entry for it. The query pattern is `path:entities/<type_lowercase>` and the colour format is `{"a": 1, "rgb": <24-bit packed integer>}` where the integer is `(R << 16) | (G << 8) | B`. Pick a colour that is visually distinct from the ones already in use. Read the existing file first, update the `colorGroups` array, and write it back.
 
-**Context compaction check** — after each successful `watchdog write-vault` call, add the file's `char_count` (from the batch `--meta` result) to `CUMULATIVE_CHARS`. If `CUMULATIVE_CHARS > 500000`, run `/compact` and reset `CUMULATIVE_CHARS = 0`.
+**After each successful `watchdog write-vault`**, increment `EXTRACTED` by 1 and add the file's `char_count` to `CUMULATIVE_CHARS`.
 
-**After `/compact` resumes** — your in-context variables (`N`, `CUMULATIVE_CHARS`, `BATCH_START`) are gone. Do not restart `preprocess-batch`. Instead, resume the extraction loop from index 0: step 2a's SHA-256 duplicate check will skip already-registered files cheaply. The batch file (`.watchdog/ingest.json`) is still on disk and is the source of truth for which files are in the batch.
+**Limit check** — if `LIMIT` is set and `EXTRACTED >= LIMIT`:
+```bash
+find _INCOMING/ -type f -not -path "*/_FAILED/*" -not -name "*.yml" -not -name ".*" | wc -l
+```
+Print: `Limit reached: extracted <EXTRACTED> file(s) this run. <REMAINING> file(s) still in _INCOMING/ — run /watchdog-ingest again to continue.` Release the lock, delete `.watchdog/ingest.json`, and stop.
+
+**Context compaction check** — if `CUMULATIVE_CHARS > 500000`, run `/compact` and reset `CUMULATIVE_CHARS = 0`.
+
+**After `/compact` resumes** — your in-context variables (`N`, `CUMULATIVE_CHARS`, `BATCH_START`, `EXTRACTED`) are gone. Reset `EXTRACTED = 0` and `CUMULATIVE_CHARS = 0`; the SHA-256 duplicate check handles resumption correctly. Do not restart `preprocess-batch`. Instead, resume the extraction loop from index 0: step 2a's SHA-256 duplicate check will skip already-registered files cheaply. The batch file (`.watchdog/ingest.json`) is still on disk and is the source of truth for which files are in the batch.
 
 ---
 

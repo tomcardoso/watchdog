@@ -429,7 +429,12 @@ def cmd_status(args) -> None:
     print()
 
     pages_note = f" {_DIM}({total_pages} pages){_RESET}" if total_pages else ""
-    print(f"  {_BOLD}{reg['document_count']}{_RESET} documents{pages_note} · {_BOLD}{reg['entity_count']}{_RESET} entities · {_DIM}last updated {_fmt_date(reg['last_updated'])}{_RESET}")
+    doc_label  = "documents processed" if pending else "documents"
+    print(f"  {_BOLD}{reg['document_count']}{_RESET} {doc_label}{pages_note} · {_BOLD}{reg['entity_count']}{_RESET} entities · {_DIM}last updated {_fmt_date(reg['last_updated'])}{_RESET}")
+
+    if pending:
+        remaining = f"{_YELLOW}{pending} file{'s' if pending != 1 else ''} pending{_RESET}"
+        print(f"  {_DIM}Pending in{_RESET} {_CYAN}_INCOMING/{_RESET}  {remaining}")
 
     if doc_types:
         print()
@@ -443,12 +448,6 @@ def cmd_status(args) -> None:
         for etype, count in sorted(ent_types.items(), key=lambda x: -x[1]):
             print(f"  {_DIM}  {etype:<40}{_RESET} {count:>4}")
 
-    print()
-    if pending:
-        pending_label = f"{_YELLOW}{pending} file{'s' if pending != 1 else ''} pending{_RESET}"
-    else:
-        pending_label = f"{_DIM}none{_RESET}"
-    print(f"  {_DIM}Pending in{_RESET} {_CYAN}_INCOMING/{_RESET}  {pending_label}")
     print()
 
 

@@ -263,8 +263,15 @@ The document couldn't be processed. Common reasons:
 
 To retry: move the file from `_INCOMING/_FAILED/` back to `_INCOMING/`, then run `/watchdog-ingest` in Claude Code.
 
-**Rate limit errors during a large ingest**
-If you're ingesting many documents at once and Claude hits a rate limit, it will stop and log where it paused. Files that were successfully processed will be in `morgue/`. Files that weren't processed will still be in `_INCOMING/`. Start a new Claude Code session and run `/watchdog-ingest` again — it will pick up where it left off, skipping any already-processed files.
+**Ingesting a large batch (hundreds of documents)**
+For large batches, use `--limit` to control how many documents are processed per session:
+```
+/watchdog-ingest --limit 50
+```
+This extracts 50 documents and then stops cleanly, reporting how many remain. Start a new session and run the same command again to continue. Watchdog moves each file to `morgue/` as soon as it's processed, so re-running always picks up exactly where the previous session stopped — already-processed files are never touched again.
+
+**Session ended mid-ingest**
+If a Claude Code session ends unexpectedly — rate limit hit, window closed, session timed out — just start a new session and run `/watchdog-ingest` again. Processed files are already in `morgue/`; only unfinished files remain in `_INCOMING/`. The new run picks up from where the previous one stopped.
 
 ---
 
