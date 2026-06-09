@@ -89,7 +89,7 @@ sudo dnf install qpdf ghostscript pipx tesseract tesseract-devel
 pipx install watchdog-intel
 ```
 
-Wait for it to finish. You'll see a message saying the installation is complete.
+Wait for it to finish. You'll see a message saying the installation is complete. This installs Watchdog from [PyPI](https://pypi.org/project/watchdog-intel/) — the standard package repository for Python tools.
 
 ---
 

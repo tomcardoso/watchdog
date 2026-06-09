@@ -2,6 +2,8 @@
 
 **Investigative journalism document intelligence — drop records, find connections.**
 
+[![PyPI](https://img.shields.io/pypi/v/watchdog-intel)](https://pypi.org/project/watchdog-intel/) [![CI](https://github.com/tomcardoso/watchdog/actions/workflows/ci.yml/badge.svg)](https://github.com/tomcardoso/watchdog/actions/workflows/ci.yml)
+
 Watchdog is a [Claude Code](https://claude.ai/download) tool for journalists who accumulate large sets of public records. Drop documents into a folder. Watchdog reads every page, extracts every person, company, address, and relationship it finds, stores them as linked notes in an [Obsidian](https://obsidian.md) vault, and proactively surfaces connections you might have missed.
 
 > **Alpha.** Core pipeline works. Tested on macOS with real investigation documents. Not yet battle-hardened for production use. Feedback and contributions welcome.
@@ -374,6 +376,15 @@ Contributions most welcome in three areas:
 **Pipeline fixes** — `src/watchdog/pipeline/` contains the Python preprocessing code. Bug reports with a sample document (redacted if needed) are especially useful.
 
 **Installation and documentation** — `INSTALL.md` is written for non-technical journalists. Corrections, clarifications, and translations are welcome.
+
+To run from source:
+
+```bash
+git clone https://github.com/tomcardoso/watchdog
+cd watchdog
+pip install -e ".[dev]"
+watchdog setup
+```
 
 Please open an issue before starting significant work so we can discuss approach first.
 
