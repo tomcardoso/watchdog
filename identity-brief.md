@@ -38,6 +38,20 @@ Key qualities to aim for in the mark:
 
 The magnifying glass element (currently in the 🔍🐕 emoji pair) is optional — if it complicates the ASCII version, drop it. The dog alone carries the meaning.
 
+## Current ASCII dog (the starting point)
+
+The setup command already shows this ASCII dog on completion:
+
+```
+      / \__
+     (    @\___
+     /         O
+    /   (_____/
+   /_____/   U
+```
+
+This is the aesthetic baseline — compact, readable in monochrome, clearly a sitting dog. The new identity's ASCII version should feel consistent with this or be a deliberate evolution of it. It doesn't need to be preserved exactly, but any replacement should pass the same test: recognisable as a dog, clean at terminal width, no colour required.
+
 ## The ASCII art constraint
 
 This is the hardest constraint and should drive the mark design. The ASCII version is not an afterthought — it's the primary daily expression of the identity for most users.
