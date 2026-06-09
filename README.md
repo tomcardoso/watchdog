@@ -211,7 +211,7 @@ Every link to a source document includes a direct page link into the original fi
 
 ## Domain knowledge skills
 
-Watchdog ships with extraction skills for 33 document types. When Claude identifies a matching document, it loads the relevant skill before extracting — applying journalist expertise about what to look for, what constitutes a red flag, and what fields matter.
+Watchdog ships with extraction skills for 34 document types. When Claude identifies a matching document, it loads the relevant skill before extracting — applying journalist expertise about what to look for, what constitutes a red flag, and what fields matter.
 
 Skills are jurisdiction-agnostic by default: universal principles come first, with specific jurisdictions (Canada, US, UK, Australia, EU) treated as examples, not as defaults.
 
