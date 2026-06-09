@@ -1,6 +1,8 @@
-# /watchdog-ingest — Watchdog document ingest pipeline
+# /watchdog-ingest — Watchdog document extraction pipeline
 
-Process all uningested files in `_INCOMING/` (or a specific file if one is named: `$ARGUMENTS`).
+Extract preprocessed files from `.watchdog/preprocessed/` into the vault.
+
+Preprocessing (OCR, Docling) is handled separately by the `watchdog` CLI command. This skill only runs extraction — reading preprocessed results and writing entity notes, document notes, and registry updates.
 
 **Argument parsing** — parse `$ARGUMENTS` before doing anything else:
 - If `$ARGUMENTS` is empty: `TARGET_FILE = null`, `LIMIT = null`
@@ -8,7 +10,7 @@ Process all uningested files in `_INCOMING/` (or a specific file if one is named
 - If `$ARGUMENTS` is a file path: `TARGET_FILE = $ARGUMENTS`, `LIMIT = null`
 - If `$ARGUMENTS` contains both a file and `--limit`: `TARGET_FILE = <path>`, `LIMIT = N`
 
-`LIMIT` caps how many files are **extracted** this run (duplicates and skipped files do not count toward the limit). When the limit is reached, stop cleanly and report how many files remain.
+`LIMIT` caps how many files are **extracted** this run. When the limit is reached, stop cleanly and report how many files remain.
 
 ---
 
@@ -19,14 +21,7 @@ Read `context.md` if it exists. This tells you what the journalist is pursuing, 
 
 **Check for an existing lock.**
 Read `.watchdog/Registry/.ingest-lock`. If it exists and is less than 30 minutes old, stop:
-> "Ingest is already running (lock acquired at [timestamp]). If this is stale, delete .watchdog/Registry/.ingest-lock and retry."
-
-**Check for an interrupted batch.**
-If `.watchdog/ingest.json` exists, a previous ingest was interrupted before it could finish. Tell the journalist:
-> "Found interrupted batch results from [file timestamp]. Resume from checkpoint and skip preprocessing, or re-run preprocessing from scratch?"
-
-- If **resume**: load `.watchdog/ingest.json` as the results array, skip Step 1, go directly to Step 2. Files already in `documents.json` will be skipped automatically by the duplicate check.
-- If **re-preprocess**: delete `.watchdog/ingest.json` and continue normally.
+> "Ingest is already running (lock acquired at [timestamp]). If this is stale, run `watchdog unlock <project>` and retry."
 
 **Acquire the lock.**
 Write `.watchdog/Registry/.ingest-lock` containing:
@@ -39,45 +34,25 @@ From this point, every exit path — including errors — must release the lock 
 
 ---
 
-## 1. Discover files
+## 1. Find preprocessed files
 
-If `TARGET_FILE` is set, process only that file. Otherwise:
-
-List all files in `_INCOMING/` recursively (including subdirectories) that are:
-- Not in `_FAILED/`
-- Not a `.yml` sidecar (`.yml` extension)
-- Not a `.DS_Store` or other hidden system file
-- Not the lock file
-
-`_CONTEXT/` is a separate background folder — never touch it here.
-
+If `TARGET_FILE` is set, preprocess that single file now (since it bypassed the CLI step) and treat the result as the sole item to extract:
 ```bash
-find _INCOMING/ -type f \
-  -not -path "*/_FAILED/*" \
-  -not -name "*.yml" \
-  -not -name ".*"
+watchdog preprocess "<TARGET_FILE>" --vault-path "$(pwd)"
 ```
+Then proceed with that result.
 
-If nothing is found, print: `_INCOMING/ is empty — nothing to ingest.` Release the lock and stop.
-
-**Step 1 — batch preprocessing (parallel)**
-
-Run preprocessing on all discovered files simultaneously before doing any extraction.
-This is the slow step (OCR, Docling); parallelising it here means extraction runs
-against already-finished results rather than waiting file-by-file.
-
-Run in the **foreground** (not background). Redirect only stdout to the batch file — do **not** redirect stderr, so progress lines stream to the terminal:
-
+Otherwise, scan `.watchdog/preprocessed/` for JSON files:
 ```bash
-watchdog preprocess-batch _INCOMING/ --workers 4 --vault-path "$(pwd)" > .watchdog/ingest.json
+find .watchdog/preprocessed/ -name "*.json" -type f
 ```
 
-When that command returns, print:
-```
-Preprocessing complete. Starting extraction: <TOTAL> file(s)
-```
+If none are found, stop and tell the journalist:
+> "No preprocessed files found. Run `watchdog` in your terminal from this folder to preprocess documents in `_INCOMING/`, then come back and run `/watchdog-ingest`."
 
-Store `BATCH_START` (capture with `date +%s`) and `TOTAL` (file count). Do not load all results into context at once — process files one at a time in the loop below.
+Release the lock and stop.
+
+Store `TOTAL` (file count) and `BATCH_START` (capture with `date +%s`). Do not load all results into context at once — process files one at a time.
 
 ---
 
@@ -85,21 +60,13 @@ Store `BATCH_START` (capture with `date +%s`) and `TOTAL` (file count). Do not l
 
 Before the loop, initialize: `CUMULATIVE_CHARS = 0`, `EXTRACTED = 0`
 
-Iterate over the batch results **one file at a time**, by index. For file at index N (0-based), load only that file's data:
+Iterate over the preprocessed files **one at a time**. For each file at path `PREP_FILE`:
 
 ```bash
-watchdog batch-get .watchdog/ingest.json --index <N> --meta
+cat "<PREP_FILE>"
 ```
 
-Then fetch the text only when you need it for extraction:
-
-```bash
-watchdog batch-get .watchdog/ingest.json --index <N> --text
-```
-
-**Never load more than one file's text into context at a time.** After finishing all 42 files, delete the batch results file: `rm .watchdog/ingest.json`.
-
-For each result:
+Parse the JSON. It contains: `source_path`, `sha256`, `page_count`, `pages[]` (each with `page` number and `markdown` content), `metadata`, `char_count`.
 
 **At the start of each file**, print:
 ```
@@ -111,33 +78,27 @@ For each result:
 echo "[<N>/<TOTAL>] Done: <filename> — <entity_count> entities | ETA: ~$(( (<TOTAL>-<N>) * ($(date +%s)-<BATCH_START>) / <N> ))s"
 ```
 
-If a preprocessing result contains `"error"`, move the source file to `_INCOMING/_FAILED/` (create the directory if it doesn't exist),
-log the error, and continue to the next file.
+**Special case — arrows.app JSON:**
+If the filename ends in `.json` and the JSON contains `"nodes"` and `"relationships"` keys at the top level, this is an arrows.app file. Run instead:
+```bash
+watchdog arrows "<file_path>"
+```
+Then skip to [Section 5: arrows.app import](#5-arrowsapp-import).
 
 ### 2a. Exact duplicate check
 
-Read `.watchdog/Registry/documents.json`. Get the SHA-256 for this file from the batch results:
-```bash
-watchdog batch-get .watchdog/ingest.json --index <N> --field sha256
-```
+Read `.watchdog/Registry/documents.json`. Check whether this file's `sha256` already exists.
 
-If the SHA-256 already exists in `documents.json`, skip this file:
-- Log: `[SKIP] <filename> — exact duplicate of <existing filename> (SHA-256 match)`
-- Append to `Registry/ingest.log`
-- Leave the file in `_INCOMING/` (do not move it)
+If it does, this file was already extracted (preprocessed file was not cleaned up). Skip it:
+- Log: `[SKIP] <filename> — already extracted (SHA-256 match)`
+- Delete the preprocessed file: `rm "<PREP_FILE>"`
 - Continue to the next file
 
-### 2b. Load page content from batch
+### 2b. Load page content
 
-```bash
-watchdog batch-get .watchdog/ingest.json --index <N> --text
-```
+The full page text is already in the parsed JSON from `cat "<PREP_FILE>"`. Use `pages[]` for individual page access (with page numbers) or concatenate all `markdown` fields for full-text extraction.
 
-This returns the concatenated page markdown for this file. If the batch entry has `"error"`, you already handled that in step 2a — no need to check again here.
-
-The batch entry (from `--meta`) gives you: `filename`, `sha256`, `page_count`, `pages[]` (each with `page` number and `markdown` content), `metadata`. Use `--text` for the full text, or `--meta` when you need individual page numbers.
-
-**Do not re-run `watchdog preprocess` per file.** The batch already preprocessed and embedded all files in parallel. Re-running would double the processing time.
+**Never load more than one file's content into context at a time.**
 
 **Special case — arrows.app JSON:**
 If the filename ends in `.json` and the JSON contains `"nodes"` and `"relationships"` keys at the top level, this is an arrows.app file. Run instead:
@@ -409,9 +370,10 @@ watchdog write-vault \
 
 Pass `--skip-timeline` for every file **except the last** in the batch. Rebuilding `timeline.md` on every file is O(N) in vault size — skip it for mid-batch files and let the final write do it once.
 
-Clean up:
+Clean up temp files and the preprocessed file for this document:
 ```bash
 rm /tmp/watchdog-extraction-<sha256>.json /tmp/watchdog-neardup-<sha256>.json
+rm "<PREP_FILE>"
 ```
 
 `watchdog write-vault` handles all vault writes atomically: entity notes (new or merged), document note, all 4 registry files (`entities.json`, `documents.json`, `registry.json`, `ingest.log`), and the morgue move. Do not perform any of these writes manually.
@@ -422,13 +384,13 @@ rm /tmp/watchdog-extraction-<sha256>.json /tmp/watchdog-neardup-<sha256>.json
 
 **Limit check** — if `LIMIT` is set and `EXTRACTED >= LIMIT`:
 ```bash
-find _INCOMING/ -type f -not -path "*/_FAILED/*" -not -name "*.yml" -not -name ".*" | wc -l
+find .watchdog/preprocessed/ -name "*.json" | wc -l
 ```
-Print: `Limit reached: extracted <EXTRACTED> file(s) this run. <REMAINING> file(s) still in _INCOMING/ — run /watchdog-ingest again to continue.` Release the lock, delete `.watchdog/ingest.json`, and stop.
+Print: `Limit reached: extracted <EXTRACTED> file(s) this run. <REMAINING> file(s) still queued — run /watchdog-ingest again to continue.` Release the lock and stop.
 
 **Context compaction check** — if `CUMULATIVE_CHARS > 500000`, run `/compact` and reset `CUMULATIVE_CHARS = 0`.
 
-**After `/compact` resumes** — your in-context variables (`N`, `CUMULATIVE_CHARS`, `BATCH_START`, `EXTRACTED`) are gone. Reset `EXTRACTED = 0` and `CUMULATIVE_CHARS = 0`; the SHA-256 duplicate check handles resumption correctly. Do not restart `preprocess-batch`. Instead, resume the extraction loop from index 0: step 2a's SHA-256 duplicate check will skip already-registered files cheaply. The batch file (`.watchdog/ingest.json`) is still on disk and is the source of truth for which files are in the batch.
+**After `/compact` resumes** — your in-context variables (`N`, `CUMULATIVE_CHARS`, `BATCH_START`, `EXTRACTED`) are gone. Reset `EXTRACTED = 0` and `CUMULATIVE_CHARS = 0`. Re-scan `.watchdog/preprocessed/` from Step 1 — files already extracted had their preprocessed JSON deleted, so only remaining files appear.
 
 ---
 

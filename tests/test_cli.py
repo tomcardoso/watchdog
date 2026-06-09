@@ -149,7 +149,8 @@ def test_cmd_new_vault_structure(configured):
     cli.cmd_new(args(name="My Story", dir=str(configured)))
     vault = configured / "my-story"
     for d in ["_INCOMING", "morgue", "entities/person", "entities/company",
-              "entities/address", "documents", "briefings", "wiki", "queries"]:
+              "entities/address", "documents", "briefings", "wiki", "queries",
+              ".watchdog/preprocessed"]:
         assert (vault / d).is_dir(), f"Missing: {d}"
 
 

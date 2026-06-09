@@ -27,14 +27,20 @@ _ALIASES = {
 }
 
 _PIPELINE_COMMANDS = {
-    "preprocess":       ("watchdog.pipeline.preprocess",       "watchdog-preprocess"),
-    "preprocess-batch": ("watchdog.pipeline.preprocess_batch", "watchdog-preprocess-batch"),
-    "near-dup":         ("watchdog.pipeline.near_dup",         "watchdog-near-dup"),
-    "arrows":           ("watchdog.pipeline.arrows_parser",    "watchdog-arrows"),
-    "batch-get":        ("watchdog.pipeline.batch_get",        "watchdog-batch-get"),
-    "write-vault":      ("watchdog.pipeline.write_vault",      "watchdog-write-vault"),
-    "write-entity":     ("watchdog.pipeline.write_entity",     "watchdog-write-entity"),
+    "near-dup":    ("watchdog.pipeline.near_dup",      "watchdog-near-dup"),
+    "arrows":      ("watchdog.pipeline.arrows_parser", "watchdog-arrows"),
+    "write-vault": ("watchdog.pipeline.write_vault",   "watchdog-write-vault"),
+    "write-entity":("watchdog.pipeline.write_entity",  "watchdog-write-entity"),
 }
+
+_TEMPLATES_DIR = Path(__file__).parent / "templates" / "vault"
+
+
+def _render_template(filename: str, **vars: str) -> str:
+    text = (_TEMPLATES_DIR / filename).read_text()
+    for key, value in vars.items():
+        text = text.replace("{" + key + "}", value)
+    return text
 
 _BOLD   = "\033[1m"
 _DIM    = "\033[2m"
@@ -134,6 +140,7 @@ def cmd_new(args) -> None:
         "_CONTEXT",
         "morgue",
         ".watchdog/Registry",
+        ".watchdog/preprocessed",
         "entities/person",
         "entities/company",
         "entities/address",
@@ -181,122 +188,28 @@ def cmd_new(args) -> None:
         ) + "\n"
     )
 
-    (vault / "hot.md").write_text(
-        "# Hot cache\n\n"
-        "*No sessions yet. This file is updated after every ingest.*\n"
-    )
-
-    (vault / "log.md").write_text(
-        "# Ingest log\n\n"
-        "*Append-only. Updated automatically after every ingest.*\n\n"
-        "---\n"
-    )
-
-    (vault / "context.md").write_text(
-        f"# {name} — context\n\n"
-        "> Fill this in before your first ingest. The more specific you are, the more "
-        "targeted Watchdog's briefings, leads, and analysis will be. Update it any time "
-        "your understanding of the story evolves.\n\n"
-        "## What I'm investigating\n\n"
-        "<!-- One paragraph. What is the story? What pattern, question, or wrongdoing are you pursuing? -->\n\n"
-        "## Key questions I'm trying to answer\n\n"
-        "- \n\n"
-        "## Entities I already know are relevant\n\n"
-        "<!-- People, companies, addresses you know matter to this story. -->\n\n"
-        "- \n\n"
-        "## Documents I'm expecting or looking for\n\n"
-        "<!-- Types of records that would be useful but you don't have yet. -->\n\n"
-        "- \n\n"
-        "## What I don't yet understand\n\n"
-        "<!-- Gaps in your current knowledge of the subject. -->\n\n"
-        "- \n"
-    )
-
-    (vault / "index.md").write_text(
-        f"# {name}\n\n"
-        f"*Watchdog investigation vault — created {today}.*\n\n"
-        "## Recent documents\n\n"
-        "```dataview\n"
-        'TABLE document_type, date_of_document\n'
-        'FROM "documents"\n'
-        "SORT date_ingested DESC\n"
-        "LIMIT 10\n"
-        "```\n\n"
-        "## Entities\n\n"
-        "```dataview\n"
-        'TABLE type, aliases\n'
-        'FROM "entities"\n'
-        "SORT date_last_updated DESC\n"
-        "```\n"
-    )
-
-    (vault / "CLAUDE.md").write_text(
-        f"# {name} — Watchdog\n\n"
-        "At the start of every session: (1) read `hot.md` for a summary of recent activity and open questions; "
-        "(2) read `context.md` to understand what this investigation is about; "
-        "(3) check `_INCOMING/` for unprocessed files — if any are present, run `/watchdog-ingest` before doing anything else.\n\n"
-        "## Vault layout\n\n"
-        "| Path | Purpose |\n"
-        "|------|---------|\n"
-        "| `_INCOMING/` | Drop zone — drag files here to ingest |\n"
-        "| `_INCOMING/_FAILED/` | Created on failure — files that could not be processed |\n"
-        "| `_CONTEXT/` | Background material (prior stories, notes) — run `/watchdog-context` to seed context.md |\n"
-        "| `morgue/` | Original files after successful ingest |\n"
-        "| `.watchdog/Registry/` | Internal state — do not edit manually |\n"
-        "| `entities/` | One note per real-world entity |\n"
-        "| `documents/` | One note per ingested document |\n"
-        "| `briefings/` | Post-ingest briefing notes |\n"
-        "| `wiki/` | Investigation thread pages |\n"
-        "| `hot.md` | Session-to-session context cache — updated after every ingest |\n"
-        "| `log.md` | Append-only ingest history — human-readable in Obsidian |\n"
-        "| `context.md` | Your investigation intent and key questions — read this before every skill |\n\n"
-        "## Hard rules\n\n"
-        "1. Public records only — never process confidential source material, private correspondence, or leaked documents. If a document cannot be identified as a public record, stop and ask before proceeding.\n"
-        "2. Registry updates are atomic with note creation — never one without the other.\n"
-        "3. No duplicate entities — check `.watchdog/Registry/manifest.json` before creating (it is lighter than `entities.json` and contains id, name, type, aliases, and note_path).\n"
-        "4. Entity IDs are kebab-case: `john-doe`, `shell-co-ltd`, `123-main-st`.\n"
-        "5. Every extracted fact must carry a confidence level: `high`, `medium`, `low`, or `disputed`. A `low`-confidence fact is a lead, not a finding.\n"
-        "6. The `## Notes` section in any note is reserved for journalist annotations — never overwrite it.\n"
-        "7. Acquire `.watchdog/Registry/.ingest-lock` before any vault writes; release it on completion or failure.\n\n"
-        "## Commands\n\n"
-        "| Command | Action |\n"
-        "|---------|--------|\n"
-        "| `/watchdog-context` | Seed context.md from background files in `_CONTEXT/` |\n"
-        "| `/watchdog-ingest` | Process all files in `_INCOMING/` |\n"
-        "| `/watchdog-ingest [file]` | Process a specific file |\n"
-        "| `/watchdog-query [question]` | Answer a question from the vault |\n"
-        "| `/watchdog-surface` | Find connections and anomalies across the vault |\n"
-        "| `/watchdog-wiki` | Create or update investigation thread pages |\n"
-        "| `/watchdog-health` | Check vault integrity |\n\n"
-        "## Confidence levels\n\n"
-        "| Level | When to use |\n"
-        "|-------|-------------|\n"
-        "| `high` | Fact directly stated in the source document |\n"
-        "| `medium` | Fact stated but requires one short inference |\n"
-        "| `low` | Fact inferred across multiple sources |\n"
-        "| `disputed` | Fact contradicted by another source in the vault |\n"
-    )
+    (vault / "hot.md").write_text(_render_template("hot.md"))
+    (vault / "log.md").write_text(_render_template("log.md"))
+    (vault / "context.md").write_text(_render_template("context.md", name=name))
+    (vault / "index.md").write_text(_render_template("index.md", name=name, today=today))
+    (vault / "CLAUDE.md").write_text(_render_template("CLAUDE.md", name=name))
 
     (vault / ".claude" / "settings.json").write_text(
         json.dumps(
             {
                 "permissions": {
                     "allow": [
-                        "Bash(watchdog preprocess-batch *)",
-                        "Bash(watchdog preprocess *)",
-                        "Bash(watchdog batch-get *)",
                         "Bash(watchdog near-dup *)",
                         "Bash(watchdog arrows *)",
-                        "Bash(find _INCOMING/ *)",
+                        "Bash(find .watchdog/preprocessed/ *)",
                         "Bash(find _CONTEXT/ *)",
-                        "Bash(mv _INCOMING/* *)",
                         "Bash(mkdir -p *)",
                         "Bash(watchdog write-vault *)",
                         "Bash(watchdog write-entity *)",
                         "Bash(rm /tmp/watchdog-extraction-*)",
                         "Bash(rm /tmp/entity-refresh-*)",
                         "Bash(rm .watchdog/Registry/.ingest-lock)",
-                        "Bash(rm .watchdog/ingest.json)",
+                        "Bash(rm .watchdog/preprocessed/*)",
                     ]
                 },
                 "hooks": {
@@ -308,13 +221,10 @@ def cmd_new(args) -> None:
                                     "type": "command",
                                     "command": (
                                         "python3 -c \""
-                                        "import os; "
-                                        "files = []; "
-                                        "[files.extend([f for f in fnames if not f.startswith('.') and not f.endswith('.yml')]) "
-                                        "for root, dirs, fnames in os.walk('_INCOMING/') "
-                                        "if '_FAILED' not in root]; "
-                                        "n = len(files); "
-                                        "print('WATCHDOG: ' + str(n) + ' file(s) pending in _INCOMING/') if n else None"
+                                        "from pathlib import Path; "
+                                        "p = list(Path('.watchdog/preprocessed').glob('*.json')) "
+                                        "if Path('.watchdog/preprocessed').exists() else []; "
+                                        "print('WATCHDOG: ' + str(len(p)) + ' file(s) ready for extraction — run /watchdog-ingest') if p else None"
                                         "\""
                                     ),
                                 }
@@ -336,9 +246,21 @@ def cmd_new(args) -> None:
     print(f"{_BOLD}Next steps:{_RESET}")
     print(f"  1. Open {_CYAN}{vault}{_RESET} as a new vault in Obsidian")
     print(f"  2. Open {_CYAN}{vault}{_RESET} in Claude Code")
-    print(f"  3. Drop documents into {_CYAN}_INCOMING/{_RESET} to begin ingesting")
+    print(f"  3. Drop documents into {_CYAN}_INCOMING/{_RESET}, then {_CYAN}cd{_RESET} into the folder and run {_CYAN}watchdog{_RESET}")
     print()
     print(f"  {_DIM}To reopen: {_RESET}{_CYAN}watchdog open {slug}{_RESET}")
+
+
+def cmd_ingest(args) -> None:
+    from watchdog.pipeline.preprocess_batch import run_ingest
+    vault = Path(".").resolve()
+    if not (vault / ".watchdog").is_dir():
+        sys.exit("Error: not inside a Watchdog project folder. cd into your investigation first.")
+    incoming = vault / "_INCOMING"
+    if not incoming.is_dir():
+        sys.exit(f"Error: _INCOMING/ not found in {vault}")
+    workers = getattr(args, "workers", 4)
+    run_ingest(vault, workers=workers)
 
 
 def cmd_about(_args) -> None:
@@ -909,10 +831,18 @@ def main() -> None:
     p_configure.add_argument("value", nargs="?", help="Value to set")
     p_configure.set_defaults(func=cmd_configure)
 
+    p_ingest = sub.add_parser("ingest", help="Preprocess documents in _INCOMING/ for extraction in Claude Code")
+    p_ingest.add_argument("--workers", type=int, default=4, metavar="N",
+                          help="Parallel preprocessing workers (default: 4)")
+    p_ingest.set_defaults(func=cmd_ingest)
+
     args = parser.parse_args()
 
     if args.command is None:
-        _print_banner()
+        if Path(".watchdog").is_dir():
+            cmd_ingest(args)
+        else:
+            _print_banner()
         return
 
     if args.command not in ("setup", "about", "configure", "search", "unlock") and not CONFIG_FILE.exists():

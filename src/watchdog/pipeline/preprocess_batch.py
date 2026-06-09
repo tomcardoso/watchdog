@@ -1,20 +1,11 @@
-#!/usr/bin/env python3
 """
-Watchdog batch parallel preprocessor.
+Watchdog batch preprocessor — run from the CLI, not from Claude Code.
 
-Runs watchdog-preprocess on multiple files simultaneously, then outputs
-a single JSON array to stdout. Progress is written to stderr so the
-ingest skill can display it while capturing the JSON result.
-
-Usage:
-    watchdog-preprocess-batch _INCOMING/ [--workers 4]
-    watchdog-preprocess-batch file1.pdf file2.pdf [--workers 4]
-
-Output: JSON array, one object per file, in input order.
-Each object is either a normal preprocess result or {"error": ..., "source_path": ...}.
+Preprocesses all files in _INCOMING/, writes per-file results to
+.watchdog/preprocessed/<sha256>.json, and prints a Claude Code handoff
+message when done.
 """
 
-import argparse
 import json
 import subprocess
 import sys
@@ -25,27 +16,33 @@ from pathlib import Path
 DEFAULT_WORKERS = 4
 DEFAULT_FILE_TIMEOUT = 600
 
-SKIP_NAMES   = {".ds_store", ".ingest-lock"}
+SKIP_NAMES    = {".ds_store", ".ingest-lock"}
 SKIP_SUFFIXES = {".yml"}
-SKIP_DIRS    = {"_failed", "_FAILED"}
+SKIP_DIRS     = {"_failed", "_FAILED"}
+
+_BOLD  = "\033[1m"
+_DIM   = "\033[2m"
+_CYAN  = "\033[0;36m"
+_GREEN = "\033[0;32m"
+_YELLOW = "\033[0;33m"
+_RESET = "\033[0m"
 
 
-def find_files(paths: list[str]) -> list[Path]:
+def find_files(paths: list[Path]) -> list[Path]:
     files = []
     for p in paths:
-        path = Path(p).resolve()
-        if path.is_file():
-            if path.name.lower() not in SKIP_NAMES and path.suffix.lower() not in SKIP_SUFFIXES:
-                files.append(path)
-        elif path.is_dir():
-            for f in sorted(path.rglob("*")):
+        if p.is_file():
+            if p.name.lower() not in SKIP_NAMES and p.suffix.lower() not in SKIP_SUFFIXES:
+                files.append(p)
+        elif p.is_dir():
+            for f in sorted(p.rglob("*")):
                 if not f.is_file():
                     continue
                 if f.name.lower() in SKIP_NAMES:
                     continue
                 if f.suffix.lower() in SKIP_SUFFIXES:
                     continue
-                if any(part.lower() in SKIP_DIRS for part in f.relative_to(path).parts):
+                if any(part.lower() in SKIP_DIRS for part in f.relative_to(p).parts):
                     continue
                 files.append(f)
     return files
@@ -65,87 +62,88 @@ def preprocess_one(path: Path, vault_path: str | None = None, timeout: int = DEF
             result = json.loads(r.stdout)
     except subprocess.TimeoutExpired:
         elapsed = round(time.time() - t0, 1)
-        result = {"error": f"Preprocessing timed out after {timeout}s"}
+        result = {"error": f"Timed out after {timeout}s"}
     except Exception as e:
         elapsed = round(time.time() - t0, 1)
         result = {"error": str(e)}
 
     result["source_path"] = str(path)
-    result["elapsed_s"] = elapsed
-    result["char_count"] = sum(len(p.get("markdown", "")) for p in result.get("pages", []))
+    result["elapsed_s"]   = elapsed
+    result["char_count"]  = sum(len(p.get("markdown", "")) for p in result.get("pages", []))
     return result
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Watchdog batch parallel preprocessor")
-    parser.add_argument("paths", nargs="+", help="Files or directories to preprocess")
-    parser.add_argument(
-        "--workers", type=int, default=DEFAULT_WORKERS,
-        help=f"Parallel workers (default: {DEFAULT_WORKERS})",
-    )
-    parser.add_argument(
-        "--vault-path", metavar="PATH",
-        help="Vault directory — when set, pages are added to the embedding index",
-    )
-    parser.add_argument(
-        "--file-timeout", type=int, default=DEFAULT_FILE_TIMEOUT, metavar="SECONDS",
-        help=f"Per-file subprocess timeout in seconds (default: {DEFAULT_FILE_TIMEOUT})",
-    )
-    args = parser.parse_args()
-    vault_path = args.vault_path
+def run_ingest(vault: Path, workers: int = DEFAULT_WORKERS) -> None:
+    incoming     = vault / "_INCOMING"
+    preprocessed = vault / ".watchdog" / "preprocessed"
+    preprocessed.mkdir(parents=True, exist_ok=True)
 
-    files = find_files(args.paths)
-    total = len(files)
-
+    files = find_files([incoming])
     if not files:
-        print("[]")
+        print(f"\n  {_DIM}_INCOMING/ is empty — nothing to preprocess.{_RESET}\n")
         return
 
+    # Skip files already preprocessed (sha256 file exists) or already extracted
+    # (checked after preprocessing via documents.json). We discover this per-file.
+    total      = len(files)
     batch_start = time.time()
-    print(
-        f"Batch preprocessing {total} file(s) with {args.workers} workers...",
-        file=sys.stderr, flush=True,
-    )
 
-    results_map: dict[str, dict] = {}
+    print(f"\n  {_BOLD}Preprocessing {total} file{'s' if total != 1 else ''}{_RESET}  {_DIM}({workers} workers){_RESET}\n")
 
-    with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        futures = {pool.submit(preprocess_one, f, vault_path, args.file_timeout): f for f in files}
-        completed = 0
+    results: dict[str, dict] = {}
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(preprocess_one, f, str(vault)): f for f in files}
+        done = 0
         for future in as_completed(futures):
-            path = futures[future]
+            path   = futures[future]
             result = future.result()
-            results_map[str(path)] = result
-            completed += 1
+            results[str(path)] = result
+            done += 1
+
             elapsed_wall = time.time() - batch_start
-            status = "ERR" if "error" in result else "OK "
-            chars = result.get("char_count", 0)
-            pages = result.get("page_count", "?")
-            elapsed_file = result.get("elapsed_s", "?")
-            remaining = total - completed
-            if remaining > 0:
-                eta = round((elapsed_wall / completed) * remaining)
+            is_err = "error" in result
+            status = f"{_YELLOW}ERR{_RESET}" if is_err else f"{_GREEN}OK {_RESET}"
+            pages  = result.get("page_count", "?")
+            secs   = result.get("elapsed_s", "?")
+
+            remaining = total - done
+            if remaining > 0 and done > 0:
+                eta     = round((elapsed_wall / done) * remaining)
                 eta_str = f"{eta // 60}m {eta % 60}s" if eta >= 60 else f"{eta}s"
-                eta_part = f"  ETA ~{eta_str}"
+                eta_part = f"  {_DIM}ETA ~{eta_str}{_RESET}"
             else:
                 eta_part = ""
-            print(
-                f"[{completed}/{total}] {status} {path.name}  {pages}p  {chars}c  {elapsed_file}s{eta_part}",
-                file=sys.stderr, flush=True,
-            )
 
+            print(f"  [{done}/{total}] {status}  {_BOLD}{path.name}{_RESET}  {_DIM}{pages}p  {secs}s{_RESET}{eta_part}")
+
+            if is_err:
+                failed_dir = incoming / "_FAILED"
+                failed_dir.mkdir(exist_ok=True)
+                try:
+                    path.rename(failed_dir / path.name)
+                except OSError:
+                    pass
+                print(f"         {_YELLOW}→ moved to _INCOMING/_FAILED/{_RESET}  {_DIM}{result['error'][:80]}{_RESET}")
+            else:
+                sha256 = result.get("sha256", "")
+                if sha256:
+                    (preprocessed / f"{sha256}.json").write_text(
+                        json.dumps(result, ensure_ascii=False)
+                    )
+
+    ok   = sum(1 for r in results.values() if "error" not in r)
+    errs = total - ok
     elapsed_total = round(time.time() - batch_start, 1)
-    ok    = sum(1 for r in results_map.values() if "error" not in r)
-    errs  = total - ok
-    print(
-        f"Preprocessing done: {ok} OK, {errs} errors, {elapsed_total}s total",
-        file=sys.stderr, flush=True,
-    )
 
-    # Output in original file order
-    ordered = [results_map[str(f)] for f in files]
-    print(json.dumps(ordered, ensure_ascii=False))
+    print()
+    if errs:
+        print(f"  {ok} file{'s' if ok != 1 else ''} ready  ·  {_YELLOW}{errs} failed{_RESET}  ·  {_DIM}{elapsed_total}s{_RESET}")
+    else:
+        print(f"  {_GREEN}{ok} file{'s' if ok != 1 else ''} ready{_RESET}  {_DIM}({elapsed_total}s){_RESET}")
 
+    if ok:
+        print()
+        print(f"  Open Claude Code and run:  {_CYAN}/watchdog-ingest{_RESET}")
 
-if __name__ == "__main__":
-    main()
+    print()
