@@ -67,20 +67,28 @@ Every document Watchdog processes is read by an AI. There is no way to take that
 
 ## How it works
 
+The pipeline has two stages — a CLI stage you run in your terminal, and an extraction stage that runs in Claude Code.
+
 ```
-Drop file into _INCOMING/
+Drop files into _INCOMING/
         ↓
-watchdog preprocess — SHA-256 dedup · OCR detection · Docling extraction · near-duplicate check
+watchdog preprocess  (terminal)
+  SHA-256 dedup · OCR · Docling extraction · embedding
+  → writes .watchdog/preprocessed/<sha256>.json per file
         ↓
-Claude extracts entities, relationships, timeline events, and key facts
+/watchdog-ingest  (Claude Code)
+  reads preprocessed files · applies domain knowledge · extracts entities,
+  relationships, timeline events, key facts · flags contradictions
         ↓
-watchdog write-vault writes everything atomically:
+watchdog write-vault
   entity notes · document notes · global timeline · registries · morgue move
         ↓
 Post-ingest briefing: new entities · connections · leads · anomalies
 ```
 
-The ingest pipeline is a [Claude Code skill](src/watchdog/skills/watchdog-ingest.md) — Claude reads the document, applies domain knowledge, and produces a structured extraction JSON. The Python pipeline handles the mechanical work (OCR, hashing, similarity detection, vault writes). You keep the Obsidian vault and every original file.
+Splitting the pipeline this way keeps token costs down — the slow mechanical work (OCR, Docling, embeddings) runs outside Claude Code entirely. Claude only sees clean, already-extracted text, and only does the work that requires intelligence.
+
+The extraction step is a [Claude Code skill](src/watchdog/skills/watchdog-ingest.md). You keep the Obsidian vault and every original file.
 
 ### Document conversion with Docling
 
@@ -134,16 +142,22 @@ watchdog new "Shell Company Investigation"
 watchdog open shell-company-investigation
 ```
 
-**Optional but recommended:** before ingesting records, seed your investigation context from prior published stories or notes:
+**Optional but recommended:** before processing records, seed your investigation context from prior published stories or notes:
 
 1. Drop background files (clips, notes, screenshots) into `_CONTEXT/`
-2. Run `/watchdog-context` — Watchdog reads the material, asks you questions, and writes `context.md`
+2. Run `/watchdog-context` in Claude Code — Watchdog reads the material, asks you questions, and writes `context.md`
 
-Then drop public records into `_INCOMING/`. At the start of every Claude Code session, Watchdog automatically checks for new files and ingests them. You can also trigger ingest manually:
+Then drop public records into `_INCOMING/` and preprocess them from your terminal:
+
+```bash
+cd shell-company-investigation
+watchdog preprocess
+```
+
+Once preprocessing finishes, Watchdog prints the next step. Switch to Claude Code and run:
 
 ```
 /watchdog-ingest
-/watchdog-ingest specific-document.pdf
 ```
 
 ---

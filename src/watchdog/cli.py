@@ -246,7 +246,9 @@ def cmd_new(args) -> None:
     print(f"{_BOLD}Next steps:{_RESET}")
     print(f"  1. Open {_CYAN}{vault}{_RESET} as a new vault in Obsidian")
     print(f"  2. Open {_CYAN}{vault}{_RESET} in Claude Code")
-    print(f"  3. Drop documents into {_CYAN}_INCOMING/{_RESET}, then {_CYAN}cd{_RESET} into the folder and run {_CYAN}watchdog{_RESET}")
+    print(f"  3. Drop documents into {_CYAN}_INCOMING/{_RESET}")
+    print(f"  4. Run {_CYAN}watchdog preprocess{_RESET} from inside the project folder")
+    print(f"  5. Run {_CYAN}/watchdog-ingest{_RESET} in Claude Code")
     print()
     print(f"  {_DIM}To reopen: {_RESET}{_CYAN}watchdog open {slug}{_RESET}")
 

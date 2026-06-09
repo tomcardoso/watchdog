@@ -147,21 +147,33 @@ You're ready to start ingesting documents.
 
 ## How to ingest documents
 
-**Drop files into the Incoming folder:**
+Ingestion happens in two steps: preprocessing in your terminal, then extraction in Claude Code.
+
+**Step 1 — Drop files and preprocess**
 
 In your file manager, navigate to your investigation folder. You'll see a folder called `_INCOMING`. Drag any documents you want to process into this folder.
 
 Supported file types: PDF, Word documents, Excel spreadsheets, images (JPG, PNG, TIFF), web pages (HTML), and plain text files.
 
-**Start a Claude Code session:**
+Then open your terminal, navigate to the investigation folder, and run:
 
-With Claude Code open and your investigation folder as the project, simply open a session. Claude will automatically check the Incoming folder for files at the start of every session and process them before anything else.
+```
+watchdog preprocess
+```
 
-You can also type `/watchdog-ingest` at any time to process files manually.
+You'll see a progress indicator as Watchdog reads each file, runs OCR if needed, and prepares it for extraction. Failed files (password-protected PDFs, unsupported formats) are moved to `_INCOMING/_FAILED/` with an explanation.
 
-**Watch for the briefing:**
+When preprocessing finishes, Watchdog prints: `Open Claude Code and run: /watchdog-ingest`
 
-After processing, Claude will produce a briefing showing:
+**Step 2 — Extract in Claude Code**
+
+Open Claude Code with your investigation folder as the project and run:
+
+```
+/watchdog-ingest
+```
+
+Claude will work through each preprocessed file, extract entities, relationships, and key facts, and write everything to your vault. At the end it produces a briefing showing:
 - What documents were processed
 - What entities (people, companies, addresses) were found
 - Connections between entities that were already in your vault
