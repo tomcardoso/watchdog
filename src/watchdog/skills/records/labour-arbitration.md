@@ -112,3 +112,29 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **Pattern of discipline at the same workplace** — a series of grievances all from the same workplace, involving similar discipline issues, may reveal a systemic management problem or retaliatory environment.
 5. **The duty of fair representation complaint** — a DFR complaint against a union may reveal that the union failed to properly represent a member, often in a discharge arbitration. These are decided by the labour board and are public.
 6. **Pay equity hearings** — pay equity is a proactive obligation in several jurisdictions. Pay equity complaints and orders reveal systemic wage discrimination and can involve large retroactive liabilities.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+
+- [CanLII — Canadian Legal Information Institute](https://www.canlii.org/) — Free searchable database of Canadian court and tribunal decisions, including labour board and arbitration decisions from all provinces and federally. Published within two business days of issuance.
+- [Canada Industrial Relations Board — Decisions](https://cirb-ccri.gc.ca/en/decisions/decisions) — Official CIRB decision database covering Canada Labour Code (Parts I, II, III) decisions since 1999, Status of the Artist Act decisions since 2013, and occupational health and safety tribunal decisions.
+- [Ontario Labour Relations Board — Decisions](https://www.olrb.gov.on.ca/Decisions-EN.asp) — OLRB decisions are published via CanLII; this page explains access and directs to the Ontario Workplace Tribunals Library for decisions back to 1944.
+- [BC Labour Relations Board — Decisions](https://www.lrb.bc.ca/decisions) — Searchable database of LRB decisions from 1990 to present, with weekly email notification available; also provides guidance on accessing arbitration awards separately.
+- [National Labor Relations Board — Cases and Decisions](https://www.nlrb.gov/cases-decisions) — US federal labour board decisions, including ALJ rulings, Board decisions, and weekly summaries; also provides case search and regional election decisions.
+- [Fair Work Commission — Major Cases](https://www.fwc.gov.au/hearings-decisions/major-cases) — Australian national workplace tribunal decisions including annual wage reviews, enterprise agreement disputes, and arbitration awards; organized by case type.
+- [ACAS — Arbitration](https://www.acas.org.uk/arbitration) — UK Advisory, Conciliation and Arbitration Service description of collective and individual arbitration schemes, including scope (unfair dismissal, flexible working) and how awards are issued.
+
+### Practitioner and public interest
+
+- [ILO NATLEX — Database of National Labour Legislation](https://www.ilo.org/resource/natlex-database-national-labour-social-security-and-related-human-rights) — ILO database of national labour, social security, and human rights legislation from over 190 countries; useful for comparing the statutory framework behind labour boards and arbitration systems across jurisdictions.
+
+### Journalism resources
+
+- [CanLII — Federal Labour Decisions (Canada)](https://www.canlii.org/en/ca/) — Entry point for CIRB, Canadian Human Rights Tribunal employment decisions, and Pay Equity Hearings Tribunal decisions at the federal level.
+
+### Notes on unsourced claims
+
+The claim that pay equity orders can carry retroactive liability to 1988 in Ontario is supported by multiple employment law firm analyses citing Pay Equity Hearings Tribunal decisions, though the tribunal's own decisions are the primary source and are accessible via CanLII. The observation that decertification timing relative to contract expiry can reveal employer assistance reflects established labour board jurisprudence rather than a single citable study.

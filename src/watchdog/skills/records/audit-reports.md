@@ -107,3 +107,19 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **Recommendation numbering across years** — recommendations are numbered by chapter and paragraph. Cross-referencing recommendation numbers across multiple years of the same chapter can track whether a specific problem was fixed.
 5. **The chapter title vs. the actual finding** — audit chapters often have bland titles ("Management of Federal Programs") that obscure significant findings. Read the findings and recommendations before concluding the chapter is routine.
 6. **The departmental action plan** — after a performance audit, departments are often required to table an action plan. This document, separate from the management response in the audit, often makes specific commitments with timelines. Following up on these commitments is an ongoing accountability story.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [Office of the Auditor General of Canada (OAG)](https://www.oag-bvg.gc.ca/internet/english/admin_e_41.html) — The independent officer of Parliament responsible for auditing federal government finances and programs; all tabled reports are publicly available on the OAG site
+- [OAG Reports to Parliament](https://www.oag-bvg.gc.ca/internet/English/parl_lp_e_856.html) — Index of all Auditor General reports tabled in Parliament, including performance audits, special examinations, and public accounts
+- [US Government Accountability Office (GAO)](https://www.gao.gov/) — The US Congress's independent audit and evaluation agency; publishes reports and findings on federal programs at gao.gov
+- [GAO Yellow Book: Government Auditing Standards](https://www.gao.gov/yellowbook) — The preeminent standards for government auditing (GAGAS); sets requirements for financial audits, attestation engagements, and performance audits of government entities and grant recipients
+- [INTOSAI: International Organization of Supreme Audit Institutions](https://www.intosai.org/index.html) — The umbrella body for 196 national supreme audit institutions; publishes the International Standards of Supreme Audit Institutions (ISSAIs)
+- [INTOSAI Audit Standards (ISSAIs)](https://www.intosai.org/focus-areas/audit-standards.html) — The INTOSAI Framework of Professional Pronouncements, including founding principles, ISSAIs for public sector auditing, and implementation guidance
+- [Oversight.gov — US Inspector General Reports](https://www.oversight.gov/) — Centralised database of all public reports from US federal Offices of Inspector General; searchable by agency, report type, and topic
+
+### Practitioner and public interest
+- [Canadian Audit and Accountability Foundation (CAAF)](https://www.caaf-fcar.ca/en/performance-audit/15-performance-audit) — Canada's premier research and education foundation for public sector performance audit; publishes practice guides and methodology resources for performance auditors

@@ -123,3 +123,20 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **Gifts to foreign organizations** — a charity cannot simply write a cheque to a foreign organization in most jurisdictions; it must maintain direction and control over how those funds are used. Large gifts to foreign entities warrant scrutiny.
 5. **The auditor's report (if appended)** — larger charities attach audited financial statements. A qualified opinion, going concern note, or management letter is significant.
 6. **Changes in fiscal year** — a charity that changes its fiscal year end mid-stream is worth examining; it can compress or extend a reporting period to obscure a difficult year.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [CRA: Filing a Registered Charity Information Return (T3010)](https://www.canada.ca/en/revenue-agency/services/charities-giving/charities/operating-a-registered-charity/filing-t3010-charity-return.html) — Canada Revenue Agency guidance on the T3010 annual return requirement, including what must be disclosed and what is made public
+- [CRA: How to Get Information About a Charity](https://www.canada.ca/en/revenue-agency/services/charities-giving/charities/information-about-a-charity.html) — The CRA's public-facing charity search, which surfaces T3010 data including financial figures and registration status for the last five fiscal years
+- [IRS: About Form 990, Return of Organization Exempt from Income Tax](https://www.irs.gov/forms-pubs/about-form-990) — IRS overview of the Form 990 series, filing requirements by organization size, and links to the full form and instructions
+- [IRS: Tax Exempt Organization Search](https://www.irs.gov/charities-non-profits/tax-exempt-organization-search) — The IRS database for searching exempt organization filings, status, and determination letters
+
+### Practitioner and public interest
+- [FATF: Best Practices on Combating the Abuse of Non-Profit Organisations](https://www.fatf-gafi.org/en/publications/Financialinclusionandnpoissues/Bpp-combating-abuse-npo.html) — The Financial Action Task Force's best practices paper on terrorist financing risks in the nonprofit sector and the risk-based measures countries and NPOs should apply (updated under Recommendation 8, October 2023)
+- [FATF: Non-Profit Organisations Topic Page](https://www.fatf-gafi.org/en/topics/non-profit-organisations.html) — FATF's central resource on NPO vulnerabilities, linking to guidance, mutual evaluation findings, and Recommendation 8 implementation materials
+
+### Journalism resources
+- [ProPublica Nonprofit Explorer](https://projects.propublica.org/nonprofits/) — Free searchable database of millions of Form 990 filings; full-text search across electronically filed 990s, 990-PFs, and 990-EZs from 2011 to present; supports people search across officer and employee disclosures

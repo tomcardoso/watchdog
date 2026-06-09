@@ -103,3 +103,30 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **Credibility vs. inclusion vs. exclusion** — a decision may reject a claim on credibility grounds without reaching the question of whether the country conditions would warrant protection. The order matters: if the decision-maker finds exclusion (Article 1F) first, the claim is dead regardless of risk.
 5. **The consultant or legal representative's registration** — immigration consultants must be registered in many jurisdictions. If a claimant was represented by an unregistered consultant, that is significant and may be a ground for re-opening the claim.
 6. **Pattern across decisions by the same decision-maker** — a decision-maker who accepts or rejects claims from a particular country at a rate significantly different from the tribunal average is worth examining.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+
+- [Immigration and Refugee Board of Canada — Decisions](https://www.irb-cisr.gc.ca/en/decisions/Pages/index.aspx) — Published IRB decisions including persuasive decisions, jurisprudential guides (RAD), and reasons of interest across all four divisions (RPD, RAD, IAD, ID). The full decision set is also on CanLII.
+- [IRB — Assessment of Credibility in Claims for Refugee Protection](https://www.irb-cisr.gc.ca/en/legal-policy/legal-concepts/Pages/Credib.aspx) — IRB's own legal guidance on credibility assessment, including principles on demeanour, inconsistencies, implausibility, and trauma; the document that governs what decision-makers are supposed to do and that courts use to evaluate whether they did it.
+- [IRB — Procedures and Practice Notices](https://irb-cisr.gc.ca/en/legal-policy/procedures/pages/index.aspx) — Official procedural rules governing how hearings are conducted in each division; essential for understanding what is required and what constitutes procedural error.
+- [Immigration, Refugees and Citizenship Canada (IRCC)](https://www.canada.ca/en/immigration-refugees-citizenship.html) — Authoritative source for Canadian immigration law, policy, and program descriptions, including H&C application guidance, pre-removal risk assessment, and the Safe Third Country Agreement.
+- [CanLII — Canadian Legal Information Institute](https://www.canlii.org/) — Includes Federal Court and Federal Court of Appeal judicial review decisions on IRB matters; searchable by country of origin, issue, or IRB division for pattern research.
+- [College of Immigration and Citizenship Consultants — Public Register](https://register.college-ic.ca/Public-Register-EN/Public-Register-EN/Default.aspx) — Searchable register of all licensed Regulated Canadian Immigration Consultants (RCICs); shows licence status, discipline history, and current standing. Use to verify whether a claimant's representative was authorized.
+
+### Practitioner and public interest
+
+- [UNHCR — Handbook on Procedures and Criteria for Determining Refugee Status](https://www.unhcr.org/media/handbook-procedures-and-criteria-determining-refugee-status-under-1951-convention-and-1967) — The authoritative UNHCR guidance document interpreting the 1951 Refugee Convention definition; published 1979, re-issued 1992 and 2019. Sets the international baseline against which national decision-making is measured.
+- [Canadian Council for Refugees — Detention Resources](https://ccrweb.ca/en/issue-pages/detention/resources) — CCR policy submissions, public statements, and practical guides on immigration detention, including the organization's work on child detention and detention alternatives; spans 2016–2024.
+- [CLEO — Immigration and Refugee Resources (Ontario)](https://www.cleo.on.ca/en/resources-and-publications/immigration-and-refugee) — Plain-language publications on refugee hearings, H&C applications, criminal charges and immigration status, and family sponsorship; available in multiple languages including Arabic, Somali, Tamil, Spanish, and Urdu.
+
+### Journalism resources
+
+- [Reporters Committee for Freedom of the Press — Immigration Reporting Legal Guide](https://www.rcfp.org/resources/immigration-reporting-legal-guide/) — US-focused but widely applicable guide covering FOIA requests to ICE, USCIS, and CBP; accessing immigration court hearings (presumptively open to the public); and rights when covering immigration enforcement. Updated November 2025.
+
+### Notes on unsourced claims
+
+The red flag on demeanour-based credibility findings is supported by a substantial body of Canadian Federal Court jurisprudence and academic literature, including the IRB's own guidance cited above. The Georgetown Immigration Law Journal (2022) and Cambridge University Press scholarship on refugee fact-finding also address this directly, though those sources are behind paywalls. The claim that boilerplate country-condition language is a ground of judicial review reflects settled Federal Court doctrine accessible through CanLII searches on "boilerplate" and "country conditions" in the Federal Court.

@@ -111,3 +111,17 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 5. **Cross-matching vehicle records with corporate registrations** — a vehicle registered to a numbered company whose directors are identifiable through corporate filings links vehicle records to beneficial ownership. This cross-match is rarely done.
 6. **Insurance write-offs and salvage titles** — a vehicle with a salvage or rebuilt title has been written off by an insurer; where it appears with a clean title subsequently, the title has been washed. Title washing is fraud and is common in vehicle trafficking.
 7. **Vessel AIS and port records** — a vessel's registration documents state where it is registered; AIS tracking data (where available) and port arrival records show where it actually goes. Discrepancies between stated itineraries and actual movements are often the story.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [NMVTIS — For Consumers (vehiclehistory.bja.ojp.gov)](https://vehiclehistory.bja.ojp.gov/nmvtis_consumers) — The US Department of Justice's National Motor Vehicle Title Information System; allows prospective buyers and investigators to check a vehicle's title history, brand designations (salvage, flood, junk), odometer readings, and insurance total-loss records across all participating states
+- [NMVTIS — Program Overview, Bureau of Justice Assistance](https://bja.ojp.gov/program/nmvtis/overview) — Official overview of NMVTIS, its legal basis under the Anti Car Theft Act of 1992, and its role in preventing title fraud and vehicle cloning
+- [DVLA — Get vehicle information from DVLA (GOV.UK)](https://www.gov.uk/get-vehicle-information-from-dvla) — UK government service for checking vehicle tax status, MOT expiry, registration date, engine and fuel details held by the Driver and Vehicle Licensing Agency
+- [Ontario PPSR — Register a security interest or search for a lien (ontario.ca)](https://www.ontario.ca/page/register-security-interest-or-search-lien-access-now) — Ontario's Access Now portal for searching the Personal Property Security Registration system; allows VIN-based lien searches before purchasing a vehicle
+- [ITF Seafarers — Flags of Convenience](https://www.itfseafarers.org/en/resources/flags-convenience) — The International Transport Workers' Federation's resource on open vessel registries; explains why flags of convenience are used, which countries operate them, and the labour and regulatory risks they create
+
+### Practitioner and public interest
+- [InsuranceFraud.org — Title washing and salvage fraud](https://insurancefraud.org/publications/fraudblog-unmasking-auto-fraud-cloning-salvage-and-title-washing/) — Insurance fraud industry analysis of the mechanics of title washing, vehicle cloning, and salvage fraud, including how titles are moved through states with weaker disclosure requirements

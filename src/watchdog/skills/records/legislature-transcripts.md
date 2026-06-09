@@ -108,3 +108,18 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **Order Paper notices** — notices of questions, motions, and bills placed on the Order Paper but not yet reached may signal what an opposition party knows or intends to raise.
 5. **Unedited vs. official transcripts** — some legislatures publish a draft or "Blues" transcript before the corrected official version. Comparing them can reveal changes made after the sitting.
 6. **Statements made during debate that conflict with later departmental action** — a minister who commits to a specific course of action during debate and then takes a different course. The parliamentary record is the proof of the original commitment.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [House of Commons Debates (Hansard) — ourcommons.ca](https://www.ourcommons.ca/documentviewer/en/house/latest/hansard) — The official verbatim record of House of Commons proceedings; the authoritative source for citations of what was said in the chamber
+- [House of Commons — Open Data](https://www.ourcommons.ca/en/open-data) — Machine-readable XML and JSON datasets of Hansard transcripts, committee evidence, voting records, and bill information, available for bulk download and analysis
+- [Hansard — UK Parliament](https://hansard.parliament.uk/) — The official report of all UK Parliamentary debates for both the House of Commons and House of Lords, searchable back to the early nineteenth century
+- [LEGISinfo — Parliament of Canada](https://www.parl.ca/legisinfo) — Canada's official bill tracking system covering all bills from introduction through royal assent, including links to recorded divisions and parliamentary debate for each stage
+- [Congress.gov — Library of Congress](https://www.congress.gov/) — US federal legislative portal providing the Congressional Record, committee hearing transcripts, and roll call votes
+
+### Practitioner and public interest
+- [OpenParliament.ca](https://openparliament.ca/) — Independent, non-governmental search tool for Canadian House of Commons Hansard transcripts back to 1994; provides topic summaries, MP profiles, and bill tracking in a more accessible interface than the official record
+- [GovTrack.us](https://www.govtrack.us/) — Independent tracker of US congressional activity including voting records, bill progress, and member statistics; operated without government or party affiliation since 2004

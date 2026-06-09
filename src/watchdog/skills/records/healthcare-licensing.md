@@ -107,3 +107,19 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **Agreed statements vs. full hearings** — an agreed statement of facts in a consent order is negotiated. The agreed facts may describe less egregious conduct than what actually occurred. Compare the agreed statement to any underlying police or coroner records.
 5. **Unreported critical incidents** — hospitals and care facilities are required to report critical incidents internally and to the regulator. If you have patient safety data, compare it to what was formally reported.
 6. **Long-term care inspection history** — care facility inspection reports are publicly available in many jurisdictions. Comparing a facility's inspection history over several years reveals whether identified problems were corrected or recurred.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [CPSO Discipline Decisions — College of Physicians and Surgeons of Ontario](https://www.cpso.on.ca/News/Discipline-Decisions) — index of recent Ontario physician discipline outcomes; links through to the Ontario Physicians and Surgeons Discipline Tribunal for full decisions
+- [Ontario Physicians and Surgeons Discipline Tribunal — Decisions](https://hpdt.ca/opsdt/hearings/decisions) — full published reasons for discipline decisions on merits, penalty, motions, and costs
+- [CPSO Physician Register](https://register.cpso.on.ca/) — Ontario's public register of physicians; shows current registration status, any conditions on practice, and discipline history
+- [College of Nurses of Ontario — Discipline Decisions](https://www.cno.org/protect-the-public/discipline-decisions) — CNO publishes full-text decisions via the Find A Nurse registry and quarterly decision summaries; decisions also available on CanLII
+- [CMS Open Payments](https://openpaymentsdata.cms.gov/) — US public database of payments made by pharmaceutical and medical device companies to physicians and teaching hospitals, as required by the Physician Payments Sunshine Act; covers payments from 2013 onward
+- [FSMB DocInfo](https://www.docinfo.org/) — US national public database of physician licensing and disciplinary actions maintained by the Federation of State Medical Boards; covers MD and DO physicians across all US states
+- [Health Canada Drug Product Database](https://health-products.canada.ca/dpd-bdpp/) — searchable database of all drug products authorized for sale in Canada, including status (active, cancelled, dormant)
+
+### Practitioner and public interest
+- [ProPublica Dollars for Docs](https://projects.propublica.org/docdollars/) — historical database of pharmaceutical company payments to US physicians from 2013 to 2018; useful for background on older cases; current data available through CMS Open Payments

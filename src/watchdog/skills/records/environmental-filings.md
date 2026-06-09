@@ -116,3 +116,18 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **EA conditions and their monitoring** — an approved project comes with conditions. Whether those conditions are being monitored and enforced — and whether violations have occurred — requires a separate access request or database search.
 5. **Voluntary reduction commitments** — a facility may have made voluntary commitments to reduce emissions as part of a settlement or an EA condition. Compare stated commitments to actual PRTR data.
 6. **Corporate ownership chain** — environmental liability follows the land and the operator. A company that sold a contaminated facility to a subsidiary before declaring bankruptcy may have left the cleanup obligation with a shell. Check the ownership history.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [National Pollutant Release Inventory data search (Canada)](https://pollution-waste.canada.ca/national-release-inventory/) — searchable database of pollutant releases to air, water, and land from Canadian industrial facilities, going back to 1993; filterable by facility, substance, province, and sector
+- [About the NPRI — Canada.ca](https://www.canada.ca/en/environment-climate-change/services/national-pollutant-release-inventory/about-national-pollutant-release-inventory.html) — overview of Canada's national pollutant inventory program, reporting thresholds, and covered substances
+- [EPA Enforcement and Compliance History Online (ECHO)](https://echo.epa.gov/) — US database covering compliance and enforcement records for more than 1.5 million regulated facilities under the Clean Air Act, Clean Water Act, RCRA, and Safe Drinking Water Act
+- [EPA Toxics Release Inventory (TRI) Program](https://www.epa.gov/toxics-release-inventory-tri-program) — US equivalent of the NPRI; annual reports from industrial and federal facilities on toxic chemical releases; searchable back to 1987
+- [ECCC Environmental Enforcement Notifications — Canada.ca](https://www.canada.ca/en/environment-climate-change/services/environmental-enforcement/notifications.html) — database of successful federal environmental prosecutions in Canada, including fines issued under CEPA and the Fisheries Act
+
+### Practitioner and public interest
+- [GIJN: Environmental Investigative Reporting — Resources and Methods](https://gijn.org/stories/environmental-investigative-reporting-resources-methods/) — GIJN guide covering data sources, tools, and methods for environmental investigations, including pollutant databases and remote sensing resources
+- [UNEP: Compliance Mechanisms Under Selected Multilateral Environmental Agreements](https://www.unep.org/resources/report/compliance-mechanisms-under-selected-multilateral-environmental-agreements) — UNEP comparative analysis of compliance frameworks across 19 major global environmental treaties; useful context for cross-border investigations

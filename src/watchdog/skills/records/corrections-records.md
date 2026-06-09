@@ -121,3 +121,25 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 5. **Overrepresentation data at the facility level** — national statistics on Indigenous and racialized overrepresentation in custody are reported but underused. The same data broken down by individual facility, region, or offence category is far more powerful and often buried in appendices.
 6. **The legal standard that was applied** — parole and detention decisions invoke a legal standard (e.g., "undue risk to public safety"). Whether the board correctly applied the legal test is a question journalists rarely examine but courts regularly overturn decisions on.
 7. **Deaths in custody that are not homicides** — suicides, overdoses, and "natural" deaths in custody are often undercounted and underinvestigated relative to their public significance. Mandatory reporting frameworks exist in most jurisdictions; tracking compliance with those frameworks is a distinct beat.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+
+- [Office of the Correctional Investigator — Annual Reports](https://oci-bec.gc.ca/en/reports/annual) — Full archive of the federal ombudsman's annual reports to Parliament dating to 1973–74; the most data-rich public source on conditions in Canadian federal prisons, overrepresentation, and outstanding recommendations.
+- [Parole Board of Canada — Decision Registry](https://www.canada.ca/en/parole-board/services/decision-registry.html) — Public registry of conditional release decisions made by the Parole Board of Canada; any member of the public may request copies by writing to the relevant regional office.
+- [Correctional Service Canada — Reporting to Canadians](https://www.canada.ca/en/correctional-service/corporate/transparency/reporting.html) — CSC's public performance and statistical reporting, including departmental results reports and population data.
+- [Bureau of Justice Statistics — National Prisoner Statistics](https://bjs.ojp.gov/data-collection/national-prisoner-statistics-nps) — US Department of Justice program producing annual national and state-level data on prison populations, demographics, and facility capacity.
+- [Department of Justice Canada — Overrepresentation of Indigenous People in the Canadian Criminal Justice System](https://www.justice.gc.ca/eng/rp-pr/jr/gladue/p2.html) — Federal research report documenting statistical overrepresentation of Indigenous people in Canadian corrections, including facility-level data used in Gladue analysis.
+
+### Practitioner and public interest
+
+- [ACLU — Prisoners' Rights](https://www.aclu.org/issues/prisoners-rights) — The ACLU's National Prison Project litigates prison conditions cases on a national level; the issues page links to current litigation, reports, and advocacy on solitary confinement, medical care, and overcrowding.
+- [Prison Policy Initiative](https://www.prisonpolicy.org/) — US nonprofit producing quantitative research on mass incarceration, technical violations, parole revocations, and racial disparities; includes the annual "Mass Incarceration: The Whole Pie" report.
+- [Howard League for Penal Reform](https://howardleague.org/research/) — UK's oldest penal reform charity, publishing independent research on prison conditions, sentencing, and the use of custody; holds consultative status with the UN and Council of Europe.
+
+### Journalism resources
+
+- [Reporters Committee for Freedom of the Press — Open Government Guide](https://www.rcfp.org/open-government-guide/) — State-by-state guide to US open records laws, including access rules for correctional facility records, parole board decisions, and disciplinary files.

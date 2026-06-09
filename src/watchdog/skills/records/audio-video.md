@@ -120,3 +120,19 @@ For journalism: audio and video quotes require verification against the original
 4. **Deleted content** — a video or episode that has been removed from YouTube or a podcast feed may be archived at archive.org, on a mirror site, or in a listener's cache. The fact of deletion is itself significant.
 5. **Earnings call transcripts via free services** — Seeking Alpha, Motley Fool, and company investor relations pages often publish earnings call transcripts. These are more reliable than auto-generated YouTube captions for investor presentations.
 6. **Foreign-language content** — a YouTube channel or podcast in another language may contain significant statements not captured by English-language research. Auto-translation in YouTube can give a rough understanding; professional translation is needed for direct quotes.
+
+---
+
+## Sources and further reading
+
+### Practitioner and public interest
+
+- [WeVerify / InVID Verification Plugin — weverify.eu](https://weverify.eu) — Open-source browser extension and platform for verifying video and image content; includes reverse video search, near-duplicate detection, deepfake detection, and metadata analysis
+- [WITNESS Media Lab — lab.witness.org](https://lab.witness.org/about/) — Research and practice hub from WITNESS focused on sourcing, verifying, and contextualizing eyewitness video for human rights documentation and journalism
+- [TinEye Reverse Image Search — tineye.com](https://tineye.com) — Reverse image search engine for tracing the origin and prior appearances of images and video frames; use to establish whether an image is recycled from an earlier event
+
+### Journalism resources
+
+- [Bellingcat — Advanced Guide on Verifying Video Content](https://www.bellingcat.com/resources/how-tos/2017/06/30/advanced-guide-verifying-video-content/) — Covers techniques for authenticating user-generated video including reverse image search, visual analysis, and detection of manipulation such as mirroring or colour changes
+- [Bellingcat — A Beginner's Guide to Social Media Verification](https://www.bellingcat.com/resources/2021/11/01/a-beginners-guide-to-social-media-verification/) — Five-step framework (originality, source, location, time, motivation) for verifying photos and videos shared on social platforms
+- [First Draft — Verifying Online Information](https://firstdraftnews.org/long-form-article/verifying-online-information/) — Journalist's guide to verifying digital content; covers InVID integration, metadata analysis, and geolocation techniques for video and audio

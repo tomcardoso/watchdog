@@ -124,3 +124,22 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **Former officials who appear as references or technical contacts** — sometimes a former official doesn't register as a lobbyist but appears as a "subject matter expert" or "technical consultant" on filings.
 5. **The gap between registration and first reported meeting** — if meetings start occurring the same week as registration, the communications may have preceded the registration.
 6. **Corporate structure of the client** — the "client" listed may be a subsidiary; the ultimate beneficial interest may be a foreign corporation or state-owned enterprise that would be politically sensitive.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [Office of the Commissioner of Lobbying of Canada](https://lobbycanada.gc.ca/en/) — The federal body that administers Canada's Lobbying Act, enforces the Lobbyists' Code of Conduct, and maintains the public Registry of Lobbyists
+- [Registry of Lobbyists — Advanced Search](https://lobbycanada.gc.ca/app/secure/ocl/lrs/do/advSrch) — Searchable database of all federal registrations and monthly communication reports; supports filtering by client, lobbyist, subject matter, government institution, and date
+- [Lobbying Disclosure Act (LDA) Reports — LDA.gov](https://lda.senate.gov/system/public/) — US Senate Office of Public Records database of LD-1 registrations, LD-2 quarterly activity reports, and LD-203 political contribution disclosures (note: the legacy lda.senate.gov domain is transitioning to lda.gov after June 2026)
+- [How to Register and Report — Office of the Commissioner of Lobbying](https://lobbycanada.gc.ca/en/registration-and-compliance/how-to-register-and-report-your-lobbying-activities/) — Canada's official guidance on registration timelines, what triggers disclosure, and which officials count as designated public office holders
+
+### Practitioner and public interest
+- [OpenSecrets — Federal Lobbying Data](https://www.opensecrets.org/federal-lobbying) — Aggregated LDA data searchable by client, firm, and issue; tracks total lobbying spend by industry and organization for every year since 1998
+- [GIJN Guide to Investigating Foreign Lobbying](https://gijn.org/resource/guide-investigating-foreign-lobbying/) — Global Investigative Journalism Network guide to tracing foreign lobbying relationships, including how to use FARA filings in the US and equivalent registers in other jurisdictions
+
+### Journalism resources
+- [IRE Resource Center](https://www.ire.org/resources/) — Tipsheets and guides from Investigative Reporters and Editors covering lobbying records, revolving-door research, and cross-referencing lobby registrations with campaign finance data
+
+**Notes on unsourced claims:** Cooling-off period durations cited in the red flags section (two years for Canadian ministers; five years for designated public office holders; two years for US members of Congress; one year for senior executive branch officials) reflect the law as of 2024 and are subject to legislative change. Always verify current periods with the relevant registry or ethics body before publishing.

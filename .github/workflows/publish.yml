@@ -5,7 +5,23 @@ on:
     types: [published]
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package and dev dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run tests
+        run: pytest
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,8 +32,9 @@ jobs:
 
       - name: Build sdist and wheel
         run: |
-          pip install hatch
+          pip install hatch twine
           hatch build
+          twine check --strict dist/*
 
       - uses: actions/upload-artifact@v4
         with:

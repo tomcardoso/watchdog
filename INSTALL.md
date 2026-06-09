@@ -60,7 +60,10 @@ Watchdog requires two tools for processing PDFs: **qpdf** and **ghostscript**. I
 **macOS:**
 ```
 brew install qpdf ghostscript pipx
+pipx ensurepath
 ```
+Then close and reopen Terminal so the new `pipx` path takes effect.
+
 If you don't have Homebrew, install it first: [brew.sh](https://brew.sh)
 
 **Ubuntu / Debian Linux:**
@@ -76,7 +79,7 @@ sudo dnf install qpdf ghostscript pipx tesseract tesseract-devel
 **Windows:**
 - qpdf: [github.com/qpdf/qpdf/releases](https://github.com/qpdf/qpdf/releases) — download the installer
 - ghostscript: [ghostscript.com/releases/gsdnld.html](https://ghostscript.com/releases/gsdnld.html) — download the installer
-- pipx: open Terminal and run `pip install pipx`, then `pipx ensurepath`
+- pipx: open Terminal and run `python -m pip install pipx`, then `pipx ensurepath`
 
 ---
 
@@ -257,6 +260,8 @@ The document couldn't be processed. Common reasons:
 - Password-protected PDF — remove the password and try again
 - Corrupted file — try re-downloading the document
 - Unsupported format — check the supported file types list above
+
+To retry: move the file from `_INCOMING/_FAILED/` back to `_INCOMING/`, then run `/watchdog-ingest` in Claude Code.
 
 **Rate limit errors during a large ingest**
 If you're ingesting many documents at once and Claude hits a rate limit, it will stop and log where it paused. Files that were successfully processed will be in `morgue/`. Files that weren't processed will still be in `_INCOMING/`. Start a new Claude Code session and run `/watchdog-ingest` again — it will pick up where it left off, skipping any already-processed files.

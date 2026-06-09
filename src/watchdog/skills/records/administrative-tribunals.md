@@ -118,3 +118,22 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 5. **Compliance monitoring** — an order to do something does not mean it was done. Regulators often have a compliance monitoring or follow-up process; the compliance record is as important as the order itself.
 6. **The complaint that triggered the proceeding** — the formal decision rarely reproduces the original complaint in full. The original filing, available separately, may contain more specific factual allegations than what appears in the decision.
 7. **Reconsideration and appeal decisions** — a significant percentage of tribunal decisions are reconsidered or appealed. The decision you have may have been overturned or modified by a subsequent proceeding.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+
+- [CanLII — Canadian Legal Information Institute](https://www.canlii.org/) — Free, searchable database of decisions from Canadian courts and federal and provincial administrative tribunals, updated within two business days of issuance. The primary public access point for tribunal decisions in Canada.
+- [Canadian Human Rights Tribunal — Decisions Search](https://www.chrt-tcdp.gc.ca/en/human-rights/search-human-rights-decisions) — Searchable database of CHRT decisions, with links to Federal Court and Supreme Court decisions that have interpreted the Canadian Human Rights Act.
+- [UK Courts and Tribunals Judiciary — Tribunals Overview](https://www.judiciary.uk/about-the-judiciary/who-are-the-judiciary/judicial-roles/tribunals/) — Official description of the UK two-tier tribunal structure (First-tier and Upper Tribunal), chamber organization, and jurisdiction.
+
+### Practitioner and public interest
+
+- [Council of Canadian Administrative Tribunals (CCAT)](https://www.ccat-ctac.org/) — National non-profit that supports and trains tribunal members across Canada; its resources and the *Canadian Journal of Administrative Law and Practice* are key references for tribunal practice.
+- [Canadian Institute for the Administration of Justice (CIAJ)](https://ciaj-icaj.ca/en/) — Bilingual judicial education and research organization that publishes papers and proceedings on administrative law; the administrative law section of its library covers procedural fairness, consent agreements, and systemic remedies.
+
+### Journalism resources
+
+- [CanLII — Ontario Tribunals](https://www.canlii.org/en/on/) — Ontario-specific entry point for OLRB, CHRT, Ontario Energy Board, and other provincial tribunal decisions; useful starting point for cross-referencing a respondent's tribunal history.

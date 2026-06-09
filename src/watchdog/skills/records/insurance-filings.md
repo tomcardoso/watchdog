@@ -111,3 +111,17 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **Surplus notes** — a form of subordinated debt that counts as capital for regulatory purposes but is economically debt. A high proportion of capital in surplus notes suggests the insurer's true capital buffer is smaller than it appears.
 5. **Investment income dependency** — an insurer with a combined ratio consistently above 100% that remains solvent is living on investment income. Periods of low returns or rising rates (which depress bond values) can expose this weakness.
 6. **Regulator public supervisory disclosures** — many regulators publish institution-level data, including capital ratios and certain financial metrics. Comparing this public data to the insurer's own disclosures can reveal inconsistencies.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [OSFI — Minimum Capital Test Guideline (2026)](https://www.osfi-bsif.gc.ca/en/guidance/guidance-library/minimum-capital-test-guideline-2026) — Office of the Superintendent of Financial Institutions' capital adequacy framework for Canadian property and casualty insurers; defines the 100% minimum and 150% supervisory target MCT ratios referenced in the red flags section
+- [OSFI — Life Insurance Capital Adequacy Test Guideline (2025)](https://www.osfi-bsif.gc.ca/en/guidance/guidance-library/life-insurance-capital-adequacy-test-guideline-2025) — OSFI's equivalent capital standard for life insurers (LICAT); establishes the core and total ratio requirements
+- [OSFI — Guidance library](https://www.osfi-bsif.gc.ca/en/guidance/guidance-library) — Full index of OSFI's supervisory guidelines, advisories, and letters covering all federally regulated financial institutions in Canada
+- [NAIC — National Association of Insurance Commissioners](https://content.naic.org/) — The US standard-setting body for insurance regulation since 1871; coordinates state insurance oversight and provides the Financial Data Repository, IRIS financial ratio reports, and risk-based capital analysis tools used by all 50 state regulators
+- [IAIS — Insurance Core Principles and ComFrame](https://www.iais.org/activities-topics/standard-setting/icps-and-comframe/) — The International Association of Insurance Supervisors' globally accepted framework for insurance supervision; the ICPs and ComFrame establish standards for capital adequacy, reserving, reinsurance oversight, and market conduct across more than 200 jurisdictions
+
+### Practitioner and public interest
+- [Insurance Bureau of Canada — Facts Book](https://www.ibc.ca/industry-resources/resources-data/facts-book) — IBC's annual statistical reference for the Canadian property and casualty insurance industry; includes industry-level loss ratios, combined ratios, premium volume, and claims data useful for benchmarking individual insurer performance

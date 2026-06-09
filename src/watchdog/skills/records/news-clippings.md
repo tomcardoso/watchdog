@@ -113,3 +113,17 @@ Never treat a news story as establishing a fact for which the story itself is th
 4. **What the story doesn't say** — a press release or corporate announcement article often omits information that would complicate the narrative. The absence of certain facts (e.g., a company's regulatory history) is a gap, not a confirmation of a clean record.
 5. **The original vs. the updated version** — online news stories are frequently updated after initial publication. The original version and the current version may differ significantly; the Internet Archive (Wayback Machine) preserves versions at specific crawl times.
 6. **Foreign-language coverage** — a person or company that appears clean in English-language coverage may have significant coverage in their home-country press. Always search in the relevant language if there is a foreign connection.
+
+---
+
+## Sources and further reading
+
+### Practitioner and public interest
+
+- [NewsGuard](https://www.newsguardtech.com) — Internet trust service that rates news outlets on journalistic criteria; use to quickly assess a publication's reputation for accuracy and accountability before weighting its reporting
+- [AllSides Media Bias Ratings](https://www.allsides.com/media-bias/ratings) — Rates the political bias of over 2,400 news sources using multipartisan review panels; useful for understanding an outlet's perspective when assessing coverage of politically charged claims
+
+### Journalism resources
+
+- [Poynter — International Fact-Checking Network (IFCN)](https://www.poynter.org/ifcn/) — Directory of over 170 IFCN-certified fact-checking organizations worldwide; use to identify whether a claim has been fact-checked and by whom
+- [First Draft — Verifying Online Information](https://firstdraftnews.org/long-form-article/verifying-online-information/) — Comprehensive guide to verifying digital content including provenance, source, date, location, and motivation checks; includes practical tools and checklists for journalists

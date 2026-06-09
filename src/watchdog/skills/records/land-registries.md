@@ -144,3 +144,20 @@ Real property recording is county-level (not federal or state). Deed types vary:
 4. **The notary or conveyancer as a lead** — the legal professional who prepared an instrument is public information. In fraud investigations, the same notary or solicitor appearing across multiple suspicious transactions is significant.
 5. **The civil law / common law distinction** — a company operating across both systems (e.g. a company incorporated in Ontario with properties in Quebec) will have instruments in both the land register and the RDPRM. Both must be searched.
 6. **Caveat withdrawal timing** — in Torrens systems, a caveat lapses or is withdrawn after a period. The withdrawal of a caveat that was protecting an unregistered interest may leave that interest unprotected — and may indicate a settlement, payment, or dispute resolution.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [FATF — Money Laundering and Terrorist Financing Through the Real Estate Sector (2007)](https://www.fatf-gafi.org/en/publications/Methodsandtrends/Moneylaunderingandterroristfinancingthroughtherealestatesector.html) — primary FATF typologies report covering rapid transfers, shell company purchases, inflated appraisals, and mortgage fraud
+- [FATF — Risk-Based Approach Guidance: Real Estate Sector (2022)](https://www.fatf-gafi.org/content/dam/fatf-gafi/guidance/RBA-Real-Estate-Sector.pdf) — updated guidance including professional enablers, virtual assets, and cross-border transactions
+- [FINTRAC — Money Laundering and Terrorist Financing Indicators: Real Estate](https://fintrac-canafe.canada.ca/guidance-directives/transaction-operation/indicators-indicateurs/real_mltf-eng) — Canadian indicators developed from three years of suspicious transaction report review; directly maps to the rapid-transfer and shell-company red flags in this skill
+- [FINTRAC — Operational Brief: Money Laundering in Real Estate Financial Transactions](https://fintrac-canafe.canada.ca/intel/operation/real-eng) — case-based brief with concrete transaction patterns seen by Canadian authorities
+
+### Practitioner and public interest
+- [Global Witness — On the House: How US Laws Let Corrupt Individuals Buy Real Estate](https://globalwitness.org/en/campaigns/corruption-and-money-laundering/on-the-house/) — undercover investigation showing how anonymous shell companies acquire US property
+- [Global Witness — £100bn of Property in England and Wales Is Secretly Owned](https://globalwitness.org/en/press-releases/100bn-of-property-in-england-and-wales-is-secretly-owned-estimates-show/) — UK-specific investigation into anonymous property ownership via shell companies
+
+### Notes on unsourced claims
+The Quebec-specific red flags (radiation without discharge, hypothec on universality, prior rank above a conventional hypothec) are accurate descriptions of civil law practice but lack a single authoritative English-language public source. The Chambre des notaires du Québec and the Barreau du Québec publish practitioner guidance, but much of it is members-only. Treat these items as editorially reviewed pending a Quebec-specific citation.

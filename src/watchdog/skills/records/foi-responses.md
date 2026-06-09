@@ -106,3 +106,20 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 5. **Proactive disclosure cross-reference** — contracts, hospitality, and travel released proactively may overlap with or contradict records released in a FOI package. Compare them.
 6. **Consultation records** — many FOI packages contain records of the institution consulting with other departments or the central government before making decisions. These show who was involved in the decision to withhold.
 7. **The online disclosure database** — many jurisdictions maintain public logs of completed requests. Comparing the database summary to the actual release can reveal inconsistencies or missing records.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [Access to Information Manual — Treasury Board of Canada Secretariat](https://www.canada.ca/en/treasury-board-secretariat/services/access-information-privacy/access-information/access-information-manual.html) — The federal government's operational guide for institutions handling access to information requests under the Access to Information Act
+- [Access to Information Act: Plain Language Guide to Exemptions and Exclusions](https://www.canada.ca/en/treasury-board-secretariat/services/access-information-privacy/aia-plain-language-guide.html) — Treasury Board Secretariat guide explaining what each exemption and exclusion means in plain language
+- [Office of the Information Commissioner of Canada](https://www.oic-ci.gc.ca/en) — The federal oversight body that investigates complaints about access to information requests made to federal institutions; publishes decisions and annual reports
+- [FOIA.gov](https://www.foia.gov/) — The US government's central portal for the Freedom of Information Act, including agency contacts, request status tracking, and annual statistics
+
+### Practitioner and public interest
+- [Global Right to Information Rating (RTI Rating)](https://www.rti-rating.org/) — Comparative scoring of national access to information laws by the Centre for Law and Democracy and Access Info Europe; useful for benchmarking a jurisdiction's legal framework
+- [Access Info Europe](https://www.access-info.org/) — European human rights organisation that advocates for and monitors access to information laws; publishes comparative research and the Legal Leaks toolkit for journalists
+
+### Journalism resources
+- [MuckRock](https://www.muckrock.com/) — Nonprofit news and transparency platform that files, tracks, and publishes public records requests in the US; searchable database of past requests and responses

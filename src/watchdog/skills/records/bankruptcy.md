@@ -109,3 +109,23 @@ Loaded by `/ingest` when the document type is a bankruptcy filing, proposal, cre
 4. **Proofs of claim from related parties** — always look at who is claiming against the estate and for how much. A director's holding company claiming a large amount as an unsecured creditor may be inflating the claim.
 5. **The effect on employees** — employees are often preferred or priority creditors for unpaid wages, but their claims may be capped. Wage protection programs (where they exist) may cover some of this. The trustee's obligation to notify employees is often not fulfilled promptly.
 6. **The sequence of registrations and deregistrations** — when was the company incorporated, when did financial distress start (look for tax liens, judgment liens), when was insolvency filed? The gap between these dates tells a story.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [Office of the Superintendent of Bankruptcy (OSB) — Canada](https://ised-isde.canada.ca/site/office-superintendent-bankruptcy/en) — Federal regulator that licences insolvency trustees, maintains the Canadian insolvency registry, and publishes annual insolvency statistics
+- [Bankruptcy and Insolvency Act (BIA) — Justice Laws Website](https://laws-lois.justice.gc.ca/eng/acts/b-3/fulltext.html) — Full text of Canada's primary insolvency statute (R.S.C., 1985, c. B-3), kept current by the Department of Justice
+- [Companies' Creditors Arrangement Act (CCAA) — Justice Laws Website](https://laws-lois.justice.gc.ca/eng/acts/c-36/FullText.html) — Full text of the CCAA, which governs large commercial restructurings in Canada (applies when claims exceed $5 million)
+- [PACER — Public Access to Court Electronic Records](https://pacer.uscourts.gov/) — US federal judiciary's public access system covering all bankruptcy court filings; over one billion documents searchable by case name, party, and filing type
+- [OSB Insolvency Statistics](https://ised-isde.canada.ca/site/office-superintendent-bankruptcy/en/statistics-and-research) — Annual and quarterly insolvency data published by the OSB, including breakdowns by consumer/business insolvency and by province
+
+### Practitioner and public interest
+- [INSOL International](https://www.insol.org/) — Global federation of 44 national associations for insolvency and restructuring professionals; publishes cross-border insolvency guidance and technical papers
+- [Phoenix companies and the role of the Insolvency Service — UK Government](https://www.gov.uk/government/publications/phoenix-companies-and-the-role-of-the-insolvency-service/phoenix-companies-and-the-role-of-the-insolvency-service) — UK government explainer on how serial phoenixing is regulated and the Insolvency Service's investigative authority over director misconduct
+
+### Journalism resources
+- [GIJN: Researching Corporations and Their Owners](https://gijn.org/resource/researching-corporations-and-their-owners/) — Global Investigative Journalism Network guide to tracing corporate ownership structures, useful for identifying related-party creditors and phoenix patterns
+
+**Notes on unsourced claims:** No specific FATF typology report exclusively focused on money laundering through insolvency proceedings was located in public FATF publications. The FATF has published typology reports on professional money laundering and on legal professional vulnerabilities (which touch on insolvency practitioners), but a standalone insolvency-and-money-laundering typology report could not be verified. The claim that successive bankruptcies lead to stricter discharge conditions is supported generally by the BIA (Canada) and the US Bankruptcy Code but was not traced to a single public-facing explainer; journalists should consult the relevant statute directly.

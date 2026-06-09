@@ -114,3 +114,21 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **The winning bid vs. competing bids** — in a competitive process, the winning bid is sometimes available through access to information. Comparing bid prices can reveal whether the process was genuinely competitive.
 5. **Conflict of interest attestations** — contractors are typically required to attest that they have no conflict of interest. If a conflict later emerges, the attestation is evidence that it was either undisclosed or not caught.
 6. **Post-contract audit rights** — most contracts over certain thresholds give the government the right to audit the contractor's records. Whether those audit rights were exercised, and what was found, is often not public but obtainable through access to information.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [Proactive Disclosure — Open Government Portal (Canada)](https://open.canada.ca/en/proactive-disclosure) — Central hub for Canada's proactive publication requirements; contracts over $10,000 from all federal departments, updated quarterly
+- [Proactive Publication — Contracts Dataset (Canada)](https://open.canada.ca/data/en/dataset/d8f85d91-7dec-4fd1-8055-483b77225d8b) — Downloadable CSV dataset of federal contract disclosures; useful for bulk analysis of vendor patterns, amendment histories, and department-level spending trends
+- [CanadaBuys / Buyandsell.gc.ca](https://buyandsell.gc.ca/) — Canada's procurement portal for notices, standing offers, and supply arrangements; contract history is accessible through this portal
+- [USASpending.gov](https://www.usaspending.gov/) — Official US federal database of contract and grant spending including IDIQ task orders and GSA Schedule purchases; award data available from fiscal year 2001
+
+### Practitioner and public interest
+- [Open Contracting Partnership](https://www.open-contracting.org/) — Promotes open, fair, and efficient public contracting globally; publishes guidance on post-award monitoring, amendment red flags, and how to use OCDS data to detect irregularities
+- [Open Contracting Data Standard (OCDS)](https://www.open-contracting.org/data-standard/) — International open standard for publishing full contracting process data from planning through contract implementation; endorsed by the G20 and G7
+- [OECD Recommendation of the Council on Public Procurement](https://legalinstruments.oecd.org/en/instruments/OECD-LEGAL-0411) — Sets twelve principles for transparent and integrity-focused procurement; the framework against which post-award failures (scope creep, unsupported amendments, absent performance reports) can be benchmarked
+
+### Journalism resources
+- [GIJN — Tracking Government Contracts](https://gijn.org/resource/tracking-covid-19-contracts-a-gijn-guide-and-webinar) — Practical guide to pursuing procurement stories; covers post-award red flags including unnecessary purchases, inexperienced contractors, and secrecy at the implementation stage

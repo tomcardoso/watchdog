@@ -111,3 +111,18 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 5. **Transitional provisions** — transitional provisions at the end of legislation tell you who gets to keep doing what under the old rules, and for how long. These are frequently buried and underreported but often represent the most significant negotiated accommodations.
 6. **Consequential amendments** — most statutes amend other statutes as a consequence of their main provisions. These consequential amendments can expand or limit the scope of other laws in ways that are not obvious from the bill's title or purpose clause.
 7. **Regulations made without consultation** — compare the regulations as gazetted against any prior consultation draft or proposed regulation. Changes made between the consultation draft and the final version that benefit specific regulated parties are a common lobbying story.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [Justice Laws Website — Canada](https://laws-lois.justice.gc.ca/eng/) — The official consolidated source for all federal Acts and regulations of Canada, maintained by the Department of Justice, with both current and historical versions in English and French
+- [LEGISinfo — Parliament of Canada](https://www.parl.ca/legisinfo) — The Parliament of Canada's official bill tracking system, jointly operated by the Senate, House of Commons, and Library of Parliament; covers all bills from first reading through royal assent back to 1994
+- [Canada Gazette](https://gazette.gc.ca/accueil-home-eng.html) — The official newspaper of the Government of Canada, publishing proposed regulations (Part I) and enacted regulations and statutory instruments (Part II); essential for tracking the regulatory process
+- [Congress.gov — Library of Congress](https://www.congress.gov/) — The official US government portal for federal legislation, including bill text, committee reports, the Congressional Record, and roll call votes from the 93rd Congress onward
+- [UK Legislation — National Archives](https://www.legislation.gov.uk/) — The official source for UK primary and secondary legislation, including Acts of Parliament, statutory instruments, and devolved legislation from the Scottish Parliament, Senedd, and Northern Ireland Assembly
+- [EUR-Lex — European Union Law](https://eur-lex.europa.eu/homepage.html) — The official EU law database, providing free access to treaties, regulations, directives, and the Official Journal of the European Union in all 24 EU official languages
+
+### Practitioner and public interest
+- [GovTrack.us](https://www.govtrack.us/) — Independent, non-governmental tracker of US congressional legislation, voting records, and member activity; operated by Civic Impulse LLC with no government or party affiliation, running since 2004

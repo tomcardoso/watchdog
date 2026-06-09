@@ -102,7 +102,7 @@ These fields appear in virtually every corporate filing. Extract them even when 
 | **Articles of organization** | The founding document for an LLC (equivalent to Articles of Incorporation for a corporation) |
 | **Operating agreement** | LLC internal governance document — often not publicly filed |
 | **EIN** | Employer Identification Number — US equivalent of a Business Number |
-| **FinCEN BOI** | Beneficial Ownership Information — required reporting to FinCEN under the Corporate Transparency Act (2024) |
+| **FinCEN BOI** | Beneficial Ownership Information — as of March 2025, the reporting requirement was removed for US domestic companies and applies only to foreign entities registered in the US |
 
 ### UK and others
 
@@ -135,3 +135,24 @@ Beyond the standard entity extraction, specifically look for and record:
 4. **The signing block** — who signed the filing and in what capacity. If a director signs an annual report but is also a named defendant in a litigation disclosed in the same report, that's notable.
 5. **Date of the annual general meeting** — companies are required to hold an AGM annually. If the AGM date is missing or the filing is very late, it may indicate the company is not being actively maintained.
 6. **The auditor's address** — a major accounting firm (Deloitte, KPMG, EY, PwC, BDO, Grant Thornton) has different implications than an unknown sole practitioner with the same address as the company.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [FATF — The Misuse of Corporate Vehicles Including Trusts and Company Service Providers (2006)](https://www.fatf-gafi.org/en/publications/Methodsandtrends/Themisuseofcorporatevehiclesincludingtrustandcompanyserviceproviders.html) — canonical typologies report on nominee directors, shell companies, and bearer shares
+- [FATF — Guidance on Beneficial Ownership of Legal Persons (2023)](https://www.fatf-gafi.org/content/dam/fatf-gafi/guidance/Guidance-Beneficial-Ownership-Legal-Persons.pdf) — current FATF standards for transparency of legal persons
+- [FATF — Concealment of Beneficial Ownership (2018)](https://www.fatf-gafi.org/en/publications/methodsandtrends/documents/concealment-beneficial-ownership.html) — Egmont Group joint report on techniques used to hide ownership
+- [FinCEN — Beneficial Ownership Information Reporting](https://www.fincen.gov/boi) — US BOI reporting rules; as of March 2025, the requirement applies only to foreign entities registered in the US, not domestic companies
+- [IAS 24 — Related Party Disclosures (IFRS)](https://www.ifrs.org/issued-standards/list-of-standards/ias-24-related-party-disclosures/) — the accounting standard requiring disclosure of related party transactions
+- [IAS 1 — Presentation of Financial Statements (IFRS)](https://www.ifrs.org/issued-standards/list-of-standards/ias-1-presentation-of-financial-statements/) — the accounting standard requiring going concern disclosure
+- [Corporations Canada — Federal Corporate Registry](https://ised-isde.canada.ca/site/corporations-canada/en/corporations-canada) — search tool for federally incorporated Canadian entities (CBCA)
+- [SEDAR+ — Canadian Public Company Filings](https://www.sedarplus.ca/home/) — securities filings for Canadian reporting issuers
+
+### Practitioner and public interest
+- [Open Ownership — Principles for Effective Beneficial Ownership Disclosure](https://www.openownership.org/en/principles/) — nine-principle framework for evaluating the quality of a jurisdiction's beneficial ownership regime
+- [Global Witness — Anonymous Company Owners](https://www.globalwitness.org/en/campaigns/corruption-and-money-laundering/anonymous-company-owners/) — investigations and reports on shell company abuse across multiple jurisdictions
+
+### Notes on unsourced claims
+The claims that amalgamations and series of name changes are used to obscure corporate history are well-established practitioner knowledge but are not cited in a single canonical public document. Treat them as editorial observations pending a specific citation.

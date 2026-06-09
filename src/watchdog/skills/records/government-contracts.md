@@ -119,3 +119,22 @@ Provincial, state, and municipal thresholds vary further.
 5. **The contract itself vs. the award notice** — the award notice is the public record; the actual contract may contain very different terms. Request the actual contract via access to information.
 6. **Subcontract flow-through** — a contract awarded to a large company that subcontracts most of the work to a small company owned by a related party. The public record shows the large company; the actual beneficiary is obscured.
 7. **State enterprise or Crown corporation contracts** — these bodies are sometimes exempt from standard government procurement rules and disclosure requirements. They warrant separate research.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [Proactive Disclosure — Open Government Portal (Canada)](https://open.canada.ca/en/proactive-disclosure) — Central hub for Canada's proactive publication requirements; includes contracts over $10,000, travel and hospitality expenses, and grant data
+- [Proactive Publication — Contracts (Canada Open Government)](https://open.canada.ca/data/en/dataset/d8f85d91-7dec-4fd1-8055-483b77225d8b) — The dataset itself: quarterly contract disclosures from all federal departments, downloadable as CSV; updated within 30 days of each quarter's end
+- [USASpending.gov](https://www.usaspending.gov/) — Official US federal spending database covering contracts, grants, and loans from fiscal year 2001 onward; searchable by agency, vendor, and award type
+- [OECD Recommendation of the Council on Public Procurement](https://legalinstruments.oecd.org/en/instruments/OECD-LEGAL-0411) — The 2015 OECD Council recommendation setting twelve integrated principles for transparent, accountable, and integrity-focused public procurement; adopted by all OECD members
+- [OECD Principles for Integrity in Public Procurement](https://www.oecd.org/en/publications/oecd-principles-for-integrity-in-public-procurement_9789264056527-en.html) — Comprehensive framework and risk checklist covering the full procurement cycle; maps corruption risks useful to auditors and journalists alike
+
+### Practitioner and public interest
+- [Open Contracting Data Standard (OCDS)](https://www.open-contracting.org/data-standard/) — The only international open standard for publishing planning, tender, award, and contract implementation data; endorsed by the G20 and G7 and implemented by 50+ governments
+- [Open Contracting Partnership](https://www.open-contracting.org/) — Nonprofit that promotes transparent and fair public contracting globally; publishes guidance, red-flag indicators, and country-level implementation reports
+- [Government Defence Integrity Index — Transparency International Defence & Security](https://ti-defence.org/what-we-do/responsible-defence-governance/government-defence-integrity-index-gdi/) — Assesses corruption risk across procurement, personnel, finance, and operations in defence institutions in roughly 90 countries; useful benchmark for defence and security contract investigations
+
+### Journalism resources
+- [GIJN — Tracking Government Contracts](https://gijn.org/resource/tracking-covid-19-contracts-a-gijn-guide-and-webinar) — Global Investigative Journalism Network guide to researching government procurement stories; covers red flags for bid-rigging, collusion, and fraud across the five phases of the contracting process

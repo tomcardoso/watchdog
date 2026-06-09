@@ -123,3 +123,25 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **Asset restraint orders** — in proceeds-of-crime cases, property may be restrained before conviction and forfeited after. The restraint order describes the property and the alleged connection to crime; it is public when granted.
 5. **The sentencing judge's proportionality analysis** — a sentencing decision explains why a particular sentence is proportionate to the offence and offender. A sentence that departs significantly from the range (upward or downward) is a story.
 6. **Co-accused cooperation** — where one co-accused pleaded guilty and received a reduced sentence in exchange for cooperation, the sentencing decision for the cooperating witness often reveals the substance of their assistance and what they admitted.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+
+- [CanLII — Canadian Legal Information Institute](https://www.canlii.org/) — Free, searchable database of Canadian court decisions, tribunal rulings, statutes, and regulations from all jurisdictions; the primary public source for Canadian case law including criminal decisions.
+- [BAILII — British and Irish Legal Information Institute](https://www.bailii.org/) — Free, password-free database of court decisions and legislation from the UK, Ireland, and related jurisdictions; includes Crown Court and Court of Appeal criminal decisions.
+- [Charterpedia: Section 11(b) — Trial within a reasonable time](https://www.justice.gc.ca/eng/csj-sjc/rfc-dlc/ccrf-ccdl/check/art11b.html) — Department of Justice Canada's annotated guide to the right to be tried within a reasonable time, covering the R v Jordan framework and relevant case law.
+- [R v Jordan, 2016 SCC 27 (CanLII)](https://www.canlii.org/en/ca/scc/doc/2016/2016scc27/2016scc27.html) — The Supreme Court of Canada decision that established the 18- and 30-month presumptive ceilings for trial delay under s.11(b) of the Charter; the governing authority on delay-based stays.
+- [Spotlight on Gladue — Department of Justice Canada](https://www.justice.gc.ca/eng/rp-pr/jr/gladue/p1.html) — Federal research report examining how courts apply Gladue principles in sentencing Indigenous offenders and the persistent overrepresentation of Indigenous people in the criminal justice system.
+
+### Practitioner and public interest
+
+- [CourtListener — Free Law Project](https://www.courtlistener.com/) — Free, searchable archive of US federal and state court opinions, oral argument recordings, and PACER filings; includes over 10 million legal opinions and 17 million documents.
+- [Criminal Law Notebook](https://criminalnotebook.ca/index.php/Main_Page) — Free Canadian criminal law reference covering Criminal Code offences, procedure, and case law; practical guide to the rules governing charging, bail, trial, and sentencing.
+
+### Journalism resources
+
+- [Reporters Committee for Freedom of the Press — Access to Criminal Court Records](https://www.rcfp.org/open-court-sections/a-in-general-iv-access-to-criminal-court-records/) — Comprehensive guide to the constitutional, common-law, and statutory rights of public access to criminal court records in every US jurisdiction.
+- [Reporters Committee — Open Government Guide](https://www.rcfp.org/open-government-guide/) — State-by-state compendium of US open records and open meetings laws, including rules governing access to criminal investigation and court records.

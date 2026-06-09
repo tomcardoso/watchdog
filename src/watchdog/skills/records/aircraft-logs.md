@@ -122,3 +122,17 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **The maintenance logbook** — for an accident, the maintenance logbook is the most important document after the safety investigation report. It shows the history of the airframe and any prior issues.
 5. **Lien and registration history** — the FAA Aircraft Registry includes lien filings and historical registration data. A chain of ownership through multiple shell companies is a red flag for financial irregularity or asset concealment.
 6. **Correlation with other records** — an aircraft flight to a destination on a specific date, cross-referenced with a hotel record, calendar entry, or expense report for the same date, creates a corroborated fact. The flight track alone is evidence of opportunity.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [Transport Canada — Canadian Civil Aircraft Registry (CCARCS)](https://wwwapps.tc.gc.ca/saf-sec-sur/2/ccarcs-riacc/RchSimp.aspx) — Transport Canada's searchable database of all registered Canadian civil aircraft; search by registration mark, serial number, or owner name
+- [FAA — Aircraft Registry (registry.faa.gov)](https://registry.faa.gov/aircraftinquiry) — The US Federal Aviation Administration's public aircraft inquiry system; searchable by N-number, serial number, or owner; includes lien filings and historical registration data
+- [TSB Canada — Air transportation safety investigations and reports](https://www.tsb.gc.ca/eng/rapports-reports/aviation/index.html) — Transportation Safety Board of Canada's public index of aviation occurrence investigations from 1990 to present; includes final reports with factual findings, safety analysis, and probable cause determinations
+- [NTSB — Aviation Investigation Search](https://www.ntsb.gov/Pages/AviationQueryv2.aspx) — National Transportation Safety Board's searchable database of US civil aviation accidents and incidents from 1962 to present; includes full investigation reports and the CAROL case analysis tool
+- [Transport Canada — CADORS (Civil Aviation Daily Occurrence Reporting System)](https://wwwapps.tc.gc.ca/saf-sec-sur/2/cadors-screaq/m.aspx?lang=eng) — Transport Canada's public database of aviation occurrences involving Canadian-registered aircraft and Canadian airports; searchable by operator, aircraft type, aerodrome, and date range
+
+### Practitioner and public interest
+- [ADS-B Exchange — About](https://www.adsbexchange.com/about/) — Community-run ADS-B aggregator that does not honor operator blocking requests; the most complete public source for flight position data including aircraft whose operators have suppressed their tracks on commercial flight trackers

@@ -109,3 +109,19 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **Technology transfer agreements** — when a university licenses research findings to a company or takes equity in a startup formed around research, the terms of those agreements may be accessible through access to information. The university's financial interest in a company affects its independence from that company.
 5. **Conflicts in systematic reviews and clinical guidelines** — researchers with industry ties who participate in systematic reviews or clinical guideline panels can shape the evidence base used to make healthcare decisions. Check the COI disclosures in published guidelines.
 6. **Retraction Watch and PubPeer** — these community watchdog sites flag papers with potential integrity issues before formal retraction. A paper flagged on PubPeer for data manipulation is newsworthy even before the journal acts.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+
+- [US Office of Research Integrity — ori.hhs.gov](https://ori.hhs.gov) — US federal agency that oversees allegations of research misconduct in government-funded research and publishes findings and sanctions
+- [Tri-Agency Framework: Responsible Conduct of Research (2021) — rcr.ethics.gc.ca](https://rcr.ethics.gc.ca/eng/framework-cadre-2021.html) — Canadian federal policy governing research integrity across NSERC, SSHRC, and CIHR grants; defines fabrication, falsification, and plagiarism and the institutional response process
+- [ClinicalTrials.gov](https://clinicaltrials.gov) — US National Library of Medicine registry of over 500,000 clinical studies; use to check whether a study was registered, when, and whether results were reported as required
+
+### Practitioner and public interest
+
+- [COPE — Committee on Publication Ethics](https://publicationethics.org) — Global membership body for journal editors and publishers; sets standards for handling misconduct, authorship disputes, and editorial conflicts of interest
+- [Retraction Watch](https://retractionwatch.com) — Independent publication that tracks scientific retractions and research misconduct findings; searchable database of retracted papers
+- [ORCID](https://orcid.org) — Persistent identifier system for researchers; use to find a researcher's publication history, institutional affiliations, and funding across institutions and name variants

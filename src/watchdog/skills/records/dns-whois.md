@@ -107,3 +107,25 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **Subdomain enumeration** — the main domain is often just the surface. Subdomains (admin.example.com, api.example.com) may expose infrastructure, internal tools, or related properties. Certificate transparency logs are the best source for subdomain discovery.
 5. **ARIN / RIPE search for IP ownership** — an IP address can be searched in ARIN or RIPE to find who owns the netblock. A netblock allocated to a foreign state entity or an unknown private company when a legitimate business is expected is a red flag.
 6. **BGP routing history** — BGP routing data shows which ASN announced a given IP prefix and when. Hijacking of IP space (a relatively rare but documented attack) appears as a sudden change in which ASN is announcing a prefix.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+
+- [ICANN Lookup — lookup.icann.org](https://lookup.icann.org) — ICANN's authoritative WHOIS and RDAP lookup tool for current domain registration records across all TLDs
+- [ARIN — American Registry for Internet Numbers](https://www.arin.net) — Nonprofit that administers IP addresses and ASNs for Canada, the US, and many Caribbean and North Atlantic territories; use for IP ownership lookups
+- [RIPE NCC](https://www.ripe.net) — Regional Internet Registry for Europe, the Middle East, and Central Asia; provides IP allocation data and network operator information for those regions
+
+### Practitioner and public interest
+
+- [DomainTools](https://www.domaintools.com) — Commercial platform with over two decades of historical WHOIS and passive DNS data; the primary tool for pivoting on shared registrant emails, name servers, and IP history
+- [Shodan](https://www.shodan.io) — Search engine for internet-connected devices; use to identify what services and infrastructure are exposed on a given IP address or network range
+
+### Journalism resources
+
+- [Bellingcat — Advanced Guide on Verifying Video Content](https://www.bellingcat.com/resources/how-tos/2017/06/30/advanced-guide-verifying-video-content/) — Covers reverse image and infrastructure pivoting techniques used in open-source investigations; applicable to domain and IP clustering work
+- [Bellingcat — A Beginner's Guide to Social Media Verification](https://www.bellingcat.com/resources/2021/11/01/a-beginners-guide-to-social-media-verification/) — Foundational OSINT verification methods including source, provenance, and infrastructure checks
+
+**Notes on unsourced claims:** The red flag on "bulletproof hosting providers" relies on practitioner knowledge and OSINT community databases (Shodan, abuse.ch) rather than a single citable source. The claim that bulletproof providers tolerate abuse is well-documented in cybersecurity literature but no single authoritative public reference was identified.

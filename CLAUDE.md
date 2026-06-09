@@ -37,6 +37,8 @@ Skill files live in `src/watchdog/skills/records/`. They are plain markdown. No 
 
 ### Standard structure
 
+A blank template is at `src/watchdog/skills/records/_template.md` — copy it as the starting point for any new skill. Files starting with `_` are excluded from installation and will not be loaded by Claude.
+
 Every skill file should follow this structure in order:
 
 1. **Intro paragraph** — one or two sentences explaining when this skill is loaded by `/ingest`. Name the document types that trigger it.
@@ -46,6 +48,7 @@ Every skill file should follow this structure in order:
 5. **Terminology table(s)** — one or more two-column tables (`Term` | `Meaning`) covering jargon a journalist would encounter. If the terminology varies significantly by jurisdiction, use a three-column table (`Term` | `Jurisdiction` | `Meaning`) or separate tables per jurisdiction.
 6. **Relationships to extract** — a numbered list of entity relationships the skill should produce (e.g. `Person → Company: Director`). Use the `→` notation.
 7. **What investigators typically miss** — a numbered list of six to eight specific things that experienced journalists often overlook when reading this document type. Be concrete and specific.
+8. **Sources and further reading** — three subsections: **Official and regulatory** (government agencies, regulators, FATF, OECD, accounting standards bodies), **Practitioner and public interest** (law firm guides, NGO reports, public interest organizations), and **Journalism resources** (publicly accessible tipsheets, press freedom organizations). Omit a subsection entirely if there is nothing worth citing. End with a **Notes on unsourced claims** paragraph for any red flag claims that could not be traced to a specific source — these are flagged for editorial review, not silently included as fact. Every claim in the red flags section should be traceable to at least one source in this section.
 
 ### Authoring principles
 

@@ -118,3 +118,18 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **The recused councillor's subsequent vote** — a councillor who declares a conflict on an amendment must also declare a conflict on any subsequent vote on the same matter (e.g. an appeal). Failing to carry the recusal through to related matters is a common violation.
 5. **Council meeting audio and video** — most municipalities record council meetings; the audio or video may contain discussions not reflected in the formal minutes.
 6. **Heritage designation and demolition permits** — a property under heritage designation that receives a demolition permit may require council approval. The sequence of decisions (heritage designation lifted, demolition permitted, development approved) can reveal political accommodation of a developer.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+
+- [Municipal Act, 2001 — ontario.ca/laws](https://www.ontario.ca/laws/statute/01m25) — Ontario's primary statute governing municipalities; sets out councillor conflict-of-interest requirements, procurement rules, and bylaw powers
+- [Community Charter, SBC 2003, c. 26 — bclaws.gov.bc.ca](https://www.bclaws.gov.bc.ca/civix/document/id/complete/statreg/03026_00) — BC legislation governing municipal powers, council accountability, and financial management
+
+### Practitioner and public interest
+
+- [AMCTO — Association of Municipal Managers, Clerks and Treasurers of Ontario](https://www.amcto.com) — Professional association for Ontario municipal administrators; publishes guidance on records management, conflict-of-interest procedures, and municipal law
+- [OGP Local — Open Government Partnership](https://www.opengovpartnership.org/ogp-local/) — International initiative helping local governments apply open government principles including transparency and accountability
+- [Transparency International — Local Government Knowledge Hub](https://knowledgehub.transparency.org/topics/local-government) — Research portal covering corruption risks in local governance, with case studies and anti-corruption resources from jurisdictions worldwide

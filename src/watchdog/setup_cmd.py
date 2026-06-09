@@ -52,9 +52,9 @@ def _install_skills() -> None:
     for item in skills.iterdir():
         if item.name == "records":
             for f in item.iterdir():
-                if f.name.endswith(".md"):
+                if f.name.endswith(".md") and not f.name.startswith("_"):
                     (records_dir / f.name).write_bytes(f.read_bytes())
-        elif item.name.endswith(".md"):
+        elif item.name.endswith(".md") and not item.name.startswith("_"):
             (COMMANDS_DIR / item.name).write_bytes(item.read_bytes())
 
 

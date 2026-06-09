@@ -115,3 +115,16 @@ This skill covers market transactions (who bought what, for how much, under what
 4. **Statutory declarations and affidavits of residence** — attached to transfers in many jurisdictions; the transferee declares residency and citizenship for tax purposes. This is sworn testimony about where someone lives.
 5. **Power of sale** — a mortgagee selling the property under the mortgage because the owner defaulted. Different from a regular sale.
 6. **Vendor take-back mortgage** — the seller loans the buyer part of the purchase price. This is a relationship between buyer and seller worth noting.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [FINTRAC — Real estate brokers, sales representatives, and developers](https://fintrac-canafe.canada.ca/re-ed/real-eng) — FINTRAC's official guidance on anti-money laundering obligations for real estate professionals in Canada, including client identification, suspicious transaction reporting, and record-keeping requirements
+- [FATF — Risk-Based Approach Guidance for the Real Estate Sector (July 2022)](https://www.fatf-gafi.org/en/publications/Fatfrecommendations/Guidance-rba-real-estate-sector.html) — The Financial Action Task Force's updated guidance for real estate supervisors and practitioners on identifying and managing money laundering risks; includes typologies, case studies, and examples of good practice
+- [BC Land Owner Transparency Registry (LOTR) — LTSA](https://ltsa.ca/products-services/lotr/) — Canada's first public beneficial ownership registry for land; operated by BC's Land Title and Survey Authority; requires disclosure of individuals with indirect interests through corporations, trusts, and partnerships
+- [FinCEN — Geographic Targeting Orders (GTOs)](https://www.fincen.gov/news/news-releases/fincen-targets-shell-companies-purchasing-luxury-properties-seven-major) — US Treasury's Financial Crimes Enforcement Network program requiring title insurance companies to identify the natural persons behind shell companies used in all-cash residential real estate purchases in targeted metropolitan areas
+
+### Practitioner and public interest
+- [Global Witness — How anonymous companies help launder money in US real estate](https://www.globalwitness.org/en/campaigns/corruption-and-money-laundering/anonymous-companies-used-to-launder-money-in-us-real-estate/) — Investigation and analysis showing how the absence of beneficial ownership disclosure requirements in the US enables criminals to launder money through real estate using shell companies; includes five case studies spanning drug trafficking, corruption, and fraud

@@ -129,3 +129,18 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **Director and officer change disclosures** — the reasons given for executive departures ("to pursue other opportunities") are boilerplate. Look for what was happening operationally or financially at the company at the same time.
 5. **The management information circular (proxy circular)** — the annual proxy contains compensation details, related-party transactions, and director independence assessments. For stories about executive pay or governance, this is the primary document.
 6. **Cross-border dual-listed companies** — a company listed on exchanges in multiple jurisdictions files in multiple systems; the disclosures may differ slightly. Comparing both filings can reveal inconsistencies.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [SEDAR+](https://www.sedarplus.ca/home/) — Canada's central securities filing database operated by the CSA; search all public disclosure documents, cease trade orders, and disciplined persons lists for Canadian reporting issuers
+- [SEDI — System for Electronic Disclosure by Insiders](https://www.sedi.ca/sedi/SVTWelcome?locale=en_CA) — Canada's public database of insider trading reports; reports are public within five minutes of filing and searchable by issuer or insider name
+- [SEC EDGAR](https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany) — the SEC's public filing database; access 10-K, 10-Q, 8-K, Form 4 insider transaction reports, 13D/G large shareholder disclosures, and all other SEC filings
+- [Ontario Securities Commission — Enforcement](https://www.osc.ca/en/enforcement) — OSC enforcement proceedings, orders, sanctions, and a public list of individuals and companies with unpaid OSC penalties
+- [OSC Orders, Rulings and Decisions](https://www.osc.ca/en/securities-law/orders-rulings-and-decisions) — searchable OSC decisions covering enforcement, cease trade orders, and discretionary relief applications
+
+### Journalism resources
+- [Journalists Resource: How to Read an SEC Form 4 Filing](https://journalistsresource.org/economics/insider-trading-sec-form-4/) — practical guide for journalists on interpreting insider trading reports, including transaction codes, Rule 10b5-1 trading plans, and the distinction between a disclosed trade and illegal insider trading
+- [GIJN: Researching Corporations and Their Owners](https://gijn.org/resource/researching-corporations-and-their-owners/) — GIJN guide to corporate and securities research tools across jurisdictions, including EDGAR, OpenCorporates, and national securities filing databases

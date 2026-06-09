@@ -111,3 +111,21 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **Progress tracking on prior calls to action** — civil society organizations, academics, and media organizations often independently track implementation of major reports' recommendations. These trackers are authoritative reference points.
 5. **The government's tabling date vs. completion date** — governments sometimes sit on completed reports before tabling them publicly. The gap between when a report was completed and when it was released may be significant.
 6. **The founding instrument** — the order in council, letters patent, or statutory instrument establishing a commission defines its mandate, composition, and powers. Any subsequent narrowing of scope (by the commission or the government) becomes apparent against the original mandate.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [Parliamentary Budget Office — Canada](https://www.pbo-dpb.ca/en) — Independent officer of Parliament who provides non-partisan economic and fiscal analysis to senators and members of Parliament; publishes costing notes, budget analyses, and economic outlooks
+- [Parliamentary Budget Office — Publications](https://www.pbo-dpb.ca/en/publications) — Searchable archive of all PBO reports, legislative costing notes, and economic analyses
+- [Government of Canada Publications](https://publications.gc.ca/site/eng/home.html) — Central catalogue of federal government publications including royal commission reports, departmental evaluations, and advisory council reports, with over 500,000 digitized items
+- [National Inquiry into Missing and Murdered Indigenous Women and Girls — Final Report](https://www.mmiwg-ffada.ca/final-report/) — The official repository of the MMIWG inquiry's final report and its 231 Calls for Justice
+- [National Centre for Truth and Reconciliation — Reports](https://nctr.ca/records/reports/) — Archive of TRC commission reports, residential school records, and related government and healing foundation documents
+
+### Practitioner and public interest
+- [CRS Reports — Congressional Research Service](https://crsreports.congress.gov/) — Nonpartisan policy and legal analysis prepared by the Library of Congress for the US Congress; publicly available since 2018 and covering a wide range of domestic and foreign policy topics
+- [CBC News — Beyond 94](https://www.cbc.ca/news/indigenous/beyond-94-truth-and-reconciliation-1.4574765) — CBC's ongoing tracker of implementation progress on the Truth and Reconciliation Commission's 94 Calls to Action, updated regularly with status assessments and reporting
+
+### Journalism resources
+- [House of Commons — Open Data](https://www.ourcommons.ca/en/open-data) — Machine-readable datasets from the House of Commons including committee evidence, Hansard transcripts, bill information, and member expenditure data

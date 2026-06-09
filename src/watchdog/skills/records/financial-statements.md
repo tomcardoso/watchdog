@@ -121,3 +121,21 @@ Extract every related party transaction. Note the party, the nature of the trans
 5. **The five-year summary** — many annual reports include a multi-year financial summary. This makes trend analysis easy and is often overlooked.
 6. **Management's report on internal controls** — if the company discloses material weaknesses in internal controls, it means they don't have adequate processes to catch errors or fraud.
 7. **Changes in accounting policies** — when a company changes how it accounts for something, the effect is disclosed. A change that flatters results should raise questions.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [IFRS Accounting Standards Navigator — IFRS Foundation](https://www.ifrs.org/issued-standards/list-of-standards/) — Searchable index of all current IFRS Accounting Standards; required disclosure frameworks for public companies in Canada, the EU, UK, Australia, and over 140 other jurisdictions
+- [IAS 1 Presentation of Financial Statements — IFRS Foundation](https://www.ifrs.org/issued-standards/list-of-standards/ias-1-presentation-of-financial-statements/) — The standard that sets overall requirements for financial statement presentation, including going concern disclosure; going concern requirements were moved to IAS 8 under IFRS 18 (effective 2027)
+- [IAS 8 Accounting Policies, Changes in Accounting Estimates and Errors — IFRS Foundation](https://www.ifrs.org/issued-standards/list-of-standards/ias-8-accounting-policies-changes-in-accounting-estimates-and-errors/) — Governs how accounting policy changes must be disclosed and applied; a policy change that flatters results must be explained here
+- [PCAOB Auditing Standards](https://pcaobus.org/oversight/standards/auditing-standards) — The Public Company Accounting Oversight Board's full catalogue of auditing standards for US public company audits, including AS 18 on related parties
+- [SEC EDGAR Full Text Search](https://www.sec.gov/edgar/search/) — Free full-text search of all electronic SEC filings since 2001, including 10-K and 10-Q filings; search for company names, financial terms, or disclosure language
+
+### Practitioner and public interest
+- [CPA Canada: Understanding Reports on Financial Statements](https://www.cpacanada.ca/business-and-accounting-resources/audit-and-assurance/canadian-auditing-standards-cas/publications/understanding-reports-on-financial-statements) — Plain-language guide explaining the differences between audit, review, and compilation engagements and what each auditor's report actually means
+- [IFRS Foundation: Going Concern — A Focus on Disclosure (updated May 2025)](https://www.ifrs.org/content/dam/ifrs/supporting-implementation/educational-materials/going-concern-2025.pdf) — Educational material on going concern assessment and disclosure requirements under IFRS, updated to reflect IFRS 18
+
+### Journalism resources
+- [The Investigative Journalist's Guide to Company Accounts — Centre for Investigative Journalism](https://tcij.org/handbooks/the-investigative-journalists-guide-to-company-accounts/) — Forensic accountant Raj Bairoliya's handbook covering balance sheets, income statements, cash flow, auditor's reports, and red flags for journalists who do not work with accounts daily

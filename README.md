@@ -274,7 +274,7 @@ Skills are jurisdiction-agnostic by default: universal principles come first, wi
 | [`records/news-clippings`](src/watchdog/skills/records/news-clippings.md) | News articles, press releases, wire stories, corrections, retractions |
 | [`records/audio-video`](src/watchdog/skills/records/audio-video.md) | YouTube transcripts, podcast transcripts, earnings calls, press conference recordings |
 
-These skills encode real investigative knowledge — what fields are always present, what patterns are anomalous, what investigators typically miss. See [src/watchdog/skills/records/](src/watchdog/skills/records/) to read them or contribute new ones.
+These skills encode real investigative knowledge — what fields are always present, what patterns are anomalous, what investigators typically miss. See [src/watchdog/skills/records/](src/watchdog/skills/records/) to read them or contribute new ones. A contributor template is at [`src/watchdog/skills/records/_template.md`](src/watchdog/skills/records/_template.md).
 
 ---
 
@@ -369,7 +369,7 @@ Treat everything Watchdog produces as a structured first read, not a finished pr
 
 Contributions most welcome in three areas:
 
-**Domain knowledge skills** — if you have deep expertise reading a document type that isn't covered (regulatory filings, immigration records, tax documents, election filings, etc.), open an issue or submit a pull request to `src/watchdog/skills/records/`. The format is plain markdown — no code required.
+**Domain knowledge skills** — if you have deep expertise reading a document type that isn't covered, open an issue or submit a pull request to `src/watchdog/skills/records/`. The format is plain markdown — no code required. Copy [`_template.md`](src/watchdog/skills/records/_template.md) as your starting point; it includes the standard structure and authoring notes.
 
 **Pipeline fixes** — `src/watchdog/pipeline/` contains the Python preprocessing code. Bug reports with a sample document (redacted if needed) are especially useful.
 

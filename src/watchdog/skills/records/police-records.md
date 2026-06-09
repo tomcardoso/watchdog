@@ -120,3 +120,22 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **Complaint withdrawal** — many complaints are withdrawn after informal resolution. A pattern of withdrawals in cases involving a particular officer may indicate complainants are being pressured or discouraged.
 5. **Correctional grievance records** — offenders can typically file grievances through an internal process; the grievance record for an individual who later died in custody or was seriously harmed may foreshadow the institution's failure to respond.
 6. **Coroner's inquest jury recommendations** — juries at coroner's inquests make recommendations but have no power to compel action. Tracking whether those recommendations were implemented is an important accountability beat.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+
+- [Law Enforcement Complaints Agency (LECA) — Ontario](https://leca.ca/) — Ontario's civilian police oversight body (formerly OIPRD), responsible for receiving and overseeing public complaints about police officer misconduct; publishes systemic review reports.
+- [Civilian Review and Complaints Commission for the RCMP (CRCC)](https://crcc-ccetp.gc.ca/) — Independent federal agency that receives and reviews public complaints about on-duty RCMP conduct; publishes annual complaint statistics and investigation findings.
+- [NYC Civilian Complaint Review Board (CCRB)](https://www.nyc.gov/site/ccrb/index.page) — New York City's independent agency investigating complaints of excessive force, abuse of authority, and misconduct by NYPD officers; publishes annual reports and case data.
+
+### Practitioner and public interest
+
+- [NACOLE — National Association for Civilian Oversight of Law Enforcement](https://www.nacole.org/) — US-based nonprofit supporting civilian police oversight bodies; maintains a jurisdiction-by-jurisdiction map of US oversight models and publishes research on accountability practices.
+
+### Journalism resources
+
+- [Reporters Committee for Freedom of the Press — Open Government Guide](https://www.rcfp.org/open-government-guide/) — State-by-state compendium of US open records laws covering police records, internal affairs files, and disciplinary records.
+- [Reporters Committee — Access to Criminal Court Records](https://www.rcfp.org/open-court-sections/a-in-general-iv-access-to-criminal-court-records/) — Guide to legal rights of access to criminal court records across US jurisdictions, including records arising from police conduct prosecutions.

@@ -115,3 +115,23 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **The chief/official agent's own address** — sometimes the agent's address matches a vendor receiving large payments.
 5. **Non-monetary contributions from prohibited donors** — a company providing free office space, printing, or IT services to a campaign may be making an illegal in-kind contribution in jurisdictions where corporate donations are banned. Look for in-kind contributions and check whether the donor is a prohibited category.
 6. **Candidate's personal loans to their own campaign** — allowed in many jurisdictions but subject to limits and repayment rules; large self-loans that are never repaid are a financing mechanism worth examining.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [Political Financing — Elections Canada](https://www.elections.ca/content.aspx?section=fin&lang=e&document=index) — Elections Canada's central hub for Canada's federal political financing rules, contribution limits, spending restrictions, and searchable databases of returns going back to 1993
+- [Annual Limits on Contributions — Elections Canada](https://www.elections.ca/content.aspx?section=pol&dir=lim&document=lim2025&lang=e) — Current indexed contribution limits for registered parties and candidates under the Canada Elections Act
+- [Campaign Finance Data — FEC](https://www.fec.gov/data/) — Federal Election Commission portal for US federal campaign finance disclosures; searchable by candidate, committee, donor, and expenditure
+- [Introduction to Campaign Finance and Elections — FEC](https://www.fec.gov/introduction-campaign-finance/) — Plain-language overview of US campaign finance law, who can give and how, and how to research public data
+
+### Practitioner and public interest
+- [OpenSecrets](https://www.opensecrets.org/) — Nonpartisan research group aggregating FEC data; tracks donor industries, dark money, PAC spending, and bundlers for every federal race
+- [FollowTheMoney.org](https://www.followthemoney.org/) — National Institute on Money in Politics; the primary resource for US state-level campaign contributions and independent spending (federal data now hosted at OpenSecrets)
+- [Political Finance Database — International IDEA](https://www.idea.int/data-tools/data/political-finance-database) — Comparative database of political finance regulations across 181 countries covering bans on private income, public funding, spending rules, and disclosure requirements; useful for cross-jurisdictional context
+
+### Journalism resources
+- [IRE Resource Center — Campaign Finance Tipsheets](https://www.ire.org/resource-center/tipsheets/?q=campaign+finance) — Tipsheets from Investigative Reporters and Editors on using FEC data, tracking dark money, and working with state campaign finance records
+
+**Notes on unsourced claims:** The red flag on contribution structuring just below disclosure thresholds is a well-documented practice in enforcement literature but the specific thresholds vary by jurisdiction and change frequently; always verify current limits directly with the relevant elections authority.

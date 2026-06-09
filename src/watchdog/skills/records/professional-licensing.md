@@ -113,3 +113,17 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 5. **The client restitution fund** — law societies, real estate councils, and some other regulatory bodies maintain client restitution funds that compensate victims of practitioner theft. Claims to these funds, which are often public, reveal the scale of client harm.
 6. **Corporate structure of the practice** — professional misconduct often involves a firm, not just an individual. Who else worked at the firm, who owned it, and whether the firm is still operating under a different name are questions the decision itself may not answer.
 7. **Reciprocal discipline** — when a practitioner is disciplined in one jurisdiction, other jurisdictions where they are licensed typically initiate their own discipline proceedings on the same facts. A practitioner disciplined in one province may remain licensed and active in another.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [Law Society of Ontario — Current Regulatory Actions](https://lso.ca/protecting-the-public/current-regulatory-actions) — gateway to active LSO discipline and regulatory proceedings; full Tribunal decisions available through the Law Society Tribunal portal and CanLII
+- [FINRA BrokerCheck](https://brokercheck.finra.org/) — free US public database of broker-dealer and investment adviser registration, employment history, regulatory actions, arbitrations, and complaints; covers all FINRA-registered individuals and firms
+- [CIRO Enforcement — Canadian Investment Regulatory Organization](https://www.ciro.ca/rules-and-enforcement/enforcement) — searchable database of active and concluded CIRO enforcement proceedings against Canadian investment dealers and mutual fund dealers; full panel decisions available on CanLII
+- [Professional Engineers Ontario — Discipline Decisions Gazette](https://www.peo.on.ca/public-protection/discipline/complaints-decisions-gazette) — Ontario engineering discipline findings and orders published under the Professional Engineers Act; covers decisions from 1997 onward
+- [RECO Discipline and Appeals Decisions](https://registrantsearch.reco.on.ca/DisciplineAppeals) — Ontario real estate council discipline committee decisions involving breaches of REBBA and TRESA; decisions retained for at least 60 months
+
+### Journalism resources
+- [GIJN: Researching Corporations and Their Owners](https://gijn.org/resource/researching-corporations-and-their-owners/) — GIJN guide covering corporate registries, securities databases, and ownership research tools across multiple jurisdictions; useful for tracing firm-level misconduct beyond individual discipline decisions

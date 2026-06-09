@@ -112,3 +112,17 @@ Loaded by `/ingest` when the document type is a statement of claim, affidavit, j
 4. **The date of service vs. the date of filing** — a document filed on one date may have been served on a different date. The gap can be significant.
 5. **Lawyers switching firms mid-proceeding** — indicates something changed in the relationship between the client and the firm. Worth noting.
 6. **The litigation history of key parties** — a search for the party's name in court records may reveal a pattern across multiple proceedings.
+
+---
+
+## Sources and further reading
+
+### Official and regulatory
+- [PACER — Public Access to Court Electronic Records](https://pacer.uscourts.gov/) — the official US federal court records system covering all district, bankruptcy, and appellate courts
+- [US Courts — A Journalist's Guide to the Federal Courts: Accessing Court Documents](https://www.uscourts.gov/data-news/reports/handbooks-manuals/a-journalists-guide-federal-courts/accessing-court-documents-journalists-guide) — official guidance on public access to federal court records
+- [CanLII — Canadian Legal Information Institute](https://www.canlii.org/) — free access to Canadian court decisions, tribunal rulings, statutes, and regulations across all jurisdictions
+- [BAILII — British and Irish Legal Information Institute](https://www.bailii.org/) — free UK and Irish case law and legislation
+
+### Practitioner and public interest
+- [Reporters Committee for Freedom of the Press — Open Courts Compendium](https://www.rcfp.org/open-courts-compendium/) — state-by-state and federal guide to court access rights for journalists, including sealing orders and publication bans (US-focused)
+- [CourtListener / RECAP Archive](https://www.courtlistener.com/recap/) — free searchable archive of PACER documents operated by the non-profit Free Law Project; many documents available at no cost that would otherwise require PACER fees
