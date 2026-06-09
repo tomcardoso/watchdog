@@ -10,6 +10,27 @@ Watchdog is a [Claude Code](https://claude.ai/download) tool for journalists who
 
 ---
 
+## Contents
+
+- [Public records only](#️-public-records-only)
+- [What it does](#what-it-does)
+- [How it works](#how-it-works)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Commands](#commands)
+- [Vault structure](#vault-structure)
+- [Domain knowledge skills](#domain-knowledge-skills)
+- [Multiple investigations](#multiple-investigations)
+- [Configuration](#configuration)
+- [A note on AI and hallucination](#a-note-on-ai-and-hallucination)
+- [Alpha limitations](#alpha-limitations)
+- [Contributing](#contributing)
+- [Architecture notes](#architecture-notes)
+- [License](#license)
+
+---
+
 ## ⚠️ Public records only
 
 **Watchdog is designed exclusively for publicly available documents** — court filings, corporate registrations, government contracts, regulatory filings, land registry records, and similar public-interest material.
