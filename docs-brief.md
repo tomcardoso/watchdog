@@ -80,6 +80,12 @@ Watchdog doesn't replace the journalist's judgment — it handles the mechanical
 - `src/watchdog/skills/records/` — all 34 skill files; the skills reference page can be generated from these
 - `CLAUDE.md` — developer notes; not for the docs site
 
+## Working approach
+
+Start with the home page and overall information architecture before building out individual pages. Getting the structure right first saves significant iteration — it's easier to move sections around in a plan than in code.
+
+The copy (headlines, body text, value propositions) will need an editorial pass by a human. Design tools tend toward generic phrasing; the tone this site needs — serious, precise, not startup-y — is specific enough that the draft copy should be treated as placeholder until reviewed.
+
 ## What success looks like
 
 A journalist who has never heard of Watchdog lands on the home page, understands what it does and whether it's for them within 30 seconds, can find the install instructions without clicking more than once, and feels confident that their documents will stay private.
