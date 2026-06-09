@@ -231,7 +231,7 @@ Inspect the document text to determine its type. If it matches one of the follow
 | News article, press clipping, wire story, press release | `records/news-clippings.md` |
 | YouTube transcript, podcast transcript, earnings call transcript, broadcast | `records/audio-video.md` |
 
-If no skill file matches the document type, proceed with general extraction.
+If no skill file matches the document type, read `records/general-records.md` before extracting — it provides a universal framework for orienting yourself and extracting from unfamiliar document types.
 
 ### 3b. Infer document metadata
 
