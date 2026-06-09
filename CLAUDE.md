@@ -14,6 +14,21 @@ CI runs on every push and PR via `.github/workflows/ci.yml`.
 
 ---
 
+## Releasing to PyPI
+
+The package publishes to PyPI automatically when a GitHub release is created. Publishing uses OIDC trusted-publisher auth — no API tokens or secrets.
+
+**Release steps:**
+
+1. Bump `version` in `pyproject.toml` (follows [PEP 440](https://peps.python.org/pep-0440/): `0.1.0a1`, `0.1.0b1`, `0.1.0`, `0.2.0`, etc.)
+2. Commit and push
+3. On GitHub: Releases → Draft a new release → create a tag matching the version (e.g. `v0.1.0`) → Publish release
+4. The `.github/workflows/publish.yml` workflow fires, builds the sdist + wheel with `hatch`, and uploads to PyPI
+
+The `pypi` GitHub environment and PyPI trusted-publisher entry for `watchdog-intel` are already configured — no further setup needed.
+
+---
+
 ## Adding new record skills
 
 ### Where skills live
