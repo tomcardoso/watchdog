@@ -139,7 +139,7 @@ For step-by-step instructions written for journalists who have never used a term
 watchdog new "Shell Company Investigation"
 
 # Open the vault in Claude Code
-watchdog open shell-company-investigation
+watchdog claude shell-company-investigation
 ```
 
 **Optional but recommended:** before processing records, seed your investigation context from prior published stories or notes:
@@ -172,11 +172,12 @@ Run these from any terminal window. They manage investigations and the Watchdog 
 |---------|-------------|
 | `watchdog setup` | Set up Watchdog after installation — verifies tools, installs skills, configures shell completion |
 | `watchdog new "<name>"` | Create a new investigation vault |
-| `watchdog` | Preprocess all documents in `_INCOMING/` — run this from inside a project folder |
-| `watchdog preprocess` | Same as above (explicit form); accepts `--workers N` |
+| `watchdog` | Preprocess pending documents — run from inside a project folder (prompts before starting) |
+| `watchdog preprocess` | Same as above (explicit, no prompt); accepts `--workers N` |
+| `watchdog open <investigation>` | Navigate to a project and preprocess pending documents (prompts before starting) |
+| `watchdog claude <investigation>` | Open an investigation in Claude Code |
 | `watchdog list` | List all registered investigations |
 | `watchdog status <investigation>` | Show detailed status for an investigation |
-| `watchdog open <investigation>` | Open an investigation in Claude Code |
 | `watchdog search <investigation> "<query>"` | Semantic search across ingested documents |
 | `watchdog configure` | View or change configuration |
 | `watchdog unlock <investigation>` | Release a stale ingest lock |

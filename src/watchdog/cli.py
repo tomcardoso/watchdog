@@ -245,24 +245,62 @@ def cmd_new(args) -> None:
     print()
     print(f"{_BOLD}Next steps:{_RESET}")
     print(f"  1. Open {_CYAN}{vault}{_RESET} as a new vault in Obsidian")
-    print(f"  2. Open {_CYAN}{vault}{_RESET} in Claude Code")
-    print(f"  3. Drop documents into {_CYAN}_INCOMING/{_RESET}")
-    print(f"  4. Run {_CYAN}watchdog preprocess{_RESET} from inside the project folder")
-    print(f"  5. Run {_CYAN}/watchdog-ingest{_RESET} in Claude Code")
+    print(f"  2. Drop documents into {_CYAN}_INCOMING/{_RESET}")
+    print(f"  3. Run {_CYAN}watchdog open {slug}{_RESET} to preprocess them")
+    print(f"  4. Run {_CYAN}watchdog claude {slug}{_RESET} and then {_CYAN}/watchdog-ingest{_RESET}")
     print()
-    print(f"  {_DIM}To reopen: {_RESET}{_CYAN}watchdog open {slug}{_RESET}")
+    print(f"  {_DIM}Or navigate to the folder and run {_RESET}{_CYAN}watchdog{_RESET}{_DIM} directly.{_RESET}")
 
 
-def cmd_preprocess(args) -> None:
-    from watchdog.pipeline.preprocess_batch import run_ingest
-    vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
-        sys.exit("Error: not inside a Watchdog project folder. cd into your investigation first.")
+def _run_preprocess(vault: Path, workers: int = 4, confirm: bool = False) -> None:
+    from watchdog.pipeline.preprocess_batch import run_ingest, find_files
     incoming = vault / "_INCOMING"
     if not incoming.is_dir():
         sys.exit(f"Error: _INCOMING/ not found in {vault}")
-    workers = getattr(args, "workers", 4)
+    if confirm:
+        files = find_files([incoming])
+        if not files:
+            print(f"\n  {_DIM}_INCOMING/ is empty — nothing to preprocess.{_RESET}\n")
+            return
+        n = len(files)
+        label = f"{n} file{'s' if n != 1 else ''}"
+        try:
+            answer = input(f"\n  Found {_BOLD}{label}{_RESET} in _INCOMING/. Preprocess now? [Y/n] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        if answer not in ("", "y", "yes"):
+            return
     run_ingest(vault, workers=workers)
+
+
+def cmd_preprocess(args) -> None:
+    vault = Path(".").resolve()
+    if not (vault / ".watchdog").is_dir():
+        sys.exit("Error: not inside a Watchdog project folder. cd into your investigation first.")
+    _run_preprocess(vault, workers=getattr(args, "workers", 4))
+
+
+def cmd_open(args) -> None:
+    _, info = _find_project(args.name)
+    vault = Path(info["path"])
+    if not vault.exists():
+        sys.exit(f"Error: project directory not found: {vault}")
+    print(f"\n  {_BOLD}{info['name']}{_RESET}  {_CYAN}{vault}{_RESET}\n")
+    os.chdir(vault)
+    _run_preprocess(vault, confirm=True)
+
+
+def cmd_claude(args) -> None:
+    _, info = _find_project(args.name)
+    path = info["path"]
+    if not Path(path).exists():
+        sys.exit(f"Error: project directory not found: {path}")
+    print(f"  {_BOLD}{info['name']}{_RESET}  {_CYAN}{path}{_RESET}")
+    try:
+        os.execvp("claude", ["claude", path])
+    except FileNotFoundError:
+        sys.exit("Error: Claude Code not found — install from https://claude.ai/download")
 
 
 def cmd_about(_args) -> None:
@@ -275,19 +313,6 @@ def cmd_about(_args) -> None:
     print(f"  🐛  {_DIM}Issues   {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog/issues{_RESET}")
     print(f"  📖  {_DIM}Install  {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog/blob/main/INSTALL.md{_RESET}")
     print()
-
-
-def cmd_open(args) -> None:
-    _, info = _find_project(args.name)
-    path = info["path"]
-    if not Path(path).exists():
-        sys.exit(f"Error: project directory not found: {path}")
-    print(f"  {_BOLD}{info['name']}{_RESET}  {_CYAN}{path}{_RESET}")
-    os.chdir(path)
-    try:
-        os.execvp("claude", ["claude", "."])
-    except FileNotFoundError:
-        sys.exit("Error: Claude Code not found — install from https://claude.ai/download")
 
 
 def cmd_setup(args) -> None:
@@ -798,9 +823,13 @@ def main() -> None:
     p_new.add_argument("--dir", help=f"Parent directory (default: projects_dir from config)")
     p_new.set_defaults(func=cmd_new)
 
-    p_open = sub.add_parser("open", help="Open an investigation in Claude Code")
+    p_open = sub.add_parser("open", help="cd to a project and preprocess any pending documents")
     p_open.add_argument("name", help="Investigation name or slug")
     p_open.set_defaults(func=cmd_open)
+
+    p_claude = sub.add_parser("claude", help="Open an investigation in Claude Code")
+    p_claude.add_argument("name", help="Investigation name or slug")
+    p_claude.set_defaults(func=cmd_claude)
 
     p_list = sub.add_parser("list", help="List all registered investigations")
     p_list.set_defaults(func=cmd_list)
@@ -842,7 +871,7 @@ def main() -> None:
 
     if args.command is None:
         if Path(".watchdog").is_dir():
-            cmd_preprocess(args)
+            _run_preprocess(Path(".").resolve(), confirm=True)
         else:
             _print_banner()
         return
