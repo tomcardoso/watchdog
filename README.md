@@ -27,6 +27,7 @@ Watchdog is a [Claude Code](https://claude.ai/download) tool for journalists who
 - [Alpha limitations](#alpha-limitations)
 - [Contributing](#contributing)
 - [Architecture notes](#architecture-notes)
+- [Acknowledgements](#acknowledgements)
 - [License](#license)
 
 ---
@@ -81,9 +82,7 @@ Post-ingest briefing: new entities · connections · leads · anomalies
 
 The ingest pipeline is a [Claude Code skill](src/watchdog/skills/watchdog-ingest.md) — Claude reads the document, applies domain knowledge, and produces a structured extraction JSON. The Python pipeline handles the mechanical work (OCR, hashing, similarity detection, vault writes). You keep the Obsidian vault and every original file.
 
----
-
-## Docling
+### Document conversion with Docling
 
 Watchdog uses [Docling](https://github.com/DS4SD/docling) for all document conversion. Docling is an open-source document understanding library from IBM Research that extracts text, tables, and layout from PDFs, Word documents, spreadsheets, HTML, and images.
 
