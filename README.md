@@ -150,28 +150,45 @@ Then drop public records into `_INCOMING/`. At the start of every Claude Code se
 
 ## Commands
 
+### CLI commands
+
+Run these from any terminal window. They manage investigations and the Watchdog installation.
+
 | Command | What it does |
 |---------|-------------|
-| `/watchdog-context` | Seed `context.md` from background files in `_CONTEXT/` |
-| `/watchdog-ingest` | Process all files in `_INCOMING/` |
-| `/watchdog-ingest [file]` | Process a specific file |
-| `/watchdog-entity [id ...]` | Refresh entity Summary and Timeline from all source documents |
-| `/watchdog-query [question]` | Answer a question from your vault |
-| `/watchdog-surface` | Find connections and anomalies across the full vault |
-| `/watchdog-wiki` | Create or update investigation thread pages |
-| `/watchdog-health` | Check vault integrity — orphaned notes, broken links, registry mismatches |
+| `watchdog setup` | Set up Watchdog after installation — verifies tools, installs skills, configures shell completion |
+| `watchdog new "<name>"` | Create a new investigation vault |
+| `watchdog list` | List all registered investigations |
+| `watchdog status <investigation>` | Show detailed status for an investigation |
+| `watchdog open <investigation>` | Open an investigation in Claude Code |
+| `watchdog search <investigation> "<query>"` | Semantic search across ingested documents |
+| `watchdog configure` | View or change configuration |
+| `watchdog unlock <investigation>` | Release a stale ingest lock |
+| `watchdog about` | Show version and project links |
 
-**CLI search** (outside the vault, from any terminal):
+`watchdog search` returns the top matching results — raw document pages (with file name and page number) and vault notes (entity and document summaries) — ranked by semantic similarity. The index is built automatically during `/watchdog-ingest`; no separate step required.
 
 ```bash
-watchdog search <investigation> "<query>"
 watchdog search my-investigation "offshore account transfers"
 watchdog search my-investigation "shell company director" --top 10
 ```
 
-Returns the top matching results — raw document pages (with file name and page number) and vault notes (entity and document summaries) — ranked by semantic similarity. The index is built automatically during `/watchdog-ingest`; no separate step required.
-
 The first ingest after installation triggers a one-time ~50 MB model download (the `BAAI/bge-small-en-v1.5` embedding model via fastembed). Subsequent runs use the cached model.
+
+### Claude Code slash commands
+
+Run these inside a Claude Code session with your investigation open.
+
+| Command | What it does |
+|---------|-------------|
+| `/watchdog-ingest` | Process all files in `_INCOMING/` |
+| `/watchdog-ingest [file]` | Process a specific file |
+| `/watchdog-query [question]` | Answer a question from your vault |
+| `/watchdog-surface` | Find connections and anomalies across the full vault |
+| `/watchdog-entity [id ...]` | Refresh entity Summary and Timeline from all source documents |
+| `/watchdog-wiki` | Create or update investigation thread pages |
+| `/watchdog-context` | Seed `context.md` from background files in `_CONTEXT/` |
+| `/watchdog-health` | Check vault integrity — orphaned notes, broken links, registry mismatches |
 
 **Query examples:**
 
