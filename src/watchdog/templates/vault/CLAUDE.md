@@ -6,7 +6,7 @@ At the start of every session: (1) read `hot.md` for a summary of recent activit
 
 | Path | Purpose |
 |------|---------| 
-| `_INCOMING/` | Drop zone — drag files here, then run `watchdog` in your terminal to preprocess |
+| `_INCOMING/` | Drop zone — drag files here, then run `watchdog preprocess` in your terminal |
 | `_INCOMING/_FAILED/` | Created on failure — files that could not be processed |
 | `_CONTEXT/` | Background material (prior stories, notes) — run `/watchdog-context` to seed context.md |
 | `morgue/` | Original files after successful ingest |

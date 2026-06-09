@@ -251,7 +251,7 @@ def cmd_new(args) -> None:
     print(f"  {_DIM}To reopen: {_RESET}{_CYAN}watchdog open {slug}{_RESET}")
 
 
-def cmd_ingest(args) -> None:
+def cmd_preprocess(args) -> None:
     from watchdog.pipeline.preprocess_batch import run_ingest
     vault = Path(".").resolve()
     if not (vault / ".watchdog").is_dir():
@@ -831,16 +831,16 @@ def main() -> None:
     p_configure.add_argument("value", nargs="?", help="Value to set")
     p_configure.set_defaults(func=cmd_configure)
 
-    p_ingest = sub.add_parser("ingest", help="Preprocess documents in _INCOMING/ for extraction in Claude Code")
+    p_ingest = sub.add_parser("preprocess", help="Preprocess documents in _INCOMING/ for extraction in Claude Code")
     p_ingest.add_argument("--workers", type=int, default=4, metavar="N",
                           help="Parallel preprocessing workers (default: 4)")
-    p_ingest.set_defaults(func=cmd_ingest)
+    p_ingest.set_defaults(func=cmd_preprocess)
 
     args = parser.parse_args()
 
     if args.command is None:
         if Path(".watchdog").is_dir():
-            cmd_ingest(args)
+            cmd_preprocess(args)
         else:
             _print_banner()
         return
