@@ -1,18 +1,24 @@
-name: Publish to PyPI
+name: Release
 
 on:
-  release:
-    types: [published]
+  push:
+    tags: ['v*']
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    permissions:
+      contents: read
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install package and dev dependencies
         run: pip install -e ".[dev]"
@@ -23,8 +29,11 @@ jobs:
   build:
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
 
       - uses: actions/setup-python@v5
         with:
@@ -41,8 +50,73 @@ jobs:
           name: dist
           path: dist/
 
-  publish:
+  release:
     needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - name: Generate and splice release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+
+          # Ask GitHub to generate a changelog from merged PRs since the previous tag
+          gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+            --method POST \
+            -f tag_name="$TAG" \
+            --jq '.body' \
+            | sed '/^## What'\''s Changed$/d' \
+            > /tmp/generated-changelog.md
+
+          # Sanitize: handle the literal string "null" when there is no previous tag
+          if [ "$(cat /tmp/generated-changelog.md)" = "null" ]; then
+            : > /tmp/generated-changelog.md
+          fi
+
+          # Prefer the human-written "What's new" section from the version bump PR
+          # (expected branch name: chore/v{VERSION}) over the raw generated PR list
+          PR_BODY=$(gh pr list \
+            --state merged \
+            --head "chore/v${VERSION}" \
+            --json body \
+            --jq '.[0].body // ""' 2>/dev/null || echo "")
+          if [ -n "$PR_BODY" ]; then
+            WHATS_NEW=$(echo "$PR_BODY" | python3 .github/scripts/extract-whats-new.py 2>/dev/null || echo "")
+            if [ -n "$WHATS_NEW" ]; then
+              echo "$WHATS_NEW" > /tmp/generated-changelog.md
+            fi
+          fi
+
+          # Splice changelog into the template
+          VERSION="$VERSION" python3 .github/scripts/splice-release-notes.py
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          # Mark pre-releases automatically (alpha, beta, rc)
+          PRERELEASE=""
+          if [[ "$TAG" =~ (a|b|rc)[0-9]+$ ]]; then
+            PRERELEASE="--prerelease"
+          fi
+          if gh release view "$TAG" &>/dev/null; then
+            gh release edit "$TAG" --notes-file /tmp/release-notes.md
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes-file /tmp/release-notes.md \
+              $PRERELEASE
+          fi
+
+  publish:
+    needs: release
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
