@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -17,6 +18,8 @@ from pathlib import Path
 from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
 
 DEFAULT_FILE_TIMEOUT = 600
+
+_cancel_event = threading.Event()
 
 SKIP_NAMES    = {".ds_store", ".ingest-lock"}
 SKIP_SUFFIXES = {".yml"}
@@ -164,15 +167,31 @@ def preprocess_one(
     if chunk_workers is not None:
         cmd += ["--chunk-workers", str(chunk_workers)]
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        deadline = t0 + timeout
+        while True:
+            try:
+                stdout, stderr = proc.communicate(timeout=0.5)
+                break
+            except subprocess.TimeoutExpired:
+                if _cancel_event.is_set():
+                    proc.kill()
+                    proc.wait()
+                    return {"error": "cancelled", "source_path": str(path),
+                            "elapsed_s": round(time.time() - t0, 1), "char_count": 0}
+                if time.time() >= deadline:
+                    proc.kill()
+                    proc.wait()
+                    result = {"error": f"Timed out after {timeout}s"}
+                    result["source_path"] = str(path)
+                    result["elapsed_s"]   = round(time.time() - t0, 1)
+                    result["char_count"]  = 0
+                    return result
         elapsed = round(time.time() - t0, 1)
-        if not r.stdout.strip():
-            result = {"error": r.stderr.strip()[:300] or "Empty output from preprocessor"}
+        if not stdout.strip():
+            result = {"error": stderr.strip()[:300] or "Empty output from preprocessor"}
         else:
-            result = json.loads(r.stdout)
-    except subprocess.TimeoutExpired:
-        elapsed = round(time.time() - t0, 1)
-        result = {"error": f"Timed out after {timeout}s"}
+            result = json.loads(stdout)
     except Exception as e:
         elapsed = round(time.time() - t0, 1)
         result = {"error": str(e)}
@@ -244,14 +263,17 @@ def _run_ingest_inner(
     sys.stdout.flush()
 
     results: dict[str, dict] = {}
+    _cancel_event.clear()
 
-    with ThreadPoolExecutor(max_workers=pre_workers) as pool:
-        futures = {
-            pool.submit(preprocess_one, f, str(vault), DEFAULT_FILE_TIMEOUT, chunk_workers): f
-            for f in files
-        }
-        done = 0
-        skipped = 0
+    pool = ThreadPoolExecutor(max_workers=pre_workers)
+    futures = {
+        pool.submit(preprocess_one, f, str(vault), DEFAULT_FILE_TIMEOUT, chunk_workers): f
+        for f in files
+    }
+    done = 0
+    skipped = 0
+    cancelled = False
+    try:
         for future in as_completed(futures):
             path   = futures[future]
             result = future.result()
@@ -281,7 +303,7 @@ def _run_ingest_inner(
             # Progress bar + ETA
             bar = _bar(done, total)
             if done < total and elapsed_wall > 0:
-                eta     = round((elapsed_wall / done) * (total - done))
+                eta       = round((elapsed_wall / done) * (total - done))
                 time_part = f"  {_DIM}{_fmt_eta(eta)}{_RESET}"
             elif done == total:
                 time_part = f"  {_DIM}{round(elapsed_wall)}s total{_RESET}"
@@ -333,6 +355,18 @@ def _run_ingest_inner(
                     (queue / f"{sha256}.json").write_text(
                         json.dumps(result, ensure_ascii=False)
                     )
+
+    except KeyboardInterrupt:
+        cancelled = True
+        _cancel_event.set()
+        for fut in futures:
+            fut.cancel()
+        pool.shutdown(wait=True, cancel_futures=True)
+        sys.stdout.write("\r\033[K")
+        print(f"\n  {_DIM}Cancelled — {done} of {total} files processed. Unfinished files remain in _INCOMING/.{_RESET}\n")
+        return
+    else:
+        pool.shutdown(wait=False)
 
     # Clear the progress bar before printing summary
     sys.stdout.write("\r\033[K")

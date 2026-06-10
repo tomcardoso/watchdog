@@ -89,15 +89,44 @@ def test_ingest_lock_excluded(tmp_path):
 
 # ── preprocess_one ────────────────────────────────────────────────────────────
 
+class _FakePopen:
+    """Minimal Popen mock: communicate() returns immediately."""
+    def __init__(self, stdout="", stderr=""):
+        self._stdout = stdout
+        self._stderr = stderr
+        self.cmd_seen = None
+
+    def communicate(self, timeout=None):
+        return self._stdout, self._stderr
+
+    def kill(self): pass
+    def wait(self): pass
+
+
+class _FakePopenTimeout:
+    """Popen mock that always raises TimeoutExpired from communicate()."""
+    def communicate(self, timeout=None):
+        raise subprocess.TimeoutExpired([], timeout or 0)
+
+    def kill(self): pass
+    def wait(self): pass
+
+
+def _fake_popen_factory(stdout="", stderr="", captured=None):
+    def fake_popen(cmd, **kw):
+        p = _FakePopen(stdout, stderr)
+        if captured is not None:
+            captured["cmd"] = cmd
+        return p
+    return fake_popen
+
+
 def test_preprocess_one_success(tmp_path, monkeypatch):
     f = tmp_path / "doc.pdf"
     f.write_bytes(b"")
     payload = {"filename": "doc.pdf", "pages": [{"page": 1, "markdown": "hello world"}]}
-
-    def fake_run(cmd, **kw):
-        return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(payload), stderr="")
-
-    monkeypatch.setattr("watchdog.pipeline.preprocess_batch.subprocess.run", fake_run)
+    monkeypatch.setattr("watchdog.pipeline.preprocess_batch.subprocess.Popen",
+                        _fake_popen_factory(stdout=json.dumps(payload)))
     result = preprocess_one(f)
     assert result["filename"] == "doc.pdf"
     assert result["char_count"] == len("hello world")
@@ -107,11 +136,8 @@ def test_preprocess_one_success(tmp_path, monkeypatch):
 def test_preprocess_one_empty_output_is_error(tmp_path, monkeypatch):
     f = tmp_path / "doc.pdf"
     f.write_bytes(b"")
-
-    def fake_run(cmd, **kw):
-        return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="something went wrong")
-
-    monkeypatch.setattr("watchdog.pipeline.preprocess_batch.subprocess.run", fake_run)
+    monkeypatch.setattr("watchdog.pipeline.preprocess_batch.subprocess.Popen",
+                        _fake_popen_factory(stdout="", stderr="something went wrong"))
     result = preprocess_one(f)
     assert "error" in result
     assert result["source_path"] == str(f)
@@ -120,12 +146,9 @@ def test_preprocess_one_empty_output_is_error(tmp_path, monkeypatch):
 def test_preprocess_one_timeout_is_error(tmp_path, monkeypatch):
     f = tmp_path / "doc.pdf"
     f.write_bytes(b"")
-
-    def fake_run(cmd, **kw):
-        raise subprocess.TimeoutExpired(cmd, 600)
-
-    monkeypatch.setattr("watchdog.pipeline.preprocess_batch.subprocess.run", fake_run)
-    result = preprocess_one(f)
+    monkeypatch.setattr("watchdog.pipeline.preprocess_batch.subprocess.Popen",
+                        lambda cmd, **kw: _FakePopenTimeout())
+    result = preprocess_one(f, timeout=0)  # deadline=now, triggers on first poll
     assert "error" in result
     assert "timed out" in result["error"].lower()
     assert result["source_path"] == str(f)
@@ -141,11 +164,8 @@ def test_preprocess_one_char_count_sums_pages(tmp_path, monkeypatch):
             {"page": 2, "markdown": "de"},
         ],
     }
-
-    def fake_run(cmd, **kw):
-        return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(payload), stderr="")
-
-    monkeypatch.setattr("watchdog.pipeline.preprocess_batch.subprocess.run", fake_run)
+    monkeypatch.setattr("watchdog.pipeline.preprocess_batch.subprocess.Popen",
+                        _fake_popen_factory(stdout=json.dumps(payload)))
     result = preprocess_one(f)
     assert result["char_count"] == 5
 
@@ -155,12 +175,8 @@ def test_preprocess_one_passes_vault_path(tmp_path, monkeypatch):
     f.write_bytes(b"")
     payload = {"filename": "doc.pdf", "pages": []}
     captured = {}
-
-    def fake_run(cmd, **kw):
-        captured["cmd"] = cmd
-        return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(payload), stderr="")
-
-    monkeypatch.setattr("watchdog.pipeline.preprocess_batch.subprocess.run", fake_run)
+    monkeypatch.setattr("watchdog.pipeline.preprocess_batch.subprocess.Popen",
+                        _fake_popen_factory(stdout=json.dumps(payload), captured=captured))
     preprocess_one(f, vault_path="/vault/path")
     assert "--vault-path" in captured["cmd"]
     assert "/vault/path" in captured["cmd"]
@@ -171,12 +187,8 @@ def test_preprocess_one_passes_chunk_workers(tmp_path, monkeypatch):
     f.write_bytes(b"")
     payload = {"filename": "doc.pdf", "pages": []}
     captured = {}
-
-    def fake_run(cmd, **kw):
-        captured["cmd"] = cmd
-        return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(payload), stderr="")
-
-    monkeypatch.setattr("watchdog.pipeline.preprocess_batch.subprocess.run", fake_run)
+    monkeypatch.setattr("watchdog.pipeline.preprocess_batch.subprocess.Popen",
+                        _fake_popen_factory(stdout=json.dumps(payload), captured=captured))
     preprocess_one(f, chunk_workers=6)
     assert "--chunk-workers" in captured["cmd"]
     assert "6" in captured["cmd"]
@@ -187,12 +199,8 @@ def test_preprocess_one_omits_chunk_workers_when_none(tmp_path, monkeypatch):
     f.write_bytes(b"")
     payload = {"filename": "doc.pdf", "pages": []}
     captured = {}
-
-    def fake_run(cmd, **kw):
-        captured["cmd"] = cmd
-        return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(payload), stderr="")
-
-    monkeypatch.setattr("watchdog.pipeline.preprocess_batch.subprocess.run", fake_run)
+    monkeypatch.setattr("watchdog.pipeline.preprocess_batch.subprocess.Popen",
+                        _fake_popen_factory(stdout=json.dumps(payload), captured=captured))
     preprocess_one(f)
     assert "--chunk-workers" not in captured["cmd"]
 
