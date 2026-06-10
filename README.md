@@ -67,21 +67,23 @@ Every document Watchdog processes is read by an AI. There is no way to take that
 
 ## How it works
 
-The pipeline has two stages — a CLI stage you run in your terminal, and an extraction stage that runs in Claude Code.
+The pipeline has two stages — a CLI stage you run in your terminal, and an extraction stage that runs inside Claude Code.
 
 ```
 Drop files into _INCOMING/
         ↓
-watchdog preprocess  (terminal)
+watchdog chew  (terminal)
   SHA-256 dedup · OCR · Docling extraction · embedding
-  → writes .watchdog/preprocessed/<sha256>.json per file
+  → originals moved to .watchdog/staging/<sha256>/
+  → extracted data written to .watchdog/queue/<sha256>.json
         ↓
 /watchdog-ingest  (Claude Code)
-  reads preprocessed files · applies domain knowledge · extracts entities,
+  reads queue files · applies domain knowledge · extracts entities,
   relationships, timeline events, key facts · flags contradictions
         ↓
 watchdog write-vault
-  entity notes · document notes · global timeline · registries · morgue move
+  entity notes · document notes · global timeline · registries
+  → originals moved to morgue/
         ↓
 Post-ingest briefing: new entities · connections · leads · anomalies
 ```
@@ -126,7 +128,9 @@ pipx install watchdog-intel
 watchdog setup
 ```
 
-`watchdog setup` installs the Claude Code skills, verifies system dependencies (qpdf, Ghostscript, Tesseract on Linux), and configures shell completions. Takes 5–10 minutes on first run — Docling downloads its ML models and fastembed downloads the embedding model (~50 MB, one-time).
+`watchdog setup` installs the Claude Code skills, verifies system dependencies (qpdf, Ghostscript, Tesseract on Linux), and configures your projects directory. Takes 5–10 minutes on first run — Docling downloads its ML models and fastembed downloads the embedding model (~50 MB, one-time).
+
+Shell tab completion is enabled automatically by `watchdog setup` — it writes the activation line to your shell profile (`~/.zshrc`, `~/.bashrc`, or equivalent) and prompts you to reload.
 
 For step-by-step instructions written for journalists who have never used a terminal, see [INSTALL.md](INSTALL.md).
 
@@ -138,8 +142,14 @@ For step-by-step instructions written for journalists who have never used a term
 # Create a new investigation vault
 watchdog new "Shell Company Investigation"
 
-# Open the vault in Claude Code
-watchdog claude shell-company-investigation
+# Drop documents into the vault
+# (copy or move files into ~/Investigations/shell-company-investigation/_INCOMING/)
+
+# Open the vault in Obsidian
+watchdog obsidian shell-company-investigation
+
+# Chew pending documents and open in Claude Code
+watchdog open shell-company-investigation
 ```
 
 **Optional but recommended:** before processing records, seed your investigation context from prior published stories or notes:
@@ -147,50 +157,59 @@ watchdog claude shell-company-investigation
 1. Drop background files (clips, notes, screenshots) into `_CONTEXT/`
 2. Run `/watchdog-context` in Claude Code — Watchdog reads the material, asks you questions, and writes `context.md`
 
-Then drop public records into `_INCOMING/` and preprocess them from your terminal:
+Then, when documents are in `_INCOMING/`, chew them from the vault directory:
 
 ```bash
-cd shell-company-investigation
-watchdog preprocess
+cd ~/Investigations/shell-company-investigation
+watchdog chew
 ```
 
-Once preprocessing finishes, Watchdog prints the next step. Switch to Claude Code and run:
+Once chewing finishes, Watchdog prints the next step. Switch to Claude Code and run:
 
 ```
 /watchdog-ingest
 ```
 
+For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED.md](GETTING_STARTED.md).
+
 ---
 
 ## Commands
 
-### CLI commands
-
-Run these from any terminal window. They manage investigations and the Watchdog installation.
+### Investigation management
 
 | Command | What it does |
 |---------|-------------|
-| `watchdog setup` | Set up Watchdog after installation — verifies tools, installs skills, configures shell completion |
 | `watchdog new "<name>"` | Create a new investigation vault |
-| `watchdog` | Preprocess pending documents — run from inside a project folder (prompts before starting) |
-| `watchdog preprocess` | Same as above (explicit, no prompt); accepts `--workers N` |
-| `watchdog open <investigation>` | Navigate to a project and preprocess pending documents (prompts before starting) |
-| `watchdog claude <investigation>` | Open an investigation in Claude Code |
-| `watchdog list` | List all registered investigations |
-| `watchdog status <investigation>` | Show detailed status for an investigation |
-| `watchdog search <investigation> "<query>"` | Semantic search across ingested documents |
+| `watchdog open <name>` | Chew pending documents (with prompt), then open in Claude Code |
+| `watchdog obsidian <name>` | Open the vault in Obsidian |
+| `watchdog list` | List all active investigations; `--all` includes archived |
+| `watchdog status [name]` | Show detailed status; omit name to show all |
+| `watchdog log <name>` | Show ingest history; `--lines N` to tail |
+| `watchdog archive <name>` | Mark an investigation complete — hidden from `watchdog list` |
+| `watchdog unarchive <name>` | Restore an archived investigation |
+| `watchdog move <name> <path>` | Update vault path in registry; moves files if they still exist at the old location |
+| `watchdog delete <name>` | Remove from registry; `--purge` also deletes vault files |
+
+### Pipeline
+
+| Command | What it does |
+|---------|-------------|
+| `watchdog chew` | Process all files in `_INCOMING/` — run from inside the vault directory |
+| `watchdog chew <file>` | Process a single specific file |
+| `watchdog watch <name>` | Watch `_INCOMING/` and chew files automatically as they arrive |
+
+`watchdog chew` sends a macOS notification when files finish processing.
+
+### Info and settings
+
+| Command | What it does |
+|---------|-------------|
+| `watchdog search <name> "<query>"` | Semantic search across ingested documents |
 | `watchdog configure` | View or change configuration |
-| `watchdog unlock <investigation>` | Release a stale ingest lock |
+| `watchdog unlock <name>` | Release a stale ingest lock |
+| `watchdog setup` | Set up Watchdog after installation; `--force` to re-run |
 | `watchdog about` | Show version and project links |
-
-`watchdog search` returns the top matching results — raw document pages (with file name and page number) and vault notes (entity and document summaries) — ranked by semantic similarity. The index is built automatically during `/watchdog-ingest`; no separate step required.
-
-```bash
-watchdog search my-investigation "offshore account transfers"
-watchdog search my-investigation "shell company director" --top 10
-```
-
-The first ingest after installation triggers a one-time ~50 MB model download (the `BAAI/bge-small-en-v1.5` embedding model via fastembed). Subsequent runs use the cached model.
 
 ### Claude Code slash commands
 
@@ -198,8 +217,8 @@ Run these inside a Claude Code session with your investigation open.
 
 | Command | What it does |
 |---------|-------------|
-| `/watchdog-ingest` | Extract all preprocessed files into the vault |
-| `/watchdog-ingest [file]` | Preprocess and extract a specific file |
+| `/watchdog-ingest` | Extract all chewed files into the vault |
+| `/watchdog-ingest [file]` | Chew and extract a specific file |
 | `/watchdog-query [question]` | Answer a question from your vault |
 | `/watchdog-surface` | Find connections and anomalies across the full vault |
 | `/watchdog-entity [id ...]` | Refresh entity Summary and Timeline from all source documents |
@@ -216,6 +235,23 @@ Run these inside a Claude Code session with your investigation open.
 /watchdog-surface
 ```
 
+### Aliases
+
+All commands accept short aliases:
+
+| Alias | Resolves to |
+|-------|-------------|
+| `init`, `create` | `new` |
+| `ls` | `list` |
+| `info`, `inspect` | `status` |
+| `cd` | `open` |
+| `rm`, `remove` | `delete` |
+| `mv` | `move` |
+| `process`, `preprocess`, `prep` | `chew` |
+| `find` | `search` |
+| `config`, `setting`, `settings` | `configure` |
+| `version` | `about` |
+
 ---
 
 ## Vault structure
@@ -231,24 +267,25 @@ my-investigation/
 │   └── <entity>/
 │       └── <doc-type>/
 ├── .watchdog/
-│   └── Registry/           ← Internal state — do not edit manually
+│   ├── queue/             ← Extracted data awaiting ingest (.json per file)
+│   ├── staging/           ← Originals held during processing
+│   └── Registry/          ← Internal state — do not edit manually
 │       ├── entities.json
 │       ├── documents.json
-│       ├── manifest.json   ← Lightweight entity lookup index
+│       ├── manifest.json  ← Lightweight entity lookup index
 │       ├── registry.json
 │       └── ingest.log
 ├── entities/
-│   ├── person/             ← One note per person
-│   ├── company/            ← One note per company
-│   └── address/            ← One note per address
-├── documents/              ← One note per ingested document
-├── briefings/              ← Post-ingest briefing notes
-├── wiki/                   ← Investigation thread pages
-├── timeline.md             ← Global chronological view across all entities
-├── hot.md                  ← Current session state — rewritten after every ingest
-├── log.md                  ← Append-only human-readable ingest history
-├── context.md              ← Your investigation intent and key questions
-└── index.md                ← Dataview index
+│   ├── person/            ← One note per person
+│   ├── company/           ← One note per company
+│   └── address/           ← One note per address
+├── documents/             ← One note per ingested document
+├── briefings/             ← Post-ingest briefing notes
+├── wiki/                  ← Investigation thread pages
+├── hot.md                 ← Current session state — rewritten after every ingest
+├── log.md                 ← Append-only human-readable ingest history
+├── context.md             ← Your investigation intent and key questions
+└── index.md               ← Dataview index
 ```
 
 ### Entity notes
@@ -346,7 +383,20 @@ watchdog status municipal-contracts-investigation
 watchdog open municipal-contracts-investigation
 ```
 
-Project names tab-complete in zsh, bash, and fish after installation.
+Project names tab-complete in zsh and bash after running `watchdog setup` (which enables completion automatically).
+
+When an investigation concludes, archive it to keep the list clean:
+
+```bash
+watchdog archive municipal-contracts-investigation
+watchdog list --all   # shows archived investigations alongside active ones
+```
+
+To move a vault after reorganizing your filesystem:
+
+```bash
+watchdog move municipal-contracts-investigation /Volumes/Archive/Investigations
+```
 
 ---
 
@@ -367,21 +417,22 @@ watchdog configure <key> <value>
 | Key | Default | Description |
 |-----|---------|-------------|
 | `projects_dir` | `~/Investigations` | Where new investigation vaults are created. Set during `watchdog setup`, change here afterwards. |
-| `ocr_languages` | *(auto-detect)* | Language codes for Apple Vision OCR, comma-separated (e.g. `en-US,fr-FR`). Only applies when using Apple Vision (`auto` mode on macOS or `ocr_engine=apple_vision`). Leave unset to let macOS 13+ detect the language automatically. Codes use [BCP 47](https://www.iana.org/assignments/language-subtag-registry/language-subtag-registry) format. |
-| `ocr_engine` | `auto` | OCR engine for scanned documents. `auto` uses Apple Vision on macOS (if `ocrmac` is installed) and Tesseract elsewhere. Options: `auto`, `apple_vision`, `tesseract`, `easyocr`, `rapidocr`. Tesseract must be installed at the system level: `brew install tesseract` on macOS or `sudo apt install tesseract-ocr` on Debian/Ubuntu. |
-| `table_structure` | `true` | Whether Docling runs its table detection model on PDFs. Set to `false` to speed up ingestion of text-only documents (court decisions, contracts, regulatory filings) that contain no meaningful tables. |
-| `garbled_threshold` | `0.75` | Fraction of alphanumeric characters below which a PDF text layer is considered garbled and OCR is triggered automatically. Range: 0.0–1.0. |
+| `ocr_engine` | `auto` | OCR engine for scanned documents. `auto` uses Apple Vision on macOS and Tesseract elsewhere. Options: `auto`, `apple_vision`, `tesseract`, `easyocr`, `rapidocr`. |
+| `ocr_languages` | *(auto-detect)* | Language codes for Apple Vision OCR, comma-separated (e.g. `en-US,fr-FR`). Leave unset to auto-detect. |
+| `garbled_threshold` | `0.75` | Fraction of alphanumeric characters below which a PDF text layer is considered garbled and OCR is triggered. Range: 0.0–1.0. |
+| `chew_workers` | `auto` | Parallel files during chewing. `auto` (default) picks adaptively based on batch content. Set to a whole number to fix it. |
 | `chunk_size` | `40` | Pages per chunk when splitting large PDFs for parallel processing. |
-| `chunk_workers` | *(half CPU cores)* | Parallel subprocesses for large-PDF processing. Set automatically at `watchdog setup` based on your machine. |
-| `chunk_timeout` | `300` | Seconds before a chunk subprocess is killed. Increase for very large or complex PDFs on slow machines. |
+| `chunk_workers` | `auto` | Parallel subprocesses for large-PDF chunks. |
+| `chunk_timeout` | `300` | Seconds before a chunk subprocess is killed. |
+| `table_structure` | `true` | Whether Docling runs its table detection model on PDFs. Set to `false` to speed up ingestion of text-only documents. |
+| `embed_images` | `false` | Embed figures as base64 in the extracted markdown so Claude can read charts and image-based tables. Significantly increases token usage. |
 | `dup_threshold` | `0.85` | Jaccard similarity score at which two documents are flagged as near-duplicates. Range: 0.0–1.0. |
 | `shingle_size` | `3` | Word n-gram size for near-duplicate fingerprinting. Changing this invalidates existing shingle data — re-ingest to rebuild. |
-| `embed_images` | `false` | Embed figures and images as base64 in the markdown output so Claude can read charts and image-based tables. Significantly increases token usage and processing time. Only enable for document sets where visual content carries investigative value. |
 
 **Examples:**
 
 ```bash
-# Switch to Tesseract on a non-Mac machine where it is already installed
+# Switch to Tesseract on a non-Mac machine
 watchdog configure ocr_engine tesseract
 
 # Disable table detection for a project that is all court decisions
@@ -393,8 +444,6 @@ watchdog configure ocr_languages "fr-FR,ar-SA"
 # Move investigation storage to an external drive
 watchdog configure projects_dir /Volumes/SecureDrive/Investigations
 ```
-
-Aliases: `config`, `setting`, `settings` all resolve to `configure`.
 
 ---
 
@@ -417,7 +466,7 @@ Treat everything Watchdog produces as a structured first read, not a finished pr
 - **macOS only** for the scripted installer. Linux and Windows (WSL2) work but require manual setup — see [INSTALL.md](INSTALL.md).
 - **Domain skills are v1.** The extraction skills are well-researched but have not yet been validated in a live investigation. Expect rough edges — and please contribute improvements.
 - **No global entity registry.** Entities are scoped to a single vault. Cross-investigation entity matching is planned for a future release.
-- **Audio/video requires extra setup.** Speech-to-text (`--with-asr`) adds significant install time and disk space.
+- **Audio/video requires extra setup.** Speech-to-text adds significant install time and disk space — see [INSTALL.md](INSTALL.md).
 
 ---
 
@@ -440,7 +489,7 @@ pipx install --editable . --force
 watchdog setup
 ```
 
-The `--editable` flag points pipx directly at your source directory instead of copying it, so any changes you make to `.py` files are picked up immediately without reinstalling. Run `pipx install . --force` (without `--editable`) to snapshot a fixed version instead.
+The `--editable` flag points pipx directly at your source directory instead of copying it, so any changes you make to `.py` files are picked up immediately without reinstalling.
 
 Please open an issue before starting significant work so we can discuss approach first.
 
@@ -449,12 +498,13 @@ Please open an issue before starting significant work so we can discuss approach
 ## Architecture notes
 
 - **[Docling](https://github.com/DS4SD/docling)** handles all document conversion — layout analysis, table extraction, OCR. Structured output (not raw text) is important for table-heavy documents like financial statements and creditor lists.
-- **Large PDFs** are split into 40-page chunks and processed in parallel via `watchdog preprocess-batch`. Page numbers are preserved and reassembled in order.
+- **Large PDFs** are split into 40-page chunks and processed in parallel. Page numbers are preserved and reassembled in order.
+- **Two-stage queue** — `watchdog chew` writes extracted JSON to `.watchdog/queue/` and moves originals to `.watchdog/staging/`. After `/watchdog-ingest` completes, originals move from staging to `morgue/`. The queue is never touched by the journalist directly.
 - **OCR engine:** Apple Vision on macOS (fast, hardware-accelerated); Tesseract on Linux/Windows (requires system install). Configurable via `watchdog configure ocr_engine`.
 - **Near-duplicate detection** uses Jaccard similarity on word 3-gram shingles — no ML dependencies, runs locally.
 - **Registries** (`.watchdog/Registry/documents.json`, `entities.json`, `manifest.json`) are the source of truth. Obsidian notes are generated outputs — deleting a note doesn't lose data. `manifest.json` is a lightweight id/name/type/aliases index used for entity lookup without loading full registry data.
 - **Vault writes are atomic** — `watchdog write-vault` handles entity notes, document notes, timeline, registries, and the morgue move in a single operation behind an ingest lock.
-- **Single CLI entry point** — `watchdog` is the only command installed on your PATH. Pipeline utilities (`watchdog preprocess`, `watchdog write-vault`, etc.) are subcommands, not separate binaries.
+- **Single CLI entry point** — `watchdog` is the only command installed on your PATH. All pipeline utilities are subcommands.
 
 ---
 

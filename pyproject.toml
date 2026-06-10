@@ -28,6 +28,7 @@ dependencies = [
     "pypdf>=4.0",
     "pyyaml>=6.0",
     "fastembed>=0.4",
+    "argcomplete>=3.0",
     "ocrmac; sys_platform == 'darwin'",
 ]
 

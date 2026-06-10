@@ -581,6 +581,9 @@ def test_version_flags_invoke_about(capsys, monkeypatch, flag):
     ("process",   "chew"),
     ("preprocess", "chew"),
     ("prep",      "chew"),
+    ("remove",    "delete"),
+    ("rm",        "delete"),
+    ("mv",        "move"),
 ])
 def test_aliases_remap_argv(alias, canonical, monkeypatch):
     import sys
@@ -874,3 +877,200 @@ def test_unlock_recent_lock_force_removes(configured, capsys):
     cli.cmd_unlock(args(project="test-proj", force=True))
     assert not lock_path.exists()
     assert "Removed" in capsys.readouterr().out
+
+
+# ── cmd_delete ────────────────────────────────────────────────────────────────
+
+def test_cmd_delete_removes_from_registry(configured, monkeypatch, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    cli.cmd_delete(args(name="Shell Co", purge=False))
+    assert "shell-co" not in cli.load_projects()
+    assert "Removed" in capsys.readouterr().out
+
+
+def test_cmd_delete_purge_removes_files(configured, monkeypatch, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    assert vault.exists()
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    cli.cmd_delete(args(name="Shell Co", purge=True))
+    assert not vault.exists()
+    assert "Deleted" in capsys.readouterr().out
+
+
+def test_cmd_delete_cancelled(configured, monkeypatch, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    monkeypatch.setattr("builtins.input", lambda _: "n")
+    cli.cmd_delete(args(name="Shell Co", purge=False))
+    assert "shell-co" in cli.load_projects()
+    assert "Cancelled" in capsys.readouterr().out
+
+
+def test_cmd_delete_removes_from_obsidian_registry(configured, monkeypatch, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    cfg_path = cli._obsidian_config_path()
+    cfg_path.write_text(json.dumps({"vaults": {"abc123": {"path": str(vault), "ts": 0}}}))
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    cli.cmd_delete(args(name="Shell Co", purge=False))
+    data = json.loads(cfg_path.read_text())
+    assert not any(v.get("path") == str(vault) for v in data["vaults"].values())
+
+
+# ── cmd_move ──────────────────────────────────────────────────────────────────
+
+def test_cmd_move_updates_registry_when_already_moved(configured, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    new_path = configured / "renamed"
+    vault.rename(new_path)
+    cli.cmd_move(args(name="Shell Co", path=str(new_path)))
+    assert cli.load_projects()["shell-co"]["path"] == str(new_path)
+    assert "Updated" in capsys.readouterr().out
+
+
+def test_cmd_move_moves_files_when_src_exists(configured, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    new_path = configured / "new-location"
+    cli.cmd_move(args(name="Shell Co", path=str(new_path)))
+    assert not vault.exists()
+    assert new_path.exists()
+    assert cli.load_projects()["shell-co"]["path"] == str(new_path)
+    assert "Moved" in capsys.readouterr().out
+
+
+def test_cmd_move_updates_obsidian_registry(configured, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    new_path = configured / "new-location"
+    cfg_path = cli._obsidian_config_path()
+    cfg_path.write_text(json.dumps({"vaults": {"abc123": {"path": str(vault), "ts": 0}}}))
+    cli.cmd_move(args(name="Shell Co", path=str(new_path)))
+    data = json.loads(cfg_path.read_text())
+    paths = [v["path"] for v in data["vaults"].values()]
+    assert str(new_path) in paths
+    assert str(vault) not in paths
+
+
+# ── cmd_archive / cmd_unarchive ───────────────────────────────────────────────
+
+def test_cmd_archive_sets_flag(configured, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    cli.cmd_archive(args(name="Shell Co"))
+    assert cli.load_projects()["shell-co"].get("archived") is True
+    assert "Archived" in capsys.readouterr().out
+
+
+def test_cmd_unarchive_clears_flag(configured, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    cli.cmd_archive(args(name="Shell Co"))
+    cli.cmd_unarchive(args(name="Shell Co"))
+    assert not cli.load_projects()["shell-co"].get("archived")
+    assert "Unarchived" in capsys.readouterr().out
+
+
+def test_cmd_list_hides_archived_by_default(configured, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    cli.cmd_archive(args(name="Shell Co"))
+    capsys.readouterr()  # flush setup output
+    cli.cmd_list(args())
+    out = capsys.readouterr().out
+    assert "Shell Co" not in out
+    assert "archived" in out
+
+
+def test_cmd_list_all_shows_archived(configured, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    cli.cmd_archive(args(name="Shell Co"))
+    cli.cmd_list(args(**{"all": True}))
+    assert "Shell Co" in capsys.readouterr().out
+
+
+def test_cmd_list_shows_archived_hint_when_active_also_exist(configured, capsys):
+    cli.cmd_new(args(name="Alpha", dir=str(configured)))
+    cli.cmd_new(args(name="Beta",  dir=str(configured)))
+    cli.cmd_archive(args(name="Beta"))
+    cli.cmd_list(args())
+    out = capsys.readouterr().out
+    assert "Alpha" in out
+    assert "1 archived" in out
+
+
+# ── cmd_log ───────────────────────────────────────────────────────────────────
+
+def test_cmd_log_no_log_file(configured, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    (configured / "shell-co" / "log.md").unlink()
+    cli.cmd_log(args(name="Shell Co", lines=None))
+    assert "nothing has been ingested" in capsys.readouterr().out
+
+
+def test_cmd_log_shows_content(configured, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    (configured / "shell-co" / "log.md").write_text("## 2026-06-10\n- Ingested 3 files\n")
+    cli.cmd_log(args(name="Shell Co", lines=None))
+    out = capsys.readouterr().out
+    assert "2026-06-10" in out
+    assert "Ingested 3 files" in out
+
+
+def test_cmd_log_lines_truncates(configured, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    content = "\n".join(f"line {i}" for i in range(20))
+    (configured / "shell-co" / "log.md").write_text(content)
+    cli.cmd_log(args(name="Shell Co", lines=5))
+    out = capsys.readouterr().out
+    assert "line 19" in out
+    assert "line 0" not in out
+
+
+# ── cmd_chew with file argument ───────────────────────────────────────────────
+
+def test_cmd_chew_with_specific_file(configured, monkeypatch):
+    import watchdog.pipeline.preprocess_batch as ppb
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    f = vault / "_INCOMING" / "doc.pdf"
+    f.write_bytes(b"")
+
+    calls = []
+    def fake_run_ingest(v, workers=None, files=None):
+        calls.append({"vault": v, "files": files})
+
+    monkeypatch.setattr(ppb, "run_ingest", fake_run_ingest)
+    monkeypatch.chdir(vault)
+    cli.cmd_chew(args(file=str(f), workers=None))
+    assert len(calls) == 1
+    assert calls[0]["files"] == [f]
+
+
+def test_cmd_chew_with_nonexistent_file_exits(configured, monkeypatch):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    monkeypatch.chdir(vault)
+    with pytest.raises(SystemExit, match="not found"):
+        cli.cmd_chew(args(file="/no/such/file.pdf", workers=None))
+
+
+# ── _notify ───────────────────────────────────────────────────────────────────
+
+def test_notify_no_op_on_non_darwin(monkeypatch):
+    monkeypatch.setattr("watchdog.cli.sys.platform", "linux")
+    calls = []
+    monkeypatch.setattr("watchdog.cli.subprocess.run", lambda *a, **k: calls.append(a))
+    cli._notify("title", "body")
+    assert calls == []
+
+
+def test_notify_calls_osascript_on_darwin(monkeypatch):
+    monkeypatch.setattr("watchdog.cli.sys.platform", "darwin")
+    calls = []
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+    monkeypatch.setattr("watchdog.cli.subprocess.run", fake_run)
+    cli._notify("Watchdog", "3 files chewed")
+    assert len(calls) == 1
+    assert calls[0][0] == "osascript"
+    assert "3 files chewed" in calls[0][2]

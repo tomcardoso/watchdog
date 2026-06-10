@@ -148,14 +148,15 @@ def preprocess_one(
     return result
 
 
-def run_ingest(vault: Path, workers: int | None = None) -> None:
+def run_ingest(vault: Path, workers: int | None = None, files: list | None = None) -> None:
     incoming = vault / "_INCOMING"
     queue    = vault / ".watchdog" / "queue"
     staging  = vault / ".watchdog" / "staging"
     queue.mkdir(parents=True, exist_ok=True)
     staging.mkdir(parents=True, exist_ok=True)
 
-    files = find_files([incoming])
+    if files is None:
+        files = find_files([incoming])
     if not files:
         queued = len(list(queue.glob("*.json")))
         if queued:

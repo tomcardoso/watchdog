@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import secrets
+import shutil
 import subprocess
 import sys
 from collections import Counter
@@ -31,20 +32,23 @@ def _perf_cpu_count() -> int:
     return os.cpu_count() or 4
 
 _ALIASES = {
-    "init":     "new",
-    "create":   "new",
-    "ls":       "list",
-    "info":     "status",
-    "inspect":  "status",
-    "cd":       "open",
-    "version":  "about",
-    "config":   "configure",
-    "setting":  "configure",
-    "settings": "configure",
-    "find":      "search",
-    "process":   "chew",
+    "init":       "new",
+    "create":     "new",
+    "ls":         "list",
+    "info":       "status",
+    "inspect":    "status",
+    "cd":         "open",
+    "version":    "about",
+    "config":     "configure",
+    "setting":    "configure",
+    "settings":   "configure",
+    "find":       "search",
+    "process":    "chew",
     "preprocess": "chew",
-    "prep":      "chew",
+    "prep":       "chew",
+    "remove":     "delete",
+    "rm":         "delete",
+    "mv":         "move",
 }
 
 _PIPELINE_COMMANDS = {
@@ -80,12 +84,44 @@ _CMD_HELP: dict[str, dict] = {
         "desc": "Chew pending documents and open in Claude Code",
         "args": [("name", "Investigation name or slug")],
     },
+    "obsidian": {
+        "desc": "Open an investigation vault in Obsidian",
+        "args": [("name", "Investigation name or slug")],
+    },
+    "archive": {
+        "desc": "Archive a completed investigation (hidden from watchdog list)",
+        "args": [("name", "Investigation name or slug")],
+    },
+    "unarchive": {
+        "desc": "Restore an archived investigation",
+        "args": [("name", "Investigation name or slug")],
+    },
+    "move": {
+        "desc": "Update vault path in registry",
+        "args": [("name", "Investigation name or slug"), ("path", "New path for the vault")],
+    },
+    "delete": {
+        "desc": "Remove an investigation from registry",
+        "args": [("name", "Investigation name or slug")],
+        "opts": [("--purge", "Also permanently delete all vault files from disk")],
+    },
     "chew": {
         "desc": "Process documents in _INCOMING/ and prepare them for ingestion",
-        "opts": [("--workers N", "Parallel file workers (default: auto)")],
+        "args": [("file", "Specific file to chew (omit to chew all of _INCOMING/)", True)],
+        "opts": [("--workers N", "Parallel file workers (see chew_workers in watchdog configure)")],
+    },
+    "watch": {
+        "desc": "Watch _INCOMING/ and chew files automatically as they arrive",
+        "args": [("name", "Investigation name or slug")],
+    },
+    "log": {
+        "desc": "Show ingest history for an investigation",
+        "args": [("name", "Investigation name or slug")],
+        "opts": [("--lines N", "Number of lines to show (default: all)")],
     },
     "list": {
         "desc": "List all registered investigations",
+        "opts": [("--all", "Include archived investigations")],
     },
     "status": {
         "desc": "Show detailed status for an investigation",
@@ -112,28 +148,30 @@ _CMD_HELP: dict[str, dict] = {
     "about": {
         "desc": "Show version and project links",
     },
-    "obsidian": {
-        "desc": "Open an investigation vault in Obsidian",
-        "args": [("name", "Investigation name or slug")],
-    },
 }
 
 
 def _print_cmd_help(cmd: str) -> None:
     info = _CMD_HELP.get(cmd, {})
-    args = info.get("args", [])
+    arg_defs = info.get("args", [])
     opts = info.get("opts", [])
-    usage_parts = ["watchdog", cmd] + [f"<{n}>" for n, _ in args]
+    usage_parts = ["watchdog", cmd]
+    for a in arg_defs:
+        name, optional = a[0], (len(a) > 2 and a[2])
+        usage_parts.append(f"[{name}]" if optional else f"<{name}>")
     if opts:
         usage_parts.append("[options]")
     print(f"\n  {info.get('desc', '')}")
     print()
     print(f"  {_DIM}Usage:  {' '.join(usage_parts)}{_RESET}")
-    if args:
+    if arg_defs:
         print()
         print(f"  {_BOLD}Arguments{_RESET}")
-        for name, desc in args:
-            print(f"    {_CYAN}{name:<18}{_RESET} {desc}")
+        for a in arg_defs:
+            name, desc = a[0], a[1]
+            optional = len(a) > 2 and a[2]
+            note = "  (optional)" if optional else ""
+            print(f"    {_CYAN}{name:<18}{_RESET} {desc}{note}")
     print()
     print(f"  {_BOLD}Options{_RESET}")
     for flag, desc in opts:
@@ -385,7 +423,21 @@ def cmd_chew(args) -> None:
     vault = Path(".").resolve()
     if not (vault / ".watchdog").is_dir():
         sys.exit("Error: not inside a Watchdog project folder. cd into your investigation first.")
-    _run_preprocess(vault, workers=getattr(args, "workers", None))
+
+    queued_before = _count_queued(vault)
+    file_arg = getattr(args, "file", None)
+    if file_arg:
+        from watchdog.pipeline.preprocess_batch import run_ingest
+        f = Path(file_arg).resolve()
+        if not f.exists():
+            sys.exit(f"Error: file not found: {f}")
+        run_ingest(vault, workers=getattr(args, "workers", None), files=[f])
+    else:
+        _run_preprocess(vault, workers=getattr(args, "workers", None))
+
+    new_queued = _count_queued(vault) - queued_before
+    if new_queued > 0:
+        _notify("Watchdog", f"{new_queued} file{'s' if new_queued != 1 else ''} chewed — ready for /watchdog-ingest.")
 
 
 def _launch_claude(vault: Path) -> None:
@@ -484,6 +536,195 @@ def cmd_obsidian(args) -> None:
     print(f"\n  {_GREEN}Opened:{_RESET} {_BOLD}{info['name']}{_RESET} in Obsidian\n")
 
 
+def _notify(title: str, body: str) -> None:
+    if sys.platform != "darwin":
+        return
+    try:
+        subprocess.run(
+            ["osascript", "-e", f'display notification "{body}" with title "{title}"'],
+            capture_output=True, timeout=5,
+        )
+    except Exception:
+        pass
+
+
+def cmd_delete(args) -> None:
+    slug, info = _find_project(args.name)
+    vault = Path(info["path"])
+
+    print(f"\n  {_BOLD}{info['name']}{_RESET}  {_DIM}{slug}{_RESET}")
+    print(f"  {_CYAN}{vault}{_RESET}")
+    if args.purge:
+        print()
+        print(f"  {_YELLOW}--purge will permanently delete all vault files from disk.{_RESET}")
+
+    print()
+    try:
+        action = "Delete vault and remove" if args.purge else "Remove"
+        answer = input(f"  {action} from registry? [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return
+
+    if answer not in ("y", "yes"):
+        print(f"\n  {_DIM}Cancelled.{_RESET}\n")
+        return
+
+    projects = load_projects()
+    del projects[slug]
+    save_projects(projects)
+
+    if args.purge and vault.exists():
+        shutil.rmtree(vault)
+
+    # Remove from Obsidian registry
+    cfg = _obsidian_config_path()
+    if cfg.exists():
+        try:
+            data = json.loads(cfg.read_text())
+            vaults = data.get("vaults", {})
+            to_remove = [k for k, v in vaults.items() if v.get("path") == str(vault)]
+            for k in to_remove:
+                del vaults[k]
+            cfg.write_text(json.dumps(data))
+        except Exception:
+            pass
+
+    label = "Deleted" if args.purge else "Removed"
+    print(f"\n  {_GREEN}{label}:{_RESET} {_BOLD}{info['name']}{_RESET}\n")
+
+
+def cmd_move(args) -> None:
+    slug, info = _find_project(args.name)
+    src = Path(info["path"])
+    dst = Path(args.path).expanduser().resolve()
+
+    if src == dst:
+        sys.exit("Error: source and destination are the same.")
+
+    # If dst is an existing directory that is not the vault itself, put vault inside it
+    if dst.is_dir() and not (dst / ".watchdog").exists():
+        dst = dst / src.name
+
+    moved = False
+    if src.exists():
+        shutil.move(str(src), str(dst))
+        moved = True
+    elif not dst.exists():
+        sys.exit(
+            f"Error: {src} not found and {dst} does not exist — nothing to update.\n"
+            f"Move the vault manually first, then re-run: watchdog move {slug} <new-path>"
+        )
+
+    projects = load_projects()
+    projects[slug]["path"] = str(dst)
+    save_projects(projects)
+
+    # Update Obsidian registry
+    cfg = _obsidian_config_path()
+    if cfg.exists():
+        try:
+            data = json.loads(cfg.read_text())
+            for v in data.get("vaults", {}).values():
+                if v.get("path") == str(src):
+                    v["path"] = str(dst)
+            cfg.write_text(json.dumps(data))
+        except Exception:
+            pass
+
+    verb = "Moved" if moved else "Updated"
+    print(f"\n  {_GREEN}{verb}:{_RESET} {_BOLD}{info['name']}{_RESET}")
+    print(f"  {_CYAN}{dst}{_RESET}\n")
+
+
+def cmd_archive(args) -> None:
+    slug, info = _find_project(args.name)
+    projects = load_projects()
+    projects[slug]["archived"] = True
+    save_projects(projects)
+    print(f"\n  {_GREEN}Archived:{_RESET} {_BOLD}{info['name']}{_RESET}  {_DIM}hidden from watchdog list{_RESET}\n")
+
+
+def cmd_unarchive(args) -> None:
+    slug, info = _find_project(args.name)
+    projects = load_projects()
+    projects[slug].pop("archived", None)
+    save_projects(projects)
+    print(f"\n  {_GREEN}Unarchived:{_RESET} {_BOLD}{info['name']}{_RESET}\n")
+
+
+def cmd_log(args) -> None:
+    _, info = _find_project(args.name)
+    vault = Path(info["path"])
+    log_path = vault / "log.md"
+
+    if not log_path.exists():
+        print(f"\n  {_DIM}No ingest log found — nothing has been ingested yet.{_RESET}\n")
+        return
+
+    content = log_path.read_text().strip()
+    if not content:
+        print(f"\n  {_DIM}Ingest log is empty.{_RESET}\n")
+        return
+
+    lines = content.splitlines()
+    n = getattr(args, "lines", None)
+    if n:
+        lines = lines[-n:]
+
+    print(f"\n  {_BOLD}{info['name']}{_RESET}  {_DIM}ingest log{_RESET}\n")
+    for line in lines:
+        stripped = line.rstrip()
+        if not stripped:
+            print()
+        elif stripped.startswith("#"):
+            level = len(stripped) - len(stripped.lstrip("#"))
+            text = stripped.lstrip("#").strip()
+            indent = "  " + "  " * (level - 1)
+            print(f"{indent}{_BOLD}{text}{_RESET}")
+        else:
+            print(f"  {_DIM}{stripped}{_RESET}")
+    print()
+
+
+def cmd_watch(args) -> None:
+    _, info = _find_project(args.name)
+    vault = Path(info["path"])
+    if not vault.exists():
+        sys.exit(f"Error: project directory not found: {vault}")
+
+    from watchdog.pipeline.preprocess_batch import run_ingest, find_files
+    import time as _time
+
+    incoming = vault / "_INCOMING"
+    print(f"\n  {_BOLD}{info['name']}{_RESET}  watching {_CYAN}_INCOMING/{_RESET} — press Ctrl+C to stop.\n")
+
+    known: set = set(find_files([incoming]))
+
+    try:
+        while True:
+            _time.sleep(3)
+            current: set = set(find_files([incoming]))
+            new_files = current - known
+            if new_files:
+                n = len(new_files)
+                label = f"{n} file{'s' if n != 1 else ''}"
+                print(f"  {_BOLD}{label}{_RESET} detected — chewing...\n")
+                queued_before = _count_queued(vault)
+                run_ingest(vault)
+                new_queued = _count_queued(vault) - queued_before
+                if new_queued > 0:
+                    _notify(
+                        f"Watchdog — {info['name']}",
+                        f"Chewed {label}. {new_queued} file{'s' if new_queued != 1 else ''} ready for /watchdog-ingest.",
+                    )
+                known = set()
+            else:
+                known = current
+    except KeyboardInterrupt:
+        print(f"\n  {_DIM}Stopped watching.{_RESET}\n")
+
+
 def cmd_about(_args) -> None:
     from watchdog import __version__
     print()
@@ -501,14 +742,25 @@ def cmd_setup(args) -> None:
     run_setup(force=getattr(args, "force", False))
 
 
-def cmd_list(_args) -> None:
-    projects = load_projects()
-    if not projects:
-        print(f"No projects. Create one with: {_CYAN}watchdog new <name>{_RESET}")
+def cmd_list(args) -> None:
+    all_projects = load_projects()
+    show_all = getattr(args, "all", False)
+    active   = {k: v for k, v in all_projects.items() if not v.get("archived")}
+    archived = {k: v for k, v in all_projects.items() if v.get("archived")}
+
+    visible = dict(active)
+    if show_all:
+        visible.update(archived)
+
+    if not visible:
+        if archived and not show_all:
+            print(f"\n  No active investigations. {len(archived)} archived — run {_CYAN}watchdog list --all{_RESET} to show.\n")
+        else:
+            print(f"\n  No projects. Create one with: {_CYAN}watchdog new <name>{_RESET}\n")
         return
 
     rows = []
-    for slug, info in sorted(projects.items(), key=lambda x: x[1]["name"]):
+    for slug, info in sorted(visible.items(), key=lambda x: x[1]["name"]):
         vault = Path(info["path"])
         reg      = _load_registry(vault)
         docs     = str(reg["document_count"]) if reg else "—"
@@ -516,12 +768,11 @@ def cmd_list(_args) -> None:
         updated  = _fmt_date(reg["last_updated"]) if reg else "—"
         incoming = str(_count_incoming(vault)) if vault.exists() else "—"
         queued   = str(_count_queued(vault))   if vault.exists() else "—"
-        rows.append((info["name"], slug, docs, entities, updated, incoming, queued))
+        is_arch  = bool(info.get("archived"))
+        rows.append((info["name"], slug, docs, entities, updated, incoming, queued, is_arch))
 
     name_w = max(len(r[0]) for r in rows) + 2
     slug_w = max(len(r[1]) for r in rows) + 2
-    # each column: 2-space prefix + content width
-    # name(name_w) + slug(slug_w) + docs(6) + entities(8) + to_chew(7) + to_ingest(9) + updated(10) + 7×2 separators - 2(leading indent)
     sep_w = name_w + slug_w + 6 + 8 + 7 + 9 + 10 + 7 * 2 - 2
     header = (
         f"  {_BOLD}{'Project':<{name_w}}{_RESET}"
@@ -534,13 +785,19 @@ def cmd_list(_args) -> None:
     )
     print(f"\n{header}")
     print(f"  {_DIM}{'─' * sep_w}{_RESET}")
-    for name, slug, docs, entities, updated, incoming, queued in rows:
+    for name, slug, docs, entities, updated, incoming, queued, is_arch in rows:
         inc = "—" if incoming == "0" else incoming
         que = "—" if queued   == "0" else queued
-        inc_str = f"{_YELLOW}{inc:>7}{_RESET}" if inc != "—" else f"{_DIM}{inc:>7}{_RESET}"
-        que_str = f"{_YELLOW}{que:>9}{_RESET}" if que != "—" else f"{_DIM}{que:>9}{_RESET}"
+        if is_arch:
+            inc_str = f"{_DIM}{inc:>7}{_RESET}"
+            que_str = f"{_DIM}{que:>9}{_RESET}"
+            name_str = f"  {_DIM}{name:<{name_w}}{_RESET}"
+        else:
+            inc_str = f"{_YELLOW}{inc:>7}{_RESET}" if inc != "—" else f"{_DIM}{inc:>7}{_RESET}"
+            que_str = f"{_YELLOW}{que:>9}{_RESET}" if que != "—" else f"{_DIM}{que:>9}{_RESET}"
+            name_str = f"  {_BOLD}{name:<{name_w}}{_RESET}"
         print(
-            f"  {_BOLD}{name:<{name_w}}{_RESET}"
+            f"{name_str}"
             f"  {_DIM}{slug:<{slug_w}}"
             f"  {docs:>6}"
             f"  {entities:>8}{_RESET}"
@@ -548,6 +805,9 @@ def cmd_list(_args) -> None:
             f"  {que_str}"
             f"  {_DIM}{updated}{_RESET}"
         )
+    if archived and not show_all:
+        n = len(archived)
+        print(f"  {_DIM}+ {n} archived — run {_RESET}{_CYAN}watchdog list --all{_RESET}{_DIM} to show{_RESET}")
     print()
 
 
@@ -1025,23 +1285,37 @@ def _print_banner() -> None:
     print()
     print(f"  {_DIM}Usage:  watchdog <command> [options]{_RESET}")
     print()
-    print(f"  {_BOLD}Commands{_RESET}")
-    cmds = [
-        ("new",       "Create a new investigation vault"),
-        ("open",      "Chew pending documents and open in Claude Code"),
-        ("obsidian",  "Open an investigation vault in Obsidian"),
-        ("chew",      "Process documents in _INCOMING/ and prepare them for ingestion"),
-        ("list",      "List all registered investigations"),
-        ("status",    "Show detailed status for an investigation"),
-        ("search",    "Semantic search across ingested documents"),
-        ("unlock",    "Release a stale ingest lock"),
-        ("setup",     "Set up Watchdog after installation"),
-        ("configure", "View or change configuration"),
-        ("about",     "Show version and project links"),
+    groups = [
+        ("Investigation", [
+            ("new",        "Create a new investigation vault"),
+            ("open",       "Chew pending documents and open in Claude Code"),
+            ("obsidian",   "Open in Obsidian"),
+            ("archive",    "Archive a completed investigation"),
+            ("unarchive",  "Restore an archived investigation"),
+            ("move",       "Update vault path in registry"),
+            ("delete",     "Remove an investigation"),
+        ]),
+        ("Pipeline", [
+            ("chew",       "Process documents in _INCOMING/"),
+            ("watch",      "Watch _INCOMING/ and chew files automatically"),
+            ("log",        "Show ingest history"),
+        ]),
+        ("Info", [
+            ("list",       "List all investigations"),
+            ("status",     "Show detailed status"),
+            ("search",     "Semantic search across ingested documents"),
+        ]),
+        ("Settings", [
+            ("setup",      "Set up Watchdog after installation"),
+            ("configure",  "View or change configuration"),
+            ("about",      "Show version and project links"),
+        ]),
     ]
-    for cmd, desc in cmds:
-        print(f"    {_CYAN}{cmd:<10}{_RESET} {desc}")
-    print()
+    for group_name, cmds in groups:
+        print(f"  {_BOLD}{group_name}{_RESET}")
+        for cmd, desc in cmds:
+            print(f"    {_CYAN}{cmd:<12}{_RESET} {desc}")
+        print()
 
 
 def main() -> None:
@@ -1085,6 +1359,7 @@ def main() -> None:
     p_open.set_defaults(func=cmd_open)
 
     p_list = sub.add_parser("list", help="List all registered investigations")
+    p_list.add_argument("--all", action="store_true", help="Include archived investigations")
     p_list.set_defaults(func=cmd_list)
 
     p_status = sub.add_parser("status", help="Show detailed status for an investigation")
@@ -1116,13 +1391,50 @@ def main() -> None:
     p_configure.set_defaults(func=cmd_configure)
 
     p_chew = sub.add_parser("chew", help="Process documents in _INCOMING/ and prepare them for ingestion")
+    p_chew.add_argument("file", nargs="?", default=None,
+                        help="Specific file to chew (omit to chew all of _INCOMING/)")
     p_chew.add_argument("--workers", type=int, default=None, metavar="N",
-                        help="Parallel file workers (default: auto)")
+                        help="Parallel file workers (see chew_workers in watchdog configure)")
     p_chew.set_defaults(func=cmd_chew)
 
     p_obsidian = sub.add_parser("obsidian", help="Open an investigation vault in Obsidian")
     p_obsidian.add_argument("name", help="Investigation name or slug")
     p_obsidian.set_defaults(func=cmd_obsidian)
+
+    p_delete = sub.add_parser("delete", help="Remove an investigation from registry")
+    p_delete.add_argument("name", help="Investigation name or slug")
+    p_delete.add_argument("--purge", action="store_true",
+                          help="Also permanently delete all vault files from disk")
+    p_delete.set_defaults(func=cmd_delete)
+
+    p_move = sub.add_parser("move", help="Update vault path in registry")
+    p_move.add_argument("name", help="Investigation name or slug")
+    p_move.add_argument("path", help="New path for the vault")
+    p_move.set_defaults(func=cmd_move)
+
+    p_archive = sub.add_parser("archive", help="Archive a completed investigation")
+    p_archive.add_argument("name", help="Investigation name or slug")
+    p_archive.set_defaults(func=cmd_archive)
+
+    p_unarchive = sub.add_parser("unarchive", help="Restore an archived investigation")
+    p_unarchive.add_argument("name", help="Investigation name or slug")
+    p_unarchive.set_defaults(func=cmd_unarchive)
+
+    p_log = sub.add_parser("log", help="Show ingest history for an investigation")
+    p_log.add_argument("name", help="Investigation name or slug")
+    p_log.add_argument("--lines", type=int, default=None, metavar="N",
+                       help="Number of lines to show (default: all)")
+    p_log.set_defaults(func=cmd_log)
+
+    p_watch = sub.add_parser("watch", help="Watch _INCOMING/ and chew files automatically")
+    p_watch.add_argument("name", help="Investigation name or slug")
+    p_watch.set_defaults(func=cmd_watch)
+
+    try:
+        import argcomplete
+        argcomplete.autocomplete(parser)
+    except ImportError:
+        pass
 
     args = parser.parse_args()
 

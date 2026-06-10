@@ -2,6 +2,7 @@ import importlib.resources
 import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -102,79 +103,7 @@ def _detect_shell() -> tuple[str | None, Path | None]:
     return None, None
 
 
-def _zsh_snippet() -> str:
-    return """
-# Watchdog tab completion
-_watchdog_complete() {
-    local -a subcmds
-    subcmds=(new open list status search unlock setup configure about)
-    local projects
-    projects=$(python3 -c "
-import json, os
-p = os.path.expanduser('~/.watchdog/projects.json')
-if os.path.exists(p):
-    data = json.load(open(p))
-    print(' '.join(data.keys()))
-" 2>/dev/null)
-    if (( CURRENT == 2 )); then
-        compadd -a subcmds
-    elif (( CURRENT == 3 )) && [[ "${words[2]}" == (open|status|search|unlock) ]]; then
-        compadd ${=projects}
-    fi
-}
-compdef _watchdog_complete watchdog
-"""
-
-
-def _bash_snippet() -> str:
-    return """
-# Watchdog tab completion
-_watchdog_bash_complete() {
-    local cur prev
-    cur="${COMP_WORDS[COMP_CWORD]}"
-    prev="${COMP_WORDS[COMP_CWORD-1]}"
-    if [[ ${COMP_CWORD} -eq 1 ]]; then
-        COMPREPLY=($(compgen -W "new open list status search unlock setup configure about" -- "${cur}"))
-    elif [[ "${prev}" == "open" || "${prev}" == "status" || "${prev}" == "search" || "${prev}" == "unlock" ]]; then
-        local projects
-        projects=$(python3 -c "
-import json, os
-p = os.path.expanduser('~/.watchdog/projects.json')
-if os.path.exists(p):
-    data = json.load(open(p))
-    print(' '.join(data.keys()))
-" 2>/dev/null)
-        COMPREPLY=($(compgen -W "${projects}" -- "${cur}"))
-    fi
-}
-complete -F _watchdog_bash_complete watchdog
-"""
-
-
-def _fish_completion() -> str:
-    return """\
-# Watchdog tab completion
-set -l cmds new open list status search unlock setup configure about
-set -l proj_cmds open status search unlock
-set -l projects (python3 -c "
-import json, os
-p = os.path.expanduser('~/.watchdog/projects.json')
-if os.path.exists(p):
-    data = json.load(open(p))
-    print(' '.join(data.keys()))
-" 2>/dev/null)
-complete -c watchdog -f
-complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a new       -d 'Create a new investigation vault'
-complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a open      -d 'Open an investigation in Claude Code'
-complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a list      -d 'List all investigations'
-complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a status    -d 'Show detailed status for an investigation'
-complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a search    -d 'Semantic search across ingested documents'
-complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a unlock    -d 'Release a stale ingest lock'
-complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a setup     -d 'Set up Watchdog'
-complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a configure -d 'View or change configuration'
-complete -c watchdog -n "not __fish_seen_subcommand_from $cmds" -a about     -d 'Show version and project links'
-complete -c watchdog -n "__fish_seen_subcommand_from $proj_cmds" -a "$projects"
-"""
+_COMPLETION_MARKER = "register-python-argcomplete watchdog"
 
 
 def _install_completion(shell: str, profile: Path | None) -> str | None:
@@ -183,19 +112,26 @@ def _install_completion(shell: str, profile: Path | None) -> str | None:
         fish_dir = Path.home() / ".config" / "fish" / "completions"
         fish_dir.mkdir(parents=True, exist_ok=True)
         dest = fish_dir / "watchdog.fish"
-        dest.write_text(_fish_completion())
-        return f"~/.config/fish/completions/watchdog.fish"
+        try:
+            result = subprocess.run(
+                ["register-python-argcomplete", "--shell", "fish", "watchdog"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if result.returncode == 0 and result.stdout:
+                dest.write_text(result.stdout)
+                return str(dest)
+        except Exception:
+            pass
+        return None
 
     if profile is None:
         return None
 
-    marker = "_watchdog_complete" if shell == "zsh" else "_watchdog_bash_complete"
-    if profile.exists() and marker in profile.read_text():
+    if profile.exists() and _COMPLETION_MARKER in profile.read_text():
         return None  # already present
 
-    snippet = _zsh_snippet() if shell == "zsh" else _bash_snippet()
     with open(profile, "a") as f:
-        f.write(snippet)
+        f.write(f'\neval "$(register-python-argcomplete watchdog)"\n')
     return str(profile)
 
 

@@ -55,7 +55,7 @@ Terminal is a built-in app that lets you type commands to your computer. You'll 
 
 ## Step 4: Install prerequisites
 
-Watchdog requires two tools for processing PDFs: **qpdf** and **ghostscript**. It also requires **pipx** to install Python tools.
+Watchdog requires two tools for processing PDFs — **qpdf** and **Ghostscript** — and **pipx** to install Python tools.
 
 **macOS:**
 ```
@@ -78,7 +78,7 @@ sudo dnf install qpdf ghostscript pipx tesseract tesseract-devel
 
 **Windows:**
 - qpdf: [github.com/qpdf/qpdf/releases](https://github.com/qpdf/qpdf/releases) — download the installer
-- ghostscript: [ghostscript.com/releases/gsdnld.html](https://ghostscript.com/releases/gsdnld.html) — download the installer
+- Ghostscript: [ghostscript.com/releases/gsdnld.html](https://ghostscript.com/releases/gsdnld.html) — download the installer
 - pipx: open Terminal and run `python -m pip install pipx`, then `pipx ensurepath`
 
 ---
@@ -100,70 +100,72 @@ watchdog setup
 ```
 
 This will:
-- Verify that qpdf and ghostscript are installed
+- Verify that qpdf and Ghostscript are installed
 - Install the Watchdog skills into Claude Code
 - Ask where you want to store your investigation projects
-- Set up tab completion in your shell
+- Enable tab completion in your shell automatically
 
-It will ask one question: where to store your projects. Press Return to accept the default, or type a different path.
+It will ask one question: where to store your projects. Press Return to accept the default (`~/Investigations`), or type a different path.
 
-When it finishes, reload your shell as instructed (e.g. `source ~/.zshrc`), then:
+When setup finishes, reload your shell so the tab completion takes effect:
 
-```
-watchdog new "My Investigation"
-```
+**macOS / zsh:** `source ~/.zshrc`
+**bash:** `source ~/.bashrc`
+
+After that, pressing Tab after `watchdog ` shows available commands; pressing Tab after `watchdog open ` completes project names.
 
 ---
 
 ## Creating your first investigation
 
-When you're ready to start a new investigation, type:
+When you're ready to start a new investigation:
 
 ```
 watchdog new "My Investigation Name"
 ```
 
 Use a descriptive name — it will become the name of your Obsidian vault. For example:
+
 ```
 watchdog new "Shell Company Investigation"
 ```
 
-Watchdog will create a folder in your projects directory and print instructions.
+Watchdog creates the vault directory, sets up the folder structure, and registers it in Obsidian automatically. You'll see the vault path and next steps printed in your terminal.
 
-**To open the investigation in Obsidian:**
-1. Open Obsidian
-2. Click the vault icon in the bottom-left corner
-3. Click **Open folder as vault**
-4. Navigate to your investigation folder and click Open
+To open the vault in Obsidian immediately:
 
-**To open the investigation in Claude Code:**
-1. Open Claude Code
-2. Click **Open project** or use File → Open
-3. Navigate to your investigation folder and click Open
+```
+watchdog obsidian shell-company-investigation
+```
 
-You're ready to start ingesting documents.
+If Obsidian opens and the vault isn't visible, go to **Open folder as vault** in Obsidian, navigate to the investigation folder, and click Open. Once you've done that once, `watchdog obsidian` will open it directly in future.
+
+For a complete walkthrough of a first investigation from start to finish, see [GETTING_STARTED.md](GETTING_STARTED.md).
 
 ---
 
 ## How to ingest documents
 
-Ingestion happens in two steps: preprocessing in your terminal, then extraction in Claude Code.
+Ingestion happens in two steps: chewing in your terminal, then extraction in Claude Code.
 
-**Step 1 — Drop files and preprocess**
+**Step 1 — Drop files and chew**
 
-In your file manager, navigate to your investigation folder. You'll see a folder called `_INCOMING`. Drag any documents you want to process into this folder.
+In your file manager, navigate to your investigation folder. You'll see a folder called `_INCOMING`. Copy any documents you want to process into this folder.
 
 Supported file types: PDF, Word documents, Excel spreadsheets, images (JPG, PNG, TIFF), web pages (HTML), and plain text files.
 
 Then open your terminal, navigate to the investigation folder, and run:
 
 ```
-watchdog preprocess
+cd ~/Investigations/shell-company-investigation
+watchdog chew
 ```
 
-You'll see a progress indicator as Watchdog reads each file, runs OCR if needed, and prepares it for extraction. Failed files (password-protected PDFs, unsupported formats) are moved to `_INCOMING/_FAILED/` with an explanation.
+You'll see a progress bar as Watchdog reads each file, runs OCR if needed, and prepares it for extraction. Failed files (password-protected PDFs, unsupported formats) are moved to `_INCOMING/_FAILED/` with an explanation.
 
-When preprocessing finishes, Watchdog prints: `Open Claude Code and run: /watchdog-ingest`
+When chewing finishes, Watchdog prints: `Open Claude Code and run: /watchdog-ingest`
+
+On macOS, you'll also receive a notification when chewing completes — useful if you've switched to another app.
 
 **Step 2 — Extract in Claude Code**
 
@@ -173,7 +175,7 @@ Open Claude Code with your investigation folder as the project and run:
 /watchdog-ingest
 ```
 
-Claude will work through each preprocessed file, extract entities, relationships, and key facts, and write everything to your vault. At the end it produces a briefing showing:
+Claude will work through each chewed file, extract entities, relationships, and key facts, and write everything to your vault. At the end it produces a briefing showing:
 - What documents were processed
 - What entities (people, companies, addresses) were found
 - Connections between entities that were already in your vault
@@ -189,7 +191,7 @@ Once documents are ingested, you can ask questions in plain English:
 - `/watchdog-query What address does John Doe use?`
 - `/watchdog-query Which companies share the address 123 Main St?`
 
-Claude will answer using only the documents in your vault and will cite the specific page it's drawing from.
+Claude will answer using only the documents in your vault and will cite the specific page it draws from.
 
 ---
 
@@ -203,19 +205,13 @@ Type `/watchdog-surface` to run a full connection analysis across your entire va
 
 ---
 
-## Checking vault health
-
-Type `/watchdog-health` to check for any problems with your vault — missing files, broken links, or incomplete records.
-
----
-
 ## Tips
 
 **Ingesting web pages directly from your browser:**
 Install the [Obsidian Web Clipper](https://obsidian.md/clipper) browser extension. Point it at your investigation vault and set the destination folder to `_INCOMING`. You can then clip any web page — news articles, company profiles, government announcements — directly into the ingest pipeline with one click, without downloading anything manually.
 
-**Naming your documents before ingesting:**
-Watchdog uses the filename to organize documents. A filename like `shell-co-annual-report-2023.pdf` is much more useful than `scan0042.pdf`. Rename files before dropping them into Incoming when possible.
+**Rename files before dropping them in:**
+Watchdog uses the filename to help organize and label documents. A filename like `shell-co-annual-report-2023.pdf` is much more useful than `scan0042.pdf`. Rename files before dropping them into `_INCOMING` when possible.
 
 **Adding context with sidecar files:**
 If you want to record where a document came from before Claude processes it, create a text file with the same name but `.yml` extension. For example, alongside `shell-co-annual-report-2023.pdf`, create `shell-co-annual-report-2023.yml` containing:
@@ -228,16 +224,24 @@ notes: Check the director change on page 12.
 
 This context is merged into the document record and preserved even if you re-ingest the document later.
 
+**Watching for new files automatically:**
+If you're dropping files into a vault over a period of time and want them chewed as they arrive:
+
+```
+watchdog watch shell-company-investigation
+```
+
+This monitors `_INCOMING/` and chews any new files automatically. Press Ctrl+C to stop.
+
 **Multiple investigations:**
 Each investigation is a separate vault. Create as many as you need:
+
 ```
 watchdog new "City Hall Investigation"
 watchdog new "Contractor Investigation"
 ```
 
-To switch between investigations, switch the open folder in both Obsidian and Claude Code.
-
-To list all your investigations:
+To see all your investigations:
 ```
 watchdog list
 ```
@@ -245,6 +249,12 @@ watchdog list
 To reopen an investigation in Claude Code:
 ```
 watchdog open shell-company-investigation
+```
+
+When an investigation concludes, archive it to keep your list tidy:
+```
+watchdog archive shell-company-investigation
+watchdog list --all   # shows archived investigations when you need them
 ```
 
 ---
@@ -256,7 +266,7 @@ The install didn't add `watchdog` to your path. Try:
 ```
 pipx ensurepath
 ```
-Then close and reopen your terminal, and try again.
+Then close and reopen your terminal.
 
 **`Watchdog isn't set up yet`**
 Run:
@@ -270,20 +280,30 @@ Install the missing tool for your platform (see Step 4 above), then run `watchdo
 **A document lands in `_FAILED/`**
 The document couldn't be processed. Common reasons:
 - Password-protected PDF — remove the password and try again
-- Corrupted file — try re-downloading the document
+- Corrupted file — try re-downloading
 - Unsupported format — check the supported file types list above
 
-To retry: move the file from `_INCOMING/_FAILED/` back to `_INCOMING/`, then run `/watchdog-ingest` in Claude Code.
+To retry: move the file from `_INCOMING/_FAILED/` back to `_INCOMING/`, then run `watchdog chew` again.
 
 **Ingesting a large batch (hundreds of documents)**
 For large batches, use `--limit` to control how many documents are processed per session:
 ```
 /watchdog-ingest --limit 50
 ```
-This extracts 50 documents and then stops cleanly, reporting how many remain. Start a new session and run the same command again to continue. Watchdog moves each file to `morgue/` as soon as it's processed, so re-running always picks up exactly where the previous session stopped — already-processed files are never touched again.
+This extracts 50 documents and then stops cleanly. Start a new session and run the same command to continue. Watchdog moves each file to `morgue/` as soon as it's processed, so re-running always picks up where the previous session stopped.
 
 **Session ended mid-ingest**
-If a Claude Code session ends unexpectedly — rate limit hit, window closed, session timed out — just start a new session and run `/watchdog-ingest` again. Processed files are already in `morgue/`; only unfinished files remain in `_INCOMING/`. The new run picks up from where the previous one stopped.
+If a Claude Code session ends unexpectedly — rate limit hit, window closed, session timed out — start a new session and run `/watchdog-ingest` again. Processed files are already in `morgue/`; only unfinished files remain. The new run picks up from where the previous one stopped.
+
+**Ingest lock stuck**
+If a previous ingest was interrupted, a lock file may be left behind. Check with:
+```
+watchdog status <name>
+```
+If you see a stale lock, remove it with:
+```
+watchdog unlock <name>
+```
 
 ---
 
@@ -297,14 +317,14 @@ Watchdog can transcribe audio and video files if you install support for it. Thi
 
 Then reinstall Watchdog with transcription support:
 ```
-pipx install watchdog-intel[asr] --force
+pipx install "watchdog-intel[asr]" --force
 ```
 
 ---
 
 ## Getting help
 
-If something isn't working, the best place to get help is the Watchdog GitHub repository:
+If something isn't working, open an issue at:
 
 ```
 https://github.com/tomcardoso/watchdog/issues
