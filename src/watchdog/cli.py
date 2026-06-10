@@ -202,6 +202,10 @@ def load_projects() -> dict:
         return json.load(f)
 
 
+def _project_completer(prefix, parsed_args, **kwargs):
+    return {slug: info["name"] for slug, info in load_projects().items()}
+
+
 def save_projects(projects: dict) -> None:
     WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
     with open(PROJECTS_FILE, "w") as f:
@@ -1431,7 +1435,7 @@ def main() -> None:
     p_new.set_defaults(func=cmd_new)
 
     p_open = sub.add_parser("open", help="Chew pending documents and open in Claude Code")
-    p_open.add_argument("name", help="Investigation name or slug")
+    p_open.add_argument("name", help="Investigation name or slug").completer = _project_completer
     p_open.set_defaults(func=cmd_open)
 
     p_list = sub.add_parser("list", help="List all registered investigations")
@@ -1439,7 +1443,7 @@ def main() -> None:
     p_list.set_defaults(func=cmd_list)
 
     p_status = sub.add_parser("status", help="Show detailed status for an investigation")
-    p_status.add_argument("name", nargs="?", help="Investigation name or slug (omit to list all)")
+    p_status.add_argument("name", nargs="?", help="Investigation name or slug (omit to list all)").completer = _project_completer
     p_status.set_defaults(func=cmd_status)
 
     p_setup = sub.add_parser("setup", help="Set up Watchdog after installation")
@@ -1450,14 +1454,14 @@ def main() -> None:
     p_about.set_defaults(func=cmd_about)
 
     p_search = sub.add_parser("search", help="Semantic search across ingested documents")
-    p_search.add_argument("project", help="Investigation name or slug")
+    p_search.add_argument("project", help="Investigation name or slug").completer = _project_completer
     p_search.add_argument("query", help="Search query")
     p_search.add_argument("--top", dest="top_n", type=int, default=5, metavar="N",
                           help="Number of results to return (default: 5)")
     p_search.set_defaults(func=cmd_search)
 
     p_unlock = sub.add_parser("unlock", help="Release a stale ingest lock")
-    p_unlock.add_argument("project", help="Investigation name or slug")
+    p_unlock.add_argument("project", help="Investigation name or slug").completer = _project_completer
     p_unlock.add_argument("--force", action="store_true", help="Remove lock even if recent")
     p_unlock.set_defaults(func=cmd_unlock)
 
@@ -1474,40 +1478,40 @@ def main() -> None:
     p_chew.set_defaults(func=cmd_chew)
 
     p_obsidian = sub.add_parser("obsidian", help="Open an investigation vault in Obsidian")
-    p_obsidian.add_argument("name", help="Investigation name or slug")
+    p_obsidian.add_argument("name", help="Investigation name or slug").completer = _project_completer
     p_obsidian.set_defaults(func=cmd_obsidian)
 
     p_delete = sub.add_parser("delete", help="Remove an investigation from registry")
-    p_delete.add_argument("name", help="Investigation name or slug")
+    p_delete.add_argument("name", help="Investigation name or slug").completer = _project_completer
     p_delete.add_argument("--purge", action="store_true",
                           help="Also permanently delete all vault files from disk")
     p_delete.set_defaults(func=cmd_delete)
 
     p_move = sub.add_parser("move", help="Update vault path in registry")
-    p_move.add_argument("name", help="Investigation name or slug")
+    p_move.add_argument("name", help="Investigation name or slug").completer = _project_completer
     p_move.add_argument("path", help="New path for the vault")
     p_move.set_defaults(func=cmd_move)
 
     p_archive = sub.add_parser("archive", help="Archive a completed investigation")
-    p_archive.add_argument("name", help="Investigation name or slug")
+    p_archive.add_argument("name", help="Investigation name or slug").completer = _project_completer
     p_archive.set_defaults(func=cmd_archive)
 
     p_unarchive = sub.add_parser("unarchive", help="Restore an archived investigation")
-    p_unarchive.add_argument("name", help="Investigation name or slug")
+    p_unarchive.add_argument("name", help="Investigation name or slug").completer = _project_completer
     p_unarchive.set_defaults(func=cmd_unarchive)
 
     p_log = sub.add_parser("log", help="Show ingest history for an investigation")
-    p_log.add_argument("name", help="Investigation name or slug")
+    p_log.add_argument("name", help="Investigation name or slug").completer = _project_completer
     p_log.add_argument("--lines", type=int, default=None, metavar="N",
                        help="Number of lines to show (default: all)")
     p_log.set_defaults(func=cmd_log)
 
     p_watch = sub.add_parser("watch", help="Watch _INCOMING/ and chew files automatically")
-    p_watch.add_argument("name", help="Investigation name or slug")
+    p_watch.add_argument("name", help="Investigation name or slug").completer = _project_completer
     p_watch.set_defaults(func=cmd_watch)
 
     p_rename = sub.add_parser("rename", help="Rename an investigation (folder and registry)")
-    p_rename.add_argument("project", help="Investigation name or slug")
+    p_rename.add_argument("project", help="Investigation name or slug").completer = _project_completer
     p_rename.add_argument("name", help="New name")
     p_rename.set_defaults(func=cmd_rename)
 
