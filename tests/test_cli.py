@@ -26,13 +26,14 @@ def wdg_home(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def configured(wdg_home, tmp_path):
+def configured(wdg_home, tmp_path, monkeypatch):
     """Write config.json so the setup gate passes."""
     investigations = tmp_path / "Investigations"
     investigations.mkdir()
     (wdg_home / "config.json").write_text(
         json.dumps({"projects_dir": str(investigations)}) + "\n"
     )
+    monkeypatch.setattr("watchdog.cli._obsidian_config_path", lambda: tmp_path / "obsidian.json")
     return investigations
 
 
@@ -234,6 +235,46 @@ def test_cmd_open_skips_claude_when_user_declines(configured, monkeypatch):
     monkeypatch.setattr("builtins.input", lambda _: "n")
     cli.cmd_open(args(name="My Story"))
     assert len(launched) == 0
+
+
+# ── Obsidian helpers ──────────────────────────────────────────────────────────
+
+def test_register_obsidian_vault_writes_entry(tmp_path, monkeypatch):
+    monkeypatch.setattr("watchdog.cli._obsidian_config_path", lambda: tmp_path / "obsidian.json")
+    vault = tmp_path / "my-vault"
+    cli._register_obsidian_vault(vault)
+    data = json.loads((tmp_path / "obsidian.json").read_text())
+    vaults = data["vaults"]
+    assert len(vaults) == 1
+    entry = next(iter(vaults.values()))
+    assert entry["path"] == str(vault)
+    assert isinstance(entry["ts"], int)
+
+
+def test_register_obsidian_vault_appends_to_existing(tmp_path, monkeypatch):
+    cfg = tmp_path / "obsidian.json"
+    cfg.write_text(json.dumps({"vaults": {"aabbccdd11223344": {"path": "/other", "ts": 123}}}))
+    monkeypatch.setattr("watchdog.cli._obsidian_config_path", lambda: cfg)
+    cli._register_obsidian_vault(tmp_path / "new-vault")
+    data = json.loads(cfg.read_text())
+    assert len(data["vaults"]) == 2
+
+
+def test_obsidian_registered_finds_vault(tmp_path, monkeypatch):
+    cfg = tmp_path / "obsidian.json"
+    vault = tmp_path / "my-vault"
+    cfg.write_text(json.dumps({"vaults": {"abc123": {"path": str(vault), "ts": 0}}}))
+    monkeypatch.setattr("watchdog.cli._obsidian_config_path", lambda: cfg)
+    assert cli._obsidian_registered(vault) is True
+    assert cli._obsidian_registered(tmp_path / "other") is False
+
+
+def test_obsidian_config_path_windows(monkeypatch):
+    monkeypatch.setattr("watchdog.cli.sys.platform", "win32")
+    monkeypatch.setenv("APPDATA", "/win/appdata")
+    p = cli._obsidian_config_path()
+    assert "obsidian" in str(p)
+    assert "appdata" in str(p).lower()
 
 
 # ── cmd_obsidian ──────────────────────────────────────────────────────────────

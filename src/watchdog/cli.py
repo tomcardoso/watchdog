@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import secrets
 import subprocess
 import sys
 from collections import Counter
@@ -295,6 +296,7 @@ def cmd_new(args) -> None:
 
     from watchdog.setup_cmd import install_skills
     install_skills(vault / ".claude" / "commands")
+    _register_obsidian_vault(vault)
 
     (vault / ".claude" / "settings.json").write_text(
         json.dumps(
@@ -345,10 +347,10 @@ def cmd_new(args) -> None:
     print(f"\n  {_GREEN}Created:{_RESET} {_BOLD}{vault}{_RESET}")
     print()
     print(f"  {_BOLD}Next steps{_RESET}")
-    print(f"    1. Open {_CYAN}{vault}{_RESET} as a new vault in Obsidian")
-    print(f"    2. Drop documents into {_CYAN}_INCOMING/{_RESET}")
-    print(f"    3. Run {_CYAN}watchdog open {slug}{_RESET} to chew and open in Claude Code")
-    print(f"    4. Run {_CYAN}/watchdog-ingest{_RESET} when prompted inside Claude Code")
+    print(f"    1. Drop documents into {_CYAN}{vault}/_INCOMING/{_RESET}")
+    print(f"    2. Run {_CYAN}watchdog open {slug}{_RESET} to chew and open in Claude Code")
+    print(f"    3. Run {_CYAN}/watchdog-ingest{_RESET} when prompted inside Claude Code")
+    print(f"    4. Run {_CYAN}watchdog obsidian {slug}{_RESET} to open the vault in Obsidian")
     print()
 
 
@@ -420,11 +422,18 @@ def cmd_open(args) -> None:
 
 
 
-def _obsidian_registered(vault: Path) -> bool:
+def _obsidian_config_path() -> Path:
     if sys.platform == "darwin":
-        cfg = Path.home() / "Library" / "Application Support" / "obsidian" / "obsidian.json"
+        return Path.home() / "Library" / "Application Support" / "obsidian" / "obsidian.json"
+    elif sys.platform == "win32":
+        return Path(os.environ["APPDATA"]) / "obsidian" / "obsidian.json"
     else:
-        cfg = Path.home() / ".config" / "obsidian" / "obsidian.json"
+        cfg_home = Path(os.environ.get("XDG_CONFIG_HOME", "")) or Path.home() / ".config"
+        return cfg_home / "obsidian" / "obsidian.json"
+
+
+def _obsidian_registered(vault: Path) -> bool:
+    cfg = _obsidian_config_path()
     if not cfg.exists():
         return False
     try:
@@ -432,6 +441,20 @@ def _obsidian_registered(vault: Path) -> bool:
         return any(v.get("path") == str(vault) for v in data.get("vaults", {}).values())
     except Exception:
         return False
+
+
+def _register_obsidian_vault(vault: Path) -> None:
+    cfg = _obsidian_config_path()
+    try:
+        data = json.loads(cfg.read_text()) if cfg.exists() else {"vaults": {}}
+        data.setdefault("vaults", {})[secrets.token_hex(8)] = {
+            "path": str(vault),
+            "ts": int(datetime.now(timezone.utc).timestamp() * 1000),
+        }
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.write_text(json.dumps(data))
+    except Exception:
+        pass  # non-fatal — user can register manually via watchdog obsidian
 
 
 def cmd_obsidian(args) -> None:
