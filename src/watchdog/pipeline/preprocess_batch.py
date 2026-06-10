@@ -31,11 +31,10 @@ _BAR_WIDTH = 28
 
 
 def _config_workers() -> int:
-    """Read chunk_workers from ~/.watchdog/config.json, fall back to DEFAULT_WORKERS."""
+    """Read preprocess_workers from ~/.watchdog/config.json, fall back to DEFAULT_WORKERS."""
     try:
-        import os
         cfg = json.loads((Path.home() / ".watchdog" / "config.json").read_text())
-        return int(cfg.get("chunk_workers", DEFAULT_WORKERS))
+        return int(cfg.get("preprocess_workers", DEFAULT_WORKERS))
     except Exception:
         return DEFAULT_WORKERS
 

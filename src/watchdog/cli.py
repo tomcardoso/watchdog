@@ -446,12 +446,25 @@ _CONFIGURE_KEYS = {
         "default": 40,
         "min": 1,
     },
+    "preprocess_workers": {
+        "short": "Parallel files during preprocessing (default: 4)",
+        "help": (
+            "Number of files preprocessed simultaneously by `watchdog preprocess`.\n"
+            "  Each worker is one subprocess, so total CPU load is preprocess_workers × chunk_workers\n"
+            "  for batches of large PDFs. Keep this modest (2–6) to avoid overloading your machine.\n"
+            "  Set to 1 to process files one at a time."
+        ),
+        "type": "int",
+        "default": 4,
+        "min": 1,
+    },
     "chunk_workers": {
         "short": "Parallel subprocesses for large-PDF chunk processing (default: half your CPU core count)",
         "help": (
             "Number of parallel subprocesses used when processing large PDFs (>chunk_size pages).\n"
             "  Higher values speed up ingestion on multi-core machines but increase CPU and memory use.\n"
-            "  Recommended: half your CPU core count. Set to 1 to disable parallelism."
+            "  Recommended: half your CPU core count. Set to 1 to disable parallelism.\n"
+            "  Note: total subprocess load is preprocess_workers × chunk_workers for large-PDF batches."
         ),
         "type": "int",
         "default": max(2, (os.cpu_count() or 2) // 2),
