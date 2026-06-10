@@ -13,7 +13,9 @@ from watchdog.pipeline.preprocess_batch import (
     _count_pdf_pages,
     _adaptive_workers,
     _resolve_workers,
+    _run_ingest_inner,
 )
+import watchdog.pipeline.preprocess_batch as ppb
 
 
 # ── find_files ────────────────────────────────────────────────────────────────
@@ -303,3 +305,88 @@ def test_resolve_workers_caps_pre_to_file_count(tmp_path, monkeypatch):
 
     pre, _, _ = _resolve_workers(files, explicit_pre=None)
     assert pre == 1  # capped to len(files)
+
+
+# ── _run_ingest_inner skipping ─────────────────────────────────────────────────
+
+def _make_vault(tmp_path):
+    vault    = tmp_path / "vault"
+    incoming = vault / "_INCOMING"
+    queue    = vault / ".watchdog" / "queue"
+    staging  = vault / ".watchdog" / "staging"
+    incoming.mkdir(parents=True)
+    queue.mkdir(parents=True)
+    staging.mkdir(parents=True)
+    return vault, incoming, queue, staging
+
+
+def test_empty_doc_moves_to_skipped(tmp_path, monkeypatch):
+    vault, incoming, queue, staging = _make_vault(tmp_path)
+    f = incoming / "photo.jpg"
+    f.write_bytes(b"")
+
+    monkeypatch.setattr(ppb, "preprocess_one", lambda path, *a, **kw: {
+        "sha256": "abc123", "pages": [], "char_count": 0, "source_path": str(path)
+    })
+
+    _run_ingest_inner(vault, incoming, queue, staging, workers=1, files=[f])
+
+    assert (incoming / "_SKIPPED" / "photo.jpg").exists()
+    assert not f.exists()
+    assert list(queue.glob("*.json")) == []
+
+
+def test_empty_doc_not_written_to_queue(tmp_path, monkeypatch):
+    vault, incoming, queue, staging = _make_vault(tmp_path)
+    f = incoming / "scan.png"
+    f.write_bytes(b"")
+
+    monkeypatch.setattr(ppb, "preprocess_one", lambda path, *a, **kw: {
+        "sha256": "deadbeef", "pages": [], "char_count": 0, "source_path": str(path)
+    })
+
+    _run_ingest_inner(vault, incoming, queue, staging, workers=1, files=[f])
+
+    assert not (queue / "deadbeef.json").exists()
+
+
+def test_nonempty_doc_still_queued(tmp_path, monkeypatch):
+    vault, incoming, queue, staging = _make_vault(tmp_path)
+    f = incoming / "report.pdf"
+    f.write_bytes(b"")
+
+    monkeypatch.setattr(ppb, "preprocess_one", lambda path, *a, **kw: {
+        "sha256": "aabbcc", "pages": [{"markdown": "hello"}], "char_count": 5,
+        "source_path": str(path)
+    })
+
+    _run_ingest_inner(vault, incoming, queue, staging, workers=1, files=[f])
+
+    assert (queue / "aabbcc.json").exists()
+    assert not (incoming / "_SKIPPED").exists()
+
+
+def test_summary_includes_skipped_count(tmp_path, monkeypatch, capsys):
+    vault, incoming, queue, staging = _make_vault(tmp_path)
+    f = incoming / "image.jpg"
+    f.write_bytes(b"")
+
+    monkeypatch.setattr(ppb, "preprocess_one", lambda path, *a, **kw: {
+        "sha256": "abc", "pages": [], "char_count": 0, "source_path": str(path)
+    })
+
+    _run_ingest_inner(vault, incoming, queue, staging, workers=1, files=[f])
+
+    out = capsys.readouterr().out
+    assert "skipped" in out
+
+
+def test_skipped_subdir_excluded_from_find_files(tmp_path):
+    incoming = tmp_path
+    (incoming / "_SKIPPED").mkdir()
+    (incoming / "_SKIPPED" / "photo.jpg").write_bytes(b"")
+    (incoming / "doc.pdf").write_bytes(b"")
+    result = find_files([str(tmp_path)])
+    names = [f.name for f in result]
+    assert "doc.pdf" in names
+    assert "photo.jpg" not in names

@@ -20,7 +20,7 @@ DEFAULT_FILE_TIMEOUT = 600
 
 SKIP_NAMES    = {".ds_store", ".ingest-lock"}
 SKIP_SUFFIXES = {".yml"}
-SKIP_DIRS     = {"_failed", "_FAILED"}
+SKIP_DIRS     = {"_failed", "_FAILED", "_skipped", "_SKIPPED"}
 
 _BOLD   = "\033[1m"
 _DIM    = "\033[2m"
@@ -228,6 +228,7 @@ def _run_ingest_inner(
             for f in files
         }
         done = 0
+        skipped = 0
         for future in as_completed(futures):
             path   = futures[future]
             result = future.result()
@@ -235,8 +236,14 @@ def _run_ingest_inner(
             done += 1
 
             elapsed_wall = time.time() - batch_start
-            is_err = "error" in result
-            status = f"{_YELLOW}ERR{_RESET}" if is_err else f"{_GREEN}OK {_RESET}"
+            is_err  = "error" in result
+            is_empty = not is_err and result.get("char_count", 0) == 0
+            if is_err:
+                status = f"{_YELLOW}ERR{_RESET}"
+            elif is_empty:
+                status = f"{_DIM}SKP{_RESET}"
+            else:
+                status = f"{_GREEN}OK {_RESET}"
             pages  = result.get("page_count", "?")
 
             try:
@@ -273,6 +280,18 @@ def _run_ingest_inner(
                 print(f"       {_YELLOW}→ _INCOMING/_FAILED/{_RESET}  {_DIM}{result['error'][:80]}{_RESET}")
                 sys.stdout.write(f"  {bar_display}")
                 sys.stdout.flush()
+            elif is_empty:
+                skipped += 1
+                skipped_dir = incoming / "_SKIPPED"
+                skipped_dir.mkdir(exist_ok=True)
+                try:
+                    path.rename(skipped_dir / path.name)
+                except OSError:
+                    pass
+                sys.stdout.write("\r\033[K")
+                print(f"       {_DIM}→ _INCOMING/_SKIPPED/  no text content extracted{_RESET}")
+                sys.stdout.write(f"  {bar_display}")
+                sys.stdout.flush()
             else:
                 sha256 = result.get("sha256", "")
                 if sha256:
@@ -293,15 +312,19 @@ def _run_ingest_inner(
 
     _prune_empty_dirs(incoming)
 
-    ok   = sum(1 for r in results.values() if "error" not in r)
-    errs = total - ok
+    errs = sum(1 for r in results.values() if "error" in r)
+    ok   = total - errs - skipped
     elapsed_total = round(time.time() - batch_start, 1)
 
-    print()
+    parts = [f"{_GREEN}{ok} file{'s' if ok != 1 else ''} ready{_RESET}"]
+    if skipped:
+        parts.append(f"{_DIM}{skipped} skipped{_RESET}")
     if errs:
-        print(f"  {ok} file{'s' if ok != 1 else ''} ready  ·  {_YELLOW}{errs} failed{_RESET}  ·  {_DIM}{elapsed_total}s{_RESET}")
-    else:
-        print(f"  {_GREEN}{ok} file{'s' if ok != 1 else ''} ready{_RESET}  {_DIM}({elapsed_total}s){_RESET}")
+        parts.append(f"{_YELLOW}{errs} failed{_RESET}")
+    parts.append(f"{_DIM}{elapsed_total}s{_RESET}")
+
+    print()
+    print(f"  {'  ·  '.join(parts)}")
 
     if ok:
         print()

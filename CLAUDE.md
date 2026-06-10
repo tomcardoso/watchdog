@@ -2,11 +2,21 @@
 
 ## Testing
 
-Write tests for new features and any non-trivial function. The suite lives in `tests/` and runs with:
+Write tests for new features and any non-trivial function. The suite lives in `tests/`.
+
+**One-time dev setup** — inject pytest into the watchdog-intel pipx venv so it runs with all the package's dependencies:
 
 ```
-pipx run pytest
+pipx inject watchdog-intel pytest numpy
 ```
+
+**Run the suite:**
+
+```
+~/.local/pipx/venvs/watchdog-intel/bin/pytest
+```
+
+(`pipx run pytest` creates an isolated venv without watchdog's deps and will fail to collect most tests — don't use it for development.)
 
 Tests use `tmp_path` and `monkeypatch` to redirect `WATCHDOG_HOME`, `PROJECTS_FILE`, and `CONFIG_FILE` away from the real home directory — patch all three when testing anything that touches the registry or projects list. See the `wdg_home` and `configured` fixtures in `tests/test_cli.py` for the pattern.
 
