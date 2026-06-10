@@ -1447,6 +1447,17 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command is None:
+        if not CONFIG_FILE.exists():
+            print(f"\n  {_BOLD}Watchdog isn't set up yet.{_RESET}\n")
+            try:
+                answer = input("  Run setup now? [Y/n] ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return
+            if answer in ("", "y", "yes"):
+                from watchdog.setup_cmd import run as run_setup
+                run_setup()
+            return
         if Path(".watchdog").is_dir():
             _run_preprocess(Path(".").resolve(), confirm=True)
         else:
@@ -1454,7 +1465,8 @@ def main() -> None:
         return
 
     if args.command not in ("setup", "about", "configure", "search", "unlock") and not CONFIG_FILE.exists():
-        sys.exit("Watchdog isn't set up yet. Run:\n  watchdog setup")
+        print(f"\n  {_BOLD}Watchdog isn't set up yet.{_RESET}  Run: {_CYAN}watchdog setup{_RESET}\n")
+        sys.exit(1)
 
     args.func(args)
 

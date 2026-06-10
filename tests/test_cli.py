@@ -450,8 +450,9 @@ def test_cmd_status_corrupt_registry_exits(configured):
 def test_gate_blocks_list_without_config(wdg_home, monkeypatch):
     import sys
     monkeypatch.setattr(sys, "argv", ["watchdog", "list"])
-    with pytest.raises(SystemExit, match="watchdog setup"):
+    with pytest.raises(SystemExit) as exc:
         cli.main()
+    assert exc.value.code == 1
 
 
 def test_gate_passes_with_config(configured, monkeypatch, capsys):
