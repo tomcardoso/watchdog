@@ -73,7 +73,9 @@ def _adaptive_workers(files: list[Path]) -> tuple[int, int]:
 
 
 def _resolve_workers(
-    files: list[Path], explicit_pre: int | None
+    files: list[Path],
+    explicit_pre: int | None,
+    explicit_chunk: int | None = None,
 ) -> tuple[int, int, bool]:
     cfg: dict = {}
     try:
@@ -82,10 +84,11 @@ def _resolve_workers(
         pass
 
     pre_cfg   = cfg.get("chew_workers", "auto")
-    chunk_cfg = cfg.get("chunk_workers",       "auto")
+    chunk_cfg = cfg.get("chunk_workers", "auto")
 
     needs_adaptive = (
-        (explicit_pre is None and pre_cfg == "auto") or chunk_cfg == "auto"
+        (explicit_pre is None and pre_cfg == "auto") or
+        (explicit_chunk is None and chunk_cfg == "auto")
     )
 
     if needs_adaptive:
@@ -96,7 +99,9 @@ def _resolve_workers(
     pre   = explicit_pre if explicit_pre is not None else (
         adaptive_pre if pre_cfg == "auto" else int(pre_cfg)
     )
-    chunk = adaptive_chunk if chunk_cfg == "auto" else int(chunk_cfg)
+    chunk = explicit_chunk if explicit_chunk is not None else (
+        adaptive_chunk if chunk_cfg == "auto" else int(chunk_cfg)
+    )
     pre   = min(pre, max(1, len(files)))
 
     return pre, chunk, needs_adaptive
@@ -178,7 +183,12 @@ def preprocess_one(
     return result
 
 
-def run_ingest(vault: Path, workers: int | None = None, files: list | None = None) -> None:
+def run_ingest(
+    vault: Path,
+    workers: int | None = None,
+    chunk_workers: int | None = None,
+    files: list | None = None,
+) -> None:
     incoming = vault / "_INCOMING"
     queue    = vault / ".watchdog" / "queue"
     staging  = vault / ".watchdog" / "staging"
@@ -193,7 +203,7 @@ def run_ingest(vault: Path, workers: int | None = None, files: list | None = Non
     lock_file.write_text(f"started_at: {started_at}\npid: {os.getpid()}\n")
 
     try:
-        _run_ingest_inner(vault, incoming, queue, staging, workers, files)
+        _run_ingest_inner(vault, incoming, queue, staging, workers, chunk_workers, files)
     finally:
         try:
             lock_file.unlink()
@@ -207,6 +217,7 @@ def _run_ingest_inner(
     queue: Path,
     staging: Path,
     workers: int | None,
+    chunk_workers: int | None,
     files: list | None,
 ) -> None:
     if files is None:
@@ -220,7 +231,7 @@ def _run_ingest_inner(
         return
 
     total = len(files)
-    pre_workers, chunk_workers, adaptive = _resolve_workers(files, workers)
+    pre_workers, chunk_workers, adaptive = _resolve_workers(files, workers, chunk_workers)
     batch_start = time.time()
 
     adaptive_tag = ", adaptive" if adaptive else ""

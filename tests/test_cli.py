@@ -1037,7 +1037,7 @@ def test_cmd_chew_with_specific_file(configured, monkeypatch):
     f.write_bytes(b"")
 
     calls = []
-    def fake_run_ingest(v, workers=None, files=None):
+    def fake_run_ingest(v, workers=None, chunk_workers=None, files=None):
         calls.append({"vault": v, "files": files})
 
     monkeypatch.setattr(ppb, "run_ingest", fake_run_ingest)

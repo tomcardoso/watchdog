@@ -401,7 +401,12 @@ def cmd_new(args) -> None:
     print()
 
 
-def _run_preprocess(vault: Path, workers: int = 4, confirm: bool = False) -> None:
+def _run_preprocess(
+    vault: Path,
+    workers: int | None = None,
+    chunk_workers: int | None = None,
+    confirm: bool = False,
+) -> None:
     from watchdog.pipeline.preprocess_batch import run_ingest, find_files
     incoming = vault / "_INCOMING"
     queue    = vault / ".watchdog" / "queue"
@@ -425,7 +430,7 @@ def _run_preprocess(vault: Path, workers: int = 4, confirm: bool = False) -> Non
             return
         if answer not in ("", "y", "yes"):
             return
-    run_ingest(vault, workers=workers)
+    run_ingest(vault, workers=workers, chunk_workers=chunk_workers)
 
 
 def cmd_chew(args) -> None:
@@ -435,14 +440,15 @@ def cmd_chew(args) -> None:
 
     queued_before = _count_queued(vault)
     file_arg = getattr(args, "file", None)
+    chunk_workers = getattr(args, "chunk_workers", None)
     if file_arg:
         from watchdog.pipeline.preprocess_batch import run_ingest
         f = Path(file_arg).resolve()
         if not f.exists():
             sys.exit(f"Error: file not found: {f}")
-        run_ingest(vault, workers=getattr(args, "workers", None), files=[f])
+        run_ingest(vault, workers=getattr(args, "workers", None), chunk_workers=chunk_workers, files=[f])
     else:
-        _run_preprocess(vault, workers=getattr(args, "workers", None))
+        _run_preprocess(vault, workers=getattr(args, "workers", None), chunk_workers=chunk_workers)
 
     new_queued = _count_queued(vault) - queued_before
     if new_queued > 0:
@@ -1475,6 +1481,9 @@ def main() -> None:
                         help="Specific file to chew (omit to chew all of _INCOMING/)")
     p_chew.add_argument("--workers", type=int, default=None, metavar="N",
                         help="Parallel file workers (see chew_workers in watchdog configure)")
+    p_chew.add_argument("--chunk-workers", type=int, default=None, metavar="N",
+                        dest="chunk_workers",
+                        help="Parallel chunk workers per file (see chunk_workers in watchdog configure)")
     p_chew.set_defaults(func=cmd_chew)
 
     p_obsidian = sub.add_parser("obsidian", help="Open an investigation vault in Obsidian")

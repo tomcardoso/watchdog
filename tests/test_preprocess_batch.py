@@ -295,6 +295,21 @@ def test_resolve_workers_explicit_pre_overrides_config(tmp_path, monkeypatch):
     assert chunk == 3  # chunk still from config
 
 
+def test_resolve_workers_explicit_chunk_overrides_config(tmp_path, monkeypatch):
+    files = [tmp_path / f"doc{i}.pdf" for i in range(4)]
+    for f in files:
+        f.write_bytes(b"")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".watchdog").mkdir()
+    (tmp_path / ".watchdog" / "config.json").write_text(
+        json.dumps({"chew_workers": 2, "chunk_workers": 3})
+    )
+
+    pre, chunk, _ = _resolve_workers(files, explicit_pre=None, explicit_chunk=8)
+    assert pre == 2   # from config
+    assert chunk == 8  # from explicit flag
+
+
 def test_resolve_workers_caps_pre_to_file_count(tmp_path, monkeypatch):
     files = [tmp_path / "only.pdf"]
     files[0].write_bytes(b"")
@@ -357,7 +372,7 @@ def test_empty_doc_moves_to_skipped(tmp_path, monkeypatch):
         "sha256": "abc123", "pages": [], "char_count": 0, "source_path": str(path)
     })
 
-    _run_ingest_inner(vault, incoming, queue, staging, workers=1, files=[f])
+    _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
 
     assert (incoming / "_SKIPPED" / "photo.jpg").exists()
     assert not f.exists()
@@ -373,7 +388,7 @@ def test_empty_doc_not_written_to_queue(tmp_path, monkeypatch):
         "sha256": "deadbeef", "pages": [], "char_count": 0, "source_path": str(path)
     })
 
-    _run_ingest_inner(vault, incoming, queue, staging, workers=1, files=[f])
+    _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
 
     assert not (queue / "deadbeef.json").exists()
 
@@ -388,7 +403,7 @@ def test_nonempty_doc_still_queued(tmp_path, monkeypatch):
         "source_path": str(path)
     })
 
-    _run_ingest_inner(vault, incoming, queue, staging, workers=1, files=[f])
+    _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
 
     assert (queue / "aabbcc.json").exists()
     assert not (incoming / "_SKIPPED").exists()
@@ -403,7 +418,7 @@ def test_summary_includes_skipped_count(tmp_path, monkeypatch, capsys):
         "sha256": "abc", "pages": [], "char_count": 0, "source_path": str(path)
     })
 
-    _run_ingest_inner(vault, incoming, queue, staging, workers=1, files=[f])
+    _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
 
     out = capsys.readouterr().out
     assert "skipped" in out
@@ -420,7 +435,7 @@ def test_garbled_doc_shows_annotation(tmp_path, monkeypatch, capsys):
         "metadata": {"garbled_detected": True},
     })
 
-    _run_ingest_inner(vault, incoming, queue, staging, workers=1, files=[f])
+    _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
 
     out = capsys.readouterr().out
     assert "garbled" in out
@@ -438,7 +453,7 @@ def test_garbled_doc_still_queued(tmp_path, monkeypatch, capsys):
         "metadata": {"garbled_detected": True},
     })
 
-    _run_ingest_inner(vault, incoming, queue, staging, workers=1, files=[f])
+    _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
 
     assert (queue / "gg00.json").exists()
     assert not (incoming / "_SKIPPED").exists()
