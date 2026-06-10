@@ -115,9 +115,11 @@ Chewing does the mechanical preprocessing work that runs outside Claude Code:
 
 Each file produces a `.json` file in `.watchdog/queue/` containing the extracted text and metadata. The original file moves to `.watchdog/staging/`. Nothing is written to the Obsidian vault yet.
 
-You'll see a progress bar as each file is processed. On macOS, you'll receive a notification when the batch completes — useful if you've switched to another application while a large batch runs.
+You'll see a progress bar as each file is processed. Each file shows one of three statuses: `OK` (queued for extraction), `SKP` (no text found — moved to `_INCOMING/_SKIPPED/`), or `ERR` (failed — moved to `_INCOMING/_FAILED/`). Files with noisy OCR output show a `· garbled OCR` note alongside `OK` — they're still queued, but worth verifying after extraction. On macOS, you'll receive a notification when the batch completes.
 
 If a file fails (password-protected, corrupted, unsupported format), it moves to `_INCOMING/_FAILED/` with an error message. Fix the issue and move the file back to `_INCOMING/` to retry.
+
+Press **Ctrl+C** to cancel a chew — the lock is cleaned up automatically and unfinished files remain in `_INCOMING/` for the next run.
 
 When chewing finishes, Watchdog prints:
 
@@ -130,6 +132,15 @@ To chew a single specific file rather than the entire `_INCOMING/` folder:
 ```bash
 watchdog chew path/to/specific-file.pdf
 ```
+
+To override parallelism for a single run:
+
+```bash
+watchdog chew --chew-workers 4    # parallel files (default: adaptive)
+watchdog chew --chunk-workers 2   # parallel chunks per file, for large PDFs
+```
+
+Both flags override the persistent `chew_workers` / `chunk_workers` settings from `watchdog configure` for that run only.
 
 ---
 

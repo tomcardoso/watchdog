@@ -164,11 +164,22 @@ cd ~/Investigations/shell-company-investigation
 watchdog chew
 ```
 
-You'll see a progress bar as Watchdog reads each file, runs OCR if needed, and prepares it for extraction. Failed files (password-protected PDFs, unsupported formats) are moved to `_INCOMING/_FAILED/` with an explanation.
+You'll see a progress bar as Watchdog reads each file, runs OCR if needed, and prepares it for extraction. Each file shows its status: `OK` (queued), `SKP` (no text found — moved to `_INCOMING/_SKIPPED/`), or `ERR` (failed — moved to `_INCOMING/_FAILED/` with an explanation). Files where OCR produced noisy output show a `· garbled OCR` note but are still queued for Claude to interpret.
 
 When chewing finishes, Watchdog prints: `Open Claude Code and run: /watchdog-ingest`
 
 On macOS, you'll also receive a notification when chewing completes — useful if you've switched to another app.
+
+To cancel a chew in progress, press **Ctrl+C** — the lock is cleaned up automatically and unfinished files stay in `_INCOMING/` for the next run.
+
+To control parallelism for a single run:
+
+```
+watchdog chew --chew-workers 4    # parallel files
+watchdog chew --chunk-workers 2   # parallel chunks per file (affects large PDFs)
+```
+
+These override the persistent settings from `watchdog configure` for that run only.
 
 **Step 2 — Extract in Claude Code**
 

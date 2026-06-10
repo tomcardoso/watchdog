@@ -198,9 +198,11 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 |---------|-------------|
 | `watchdog chew` | Process all files in `_INCOMING/` — run from inside the vault directory |
 | `watchdog chew <file>` | Process a single specific file |
+| `watchdog chew --chew-workers N` | Override parallel file workers for this run |
+| `watchdog chew --chunk-workers N` | Override parallel chunk workers per file for this run |
 | `watchdog watch <name>` | Watch `_INCOMING/` and chew files automatically as they arrive |
 
-`watchdog chew` sends a desktop notification when files finish processing (macOS only).
+`watchdog chew` sends a desktop notification when files finish processing (macOS only). Press **Ctrl+C** to cancel a chew in progress — the lock is cleaned up automatically and any partially-processed files remain in `_INCOMING/` for the next run.
 
 ### Info and settings
 

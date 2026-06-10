@@ -1042,7 +1042,7 @@ def test_cmd_chew_with_specific_file(configured, monkeypatch):
 
     monkeypatch.setattr(ppb, "run_ingest", fake_run_ingest)
     monkeypatch.chdir(vault)
-    cli.cmd_chew(args(file=str(f), workers=None))
+    cli.cmd_chew(args(file=str(f), chew_workers=None))
     assert len(calls) == 1
     assert calls[0]["files"] == [f]
 
@@ -1111,7 +1111,7 @@ def test_cmd_chew_with_nonexistent_file_exits(configured, monkeypatch):
     vault = configured / "shell-co"
     monkeypatch.chdir(vault)
     with pytest.raises(SystemExit, match="not found"):
-        cli.cmd_chew(args(file="/no/such/file.pdf", workers=None))
+        cli.cmd_chew(args(file="/no/such/file.pdf", chew_workers=None))
 
 
 # ── _notify ───────────────────────────────────────────────────────────────────

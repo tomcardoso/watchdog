@@ -440,15 +440,16 @@ def cmd_chew(args) -> None:
 
     queued_before = _count_queued(vault)
     file_arg = getattr(args, "file", None)
+    chew_workers  = getattr(args, "chew_workers", None)
     chunk_workers = getattr(args, "chunk_workers", None)
     if file_arg:
         from watchdog.pipeline.preprocess_batch import run_ingest
         f = Path(file_arg).resolve()
         if not f.exists():
             sys.exit(f"Error: file not found: {f}")
-        run_ingest(vault, workers=getattr(args, "workers", None), chunk_workers=chunk_workers, files=[f])
+        run_ingest(vault, workers=chew_workers, chunk_workers=chunk_workers, files=[f])
     else:
-        _run_preprocess(vault, workers=getattr(args, "workers", None), chunk_workers=chunk_workers)
+        _run_preprocess(vault, workers=chew_workers, chunk_workers=chunk_workers)
 
     new_queued = _count_queued(vault) - queued_before
     if new_queued > 0:
@@ -1479,7 +1480,8 @@ def main() -> None:
     p_chew = sub.add_parser("chew", help="Process documents in _INCOMING/ and prepare them for ingestion")
     p_chew.add_argument("file", nargs="?", default=None,
                         help="Specific file to chew (omit to chew all of _INCOMING/)")
-    p_chew.add_argument("--workers", type=int, default=None, metavar="N",
+    p_chew.add_argument("--chew-workers", type=int, default=None, metavar="N",
+                        dest="chew_workers",
                         help="Parallel file workers (see chew_workers in watchdog configure)")
     p_chew.add_argument("--chunk-workers", type=int, default=None, metavar="N",
                         dest="chunk_workers",
