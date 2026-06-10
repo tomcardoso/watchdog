@@ -104,6 +104,9 @@ This will:
 - Install the Watchdog skills into Claude Code
 - Ask where you want to store your investigation projects
 - Enable tab completion in your shell automatically
+- Download the ML models for document conversion and semantic search (~600 MB, one-time)
+
+The model download step may take a few minutes on a slow connection. It only happens once.
 
 It will ask one question: where to store your projects. Press Return to accept the default (`~/Investigations`), or type a different path.
 

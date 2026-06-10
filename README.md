@@ -128,7 +128,7 @@ pipx install watchdog-intel
 watchdog setup
 ```
 
-`watchdog setup` installs the Claude Code skills, verifies system dependencies (qpdf, Ghostscript, Tesseract on Linux), and configures your projects directory. Takes 5–10 minutes on first run — Docling downloads its ML models and fastembed downloads the embedding model (~50 MB, one-time).
+`watchdog setup` installs the Claude Code skills, verifies system dependencies (qpdf, Ghostscript, Tesseract on Linux), configures your projects directory, and downloads the ML models used for document conversion and semantic search (~600 MB, one-time). Expect the model download step to take a few minutes on a slow connection.
 
 Shell tab completion is enabled automatically by `watchdog setup` — it writes the activation line to your shell profile (`~/.zshrc`, `~/.bashrc`, or equivalent) and prompts you to reload.
 

@@ -192,7 +192,37 @@ def run(force: bool = False) -> None:
             _warn("tesserocr not importable — OCR will fall back to EasyOCR"
                   " (install Tesseract system package first, then: pip install tesserocr)")
 
-    # 6. Write config
+    # 7. Download ML models
+    _FASTEMBED_MODEL = "BAAI/bge-small-en-v1.5"
+    _fastembed_cache = (
+        Path(os.environ.get("FASTEMBED_CACHE_PATH", Path.home() / ".cache" / "fastembed"))
+        / _FASTEMBED_MODEL.replace("/", os.sep)
+    )
+    _docling_cache = Path.home() / ".cache" / "docling" / "models"
+    _models_cached = (
+        _fastembed_cache.exists()
+        and _docling_cache.exists()
+        and any(_docling_cache.iterdir())
+    )
+    print()
+    if _models_cached:
+        print("Checking ML models...")
+    else:
+        print("Downloading ML models (one-time, ~600 MB — may take a few minutes)...")
+    try:
+        from fastembed import TextEmbedding
+        TextEmbedding(_FASTEMBED_MODEL)
+        _ok(f"Embedding model ({_FASTEMBED_MODEL})")
+    except Exception as e:
+        _warn(f"Embedding model download failed: {e}")
+    try:
+        from docling.document_converter import DocumentConverter
+        DocumentConverter()
+        _ok("Document conversion models (Docling)")
+    except Exception as e:
+        _warn(f"Docling model download failed: {e}")
+
+    # 8. Write config
     WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
     CONFIG_FILE.write_text(
         json.dumps(
@@ -201,7 +231,7 @@ def run(force: bool = False) -> None:
         ) + "\n"
     )
 
-    # 7. Done
+    # 9. Done
     reload_hint = f"source {profile}" if profile else "reload your shell"
     print()
     print(f"{_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{_RESET}")
