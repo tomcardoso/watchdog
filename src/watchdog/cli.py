@@ -113,7 +113,10 @@ _CMD_HELP: dict[str, dict] = {
     "chew": {
         "desc": "Process documents in _INCOMING/ and prepare them for ingestion",
         "args": [("file", "Specific file to chew (omit to chew all of _INCOMING/)", True)],
-        "opts": [("--workers N", "Parallel file workers (see chew_workers in watchdog configure)")],
+        "opts": [
+            ("--chew-workers N",  "Parallel file workers (overrides chew_workers in watchdog configure)"),
+            ("--chunk-workers N", "Parallel chunk workers per file, for large PDFs (overrides chunk_workers)"),
+        ],
     },
     "watch": {
         "desc": "Watch _INCOMING/ and chew files automatically as they arrive",
