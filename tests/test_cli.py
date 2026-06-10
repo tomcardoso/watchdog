@@ -240,19 +240,31 @@ def test_cmd_open_skips_claude_when_user_declines(configured, monkeypatch):
 
 def test_cmd_obsidian_opens_url(configured, monkeypatch):
     cli.cmd_new(args(name="My Story", dir=str(configured)))
+    vault = configured / "my-story"
     calls = []
     monkeypatch.setattr("watchdog.cli.subprocess.run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
     monkeypatch.setattr("watchdog.cli.sys.platform", "darwin")
+    monkeypatch.setattr("watchdog.cli._obsidian_registered", lambda v: True)
     cli.cmd_obsidian(args(name="My Story"))
     assert len(calls) == 1
     assert calls[0][0] == "open"
     assert "obsidian://open?path=" in calls[0][1]
 
 
+def test_cmd_obsidian_unregistered_prints_instructions(configured, monkeypatch, capsys):
+    cli.cmd_new(args(name="My Story", dir=str(configured)))
+    monkeypatch.setattr("watchdog.cli._obsidian_registered", lambda v: False)
+    cli.cmd_obsidian(args(name="My Story"))
+    out = capsys.readouterr().out
+    assert "not registered" in out
+    assert "Open folder as vault" in out
+
+
 def test_cmd_obsidian_exits_on_failure(configured, monkeypatch):
     cli.cmd_new(args(name="My Story", dir=str(configured)))
     monkeypatch.setattr("watchdog.cli.subprocess.run", lambda cmd, **kw: type("R", (), {"returncode": 1})())
     monkeypatch.setattr("watchdog.cli.sys.platform", "darwin")
+    monkeypatch.setattr("watchdog.cli._obsidian_registered", lambda v: True)
     with pytest.raises(SystemExit):
         cli.cmd_obsidian(args(name="My Story"))
 

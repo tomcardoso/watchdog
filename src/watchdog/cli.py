@@ -420,11 +420,33 @@ def cmd_open(args) -> None:
 
 
 
+def _obsidian_registered(vault: Path) -> bool:
+    if sys.platform == "darwin":
+        cfg = Path.home() / "Library" / "Application Support" / "obsidian" / "obsidian.json"
+    else:
+        cfg = Path.home() / ".config" / "obsidian" / "obsidian.json"
+    if not cfg.exists():
+        return False
+    try:
+        data = json.loads(cfg.read_text())
+        return any(v.get("path") == str(vault) for v in data.get("vaults", {}).values())
+    except Exception:
+        return False
+
+
 def cmd_obsidian(args) -> None:
     _, info = _find_project(args.name)
     vault = Path(info["path"])
     if not vault.exists():
         sys.exit(f"Error: project directory not found: {vault}")
+    if not _obsidian_registered(vault):
+        print(f"\n  {_YELLOW}Vault not registered in Obsidian yet.{_RESET}")
+        print()
+        print(f"  Open Obsidian → {_BOLD}Open folder as vault{_RESET} → navigate to:")
+        print(f"  {_CYAN}{vault}{_RESET}")
+        print()
+        print(f"  After opening it once, {_CYAN}watchdog obsidian {info['name']}{_RESET} will work automatically.\n")
+        return
     from urllib.parse import quote
     url = f"obsidian://open?path={quote(str(vault))}"
     if sys.platform == "darwin":
