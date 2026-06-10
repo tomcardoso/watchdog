@@ -203,6 +203,39 @@ def test_cmd_new_uses_config_projects_dir(configured, wdg_home):
     assert str(configured) in projects["auto-dir-test"]["path"]
 
 
+# ── cmd_open ──────────────────────────────────────────────────────────────────
+
+def test_cmd_open_launches_claude_when_no_queue(configured, monkeypatch):
+    cli.cmd_new(args(name="My Story", dir=str(configured)))
+    launched = []
+    monkeypatch.setattr(cli, "_launch_claude", lambda vault: launched.append(vault))
+    monkeypatch.setattr("builtins.input", lambda _: "n")
+    cli.cmd_open(args(name="My Story"))
+    assert len(launched) == 1
+
+
+def test_cmd_open_prompts_when_queue_has_files(configured, monkeypatch):
+    cli.cmd_new(args(name="My Story", dir=str(configured)))
+    vault = configured / "my-story"
+    (vault / ".watchdog" / "queue" / "abc123.json").write_text("{}")
+    launched = []
+    monkeypatch.setattr(cli, "_launch_claude", lambda vault: launched.append(vault))
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    cli.cmd_open(args(name="My Story"))
+    assert len(launched) == 1
+
+
+def test_cmd_open_skips_claude_when_user_declines(configured, monkeypatch):
+    cli.cmd_new(args(name="My Story", dir=str(configured)))
+    vault = configured / "my-story"
+    (vault / ".watchdog" / "queue" / "abc123.json").write_text("{}")
+    launched = []
+    monkeypatch.setattr(cli, "_launch_claude", lambda vault: launched.append(vault))
+    monkeypatch.setattr("builtins.input", lambda _: "n")
+    cli.cmd_open(args(name="My Story"))
+    assert len(launched) == 0
+
+
 # ── cmd_list ──────────────────────────────────────────────────────────────────
 
 def test_cmd_list_empty(configured, capsys):
