@@ -14,6 +14,7 @@ from watchdog.pipeline.preprocess_batch import (
     _adaptive_workers,
     _resolve_workers,
     _run_ingest_inner,
+    _page_label,
 )
 import watchdog.pipeline.preprocess_batch as ppb
 
@@ -307,6 +308,33 @@ def test_resolve_workers_caps_pre_to_file_count(tmp_path, monkeypatch):
     assert pre == 1  # capped to len(files)
 
 
+# ── _page_label ───────────────────────────────────────────────────────────────
+
+def test_page_label_pdf_plural(tmp_path):
+    assert _page_label(tmp_path / "doc.pdf", 3) == "3 pages"
+
+def test_page_label_pdf_singular(tmp_path):
+    assert _page_label(tmp_path / "doc.pdf", 1) == "1 page"
+
+def test_page_label_xlsx_sheets(tmp_path):
+    assert _page_label(tmp_path / "data.xlsx", 4) == "4 sheets"
+
+def test_page_label_xlsx_singular(tmp_path):
+    assert _page_label(tmp_path / "data.xlsx", 1) == "1 sheet"
+
+def test_page_label_image_omitted(tmp_path):
+    assert _page_label(tmp_path / "scan.jpg", 1) == ""
+
+def test_page_label_txt_omitted(tmp_path):
+    assert _page_label(tmp_path / "notes.txt", 5) == ""
+
+def test_page_label_zero_omitted(tmp_path):
+    assert _page_label(tmp_path / "doc.pdf", 0) == ""
+
+def test_page_label_case_insensitive(tmp_path):
+    assert _page_label(tmp_path / "DOC.PDF", 2) == "2 pages"
+
+
 # ── _run_ingest_inner skipping ─────────────────────────────────────────────────
 
 def _make_vault(tmp_path):
@@ -379,6 +407,42 @@ def test_summary_includes_skipped_count(tmp_path, monkeypatch, capsys):
 
     out = capsys.readouterr().out
     assert "skipped" in out
+
+
+def test_garbled_doc_shows_annotation(tmp_path, monkeypatch, capsys):
+    vault, incoming, queue, staging = _make_vault(tmp_path)
+    f = incoming / "scan.pdf"
+    f.write_bytes(b"")
+
+    monkeypatch.setattr(ppb, "preprocess_one", lambda path, *a, **kw: {
+        "sha256": "gg99", "pages": [{"markdown": "hello"}], "char_count": 5,
+        "page_count": 1, "source_path": str(path),
+        "metadata": {"garbled_detected": True},
+    })
+
+    _run_ingest_inner(vault, incoming, queue, staging, workers=1, files=[f])
+
+    out = capsys.readouterr().out
+    assert "garbled" in out
+    assert (queue / "gg99.json").exists()  # still queued
+
+
+def test_garbled_doc_still_queued(tmp_path, monkeypatch, capsys):
+    vault, incoming, queue, staging = _make_vault(tmp_path)
+    f = incoming / "scan.pdf"
+    f.write_bytes(b"")
+
+    monkeypatch.setattr(ppb, "preprocess_one", lambda path, *a, **kw: {
+        "sha256": "gg00", "pages": [{"markdown": "hello"}], "char_count": 5,
+        "page_count": 2, "source_path": str(path),
+        "metadata": {"garbled_detected": True},
+    })
+
+    _run_ingest_inner(vault, incoming, queue, staging, workers=1, files=[f])
+
+    assert (queue / "gg00.json").exists()
+    assert not (incoming / "_SKIPPED").exists()
+    assert not (incoming / "_FAILED").exists()
 
 
 def test_skipped_subdir_excluded_from_find_files(tmp_path):

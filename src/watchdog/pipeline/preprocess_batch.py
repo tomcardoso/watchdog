@@ -31,6 +31,18 @@ _RESET  = "\033[0m"
 
 _BAR_WIDTH = 28
 
+_PAGE_UNIT = {
+    ".pdf": "page", ".docx": "page", ".doc": "page", ".pptx": "page", ".ppt": "page",
+    ".xlsx": "sheet", ".xls": "sheet", ".ods": "sheet", ".numbers": "sheet",
+}
+
+
+def _page_label(path: Path, count: int) -> str:
+    unit = _PAGE_UNIT.get(path.suffix.lower())
+    if unit is None or count == 0:
+        return ""
+    return f"{count} {unit}{'s' if count != 1 else ''}"
+
 
 def _count_pdf_pages(path: Path) -> int:
     if path.suffix.lower() != ".pdf":
@@ -236,20 +248,24 @@ def _run_ingest_inner(
             done += 1
 
             elapsed_wall = time.time() - batch_start
-            is_err  = "error" in result
-            is_empty = not is_err and result.get("char_count", 0) == 0
+            is_err     = "error" in result
+            is_empty   = not is_err and result.get("char_count", 0) == 0
+            is_garbled = not is_err and not is_empty and result.get("metadata", {}).get("garbled_detected", False)
             if is_err:
                 status = f"{_YELLOW}ERR{_RESET}"
             elif is_empty:
                 status = f"{_DIM}SKP{_RESET}"
             else:
                 status = f"{_GREEN}OK {_RESET}"
-            pages  = result.get("page_count", "?")
 
             try:
                 rel = str(path.relative_to(incoming))
             except ValueError:
                 rel = path.name
+
+            label     = _page_label(path, result.get("page_count", 0))
+            label_str = f"  {_DIM}{label}{_RESET}" if label else ""
+            garb_str  = f"  {_DIM}· garbled OCR{_RESET}" if is_garbled else ""
 
             # Progress bar + ETA
             bar = _bar(done, total)
@@ -265,7 +281,7 @@ def _run_ingest_inner(
 
             # Clear the bar line, print file result (scrolls), then re-print bar without newline
             sys.stdout.write("\r\033[K")
-            print(f"  {status}  {_BOLD}{rel}{_RESET}  {_DIM}{pages}p{_RESET}")
+            print(f"  {status}  {_BOLD}{rel}{_RESET}{label_str}{garb_str}")
             sys.stdout.write(f"  {bar_display}")
             sys.stdout.flush()
 
