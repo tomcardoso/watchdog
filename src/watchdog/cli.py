@@ -69,41 +69,72 @@ _GREEN  = "\033[0;32m"
 _RESET  = "\033[0m"
 
 
-class _Formatter(argparse.HelpFormatter):
-    """Subcommand help formatter matching Watchdog's visual style."""
+_CMD_HELP: dict[str, dict] = {
+    "new": {
+        "desc": "Create a new investigation vault",
+        "args": [("name", "Investigation name (e.g. 'Shell Company Investigation')")],
+        "opts": [("--dir DIR", "Parent directory (default: projects_dir from config)")],
+    },
+    "open": {
+        "desc": "Chew pending documents and open in Claude Code",
+        "args": [("name", "Investigation name or slug")],
+    },
+    "chew": {
+        "desc": "Process documents in _INCOMING/ and prepare them for ingestion",
+        "opts": [("--workers N", "Parallel file workers (default: auto)")],
+    },
+    "list": {
+        "desc": "List all registered investigations",
+    },
+    "status": {
+        "desc": "Show detailed status for an investigation",
+        "args": [("name", "Investigation name or slug (omit to show all)")],
+    },
+    "search": {
+        "desc": "Semantic search across ingested documents",
+        "args": [("project", "Investigation name or slug"), ("query", "Search query")],
+        "opts": [("--top N", "Number of results to return (default: 5)")],
+    },
+    "unlock": {
+        "desc": "Release a stale ingest lock",
+        "args": [("project", "Investigation name or slug")],
+        "opts": [("--force", "Remove lock even if recent")],
+    },
+    "setup": {
+        "desc": "Set up Watchdog after installation",
+        "opts": [("--force", "Re-run setup even if already complete")],
+    },
+    "configure": {
+        "desc": "View or change configuration",
+        "args": [("key", "Configuration key (optional)"), ("value", "Value to set (optional)")],
+    },
+    "about": {
+        "desc": "Show version and project links",
+    },
+}
 
-    def __init__(self, prog):
-        super().__init__(prog, max_help_position=28, width=100)
 
-    def format_help(self) -> str:
-        raw = super().format_help()
-        usage_line = ""
-        sections: dict[str, list[str]] = {}
-        current: str | None = None
-
-        for line in raw.splitlines():
-            s = line.strip()
-            if not s:
-                continue
-            if s.startswith("usage:"):
-                usage_line = s
-            elif s in ("positional arguments:", "options:"):
-                current = s
-                sections[current] = []
-            elif current is not None:
-                sections[current].append(s)
-
-        out = ["", f"  {usage_line}"]
-        if sections.get("positional arguments:"):
-            out.append(f"\n  {_BOLD}Arguments{_RESET}")
-            for item in sections["positional arguments:"]:
-                out.append(f"    {item}")
-        if sections.get("options:"):
-            out.append(f"\n  {_BOLD}Options{_RESET}")
-            for item in sections["options:"]:
-                out.append(f"    {item}")
-        out.append("")
-        return "\n".join(out)
+def _print_cmd_help(cmd: str) -> None:
+    info = _CMD_HELP.get(cmd, {})
+    args = info.get("args", [])
+    opts = info.get("opts", [])
+    usage_parts = ["watchdog", cmd] + [f"<{n}>" for n, _ in args]
+    if opts:
+        usage_parts.append("[options]")
+    print(f"\n  {info.get('desc', '')}")
+    print()
+    print(f"  {_DIM}Usage:  {' '.join(usage_parts)}{_RESET}")
+    if args:
+        print()
+        print(f"  {_BOLD}Arguments{_RESET}")
+        for name, desc in args:
+            print(f"    {_CYAN}{name:<18}{_RESET} {desc}")
+    print()
+    print(f"  {_BOLD}Options{_RESET}")
+    for flag, desc in opts:
+        print(f"    {_CYAN}{flag:<18}{_RESET} {desc}")
+    print(f"    {_CYAN}{'--help':<18}{_RESET} Show this message and exit")
+    print()
 
 
 def _projects_dir() -> Path:
@@ -953,6 +984,12 @@ def main() -> None:
         _print_banner()
         return
 
+    if len(sys.argv) >= 3 and sys.argv[2] in ("-h", "--help"):
+        cmd = _ALIASES.get(sys.argv[1], sys.argv[1])
+        if cmd in _CMD_HELP:
+            _print_cmd_help(cmd)
+            return
+
     if len(sys.argv) >= 2 and sys.argv[1] in _ALIASES:
         sys.argv[1] = _ALIASES[sys.argv[1]]
 
@@ -969,47 +1006,47 @@ def main() -> None:
     )
     sub = parser.add_subparsers(dest="command", required=False)
 
-    p_new = sub.add_parser("new", help="Create a new investigation vault", formatter_class=_Formatter)
+    p_new = sub.add_parser("new", help="Create a new investigation vault")
     p_new.add_argument("name", help="Investigation name (e.g. 'Shell Company Investigation')")
     p_new.add_argument("--dir", help=f"Parent directory (default: projects_dir from config)")
     p_new.set_defaults(func=cmd_new)
 
-    p_open = sub.add_parser("open", help="Chew pending documents and open in Claude Code", formatter_class=_Formatter)
+    p_open = sub.add_parser("open", help="Chew pending documents and open in Claude Code")
     p_open.add_argument("name", help="Investigation name or slug")
     p_open.set_defaults(func=cmd_open)
 
-    p_list = sub.add_parser("list", help="List all registered investigations", formatter_class=_Formatter)
+    p_list = sub.add_parser("list", help="List all registered investigations")
     p_list.set_defaults(func=cmd_list)
 
-    p_status = sub.add_parser("status", help="Show detailed status for an investigation", formatter_class=_Formatter)
+    p_status = sub.add_parser("status", help="Show detailed status for an investigation")
     p_status.add_argument("name", nargs="?", help="Investigation name or slug (omit to list all)")
     p_status.set_defaults(func=cmd_status)
 
-    p_setup = sub.add_parser("setup", help="Set up Watchdog after installation", formatter_class=_Formatter)
+    p_setup = sub.add_parser("setup", help="Set up Watchdog after installation")
     p_setup.add_argument("--force", action="store_true", help="Re-run setup even if already complete")
     p_setup.set_defaults(func=cmd_setup)
 
-    p_about = sub.add_parser("about", help="Show version and project links", formatter_class=_Formatter)
+    p_about = sub.add_parser("about", help="Show version and project links")
     p_about.set_defaults(func=cmd_about)
 
-    p_search = sub.add_parser("search", help="Semantic search across ingested documents", formatter_class=_Formatter)
+    p_search = sub.add_parser("search", help="Semantic search across ingested documents")
     p_search.add_argument("project", help="Investigation name or slug")
     p_search.add_argument("query", help="Search query")
     p_search.add_argument("--top", dest="top_n", type=int, default=5, metavar="N",
                           help="Number of results to return (default: 5)")
     p_search.set_defaults(func=cmd_search)
 
-    p_unlock = sub.add_parser("unlock", help="Release a stale ingest lock", formatter_class=_Formatter)
+    p_unlock = sub.add_parser("unlock", help="Release a stale ingest lock")
     p_unlock.add_argument("project", help="Investigation name or slug")
     p_unlock.add_argument("--force", action="store_true", help="Remove lock even if recent")
     p_unlock.set_defaults(func=cmd_unlock)
 
-    p_configure = sub.add_parser("configure", help="View or change configuration", formatter_class=_Formatter)
+    p_configure = sub.add_parser("configure", help="View or change configuration")
     p_configure.add_argument("key",   nargs="?", help=f"Config key ({', '.join(_CONFIGURE_KEYS)})")
     p_configure.add_argument("value", nargs="?", help="Value to set")
     p_configure.set_defaults(func=cmd_configure)
 
-    p_chew = sub.add_parser("chew", help="Process documents in _INCOMING/ and prepare them for ingestion", formatter_class=_Formatter)
+    p_chew = sub.add_parser("chew", help="Process documents in _INCOMING/ and prepare them for ingestion")
     p_chew.add_argument("--workers", type=int, default=None, metavar="N",
                         help="Parallel file workers (default: auto)")
     p_chew.set_defaults(func=cmd_chew)
