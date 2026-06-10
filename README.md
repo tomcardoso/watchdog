@@ -188,6 +188,7 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog log <name>` | Show ingest history; `--lines N` to tail |
 | `watchdog archive <name>` | Mark an investigation complete — hidden from `watchdog list` |
 | `watchdog unarchive <name>` | Restore an archived investigation |
+| `watchdog rename <name> <new-name>` | Rename an investigation — updates the folder, registry, and Obsidian entry |
 | `watchdog move <name> <path>` | Update vault path in registry; moves files if they still exist at the old location |
 | `watchdog delete <name>` | Remove from registry; `--purge` also deletes vault files |
 
@@ -207,7 +208,7 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 |---------|-------------|
 | `watchdog search <name> "<query>"` | Semantic search across ingested documents |
 | `watchdog configure` | View or change configuration |
-| `watchdog unlock <name>` | Release a stale ingest lock |
+| `watchdog unlock <name>` | Release a stale chew or ingest lock; `--force` to remove even if recent |
 | `watchdog setup` | Set up Watchdog after installation; `--force` to re-run |
 | `watchdog about` | Show version and project links |
 

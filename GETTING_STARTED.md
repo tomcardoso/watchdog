@@ -306,6 +306,14 @@ watchdog list --all   # see archived investigations when needed
 watchdog unarchive shell-company-investigation   # restore if needed
 ```
 
+**Rename an investigation:**
+
+```bash
+watchdog rename shell-company-investigation "Oil Company Investigation"
+```
+
+Renames the vault folder, updates the registry, and updates the Obsidian vault entry. Blocked if a chew or ingest is in progress.
+
 **Move a vault:**
 If you reorganize your filesystem, update the registry:
 

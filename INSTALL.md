@@ -298,14 +298,14 @@ This extracts 50 documents and then stops cleanly. Start a new session and run t
 **Session ended mid-ingest**
 If a Claude Code session ends unexpectedly — rate limit hit, window closed, session timed out — start a new session and run `/watchdog-ingest` again. Processed files are already in `morgue/`; only unfinished files remain. The new run picks up from where the previous one stopped.
 
-**Ingest lock stuck**
-If a previous ingest was interrupted, a lock file may be left behind. Check with:
-```
-watchdog status <name>
-```
-If you see a stale lock, remove it with:
+**Lock stuck**
+If a chew or ingest was interrupted, a lock file may be left behind. Remove it with:
 ```
 watchdog unlock <name>
+```
+If the lock is recent (under 30 minutes old), Watchdog will warn you — use `--force` to remove it anyway:
+```
+watchdog unlock <name> --force
 ```
 
 ---
