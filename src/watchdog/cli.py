@@ -83,7 +83,7 @@ _CMD_HELP: dict[str, dict] = {
     },
     "open": {
         "desc": "Chew pending documents and open in Claude Code",
-        "args": [("name", "Investigation name or slug")],
+        "args": [("name", "Investigation name or slug (omit when inside the project folder)", True)],
     },
     "obsidian": {
         "desc": "Open an investigation vault in Obsidian",
@@ -467,8 +467,17 @@ def _launch_claude(vault: Path) -> None:
 
 
 def cmd_open(args) -> None:
-    _, info = _find_project(args.name)
-    vault = Path(info["path"])
+    name = getattr(args, "name", None)
+    if name is None:
+        vault = Path(".").resolve()
+        if not (vault / ".watchdog").is_dir():
+            sys.exit("Error: not inside a Watchdog project folder. cd into your investigation first.")
+        projects = load_projects()
+        info = next((v for v in projects.values() if Path(v["path"]).resolve() == vault),
+                    {"name": vault.name, "path": str(vault)})
+    else:
+        _, info = _find_project(name)
+        vault = Path(info["path"])
     if not vault.exists():
         sys.exit(f"Error: project directory not found: {vault}")
     print(f"\n  {_BOLD}{info['name']}{_RESET}  {_CYAN}{vault}{_RESET}\n")
@@ -1445,7 +1454,7 @@ def main() -> None:
     p_new.set_defaults(func=cmd_new)
 
     p_open = sub.add_parser("open", help="Chew pending documents and open in Claude Code")
-    p_open.add_argument("name", help="Investigation name or slug").completer = _project_completer
+    p_open.add_argument("name", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
     p_open.set_defaults(func=cmd_open)
 
     p_list = sub.add_parser("list", help="List all registered investigations")
