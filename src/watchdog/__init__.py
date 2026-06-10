@@ -1,1 +1,5 @@
-__version__ = "0.1.0a1"
+try:
+    from importlib.metadata import version
+    __version__ = version("watchdog-intel")
+except Exception:
+    __version__ = "unknown"

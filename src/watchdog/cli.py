@@ -49,6 +49,7 @@ _ALIASES = {
     "remove":     "delete",
     "rm":         "delete",
     "mv":         "move",
+    "rn":         "rename",
 }
 
 _PIPELINE_COMMANDS = {
@@ -96,6 +97,10 @@ _CMD_HELP: dict[str, dict] = {
         "desc": "Restore an archived investigation",
         "args": [("name", "Investigation name or slug")],
     },
+    "rename": {
+        "desc": "Rename an investigation (folder and registry)",
+        "args": [("project", "Investigation name or slug"), ("name", "New name")],
+    },
     "move": {
         "desc": "Update vault path in registry",
         "args": [("name", "Investigation name or slug"), ("path", "New path for the vault")],
@@ -133,7 +138,7 @@ _CMD_HELP: dict[str, dict] = {
         "opts": [("--top N", "Number of results to return (default: 5)")],
     },
     "unlock": {
-        "desc": "Release a stale ingest lock",
+        "desc": "Release a stale chew or ingest lock",
         "args": [("project", "Investigation name or slug")],
         "opts": [("--force", "Remove lock even if recent")],
     },
@@ -556,9 +561,62 @@ def _notify(title: str, body: str) -> None:
         pass
 
 
+def _check_vault_locks(vault: Path, slug: str) -> None:
+    chew_lock   = vault / ".watchdog" / ".chew-lock"
+    ingest_lock = vault / ".watchdog" / "Registry" / ".ingest-lock"
+    if chew_lock.exists():
+        sys.exit(f"Error: chew is in progress. Wait for it to finish or run: watchdog unlock {slug}")
+    if ingest_lock.exists():
+        sys.exit(f"Error: ingest is in progress. Wait for it to finish or run: watchdog unlock {slug}")
+
+
+def cmd_rename(args) -> None:
+    slug, info = _find_project(args.project)
+    vault = Path(info["path"])
+    new_name = args.name.strip()
+    new_slug = slugify(new_name)
+
+    if not new_slug:
+        sys.exit("Error: new name is invalid.")
+
+    _check_vault_locks(vault, slug)
+
+    projects = load_projects()
+    if new_slug in projects and new_slug != slug:
+        sys.exit(f"Error: a project named '{new_name}' already exists.")
+
+    new_vault = vault.parent / new_slug
+
+    if slug != new_slug:
+        if new_vault.exists():
+            sys.exit(f"Error: {new_vault} already exists.")
+        vault.rename(new_vault)
+
+        # Update Obsidian registry (path changed)
+        cfg = _obsidian_config_path()
+        if cfg.exists():
+            try:
+                data = json.loads(cfg.read_text())
+                for v in data.get("vaults", {}).values():
+                    if v.get("path") == info["path"]:
+                        v["path"] = str(new_vault)
+                cfg.write_text(json.dumps(data))
+            except Exception:
+                pass
+
+    projects[new_slug] = {**info, "name": new_name, "path": str(new_vault)}
+    if new_slug != slug:
+        del projects[slug]
+    save_projects(projects)
+
+    print(f"\n  {_GREEN}Renamed:{_RESET}  {_DIM}{info['name']}{_RESET} → {_BOLD}{new_name}{_RESET}  {_DIM}[{new_slug}]{_RESET}")
+    print(f"  {_CYAN}{new_vault}{_RESET}\n")
+
+
 def cmd_delete(args) -> None:
     slug, info = _find_project(args.name)
     vault = Path(info["path"])
+    _check_vault_locks(vault, slug)
 
     print(f"\n  {_BOLD}{info['name']}{_RESET}  {_DIM}{slug}{_RESET}")
     print(f"  {_CYAN}{vault}{_RESET}")
@@ -605,6 +663,7 @@ def cmd_delete(args) -> None:
 def cmd_move(args) -> None:
     slug, info = _find_project(args.name)
     src = Path(info["path"])
+    _check_vault_locks(src, slug)
     dst = Path(args.path).expanduser().resolve()
 
     if src == dst:
@@ -1118,38 +1177,46 @@ def cmd_search(args) -> None:
 def cmd_unlock(args) -> None:
     _, info = _find_project(args.project)
     vault = Path(info["path"])
-    lock_path = vault / ".watchdog" / "Registry" / ".ingest-lock"
+
+    locks = [
+        (vault / ".watchdog" / ".chew-lock",                 ".chew-lock",   "chew"),
+        (vault / ".watchdog" / "Registry" / ".ingest-lock",  ".ingest-lock", "ingest"),
+    ]
 
     print()
-    if not lock_path.exists():
-        print(f"  {_DIM}No ingest lock found — nothing to do.{_RESET}\n")
-        return
+    found_any = False
+    for lock_path, lock_name, op_name in locks:
+        if not lock_path.exists():
+            continue
+        found_any = True
 
-    content = lock_path.read_text()
-    started_at = None
-    for line in content.splitlines():
-        if line.startswith("started_at:"):
-            started_at = line.split(":", 1)[1].strip()
-            break
+        started_at = None
+        for line in lock_path.read_text().splitlines():
+            if line.startswith("started_at:"):
+                started_at = line.split(":", 1)[1].strip()
+                break
 
-    age_str = "unknown age"
-    is_stale = True
-    if started_at:
-        try:
-            t = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
-            age_secs = (datetime.now(timezone.utc) - t).total_seconds()
-            mins = int(age_secs // 60)
-            age_str = f"{mins}m ago"
-            is_stale = age_secs >= 1800
-        except ValueError:
-            pass
+        age_str = "unknown age"
+        is_stale = True
+        if started_at:
+            try:
+                t = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+                age_secs = (datetime.now(timezone.utc) - t).total_seconds()
+                age_str = f"{int(age_secs // 60)}m ago"
+                is_stale = age_secs >= 1800
+            except ValueError:
+                pass
 
-    if is_stale or args.force:
-        lock_path.unlink()
-        print(f"  {_GREEN}Removed:{_RESET} {_BOLD}.ingest-lock{_RESET}  {_DIM}({age_str}){_RESET}\n")
-    else:
-        print(f"  {_YELLOW}Lock is recent{_RESET} ({age_str}) — an ingest may still be running.")
-        print(f"  Use {_CYAN}watchdog unlock {args.project} --force{_RESET} to remove it anyway.\n")
+        if is_stale or args.force:
+            lock_path.unlink()
+            print(f"  {_GREEN}Removed:{_RESET} {_BOLD}{lock_name}{_RESET}  {_DIM}({age_str}){_RESET}")
+        else:
+            print(f"  {_YELLOW}Lock is recent{_RESET} ({age_str}) — {op_name} may still be running.")
+            print(f"  Use {_CYAN}watchdog unlock {args.project} --force{_RESET} to remove it anyway.")
+
+    if not found_any:
+        print(f"  {_DIM}No locks found — nothing to do.{_RESET}")
+    print()
 
 
 def cmd_configure(args) -> None:
@@ -1300,6 +1367,7 @@ def _print_banner() -> None:
             ("obsidian",   "Open in Obsidian"),
             ("archive",    "Archive a completed investigation"),
             ("unarchive",  "Restore an archived investigation"),
+            ("rename",     "Rename an investigation"),
             ("move",       "Update vault path in registry"),
             ("delete",     "Remove an investigation"),
         ]),
@@ -1438,6 +1506,11 @@ def main() -> None:
     p_watch.add_argument("name", help="Investigation name or slug")
     p_watch.set_defaults(func=cmd_watch)
 
+    p_rename = sub.add_parser("rename", help="Rename an investigation (folder and registry)")
+    p_rename.add_argument("project", help="Investigation name or slug")
+    p_rename.add_argument("name", help="New name")
+    p_rename.set_defaults(func=cmd_rename)
+
     try:
         import argcomplete
         argcomplete.autocomplete(parser)
@@ -1458,7 +1531,8 @@ def main() -> None:
                 from watchdog.setup_cmd import run as run_setup
                 run_setup()
             return
-        if Path(".watchdog").is_dir():
+        wddir = Path(".watchdog")
+        if wddir.is_dir() and (wddir / "queue").is_dir():
             _run_preprocess(Path(".").resolve(), confirm=True)
         else:
             _print_banner()

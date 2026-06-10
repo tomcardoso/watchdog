@@ -1047,6 +1047,65 @@ def test_cmd_chew_with_specific_file(configured, monkeypatch):
     assert calls[0]["files"] == [f]
 
 
+# ── cmd_rename ────────────────────────────────────────────────────────────────
+
+def test_cmd_rename_updates_registry_and_folder(configured, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    cli.cmd_rename(args(project="Shell Co", name="Oil Co"))
+    projects = cli.load_projects()
+    assert "oil-co" in projects
+    assert "shell-co" not in projects
+    assert projects["oil-co"]["name"] == "Oil Co"
+    assert (configured / "oil-co").exists()
+    assert not vault.exists()
+    assert "Renamed" in capsys.readouterr().out
+
+
+def test_cmd_rename_updates_obsidian_registry(configured, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    new_vault = configured / "oil-co"
+    cfg_path = cli._obsidian_config_path()
+    cfg_path.write_text(json.dumps({"vaults": {"abc123": {"path": str(vault), "ts": 0}}}))
+    cli.cmd_rename(args(project="Shell Co", name="Oil Co"))
+    data = json.loads(cfg_path.read_text())
+    paths = [v["path"] for v in data["vaults"].values()]
+    assert str(new_vault) in paths
+    assert str(vault) not in paths
+
+
+def test_cmd_rename_blocked_by_chew_lock(configured, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    (vault / ".watchdog" / ".chew-lock").write_text("started_at: 2026-01-01T00:00:00Z\npid: 99\n")
+    with pytest.raises(SystemExit):
+        cli.cmd_rename(args(project="Shell Co", name="Oil Co"))
+    assert "shell-co" in cli.load_projects()
+
+
+def test_cmd_rename_blocked_by_ingest_lock(configured, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    (vault / ".watchdog" / "Registry" / ".ingest-lock").write_text("started_at: 2026-01-01T00:00:00Z\n")
+    with pytest.raises(SystemExit):
+        cli.cmd_rename(args(project="Shell Co", name="Oil Co"))
+
+
+def test_cmd_rename_same_slug_updates_name_only(configured, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    cli.cmd_rename(args(project="Shell Co", name="Shell Co"))
+    projects = cli.load_projects()
+    assert "shell-co" in projects
+    assert (configured / "shell-co").exists()
+
+
+# ── aliases (rn) ──────────────────────────────────────────────────────────────
+
+def test_alias_rn_maps_to_rename(monkeypatch):
+    assert cli._ALIASES.get("rn") == "rename"
+
+
 def test_cmd_chew_with_nonexistent_file_exits(configured, monkeypatch):
     cli.cmd_new(args(name="Shell Co", dir=str(configured)))
     vault = configured / "shell-co"

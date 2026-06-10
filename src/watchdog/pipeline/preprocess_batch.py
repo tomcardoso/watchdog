@@ -7,6 +7,7 @@ and prints a Claude Code handoff message when done.
 """
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -94,6 +95,24 @@ def _bar(done: int, total: int) -> str:
     return f"[{'█' * filled}{'░' * (_BAR_WIDTH - filled)}]"
 
 
+def _fmt_eta(seconds: int) -> str:
+    if seconds < 60:
+        return f"~{seconds}s"
+    elif seconds < 300:
+        return f"~{seconds // 60}m {seconds % 60}s"
+    else:
+        return f"~{seconds // 60}m"
+
+
+def _prune_empty_dirs(root: Path) -> None:
+    for d in sorted(root.rglob("*"), reverse=True):
+        if d.is_dir() and d != root:
+            try:
+                d.rmdir()  # only succeeds if truly empty
+            except OSError:
+                pass
+
+
 def find_files(paths: list[Path]) -> list[Path]:
     files = []
     for p in paths:
@@ -113,7 +132,6 @@ def find_files(paths: list[Path]) -> list[Path]:
                     continue
                 files.append(f)
     return files
-
 
 
 def preprocess_one(
@@ -155,6 +173,30 @@ def run_ingest(vault: Path, workers: int | None = None, files: list | None = Non
     queue.mkdir(parents=True, exist_ok=True)
     staging.mkdir(parents=True, exist_ok=True)
 
+    # Write chew lock file
+    lock_dir = vault / ".watchdog"
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    lock_file = lock_dir / ".chew-lock"
+    started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    lock_file.write_text(f"started_at: {started_at}\npid: {os.getpid()}\n")
+
+    try:
+        _run_ingest_inner(vault, incoming, queue, staging, workers, files)
+    finally:
+        try:
+            lock_file.unlink()
+        except OSError:
+            pass
+
+
+def _run_ingest_inner(
+    vault: Path,
+    incoming: Path,
+    queue: Path,
+    staging: Path,
+    workers: int | None,
+    files: list | None,
+) -> None:
     if files is None:
         files = find_files([incoming])
     if not files:
@@ -175,7 +217,8 @@ def run_ingest(vault: Path, workers: int | None = None, files: list | None = Non
         f"  {_DIM}({pre_workers} file · {chunk_workers} chunk workers{adaptive_tag}){_RESET}\n"
     )
 
-    print(f"  {_DIM}Starting workers — first output may take a few seconds…{_RESET}", end="\r", flush=True)
+    sys.stdout.write(f"  {_DIM}Starting workers — first output may take a few seconds…{_RESET}")
+    sys.stdout.flush()
 
     results: dict[str, dict] = {}
 
@@ -196,20 +239,28 @@ def run_ingest(vault: Path, workers: int | None = None, files: list | None = Non
             status = f"{_YELLOW}ERR{_RESET}" if is_err else f"{_GREEN}OK {_RESET}"
             pages  = result.get("page_count", "?")
 
-            # Progress bar + ETA on a single updating line
+            try:
+                rel = str(path.relative_to(incoming))
+            except ValueError:
+                rel = path.name
+
+            # Progress bar + ETA
             bar = _bar(done, total)
             if done < total and elapsed_wall > 0:
                 eta     = round((elapsed_wall / done) * (total - done))
-                eta_str = f"{eta // 60}m {eta % 60}s" if eta >= 60 else f"{eta}s"
-                time_part = f"  {_DIM}ETA ~{eta_str}{_RESET}"
+                time_part = f"  {_DIM}{_fmt_eta(eta)}{_RESET}"
             elif done == total:
                 time_part = f"  {_DIM}{round(elapsed_wall)}s total{_RESET}"
             else:
                 time_part = ""
 
-            # Overwrite the progress line, then print the file log on a new line
-            print(f"\r  {bar} {done}/{total}{time_part}          ", flush=True)
-            print(f"  {status}  {_BOLD}{path.name}{_RESET}  {_DIM}{pages}p{_RESET}")
+            bar_display = f"{bar} {done}/{total}{time_part}          "
+
+            # Clear the bar line, print file result (scrolls), then re-print bar without newline
+            sys.stdout.write("\r\033[K")
+            print(f"  {status}  {_BOLD}{rel}{_RESET}  {_DIM}{pages}p{_RESET}")
+            sys.stdout.write(f"  {bar_display}")
+            sys.stdout.flush()
 
             if is_err:
                 failed_dir = incoming / "_FAILED"
@@ -218,7 +269,10 @@ def run_ingest(vault: Path, workers: int | None = None, files: list | None = Non
                     path.rename(failed_dir / path.name)
                 except OSError:
                     pass
+                sys.stdout.write("\r\033[K")
                 print(f"       {_YELLOW}→ _INCOMING/_FAILED/{_RESET}  {_DIM}{result['error'][:80]}{_RESET}")
+                sys.stdout.write(f"  {bar_display}")
+                sys.stdout.flush()
             else:
                 sha256 = result.get("sha256", "")
                 if sha256:
@@ -233,6 +287,11 @@ def run_ingest(vault: Path, workers: int | None = None, files: list | None = Non
                     (queue / f"{sha256}.json").write_text(
                         json.dumps(result, ensure_ascii=False)
                     )
+
+    # Clear the progress bar before printing summary
+    sys.stdout.write("\r\033[K")
+
+    _prune_empty_dirs(incoming)
 
     ok   = sum(1 for r in results.values() if "error" not in r)
     errs = total - ok

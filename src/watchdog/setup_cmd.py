@@ -33,7 +33,7 @@ def _warn(msg): print(f"  {_YELLOW}!{_RESET}  {msg}")
 
 def _check_deps() -> list[str]:
     """Print dep status. Returns list of missing blocking dep names (claude is non-blocking)."""
-    print("Checking dependencies...")
+    print("  Checking dependencies...")
     blocking_missing = []
     for binary, label, hint in _DEPS:
         if shutil.which(binary):
@@ -63,21 +63,21 @@ def _ask_projects_dir() -> Path:
     default_exists = default.exists()
 
     print()
-    print("Where should Watchdog store your investigation projects?")
+    print("  Where should Watchdog store your investigation projects?")
     if default_exists:
-        print(f"  1. Use {default}")
+        print(f"    1. Use {default}")
     else:
-        print(f"  1. Create {default}")
-    print("  2. Enter a different path")
+        print(f"    1. Create {default}")
+    print("    2. Enter a different path")
     print()
 
     while True:
-        choice = input("Choice [1]: ").strip() or "1"
+        choice = input("  Choice [1]: ").strip() or "1"
         if choice == "1":
             chosen = default
             break
         elif choice == "2":
-            raw = input("Path: ").strip()
+            raw = input("  Path: ").strip()
             if raw:
                 chosen = Path(raw).expanduser().resolve()
                 break
@@ -106,15 +106,20 @@ def _detect_shell() -> tuple[str | None, Path | None]:
 _COMPLETION_MARKER = "register-python-argcomplete watchdog"
 
 
-def _install_completion(shell: str, profile: Path | None) -> str | None:
+def _install_completion(shell: str, profile: Path | None, force: bool = False) -> str | None:
     """Install completions. Returns description of what was done, or None if skipped."""
+    # Prefer the register-python-argcomplete binary from the same venv as this Python,
+    # since pipx installs it there but does not expose it on the user's PATH.
+    rpa = Path(sys.executable).parent / "register-python-argcomplete"
+    rpa_str = str(rpa) if rpa.exists() else "register-python-argcomplete"
+
     if shell == "fish":
         fish_dir = Path.home() / ".config" / "fish" / "completions"
         fish_dir.mkdir(parents=True, exist_ok=True)
         dest = fish_dir / "watchdog.fish"
         try:
             result = subprocess.run(
-                ["register-python-argcomplete", "--shell", "fish", "watchdog"],
+                [rpa_str, "--shell", "fish", "watchdog"],
                 capture_output=True, text=True, timeout=10,
             )
             if result.returncode == 0 and result.stdout:
@@ -127,17 +132,25 @@ def _install_completion(shell: str, profile: Path | None) -> str | None:
     if profile is None:
         return None
 
-    if profile.exists() and _COMPLETION_MARKER in profile.read_text():
-        return None  # already present
+    good_line = f'eval "$({rpa_str} watchdog)"'
+
+    if profile.exists():
+        content = profile.read_text()
+        if good_line in content and not force:
+            return None  # already correct
+        if _COMPLETION_MARKER in content:
+            # Stale entry (wrong path or old form) — strip and rewrite below
+            lines = [l for l in content.splitlines() if _COMPLETION_MARKER not in l]
+            profile.write_text("\n".join(lines).rstrip() + "\n")
 
     with open(profile, "a") as f:
-        f.write(f'\neval "$(register-python-argcomplete watchdog)"\n')
+        f.write(f"\n{good_line}\n")
     return str(profile)
 
 
 def run(force: bool = False) -> None:
     if CONFIG_FILE.exists() and not force:
-        print("Watchdog is already set up. Use --force to re-run.")
+        print("  Watchdog is already set up. Use --force to re-run.")
         return
 
     print()
@@ -146,9 +159,9 @@ def run(force: bool = False) -> None:
     blocking = _check_deps()
     if blocking:
         print()
-        print("Install missing dependencies before running `watchdog setup`:")
+        print("  Install missing dependencies before running `watchdog setup`:")
         for label, hint in blocking:
-            print(f"\n  {label}:\n    {hint}")
+            print(f"\n    {label}:\n      {hint}")
         print()
         sys.exit(1)
 
@@ -156,28 +169,28 @@ def run(force: bool = False) -> None:
     projects_dir = _ask_projects_dir()
     _ok(f"Projects directory: {projects_dir}")
 
-    # 4. Shell completions
+    # 3. Shell completions
     print()
     shell, profile = _detect_shell()
     if shell:
-        print(f"Installing shell completions for {shell}...")
-        result = _install_completion(shell, profile)
+        print(f"  Installing shell completions for {shell}...")
+        result = _install_completion(shell, profile, force=force)
         if result:
             _ok(f"Added to {result}")
         else:
             _ok("Already installed")
     else:
-        print("Shell not detected — skipping tab completions.")
+        print("  Shell not detected — skipping tab completions.")
 
-    # 5. Machine capabilities
+    # 4. Machine capabilities
     cores = os.cpu_count() or 1
     print()
-    print("Detecting machine capabilities...")
+    print("  Detecting machine capabilities...")
     _ok(f"CPU cores: {cores} — worker counts set to auto (adaptive per workload)")
 
-    # 6. OCR engine
+    # 5. OCR engine
     print()
-    print("Detecting OCR engine...")
+    print("  Detecting OCR engine...")
     if sys.platform == "darwin":
         try:
             import ocrmac  # noqa: F401
@@ -192,7 +205,7 @@ def run(force: bool = False) -> None:
             _warn("tesserocr not importable — OCR will fall back to EasyOCR"
                   " (install Tesseract system package first, then: pip install tesserocr)")
 
-    # 7. Download ML models
+    # 6. Download ML models
     _FASTEMBED_MODEL = "BAAI/bge-small-en-v1.5"
     _fastembed_cache = (
         Path(os.environ.get("FASTEMBED_CACHE_PATH", Path.home() / ".cache" / "fastembed"))
@@ -206,9 +219,9 @@ def run(force: bool = False) -> None:
     )
     print()
     if _models_cached:
-        print("Checking ML models...")
+        print("  Checking ML models...")
     else:
-        print("Downloading ML models (one-time, ~600 MB — may take a few minutes)...")
+        print("  Downloading ML models (one-time, ~600 MB — may take a few minutes)...")
     try:
         from fastembed import TextEmbedding
         TextEmbedding(_FASTEMBED_MODEL)
@@ -222,7 +235,7 @@ def run(force: bool = False) -> None:
     except Exception as e:
         _warn(f"Docling model download failed: {e}")
 
-    # 8. Write config
+    # 7. Write config
     WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
     CONFIG_FILE.write_text(
         json.dumps(
@@ -231,7 +244,7 @@ def run(force: bool = False) -> None:
         ) + "\n"
     )
 
-    # 9. Done
+    # 8. Done
     reload_hint = f"source {profile}" if profile else "reload your shell"
     print()
     print(f"{_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{_RESET}")
