@@ -278,7 +278,7 @@ def cmd_preprocess(args) -> None:
     vault = Path(".").resolve()
     if not (vault / ".watchdog").is_dir():
         sys.exit("Error: not inside a Watchdog project folder. cd into your investigation first.")
-    _run_preprocess(vault, workers=getattr(args, "workers", 4))
+    _run_preprocess(vault, workers=getattr(args, "workers", None))
 
 
 def cmd_open(args) -> None:
@@ -863,8 +863,8 @@ def main() -> None:
     p_configure.set_defaults(func=cmd_configure)
 
     p_ingest = sub.add_parser("preprocess", help="Preprocess documents in _INCOMING/ for extraction in Claude Code")
-    p_ingest.add_argument("--workers", type=int, default=4, metavar="N",
-                          help="Parallel preprocessing workers (default: 4)")
+    p_ingest.add_argument("--workers", type=int, default=None, metavar="N",
+                          help="Parallel preprocessing workers (default: chunk_workers from config)")
     p_ingest.set_defaults(func=cmd_preprocess)
 
     args = parser.parse_args()

@@ -20,12 +20,29 @@ SKIP_NAMES    = {".ds_store", ".ingest-lock"}
 SKIP_SUFFIXES = {".yml"}
 SKIP_DIRS     = {"_failed", "_FAILED"}
 
-_BOLD  = "\033[1m"
-_DIM   = "\033[2m"
-_CYAN  = "\033[0;36m"
-_GREEN = "\033[0;32m"
+_BOLD   = "\033[1m"
+_DIM    = "\033[2m"
+_CYAN   = "\033[0;36m"
+_GREEN  = "\033[0;32m"
 _YELLOW = "\033[0;33m"
-_RESET = "\033[0m"
+_RESET  = "\033[0m"
+
+_BAR_WIDTH = 28
+
+
+def _config_workers() -> int:
+    """Read chunk_workers from ~/.watchdog/config.json, fall back to DEFAULT_WORKERS."""
+    try:
+        import os
+        cfg = json.loads((Path.home() / ".watchdog" / "config.json").read_text())
+        return int(cfg.get("chunk_workers", DEFAULT_WORKERS))
+    except Exception:
+        return DEFAULT_WORKERS
+
+
+def _bar(done: int, total: int) -> str:
+    filled = round(_BAR_WIDTH * done / total) if total else 0
+    return f"[{'█' * filled}{'░' * (_BAR_WIDTH - filled)}]"
 
 
 def find_files(paths: list[Path]) -> list[Path]:
@@ -73,7 +90,10 @@ def preprocess_one(path: Path, vault_path: str | None = None, timeout: int = DEF
     return result
 
 
-def run_ingest(vault: Path, workers: int = DEFAULT_WORKERS) -> None:
+def run_ingest(vault: Path, workers: int | None = None) -> None:
+    if workers is None:
+        workers = _config_workers()
+
     incoming     = vault / "_INCOMING"
     preprocessed = vault / ".watchdog" / "preprocessed"
     preprocessed.mkdir(parents=True, exist_ok=True)
@@ -83,9 +103,7 @@ def run_ingest(vault: Path, workers: int = DEFAULT_WORKERS) -> None:
         print(f"\n  {_DIM}_INCOMING/ is empty — nothing to preprocess.{_RESET}\n")
         return
 
-    # Skip files already preprocessed (sha256 file exists) or already extracted
-    # (checked after preprocessing via documents.json). We discover this per-file.
-    total      = len(files)
+    total       = len(files)
     batch_start = time.time()
 
     print(f"\n  {_BOLD}Preprocessing {total} file{'s' if total != 1 else ''}{_RESET}  {_DIM}({workers} workers){_RESET}\n")
@@ -105,17 +123,21 @@ def run_ingest(vault: Path, workers: int = DEFAULT_WORKERS) -> None:
             is_err = "error" in result
             status = f"{_YELLOW}ERR{_RESET}" if is_err else f"{_GREEN}OK {_RESET}"
             pages  = result.get("page_count", "?")
-            secs   = result.get("elapsed_s", "?")
 
-            remaining = total - done
-            if remaining > 0 and done > 0:
-                eta     = round((elapsed_wall / done) * remaining)
+            # Progress bar + ETA on a single updating line
+            bar = _bar(done, total)
+            if done < total and elapsed_wall > 0:
+                eta     = round((elapsed_wall / done) * (total - done))
                 eta_str = f"{eta // 60}m {eta % 60}s" if eta >= 60 else f"{eta}s"
-                eta_part = f"  {_DIM}ETA ~{eta_str}{_RESET}"
+                time_part = f"  {_DIM}ETA ~{eta_str}{_RESET}"
+            elif done == total:
+                time_part = f"  {_DIM}{round(elapsed_wall)}s total{_RESET}"
             else:
-                eta_part = ""
+                time_part = ""
 
-            print(f"  [{done}/{total}] {status}  {_BOLD}{path.name}{_RESET}  {_DIM}{pages}p  {secs}s{_RESET}{eta_part}")
+            # Overwrite the progress line, then print the file log on a new line
+            print(f"\r  {bar} {done}/{total}{time_part}          ", flush=True)
+            print(f"  {status}  {_BOLD}{path.name}{_RESET}  {_DIM}{pages}p{_RESET}")
 
             if is_err:
                 failed_dir = incoming / "_FAILED"
@@ -124,7 +146,7 @@ def run_ingest(vault: Path, workers: int = DEFAULT_WORKERS) -> None:
                     path.rename(failed_dir / path.name)
                 except OSError:
                     pass
-                print(f"         {_YELLOW}→ moved to _INCOMING/_FAILED/{_RESET}  {_DIM}{result['error'][:80]}{_RESET}")
+                print(f"       {_YELLOW}→ _INCOMING/_FAILED/{_RESET}  {_DIM}{result['error'][:80]}{_RESET}")
             else:
                 sha256 = result.get("sha256", "")
                 if sha256:
