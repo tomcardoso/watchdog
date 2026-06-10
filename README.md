@@ -109,7 +109,7 @@ Docling runs locally. Your documents never leave your machine during preprocessi
 
 ## Requirements
 
-- **macOS 12+** — Linux supported; Windows via WSL2
+- **macOS, Linux, or Windows**
 - **[Obsidian](https://obsidian.md) v1.6+** — free
 - **[Claude Code](https://claude.ai/download)** — free to install
 - **Claude.ai Pro or Max subscription** — required (Pro ~$20/month; Max from $100/month)
@@ -199,7 +199,7 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog chew <file>` | Process a single specific file |
 | `watchdog watch <name>` | Watch `_INCOMING/` and chew files automatically as they arrive |
 
-`watchdog chew` sends a macOS notification when files finish processing.
+`watchdog chew` sends a desktop notification when files finish processing (macOS only).
 
 ### Info and settings
 
@@ -463,7 +463,7 @@ Treat everything Watchdog produces as a structured first read, not a finished pr
 
 ## Alpha limitations
 
-- **macOS only** for the scripted installer. Linux and Windows (WSL2) work but require manual setup — see [INSTALL.md](INSTALL.md).
+- **Tested primarily on macOS.** Linux and Windows are supported but have seen less real-world use — feedback welcome.
 - **Domain skills are v1.** The extraction skills are well-researched but have not yet been validated in a live investigation. Expect rough edges — and please contribute improvements.
 - **No global entity registry.** Entities are scoped to a single vault. Cross-investigation entity matching is planned for a future release.
 - **Audio/video requires extra setup.** Speech-to-text adds significant install time and disk space — see [INSTALL.md](INSTALL.md).

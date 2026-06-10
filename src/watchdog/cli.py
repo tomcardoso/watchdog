@@ -528,6 +528,14 @@ def cmd_obsidian(args) -> None:
         opener = ["open", url]
     elif sys.platform.startswith("linux"):
         opener = ["xdg-open", url]
+    elif sys.platform == "win32":
+        import os as _os
+        try:
+            _os.startfile(url)
+        except Exception:
+            sys.exit("Error: could not open Obsidian — is it installed?")
+        print(f"\n  {_GREEN}Opened:{_RESET} {_BOLD}{info['name']}{_RESET} in Obsidian\n")
+        return
     else:
         sys.exit("Error: watchdog obsidian is not supported on this platform")
     result = subprocess.run(opener, capture_output=True)
