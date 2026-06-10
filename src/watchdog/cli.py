@@ -111,6 +111,10 @@ _CMD_HELP: dict[str, dict] = {
     "about": {
         "desc": "Show version and project links",
     },
+    "obsidian": {
+        "desc": "Open an investigation vault in Obsidian",
+        "args": [("name", "Investigation name or slug")],
+    },
 }
 
 
@@ -414,6 +418,25 @@ def cmd_open(args) -> None:
     else:
         _launch_claude(vault)
 
+
+
+def cmd_obsidian(args) -> None:
+    _, info = _find_project(args.name)
+    vault = Path(info["path"])
+    if not vault.exists():
+        sys.exit(f"Error: project directory not found: {vault}")
+    from urllib.parse import quote
+    url = f"obsidian://open?path={quote(str(vault))}"
+    if sys.platform == "darwin":
+        opener = ["open", url]
+    elif sys.platform.startswith("linux"):
+        opener = ["xdg-open", url]
+    else:
+        sys.exit("Error: watchdog obsidian is not supported on this platform")
+    result = subprocess.run(opener, capture_output=True)
+    if result.returncode != 0:
+        sys.exit("Error: could not open Obsidian — is it installed?")
+    print(f"\n  {_GREEN}Opened:{_RESET} {_BOLD}{info['name']}{_RESET} in Obsidian\n")
 
 
 def cmd_about(_args) -> None:
@@ -961,6 +984,7 @@ def _print_banner() -> None:
     cmds = [
         ("new",       "Create a new investigation vault"),
         ("open",      "Chew pending documents and open in Claude Code"),
+        ("obsidian",  "Open an investigation vault in Obsidian"),
         ("chew",      "Process documents in _INCOMING/ and prepare them for ingestion"),
         ("list",      "List all registered investigations"),
         ("status",    "Show detailed status for an investigation"),
@@ -1050,6 +1074,10 @@ def main() -> None:
     p_chew.add_argument("--workers", type=int, default=None, metavar="N",
                         help="Parallel file workers (default: auto)")
     p_chew.set_defaults(func=cmd_chew)
+
+    p_obsidian = sub.add_parser("obsidian", help="Open an investigation vault in Obsidian")
+    p_obsidian.add_argument("name", help="Investigation name or slug")
+    p_obsidian.set_defaults(func=cmd_obsidian)
 
     args = parser.parse_args()
 

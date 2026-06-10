@@ -236,6 +236,27 @@ def test_cmd_open_skips_claude_when_user_declines(configured, monkeypatch):
     assert len(launched) == 0
 
 
+# ── cmd_obsidian ──────────────────────────────────────────────────────────────
+
+def test_cmd_obsidian_opens_url(configured, monkeypatch):
+    cli.cmd_new(args(name="My Story", dir=str(configured)))
+    calls = []
+    monkeypatch.setattr("watchdog.cli.subprocess.run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
+    monkeypatch.setattr("watchdog.cli.sys.platform", "darwin")
+    cli.cmd_obsidian(args(name="My Story"))
+    assert len(calls) == 1
+    assert calls[0][0] == "open"
+    assert "obsidian://open?path=" in calls[0][1]
+
+
+def test_cmd_obsidian_exits_on_failure(configured, monkeypatch):
+    cli.cmd_new(args(name="My Story", dir=str(configured)))
+    monkeypatch.setattr("watchdog.cli.subprocess.run", lambda cmd, **kw: type("R", (), {"returncode": 1})())
+    monkeypatch.setattr("watchdog.cli.sys.platform", "darwin")
+    with pytest.raises(SystemExit):
+        cli.cmd_obsidian(args(name="My Story"))
+
+
 # ── cmd_list ──────────────────────────────────────────────────────────────────
 
 def test_cmd_list_empty(configured, capsys):
