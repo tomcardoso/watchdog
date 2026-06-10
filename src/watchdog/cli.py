@@ -13,6 +13,22 @@ WATCHDOG_HOME = Path.home() / ".watchdog"
 PROJECTS_FILE = WATCHDOG_HOME / "projects.json"
 CONFIG_FILE   = WATCHDOG_HOME / "config.json"
 
+
+def _perf_cpu_count() -> int:
+    """Performance core count on Apple Silicon; total core count everywhere else."""
+    try:
+        r = subprocess.run(
+            ["sysctl", "-n", "hw.perflevel0.logicalcpu"],
+            capture_output=True, text=True, timeout=2,
+        )
+        if r.returncode == 0:
+            n = int(r.stdout.strip())
+            if n > 0:
+                return n
+    except Exception:
+        pass
+    return os.cpu_count() or 4
+
 _ALIASES = {
     "init":     "new",
     "create":   "new",
@@ -24,13 +40,16 @@ _ALIASES = {
     "config":   "configure",
     "setting":  "configure",
     "settings": "configure",
+    "find":      "search",
+    "process":   "chew",
+    "preprocess": "chew",
+    "prep":      "chew",
 }
 
 _PIPELINE_COMMANDS = {
-    "near-dup":    ("watchdog.pipeline.near_dup",      "watchdog-near-dup"),
-    "arrows":      ("watchdog.pipeline.arrows_parser", "watchdog-arrows"),
-    "write-vault": ("watchdog.pipeline.write_vault",   "watchdog-write-vault"),
-    "write-entity":("watchdog.pipeline.write_entity",  "watchdog-write-entity"),
+    "near-dup":    ("watchdog.pipeline.near_dup",     "watchdog-near-dup"),
+    "write-vault": ("watchdog.pipeline.write_vault",  "watchdog-write-vault"),
+    "write-entity":("watchdog.pipeline.write_entity", "watchdog-write-entity"),
 }
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates" / "vault"
@@ -105,6 +124,13 @@ def _count_incoming(vault: Path) -> int:
     return count
 
 
+def _count_queued(vault: Path) -> int:
+    queue = vault / ".watchdog" / "queue"
+    if not queue.exists():
+        return 0
+    return sum(1 for f in queue.iterdir() if f.suffix == ".json")
+
+
 def _find_project(name: str) -> tuple[str, dict]:
     projects = load_projects()
     slug = slugify(name)
@@ -140,7 +166,8 @@ def cmd_new(args) -> None:
         "_CONTEXT",
         "morgue",
         ".watchdog/Registry",
-        ".watchdog/preprocessed",
+        ".watchdog/queue",
+        ".watchdog/staging",
         "entities/person",
         "entities/company",
         "entities/address",
@@ -194,14 +221,16 @@ def cmd_new(args) -> None:
     (vault / "index.md").write_text(_render_template("index.md", name=name, today=today))
     (vault / "CLAUDE.md").write_text(_render_template("CLAUDE.md", name=name))
 
+    from watchdog.setup_cmd import install_skills
+    install_skills(vault / ".claude" / "commands")
+
     (vault / ".claude" / "settings.json").write_text(
         json.dumps(
             {
                 "permissions": {
                     "allow": [
                         "Bash(watchdog near-dup *)",
-                        "Bash(watchdog arrows *)",
-                        "Bash(find .watchdog/preprocessed/ *)",
+                        "Bash(find .watchdog/queue/ *)",
                         "Bash(find _CONTEXT/ *)",
                         "Bash(mkdir -p *)",
                         "Bash(watchdog write-vault *)",
@@ -209,7 +238,7 @@ def cmd_new(args) -> None:
                         "Bash(rm /tmp/watchdog-extraction-*)",
                         "Bash(rm /tmp/entity-refresh-*)",
                         "Bash(rm .watchdog/Registry/.ingest-lock)",
-                        "Bash(rm .watchdog/preprocessed/*)",
+                        "Bash(rm .watchdog/queue/*)",
                     ]
                 },
                 "hooks": {
@@ -222,8 +251,8 @@ def cmd_new(args) -> None:
                                     "command": (
                                         "python3 -c \""
                                         "from pathlib import Path; "
-                                        "p = list(Path('.watchdog/preprocessed').glob('*.json')) "
-                                        "if Path('.watchdog/preprocessed').exists() else []; "
+                                        "p = list(Path('.watchdog/queue').glob('*.json')) "
+                                        "if Path('.watchdog/queue').exists() else []; "
                                         "print('WATCHDOG: ' + str(len(p)) + ' file(s) ready for extraction — run /watchdog-ingest') if p else None"
                                         "\""
                                     ),
@@ -246,26 +275,29 @@ def cmd_new(args) -> None:
     print(f"{_BOLD}Next steps:{_RESET}")
     print(f"  1. Open {_CYAN}{vault}{_RESET} as a new vault in Obsidian")
     print(f"  2. Drop documents into {_CYAN}_INCOMING/{_RESET}")
-    print(f"  3. Run {_CYAN}watchdog open {slug}{_RESET} to preprocess them")
-    print(f"  4. Run {_CYAN}watchdog claude {slug}{_RESET} and then {_CYAN}/watchdog-ingest{_RESET}")
-    print()
-    print(f"  {_DIM}Or navigate to the folder and run {_RESET}{_CYAN}watchdog{_RESET}{_DIM} directly.{_RESET}")
+    print(f"  3. Run {_CYAN}watchdog open {slug}{_RESET} to chew documents and open in Claude Code")
+    print(f"  4. Run {_CYAN}/watchdog-ingest{_RESET} inside Claude Code")
 
 
 def _run_preprocess(vault: Path, workers: int = 4, confirm: bool = False) -> None:
     from watchdog.pipeline.preprocess_batch import run_ingest, find_files
     incoming = vault / "_INCOMING"
+    queue    = vault / ".watchdog" / "queue"
     if not incoming.is_dir():
         sys.exit(f"Error: _INCOMING/ not found in {vault}")
     if confirm:
         files = find_files([incoming])
         if not files:
-            print(f"\n  {_DIM}_INCOMING/ is empty — nothing to preprocess.{_RESET}\n")
+            queued = len(list(queue.glob("*.json"))) if queue.exists() else 0
+            if queued:
+                print(f"\n  {_DIM}_INCOMING/ is empty — {queued} file{'s' if queued != 1 else ''} ready for {_RESET}{_CYAN}/watchdog-ingest{_RESET}{_DIM}.{_RESET}\n")
+            else:
+                print(f"\n  {_DIM}_INCOMING/ is empty — nothing to chew.{_RESET}\n")
             return
         n = len(files)
         label = f"{n} file{'s' if n != 1 else ''}"
         try:
-            answer = input(f"\n  Found {_BOLD}{label}{_RESET} in _INCOMING/. Preprocess now? [Y/n] ").strip().lower()
+            answer = input(f"\n  Found {_BOLD}{label}{_RESET} in _INCOMING/. Chew now? [Y/n] ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             print()
             return
@@ -274,7 +306,7 @@ def _run_preprocess(vault: Path, workers: int = 4, confirm: bool = False) -> Non
     run_ingest(vault, workers=workers)
 
 
-def cmd_preprocess(args) -> None:
+def cmd_chew(args) -> None:
     vault = Path(".").resolve()
     if not (vault / ".watchdog").is_dir():
         sys.exit("Error: not inside a Watchdog project folder. cd into your investigation first.")
@@ -290,17 +322,6 @@ def cmd_open(args) -> None:
     os.chdir(vault)
     _run_preprocess(vault, confirm=True)
 
-
-def cmd_claude(args) -> None:
-    _, info = _find_project(args.name)
-    path = info["path"]
-    if not Path(path).exists():
-        sys.exit(f"Error: project directory not found: {path}")
-    print(f"  {_BOLD}{info['name']}{_RESET}  {_CYAN}{path}{_RESET}")
-    try:
-        os.execvp("claude", ["claude", path])
-    except FileNotFoundError:
-        sys.exit("Error: Claude Code not found — install from https://claude.ai/download")
 
 
 def cmd_about(_args) -> None:
@@ -328,19 +349,45 @@ def cmd_list(_args) -> None:
 
     rows = []
     for slug, info in sorted(projects.items(), key=lambda x: x[1]["name"]):
-        reg = _load_registry(Path(info["path"]))
+        vault = Path(info["path"])
+        reg      = _load_registry(vault)
         docs     = str(reg["document_count"]) if reg else "—"
         entities = str(reg["entity_count"])   if reg else "—"
         updated  = _fmt_date(reg["last_updated"]) if reg else "—"
-        rows.append((info["name"], slug, docs, entities, updated))
+        incoming = str(_count_incoming(vault)) if vault.exists() else "—"
+        queued   = str(_count_queued(vault))   if vault.exists() else "—"
+        rows.append((info["name"], slug, docs, entities, updated, incoming, queued))
 
     name_w = max(len(r[0]) for r in rows) + 2
     slug_w = max(len(r[1]) for r in rows) + 2
-    header = f"  {_BOLD}{'Project':<{name_w}}{_RESET}  {_DIM}{'Slug':<{slug_w}}{'Docs':>6}  {'Entities':>8}  Updated{_RESET}"
+    # each column: 2-space prefix + content width
+    # name(name_w) + slug(slug_w) + docs(6) + entities(8) + to_chew(7) + to_ingest(9) + updated(10) + 7×2 separators - 2(leading indent)
+    sep_w = name_w + slug_w + 6 + 8 + 7 + 9 + 10 + 7 * 2 - 2
+    header = (
+        f"  {_BOLD}{'Project':<{name_w}}{_RESET}"
+        f"  {_DIM}{'Slug':<{slug_w}}"
+        f"  {'Docs':>6}"
+        f"  {'Entities':>8}"
+        f"  {'To chew':>7}"
+        f"  {'To ingest':>9}"
+        f"  Updated{_RESET}"
+    )
     print(f"\n{header}")
-    print(f"  {_DIM}{'─' * (name_w + slug_w + 30)}{_RESET}")
-    for name, slug, docs, entities, updated in rows:
-        print(f"  {_BOLD}{name:<{name_w}}{_RESET}  {_DIM}{slug:<{slug_w}}{docs:>6}  {entities:>8}  {updated}{_RESET}")
+    print(f"  {_DIM}{'─' * sep_w}{_RESET}")
+    for name, slug, docs, entities, updated, incoming, queued in rows:
+        inc = "—" if incoming == "0" else incoming
+        que = "—" if queued   == "0" else queued
+        inc_str = f"{_YELLOW}{inc:>7}{_RESET}" if inc != "—" else f"{_DIM}{inc:>7}{_RESET}"
+        que_str = f"{_YELLOW}{que:>9}{_RESET}" if que != "—" else f"{_DIM}{que:>9}{_RESET}"
+        print(
+            f"  {_BOLD}{name:<{name_w}}{_RESET}"
+            f"  {_DIM}{slug:<{slug_w}}"
+            f"  {docs:>6}"
+            f"  {entities:>8}{_RESET}"
+            f"  {inc_str}"
+            f"  {que_str}"
+            f"  {_DIM}{updated}{_RESET}"
+        )
     print()
 
 
@@ -370,7 +417,8 @@ def cmd_status(args) -> None:
     total_pages = sum(d.get("page_count", 0) for d in docs_data.values())
     doc_types   = Counter(d["document_type"] for d in docs_data.values() if d.get("document_type"))
     ent_types   = Counter(e["type"]          for e in ents_data.values() if e.get("type"))
-    pending     = _count_incoming(vault)
+    incoming_n = _count_incoming(vault)
+    queued_n   = _count_queued(vault)
 
     print(f"\n  {_BOLD}{info['name']}{_RESET}  {_DIM}{slugify(info['name'])}{_RESET}")
     print(f"  {_CYAN}{info['path']}{_RESET}")
@@ -378,12 +426,12 @@ def cmd_status(args) -> None:
     print()
 
     pages_note = f" {_DIM}({total_pages} pages){_RESET}" if total_pages else ""
-    doc_label  = "documents processed" if pending else "documents"
-    print(f"  {_BOLD}{reg['document_count']}{_RESET} {doc_label}{pages_note} · {_BOLD}{reg['entity_count']}{_RESET} entities · {_DIM}last updated {_fmt_date(reg['last_updated'])}{_RESET}")
+    print(f"  {_BOLD}{reg['document_count']}{_RESET} documents{pages_note} · {_BOLD}{reg['entity_count']}{_RESET} entities · {_DIM}last updated {_fmt_date(reg['last_updated'])}{_RESET}")
 
-    if pending:
-        remaining = f"{_YELLOW}{pending} file{'s' if pending != 1 else ''} pending{_RESET}"
-        print(f"  {_DIM}Pending in{_RESET} {_CYAN}_INCOMING/{_RESET}  {remaining}")
+    if incoming_n:
+        print(f"  {_YELLOW}{incoming_n} file{'s' if incoming_n != 1 else ''}{_RESET} in {_CYAN}_INCOMING/{_RESET} {_DIM}— run{_RESET} {_CYAN}watchdog chew{_RESET}")
+    if queued_n:
+        print(f"  {_YELLOW}{queued_n} file{'s' if queued_n != 1 else ''}{_RESET} chewed and waiting for {_CYAN}/watchdog-ingest{_RESET}")
 
     if doc_types:
         print()
@@ -401,6 +449,7 @@ def cmd_status(args) -> None:
 
 
 _CONFIGURE_KEYS = {
+    # ── Project ───────────────────────────────────────────────────────────────
     "projects_dir": {
         "short": "Path where new investigation vaults are created",
         "help": (
@@ -409,6 +458,22 @@ _CONFIGURE_KEYS = {
             "  Existing vaults are not moved."
         ),
         "type": "path",
+    },
+    # ── OCR ───────────────────────────────────────────────────────────────────
+    "ocr_engine": {
+        "short": "OCR engine for scanned documents (default: auto)",
+        "help": (
+            "OCR engine used when processing scanned documents.\n"
+            "  auto:         Apple Vision on macOS (if ocrmac installed), Tesseract elsewhere.\n"
+            "  apple_vision: Apple Vision only — macOS with ocrmac required.\n"
+            "  tesseract:    Tesseract — requires system install (brew or apt install tesseract-ocr).\n"
+            "  easyocr:      EasyOCR — pure pip install, no system deps, less accurate on forms.\n"
+            "  rapidocr:     RapidOCR — lightweight, no C deps, fast.\n"
+            "  Valid values: auto, apple_vision, tesseract, easyocr, rapidocr."
+        ),
+        "type": "enum",
+        "default": "auto",
+        "choices": ["auto", "apple_vision", "tesseract", "easyocr", "rapidocr"],
     },
     "ocr_languages": {
         "short": "Apple Vision OCR languages (comma-separated BCP 47 codes, e.g. en-US,fr-FR)",
@@ -434,6 +499,20 @@ _CONFIGURE_KEYS = {
         "min": 0.0,
         "max": 1.0,
     },
+    # ── Processing ────────────────────────────────────────────────────────────
+    "chew_workers": {
+        "short": "Parallel files during chewing ('auto' for adaptive, or a fixed number)",
+        "help": (
+            "Number of files chewed simultaneously by `watchdog chew`.\n"
+            "  'auto' (default): Watchdog scans the batch before starting and sets this based on\n"
+            "  median document length — more workers for short-doc batches, fewer for large PDFs.\n"
+            "  Set to a whole number to pin the value regardless of batch content.\n"
+            "  Set to 1 to process files one at a time."
+        ),
+        "type": "int_or_auto",
+        "default": "auto",
+        "min": 1,
+    },
     "chunk_size": {
         "short": "Pages per chunk when splitting large PDFs for parallel processing (default: 40)",
         "help": (
@@ -446,28 +525,17 @@ _CONFIGURE_KEYS = {
         "default": 40,
         "min": 1,
     },
-    "preprocess_workers": {
-        "short": "Parallel files during preprocessing (default: 4)",
-        "help": (
-            "Number of files preprocessed simultaneously by `watchdog preprocess`.\n"
-            "  Each worker is one subprocess, so total CPU load is preprocess_workers × chunk_workers\n"
-            "  for batches of large PDFs. Keep this modest (2–6) to avoid overloading your machine.\n"
-            "  Set to 1 to process files one at a time."
-        ),
-        "type": "int",
-        "default": 4,
-        "min": 1,
-    },
     "chunk_workers": {
-        "short": "Parallel subprocesses for large-PDF chunk processing (default: half your CPU core count)",
+        "short": "Parallel subprocesses for large-PDF chunks ('auto' for adaptive, or a fixed number)",
         "help": (
-            "Number of parallel subprocesses used when processing large PDFs (>chunk_size pages).\n"
-            "  Higher values speed up ingestion on multi-core machines but increase CPU and memory use.\n"
-            "  Recommended: half your CPU core count. Set to 1 to disable parallelism.\n"
-            "  Note: total subprocess load is preprocess_workers × chunk_workers for large-PDF batches."
+            "Number of parallel subprocesses used when splitting large PDFs (>chunk_size pages).\n"
+            "  'auto' (default): set adaptively based on median document length in the batch.\n"
+            "  Works in tandem with chew_workers: total subprocess load for large-PDF batches\n"
+            "  is approximately chew_workers × chunk_workers.\n"
+            "  Set to 1 to disable within-file parallelism."
         ),
-        "type": "int",
-        "default": max(2, (os.cpu_count() or 2) // 2),
+        "type": "int_or_auto",
+        "default": "auto",
         "min": 1,
     },
     "chunk_timeout": {
@@ -481,6 +549,32 @@ _CONFIGURE_KEYS = {
         "default": 300,
         "min": 1,
     },
+    # ── Extraction ────────────────────────────────────────────────────────────
+    "table_structure": {
+        "short": "Run table detection model on PDFs (default: true)",
+        "help": (
+            "When enabled, Docling runs a dedicated ML model to detect and reconstruct tables.\n"
+            "  Disable to speed up ingestion of text-only documents (court decisions, contracts).\n"
+            "  Does not affect text extraction — only the table structure model.\n"
+            "  Default: true."
+        ),
+        "type": "bool",
+        "default": True,
+    },
+    "embed_images": {
+        "short": "Embed images as base64 in markdown output so Claude can see figures (default: false)",
+        "help": (
+            "When enabled, images and figures in documents are embedded as base64 data\n"
+            "  in the markdown output, allowing Claude to read charts, graphs, and other\n"
+            "  visual content directly. Significantly increases token usage and processing\n"
+            "  time per document. Only useful when documents contain charts, image-based\n"
+            "  tables, or diagrams that carry investigative value.\n"
+            "  Default: false."
+        ),
+        "type": "bool",
+        "default": False,
+    },
+    # ── Deduplication ─────────────────────────────────────────────────────────
     "dup_threshold": {
         "short": "Near-duplicate Jaccard similarity threshold — score at which documents are flagged (default: 0.85)",
         "help": (
@@ -508,45 +602,6 @@ _CONFIGURE_KEYS = {
         "type": "int",
         "default": 3,
         "min": 1,
-    },
-    "table_structure": {
-        "short": "Run table detection model on PDFs (default: true)",
-        "help": (
-            "When enabled, Docling runs a dedicated ML model to detect and reconstruct tables.\n"
-            "  Disable to speed up ingestion of text-only documents (court decisions, contracts).\n"
-            "  Does not affect text extraction — only the table structure model.\n"
-            "  Default: true."
-        ),
-        "type": "bool",
-        "default": True,
-    },
-    "embed_images": {
-        "short": "Embed images as base64 in markdown output so Claude can see figures (default: false)",
-        "help": (
-            "When enabled, images and figures in documents are embedded as base64 data\n"
-            "  in the markdown output, allowing Claude to read charts, graphs, and other\n"
-            "  visual content directly. Significantly increases token usage and processing\n"
-            "  time per document. Only useful when documents contain charts, image-based\n"
-            "  tables, or diagrams that carry investigative value.\n"
-            "  Default: false."
-        ),
-        "type": "bool",
-        "default": False,
-    },
-    "ocr_engine": {
-        "short": "OCR engine for scanned documents (default: auto)",
-        "help": (
-            "OCR engine used when processing scanned documents.\n"
-            "  auto:         Apple Vision on macOS (if ocrmac installed), Tesseract elsewhere.\n"
-            "  apple_vision: Apple Vision only — macOS with ocrmac required.\n"
-            "  tesseract:    Tesseract — requires system install (brew or apt install tesseract-ocr).\n"
-            "  easyocr:      EasyOCR — pure pip install, no system deps, less accurate on forms.\n"
-            "  rapidocr:     RapidOCR — lightweight, no C deps, fast.\n"
-            "  Valid values: auto, apple_vision, tesseract, easyocr, rapidocr."
-        ),
-        "type": "enum",
-        "default": "auto",
-        "choices": ["auto", "apple_vision", "tesseract", "easyocr", "rapidocr"],
     },
 }
 
@@ -684,9 +739,9 @@ def cmd_configure(args) -> None:
                 return f"{_DIM}auto-detect (default){_RESET}"
             d = meta.get("default")
             if d is not None:
-                d_str = "true" if d is True else "false" if d is False else str(d)
-                return f"{_DIM}(not set — default: {d_str}){_RESET}"
-            return f"{_DIM}(not set){_RESET}"
+                v = d  # fall through to normal rendering with the default value
+            else:
+                return f"{_DIM}(not set){_RESET}"
         if k == "ocr_languages":
             return f"{_CYAN}{', '.join(v)}{_RESET}" if v else f"{_DIM}auto-detect (default){_RESET}"
         if isinstance(v, bool):
@@ -715,7 +770,7 @@ def cmd_configure(args) -> None:
                 print(f"  {_DIM}{line.strip()}{_RESET}")
             print()
             print(f"  Current value:  {_display_value(key, config.get(key))}")
-            if key == "chunk_workers":
+            if key in ("chunk_workers", "chew_workers"):
                 print(f"  Machine cores:  {os.cpu_count() or 1}")
             print()
             answer = input("  Change this value? [y/N] ").strip().lower()
@@ -752,6 +807,20 @@ def cmd_configure(args) -> None:
             sys.exit(f"Error: '{key}' must be <= {hi}")
         config[key] = v
         display = str(v)
+    elif meta["type"] == "int_or_auto":
+        if value.lower() == "auto":
+            config[key] = "auto"
+            display = "auto"
+        else:
+            try:
+                v = int(value)
+            except ValueError:
+                sys.exit(f"Error: '{key}' must be 'auto' or a whole number")
+            lo = meta.get("min")
+            if lo is not None and v < lo:
+                sys.exit(f"Error: '{key}' must be >= {lo}")
+            config[key] = v
+            display = str(v)
     elif meta["type"] == "int":
         try:
             v = int(value)
@@ -796,7 +865,8 @@ def _print_banner() -> None:
     print("Commands:")
     cmds = [
         ("new",       "Create a new investigation vault"),
-        ("open",      "Open an investigation in Claude Code"),
+        ("open",      "cd to a project and chew any pending documents"),
+        ("chew",      "Process documents in _INCOMING/ and prepare them for ingestion"),
         ("list",      "List all registered investigations"),
         ("status",    "Show detailed status for an investigation"),
         ("search",    "Semantic search across ingested documents"),
@@ -836,13 +906,9 @@ def main() -> None:
     p_new.add_argument("--dir", help=f"Parent directory (default: projects_dir from config)")
     p_new.set_defaults(func=cmd_new)
 
-    p_open = sub.add_parser("open", help="cd to a project and preprocess any pending documents")
+    p_open = sub.add_parser("open", help="cd to a project and chew any pending documents")
     p_open.add_argument("name", help="Investigation name or slug")
     p_open.set_defaults(func=cmd_open)
-
-    p_claude = sub.add_parser("claude", help="Open an investigation in Claude Code")
-    p_claude.add_argument("name", help="Investigation name or slug")
-    p_claude.set_defaults(func=cmd_claude)
 
     p_list = sub.add_parser("list", help="List all registered investigations")
     p_list.set_defaults(func=cmd_list)
@@ -875,10 +941,10 @@ def main() -> None:
     p_configure.add_argument("value", nargs="?", help="Value to set")
     p_configure.set_defaults(func=cmd_configure)
 
-    p_ingest = sub.add_parser("preprocess", help="Preprocess documents in _INCOMING/ for extraction in Claude Code")
-    p_ingest.add_argument("--workers", type=int, default=None, metavar="N",
-                          help="Parallel preprocessing workers (default: chunk_workers from config)")
-    p_ingest.set_defaults(func=cmd_preprocess)
+    p_chew = sub.add_parser("chew", help="Process documents in _INCOMING/ and prepare them for ingestion")
+    p_chew.add_argument("--workers", type=int, default=None, metavar="N",
+                        help="Parallel file workers (default: auto)")
+    p_chew.set_defaults(func=cmd_chew)
 
     args = parser.parse_args()
 

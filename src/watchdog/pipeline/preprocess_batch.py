@@ -1,9 +1,9 @@
 """
 Watchdog batch preprocessor — run from the CLI, not from Claude Code.
 
-Preprocesses all files in _INCOMING/, writes per-file results to
-.watchdog/preprocessed/<sha256>.json, and prints a Claude Code handoff
-message when done.
+Chews all files in _INCOMING/, writes per-file results to
+.watchdog/queue/<sha256>.json, moves originals to .watchdog/staging/<sha256>/,
+and prints a Claude Code handoff message when done.
 """
 
 import json
@@ -13,7 +13,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-DEFAULT_WORKERS = 4
+from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
+
 DEFAULT_FILE_TIMEOUT = 600
 
 SKIP_NAMES    = {".ds_store", ".ingest-lock"}
@@ -30,13 +31,62 @@ _RESET  = "\033[0m"
 _BAR_WIDTH = 28
 
 
-def _config_workers() -> int:
-    """Read preprocess_workers from ~/.watchdog/config.json, fall back to DEFAULT_WORKERS."""
+def _count_pdf_pages(path: Path) -> int:
+    if path.suffix.lower() != ".pdf":
+        return 1
+    try:
+        r = subprocess.run(
+            ["qpdf", "--show-npages", str(path)],
+            capture_output=True, text=True, timeout=10,
+        )
+        if r.returncode == 0:
+            return int(r.stdout.strip())
+    except Exception:
+        pass
+    return 1
+
+
+def _adaptive_workers(files: list[Path]) -> tuple[int, int]:
+    perf = _perf_cpu_count()
+    with ThreadPoolExecutor(max_workers=min(8, len(files))) as pool:
+        counts = list(pool.map(_count_pdf_pages, files))
+    median = sorted(counts)[len(counts) // 2]
+    if median <= 10:
+        return max(2, perf // 2), max(2, perf // 5)
+    elif median <= 50:
+        return max(2, perf // 3), max(2, perf // 3)
+    else:
+        return max(2, perf // 5), max(2, perf // 2)
+
+
+def _resolve_workers(
+    files: list[Path], explicit_pre: int | None
+) -> tuple[int, int, bool]:
+    cfg: dict = {}
     try:
         cfg = json.loads((Path.home() / ".watchdog" / "config.json").read_text())
-        return int(cfg.get("preprocess_workers", DEFAULT_WORKERS))
     except Exception:
-        return DEFAULT_WORKERS
+        pass
+
+    pre_cfg   = cfg.get("chew_workers", "auto")
+    chunk_cfg = cfg.get("chunk_workers",       "auto")
+
+    needs_adaptive = (
+        (explicit_pre is None and pre_cfg == "auto") or chunk_cfg == "auto"
+    )
+
+    if needs_adaptive:
+        adaptive_pre, adaptive_chunk = _adaptive_workers(files)
+    else:
+        adaptive_pre = adaptive_chunk = 0
+
+    pre   = explicit_pre if explicit_pre is not None else (
+        adaptive_pre if pre_cfg == "auto" else int(pre_cfg)
+    )
+    chunk = adaptive_chunk if chunk_cfg == "auto" else int(chunk_cfg)
+    pre   = min(pre, max(1, len(files)))
+
+    return pre, chunk, needs_adaptive
 
 
 def _bar(done: int, total: int) -> str:
@@ -47,6 +97,7 @@ def _bar(done: int, total: int) -> str:
 def find_files(paths: list[Path]) -> list[Path]:
     files = []
     for p in paths:
+        p = Path(p)
         if p.is_file():
             if p.name.lower() not in SKIP_NAMES and p.suffix.lower() not in SKIP_SUFFIXES:
                 files.append(p)
@@ -64,11 +115,19 @@ def find_files(paths: list[Path]) -> list[Path]:
     return files
 
 
-def preprocess_one(path: Path, vault_path: str | None = None, timeout: int = DEFAULT_FILE_TIMEOUT) -> dict:
+
+def preprocess_one(
+    path: Path,
+    vault_path: str | None = None,
+    timeout: int = DEFAULT_FILE_TIMEOUT,
+    chunk_workers: int | None = None,
+) -> dict:
     t0 = time.time()
     cmd = [sys.executable, "-m", "watchdog.pipeline.preprocess", str(path)]
     if vault_path:
         cmd += ["--vault-path", vault_path]
+    if chunk_workers is not None:
+        cmd += ["--chunk-workers", str(chunk_workers)]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         elapsed = round(time.time() - t0, 1)
@@ -90,27 +149,40 @@ def preprocess_one(path: Path, vault_path: str | None = None, timeout: int = DEF
 
 
 def run_ingest(vault: Path, workers: int | None = None) -> None:
-    if workers is None:
-        workers = _config_workers()
-
-    incoming     = vault / "_INCOMING"
-    preprocessed = vault / ".watchdog" / "preprocessed"
-    preprocessed.mkdir(parents=True, exist_ok=True)
+    incoming = vault / "_INCOMING"
+    queue    = vault / ".watchdog" / "queue"
+    staging  = vault / ".watchdog" / "staging"
+    queue.mkdir(parents=True, exist_ok=True)
+    staging.mkdir(parents=True, exist_ok=True)
 
     files = find_files([incoming])
     if not files:
-        print(f"\n  {_DIM}_INCOMING/ is empty — nothing to preprocess.{_RESET}\n")
+        queued = len(list(queue.glob("*.json")))
+        if queued:
+            print(f"\n  {_DIM}_INCOMING/ is empty — {queued} file{'s' if queued != 1 else ''} ready for {_RESET}{_CYAN}/watchdog-ingest{_RESET}{_DIM}.{_RESET}\n")
+        else:
+            print(f"\n  {_DIM}_INCOMING/ is empty — nothing to chew.{_RESET}\n")
         return
 
-    total       = len(files)
+    total = len(files)
+    pre_workers, chunk_workers, adaptive = _resolve_workers(files, workers)
     batch_start = time.time()
 
-    print(f"\n  {_BOLD}Preprocessing {total} file{'s' if total != 1 else ''}{_RESET}  {_DIM}({workers} workers){_RESET}\n")
+    adaptive_tag = ", adaptive" if adaptive else ""
+    print(
+        f"\n  {_BOLD}Chewing {total} file{'s' if total != 1 else ''}{_RESET}"
+        f"  {_DIM}({pre_workers} file · {chunk_workers} chunk workers{adaptive_tag}){_RESET}\n"
+    )
+
+    print(f"  {_DIM}Starting workers — first output may take a few seconds…{_RESET}", end="\r", flush=True)
 
     results: dict[str, dict] = {}
 
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(preprocess_one, f, str(vault)): f for f in files}
+    with ThreadPoolExecutor(max_workers=pre_workers) as pool:
+        futures = {
+            pool.submit(preprocess_one, f, str(vault), DEFAULT_FILE_TIMEOUT, chunk_workers): f
+            for f in files
+        }
         done = 0
         for future in as_completed(futures):
             path   = futures[future]
@@ -149,7 +221,15 @@ def run_ingest(vault: Path, workers: int | None = None) -> None:
             else:
                 sha256 = result.get("sha256", "")
                 if sha256:
-                    (preprocessed / f"{sha256}.json").write_text(
+                    dest_dir = staging / sha256
+                    dest_dir.mkdir(parents=True, exist_ok=True)
+                    dest = dest_dir / path.name
+                    try:
+                        path.rename(dest)
+                        result["source_path"] = str(dest)
+                    except OSError:
+                        pass
+                    (queue / f"{sha256}.json").write_text(
                         json.dumps(result, ensure_ascii=False)
                     )
 

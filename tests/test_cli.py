@@ -150,7 +150,8 @@ def test_cmd_new_vault_structure(configured):
     vault = configured / "my-story"
     for d in ["_INCOMING", "morgue", "entities/person", "entities/company",
               "entities/address", "documents", "briefings", "wiki", "queries",
-              ".watchdog/preprocessed"]:
+              ".watchdog/queue",
+              ".watchdog/staging"]:
         assert (vault / d).is_dir(), f"Missing: {d}"
 
 
@@ -184,6 +185,14 @@ def test_cmd_new_duplicate_exits(configured):
 def test_cmd_new_invalid_name_exits(configured):
     with pytest.raises(SystemExit):
         cli.cmd_new(args(name="!!!", dir=str(configured)))
+
+
+def test_cmd_new_installs_skills_per_project(configured):
+    cli.cmd_new(args(name="My Story", dir=str(configured)))
+    commands_dir = configured / "my-story" / ".claude" / "commands"
+    assert commands_dir.is_dir()
+    skill_files = list(commands_dir.glob("*.md"))
+    assert skill_files, "No skill files installed into vault .claude/commands/"
 
 
 def test_cmd_new_uses_config_projects_dir(configured, wdg_home):
@@ -293,11 +302,11 @@ def test_cmd_status_pending_files(configured, capsys):
     (vault / "_INCOMING" / "also.pdf").write_text("")
     cli.cmd_status(args(name="Test Proj"))
     out = _strip_ansi(capsys.readouterr().out)
-    assert "2 files pending" in out
-    assert "documents processed" in out
+    assert "2 files" in out
+    assert "_INCOMING/" in out
 
 
-def test_cmd_status_no_pending_no_processed_label(configured, capsys):
+def test_cmd_status_shows_document_count(configured, capsys):
     cli.cmd_new(args(name="Test Proj", dir=str(configured)))
     _make_vault_with_data(
         configured / "test-proj",
@@ -306,7 +315,6 @@ def test_cmd_status_no_pending_no_processed_label(configured, capsys):
     )
     cli.cmd_status(args(name="Test Proj"))
     out = _strip_ansi(capsys.readouterr().out)
-    assert "documents processed" not in out
     assert "1 documents" in out
 
 
@@ -462,6 +470,10 @@ def test_version_flags_invoke_about(capsys, monkeypatch, flag):
     ("config",   "configure"),
     ("setting",  "configure"),
     ("settings", "configure"),
+    ("find",      "search"),
+    ("process",   "chew"),
+    ("preprocess", "chew"),
+    ("prep",      "chew"),
 ])
 def test_aliases_remap_argv(alias, canonical, monkeypatch):
     import sys
@@ -519,6 +531,31 @@ def test_configure_int_invalid_exits(wdg_home):
 def test_configure_int_below_min_exits(wdg_home):
     with pytest.raises(SystemExit):
         cli.cmd_configure(args(key="chunk_workers", value="0"))
+
+
+# ── configure — int_or_auto keys ─────────────────────────────────────────────
+
+def test_configure_int_or_auto_accepts_auto(wdg_home):
+    cli.cmd_configure(args(key="chunk_workers", value="auto"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["chunk_workers"] == "auto"
+
+
+def test_configure_int_or_auto_accepts_integer(wdg_home):
+    cli.cmd_configure(args(key="chunk_workers", value="4"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["chunk_workers"] == 4
+
+
+def test_configure_int_or_auto_invalid_exits(wdg_home):
+    with pytest.raises(SystemExit, match="'auto' or a whole number"):
+        cli.cmd_configure(args(key="chunk_workers", value="fast"))
+
+
+def test_configure_chew_workers_accepts_auto(wdg_home):
+    cli.cmd_configure(args(key="chew_workers", value="auto"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["chew_workers"] == "auto"
 
 
 # ── configure — bool keys ─────────────────────────────────────────────────────
@@ -661,53 +698,26 @@ def test_configure_non_tty_shows_value_without_prompt(wdg_home, capsys):
 
 # ── setup — machine-aware defaults ───────────────────────────────────────────
 
-def test_setup_writes_chunk_workers_based_on_cores(tmp_path, monkeypatch):
-    import os
+def test_setup_writes_auto_for_worker_keys(tmp_path, monkeypatch):
     import watchdog.setup_cmd as sc
 
     home = tmp_path / ".watchdog"
     home.mkdir()
     monkeypatch.setattr(sc, "WATCHDOG_HOME", home)
     monkeypatch.setattr(sc, "CONFIG_FILE",   home / "config.json")
-    monkeypatch.setattr(sc, "COMMANDS_DIR",  tmp_path / ".claude" / "commands")
-    monkeypatch.setattr(os,  "cpu_count",    lambda: 8)
-
-    investigations = tmp_path / "Investigations"
-    investigations.mkdir()
-    monkeypatch.setattr(sc, "_check_deps",         lambda: [])
-    monkeypatch.setattr(sc, "_install_skills",     lambda: None)
-    monkeypatch.setattr(sc, "_ask_projects_dir",   lambda: investigations)
-    monkeypatch.setattr(sc, "_detect_shell",       lambda: (None, None))
-
-    sc.run()
-
-    config = json.loads((home / "config.json").read_text())
-    assert config["chunk_workers"] == 4   # max(2, 8 // 2)
-    assert config["projects_dir"] == str(investigations)
-
-
-def test_setup_chunk_workers_minimum_is_two(tmp_path, monkeypatch):
-    import os
-    import watchdog.setup_cmd as sc
-
-    home = tmp_path / ".watchdog"
-    home.mkdir()
-    monkeypatch.setattr(sc, "WATCHDOG_HOME", home)
-    monkeypatch.setattr(sc, "CONFIG_FILE",   home / "config.json")
-    monkeypatch.setattr(sc, "COMMANDS_DIR",  tmp_path / ".claude" / "commands")
-    monkeypatch.setattr(os,  "cpu_count",    lambda: 1)
 
     investigations = tmp_path / "Investigations"
     investigations.mkdir()
     monkeypatch.setattr(sc, "_check_deps",       lambda: [])
-    monkeypatch.setattr(sc, "_install_skills",   lambda: None)
     monkeypatch.setattr(sc, "_ask_projects_dir", lambda: investigations)
     monkeypatch.setattr(sc, "_detect_shell",     lambda: (None, None))
 
     sc.run()
 
     config = json.loads((home / "config.json").read_text())
-    assert config["chunk_workers"] == 2   # max(2, 1 // 2) → max(2, 0) → 2
+    assert config["chunk_workers"] == "auto"
+    assert config["chew_workers"] == "auto"
+    assert config["projects_dir"] == str(investigations)
 
 
 # ── cmd_unlock ────────────────────────────────────────────────────────────────

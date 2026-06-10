@@ -1,16 +1,17 @@
 # {name} — Watchdog
 
-At the start of every session: (1) read `hot.md` for a summary of recent activity and open questions; (2) read `context.md` to understand what this investigation is about; (3) check `.watchdog/preprocessed/` for files ready to extract — if any are present, run `/watchdog-ingest` before doing anything else.
+At the start of every session: (1) read `hot.md` for a summary of recent activity and open questions; (2) read `context.md` to understand what this investigation is about; (3) check `.watchdog/queue/` for files ready to extract — if any are present, run `/watchdog-ingest` before doing anything else.
 
 ## Vault layout
 
 | Path | Purpose |
 |------|---------| 
-| `_INCOMING/` | Drop zone — drag files here, then run `watchdog preprocess` in your terminal |
+| `_INCOMING/` | Drop zone — drag files here, then run `watchdog chew` in your terminal |
 | `_INCOMING/_FAILED/` | Created on failure — files that could not be processed |
 | `_CONTEXT/` | Background material (prior stories, notes) — run `/watchdog-context` to seed context.md |
 | `morgue/` | Original files after successful ingest |
-| `.watchdog/preprocessed/` | Preprocessed files ready for extraction — populated by `watchdog` CLI |
+| `.watchdog/queue/` | Chewed files ready for extraction — populated by `watchdog chew` |
+| `.watchdog/staging/` | Original files waiting to move to morgue after ingest |
 | `.watchdog/Registry/` | Internal state — do not edit manually |
 | `entities/` | One note per real-world entity |
 | `documents/` | One note per ingested document |
@@ -35,7 +36,7 @@ At the start of every session: (1) read `hot.md` for a summary of recent activit
 | Command | Action |
 |---------|--------|
 | `/watchdog-context` | Seed context.md from background files in `_CONTEXT/` |
-| `/watchdog-ingest` | Extract all preprocessed files in `.watchdog/preprocessed/` |
+| `/watchdog-ingest` | Extract all preprocessed files in `.watchdog/queue/` |
 | `/watchdog-ingest [file]` | Preprocess and extract a specific file |
 | `/watchdog-query [question]` | Answer a question from the vault |
 | `/watchdog-surface` | Find connections and anomalies across the vault |

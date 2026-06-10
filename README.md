@@ -436,9 +436,11 @@ To run from source:
 ```bash
 git clone https://github.com/tomcardoso/watchdog
 cd watchdog
-pip install -e ".[dev]"
+pipx install --editable . --force
 watchdog setup
 ```
+
+The `--editable` flag points pipx directly at your source directory instead of copying it, so any changes you make to `.py` files are picked up immediately without reinstalling. Run `pipx install . --force` (without `--editable`) to snapshot a fixed version instead.
 
 Please open an issue before starting significant work so we can discuss approach first.
 

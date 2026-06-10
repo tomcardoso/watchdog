@@ -35,8 +35,26 @@ from pathlib import Path
 
 GARBLED_THRESHOLD = 0.75   # alphanumeric+space ratio below which text is considered garbled
 CHUNK_SIZE = 40             # pages per chunk when splitting large PDFs
-CHUNK_WORKERS = 4           # parallel subprocesses for chunked processing
 CHUNK_TIMEOUT = 300         # seconds per chunk subprocess
+
+
+def _perf_cpu_count() -> int:
+    """Performance core count on Apple Silicon; total core count everywhere else."""
+    try:
+        r = subprocess.run(
+            ["sysctl", "-n", "hw.perflevel0.logicalcpu"],
+            capture_output=True, text=True, timeout=2,
+        )
+        if r.returncode == 0:
+            n = int(r.stdout.strip())
+            if n > 0:
+                return n
+    except Exception:
+        pass
+    return os.cpu_count() or 4
+
+
+CHUNK_WORKERS = max(2, _perf_cpu_count() // 2)
 
 DIRECT_TEXT_SUFFIXES = {".txt", ".csv", ".md"}
 
@@ -105,6 +123,29 @@ def pdf_extract_chunk(src: Path, start: int, end: int) -> Path:
         tmp.unlink(missing_ok=True)
         raise
     return tmp
+
+
+def process_arrows(path: Path) -> dict:
+    """Parse an arrows.app JSON file into the standard preprocessed format."""
+    from watchdog.pipeline.arrows_parser import parse_arrows
+    try:
+        parsed = parse_arrows(path)
+    except (json.JSONDecodeError, KeyError) as e:
+        return {"error": f"Failed to parse arrows.app JSON: {e}"}
+    return {
+        "filename": path.name,
+        "sha256": sha256_file(path),
+        "page_count": 0,
+        "pages": [],
+        "metadata": {
+            "source_type": "arrows",
+            "ocr_used": False,
+            "garbled_detected": False,
+            "chunked": False,
+        },
+        "entities": parsed["entities"],
+        "relationships": parsed["relationships"],
+    }
 
 
 def process_direct_text(path: Path) -> dict:
@@ -177,6 +218,12 @@ def _config_get(key: str, default):
         except Exception:
             _config_cache = {}
     return _config_cache.get(key, default)
+
+
+def _config_force(key: str, value) -> None:
+    """Override a config value for this process, loading config first if needed."""
+    _config_get(key, None)
+    _config_cache[key] = value  # type: ignore[index]
 
 
 def _ocr_languages() -> list[str]:
@@ -269,6 +316,8 @@ def process_large_pdf(path: Path, force_ocr: bool, total_pages: int) -> dict:
     """Split a large PDF into chunk_size-page chunks and process in parallel."""
     chunk_size    = _config_get("chunk_size",    CHUNK_SIZE)
     chunk_workers = _config_get("chunk_workers", CHUNK_WORKERS)
+    if chunk_workers == "auto":
+        chunk_workers = CHUNK_WORKERS
     chunks = [
         (start, min(start + chunk_size, total_pages))
         for start in range(0, total_pages, chunk_size)
@@ -371,11 +420,6 @@ def _markdown_pages(doc) -> list[dict]:
 
 
 def process_with_docling(path: Path, force_ocr: bool = False) -> dict:
-    try:
-        from docling.document_converter import DocumentConverter
-    except ImportError:
-        return {"error": "Docling is not installed. Run: pip install docling"}
-
     is_pdf = path.suffix.lower() == ".pdf"
     garbled_detected = False
 
@@ -388,7 +432,7 @@ def process_with_docling(path: Path, force_ocr: bool = False) -> dict:
             garbled_detected = True
             force_ocr = True
 
-    # Large PDFs: split into chunks and process in parallel
+    # Large PDFs: split into chunks and process in parallel (no docling needed in parent)
     if is_pdf:
         total_pages = pdf_page_count(path)
         if total_pages > _config_get("chunk_size", CHUNK_SIZE):
@@ -414,6 +458,10 @@ def process_with_docling(path: Path, force_ocr: bool = False) -> dict:
             return retry
 
     # Small PDFs and all other formats: single Docling conversion
+    try:
+        from docling.document_converter import DocumentConverter
+    except ImportError:
+        return {"error": "Docling is not installed. Run: pip install docling"}
     if is_pdf:
         try:
             converter = build_converter(force_ocr)
@@ -466,7 +514,12 @@ def main() -> None:
     parser.add_argument("--force-ocr", action="store_true", help="Force full-page OCR")
     parser.add_argument("--vault-path", metavar="PATH",
                         help="Vault directory — when set, pages are added to the embedding index")
+    parser.add_argument("--chunk-workers", type=int, metavar="N",
+                        help="Override chunk_workers config for this run")
     args = parser.parse_args()
+
+    if args.chunk_workers is not None:
+        _config_force("chunk_workers", args.chunk_workers)
 
     path = Path(args.file).resolve()
     if not path.exists():
@@ -474,6 +527,20 @@ def main() -> None:
         sys.exit(1)
 
     suffix = path.suffix.lower()
+
+    # Arrows.app detection: JSON files with top-level "nodes" and "relationships"
+    if suffix == ".json":
+        try:
+            raw = json.loads(path.read_text())
+            if "nodes" in raw and "relationships" in raw:
+                result = process_arrows(path)
+                if "error" in result:
+                    print(json.dumps(result))
+                    sys.exit(1)
+                print(json.dumps(result, ensure_ascii=False))
+                return
+        except (json.JSONDecodeError, OSError):
+            pass
 
     if suffix in DIRECT_TEXT_SUFFIXES:
         result = process_direct_text(path)

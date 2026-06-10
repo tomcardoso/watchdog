@@ -7,7 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from watchdog.pipeline.preprocess_batch import find_files, preprocess_one
+from watchdog.pipeline.preprocess_batch import (
+    find_files,
+    preprocess_one,
+    _count_pdf_pages,
+    _adaptive_workers,
+    _resolve_workers,
+)
 
 
 # ── find_files ────────────────────────────────────────────────────────────────
@@ -75,6 +81,7 @@ def test_ingest_lock_excluded(tmp_path):
     lock = tmp_path / ".ingest-lock"
     lock.write_bytes(b"")
     assert find_files([str(tmp_path)]) == []
+
 
 
 # ── preprocess_one ────────────────────────────────────────────────────────────
@@ -154,3 +161,145 @@ def test_preprocess_one_passes_vault_path(tmp_path, monkeypatch):
     preprocess_one(f, vault_path="/vault/path")
     assert "--vault-path" in captured["cmd"]
     assert "/vault/path" in captured["cmd"]
+
+
+def test_preprocess_one_passes_chunk_workers(tmp_path, monkeypatch):
+    f = tmp_path / "doc.pdf"
+    f.write_bytes(b"")
+    payload = {"filename": "doc.pdf", "pages": []}
+    captured = {}
+
+    def fake_run(cmd, **kw):
+        captured["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(payload), stderr="")
+
+    monkeypatch.setattr("watchdog.pipeline.preprocess_batch.subprocess.run", fake_run)
+    preprocess_one(f, chunk_workers=6)
+    assert "--chunk-workers" in captured["cmd"]
+    assert "6" in captured["cmd"]
+
+
+def test_preprocess_one_omits_chunk_workers_when_none(tmp_path, monkeypatch):
+    f = tmp_path / "doc.pdf"
+    f.write_bytes(b"")
+    payload = {"filename": "doc.pdf", "pages": []}
+    captured = {}
+
+    def fake_run(cmd, **kw):
+        captured["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(payload), stderr="")
+
+    monkeypatch.setattr("watchdog.pipeline.preprocess_batch.subprocess.run", fake_run)
+    preprocess_one(f)
+    assert "--chunk-workers" not in captured["cmd"]
+
+
+# ── _count_pdf_pages ──────────────────────────────────────────────────────────
+
+def test_count_pdf_pages_non_pdf_returns_one(tmp_path):
+    f = tmp_path / "doc.txt"
+    f.write_text("hello")
+    assert _count_pdf_pages(f) == 1
+
+
+def test_count_pdf_pages_reads_qpdf_output(tmp_path, monkeypatch):
+    f = tmp_path / "doc.pdf"
+    f.write_bytes(b"")
+
+    def fake_run(cmd, **kw):
+        return subprocess.CompletedProcess(cmd, 0, stdout="42\n", stderr="")
+
+    monkeypatch.setattr("watchdog.pipeline.preprocess_batch.subprocess.run", fake_run)
+    assert _count_pdf_pages(f) == 42
+
+
+def test_count_pdf_pages_qpdf_failure_returns_one(tmp_path, monkeypatch):
+    f = tmp_path / "doc.pdf"
+    f.write_bytes(b"")
+
+    def fake_run(cmd, **kw):
+        return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="error")
+
+    monkeypatch.setattr("watchdog.pipeline.preprocess_batch.subprocess.run", fake_run)
+    assert _count_pdf_pages(f) == 1
+
+
+# ── _adaptive_workers ─────────────────────────────────────────────────────────
+
+def test_adaptive_workers_short_docs_favor_preprocess(tmp_path, monkeypatch):
+    files = [tmp_path / f"doc{i}.pdf" for i in range(5)]
+    for f in files:
+        f.write_bytes(b"")
+    monkeypatch.setattr("watchdog.pipeline.preprocess_batch._count_pdf_pages", lambda p: 1)
+    monkeypatch.setattr("watchdog.pipeline.preprocess_batch._perf_cpu_count", lambda: 10)
+
+    pre, chunk = _adaptive_workers(files)
+    assert pre >= chunk
+
+
+def test_adaptive_workers_long_docs_favor_chunk(tmp_path, monkeypatch):
+    files = [tmp_path / "big.pdf"]
+    files[0].write_bytes(b"")
+    monkeypatch.setattr("watchdog.pipeline.preprocess_batch._count_pdf_pages", lambda p: 200)
+    monkeypatch.setattr("watchdog.pipeline.preprocess_batch._perf_cpu_count", lambda: 10)
+
+    pre, chunk = _adaptive_workers(files)
+    assert chunk >= pre
+
+
+# ── _resolve_workers ──────────────────────────────────────────────────────────
+
+def test_resolve_workers_auto_uses_adaptive(tmp_path, monkeypatch):
+    files = [tmp_path / "a.pdf", tmp_path / "b.pdf"]
+    for f in files:
+        f.write_bytes(b"")
+    monkeypatch.setenv("HOME", str(tmp_path))  # no config.json → both default to "auto"
+    monkeypatch.setattr("watchdog.pipeline.preprocess_batch._count_pdf_pages", lambda p: 1)
+    monkeypatch.setattr("watchdog.pipeline.preprocess_batch._perf_cpu_count", lambda: 10)
+
+    _, _, adaptive = _resolve_workers(files, explicit_pre=None)
+    assert adaptive is True
+
+
+def test_resolve_workers_config_int_overrides_adaptive(tmp_path, monkeypatch):
+    files = [tmp_path / f"doc{i}.pdf" for i in range(3)]
+    for f in files:
+        f.write_bytes(b"")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".watchdog").mkdir()
+    (tmp_path / ".watchdog" / "config.json").write_text(
+        json.dumps({"chew_workers": 2, "chunk_workers": 3})
+    )
+
+    pre, chunk, adaptive = _resolve_workers(files, explicit_pre=None)
+    assert pre == 2
+    assert chunk == 3
+    assert adaptive is False
+
+
+def test_resolve_workers_explicit_pre_overrides_config(tmp_path, monkeypatch):
+    files = [tmp_path / f"doc{i}.pdf" for i in range(10)]
+    for f in files:
+        f.write_bytes(b"")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".watchdog").mkdir()
+    (tmp_path / ".watchdog" / "config.json").write_text(
+        json.dumps({"chew_workers": 2, "chunk_workers": 3})
+    )
+
+    pre, chunk, _ = _resolve_workers(files, explicit_pre=7)
+    assert pre == 7
+    assert chunk == 3  # chunk still from config
+
+
+def test_resolve_workers_caps_pre_to_file_count(tmp_path, monkeypatch):
+    files = [tmp_path / "only.pdf"]
+    files[0].write_bytes(b"")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".watchdog").mkdir()
+    (tmp_path / ".watchdog" / "config.json").write_text(
+        json.dumps({"chew_workers": 8, "chunk_workers": 2})
+    )
+
+    pre, _, _ = _resolve_workers(files, explicit_pre=None)
+    assert pre == 1  # capped to len(files)

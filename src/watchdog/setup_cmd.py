@@ -7,7 +7,6 @@ from pathlib import Path
 
 WATCHDOG_HOME = Path.home() / ".watchdog"
 CONFIG_FILE = WATCHDOG_HOME / "config.json"
-COMMANDS_DIR = Path.home() / ".claude" / "commands"
 
 _GREEN  = "\033[0;32m"
 _YELLOW = "\033[0;33m"
@@ -45,8 +44,8 @@ def _check_deps() -> list[str]:
     return blocking_missing
 
 
-def _install_skills() -> None:
-    records_dir = COMMANDS_DIR / "records"
+def install_skills(commands_dir: Path) -> None:
+    records_dir = commands_dir / "records"
     records_dir.mkdir(parents=True, exist_ok=True)
     skills = importlib.resources.files("watchdog") / "skills"
     for item in skills.iterdir():
@@ -55,7 +54,7 @@ def _install_skills() -> None:
                 if f.name.endswith(".md") and not f.name.startswith("_"):
                     (records_dir / f.name).write_bytes(f.read_bytes())
         elif item.name.endswith(".md") and not item.name.startswith("_"):
-            (COMMANDS_DIR / item.name).write_bytes(item.read_bytes())
+            (commands_dir / item.name).write_bytes(item.read_bytes())
 
 
 def _ask_projects_dir() -> Path:
@@ -217,13 +216,7 @@ def run(force: bool = False) -> None:
         print()
         sys.exit(1)
 
-    # 2. Skills
-    print()
-    print("Installing Watchdog skills...")
-    _install_skills()
-    _ok(f"Skills installed to {COMMANDS_DIR}/")
-
-    # 3. Projects directory
+    # 2. Projects directory
     projects_dir = _ask_projects_dir()
     _ok(f"Projects directory: {projects_dir}")
 
@@ -242,10 +235,9 @@ def run(force: bool = False) -> None:
 
     # 5. Machine capabilities
     cores = os.cpu_count() or 1
-    chunk_workers = max(2, cores // 2)
     print()
     print("Detecting machine capabilities...")
-    _ok(f"CPU cores: {cores} → chunk_workers set to {chunk_workers}")
+    _ok(f"CPU cores: {cores} — worker counts set to auto (adaptive per workload)")
 
     # 6. OCR engine
     print()
@@ -268,7 +260,7 @@ def run(force: bool = False) -> None:
     WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
     CONFIG_FILE.write_text(
         json.dumps(
-            {"projects_dir": str(projects_dir), "chunk_workers": chunk_workers},
+            {"projects_dir": str(projects_dir), "chunk_workers": "auto", "chew_workers": "auto"},
             indent=2,
         ) + "\n"
     )
@@ -284,7 +276,7 @@ def run(force: bool = False) -> None:
     print(r"    /   (_____/")
     print(r"   /_____/   U")
     print()
-    print(f"  {_BOLD}Watchdog is ready.{_RESET}")
+    print(f"  {_BOLD}Watchdog is on the scent.{_RESET}")
     print()
     print(f"  Reload your shell:  {reload_hint}")
     print()

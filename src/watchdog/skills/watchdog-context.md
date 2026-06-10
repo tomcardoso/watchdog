@@ -26,7 +26,7 @@ If the response is anything other than an explicit confirmation, stop immediatel
 
 ---
 
-## 1. Discover and preprocess files
+## 1. Discover and chew files
 
 List all files in `_CONTEXT/`:
 
@@ -39,7 +39,7 @@ If the folder is empty or missing, skip to step 3 — you'll work from the inter
 For each file, run:
 
 ```bash
-watchdog preprocess "<file_path>"
+watchdog chew "<file_path>"
 ```
 
 Collect the extracted text. Do not load all files into context at once — read them one at a time and build a running mental summary. You do not need the full text after processing; keep only the key facts and themes.

@@ -1,8 +1,8 @@
 # /watchdog-ingest — Watchdog document extraction pipeline
 
-Extract preprocessed files from `.watchdog/preprocessed/` into the vault.
+Extract queued files from `.watchdog/queue/` into the vault.
 
-Preprocessing (OCR, Docling) is handled separately by the `watchdog` CLI command. This skill only runs extraction — reading preprocessed results and writing entity notes, document notes, and registry updates.
+Chewing (OCR, Docling) is handled separately by the `watchdog chew` CLI command. This skill only runs extraction — reading queued results and writing entity notes, document notes, and registry updates.
 
 **Argument parsing** — parse `$ARGUMENTS` before doing anything else:
 - If `$ARGUMENTS` is empty: `TARGET_FILE = null`, `LIMIT = null`
@@ -34,21 +34,21 @@ From this point, every exit path — including errors — must release the lock 
 
 ---
 
-## 1. Find preprocessed files
+## 1. Find queued files
 
-If `TARGET_FILE` is set, preprocess that single file now (since it bypassed the CLI step) and treat the result as the sole item to extract:
+If `TARGET_FILE` is set, chew that single file now (since it bypassed the CLI step) and treat the result as the sole item to extract:
 ```bash
-watchdog preprocess "<TARGET_FILE>" --vault-path "$(pwd)"
+watchdog chew "<TARGET_FILE>" --vault-path "$(pwd)"
 ```
 Then proceed with that result.
 
-Otherwise, scan `.watchdog/preprocessed/` for JSON files:
+Otherwise, scan `.watchdog/queue/` for JSON files:
 ```bash
-find .watchdog/preprocessed/ -name "*.json" -type f
+find .watchdog/queue/ -name "*.json" -type f
 ```
 
 If none are found, stop and tell the journalist:
-> "No preprocessed files found. Run `watchdog` in your terminal from this folder to preprocess documents in `_INCOMING/`, then come back and run `/watchdog-ingest`."
+> "No files queued for extraction. Run `watchdog chew` in your terminal from this folder to chew documents in `_INCOMING/`, then come back and run `/watchdog-ingest`."
 
 Release the lock and stop.
 
@@ -60,7 +60,7 @@ Store `TOTAL` (file count) and `BATCH_START` (capture with `date +%s`). Do not l
 
 Before the loop, initialize: `CUMULATIVE_CHARS = 0`, `EXTRACTED = 0`
 
-Iterate over the preprocessed files **one at a time**. For each file at path `PREP_FILE`:
+Iterate over the queued files **one at a time**. For each file at path `PREP_FILE`:
 
 ```bash
 cat "<PREP_FILE>"
@@ -79,19 +79,15 @@ echo "[<N>/<TOTAL>] Done: <filename> — <entity_count> entities | ETA: ~$(( (<T
 ```
 
 **Special case — arrows.app JSON:**
-If the filename ends in `.json` and the JSON contains `"nodes"` and `"relationships"` keys at the top level, this is an arrows.app file. Run instead:
-```bash
-watchdog arrows "<file_path>"
-```
-Then skip to [Section 5: arrows.app import](#5-arrowsapp-import).
+If `metadata.source_type == "arrows"` in the queued JSON, this diagram was already parsed during chewing. Skip directly to [Section 5: arrows.app import](#5-arrowsapp-import).
 
 ### 2a. Exact duplicate check
 
 Read `.watchdog/Registry/documents.json`. Check whether this file's `sha256` already exists.
 
-If it does, this file was already extracted (preprocessed file was not cleaned up). Skip it:
+If it does, this file was already extracted (queue file was not cleaned up). Skip it:
 - Log: `[SKIP] <filename> — already extracted (SHA-256 match)`
-- Delete the preprocessed file: `rm "<PREP_FILE>"`
+- Delete the queue file: `rm "<PREP_FILE>"`
 - Continue to the next file
 
 ### 2b. Load page content
@@ -99,13 +95,6 @@ If it does, this file was already extracted (preprocessed file was not cleaned u
 The full page text is already in the parsed JSON from `cat "<PREP_FILE>"`. Use `pages[]` for individual page access (with page numbers) or concatenate all `markdown` fields for full-text extraction.
 
 **Never load more than one file's content into context at a time.**
-
-**Special case — arrows.app JSON:**
-If the filename ends in `.json` and the JSON contains `"nodes"` and `"relationships"` keys at the top level, this is an arrows.app file. Run instead:
-```bash
-watchdog arrows "<file_path>"
-```
-Then skip to [Section 5: arrows.app import](#5-arrowsapp-import).
 
 ### 2c. Confidential material check
 
@@ -370,7 +359,7 @@ watchdog write-vault \
 
 Pass `--skip-timeline` for every file **except the last** in the batch. Rebuilding `timeline.md` on every file is O(N) in vault size — skip it for mid-batch files and let the final write do it once.
 
-Clean up temp files and the preprocessed file for this document:
+Clean up temp files and the queue file for this document:
 ```bash
 rm /tmp/watchdog-extraction-<sha256>.json /tmp/watchdog-neardup-<sha256>.json
 rm "<PREP_FILE>"
@@ -384,21 +373,21 @@ rm "<PREP_FILE>"
 
 **Limit check** — if `LIMIT` is set and `EXTRACTED >= LIMIT`:
 ```bash
-find .watchdog/preprocessed/ -name "*.json" | wc -l
+find .watchdog/queue/ -name "*.json" | wc -l
 ```
 Print: `Limit reached: extracted <EXTRACTED> file(s) this run. <REMAINING> file(s) still queued — run /watchdog-ingest again to continue.` Release the lock and stop.
 
 **Context compaction check** — if `CUMULATIVE_CHARS > 500000`, run `/compact` and reset `CUMULATIVE_CHARS = 0`.
 
-**After `/compact` resumes** — your in-context variables (`N`, `CUMULATIVE_CHARS`, `BATCH_START`, `EXTRACTED`) are gone. Reset `EXTRACTED = 0` and `CUMULATIVE_CHARS = 0`. Re-scan `.watchdog/preprocessed/` from Step 1 — files already extracted had their preprocessed JSON deleted, so only remaining files appear.
+**After `/compact` resumes** — your in-context variables (`N`, `CUMULATIVE_CHARS`, `BATCH_START`, `EXTRACTED`) are gone. Reset `EXTRACTED = 0` and `CUMULATIVE_CHARS = 0`. Re-scan `.watchdog/queue/` from Step 1 — files already extracted had their queue JSON deleted, so only remaining files appear.
 
 ---
 
 ## 5. arrows.app import
 
-When processing an arrows.app JSON file (from step 2b):
+When `metadata.source_type == "arrows"`, the queued JSON already contains `entities` and `relationships` parsed from the arrows.app file. Read them directly — no further CLI call is needed.
 
-For each entity in the parsed output, follow steps 4a and 4c (entity note creation/update and registry update) — treating the arrows.app file as the source document.
+For each entity in `entities`, follow steps 4a and 4c (entity note creation/update and registry update) — treating the arrows.app file as the source document.
 
 For each relationship:
 - Add it to the `## Relationships` section of the `from` entity note

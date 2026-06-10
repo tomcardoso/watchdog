@@ -1,7 +1,10 @@
 """Tests for preprocess helpers that don't require Docling to be installed."""
 
+import json
+
 from watchdog.pipeline.preprocess import (
     is_garbled,
+    process_arrows,
     process_direct_text,
     process_large_pdf,
     _markdown_pages,
@@ -203,3 +206,54 @@ def test_large_pdf_fallback_returns_original_error_if_preprocess_unavailable(tmp
 
     assert "error" in result
     assert "chunks" in result["error"]
+
+
+# ── process_arrows ────────────────────────────────────────────────────────────
+
+def test_process_arrows_returns_expected_shape(tmp_path):
+    data = {
+        "nodes": [{"id": "n1", "caption": "Alice", "labels": ["Person"], "properties": {}}],
+        "relationships": [],
+    }
+    f = tmp_path / "graph.json"
+    f.write_text(json.dumps(data))
+    result = process_arrows(f)
+    assert result["metadata"]["source_type"] == "arrows"
+    assert result["page_count"] == 0
+    assert result["pages"] == []
+    assert len(result["entities"]) == 1
+    assert result["entities"][0]["name"] == "Alice"
+    assert result["relationships"] == []
+
+
+def test_process_arrows_has_sha256(tmp_path):
+    data = {"nodes": [], "relationships": []}
+    f = tmp_path / "empty.json"
+    f.write_text(json.dumps(data))
+    result = process_arrows(f)
+    assert "sha256" in result
+    assert len(result["sha256"]) == 64
+
+
+def test_process_arrows_invalid_json_returns_error(tmp_path):
+    f = tmp_path / "bad.json"
+    f.write_text("{not valid json")
+    result = process_arrows(f)
+    assert "error" in result
+
+
+def test_process_arrows_includes_relationships(tmp_path):
+    data = {
+        "nodes": [
+            {"id": "n1", "caption": "Alice", "labels": [], "properties": {}},
+            {"id": "n2", "caption": "Bob",   "labels": [], "properties": {}},
+        ],
+        "relationships": [
+            {"fromId": "n1", "toId": "n2", "type": "KNOWS", "properties": {}},
+        ],
+    }
+    f = tmp_path / "graph.json"
+    f.write_text(json.dumps(data))
+    result = process_arrows(f)
+    assert len(result["relationships"]) == 1
+    assert result["relationships"][0]["type"] == "KNOWS"
