@@ -300,7 +300,7 @@ def _run_ingest_inner(
 
             label     = _page_label(path, result.get("page_count", 0))
             label_str = f"  {_DIM}{label}{_RESET}" if label else ""
-            garb_str  = f"  {_DIM}· garbled OCR{_RESET}" if is_garbled else ""
+            garb_str  = f"  {_DIM}·  garbled OCR{_RESET}" if is_garbled else ""
 
             # Progress bar + ETA
             bar = _bar(done, total)
