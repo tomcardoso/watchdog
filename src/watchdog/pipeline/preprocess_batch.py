@@ -279,6 +279,8 @@ def _run_ingest_inner(
             result = future.result()
             results[str(path)] = result
             done += 1
+            if done % 50 == 0:
+                _prune_empty_dirs(incoming)
 
             elapsed_wall = time.time() - batch_start
             is_err     = "error" in result
@@ -362,6 +364,7 @@ def _run_ingest_inner(
         for fut in futures:
             fut.cancel()
         pool.shutdown(wait=True, cancel_futures=True)
+        _prune_empty_dirs(incoming)
         sys.stdout.write("\r\033[K")
         print(f"\n  {_DIM}Cancelled — {done} of {total} files processed. Unfinished files remain in _INCOMING/.{_RESET}\n")
         return
