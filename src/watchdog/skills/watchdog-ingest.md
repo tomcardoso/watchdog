@@ -14,7 +14,7 @@ Chewing (OCR, Docling) is handled separately by the `watchdog chew` CLI command.
 
 **CWD:** All bash commands run from the vault root. Never prefix commands with `cd <path> &&`.
 
-**Pre-created directories:** `.watchdog/tmp/`, `.watchdog/queue/`, and `.watchdog/Registry/` are created by `watchdog new` and always exist. Never run `mkdir` for them.
+**Pre-created directories:** `.watchdog/tmp/`, `.watchdog/queue/`, and `.watchdog/Registry/` always exist — `watchdog queue-status` ensures `.watchdog/tmp/` on every run. Never run `mkdir` for any of them.
 
 **No exploration commands:** Never run `watchdog <command>` without arguments to probe its usage, and never run `which watchdog`, `pip show`, `python3 -c "import watchdog..."`, or any other command to locate or inspect the watchdog installation. If a step fails, re-read the relevant section of this skill and retry with the correct arguments.
 

@@ -1448,6 +1448,8 @@ def cmd_queue_status(args) -> None:
         _, info = _find_project(args.project)
         vault = Path(info["path"])
 
+    (vault / ".watchdog" / "tmp").mkdir(parents=True, exist_ok=True)
+
     queue_dir = vault / ".watchdog" / "queue"
     if not queue_dir.exists():
         print('{"total": 0, "files": []}')
