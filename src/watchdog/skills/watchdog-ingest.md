@@ -21,10 +21,10 @@ Read `.watchdog/Registry/.ingest-lock`. If it exists and is less than 30 minutes
 > "Ingest is already running (lock acquired at [timestamp]). If this is stale, run `watchdog unlock <project>` and retry."
 
 **Acquire the lock.**
-Write `.watchdog/Registry/.ingest-lock` containing:
+Run `date -u +"%Y-%m-%dT%H:%M:%SZ"` to get the current timestamp, then write `.watchdog/Registry/.ingest-lock` containing:
 ```
 pid: claude-session
-started_at: <ISO 8601 timestamp>
+started_at: <timestamp from date command>
 ```
 
 From this point, every exit path — including errors — must release the lock by deleting `.watchdog/Registry/.ingest-lock`.
