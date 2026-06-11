@@ -67,6 +67,22 @@ def _render_template(filename: str, **vars: str) -> str:
         text = text.replace("{" + key + "}", value)
     return text
 
+_VAULT_PERMISSIONS = [
+    "Bash(watchdog entity-index)",
+    "Bash(watchdog queue-status)",
+    "Bash(watchdog is-duplicate *)",
+    "Bash(watchdog near-dup *)",
+    "Bash(watchdog validate-extraction *)",
+    "Bash(watchdog write-vault *)",
+    "Bash(find .watchdog/queue/ *)",
+    "Bash(rm .watchdog/tmp/*)",
+    "Bash(rm .watchdog/queue/*.json)",
+    "Bash(rm .watchdog/Registry/.ingest-lock)",
+    "Bash(date +%s)",
+    "Write(.watchdog/tmp/*)",
+    "Write(.watchdog/Registry/.ingest-lock)",
+]
+
 _BOLD   = "\033[1m"
 _DIM    = "\033[2m"
 _CYAN   = "\033[0;36m"
@@ -100,6 +116,13 @@ _CMD_HELP: dict[str, dict] = {
     "rename": {
         "desc": "Rename an investigation (folder and registry)",
         "args": [("project", "Investigation name or slug"), ("name", "New name")],
+    },
+    "describe": {
+        "desc": "Set or update an investigation description",
+        "args": [
+            ("project", "Investigation name or slug (omit when inside the project folder)", True),
+            ("text",    "New description text (omit to be prompted)", True),
+        ],
     },
     "move": {
         "desc": "Update vault path in registry",
@@ -137,7 +160,10 @@ _CMD_HELP: dict[str, dict] = {
     },
     "search": {
         "desc": "Semantic search across ingested documents",
-        "args": [("project", "Investigation name or slug"), ("query", "Search query")],
+        "args": [
+            ("project", "Investigation name or slug (omit when inside the project folder)", True),
+            ("query",   "Search query"),
+        ],
         "opts": [("--top N", "Number of results to return (default: 5)")],
     },
     "unlock": {
@@ -269,7 +295,19 @@ def _find_project(name: str) -> tuple[str, dict]:
 
 
 def cmd_new(args) -> None:
-    name = args.name
+    name = args.name or getattr(args, "name_flag", None)
+    description = getattr(args, "description", None) or ""
+
+    if not name:
+        print()
+        try:
+            name = input("  Investigation name: ").strip()
+            if not description:
+                description = input("  Brief description (optional): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            sys.exit(1)
+
     slug = slugify(name)
 
     if not slug:
@@ -291,6 +329,7 @@ def cmd_new(args) -> None:
         ".watchdog/Registry",
         ".watchdog/queue",
         ".watchdog/staging",
+        ".watchdog/tmp",
         "entities/person",
         "entities/company",
         "entities/address",
@@ -340,7 +379,8 @@ def cmd_new(args) -> None:
 
     (vault / "hot.md").write_text(_render_template("hot.md"))
     (vault / "log.md").write_text(_render_template("log.md"))
-    (vault / "context.md").write_text(_render_template("context.md", name=name))
+    desc_placeholder = description if description else "<!-- One paragraph. What is the story? What pattern, question, or wrongdoing are you pursuing? -->"
+    (vault / "context.md").write_text(_render_template("context.md", name=name, description=desc_placeholder))
     (vault / "index.md").write_text(_render_template("index.md", name=name, today=today))
     (vault / "CLAUDE.md").write_text(_render_template("CLAUDE.md", name=name))
 
@@ -352,20 +392,7 @@ def cmd_new(args) -> None:
         json.dumps(
             {
                 "permissions": {
-                    "allow": [
-                        "Bash(watchdog entity-index)",
-                        "Bash(watchdog queue-status)",
-                        "Bash(watchdog is-duplicate *)",
-                        "Bash(watchdog near-dup *)",
-                        "Bash(watchdog validate-extraction *)",
-                        "Bash(watchdog write-vault *)",
-                        "Bash(find .watchdog/queue/ *)",
-                        "Bash(rm /tmp/wdg_*)",
-                        "Bash(rm .watchdog/queue/*.json)",
-                        "Bash(rm .watchdog/Registry/.ingest-lock)",
-                        "Bash(date +%s)",
-                        "Write(/tmp/wdg_*)",
-                    ]
+                    "allow": _VAULT_PERMISSIONS,
                 },
                 "hooks": {
                     "UserPromptSubmit": [
@@ -393,7 +420,10 @@ def cmd_new(args) -> None:
     )
 
     projects = load_projects()
-    projects[slug] = {"name": name, "path": str(vault), "created_at": now}
+    entry = {"name": name, "path": str(vault), "created_at": now}
+    if description:
+        entry["description"] = description
+    projects[slug] = entry
     save_projects(projects)
 
     print(f"\n  {_GREEN}Created:{_RESET} {_BOLD}{vault}{_RESET}")
@@ -648,6 +678,54 @@ def cmd_rename(args) -> None:
     print(f"  {_CYAN}{new_vault}{_RESET}\n")
 
 
+def cmd_describe(args) -> None:
+    first    = args.project
+    new_desc = args.text.strip() if args.text else None  # explicit text always wins
+
+    if first is not None and new_desc is None:
+        # One positional, no text: try it as a project name; if not found, treat as description
+        projects = load_projects()
+        slug_try = slugify(first)
+        is_known = slug_try in projects or any(k.startswith(slug_try) for k in projects)
+        if is_known:
+            slug, info = _find_project(first)
+        else:
+            cwd   = Path(".").resolve()
+            match = next(((s, v) for s, v in projects.items() if Path(v["path"]).resolve() == cwd), None)
+            if match is None:
+                sys.exit(f"Project not found: {first}\nRun 'watchdog list' to see all projects.")
+            slug, info = match
+            new_desc = first.strip()
+    elif first is not None:
+        slug, info = _find_project(first)
+    else:
+        cwd      = Path(".").resolve()
+        projects = load_projects()
+        match    = next(((s, v) for s, v in projects.items() if Path(v["path"]).resolve() == cwd), None)
+        if match is None:
+            sys.exit("Error: not inside a vault directory. Pass the project name explicitly.")
+        slug, info = match
+
+    if new_desc is None:
+        current = info.get("description", "")
+        if current:
+            print(f"\n  {_DIM}Current:{_RESET} {current}")
+        try:
+            new_desc = input("\n  New description: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            sys.exit(1)
+        if not new_desc:
+            sys.exit("Error: description cannot be empty.")
+
+    projects = load_projects()
+    projects[slug]["description"] = new_desc
+    save_projects(projects)
+
+    print(f"\n  {_GREEN}Updated:{_RESET}  {_BOLD}{info['name']}{_RESET}")
+    print(f"  {_DIM}{new_desc}{_RESET}\n")
+
+
 def cmd_delete(args) -> None:
     slug, info = _find_project(args.name)
     vault = Path(info["path"])
@@ -855,7 +933,25 @@ def cmd_refresh_skills(args) -> None:
     from watchdog.setup_cmd import install_skills
     commands_dir = vault / ".claude" / "commands"
     install_skills(commands_dir)
-    print(f"\n  {_GREEN}Skills refreshed{_RESET}  {_DIM}{commands_dir}{_RESET}\n")
+
+    settings_path = vault / ".claude" / "settings.json"
+    added = []
+    if settings_path.exists():
+        try:
+            settings = json.loads(settings_path.read_text())
+            existing = set(settings.get("permissions", {}).get("allow", []))
+            missing  = [p for p in _VAULT_PERMISSIONS if p not in existing]
+            if missing:
+                settings.setdefault("permissions", {}).setdefault("allow", []).extend(missing)
+                settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+                added = missing
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    print(f"\n  {_GREEN}Skills refreshed{_RESET}  {_DIM}{commands_dir}{_RESET}")
+    if added:
+        print(f"  {_GREEN}Permissions updated{_RESET}  {_DIM}added {len(added)} missing rule{'s' if len(added) != 1 else ''}{_RESET}")
+    print()
 
 
 def cmd_list(args) -> None:
@@ -885,7 +981,8 @@ def cmd_list(args) -> None:
         incoming = str(_count_incoming(vault)) if vault.exists() else "—"
         queued   = str(_count_queued(vault))   if vault.exists() else "—"
         is_arch  = bool(info.get("archived"))
-        rows.append((info["name"], slug, docs, entities, updated, incoming, queued, is_arch))
+        description = info.get("description", "")
+        rows.append((info["name"], slug, docs, entities, updated, incoming, queued, is_arch, description))
 
     name_w = max(len(r[0]) for r in rows) + 2
     slug_w = max(len(r[1]) for r in rows) + 2
@@ -901,7 +998,7 @@ def cmd_list(args) -> None:
     )
     print(f"\n{header}")
     print(f"  {_DIM}{'─' * sep_w}{_RESET}")
-    for name, slug, docs, entities, updated, incoming, queued, is_arch in rows:
+    for name, slug, docs, entities, updated, incoming, queued, is_arch, description in rows:
         inc = "—" if incoming == "0" else incoming
         que = "—" if queued   == "0" else queued
         if is_arch:
@@ -921,6 +1018,8 @@ def cmd_list(args) -> None:
             f"  {que_str}"
             f"  {_DIM}{updated}{_RESET}"
         )
+        if description:
+            print(f"    {_DIM}{description}{_RESET}")
     if archived and not show_all:
         n = len(archived)
         print(f"  {_DIM}+ {n} archived — run {_RESET}{_CYAN}watchdog list --all{_RESET}{_DIM} to show{_RESET}")
@@ -950,6 +1049,8 @@ def cmd_status(args) -> None:
     if not reg:
         print(f"\n  {_BOLD}{info['name']}{_RESET}")
         print(f"  {_CYAN}{info['path']}{_RESET}")
+        if info.get("description"):
+            print(f"  {_DIM}{info['description']}{_RESET}")
         print(f"  {_DIM}Created {_fmt_date(info.get('created_at', ''))}{_RESET}")
         print(f"\n  {_DIM}No registry found — open this vault in Claude Code to begin ingesting.{_RESET}\n")
         return
@@ -970,6 +1071,8 @@ def cmd_status(args) -> None:
 
     print(f"\n  {_BOLD}{info['name']}{_RESET}  {_DIM}{slugify(info['name'])}{_RESET}")
     print(f"  {_CYAN}{info['path']}{_RESET}")
+    if info.get("description"):
+        print(f"  {_DIM}{info['description']}{_RESET}")
     print(f"  {_DIM}Created {_fmt_date(info.get('created_at', ''))}{_RESET}")
     print()
 
@@ -1207,7 +1310,29 @@ def _ensure_ocr_engine(engine: str) -> None:
 
 
 def cmd_search(args) -> None:
-    _, info = _find_project(args.project)
+    project_arg = args.project
+    query_arg   = args.query
+
+    if project_arg and query_arg:
+        _, info = _find_project(project_arg)
+        args.query = query_arg
+    elif project_arg and not query_arg:
+        # One positional: try to resolve as a project name first
+        projects  = load_projects()
+        slug_try  = slugify(project_arg)
+        is_known  = slug_try in projects or any(k.startswith(slug_try) for k in projects)
+        if is_known:
+            sys.exit("Error: please provide a search query.")
+        # Not a project — treat as the query and infer project from cwd
+        cwd   = Path(".").resolve()
+        match = next(((s, v) for s, v in projects.items() if Path(v["path"]).resolve() == cwd), None)
+        if match is None:
+            sys.exit(f"Project not found: {project_arg}\nRun 'watchdog list' to see all projects.")
+        _, info = match
+        args.query = project_arg
+    else:
+        sys.exit("Error: please provide a search query.")
+
     vault = Path(info["path"])
 
     from watchdog.pipeline.embed import search, index_stats
@@ -1408,6 +1533,15 @@ def cmd_unlock(args) -> None:
 
     if not found_any:
         print(f"  {_DIM}No locks found — nothing to do.{_RESET}")
+
+    tmp_dir = vault / ".watchdog" / "tmp"
+    if tmp_dir.exists():
+        leftover = list(tmp_dir.glob("wdg_*"))
+        for f in leftover:
+            f.unlink(missing_ok=True)
+        if leftover:
+            print(f"  {_GREEN}Cleaned:{_RESET}  {_DIM}{len(leftover)} leftover temp file{'s' if len(leftover) != 1 else ''} from .watchdog/tmp/{_RESET}")
+
     print()
 
 
@@ -1618,7 +1752,9 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=False)
 
     p_new = sub.add_parser("new", help="Create a new investigation vault")
-    p_new.add_argument("name", help="Investigation name (e.g. 'Shell Company Investigation')")
+    p_new.add_argument("name", nargs="?", help="Investigation name (e.g. 'Shell Company Investigation')")
+    p_new.add_argument("--name", dest="name_flag", help="Investigation name (alternative to positional)")
+    p_new.add_argument("--description", help="One-line description of the investigation")
     p_new.add_argument("--dir", help=f"Parent directory (default: projects_dir from config)")
     p_new.set_defaults(func=cmd_new)
 
@@ -1646,8 +1782,8 @@ def main() -> None:
     p_about.set_defaults(func=cmd_about)
 
     p_search = sub.add_parser("search", help="Semantic search across ingested documents")
-    p_search.add_argument("project", help="Investigation name or slug").completer = _project_completer
-    p_search.add_argument("query", help="Search query")
+    p_search.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
+    p_search.add_argument("query", nargs="?", help="Search query")
     p_search.add_argument("--top", dest="top_n", type=int, default=5, metavar="N",
                           help="Number of results to return (default: 5)")
     p_search.set_defaults(func=cmd_search)
@@ -1710,6 +1846,11 @@ def main() -> None:
     p_rename.add_argument("project", help="Investigation name or slug").completer = _project_completer
     p_rename.add_argument("name", help="New name")
     p_rename.set_defaults(func=cmd_rename)
+
+    p_describe = sub.add_parser("describe", help="Set or update an investigation description")
+    p_describe.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
+    p_describe.add_argument("text", nargs="?", help="New description text (omit to be prompted)")
+    p_describe.set_defaults(func=cmd_describe)
 
     p_entity_index = sub.add_parser("entity-index", help="Output compact entity index for ingest subagents")
     p_entity_index.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside project folder)").completer = _project_completer

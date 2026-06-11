@@ -61,15 +61,15 @@ Note: links use pipe-alias syntax (`[[path|Display Name]]`). Extract only the pa
 **Orphaned extraction files** — check for leftover temp files from an interrupted ingest:
 
 ```bash
-ls /tmp/watchdog-extraction-*.json 2>/dev/null
+ls .watchdog/tmp/watchdog-extraction-*.json 2>/dev/null
 ```
 
 For each file found, report:
-`ORPHANED TEMP: /tmp/watchdog-extraction-<sha256>.json — safe to delete`
+`ORPHANED TEMP: .watchdog/tmp/watchdog-extraction-<sha256>.json — safe to delete`
 
 These are left behind when Claude wrote the extraction JSON but never called `watchdog write-vault`. They are safe to delete; if you want to recover the extraction, open the file to inspect it first. To clean up all of them:
 ```bash
-rm /tmp/watchdog-extraction-*.json
+rm .watchdog/tmp/watchdog-extraction-*.json
 ```
 
 ---

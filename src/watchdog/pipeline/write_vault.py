@@ -6,7 +6,7 @@ Consumes an extraction JSON blob produced by Claude and handles every vault
 write so Claude's per-file work is: read text → output JSON → done.
 
 Usage:
-    watchdog-write-vault --extraction /tmp/extraction.json [--vault .]
+    watchdog-write-vault --extraction .watchdog/tmp/extraction.json [--vault .]
 
 Extraction JSON schema:
 {

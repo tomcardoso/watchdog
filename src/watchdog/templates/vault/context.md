@@ -4,7 +4,7 @@
 
 ## What I'm investigating
 
-<!-- One paragraph. What is the story? What pattern, question, or wrongdoing are you pursuing? -->
+{description}
 
 ## Key questions I'm trying to answer
 

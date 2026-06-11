@@ -38,7 +38,7 @@ def configured(wdg_home, tmp_path, monkeypatch):
 
 
 def args(**kwargs):
-    return argparse.Namespace(**{"dir": None, "force": False, "key": None, "value": None, **kwargs})
+    return argparse.Namespace(**{"name": None, "dir": None, "force": False, "key": None, "value": None, "description": None, "name_flag": None, "project": None, "query": None, "text": None, **kwargs})
 
 
 # ── slugify ───────────────────────────────────────────────────────────────────
@@ -204,6 +204,42 @@ def test_cmd_new_uses_config_projects_dir(configured, wdg_home):
     assert str(configured) in projects["auto-dir-test"]["path"]
 
 
+def test_cmd_new_description_stored_in_registry(configured, wdg_home):
+    cli.cmd_new(args(name="My Story", description="Tracking shell companies linked to city contracts", dir=str(configured)))
+    projects = json.loads((wdg_home / "projects.json").read_text())
+    assert projects["my-story"]["description"] == "Tracking shell companies linked to city contracts"
+
+
+def test_cmd_new_description_written_to_context(configured):
+    cli.cmd_new(args(name="My Story", description="Tracking shell companies linked to city contracts", dir=str(configured)))
+    context = (configured / "my-story" / "context.md").read_text()
+    assert "Tracking shell companies linked to city contracts" in context
+
+
+def test_cmd_new_no_description_keeps_placeholder(configured):
+    cli.cmd_new(args(name="My Story", dir=str(configured)))
+    context = (configured / "my-story" / "context.md").read_text()
+    assert "<!--" in context
+    assert "description" not in json.loads(
+        (configured / "my-story" / ".watchdog" / "Registry" / "registry.json").read_text()
+    )
+
+
+def test_cmd_new_interactive_prompts(configured, wdg_home, monkeypatch):
+    responses = iter(["Shell Game", "Tracking offshore accounts"])
+    monkeypatch.setattr("builtins.input", lambda _: next(responses))
+    cli.cmd_new(args(dir=str(configured)))
+    projects = json.loads((wdg_home / "projects.json").read_text())
+    assert "shell-game" in projects
+    assert projects["shell-game"]["description"] == "Tracking offshore accounts"
+
+
+def test_cmd_new_name_flag(configured, wdg_home):
+    cli.cmd_new(args(name_flag="Flag Name Test", dir=str(configured)))
+    projects = json.loads((wdg_home / "projects.json").read_text())
+    assert "flag-name-test" in projects
+
+
 # ── cmd_open ──────────────────────────────────────────────────────────────────
 
 def test_cmd_open_launches_claude_when_no_queue(configured, monkeypatch):
@@ -359,6 +395,21 @@ def test_cmd_list_missing_registry_shows_dashes(configured, wdg_home, capsys):
     assert "—" in capsys.readouterr().out
 
 
+def test_cmd_list_shows_description(configured, wdg_home, capsys):
+    cli.cmd_new(args(name="Shell Co Probe", description="Offshore owners behind city land deals", dir=str(configured)))
+    cli.cmd_list(args())
+    assert "Offshore owners behind city land deals" in capsys.readouterr().out
+
+
+def test_cmd_list_no_description_omits_line(configured, wdg_home, capsys):
+    cli.cmd_new(args(name="Shell Co Probe", dir=str(configured)))
+    cli.cmd_list(args())
+    # Row renders without an extra description line — just check no blank stub
+    out = capsys.readouterr().out
+    assert "Shell Co Probe" in out
+    assert "None" not in out
+
+
 # ── cmd_status ────────────────────────────────────────────────────────────────
 
 def _make_vault_with_data(vault: Path, docs: list[dict], entities: list[dict]) -> None:
@@ -378,6 +429,18 @@ def test_cmd_status_shows_name(configured, capsys):
     cli.cmd_new(args(name="Test Proj", dir=str(configured)))
     cli.cmd_status(args(name="Test Proj"))
     assert "Test Proj" in capsys.readouterr().out
+
+
+def test_cmd_status_shows_description(configured, capsys):
+    cli.cmd_new(args(name="Test Proj", description="Offshore owners behind city land deals", dir=str(configured)))
+    cli.cmd_status(args(name="Test Proj"))
+    assert "Offshore owners behind city land deals" in capsys.readouterr().out
+
+
+def test_cmd_status_no_description_omits_line(configured, capsys):
+    cli.cmd_new(args(name="Test Proj", dir=str(configured)))
+    cli.cmd_status(args(name="Test Proj"))
+    assert "None" not in capsys.readouterr().out
 
 
 def test_cmd_status_shows_totals(configured, capsys):
@@ -1208,6 +1271,49 @@ def test_cmd_rename_same_slug_updates_name_only(configured, capsys):
     projects = cli.load_projects()
     assert "shell-co" in projects
     assert (configured / "shell-co").exists()
+
+
+# ── cmd_describe ─────────────────────────────────────────────────────────────
+
+def test_cmd_describe_sets_description(configured, wdg_home, capsys):
+    cli.cmd_new(args(name="My Story", dir=str(configured)))
+    cli.cmd_describe(args(project="My Story", text="Offshore accounts linked to city contracts"))
+    projects = cli.load_projects()
+    assert projects["my-story"]["description"] == "Offshore accounts linked to city contracts"
+
+
+def test_cmd_describe_updates_existing(configured, wdg_home, capsys):
+    cli.cmd_new(args(name="My Story", description="old desc", dir=str(configured)))
+    cli.cmd_describe(args(project="My Story", text="new desc"))
+    assert cli.load_projects()["my-story"]["description"] == "new desc"
+
+
+def test_cmd_describe_infers_project_from_cwd(configured, wdg_home, monkeypatch, capsys):
+    cli.cmd_new(args(name="My Story", dir=str(configured)))
+    monkeypatch.chdir(configured / "my-story")
+    cli.cmd_describe(args(text="Inferred from cwd"))
+    assert cli.load_projects()["my-story"]["description"] == "Inferred from cwd"
+
+
+def test_cmd_describe_lone_positional_as_text_in_vault(configured, wdg_home, monkeypatch, capsys):
+    cli.cmd_new(args(name="My Story", dir=str(configured)))
+    monkeypatch.chdir(configured / "my-story")
+    # "xyzzy-not-a-project" won't match any project slug, so it should be treated as text
+    cli.cmd_describe(args(project="xyzzy-not-a-project"))
+    assert cli.load_projects()["my-story"]["description"] == "xyzzy-not-a-project"
+
+
+def test_cmd_describe_interactive(configured, wdg_home, monkeypatch, capsys):
+    cli.cmd_new(args(name="My Story", dir=str(configured)))
+    monkeypatch.chdir(configured / "my-story")
+    monkeypatch.setattr("builtins.input", lambda _: "Interactive description")
+    cli.cmd_describe(args())
+    assert cli.load_projects()["my-story"]["description"] == "Interactive description"
+
+
+def test_cmd_describe_outside_vault_no_project_exits(configured, wdg_home, capsys):
+    with pytest.raises(SystemExit):
+        cli.cmd_describe(args())
 
 
 # ── aliases (rn) ──────────────────────────────────────────────────────────────

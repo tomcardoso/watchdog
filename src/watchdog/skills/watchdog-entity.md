@@ -69,16 +69,16 @@ Build the extraction JSON:
 }
 ```
 
-Write it to `/tmp/entity-refresh-<entity-id>.json` using the Write tool, then run:
+Write it to `.watchdog/tmp/entity-refresh-<entity-id>.json` using the Write tool, then run:
 
 ```bash
-watchdog write-entity --entity-id <entity-id> --extraction /tmp/entity-refresh-<entity-id>.json
+watchdog write-entity --entity-id <entity-id> --extraction .watchdog/tmp/entity-refresh-<entity-id>.json
 ```
 
 Clean up:
 
 ```bash
-rm /tmp/entity-refresh-<entity-id>.json
+rm .watchdog/tmp/entity-refresh-<entity-id>.json
 ```
 
 `watchdog write-entity` rewrites the entity note and rebuilds `timeline.md`. The `## Analysis` and `## Notes` sections are preserved.

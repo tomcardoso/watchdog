@@ -8,7 +8,7 @@ watchdog-write-vault (which accumulates), this command replaces
 Summary and Timeline in full — it's a fresh synthesis.
 
 Usage:
-    watchdog-write-entity --entity-id alice-smith --extraction /tmp/entity-refresh-alice-smith.json [--vault .]
+    watchdog-write-entity --entity-id alice-smith --extraction .watchdog/tmp/entity-refresh-alice-smith.json [--vault .]
 
 Extraction JSON schema:
 {

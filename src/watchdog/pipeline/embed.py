@@ -2,14 +2,20 @@
 Semantic embedding index for watchdog investigations.
 
 Index lives at <vault_path>/.embeddings/:
-  vectors.npy  — float32 (N, dim), L2-normalised for cosine similarity
-  meta.json    — list of {filename, page, preview} parallel to vector rows
+  docs/{sha16}.npy   — float32 (n_pages, dim), L2-normalised — one file per document
+  docs/{sha16}.json  — metadata list for that document
+  notes/{id}.npy     — float32 (1, dim) per entity/document note
+  notes/{id}.json    — metadata list for that note
 
-Pages are embedded individually so searches return page-level attribution.
-Re-ingesting a document replaces its existing entries rather than duplicating.
+Re-ingesting a document or note overwrites only its own files — no full-index rewrite.
+
+Vaults using the legacy monolithic format (vectors.npy + meta.json) are migrated
+automatically on first access.
 """
 
+import hashlib
 import json
+import re
 import numpy as np
 from pathlib import Path
 
@@ -27,28 +33,26 @@ def _get_embedder():
     return _embedder
 
 
-def _dir(vault_path: Path) -> Path:
+def _emb_root(vault_path: Path) -> Path:
     return vault_path / ".embeddings"
 
 
-def _load(vault_path: Path) -> tuple["np.ndarray | None", list[dict]]:
-    d = _dir(vault_path)
-    vp = d / "vectors.npy"
-    mp = d / "meta.json"
-    if not vp.exists() or not mp.exists():
-        return None, []
-    return np.load(vp, mmap_mode="r"), json.loads(mp.read_text())
+def _docs_dir(vault_path: Path) -> Path:
+    return _emb_root(vault_path) / "docs"
 
 
-def _save(vault_path: Path, vectors: "np.ndarray", meta: list[dict]) -> None:
-    d = _dir(vault_path)
-    d.mkdir(parents=True, exist_ok=True)
-    vp, mp = d / "vectors.npy", d / "meta.json"
-    tmp_v, tmp_m = d / "vectors.tmp.npy", d / "meta.tmp.json"
-    np.save(tmp_v, vectors)
-    tmp_m.write_text(json.dumps(meta, ensure_ascii=False))
-    tmp_v.rename(vp)
-    tmp_m.rename(mp)
+def _notes_dir(vault_path: Path) -> Path:
+    return _emb_root(vault_path) / "notes"
+
+
+def _doc_id(filename: str) -> str:
+    return hashlib.sha256(filename.encode()).hexdigest()[:16]
+
+
+def _note_id(note_path: str) -> str:
+    safe = re.sub(r"[^a-zA-Z0-9]", "-", note_path)[:40].strip("-")
+    suffix = hashlib.sha256(note_path.encode()).hexdigest()[:8]
+    return f"{safe}-{suffix}"
 
 
 def _normalise(v: "np.ndarray") -> "np.ndarray":
@@ -57,7 +61,6 @@ def _normalise(v: "np.ndarray") -> "np.ndarray":
 
 
 def _strip_frontmatter(content: str) -> str:
-    """Remove YAML frontmatter block so only body text is embedded."""
     if content.startswith("---\n"):
         end = content.find("\n---\n", 4)
         if end != -1:
@@ -65,70 +68,112 @@ def _strip_frontmatter(content: str) -> str:
     return content.strip()
 
 
-def _drop(existing_vecs, existing_meta, predicate):
-    """Remove entries matching predicate; returns (vecs, meta) — vecs may be None."""
-    keep = [i for i, m in enumerate(existing_meta) if not predicate(m)]
-    if not keep:
+def _migrate_if_needed(vault_path: Path) -> None:
+    """Migrate legacy monolithic index to per-document files."""
+    old_vecs_path = _emb_root(vault_path) / "vectors.npy"
+    old_meta_path = _emb_root(vault_path) / "meta.json"
+    if not old_vecs_path.exists() or not old_meta_path.exists():
+        return
+
+    meta = json.loads(old_meta_path.read_text())
+    vecs = np.load(old_vecs_path)
+
+    _docs_dir(vault_path).mkdir(parents=True, exist_ok=True)
+    _notes_dir(vault_path).mkdir(parents=True, exist_ok=True)
+
+    from collections import defaultdict
+    groups: dict = defaultdict(list)
+    for i, entry in enumerate(meta):
+        if entry.get("type") == "note":
+            key = ("note", entry["note_path"])
+        else:
+            key = ("doc", entry.get("filename", "unknown"))
+        groups[key].append((i, entry))
+
+    for (kind, key), rows in groups.items():
+        indices     = [i for i, _ in rows]
+        chunk_meta  = [e for _, e in rows]
+        chunk_vecs  = vecs[indices]
+        if kind == "note":
+            fid = _note_id(key)
+            d   = _notes_dir(vault_path)
+        else:
+            fid = _doc_id(key)
+            d   = _docs_dir(vault_path)
+        np.save(d / f"{fid}.npy", chunk_vecs)
+        (d / f"{fid}.json").write_text(json.dumps(chunk_meta, ensure_ascii=False))
+
+    old_vecs_path.unlink()
+    old_meta_path.unlink()
+
+
+def _load_all(vault_path: Path) -> tuple["np.ndarray | None", list[dict]]:
+    """Load all vectors and metadata. Returns (None, []) when the index is empty."""
+    _migrate_if_needed(vault_path)
+    all_vecs: list = []
+    all_meta: list = []
+    for d in (_docs_dir(vault_path), _notes_dir(vault_path)):
+        if not d.exists():
+            continue
+        for json_file in sorted(d.glob("*.json")):
+            npy_file = json_file.with_suffix(".npy")
+            if not npy_file.exists():
+                continue
+            all_meta.extend(json.loads(json_file.read_text()))
+            all_vecs.append(np.load(npy_file))
+    if not all_vecs:
         return None, []
-    return existing_vecs[keep], [existing_meta[i] for i in keep]
+    return np.vstack(all_vecs), all_meta
+
+
+# Alias used by tests that inspect internal state.
+_load = _load_all
 
 
 def add_document(vault_path: Path, filename: str, pages: list[dict]) -> int:
-    """Embed pages and add to the investigation index. Returns pages indexed."""
+    """Embed pages and write to the per-document index file. Returns pages indexed."""
     embedder = _get_embedder()
-    texts = [p["markdown"] for p in pages]
-    new_vecs = _normalise(np.array(list(embedder.embed(texts)), dtype=np.float32))
-    new_meta = [
+    texts    = [p["markdown"] for p in pages]
+    vecs     = _normalise(np.array(list(embedder.embed(texts)), dtype=np.float32))
+    meta     = [
         {"type": "page", "filename": filename, "page": p["page"], "preview": p["markdown"][:_PREVIEW_LEN]}
         for p in pages
     ]
-
-    existing_vecs, existing_meta = _load(vault_path)
-    if existing_vecs is not None:
-        existing_vecs, existing_meta = _drop(
-            existing_vecs, existing_meta,
-            lambda m: m.get("type", "page") == "page" and m.get("filename") == filename,
-        )
-
-    vectors = new_vecs if existing_vecs is None else np.vstack([existing_vecs, new_vecs])
-    _save(vault_path, vectors, existing_meta + new_meta)
+    _docs_dir(vault_path).mkdir(parents=True, exist_ok=True)
+    fid = _doc_id(filename)
+    np.save(_docs_dir(vault_path) / f"{fid}.npy", vecs)
+    (_docs_dir(vault_path) / f"{fid}.json").write_text(json.dumps(meta, ensure_ascii=False))
     return len(pages)
 
 
 def add_note(vault_path: Path, note_path: str, content: str) -> None:
-    """Embed a vault note (entity or document) and add to the investigation index."""
+    """Embed a vault note (entity or document) and write to the per-note index file."""
     body = _strip_frontmatter(content)
     if not body:
         return
     embedder = _get_embedder()
-    vec = _normalise(np.array(list(embedder.embed([body])), dtype=np.float32))
-    new_meta = [{"type": "note", "note_path": note_path, "preview": body[:_PREVIEW_LEN]}]
-
-    existing_vecs, existing_meta = _load(vault_path)
-    if existing_vecs is not None:
-        existing_vecs, existing_meta = _drop(
-            existing_vecs, existing_meta,
-            lambda m: m.get("type") == "note" and m.get("note_path") == note_path,
-        )
-
-    vectors = vec if existing_vecs is None else np.vstack([existing_vecs, vec])
-    _save(vault_path, vectors, existing_meta + new_meta)
+    vec      = _normalise(np.array(list(embedder.embed([body])), dtype=np.float32))
+    meta     = [{"type": "note", "note_path": note_path, "preview": body[:_PREVIEW_LEN]}]
+    _notes_dir(vault_path).mkdir(parents=True, exist_ok=True)
+    fid = _note_id(note_path)
+    np.save(_notes_dir(vault_path) / f"{fid}.npy", vec)
+    (_notes_dir(vault_path) / f"{fid}.json").write_text(json.dumps(meta, ensure_ascii=False))
 
 
 def search(vault_path: Path, query: str, top_n: int = 5) -> list[dict]:
     """Return top_n entries most similar to query, scored by cosine similarity."""
-    vectors, meta = _load(vault_path)
+    vectors, meta = _load_all(vault_path)
     if vectors is None or not meta:
         return []
     embedder = _get_embedder()
-    q = _normalise(np.array(list(embedder.embed([query])), dtype=np.float32)[0])
-    scores = vectors @ q
-    top_indices = np.argsort(scores)[::-1][:top_n]
-    return [{**meta[i], "score": float(scores[i])} for i in top_indices]
+    q        = _normalise(np.array(list(embedder.embed([query])), dtype=np.float32)[0])
+    scores   = vectors @ q
+    top_idx  = np.argsort(scores)[::-1][:top_n]
+    return [{**meta[i], "score": float(scores[i])} for i in top_idx]
 
 
 def index_stats(vault_path: Path) -> dict:
-    _, meta = _load(vault_path)
+    _, meta = _load_all(vault_path)
     pages = sum(1 for m in meta if m.get("type", "page") == "page")
     notes = sum(1 for m in meta if m.get("type") == "note")
     return {"pages": pages, "notes": notes, "total": len(meta)}

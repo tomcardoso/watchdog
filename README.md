@@ -141,7 +141,10 @@ For step-by-step instructions written for journalists who have never used a term
 ## Quick start
 
 ```bash
-# Create a new investigation vault
+# Create a new investigation vault (interactive — prompts for name and description)
+watchdog new
+
+# Or pass the name directly
 watchdog new "Shell Company Investigation"
 
 # Drop documents into the vault
@@ -182,7 +185,7 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 
 | Command | What it does |
 |---------|-------------|
-| `watchdog new "<name>"` | Create a new investigation vault |
+| `watchdog new [<name>]` | Create a new investigation vault; omit name to be prompted interactively |
 | `watchdog open <name>` | Chew pending documents (with prompt), then open in Claude Code |
 | `watchdog obsidian [name]` | Open the vault in Obsidian; omit name when inside the project directory |
 | `watchdog list` | List all active investigations; `--all` includes archived |
@@ -384,7 +387,7 @@ Skills are installed into each vault's `.claude/commands/records/` folder when y
 Watchdog is installed once. Each investigation is a separate vault:
 
 ```bash
-watchdog new "Municipal Contracts Investigation"
+watchdog new "Municipal Contracts Investigation" --description "City hall contracts awarded to councillors' donors"
 watchdog new "Healthcare Funding Investigation"
 watchdog list
 watchdog status municipal-contracts-investigation

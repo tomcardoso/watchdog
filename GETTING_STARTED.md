@@ -23,10 +23,18 @@ Two things to keep in mind before starting:
 ## Step 1: Create the vault
 
 ```bash
-watchdog new "Shell Company Investigation"
+watchdog new
 ```
 
-Use a descriptive name that will still make sense in six months. Watchdog creates a folder at your configured projects directory (default: `~/Investigations/shell-company-investigation`) and sets up everything inside it.
+Watchdog will prompt you for a name and an optional one-line description. The description pre-seeds `context.md` and is stored in your project registry — useful when you have several investigations open at once.
+
+If you'd rather skip the prompts, pass everything on the command line:
+
+```bash
+watchdog new "Shell Company Investigation" --description "Offshore owners behind city-adjacent land deals"
+```
+
+Use a name that will still make sense in six months. Watchdog creates a folder at your configured projects directory (default: `~/Investigations/shell-company-investigation`) and sets up everything inside it.
 
 What just happened:
 - The vault directory was created with the full folder structure

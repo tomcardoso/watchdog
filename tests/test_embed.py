@@ -69,8 +69,7 @@ def test_add_returns_page_count(vault):
 
 def test_add_creates_index_files(vault):
     embed_mod.add_document(vault, "doc.pdf", _pages("text"))
-    assert (vault / ".embeddings" / "vectors.npy").exists()
-    assert (vault / ".embeddings" / "meta.json").exists()
+    assert any((vault / ".embeddings" / "docs").glob("*.npy"))
 
 
 def test_add_multiple_documents(vault):
