@@ -101,7 +101,7 @@ Watchdog uses [Docling](https://github.com/DS4SD/docling) for all document conve
 Why Docling matters for investigative work:
 
 - **Table extraction** — financial statements and creditor lists are full of tables. Docling reconstructs them as structured data rather than garbled text, so Claude can reason about rows and columns correctly.
-- **Layout awareness** — multi-column layouts, footnotes, headers, and sidebars are handled correctly. A court document's header fields don't bleed into the body text.
+- **Layout awareness** — multi-column layouts, footnotes, headers, and sidebars are handled correctly. A court document's header fields doesn't bleed into the body text.
 - **OCR integration** — when text extraction fails or produces garbled output, Docling falls back to OCR automatically. On macOS, Apple Vision is used (fast, hardware-accelerated); on other platforms, Tesseract is the default (install via `brew install tesseract` or `apt install tesseract-ocr`). The engine is configurable — see [Configuration](#configuration).
 - **Large document handling** — 400+ page PDFs are chunked into 40-page segments, processed in parallel, and reassembled in order with correct page numbers throughout.
 
@@ -130,7 +130,7 @@ pipx install watchdog-intel
 watchdog setup
 ```
 
-`watchdog setup` installs the Claude Code skills, verifies system dependencies (qpdf, Ghostscript, Tesseract on Linux), configures your projects directory, and downloads the ML models used for document conversion and semantic search (~600 MB, one-time). Expect the model download step to take a few minutes on a slow connection.
+`watchdog setup` verifies system dependencies (qpdf, Ghostscript, Tesseract on Linux), configures your projects directory, and downloads the ML models used for document conversion and semantic search (~600 MB, one-time). Expect the model download step to take a few minutes on a slow connection.
 
 Shell tab completion is enabled automatically by `watchdog setup` — it writes the activation line to your shell profile (`~/.zshrc`, `~/.bashrc`, or equivalent) and prompts you to reload.
 
