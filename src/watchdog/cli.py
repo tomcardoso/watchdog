@@ -78,7 +78,7 @@ _VAULT_PERMISSIONS = [
     "Bash(rm .watchdog/tmp/*)",
     "Bash(rm .watchdog/queue/*.json)",
     "Bash(rm .watchdog/Registry/.ingest-lock)",
-    "Bash(date *)",
+    'Bash(date -u +"%Y-%m-%dT%H:%M:%SZ")',
     "Write(/.watchdog/tmp/**)",
     "Write(/.watchdog/Registry/**)",
 ]
