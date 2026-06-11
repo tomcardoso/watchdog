@@ -38,7 +38,7 @@ The following are auto-allowed in `.claude/settings.json` — never ask for conf
 | `rm .watchdog/Registry/.ingest-lock` | auto-allowed |
 | `date -u +"%Y-%m-%dT%H:%M:%SZ"` | auto-allowed |
 
-**What is NOT permitted and must never be attempted:** `mkdir`, `which`, `pip show`, `python3 -c "import …"`, or any other command to probe or modify the environment. `.watchdog/tmp/` always exists — do not create it.
+**What is NOT permitted and must never be attempted:** `mkdir`, `which`, `pip show`, `python3 -c "import …"`, `watchdog <cmd> --help`, or any other command to probe or inspect the environment. `.watchdog/tmp/` always exists — do not create it.
 
 **Never pass `--vault` to any watchdog command.** All watchdog commands default to the current directory as the vault. Passing `--vault` could affect a different project.
 
