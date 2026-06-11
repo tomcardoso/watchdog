@@ -38,7 +38,7 @@ The following are auto-allowed in `.claude/settings.json` — never ask for conf
 | `rm .watchdog/Registry/.ingest-lock` | auto-allowed |
 | `date -u +"%Y-%m-%dT%H:%M:%SZ"` | auto-allowed |
 
-**What is NOT permitted and must never be attempted:** `mkdir`, `which`, `pip show`, `python3 -c "…"`, `watchdog <cmd> --help`, shell pipelines to parse JSON (`cat … | python3 -c "…"`), or any other command to probe or inspect the environment. `.watchdog/tmp/` always exists — do not create it.
+**What is NOT permitted and must never be attempted:** `mkdir`, `which`, `pip show`, `python3 -c "…"`, `watchdog <cmd> --help`, shell pipelines to parse JSON (`cat … | python3 -c "…"`), absolute paths in any bash command, or `cd <path> &&` prefixes. Always use paths relative to the vault root. `.watchdog/tmp/` always exists — do not create it.
 
 **To read registry files** (`.watchdog/Registry/entities.json`, `documents.json`, `manifest.json`, etc.), use the Read tool directly — never shell out to parse them.
 
