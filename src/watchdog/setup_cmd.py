@@ -206,17 +206,16 @@ def run(force: bool = False) -> None:
                   " (install Tesseract system package first, then: pip install tesserocr)")
 
     # 6. Download ML models
+    # Pin fastembed cache to ~/.cache/fastembed so it survives reboots.
+    # Fastembed 0.8+ defaults to tempfile.gettempdir()/fastembed_cache which is ephemeral.
     _FASTEMBED_MODEL = "BAAI/bge-small-en-v1.5"
-    _fastembed_cache = (
-        Path(os.environ.get("FASTEMBED_CACHE_PATH", Path.home() / ".cache" / "fastembed"))
-        / _FASTEMBED_MODEL.replace("/", os.sep)
+    _fastembed_cache_root = Path(
+        os.environ.get("FASTEMBED_CACHE_PATH", Path.home() / ".cache" / "fastembed")
     )
-    _docling_cache = Path.home() / ".cache" / "docling" / "models"
-    _models_cached = (
-        _fastembed_cache.exists()
-        and _docling_cache.exists()
-        and any(_docling_cache.iterdir())
-    )
+    os.environ.setdefault("FASTEMBED_CACHE_PATH", str(_fastembed_cache_root))
+    _fastembed_cached = (_fastembed_cache_root / _FASTEMBED_MODEL.replace("/", os.sep)).exists()
+    _docling_cache    = Path.home() / ".cache" / "docling" / "models"
+    _models_cached    = _fastembed_cached and _docling_cache.exists() and any(_docling_cache.iterdir())
     print()
     if _models_cached:
         print("  Checking ML models...")

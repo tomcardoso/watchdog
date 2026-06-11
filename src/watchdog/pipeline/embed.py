@@ -15,9 +15,17 @@ automatically on first access.
 
 import hashlib
 import json
+import os
 import re
 import numpy as np
 from pathlib import Path
+
+# Pin fastembed cache to a persistent location — fastembed 0.8+ defaults to
+# tempfile.gettempdir()/fastembed_cache which is ephemeral on many systems.
+os.environ.setdefault(
+    "FASTEMBED_CACHE_PATH",
+    str(Path.home() / ".cache" / "fastembed"),
+)
 
 _MODEL = "BAAI/bge-small-en-v1.5"
 _PREVIEW_LEN = 300
