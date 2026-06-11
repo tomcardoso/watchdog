@@ -80,7 +80,7 @@ _VAULT_PERMISSIONS = [
     "Bash(rm .watchdog/Registry/.ingest-lock)",
     "Bash(date *)",
     "Write(.watchdog/tmp/*)",
-    "Write(.watchdog/Registry/.ingest-lock)",
+    "Write(.watchdog/Registry/*)",
 ]
 
 _BOLD   = "\033[1m"
