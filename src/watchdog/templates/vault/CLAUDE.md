@@ -2,6 +2,10 @@
 
 At the start of every session: (1) read `hot.md` for a summary of recent activity and open questions; (2) read `context.md` to understand what this investigation is about; (3) check `.watchdog/queue/` for files ready to extract — if any are present, run `/watchdog-ingest` before doing anything else.
 
+## Environment
+
+`watchdog` is installed at `~/.local/bin/watchdog`. If bash commands fail with "command not found", run: `export PATH="$HOME/.local/bin:$PATH"` — then retry. Do not attempt to locate or re-install watchdog in any other way.
+
 ## Vault layout
 
 | Path | Purpose |
