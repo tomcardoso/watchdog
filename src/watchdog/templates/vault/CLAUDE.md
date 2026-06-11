@@ -28,7 +28,7 @@ The following are auto-allowed in `.claude/settings.json` — never ask for conf
 
 | Operation | Permitted pattern |
 |-----------|------------------|
-| Read any file | always allowed |
+| Read any file within this vault | always allowed |
 | Write/edit files in `.watchdog/tmp/` | auto-allowed |
 | Write/edit files in `.watchdog/Registry/` | auto-allowed |
 | `watchdog <any subcommand>` | auto-allowed |
