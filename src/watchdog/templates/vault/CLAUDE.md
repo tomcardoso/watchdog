@@ -22,6 +22,24 @@ At the start of every session: (1) read `hot.md` for a summary of recent activit
 | `log.md` | Append-only ingest history — human-readable in Obsidian |
 | `context.md` | Your investigation intent and key questions — read this before every skill |
 
+## Pre-authorized operations
+
+The following are auto-allowed in `.claude/settings.json` — never ask for confirmation, never use workarounds:
+
+| Operation | Permitted pattern |
+|-----------|------------------|
+| Read any file | always allowed |
+| Write/edit files in `.watchdog/tmp/` | auto-allowed |
+| Write/edit files in `.watchdog/Registry/` | auto-allowed |
+| `watchdog <any subcommand>` | auto-allowed |
+| `find .watchdog/queue/ …` | auto-allowed |
+| `rm .watchdog/tmp/*` | auto-allowed |
+| `rm .watchdog/queue/*.json` | auto-allowed |
+| `rm .watchdog/Registry/.ingest-lock` | auto-allowed |
+| `date -u +"%Y-%m-%dT%H:%M:%SZ"` | auto-allowed |
+
+**What is NOT permitted and must never be attempted:** `mkdir`, `which`, `pip show`, `python3 -c "import …"`, or any other command to probe or modify the environment. `.watchdog/tmp/` always exists — do not create it.
+
 ## Hard rules
 
 1. Public records only — never process confidential source material, private correspondence, or leaked documents. If a document cannot be identified as a public record, stop and ask before proceeding.
