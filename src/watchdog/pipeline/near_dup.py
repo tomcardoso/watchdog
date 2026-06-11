@@ -139,9 +139,12 @@ def main() -> None:
     args = parser.parse_args()
 
     vault = Path(".").resolve()
+    if not (vault / ".watchdog").is_dir():
+        print(json.dumps({"error": "must be run from inside a Watchdog vault directory"}))
+        sys.exit(1)
 
     def _check_vault(label: str, p: Path) -> None:
-        if not str(p.resolve()).startswith(str(vault)):
+        if not str(p.resolve()).startswith(str(vault) + "/"):
             print(json.dumps({"error": f"{label} must be inside the vault directory ({vault})"}))
             sys.exit(1)
 

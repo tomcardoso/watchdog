@@ -105,7 +105,9 @@ def main() -> None:
 
     if not vault_path.exists():
         sys.exit(f"Error: vault directory {vault_path} not found")
-    if not str(extraction_path).startswith(str(vault_path)):
+    if not (vault_path / ".watchdog").is_dir():
+        sys.exit(f"Error: {vault_path} is not a Watchdog vault directory")
+    if not str(extraction_path).startswith(str(vault_path) + "/"):
         sys.exit(f"Error: --extraction path must be inside the vault directory ({vault_path})")
     if not extraction_path.exists():
         sys.exit(f"Error: {extraction_path} not found")
