@@ -14,6 +14,8 @@ Chewing (OCR, Docling) is handled separately by the `watchdog chew` CLI command.
 
 **CWD:** All bash commands run from the vault root. Never prefix commands with `cd <path> &&`.
 
+**Pre-created directories:** `.watchdog/tmp/`, `.watchdog/queue/`, and `.watchdog/Registry/` are created by `watchdog new` and always exist. Never run `mkdir` for them.
+
 ---
 
 ## 0. Pre-flight checks
