@@ -16,7 +16,9 @@ Chewing (OCR, Docling) is handled separately by the `watchdog chew` CLI command.
 
 **Pre-created directories:** `.watchdog/tmp/`, `.watchdog/queue/`, and `.watchdog/Registry/` always exist — `watchdog queue-status` ensures `.watchdog/tmp/` on every run. Never run `mkdir` for any of them.
 
-**No exploration commands:** Never run `watchdog <command>` without arguments to probe its usage, and never run `which watchdog`, `pip show`, `python3 -c "import watchdog..."`, or any other command to locate or inspect the watchdog installation. If a step fails, re-read the relevant section of this skill and retry with the correct arguments.
+**No exploration commands:** Never run `watchdog <command>` without arguments to probe its usage, and never run `which watchdog`, `pip show`, `python3 -c "..."`, or any other command to locate or inspect the watchdog installation. If a step fails, re-read the relevant section of this skill and retry with the correct arguments.
+
+**Read registry files with the Read tool, not bash:** To inspect `.watchdog/Registry/entities.json`, `.watchdog/Registry/documents.json`, `.watchdog/Registry/manifest.json`, or any other file in the vault, use the Read tool directly. Never use `cat … | python3 -c "…"` or any shell pipeline to parse or format them.
 
 ---
 
@@ -282,7 +284,15 @@ Build this JSON exactly:
         {"date": "...", "event": "...", "page": <n or null>, "confidence": "..."}
       ],
       "roles": [
-        {"relationship": "...", "target_id": "...", "target_type": "...", "target_name": "...", "page": <n or null>, "confidence": "...", "date_range": null}
+        {
+          "relationship": "<verb phrase: Director of, Shareholder of, Registered Agent for, Counsel for, Spouse of, Subsidiary of, …>",
+          "target_id": "<kebab-case id of the related entity>",
+          "target_type": "<entity type lowercase: person, company, address, …>",
+          "target_name": "<display name of the related entity>",
+          "page": <n or null>,
+          "confidence": "<high|medium|low|disputed>",
+          "date_range": null
+        }
       ]
     }
   ],
