@@ -40,6 +40,8 @@ The following are auto-allowed in `.claude/settings.json` — never ask for conf
 
 **What is NOT permitted and must never be attempted:** `mkdir`, `which`, `pip show`, `python3 -c "import …"`, or any other command to probe or modify the environment. `.watchdog/tmp/` always exists — do not create it.
 
+**Never pass `--vault` to any watchdog command.** All watchdog commands default to the current directory as the vault. Passing `--vault` could affect a different project.
+
 ## Hard rules
 
 1. Public records only — never process confidential source material, private correspondence, or leaked documents. If a document cannot be identified as a public record, stop and ask before proceeding.
