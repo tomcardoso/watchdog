@@ -566,13 +566,20 @@ def _make_extraction(tmp_path, **overrides):
     return f
 
 
-def test_validate_extraction_valid(tmp_path, capsys):
+def _vault_tmp(tmp_path, monkeypatch):
+    (tmp_path / ".watchdog").mkdir()
+    monkeypatch.chdir(tmp_path)
+
+
+def test_validate_extraction_valid(tmp_path, monkeypatch, capsys):
+    _vault_tmp(tmp_path, monkeypatch)
     f = _make_extraction(tmp_path)
     cli.cmd_validate_extraction(args(file=str(f)))
     assert "ok" in capsys.readouterr().out
 
 
-def test_validate_extraction_missing_sha256(tmp_path, capsys):
+def test_validate_extraction_missing_sha256(tmp_path, monkeypatch, capsys):
+    _vault_tmp(tmp_path, monkeypatch)
     f = _make_extraction(tmp_path)
     data = json.loads(f.read_text())
     data["document"]["sha256"] = ""
@@ -582,7 +589,8 @@ def test_validate_extraction_missing_sha256(tmp_path, capsys):
     assert "sha256" in capsys.readouterr().out
 
 
-def test_validate_extraction_missing_entity_id(tmp_path, capsys):
+def test_validate_extraction_missing_entity_id(tmp_path, monkeypatch, capsys):
+    _vault_tmp(tmp_path, monkeypatch)
     f = _make_extraction(tmp_path)
     data = json.loads(f.read_text())
     data["entities"][0]["id"] = ""
@@ -592,7 +600,8 @@ def test_validate_extraction_missing_entity_id(tmp_path, capsys):
     assert "id" in capsys.readouterr().out
 
 
-def test_validate_extraction_bad_confidence(tmp_path, capsys):
+def test_validate_extraction_bad_confidence(tmp_path, monkeypatch, capsys):
+    _vault_tmp(tmp_path, monkeypatch)
     f = _make_extraction(tmp_path)
     data = json.loads(f.read_text())
     data["document"]["key_facts"][0]["confidence"] = "very_sure"
@@ -602,7 +611,8 @@ def test_validate_extraction_bad_confidence(tmp_path, capsys):
     assert "confidence" in capsys.readouterr().out
 
 
-def test_validate_extraction_missing_morgue_entity_id(tmp_path, capsys):
+def test_validate_extraction_missing_morgue_entity_id(tmp_path, monkeypatch, capsys):
+    _vault_tmp(tmp_path, monkeypatch)
     f = _make_extraction(tmp_path)
     data = json.loads(f.read_text())
     data["morgue_entity_id"] = ""
@@ -611,7 +621,8 @@ def test_validate_extraction_missing_morgue_entity_id(tmp_path, capsys):
         cli.cmd_validate_extraction(args(file=str(f)))
 
 
-def test_validate_extraction_invalid_json(tmp_path):
+def test_validate_extraction_invalid_json(tmp_path, monkeypatch):
+    _vault_tmp(tmp_path, monkeypatch)
     f = tmp_path / "bad.json"
     f.write_text("not json {{{")
     with pytest.raises(SystemExit):

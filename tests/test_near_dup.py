@@ -1,8 +1,10 @@
 """Tests for near_dup core logic and CLI."""
 
 import json
+import os
 import sys
 import pytest
+from pathlib import Path
 
 from watchdog.pipeline.near_dup import tokenize, shingles, jaccard, shingles_from_text, minhash, minhash_similarity
 
@@ -123,7 +125,7 @@ def test_cli_falls_back_to_shingles_for_old_docs(tmp_path, capsys):
     reg.write_text(json.dumps({
         "old123": {"filename": "old.pdf", "shingles": sh}
     }))
-    out, _, code = _run("--text", text, "--registry", str(reg), "--threshold", "0.8", capsys=capsys)
+    out, _, code = _run("--text", text, "--registry", str(reg), "--threshold", "0.8", capsys=capsys, cwd=tmp_path)
     assert code == 0
     data = json.loads(out)
     assert len(data["near_duplicates"]) == 1
@@ -132,15 +134,20 @@ def test_cli_falls_back_to_shingles_for_old_docs(tmp_path, capsys):
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
-def _run(*argv, capsys, stdin_text=None):
+def _run(*argv, capsys, stdin_text=None, cwd=None):
     import watchdog.pipeline.near_dup as nd
     old_argv = sys.argv
     sys.argv = ["watchdog-near-dup", *argv]
+    old_cwd = None
     code = 0
     if stdin_text is not None:
         import io
         old_stdin = sys.stdin
         sys.stdin = io.StringIO(stdin_text)
+    if cwd is not None:
+        (cwd / ".watchdog").mkdir(exist_ok=True)
+        old_cwd = Path.cwd()
+        os.chdir(cwd)
     try:
         nd.main()
     except SystemExit as e:
@@ -149,6 +156,8 @@ def _run(*argv, capsys, stdin_text=None):
         sys.argv = old_argv
         if stdin_text is not None:
             sys.stdin = old_stdin
+        if old_cwd is not None:
+            os.chdir(old_cwd)
     out, err = capsys.readouterr()
     return out, err, code
 
@@ -156,7 +165,7 @@ def _run(*argv, capsys, stdin_text=None):
 def test_cli_text_no_matches(tmp_path, capsys):
     reg = tmp_path / "documents.json"
     reg.write_text("{}")
-    out, _, code = _run("--text", "hello world foo bar", "--registry", str(reg), capsys=capsys)
+    out, _, code = _run("--text", "hello world foo bar", "--registry", str(reg), capsys=capsys, cwd=tmp_path)
     assert code == 0
     data = json.loads(out)
     assert data["near_duplicates"] == []
@@ -169,7 +178,7 @@ def test_cli_text_finds_match(tmp_path, capsys):
     reg.write_text(json.dumps({
         "abc123": {"filename": "original.pdf", "minhash": sig, "document_note": "documents/original"}
     }))
-    out, _, code = _run("--text", text, "--registry", str(reg), "--threshold", "0.8", capsys=capsys)
+    out, _, code = _run("--text", text, "--registry", str(reg), "--threshold", "0.8", capsys=capsys, cwd=tmp_path)
     assert code == 0
     data = json.loads(out)
     assert len(data["near_duplicates"]) == 1
@@ -181,7 +190,7 @@ def test_cli_text_file(tmp_path, capsys):
     text_file.write_text("hello world")
     reg = tmp_path / "documents.json"
     reg.write_text("{}")
-    out, _, code = _run("--text-file", str(text_file), "--registry", str(reg), capsys=capsys)
+    out, _, code = _run("--text-file", str(text_file), "--registry", str(reg), capsys=capsys, cwd=tmp_path)
     assert code == 0
     data = json.loads(out)
     assert "near_duplicates" in data
@@ -196,7 +205,7 @@ def test_cli_threshold_filters_partial_match(tmp_path, capsys):
         "xyz": {"filename": "b.pdf", "minhash": sig_b}
     }))
     # High threshold — should not match
-    out, _, code = _run("--text", text_a, "--registry", str(reg), "--threshold", "0.99", capsys=capsys)
+    out, _, code = _run("--text", text_a, "--registry", str(reg), "--threshold", "0.99", capsys=capsys, cwd=tmp_path)
     data = json.loads(out)
     assert data["near_duplicates"] == []
 
@@ -211,7 +220,7 @@ def test_cli_no_text_source_exits(tmp_path, capsys):
 def test_cli_output_includes_minhash(tmp_path, capsys):
     reg = tmp_path / "documents.json"
     reg.write_text("{}")
-    out, _, code = _run("--text", "hello world foo bar baz", "--registry", str(reg), capsys=capsys)
+    out, _, code = _run("--text", "hello world foo bar baz", "--registry", str(reg), capsys=capsys, cwd=tmp_path)
     data = json.loads(out)
     assert "candidate_minhash" in data
     assert len(data["candidate_minhash"]) == 128
@@ -225,7 +234,7 @@ def test_cli_summary_flag_prints_decision_only(tmp_path, capsys):
     }
     out_file = tmp_path / "nd.json"
     out_file.write_text(json.dumps(full_output))
-    out, _, code = _run("--summary", str(out_file), capsys=capsys)
+    out, _, code = _run("--summary", str(out_file), capsys=capsys, cwd=tmp_path)
     assert code == 0
     data = json.loads(out)
     assert "near_duplicates" in data
@@ -237,7 +246,25 @@ def test_cli_summary_flag_prints_decision_only(tmp_path, capsys):
 def test_cli_summary_flag_no_matches(tmp_path, capsys):
     out_file = tmp_path / "nd.json"
     out_file.write_text(json.dumps({"near_duplicates": [], "candidate_minhash": list(range(128))}))
-    out, _, code = _run("--summary", str(out_file), capsys=capsys)
+    out, _, code = _run("--summary", str(out_file), capsys=capsys, cwd=tmp_path)
     data = json.loads(out)
     assert data["near_duplicates"] == []
     assert data["top_similarity"] == 0.0
+
+
+def test_cli_output_flag_writes_file_and_deletes_text(tmp_path, capsys):
+    text_file = tmp_path / "input.txt"
+    text_file.write_text("hello world foo bar baz")
+    reg = tmp_path / "documents.json"
+    reg.write_text("{}")
+    out_file = tmp_path / "result.json"
+    _, _, code = _run(
+        "--text-file", str(text_file), "--registry", str(reg), "--output", str(out_file),
+        capsys=capsys, cwd=tmp_path,
+    )
+    assert code == 0
+    assert out_file.exists()
+    data = json.loads(out_file.read_text())
+    assert "near_duplicates" in data
+    assert "candidate_minhash" in data
+    assert not text_file.exists()

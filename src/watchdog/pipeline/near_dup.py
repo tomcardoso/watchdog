@@ -136,6 +136,11 @@ def main() -> None:
         metavar="FILE",
         help="Read an existing near-dup JSON output file and print only {near_duplicates, top_similarity}",
     )
+    parser.add_argument(
+        "--output",
+        metavar="FILE",
+        help="Write JSON result to FILE instead of stdout; deletes --text-file after writing",
+    )
     args = parser.parse_args()
 
     vault = Path(".").resolve()
@@ -207,15 +212,19 @@ def main() -> None:
 
     matches.sort(key=lambda x: x["similarity"], reverse=True)
 
-    print(
-        json.dumps(
-            {
-                "near_duplicates": matches,
-                "candidate_minhash": candidate_mh,
-            },
-            ensure_ascii=False,
-        )
+    result = json.dumps(
+        {"near_duplicates": matches, "candidate_minhash": candidate_mh},
+        ensure_ascii=False,
     )
+
+    if args.output:
+        output_path = Path(args.output)
+        _check_vault("--output", output_path)
+        output_path.write_text(result + "\n", encoding="utf-8")
+        if args.text_file:
+            Path(args.text_file).unlink(missing_ok=True)
+    else:
+        print(result)
 
 
 if __name__ == "__main__":

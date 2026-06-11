@@ -147,12 +147,10 @@ Check whether `_INCOMING/{FILENAME}.yml` exists. If it does, read it. Note `sour
 Write all page markdown to a temp file using the Write tool at path `.watchdog/tmp/wdg_nd_{SHA256}.txt` (concatenate all `pages[].markdown` values, separated by newlines). Then:
 
 ```bash
-watchdog near-dup \
-  --text-file .watchdog/tmp/wdg_nd_{SHA256}.txt \
-  --registry .watchdog/Registry/documents.json \
-  > .watchdog/tmp/wdg_nd_{SHA256}.json
-rm .watchdog/tmp/wdg_nd_{SHA256}.txt
+watchdog near-dup --text-file .watchdog/tmp/wdg_nd_{SHA256}.txt --registry .watchdog/Registry/documents.json --output .watchdog/tmp/wdg_nd_{SHA256}.json
 ```
+
+`--output` writes the result to the JSON file and deletes the `.txt` input automatically — no redirection or separate `rm` needed.
 
 Read only the decision summary — do NOT read the full JSON output, which contains large minhash arrays you don't need:
 ```bash
