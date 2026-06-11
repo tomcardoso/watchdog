@@ -50,10 +50,17 @@ import json
 import re
 import shutil
 import sys
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
+
+try:
+    from fcntl import flock as _flock, LOCK_EX as _LOCK_EX, LOCK_UN as _LOCK_UN
+    _HAS_FLOCK = True
+except ImportError:
+    _HAS_FLOCK = False  # Windows
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -224,6 +231,20 @@ def _build_timeline_section(
     if include_section_header:
         return "\n## Timeline\n\n" + body
     return body
+
+
+@contextmanager
+def _registry_lock(registry_dir: Path):
+    """Exclusive per-vault lock so concurrent write-vault calls serialize safely."""
+    lock_path = registry_dir / ".write-lock"
+    with open(lock_path, "w") as fh:
+        if _HAS_FLOCK:
+            _flock(fh, _LOCK_EX)
+        try:
+            yield
+        finally:
+            if _HAS_FLOCK:
+                _flock(fh, _LOCK_UN)
 
 
 def _update_manifest(vault_path: Path, entities_reg: dict) -> None:
@@ -506,158 +527,160 @@ def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False, ne
     slug = _doc_slug(doc["filename"])
     doc_title = doc.get("title", doc["filename"])
 
-    # Detect slug collision: if a note with this slug already exists for a different file,
-    # append a short SHA prefix to disambiguate.
-    _candidate = vault_path / "documents" / f"{slug}.md"
-    if _candidate.exists():
-        try:
-            _head = _candidate.read_text(encoding="utf-8", errors="replace")
-            if f"file: {doc['filename']}" not in _head:
-                slug = f"{slug}-{doc_sha256[:6]}"
-                print(f"WARN  slug collision — using documents/{slug}.md for {doc['filename']}")
-        except OSError:
-            pass
-
     registry_dir = vault_path / ".watchdog" / "Registry"
-    entities_path  = registry_dir / "entities.json"
-    documents_path = registry_dir / "documents.json"
-    registry_path  = registry_dir / "registry.json"
-    log_path       = registry_dir / "ingest.log"
-
-    entities_reg  = json.loads(entities_path.read_text())  if entities_path.exists()  else {}
-    documents_reg = json.loads(documents_path.read_text()) if documents_path.exists() else {}
-
-    morgue_relative = (
-        f"morgue/{extraction.get('morgue_entity_id', 'unknown')}"
-        f"/{extraction.get('morgue_document_type', 'document')}"
-        f"/{doc['filename']}"
-    )
-
-    # ── 1. Update entity registry ─────────────────────────────────────────────
-
-    modified: set[str] = set()
-
-    for entity in incoming_entities:
-        eid = entity["id"]
-        if eid in entities_reg:
-            _merge_entity(entities_reg[eid], entity, doc_sha256)
-        else:
-            entities_reg[eid] = _new_entity(entity, doc_sha256)
-        modified.add(eid)
-
-    for entity in incoming_entities:
-        reg_entry = entities_reg[entity["id"]]
-        for role in entity.get("roles", []):
-            _add_reverse_role(entities_reg, reg_entry, role, doc_sha256, modified)
-
-    # ── 2. Update document registry ───────────────────────────────────────────
-
-    # Prefer shingles from a dedicated neardup sidecar (bypasses LLM data path).
-    if neardup_file and neardup_file.exists():
-        try:
-            shingles = json.loads(neardup_file.read_text()).get("candidate_shingles_sample", [])
-        except Exception:
-            shingles = doc.get("shingles", [])
-    else:
-        shingles = doc.get("shingles", [])
-
-    documents_reg[doc_sha256] = {
-        "sha256":           doc_sha256,
-        "filename":         doc["filename"],
-        "title":            doc_title,
-        "original_path":    doc.get("original_path", f"_INCOMING/{doc['filename']}"),
-        "document_note":    f"documents/{slug}",
-        "ingested_at":      _now_iso(),
-        "page_count":       doc.get("page_count"),
-        "document_type":    doc.get("document_type"),
-        "entities_extracted": [e["id"] for e in incoming_entities],
-        "near_duplicate_of": doc.get("near_duplicate_of"),
-        "shingles":         shingles,
-        "morgue_path":      morgue_relative,
-    }
-
-    # ── 3. Write entity notes ─────────────────────────────────────────────────
-
-    incoming_by_id = {e["id"]: e for e in incoming_entities}
-
-    for eid in modified:
-        entry = entities_reg[eid]
-        note_path = vault_path / f"{entry['note_path']}.md"
-        note_path.parent.mkdir(parents=True, exist_ok=True)
-
-        notes_section = _extract_notes_section(note_path)
-
-        incoming = incoming_by_id.get(eid, {})
-        new_summary = incoming.get("summary") or _extract_summary(note_path)
-
-        existing_analysis = _extract_analysis(note_path)
-        new_analysis_text = incoming.get("analysis") or ""
-        if new_analysis_text:
-            doc_note = documents_reg[doc_sha256]["document_note"]
-            entry_line = f"*{_today()}, via [[{doc_note}|{doc_title}]]:* {new_analysis_text}"
-            accumulated = (
-                existing_analysis.rstrip() + "\n\n" + entry_line
-            ).lstrip() if existing_analysis else entry_line
-        else:
-            accumulated = existing_analysis
-
-        note_content = build_entity_note(entry, notes_section, documents_reg, new_summary, accumulated)
-        note_path.write_text(note_content, encoding="utf-8")
-        try:
-            from watchdog.pipeline.embed import add_note
-            add_note(vault_path, entry["note_path"], note_content)
-        except Exception as e:
-            print(f"  Warning: embed index update failed for {entry['note_path']}: {e}", file=sys.stderr)
-
-    # ── 4. Write document note ────────────────────────────────────────────────
-
-    doc_note_path = vault_path / "documents" / f"{slug}.md"
-    doc_note_path.parent.mkdir(parents=True, exist_ok=True)
-    entity_entries_for_note = [entities_reg[e["id"]] for e in incoming_entities if e["id"] in entities_reg]
-    doc_note_content = _build_document_note(doc, entity_entries_for_note, morgue_relative)
-    doc_note_path.write_text(doc_note_content, encoding="utf-8")
-    try:
-        from watchdog.pipeline.embed import add_note
-        add_note(vault_path, f"documents/{slug}", doc_note_content)
-    except Exception as e:
-        print(f"  Warning: embed index update failed for documents/{slug}: {e}", file=sys.stderr)
-
-    # ── 5. Persist registries (atomic temp-then-rename) ──────────────────────
-
-    def _write_atomic(path: Path, data) -> None:
-        tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        tmp.rename(path)
-
     registry_dir.mkdir(parents=True, exist_ok=True)
-    _write_atomic(entities_path, entities_reg)
-    _write_atomic(documents_path, documents_reg)
 
-    try:
-        existing_registry = json.loads(registry_path.read_text()) if registry_path.exists() else {}
-    except json.JSONDecodeError:
-        existing_registry = {}
-    existing_registry.update({
-        "last_updated":   _now_iso(),
-        "document_count": len(documents_reg),
-        "entity_count":   len(entities_reg),
-    })
-    _write_atomic(registry_path, existing_registry)
+    with _registry_lock(registry_dir):
+        # Detect slug collision: if a note with this slug already exists for a different
+        # file, append a short SHA prefix to disambiguate.
+        _candidate = vault_path / "documents" / f"{slug}.md"
+        if _candidate.exists():
+            try:
+                _head = _candidate.read_text(encoding="utf-8", errors="replace")
+                if f"file: {doc['filename']}" not in _head:
+                    slug = f"{slug}-{doc_sha256[:6]}"
+                    print(f"WARN  slug collision — using documents/{slug}.md for {doc['filename']}")
+            except OSError:
+                pass
 
-    _update_manifest(vault_path, entities_reg)
+        entities_path  = registry_dir / "entities.json"
+        documents_path = registry_dir / "documents.json"
+        registry_path  = registry_dir / "registry.json"
+        log_path       = registry_dir / "ingest.log"
 
-    with open(log_path, "a", encoding="utf-8") as f:
-        f.write(
-            f"[{_now_iso()}] INGEST \"{doc['filename']}\" "
-            f"sha256={doc_sha256} "
-            f"entities={len(incoming_entities)} "
-            f"type={doc.get('document_type', 'unknown')}\n"
+        entities_reg  = json.loads(entities_path.read_text())  if entities_path.exists()  else {}
+        documents_reg = json.loads(documents_path.read_text()) if documents_path.exists() else {}
+
+        morgue_relative = (
+            f"morgue/{extraction.get('morgue_entity_id', 'unknown')}"
+            f"/{extraction.get('morgue_document_type', 'document')}"
+            f"/{doc['filename']}"
         )
 
-    # ── 6. Rebuild global timeline ────────────────────────────────────────────
+        # ── 1. Update entity registry ─────────────────────────────────────────
 
-    if not skip_timeline:
-        _rebuild_global_timeline(vault_path, entities_reg, documents_reg)
+        modified: set[str] = set()
+
+        for entity in incoming_entities:
+            eid = entity["id"]
+            if eid in entities_reg:
+                _merge_entity(entities_reg[eid], entity, doc_sha256)
+            else:
+                entities_reg[eid] = _new_entity(entity, doc_sha256)
+            modified.add(eid)
+
+        for entity in incoming_entities:
+            reg_entry = entities_reg[entity["id"]]
+            for role in entity.get("roles", []):
+                _add_reverse_role(entities_reg, reg_entry, role, doc_sha256, modified)
+
+        # ── 2. Update document registry ──────────────────────────────────────
+
+        # Prefer minhash from a dedicated neardup sidecar (bypasses LLM data path).
+        if neardup_file and neardup_file.exists():
+            try:
+                sig = json.loads(neardup_file.read_text()).get("candidate_minhash", [])
+            except Exception:
+                sig = doc.get("minhash", [])
+        else:
+            sig = doc.get("minhash", [])
+
+        documents_reg[doc_sha256] = {
+            "sha256":           doc_sha256,
+            "filename":         doc["filename"],
+            "title":            doc_title,
+            "original_path":    doc.get("original_path", f"_INCOMING/{doc['filename']}"),
+            "document_note":    f"documents/{slug}",
+            "ingested_at":      _now_iso(),
+            "page_count":       doc.get("page_count"),
+            "document_type":    doc.get("document_type"),
+            "entities_extracted": [e["id"] for e in incoming_entities],
+            "near_duplicate_of": doc.get("near_duplicate_of"),
+            "minhash":          sig,
+            "morgue_path":      morgue_relative,
+        }
+
+        # ── 3. Write entity notes ─────────────────────────────────────────────
+
+        incoming_by_id = {e["id"]: e for e in incoming_entities}
+
+        for eid in modified:
+            entry = entities_reg[eid]
+            note_path = vault_path / f"{entry['note_path']}.md"
+            note_path.parent.mkdir(parents=True, exist_ok=True)
+
+            notes_section = _extract_notes_section(note_path)
+
+            incoming = incoming_by_id.get(eid, {})
+            new_summary = incoming.get("summary") or _extract_summary(note_path)
+
+            existing_analysis = _extract_analysis(note_path)
+            new_analysis_text = incoming.get("analysis") or ""
+            if new_analysis_text:
+                doc_note = documents_reg[doc_sha256]["document_note"]
+                entry_line = f"*{_today()}, via [[{doc_note}|{doc_title}]]:* {new_analysis_text}"
+                accumulated = (
+                    existing_analysis.rstrip() + "\n\n" + entry_line
+                ).lstrip() if existing_analysis else entry_line
+            else:
+                accumulated = existing_analysis
+
+            note_content = build_entity_note(entry, notes_section, documents_reg, new_summary, accumulated)
+            note_path.write_text(note_content, encoding="utf-8")
+            try:
+                from watchdog.pipeline.embed import add_note
+                add_note(vault_path, entry["note_path"], note_content)
+            except Exception as e:
+                print(f"  Warning: embed index update failed for {entry['note_path']}: {e}", file=sys.stderr)
+
+        # ── 4. Write document note ────────────────────────────────────────────
+
+        doc_note_path = vault_path / "documents" / f"{slug}.md"
+        doc_note_path.parent.mkdir(parents=True, exist_ok=True)
+        entity_entries_for_note = [entities_reg[e["id"]] for e in incoming_entities if e["id"] in entities_reg]
+        doc_note_content = _build_document_note(doc, entity_entries_for_note, morgue_relative)
+        doc_note_path.write_text(doc_note_content, encoding="utf-8")
+        try:
+            from watchdog.pipeline.embed import add_note
+            add_note(vault_path, f"documents/{slug}", doc_note_content)
+        except Exception as e:
+            print(f"  Warning: embed index update failed for documents/{slug}: {e}", file=sys.stderr)
+
+        # ── 5. Persist registries (atomic temp-then-rename) ──────────────────
+
+        def _write_atomic(path: Path, data) -> None:
+            tmp = path.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            tmp.rename(path)
+
+        _write_atomic(entities_path, entities_reg)
+        _write_atomic(documents_path, documents_reg)
+
+        try:
+            existing_registry = json.loads(registry_path.read_text()) if registry_path.exists() else {}
+        except json.JSONDecodeError:
+            existing_registry = {}
+        existing_registry.update({
+            "last_updated":   _now_iso(),
+            "document_count": len(documents_reg),
+            "entity_count":   len(entities_reg),
+        })
+        _write_atomic(registry_path, existing_registry)
+
+        _update_manifest(vault_path, entities_reg)
+
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(
+                f"[{_now_iso()}] INGEST \"{doc['filename']}\" "
+                f"sha256={doc_sha256} "
+                f"entities={len(incoming_entities)} "
+                f"type={doc.get('document_type', 'unknown')}\n"
+            )
+
+        # ── 6. Rebuild global timeline ────────────────────────────────────────
+
+        if not skip_timeline:
+            _rebuild_global_timeline(vault_path, entities_reg, documents_reg)
 
     # ── 7. Move source file to morgue ─────────────────────────────────────────
 

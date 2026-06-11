@@ -30,6 +30,7 @@ ingest so future documents can be compared against it.
 """
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -38,6 +39,19 @@ from pathlib import Path
 
 DEFAULT_THRESHOLD = 0.85
 SHINGLE_SIZE = 3  # word 3-grams
+NUM_HASHES = 128
+_MOD = (1 << 31) - 1  # Mersenne prime keeps values to 10 digits in JSON
+
+
+def _make_coeffs(n: int) -> tuple[list[int], list[int]]:
+    import random
+    r = random.Random(0)
+    a = [r.randint(1, _MOD - 1) for _ in range(n)]
+    b = [r.randint(0, _MOD - 1) for _ in range(n)]
+    return a, b
+
+
+_MINHASH_A, _MINHASH_B = _make_coeffs(NUM_HASHES)
 
 
 _config_cache: dict | None = None
@@ -85,19 +99,55 @@ def shingles_from_text(text: str, k: int | None = None) -> set[str]:
     return shingles(tokenize(text), k=k)
 
 
+def _shingle_hash(s: str) -> int:
+    return int.from_bytes(hashlib.md5(s.encode()).digest()[:8], "little")
+
+
+def minhash(sh: set[str], num_hashes: int = NUM_HASHES) -> list[int]:
+    if not sh:
+        return [0] * num_hashes
+    hashed = [_shingle_hash(s) for s in sh]
+    return [
+        min((_MINHASH_A[i] * h + _MINHASH_B[i]) % _MOD for h in hashed)
+        for i in range(num_hashes)
+    ]
+
+
+def minhash_similarity(sig_a: list[int], sig_b: list[int]) -> float:
+    if not sig_a or not sig_b or len(sig_a) != len(sig_b):
+        return 0.0
+    return sum(a == b for a, b in zip(sig_a, sig_b)) / len(sig_a)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Watchdog near-duplicate detector")
     parser.add_argument("--text", help="Candidate document text (or use --stdin/--text-file)")
     parser.add_argument("--stdin", action="store_true", help="Read candidate text from stdin")
     parser.add_argument("--text-file", help="Path to a file containing the candidate text")
-    parser.add_argument("--registry", required=True, help="Path to Registry/documents.json")
+    parser.add_argument("--registry", help="Path to Registry/documents.json")
     parser.add_argument(
         "--threshold",
         type=float,
         default=None,
         help=f"Similarity threshold (default: from config or {DEFAULT_THRESHOLD})",
     )
+    parser.add_argument(
+        "--summary",
+        metavar="FILE",
+        help="Read an existing near-dup JSON output file and print only {near_duplicates, top_similarity}",
+    )
     args = parser.parse_args()
+
+    if args.summary:
+        data = json.loads(Path(args.summary).read_text())
+        matches = data.get("near_duplicates", [])
+        top = matches[0]["similarity"] if matches else 0.0
+        print(json.dumps({"near_duplicates": matches, "top_similarity": round(top, 4)}))
+        return
+
+    if not args.registry:
+        print(json.dumps({"error": "--registry is required"}))
+        sys.exit(1)
 
     threshold = (
         args.threshold
@@ -119,14 +169,18 @@ def main() -> None:
     documents = json.loads(registry_path.read_text()) if registry_path.exists() else {}
 
     candidate_sh = shingles_from_text(text)
+    candidate_mh = minhash(candidate_sh)
     matches = []
 
     for sha, doc in documents.items():
-        stored_sh = doc.get("shingles")
-        if not stored_sh:
-            continue
-        stored_set = set(stored_sh)
-        sim = jaccard(candidate_sh, stored_set)
+        stored_mh = doc.get("minhash")
+        if stored_mh:
+            sim = minhash_similarity(candidate_mh, stored_mh)
+        else:
+            stored_sh = doc.get("shingles")
+            if not stored_sh:
+                continue
+            sim = jaccard(candidate_sh, set(stored_sh))
         if sim >= threshold:
             matches.append(
                 {
@@ -143,8 +197,7 @@ def main() -> None:
         json.dumps(
             {
                 "near_duplicates": matches,
-                "candidate_shingles_count": len(candidate_sh),
-                "candidate_shingles_sample": sorted(candidate_sh)[:200],  # stored in registry
+                "candidate_minhash": candidate_mh,
             },
             ensure_ascii=False,
         )

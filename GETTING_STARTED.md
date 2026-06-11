@@ -154,7 +154,7 @@ Run:
 /watchdog-ingest
 ```
 
-Claude works through each chewed file in the queue. For each document, it:
+Claude works through each chewed file in the queue, processing up to 5 documents in parallel. For each document, it:
 
 1. Reads the extracted text
 2. Identifies the document type and loads the relevant extraction skill (there are 34 built-in skills for corporate filings, court documents, real estate records, and more)
@@ -188,6 +188,8 @@ After ingest, open Obsidian:
 
 ```bash
 watchdog obsidian shell-company-investigation
+# or, from inside the vault directory:
+watchdog obsidian
 ```
 
 The vault now contains:

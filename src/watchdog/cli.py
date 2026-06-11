@@ -353,16 +353,18 @@ def cmd_new(args) -> None:
             {
                 "permissions": {
                     "allow": [
+                        "Bash(watchdog entity-index)",
+                        "Bash(watchdog queue-status)",
+                        "Bash(watchdog is-duplicate *)",
                         "Bash(watchdog near-dup *)",
-                        "Bash(find .watchdog/queue/ *)",
-                        "Bash(find _CONTEXT/ *)",
-                        "Bash(mkdir -p *)",
+                        "Bash(watchdog validate-extraction *)",
                         "Bash(watchdog write-vault *)",
-                        "Bash(watchdog write-entity *)",
-                        "Bash(rm /tmp/watchdog-extraction-*)",
-                        "Bash(rm /tmp/entity-refresh-*)",
+                        "Bash(find .watchdog/queue/ *)",
+                        "Bash(rm /tmp/wdg_*)",
+                        "Bash(rm .watchdog/queue/*.json)",
                         "Bash(rm .watchdog/Registry/.ingest-lock)",
-                        "Bash(rm .watchdog/queue/*)",
+                        "Bash(date +%s)",
+                        "Write(/tmp/wdg_*)",
                     ]
                 },
                 "hooks": {
@@ -538,7 +540,17 @@ def _register_obsidian_vault(vault: Path) -> None:
 
 
 def cmd_obsidian(args) -> None:
-    _, info = _find_project(args.name)
+    if not args.name:
+        cwd = Path(".").resolve()
+        if (cwd / ".watchdog").is_dir():
+            projects = load_projects()
+            info = next((v for v in projects.values() if Path(v["path"]).resolve() == cwd), None)
+            if info is None:
+                sys.exit("Error: current directory is a vault but not registered. Run `watchdog new` first.")
+        else:
+            sys.exit("Error: not inside a watchdog project. Run `watchdog obsidian <name>` or cd into a project first.")
+    else:
+        _, info = _find_project(args.name)
     vault = Path(info["path"])
     if not vault.exists():
         sys.exit(f"Error: project directory not found: {vault}")
@@ -832,6 +844,20 @@ def cmd_setup(args) -> None:
     run_setup(force=getattr(args, "force", False))
 
 
+def cmd_refresh_skills(args) -> None:
+    if args.name:
+        _, info = _find_project(args.name)
+        vault = Path(info["path"])
+    else:
+        vault = Path(".").resolve()
+        if not (vault / ".watchdog").is_dir():
+            sys.exit("Error: not inside a watchdog project. cd into a vault or pass a project name.")
+    from watchdog.setup_cmd import install_skills
+    commands_dir = vault / ".claude" / "commands"
+    install_skills(commands_dir)
+    print(f"\n  {_GREEN}Skills refreshed{_RESET}  {_DIM}{commands_dir}{_RESET}\n")
+
+
 def cmd_list(args) -> None:
     all_projects = load_projects()
     show_all = getattr(args, "all", False)
@@ -903,9 +929,18 @@ def cmd_list(args) -> None:
 
 def cmd_status(args) -> None:
     if not args.name:
-        cmd_list(args)
-        return
-    _, info = _find_project(args.name)
+        cwd = Path(".").resolve()
+        if (cwd / ".watchdog").is_dir():
+            projects = load_projects()
+            info = next((v for v in projects.values() if Path(v["path"]).resolve() == cwd), None)
+            if info is None:
+                cmd_list(args)
+                return
+        else:
+            cmd_list(args)
+            return
+    else:
+        _, info = _find_project(args.name)
     vault = Path(info["path"])
 
     if not vault.exists():
@@ -1197,6 +1232,140 @@ def cmd_search(args) -> None:
         print()
 
 
+_VALID_CONFIDENCE = {"high", "medium", "low", "disputed"}
+
+
+def cmd_validate_extraction(args) -> None:
+    path = Path(args.file)
+    if not path.exists():
+        sys.exit(f"Error: file not found: {path}")
+
+    try:
+        data = json.loads(path.read_text())
+    except json.JSONDecodeError as e:
+        sys.exit(f"Error: invalid JSON — {e}")
+
+    errors = []
+
+    doc = data.get("document")
+    if not isinstance(doc, dict):
+        errors.append("missing or invalid 'document' field")
+    else:
+        for field in ("sha256", "filename"):
+            if not doc.get(field):
+                errors.append(f"document.{field} is missing or empty")
+        for fact in doc.get("key_facts", []):
+            if not isinstance(fact, dict):
+                errors.append("key_facts contains a non-object entry")
+            elif fact.get("confidence") and fact["confidence"] not in _VALID_CONFIDENCE:
+                errors.append(f"key_facts confidence '{fact['confidence']}' is not valid")
+
+    entities = data.get("entities")
+    if not isinstance(entities, list):
+        errors.append("missing or invalid 'entities' field")
+    else:
+        for i, ent in enumerate(entities):
+            if not isinstance(ent, dict):
+                errors.append(f"entities[{i}] is not an object")
+                continue
+            for field in ("id", "name", "type"):
+                if not ent.get(field):
+                    errors.append(f"entities[{i}].{field} is missing or empty")
+            for j, ev in enumerate(ent.get("timeline_events", [])):
+                if not isinstance(ev, dict):
+                    errors.append(f"entities[{i}].timeline_events[{j}] is not an object")
+                elif ev.get("confidence") and ev["confidence"] not in _VALID_CONFIDENCE:
+                    errors.append(f"entities[{i}].timeline_events[{j}] confidence '{ev['confidence']}' is not valid")
+            for j, role in enumerate(ent.get("roles", [])):
+                if not isinstance(role, dict):
+                    errors.append(f"entities[{i}].roles[{j}] is not an object")
+
+    if not data.get("morgue_entity_id"):
+        errors.append("morgue_entity_id is missing or empty")
+    if not data.get("morgue_document_type"):
+        errors.append("morgue_document_type is missing or empty")
+
+    if errors:
+        for e in errors:
+            print(f"error: {e}")
+        sys.exit(1)
+
+    print("ok")
+
+
+def cmd_is_duplicate(args) -> None:
+    cwd = Path(".").resolve()
+    if (cwd / ".watchdog").is_dir():
+        vault = cwd
+    else:
+        _, info = _find_project(args.project)
+        vault = Path(info["path"])
+
+    docs_file = vault / ".watchdog" / "Registry" / "documents.json"
+    try:
+        docs = json.loads(docs_file.read_text()) if docs_file.exists() else {}
+    except json.JSONDecodeError:
+        docs = {}
+
+    if args.sha256 in docs:
+        print("dup")
+        sys.exit(1)
+    print("ok")
+
+
+def cmd_queue_status(args) -> None:
+    cwd = Path(".").resolve()
+    if (cwd / ".watchdog").is_dir():
+        vault = cwd
+    else:
+        _, info = _find_project(args.project)
+        vault = Path(info["path"])
+
+    queue_dir = vault / ".watchdog" / "queue"
+    if not queue_dir.exists():
+        print('{"total": 0, "files": []}')
+        return
+
+    files = sorted(queue_dir.glob("*.json"))
+    entries = []
+    for f in files:
+        source_type = None
+        try:
+            data = json.loads(f.read_text())
+            source_type = data.get("metadata", {}).get("source_type")
+        except Exception:
+            pass
+        entries.append({"path": str(f), "source_type": source_type})
+
+    print(json.dumps({"total": len(entries), "files": entries}, ensure_ascii=False))
+
+
+def cmd_entity_index(args) -> None:
+    cwd = Path(".").resolve()
+    if (cwd / ".watchdog").is_dir():
+        vault = cwd
+    else:
+        _, info = _find_project(args.project)
+        vault = Path(info["path"])
+
+    manifest_file = vault / ".watchdog" / "Registry" / "manifest.json"
+    if not manifest_file.exists():
+        print("[]")
+        return
+
+    try:
+        manifest = json.loads(manifest_file.read_text())
+    except json.JSONDecodeError as e:
+        sys.exit(f"Error: manifest.json is corrupt — {e}")
+
+    compact = [
+        {"id": e["id"], "name": e["name"], "type": e["type"], "aliases": e.get("aliases", [])}
+        for e in manifest.values()
+        if e.get("id") and e.get("name")
+    ]
+    print(json.dumps(compact, ensure_ascii=False))
+
+
 def cmd_unlock(args) -> None:
     _, info = _find_project(args.project)
     vault = Path(info["path"])
@@ -1469,6 +1638,10 @@ def main() -> None:
     p_setup.add_argument("--force", action="store_true", help="Re-run setup even if already complete")
     p_setup.set_defaults(func=cmd_setup)
 
+    p_refresh = sub.add_parser("refresh-skills", help="Update skill files in a vault after a watchdog upgrade")
+    p_refresh.add_argument("name", nargs="?", help="Investigation name or slug (default: current directory)").completer = _project_completer
+    p_refresh.set_defaults(func=cmd_refresh_skills)
+
     p_about = sub.add_parser("about", help="Show version and project links")
     p_about.set_defaults(func=cmd_about)
 
@@ -1501,7 +1674,7 @@ def main() -> None:
     p_chew.set_defaults(func=cmd_chew)
 
     p_obsidian = sub.add_parser("obsidian", help="Open an investigation vault in Obsidian")
-    p_obsidian.add_argument("name", help="Investigation name or slug").completer = _project_completer
+    p_obsidian.add_argument("name", nargs="?", help="Investigation name or slug (default: current directory)").completer = _project_completer
     p_obsidian.set_defaults(func=cmd_obsidian)
 
     p_delete = sub.add_parser("delete", help="Remove an investigation from registry")
@@ -1538,6 +1711,23 @@ def main() -> None:
     p_rename.add_argument("name", help="New name")
     p_rename.set_defaults(func=cmd_rename)
 
+    p_entity_index = sub.add_parser("entity-index", help="Output compact entity index for ingest subagents")
+    p_entity_index.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside project folder)").completer = _project_completer
+    p_entity_index.set_defaults(func=cmd_entity_index)
+
+    p_queue_status = sub.add_parser("queue-status", help="List queued files with source type annotations")
+    p_queue_status.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside project folder)").completer = _project_completer
+    p_queue_status.set_defaults(func=cmd_queue_status)
+
+    p_validate = sub.add_parser("validate-extraction", help="Validate an extraction JSON file before writing to vault")
+    p_validate.add_argument("file", help="Path to extraction JSON file")
+    p_validate.set_defaults(func=cmd_validate_extraction)
+
+    p_is_dup = sub.add_parser("is-duplicate", help="Check whether a SHA-256 has already been extracted")
+    p_is_dup.add_argument("sha256", help="SHA-256 hash to check")
+    p_is_dup.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside project folder)").completer = _project_completer
+    p_is_dup.set_defaults(func=cmd_is_duplicate)
+
     try:
         import argcomplete
         argcomplete.autocomplete(parser)
@@ -1565,7 +1755,7 @@ def main() -> None:
             _print_banner()
         return
 
-    if args.command not in ("setup", "about", "configure", "search", "unlock") and not CONFIG_FILE.exists():
+    if args.command not in ("setup", "about", "configure", "search", "unlock", "queue-status", "entity-index", "is-duplicate", "validate-extraction", "refresh-skills") and not CONFIG_FILE.exists():
         print(f"\n  {_BOLD}Watchdog isn't set up yet.{_RESET}  Run: {_CYAN}watchdog setup{_RESET}\n")
         sys.exit(1)
 

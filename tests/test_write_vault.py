@@ -42,7 +42,7 @@ def make_extraction(tmp_path: Path, overrides: dict | None = None) -> Path:
             "source": "SEDAR",
             "obtained": "2025-06-01",
             "near_duplicate_of": None,
-            "shingles": [],
+            "minhash": [],
             "summary": "A test annual report.",
             "key_facts": [{"fact": "Revenue was $1M.", "page": 3, "confidence": "high"}],
         },
@@ -811,3 +811,57 @@ def test_slug_collision_appends_sha_prefix(tmp_path, capsys):
     assert any(s == "annual-report" for s in slugs)
     assert any(s.startswith("annual-report-") for s in slugs)
     assert len(notes) == 2
+
+
+# ── Concurrent-safety (sequential simulation) ─────────────────────────────────
+
+def test_two_sequential_runs_merge_shared_entity(tmp_path):
+    """Two documents mentioning the same entity must produce a merged registry entry."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
+    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+
+    dir_a = tmp_path / "a"
+    dir_a.mkdir()
+    dir_b = tmp_path / "b"
+    dir_b.mkdir()
+
+    run(make_extraction(dir_a, overrides={
+        "document": {
+            "sha256": "sha-a", "filename": "doc-a.pdf",
+            "original_path": "_INCOMING/doc-a.pdf",
+        },
+        "entities": [{
+            "id": "alice-smith", "name": "Alice Smith", "type": "Person",
+            "aliases": ["A. Smith"], "summary": "Director.", "analysis": None,
+            "timeline_events": [{"date": "2020-01-01", "event": "Joined board", "page": 1, "confidence": "high"}],
+            "roles": [],
+        }],
+        "morgue_entity_id": "alice-smith",
+        "morgue_document_type": "annual-report",
+    }), vault)
+
+    run(make_extraction(dir_b, overrides={
+        "document": {
+            "sha256": "sha-b", "filename": "doc-b.pdf",
+            "original_path": "_INCOMING/doc-b.pdf",
+        },
+        "entities": [{
+            "id": "alice-smith", "name": "Alice Smith", "type": "Person",
+            "aliases": ["Alice S."], "summary": "Director.", "analysis": None,
+            "timeline_events": [{"date": "2022-06-15", "event": "Resigned", "page": 3, "confidence": "high"}],
+            "roles": [],
+        }],
+        "morgue_entity_id": "alice-smith",
+        "morgue_document_type": "press-release",
+    }), vault)
+
+    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    alice = entities["alice-smith"]
+    assert "sha-a" in alice["appears_in"]
+    assert "sha-b" in alice["appears_in"]
+    assert "Alice S." in alice["aliases"]
+    assert "A. Smith" in alice["aliases"]
+    dates = {e["date"] for e in alice["timeline_events"]}
+    assert "2020-01-01" in dates
+    assert "2022-06-15" in dates

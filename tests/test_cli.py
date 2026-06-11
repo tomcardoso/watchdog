@@ -310,6 +310,19 @@ def test_cmd_obsidian_exits_on_failure(configured, monkeypatch):
         cli.cmd_obsidian(args(name="My Story"))
 
 
+def test_cmd_obsidian_infers_project_from_cwd(configured, monkeypatch):
+    cli.cmd_new(args(name="My Story", dir=str(configured)))
+    vault = configured / "my-story"
+    calls = []
+    monkeypatch.setattr("watchdog.cli.subprocess.run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
+    monkeypatch.setattr("watchdog.cli.sys.platform", "darwin")
+    monkeypatch.setattr("watchdog.cli._obsidian_registered", lambda v: True)
+    monkeypatch.chdir(vault)
+    cli.cmd_obsidian(args(name=None))
+    assert len(calls) == 1
+    assert "obsidian://open?path=" in calls[0][1]
+
+
 # ── cmd_list ──────────────────────────────────────────────────────────────────
 
 def test_cmd_list_empty(configured, capsys):
@@ -443,6 +456,103 @@ def test_cmd_status_corrupt_registry_exits(configured):
     (reg / "documents.json").write_text("not valid json {{{")
     with pytest.raises(SystemExit, match="corrupt"):
         cli.cmd_status(args(name="Test Proj"))
+
+
+def test_cmd_status_infers_project_from_cwd(configured, monkeypatch, capsys):
+    cli.cmd_new(args(name="Test Proj", dir=str(configured)))
+    vault = configured / "test-proj"
+    monkeypatch.chdir(vault)
+    cli.cmd_status(args(name=None))
+    assert "Test Proj" in capsys.readouterr().out
+
+
+# ── cmd_validate_extraction ───────────────────────────────────────────────────
+
+def _make_extraction(tmp_path, **overrides):
+    base = {
+        "document": {
+            "sha256": "abc123",
+            "filename": "test.pdf",
+            "title": "Test Doc",
+            "document_type": "Annual Report",
+            "date_of_document": "2024-01-01",
+            "page_count": 5,
+            "source": None,
+            "obtained": None,
+            "near_duplicate_of": None,
+            "summary": "A test document.",
+            "key_facts": [{"fact": "Revenue was $1M.", "page": 1, "confidence": "high"}],
+        },
+        "entities": [
+            {
+                "id": "shell-co",
+                "name": "Shell Co Ltd",
+                "type": "Company",
+                "aliases": [],
+                "summary": "A company.",
+                "timeline_events": [{"date": "2024-01-01", "event": "Founded.", "page": 1, "confidence": "high"}],
+                "roles": [],
+            }
+        ],
+        "morgue_entity_id": "shell-co",
+        "morgue_document_type": "annual-report",
+    }
+    base.update(overrides)
+    f = tmp_path / "extraction.json"
+    f.write_text(json.dumps(base))
+    return f
+
+
+def test_validate_extraction_valid(tmp_path, capsys):
+    f = _make_extraction(tmp_path)
+    cli.cmd_validate_extraction(args(file=str(f)))
+    assert "ok" in capsys.readouterr().out
+
+
+def test_validate_extraction_missing_sha256(tmp_path, capsys):
+    f = _make_extraction(tmp_path)
+    data = json.loads(f.read_text())
+    data["document"]["sha256"] = ""
+    f.write_text(json.dumps(data))
+    with pytest.raises(SystemExit):
+        cli.cmd_validate_extraction(args(file=str(f)))
+    assert "sha256" in capsys.readouterr().out
+
+
+def test_validate_extraction_missing_entity_id(tmp_path, capsys):
+    f = _make_extraction(tmp_path)
+    data = json.loads(f.read_text())
+    data["entities"][0]["id"] = ""
+    f.write_text(json.dumps(data))
+    with pytest.raises(SystemExit):
+        cli.cmd_validate_extraction(args(file=str(f)))
+    assert "id" in capsys.readouterr().out
+
+
+def test_validate_extraction_bad_confidence(tmp_path, capsys):
+    f = _make_extraction(tmp_path)
+    data = json.loads(f.read_text())
+    data["document"]["key_facts"][0]["confidence"] = "very_sure"
+    f.write_text(json.dumps(data))
+    with pytest.raises(SystemExit):
+        cli.cmd_validate_extraction(args(file=str(f)))
+    assert "confidence" in capsys.readouterr().out
+
+
+def test_validate_extraction_missing_morgue_entity_id(tmp_path, capsys):
+    f = _make_extraction(tmp_path)
+    data = json.loads(f.read_text())
+    data["morgue_entity_id"] = ""
+    f.write_text(json.dumps(data))
+    with pytest.raises(SystemExit):
+        cli.cmd_validate_extraction(args(file=str(f)))
+
+
+def test_validate_extraction_invalid_json(tmp_path):
+    f = tmp_path / "bad.json"
+    f.write_text("not json {{{")
+    with pytest.raises(SystemExit):
+        cli.cmd_validate_extraction(args(file=str(f)))
 
 
 # ── setup gate ────────────────────────────────────────────────────────────────

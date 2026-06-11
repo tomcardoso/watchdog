@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 # Note: "watchdog" is taken on PyPI (filesystem events library).
 # Package name is "watchdog-intel"; the CLI command is still "watchdog".
 name = "watchdog-intel"
-version = "0.1.0a3"
+version = "0.1.0a4"
 description = "Investigative journalism document intelligence — drop records, find connections"
 readme = "README.md"
 license = { file = "LICENSE" }

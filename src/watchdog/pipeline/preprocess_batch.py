@@ -21,9 +21,10 @@ DEFAULT_FILE_TIMEOUT = 600
 
 _cancel_event = threading.Event()
 
-SKIP_NAMES    = {".ds_store", ".ingest-lock"}
+SKIP_NAMES    = {".ds_store", ".ingest-lock", "thumbs.db", "desktop.ini"}
 SKIP_SUFFIXES = {".yml"}
 SKIP_DIRS     = {"_failed", "_FAILED", "_skipped", "_SKIPPED"}
+_OS_JUNK      = {".ds_store", "thumbs.db", "desktop.ini"}
 
 _BOLD   = "\033[1m"
 _DIM    = "\033[2m"
@@ -62,24 +63,25 @@ def _count_pdf_pages(path: Path) -> int:
     return 1
 
 
-def _adaptive_workers(files: list[Path]) -> tuple[int, int]:
+def _adaptive_workers(files: list[Path]) -> tuple[int, int, dict]:
     perf = _perf_cpu_count()
     with ThreadPoolExecutor(max_workers=min(8, len(files))) as pool:
         counts = list(pool.map(_count_pdf_pages, files))
+    page_counts = dict(zip(files, counts))
     median = sorted(counts)[len(counts) // 2]
     if median <= 10:
-        return max(2, perf // 2), max(2, perf // 5)
+        return max(2, perf // 2), max(2, perf // 5), page_counts
     elif median <= 50:
-        return max(2, perf // 3), max(2, perf // 3)
+        return max(2, perf // 3), max(2, perf // 3), page_counts
     else:
-        return max(2, perf // 5), max(2, perf // 2)
+        return max(2, perf // 5), max(2, perf // 2), page_counts
 
 
 def _resolve_workers(
     files: list[Path],
     explicit_pre: int | None,
     explicit_chunk: int | None = None,
-) -> tuple[int, int, bool]:
+) -> tuple[int, int, bool, dict | None]:
     cfg: dict = {}
     try:
         cfg = json.loads((Path.home() / ".watchdog" / "config.json").read_text())
@@ -95,9 +97,10 @@ def _resolve_workers(
     )
 
     if needs_adaptive:
-        adaptive_pre, adaptive_chunk = _adaptive_workers(files)
+        adaptive_pre, adaptive_chunk, page_counts = _adaptive_workers(files)
     else:
         adaptive_pre = adaptive_chunk = 0
+        page_counts = None
 
     pre   = explicit_pre if explicit_pre is not None else (
         adaptive_pre if pre_cfg == "auto" else int(pre_cfg)
@@ -107,7 +110,7 @@ def _resolve_workers(
     )
     pre   = min(pre, max(1, len(files)))
 
-    return pre, chunk, needs_adaptive
+    return pre, chunk, needs_adaptive, page_counts
 
 
 def _bar(done: int, total: int) -> str:
@@ -127,8 +130,14 @@ def _fmt_eta(seconds: int) -> str:
 def _prune_empty_dirs(root: Path) -> None:
     for d in sorted(root.rglob("*"), reverse=True):
         if d.is_dir() and d != root:
+            for f in d.iterdir():
+                if f.is_file() and f.name.lower() in _OS_JUNK:
+                    try:
+                        f.unlink()
+                    except OSError:
+                        pass
             try:
-                d.rmdir()  # only succeeds if truly empty
+                d.rmdir()
             except OSError:
                 pass
 
@@ -250,7 +259,9 @@ def _run_ingest_inner(
         return
 
     total = len(files)
-    pre_workers, chunk_workers, adaptive = _resolve_workers(files, workers, chunk_workers)
+    pre_workers, chunk_workers, adaptive, page_counts = _resolve_workers(files, workers, chunk_workers)
+    if page_counts:
+        files = sorted(files, key=lambda f: page_counts.get(f, 1))
     batch_start = time.time()
 
     adaptive_tag = ", adaptive" if adaptive else ""

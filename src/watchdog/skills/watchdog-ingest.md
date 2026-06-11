@@ -5,19 +5,16 @@ Extract queued files from `.watchdog/queue/` into the vault.
 Chewing (OCR, Docling) is handled separately by the `watchdog chew` CLI command. This skill only runs extraction — reading queued results and writing entity notes, document notes, and registry updates.
 
 **Argument parsing** — parse `$ARGUMENTS` before doing anything else:
-- If `$ARGUMENTS` is empty: `TARGET_FILE = null`, `LIMIT = null`
-- If `$ARGUMENTS` matches `--limit <N>` (e.g. `/watchdog-ingest --limit 50`): `TARGET_FILE = null`, `LIMIT = N`
-- If `$ARGUMENTS` is a file path: `TARGET_FILE = $ARGUMENTS`, `LIMIT = null`
-- If `$ARGUMENTS` contains both a file and `--limit`: `TARGET_FILE = <path>`, `LIMIT = N`
+- If `$ARGUMENTS` is empty: `LIMIT = null`
+- If `$ARGUMENTS` matches `--limit <N>` (e.g. `/watchdog-ingest --limit 50`): `LIMIT = N`
 
 `LIMIT` caps how many files are **extracted** this run. When the limit is reached, stop cleanly and report how many files remain.
+
+**Architecture note:** Each document is extracted in an isolated Agent subagent. This keeps the orchestrator context flat regardless of batch size — queue file text, skill files, and extraction output never accumulate in this session. The orchestrator holds only: the investigation brief, a compact entity index (id/name/type/aliases), and a running list of per-document result summaries.
 
 ---
 
 ## 0. Pre-flight checks
-
-**Read investigation context.**
-Read `context.md` if it exists. This tells you what the journalist is pursuing, what questions they are trying to answer, and which entities they already know are relevant. Hold this context throughout — use it to orient the briefing and leads toward what actually matters to this investigation. If `context.md` is empty or missing, proceed without it.
 
 **Check for an existing lock.**
 Read `.watchdog/Registry/.ingest-lock`. If it exists and is less than 30 minutes old, stop:
@@ -26,7 +23,7 @@ Read `.watchdog/Registry/.ingest-lock`. If it exists and is less than 30 minutes
 **Acquire the lock.**
 Write `.watchdog/Registry/.ingest-lock` containing:
 ```
-pid: (use "claude-session")
+pid: claude-session
 started_at: <ISO 8601 timestamp>
 ```
 
@@ -34,128 +31,133 @@ From this point, every exit path — including errors — must release the lock 
 
 ---
 
-## 1. Find queued files
+## 1. Read investigation context
 
-If `TARGET_FILE` is set, chew that single file now (since it bypassed the CLI step) and treat the result as the sole item to extract:
+Read `context.md` if it exists. Condense it to an **investigation brief** of at most 300 words — the key entities of interest, the research questions, and any known gaps. Store as `INVESTIGATION_BRIEF`. If `context.md` is missing or empty, set `INVESTIGATION_BRIEF = ""`.
+
+Read `hot.md` if it exists. Note current investigation state.
+
+---
+
+## 2. Build compact entity index
+
+Run:
 ```bash
-watchdog chew "<TARGET_FILE>" --vault-path "$(pwd)"
+watchdog entity-index
 ```
-Then proceed with that result.
 
-Otherwise, scan `.watchdog/queue/` for JSON files:
+Store the output as `COMPACT_ENTITY_INDEX`. This outputs a compact JSON array of `{id, name, type, aliases}` for every entity in the vault — the minimum needed for entity deduplication. If the vault has no entities yet, it outputs `[]`.
+
+This index is passed to each document subagent so it can identify existing entities without the manifest content ever entering this session's context.
+
+---
+
+## 3. Find queued files
+
+Run:
 ```bash
-find .watchdog/queue/ -name "*.json" -type f
+watchdog queue-status
 ```
 
-If none are found, stop and tell the journalist:
+This outputs `{"total": N, "files": [{"path": "...", "source_type": "..."}, ...]}`. Parse it.
+
+If `total == 0`, stop:
 > "No files queued for extraction. Run `watchdog chew` in your terminal from this folder to chew documents in `_INCOMING/`, then come back and run `/watchdog-ingest`."
 
 Release the lock and stop.
 
-Store `TOTAL` (file count) and `BATCH_START` (capture with `date +%s`). Do not load all results into context at once — process files one at a time.
+Set `TOTAL` = `total` from the output. Set `BATCH_START` = current unix timestamp (`date +%s`). Set `EXTRACTED = 0`. Set `RESULTS = []`, `NEARDUP_ALERTS = []`, `CONTRADICTION_FLAGS = []`.
+
+Partition the file list: any entry with `source_type == "arrows"` goes to `ARROWS_FILES`; everything else goes to `QUEUE_FILES`.
+
+Do not read any queue file content into this session.
 
 ---
 
-## 2. For each file — extraction
+## 4. Process each file
 
-Before the loop, initialize: `CUMULATIVE_CHARS = 0`, `EXTRACTED = 0`
+Process files in **batches of up to 5**. `watchdog write-vault` uses file locking to serialize registry writes — concurrent calls are safe.
 
-Iterate over the queued files **one at a time**. For each file at path `PREP_FILE`:
+Process `ARROWS_FILES` inline first (see §6) before the subagent loop.
+
+Split `QUEUE_FILES` into batches of at most 5 files. For each batch:
+
+1. Run `watchdog entity-index` → update `COMPACT_ENTITY_INDEX` (picks up entities written by the previous batch)
+2. For each file `PREP_FILE` in the batch, prepare its subagent prompt:
+   - Set `SKIP_TIMELINE` = `false` only if this is the very last file in the entire run (last file of the last batch, accounting for `LIMIT`); `true` for all others
+   - Print `[<N>/<TOTAL>] Launching: <filename> ...`
+3. **Launch all agents in the batch simultaneously** — send a single message with all Agent tool calls in parallel. Do not send them one at a time.
+4. Process results as they arrive (see "After each Agent call" below).
+
+**Limit check:** if `LIMIT` is set and `EXTRACTED >= LIMIT` after processing a batch's results, stop before starting the next batch.
+
+Substitute all `{placeholder}` values in the prompt below before sending — do not send literal placeholders.
+
+---
+
+### SUBAGENT PROMPT TEMPLATE
+
+```
+You are extracting one document for the Watchdog investigative research system. Follow every step below. Write the results to the vault. Then return the structured RESULT block at the end — no other output.
+
+VAULT: {absolute path of the current working directory}
+PREP_FILE: {PREP_FILE}
+SKIP_TIMELINE: {true or false}
+INVESTIGATION_BRIEF:
+{INVESTIGATION_BRIEF — or "None" if empty}
+
+KNOWN_ENTITIES:
+{COMPACT_ENTITY_INDEX — the JSON array}
+
+---
+
+## Step 1 — Read the queue file
+
+Read `{PREP_FILE}`. Parse the JSON. Fields present: `source_path`, `sha256`, `page_count`, `pages[]` (each has `page` integer and `markdown` string), `metadata`, `char_count`.
+
+Set SHA256 = the `sha256` value. Set FILENAME = the filename portion of `source_path` (basename only).
+
+## Step 2 — Exact duplicate check
 
 ```bash
-cat "<PREP_FILE>"
+watchdog is-duplicate {SHA256}
 ```
 
-Parse the JSON. It contains: `source_path`, `sha256`, `page_count`, `pages[]` (each with `page` number and `markdown` content), `metadata`, `char_count`.
-
-**At the start of each file**, print:
+If output is `dup`, return this block and stop:
 ```
-[<N>/<TOTAL>] Extracting: <filename> ...
-```
-
-**After each file completes**, print a completion line and rolling ETA:
-```bash
-echo "[<N>/<TOTAL>] Done: <filename> — <entity_count> entities | ETA: ~$(( (<TOTAL>-<N>) * ($(date +%s)-<BATCH_START>) / <N> ))s"
+STATUS: skipped
+FILENAME: {FILENAME}
+REASON: already extracted (SHA-256 match)
 ```
 
-**Special case — arrows.app JSON:**
-If `metadata.source_type == "arrows"` in the queued JSON, this diagram was already parsed during chewing. Skip directly to [Section 5: arrows.app import](#5-arrowsapp-import).
+## Step 3 — Load sidecar
 
-### 2a. Exact duplicate check
+Check whether `_INCOMING/{FILENAME}.yml` exists. If it does, read it. Note `source`, `obtained`, `relevance`, `notes` fields.
 
-Read `.watchdog/Registry/documents.json`. Check whether this file's `sha256` already exists.
+## Step 5 — Near-duplicate check
 
-If it does, this file was already extracted (queue file was not cleaned up). Skip it:
-- Log: `[SKIP] <filename> — already extracted (SHA-256 match)`
-- Delete the queue file: `rm "<PREP_FILE>"`
-- Continue to the next file
-
-### 2b. Load page content
-
-The full page text is already in the parsed JSON from `cat "<PREP_FILE>"`. Use `pages[]` for individual page access (with page numbers) or concatenate all `markdown` fields for full-text extraction.
-
-**Never load more than one file's content into context at a time.**
-
-### 2c. Confidential material check
-
-Before extracting anything, assess whether this document is a public record. Look for:
-- Text marked "confidential", "privileged", "private", "not for distribution", or similar
-- Private correspondence, internal memos, or personal communications
-- Documents whose origin cannot be identified as a public database, court registry, government body, regulatory filing, or similar public source
-
-If any of these apply, **stop immediately** and tell the journalist:
-
-> "This document may not be a public record. Watchdog is designed for publicly available records only — court filings, corporate records, government contracts, regulatory filings. Confidential source material must not be processed through AI. Please confirm this is a public record before I continue, or remove it from _INCOMING/."
-
-Wait for explicit confirmation before proceeding. If the journalist confirms it is public, continue. If they are unsure, treat it as confidential and move on to the next file.
-
-### 2d. Load sidecar
-
-Check for `_INCOMING/<filename>.yml` (same name as the document, with `.yml` appended). If it exists, read it. Extract these fields if present:
-- `source` — URL or reference where the document was obtained
-- `obtained` — date obtained
-- `relevance` — why this document matters
-- `notes` — journalist annotations
-
-### 2e. Near-duplicate check
-
-Write the extracted text to a temp file, then run the near-duplicate check against it. Using a file avoids shell argument size limits on large documents.
+Write all page markdown to a temp file using the Write tool at path `/tmp/wdg_nd_{SHA256}.txt` (concatenate all `pages[].markdown` values, separated by newlines). Then:
 
 ```bash
 watchdog near-dup \
-  --text-file /tmp/watchdog_neardup.txt \
-  --registry .watchdog/Registry/documents.json
+  --text-file /tmp/wdg_nd_{SHA256}.txt \
+  --registry .watchdog/Registry/documents.json \
+  > /tmp/wdg_nd_{SHA256}.json
+rm /tmp/wdg_nd_{SHA256}.txt
 ```
 
-Write the extracted text to `/tmp/watchdog_neardup.txt` using the Write tool before running this command. Delete the temp file afterwards.
-
-**Capture the full JSON output** and store it in memory as `NEARDUP_RESULT`. Also save it to a temp file — `write-vault` will read the shingles directly from there:
-
+Read only the decision summary — do NOT read the full JSON output, which contains large minhash arrays you don't need:
 ```bash
-# Write tool: /tmp/watchdog-neardup-<sha256>.json  ← write NEARDUP_RESULT here
+watchdog near-dup --summary /tmp/wdg_nd_{SHA256}.json
 ```
 
-If `near_duplicates` is non-empty, pause ingest for this file and show the journalist:
+Store this as NEARDUP_DECISION. The full JSON stays at `/tmp/wdg_nd_{SHA256}.json` for write-vault — do not delete it yet.
 
-> **Near-duplicate detected**
-> `<filename>` is {similarity}% similar to `<existing filename>`.
->
-> Options:
-> - **Skip** — discard the new file (leave in _INCOMING/)
-> - **Replace** — update the registry to point to the new file
-> - **Keep both** — ingest as a separate document, linked as a likely duplicate
->
-> Which would you like to do?
+If `near_duplicates` is non-empty, note the match in your result. Continue processing regardless — the orchestrator handles the near-dup decision, not this subagent.
 
-Wait for the journalist's response before proceeding. If they choose Skip, leave the file in `_INCOMING/` and continue to the next file.
+## Step 6 — Load domain skill
 
----
-
-## 3. Entity and relationship extraction
-
-### 3a. Load domain skill (if applicable)
-
-Inspect the document text to determine its type. If it matches one of the following, read the corresponding skill file from `~/.claude/commands/records/` before extracting:
+Determine the document type from its text. Read the matching skill file from `.claude/commands/`:
 
 | Document type | Skill file |
 |--------------|-----------|
@@ -167,233 +169,192 @@ Inspect the document text to determine its type. If it matches one of the follow
 | Procurement record, tender, contract award | `records/government-contracts.md` |
 | Campaign finance return, donor list, third-party advertising return | `records/election-filings.md` |
 | Lobbyist registration, communication report, lobbying disclosure | `records/lobbying-records.md` |
-| ATI / FOI / FOIA response package, exemption index, severance log | `records/foi-responses.md` |
+| ATI / FOI / FOIA response package | `records/foi-responses.md` |
 | IRB/immigration tribunal decision, deportation order, refugee ruling | `records/immigration-refugee.md` |
-| Charity return, T3010, 990, T3, nonprofit tax filing | `records/tax-documents.md` |
-| Securities disclosure, insider trading report, prospectus, SEDAR/EDGAR filing | `records/regulatory-filings.md` |
-| NPRI/TRI/PRTR emissions report, environmental assessment, spill record | `records/environmental-filings.md` |
-| Health regulatory college decision, fitness to practise finding, inspection report | `records/healthcare-licensing.md` |
-| Council minutes, development permit, variance application, zoning amendment | `records/municipal-records.md` |
-| Auditor general report, value-for-money audit, inspector general report | `records/audit-reports.md` |
-| Standing offer call-up, task authorization, vendor performance report | `records/procurement-records.md` |
-| Police occurrence report, use-of-force report, disciplinary decision, parole ruling | `records/police-records.md` |
-| Criminal charge, bail decision, trial decision, sentencing decision | `records/criminal-proceedings.md` |
-| Land register extract, title deed, hypothec, property conveyance | `records/land-registries.md` |
+| Charity return, T3010, 990, nonprofit tax filing | `records/tax-documents.md` |
+| Securities disclosure, insider trading, prospectus, SEDAR/EDGAR | `records/regulatory-filings.md` |
+| NPRI/TRI/PRTR emissions report, environmental assessment | `records/environmental-filings.md` |
+| Health regulatory college decision, fitness to practise, inspection | `records/healthcare-licensing.md` |
+| Council minutes, development permit, zoning amendment | `records/municipal-records.md` |
+| Auditor general report, value-for-money audit | `records/audit-reports.md` |
+| Standing offer, task authorization, vendor performance | `records/procurement-records.md` |
+| Police occurrence, use-of-force, disciplinary decision, parole | `records/police-records.md` |
+| Criminal charge, bail, trial, sentencing decision | `records/criminal-proceedings.md` |
+| Land register extract, title deed, hypothec, conveyance | `records/land-registries.md` |
 | Labour arbitration award, grievance decision, collective agreement | `records/labour-arbitration.md` |
 | Grant application, research ethics decision, retraction notice | `records/academic-research.md` |
 | OSFI return, reinsurance treaty, actuarial report | `records/insurance-filings.md` |
-| Public inquiry report, royal commission report, task force report | `records/government-reports.md` |
-| Parliamentary transcript, Hansard, committee hearing, legislative debate | `records/legislature-transcripts.md` |
-| Aircraft registration, flight log, ADS-B data, aviation safety report | `records/aircraft-logs.md` |
+| Public inquiry report, royal commission, task force report | `records/government-reports.md` |
+| Parliamentary transcript, Hansard, committee hearing, debate | `records/legislature-transcripts.md` |
+| Aircraft registration, flight log, ADS-B data, aviation safety | `records/aircraft-logs.md` |
 | WHOIS record, DNS data, domain registration, IP allocation | `records/dns-whois.md` |
 | News article, press clipping, wire story, press release | `records/news-clippings.md` |
-| YouTube transcript, podcast transcript, earnings call transcript, broadcast | `records/audio-video.md` |
+| YouTube/podcast transcript, earnings call, broadcast | `records/audio-video.md` |
 
-If no skill file matches the document type, read `records/general-records.md` before extracting — it provides a universal framework for orienting yourself and extracting from unfamiliar document types.
+If nothing matches, read `.claude/commands/records/general-records.md`.
 
-### 3b. Infer document metadata
+## Step 7 — Infer document metadata
 
-From the document text, determine:
-- **title** — infer from headings, cover page, or filename if nothing else
-- **document_type** — what kind of document is this? (Annual Report, Affidavit, Title Transfer, etc.)
-- **date_of_document** — the date on the document itself, not the file date. Format: YYYY-MM-DD. If only a year is clear, use YYYY-01-01 with confidence `low`.
+From the text:
+- `title` — from headings, cover page, or filename
+- `document_type` — descriptive (Annual Report, Affidavit, Title Transfer, etc.)
+- `date_of_document` — YYYY-MM-DD; YYYY-01-01 with confidence `low` if only year is clear; null if unknown
 
-### 3c. Extract entities
+## Step 8 — Extract entities
 
-Before extracting, read `.watchdog/Registry/manifest.json`. It lists every entity already in the vault: `id`, `name`, `type`, `aliases`, and `note_path`. Use it to:
-- Assign the correct existing `id` when the document mentions an entity already in the vault (match on name or any alias — be thorough, OCR errors are common)
-- Avoid creating a new entity that is a variation of an existing one ("Shell Co." and "Shell Company Ltd." are the same entity if the aliases match)
+Using KNOWN_ENTITIES for deduplication (match on name or any alias — OCR errors are common, be generous), extract every real-world entity.
 
-Read through the full text carefully. For every real-world entity:
-
-**Extract:**
-- `name` — canonical full name as it appears most completely in the document
+For each entity:
+- `id` — existing id from KNOWN_ENTITIES if matched; otherwise new kebab-case slug
+- `name` — canonical full name as it appears most completely
 - `type` — Person / Company / Address / Property / CourtCase / Transaction / or a new type you determine is appropriate
-- `aliases` — every other name or abbreviation used for this entity in the document
-- `id` — use the existing manifest ID if the entity is already in the vault; otherwise generate a new kebab-case slug: `john-doe`, `shell-co-ltd`, `123-main-st-toronto-on`
+- `aliases` — every other name or abbreviation used in this document
+- `timeline_events` — datable events directly involving this entity. Include any event where a journalist would want to know the date: something that happened, was decided, or changed. Ask "when did this entity do or experience X?" — if the date answers that, include it. Exclude dates that only answer "when was this form stamped?" unless that date connects causally to something substantive (e.g. a filing date that immediately precedes or follows a meeting or decision of interest).
+- `roles` — relationships to other entities with page citations
 
-**Record appearances:**
-- Which pages the entity appears on
-- In what context (role, relationship, transaction)
+Confidence rules:
+- `high` — directly stated
+- `medium` — stated but requires one inference
+- `low` — inferred across multiple statements
+- `disputed` — contradicts the vault
 
-**Confidence rules (apply strictly):**
-| Condition | Maximum confidence | Journalistic equivalent |
-|-----------|-------------------|------------------------|
-| Directly stated in the document | `high` | What the document says |
-| Stated but requires one short inference | `medium` | What can reasonably be inferred |
-| Inferred across multiple statements | `low` | Lead — still needs independent reporting |
-| Contradicted elsewhere in the vault | `disputed` | Conflicting sources |
+Never upgrade a claim past its weakest element.
 
-Never upgrade a claim beyond its weakest element. If the name is stated but the date is inferred, the whole claim is `medium`. A `low`-confidence fact is a lead, not a finding — it belongs in the vault but must not be treated as established.
+## Step 9 — Extract key facts
 
-### 3d. Extract relationships
+5–15 most important facts, each with text, page number, and confidence level.
 
-For each meaningful relationship between entities:
-- Who is a director / officer / shareholder of which company
-- Who lives or is registered at which address
-- Which property belongs to which entity
-- Which person is a party to which court case
-- What transaction connects which entities
+## Step 10 — Contradiction check
 
-Record for each relationship: the two entities involved, the relationship type, which page it comes from, and confidence.
+For each entity that matched an entry in KNOWN_ENTITIES, read its vault note. Construct the path as:
+- Person → `entities/person/{id}.md`
+- Company → `entities/company/{id}.md`
+- Address → `entities/address/{id}.md`
+- Other → `entities/{type_lowercase}/{id}.md`
 
-### 3e. Extract key facts
-
-Pull out the 5–15 most important facts from the document, with:
-- The fact stated in one clear sentence
-- Page number citation
-- Confidence level
-
-### 3f. Contradiction check
-
-For each entity you extracted that already exists in the manifest, read its entity note from the `note_path` listed there (append `.md`).
-
-Compare the following against what the new document states:
-- Key dates (incorporation, appointment, transaction dates in the timeline)
-- Roles and relationships (a person listed as director in one document but officer in another is worth noting; a person listed as director of Company A in one document but not in another is a potential contradiction if the dates overlap)
-- Addresses and identifying details
-
-If a **material discrepancy** exists — the same fact stated differently in the new document vs. the existing note, both at `high` or `medium` confidence — record it in the entity's `analysis` field using this callout format:
+Compare key dates, roles, and relationships against what this document states. Flag material discrepancies where both sides are `high` or `medium` confidence. Format contradiction callouts as:
 
 ```
-> [!contradiction] <short label, e.g. "Date of incorporation disputed">
-> - **<value from existing note>** — [[documents/<slug>|<title>]], p. <n> (confidence: <level>)
-> - **<value from new document>** — [[documents/<new-slug>|<new title>]], p. <n> (confidence: <level>)
+> [!contradiction] <short label>
+> - **<existing value>** — [[documents/<slug>|<title>]], p. <n> (confidence: <level>)
+> - **<new value>** — [[documents/<new-slug>|<title>]], p. <n> (confidence: <level>)
 ```
 
-Do not flag discrepancies where:
-- One or both facts are `low` confidence
-- The difference is trivially explainable (e.g. a company using both its full and abbreviated name)
-- The existing note already contains a `[!contradiction]` callout for the same fact
+Do not flag: low-confidence differences, trivially explainable name variations, contradictions already in the note for the same fact.
 
-`watchdog write-vault` will merge the `analysis` field into the entity note automatically.
+Read entity notes **only for matched entities** — do not read notes for new entities.
 
----
+## Step 11 — Build extraction JSON and write vault
 
-## 4. Write vault artifacts
-
-Build the extraction JSON from everything gathered in step 3. The JSON must match this schema exactly:
+Build this JSON exactly:
 
 ```json
 {
   "document": {
-    "sha256": "<from batch results>",
-    "filename": "<original filename>",
-    "original_path": "<source_path from batch meta results>",
+    "sha256": "<SHA256>",
+    "filename": "<FILENAME>",
+    "original_path": "<source_path from queue JSON>",
     "title": "<inferred>",
     "document_type": "<inferred>",
     "date_of_document": "<YYYY-MM-DD or null>",
     "page_count": <n>,
     "source": "<from sidecar or null>",
     "obtained": "<from sidecar or null>",
-    "near_duplicate_of": "<sha256 or null>",
-    "summary": "<one paragraph summary>",
-    "key_facts": [
-      {"fact": "<text>", "page": <n or null>, "confidence": "<level>"}
-    ]
+    "near_duplicate_of": "<sha256 from NEARDUP_DECISION if near_duplicates non-empty, else null>",
+    "summary": "<one paragraph>",
+    "key_facts": [{"fact": "...", "page": <n or null>, "confidence": "..."}]
   },
   "entities": [
     {
-      "id": "<kebab-case>",
-      "name": "<canonical name>",
-      "type": "<Type>",
-      "aliases": ["<alias>"],
-      "summary": "<one sentence: who is this entity and what role do they play in the vault>",
-      "analysis": "<investigative note for this ingest: patterns, anomalies, leads — omit if nothing notable>",
+      "id": "...",
+      "name": "...",
+      "type": "...",
+      "aliases": [...],
+      "summary": "<one sentence: who is this entity and what role do they play>",
+      "analysis": "<contradiction callouts from Step 10 and any investigative notes; omit field entirely if nothing notable>",
       "timeline_events": [
-        {
-          "date": "<YYYY-MM-DD, YYYY-MM, or YYYY — use finest granularity the document supports>",
-          "event": "<what happened, one clear sentence>",
-          "page": <n or null>,
-          "confidence": "<level>"
-        }
+        {"date": "...", "event": "...", "page": <n or null>, "confidence": "..."}
       ],
-
-**What to include in timeline_events — two tracks:**
-
-*Track 1 — investigative relevance.* If `context.md` states research questions or named entities of interest, extract events that bear directly on those questions: transactions, appointments, filings with legal effect, regulatory decisions, contradictions of existing vault entries, connections between entities the journalist is following.
-
-*Track 2 — biographical record.* Regardless of research focus, extract events that materially define the entity's history: incorporation or dissolution, appointment or resignation of key officers, major transactions (acquisition, sale, merger), criminal charges or civil judgments, licensing actions, name changes. These form a useful factual record even when a document isn't directly on-topic.
-
-**Do not extract:**
-- Routine procedural filing dates with no substantive content (e.g. "Document filed with registry on 2019-03-12" when the filing content is already captured elsewhere)
-- Standard administrative deadlines, notice periods, and boilerplate effective dates
-- Dates that appear only in form headers, footers, or metadata fields
-- Events already present in this entity's existing timeline (avoid duplicating what `write-vault` will de-duplicate anyway)
-
-The resulting timeline may be long — a large investigation legitimately has thousands of material events. The filter is about substance, not length.
       "roles": [
-        {
-          "relationship": "<type>",
-          "target_id": "<entity-id>",
-          "target_type": "<Type>",
-          "target_name": "<canonical name>",
-          "page": <n or null>,
-          "confidence": "<level>",
-          "date_range": "<range or null>"
-        }
+        {"relationship": "...", "target_id": "...", "target_type": "...", "target_name": "...", "page": <n or null>, "confidence": "...", "date_range": null}
       ]
     }
   ],
-  "morgue_entity_id": "<primary-entity-id>",
-  "morgue_document_type": "<document-type-slug>"
+  "morgue_entity_id": "<id of the entity this document is *about*>",
+  "morgue_document_type": "<type-slug e.g. annual-report, court-order, bankruptcy-filing>"
 }
 ```
 
-**`morgue_entity_id`** — kebab-case ID of the entity the document is *about* (its subject, not just mentioned). For a bankruptcy filing: the debtor. For an annual report: the company. For a court order: the defendant/respondent.
+`morgue_entity_id`: the document's subject — debtor for bankruptcy, company for annual report, defendant for court order.
 
-**`morgue_document_type`** — inferred type, lowercased and hyphenated: `annual-report`, `director-filing`, `bankruptcy-filing`, `court-order`, `financial-statement`, `corporate-registration`, etc.
+Write to `/tmp/wdg_ex_{SHA256}.json` using the Write tool. Then validate it:
 
-Write the JSON to a temp file using the Write tool:
+```bash
+watchdog validate-extraction /tmp/wdg_ex_{SHA256}.json
 ```
-/tmp/watchdog-extraction-<sha256>.json
-```
 
-Then run:
+If this prints errors, fix the JSON and re-validate before continuing. Do not call `write-vault` on a file that failed validation.
+
 ```bash
 watchdog write-vault \
-  --extraction /tmp/watchdog-extraction-<sha256>.json \
-  --neardup-file /tmp/watchdog-neardup-<sha256>.json \
-  [--skip-timeline]
+  --extraction /tmp/wdg_ex_{SHA256}.json \
+  --neardup-file /tmp/wdg_nd_{SHA256}.json \
+  {if SKIP_TIMELINE is true: add --skip-timeline}
 ```
 
-Pass `--skip-timeline` for every file **except the last** in the batch. Rebuilding `timeline.md` on every file is O(N) in vault size — skip it for mid-batch files and let the final write do it once.
-
-Clean up temp files and the queue file for this document:
+Clean up:
 ```bash
-rm /tmp/watchdog-extraction-<sha256>.json /tmp/watchdog-neardup-<sha256>.json
-rm "<PREP_FILE>"
+rm /tmp/wdg_ex_{SHA256}.json /tmp/wdg_nd_{SHA256}.json {PREP_FILE}
 ```
 
-`watchdog write-vault` handles all vault writes atomically: entity notes (new or merged), document note, all 4 registry files (`entities.json`, `documents.json`, `registry.json`, `ingest.log`), and the morgue move. Do not perform any of these writes manually.
+## Step 12 — Return result
 
-**Graph colour check** — after `watchdog write-vault` completes, check whether any entity type you extracted is missing from `.obsidian/graph.json`'s `colorGroups` array. If so, add a colour entry for it. The query pattern is `path:entities/<type_lowercase>` and the colour format is `{"a": 1, "rgb": <24-bit packed integer>}` where the integer is `(R << 16) | (G << 8) | B`. Pick a colour that is visually distinct from the ones already in use. Read the existing file first, update the `colorGroups` array, and write it back.
+Return ONLY the following block. No other output.
 
-**After each successful `watchdog write-vault`**, increment `EXTRACTED` by 1 and add the file's `char_count` to `CUMULATIVE_CHARS`.
-
-**Limit check** — if `LIMIT` is set and `EXTRACTED >= LIMIT`:
-```bash
-find .watchdog/queue/ -name "*.json" | wc -l
 ```
-Print: `Limit reached: extracted <EXTRACTED> file(s) this run. <REMAINING> file(s) still queued — run /watchdog-ingest again to continue.` Release the lock and stop.
-
-**Context compaction check** — if `CUMULATIVE_CHARS > 500000`, run `/compact` and reset `CUMULATIVE_CHARS = 0`.
-
-**After `/compact` resumes** — your in-context variables (`N`, `CUMULATIVE_CHARS`, `BATCH_START`, `EXTRACTED`) are gone. Reset `EXTRACTED = 0` and `CUMULATIVE_CHARS = 0`. Re-scan `.watchdog/queue/` from Step 1 — files already extracted had their queue JSON deleted, so only remaining files appear.
+STATUS: ok
+FILENAME: {FILENAME}
+DOCUMENT_TYPE: {document_type}
+DATE: {date_of_document or unknown}
+ENTITY_COUNT: {total entities extracted}
+NEW_ENTITIES: {id:name, id:name — or none}
+UPDATED_ENTITIES: {id:name, id:name — or none}
+NEAR_DUP: {top_similarity% similar to {existing filename} — or none}
+CONTRADICTIONS: {entity_id — brief description; entity_id — brief description — or none}
+SUMMARY: {one paragraph summary of this document and what was extracted}
+```
+```
 
 ---
 
-## 5. arrows.app import
+### After each Agent call
 
-When `metadata.source_type == "arrows"`, the queued JSON already contains `entities` and `relationships` parsed from the arrows.app file. Read them directly — no further CLI call is needed.
+Parse the returned block:
 
-For each entity in `entities`, follow steps 4a and 4c (entity note creation/update and registry update) — treating the arrows.app file as the source document.
+**`STATUS: skipped`** — log and continue.
 
-For each relationship:
-- Add it to the `## Relationships` section of the `from` entity note
-- Format: `- <relationship type> [[entities/<type>/<to-id>|<to name>]] — source: [[documents/<arrows-slug>]] — confidence: high`
+**`STATUS: ok`** — add the full result to `RESULTS`. If `NEAR_DUP` is not `none`, add to `NEARDUP_ALERTS`. If `CONTRADICTIONS` is not `none`, add to `CONTRADICTION_FLAGS`.
 
-Create a document note for the arrows.app file itself:
+Print:
+```
+[<N>/<TOTAL>] Done: <FILENAME> — <ENTITY_COUNT> entities (<new_count> new) | ETA: ~<rolling estimate>s
+```
+
+---
+
+## 5. Post-loop: graph colour check
+
+After the loop completes, check whether any new entity type from the results is missing from `.obsidian/graph.json`'s `colorGroups` array. If so, read the file, add a colour entry (`{"query": "path:entities/<type_lowercase>", "color": {"a": 1, "rgb": <24-bit int>}}`), and write it back. Pick a colour visually distinct from existing ones.
+
+---
+
+## 6. arrows.app import
+
+When a queued file has `metadata.source_type == "arrows"`, handle it inline (not via subagent) — it contains pre-parsed entities and relationships, not document text.
+
+Read the queue JSON directly. For each entity in `entities`, create or update its entity note and registry entry (treat the arrows file as the source document). For each relationship, add it to the `from` entity's Relationships section.
+
+Create a document note for the arrows.app file:
 ```yaml
 ---
 title: <filename without extension>
@@ -418,22 +379,35 @@ Relationship diagram imported from arrows.app. Contains <N> entities and <M> rel
 <!-- Journalist annotations. -->
 ```
 
+Delete the queue file when done.
+
 ---
 
-## 6. Post-ingest briefing
+## 7. Post-batch contradiction resolution
 
-**Before writing the briefing**, print a batch completion summary:
+For each entry in `CONTRADICTION_FLAGS`:
+- Read the entity note (`entities/{type_lowercase}/{id}.md`)
+- Verify the contradiction is genuine, not a subagent false positive
+- If false positive: edit the note to remove the `[!contradiction]` callout that `write-vault` wrote
+
+This step reads at most a handful of entity notes — typically 0–3 per batch.
+
+---
+
+## 8. Post-ingest briefing
+
+Print a batch summary:
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Ingest complete: <ok> processed, <skipped> skipped, <failed> failed
-Total time: <elapsed>
-Entities in vault: <total entity count from registry.json>
+Ingest complete: <extracted> processed, <skipped> skipped, <failed> failed
+Total time: <elapsed>s
+Entities in vault: <total from registry.json>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-After all files are processed, write a briefing note to `briefings/<YYYY-MM-DD-HH-MM>.md`.
+Build everything that follows from `RESULTS`, `NEARDUP_ALERTS`, `CONTRADICTION_FLAGS`, and `INVESTIGATION_BRIEF`. Do not re-read any queue files or entity records.
 
-### Briefing format
+Write a briefing note to `briefings/<YYYY-MM-DD-HH-MM>.md`:
 
 ```markdown
 ---
@@ -450,45 +424,41 @@ new_entities: <n>
 
 ## New entities
 
-<List of entities that did not exist in the vault before this ingest, with their type and which document they came from.>
+<Entities that did not exist in the vault before this ingest, with type and source document.>
 
 ## Connections to existing entities
 
-<List of entities from the new documents that match entities already in the vault. For each connection, state what the connection is and why it matters.>
+<Entities from the new documents that matched entities already in the vault. For each, state what the connection is and why it matters.>
 
 ## Leads and follow-up ideas
 
-<For each actionable lead the documents suggest, typed and cited:>
+<Actionable leads from the documents:>
+- **[Question]** <Open question the documents raise but don't answer.> *Source: [[documents/...]]*
+- **[Contact]** <Person or entity worth reaching out to.> *Source: [[entities/...]]*
+- **[Document]** <Specific document that appears to exist but isn't in the vault.> *Source: [[documents/...]], p. N*
+- **[FOI]** <Records request worth filing based on a gap.> *Source: [[documents/...]], p. N*
 
-- **[Question]** <An open question the documents raise but don't answer — e.g. "Who owned Shell Co before John Doe? The 2019 filing names a different director but gives no prior history."> *Source: [[documents/...]]*
-- **[Contact]** <A person or entity worth reaching out to, with the reason.> *Source: [[entities/...]]*
-- **[Document]** <A specific document that appears to exist but isn't in the vault — court file number, filing reference, etc.> *Source: [[documents/...]], p. N*
-- **[FOI]** <A records request worth filing, based on a gap in the documents.> *Source: [[documents/...]], p. N*
-
-If context.md is filled in, orient leads toward the journalist's stated questions and known gaps. A lead that directly addresses a stated question is more valuable than a generic anomaly.
-
-If nothing warrants a lead, omit this section.
+If context.md is filled in, orient leads toward the journalist's stated questions. Omit this section if nothing warrants a lead.
 
 ## Anomalies worth a closer look
 
-<Flag any of the following, if present:>
-- An address shared by entities that have no other apparent connection
-- A person appearing in an unexpected role (e.g. listed as director but previously only seen as plaintiff)
-- A transaction amount disproportionate to the apparent scale of the entity
-- An entity appearing in many documents but with no documented relationships
-
-<If nothing anomalous was found, write: "Nothing flagged.">
-
----
-
-*Anything you'd like to add, correct, or flag before I close out?*
+<Flag if present: shared addresses between apparently unrelated entities; a person appearing in an unexpected role; a transaction disproportionate to the entity's apparent scale; an entity appearing in many documents with no documented relationships. Write "Nothing flagged." if clean.>
 ```
 
-Print the briefing summary to the terminal (the "What was ingested", "New entities", and "Connections" sections — omit the full anomaly section unless something was flagged).
+If `NEARDUP_ALERTS` is non-empty, append:
+
+```markdown
+## Near-duplicate alerts
+
+The following files are similar to existing documents. Review and decide whether to keep both or treat as the same document.
+
+- <FILENAME>: <similarity>% similar to <existing document title>
+```
+
 
 ### Update hot.md
 
-After writing the briefing, overwrite `hot.md` with a current-state summary. This is the file Claude reads at the start of the next session to orient itself without re-reading everything.
+Overwrite `hot.md`:
 
 ```markdown
 # Hot cache
@@ -497,26 +467,24 @@ After writing the briefing, overwrite `hot.md` with a current-state summary. Thi
 
 ## Investigation status
 
-<One sentence describing where the investigation stands, drawing on context.md and what was just ingested. E.g. "Three filings processed; focus is on directorship network around Shell Co Ltd.">
+<One sentence on where the investigation stands, drawing on context.md and what was just ingested.>
 
 ## Recent additions
 
-<Bullet list of new entities and documents added in this session, with type and source document.>
+<Bullet list of new entities and documents added this session, with type and source.>
 
 ## Emerging patterns
 
-<Any new connections, contradictions, or anomalies surfaced in this ingest that should stay top of mind. Omit if nothing notable.>
+<New connections, contradictions, or anomalies surfaced in this ingest. Omit if nothing notable.>
 
 ## Open questions
 
-<The leads from the briefing condensed to short bullets — questions to pursue, documents to find, FOIs to file.>
+<Leads from the briefing condensed to short bullets.>
 ```
 
-Keep hot.md under ~40 lines. It is a prompt, not a report — the full briefing is in `briefings/`.
+Keep hot.md under ~40 lines.
 
 ### Append to log.md
-
-Append the following block to `log.md`:
 
 ```markdown
 ## <YYYY-MM-DD HH:MM> — Ingest
@@ -530,36 +498,28 @@ Append the following block to `log.md`:
 
 ---
 
-## 7. Release lock
+## 9. Release lock
 
 Delete `.watchdog/Registry/.ingest-lock` and `.watchdog/ingest.json`.
 
 ---
 
-## 8. Clarifying questions (optional)
+## 10. Clarifying questions (optional)
 
-After the briefing, if you encountered genuine ambiguities that would meaningfully change the entity graph, ask up to 3–5 targeted questions. Batch them together, not interleaved.
+After the briefing, if you encountered genuine ambiguities that would meaningfully change the entity graph, ask up to 3–5 targeted questions, batched together:
+- Two entities that might be the same person or company
+- A document with no clear date, authority, or subject
+- A near-duplicate where journalist input would help
 
-**Ask when:**
-- Two entities might be the same person or company ("I found 'J. Smith' and 'John Smith' — are these the same person?")
-- A document has no clear date, issuing authority, or subject
-- A role seems inconsistent with prior appearances
-- A near-duplicate was kept-both and confirmation would help
-
-**Do not ask about:**
-- Things you can reasonably infer
-- Minor details with no impact on the entity graph
-- Anything already covered in the briefing
-
-Frame questions explicitly as optional: the journalist can answer, defer, or say "make your best guess." If deferred, note the uncertainty in the relevant entity or document note.
+Frame questions as optional. If deferred, note the uncertainty in the relevant note.
 
 ---
 
 ## Error handling
 
-If any step fails for a specific file:
-1. Log the error to `.watchdog/Registry/ingest.log`: `[<ISO 8601>] ERROR <filename>: <error message>`
-2. Move the file to `_INCOMING/_FAILED/` (create if needed)
-3. Continue to the next file — do not abort the entire batch
+If a subagent exits with an error or returns an unparseable result:
+1. Log to `.watchdog/Registry/ingest.log`: `[<ISO 8601>] ERROR <filename>: <error>`
+2. Move the queue file to `_INCOMING/_FAILED/` if possible
+3. Continue to the next file
 
 Always release the lock at the end, even if every file failed.

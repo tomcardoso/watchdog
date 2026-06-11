@@ -78,17 +78,19 @@ watchdog chew  (terminal)
   → extracted data written to .watchdog/queue/<sha256>.json
         ↓
 /watchdog-ingest  (Claude Code)
+  processes up to 5 documents in parallel, each in an isolated subagent
   reads queue files · applies domain knowledge · extracts entities,
   relationships, timeline events, key facts · flags contradictions
         ↓
-watchdog write-vault
+watchdog write-vault  (called by each subagent)
   entity notes · document notes · global timeline · registries
+  file-locked so parallel writes are safe
   → originals moved to morgue/
         ↓
 Post-ingest briefing: new entities · connections · leads · anomalies
 ```
 
-Splitting the pipeline this way keeps token costs down — the slow mechanical work (OCR, Docling, embeddings) runs outside Claude Code entirely. Claude only sees clean, already-extracted text, and only does the work that requires intelligence.
+Splitting the pipeline this way keeps token costs down — the slow mechanical work (OCR, Docling, embeddings) runs outside Claude Code entirely. Claude only sees clean, already-extracted text. The subagent architecture keeps each document's extraction isolated, so the orchestrator context stays flat regardless of batch size.
 
 The extraction step is a [Claude Code skill](src/watchdog/skills/watchdog-ingest.md). You keep the Obsidian vault and every original file.
 
@@ -182,7 +184,7 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 |---------|-------------|
 | `watchdog new "<name>"` | Create a new investigation vault |
 | `watchdog open <name>` | Chew pending documents (with prompt), then open in Claude Code |
-| `watchdog obsidian <name>` | Open the vault in Obsidian |
+| `watchdog obsidian [name]` | Open the vault in Obsidian; omit name when inside the project directory |
 | `watchdog list` | List all active investigations; `--all` includes archived |
 | `watchdog status [name]` | Show detailed status; omit name to show all |
 | `watchdog log <name>` | Show ingest history; `--lines N` to tail |
@@ -212,6 +214,7 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog configure` | View or change configuration |
 | `watchdog unlock <name>` | Release a stale chew or ingest lock; `--force` to remove even if recent |
 | `watchdog setup` | Set up Watchdog after installation; `--force` to re-run |
+| `watchdog refresh-skills [name]` | Update vault skill files after a watchdog upgrade; omit name when inside the project directory |
 | `watchdog about` | Show version and project links |
 
 ### Claude Code slash commands
@@ -372,6 +375,8 @@ Skills are jurisdiction-agnostic by default: universal principles come first, wi
 
 These skills encode real investigative knowledge — what fields are always present, what patterns are anomalous, what investigators typically miss. See [src/watchdog/skills/records/](src/watchdog/skills/records/) to read them or contribute new ones. A contributor template is at [`src/watchdog/skills/records/_template.md`](src/watchdog/skills/records/_template.md).
 
+Skills are installed into each vault's `.claude/commands/records/` folder when you run `watchdog new`, so they travel with the investigation and can be customized per-vault. After upgrading Watchdog, run `watchdog refresh-skills` from inside a vault to pull in updated skills.
+
 ---
 
 ## Multiple investigations
@@ -430,7 +435,7 @@ watchdog configure <key> <value>
 | `table_structure` | `true` | Whether Docling runs its table detection model on PDFs. Set to `false` to speed up ingestion of text-only documents. |
 | `embed_images` | `false` | Embed figures as base64 in the extracted markdown so Claude can read charts and image-based tables. Significantly increases token usage. |
 | `dup_threshold` | `0.85` | Jaccard similarity score at which two documents are flagged as near-duplicates. Range: 0.0–1.0. |
-| `shingle_size` | `3` | Word n-gram size for near-duplicate fingerprinting. Changing this invalidates existing shingle data — re-ingest to rebuild. |
+| `shingle_size` | `3` | Word n-gram size for near-duplicate fingerprinting. Changing this invalidates existing MinHash signatures — re-ingest to rebuild. |
 
 **Examples:**
 
@@ -504,9 +509,11 @@ Please open an issue before starting significant work so we can discuss approach
 - **Large PDFs** are split into 40-page chunks and processed in parallel. Page numbers are preserved and reassembled in order.
 - **Two-stage queue** — `watchdog chew` writes extracted JSON to `.watchdog/queue/` and moves originals to `.watchdog/staging/`. After `/watchdog-ingest` completes, originals move from staging to `morgue/`. The queue is never touched by the journalist directly.
 - **OCR engine:** Apple Vision on macOS (fast, hardware-accelerated); Tesseract on Linux/Windows (requires system install). Configurable via `watchdog configure ocr_engine`.
-- **Near-duplicate detection** uses Jaccard similarity on word 3-gram shingles — no ML dependencies, runs locally.
+- **Near-duplicate detection** uses MinHash (128 hash functions) to approximate Jaccard similarity on word 3-gram shingles — no ML dependencies, runs locally.
 - **Registries** (`.watchdog/Registry/documents.json`, `entities.json`, `manifest.json`) are the source of truth. Obsidian notes are generated outputs — deleting a note doesn't lose data. `manifest.json` is a lightweight id/name/type/aliases index used for entity lookup without loading full registry data.
-- **Vault writes are atomic** — `watchdog write-vault` handles entity notes, document notes, timeline, registries, and the morgue move in a single operation behind an ingest lock.
+- **Vault writes are file-locked** — `watchdog write-vault` acquires an exclusive lock on `.watchdog/Registry/.write-lock` before reading and writing registry files, so parallel subagent calls serialize safely without corruption.
+- **Extraction runs in isolated subagents** — each document is processed by a separate Claude Code Agent call. This keeps the orchestrator context flat regardless of batch size.
+- **Skills are per-vault** — domain knowledge skill files live in `.claude/commands/records/` inside each vault, installed by `watchdog new` and refreshed by `watchdog refresh-skills`. This means skills travel with the investigation and can be customized per-vault.
 - **Single CLI entry point** — `watchdog` is the only command installed on your PATH. All pipeline utilities are subcommands.
 
 ---

@@ -101,7 +101,6 @@ watchdog setup
 
 This will:
 - Verify that qpdf and Ghostscript are installed
-- Install the Watchdog skills into Claude Code
 - Ask where you want to store your investigation projects
 - Enable tab completion in your shell automatically
 - Download the ML models for document conversion and semantic search (~600 MB, one-time)
@@ -141,7 +140,7 @@ To open the vault in Obsidian immediately:
 watchdog obsidian shell-company-investigation
 ```
 
-If Obsidian opens and the vault isn't visible, go to **Open folder as vault** in Obsidian, navigate to the investigation folder, and click Open. Once you've done that once, `watchdog obsidian` will open it directly in future.
+You can also run `watchdog obsidian` with no arguments from inside the vault directory. If Obsidian opens and the vault isn't visible, go to **Open folder as vault** in Obsidian, navigate to the investigation folder, and click Open. Once you've done that once, `watchdog obsidian` will open it directly in future.
 
 For a complete walkthrough of a first investigation from start to finish, see [GETTING_STARTED.md](GETTING_STARTED.md).
 
@@ -308,6 +307,13 @@ This extracts 50 documents and then stops cleanly. Start a new session and run t
 
 **Session ended mid-ingest**
 If a Claude Code session ends unexpectedly — rate limit hit, window closed, session timed out — start a new session and run `/watchdog-ingest` again. Processed files are already in `morgue/`; only unfinished files remain. The new run picks up from where the previous one stopped.
+
+**Skills look outdated after a Watchdog upgrade**
+When you upgrade Watchdog (`pipx upgrade watchdog-intel`), existing vaults keep their old skill files. Refresh them from inside the vault:
+```
+cd ~/Investigations/your-investigation
+watchdog refresh-skills
+```
 
 **Lock stuck**
 If a chew or ingest was interrupted, a lock file may be left behind. Remove it with:

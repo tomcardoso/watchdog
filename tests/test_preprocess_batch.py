@@ -15,6 +15,7 @@ from watchdog.pipeline.preprocess_batch import (
     _resolve_workers,
     _run_ingest_inner,
     _page_label,
+    _prune_empty_dirs,
 )
 import watchdog.pipeline.preprocess_batch as ppb
 
@@ -244,8 +245,9 @@ def test_adaptive_workers_short_docs_favor_preprocess(tmp_path, monkeypatch):
     monkeypatch.setattr("watchdog.pipeline.preprocess_batch._count_pdf_pages", lambda p: 1)
     monkeypatch.setattr("watchdog.pipeline.preprocess_batch._perf_cpu_count", lambda: 10)
 
-    pre, chunk = _adaptive_workers(files)
+    pre, chunk, counts = _adaptive_workers(files)
     assert pre >= chunk
+    assert set(counts.keys()) == set(files)
 
 
 def test_adaptive_workers_long_docs_favor_chunk(tmp_path, monkeypatch):
@@ -254,7 +256,7 @@ def test_adaptive_workers_long_docs_favor_chunk(tmp_path, monkeypatch):
     monkeypatch.setattr("watchdog.pipeline.preprocess_batch._count_pdf_pages", lambda p: 200)
     monkeypatch.setattr("watchdog.pipeline.preprocess_batch._perf_cpu_count", lambda: 10)
 
-    pre, chunk = _adaptive_workers(files)
+    pre, chunk, counts = _adaptive_workers(files)
     assert chunk >= pre
 
 
@@ -268,8 +270,9 @@ def test_resolve_workers_auto_uses_adaptive(tmp_path, monkeypatch):
     monkeypatch.setattr("watchdog.pipeline.preprocess_batch._count_pdf_pages", lambda p: 1)
     monkeypatch.setattr("watchdog.pipeline.preprocess_batch._perf_cpu_count", lambda: 10)
 
-    _, _, adaptive = _resolve_workers(files, explicit_pre=None)
+    _, _, adaptive, counts = _resolve_workers(files, explicit_pre=None)
     assert adaptive is True
+    assert counts is not None
 
 
 def test_resolve_workers_config_int_overrides_adaptive(tmp_path, monkeypatch):
@@ -282,10 +285,11 @@ def test_resolve_workers_config_int_overrides_adaptive(tmp_path, monkeypatch):
         json.dumps({"chew_workers": 2, "chunk_workers": 3})
     )
 
-    pre, chunk, adaptive = _resolve_workers(files, explicit_pre=None)
+    pre, chunk, adaptive, counts = _resolve_workers(files, explicit_pre=None)
     assert pre == 2
     assert chunk == 3
     assert adaptive is False
+    assert counts is None
 
 
 def test_resolve_workers_explicit_pre_overrides_config(tmp_path, monkeypatch):
@@ -298,7 +302,7 @@ def test_resolve_workers_explicit_pre_overrides_config(tmp_path, monkeypatch):
         json.dumps({"chew_workers": 2, "chunk_workers": 3})
     )
 
-    pre, chunk, _ = _resolve_workers(files, explicit_pre=7)
+    pre, chunk, *_ = _resolve_workers(files, explicit_pre=7)
     assert pre == 7
     assert chunk == 3  # chunk still from config
 
@@ -313,7 +317,7 @@ def test_resolve_workers_explicit_chunk_overrides_config(tmp_path, monkeypatch):
         json.dumps({"chew_workers": 2, "chunk_workers": 3})
     )
 
-    pre, chunk, _ = _resolve_workers(files, explicit_pre=None, explicit_chunk=8)
+    pre, chunk, *_ = _resolve_workers(files, explicit_pre=None, explicit_chunk=8)
     assert pre == 2   # from config
     assert chunk == 8  # from explicit flag
 
@@ -327,8 +331,49 @@ def test_resolve_workers_caps_pre_to_file_count(tmp_path, monkeypatch):
         json.dumps({"chew_workers": 8, "chunk_workers": 2})
     )
 
-    pre, _, _ = _resolve_workers(files, explicit_pre=None)
+    pre, *_ = _resolve_workers(files, explicit_pre=None)
     assert pre == 1  # capped to len(files)
+
+
+def test_resolve_workers_returns_page_counts_when_adaptive(tmp_path, monkeypatch):
+    files = [tmp_path / f"doc{i}.pdf" for i in range(3)]
+    for f in files:
+        f.write_bytes(b"")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    call_counts = {f: i + 1 for i, f in enumerate(files)}
+    monkeypatch.setattr(
+        "watchdog.pipeline.preprocess_batch._count_pdf_pages",
+        lambda p: call_counts[p],
+    )
+    monkeypatch.setattr("watchdog.pipeline.preprocess_batch._perf_cpu_count", lambda: 10)
+
+    _, _, _, counts = _resolve_workers(files, explicit_pre=None)
+    assert counts == call_counts
+
+
+# ── _prune_empty_dirs ─────────────────────────────────────────────────────────
+
+def test_prune_empty_dirs_removes_empty_subdir(tmp_path):
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    _prune_empty_dirs(tmp_path)
+    assert not sub.exists()
+
+
+def test_prune_empty_dirs_removes_dir_with_only_ds_store(tmp_path):
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    (sub / ".DS_Store").write_bytes(b"")
+    _prune_empty_dirs(tmp_path)
+    assert not sub.exists()
+
+
+def test_prune_empty_dirs_keeps_dir_with_real_file(tmp_path):
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    (sub / "doc.pdf").write_bytes(b"")
+    _prune_empty_dirs(tmp_path)
+    assert sub.exists()
 
 
 # ── _page_label ───────────────────────────────────────────────────────────────
