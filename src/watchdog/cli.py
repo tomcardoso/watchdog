@@ -1492,7 +1492,17 @@ def cmd_entity_index(args) -> None:
 
 
 def cmd_unlock(args) -> None:
-    _, info = _find_project(args.project)
+    if args.project:
+        _, info = _find_project(args.project)
+    else:
+        cwd = Path(".").resolve()
+        if not (cwd / ".watchdog").is_dir():
+            sys.exit("Error: not inside a Watchdog vault. Run from a vault directory or pass a project name.")
+        projects = load_projects()
+        match = next(((s, v) for s, v in projects.items() if Path(v["path"]).resolve() == cwd), None)
+        if match is None:
+            sys.exit("Error: vault not found in registry. Pass the project name explicitly.")
+        args.project, info = match
     vault = Path(info["path"])
 
     locks = [
@@ -1789,7 +1799,7 @@ def main() -> None:
     p_search.set_defaults(func=cmd_search)
 
     p_unlock = sub.add_parser("unlock", help="Release a stale ingest lock")
-    p_unlock.add_argument("project", help="Investigation name or slug").completer = _project_completer
+    p_unlock.add_argument("project", nargs="?", help="Investigation name or slug (default: infer from cwd)").completer = _project_completer
     p_unlock.add_argument("--force", action="store_true", help="Remove lock even if recent")
     p_unlock.set_defaults(func=cmd_unlock)
 
