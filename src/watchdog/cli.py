@@ -1492,6 +1492,7 @@ def cmd_entity_index(args) -> None:
 
 
 def cmd_unlock(args) -> None:
+    inferred = not args.project
     if args.project:
         _, info = _find_project(args.project)
     else:
@@ -1539,7 +1540,8 @@ def cmd_unlock(args) -> None:
             print(f"  {_GREEN}Removed:{_RESET} {_BOLD}{lock_name}{_RESET}  {_DIM}({age_str}){_RESET}")
         else:
             print(f"  {_YELLOW}Lock is recent{_RESET} ({age_str}) — {op_name} may still be running.")
-            print(f"  Use {_CYAN}watchdog unlock {args.project} --force{_RESET} to remove it anyway.")
+            force_cmd = "watchdog unlock --force" if inferred else f"watchdog unlock {args.project} --force"
+            print(f"  Use {_CYAN}{force_cmd}{_RESET} to remove it anyway.")
 
     if not found_any:
         print(f"  {_DIM}No locks found — nothing to do.{_RESET}")
