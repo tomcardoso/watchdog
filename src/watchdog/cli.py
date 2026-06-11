@@ -1365,7 +1365,10 @@ _VALID_CONFIDENCE = {"high", "medium", "low", "disputed"}
 
 
 def cmd_validate_extraction(args) -> None:
-    path = Path(args.file)
+    path = Path(args.file).resolve()
+    vault = Path(".").resolve()
+    if not str(path).startswith(str(vault)):
+        sys.exit(f"Error: file must be inside the current vault directory ({vault})")
     if not path.exists():
         sys.exit(f"Error: file not found: {path}")
 

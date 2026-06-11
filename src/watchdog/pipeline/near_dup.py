@@ -138,8 +138,17 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    vault = Path(".").resolve()
+
+    def _check_vault(label: str, p: Path) -> None:
+        if not str(p.resolve()).startswith(str(vault)):
+            print(json.dumps({"error": f"{label} must be inside the vault directory ({vault})"}))
+            sys.exit(1)
+
     if args.summary:
-        data = json.loads(Path(args.summary).read_text())
+        summary_path = Path(args.summary)
+        _check_vault("--summary", summary_path)
+        data = json.loads(summary_path.read_text())
         matches = data.get("near_duplicates", [])
         top = matches[0]["similarity"] if matches else 0.0
         print(json.dumps({"near_duplicates": matches, "top_similarity": round(top, 4)}))
@@ -158,6 +167,7 @@ def main() -> None:
     if args.stdin:
         text = sys.stdin.read()
     elif args.text_file:
+        _check_vault("--text-file", Path(args.text_file))
         text = Path(args.text_file).read_text(encoding="utf-8", errors="replace")
     elif args.text:
         text = args.text
@@ -166,6 +176,7 @@ def main() -> None:
         sys.exit(1)
 
     registry_path = Path(args.registry)
+    _check_vault("--registry", registry_path)
     documents = json.loads(registry_path.read_text()) if registry_path.exists() else {}
 
     candidate_sh = shingles_from_text(text)

@@ -722,14 +722,19 @@ def main() -> None:
                         help="Path to near-dup JSON output — shingles are read from here instead of the extraction JSON")
     args = parser.parse_args()
 
-    extraction_path = Path(args.extraction)
+    extraction_path = Path(args.extraction).resolve()
     vault_path = Path(args.vault).resolve()
-    neardup_file = Path(args.neardup_file) if args.neardup_file else None
+    neardup_file = Path(args.neardup_file).resolve() if args.neardup_file else None
 
-    if not extraction_path.exists():
-        sys.exit(f"Error: {extraction_path} not found")
     if not vault_path.exists():
         sys.exit(f"Error: vault directory {vault_path} not found")
+    for label, p in [("--extraction", extraction_path), ("--neardup-file", neardup_file)]:
+        if p is None:
+            continue
+        if not str(p).startswith(str(vault_path)):
+            sys.exit(f"Error: {label} path must be inside the vault directory ({vault_path})")
+    if not extraction_path.exists():
+        sys.exit(f"Error: {extraction_path} not found")
 
     run(extraction_path, vault_path, skip_timeline=args.skip_timeline, neardup_file=neardup_file)
 

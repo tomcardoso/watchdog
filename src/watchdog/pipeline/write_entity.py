@@ -100,13 +100,15 @@ def main() -> None:
     parser.add_argument("--vault", default=".", help="Vault root directory (default: .)")
     args = parser.parse_args()
 
-    extraction_path = Path(args.extraction)
+    extraction_path = Path(args.extraction).resolve()
     vault_path = Path(args.vault).resolve()
 
-    if not extraction_path.exists():
-        sys.exit(f"Error: {extraction_path} not found")
     if not vault_path.exists():
         sys.exit(f"Error: vault directory {vault_path} not found")
+    if not str(extraction_path).startswith(str(vault_path)):
+        sys.exit(f"Error: --extraction path must be inside the vault directory ({vault_path})")
+    if not extraction_path.exists():
+        sys.exit(f"Error: {extraction_path} not found")
 
     run(extraction_path, vault_path)
 
