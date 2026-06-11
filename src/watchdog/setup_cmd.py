@@ -1,4 +1,6 @@
+import contextlib
 import importlib.resources
+import io
 import json
 import os
 import shutil
@@ -213,6 +215,7 @@ def run(force: bool = False) -> None:
         os.environ.get("FASTEMBED_CACHE_PATH", Path.home() / ".cache" / "fastembed")
     )
     os.environ.setdefault("FASTEMBED_CACHE_PATH", str(_fastembed_cache_root))
+    os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
     _fastembed_cached = (_fastembed_cache_root / _FASTEMBED_MODEL.replace("/", os.sep)).exists()
     _docling_cache    = Path.home() / ".cache" / "docling" / "models"
     _models_cached    = _fastembed_cached and _docling_cache.exists() and any(_docling_cache.iterdir())
@@ -221,18 +224,19 @@ def run(force: bool = False) -> None:
         print("  Checking ML models...")
     else:
         print("  Downloading ML models (one-time, ~600 MB — may take a few minutes)...")
-    try:
-        from fastembed import TextEmbedding
-        TextEmbedding(_FASTEMBED_MODEL)
-        _ok(f"Embedding model ({_FASTEMBED_MODEL})")
-    except Exception as e:
-        _warn(f"Embedding model download failed: {e}")
-    try:
-        from docling.document_converter import DocumentConverter
-        DocumentConverter()
-        _ok("Document conversion models (Docling)")
-    except Exception as e:
-        _warn(f"Docling model download failed: {e}")
+    with contextlib.redirect_stderr(io.StringIO()):
+        try:
+            from fastembed import TextEmbedding
+            TextEmbedding(_FASTEMBED_MODEL)
+            _ok(f"Embedding model ({_FASTEMBED_MODEL})")
+        except Exception as e:
+            _warn(f"Embedding model download failed: {e}")
+        try:
+            from docling.document_converter import DocumentConverter
+            DocumentConverter()
+            _ok("Document conversion models (Docling)")
+        except Exception as e:
+            _warn(f"Docling model download failed: {e}")
 
     # 7. Write config
     WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
