@@ -70,7 +70,7 @@ def _render_template(filename: str, **vars: str) -> str:
 _VAULT_PERMISSIONS = [
     "Bash(watchdog entity-index)",
     "Bash(watchdog queue-status)",
-    "Bash(watchdog is-duplicate --sha256 *)",
+    "Bash(watchdog is-duplicate *)",
     "Bash(watchdog near-dup --text-file .watchdog/tmp/*)",
     "Bash(watchdog near-dup --summary .watchdog/tmp/*)",
     "Bash(watchdog validate-extraction .watchdog/tmp/*)",
