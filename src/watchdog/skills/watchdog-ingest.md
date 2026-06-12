@@ -129,41 +129,7 @@ If `DOMAIN_SKILL_PATH` is not `"none"`, read `.claude/commands/{DOMAIN_SKILL_PAT
 
 **Escape hatch:** if after reading the document in Step 1 the loaded skill is clearly wrong, read the correct skill from `.claude/commands/records/` instead. This should be rare.
 
-If `DOMAIN_SKILL_PATH` is `"none"`, determine the document type from its text and read the matching skill file from `.claude/commands/`:
-
-| Document type | Skill file |
-|--------------|-----------|
-| Annual report, corporate registration, director filing | `records/corporate-filings.md` |
-| Statement of claim, affidavit, judgment, court order | `records/court-documents.md` |
-| Title transfer, mortgage, lien, property assessment | `records/real-estate.md` |
-| Balance sheet, income statement, auditor report | `records/financial-statements.md` |
-| Creditor list, trustee report, discharge document | `records/bankruptcy.md` |
-| Procurement record, tender, contract award | `records/government-contracts.md` |
-| Campaign finance return, donor list, third-party advertising return | `records/election-filings.md` |
-| Lobbyist registration, communication report, lobbying disclosure | `records/lobbying-records.md` |
-| ATI / FOI / FOIA response package | `records/foi-responses.md` |
-| IRB/immigration tribunal decision, deportation order, refugee ruling | `records/immigration-refugee.md` |
-| Charity return, T3010, 990, nonprofit tax filing | `records/tax-documents.md` |
-| Securities disclosure, insider trading, prospectus, SEDAR/EDGAR | `records/regulatory-filings.md` |
-| NPRI/TRI/PRTR emissions report, environmental assessment | `records/environmental-filings.md` |
-| Health regulatory college decision, fitness to practise, inspection | `records/healthcare-licensing.md` |
-| Council minutes, development permit, zoning amendment | `records/municipal-records.md` |
-| Auditor general report, value-for-money audit | `records/audit-reports.md` |
-| Standing offer, task authorization, vendor performance | `records/procurement-records.md` |
-| Police occurrence, use-of-force, disciplinary decision, parole | `records/police-records.md` |
-| Criminal charge, bail, trial, sentencing decision | `records/criminal-proceedings.md` |
-| Land register extract, title deed, hypothec, conveyance | `records/land-registries.md` |
-| Labour arbitration award, grievance decision, collective agreement | `records/labour-arbitration.md` |
-| Grant application, research ethics decision, retraction notice | `records/academic-research.md` |
-| OSFI return, reinsurance treaty, actuarial report | `records/insurance-filings.md` |
-| Public inquiry report, royal commission, task force report | `records/government-reports.md` |
-| Parliamentary transcript, Hansard, committee hearing, debate | `records/legislature-transcripts.md` |
-| Aircraft registration, flight log, ADS-B data, aviation safety | `records/aircraft-logs.md` |
-| WHOIS record, DNS data, domain registration, IP allocation | `records/dns-whois.md` |
-| News article, press clipping, wire story, press release | `records/news-clippings.md` |
-| YouTube/podcast transcript, earnings call, broadcast | `records/audio-video.md` |
-
-If nothing matches, read `.claude/commands/records/general-records.md`.
+If `DOMAIN_SKILL_PATH` is `"none"`, scan the first few pages to identify the document type, then find and read the closest matching skill in `.claude/commands/records/`. Skill filenames are descriptive. If nothing clearly matches, read `.claude/commands/records/general-records.md`.
 
 ## Step 4 — Infer document metadata
 
@@ -199,11 +165,7 @@ Never upgrade a claim past its weakest element.
 
 ## Step 7 — Contradiction check
 
-For each entity that matched an entry in PRE_FLIGHT.existing_entities, read its vault note using the `note_path` field (append `.md`). Construct the full path as `{note_path}.md`. Example: if `note_path` is `entities/person/john-smith`, read `entities/person/john-smith.md`.
-- Person → `entities/person/{id}.md`
-- Company → `entities/company/{id}.md`
-- Address → `entities/address/{id}.md`
-- Other → `entities/{type_lowercase}/{id}.md`
+For each entity that matched an entry in PRE_FLIGHT.existing_entities, read its vault note at `{note_path}.md`.
 
 Compare key dates, roles, and relationships against what this document states. Flag material discrepancies where both sides are `high` or `medium` confidence. Format contradiction callouts as:
 
@@ -239,8 +201,8 @@ Build this JSON exactly:
   },
   "entities": [
     {
-      "id": "<existing id from PRE_FLIGHT.existing_entities if matched; otherwise new kebab-case slug>",
-      "match_id": "<if this entity matches an existing one, set to that entity's id; otherwise omit this field entirely>",
+      "id": "<matched id from PRE_FLIGHT, or new kebab-case slug>",
+      "match_id": "<matched entity id — omit entirely for new entities>",
       "name": "...",
       "type": "...",
       "aliases": [...],
@@ -250,15 +212,7 @@ Build this JSON exactly:
         {"date": "...", "event": "...", "page": <n or null>, "confidence": "..."}
       ],
       "roles": [
-        {
-          "relationship": "<verb phrase: Director of, Shareholder of, Registered Agent for, Counsel for, Spouse of, Subsidiary of, …>",
-          "target_id": "<kebab-case id of the related entity>",
-          "target_type": "<entity type lowercase: person, company, address, …>",
-          "target_name": "<display name of the related entity>",
-          "page": <n or null>,
-          "confidence": "<high|medium|low|disputed>",
-          "date_range": null
-        }
+        {"relationship": "<Director of / Shareholder of / Counsel for / …>", "target_id": "…", "target_type": "person|company|address|…", "target_name": "…", "page": null, "confidence": "high|medium|low|disputed", "date_range": null}
       ]
     }
   ],
