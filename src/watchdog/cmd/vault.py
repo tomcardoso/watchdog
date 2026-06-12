@@ -197,6 +197,8 @@ def cmd_new(args) -> None:
 
     print(f"\n  {_GREEN}Created:{_RESET} {_BOLD}{vault}{_RESET}")
     print()
+    print(f"  {_DIM}cd {vault}{_RESET}")
+    print()
     print(f"  {_BOLD}Next steps{_RESET}")
     print(f"    1. Drop documents into {_CYAN}{vault}/_INCOMING/{_RESET}")
     print(f"    2. Run {_CYAN}watchdog chew{_RESET} to process documents")

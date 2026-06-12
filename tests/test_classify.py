@@ -93,7 +93,7 @@ def test_uses_only_first_n_pages(tmp_path, monkeypatch):
     vault, skills_dir = _make_vault(tmp_path)
     _add_skill(skills_dir, "court-documents", "court affidavit judgment")
     _add_skill(skills_dir, "corporate-filings", "corporate director registration")
-    monkeypatch.setattr(cls_mod, "_CLASSIFY_PAGES", 2)
+    monkeypatch.setattr(cls_mod, "_classify_pages", lambda: 2)
 
     # First 2 pages are court; later pages are corporate — should still pick court
     pages = _pages("court affidavit", "court judgment", "corporate director", "corporate filing")

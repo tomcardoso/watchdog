@@ -12,9 +12,17 @@ import json
 import numpy as np
 from pathlib import Path
 
-_CLASSIFY_PAGES = 10
+_CLASSIFY_PAGES_DEFAULT = 10
 _THRESHOLD = 0.65
 _MODEL = "BAAI/bge-small-en-v1.5"
+
+
+def _classify_pages() -> int:
+    try:
+        from watchdog.pipeline.preprocess import _config_get
+        return int(_config_get("classify_pages", _CLASSIFY_PAGES_DEFAULT))
+    except Exception:
+        return _CLASSIFY_PAGES_DEFAULT
 
 
 def _skills_dir(vault: Path) -> Path:
@@ -87,7 +95,7 @@ def classify_document(pages: list[dict], vault: Path) -> "str | None":
         if not skill_names:
             return None
 
-        page_texts = [p["markdown"] for p in pages[:_CLASSIFY_PAGES] if p.get("markdown")]
+        page_texts = [p["markdown"] for p in pages[:_classify_pages()] if p.get("markdown")]
         if not page_texts:
             return None
 

@@ -143,6 +143,19 @@ _CONFIGURE_KEYS = {
         "type": "bool",
         "default": False,
     },
+    # ── Classification ────────────────────────────────────────────────────────
+    "classify_pages": {
+        "short": "Number of pages used to classify document type at chew time (default: 10)",
+        "help": (
+            "Watchdog embeds the first N pages of each document and compares them against\n"
+            "  skill embeddings to determine the document type before extraction.\n"
+            "  More pages = more context but slower chewing.\n"
+            "  Default: 10."
+        ),
+        "type": "int",
+        "default": 10,
+        "min": 1,
+    },
     # ── Deduplication ─────────────────────────────────────────────────────────
     "dup_threshold": {
         "short": "Near-duplicate Jaccard similarity threshold — score at which documents are flagged (default: 0.85)",
