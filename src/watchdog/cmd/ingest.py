@@ -9,6 +9,7 @@ from watchdog.cmd.base import (
     _count_queued,
     _find_project,
     _launch_claude,
+    _MODEL_IDS,
     _notify,
 )
 
@@ -72,8 +73,14 @@ def cmd_ingest(args) -> None:
     vault = Path(".").resolve()
     if not (vault / ".watchdog").is_dir():
         sys.exit("Error: must be run from inside a Watchdog vault directory")
+    orchestrator_model = getattr(args, "orchestrator_model", None) or "sonnet"
+    extractor_model    = getattr(args, "extractor_model",    None) or "sonnet"
+    if orchestrator_model not in _MODEL_IDS:
+        sys.exit(f"Error: unknown model '{orchestrator_model}' — choose sonnet, opus, or haiku")
+    if extractor_model not in _MODEL_IDS:
+        sys.exit(f"Error: unknown model '{extractor_model}' — choose sonnet, opus, or haiku")
     from watchdog.pipeline.ingest_setup import run as is_run
-    result = is_run(vault)
+    result = is_run(vault, extractor_model=extractor_model)
     if "error" in result:
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} {result['error']}\n")
     if result["total"] == 0:
@@ -93,7 +100,7 @@ def cmd_ingest(args) -> None:
         print(f"\n  When ready, open Claude Code and run:  {_CYAN}/watchdog-ingest{_RESET}\n")
         return
     if answer in ("", "y", "yes"):
-        _launch_claude(vault, "/watchdog-ingest")
+        _launch_claude(vault, "/watchdog-ingest", model=orchestrator_model)
     else:
         print(f"\n  When ready, open Claude Code and run:  {_CYAN}/watchdog-ingest{_RESET}\n")
 
@@ -106,7 +113,10 @@ def cmd_context(args) -> None:
             vault = Path(info["path"])
         else:
             sys.exit("Error: not inside a Watchdog project. cd into your investigation first, or pass the investigation name.")
-    _launch_claude(vault, "/watchdog-context")
+    model = getattr(args, "model", None) or "sonnet"
+    if model not in _MODEL_IDS:
+        sys.exit(f"Error: unknown model '{model}' — choose sonnet, opus, or haiku")
+    _launch_claude(vault, "/watchdog-context", model=model)
 
 
 def cmd_queue_status(args) -> None:

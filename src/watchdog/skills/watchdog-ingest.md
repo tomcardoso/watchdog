@@ -36,6 +36,8 @@ Stop.
 
 Set `TOTAL = INGEST.total`. Set `BATCH_START = INGEST.batch_start`. Set `EXTRACTED = 0`. Set `RESULTS = []`, `NEARDUP_ALERTS = []`, `CONTRADICTION_FLAGS = []`.
 
+Set `EXTRACTOR_MODEL = INGEST.extractor_model` if present, else `"sonnet"`.
+
 Set `QUEUE_FILES = INGEST.queue_files`. Set `ARROWS_FILES = INGEST.arrows_files`.
 
 The lock is held (acquired by `watchdog ingest`). Every exit path — including errors — must release it by running `watchdog unlock` and deleting `.watchdog/ingest-state.json`.
@@ -67,7 +69,7 @@ Split `QUEUE_FILES` into batches of at most 5 files. For each batch:
 1. For each file in the batch, get its `SHA256`, `FILENAME`, and `DOMAIN_SKILL_PATH` (already resolved in §2).
 2. Set `SKIP_TIMELINE` = `false` only for the very last file of the entire run; `true` for all others.
 3. Print `[<N>/<TOTAL>] Launching: <FILENAME clamped to 50 chars> ...`
-4. **Launch all agents in the batch simultaneously** — send a single message with all Agent tool calls in parallel. Set each Agent's `description` to `Watchdog extraction: <FILENAME clamped to 50 chars>`.
+4. **Launch all agents in the batch simultaneously** — send a single message with all Agent tool calls in parallel. Set each Agent's `description` to `Watchdog extraction: <FILENAME clamped to 50 chars>` and `model` to `EXTRACTOR_MODEL`.
 5. Process results (see "After each Agent call" below).
 
 **Limit check:** if `LIMIT` is set and `EXTRACTED >= LIMIT`, stop before the next batch.

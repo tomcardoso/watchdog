@@ -21,6 +21,12 @@ _YELLOW = "\033[0;33m"
 _GREEN  = "\033[0;32m"
 _RESET  = "\033[0m"
 
+_MODEL_IDS = {
+    "sonnet": "claude-sonnet-4-6",
+    "opus":   "claude-opus-4-8",
+    "haiku":  "claude-haiku-4-5-20251001",
+}
+
 _ALIASES = {
     "init":       "new",
     "create":     "new",
@@ -81,10 +87,15 @@ _CMD_HELP: dict[str, dict] = {
     },
     "ingest": {
         "desc": "Set up extraction session and open in Claude Code",
+        "opts": [
+            ("--orchestrator-model M", "Model for the orchestrator session (sonnet/opus/haiku, default: sonnet)"),
+            ("--extractor-model M",    "Model for extraction subagents (sonnet/haiku, default: sonnet)"),
+        ],
     },
     "context": {
         "desc": "Open Claude Code to seed investigation context from _CONTEXT/",
         "args": [("name", "Investigation name or slug (default: current directory)", True)],
+        "opts": [("--model M", "Model to use (sonnet/opus/haiku, default: sonnet)")],
     },
     "obsidian": {
         "desc": "Open an investigation vault in Obsidian",
@@ -286,10 +297,12 @@ def _notify(title: str, body: str) -> None:
         pass
 
 
-def _launch_claude(vault: Path, prompt: str | None = None) -> None:
+def _launch_claude(vault: Path, prompt: str | None = None, model: str | None = None) -> None:
     try:
         os.chdir(vault)
         cmd = ["claude"]
+        if model:
+            cmd += ["--model", _MODEL_IDS.get(model, model)]
         if prompt:
             cmd.append(prompt)
         os.execvp("claude", cmd)

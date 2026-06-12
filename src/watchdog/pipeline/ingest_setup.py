@@ -24,7 +24,7 @@ def _iso_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def run(vault: Path) -> dict:
+def run(vault: Path, extractor_model: str = "sonnet") -> dict:
     """Acquire lock, scan queue, write state file. Returns the state dict."""
     lock_file = vault / ".watchdog" / "Registry" / ".ingest-lock"
     state_file = vault / ".watchdog" / "ingest-state.json"
@@ -81,6 +81,7 @@ def run(vault: Path) -> dict:
         "total": total,
         "queue_files": queue_files,
         "arrows_files": arrows_files,
+        "extractor_model": extractor_model,
     }
     state_file.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
     return state

@@ -215,11 +215,20 @@ def main() -> None:
     p_describe.add_argument("text", nargs="?", help="New description text (omit to be prompted)")
     p_describe.set_defaults(func=cmd_describe)
 
+    _model_choices = ["sonnet", "opus", "haiku"]
     p_ingest = sub.add_parser("ingest", help="Set up extraction session and open in Claude Code")
+    p_ingest.add_argument("--orchestrator-model", choices=_model_choices, default="sonnet",
+                          dest="orchestrator_model",
+                          help="Model for the orchestrator session (default: sonnet)")
+    p_ingest.add_argument("--extractor-model", choices=_model_choices, default="sonnet",
+                          dest="extractor_model",
+                          help="Model for extraction subagents (default: sonnet)")
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_context = sub.add_parser("context", help="Open Claude Code to seed investigation context from _CONTEXT/")
     p_context.add_argument("name", nargs="?", help="Investigation name or slug (default: current directory)").completer = _project_completer
+    p_context.add_argument("--model", choices=_model_choices, default="sonnet",
+                           help="Model to use (default: sonnet)")
     p_context.set_defaults(func=cmd_context)
 
     # Internal pipeline commands — hidden from help and tab completion

@@ -145,6 +145,26 @@ def test_stale_lock_is_replaced(tmp_path):
     assert "pid: cli" in lock_file.read_text()
 
 
+def test_extractor_model_written_to_state(tmp_path):
+    vault = _make_vault(tmp_path)
+    _write_queue_file(vault, "abc123")
+
+    result = run(vault, extractor_model="haiku")
+
+    assert result["extractor_model"] == "haiku"
+    state = json.loads((vault / ".watchdog" / "ingest-state.json").read_text())
+    assert state["extractor_model"] == "haiku"
+
+
+def test_extractor_model_defaults_to_sonnet(tmp_path):
+    vault = _make_vault(tmp_path)
+    _write_queue_file(vault, "abc123")
+
+    result = run(vault)
+
+    assert result["extractor_model"] == "sonnet"
+
+
 def test_empty_queue_cleans_up_stale_state_file(tmp_path):
     vault = _make_vault(tmp_path)
     state_file = vault / ".watchdog" / "ingest-state.json"
