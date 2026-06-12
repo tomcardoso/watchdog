@@ -48,6 +48,7 @@ from watchdog.cmd.vault import (
     cmd_move,
     cmd_new,
     cmd_obsidian,
+    cmd_open,
     cmd_rename,
     cmd_search,
     cmd_status,
@@ -169,6 +170,10 @@ def main() -> None:
     p_obsidian = sub.add_parser("obsidian", help="Open an investigation vault in Obsidian")
     p_obsidian.add_argument("name", nargs="?", help="Investigation name or slug (default: current directory)").completer = _project_completer
     p_obsidian.set_defaults(func=cmd_obsidian)
+
+    p_open = sub.add_parser("open", help="Open vault folder in Finder / file explorer")
+    p_open.add_argument("name", nargs="?", help="Investigation name or slug (default: current directory)").completer = _project_completer
+    p_open.set_defaults(func=cmd_open)
 
     p_delete = sub.add_parser("delete", help="Remove an investigation from registry")
     p_delete.add_argument("name", help="Investigation name or slug").completer = _project_completer

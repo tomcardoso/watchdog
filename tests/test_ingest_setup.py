@@ -16,9 +16,9 @@ def _make_vault(tmp_path: Path) -> Path:
     return vault
 
 
-def _write_queue_file(vault: Path, sha256: str, source_type: str = "docling") -> None:
+def _write_queue_file(vault: Path, sha256: str, source_type: str = "docling", filename: str = "") -> None:
     qf = vault / ".watchdog" / "queue" / f"{sha256}.json"
-    qf.write_text(json.dumps({"metadata": {"source_type": source_type}, "pages": []}))
+    qf.write_text(json.dumps({"filename": filename or f"{sha256}.pdf", "metadata": {"source_type": source_type}, "pages": []}))
 
 
 def test_empty_queue_returns_total_zero(tmp_path):
@@ -73,6 +73,25 @@ def test_queue_file_paths_are_vault_relative(tmp_path):
     path = result["queue_files"][0]["path"]
     assert not Path(path).is_absolute()
     assert path.startswith(".watchdog/queue/")
+
+
+def test_queue_files_include_filename(tmp_path):
+    vault = _make_vault(tmp_path)
+    _write_queue_file(vault, "abc123", filename="Annual Report 2024.pdf")
+
+    result = run(vault)
+
+    assert result["queue_files"][0]["filename"] == "Annual Report 2024.pdf"
+
+
+def test_queue_files_filename_falls_back_to_sha256(tmp_path):
+    vault = _make_vault(tmp_path)
+    qf = vault / ".watchdog" / "queue" / "abc123.json"
+    qf.write_text(json.dumps({"metadata": {"source_type": "docling"}, "pages": []}))
+
+    result = run(vault)
+
+    assert result["queue_files"][0]["filename"] == "abc123"
 
 
 def test_fresh_lock_blocks_ingest(tmp_path):

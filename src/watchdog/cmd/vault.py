@@ -250,6 +250,41 @@ def cmd_obsidian(args) -> None:
     print(f"\n  {_GREEN}Opened:{_RESET} {_BOLD}{info['name']}{_RESET} in Obsidian\n")
 
 
+def cmd_open(args) -> None:
+    if not args.name:
+        cwd = Path(".").resolve()
+        if (cwd / ".watchdog").is_dir():
+            projects = load_projects()
+            info = next((v for v in projects.values() if Path(v["path"]).resolve() == cwd), None)
+            if info is None:
+                sys.exit("Error: current directory is a vault but not registered. Run `watchdog new` first.")
+        else:
+            sys.exit("Error: not inside a watchdog project. Run `watchdog open <name>` or cd into a project first.")
+    else:
+        _, info = _find_project(args.name)
+    vault = Path(info["path"])
+    if not vault.exists():
+        sys.exit(f"Error: project directory not found: {vault}")
+    if sys.platform == "darwin":
+        opener = ["open", str(vault)]
+    elif sys.platform.startswith("linux"):
+        opener = ["xdg-open", str(vault)]
+    elif sys.platform == "win32":
+        import os as _os
+        try:
+            _os.startfile(str(vault))
+        except Exception:
+            sys.exit("Error: could not open file explorer")
+        print(f"\n  {_GREEN}Opened:{_RESET} {_CYAN}{vault}{_RESET}\n")
+        return
+    else:
+        sys.exit("Error: watchdog open is not supported on this platform")
+    result = subprocess.run(opener, capture_output=True)
+    if result.returncode != 0:
+        sys.exit(f"Error: could not open file explorer")
+    print(f"\n  {_GREEN}Opened:{_RESET} {_CYAN}{vault}{_RESET}\n")
+
+
 def cmd_rename(args) -> None:
     slug, info = _find_project(args.project)
     vault = Path(info["path"])

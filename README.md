@@ -122,7 +122,7 @@ Docling runs locally. Your documents never leave your machine during preprocessi
 - **qpdf + Ghostscript** — PDF decryption and repair
 - **Tesseract OCR** — Linux/Windows only (macOS uses Apple Vision)
 
-A Claude.ai Pro subscription is the recommended starting point. No API key setup, no per-token billing.
+A Claude.ai Pro subscription is the recommended starting point. No API key setup, no per-token billing. If you prefer to authenticate with an Anthropic API key instead, run `claude login` in your terminal after installing Claude Code.
 
 ---
 
@@ -184,6 +184,7 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 |---------|-------------|
 | `watchdog new [<name>]` | Create a new investigation vault; omit name to be prompted interactively |
 | `watchdog obsidian [name]` | Open the vault in Obsidian; omit name when inside the project directory |
+| `watchdog open [name]` | Open the vault folder in Finder / file explorer; omit name when inside the project directory |
 | `watchdog list` | List all active investigations; `--all` includes archived |
 | `watchdog status [name]` | Show detailed status; omit name to show all |
 | `watchdog log <name>` | Show ingest history; `--lines N` to tail |

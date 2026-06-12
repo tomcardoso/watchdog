@@ -2,7 +2,7 @@
 
 This guide walks you through a complete investigation from start to finish — creating a vault, dropping in documents, running the pipeline, and reading the results in Obsidian.
 
-It assumes Watchdog is already installed and set up. If not, start with [INSTALL.md](INSTALL.md).
+It assumes Watchdog is already installed and set up. If not, start with [INSTALL.md](INSTALL.md). It also assumes Claude Code is authenticated — either via a Claude.ai Pro or Max subscription, or an Anthropic API key (`claude login` to set that up).
 
 ---
 
@@ -202,6 +202,14 @@ After ingest, open Obsidian:
 watchdog obsidian shell-company-investigation
 # or, from inside the vault directory:
 watchdog obsidian
+```
+
+To browse the raw vault files in Finder / your file explorer:
+
+```bash
+watchdog open shell-company-investigation
+# or, from inside the vault directory:
+watchdog open
 ```
 
 The vault now contains:

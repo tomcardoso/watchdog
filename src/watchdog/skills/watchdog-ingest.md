@@ -58,10 +58,10 @@ Process `ARROWS_FILES` inline first (see §5) before the subagent loop.
 
 Split `QUEUE_FILES` into batches of at most 5 files. For each batch:
 
-1. For each file in the batch, get its SHA256 from the queue path (filename without `.json` extension).
+1. For each file in the batch, get its `SHA256` and `FILENAME` from the queue entry (`sha256` and `filename` fields).
 2. Set `SKIP_TIMELINE` = `false` only for the very last file of the entire run; `true` for all others.
-3. Print `[<N>/<TOTAL>] Launching: <sha256[:8]> ...`
-4. **Launch all agents in the batch simultaneously** — send a single message with all Agent tool calls in parallel.
+3. Print `[<N>/<TOTAL>] Launching: <FILENAME clamped to 50 chars> ...`
+4. **Launch all agents in the batch simultaneously** — send a single message with all Agent tool calls in parallel. Set each Agent's `description` to `Watchdog extraction: <FILENAME clamped to 50 chars>`.
 5. Process results (see "After each Agent call" below).
 
 **Limit check:** if `LIMIT` is set and `EXTRACTED >= LIMIT`, stop before the next batch.
@@ -76,6 +76,7 @@ Substitute all `{placeholder}` values before sending.
 You are extracting one document for the Watchdog investigative research system. Follow every step below exactly. Return the structured RESULT block at the end — no other output.
 
 SHA256: {SHA256}
+FILENAME: {FILENAME}
 SKIP_TIMELINE: {true or false}
 INVESTIGATION_BRIEF:
 {INVESTIGATION_BRIEF — or "None" if empty}
@@ -96,7 +97,7 @@ watchdog pre-flight {SHA256}
 ```
 
 Parse the JSON output. Store as PRE_FLIGHT. Fields:
-- `sha256`, `filename`, `page_count`
+- `sha256`, `page_count`
 - `already_extracted` — if true, return the SKIPPED block immediately
 - `pages[]` — each has `page` integer and `markdown` string; this is your document content
 - `near_dup.near_duplicates`, `near_dup.top_similarity`
@@ -105,11 +106,11 @@ Parse the JSON output. Store as PRE_FLIGHT. Fields:
 If `already_extracted` is true, stop and return:
 ```
 STATUS: skipped
-FILENAME: {PRE_FLIGHT.filename}
+FILENAME: {FILENAME}
 REASON: already extracted (SHA-256 match)
 ```
 
-Set SHA256 = PRE_FLIGHT.sha256. Set FILENAME = PRE_FLIGHT.filename.
+Set SHA256 = PRE_FLIGHT.sha256. (FILENAME is already set from the prompt header.)
 
 ## Step 2 — Load sidecar
 

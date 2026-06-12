@@ -86,6 +86,10 @@ _CMD_HELP: dict[str, dict] = {
         "desc": "Open an investigation vault in Obsidian",
         "args": [("name", "Investigation name or slug")],
     },
+    "open": {
+        "desc": "Open vault folder in Finder / file explorer",
+        "args": [("name", "Investigation name or slug (default: current directory)")],
+    },
     "archive": {
         "desc": "Archive a completed investigation (hidden from watchdog list)",
         "args": [("name", "Investigation name or slug")],
@@ -332,6 +336,7 @@ def _print_banner() -> None:
         ("Investigation", [
             ("new",        "Create a new investigation vault"),
             ("obsidian",   "Open in Obsidian"),
+            ("open",       "Open vault folder in Finder / file explorer"),
             ("archive",    "Archive a completed investigation"),
             ("unarchive",  "Restore an archived investigation"),
             ("rename",     "Rename an investigation"),

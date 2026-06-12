@@ -333,6 +333,39 @@ def test_cmd_obsidian_infers_project_from_cwd(configured, monkeypatch):
     assert "obsidian://open?path=" in calls[0][1]
 
 
+# ── cmd_open ──────────────────────────────────────────────────────────────────
+
+def test_cmd_open_opens_vault_folder(configured, monkeypatch):
+    cli.cmd_new(args(name="My Story", dir=str(configured)))
+    vault = configured / "my-story"
+    calls = []
+    monkeypatch.setattr("watchdog.cmd.vault.subprocess.run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
+    monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "darwin")
+    cli.cmd_open(args(name="My Story"))
+    assert len(calls) == 1
+    assert calls[0] == ["open", str(vault)]
+
+
+def test_cmd_open_infers_project_from_cwd(configured, monkeypatch):
+    cli.cmd_new(args(name="My Story", dir=str(configured)))
+    vault = configured / "my-story"
+    calls = []
+    monkeypatch.setattr("watchdog.cmd.vault.subprocess.run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
+    monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "darwin")
+    monkeypatch.chdir(vault)
+    cli.cmd_open(args(name=None))
+    assert len(calls) == 1
+    assert calls[0] == ["open", str(vault)]
+
+
+def test_cmd_open_exits_on_failure(configured, monkeypatch):
+    cli.cmd_new(args(name="My Story", dir=str(configured)))
+    monkeypatch.setattr("watchdog.cmd.vault.subprocess.run", lambda cmd, **kw: type("R", (), {"returncode": 1})())
+    monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "darwin")
+    with pytest.raises(SystemExit):
+        cli.cmd_open(args(name="My Story"))
+
+
 # ── cmd_list ──────────────────────────────────────────────────────────────────
 
 def test_cmd_list_empty(configured, capsys):

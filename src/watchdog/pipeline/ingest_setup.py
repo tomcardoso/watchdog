@@ -58,6 +58,7 @@ def run(vault: Path) -> dict:
                 "path": str(qf.relative_to(vault)),
                 "sha256": qf.stem,
                 "source_type": source_type,
+                "filename": data.get("filename", qf.stem),
             }
             (arrows_files if source_type == "arrows" else queue_files).append(entry)
 

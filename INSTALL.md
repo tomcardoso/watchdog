@@ -39,6 +39,8 @@ This guide assumes you have never used a terminal before. Read through it once b
 
 If you don't have a Claude.ai account yet, create one at [claude.ai](https://claude.ai) and subscribe to Pro or Max before continuing.
 
+If you prefer to use an Anthropic API key instead of a Claude.ai subscription, run `claude login` in your terminal after installation and follow the prompts to authenticate with your API key.
+
 ---
 
 ## Step 3: Open Terminal
