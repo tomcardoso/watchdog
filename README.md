@@ -20,6 +20,7 @@ Watchdog is a [Claude Code](https://claude.ai/download) tool for journalists who
 - [Quick start](#quick-start)
 - [Commands](#commands)
 - [Vault structure](#vault-structure)
+  - [Supported file types](#supported-file-types)
 - [Domain knowledge skills](#domain-knowledge-skills)
 - [Multiple investigations](#multiple-investigations)
 - [Configuration](#configuration)
@@ -73,7 +74,7 @@ The pipeline has two stages — a CLI stage you run in your terminal, and an ext
 Drop files into _INCOMING/
         ↓
 watchdog chew  (terminal)
-  SHA-256 dedup · OCR · Docling extraction · embedding
+  SHA-256 dedup · OCR · Docling extraction · classification · embedding
   → originals moved to .watchdog/staging/<sha256>/
   → extracted data written to .watchdog/queue/<sha256>.json
         ↓
@@ -93,7 +94,7 @@ watchdog post-flight  (called by each subagent)
 Post-ingest briefing: new entities · connections · leads · anomalies
 ```
 
-Splitting the pipeline this way keeps token costs down — the slow mechanical work (OCR, Docling, embeddings) runs outside Claude Code entirely. Claude only sees clean, already-extracted text. The subagent architecture keeps each document's extraction isolated, so the orchestrator context stays flat regardless of batch size.
+Splitting the pipeline this way keeps token costs down — the slow mechanical work (OCR, Docling, embeddings, classification) runs outside Claude Code entirely. Claude only sees clean, already-extracted text. The subagent architecture keeps each document's extraction isolated, so the orchestrator context stays flat regardless of batch size.
 
 The extraction step is a [Claude Code skill](src/watchdog/skills/watchdog-ingest.md). You keep the Obsidian vault and every original file.
 
@@ -109,6 +110,14 @@ Why Docling matters for investigative work:
 - **Large document handling** — 400+ page PDFs are chunked into 40-page segments, processed in parallel, and reassembled in order with correct page numbers throughout.
 
 Docling runs locally. Your documents never leave your machine during preprocessing.
+
+### Automatic document classification
+
+During chewing, Watchdog uses a lightweight embedding model to automatically classify each document's type. The first N pages (configurable via `classify_pages` in `watchdog configure`, default 10) are embedded and compared against cached skill embeddings — one per domain skill. The closest match above a confidence threshold determines which extraction skill Claude loads.
+
+This means Claude enters each document already loaded with the right domain knowledge — what fields to look for, what patterns are anomalous, what an experienced investigative journalist would notice that a first-year reporter would miss. For document types that don't match any skill confidently, the [general-records fallback](src/watchdog/skills/records/general-records.md) applies.
+
+Classification runs entirely locally using the same [fastembed](https://github.com/qdrant/fastembed) model as the search index — no additional model, no cloud call.
 
 ---
 
@@ -164,13 +173,7 @@ watchdog obsidian shell-company-investigation
 **Optional but recommended:** before processing records, seed your investigation context from prior published stories or notes:
 
 1. Drop background files (clips, notes, screenshots) into `_CONTEXT/`
-2. Run `/watchdog-context` in Claude Code — Watchdog reads the material, asks you questions, and writes `context.md`
-
-Once `watchdog ingest` opens Claude Code, run the extraction skill:
-
-```
-/watchdog-ingest
-```
+2. Run `watchdog context` from inside the vault — opens Claude Code with the context skill pre-loaded, which reads the material, asks you questions, and writes `context.md`
 
 For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED.md](GETTING_STARTED.md).
 
@@ -202,7 +205,8 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog chew <file>` | Process a single specific file |
 | `watchdog chew --chew-workers N` | Override parallel file workers for this run |
 | `watchdog chew --chunk-workers N` | Override parallel chunk workers per file for this run |
-| `watchdog ingest` | Acquire the ingest lock, scan the queue, and open Claude Code for extraction |
+| `watchdog ingest` | Acquire the ingest lock, scan the queue, and open Claude Code — `/watchdog-ingest` fires automatically |
+| `watchdog context [name]` | Open Claude Code with the context seeding skill; omit name when inside the vault |
 | `watchdog watch <name>` | Watch `_INCOMING/` and chew files automatically as they arrive |
 
 `watchdog chew` sends a desktop notification when files finish processing (macOS only). Press **Ctrl+C** to cancel a chew in progress — the lock is cleaned up automatically and any partially-processed files remain in `_INCOMING/` for the next run.
@@ -224,7 +228,7 @@ Run these inside a Claude Code session with your investigation open.
 
 | Command | What it does |
 |---------|-------------|
-| `/watchdog-ingest` | Extract all chewed files into the vault |
+| `/watchdog-ingest` | Extract all chewed files into the vault (auto-fired by `watchdog ingest`) |
 | `/watchdog-ingest [file]` | Chew and extract a specific file |
 | `/watchdog-query [question]` | Answer a question from your vault |
 | `/watchdog-surface` | Find connections and anomalies across the full vault |
@@ -241,23 +245,6 @@ Run these inside a Claude Code session with your investigation open.
 /watchdog-query What happened in 2019 involving Alice Smith?
 /watchdog-surface
 ```
-
-### Aliases
-
-All commands accept short aliases:
-
-| Alias | Resolves to |
-|-------|-------------|
-| `init`, `create` | `new` |
-| `ls` | `list` |
-| `info`, `inspect` | `status` |
-| `rm`, `remove` | `delete` |
-| `mv` | `move` |
-| `rn` | `rename` |
-| `process`, `preprocess`, `prep` | `chew` |
-| `find` | `search` |
-| `config`, `setting`, `settings` | `configure` |
-| `version` | `about` |
 
 ---
 
@@ -294,6 +281,20 @@ my-investigation/
 ├── context.md             ← Your investigation intent and key questions
 └── index.md               ← Dataview index
 ```
+
+### Supported file types
+
+| Format | Extensions | Notes |
+|--------|-----------|-------|
+| PDF | `.pdf` | Text-based or scanned; OCR applied automatically when text layer is missing or garbled |
+| Word document | `.docx` | Tables and formatting preserved |
+| Excel spreadsheet | `.xlsx` | |
+| Image | `.jpg`, `.jpeg`, `.png`, `.tiff`, `.tif` | OCR applied automatically |
+| Web page | `.html`, `.htm` | |
+| Plain text | `.txt`, `.md` | |
+| Audio / video | `.mp3`, `.mp4`, `.m4a`, `.wav`, `.webm` | Requires optional transcription install — see [INSTALL.md](INSTALL.md) |
+
+Sidecar files (`.yml`) are not ingested as documents — they are metadata attached to the adjacent file. See [GETTING_STARTED.md](GETTING_STARTED.md) for details.
 
 ### Entity notes
 
@@ -434,6 +435,7 @@ watchdog configure <key> <value>
 | `chunk_timeout` | `300` | Seconds before a chunk subprocess is killed. |
 | `table_structure` | `true` | Whether Docling runs its table detection model on PDFs. Set to `false` to speed up ingestion of text-only documents. |
 | `embed_images` | `false` | Embed figures as base64 in the extracted markdown so Claude can read charts and image-based tables. Significantly increases token usage. |
+| `classify_pages` | `10` | Number of pages used to classify document type at chew time. Watchdog embeds the first N pages and compares them against skill embeddings to select the extraction skill. Higher values improve accuracy on documents with long preambles; lower values are faster on large batches. |
 | `dup_threshold` | `0.85` | Jaccard similarity score at which two documents are flagged as near-duplicates. Range: 0.0–1.0. |
 | `shingle_size` | `3` | Word n-gram size for near-duplicate fingerprinting. Changing this invalidates existing MinHash signatures — re-ingest to rebuild. |
 

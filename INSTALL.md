@@ -156,7 +156,7 @@ Ingestion happens in two steps: chewing in your terminal, then extraction in Cla
 
 In your file manager, navigate to your investigation folder. You'll see a folder called `_INCOMING`. Copy any documents you want to process into this folder.
 
-Supported file types: PDF, Word documents, Excel spreadsheets, images (JPG, PNG, TIFF), web pages (HTML), and plain text files.
+For the full list of supported file types, see [Supported file types](README.md#supported-file-types) in the README.
 
 Then open your terminal, navigate to the investigation folder, and run:
 
@@ -188,11 +188,7 @@ From inside the vault directory, run:
 watchdog ingest
 ```
 
-Watchdog scans the queue, then prompts you to open Claude Code. Once Claude Code is open, run the extraction skill:
-
-```
-/watchdog-ingest
-```
+Watchdog scans the queue, then opens Claude Code with the extraction skill pre-loaded — extraction begins automatically.
 
 Claude will work through each chewed file, extract entities, relationships, and key facts, and write everything to your vault. At the end it produces a briefing showing:
 - What documents were processed

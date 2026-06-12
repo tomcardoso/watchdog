@@ -58,10 +58,10 @@ Before dropping in records, it helps to give Watchdog context about what you're 
 
 1. Copy any background material into `_CONTEXT/` inside the vault — prior published stories, notes, screenshots of relevant web pages, anything that describes the investigation's scope.
 
-2. Open Claude Code with the vault as the project, and run:
+2. From inside the vault directory, run:
 
-```
-/watchdog-context
+```bash
+watchdog context
 ```
 
 Claude will read the material and ask you a series of questions — who the key people and companies are, what you're looking for, what documents you're expecting. It then writes `context.md`, which persists across every future session and tells Claude what you already know.
@@ -78,7 +78,7 @@ Copy public records into the `_INCOMING/` folder inside your vault.
 ~/Investigations/shell-company-investigation/_INCOMING/
 ```
 
-Supported file types: PDF (scanned or text-based), Word documents (`.docx`), Excel spreadsheets (`.xlsx`), images (JPEG, PNG, TIFF), web pages (HTML), and plain text files.
+See the [supported file types](README.md#supported-file-types) table in the README for the full list.
 
 A few practical tips:
 
@@ -160,11 +160,7 @@ From inside the vault directory, run:
 watchdog ingest
 ```
 
-Watchdog scans the queue and prompts you to open Claude Code. Once it's open, run:
-
-```
-/watchdog-ingest
-```
+Watchdog scans the queue and prompts you to open Claude Code. When you confirm, it opens Claude Code with the extraction skill pre-loaded — extraction begins automatically.
 
 Claude works through each chewed file in the queue, processing up to 5 documents in parallel. For each document, it:
 
@@ -282,10 +278,9 @@ After the first ingest, the typical workflow is:
 
 1. **Drop new documents** into `_INCOMING/`
 2. **`watchdog chew`** from the vault directory (or `watchdog watch <name>` to chew automatically as files arrive)
-3. **`watchdog ingest`** to set up the session and open Claude Code
-4. **`/watchdog-ingest`** in Claude Code
-5. **Read the briefing** — pay particular attention to connections with entities already in the vault
-6. **`/watchdog-surface`** if the new batch was substantial
+3. **`watchdog ingest`** — opens Claude Code with extraction pre-loaded; Claude starts immediately
+4. **Read the briefing** — pay particular attention to connections with entities already in the vault
+5. **`/watchdog-surface`** if the new batch was substantial
 
 Claude Code doesn't need to be open while you're chewing. The queue accumulates until you're ready to run extraction.
 
@@ -365,3 +360,16 @@ watchdog delete shell-company-investigation --purge    # also permanently delete
 ```
 
 `--purge` requires explicit confirmation and is permanent. Use `archive` instead if you might want the vault later.
+
+---
+
+## Token usage
+
+Watchdog is designed to keep token costs predictable. A few things to know:
+
+- **Extraction runs outside Claude Code.** OCR, Docling document conversion, and embeddings all run in your terminal. Claude only sees clean, pre-extracted text — not raw document bytes.
+- **Documents are classified at chew time.** When you run `watchdog chew`, each document is automatically classified against Watchdog's domain skills. During extraction, only the matching skill is loaded — not all 34.
+- **Each document is an isolated subagent.** The orchestrator context stays flat regardless of batch size, so large batches don't accumulate context as they process.
+- **Use `--limit` for large batches.** If you have hundreds of documents, `/watchdog-ingest --limit 50` processes 50 and stops cleanly. Start a new session to continue — processed files are already in `morgue/` and won't be touched again.
+
+A Pro subscription ($20/month) is sufficient for most journalism work. If you're ingesting hundreds of documents at a time, a Max subscription gives higher session limits.

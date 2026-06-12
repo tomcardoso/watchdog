@@ -58,6 +58,7 @@ from watchdog.cmd.vault import (
 from watchdog.cmd.ingest import (
     _run_preprocess,
     cmd_chew,
+    cmd_context,
     cmd_ingest,
     cmd_postflight,
     cmd_preflight,
@@ -217,6 +218,10 @@ def main() -> None:
     p_ingest = sub.add_parser("ingest", help="Set up extraction session and open in Claude Code")
     p_ingest.set_defaults(func=cmd_ingest)
 
+    p_context = sub.add_parser("context", help="Open Claude Code to seed investigation context from _CONTEXT/")
+    p_context.add_argument("name", nargs="?", help="Investigation name or slug (default: current directory)").completer = _project_completer
+    p_context.set_defaults(func=cmd_context)
+
     # Internal pipeline commands — hidden from help and tab completion
     p_entity_index = sub.add_parser("entity-index", help=argparse.SUPPRESS)
     p_entity_index.add_argument("project", nargs="?")
@@ -271,7 +276,7 @@ def main() -> None:
             _print_banner()
         return
 
-    if args.command not in ("setup", "about", "configure", "search", "unlock", "queue-status", "ingest", "entity-index", "is-duplicate", "validate-extraction", "pre-flight", "post-flight", "refresh-skills") and not CONFIG_FILE.exists():
+    if args.command not in {"setup", "about", "configure"} and not CONFIG_FILE.exists():
         print(f"\n  {_BOLD}Watchdog isn't set up yet.{_RESET}  Run: {_CYAN}watchdog setup{_RESET}\n")
         sys.exit(1)
 

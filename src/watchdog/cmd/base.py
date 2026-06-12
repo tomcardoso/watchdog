@@ -82,6 +82,10 @@ _CMD_HELP: dict[str, dict] = {
     "ingest": {
         "desc": "Set up extraction session and open in Claude Code",
     },
+    "context": {
+        "desc": "Open Claude Code to seed investigation context from _CONTEXT/",
+        "args": [("name", "Investigation name or slug (default: current directory)", True)],
+    },
     "obsidian": {
         "desc": "Open an investigation vault in Obsidian",
         "args": [("name", "Investigation name or slug")],
@@ -282,9 +286,13 @@ def _notify(title: str, body: str) -> None:
         pass
 
 
-def _launch_claude(vault: Path) -> None:
+def _launch_claude(vault: Path, prompt: str | None = None) -> None:
     try:
-        os.execvp("claude", ["claude", str(vault)])
+        os.chdir(vault)
+        cmd = ["claude"]
+        if prompt:
+            cmd.append(prompt)
+        os.execvp("claude", cmd)
     except FileNotFoundError:
         sys.exit("Error: Claude Code not found — install from https://claude.ai/download")
 
@@ -346,6 +354,7 @@ def _print_banner() -> None:
         ("Processing", [
             ("chew",       "Process documents in _INCOMING/"),
             ("ingest",     "Set up extraction session and open in Claude Code"),
+            ("context",    "Seed investigation context from _CONTEXT/"),
             ("watch",      "Watch _INCOMING/ and chew files automatically"),
             ("log",        "Show ingest history"),
         ]),

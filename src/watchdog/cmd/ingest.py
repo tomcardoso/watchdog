@@ -93,9 +93,20 @@ def cmd_ingest(args) -> None:
         print(f"\n  When ready, open Claude Code and run:  {_CYAN}/watchdog-ingest{_RESET}\n")
         return
     if answer in ("", "y", "yes"):
-        _launch_claude(vault)
+        _launch_claude(vault, "/watchdog-ingest")
     else:
         print(f"\n  When ready, open Claude Code and run:  {_CYAN}/watchdog-ingest{_RESET}\n")
+
+
+def cmd_context(args) -> None:
+    vault = Path(".").resolve()
+    if not (vault / ".watchdog").is_dir():
+        if getattr(args, "name", None):
+            _, info = _find_project(args.name)
+            vault = Path(info["path"])
+        else:
+            sys.exit("Error: not inside a Watchdog project. cd into your investigation first, or pass the investigation name.")
+    _launch_claude(vault, "/watchdog-context")
 
 
 def cmd_queue_status(args) -> None:
