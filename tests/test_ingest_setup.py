@@ -84,6 +84,30 @@ def test_queue_files_include_filename(tmp_path):
     assert result["queue_files"][0]["filename"] == "Annual Report 2024.pdf"
 
 
+def test_queue_files_include_document_type(tmp_path):
+    vault = _make_vault(tmp_path)
+    qf = vault / ".watchdog" / "queue" / "abc123.json"
+    qf.write_text(json.dumps({
+        "filename": "affidavit.pdf",
+        "metadata": {"source_type": "docling"},
+        "document_type": "court-documents",
+        "pages": [],
+    }))
+
+    result = run(vault)
+
+    assert result["queue_files"][0]["document_type"] == "court-documents"
+
+
+def test_queue_files_document_type_none_when_absent(tmp_path):
+    vault = _make_vault(tmp_path)
+    _write_queue_file(vault, "abc123")
+
+    result = run(vault)
+
+    assert result["queue_files"][0]["document_type"] is None
+
+
 def test_queue_files_filename_falls_back_to_sha256(tmp_path):
     vault = _make_vault(tmp_path)
     qf = vault / ".watchdog" / "queue" / "abc123.json"

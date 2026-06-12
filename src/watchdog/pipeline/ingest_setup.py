@@ -59,6 +59,7 @@ def run(vault: Path) -> dict:
                 "sha256": qf.stem,
                 "source_type": source_type,
                 "filename": data.get("filename", qf.stem),
+                "document_type": data.get("document_type"),
             }
             (arrows_files if source_type == "arrows" else queue_files).append(entry)
 

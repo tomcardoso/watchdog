@@ -50,6 +50,12 @@ Read `hot.md` if it exists. Note current investigation state.
 
 ---
 
+## 2. Pre-load domain skills
+
+Collect all unique non-null `document_type` values from `QUEUE_FILES`. For each, read `.claude/commands/records/<document_type>.md` and store in `SKILL_CACHE = {}`. Files with `document_type: null` will self-classify (fallback).
+
+---
+
 ## 3. Process each file
 
 Process files in **batches of up to 5**. Registry writes are serialized internally — concurrent subagents are safe.
@@ -58,7 +64,7 @@ Process `ARROWS_FILES` inline first (see §5) before the subagent loop.
 
 Split `QUEUE_FILES` into batches of at most 5 files. For each batch:
 
-1. For each file in the batch, get its `SHA256` and `FILENAME` from the queue entry (`sha256` and `filename` fields).
+1. For each file in the batch, get its `SHA256`, `FILENAME`, and `document_type` from the queue entry. Set `DOMAIN_SKILL` = `SKILL_CACHE[document_type]` if present, else `"none"`.
 2. Set `SKIP_TIMELINE` = `false` only for the very last file of the entire run; `true` for all others.
 3. Print `[<N>/<TOTAL>] Launching: <FILENAME clamped to 50 chars> ...`
 4. **Launch all agents in the batch simultaneously** — send a single message with all Agent tool calls in parallel. Set each Agent's `description` to `Watchdog extraction: <FILENAME clamped to 50 chars>`.
@@ -78,6 +84,8 @@ You are extracting one document for the Watchdog investigative research system. 
 SHA256: {SHA256}
 FILENAME: {FILENAME}
 SKIP_TIMELINE: {true or false}
+DOMAIN_SKILL:
+{DOMAIN_SKILL — full skill markdown, or "none" if unclassified}
 INVESTIGATION_BRIEF:
 {INVESTIGATION_BRIEF — or "None" if empty}
 
@@ -118,7 +126,11 @@ Check whether `_INCOMING/{FILENAME}.yml` exists. If it does, read it. Note `sour
 
 ## Step 3 — Load domain skill
 
-Determine the document type from its text. Read the matching skill file from `.claude/commands/`:
+If `DOMAIN_SKILL` in this prompt is not `"none"`, use it as your domain skill and skip to Step 4. The document was pre-classified at chew time.
+
+**Escape hatch:** if after reading the document pages in Step 1 the injected skill is clearly wrong — the document is unmistakably a different type — read the correct skill from `.claude/commands/records/` instead. This should be rare.
+
+If `DOMAIN_SKILL` is `"none"`, determine the document type from its text and read the matching skill file from `.claude/commands/`:
 
 | Document type | Skill file |
 |--------------|-----------|

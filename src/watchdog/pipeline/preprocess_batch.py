@@ -401,6 +401,11 @@ def _run_ingest_inner(
                     except OSError:
                         pass
                     result["near_dup"] = _compute_near_dup(result, vault)
+                    try:
+                        from watchdog.pipeline.classify import classify_document
+                        result["document_type"] = classify_document(result.get("pages", []), vault)
+                    except Exception:
+                        result["document_type"] = None
                     (queue / f"{sha256}.json").write_text(
                         json.dumps(result, ensure_ascii=False)
                     )
