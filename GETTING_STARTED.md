@@ -8,7 +8,7 @@ It assumes Watchdog is already installed and set up. If not, start with [INSTALL
 
 ## What Watchdog does
 
-You accumulate public records — FOIA responses, corporate filings, court documents, land records. Reading all of them is impossible. Missing a connection between them is the story you don't write.
+You accumulate public records — FOIA responses, corporate filings, court documents, land records. Reading and re-reading all of them is onerous, and if you miss a connection, that's a missed story.
 
 Watchdog handles the mechanical reading. It converts every document to structured text, extracts every person, company, address, and relationship it finds, and stores them as a linked knowledge graph in an Obsidian vault. You can then search across the entire document set in plain English, ask questions, and surface connections.
 
