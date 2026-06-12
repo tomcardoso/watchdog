@@ -19,6 +19,41 @@ from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
 
 DEFAULT_FILE_TIMEOUT = 600
 
+
+def _compute_near_dup(result: dict, vault: Path) -> dict:
+    """Compute near-duplicate check for a freshly chewed document. Never raises."""
+    try:
+        from watchdog.pipeline.near_dup import shingles_from_text, minhash, minhash_similarity
+        text = " ".join(p.get("markdown", "") for p in result.get("pages", []))
+        if not text.strip():
+            return {"near_duplicates": [], "top_similarity": 0.0, "candidate_minhash": []}
+        documents_path = vault / ".watchdog" / "Registry" / "documents.json"
+        documents = json.loads(documents_path.read_text()) if documents_path.exists() else {}
+        candidate_mh = minhash(shingles_from_text(text))
+        threshold = 0.85
+        try:
+            cfg_path = Path.home() / ".watchdog" / "config.json"
+            threshold = json.loads(cfg_path.read_text()).get("dup_threshold", threshold)
+        except Exception:
+            pass
+        matches = []
+        for sha, doc in documents.items():
+            stored_mh = doc.get("minhash")
+            if stored_mh:
+                sim = minhash_similarity(candidate_mh, stored_mh)
+                if sim >= threshold:
+                    matches.append({
+                        "sha256": sha,
+                        "filename": doc.get("filename", ""),
+                        "similarity": round(sim, 4),
+                        "document_note": doc.get("document_note", ""),
+                    })
+        matches.sort(key=lambda x: x["similarity"], reverse=True)
+        top = matches[0]["similarity"] if matches else 0.0
+        return {"near_duplicates": matches, "top_similarity": top, "candidate_minhash": candidate_mh}
+    except Exception:
+        return {"near_duplicates": [], "top_similarity": 0.0, "candidate_minhash": []}
+
 _cancel_event = threading.Event()
 
 SKIP_NAMES    = {".ds_store", ".ingest-lock", "thumbs.db", "desktop.ini"}
@@ -365,6 +400,7 @@ def _run_ingest_inner(
                         result["source_path"] = str(dest)
                     except OSError:
                         pass
+                    result["near_dup"] = _compute_near_dup(result, vault)
                     (queue / f"{sha256}.json").write_text(
                         json.dumps(result, ensure_ascii=False)
                     )

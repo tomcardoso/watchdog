@@ -68,22 +68,15 @@ def _render_template(filename: str, **vars: str) -> str:
     return text
 
 _VAULT_PERMISSIONS = [
+    "Bash(watchdog pre-flight *)",
+    "Bash(watchdog post-flight *)",
     "Bash(watchdog entity-index)",
     "Bash(watchdog queue-status)",
     "Bash(watchdog is-duplicate *)",
-    "Bash(watchdog near-dup *)",
-    "Bash(watchdog validate-extraction *)",
-    "Bash(watchdog write-vault --extraction *)",
     "Bash(watchdog write-entity --entity-id *)",
     "Bash(find .watchdog/queue/ *)",
-    "Bash(rm -f .watchdog/tmp/*)",
-    "Bash(rm .watchdog/tmp/*)",
-    "Bash(rm -f .watchdog/queue/*.json)",
-    "Bash(rm .watchdog/queue/*.json)",
-    "Bash(rm .watchdog/Registry/.ingest-lock)",
-    'Bash(date -u +"%Y-%m-%dT%H:%M:%SZ")',
-    "Edit(/.watchdog/tmp/**)",
     "Write(/.watchdog/tmp/**)",
+    "Edit(/.watchdog/tmp/**)",
     "Edit(/.watchdog/Registry/**)",
     "Write(/.watchdog/Registry/**)",
 ]
@@ -1496,11 +1489,36 @@ def cmd_entity_index(args) -> None:
         sys.exit(f"Error: manifest.json is corrupt — {e}")
 
     compact = [
-        {"id": e["id"], "name": e["name"], "type": e["type"], "aliases": e.get("aliases", [])}
-        for e in manifest.values()
-        if e.get("id") and e.get("name")
+        {"id": eid, "name": e["name"], "type": e["type"], "aliases": e.get("aliases", [])}
+        for eid, e in manifest.items()
+        if e.get("name")
     ]
     print(json.dumps(compact, ensure_ascii=False))
+
+
+def cmd_preflight(args) -> None:
+    vault = Path(".").resolve()
+    if not (vault / ".watchdog").is_dir():
+        sys.exit("Error: must be run from inside a Watchdog vault directory")
+    from watchdog.pipeline.preflight import run as pf_run
+    result = pf_run(vault, args.sha256)
+    if "error" in result:
+        sys.exit(f"Error: {result['error']}")
+    print(json.dumps(result, ensure_ascii=False))
+
+
+def cmd_postflight(args) -> None:
+    vault = Path(".").resolve()
+    if not (vault / ".watchdog").is_dir():
+        sys.exit("Error: must be run from inside a Watchdog vault directory")
+    extraction_path = Path(args.extraction).resolve()
+    if not str(extraction_path).startswith(str(vault) + "/"):
+        sys.exit(f"Error: --extraction must be inside the vault directory ({vault})")
+    from watchdog.pipeline.postflight import run as post_run
+    result = post_run(vault, extraction_path)
+    print(json.dumps(result, ensure_ascii=False))
+    if "errors" in result:
+        sys.exit(1)
 
 
 def cmd_unlock(args) -> None:
@@ -1893,6 +1911,14 @@ def main() -> None:
     p_is_dup.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside project folder)").completer = _project_completer
     p_is_dup.set_defaults(func=cmd_is_duplicate)
 
+    p_preflight = sub.add_parser("pre-flight", help="Package document context for a subagent extraction")
+    p_preflight.add_argument("sha256", help="SHA-256 of the queued document")
+    p_preflight.set_defaults(func=cmd_preflight)
+
+    p_postflight = sub.add_parser("post-flight", help="Validate, write, and clean up after subagent extraction")
+    p_postflight.add_argument("--extraction", required=True, help="Path to extraction JSON file")
+    p_postflight.set_defaults(func=cmd_postflight)
+
     try:
         import argcomplete
         argcomplete.autocomplete(parser)
@@ -1920,7 +1946,7 @@ def main() -> None:
             _print_banner()
         return
 
-    if args.command not in ("setup", "about", "configure", "search", "unlock", "queue-status", "entity-index", "is-duplicate", "validate-extraction", "refresh-skills") and not CONFIG_FILE.exists():
+    if args.command not in ("setup", "about", "configure", "search", "unlock", "queue-status", "entity-index", "is-duplicate", "validate-extraction", "pre-flight", "post-flight", "refresh-skills") and not CONFIG_FILE.exists():
         print(f"\n  {_BOLD}Watchdog isn't set up yet.{_RESET}  Run: {_CYAN}watchdog setup{_RESET}\n")
         sys.exit(1)
 

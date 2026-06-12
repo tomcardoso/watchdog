@@ -517,7 +517,7 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
 
 # ── Main operation ────────────────────────────────────────────────────────────
 
-def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False, neardup_file: Path | None = None) -> None:
+def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False, neardup_file: Path | None = None, neardup_data: dict | None = None) -> None:
     extraction = json.loads(extraction_path.read_text(encoding="utf-8"))
     doc = extraction.get("document")
     if not doc:
@@ -576,8 +576,10 @@ def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False, ne
 
         # ── 2. Update document registry ──────────────────────────────────────
 
-        # Prefer minhash from a dedicated neardup sidecar (bypasses LLM data path).
-        if neardup_file and neardup_file.exists():
+        # Prefer minhash from neardup_data dict, then sidecar file, then extraction field.
+        if neardup_data and neardup_data.get("candidate_minhash"):
+            sig = neardup_data["candidate_minhash"]
+        elif neardup_file and neardup_file.exists():
             try:
                 sig = json.loads(neardup_file.read_text()).get("candidate_minhash", [])
             except Exception:
