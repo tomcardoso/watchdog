@@ -241,12 +241,21 @@ def _ensure_ocr_engine(engine: str) -> None:
 def cmd_about(_args) -> None:
     from watchdog import __version__
     print()
-    print(f"  🔍🐕  {_BOLD}Watchdog{_RESET}  {_DIM}v{__version__}{_RESET}")
+    print(r'      ___                    ')
+    print(r'   __/_  `.  .-"""-.         ')
+    print(r"   \_,` | \-'  /   )`-')    ")
+    print(r'    "") `"`    \  ((`"`      ')
+    print(r"   ___Y  ,    .'7 /|         ")
+    print(r"  (_,___/...-` (_/_/         ")
+    print()
+    print(f"  {_BOLD}Watchdog{_RESET}  {_DIM}v{__version__}{_RESET}")
     print(f"  {_DIM}Investigative journalism document intelligence{_RESET}")
     print()
-    print(f"  🐙  {_DIM}GitHub   {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog{_RESET}")
-    print(f"  🐛  {_DIM}Issues   {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog/issues{_RESET}")
-    print(f"  📖  {_DIM}Install  {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog/blob/main/INSTALL.md{_RESET}")
+    print(f"  {_DIM}GitHub   {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog{_RESET}")
+    print(f"  {_DIM}Issues   {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog/issues{_RESET}")
+    print(f"  {_DIM}Install  {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog/blob/main/INSTALL.md{_RESET}")
+    print()
+    print(f"  {_DIM}ASCII art: dog in 'watchdog new' by Felix Lee; dog in 'watchdog about' by Sarah Kearsley{_RESET}")
     print()
 
 

@@ -43,6 +43,7 @@ from watchdog.cmd.vault import (
     cmd_archive,
     cmd_delete,
     cmd_describe,
+    cmd_doctor,
     cmd_list,
     cmd_log,
     cmd_move,
@@ -108,6 +109,36 @@ def main() -> None:
         importlib.import_module(module_path).main()
         return
 
+    # Internal pipeline commands — dispatched before argparse so they never
+    # appear in tab completion
+    _INTERNAL_CMDS = {
+        "entity-index", "queue-status", "validate-extraction",
+        "is-duplicate",  "pre-flight",  "post-flight",
+    }
+    if len(sys.argv) >= 2 and sys.argv[1] in _INTERNAL_CMDS:
+        cmd = sys.argv[1]
+        _p = argparse.ArgumentParser(prog=f"watchdog {cmd}")
+        if cmd == "entity-index":
+            _p.add_argument("project", nargs="?")
+            cmd_entity_index(_p.parse_args(sys.argv[2:]))
+        elif cmd == "queue-status":
+            _p.add_argument("project", nargs="?")
+            cmd_queue_status(_p.parse_args(sys.argv[2:]))
+        elif cmd == "validate-extraction":
+            _p.add_argument("file")
+            cmd_validate_extraction(_p.parse_args(sys.argv[2:]))
+        elif cmd == "is-duplicate":
+            _p.add_argument("sha256")
+            _p.add_argument("project", nargs="?")
+            cmd_is_duplicate(_p.parse_args(sys.argv[2:]))
+        elif cmd == "pre-flight":
+            _p.add_argument("sha256")
+            cmd_preflight(_p.parse_args(sys.argv[2:]))
+        elif cmd == "post-flight":
+            _p.add_argument("--extraction", required=True)
+            cmd_postflight(_p.parse_args(sys.argv[2:]))
+        return
+
     parser = argparse.ArgumentParser(
         prog="watchdog",
         description="Investigative journalism document intelligence tool",
@@ -128,6 +159,9 @@ def main() -> None:
     p_status = sub.add_parser("status", help="Show detailed status for an investigation")
     p_status.add_argument("name", nargs="?", help="Investigation name or slug (omit to list all)").completer = _project_completer
     p_status.set_defaults(func=cmd_status)
+
+    p_doctor = sub.add_parser("doctor", help="Check all registered investigations for missing or broken vaults")
+    p_doctor.set_defaults(func=cmd_doctor)
 
     p_setup = sub.add_parser("setup", help="Set up Watchdog after installation")
     p_setup.add_argument("--force", action="store_true", help="Re-run setup even if already complete")
@@ -206,8 +240,8 @@ def main() -> None:
     p_watch.set_defaults(func=cmd_watch)
 
     p_rename = sub.add_parser("rename", help="Rename an investigation (folder and registry)")
-    p_rename.add_argument("project", help="Investigation name or slug").completer = _project_completer
-    p_rename.add_argument("name", help="New name")
+    p_rename.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
+    p_rename.add_argument("name", nargs="?", help="New name (omit to be prompted)")
     p_rename.set_defaults(func=cmd_rename)
 
     p_describe = sub.add_parser("describe", help="Set or update an investigation description")
@@ -231,34 +265,9 @@ def main() -> None:
                            help="Model to use (default: sonnet)")
     p_context.set_defaults(func=cmd_context)
 
-    # Internal pipeline commands — hidden from help and tab completion
-    p_entity_index = sub.add_parser("entity-index", help=argparse.SUPPRESS)
-    p_entity_index.add_argument("project", nargs="?")
-    p_entity_index.set_defaults(func=cmd_entity_index)
-
-    p_queue_status = sub.add_parser("queue-status", help=argparse.SUPPRESS)
-    p_queue_status.add_argument("project", nargs="?")
-    p_queue_status.set_defaults(func=cmd_queue_status)
-
-    p_validate = sub.add_parser("validate-extraction", help=argparse.SUPPRESS)
-    p_validate.add_argument("file")
-    p_validate.set_defaults(func=cmd_validate_extraction)
-
-    p_is_dup = sub.add_parser("is-duplicate", help=argparse.SUPPRESS)
-    p_is_dup.add_argument("sha256")
-    p_is_dup.add_argument("project", nargs="?")
-    p_is_dup.set_defaults(func=cmd_is_duplicate)
-
-    p_preflight = sub.add_parser("pre-flight", help=argparse.SUPPRESS)
-    p_preflight.add_argument("sha256")
-    p_preflight.set_defaults(func=cmd_preflight)
-
-    p_postflight = sub.add_parser("post-flight", help=argparse.SUPPRESS)
-    p_postflight.add_argument("--extraction", required=True)
-    p_postflight.set_defaults(func=cmd_postflight)
-
     try:
         import argcomplete
+        sub.choices = dict(sorted(sub.choices.items()))
         argcomplete.autocomplete(parser)
     except ImportError:
         pass

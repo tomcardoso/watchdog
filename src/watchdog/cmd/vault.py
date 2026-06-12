@@ -11,17 +11,21 @@ from pathlib import Path
 
 from watchdog.cmd.base import (
     CONFIG_FILE,
+    VAULT_SCHEMA_VERSION,
     _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW,
+    _check_project_health,
     _check_vault_locks,
     _count_incoming,
     _count_queued,
     _find_project,
     _fmt_date,
+    _fmt_size,
     _load_registry,
     _notify,
     _projects_dir,
     _render_template,
     _VAULT_PERMISSIONS,
+    _vault_size,
     load_projects,
     save_projects,
     slugify,
@@ -197,6 +201,17 @@ def cmd_new(args) -> None:
 
     print(f"\n  {_GREEN}Created:{_RESET} {_BOLD}{vault}{_RESET}")
     print()
+    print(r"                  _,)")
+    print(r"          _..._.-;-'  ")
+    print(r"       .-'     `(     ")
+    print(r"      /      ;   \    ")
+    print(r"     ;.' ;`  ,;  ;   ")
+    print(r"    .'' ``. (  \ ;   ")
+    print(r"   / f_ _L \ ;  )\   ")
+    print(r"   \/|` '|\/;; <;/   ")
+    print(r"  ((; \_/  (()        ")
+    print(r'       "              ')
+    print()
     print(f"  {_DIM}To navigate into your new vault, copy and paste this command:{_RESET}")
     print(f"  {_CYAN}cd {vault}{_RESET}")
     print()
@@ -290,9 +305,45 @@ def cmd_open(args) -> None:
 
 
 def cmd_rename(args) -> None:
-    slug, info = _find_project(args.project)
-    vault = Path(info["path"])
-    new_name = args.name.strip()
+    first    = args.project
+    new_name = args.name.strip() if args.name else None
+
+    if first is not None and new_name is None:
+        projects = load_projects()
+        slug_try = slugify(first)
+        is_known = slug_try in projects or any(k.startswith(slug_try) for k in projects)
+        if is_known:
+            slug, info = _find_project(first)
+        else:
+            cwd   = Path(".").resolve()
+            match = next(((s, v) for s, v in projects.items() if Path(v["path"]).resolve() == cwd), None)
+            if match is None:
+                sys.exit(f"Project not found: {first}\nRun 'watchdog list' to see all projects.")
+            slug, info = match
+            new_name = first.strip()
+    elif first is not None:
+        slug, info = _find_project(first)
+    else:
+        cwd      = Path(".").resolve()
+        projects = load_projects()
+        match    = next(((s, v) for s, v in projects.items() if Path(v["path"]).resolve() == cwd), None)
+        if match is None:
+            sys.exit("Error: not inside a vault directory. Pass the project name explicitly.")
+        slug, info = match
+
+    if new_name is None:
+        current = info.get("name", "")
+        if current:
+            print(f"\n  {_DIM}Current:{_RESET} {current}")
+        try:
+            new_name = input("\n  New name: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            sys.exit(1)
+        if not new_name:
+            sys.exit("Error: name cannot be empty.")
+
+    vault    = Path(info["path"])
     new_slug = slugify(new_name)
 
     if not new_slug:
@@ -334,7 +385,7 @@ def cmd_rename(args) -> None:
 
 def cmd_describe(args) -> None:
     first    = args.project
-    new_desc = args.text.strip() if args.text else None
+    new_desc = args.text.strip() if args.text is not None else None
 
     if first is not None and new_desc is None:
         projects = load_projects()
@@ -368,15 +419,18 @@ def cmd_describe(args) -> None:
         except (EOFError, KeyboardInterrupt):
             print()
             sys.exit(1)
-        if not new_desc:
-            sys.exit("Error: description cannot be empty.")
+        new_desc = new_desc or ""
 
     projects = load_projects()
-    projects[slug]["description"] = new_desc
-    save_projects(projects)
-
-    print(f"\n  {_GREEN}Updated:{_RESET}  {_BOLD}{info['name']}{_RESET}")
-    print(f"  {_DIM}{new_desc}{_RESET}\n")
+    if new_desc:
+        projects[slug]["description"] = new_desc
+        save_projects(projects)
+        print(f"\n  {_GREEN}Updated:{_RESET}  {_BOLD}{info['name']}{_RESET}")
+        print(f"  {_DIM}{new_desc}{_RESET}\n")
+    else:
+        projects[slug].pop("description", None)
+        save_projects(projects)
+        print(f"\n  {_GREEN}Cleared:{_RESET}  {_BOLD}{info['name']}{_RESET}\n")
 
 
 def cmd_delete(args) -> None:
@@ -413,6 +467,8 @@ def cmd_delete(args) -> None:
     save_projects(projects)
 
     if args.purge and vault.exists():
+        if not (vault / ".watchdog").exists():
+            sys.exit(f"Error: {vault} does not look like a watchdog vault — aborting purge.")
         shutil.rmtree(vault)
 
     # Remove from Obsidian registry
@@ -583,19 +639,22 @@ def cmd_list(args) -> None:
     rows = []
     for slug, info in sorted(visible.items(), key=lambda x: x[1]["name"]):
         vault = Path(info["path"])
+        health   = _check_project_health(info)
         reg      = _load_registry(vault)
         docs     = str(reg["document_count"]) if reg else "—"
         entities = str(reg["entity_count"])   if reg else "—"
         updated  = _fmt_date(reg["last_updated"]) if reg else "—"
         incoming = str(_count_incoming(vault)) if vault.exists() else "—"
         queued   = str(_count_queued(vault))   if vault.exists() else "—"
+        created  = _fmt_date(info.get("created_at", ""))
+        size     = _fmt_size(_vault_size(vault)) if vault.exists() else "—"
         is_arch  = bool(info.get("archived"))
         description = info.get("description", "")
-        rows.append((info["name"], slug, docs, entities, updated, incoming, queued, is_arch, description))
+        rows.append((info["name"], slug, docs, entities, updated, incoming, queued, is_arch, description, health, created, size))
 
     name_w = max(len(r[0]) for r in rows) + 2
     slug_w = max(len(r[1]) for r in rows) + 2
-    sep_w = name_w + slug_w + 6 + 8 + 7 + 9 + 10 + 7 * 2 - 2
+    sep_w = name_w + slug_w + 6 + 8 + 7 + 9 + 10 + 8 + 10 + 9 * 2 - 2
     header = (
         f"  {_BOLD}{'Project':<{name_w}}{_RESET}"
         f"  {_DIM}{'Slug':<{slug_w}}"
@@ -603,11 +662,13 @@ def cmd_list(args) -> None:
         f"  {'Entities':>8}"
         f"  {'To chew':>7}"
         f"  {'To ingest':>9}"
+        f"  {'Created':>10}"
+        f"  {'Size':>8}"
         f"  Updated{_RESET}"
     )
     print(f"\n{header}")
     print(f"  {_DIM}{'─' * sep_w}{_RESET}")
-    for name, slug, docs, entities, updated, incoming, queued, is_arch, description in rows:
+    for name, slug, docs, entities, updated, incoming, queued, is_arch, description, health, created, size in rows:
         inc = "—" if incoming == "0" else incoming
         que = "—" if queued   == "0" else queued
         if is_arch:
@@ -625,10 +686,14 @@ def cmd_list(args) -> None:
             f"  {entities:>8}{_RESET}"
             f"  {inc_str}"
             f"  {que_str}"
-            f"  {_DIM}{updated}{_RESET}"
+            f"  {_DIM}{created:>10}"
+            f"  {size:>8}"
+            f"  {updated}{_RESET}"
         )
         if description:
             print(f"    {_DIM}{description}{_RESET}")
+        if health:
+            print(f"    {_YELLOW}⚠ {health}{_RESET}  {_DIM}run {_RESET}{_CYAN}watchdog move {slug} <path>{_RESET}{_DIM} to relink or {_RESET}{_CYAN}watchdog delete {slug}{_RESET}{_DIM} to remove{_RESET}")
     if archived and not show_all:
         n = len(archived)
         print(f"  {_DIM}+ {n} archived — run {_RESET}{_CYAN}watchdog list --all{_RESET}{_DIM} to show{_RESET}")
@@ -683,7 +748,11 @@ def cmd_status(args) -> None:
     print(f"  {_CYAN}{info['path']}{_RESET}")
     if info.get("description"):
         print(f"  {_DIM}{info['description']}{_RESET}")
-    print(f"  {_DIM}Created {_fmt_date(info.get('created_at', ''))}{_RESET}")
+
+    size_str    = _fmt_size(_vault_size(vault))
+    schema_ver  = reg.get("schema_version", "unversioned")
+    schema_note = "" if schema_ver == VAULT_SCHEMA_VERSION else f"  {_YELLOW}schema v{schema_ver} (current: v{VAULT_SCHEMA_VERSION}){_RESET}"
+    print(f"  {_DIM}Created {_fmt_date(info.get('created_at', ''))}  ·  {size_str}  ·  schema v{schema_ver}{_RESET}{schema_note}")
     print()
 
     pages_note = f" {_DIM}({total_pages} pages){_RESET}" if total_pages else ""
@@ -707,6 +776,55 @@ def cmd_status(args) -> None:
             print(f"  {_DIM}  {etype:<40}{_RESET} {count:>4}")
 
     print()
+
+
+def cmd_doctor(args) -> None:
+    all_projects = load_projects()
+    if not all_projects:
+        print(f"\n  No registered investigations.\n")
+        return
+
+    struct_issues  = []
+    schema_issues  = []
+    for slug, info in sorted(all_projects.items(), key=lambda x: x[1]["name"]):
+        problem = _check_project_health(info)
+        if problem:
+            struct_issues.append((slug, info, problem))
+        else:
+            reg = _load_registry(Path(info["path"]))
+            if reg and reg.get("schema_version") != VAULT_SCHEMA_VERSION:
+                schema_issues.append((slug, info, reg.get("schema_version", "unversioned")))
+
+    total   = len(all_projects)
+    n_issues = len(struct_issues) + len(schema_issues)
+    healthy  = total - n_issues
+    noun     = "investigation" if total == 1 else "investigations"
+    print(f"\n  Checking {total} registered {noun}...")
+    print()
+
+    if not n_issues:
+        print(f"  {_GREEN}✓ All {total} {noun} healthy{_RESET}")
+        print()
+        return
+
+    h_noun = "investigation" if healthy == 1 else "investigations"
+    print(f"  {_GREEN}✓ {healthy} {h_noun} healthy{_RESET}")
+    print()
+
+    for slug, info, problem in struct_issues:
+        arch_note = f"  {_DIM}(archived){_RESET}" if info.get("archived") else ""
+        print(f"  {_YELLOW}⚠  {_BOLD}{info['name']}{_RESET}  {_DIM}{slug}{_RESET}{arch_note}")
+        print(f"     {_DIM}{problem.capitalize()}: {info['path']}{_RESET}")
+        print(f"     {_DIM}→ {_RESET}{_CYAN}watchdog move {slug} <new-path>{_RESET}{_DIM} to relink{_RESET}")
+        print(f"     {_DIM}→ {_RESET}{_CYAN}watchdog delete {slug}{_RESET}{_DIM} to remove from registry{_RESET}")
+        print()
+
+    for slug, info, found_ver in schema_issues:
+        arch_note = f"  {_DIM}(archived){_RESET}" if info.get("archived") else ""
+        print(f"  {_YELLOW}⚠  {_BOLD}{info['name']}{_RESET}  {_DIM}{slug}{_RESET}{arch_note}")
+        print(f"     {_DIM}Schema v{found_ver} — current is v{VAULT_SCHEMA_VERSION}{_RESET}")
+        print(f"     {_DIM}This vault may need migration before it is fully compatible.{_RESET}")
+        print()
 
 
 def cmd_search(args) -> None:

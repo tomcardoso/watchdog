@@ -21,6 +21,8 @@ _YELLOW = "\033[0;33m"
 _GREEN  = "\033[0;32m"
 _RESET  = "\033[0m"
 
+VAULT_SCHEMA_VERSION = "1"
+
 _MODEL_IDS = {
     "sonnet": "claude-sonnet-4-6",
     "opus":   "claude-opus-4-8",
@@ -38,6 +40,8 @@ _ALIASES = {
     "setting":    "configure",
     "settings":   "configure",
     "find":       "search",
+    "health":     "doctor",
+    "check":      "doctor",
     "process":    "chew",
     "preprocess": "chew",
     "prep":       "chew",
@@ -115,7 +119,10 @@ _CMD_HELP: dict[str, dict] = {
     },
     "rename": {
         "desc": "Rename an investigation (folder and registry)",
-        "args": [("project", "Investigation name or slug"), ("name", "New name")],
+        "args": [
+            ("project", "Investigation name or slug (omit when inside the project folder)", True),
+            ("name",    "New name (omit to be prompted)", True),
+        ],
     },
     "describe": {
         "desc": "Set or update an investigation description",
@@ -179,6 +186,9 @@ _CMD_HELP: dict[str, dict] = {
         "desc": "View or change configuration",
         "args": [("key", "Configuration key (optional)"), ("value", "Value to set (optional)")],
     },
+    "doctor": {
+        "desc": "Check all registered investigations for missing or broken vaults",
+    },
     "about": {
         "desc": "Show version and project links",
     },
@@ -238,6 +248,33 @@ def _fmt_date(iso: str) -> str:
         return iso[:10]
     except Exception:
         return "—"
+
+
+def _vault_size(vault: Path) -> int:
+    total = 0
+    for root, _, files in os.walk(vault):
+        for f in files:
+            try:
+                total += (Path(root) / f).stat().st_size
+            except OSError:
+                pass
+    return total
+
+
+def _fmt_size(n: int) -> str:
+    for unit, threshold in (("GB", 1 << 30), ("MB", 1 << 20), ("KB", 1 << 10)):
+        if n >= threshold:
+            return f"{n / threshold:.1f}{unit}"
+    return f"{n}B"
+
+
+def _check_project_health(info: dict) -> str | None:
+    vault = Path(info["path"])
+    if not vault.exists():
+        return "folder not found"
+    if not (vault / ".watchdog").exists():
+        return "not a watchdog vault"
+    return None
 
 
 def _load_registry(vault: Path) -> dict | None:
@@ -375,6 +412,7 @@ def _print_banner() -> None:
             ("list",       "List all investigations"),
             ("status",     "Show detailed status"),
             ("search",     "Semantic search across ingested documents"),
+            ("doctor",     "Check for missing or broken vaults"),
         ]),
         ("Settings", [
             ("setup",      "Set up Watchdog after installation"),

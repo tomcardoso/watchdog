@@ -8,13 +8,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+from watchdog.cmd.base import (
+    _BOLD,
+    _DIM,
+    _CYAN,
+    _YELLOW,
+    _GREEN,
+    _RESET,
+)
+
 WATCHDOG_HOME = Path.home() / ".watchdog"
 CONFIG_FILE = WATCHDOG_HOME / "config.json"
-
-_GREEN  = "\033[0;32m"
-_YELLOW = "\033[0;33m"
-_BOLD   = "\033[1m"
-_RESET  = "\033[0m"
 
 _DEPS = [
     ("qpdf", "qpdf",        "macOS: brew install qpdf  |  Ubuntu/Debian: sudo apt install qpdf  |  Windows: scoop install qpdf"),
@@ -223,7 +227,7 @@ def run(force: bool = False) -> None:
     if _models_cached:
         print("  Checking ML models...")
     else:
-        print("  Downloading ML models (one-time, ~600 MB — may take a few minutes)...")
+        print("  Downloading ML models (one-time, may take a few minutes)...")
     with contextlib.redirect_stderr(io.StringIO()):
         try:
             from fastembed import TextEmbedding
@@ -248,21 +252,22 @@ def run(force: bool = False) -> None:
     )
 
     # 8. Done
-    reload_hint = f"source {profile}" if profile else "reload your shell"
+    reload_hint = f"{_CYAN}source {profile}{_RESET}" if profile else "reload your shell"
     print()
     print(f"{_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{_RESET}")
     print()
-    print(r"      / \__")
-    print(r"     (    @\___")
-    print(r"     /         O")
-    print(r"    /   (_____/")
-    print(r"   /_____/   U")
+    print(r"               .--~~,__")
+    print(r"  :-....,-------`~~'._.'")
+    print(r"   `-,,,  ,_      ;'~U'")
+    print(r"    _,-' ,'`-__; '--.  ")
+    print(r"   (_/'~~      ''''(;  ")
     print()
     print(f"  {_BOLD}Watchdog is on the scent.{_RESET}")
     print()
-    print(f"  Reload your shell:  {reload_hint}")
+    print(f"  Reload your shell:")
+    print(f"    {_CYAN}{reload_hint}{_RESET}")
     print()
-    print("  Create your first investigation:")
-    print('    watchdog new "My Investigation"')
+    print(f"  Create your first investigation:")
+    print(f"    {_CYAN}watchdog new \"My Investigation\"{_RESET}")
     print(f"{_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{_RESET}")
     print()

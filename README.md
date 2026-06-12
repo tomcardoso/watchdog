@@ -142,7 +142,7 @@ pipx install watchdog-intel
 watchdog setup
 ```
 
-`watchdog setup` verifies system dependencies (qpdf, Ghostscript, Tesseract on Linux), configures your projects directory, and downloads the ML models used for document conversion and semantic search (~600 MB, one-time). Expect the model download step to take a few minutes on a slow connection.
+`watchdog setup` verifies system dependencies (qpdf, Ghostscript, Tesseract on Linux), configures your projects directory, and downloads the ML models used for document conversion and semantic search (one-time). Expect the model download step to take a few minutes on a slow connection.
 
 Shell tab completion is enabled automatically by `watchdog setup` — it writes the activation line to your shell profile (`~/.zshrc`, `~/.bashrc`, or equivalent) and prompts you to reload.
 
@@ -219,6 +219,7 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | Command | What it does |
 |---------|-------------|
 | `watchdog search <name> "<query>"` | Semantic search across ingested documents |
+| `watchdog doctor` | Check all registered investigations for missing or broken vaults; suggests `watchdog move` or `watchdog delete` for each issue |
 | `watchdog configure` | View or change configuration |
 | `watchdog unlock <name>` | Release a stale chew or ingest lock; `--force` to remove even if recent |
 | `watchdog setup` | Set up Watchdog after installation; `--force` to re-run |
@@ -528,6 +529,8 @@ Please open an issue before starting significant work so we can discuss approach
 Watchdog's vault structure and session-context approach were partly inspired by [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian) by Daniel Agrici — a PKM framework built on Claude Code that demonstrated how to make an AI assistant genuinely vault-aware across sessions. The `hot.md` session state file and the general principle of teaching Claude to orient itself from structured vault context both draw on ideas in that project.
 
 The semantic search index uses [fastembed](https://github.com/qdrant/fastembed) (by Qdrant) with the `BAAI/bge-small-en-v1.5` model — a lightweight ONNX-based embedding library that avoids the PyTorch dependency footprint while matching the quality of heavier alternatives. The idea of embedding raw document pages for retroactive search across a large corpus, separate from the extracted knowledge graph, was partly informed by [obsidian-smart-connections](https://github.com/brianpetro/obsidian-smart-connections) by Brian Petro. The pattern of using a structured vault index for entity lookup — rather than embedding everything — was informed by [obsidian-claude-code](https://github.com/Roasbeef/obsidian-claude-code).
+
+The ASCII dog displayed by `watchdog new` was created by Felix Lee. The ASCII dog displayed by `watchdog about` was created by Sarah Kearsley.
 
 ---
 
