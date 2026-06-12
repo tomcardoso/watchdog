@@ -307,7 +307,13 @@ Write to `.watchdog/tmp/wdg_ex_{SHA256}.json` using the Write tool. Then validat
 watchdog validate-extraction .watchdog/tmp/wdg_ex_{SHA256}.json
 ```
 
-If this prints errors, fix the JSON and re-validate before continuing. Do not call `write-vault` on a file that failed validation.
+If this prints errors, fix the JSON and re-validate before continuing. Do not call `write-vault` on a file that failed validation. **Do not run `--help` or any exploration command to debug schema errors** — if unsure about the correct format, read an existing extraction file from `.watchdog/tmp/wdg_ex_*.json` using the Read tool and use it as a reference.
+
+Common validation mistakes:
+- `roles` entries must be **objects** (with `relationship`, `target_id`, `target_type`, `target_name`, `page`, `confidence`, `date_range` keys) — never plain strings
+- `morgue_entity_id` is required — the kebab-case id of the entity this document is primarily about
+- `morgue_document_type` is required — a type slug like `annual-report`, `court-order`, `bankruptcy-filing`
+- Every `confidence` value must be exactly one of: `high`, `medium`, `low`, `disputed`
 
 ```bash
 watchdog write-vault \
