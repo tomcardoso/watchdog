@@ -129,10 +129,10 @@ If a file fails (password-protected, corrupted, unsupported format), it moves to
 
 Press **Ctrl+C** to cancel a chew — the lock is cleaned up automatically and unfinished files remain in `_INCOMING/` for the next run.
 
-When chewing finishes, Watchdog prints:
+When chewing finishes, run the next step from the same vault directory:
 
-```
-Open Claude Code and run: /watchdog-ingest
+```bash
+watchdog ingest
 ```
 
 To chew a single specific file rather than the entire `_INCOMING/` folder:
@@ -152,11 +152,15 @@ Both flags override the persistent `chew_workers` / `chunk_workers` settings fro
 
 ---
 
-## Step 5: Extract in Claude Code
+## Step 5: Open in Claude Code
 
-Open Claude Code with the vault as the project. If you used `watchdog open shell-company-investigation` instead of `watchdog chew`, Claude Code opens automatically after chewing completes.
+From inside the vault directory, run:
 
-Run:
+```bash
+watchdog ingest
+```
+
+Watchdog scans the queue and prompts you to open Claude Code. Once it's open, run:
 
 ```
 /watchdog-ingest
@@ -270,9 +274,10 @@ After the first ingest, the typical workflow is:
 
 1. **Drop new documents** into `_INCOMING/`
 2. **`watchdog chew`** from the vault directory (or `watchdog watch <name>` to chew automatically as files arrive)
-3. **`/watchdog-ingest`** in Claude Code
-4. **Read the briefing** — pay particular attention to connections with entities already in the vault
-5. **`/watchdog-surface`** if the new batch was substantial
+3. **`watchdog ingest`** to set up the session and open Claude Code
+4. **`/watchdog-ingest`** in Claude Code
+5. **Read the briefing** — pay particular attention to connections with entities already in the vault
+6. **`/watchdog-surface`** if the new batch was substantial
 
 Claude Code doesn't need to be open while you're chewing. The queue accumulates until you're ready to run extraction.
 
@@ -347,8 +352,8 @@ If the files haven't been moved yet, Watchdog moves them. If you've already move
 **Remove an investigation:**
 
 ```bash
-watchdog delete shell-company-investigation            # remove from registry only
-watchdog delete shell-company-investigation --purge    # also delete all files
+watchdog delete shell-company-investigation            # remove from registry; vault files stay on disk
+watchdog delete shell-company-investigation --purge    # also permanently delete all vault files
 ```
 
-`--purge` is permanent. Use `archive` instead if you might want the vault later.
+`--purge` requires explicit confirmation and is permanent. Use `archive` instead if you might want the vault later.

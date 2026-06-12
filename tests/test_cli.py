@@ -6,6 +6,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import watchdog.cli as cli
+import watchdog.cmd.base as _base
+import watchdog.cmd.setup as _setup
+import watchdog.cmd.vault as _vault
 
 
 def _strip_ansi(s: str) -> str:
@@ -19,9 +22,12 @@ def wdg_home(tmp_path, monkeypatch):
     """Redirect all watchdog home paths into tmp_path."""
     home = tmp_path / ".watchdog"
     home.mkdir()
-    monkeypatch.setattr(cli, "WATCHDOG_HOME",  home)
-    monkeypatch.setattr(cli, "PROJECTS_FILE",  home / "projects.json")
-    monkeypatch.setattr(cli, "CONFIG_FILE",    home / "config.json")
+    monkeypatch.setattr(_base,  "WATCHDOG_HOME",  home)
+    monkeypatch.setattr(_base,  "PROJECTS_FILE",  home / "projects.json")
+    monkeypatch.setattr(_base,  "CONFIG_FILE",    home / "config.json")
+    monkeypatch.setattr(_setup, "WATCHDOG_HOME",  home)
+    monkeypatch.setattr(_setup, "CONFIG_FILE",    home / "config.json")
+    monkeypatch.setattr(cli,    "CONFIG_FILE",    home / "config.json")
     return home
 
 
@@ -33,7 +39,7 @@ def configured(wdg_home, tmp_path, monkeypatch):
     (wdg_home / "config.json").write_text(
         json.dumps({"projects_dir": str(investigations)}) + "\n"
     )
-    monkeypatch.setattr("watchdog.cli._obsidian_config_path", lambda: tmp_path / "obsidian.json")
+    monkeypatch.setattr("watchdog.cmd.vault._obsidian_config_path", lambda: tmp_path / "obsidian.json")
     return investigations
 
 
@@ -240,43 +246,11 @@ def test_cmd_new_name_flag(configured, wdg_home):
     assert "flag-name-test" in projects
 
 
-# ── cmd_open ──────────────────────────────────────────────────────────────────
-
-def test_cmd_open_launches_claude_when_no_queue(configured, monkeypatch):
-    cli.cmd_new(args(name="My Story", dir=str(configured)))
-    launched = []
-    monkeypatch.setattr(cli, "_launch_claude", lambda vault: launched.append(vault))
-    monkeypatch.setattr("builtins.input", lambda _: "n")
-    cli.cmd_open(args(name="My Story"))
-    assert len(launched) == 1
-
-
-def test_cmd_open_prompts_when_queue_has_files(configured, monkeypatch):
-    cli.cmd_new(args(name="My Story", dir=str(configured)))
-    vault = configured / "my-story"
-    (vault / ".watchdog" / "queue" / "abc123.json").write_text("{}")
-    launched = []
-    monkeypatch.setattr(cli, "_launch_claude", lambda vault: launched.append(vault))
-    monkeypatch.setattr("builtins.input", lambda _: "y")
-    cli.cmd_open(args(name="My Story"))
-    assert len(launched) == 1
-
-
-def test_cmd_open_skips_claude_when_user_declines(configured, monkeypatch):
-    cli.cmd_new(args(name="My Story", dir=str(configured)))
-    vault = configured / "my-story"
-    (vault / ".watchdog" / "queue" / "abc123.json").write_text("{}")
-    launched = []
-    monkeypatch.setattr(cli, "_launch_claude", lambda vault: launched.append(vault))
-    monkeypatch.setattr("builtins.input", lambda _: "n")
-    cli.cmd_open(args(name="My Story"))
-    assert len(launched) == 0
-
 
 # ── Obsidian helpers ──────────────────────────────────────────────────────────
 
 def test_register_obsidian_vault_writes_entry(tmp_path, monkeypatch):
-    monkeypatch.setattr("watchdog.cli._obsidian_config_path", lambda: tmp_path / "obsidian.json")
+    monkeypatch.setattr("watchdog.cmd.vault._obsidian_config_path", lambda: tmp_path / "obsidian.json")
     vault = tmp_path / "my-vault"
     cli._register_obsidian_vault(vault)
     data = json.loads((tmp_path / "obsidian.json").read_text())
@@ -290,7 +264,7 @@ def test_register_obsidian_vault_writes_entry(tmp_path, monkeypatch):
 def test_register_obsidian_vault_appends_to_existing(tmp_path, monkeypatch):
     cfg = tmp_path / "obsidian.json"
     cfg.write_text(json.dumps({"vaults": {"aabbccdd11223344": {"path": "/other", "ts": 123}}}))
-    monkeypatch.setattr("watchdog.cli._obsidian_config_path", lambda: cfg)
+    monkeypatch.setattr("watchdog.cmd.vault._obsidian_config_path", lambda: cfg)
     cli._register_obsidian_vault(tmp_path / "new-vault")
     data = json.loads(cfg.read_text())
     assert len(data["vaults"]) == 2
@@ -300,13 +274,13 @@ def test_obsidian_registered_finds_vault(tmp_path, monkeypatch):
     cfg = tmp_path / "obsidian.json"
     vault = tmp_path / "my-vault"
     cfg.write_text(json.dumps({"vaults": {"abc123": {"path": str(vault), "ts": 0}}}))
-    monkeypatch.setattr("watchdog.cli._obsidian_config_path", lambda: cfg)
+    monkeypatch.setattr("watchdog.cmd.vault._obsidian_config_path", lambda: cfg)
     assert cli._obsidian_registered(vault) is True
     assert cli._obsidian_registered(tmp_path / "other") is False
 
 
 def test_obsidian_config_path_windows(monkeypatch):
-    monkeypatch.setattr("watchdog.cli.sys.platform", "win32")
+    monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "win32")
     monkeypatch.setenv("APPDATA", "/win/appdata")
     p = cli._obsidian_config_path()
     assert "obsidian" in str(p)
@@ -319,9 +293,9 @@ def test_cmd_obsidian_opens_url(configured, monkeypatch):
     cli.cmd_new(args(name="My Story", dir=str(configured)))
     vault = configured / "my-story"
     calls = []
-    monkeypatch.setattr("watchdog.cli.subprocess.run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
-    monkeypatch.setattr("watchdog.cli.sys.platform", "darwin")
-    monkeypatch.setattr("watchdog.cli._obsidian_registered", lambda v: True)
+    monkeypatch.setattr("watchdog.cmd.vault.subprocess.run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
+    monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "darwin")
+    monkeypatch.setattr("watchdog.cmd.vault._obsidian_registered", lambda v: True)
     cli.cmd_obsidian(args(name="My Story"))
     assert len(calls) == 1
     assert calls[0][0] == "open"
@@ -330,7 +304,7 @@ def test_cmd_obsidian_opens_url(configured, monkeypatch):
 
 def test_cmd_obsidian_unregistered_prints_instructions(configured, monkeypatch, capsys):
     cli.cmd_new(args(name="My Story", dir=str(configured)))
-    monkeypatch.setattr("watchdog.cli._obsidian_registered", lambda v: False)
+    monkeypatch.setattr("watchdog.cmd.vault._obsidian_registered", lambda v: False)
     cli.cmd_obsidian(args(name="My Story"))
     out = capsys.readouterr().out
     assert "not registered" in out
@@ -339,9 +313,9 @@ def test_cmd_obsidian_unregistered_prints_instructions(configured, monkeypatch, 
 
 def test_cmd_obsidian_exits_on_failure(configured, monkeypatch):
     cli.cmd_new(args(name="My Story", dir=str(configured)))
-    monkeypatch.setattr("watchdog.cli.subprocess.run", lambda cmd, **kw: type("R", (), {"returncode": 1})())
-    monkeypatch.setattr("watchdog.cli.sys.platform", "darwin")
-    monkeypatch.setattr("watchdog.cli._obsidian_registered", lambda v: True)
+    monkeypatch.setattr("watchdog.cmd.vault.subprocess.run", lambda cmd, **kw: type("R", (), {"returncode": 1})())
+    monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "darwin")
+    monkeypatch.setattr("watchdog.cmd.vault._obsidian_registered", lambda v: True)
     with pytest.raises(SystemExit):
         cli.cmd_obsidian(args(name="My Story"))
 
@@ -350,9 +324,9 @@ def test_cmd_obsidian_infers_project_from_cwd(configured, monkeypatch):
     cli.cmd_new(args(name="My Story", dir=str(configured)))
     vault = configured / "my-story"
     calls = []
-    monkeypatch.setattr("watchdog.cli.subprocess.run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
-    monkeypatch.setattr("watchdog.cli.sys.platform", "darwin")
-    monkeypatch.setattr("watchdog.cli._obsidian_registered", lambda v: True)
+    monkeypatch.setattr("watchdog.cmd.vault.subprocess.run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
+    monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "darwin")
+    monkeypatch.setattr("watchdog.cmd.vault._obsidian_registered", lambda v: True)
     monkeypatch.chdir(vault)
     cli.cmd_obsidian(args(name=None))
     assert len(calls) == 1
@@ -757,7 +731,6 @@ def test_version_flags_invoke_about(capsys, monkeypatch, flag):
     ("ls",       "list"),
     ("info",     "status"),
     ("inspect",  "status"),
-    ("cd",       "open"),
     ("version",  "about"),
     ("config",   "configure"),
     ("setting",  "configure"),
@@ -877,7 +850,7 @@ def test_configure_bool_invalid_exits(wdg_home):
 # ── configure — enum keys ─────────────────────────────────────────────────────
 
 def test_configure_set_ocr_engine(wdg_home, monkeypatch):
-    monkeypatch.setattr(cli, "_ensure_ocr_engine", lambda engine: None)
+    monkeypatch.setattr(_setup, "_ensure_ocr_engine", lambda engine: None)
     cli.cmd_configure(args(key="ocr_engine", value="tesseract"))
     config = json.loads((wdg_home / "config.json").read_text())
     assert config["ocr_engine"] == "tesseract"
@@ -893,7 +866,7 @@ def test_configure_ocr_engine_invalid_exits(wdg_home):
 def test_ensure_ocr_engine_noop_for_auto(monkeypatch):
     # auto and easyocr have no package to install — should return immediately
     called = []
-    monkeypatch.setattr(cli.subprocess, "run", lambda *a, **kw: called.append(a))
+    monkeypatch.setattr(_setup.subprocess, "run", lambda *a, **kw: called.append(a))
     cli._ensure_ocr_engine("auto")
     cli._ensure_ocr_engine("easyocr")
     assert called == []
@@ -901,9 +874,9 @@ def test_ensure_ocr_engine_noop_for_auto(monkeypatch):
 
 def test_ensure_ocr_engine_skips_if_already_importable(monkeypatch):
     # Point to a module guaranteed to be importable so we can test the skip logic
-    monkeypatch.setitem(cli._OCR_ENGINE_PACKAGES, "tesseract", ("json", "fake-pkg"))
+    monkeypatch.setitem(_setup._OCR_ENGINE_PACKAGES, "tesseract", ("json", "fake-pkg"))
     calls = []
-    monkeypatch.setattr(cli.subprocess, "run", lambda cmd, **kw: calls.append(cmd))
+    monkeypatch.setattr(_setup.subprocess, "run", lambda cmd, **kw: calls.append(cmd))
     cli._ensure_ocr_engine("tesseract")
     assert calls == []  # json is importable, so no pip install should happen
 
@@ -912,17 +885,17 @@ def test_ensure_ocr_engine_installs_missing_package(monkeypatch):
     # Simulate missing package: __import__ raises ImportError, subprocess succeeds
     import types
     monkeypatch.setitem(
-        cli._OCR_ENGINE_PACKAGES, "tesseract", ("_no_such_pkg_xyz", "fake-pkg")
+        _setup._OCR_ENGINE_PACKAGES, "tesseract", ("_no_such_pkg_xyz", "fake-pkg")
     )
     result = types.SimpleNamespace(returncode=0, stderr="")
     calls = []
-    monkeypatch.setattr(cli.subprocess, "run", lambda cmd, **kw: calls.append(cmd) or result)
+    monkeypatch.setattr(_setup.subprocess, "run", lambda cmd, **kw: calls.append(cmd) or result)
     cli._ensure_ocr_engine("tesseract")
     assert any("fake-pkg" in str(c) for c in calls)
 
 
 def test_ensure_ocr_engine_apple_vision_non_mac_exits(monkeypatch):
-    monkeypatch.setattr(cli.sys, "platform", "linux")
+    monkeypatch.setattr(_setup.sys, "platform", "linux")
     with pytest.raises(SystemExit, match="only available on macOS"):
         cli._ensure_ocr_engine("apple_vision")
 
@@ -1095,7 +1068,7 @@ def test_cmd_delete_cancelled(configured, monkeypatch, capsys):
 def test_cmd_delete_removes_from_obsidian_registry(configured, monkeypatch, capsys):
     cli.cmd_new(args(name="Shell Co", dir=str(configured)))
     vault = configured / "shell-co"
-    cfg_path = cli._obsidian_config_path()
+    cfg_path = _vault._obsidian_config_path()
     cfg_path.write_text(json.dumps({"vaults": {"abc123": {"path": str(vault), "ts": 0}}}))
     monkeypatch.setattr("builtins.input", lambda _: "y")
     cli.cmd_delete(args(name="Shell Co", purge=False))
@@ -1130,7 +1103,7 @@ def test_cmd_move_updates_obsidian_registry(configured, capsys):
     cli.cmd_new(args(name="Shell Co", dir=str(configured)))
     vault = configured / "shell-co"
     new_path = configured / "new-location"
-    cfg_path = cli._obsidian_config_path()
+    cfg_path = _vault._obsidian_config_path()
     cfg_path.write_text(json.dumps({"vaults": {"abc123": {"path": str(vault), "ts": 0}}}))
     cli.cmd_move(args(name="Shell Co", path=str(new_path)))
     data = json.loads(cfg_path.read_text())
@@ -1250,7 +1223,7 @@ def test_cmd_rename_updates_obsidian_registry(configured, capsys):
     cli.cmd_new(args(name="Shell Co", dir=str(configured)))
     vault = configured / "shell-co"
     new_vault = configured / "oil-co"
-    cfg_path = cli._obsidian_config_path()
+    cfg_path = _vault._obsidian_config_path()
     cfg_path.write_text(json.dumps({"vaults": {"abc123": {"path": str(vault), "ts": 0}}}))
     cli.cmd_rename(args(project="Shell Co", name="Oil Co"))
     data = json.loads(cfg_path.read_text())
@@ -1344,19 +1317,19 @@ def test_cmd_chew_with_nonexistent_file_exits(configured, monkeypatch):
 # ── _notify ───────────────────────────────────────────────────────────────────
 
 def test_notify_no_op_on_non_darwin(monkeypatch):
-    monkeypatch.setattr("watchdog.cli.sys.platform", "linux")
+    monkeypatch.setattr("watchdog.cmd.base.sys.platform", "linux")
     calls = []
-    monkeypatch.setattr("watchdog.cli.subprocess.run", lambda *a, **k: calls.append(a))
+    monkeypatch.setattr("watchdog.cmd.base.subprocess.run", lambda *a, **k: calls.append(a))
     cli._notify("title", "body")
     assert calls == []
 
 
 def test_notify_calls_osascript_on_darwin(monkeypatch):
-    monkeypatch.setattr("watchdog.cli.sys.platform", "darwin")
+    monkeypatch.setattr("watchdog.cmd.base.sys.platform", "darwin")
     calls = []
     def fake_run(cmd, **kw):
         calls.append(cmd)
-    monkeypatch.setattr("watchdog.cli.subprocess.run", fake_run)
+    monkeypatch.setattr("watchdog.cmd.base.subprocess.run", fake_run)
     cli._notify("Watchdog", "3 files chewed")
     assert len(calls) == 1
     assert calls[0][0] == "osascript"

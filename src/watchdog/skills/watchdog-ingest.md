@@ -22,20 +22,23 @@ Chewing (OCR, Docling) is handled separately by the `watchdog chew` CLI command.
 
 ---
 
-## 0. Pre-flight checks
+## 0. Setup
 
-**Check for an existing lock.**
-Read `.watchdog/Registry/.ingest-lock`. If it exists and is less than 30 minutes old, stop:
-> "Ingest is already running (lock acquired at [timestamp]). If this is stale, run `watchdog unlock <project>` and retry."
+Read `.watchdog/ingest-state.json`. Store the parsed contents as `INGEST`.
 
-**Acquire the lock.**
-Run `date -u +"%Y-%m-%dT%H:%M:%SZ"` to get the current timestamp, then write `.watchdog/Registry/.ingest-lock` containing:
-```
-pid: claude-session
-started_at: <timestamp from date command>
-```
+If the file does not exist:
+> "Run `watchdog ingest` in your terminal first to initialise the session, then re-run `/watchdog-ingest`."
+Stop — no lock was acquired in this session, so no cleanup is needed.
 
-From this point, every exit path — including errors — must release the lock by deleting `.watchdog/Registry/.ingest-lock`.
+If `INGEST.total == 0` or `INGEST.lock_acquired` is false:
+> "No files queued. Run `watchdog chew` then `watchdog ingest` in your terminal, then re-run `/watchdog-ingest`."
+Stop.
+
+Set `TOTAL = INGEST.total`. Set `BATCH_START = INGEST.batch_start`. Set `EXTRACTED = 0`. Set `RESULTS = []`, `NEARDUP_ALERTS = []`, `CONTRADICTION_FLAGS = []`.
+
+Set `QUEUE_FILES = INGEST.queue_files`. Set `ARROWS_FILES = INGEST.arrows_files`.
+
+The lock is held (acquired by `watchdog ingest`). Every exit path — including errors — must release it by running `watchdog unlock` and deleting `.watchdog/ingest-state.json`.
 
 ---
 
@@ -47,121 +50,72 @@ Read `hot.md` if it exists. Note current investigation state.
 
 ---
 
-## 2. Build compact entity index
+## 3. Process each file
 
-Run:
-```bash
-watchdog entity-index
-```
+Process files in **batches of up to 5**. Registry writes are serialized internally — concurrent subagents are safe.
 
-Store the output as `COMPACT_ENTITY_INDEX`. This outputs a compact JSON array of `{id, name, type, aliases}` for every entity in the vault — the minimum needed for entity deduplication. If the vault has no entities yet, it outputs `[]`.
-
-This index is passed to each document subagent so it can identify existing entities without the manifest content ever entering this session's context.
-
----
-
-## 3. Find queued files
-
-Run:
-```bash
-watchdog queue-status
-```
-
-This outputs `{"total": N, "files": [{"path": "...", "source_type": "..."}, ...]}`. Parse it.
-
-If `total == 0`, stop:
-> "No files queued for extraction. Run `watchdog chew` in your terminal from this folder to chew documents in `_INCOMING/`, then come back and run `/watchdog-ingest`."
-
-Release the lock and stop.
-
-Set `TOTAL` = `total` from the output. Set `BATCH_START` = current unix timestamp (`date +%s`). Set `EXTRACTED = 0`. Set `RESULTS = []`, `NEARDUP_ALERTS = []`, `CONTRADICTION_FLAGS = []`.
-
-Partition the file list: any entry with `source_type == "arrows"` goes to `ARROWS_FILES`; everything else goes to `QUEUE_FILES`.
-
-Do not read any queue file content into this session.
-
----
-
-## 4. Process each file
-
-Process files in **batches of up to 5**. `watchdog write-vault` uses file locking to serialize registry writes — concurrent calls are safe.
-
-Process `ARROWS_FILES` inline first (see §6) before the subagent loop.
+Process `ARROWS_FILES` inline first (see §5) before the subagent loop.
 
 Split `QUEUE_FILES` into batches of at most 5 files. For each batch:
 
-1. Run `watchdog entity-index` → update `COMPACT_ENTITY_INDEX` (picks up entities written by the previous batch)
-2. For each file `PREP_FILE` in the batch, prepare its subagent prompt:
-   - Set `SKIP_TIMELINE` = `false` only if this is the very last file in the entire run (last file of the last batch, accounting for `LIMIT`); `true` for all others
-   - Print `[<N>/<TOTAL>] Launching: <filename> ...`
-3. **Launch all agents in the batch simultaneously** — send a single message with all Agent tool calls in parallel. Do not send them one at a time.
-4. Process results as they arrive (see "After each Agent call" below).
+1. For each file in the batch, get its SHA256 from the queue path (filename without `.json` extension).
+2. Set `SKIP_TIMELINE` = `false` only for the very last file of the entire run; `true` for all others.
+3. Print `[<N>/<TOTAL>] Launching: <sha256[:8]> ...`
+4. **Launch all agents in the batch simultaneously** — send a single message with all Agent tool calls in parallel.
+5. Process results (see "After each Agent call" below).
 
-**Limit check:** if `LIMIT` is set and `EXTRACTED >= LIMIT` after processing a batch's results, stop before starting the next batch.
+**Limit check:** if `LIMIT` is set and `EXTRACTED >= LIMIT`, stop before the next batch.
 
-Substitute all `{placeholder}` values in the prompt below before sending — do not send literal placeholders.
+Substitute all `{placeholder}` values before sending.
 
 ---
 
 ### SUBAGENT PROMPT TEMPLATE
 
 ```
-You are extracting one document for the Watchdog investigative research system. Follow every step below. Write the results to the vault. Then return the structured RESULT block at the end — no other output.
+You are extracting one document for the Watchdog investigative research system. Follow every step below exactly. Return the structured RESULT block at the end — no other output.
 
-VAULT: {absolute path of the current working directory}
-PREP_FILE: {PREP_FILE}
+SHA256: {SHA256}
 SKIP_TIMELINE: {true or false}
 INVESTIGATION_BRIEF:
 {INVESTIGATION_BRIEF — or "None" if empty}
 
-KNOWN_ENTITIES:
-{COMPACT_ENTITY_INDEX — the JSON array}
+**Hard constraints — violations will break the pipeline:**
+- Never run `python3 -c "..."`, `cat file | python3`, or any shell pipeline. Use the Read tool to inspect files.
+- Never read `.watchdog/Registry/manifest.json`, `entities.json`, or `documents.json` directly — entity candidates come from PRE_FLIGHT.existing_entities (Step 1).
+- Never use absolute paths in bash commands. Always use paths relative to the vault root.
+- Never prefix commands with `cd <path> &&`.
+- Never run `watchdog <command> --help` or any exploration command.
 
 ---
 
-## Step 1 — Read the queue file
-
-Read `{PREP_FILE}`. Parse the JSON. Fields present: `source_path`, `sha256`, `page_count`, `pages[]` (each has `page` integer and `markdown` string), `metadata`, `char_count`.
-
-Set SHA256 = the `sha256` value. Set FILENAME = the filename portion of `source_path` (basename only).
-
-## Step 2 — Exact duplicate check
+## Step 1 — Pre-flight
 
 ```bash
-watchdog is-duplicate {SHA256}
+watchdog pre-flight {SHA256}
 ```
 
-If output is `dup`, return this block and stop:
+Parse the JSON output. Store as PRE_FLIGHT. Fields:
+- `sha256`, `filename`, `page_count`
+- `already_extracted` — if true, return the SKIPPED block immediately
+- `pages[]` — each has `page` integer and `markdown` string; this is your document content
+- `near_dup.near_duplicates`, `near_dup.top_similarity`
+- `existing_entities[]` — entities already in vault whose names appear in this document: `{id, name, type, aliases, note_path}`
+
+If `already_extracted` is true, stop and return:
 ```
 STATUS: skipped
-FILENAME: {FILENAME}
+FILENAME: {PRE_FLIGHT.filename}
 REASON: already extracted (SHA-256 match)
 ```
 
-## Step 3 — Load sidecar
+Set SHA256 = PRE_FLIGHT.sha256. Set FILENAME = PRE_FLIGHT.filename.
+
+## Step 2 — Load sidecar
 
 Check whether `_INCOMING/{FILENAME}.yml` exists. If it does, read it. Note `source`, `obtained`, `relevance`, `notes` fields.
 
-## Step 5 — Near-duplicate check
-
-Write all page markdown to a temp file using the Write tool at path `.watchdog/tmp/wdg_nd_{SHA256}.txt` (concatenate all `pages[].markdown` values, separated by newlines). Then:
-
-```bash
-watchdog near-dup --text-file .watchdog/tmp/wdg_nd_{SHA256}.txt --registry .watchdog/Registry/documents.json --output .watchdog/tmp/wdg_nd_{SHA256}.json
-```
-
-`--output` writes the result to the JSON file and deletes the `.txt` input automatically — no redirection or separate `rm` needed.
-
-Read only the decision summary — do NOT read the full JSON output, which contains large minhash arrays you don't need:
-```bash
-watchdog near-dup --summary .watchdog/tmp/wdg_nd_{SHA256}.json
-```
-
-Store this as NEARDUP_DECISION. The full JSON stays at `.watchdog/tmp/wdg_nd_{SHA256}.json` for write-vault — do not delete it yet.
-
-If `near_duplicates` is non-empty, note the match in your result. Continue processing regardless — the orchestrator handles the near-dup decision, not this subagent.
-
-## Step 6 — Load domain skill
+## Step 3 — Load domain skill
 
 Determine the document type from its text. Read the matching skill file from `.claude/commands/`:
 
@@ -199,19 +153,20 @@ Determine the document type from its text. Read the matching skill file from `.c
 
 If nothing matches, read `.claude/commands/records/general-records.md`.
 
-## Step 7 — Infer document metadata
+## Step 4 — Infer document metadata
 
 From the text:
 - `title` — from headings, cover page, or filename
 - `document_type` — descriptive (Annual Report, Affidavit, Title Transfer, etc.)
 - `date_of_document` — YYYY-MM-DD; YYYY-01-01 with confidence `low` if only year is clear; null if unknown
 
-## Step 8 — Extract entities
+## Step 5 — Extract entities
 
-Using KNOWN_ENTITIES for deduplication (match on name or any alias — OCR errors are common, be generous), extract every real-world entity.
+Using `PRE_FLIGHT.existing_entities` for deduplication (match on name or any alias — OCR errors are common, be generous), extract every real-world entity.
 
 For each entity:
-- `id` — existing id from KNOWN_ENTITIES if matched; otherwise new kebab-case slug
+- `id` — existing id from PRE_FLIGHT.existing_entities if matched; otherwise new kebab-case slug
+- `match_id` — if this entity matches an existing one, set to that entity's id; otherwise omit
 - `name` — canonical full name as it appears most completely
 - `type` — Person / Company / Address / Property / CourtCase / Transaction / or a new type you determine is appropriate
 - `aliases` — every other name or abbreviation used in this document
@@ -226,13 +181,13 @@ Confidence rules:
 
 Never upgrade a claim past its weakest element.
 
-## Step 9 — Extract key facts
+## Step 6 — Extract key facts
 
 5–15 most important facts, each with text, page number, and confidence level.
 
-## Step 10 — Contradiction check
+## Step 7 — Contradiction check
 
-For each entity that matched an entry in KNOWN_ENTITIES, read its vault note. Construct the path as:
+For each entity that matched an entry in PRE_FLIGHT.existing_entities, read its vault note using the `note_path` field (append `.md`). Construct the full path as `{note_path}.md`. Example: if `note_path` is `entities/person/john-smith`, read `entities/person/john-smith.md`.
 - Person → `entities/person/{id}.md`
 - Company → `entities/company/{id}.md`
 - Address → `entities/address/{id}.md`
@@ -250,7 +205,7 @@ Do not flag: low-confidence differences, trivially explainable name variations, 
 
 Read entity notes **only for matched entities** — do not read notes for new entities.
 
-## Step 11 — Build extraction JSON and write vault
+## Step 8 — Build extraction JSON and write vault
 
 Build this JSON exactly:
 
@@ -266,18 +221,19 @@ Build this JSON exactly:
     "page_count": <n>,
     "source": "<from sidecar or null>",
     "obtained": "<from sidecar or null>",
-    "near_duplicate_of": "<sha256 from NEARDUP_DECISION if near_duplicates non-empty, else null>",
+    "near_duplicate_of": "<sha256 from PRE_FLIGHT.near_dup.near_duplicates[0] if non-empty, else null>",
     "summary": "<one paragraph>",
     "key_facts": [{"fact": "...", "page": <n or null>, "confidence": "..."}]
   },
   "entities": [
     {
-      "id": "...",
+      "id": "<existing id from PRE_FLIGHT.existing_entities if matched; otherwise new kebab-case slug>",
+      "match_id": "<if this entity matches an existing one, set to that entity's id; otherwise omit this field entirely>",
       "name": "...",
       "type": "...",
       "aliases": [...],
       "summary": "<one sentence: who is this entity and what role do they play>",
-      "analysis": "<contradiction callouts from Step 10 and any investigative notes; omit field entirely if nothing notable>",
+      "analysis": "<contradiction callouts from Step 7 and any investigative notes; omit field entirely if nothing notable>",
       "timeline_events": [
         {"date": "...", "event": "...", "page": <n or null>, "confidence": "..."}
       ],
@@ -301,33 +257,22 @@ Build this JSON exactly:
 
 `morgue_entity_id`: the document's subject — debtor for bankruptcy, company for annual report, defendant for court order.
 
-Write to `.watchdog/tmp/wdg_ex_{SHA256}.json` using the Write tool. Then validate it:
-
-```bash
-watchdog validate-extraction .watchdog/tmp/wdg_ex_{SHA256}.json
-```
-
-If this prints errors, fix the JSON and re-validate before continuing. Do not call `write-vault` on a file that failed validation. **Do not run `--help` or any exploration command to debug schema errors** — if unsure about the correct format, read an existing extraction file from `.watchdog/tmp/wdg_ex_*.json` using the Read tool and use it as a reference.
-
-Common validation mistakes:
+Common mistakes that will cause post-flight to reject the extraction:
 - `roles` entries must be **objects** (with `relationship`, `target_id`, `target_type`, `target_name`, `page`, `confidence`, `date_range` keys) — never plain strings
 - `morgue_entity_id` is required — the kebab-case id of the entity this document is primarily about
 - `morgue_document_type` is required — a type slug like `annual-report`, `court-order`, `bankruptcy-filing`
 - Every `confidence` value must be exactly one of: `high`, `medium`, `low`, `disputed`
+- `match_id` must be omitted entirely for new entities — do not set it to `null` or `""`
+
+Write to `.watchdog/tmp/wdg_ex_{SHA256}.json` using the Write tool. Then run post-flight:
 
 ```bash
-watchdog write-vault \
-  --extraction .watchdog/tmp/wdg_ex_{SHA256}.json \
-  --neardup-file .watchdog/tmp/wdg_nd_{SHA256}.json \
-  {if SKIP_TIMELINE is true: add --skip-timeline}
+watchdog post-flight --extraction .watchdog/tmp/wdg_ex_{SHA256}.json
 ```
 
-Clean up:
-```bash
-rm .watchdog/tmp/wdg_ex_{SHA256}.json .watchdog/tmp/wdg_nd_{SHA256}.json {PREP_FILE}
-```
+Post-flight validates, applies entity merges, writes the vault, and cleans up temp files. If it prints errors, fix the JSON and run it again. Do not run `--help` or any exploration command to debug schema errors.
 
-## Step 12 — Return result
+## Step 9 — Return result
 
 Return ONLY the following block. No other output.
 
@@ -520,7 +465,7 @@ Keep hot.md under ~40 lines.
 
 ## 9. Release lock
 
-Delete `.watchdog/Registry/.ingest-lock` and `.watchdog/ingest.json`.
+Run `watchdog unlock` to remove `.watchdog/Registry/.ingest-lock` and clean up any temp files. Then delete `.watchdog/ingest-state.json`.
 
 ---
 

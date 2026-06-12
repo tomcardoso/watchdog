@@ -77,14 +77,17 @@ watchdog chew  (terminal)
   → originals moved to .watchdog/staging/<sha256>/
   → extracted data written to .watchdog/queue/<sha256>.json
         ↓
+watchdog ingest  (terminal)
+  acquires lock · scans queue · opens Claude Code
+        ↓
 /watchdog-ingest  (Claude Code)
   processes up to 5 documents in parallel, each in an isolated subagent
   reads queue files · applies domain knowledge · extracts entities,
   relationships, timeline events, key facts · flags contradictions
         ↓
-watchdog write-vault  (called by each subagent)
-  entity notes · document notes · global timeline · registries
-  file-locked so parallel writes are safe
+watchdog post-flight  (called by each subagent)
+  validates extraction · writes entity notes and document notes ·
+  updates global timeline and registries · file-locked for parallel safety
   → originals moved to morgue/
         ↓
 Post-ingest briefing: new entities · connections · leads · anomalies
@@ -147,14 +150,15 @@ watchdog new
 # Or pass the name directly
 watchdog new "Shell Company Investigation"
 
-# Drop documents into the vault
-# (copy or move files into ~/Investigations/shell-company-investigation/_INCOMING/)
+# Drop documents into _INCOMING/ then chew them (run from inside the vault)
+cd ~/Investigations/shell-company-investigation
+watchdog chew
+
+# Set up the extraction session and open in Claude Code
+watchdog ingest
 
 # Open the vault in Obsidian
 watchdog obsidian shell-company-investigation
-
-# Chew pending documents and open in Claude Code
-watchdog open shell-company-investigation
 ```
 
 **Optional but recommended:** before processing records, seed your investigation context from prior published stories or notes:
@@ -162,14 +166,7 @@ watchdog open shell-company-investigation
 1. Drop background files (clips, notes, screenshots) into `_CONTEXT/`
 2. Run `/watchdog-context` in Claude Code — Watchdog reads the material, asks you questions, and writes `context.md`
 
-Then, when documents are in `_INCOMING/`, chew them from the vault directory:
-
-```bash
-cd ~/Investigations/shell-company-investigation
-watchdog chew
-```
-
-Once chewing finishes, Watchdog prints the next step. Switch to Claude Code and run:
+Once `watchdog ingest` opens Claude Code, run the extraction skill:
 
 ```
 /watchdog-ingest
@@ -186,7 +183,6 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | Command | What it does |
 |---------|-------------|
 | `watchdog new [<name>]` | Create a new investigation vault; omit name to be prompted interactively |
-| `watchdog open <name>` | Chew pending documents (with prompt), then open in Claude Code |
 | `watchdog obsidian [name]` | Open the vault in Obsidian; omit name when inside the project directory |
 | `watchdog list` | List all active investigations; `--all` includes archived |
 | `watchdog status [name]` | Show detailed status; omit name to show all |
@@ -194,10 +190,10 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog archive <name>` | Mark an investigation complete — hidden from `watchdog list` |
 | `watchdog unarchive <name>` | Restore an archived investigation |
 | `watchdog rename <name> <new-name>` | Rename an investigation — updates the folder, registry, and Obsidian entry |
-| `watchdog move <name> <path>` | Update vault path in registry; moves files if they still exist at the old location |
-| `watchdog delete <name>` | Remove from registry; `--purge` also deletes vault files |
+| `watchdog move <name> <path>` | Move vault to a new path and update the registry; if files are already at the new path, just updates the registry |
+| `watchdog delete <name>` | Remove from registry (vault files are left on disk); `--purge` also permanently deletes all vault files |
 
-### Pipeline
+### Processing
 
 | Command | What it does |
 |---------|-------------|
@@ -205,6 +201,7 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog chew <file>` | Process a single specific file |
 | `watchdog chew --chew-workers N` | Override parallel file workers for this run |
 | `watchdog chew --chunk-workers N` | Override parallel chunk workers per file for this run |
+| `watchdog ingest` | Acquire the ingest lock, scan the queue, and open Claude Code for extraction |
 | `watchdog watch <name>` | Watch `_INCOMING/` and chew files automatically as they arrive |
 
 `watchdog chew` sends a desktop notification when files finish processing (macOS only). Press **Ctrl+C** to cancel a chew in progress — the lock is cleaned up automatically and any partially-processed files remain in `_INCOMING/` for the next run.
@@ -253,9 +250,9 @@ All commands accept short aliases:
 | `init`, `create` | `new` |
 | `ls` | `list` |
 | `info`, `inspect` | `status` |
-| `cd` | `open` |
 | `rm`, `remove` | `delete` |
 | `mv` | `move` |
+| `rn` | `rename` |
 | `process`, `preprocess`, `prep` | `chew` |
 | `find` | `search` |
 | `config`, `setting`, `settings` | `configure` |
@@ -391,10 +388,9 @@ watchdog new "Municipal Contracts Investigation" --description "City hall contra
 watchdog new "Healthcare Funding Investigation"
 watchdog list
 watchdog status municipal-contracts-investigation
-watchdog open municipal-contracts-investigation
 ```
 
-Project names tab-complete in zsh and bash after running `watchdog setup` (which enables completion automatically).
+Project names tab-complete in zsh and bash after running `watchdog setup` (which enables completion automatically). Internal pipeline commands are intentionally hidden from tab completion and `--help`.
 
 When an investigation concludes, archive it to keep the list clean:
 

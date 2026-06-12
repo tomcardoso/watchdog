@@ -1,6 +1,6 @@
 # {name} — Watchdog
 
-At the start of every session: (1) read `hot.md` for a summary of recent activity and open questions; (2) read `context.md` to understand what this investigation is about; (3) check `.watchdog/queue/` for files ready to extract — if any are present, run `/watchdog-ingest` before doing anything else.
+At the start of every session: (1) read `hot.md` for a summary of recent activity and open questions; (2) read `context.md` to understand what this investigation is about; (3) check `.watchdog/ingest-state.json` — if it exists, files are queued and ready to extract; run `/watchdog-ingest` before doing anything else.
 
 
 ## Vault layout
@@ -31,12 +31,17 @@ The following are auto-allowed in `.claude/settings.json` — never ask for conf
 | Read any file within this vault | always allowed |
 | Write/edit files in `.watchdog/tmp/` | auto-allowed |
 | Write/edit files in `.watchdog/Registry/` | auto-allowed |
-| `watchdog <any subcommand>` | auto-allowed |
+| Write/edit briefing notes in `briefings/` | auto-allowed |
+| Write/edit `hot.md` | auto-allowed |
+| Write/edit `log.md` | auto-allowed |
+| `watchdog pre-flight <sha256>` | auto-allowed |
+| `watchdog post-flight --extraction <path>` | auto-allowed |
+| `watchdog queue-status` | auto-allowed |
+| `watchdog entity-index` | auto-allowed |
+| `watchdog is-duplicate <sha256>` | auto-allowed |
+| `watchdog write-entity --entity-id <id>` | auto-allowed |
+| `watchdog unlock` | auto-allowed |
 | `find .watchdog/queue/ …` | auto-allowed |
-| `rm .watchdog/tmp/*` | auto-allowed |
-| `rm .watchdog/queue/*.json` | auto-allowed |
-| `rm .watchdog/Registry/.ingest-lock` | auto-allowed |
-| `date -u +"%Y-%m-%dT%H:%M:%SZ"` | auto-allowed |
 
 **What is NOT permitted and must never be attempted:** `mkdir`, `which`, `pip show`, `python3 -c "…"`, `watchdog <cmd> --help`, shell pipelines to parse JSON (`cat … | python3 -c "…"`), absolute paths in any bash command, or `cd <path> &&` prefixes. Always use paths relative to the vault root. `.watchdog/tmp/` always exists — do not create it.
 

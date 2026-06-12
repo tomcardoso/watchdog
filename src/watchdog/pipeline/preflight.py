@@ -39,18 +39,29 @@ def run(vault: Path, sha256: str) -> dict:
                     "note_path": entry.get("note_path", ""),
                 })
 
+    # Check if already extracted
+    documents_path = vault / ".watchdog" / "Registry" / "documents.json"
+    already_extracted = False
+    if documents_path.exists():
+        try:
+            docs = json.loads(documents_path.read_text(encoding="utf-8"))
+            already_extracted = sha256 in docs
+        except Exception:
+            pass
+
     near_dup = queue.get("near_dup", {})
 
     return {
-        "sha256":            queue.get("sha256", sha256),
-        "filename":          queue.get("filename", ""),
-        "page_count":        queue.get("page_count") or len(queue.get("pages", [])),
-        "pages":             queue.get("pages", []),
+        "sha256":             queue.get("sha256", sha256),
+        "filename":           queue.get("filename", ""),
+        "page_count":         queue.get("page_count") or len(queue.get("pages", [])),
+        "already_extracted":  already_extracted,
+        "pages":              queue.get("pages", []),
         "near_dup": {
             "near_duplicates": near_dup.get("near_duplicates", []),
             "top_similarity":  near_dup.get("top_similarity", 0.0),
         },
-        "existing_entities": candidates,
+        "existing_entities":  candidates,
     }
 
 

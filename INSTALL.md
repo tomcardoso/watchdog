@@ -114,7 +114,7 @@ When setup finishes, reload your shell so the tab completion takes effect:
 **macOS / zsh:** `source ~/.zshrc`
 **bash:** `source ~/.bashrc`
 
-After that, pressing Tab after `watchdog ` shows available commands; pressing Tab after `watchdog open ` completes project names.
+After that, pressing Tab after `watchdog ` shows available commands; pressing Tab after `watchdog status ` completes project names.
 
 ---
 
@@ -165,9 +165,7 @@ watchdog chew
 
 You'll see a progress bar as Watchdog reads each file, runs OCR if needed, and prepares it for extraction. Each file shows its status: `OK` (queued), `SKP` (no text found — moved to `_INCOMING/_SKIPPED/`), or `ERR` (failed — moved to `_INCOMING/_FAILED/` with an explanation). Files where OCR produced noisy output show a `· garbled OCR` note but are still queued for Claude to interpret.
 
-When chewing finishes, Watchdog prints: `Open Claude Code and run: /watchdog-ingest`
-
-On macOS, you'll also receive a notification when chewing completes — useful if you've switched to another app.
+On macOS, you'll receive a notification when chewing completes — useful if you've switched to another app. When it finishes, run `watchdog ingest` from the same directory to set up the extraction session and open Claude Code.
 
 To cancel a chew in progress, press **Ctrl+C** — the lock is cleaned up automatically and unfinished files stay in `_INCOMING/` for the next run.
 
@@ -180,9 +178,15 @@ watchdog chew --chunk-workers 2   # parallel chunks per file (affects large PDFs
 
 These override the persistent settings from `watchdog configure` for that run only.
 
-**Step 2 — Extract in Claude Code**
+**Step 2 — Set up the extraction session**
 
-Open Claude Code with your investigation folder as the project and run:
+From inside the vault directory, run:
+
+```
+watchdog ingest
+```
+
+Watchdog scans the queue, then prompts you to open Claude Code. Once Claude Code is open, run the extraction skill:
 
 ```
 /watchdog-ingest
@@ -257,11 +261,6 @@ watchdog new "Contractor Investigation"
 To see all your investigations:
 ```
 watchdog list
-```
-
-To reopen an investigation in Claude Code:
-```
-watchdog open shell-company-investigation
 ```
 
 When an investigation concludes, archive it to keep your list tidy:
