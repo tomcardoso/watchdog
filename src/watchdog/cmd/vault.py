@@ -201,10 +201,11 @@ def cmd_new(args) -> None:
     print(f"  {_CYAN}cd {vault}{_RESET}")
     print()
     print(f"  {_BOLD}Next steps{_RESET}")
-    print(f"    1. Drop documents into {_CYAN}{vault}/_INCOMING/{_RESET}")
-    print(f"    2. Run {_CYAN}watchdog chew{_RESET} to process documents")
-    print(f"    3. Run {_CYAN}watchdog ingest{_RESET} to set up extraction and open Claude Code")
-    print(f"    4. Run {_CYAN}watchdog obsidian {slug}{_RESET} to open the vault in Obsidian")
+    print(f"    1. {_DIM}(optional){_RESET} Drop background material into {_CYAN}{vault}/_CONTEXT/{_RESET} and run {_CYAN}watchdog context{_RESET}")
+    print(f"    2. Drop documents into {_CYAN}{vault}/_INCOMING/{_RESET}")
+    print(f"    3. Run {_CYAN}watchdog chew{_RESET} to process documents")
+    print(f"    4. Run {_CYAN}watchdog ingest{_RESET} to set up extraction and open Claude Code")
+    print(f"    5. Run {_CYAN}watchdog obsidian {slug}{_RESET} to open the vault in Obsidian")
     print()
 
 
