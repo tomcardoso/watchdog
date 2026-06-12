@@ -162,6 +162,14 @@ watchdog ingest
 
 Watchdog scans the queue and prompts you to open Claude Code. When you confirm, it opens Claude Code with the extraction skill pre-loaded — extraction begins automatically.
 
+By default, Watchdog uses Claude Sonnet for both the orchestrator and the extraction subagents. You can override either at the command line:
+
+```bash
+watchdog ingest --extractor-model haiku      # faster, cheaper subagents
+watchdog ingest --orchestrator-model opus    # more capable orchestrator
+watchdog ingest --orchestrator-model opus --extractor-model haiku
+```
+
 Claude works through each chewed file in the queue, processing up to 5 documents in parallel. For each document, it:
 
 1. Reads the extracted text
