@@ -147,19 +147,24 @@ def main():
         print(f"\n  SUBAGENTS  ({len(rows)} total)")
         print(f"  {SEP}")
 
+        def short_model(m: str | None) -> str:
+            if not m:
+                return "?"
+            # e.g. "claude-sonnet-4-6" → "sonnet", "claude-haiku-4-5-20251001" → "haiku"
+            parts = m.split("-")
+            return parts[1] if len(parts) > 1 else m
+
+        model_w = max(len(short_model(s.get("model"))) for _, s in rows)
         desc_w = min(52, max(len(r[0]) for r in rows))
-        hdr = f"  {'Description':<{desc_w}}  {'Turns':>5}  {'Tools':>5}  {'Input':>8}  {'C.read':>9}  {'Output':>7}  {'Cost':>7}"
+        hdr = f"  {'Description':<{desc_w}}  {'Model':<{model_w}}  {'Turns':>5}  {'Tools':>5}  {'Input':>8}  {'C.read':>9}  {'Output':>7}  {'Cost':>7}"
         print(hdr)
         print(f"  {'─' * (len(hdr) - 2)}")
 
         for desc, s in sorted(rows, key=lambda x: -x[1]["tool_calls"]):
-            model_tag = ""
-            if s.get("model") and s["model"] != orch.get("model"):
-                short = s["model"].split("-")[1] if s.get("model") else ""
-                model_tag = f" [{short}]"
             trunc = (desc[:desc_w - 1] + "…") if len(desc) > desc_w else desc
+            m = short_model(s.get("model"))
             print(
-                f"  {trunc + model_tag:<{desc_w}}  "
+                f"  {trunc:<{desc_w}}  {m:<{model_w}}  "
                 f"{s['turns']:>5}  {s['tool_calls']:>5}  "
                 f"{_fmt(s['input']):>8}  {_fmt(s['cache_read']):>9}  "
                 f"{_fmt(s['output']):>7}  ${_cost(s):>6.4f}"
