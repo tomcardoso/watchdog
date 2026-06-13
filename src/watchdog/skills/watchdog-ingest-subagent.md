@@ -135,6 +135,10 @@ Build this JSON exactly:
 }
 ```
 
+Correct `roles` entry: `{"relationship": "Director of", "target_id": "acme-corp", "target_type": "company", "target_name": "Acme Corp", "page": 3, "confidence": "high", "date_range": null}`
+
+Wrong: `"Director of Acme Corp"` — plain strings are rejected.
+
 `morgue_entity_id`: the document's subject — debtor for bankruptcy, company for annual report, defendant for court order.
 
 Common mistakes that will cause post-flight to reject the extraction:
@@ -143,6 +147,8 @@ Common mistakes that will cause post-flight to reject the extraction:
 - `morgue_document_type` is required — a type slug like `annual-report`, `court-order`, `bankruptcy-filing`
 - Every `confidence` value must be exactly one of: `high`, `medium`, `low`, `disputed`
 - `match_id` must be omitted entirely for new entities — do not set it to `null` or `""`
+
+Before writing, verify in-context: (1) every `roles` entry is an object with all required keys, not a plain string; (2) `morgue_entity_id` is present and non-empty; (3) `morgue_document_type` is present; (4) every `confidence` value is exactly `high`, `medium`, `low`, or `disputed`; (5) `match_id` is omitted (not null) for new entities. Fix any issues before proceeding.
 
 Write to `.watchdog/tmp/wdg_ex_{SHA256}.json` using the Write tool. Then run post-flight:
 
