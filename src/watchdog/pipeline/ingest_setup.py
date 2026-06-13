@@ -3,7 +3,7 @@ watchdog ingest — human-facing setup step for the /watchdog-ingest skill.
 
 Run from the vault root before opening Claude Code. Handles:
   1. Stale lock detection (>30 min) and re-acquisition
-  2. Queue directory scan and partition (arrows vs docling)
+  2. Queue directory scan
   3. Writes .watchdog/ingest-state.json for the skill to read
 
 Human workflow:
@@ -45,7 +45,6 @@ def run(vault: Path, extractor_model: str = "sonnet") -> dict:
 
     queue_dir = vault / ".watchdog" / "queue"
     queue_files: list[dict] = []
-    arrows_files: list[dict] = []
 
     if queue_dir.exists():
         for qf in sorted(queue_dir.glob("*.json")):
@@ -53,21 +52,18 @@ def run(vault: Path, extractor_model: str = "sonnet") -> dict:
                 data = json.loads(qf.read_text(encoding="utf-8"))
             except Exception:
                 continue
-            source_type = data.get("metadata", {}).get("source_type", "docling")
-            entry = {
+            queue_files.append({
                 "path": str(qf.relative_to(vault)),
                 "sha256": qf.stem,
-                "source_type": source_type,
                 "filename": data.get("filename", qf.stem),
                 "document_type": data.get("document_type"),
-            }
-            (arrows_files if source_type == "arrows" else queue_files).append(entry)
+            })
 
-    total = len(queue_files) + len(arrows_files)
+    total = len(queue_files)
 
     if total == 0:
         state_file.unlink(missing_ok=True)
-        return {"total": 0, "lock_acquired": False, "queue_files": [], "arrows_files": []}
+        return {"total": 0, "lock_acquired": False, "queue_files": []}
 
     started_at = _iso_now()
     batch_start = int(time.time())
@@ -80,7 +76,6 @@ def run(vault: Path, extractor_model: str = "sonnet") -> dict:
         "batch_start": batch_start,
         "total": total,
         "queue_files": queue_files,
-        "arrows_files": arrows_files,
         "extractor_model": extractor_model,
     }
     state_file.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -99,11 +94,7 @@ def main() -> None:
         print("  Run watchdog chew to process documents in _INCOMING/ first.\n")
         return
     q = len(result["queue_files"])
-    a = len(result["arrows_files"])
-    parts = [f"{q} document{'s' if q != 1 else ''}"]
-    if a:
-        parts.append(f"{a} diagram{'s' if a != 1 else ''}")
-    print(f"\n  {', '.join(parts)} ready for extraction")
+    print(f"\n  {q} document{'s' if q != 1 else ''} ready for extraction")
     print("\n  Open Claude Code and run:  /watchdog-ingest\n")
 
 

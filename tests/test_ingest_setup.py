@@ -39,7 +39,6 @@ def test_queued_files_acquires_lock_and_writes_state(tmp_path):
     assert result["total"] == 2
     assert result["lock_acquired"] is True
     assert len(result["queue_files"]) == 2
-    assert result["arrows_files"] == []
     assert "batch_start" in result
     assert "started_at" in result
 
@@ -50,18 +49,6 @@ def test_queued_files_acquires_lock_and_writes_state(tmp_path):
     lock_file = vault / ".watchdog" / "Registry" / ".ingest-lock"
     assert lock_file.exists()
     assert "pid: cli" in lock_file.read_text()
-
-
-def test_arrows_files_partitioned_separately(tmp_path):
-    vault = _make_vault(tmp_path)
-    _write_queue_file(vault, "doc1", source_type="docling")
-    _write_queue_file(vault, "arr1", source_type="arrows")
-
-    result = run(vault)
-
-    assert len(result["queue_files"]) == 1
-    assert len(result["arrows_files"]) == 1
-    assert result["arrows_files"][0]["sha256"] == "arr1"
 
 
 def test_queue_file_paths_are_vault_relative(tmp_path):

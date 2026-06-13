@@ -38,7 +38,7 @@ Set `TOTAL = INGEST.total`. Set `BATCH_START = INGEST.batch_start`. Set `EXTRACT
 
 Set `EXTRACTOR_MODEL = INGEST.extractor_model` if present, else `"sonnet"`.
 
-Set `QUEUE_FILES = INGEST.queue_files`. Set `ARROWS_FILES = INGEST.arrows_files`.
+Set `QUEUE_FILES = INGEST.queue_files`.
 
 The lock is held (acquired by `watchdog ingest`). Every exit path — including errors — must release it by running `watchdog unlock`. That command removes the lock, deletes `ingest-state.json`, and cleans up temp files.
 
@@ -61,8 +61,6 @@ For each entry in `QUEUE_FILES`, set `DOMAIN_SKILL_PATH` = `records/<document_ty
 ## 3. Process each file
 
 Process files in **batches of up to 5**. Registry writes are serialized internally — concurrent subagents are safe.
-
-Process `ARROWS_FILES` inline first (see §6) before the subagent loop.
 
 Split `QUEUE_FILES` into batches of at most 5 files. For each batch:
 
@@ -139,42 +137,7 @@ This renders `timeline.md` from all canonical `.watchdog/timeline/{date}.ndjson`
 
 ---
 
-## 6. arrows.app import
-
-When a queued file has `metadata.source_type == "arrows"`, handle it inline (not via subagent) — it contains pre-parsed entities and relationships, not document text.
-
-Read the queue JSON directly. For each entity in `entities`, create or update its entity note and registry entry (treat the arrows file as the source document). For each relationship, add it to the `from` entity's Relationships section.
-
-Create a document note for the arrows.app file:
-```yaml
----
-title: <filename without extension>
-type: Document
-document_type: Relationship Diagram
-file: <filename>
-date_of_document: null
-date_ingested: <today>
-source: null
-obtained: null
-entities_mentioned:
-  - <all entities from the diagram>
-page_count: 1
----
-
-## Summary
-
-Relationship diagram imported from arrows.app. Contains <N> entities and <M> relationships.
-
-## Notes
-
-<!-- Journalist annotations. -->
-```
-
-Delete the queue file when done.
-
----
-
-## 7. Post-batch contradiction resolution
+## 6. Post-batch contradiction resolution
 
 For each entry in `CONTRADICTION_FLAGS`:
 - Read the entity note (`entities/{type_lowercase}/{id}.md`)
@@ -185,7 +148,7 @@ This step reads at most a handful of entity notes — typically 0–3 per batch.
 
 ---
 
-## 8. Post-ingest briefing
+## 7. Post-ingest briefing
 
 Print a batch summary:
 ```
@@ -289,13 +252,13 @@ Keep hot.md under ~40 lines.
 
 ---
 
-## 9. Release lock
+## 8. Release lock
 
 Run `watchdog unlock` to remove `.watchdog/Registry/.ingest-lock`, delete `ingest-state.json`, and clean up temp files.
 
 ---
 
-## 10. Clarifying questions (optional)
+## 9. Clarifying questions (optional)
 
 After the briefing, if you encountered genuine ambiguities that would meaningfully change the entity graph, ask up to 3–5 targeted questions, batched together:
 - Two entities that might be the same person or company

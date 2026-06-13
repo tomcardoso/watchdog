@@ -125,29 +125,6 @@ def pdf_extract_chunk(src: Path, start: int, end: int) -> Path:
     return tmp
 
 
-def process_arrows(path: Path) -> dict:
-    """Parse an arrows.app JSON file into the standard preprocessed format."""
-    from watchdog.pipeline.arrows_parser import parse_arrows
-    try:
-        parsed = parse_arrows(path)
-    except (json.JSONDecodeError, KeyError) as e:
-        return {"error": f"Failed to parse arrows.app JSON: {e}"}
-    return {
-        "filename": path.name,
-        "sha256": sha256_file(path),
-        "page_count": 0,
-        "pages": [],
-        "metadata": {
-            "source_type": "arrows",
-            "ocr_used": False,
-            "garbled_detected": False,
-            "chunked": False,
-        },
-        "entities": parsed["entities"],
-        "relationships": parsed["relationships"],
-    }
-
-
 def process_direct_text(path: Path) -> dict:
     text = path.read_text(encoding="utf-8", errors="replace")
     return {
@@ -528,19 +505,7 @@ def main() -> None:
 
     suffix = path.suffix.lower()
 
-    # Arrows.app detection: JSON files with top-level "nodes" and "relationships"
-    if suffix == ".json":
-        try:
-            raw = json.loads(path.read_text())
-            if "nodes" in raw and "relationships" in raw:
-                result = process_arrows(path)
-                if "error" in result:
-                    print(json.dumps(result))
-                    sys.exit(1)
-                print(json.dumps(result, ensure_ascii=False))
-                return
-        except (json.JSONDecodeError, OSError):
-            pass
+
 
     if suffix in DIRECT_TEXT_SUFFIXES:
         result = process_direct_text(path)

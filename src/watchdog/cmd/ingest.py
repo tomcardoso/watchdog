@@ -90,11 +90,7 @@ def cmd_ingest(args) -> None:
         print(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in _INCOMING/ first.{_RESET}\n")
         return
     q = len(result["queue_files"])
-    a = len(result["arrows_files"])
-    parts = [f"{_BOLD}{q} document{'s' if q != 1 else ''}{_RESET}"]
-    if a:
-        parts.append(f"{a} diagram{'s' if a != 1 else ''}")
-    print(f"\n  {', '.join(parts)} ready for extraction")
+    print(f"\n  {_BOLD}{q} document{'s' if q != 1 else ''}{_RESET} ready for extraction")
     try:
         answer = input(f"\n  Open in Claude Code to start ingestion? [Y/n] ").strip().lower()
     except (EOFError, KeyboardInterrupt):
