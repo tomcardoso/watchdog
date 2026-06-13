@@ -152,7 +152,7 @@ Write to `.watchdog/tmp/wdg_ex_{SHA256}.json` using the Write tool. Then run pos
 watchdog post-flight --extraction .watchdog/tmp/wdg_ex_{SHA256}.json
 ```
 
-Post-flight validates, applies entity merges, writes the vault, and cleans up temp files. If it prints errors, fix the JSON and run it again. Do not run `--help` or any exploration command to debug schema errors.
+Post-flight validates, applies entity merges, writes the vault, writes timeline events (from the `timeline_events` in your extraction JSON — you do **not** write any `.watchdog/timeline/` files yourself), and cleans up temp files. If it prints errors, fix the JSON and run it again. Do not run `--help` or any exploration command to debug schema errors.
 
 ## Step 9 — Write scratchpad
 
@@ -176,24 +176,7 @@ Write a curated scratchpad to `.watchdog/tmp/notes_{SHA256}.md`. This is what th
 
 Omit any section that has nothing worth saying. Do not summarize — include only what a reporter would actually want to know.
 
-## Step 10 — Write timeline events
-
-Collect all `timeline_events` from all extracted entities (from your Step 5 work). Group by date. For each unique date that has at least one event, build NDJSON — one JSON object per line:
-
-```json
-{"date": "YYYY-MM-DD", "event": "event text", "source_sha256": "{SHA256}", "entity_ids": ["entity-id", ...], "confidence": "high|medium|low"}
-```
-
-For each date `YYYY-MM-DD`, write exactly one file to `.watchdog/timeline/YYYY-MM-DD_{SHA256[:7]}.ndjson` using the Write tool. Put all events for that date as separate lines in the same file. If a date has no events, skip it.
-
-Do not check whether a canonical file already exists — always write to the raw `{date}_{SHA256[:7]}.ndjson` path. The `watchdog timeline-collisions` tool handles promotion and deduplication after all subagents finish.
-
-If `.watchdog/timeline/` does not exist, create it first:
-```bash
-mkdir -p .watchdog/timeline
-```
-
-## Step 11 — Return result
+## Step 10 — Return result
 
 Return ONLY the following block. No other output.
 
