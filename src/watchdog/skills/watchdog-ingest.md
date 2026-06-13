@@ -62,7 +62,7 @@ For each entry in `QUEUE_FILES`, set `DOMAIN_SKILL_PATH` = `records/<document_ty
 
 Process files in **batches of up to 5**. Registry writes are serialized internally — concurrent subagents are safe.
 
-Process `ARROWS_FILES` inline first (see §5) before the subagent loop.
+Process `ARROWS_FILES` inline first (see §6) before the subagent loop.
 
 Split `QUEUE_FILES` into batches of at most 5 files. For each batch:
 
@@ -106,13 +106,13 @@ Print:
 
 ---
 
-## 5. Post-loop: graph colour check
+## 4. Post-loop: graph colour check
 
 After the loop completes, check whether any new entity type from the results is missing from `.obsidian/graph.json`'s `colorGroups` array. If so, read the file, add a colour entry (`{"query": "path:entities/<type_lowercase>", "color": {"a": 1, "rgb": <24-bit int>}}`), and write it back. Pick a colour visually distinct from existing ones.
 
 ---
 
-## 6. Timeline reconciliation
+## 5. Timeline reconciliation
 
 Run:
 ```bash
@@ -139,7 +139,7 @@ This renders `timeline.md` from all canonical `.watchdog/timeline/{date}.ndjson`
 
 ---
 
-## 7. arrows.app import
+## 6. arrows.app import
 
 When a queued file has `metadata.source_type == "arrows"`, handle it inline (not via subagent) — it contains pre-parsed entities and relationships, not document text.
 
@@ -174,7 +174,7 @@ Delete the queue file when done.
 
 ---
 
-## 8. Post-batch contradiction resolution
+## 7. Post-batch contradiction resolution
 
 For each entry in `CONTRADICTION_FLAGS`:
 - Read the entity note (`entities/{type_lowercase}/{id}.md`)
@@ -185,7 +185,7 @@ This step reads at most a handful of entity notes — typically 0–3 per batch.
 
 ---
 
-## 9. Post-ingest briefing
+## 8. Post-ingest briefing
 
 Print a batch summary:
 ```
@@ -289,13 +289,13 @@ Keep hot.md under ~40 lines.
 
 ---
 
-## 10. Release lock
+## 9. Release lock
 
 Run `watchdog unlock` to remove `.watchdog/Registry/.ingest-lock`, delete `ingest-state.json`, and clean up temp files.
 
 ---
 
-## 11. Clarifying questions (optional)
+## 10. Clarifying questions (optional)
 
 After the briefing, if you encountered genuine ambiguities that would meaningfully change the entity graph, ask up to 3–5 targeted questions, batched together:
 - Two entities that might be the same person or company
