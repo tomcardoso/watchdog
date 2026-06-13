@@ -67,7 +67,7 @@ _VAULT_PERMISSIONS = [
     "Bash(watchdog queue-status)",
     "Bash(watchdog is-duplicate *)",
     "Bash(watchdog write-entity --entity-id *)",
-    "Bash(watchdog unlock)",
+    "Bash(watchdog unlock*)",
     # shell utilities
     "Bash(find .watchdog/queue/ *)",
     # internal vault state

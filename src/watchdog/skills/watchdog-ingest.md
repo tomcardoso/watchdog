@@ -40,7 +40,7 @@ Set `EXTRACTOR_MODEL = INGEST.extractor_model` if present, else `"sonnet"`.
 
 Set `QUEUE_FILES = INGEST.queue_files`. Set `ARROWS_FILES = INGEST.arrows_files`.
 
-The lock is held (acquired by `watchdog ingest`). Every exit path — including errors — must release it by running `watchdog unlock` and deleting `.watchdog/ingest-state.json`.
+The lock is held (acquired by `watchdog ingest`). Every exit path — including errors — must release it by running `watchdog unlock`. That command removes the lock, deletes `ingest-state.json`, and cleans up temp files.
 
 ---
 
@@ -266,7 +266,7 @@ Keep hot.md under ~40 lines.
 
 ## 9. Release lock
 
-Run `watchdog unlock` to remove `.watchdog/Registry/.ingest-lock` and clean up any temp files. Then delete `.watchdog/ingest-state.json`.
+Run `watchdog unlock` to remove `.watchdog/Registry/.ingest-lock`, delete `ingest-state.json`, and clean up temp files.
 
 ---
 
