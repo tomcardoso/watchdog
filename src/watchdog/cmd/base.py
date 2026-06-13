@@ -111,6 +111,7 @@ _CMD_HELP: dict[str, dict] = {
         "opts": [
             ("--orchestrator-model M", "Model for the orchestrator session (sonnet/opus/haiku, default: sonnet)"),
             ("--extractor-model M",    "Model for extraction subagents (sonnet/haiku, default: sonnet)"),
+            ("--finalizer-model M",    "Model for the finalize subagent — timeline + briefing (sonnet/opus/haiku, default: sonnet)"),
         ],
     },
     "context": {
