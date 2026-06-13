@@ -284,6 +284,9 @@ def main() -> None:
     p_ingest.add_argument("--extractor-model", choices=_model_choices, default="sonnet",
                           dest="extractor_model",
                           help="Model for extraction subagents (default: sonnet)")
+    p_ingest.add_argument("--finalizer-model", choices=_model_choices, default="sonnet",
+                          dest="finalizer_model",
+                          help="Model for the finalize subagent — timeline reconciliation + briefing (default: sonnet)")
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_context = sub.add_parser("context", help="Open Claude Code to seed investigation context from _CONTEXT/")

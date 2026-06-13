@@ -77,12 +77,14 @@ def cmd_ingest(args) -> None:
         sys.exit("Error: must be run from inside a Watchdog vault directory")
     orchestrator_model = getattr(args, "orchestrator_model", None) or "sonnet"
     extractor_model    = getattr(args, "extractor_model",    None) or "sonnet"
-    if orchestrator_model not in _MODEL_IDS:
-        sys.exit(f"Error: unknown model '{orchestrator_model}' — choose sonnet, opus, or haiku")
-    if extractor_model not in _MODEL_IDS:
-        sys.exit(f"Error: unknown model '{extractor_model}' — choose sonnet, opus, or haiku")
+    finalizer_model    = getattr(args, "finalizer_model",    None) or "sonnet"
+    for label, model in (("orchestrator", orchestrator_model),
+                         ("extractor", extractor_model),
+                         ("finalizer", finalizer_model)):
+        if model not in _MODEL_IDS:
+            sys.exit(f"Error: unknown {label} model '{model}' — choose sonnet, opus, or haiku")
     from watchdog.pipeline.ingest_setup import run as is_run
-    result = is_run(vault, extractor_model=extractor_model)
+    result = is_run(vault, extractor_model=extractor_model, finalizer_model=finalizer_model)
     if "error" in result:
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} {result['error']}\n")
     if result["total"] == 0:
