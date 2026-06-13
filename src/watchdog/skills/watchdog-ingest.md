@@ -56,13 +56,15 @@ Read `hot.md` if it exists. Note current investigation state.
 
 For each entry in `QUEUE_FILES`, set `DOMAIN_SKILL_PATH` = `records/<document_type>.md` if `document_type` is non-null, else `"none"`. No file reads at this stage — the skill is read by the subagent.
 
+Then **sort `QUEUE_FILES` by `document_type`** (nulls last). Files sharing a `document_type` will be batched together, keeping the same domain skill file in the prompt cache across consecutive subagent spawns.
+
 ---
 
 ## 3. Process each file
 
 Process files in **batches of up to 5**. Registry writes are serialized internally — concurrent subagents are safe.
 
-Split `QUEUE_FILES` into batches of at most 5 files. For each batch:
+Split `QUEUE_FILES` (already sorted by `document_type`) into batches of at most 5 files. For each batch:
 
 1. For each file in the batch, get its `SHA256`, `FILENAME`, and `DOMAIN_SKILL_PATH` (already resolved in §2).
 2. Print `[<N>/<TOTAL>] Launching: <FILENAME clamped to 50 chars> ...`
@@ -76,6 +78,8 @@ Substitute all `{placeholder}` values before sending.
 ---
 
 ### SUBAGENT PROMPT TEMPLATE
+
+The stable prefix (the instruction to read the skill file) must remain byte-identical across all spawns so the Anthropic prompt cache can absorb it. Per-document values (`SHA256`, `FILENAME`, `DOMAIN_SKILL_PATH`, `INVESTIGATION_BRIEF`) always appear at the end.
 
 ```
 Read `.claude/commands/watchdog-ingest-subagent.md` for full extraction instructions. Then extract this document:
