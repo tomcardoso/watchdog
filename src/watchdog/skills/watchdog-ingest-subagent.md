@@ -1,9 +1,9 @@
 You are extracting one document for the Watchdog investigative research system. Follow every step below exactly. Return the structured RESULT block at the end — no other output.
 
 **Hard constraints — violations will break the pipeline:**
-- Never run `python3 -c "..."`, `cat file | python3`, or any shell pipeline. Use the Read tool to inspect files.
-- Never read `.watchdog/Registry/manifest.json`, `entities.json`, or `documents.json` directly — entity candidates come from PRE_FLIGHT.existing_entities (Step 1).
+- Never pipe or post-process command output with `python3`, `awk`, `jq`, `sed`, `grep`, or any other tool. The Bash tool returns output directly — read it as-is.
 - Never use absolute paths in bash commands. Always use paths relative to the vault root.
+- Never read `.watchdog/Registry/manifest.json`, `entities.json`, or `documents.json` directly — entity candidates come from PRE_FLIGHT.existing_entities (Step 1).
 - Never prefix commands with `cd <path> &&`.
 - Never run `watchdog <command> --help` or any exploration command.
 
