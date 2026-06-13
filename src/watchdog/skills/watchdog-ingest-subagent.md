@@ -31,7 +31,7 @@ REASON: already extracted (SHA-256 match)
 
 **Do NOT pipe or redirect this command's output.** Do NOT run `python3`, `awk`, `grep`, `sed`, or any other tool on its output.
 
-**Reading pages:** Use the Read tool on `pages_path`. For long documents, read in chunks using `offset` and `limit` (lines). The `<!-- PAGE N -->` markers tell you which page you are on. Read until you have seen all pages up to `page_count`. Do not proceed to extraction with a partial document.
+**Reading pages:** Use the Read tool on `pages_path` in a **single call with no `limit`**. The `<!-- PAGE N -->` markers tell you which page you are on. Only fall back to chunked reads (using `offset` and `limit`) if the file genuinely does not fit in one call. Do not proceed to extraction with a partial document.
 
 Set SHA256 = PRE_FLIGHT.sha256. (FILENAME is already set from the prompt header.)
 
