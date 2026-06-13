@@ -81,7 +81,7 @@ def main() -> None:
     tmp_dir = vault / ".watchdog" / "tmp"
     tmp_dir.mkdir(parents=True, exist_ok=True)
     tmp_path = tmp_dir / f"preflight_{sha256[:7]}.json"
-    tmp_path.write_text(json.dumps(result, ensure_ascii=False))
+    tmp_path.write_text(json.dumps(result, ensure_ascii=False, indent=2))
 
     print(json.dumps(result, ensure_ascii=False))
 
