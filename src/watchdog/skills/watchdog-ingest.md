@@ -10,7 +10,7 @@ Chewing (OCR, Docling) is handled separately by the `watchdog chew` CLI command.
 
 `LIMIT` caps how many files are **extracted** this run. When the limit is reached, stop cleanly and report how many files remain.
 
-**Architecture note:** Each document is extracted in an isolated Agent subagent. This keeps the orchestrator context flat regardless of batch size — queue file text, skill files, and extraction output never accumulate in this session. The orchestrator holds only: the investigation brief, a compact entity index (id/name/type/aliases), and a running list of per-document result summaries.
+**Architecture note:** Each document is extracted in an isolated Agent subagent. This keeps the orchestrator context flat regardless of batch size — queue file text, skill files, and extraction output never accumulate in this session. Timeline reconciliation and the post-ingest briefing are likewise delegated to a single finalize subagent, so scratchpad prose and timeline NDJSON never enter this session. The orchestrator holds only: the investigation brief, a compact entity index (id/name/type/aliases), and a running list of compact per-document result blocks.
 
 **CWD:** All bash commands run from the vault root. Never prefix commands with `cd <path> &&`. Never use absolute paths in any bash command — always use paths relative to the vault root (e.g. `.watchdog/tmp/file.json`, not `/Users/…/file.json`).
 
@@ -110,47 +110,9 @@ After the loop completes, check whether any new entity type from the results is 
 
 ---
 
-## 5. Timeline reconciliation
+## 5. Finalize: timeline + briefing
 
-Run:
-```bash
-watchdog timeline-collisions
-```
-
-Read the JSON output directly from the Bash tool — it is a JSON array. The tool has already promoted any pending raw files (dates with no prior canonical) to canonical. The array contains only **collision objects**: dates where a canonical already existed and new raw files were added in this ingest session.
-
-For each collision object `{"date": "...", "canonical": "...", "raw": [...]}`:
-
-1. Read the canonical file (all NDJSON lines) using the Read tool.
-2. Read each raw file listed in `raw` (all NDJSON lines) using the Read tool.
-3. Combine all event lines for this date. Identify semantic duplicates — events describing the same real-world occurrence even if worded differently. Remove the duplicate, keeping the more precise wording.
-4. Write the deduplicated event list back to the canonical file, one JSON object per line, using the Write tool. Leave the raw file(s) in place as an audit trail.
-
-If the array is empty, skip the dedup pass.
-
-Then run:
-```bash
-watchdog rebuild-timeline
-```
-
-This renders `timeline.md` from all canonical `.watchdog/timeline/{date}.ndjson` files.
-
----
-
-## 6. Post-batch contradiction resolution
-
-For each entry in `CONTRADICTION_FLAGS`:
-- Read the entity note (`entities/{type_lowercase}/{id}.md`)
-- Verify the contradiction is genuine, not a subagent false positive
-- If false positive: edit the note to remove the `[!contradiction]` callout that `write-vault` wrote
-
-This step reads at most a handful of entity notes — typically 0–3 per batch.
-
----
-
-## 7. Post-ingest briefing
-
-Print a batch summary:
+Print the batch summary:
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Ingest complete: <extracted> processed, <skipped> skipped, <failed> failed
@@ -159,108 +121,41 @@ Entities in vault: <total from registry.json>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-Read all subagent scratchpads from `.watchdog/tmp/notes_*.md` — one per successfully extracted document. These contain the high-signal detail (key figures, leads, contradictions, chronological context) that the subagent's compact RESULT block cannot carry. Build the briefing from the scratchpads, `RESULTS` metadata, `NEARDUP_ALERTS`, `CONTRADICTION_FLAGS`, and `INVESTIGATION_BRIEF`. Do not re-read queue files or entity records.
+Read `.watchdog/Registry/registry.json` with the Read tool for the entity total used in the banner.
 
-Write a briefing note to `briefings/<YYYY-MM-DD-HH-MM>.md`:
+If no documents were successfully extracted (`EXTRACTED == 0`), skip the finalize subagent and continue to §6.
 
-```markdown
----
-date: <ISO 8601>
-files_ingested: <n>
-new_entities: <n>
----
+Otherwise launch **one finalize subagent** (a single Agent call) to reconcile the timeline and write the briefing. This keeps scratchpad prose and timeline NDJSON out of this session. Set the Agent's `description` to `Watchdog finalize` and `model` to `EXTRACTOR_MODEL`. Send this prompt (substitute every `{placeholder}` first):
 
-# Ingest briefing — <date>
+```
+Read `.claude/commands/watchdog-ingest-finalize-subagent.md` for full instructions. Then finalize this ingest batch.
 
-## What was ingested
+INVESTIGATION_BRIEF:
+{INVESTIGATION_BRIEF}
 
-<One line per file: filename, document type, date of document, entity count.>
+RESULTS:
+{RESULTS}
 
-## New entities
+NEARDUP_ALERTS:
+{NEARDUP_ALERTS}
 
-<Entities that did not exist in the vault before this ingest, with type and source document.>
-
-## Connections to existing entities
-
-<Entities from the new documents that matched entities already in the vault. For each, state what the connection is and why it matters.>
-
-## Leads and follow-up ideas
-
-<Actionable leads from the documents:>
-- **[Question]** <Open question the documents raise but don't answer.> *Source: [[documents/...]]*
-- **[Contact]** <Person or entity worth reaching out to.> *Source: [[entities/...]]*
-- **[Document]** <Specific document that appears to exist but isn't in the vault.> *Source: [[documents/...]], p. N*
-- **[FOI]** <Records request worth filing based on a gap.> *Source: [[documents/...]], p. N*
-
-If context.md is filled in, orient leads toward the journalist's stated questions. Omit this section if nothing warrants a lead.
-
-## Anomalies worth a closer look
-
-<Flag if present: shared addresses between apparently unrelated entities; a person appearing in an unexpected role; a transaction disproportionate to the entity's apparent scale; an entity appearing in many documents with no documented relationships. Write "Nothing flagged." if clean.>
+CONTRADICTION_FLAGS:
+{CONTRADICTION_FLAGS}
 ```
 
-If `NEARDUP_ALERTS` is non-empty, append:
-
-```markdown
-## Near-duplicate alerts
-
-The following files are similar to existing documents. Review and decide whether to keep both or treat as the same document.
-
-- <FILENAME>: <similarity>% similar to <existing document title>
-```
-
-
-### Update hot.md
-
-Overwrite `hot.md`:
-
-```markdown
-# Hot cache
-
-*Last updated: <YYYY-MM-DD> — [[briefings/<briefing-slug>|Briefing <date>]]*
-
-## Investigation status
-
-<One sentence on where the investigation stands, drawing on context.md and what was just ingested.>
-
-## Recent additions
-
-<Bullet list of new entities and documents added this session, with type and source.>
-
-## Emerging patterns
-
-<New connections, contradictions, or anomalies surfaced in this ingest. Omit if nothing notable.>
-
-## Open questions
-
-<Leads from the briefing condensed to short bullets.>
-```
-
-Keep hot.md under ~40 lines.
-
-### Append to log.md
-
-```markdown
-## <YYYY-MM-DD HH:MM> — Ingest
-
-- **Files:** <n> processed, <n> skipped, <n> failed
-- **New entities:** <n> (<n> new, <n> updated)
-- **Briefing:** [[briefings/<briefing-slug>|<date>]]
-<If contradictions were flagged:>
-- **Contradictions flagged:** <n> — see entity notes for details
-```
+When it returns, print its `BRIEFING:` path so the user can open it. Do not read the scratchpads, timeline files, or the briefing yourself — the finalize subagent owns those.
 
 ---
 
-## 8. Release lock
+## 6. Release lock
 
 Run `watchdog unlock` to remove `.watchdog/Registry/.ingest-lock`, delete `ingest-state.json`, and clean up temp files.
 
 ---
 
-## 9. Clarifying questions (optional)
+## 7. Clarifying questions (optional)
 
-After the briefing, if you encountered genuine ambiguities that would meaningfully change the entity graph, ask up to 3–5 targeted questions, batched together:
+After finalizing, if the extraction results surfaced genuine ambiguities that would meaningfully change the entity graph, ask up to 3–5 targeted questions, batched together. Draw these from `RESULTS`, `NEARDUP_ALERTS`, and `CONTRADICTION_FLAGS` — do not re-read documents:
 - Two entities that might be the same person or company
 - A document with no clear date, authority, or subject
 - A near-duplicate where journalist input would help
