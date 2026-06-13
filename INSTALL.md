@@ -105,9 +105,7 @@ This will:
 - Verify that qpdf and Ghostscript are installed
 - Ask where you want to store your investigation projects
 - Enable tab completion in your shell automatically
-- Download the ML models for document conversion and semantic search (~600 MB, one-time)
-
-The model download step may take a few minutes on a slow connection. It only happens once.
+- Download the ML models for document conversion and semantic search (one-time, may take a few minutes on a slow connection)
 
 It will ask one question: where to store your projects. Press Return to accept the default (`~/Investigations`), or type a different path.
 
