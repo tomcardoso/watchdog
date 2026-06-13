@@ -84,6 +84,11 @@ _VAULT_PERMISSIONS = [
 ]
 
 _CMD_HELP: dict[str, dict] = {
+    "register": {
+        "desc": "Register an existing vault folder with watchdog",
+        "args": [("path", "Path to the existing vault folder")],
+        "opts": [("--name NAME", "Investigation name (omit to be prompted)")],
+    },
     "new": {
         "desc": "Create a new investigation vault",
         "args": [("name", "Investigation name (e.g. 'Shell Company Investigation')")],
@@ -393,6 +398,7 @@ def _print_banner() -> None:
     groups = [
         ("Investigation", [
             ("new",        "Create a new investigation vault"),
+            ("register",   "Register an existing vault folder"),
             ("obsidian",   "Open in Obsidian"),
             ("open",       "Open vault folder in Finder / file explorer"),
             ("archive",    "Archive a completed investigation"),

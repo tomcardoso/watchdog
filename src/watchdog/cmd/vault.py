@@ -67,6 +67,51 @@ def _register_obsidian_vault(vault: Path) -> None:
         pass  # non-fatal — user can register manually via watchdog obsidian
 
 
+def cmd_register(args) -> None:
+    vault = Path(args.path).expanduser().resolve() if args.path else Path.cwd()
+
+    if not vault.exists():
+        sys.exit(f"Error: path not found: {vault}")
+    if not (vault / ".watchdog").exists():
+        sys.exit(f"Error: {vault} does not look like a watchdog vault — no .watchdog folder found.")
+
+    reg = _load_registry(vault)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # Infer name: use folder name as default, let user override
+    default_name = vault.name.replace("-", " ").replace("_", " ").title()
+    if reg and reg.get("name"):
+        default_name = reg["name"]
+
+    if args.name:
+        name = args.name.strip()
+    else:
+        print(f"\n  {_DIM}Vault:{_RESET} {_CYAN}{vault}{_RESET}")
+        print(f"  {_DIM}Suggested name:{_RESET} {default_name}")
+        try:
+            entered = input("\n  Investigation name (Enter to accept suggestion): ").strip()
+            name = entered if entered else default_name
+        except (EOFError, KeyboardInterrupt):
+            print()
+            sys.exit(1)
+
+    slug = slugify(name)
+    if not slug:
+        sys.exit("Error: name is invalid.")
+
+    projects = load_projects()
+    if slug in projects:
+        sys.exit(f"Error: a project with slug '{slug}' is already registered. Use 'watchdog rename' or choose a different name.")
+
+    created_at = reg.get("created_at", now) if reg else now
+    projects[slug] = {"name": name, "path": str(vault), "created_at": created_at}
+    save_projects(projects)
+    _register_obsidian_vault(vault)
+
+    print(f"\n  {_GREEN}Registered:{_RESET} {_BOLD}{name}{_RESET}  {_DIM}[{slug}]{_RESET}")
+    print(f"  {_CYAN}{vault}{_RESET}\n")
+
+
 def cmd_new(args) -> None:
     name = args.name or getattr(args, "name_flag", None)
     description = getattr(args, "description", None) or ""
@@ -150,10 +195,6 @@ def cmd_new(args) -> None:
         ) + "\n"
     )
 
-    (vault / "hot.md").write_text(_render_template("hot.md"))
-    (vault / "log.md").write_text(_render_template("log.md"))
-    desc_placeholder = description if description else "<!-- One paragraph. What is the story? What pattern, question, or wrongdoing are you pursuing? -->"
-    (vault / "context.md").write_text(_render_template("context.md", name=name, description=desc_placeholder))
     (vault / "index.md").write_text(_render_template("index.md", name=name, today=today))
     (vault / "CLAUDE.md").write_text(_render_template("CLAUDE.md", name=name))
 
@@ -548,7 +589,17 @@ def cmd_unarchive(args) -> None:
 
 
 def cmd_log(args) -> None:
-    _, info = _find_project(args.name)
+    if not args.name:
+        cwd = Path(".").resolve()
+        if (cwd / ".watchdog").is_dir():
+            projects = load_projects()
+            info = next((v for v in projects.values() if Path(v["path"]).resolve() == cwd), None)
+            if info is None:
+                sys.exit("Error: current directory is a vault but not registered. Run `watchdog register` first.")
+        else:
+            sys.exit("Error: not inside a watchdog project. Run `watchdog log <name>` or cd into a project first.")
+    else:
+        _, info = _find_project(args.name)
     vault = Path(info["path"])
     log_path = vault / "log.md"
 
@@ -582,7 +633,17 @@ def cmd_log(args) -> None:
 
 
 def cmd_watch(args) -> None:
-    _, info = _find_project(args.name)
+    if not args.name:
+        cwd = Path(".").resolve()
+        if (cwd / ".watchdog").is_dir():
+            projects = load_projects()
+            info = next((v for v in projects.values() if Path(v["path"]).resolve() == cwd), None)
+            if info is None:
+                sys.exit("Error: current directory is a vault but not registered. Run `watchdog register` first.")
+        else:
+            sys.exit("Error: not inside a watchdog project. Run `watchdog watch <name>` or cd into a project first.")
+    else:
+        _, info = _find_project(args.name)
     vault = Path(info["path"])
     if not vault.exists():
         sys.exit(f"Error: project directory not found: {vault}")

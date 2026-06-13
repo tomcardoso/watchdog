@@ -50,6 +50,7 @@ from watchdog.cmd.vault import (
     cmd_new,
     cmd_obsidian,
     cmd_open,
+    cmd_register,
     cmd_rename,
     cmd_search,
     cmd_status,
@@ -145,6 +146,11 @@ def main() -> None:
     )
     sub = parser.add_subparsers(dest="command", required=False)
 
+    p_register = sub.add_parser("register", help="Register an existing vault folder with watchdog")
+    p_register.add_argument("path", nargs="?", help="Path to the existing vault folder (defaults to current directory)")
+    p_register.add_argument("--name", help="Investigation name (omit to be prompted)")
+    p_register.set_defaults(func=cmd_register)
+
     p_new = sub.add_parser("new", help="Create a new investigation vault")
     p_new.add_argument("name", nargs="?", help="Investigation name (e.g. 'Shell Company Investigation')")
     p_new.add_argument("--name", dest="name_flag", help="Investigation name (alternative to positional)")
@@ -230,13 +236,13 @@ def main() -> None:
     p_unarchive.set_defaults(func=cmd_unarchive)
 
     p_log = sub.add_parser("log", help="Show ingest history for an investigation")
-    p_log.add_argument("name", help="Investigation name or slug").completer = _project_completer
+    p_log.add_argument("name", nargs="?", help="Investigation name or slug (omit when inside the project directory)").completer = _project_completer
     p_log.add_argument("--lines", type=int, default=None, metavar="N",
                        help="Number of lines to show (default: all)")
     p_log.set_defaults(func=cmd_log)
 
     p_watch = sub.add_parser("watch", help="Watch _INCOMING/ and chew files automatically")
-    p_watch.add_argument("name", help="Investigation name or slug").completer = _project_completer
+    p_watch.add_argument("name", nargs="?", help="Investigation name or slug (omit when inside the project directory)").completer = _project_completer
     p_watch.set_defaults(func=cmd_watch)
 
     p_rename = sub.add_parser("rename", help="Rename an investigation (folder and registry)")

@@ -11,6 +11,8 @@ from watchdog.cmd.base import (
     _launch_claude,
     _MODEL_IDS,
     _notify,
+    _render_template,
+    load_projects,
 )
 
 
@@ -100,6 +102,9 @@ def cmd_ingest(args) -> None:
         print(f"\n  When ready, open Claude Code and run:  {_CYAN}/watchdog-ingest{_RESET}\n")
         return
     if answer in ("", "y", "yes"):
+        log_path = vault / "log.md"
+        if not log_path.exists():
+            log_path.write_text(_render_template("log.md"))
         _launch_claude(vault, "/watchdog-ingest", model=orchestrator_model)
     else:
         print(f"\n  When ready, open Claude Code and run:  {_CYAN}/watchdog-ingest{_RESET}\n")
@@ -116,7 +121,38 @@ def cmd_context(args) -> None:
     model = getattr(args, "model", None) or "sonnet"
     if model not in _MODEL_IDS:
         sys.exit(f"Error: unknown model '{model}' — choose sonnet, opus, or haiku")
-    _launch_claude(vault, "/watchdog-context", model=model)
+
+    projects = load_projects()
+    info = next((v for v in projects.values() if Path(v["path"]).resolve() == vault.resolve()), None)
+    name = info["name"] if info else vault.name
+
+    context_dir = vault / "_CONTEXT"
+    context_files = sorted(context_dir.iterdir()) if context_dir.is_dir() else []
+    context_exists = (vault / "context.md").exists()
+
+    print(f"\n  {_BOLD}{name}{_RESET}")
+    if context_files:
+        n = len(context_files)
+        print(f"  {_DIM}{n} file{'s' if n != 1 else ''} in{_RESET} {_CYAN}_CONTEXT/{_RESET}")
+    else:
+        print(f"  {_YELLOW}_CONTEXT/ is empty{_RESET}{_DIM} — Claude will interview you instead{_RESET}")
+    if context_exists:
+        print(f"  {_DIM}existing context.md will be updated{_RESET}")
+
+    try:
+        answer = input(f"\n  Open in Claude Code to seed context? [Y/n] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        print(f"\n  When ready, open Claude Code and run:  {_CYAN}/watchdog-context{_RESET}\n")
+        return
+    if answer in ("", "y", "yes"):
+        context_path = vault / "context.md"
+        if not context_path.exists():
+            description = info["description"] if info and info.get("description") else "<!-- One paragraph. What is the story? What pattern, question, or wrongdoing are you pursuing? -->"
+            context_path.write_text(_render_template("context.md", name=name, description=description))
+        _launch_claude(vault, "/watchdog-context", model=model)
+    else:
+        print(f"\n  When ready, open Claude Code and run:  {_CYAN}/watchdog-context{_RESET}\n")
 
 
 def cmd_queue_status(args) -> None:

@@ -126,12 +126,12 @@ Classification runs entirely locally using the same [fastembed](https://github.c
 - **macOS, Linux, or Windows**
 - **[Obsidian](https://obsidian.md) v1.6+** — free
 - **[Claude Code](https://claude.ai/download)** — free to install
-- **Claude.ai Pro or Max subscription** — required (Pro ~$20/month; Max from $100/month)
+- **Claude access** — a Claude.ai Pro or Max subscription, or an Anthropic API key
 - **Python 3.10+**
 - **qpdf + Ghostscript** — PDF decryption and repair
 - **Tesseract OCR** — Linux/Windows only (macOS uses Apple Vision)
 
-A Claude.ai Pro subscription is the recommended starting point. No API key setup, no per-token billing. If you prefer to authenticate with an Anthropic API key instead, run `claude login` in your terminal after installing Claude Code.
+A Claude.ai Pro or Max subscription is the simplest starting point — no API key setup, no per-token billing. If you have an Anthropic API key, run `claude login` in your terminal after installing Claude Code and authenticate that way instead.
 
 ---
 
@@ -190,12 +190,13 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog open [name]` | Open the vault folder in Finder / file explorer; omit name when inside the project directory |
 | `watchdog list` | List all active investigations; `--all` includes archived |
 | `watchdog status [name]` | Show detailed status; omit name to show all |
-| `watchdog log <name>` | Show ingest history; `--lines N` to tail |
+| `watchdog log [name]` | Show ingest history; omit name when inside the project directory; `--lines N` to tail |
 | `watchdog archive <name>` | Mark an investigation complete — hidden from `watchdog list` |
 | `watchdog unarchive <name>` | Restore an archived investigation |
 | `watchdog rename <name> <new-name>` | Rename an investigation — updates the folder, registry, and Obsidian entry |
 | `watchdog move <name> <path>` | Move vault to a new path and update the registry; if files are already at the new path, just updates the registry |
 | `watchdog delete <name>` | Remove from registry (vault files are left on disk); `--purge` also permanently deletes all vault files |
+| `watchdog register [path]` | Register an existing vault with watchdog; omit path when inside the vault directory |
 
 ### Processing
 
@@ -210,7 +211,7 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog ingest --extractor-model M` | Override the extraction subagent model (`sonnet`/`haiku`, default: `sonnet`) |
 | `watchdog context [name]` | Open Claude Code with the context seeding skill; omit name when inside the vault |
 | `watchdog context --model M` | Override the model for context seeding (`sonnet`/`opus`/`haiku`, default: `sonnet`) |
-| `watchdog watch <name>` | Watch `_INCOMING/` and chew files automatically as they arrive |
+| `watchdog watch [name]` | Watch `_INCOMING/` and chew files automatically as they arrive; omit name when inside the project directory |
 
 `watchdog chew` sends a desktop notification when files finish processing (macOS only). Press **Ctrl+C** to cancel a chew in progress — the lock is cleaned up automatically and any partially-processed files remain in `_INCOMING/` for the next run.
 
