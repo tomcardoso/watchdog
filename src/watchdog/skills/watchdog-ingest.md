@@ -38,7 +38,7 @@ Set `TOTAL = INGEST.total`. Set `BATCH_START = INGEST.batch_start`. Set `EXTRACT
 
 Set `EXTRACTOR_MODEL = INGEST.extractor_model` if present, else `"sonnet"`.
 
-Set `FINALIZER_MODEL = INGEST.finalizer_model` if present, else `EXTRACTOR_MODEL`.
+Set `FINALIZER_MODEL = INGEST.finalizer_model` if present, else `"sonnet"`.
 
 Set `QUEUE_FILES = INGEST.queue_files`.
 
