@@ -15,7 +15,11 @@ You are extracting one document for the Watchdog investigative research system. 
 watchdog pre-flight {SHA256}
 ```
 
-**Read the JSON directly from the Bash tool output. Do NOT pipe to python3 or any other command — that is explicitly forbidden.** Store as PRE_FLIGHT. Fields:
+**Read the JSON directly from the Bash tool output. Do NOT pipe to python3, awk, grep, sed, or any other command — that is explicitly forbidden.**
+
+The command also writes the full output to `.watchdog/tmp/preflight_{SHA256[:7]}.json`. If the Bash output was truncated due to document length, use the Read tool on that file to access pages — never use shell tools to slice it.
+
+Store as PRE_FLIGHT. Fields:
 - `sha256`, `page_count`
 - `already_extracted` — if true, return the SKIPPED block immediately
 - `pages[]` — each has `page` integer and `markdown` string; this is your document content

@@ -77,6 +77,12 @@ def main() -> None:
     result = run(vault, sha256)
     if "error" in result:
         sys.exit(f"Error: {result['error']}")
+
+    tmp_dir = vault / ".watchdog" / "tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    tmp_path = tmp_dir / f"preflight_{sha256[:7]}.json"
+    tmp_path.write_text(json.dumps(result, ensure_ascii=False))
+
     print(json.dumps(result, ensure_ascii=False))
 
 
