@@ -154,7 +154,29 @@ watchdog post-flight --extraction .watchdog/tmp/wdg_ex_{SHA256}.json
 
 Post-flight validates, applies entity merges, writes the vault, and cleans up temp files. If it prints errors, fix the JSON and run it again. Do not run `--help` or any exploration command to debug schema errors.
 
-## Step 9 — Return result
+## Step 9 — Write scratchpad
+
+Write a curated scratchpad to `.watchdog/tmp/notes_{SHA256}.md`. This is what the orchestrator uses to write the briefing — keep it tight and high-signal. Use this structure:
+
+```markdown
+# {FILENAME}
+
+## Key figures
+- {Specific numbers, amounts, dates, percentages that matter to the investigation}
+
+## Leads
+- {Anything that warrants follow-up — unusual relationships, conflicts of interest, gaps}
+
+## Contradictions
+- {Entity or fact that conflicts with something else in this document or the vault}
+
+## Chronological note
+{One sentence on where this document sits in the story's timeline, if relevant}
+```
+
+Omit any section that has nothing worth saying. Do not summarize — include only what a reporter would actually want to know.
+
+## Step 10 — Return result
 
 Return ONLY the following block. No other output.
 

@@ -171,7 +171,7 @@ Entities in vault: <total from registry.json>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-Build everything that follows from `RESULTS`, `NEARDUP_ALERTS`, `CONTRADICTION_FLAGS`, and `INVESTIGATION_BRIEF`. Do not re-read any queue files or entity records.
+Read all subagent scratchpads from `.watchdog/tmp/notes_*.md` — one per successfully extracted document. These contain the high-signal detail (key figures, leads, contradictions, chronological context) that the subagent's compact RESULT block cannot carry. Build the briefing from the scratchpads, `RESULTS` metadata, `NEARDUP_ALERTS`, `CONTRADICTION_FLAGS`, and `INVESTIGATION_BRIEF`. Do not re-read queue files or entity records.
 
 Write a briefing note to `briefings/<YYYY-MM-DD-HH-MM>.md`:
 
