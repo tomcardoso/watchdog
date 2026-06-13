@@ -93,6 +93,8 @@ Compare key dates, roles, and relationships against what this document states. F
 
 Do not flag: low-confidence differences, trivially explainable name variations, or contradictions already present in the matched entity's `analysis` field for the same fact.
 
+Emit a `[!contradiction]` callout only when you are confident the discrepancy is genuine after this comparison. This is the only verification step in the pipeline — there is no later orchestrator pass to remove false positives — so any callout you write is saved to the vault as-is.
+
 ## Step 8 — Build extraction JSON and write vault
 
 Build this JSON exactly:
