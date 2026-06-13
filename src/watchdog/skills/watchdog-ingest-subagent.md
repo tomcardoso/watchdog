@@ -176,7 +176,24 @@ Write a curated scratchpad to `.watchdog/tmp/notes_{SHA256}.md`. This is what th
 
 Omit any section that has nothing worth saying. Do not summarize — include only what a reporter would actually want to know.
 
-## Step 10 — Return result
+## Step 10 — Write timeline events
+
+Collect all `timeline_events` from all extracted entities (from your Step 5 work). Group by date. For each unique date that has at least one event, build NDJSON — one JSON object per line:
+
+```json
+{"date": "YYYY-MM-DD", "event": "event text", "source_sha256": "{SHA256}", "entity_ids": ["entity-id", ...], "confidence": "high|medium|low"}
+```
+
+For each date `YYYY-MM-DD`, write exactly one file to `.watchdog/timeline/YYYY-MM-DD_{SHA256[:7]}.ndjson` using the Write tool. Put all events for that date as separate lines in the same file. If a date has no events, skip it.
+
+Do not check whether a canonical file already exists — always write to the raw `{date}_{SHA256[:7]}.ndjson` path. The `watchdog timeline-collisions` tool handles promotion and deduplication after all subagents finish.
+
+If `.watchdog/timeline/` does not exist, create it first:
+```bash
+mkdir -p .watchdog/timeline
+```
+
+## Step 11 — Return result
 
 Return ONLY the following block. No other output.
 

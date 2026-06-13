@@ -85,6 +85,19 @@ from watchdog.cmd.setup import (
 )
 
 
+def _cmd_rebuild_timeline(args) -> None:
+    from pathlib import Path
+    from watchdog.pipeline.timeline import cmd_rebuild_timeline
+    if args.name:
+        _, info = _find_project(args.name)
+        vault = Path(info["path"])
+    else:
+        vault = Path(".").resolve()
+        if not (vault / ".watchdog").is_dir():
+            sys.exit("Error: not inside a watchdog project. Run `watchdog rebuild-timeline <name>` or cd into a project first.")
+    cmd_rebuild_timeline(vault)
+
+
 def main() -> None:
     if len(sys.argv) >= 2 and sys.argv[1] in ("-v", "--version"):
         cmd_about(None)
@@ -115,6 +128,7 @@ def main() -> None:
     _INTERNAL_CMDS = {
         "entity-index", "queue-status", "validate-extraction",
         "is-duplicate",  "pre-flight",  "post-flight",
+        "timeline-collisions",
     }
     if len(sys.argv) >= 2 and sys.argv[1] in _INTERNAL_CMDS:
         cmd = sys.argv[1]
@@ -138,6 +152,9 @@ def main() -> None:
         elif cmd == "post-flight":
             _p.add_argument("--extraction", required=True)
             cmd_postflight(_p.parse_args(sys.argv[2:]))
+        elif cmd == "timeline-collisions":
+            from watchdog.pipeline.timeline import main_collisions
+            main_collisions()
         return
 
     parser = argparse.ArgumentParser(
@@ -244,6 +261,10 @@ def main() -> None:
     p_watch = sub.add_parser("watch", help="Watch _INCOMING/ and chew files automatically")
     p_watch.add_argument("name", nargs="?", help="Investigation name or slug (omit when inside the project directory)").completer = _project_completer
     p_watch.set_defaults(func=cmd_watch)
+
+    p_rebuild_timeline = sub.add_parser("rebuild-timeline", help="Rebuild timeline.md from canonical .watchdog/timeline/ files")
+    p_rebuild_timeline.add_argument("name", nargs="?", help="Investigation name or slug (default: current directory)").completer = _project_completer
+    p_rebuild_timeline.set_defaults(func=_cmd_rebuild_timeline)
 
     p_rename = sub.add_parser("rename", help="Rename an investigation (folder and registry)")
     p_rename.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer

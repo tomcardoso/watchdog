@@ -68,6 +68,8 @@ _VAULT_PERMISSIONS = [
     "Bash(watchdog is-duplicate *)",
     "Bash(watchdog write-entity --entity-id *)",
     "Bash(watchdog unlock*)",
+    "Bash(watchdog timeline-collisions)",
+    "Bash(watchdog rebuild-timeline)",
     # shell utilities
     "Bash(find .watchdog/queue/ *)",
     # internal vault state
@@ -75,6 +77,8 @@ _VAULT_PERMISSIONS = [
     "Edit(/.watchdog/tmp/**)",
     "Edit(/.watchdog/Registry/**)",
     "Write(/.watchdog/Registry/**)",
+    "Write(/.watchdog/timeline/**)",
+    "Edit(/.watchdog/timeline/**)",
     # post-ingest output files
     "Write(/briefings/**)",
     "Write(/entities/**)",
@@ -185,6 +189,10 @@ _CMD_HELP: dict[str, dict] = {
             ("query",   "Search query"),
         ],
         "opts": [("--top N", "Number of results to return (default: 5)")],
+    },
+    "rebuild-timeline": {
+        "desc": "Rebuild timeline.md from canonical .watchdog/timeline/ files",
+        "args": [("name", "Investigation name or slug (default: current directory)", True)],
     },
     "unlock": {
         "desc": "Release a stale chew or ingest lock",
@@ -416,11 +424,12 @@ def _print_banner() -> None:
             ("delete",     "Remove an investigation from registry"),
         ]),
         ("Processing", [
-            ("chew",       "Process documents in _INCOMING/"),
-            ("ingest",     "Set up extraction session and open in Claude Code"),
-            ("context",    "Seed investigation context from _CONTEXT/"),
-            ("watch",      "Watch _INCOMING/ and chew files automatically"),
-            ("log",        "Show ingest history"),
+            ("chew",             "Process documents in _INCOMING/"),
+            ("ingest",           "Set up extraction session and open in Claude Code"),
+            ("context",          "Seed investigation context from _CONTEXT/"),
+            ("watch",            "Watch _INCOMING/ and chew files automatically"),
+            ("log",              "Show ingest history"),
+            ("rebuild-timeline", "Rebuild timeline.md from canonical timeline files"),
         ]),
         ("Info", [
             ("list",       "List all investigations"),

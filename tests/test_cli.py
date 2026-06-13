@@ -216,16 +216,15 @@ def test_cmd_new_description_stored_in_registry(configured, wdg_home):
     assert projects["my-story"]["description"] == "Tracking shell companies linked to city contracts"
 
 
-def test_cmd_new_description_written_to_context(configured):
+def test_cmd_new_description_no_context_file_created(configured):
+    # context.md is written at ingest/context time, not at vault creation
     cli.cmd_new(args(name="My Story", description="Tracking shell companies linked to city contracts", dir=str(configured)))
-    context = (configured / "my-story" / "context.md").read_text()
-    assert "Tracking shell companies linked to city contracts" in context
+    assert not (configured / "my-story" / "context.md").exists()
 
 
-def test_cmd_new_no_description_keeps_placeholder(configured):
+def test_cmd_new_no_description_no_context_file(configured):
     cli.cmd_new(args(name="My Story", dir=str(configured)))
-    context = (configured / "my-story" / "context.md").read_text()
-    assert "<!--" in context
+    assert not (configured / "my-story" / "context.md").exists()
     assert "description" not in json.loads(
         (configured / "my-story" / ".watchdog" / "Registry" / "registry.json").read_text()
     )
@@ -1192,8 +1191,8 @@ def test_cmd_list_shows_archived_hint_when_active_also_exist(configured, capsys)
 # ── cmd_log ───────────────────────────────────────────────────────────────────
 
 def test_cmd_log_no_log_file(configured, capsys):
+    # log.md is not created at vault-creation time — cmd_log should handle its absence
     cli.cmd_new(args(name="Shell Co", dir=str(configured)))
-    (configured / "shell-co" / "log.md").unlink()
     cli.cmd_log(args(name="Shell Co", lines=None))
     assert "nothing has been ingested" in capsys.readouterr().out
 

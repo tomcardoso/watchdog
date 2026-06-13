@@ -108,6 +108,7 @@ def run(vault: Path, extraction_path: Path) -> dict:
             extraction_path=extraction_path,
             vault_path=vault,
             neardup_data=neardup_data,
+            skip_timeline=True,
         )
     except SystemExit as e:
         return {"errors": [str(e)]}

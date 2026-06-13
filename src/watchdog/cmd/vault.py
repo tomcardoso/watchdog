@@ -147,6 +147,7 @@ def cmd_new(args) -> None:
         ".watchdog/Registry",
         ".watchdog/queue",
         ".watchdog/staging",
+        ".watchdog/timeline",
         ".watchdog/tmp",
         "entities/person",
         "entities/company",

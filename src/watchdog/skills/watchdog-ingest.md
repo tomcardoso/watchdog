@@ -67,10 +67,9 @@ Process `ARROWS_FILES` inline first (see §5) before the subagent loop.
 Split `QUEUE_FILES` into batches of at most 5 files. For each batch:
 
 1. For each file in the batch, get its `SHA256`, `FILENAME`, and `DOMAIN_SKILL_PATH` (already resolved in §2).
-2. Set `SKIP_TIMELINE` = `false` only for the very last file of the entire run; `true` for all others.
-3. Print `[<N>/<TOTAL>] Launching: <FILENAME clamped to 50 chars> ...`
-4. **Launch all agents in the batch simultaneously** — send a single message with all Agent tool calls in parallel. Set each Agent's `description` to `Watchdog extraction: <FILENAME clamped to 50 chars>` and `model` to `EXTRACTOR_MODEL`.
-5. Process results (see "After each Agent call" below).
+2. Print `[<N>/<TOTAL>] Launching: <FILENAME clamped to 50 chars> ...`
+3. **Launch all agents in the batch simultaneously** — send a single message with all Agent tool calls in parallel. Set each Agent's `description` to `Watchdog extraction: <FILENAME clamped to 50 chars>` and `model` to `EXTRACTOR_MODEL`.
+4. Process results (see "After each Agent call" below).
 
 **Limit check:** if `LIMIT` is set and `EXTRACTED >= LIMIT`, stop before the next batch.
 
@@ -85,7 +84,6 @@ Read `.claude/commands/watchdog-ingest-subagent.md` for full extraction instruct
 
 SHA256: {SHA256}
 FILENAME: {FILENAME}
-SKIP_TIMELINE: {SKIP_TIMELINE}
 DOMAIN_SKILL_PATH: {DOMAIN_SKILL_PATH}
 INVESTIGATION_BRIEF:
 {INVESTIGATION_BRIEF}
@@ -114,7 +112,34 @@ After the loop completes, check whether any new entity type from the results is 
 
 ---
 
-## 6. arrows.app import
+## 6. Timeline reconciliation
+
+Run:
+```bash
+watchdog timeline-collisions
+```
+
+Read the JSON output directly from the Bash tool — it is a JSON array. The tool has already promoted any pending raw files (dates with no prior canonical) to canonical. The array contains only **collision objects**: dates where a canonical already existed and new raw files were added in this ingest session.
+
+For each collision object `{"date": "...", "canonical": "...", "raw": [...]}`:
+
+1. Read the canonical file (all NDJSON lines) using the Read tool.
+2. Read each raw file listed in `raw` (all NDJSON lines) using the Read tool.
+3. Combine all event lines for this date. Identify semantic duplicates — events describing the same real-world occurrence even if worded differently. Remove the duplicate, keeping the more precise wording.
+4. Write the deduplicated event list back to the canonical file, one JSON object per line, using the Write tool. Leave the raw file(s) in place as an audit trail.
+
+If the array is empty, skip the dedup pass.
+
+Then run:
+```bash
+watchdog rebuild-timeline
+```
+
+This renders `timeline.md` from all canonical `.watchdog/timeline/{date}.ndjson` files.
+
+---
+
+## 7. arrows.app import
 
 When a queued file has `metadata.source_type == "arrows"`, handle it inline (not via subagent) — it contains pre-parsed entities and relationships, not document text.
 
@@ -149,7 +174,7 @@ Delete the queue file when done.
 
 ---
 
-## 7. Post-batch contradiction resolution
+## 8. Post-batch contradiction resolution
 
 For each entry in `CONTRADICTION_FLAGS`:
 - Read the entity note (`entities/{type_lowercase}/{id}.md`)
@@ -160,7 +185,7 @@ This step reads at most a handful of entity notes — typically 0–3 per batch.
 
 ---
 
-## 8. Post-ingest briefing
+## 9. Post-ingest briefing
 
 Print a batch summary:
 ```
@@ -264,13 +289,13 @@ Keep hot.md under ~40 lines.
 
 ---
 
-## 9. Release lock
+## 10. Release lock
 
 Run `watchdog unlock` to remove `.watchdog/Registry/.ingest-lock`, delete `ingest-state.json`, and clean up temp files.
 
 ---
 
-## 10. Clarifying questions (optional)
+## 11. Clarifying questions (optional)
 
 After the briefing, if you encountered genuine ambiguities that would meaningfully change the entity graph, ask up to 3–5 targeted questions, batched together:
 - Two entities that might be the same person or company
