@@ -20,7 +20,7 @@ The stdout output is **metadata only** — it does not include page content. Rea
 - `already_extracted` — if true, return the SKIPPED block immediately
 - `near_dup.near_duplicates`, `near_dup.top_similarity`
 - `existing_entities[]` — entities already in vault whose names appear in this document: `{id, name, type, aliases, note_path}`
-- `pages_path` — path to the full indented JSON file containing `pages[]`
+- `pages_dir` — directory containing one file per page: `page_001.md`, `page_002.md`, …
 
 If `already_extracted` is true, stop and return:
 ```
@@ -31,14 +31,7 @@ REASON: already extracted (SHA-256 match)
 
 **Do NOT pipe or redirect this command's output.** Do NOT run `python3`, `awk`, `grep`, `sed`, or any other tool on its output.
 
-**Reading pages:** Use the Read tool on `pages_path` with `offset` and `limit` to read pages in chunks. Each page entry looks like:
-```json
-    {
-      "page": 1,
-      "markdown": "..."
-    },
-```
-Check `page_count` and keep reading with increasing `offset` until you have seen all pages. Do not proceed to extraction with a partial document.
+**Reading pages:** Use the Read tool on `{pages_dir}/page_001.md`, `page_002.md`, etc. Read every page up to `page_count`. Do not proceed to extraction with a partial document.
 
 Set SHA256 = PRE_FLIGHT.sha256. (FILENAME is already set from the prompt header.)
 
