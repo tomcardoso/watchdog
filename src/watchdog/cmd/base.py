@@ -77,10 +77,18 @@ _VAULT_PERMISSIONS = [
     "Write(/.watchdog/Registry/**)",
     # post-ingest output files
     "Write(/briefings/**)",
+    "Write(/entities/**)",
+    "Edit(/entities/**)",
+    "Write(/documents/**)",
+    "Edit(/documents/**)",
+    "Write(/morgue/**)",
     "Write(/hot.md)",
     "Edit(/hot.md)",
     "Write(/log.md)",
     "Edit(/log.md)",
+    "Write(/context.md)",
+    "Edit(/context.md)",
+    "Edit(/.obsidian/graph.json)",
 ]
 
 _CMD_HELP: dict[str, dict] = {
