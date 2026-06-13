@@ -38,6 +38,8 @@ Set `TOTAL = INGEST.total`. Set `BATCH_START = INGEST.batch_start`. Set `EXTRACT
 
 Set `EXTRACTOR_MODEL = INGEST.extractor_model` if present, else `"sonnet"`.
 
+Set `FINALIZER_MODEL = INGEST.finalizer_model` if present, else `EXTRACTOR_MODEL`.
+
 Set `QUEUE_FILES = INGEST.queue_files`.
 
 The lock is held (acquired by `watchdog ingest`). Every exit path — including errors — must release it by running `watchdog unlock`. That command removes the lock, deletes `ingest-state.json`, and cleans up temp files.
@@ -129,7 +131,7 @@ Read `.watchdog/Registry/registry.json` with the Read tool for the entity total 
 
 If no documents were successfully extracted (`EXTRACTED == 0`), skip the finalize subagent and continue to §6.
 
-Otherwise launch **one finalize subagent** (a single Agent call) to reconcile the timeline and write the briefing. This keeps scratchpad prose and timeline NDJSON out of this session. Set the Agent's `description` to `Watchdog finalize` and `model` to `EXTRACTOR_MODEL`. Send this prompt (substitute every `{placeholder}` first):
+Otherwise launch **one finalize subagent** (a single Agent call) to reconcile the timeline and write the briefing. This keeps scratchpad prose and timeline NDJSON out of this session. Set the Agent's `description` to `Watchdog finalize` and `model` to `FINALIZER_MODEL`. Send this prompt (substitute every `{placeholder}` first):
 
 ```
 Read `.claude/commands/watchdog-ingest-finalize-subagent.md` for full instructions. Then finalize this ingest batch.

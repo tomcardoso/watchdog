@@ -152,6 +152,26 @@ def test_extractor_model_defaults_to_sonnet(tmp_path):
     assert result["extractor_model"] == "sonnet"
 
 
+def test_finalizer_model_written_to_state(tmp_path):
+    vault = _make_vault(tmp_path)
+    _write_queue_file(vault, "abc123")
+
+    result = run(vault, finalizer_model="opus")
+
+    assert result["finalizer_model"] == "opus"
+    state = json.loads((vault / ".watchdog" / "ingest-state.json").read_text())
+    assert state["finalizer_model"] == "opus"
+
+
+def test_finalizer_model_defaults_to_sonnet(tmp_path):
+    vault = _make_vault(tmp_path)
+    _write_queue_file(vault, "abc123")
+
+    result = run(vault)
+
+    assert result["finalizer_model"] == "sonnet"
+
+
 def test_empty_queue_cleans_up_stale_state_file(tmp_path):
     vault = _make_vault(tmp_path)
     state_file = vault / ".watchdog" / "ingest-state.json"
