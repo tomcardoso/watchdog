@@ -188,5 +188,4 @@ NEW_ENTITIES: {id:name, id:name — or none}
 UPDATED_ENTITIES: {id:name, id:name — or none}
 NEAR_DUP: {top_similarity% similar to {existing filename} — or none}
 CONTRADICTIONS: {entity_id — brief description; entity_id — brief description — or none}
-SUMMARY: {one paragraph summary of this document and what was extracted}
 ```
