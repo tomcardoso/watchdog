@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from watchdog.pipeline.write_vault import run, _doc_slug
+from watchdog.pipeline.write_vault import run, _doc_slug, _normalize_entity_name
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -865,3 +865,111 @@ def test_two_sequential_runs_merge_shared_entity(tmp_path):
     dates = {e["date"] for e in alice["timeline_events"]}
     assert "2020-01-01" in dates
     assert "2022-06-15" in dates
+
+
+# ── Duplicate-slug reconciliation (issue #79) ─────────────────────────────────
+
+@pytest.mark.parametrize("a,b", [
+    ("Ernst & Young Inc.", "Ernst and Young Inc"),
+    ("Ernst  and   Young  Inc", "ernst and young inc"),
+])
+def test_normalize_entity_name_collapses_variants(a, b):
+    assert _normalize_entity_name(a) == _normalize_entity_name(b)
+
+
+def test_normalize_entity_name_distinguishes_real_differences():
+    assert _normalize_entity_name("Acme Corp") != _normalize_entity_name("Acme Holdings")
+
+
+def _company_extraction(dirpath, sha, filename, eid, name):
+    return make_extraction(dirpath, overrides={
+        "document": {
+            "sha256": sha, "filename": filename,
+            "original_path": f"_INCOMING/{filename}",
+        },
+        "entities": [{
+            "id": eid, "name": name, "type": "Company",
+            "aliases": [], "summary": None, "analysis": None,
+            "timeline_events": [], "roles": [],
+        }],
+        "morgue_entity_id": eid,
+        "morgue_document_type": "annual-report",
+    })
+
+
+def test_parallel_slug_variants_reconciled(tmp_path):
+    """Two docs coining different slugs for the same entity must collapse to one."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
+    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    dir_a, dir_b = tmp_path / "a", tmp_path / "b"
+    dir_a.mkdir(); dir_b.mkdir()
+
+    # First subagent wins the slug; second coins a near-duplicate id + name variant.
+    run(_company_extraction(dir_a, "sha-a", "doc-a.pdf",
+                            "ernst-and-young-inc", "Ernst & Young Inc."), vault)
+    run(_company_extraction(dir_b, "sha-b", "doc-b.pdf",
+                            "ernst-young-inc", "Ernst and Young Inc"), vault)
+
+    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    assert "ernst-and-young-inc" in entities
+    assert "ernst-young-inc" not in entities          # reconciled away, not a duplicate
+    ey = entities["ernst-and-young-inc"]
+    assert "sha-a" in ey["appears_in"] and "sha-b" in ey["appears_in"]
+    assert "Ernst and Young Inc" in ey["aliases"]     # variant folded in as alias
+
+
+def test_distinct_same_type_entities_not_merged(tmp_path):
+    """Reconciliation must not collapse genuinely different entities of the same type."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
+    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    dir_a, dir_b = tmp_path / "a", tmp_path / "b"
+    dir_a.mkdir(); dir_b.mkdir()
+
+    run(_company_extraction(dir_a, "sha-a", "doc-a.pdf", "acme-corp", "Acme Corp"), vault)
+    run(_company_extraction(dir_b, "sha-b", "doc-b.pdf", "globex-corp", "Globex Corp"), vault)
+
+    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    assert "acme-corp" in entities
+    assert "globex-corp" in entities
+
+
+def test_reconcile_remaps_role_target_in_same_document(tmp_path):
+    """A role pointing at a reconciled entity in the same extraction is remapped too."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
+    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    dir_a, dir_b = tmp_path / "a", tmp_path / "b"
+    dir_a.mkdir(); dir_b.mkdir()
+
+    # Doc A establishes the canonical company slug.
+    run(_company_extraction(dir_a, "sha-a", "doc-a.pdf",
+                            "ernst-and-young-inc", "Ernst & Young Inc."), vault)
+
+    # Doc B re-coins the company under a different slug AND references it from a person.
+    run(make_extraction(dir_b, overrides={
+        "document": {"sha256": "sha-b", "filename": "doc-b.pdf",
+                     "original_path": "_INCOMING/doc-b.pdf"},
+        "entities": [
+            {"id": "jane-doe", "name": "Jane Doe", "type": "Person",
+             "aliases": [], "summary": None, "analysis": None, "timeline_events": [],
+             "roles": [{
+                 "relationship": "Partner at", "target_id": "ernst-young-inc",
+                 "target_type": "Company", "target_name": "Ernst and Young Inc",
+                 "page": 1, "confidence": "high", "date_range": None,
+             }]},
+            {"id": "ernst-young-inc", "name": "Ernst and Young Inc", "type": "Company",
+             "aliases": [], "summary": None, "analysis": None,
+             "timeline_events": [], "roles": []},
+        ],
+        "morgue_entity_id": "jane-doe",
+        "morgue_document_type": "filing",
+    }), vault)
+
+    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    # Person's role now points at the canonical slug, not the orphaned one.
+    role = entities["jane-doe"]["roles"][0]
+    assert role["target_id"] == "ernst-and-young-inc"
+    # Reverse role landed on the canonical company entity.
+    assert any(r["target_id"] == "jane-doe" for r in entities["ernst-and-young-inc"]["roles"])

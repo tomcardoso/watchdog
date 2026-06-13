@@ -90,6 +90,50 @@ def _doc_slug(filename: str) -> str:
     return slugify(Path(filename).stem) or "document"
 
 
+def _normalize_entity_name(name: str) -> str:
+    """Collapse a name to a comparison key for duplicate-entity reconciliation."""
+    s = name.lower().replace("&", "and")
+    s = re.sub(r"[^\w\s]", "", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _reconcile_entity_ids(incoming_entities: list[dict], entities_reg: dict) -> None:
+    """
+    Remap incoming entities that name an existing entity under a different slug.
+
+    Subagents extract in parallel from a pre-flight snapshot taken at launch, so two
+    documents referencing the same real-world entity can coin different ids (e.g.
+    'ernst-and-young-inc' vs 'ernst-young-inc'). write_vault runs inside the registry
+    lock with a fresh read of entities_reg — the one place that sees entities written
+    by sibling subagents earlier in the batch — so we reconcile here: any incoming
+    *new* entity whose normalized (name, type) matches an existing one is remapped to
+    that existing id, routing it through the merge path instead of creating a duplicate.
+    """
+    norm_index: dict[tuple[str, str], str] = {}
+    for eid, entry in entities_reg.items():
+        for n in [entry["name"], *entry.get("aliases", [])]:
+            norm_index.setdefault((_normalize_entity_name(n), entry["type"]), eid)
+
+    remap: dict[str, str] = {}
+    for entity in incoming_entities:
+        if entity["id"] in entities_reg:
+            continue
+        key = (_normalize_entity_name(entity["name"]), entity["type"])
+        existing_id = norm_index.get(key)
+        if existing_id and existing_id != entity["id"]:
+            remap[entity["id"]] = existing_id
+            entity["id"] = existing_id
+            # Preserve the variant spelling so the entity stays findable next time.
+            entity.setdefault("aliases", []).append(entity["name"])
+
+    # Keep intra-document role targets pointing at the reconciled ids.
+    if remap:
+        for entity in incoming_entities:
+            for role in entity.get("roles", []):
+                if role.get("target_id") in remap:
+                    role["target_id"] = remap[role["target_id"]]
+
+
 def _frontmatter(data: dict) -> str:
     return "---\n" + yaml.dump(
         data, default_flow_style=False, allow_unicode=True, sort_keys=False
@@ -558,6 +602,9 @@ def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False, ne
         )
 
         # ── 1. Update entity registry ─────────────────────────────────────────
+
+        # Reconcile near-duplicate slugs coined by parallel subagents before merging.
+        _reconcile_entity_ids(incoming_entities, entities_reg)
 
         modified: set[str] = set()
 
