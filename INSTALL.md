@@ -13,13 +13,13 @@ This guide assumes you have never used a terminal before. Read through it once b
 | A computer running macOS, Linux, or Windows | Watchdog runs on your computer, not in the cloud | n/a |
 | [Obsidian](https://obsidian.md) | The app where you'll read and explore your documents | Free |
 | [Claude Code](https://claude.ai/download) | The AI assistant that reads and connects your documents | Free to install |
-| A Claude.ai Pro or Max subscription | Powers the AI — required for document processing | Pro ~$20/month; Max from $100/month |
+| Claude access | Powers the AI — required for document processing | Pro/Max subscription, or Anthropic API key |
 
 **Obsidian** is a note-taking app that Watchdog uses to organize and display your research. You don't need to know how to use it before starting — Watchdog sets it up for you.
 
 **Claude Code** is the AI assistant that does the document processing. It's made by Anthropic, the same company that makes Claude. You install it once on your computer.
 
-**A subscription** is required because processing documents requires AI. A Pro subscription ($20/month) is enough for most journalism work. If you're ingesting hundreds of documents at a time, Max (from $100/month) gives you higher limits.
+**Claude access** is required because processing documents requires AI. A Pro subscription ($20/month) is enough for most journalism work. If you're ingesting hundreds of documents at a time, Max (from $100/month) gives you higher limits. If you have an Anthropic API key, you can use that instead — see Step 2.
 
 ---
 
@@ -39,7 +39,7 @@ This guide assumes you have never used a terminal before. Read through it once b
 
 If you don't have a Claude.ai account yet, create one at [claude.ai](https://claude.ai) and subscribe to Pro or Max before continuing.
 
-If you prefer to use an Anthropic API key instead of a Claude.ai subscription, run `claude login` in your terminal after installation and follow the prompts to authenticate with your API key.
+If you have an Anthropic API key and prefer to use that instead, run `claude login` in your terminal after installation and follow the prompts to authenticate with your API key.
 
 ---
 
