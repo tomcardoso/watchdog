@@ -15,16 +15,12 @@ You are extracting one document for the Watchdog investigative research system. 
 watchdog pre-flight {SHA256}
 ```
 
-**Read the JSON directly from the Bash tool output. Do NOT pipe to python3, awk, grep, sed, or any other command — that is explicitly forbidden.**
-
-The command also writes the full output (indented, multi-line) to `.watchdog/tmp/preflight_{SHA256[:7]}.json`. If the Bash output is truncated, use the Read tool on that file with `offset` and `limit` to continue reading — do not redirect stdout to a file yourself, and never use shell tools to slice it.
-
-Store as PRE_FLIGHT. Fields:
+The stdout output is **metadata only** — it does not include page content. Read it directly from the Bash tool output. Fields:
 - `sha256`, `page_count`
 - `already_extracted` — if true, return the SKIPPED block immediately
-- `pages[]` — each has `page` integer and `markdown` string; this is your document content
 - `near_dup.near_duplicates`, `near_dup.top_similarity`
 - `existing_entities[]` — entities already in vault whose names appear in this document: `{id, name, type, aliases, note_path}`
+- `pages_path` — path to the full indented JSON file containing `pages[]`
 
 If `already_extracted` is true, stop and return:
 ```
@@ -33,7 +29,16 @@ FILENAME: {FILENAME}
 REASON: already extracted (SHA-256 match)
 ```
 
-**You must read every page.** Check `page_count`. If you have not seen content up to that page number, keep reading `.watchdog/tmp/preflight_{SHA256[:7]}.json` with increasing `offset` until you have. Do not proceed to extraction with a partial document.
+**Do NOT pipe or redirect this command's output.** Do NOT run `python3`, `awk`, `grep`, `sed`, or any other tool on its output.
+
+**Reading pages:** Use the Read tool on `pages_path` with `offset` and `limit` to read pages in chunks. Each page entry looks like:
+```json
+    {
+      "page": 1,
+      "markdown": "..."
+    },
+```
+Check `page_count` and keep reading with increasing `offset` until you have seen all pages. Do not proceed to extraction with a partial document.
 
 Set SHA256 = PRE_FLIGHT.sha256. (FILENAME is already set from the prompt header.)
 

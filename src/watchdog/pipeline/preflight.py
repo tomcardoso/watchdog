@@ -78,12 +78,16 @@ def main() -> None:
     if "error" in result:
         sys.exit(f"Error: {result['error']}")
 
+    # Write full result (including pages) to tmp file for Read tool access
     tmp_dir = vault / ".watchdog" / "tmp"
     tmp_dir.mkdir(parents=True, exist_ok=True)
-    tmp_path = tmp_dir / f"preflight_{sha256[:7]}.json"
+    tmp_path = tmp_dir / f"preflight_{sha256}.json"
     tmp_path.write_text(json.dumps(result, ensure_ascii=False, indent=2))
 
-    print(json.dumps(result, ensure_ascii=False))
+    # Stdout is metadata-only — pages are large and must be read from tmp_path
+    metadata = {k: v for k, v in result.items() if k != "pages"}
+    metadata["pages_path"] = str(tmp_path)
+    print(json.dumps(metadata, ensure_ascii=False))
 
 
 if __name__ == "__main__":
