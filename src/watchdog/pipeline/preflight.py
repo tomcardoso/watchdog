@@ -11,6 +11,50 @@ import sys
 from pathlib import Path
 
 
+def _digest_events(events: list[dict]) -> list[dict]:
+    """Comparison-relevant fields of an entity's timeline events."""
+    return [
+        {"date": e.get("date"), "event": e.get("event"), "confidence": e.get("confidence")}
+        for e in events
+    ]
+
+
+def _digest_roles(roles: list[dict]) -> list[dict]:
+    """Comparison-relevant fields of an entity's relationships."""
+    return [
+        {
+            "relationship": r.get("relationship"),
+            "target_name": r.get("target_name"),
+            "target_type": r.get("target_type"),
+            "date_range": r.get("date_range"),
+            "confidence": r.get("confidence"),
+        }
+        for r in roles
+    ]
+
+
+def _existing_analysis(vault: Path, note_path: str) -> str:
+    """Return the existing '## Analysis' section of an entity note.
+
+    The Analysis section holds any prior [!contradiction] callouts, so supplying
+    it lets the subagent run the contradiction check without reading note files.
+    Returns '' if the note or the section is absent.
+    """
+    if not note_path:
+        return ""
+    p = vault / f"{note_path}.md"
+    if not p.exists():
+        return ""
+    content = p.read_text(encoding="utf-8", errors="replace")
+    idx = content.find("## Analysis")
+    if idx == -1:
+        return ""
+    start = idx + len("## Analysis")
+    nxt = content.find("\n## ", start)
+    body = content[start:nxt] if nxt != -1 else content[start:]
+    return body.strip()
+
+
 def run(vault: Path, sha256: str) -> dict:
     queue_file = vault / ".watchdog" / "queue" / f"{sha256}.json"
     if not queue_file.exists():
@@ -23,6 +67,16 @@ def run(vault: Path, sha256: str) -> dict:
         p.get("markdown", "") for p in queue.get("pages", [])
     ).lower()
 
+    # Full registry, read once — supplies each candidate's timeline/roles digest so
+    # the subagent can run the contradiction check without reading note files.
+    entities_reg: dict = {}
+    entities_file = vault / ".watchdog" / "Registry" / "entities.json"
+    if entities_file.exists():
+        try:
+            entities_reg = json.loads(entities_file.read_text(encoding="utf-8"))
+        except Exception:
+            entities_reg = {}
+
     # Candidate entities: manifest entries whose name or any alias appears in the text
     candidates: list[dict] = []
     manifest_file = vault / ".watchdog" / "Registry" / "manifest.json"
@@ -31,12 +85,17 @@ def run(vault: Path, sha256: str) -> dict:
         for eid, entry in manifest.items():
             names = [entry.get("name", "")] + entry.get("aliases", [])
             if any(n and n.lower() in text_lower for n in names):
+                note_path = entry.get("note_path", "")
+                reg = entities_reg.get(eid, {})
                 candidates.append({
                     "id": eid,
                     "name": entry.get("name", ""),
                     "type": entry.get("type", ""),
                     "aliases": entry.get("aliases", []),
-                    "note_path": entry.get("note_path", ""),
+                    "note_path": note_path,
+                    "timeline_events": _digest_events(reg.get("timeline_events", [])),
+                    "roles": _digest_roles(reg.get("roles", [])),
+                    "analysis": _existing_analysis(vault, note_path),
                 })
 
     # Check if already extracted

@@ -19,7 +19,7 @@ The stdout output is **metadata only** — it does not include page content. Rea
 - `sha256`, `page_count`
 - `already_extracted` — if true, return the SKIPPED block immediately
 - `near_dup.near_duplicates`, `near_dup.top_similarity`
-- `existing_entities[]` — entities already in vault whose names appear in this document: `{id, name, type, aliases, note_path}`
+- `existing_entities[]` — entities already in vault whose names appear in this document: `{id, name, type, aliases, note_path, timeline_events, roles, analysis}`. `timeline_events` and `roles` are the vault's current values for that entity; `analysis` is its existing Analysis section (including any prior `[!contradiction]` callouts). These are supplied so the contradiction check (Step 7) needs no note reads.
 - `pages_path` — path to a markdown file containing all pages separated by `<!-- PAGE N -->` markers and `---` dividers
 
 If `already_extracted` is true, stop and return:
@@ -81,7 +81,7 @@ Never upgrade a claim past its weakest element.
 
 ## Step 7 — Contradiction check
 
-For each entity that matched an entry in PRE_FLIGHT.existing_entities, read its vault note at `{note_path}.md`.
+For each entity that matched an entry in PRE_FLIGHT.existing_entities, compare what this document states against that entry's `timeline_events`, `roles`, and `analysis` fields — all supplied by pre-flight. **Do not read entity note files.**
 
 Compare key dates, roles, and relationships against what this document states. Flag material discrepancies where both sides are `high` or `medium` confidence. Format contradiction callouts as:
 
@@ -91,9 +91,7 @@ Compare key dates, roles, and relationships against what this document states. F
 > - **<new value>** — [[documents/<new-slug>|<title>]], p. <n> (confidence: <level>)
 ```
 
-Do not flag: low-confidence differences, trivially explainable name variations, contradictions already in the note for the same fact.
-
-Read entity notes **only for matched entities** — do not read notes for new entities.
+Do not flag: low-confidence differences, trivially explainable name variations, or contradictions already present in the matched entity's `analysis` field for the same fact.
 
 ## Step 8 — Build extraction JSON and write vault
 
