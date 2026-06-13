@@ -17,7 +17,7 @@ watchdog pre-flight {SHA256}
 
 **Read the JSON directly from the Bash tool output. Do NOT pipe to python3, awk, grep, sed, or any other command — that is explicitly forbidden.**
 
-The command also writes the full output (indented, multi-line) to `.watchdog/tmp/preflight_{SHA256[:7]}.json`. If the Bash output is truncated, use the Read tool on that file with `offset` and `limit` to read pages — do not redirect stdout to a file yourself, and never use shell tools to slice it.
+The command also writes the full output (indented, multi-line) to `.watchdog/tmp/preflight_{SHA256[:7]}.json`. If the Bash output is truncated, use the Read tool on that file with `offset` and `limit` to continue reading — do not redirect stdout to a file yourself, and never use shell tools to slice it.
 
 Store as PRE_FLIGHT. Fields:
 - `sha256`, `page_count`
@@ -32,6 +32,8 @@ STATUS: skipped
 FILENAME: {FILENAME}
 REASON: already extracted (SHA-256 match)
 ```
+
+**You must read every page.** Check `page_count`. If you have not seen content up to that page number, keep reading `.watchdog/tmp/preflight_{SHA256[:7]}.json` with increasing `offset` until you have. Do not proceed to extraction with a partial document.
 
 Set SHA256 = PRE_FLIGHT.sha256. (FILENAME is already set from the prompt header.)
 
