@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+"""
+analyze-session — token usage and subagent breakdown for a Claude Code session.
+
+Usage:
+  analyze-session <session.jsonl>
+  analyze-session <path/to/session-uuid>   (directory, no .jsonl extension)
+"""
+
+import json
+import sys
+from pathlib import Path
+
+
+# Pricing per million tokens (as of June 2026)
+_COSTS = {
+    "claude-sonnet-4-6":          {"input": 3.00, "cache_write": 3.75, "cache_read": 0.30, "output": 15.00},
+    "claude-opus-4-8":            {"input": 15.00, "cache_write": 18.75, "cache_read": 1.50, "output": 75.00},
+    "claude-haiku-4-5-20251001":  {"input": 0.80, "cache_write": 1.00,  "cache_read": 0.08, "output": 4.00},
+}
+_DEFAULT_COSTS = _COSTS["claude-sonnet-4-6"]
+
+
+def _model_costs(model: str | None) -> dict:
+    if model and model in _COSTS:
+        return _COSTS[model]
+    # Fuzzy match: haiku, sonnet, opus in the model string
+    if model:
+        for key in _COSTS:
+            if key.split("-")[1] in model.lower():
+                return _COSTS[key]
+    return _DEFAULT_COSTS
+
+
+def _parse_log(path: Path) -> dict:
+    turns = tool_calls = inp = cache_write = cache_read = out = 0
+    model = None
+
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        msg = r.get("message", {})
+        if not isinstance(msg, dict) or msg.get("role") != "assistant":
+            continue
+
+        u = msg.get("usage", {})
+        if u:
+            turns       += 1
+            inp         += u.get("input_tokens", 0)
+            cache_write += u.get("cache_creation_input_tokens", 0)
+            cache_read  += u.get("cache_read_input_tokens", 0)
+            out         += u.get("output_tokens", 0)
+
+        if model is None:
+            model = msg.get("model")
+
+        for block in msg.get("content", []):
+            if isinstance(block, dict) and block.get("type") == "tool_use":
+                tool_calls += 1
+
+    return {
+        "turns": turns, "tool_calls": tool_calls,
+        "input": inp, "cache_write": cache_write, "cache_read": cache_read, "output": out,
+        "model": model,
+    }
+
+
+def _cost(s: dict) -> float:
+    c = _model_costs(s.get("model"))
+    return (
+        s["input"]       * c["input"]       / 1_000_000 +
+        s["cache_write"] * c["cache_write"]  / 1_000_000 +
+        s["cache_read"]  * c["cache_read"]   / 1_000_000 +
+        s["output"]      * c["output"]       / 1_000_000
+    )
+
+
+def _add(a: dict, b: dict) -> dict:
+    keys = ("turns", "tool_calls", "input", "cache_write", "cache_read", "output")
+    return {k: a[k] + b[k] for k in keys} | {"model": a.get("model") or b.get("model")}
+
+
+_ZERO = {"turns": 0, "tool_calls": 0, "input": 0, "cache_write": 0, "cache_read": 0, "output": 0, "model": None}
+
+
+def _fmt(n: int) -> str:
+    return f"{n:,}"
+
+
+def main():
+    if len(sys.argv) < 2:
+        print(__doc__)
+        sys.exit(1)
+
+    arg = Path(sys.argv[1])
+    orch_log = arg if arg.suffix == ".jsonl" else arg.with_suffix(".jsonl")
+    session_dir = orch_log.with_suffix("")
+
+    if not orch_log.exists():
+        sys.exit(f"Error: {orch_log} not found")
+
+    W = 72
+    SEP = "─" * W
+
+    print()
+    print("━" * W)
+    print(f"  Session  {orch_log.stem}")
+    print("━" * W)
+
+    # ── Orchestrator ──────────────────────────────────────────────────────────
+    orch = _parse_log(orch_log)
+    model_str = f"  [{orch['model']}]" if orch.get("model") else ""
+    print(f"\n  ORCHESTRATOR{model_str}")
+    print(f"  {SEP}")
+    print(f"  {'Turns':<14} {_fmt(orch['turns'])}")
+    print(f"  {'Tool calls':<14} {_fmt(orch['tool_calls'])}")
+    print(f"  {'Input':<14} {_fmt(orch['input'])} tok")
+    print(f"  {'Cache write':<14} {_fmt(orch['cache_write'])} tok")
+    print(f"  {'Cache read':<14} {_fmt(orch['cache_read'])} tok")
+    print(f"  {'Output':<14} {_fmt(orch['output'])} tok")
+    print(f"  {'Est. cost':<14} ${_cost(orch):.4f}")
+
+    # ── Subagents ─────────────────────────────────────────────────────────────
+    subagents_dir = session_dir / "subagents"
+    rows = []
+    total_sub = dict(_ZERO)
+
+    if subagents_dir.exists():
+        for mf in sorted(subagents_dir.glob("*.meta.json")):
+            agent_id = mf.stem.replace(".meta", "")
+            log_file = subagents_dir / f"{agent_id}.jsonl"
+            if not log_file.exists():
+                continue
+            meta = json.loads(mf.read_text(encoding="utf-8"))
+            desc = meta.get("description", agent_id)
+            s = _parse_log(log_file)
+            rows.append((desc, s))
+            total_sub = _add(total_sub, s)
+
+    if rows:
+        print(f"\n  SUBAGENTS  ({len(rows)} total)")
+        print(f"  {SEP}")
+
+        desc_w = min(52, max(len(r[0]) for r in rows))
+        hdr = f"  {'Description':<{desc_w}}  {'Turns':>5}  {'Tools':>5}  {'Input':>8}  {'C.read':>9}  {'Output':>7}  {'Cost':>7}"
+        print(hdr)
+        print(f"  {'─' * (len(hdr) - 2)}")
+
+        for desc, s in sorted(rows, key=lambda x: -x[1]["tool_calls"]):
+            model_tag = ""
+            if s.get("model") and s["model"] != orch.get("model"):
+                short = s["model"].split("-")[1] if s.get("model") else ""
+                model_tag = f" [{short}]"
+            trunc = (desc[:desc_w - 1] + "…") if len(desc) > desc_w else desc
+            print(
+                f"  {trunc + model_tag:<{desc_w}}  "
+                f"{s['turns']:>5}  {s['tool_calls']:>5}  "
+                f"{_fmt(s['input']):>8}  {_fmt(s['cache_read']):>9}  "
+                f"{_fmt(s['output']):>7}  ${_cost(s):>6.4f}"
+            )
+
+    # ── Totals ────────────────────────────────────────────────────────────────
+    totals = _add(orch, total_sub)
+    sub_label = f"{len(rows)} subagent{'s' if len(rows) != 1 else ''}"
+    print(f"\n  TOTALS  (orchestrator + {sub_label})")
+    print(f"  {SEP}")
+    print(f"  {'Turns':<14} {_fmt(totals['turns'])}")
+    print(f"  {'Tool calls':<14} {_fmt(totals['tool_calls'])}")
+    print(f"  {'Input':<14} {_fmt(totals['input'])} tok")
+    print(f"  {'Cache write':<14} {_fmt(totals['cache_write'])} tok")
+    print(f"  {'Cache read':<14} {_fmt(totals['cache_read'])} tok")
+    print(f"  {'Output':<14} {_fmt(totals['output'])} tok")
+    orch_cost = _cost(orch)
+    sub_cost  = _cost(total_sub)
+    tot_cost  = orch_cost + sub_cost
+    print(f"  {'Est. cost':<14} ${tot_cost:.4f}  (orch ${orch_cost:.4f} + agents ${sub_cost:.4f})")
+    print()
+
+
+if __name__ == "__main__":
+    main()
