@@ -8,6 +8,7 @@ Usage:
 """
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -32,9 +33,23 @@ def _model_costs(model: str | None) -> dict:
     return _DEFAULT_COSTS
 
 
+def _extract_page_count(content: str) -> int | None:
+    """Find page_count in a tool result string, including persisted-output redirects."""
+    if content.startswith("<persisted-output>"):
+        m = re.search(r"Full output saved to: (.+)", content)
+        if m:
+            try:
+                content = Path(m.group(1).strip()).read_text(encoding="utf-8")
+            except OSError:
+                return None
+    m = re.search(r'"page_count":\s*(\d+)', content)
+    return int(m.group(1)) if m else None
+
+
 def _parse_log(path: Path) -> dict:
     turns = tool_calls = inp = cache_write = cache_read = out = 0
     model = None
+    page_count = None
 
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
@@ -46,7 +61,20 @@ def _parse_log(path: Path) -> dict:
             continue
 
         msg = r.get("message", {})
-        if not isinstance(msg, dict) or msg.get("role") != "assistant":
+        if not isinstance(msg, dict):
+            continue
+
+        if msg.get("role") == "user" and page_count is None:
+            for block in msg.get("content", []):
+                if isinstance(block, dict) and block.get("type") == "tool_result":
+                    raw = block.get("content", "")
+                    if isinstance(raw, str):
+                        pc = _extract_page_count(raw)
+                        if pc is not None:
+                            page_count = pc
+                            break
+
+        if msg.get("role") != "assistant":
             continue
 
         u = msg.get("usage", {})
@@ -67,7 +95,7 @@ def _parse_log(path: Path) -> dict:
     return {
         "turns": turns, "tool_calls": tool_calls,
         "input": inp, "cache_write": cache_write, "cache_read": cache_read, "output": out,
-        "model": model,
+        "model": model, "page_count": page_count,
     }
 
 
@@ -86,7 +114,7 @@ def _add(a: dict, b: dict) -> dict:
     return {k: a[k] + b[k] for k in keys} | {"model": a.get("model") or b.get("model")}
 
 
-_ZERO = {"turns": 0, "tool_calls": 0, "input": 0, "cache_write": 0, "cache_read": 0, "output": 0, "model": None}
+_ZERO = {"turns": 0, "tool_calls": 0, "input": 0, "cache_write": 0, "cache_read": 0, "output": 0, "model": None, "page_count": None}
 
 
 def _fmt(n: int) -> str:
@@ -155,17 +183,18 @@ def main():
             return parts[1] if len(parts) > 1 else m
 
         model_w = max(len(short_model(s.get("model"))) for _, s in rows)
-        desc_w = min(52, max(len(r[0]) for r in rows))
-        hdr = f"  {'Description':<{desc_w}}  {'Model':<{model_w}}  {'Turns':>5}  {'Tools':>5}  {'Input':>8}  {'C.read':>9}  {'Output':>7}  {'Cost':>7}"
+        desc_w = min(48, max(len(r[0]) for r in rows))
+        hdr = f"  {'Description':<{desc_w}}  {'Model':<{model_w}}  {'Pg':>4}  {'Turns':>5}  {'Tools':>5}  {'Input':>8}  {'C.read':>9}  {'Output':>7}  {'Cost':>7}"
         print(hdr)
         print(f"  {'─' * (len(hdr) - 2)}")
 
         for desc, s in sorted(rows, key=lambda x: -x[1]["tool_calls"]):
             trunc = (desc[:desc_w - 1] + "…") if len(desc) > desc_w else desc
             m = short_model(s.get("model"))
+            pg = str(s["page_count"]) if s.get("page_count") is not None else "?"
             print(
                 f"  {trunc:<{desc_w}}  {m:<{model_w}}  "
-                f"{s['turns']:>5}  {s['tool_calls']:>5}  "
+                f"{pg:>4}  {s['turns']:>5}  {s['tool_calls']:>5}  "
                 f"{_fmt(s['input']):>8}  {_fmt(s['cache_read']):>9}  "
                 f"{_fmt(s['output']):>7}  ${_cost(s):>6.4f}"
             )
