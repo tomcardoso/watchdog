@@ -40,6 +40,8 @@ Set `EXTRACTOR_MODEL = INGEST.extractor_model` if present, else `"sonnet"`.
 
 Set `FINALIZER_MODEL = INGEST.finalizer_model` if present, else `"sonnet"`.
 
+Set `SECTION_TOKEN_THRESHOLD = INGEST.section_token_threshold` if present, else `120000`.
+
 Set `QUEUE_FILES = INGEST.queue_files`.
 
 The lock is held (acquired by `watchdog ingest`). Every exit path — including errors — must release it by running `watchdog unlock`. That command removes the lock, deletes `ingest-state.json`, and cleans up temp files.
@@ -64,9 +66,13 @@ Then **sort `QUEUE_FILES` by `document_type`** (nulls last). Files sharing a `do
 
 ## 3. Process each file
 
-Process files in **batches of up to 5**. Registry writes are serialized internally — concurrent subagents are safe.
+Partition `QUEUE_FILES` by estimated size: **LARGE** = files whose `est_tokens` is greater than `SECTION_TOKEN_THRESHOLD`; **NORMAL** = all others (including files with no `est_tokens`). Estimated tokens — not page count — is the trigger, so dense table-heavy reports and large non-paginated files (`.txt`/`.csv`/`.md`, which are a single page) are handled correctly. Process NORMAL files first (§3a), then LARGE files (§3b). The `LIMIT` check applies across both — if `LIMIT` is set and `EXTRACTED >= LIMIT`, stop before starting the next batch or document.
 
-Split `QUEUE_FILES` (already sorted by `document_type`) into batches of at most 5 files. For each batch:
+### 3a. Normal documents — parallel extraction
+
+Process NORMAL files in **batches of up to 5**. Registry writes are serialized internally — concurrent subagents are safe.
+
+Split the NORMAL files (already sorted by `document_type`) into batches of at most 5 files. For each batch:
 
 1. For each file in the batch, get its `SHA256`, `FILENAME`, and `DOMAIN_SKILL_PATH` (already resolved in §2).
 2. Print `[<N>/<TOTAL>] Launching: <FILENAME clamped to 50 chars> ...`
@@ -107,6 +113,48 @@ Print:
 ```
 [<N>/<TOTAL>] Done: <FILENAME> — <ENTITY_COUNT> entities (<new_count> new) | ETA: ~<rolling estimate>s
 ```
+
+---
+
+### 3b. Large documents — sequential sectioned extraction
+
+Each LARGE document is too big to extract in one context, so it is split into overlapping page-range sections, extracted **in reading order** with a running scratchpad carried forward, then merged deterministically. Process LARGE files **one at a time**.
+
+For each LARGE file (`SHA256`, `FILENAME`, `DOMAIN_SKILL_PATH` from §2):
+
+1. Run `watchdog section-plan {SHA256}` and read the JSON.
+   - If it returns `"sectioned": false`, the file isn't actually large — extract it via §3a instead.
+   - Otherwise you have `sections: [{index, label, paginated, pages_path}, …]` (`label` is e.g. `"pages 12–34"` or `"part 2 of 5"`).
+2. Extract the sections **strictly in order, one at a time** — launch a section subagent, wait for it to return, then launch the next. Do **not** parallelize them: each section reads the scratchpad the previous one wrote. Use the SECTION SUBAGENT PROMPT TEMPLATE below; set the Agent `description` to `Watchdog section {index}/{count}: <FILENAME clamped to 40 chars>` and `model` to `EXTRACTOR_MODEL`.
+   - If **section 1** returns `STATUS: skipped`, the document is already extracted — skip the whole file; do not process the remaining sections.
+   - From the section returns, remember `NEAR_DUP` (from section 1) and any `CONTRADICTIONS` (union across sections).
+3. After every section has returned, run `watchdog merge-sections {SHA256}` and read the JSON: `extraction_path`, `entity_count`, `new_entities`, `updated_entities`.
+4. Run `watchdog post-flight --extraction {extraction_path}`. If it reports `errors`, log to `.watchdog/Registry/ingest.log` and continue to the next document.
+5. Record this document in `RESULTS` (entity_count, new_entities, updated_entities, document metadata). If section 1's `NEAR_DUP` is not `none`, add to `NEARDUP_ALERTS`; if any section reported `CONTRADICTIONS`, add to `CONTRADICTION_FLAGS`. Increment `EXTRACTED` by 1. Print:
+   ```
+   [done] <FILENAME> — <entity_count> entities (<count> sections merged)
+   ```
+
+#### SECTION SUBAGENT PROMPT TEMPLATE
+
+Keep the stable prefix byte-identical across spawns; per-section values appear at the end. `OUTPUT_PATH` uses a two-digit zero-padded index (`01`, `02`, …) so `merge-sections` reads the sections in order.
+
+```
+Read `.claude/commands/watchdog-ingest-section-subagent.md` for full instructions. Then extract this section.
+
+SHA256: {SHA256}
+FILENAME: {FILENAME}
+DOMAIN_SKILL_PATH: {DOMAIN_SKILL_PATH}
+SECTION_INDEX: {index} of {count}
+SECTION_LABEL: {label}
+SECTION_PAGES_PATH: {pages_path}
+SCRATCHPAD_PATH: .watchdog/tmp/notes_{SHA256}.md
+OUTPUT_PATH: .watchdog/tmp/section_ex_{SHA256}_{index:02d}.json
+INVESTIGATION_BRIEF:
+{INVESTIGATION_BRIEF}
+```
+
+The running scratchpad (`notes_{SHA256}.md`) is the same per-document notes file the finalize subagent reads for the briefing — so a sectioned document's briefing notes are produced as a byproduct of carry-forward, with no extra step.
 
 ---
 

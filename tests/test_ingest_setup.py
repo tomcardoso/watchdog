@@ -172,6 +172,54 @@ def test_finalizer_model_defaults_to_sonnet(tmp_path):
     assert result["finalizer_model"] == "sonnet"
 
 
+def test_queue_files_include_page_count(tmp_path):
+    vault = _make_vault(tmp_path)
+    qf = vault / ".watchdog" / "queue" / "abc123.json"
+    qf.write_text(json.dumps({
+        "filename": "big.pdf", "metadata": {"source_type": "docling"},
+        "page_count": 312, "pages": [],
+    }))
+
+    result = run(vault)
+
+    assert result["queue_files"][0]["page_count"] == 312
+
+
+def test_queue_files_page_count_falls_back_to_len_pages(tmp_path):
+    vault = _make_vault(tmp_path)
+    qf = vault / ".watchdog" / "queue" / "abc123.json"
+    qf.write_text(json.dumps({
+        "filename": "x.pdf", "metadata": {"source_type": "docling"},
+        "pages": [{"page": 1, "markdown": ""}, {"page": 2, "markdown": ""}],
+    }))
+
+    result = run(vault)
+
+    assert result["queue_files"][0]["page_count"] == 2
+
+
+def test_state_includes_section_token_threshold(tmp_path):
+    vault = _make_vault(tmp_path)
+    _write_queue_file(vault, "abc123")
+
+    result = run(vault)
+
+    assert isinstance(result["section_token_threshold"], int)
+
+
+def test_queue_files_include_est_tokens(tmp_path):
+    vault = _make_vault(tmp_path)
+    qf = vault / ".watchdog" / "queue" / "abc123.json"
+    qf.write_text(json.dumps({
+        "filename": "x.pdf", "metadata": {"source_type": "docling"},
+        "pages": [{"page": 1, "markdown": "a" * 400}, {"page": 2, "markdown": "a" * 400}],
+    }))
+
+    result = run(vault)
+
+    assert result["queue_files"][0]["est_tokens"] == 200  # 800 chars / 4
+
+
 def test_empty_queue_cleans_up_stale_state_file(tmp_path):
     vault = _make_vault(tmp_path)
     state_file = vault / ".watchdog" / "ingest-state.json"
