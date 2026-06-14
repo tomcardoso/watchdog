@@ -56,6 +56,8 @@ from pathlib import Path
 
 import yaml
 
+from watchdog.pipeline.entity_norm import normalize_entity_name
+
 try:
     from fcntl import flock as _flock, LOCK_EX as _LOCK_EX, LOCK_UN as _LOCK_UN
     _HAS_FLOCK = True
@@ -90,11 +92,6 @@ def _doc_slug(filename: str) -> str:
     return slugify(Path(filename).stem) or "document"
 
 
-def _normalize_entity_name(name: str) -> str:
-    """Collapse a name to a comparison key for duplicate-entity reconciliation."""
-    s = name.lower().replace("&", "and")
-    s = re.sub(r"[^\w\s]", "", s)
-    return re.sub(r"\s+", " ", s).strip()
 
 
 def _reconcile_entity_ids(incoming_entities: list[dict], entities_reg: dict) -> None:
@@ -112,13 +109,13 @@ def _reconcile_entity_ids(incoming_entities: list[dict], entities_reg: dict) -> 
     norm_index: dict[tuple[str, str], str] = {}
     for eid, entry in entities_reg.items():
         for n in [entry["name"], *entry.get("aliases", [])]:
-            norm_index.setdefault((_normalize_entity_name(n), entry["type"]), eid)
+            norm_index.setdefault((normalize_entity_name(n), entry["type"]), eid)
 
     remap: dict[str, str] = {}
     for entity in incoming_entities:
         if entity["id"] in entities_reg:
             continue
-        key = (_normalize_entity_name(entity["name"]), entity["type"])
+        key = (normalize_entity_name(entity["name"]), entity["type"])
         existing_id = norm_index.get(key)
         if existing_id and existing_id != entity["id"]:
             remap[entity["id"]] = existing_id

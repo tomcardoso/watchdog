@@ -15,14 +15,10 @@ straight into `watchdog post-flight` unchanged.
 """
 
 import json
-import re
 import sys
 from pathlib import Path
 
-
-def _norm(text: str) -> str:
-    """Normalized surface form for drift dedup."""
-    return re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).strip()
+from watchdog.pipeline.entity_norm import normalize_entity_name
 
 
 def _event_key(ev: dict) -> str:
@@ -78,7 +74,7 @@ def merge_extractions(sections: list[dict]) -> dict:
 
             # Fold id drift: reuse an existing id that shares a surface form.
             for nm in surfaces:
-                k = _norm(nm)
+                k = normalize_entity_name(nm)
                 if k and k in norm_index:
                     eid = norm_index[k]
                     break
@@ -116,7 +112,7 @@ def merge_extractions(sections: list[dict]) -> dict:
             _merge_into(cur["roles"], ent.get("roles", []), _role_key)
 
             for nm in surfaces:
-                k = _norm(nm)
+                k = normalize_entity_name(nm)
                 if k:
                     norm_index.setdefault(k, eid)
 

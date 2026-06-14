@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from watchdog.pipeline.write_vault import run, _doc_slug, _normalize_entity_name
+from watchdog.pipeline.write_vault import run, _doc_slug
+from watchdog.pipeline.entity_norm import normalize_entity_name
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -874,11 +875,11 @@ def test_two_sequential_runs_merge_shared_entity(tmp_path):
     ("Ernst  and   Young  Inc", "ernst and young inc"),
 ])
 def test_normalize_entity_name_collapses_variants(a, b):
-    assert _normalize_entity_name(a) == _normalize_entity_name(b)
+    assert normalize_entity_name(a) == normalize_entity_name(b)
 
 
 def test_normalize_entity_name_distinguishes_real_differences():
-    assert _normalize_entity_name("Acme Corp") != _normalize_entity_name("Acme Holdings")
+    assert normalize_entity_name("Acme Corp") != normalize_entity_name("Acme Holdings")
 
 
 def _company_extraction(dirpath, sha, filename, eid, name):
@@ -973,3 +974,51 @@ def test_reconcile_remaps_role_target_in_same_document(tmp_path):
     assert role["target_id"] == "ernst-and-young-inc"
     # Reverse role landed on the canonical company entity.
     assert any(r["target_id"] == "jane-doe" for r in entities["ernst-and-young-inc"]["roles"])
+
+
+def test_reconcile_matches_against_existing_alias(tmp_path):
+    """A new slug matching an existing entity's *alias* (not its name) reconciles."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
+    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    dir_a, dir_b = tmp_path / "a", tmp_path / "b"
+    dir_a.mkdir(); dir_b.mkdir()
+
+    # Doc A establishes the entity with an alias.
+    run(make_extraction(dir_a, overrides={
+        "document": {"sha256": "sha-a", "filename": "doc-a.pdf", "original_path": "_INCOMING/doc-a.pdf"},
+        "entities": [{"id": "ibm", "name": "IBM", "type": "Company",
+                      "aliases": ["International Business Machines"], "summary": None, "analysis": None,
+                      "timeline_events": [], "roles": []}],
+        "morgue_entity_id": "ibm", "morgue_document_type": "annual-report",
+    }), vault)
+
+    # Doc B coins a new slug whose name matches the *alias* above.
+    run(_company_extraction(dir_b, "sha-b", "doc-b.pdf",
+                            "international-business-machines", "International Business Machines"), vault)
+
+    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    assert "international-business-machines" not in entities   # reconciled onto the alias match
+    assert "sha-b" in entities["ibm"]["appears_in"]
+
+
+def test_reconcile_does_not_merge_across_types(tmp_path):
+    """Same normalized name but different entity types must stay separate."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
+    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    dir_a, dir_b = tmp_path / "a", tmp_path / "b"
+    dir_a.mkdir(); dir_b.mkdir()
+
+    # A Person and a Company that normalize to the same key.
+    run(make_extraction(dir_a, overrides={
+        "document": {"sha256": "sha-a", "filename": "doc-a.pdf", "original_path": "_INCOMING/doc-a.pdf"},
+        "entities": [{"id": "morgan-person", "name": "Morgan", "type": "Person",
+                      "aliases": [], "summary": None, "analysis": None,
+                      "timeline_events": [], "roles": []}],
+        "morgue_entity_id": "morgan-person", "morgue_document_type": "filing",
+    }), vault)
+    run(_company_extraction(dir_b, "sha-b", "doc-b.pdf", "morgan-company", "Morgan"), vault)
+
+    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    assert "morgan-person" in entities and "morgan-company" in entities  # type-scoped, not merged
