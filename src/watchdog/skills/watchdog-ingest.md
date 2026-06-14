@@ -260,6 +260,11 @@ Keep hot.md under ~40 lines.
 
 Run `watchdog unlock` to remove `.watchdog/Registry/.ingest-lock`, delete `ingest-state.json`, and clean up temp files.
 
+Print:
+```
+Ingest complete. Start a fresh Claude Code session for investigation work — this session's context is no longer needed.
+```
+
 ---
 
 ## 9. Clarifying questions (optional)

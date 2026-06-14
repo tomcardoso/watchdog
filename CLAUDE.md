@@ -78,6 +78,22 @@ If the new skill would overlap significantly with an existing one, consider exte
 
 ---
 
+## Ingest workflow
+
+`/watchdog-ingest` is fire-and-forget. Once it finishes, **close the session** — do not continue asking investigation questions in the same Claude Code window. Every entity note, document, and scratchpad written during ingest is now in the vault; a fresh session reads all of it from disk with no ingest-time context baggage.
+
+**Intended workflow:**
+
+1. `watchdog chew` — OCR/Docling (terminal)
+2. `watchdog ingest` — lock + queue (terminal)
+3. Open Claude Code → `/watchdog-ingest` — let it run to completion
+4. Close the session
+5. Open a new Claude Code session → ask investigation questions; the session reads `hot.md`, `briefings/`, and the registry fresh
+
+Mixing ingest and investigation in one session inflates context proportionally to the number of documents ingested, crowding out the headroom needed for Q&A.
+
+---
+
 ## CLI style guide
 
 All terminal output in `cli.py` follows a consistent visual language. The colour constants are defined at the top of the file — use them, never raw ANSI codes.
