@@ -167,6 +167,7 @@ By default, Watchdog uses Claude Sonnet for both the orchestrator and the extrac
 ```bash
 watchdog ingest --extractor-model haiku      # faster, cheaper subagents
 watchdog ingest --orchestrator-model opus    # more capable orchestrator
+watchdog ingest --finalizer-model opus       # stronger model for timeline + briefing
 watchdog ingest --orchestrator-model opus --extractor-model haiku
 ```
 

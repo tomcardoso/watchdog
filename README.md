@@ -209,6 +209,7 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog ingest` | Acquire the ingest lock, scan the queue, and open Claude Code — `/watchdog-ingest` fires automatically |
 | `watchdog ingest --orchestrator-model M` | Override the orchestrator model (`sonnet`/`opus`/`haiku`, default: `sonnet`) |
 | `watchdog ingest --extractor-model M` | Override the extraction subagent model (`sonnet`/`haiku`, default: `sonnet`) |
+| `watchdog ingest --finalizer-model M` | Override the finalizer subagent model — timeline reconciliation + briefing (`sonnet`/`opus`/`haiku`, default: `sonnet`) |
 | `watchdog context [name]` | Open Claude Code with the context seeding skill; omit name when inside the vault |
 | `watchdog context --model M` | Override the model for context seeding (`sonnet`/`opus`/`haiku`, default: `sonnet`) |
 | `watchdog watch [name]` | Watch `_INCOMING/` and chew files automatically as they arrive; omit name when inside the project directory |
