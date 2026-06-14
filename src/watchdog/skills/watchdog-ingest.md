@@ -157,6 +157,11 @@ When it returns, print its `BRIEFING:` path so the user can open it. Do not read
 
 Run `watchdog unlock` to remove `.watchdog/Registry/.ingest-lock`, delete `ingest-state.json`, and clean up temp files.
 
+Print:
+```
+Ingest complete. Start a fresh Claude Code session for investigation work — this session's context is no longer needed.
+```
+
 ---
 
 ## 7. Clarifying questions (optional)
