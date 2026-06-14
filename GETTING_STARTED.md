@@ -162,7 +162,7 @@ watchdog ingest
 
 Watchdog scans the queue and prompts you to open Claude Code. When you confirm, it opens Claude Code with the extraction skill pre-loaded — extraction begins automatically.
 
-By default, Watchdog uses Claude Sonnet for both the orchestrator and the extraction subagents. You can override either at the command line:
+By default, Watchdog uses Claude Sonnet for all three components: the orchestrator, the extraction subagents (one per document), and the finalizer subagent (timeline reconciliation + briefing). You can override any of them at the command line:
 
 ```bash
 watchdog ingest --extractor-model haiku      # faster, cheaper subagents
@@ -181,7 +181,7 @@ Claude works through each chewed file in the queue, processing up to 5 documents
 6. Checks for contradictions against entities already in the vault
 7. Writes everything to the vault
 
-When extraction is complete, Claude produces a **post-ingest briefing** summarizing:
+When extraction is complete, a separate finalizer subagent reconciles the timeline and produces a **post-ingest briefing** summarizing:
 - What documents were processed and what types they were
 - What entities were found and which already existed in the vault
 - Connections between entities — shared addresses, overlapping roles, entities appearing across multiple documents

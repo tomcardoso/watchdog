@@ -91,7 +91,9 @@ watchdog post-flight  (called by each subagent)
   updates global timeline and registries · file-locked for parallel safety
   → originals moved to morgue/
         ↓
-Post-ingest briefing: new entities · connections · leads · anomalies
+finalizer subagent  (isolated Agent call)
+  timeline collision resolution · post-ingest briefing
+  new entities · connections · leads · anomalies
 ```
 
 Splitting the pipeline this way keeps token costs down — the slow mechanical work (OCR, Docling, embeddings, classification) runs outside Claude Code entirely. Claude only sees clean, already-extracted text. The subagent architecture keeps each document's extraction isolated, so the orchestrator context stays flat regardless of batch size.
@@ -520,7 +522,7 @@ Please open an issue before starting significant work so we can discuss approach
 - **Near-duplicate detection** uses MinHash (128 hash functions) to approximate Jaccard similarity on word 3-gram shingles — no ML dependencies, runs locally.
 - **Registries** (`.watchdog/Registry/documents.json`, `entities.json`, `manifest.json`) are the source of truth. Obsidian notes are generated outputs — deleting a note doesn't lose data. `manifest.json` is a lightweight id/name/type/aliases index used for entity lookup without loading full registry data.
 - **Vault writes are file-locked** — `watchdog write-vault` acquires an exclusive lock on `.watchdog/Registry/.write-lock` before reading and writing registry files, so parallel subagent calls serialize safely without corruption.
-- **Extraction runs in isolated subagents** — each document is processed by a separate Claude Code Agent call. This keeps the orchestrator context flat regardless of batch size.
+- **Extraction runs in isolated subagents** — each document is processed by a separate Claude Code Agent call. A second isolated subagent (the finalizer) handles timeline reconciliation and briefing after the extraction loop. Both keep the orchestrator context flat regardless of batch size.
 - **Skills are per-vault** — domain knowledge skill files live in `.claude/commands/records/` inside each vault, installed by `watchdog new` and refreshed by `watchdog refresh-skills`. This means skills travel with the investigation and can be customized per-vault.
 - **Single CLI entry point** — `watchdog` is the only command installed on your PATH. All pipeline utilities are subcommands.
 
