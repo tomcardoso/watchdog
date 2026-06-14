@@ -109,6 +109,11 @@ Parse the returned block:
 
 **`STATUS: ok`** — add the full result to `RESULTS`. If `NEAR_DUP` is not `none`, add to `NEARDUP_ALERTS`. If `CONTRADICTIONS` is not `none`, add to `CONTRADICTION_FLAGS`.
 
+**`STATUS: failed`** (the subagent's runaway guard fired) **or an unparseable / errored result** — run `watchdog ingest-abort {SHA256}` to clear the document's staging files and move its queue file to the `_failed/` holding area, log the `REASON` to `.watchdog/Registry/ingest.log`, count it as failed, and continue. Leave nothing half-written; the document re-ingests cleanly once moved back into the queue. Print:
+```
+[<N>/<TOTAL>] Failed: <FILENAME> — <REASON> (aborted, cleaned up)
+```
+
 Print:
 ```
 [<N>/<TOTAL>] Done: <FILENAME> — <ENTITY_COUNT> entities (<new_count> new) | ETA: ~<rolling estimate>s
@@ -127,6 +132,7 @@ For each LARGE file (`SHA256`, `FILENAME`, `DOMAIN_SKILL_PATH` from §2):
    - Otherwise you have `sections: [{index, label, paginated, pages_path}, …]` (`label` is e.g. `"pages 12–34"` or `"part 2 of 5"`).
 2. Extract the sections **strictly in order, one at a time** — launch a section subagent, wait for it to return, then launch the next. Do **not** parallelize them: each section reads the scratchpad the previous one wrote. Use the SECTION SUBAGENT PROMPT TEMPLATE below; set the Agent `description` to `Watchdog section {index}/{count}: <FILENAME clamped to 40 chars>` and `model` to `EXTRACTOR_MODEL`.
    - If **section 1** returns `STATUS: skipped`, the document is already extracted — skip the whole file; do not process the remaining sections.
+   - If **any section** returns `STATUS: failed` (its runaway guard fired), **abort the whole document**: run `watchdog ingest-abort {SHA256}` (clears the section files and moves the queue file to `_failed/`), log the `REASON`, count it as failed, and move to the next document — do not run the remaining sections, `merge-sections`, or `post-flight`.
    - From the section returns, remember `NEAR_DUP` (from section 1) and any `CONTRADICTIONS` (union across sections).
 3. After every section has returned, run `watchdog merge-sections {SHA256}` and read the JSON: `extraction_path`, `entity_count`, `new_entities`, `updated_entities`.
 4. Run `watchdog post-flight --extraction {extraction_path}`. If it reports `errors`, log to `.watchdog/Registry/ingest.log` and continue to the next document.
@@ -225,9 +231,11 @@ Frame questions as optional. If deferred, note the uncertainty in the relevant n
 
 ## Error handling
 
-If a subagent exits with an error or returns an unparseable result:
-1. Log to `.watchdog/Registry/ingest.log`: `[<ISO 8601>] ERROR <filename>: <error>`
-2. Move the queue file to `_INCOMING/_FAILED/` if possible
-3. Continue to the next file
+If a subagent returns `STATUS: failed`, exits with an error, or returns an unparseable result:
+1. Run `watchdog ingest-abort {SHA256}` — this removes the document's staging files (and any raw timeline files) and moves its queue file to `.watchdog/queue/_failed/`, leaving the vault registry untouched (a clean bail never wrote to it).
+2. Log to `.watchdog/Registry/ingest.log`: `[<ISO 8601>] FAILED <filename>: <reason>`
+3. Continue to the next file.
+
+The aborted document is in a clean state for a future ingest: its source is still in `_INCOMING/` and its chewed queue file is preserved in `_failed/`. To retry it, move the queue file back (`mv .watchdog/queue/_failed/<sha>.json .watchdog/queue/`) and run `watchdog ingest` again.
 
 Always release the lock at the end, even if every file failed.

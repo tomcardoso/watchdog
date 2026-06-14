@@ -57,6 +57,7 @@ _PIPELINE_COMMANDS = {
     "write-entity":  ("watchdog.pipeline.write_entity", "watchdog-write-entity"),
     "section-plan":  ("watchdog.pipeline.section",      "watchdog-section-plan"),
     "merge-sections":("watchdog.pipeline.merge",        "watchdog-merge-sections"),
+    "ingest-abort":  ("watchdog.pipeline.abort",        "watchdog-ingest-abort"),
 }
 
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates" / "vault"
@@ -74,6 +75,7 @@ _VAULT_PERMISSIONS = [
     "Bash(watchdog rebuild-timeline)",
     "Bash(watchdog section-plan *)",
     "Bash(watchdog merge-sections *)",
+    "Bash(watchdog ingest-abort *)",
     # shell utilities
     "Bash(find .watchdog/queue/ *)",
     # internal vault state

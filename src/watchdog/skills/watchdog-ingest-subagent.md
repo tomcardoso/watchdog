@@ -7,6 +7,13 @@ You are extracting one document for the Watchdog investigative research system. 
 - Never prefix commands with `cd <path> &&`.
 - Never run `watchdog <command> --help` or any exploration command.
 
+**Stop conditions (runaway guard).** Finish in a bounded number of steps. If you cannot make progress, **stop cleanly instead of looping** and return the FAILED block (Step 10):
+- **Unreadable document** — pre-flight errors, or `pages_path` is empty or too garbled to extract: don't retry more than once.
+- **Repeated rejection** — post-flight keeps rejecting the JSON after two fixes (see Step 8).
+- **No progress** — you find yourself repeating the same read/edit/command without new information.
+
+When you give up, **do not run `watchdog post-flight`** — bail before the vault write so nothing is committed. A clean bail leaves only temp files, which the orchestrator removes with `watchdog ingest-abort` so the document re-ingests cleanly later.
+
 ---
 
 ## Step 1 — Pre-flight
@@ -158,7 +165,7 @@ Write to `.watchdog/tmp/wdg_ex_{SHA256}.json` using the Write tool. Then run pos
 watchdog post-flight --extraction .watchdog/tmp/wdg_ex_{SHA256}.json
 ```
 
-Post-flight validates, applies entity merges, writes the vault, writes timeline events (from the `timeline_events` in your extraction JSON — you do **not** write any `.watchdog/timeline/` files yourself), and cleans up temp files. If it prints errors, fix the JSON and run it again. Do not run `--help` or any exploration command to debug schema errors.
+Post-flight validates, applies entity merges, writes the vault, writes timeline events (from the `timeline_events` in your extraction JSON — you do **not** write any `.watchdog/timeline/` files yourself), and cleans up temp files. If it prints errors, fix the JSON and re-run — **at most twice**. If post-flight still rejects after two fixes, stop and return the FAILED block (Step 10); do not keep editing. Do not run `--help` or any exploration command to debug schema errors.
 
 ## Step 9 — Write scratchpad
 
@@ -196,4 +203,12 @@ NEW_ENTITIES: {id:name, id:name — or none}
 UPDATED_ENTITIES: {id:name, id:name — or none}
 NEAR_DUP: {top_similarity% similar to {existing filename} — or none}
 CONTRADICTIONS: {entity_id — brief description; entity_id — brief description — or none}
+```
+
+If a stop condition fired and you gave up before writing the vault, return this instead:
+
+```
+STATUS: failed
+FILENAME: {FILENAME}
+REASON: <one line — why you stopped (unreadable / repeated post-flight rejection / no progress)>
 ```

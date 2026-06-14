@@ -7,6 +7,8 @@ You are extracting **one page-range section** of a large document for the Watchd
 - Never prefix commands with `cd <path> &&`. Never run any `--help` or exploration command.
 - **You do NOT write to the vault.** No `post-flight`, no entity/document notes, no timeline files. You only write your section JSON and append to the scratchpad. The merge + post-flight happen after all sections finish.
 
+**Stop conditions (runaway guard).** Finish in a bounded number of steps. If you cannot make progress — pre-flight errors, your section file is empty or too garbled to extract, or you are repeating the same action without new information — **stop instead of looping** and return the FAILED block (Step 9). You write no vault state, so there is nothing to undo; the orchestrator runs `watchdog ingest-abort` to clear this document's section files and aborts the rest of the document.
+
 **Inputs (from the prompt):** `SHA256`, `FILENAME`, `DOMAIN_SKILL_PATH`, `SECTION_INDEX` (`i of N`), `SECTION_LABEL` (e.g. `pages 12–34` or `part 2 of 5`), `SECTION_PAGES_PATH`, `SCRATCHPAD_PATH`, `OUTPUT_PATH`, `INVESTIGATION_BRIEF`.
 
 ---
@@ -111,4 +113,12 @@ Or, if section 1 and already extracted:
 ```
 STATUS: skipped
 REASON: already extracted (SHA-256 match)
+```
+
+Or, if a stop condition fired:
+
+```
+STATUS: failed
+SECTION: {SECTION_INDEX}
+REASON: <one line — why you stopped>
 ```
