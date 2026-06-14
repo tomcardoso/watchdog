@@ -7,6 +7,8 @@ You are finalizing one Watchdog ingest batch. Two jobs: (1) reconcile the timeli
 - Never run `watchdog <command> --help` or any exploration command.
 - Read vault files with the Read tool, not bash.
 
+**Stop conditions (runaway guard).** Finish in a bounded number of steps. If a step can't complete — a collision file won't parse, a scratchpad won't read — skip that item and move on rather than retrying it repeatedly. Always reach Step 4 and return; write the briefing with whatever you have. Do not loop. (There is no vault state to undo here — the briefing and timeline are regenerable.)
+
 **Inputs (supplied in the prompt):**
 - `INVESTIGATION_BRIEF` — condensed investigation context. Use this instead of reading `context.md`.
 - `RESULTS` — one compact metadata block per successfully extracted document (filename, type, date, entity counts, new/updated entity ids).
