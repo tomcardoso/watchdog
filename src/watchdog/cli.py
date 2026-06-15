@@ -278,15 +278,18 @@ def main() -> None:
 
     _model_choices = ["sonnet", "opus", "haiku"]
     p_ingest = sub.add_parser("ingest", help="Set up extraction session and open in Claude Code")
-    p_ingest.add_argument("--orchestrator-model", choices=_model_choices, default="sonnet",
+    p_ingest.add_argument("--orchestrator-model", choices=_model_choices, default=None,
                           dest="orchestrator_model",
-                          help="Model for the orchestrator session (default: sonnet)")
-    p_ingest.add_argument("--extractor-model", choices=_model_choices, default="sonnet",
+                          help="Model for the orchestrator session — overrides watchdog configure (default: sonnet)")
+    p_ingest.add_argument("--extractor-model", choices=_model_choices, default=None,
                           dest="extractor_model",
-                          help="Model for extraction subagents (default: sonnet)")
-    p_ingest.add_argument("--finalizer-model", choices=_model_choices, default="sonnet",
+                          help="Model for extraction subagents — overrides watchdog configure (default: sonnet)")
+    p_ingest.add_argument("--finalizer-model", choices=_model_choices, default=None,
                           dest="finalizer_model",
-                          help="Model for the finalize subagent — timeline reconciliation + briefing (default: sonnet)")
+                          help="Model for the finalizer subagent — timeline reconciliation + briefing — overrides watchdog configure (default: sonnet)")
+    p_ingest.add_argument("--entity-synthesizer-model", choices=_model_choices, default=None,
+                          dest="entity_synthesizer_model",
+                          help="Model for entity synthesis subagents — overrides watchdog configure (default: sonnet)")
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_context = sub.add_parser("context", help="Open Claude Code to seed investigation context from _CONTEXT/")

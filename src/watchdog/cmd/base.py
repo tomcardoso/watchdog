@@ -117,9 +117,10 @@ _CMD_HELP: dict[str, dict] = {
     "ingest": {
         "desc": "Set up extraction session and open in Claude Code",
         "opts": [
-            ("--orchestrator-model M", "Model for the orchestrator session (sonnet/opus/haiku, default: sonnet)"),
-            ("--extractor-model M",    "Model for extraction subagents (sonnet/haiku, default: sonnet)"),
-            ("--finalizer-model M",    "Model for the finalize subagent — timeline + briefing (sonnet/opus/haiku, default: sonnet)"),
+            ("--orchestrator-model M",       "Override orchestrator model for this run (sonnet/opus/haiku; default from watchdog configure)"),
+            ("--extractor-model M",          "Override extraction subagent model for this run (sonnet/opus/haiku; default from watchdog configure)"),
+            ("--finalizer-model M",          "Override finalizer subagent model for this run — timeline + briefing (sonnet/opus/haiku; default from watchdog configure)"),
+            ("--entity-synthesizer-model M", "Override entity synthesizer model for this run (sonnet/opus/haiku; default from watchdog configure)"),
         ],
     },
     "context": {

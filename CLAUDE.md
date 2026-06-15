@@ -4,6 +4,10 @@
 
 [ARCHITECTURE.md](ARCHITECTURE.md) records how the preprocessing and ingestion pipeline is built and the rationale behind each architectural decision. **When a change alters the pipeline's structure, the split between deterministic code and the model, the vault/registry layout, or any decision logged there, update `ARCHITECTURE.md` in the same change** — including its decision-log table. Treat it as part of the definition of done, like tests.
 
+## Documentation
+
+**When a change adds, removes, or modifies anything user-facing — CLI flags, `watchdog configure` keys, CLI commands, default values, or ingest workflow steps — update `README.md`, `GETTING_STARTED.md`, and `INSTALL.md` in the same change.** The configuration table in README, the processing section in GETTING_STARTED, and the ingest walkthrough in INSTALL are the three most likely to need updating. Treat doc updates as part of the definition of done, like tests.
+
 ## Testing
 
 Write tests for new features and any non-trivial function. The suite lives in `tests/`.

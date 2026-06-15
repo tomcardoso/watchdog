@@ -172,6 +172,26 @@ def test_finalizer_model_defaults_to_sonnet(tmp_path):
     assert result["finalizer_model"] == "sonnet"
 
 
+def test_entity_synthesizer_model_written_to_state(tmp_path):
+    vault = _make_vault(tmp_path)
+    _write_queue_file(vault, "abc123")
+
+    result = run(vault, entity_synthesizer_model="opus")
+
+    assert result["entity_synthesizer_model"] == "opus"
+    state = json.loads((vault / ".watchdog" / "ingest-state.json").read_text())
+    assert state["entity_synthesizer_model"] == "opus"
+
+
+def test_entity_synthesizer_model_defaults_to_sonnet(tmp_path):
+    vault = _make_vault(tmp_path)
+    _write_queue_file(vault, "abc123")
+
+    result = run(vault)
+
+    assert result["entity_synthesizer_model"] == "sonnet"
+
+
 def test_queue_files_include_page_count(tmp_path):
     vault = _make_vault(tmp_path)
     qf = vault / ".watchdog" / "queue" / "abc123.json"
