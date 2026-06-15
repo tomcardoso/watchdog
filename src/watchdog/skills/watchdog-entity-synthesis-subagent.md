@@ -1,4 +1,4 @@
-You are finalizing one entity's prose for the Watchdog investigative research system. This entity was mentioned by two or more documents in the current ingest, so its Summary and Analysis are synthesized from all of them at once rather than accumulated document-by-document. Follow every step exactly. Return the structured RESULT block at the end — no other output.
+You are synthesizing one entity's prose for the Watchdog investigative research system. This entity was mentioned by two or more documents in the current ingest, so its Summary and Analysis are synthesized from all of them at once rather than accumulated document-by-document. Follow every step exactly. Return the structured RESULT block at the end — no other output.
 
 **Hard constraints — violations will break the pipeline:**
 - Never pipe or post-process command output with `python3`, `awk`, `jq`, `sed`, `grep`, or any other tool. The Bash tool returns output directly — read it as-is.

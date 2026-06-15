@@ -18,6 +18,11 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from watchdog.pipeline.section import (
+    section_token_threshold as _section_token_threshold,
+    est_tokens_from_pages as _est_tokens_from_pages,
+)
+
 STALE_SECONDS = 30 * 60
 
 
@@ -25,7 +30,7 @@ def _iso_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def run(vault: Path, extractor_model: str = "sonnet") -> dict:
+def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "sonnet") -> dict:
     """Acquire lock, scan queue, write state file. Returns the state dict."""
     lock_file = vault / ".watchdog" / "Registry" / ".ingest-lock"
     state_file = vault / ".watchdog" / "ingest-state.json"
@@ -58,6 +63,8 @@ def run(vault: Path, extractor_model: str = "sonnet") -> dict:
                 "sha256": qf.stem,
                 "filename": data.get("filename", qf.stem),
                 "document_type": data.get("document_type"),
+                "page_count": data.get("page_count") or len(data.get("pages", [])),
+                "est_tokens": _est_tokens_from_pages(data.get("pages", [])),
             })
 
     total = len(queue_files)
@@ -90,6 +97,8 @@ def run(vault: Path, extractor_model: str = "sonnet") -> dict:
         "total": total,
         "queue_files": queue_files,
         "extractor_model": extractor_model,
+        "finalizer_model": finalizer_model,
+        "section_token_threshold": _section_token_threshold(),
     }
     state_file.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
     return state

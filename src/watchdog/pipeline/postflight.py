@@ -115,6 +115,16 @@ def run(vault: Path, extraction_path: Path) -> dict:
     except Exception as e:
         return {"errors": [str(e)]}
 
+    # Stage raw timeline NDJSON files (replaces the subagent's manual per-date
+    # writes). The vault is already written at this point, so a staging failure
+    # is reported as a warning rather than failing the whole extraction —
+    # erroring here would trigger a retry and double-write the vault.
+    try:
+        from watchdog.pipeline.timeline import stage_timeline_events
+        stage_timeline_events(vault, extraction)
+    except Exception as e:
+        print(f"Warning: timeline staging failed: {e}", file=sys.stderr)
+
     # Clean up temp files
     for path in [
         extraction_path,

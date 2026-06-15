@@ -52,10 +52,13 @@ _ALIASES = {
 }
 
 _PIPELINE_COMMANDS = {
-    "near-dup":    ("watchdog.pipeline.near_dup",     "watchdog-near-dup"),
-    "write-vault": ("watchdog.pipeline.write_vault",  "watchdog-write-vault"),
-    "write-entity":("watchdog.pipeline.write_entity", "watchdog-write-entity"),
+    "near-dup":      ("watchdog.pipeline.near_dup",       "watchdog-near-dup"),
+    "write-vault":   ("watchdog.pipeline.write_vault",    "watchdog-write-vault"),
+    "write-entity":  ("watchdog.pipeline.write_entity",   "watchdog-write-entity"),
     "write-entity-synthesis": ("watchdog.pipeline.finalize_entity", "watchdog-write-entity-synthesis"),
+    "section-plan":  ("watchdog.pipeline.section",        "watchdog-section-plan"),
+    "merge-sections":("watchdog.pipeline.merge",          "watchdog-merge-sections"),
+    "ingest-abort":  ("watchdog.pipeline.abort",          "watchdog-ingest-abort"),
 }
 
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates" / "vault"
@@ -72,6 +75,9 @@ _VAULT_PERMISSIONS = [
     "Bash(watchdog unlock*)",
     "Bash(watchdog timeline-collisions)",
     "Bash(watchdog rebuild-timeline)",
+    "Bash(watchdog section-plan *)",
+    "Bash(watchdog merge-sections *)",
+    "Bash(watchdog ingest-abort *)",
     # shell utilities
     "Bash(find .watchdog/queue/ *)",
     # internal vault state
@@ -113,6 +119,7 @@ _CMD_HELP: dict[str, dict] = {
         "opts": [
             ("--orchestrator-model M", "Model for the orchestrator session (sonnet/opus/haiku, default: sonnet)"),
             ("--extractor-model M",    "Model for extraction subagents (sonnet/haiku, default: sonnet)"),
+            ("--finalizer-model M",    "Model for the finalize subagent — timeline + briefing (sonnet/opus/haiku, default: sonnet)"),
         ],
     },
     "context": {

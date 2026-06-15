@@ -7,6 +7,13 @@ You are extracting one document for the Watchdog investigative research system. 
 - Never prefix commands with `cd <path> &&`.
 - Never run `watchdog <command> --help` or any exploration command.
 
+**Stop conditions (runaway guard).** Finish in a bounded number of steps. If you cannot make progress, **stop cleanly instead of looping** and return the FAILED block (Step 10):
+- **Unreadable document** — pre-flight errors, or `pages_path` is empty or too garbled to extract: don't retry more than once.
+- **Repeated rejection** — post-flight keeps rejecting the JSON after two fixes (see Step 8).
+- **No progress** — you find yourself repeating the same read/edit/command without new information.
+
+When you give up, **do not run `watchdog post-flight`** — bail before the vault write so nothing is committed. A clean bail leaves only temp files, which the orchestrator removes with `watchdog ingest-abort` so the document re-ingests cleanly later.
+
 ---
 
 ## Step 1 — Pre-flight
@@ -19,7 +26,7 @@ The stdout output is **metadata only** — it does not include page content. Rea
 - `sha256`, `page_count`
 - `already_extracted` — if true, return the SKIPPED block immediately
 - `near_dup.near_duplicates`, `near_dup.top_similarity`
-- `existing_entities[]` — entities already in vault whose names appear in this document: `{id, name, type, aliases, note_path, summary}`. The `summary` is the entity's current note summary — carry it forward and revise (Step 5), don't overwrite.
+- `existing_entities[]` — entities already in vault whose names appear in this document: `{id, name, type, aliases, note_path, summary, timeline_events, roles, analysis, contradictions}`. `summary` is the entity's current note summary — carry it forward and revise (Step 5), don't overwrite. `timeline_events` and `roles` are the vault's current values; `analysis` is its existing Analysis section; `contradictions` is its existing Contradictions section. These are supplied so the contradiction check (Step 7) needs no note reads.
 - `pages_path` — path to a markdown file containing all pages separated by `<!-- PAGE N -->` markers and `---` dividers
 
 If `already_extracted` is true, stop and return:
@@ -79,7 +86,7 @@ Never upgrade a claim past its weakest element.
 
 ## Step 7 — Contradiction check
 
-For each entity that matched an entry in PRE_FLIGHT.existing_entities, read its vault note at `{note_path}.md`.
+For each entity that matched an entry in PRE_FLIGHT.existing_entities, compare what this document states against that entry's `timeline_events`, `roles`, and `analysis` fields — all supplied by pre-flight. **Do not read entity note files.**
 
 Compare key dates, roles, and relationships against what this document states. Flag material discrepancies where both sides are `high` or `medium` confidence. Add each as a string in the matched entity's `contradictions` array (Step 8), formatted as a callout:
 
@@ -89,9 +96,9 @@ Compare key dates, roles, and relationships against what this document states. F
 > - **<new value>** — [[documents/<new-slug>|<title>]], p. <n> (confidence: <level>)
 ```
 
-These go in `contradictions`, never in `analysis`. Do not flag: low-confidence differences, trivially explainable name variations, contradictions already in the note for the same fact.
+These go in the `contradictions` array (Step 8), never in `analysis`. Do not flag: low-confidence differences, trivially explainable name variations, or contradictions already present in the entity's supplied `contradictions` for the same fact.
 
-Read entity notes **only for matched entities** — do not read notes for new entities.
+Emit a `[!contradiction]` callout only when you are confident the discrepancy is genuine after this comparison. This is the only verification step in the pipeline — there is no later orchestrator pass to remove false positives — so any callout you write is saved to the vault as-is.
 
 ## Step 8 — Build extraction JSON and write vault
 
@@ -136,6 +143,10 @@ Build this JSON exactly:
 }
 ```
 
+Correct `roles` entry: `{"relationship": "Director of", "target_id": "acme-corp", "target_type": "company", "target_name": "Acme Corp", "page": 3, "confidence": "high", "date_range": null}`
+
+Wrong: `"Director of Acme Corp"` — plain strings are rejected.
+
 `morgue_entity_id`: the document's subject — debtor for bankruptcy, company for annual report, defendant for court order.
 
 Common mistakes that will cause post-flight to reject the extraction:
@@ -145,13 +156,15 @@ Common mistakes that will cause post-flight to reject the extraction:
 - Every `confidence` value must be exactly one of: `high`, `medium`, `low`, `disputed`
 - `match_id` must be omitted entirely for new entities — do not set it to `null` or `""`
 
+Before writing, verify in-context: (1) every `roles` entry is an object with all required keys, not a plain string; (2) `morgue_entity_id` is present and non-empty; (3) `morgue_document_type` is present; (4) every `confidence` value is exactly `high`, `medium`, `low`, or `disputed`; (5) `match_id` is omitted (not null) for new entities. Fix any issues before proceeding.
+
 Write to `.watchdog/tmp/wdg_ex_{SHA256}.json` using the Write tool. Then run post-flight:
 
 ```bash
 watchdog post-flight --extraction .watchdog/tmp/wdg_ex_{SHA256}.json
 ```
 
-Post-flight validates, applies entity merges, writes the vault, and cleans up temp files. If it prints errors, fix the JSON and run it again. Do not run `--help` or any exploration command to debug schema errors.
+Post-flight validates, applies entity merges, writes the vault, writes timeline events (from the `timeline_events` in your extraction JSON — you do **not** write any `.watchdog/timeline/` files yourself), and cleans up temp files. If it prints errors, fix the JSON and re-run — **at most twice**. If post-flight still rejects after two fixes, stop and return the FAILED block (Step 10); do not keep editing. Do not run `--help` or any exploration command to debug schema errors.
 
 ## Step 9 — Write scratchpad
 
@@ -175,24 +188,7 @@ Write a curated scratchpad to `.watchdog/tmp/notes_{SHA256}.md`. This is what th
 
 Omit any section that has nothing worth saying. Do not summarize — include only what a reporter would actually want to know.
 
-## Step 10 — Write timeline events
-
-Collect all `timeline_events` from all extracted entities (from your Step 5 work). Group by date. For each unique date that has at least one event, build NDJSON — one JSON object per line:
-
-```json
-{"date": "YYYY-MM-DD", "event": "event text", "source_sha256": "{SHA256}", "entity_ids": ["entity-id", ...], "confidence": "high|medium|low"}
-```
-
-For each date `YYYY-MM-DD`, write exactly one file to `.watchdog/timeline/YYYY-MM-DD_{SHA256[:7]}.ndjson` using the Write tool. Put all events for that date as separate lines in the same file. If a date has no events, skip it.
-
-Do not check whether a canonical file already exists — always write to the raw `{date}_{SHA256[:7]}.ndjson` path. The `watchdog timeline-collisions` tool handles promotion and deduplication after all subagents finish.
-
-If `.watchdog/timeline/` does not exist, create it first:
-```bash
-mkdir -p .watchdog/timeline
-```
-
-## Step 11 — Return result
+## Step 10 — Return result
 
 Return ONLY the following block. No other output.
 
@@ -206,5 +202,12 @@ NEW_ENTITIES: {id:name, id:name — or none}
 UPDATED_ENTITIES: {id:name, id:name — or none}
 NEAR_DUP: {top_similarity% similar to {existing filename} — or none}
 CONTRADICTIONS: {entity_id — brief description; entity_id — brief description — or none}
-SUMMARY: {one paragraph summary of this document and what was extracted}
+```
+
+If a stop condition fired and you gave up before writing the vault, return this instead:
+
+```
+STATUS: failed
+FILENAME: {FILENAME}
+REASON: <one line — why you stopped (unreadable / repeated post-flight rejection / no progress)>
 ```

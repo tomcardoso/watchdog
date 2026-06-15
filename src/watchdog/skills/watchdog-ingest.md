@@ -10,7 +10,7 @@ Chewing (OCR, Docling) is handled separately by the `watchdog chew` CLI command.
 
 `LIMIT` caps how many files are **extracted** this run. When the limit is reached, stop cleanly and report how many files remain.
 
-**Architecture note:** Each document is extracted in an isolated Agent subagent. This keeps the orchestrator context flat regardless of batch size — queue file text, skill files, and extraction output never accumulate in this session. The orchestrator holds only: the investigation brief, a compact entity index (id/name/type/aliases), and a running list of per-document result summaries.
+**Architecture note:** Each document is extracted in an isolated Agent subagent. This keeps the orchestrator context flat regardless of batch size — queue file text, skill files, and extraction output never accumulate in this session. Timeline reconciliation and the post-ingest briefing are likewise delegated to a single finalize subagent, so scratchpad prose and timeline NDJSON never enter this session. The orchestrator holds only: the investigation brief, a compact entity index (id/name/type/aliases), and a running list of compact per-document result blocks.
 
 **CWD:** All bash commands run from the vault root. Never prefix commands with `cd <path> &&`. Never use absolute paths in any bash command — always use paths relative to the vault root (e.g. `.watchdog/tmp/file.json`, not `/Users/…/file.json`).
 
@@ -38,6 +38,10 @@ Set `TOTAL = INGEST.total`. Set `BATCH_START = INGEST.batch_start`. Set `EXTRACT
 
 Set `EXTRACTOR_MODEL = INGEST.extractor_model` if present, else `"sonnet"`.
 
+Set `FINALIZER_MODEL = INGEST.finalizer_model` if present, else `"sonnet"`.
+
+Set `SECTION_TOKEN_THRESHOLD = INGEST.section_token_threshold` if present, else `120000`.
+
 Set `QUEUE_FILES = INGEST.queue_files`.
 
 The lock is held (acquired by `watchdog ingest`). Every exit path — including errors — must release it by running `watchdog unlock`. That command removes the lock, deletes `ingest-state.json`, and cleans up temp files.
@@ -54,9 +58,15 @@ Read `hot.md` if it exists. Note current investigation state.
 
 ## 2. Process each file
 
-Process files in **batches of up to 5**. Registry writes are serialized internally — concurrent subagents are safe.
+Partition `QUEUE_FILES` by estimated size: **LARGE** = files whose `est_tokens` is greater than `SECTION_TOKEN_THRESHOLD`; **NORMAL** = all others (including files with no `est_tokens`). Estimated tokens — not page count — is the trigger, so dense table-heavy reports and large non-paginated files (`.txt`/`.csv`/`.md`, which are a single page) are handled correctly. Process NORMAL files first (§2a), then LARGE files (§2b). The `LIMIT` check applies across both — if `LIMIT` is set and `EXTRACTED >= LIMIT`, stop before starting the next batch or document.
 
-Split `QUEUE_FILES` into batches of at most 5 files. For each batch:
+Each subagent classifies its own document and loads the matching domain skill — there is no pre-classification step.
+
+### 2a. Normal documents — parallel extraction
+
+Process NORMAL files in **batches of up to 5**. Registry writes are serialized internally — concurrent subagents are safe.
+
+Split the NORMAL files into batches of at most 5 files. For each batch:
 
 1. For each file in the batch, get its `SHA256` and `FILENAME`.
 2. Print `[<N>/<TOTAL>] Launching: <FILENAME clamped to 50 chars> ...`
@@ -70,6 +80,8 @@ Substitute all `{placeholder}` values before sending.
 ---
 
 ### SUBAGENT PROMPT TEMPLATE
+
+The stable prefix (the instruction to read the skill file) must remain byte-identical across all spawns so the Anthropic prompt cache can absorb it. Per-document values (`SHA256`, `FILENAME`, `INVESTIGATION_BRIEF`) always appear at the end.
 
 ```
 Read `.claude/commands/watchdog-ingest-subagent.md` for full extraction instructions. Then extract this document:
@@ -90,6 +102,11 @@ Parse the returned block:
 
 **`STATUS: ok`** — add the full result to `RESULTS`. If `NEAR_DUP` is not `none`, add to `NEARDUP_ALERTS`. If `CONTRADICTIONS` is not `none`, add to `CONTRADICTION_FLAGS`.
 
+**`STATUS: failed`** (the subagent's runaway guard fired) **or an unparseable / errored result** — run `watchdog ingest-abort {SHA256}` to clear the document's staging files and move its queue file to the `_failed/` holding area, log the `REASON` to `.watchdog/Registry/ingest.log`, count it as failed, and continue. Leave nothing half-written; the document re-ingests cleanly once moved back into the queue. Print:
+```
+[<N>/<TOTAL>] Failed: <FILENAME> — <REASON> (aborted, cleaned up)
+```
+
 Print:
 ```
 [<N>/<TOTAL>] Done: <FILENAME> — <ENTITY_COUNT> entities (<new_count> new) | ETA: ~<rolling estimate>s
@@ -97,18 +114,60 @@ Print:
 
 ---
 
-## 3. Entity synthesis (finalizer)
+### 2b. Large documents — sequential sectioned extraction
+
+Each LARGE document is too big to extract in one context, so it is split into overlapping page-range sections, extracted **in reading order** with a running scratchpad carried forward, then merged deterministically. Process LARGE files **one at a time**.
+
+For each LARGE file (`SHA256`, `FILENAME`):
+
+1. Run `watchdog section-plan {SHA256}` and read the JSON.
+   - If it returns `"sectioned": false`, the file isn't actually large — extract it via §2a instead.
+   - Otherwise you have `sections: [{index, label, paginated, pages_path}, …]` (`label` is e.g. `"pages 12–34"` or `"part 2 of 5"`).
+2. Extract the sections **strictly in order, one at a time** — launch a section subagent, wait for it to return, then launch the next. Do **not** parallelize them: each section reads the scratchpad the previous one wrote. Use the SECTION SUBAGENT PROMPT TEMPLATE below; set the Agent `description` to `Watchdog section {index}/{count}: <FILENAME clamped to 40 chars>` and `model` to `EXTRACTOR_MODEL`.
+   - If **section 1** returns `STATUS: skipped`, the document is already extracted — skip the whole file; do not process the remaining sections.
+   - If **any section** returns `STATUS: failed` (its runaway guard fired), **abort the whole document**: run `watchdog ingest-abort {SHA256}` (clears the section files and moves the queue file to `_failed/`), log the `REASON`, count it as failed, and move to the next document — do not run the remaining sections, `merge-sections`, or `post-flight`.
+   - From the section returns, remember `NEAR_DUP` (from section 1) and any `CONTRADICTIONS` (union across sections).
+3. After every section has returned, run `watchdog merge-sections {SHA256}` and read the JSON: `extraction_path`, `entity_count`, `new_entities`, `updated_entities`.
+4. Run `watchdog post-flight --extraction {extraction_path}`. If it reports `errors`, log to `.watchdog/Registry/ingest.log` and continue to the next document.
+5. Record this document in `RESULTS` (entity_count, new_entities, updated_entities, document metadata). If section 1's `NEAR_DUP` is not `none`, add to `NEARDUP_ALERTS`; if any section reported `CONTRADICTIONS`, add to `CONTRADICTION_FLAGS`. Increment `EXTRACTED` by 1. Print:
+   ```
+   [done] <FILENAME> — <entity_count> entities (<count> sections merged)
+   ```
+
+#### SECTION SUBAGENT PROMPT TEMPLATE
+
+Keep the stable prefix byte-identical across spawns; per-section values appear at the end. `OUTPUT_PATH` uses a two-digit zero-padded index (`01`, `02`, …) so `merge-sections` reads the sections in order.
+
+```
+Read `.claude/commands/watchdog-ingest-section-subagent.md` for full instructions. Then extract this section.
+
+SHA256: {SHA256}
+FILENAME: {FILENAME}
+SECTION_INDEX: {index} of {count}
+SECTION_LABEL: {label}
+SECTION_PAGES_PATH: {pages_path}
+SCRATCHPAD_PATH: .watchdog/tmp/notes_{SHA256}.md
+OUTPUT_PATH: .watchdog/tmp/section_ex_{SHA256}_{index:02d}.json
+INVESTIGATION_BRIEF:
+{INVESTIGATION_BRIEF}
+```
+
+The running scratchpad (`notes_{SHA256}.md`) is the same per-document notes file the finalize subagent reads for the briefing — so a sectioned document's briefing notes are produced as a byproduct of carry-forward, with no extra step.
+
+---
+
+## 3. Entity synthesis
 
 Entities mentioned by **two or more documents in this ingest** get a synthesized Summary and Analysis, reconciling all of this run's fragments at once. Single-mention entities already have correct notes from extraction (their summaries were carried forward and revised in place), so they are skipped.
 
 Read `.watchdog/tmp/entity-fragments/_queue.json` with the Read tool. If it does not exist, skip this section entirely. It maps each entity id touched this run to `{name, note_path, count}`.
 
-Set `FINALIZE` = every entry with `count >= 2`. If `FINALIZE` is empty, skip.
+Set `SYNTHESIZE` = every entry with `count >= 2`. If `SYNTHESIZE` is empty, skip.
 
-Process `FINALIZE` in **batches of up to 5** — launch all finalizer subagents in a batch simultaneously (a single message with parallel Agent calls). Set each Agent's `description` to `Watchdog finalize: <ENTITY_NAME clamped to 50 chars>` and `model` to `EXTRACTOR_MODEL`. Substitute `{placeholder}` values before sending:
+Process `SYNTHESIZE` in **batches of up to 5** — launch all synthesis subagents in a batch simultaneously (a single message with parallel Agent calls). Set each Agent's `description` to `Watchdog entity synthesis: <ENTITY_NAME clamped to 50 chars>` and `model` to `EXTRACTOR_MODEL`. Substitute `{placeholder}` values before sending:
 
 ```
-Read `.claude/commands/watchdog-finalize-entity.md` for full instructions. Then synthesize this entity:
+Read `.claude/commands/watchdog-entity-synthesis-subagent.md` for full instructions. Then synthesize this entity:
 
 ENTITY_ID: {id}
 ENTITY_NAME: {name}
@@ -116,7 +175,7 @@ FRAGMENTS_PATH: .watchdog/tmp/entity-fragments/{id}.md
 NOTE_PATH: {note_path}.md
 ```
 
-Each subagent returns `STATUS: ok` or `STATUS: error`. Log errors to `.watchdog/Registry/ingest.log` and continue — a failed finalize leaves the carryforward note in place, which is still correct.
+Each subagent returns `STATUS: ok` or `STATUS: error`. Log errors to `.watchdog/Registry/ingest.log` and continue — a failed synthesis leaves the carried-forward note in place, which is still correct.
 
 ---
 
@@ -126,47 +185,9 @@ After the loop completes, check whether any new entity type from the results is 
 
 ---
 
-## 5. Timeline reconciliation
+## 5. Finalize: timeline + briefing
 
-Run:
-```bash
-watchdog timeline-collisions
-```
-
-Read the JSON output directly from the Bash tool — it is a JSON array. The tool has already promoted any pending raw files (dates with no prior canonical) to canonical. The array contains only **collision objects**: dates where a canonical already existed and new raw files were added in this ingest session.
-
-For each collision object `{"date": "...", "canonical": "...", "raw": [...]}`:
-
-1. Read the canonical file (all NDJSON lines) using the Read tool.
-2. Read each raw file listed in `raw` (all NDJSON lines) using the Read tool.
-3. Combine all event lines for this date. Identify semantic duplicates — events describing the same real-world occurrence even if worded differently. Remove the duplicate, keeping the more precise wording.
-4. Write the deduplicated event list back to the canonical file, one JSON object per line, using the Write tool. Leave the raw file(s) in place as an audit trail.
-
-If the array is empty, skip the dedup pass.
-
-Then run:
-```bash
-watchdog rebuild-timeline
-```
-
-This renders `timeline.md` from all canonical `.watchdog/timeline/{date}.ndjson` files.
-
----
-
-## 6. Post-batch contradiction resolution
-
-For each entry in `CONTRADICTION_FLAGS`:
-- Read the entity note (`entities/{type_lowercase}/{id}.md`)
-- Verify the contradiction is genuine, not a subagent false positive
-- If false positive: edit the note's `## Contradictions` section to remove the `[!contradiction]` callout that `write-vault` wrote
-
-This step reads at most a handful of entity notes — typically 0–3 per batch.
-
----
-
-## 7. Post-ingest briefing
-
-Print a batch summary:
+Print the batch summary:
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Ingest complete: <extracted> processed, <skipped> skipped, <failed> failed
@@ -175,108 +196,46 @@ Entities in vault: <total from registry.json>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-Read all subagent scratchpads from `.watchdog/tmp/notes_*.md` — one per successfully extracted document. These contain the high-signal detail (key figures, leads, contradictions, chronological context) that the subagent's compact RESULT block cannot carry. Build the briefing from the scratchpads, `RESULTS` metadata, `NEARDUP_ALERTS`, `CONTRADICTION_FLAGS`, and `INVESTIGATION_BRIEF`. Do not re-read queue files or entity records.
+Read `.watchdog/Registry/registry.json` with the Read tool for the entity total used in the banner.
 
-Write a briefing note to `briefings/<YYYY-MM-DD-HH-MM>.md`:
+If no documents were successfully extracted (`EXTRACTED == 0`), skip the finalize subagent and continue to §6.
 
-```markdown
----
-date: <ISO 8601>
-files_ingested: <n>
-new_entities: <n>
----
+Otherwise launch **one finalize subagent** (a single Agent call) to reconcile the timeline and write the briefing. This keeps scratchpad prose and timeline NDJSON out of this session. Set the Agent's `description` to `Watchdog finalize` and `model` to `FINALIZER_MODEL`. Send this prompt (substitute every `{placeholder}` first):
 
-# Ingest briefing — <date>
+```
+Read `.claude/commands/watchdog-ingest-finalize-subagent.md` for full instructions. Then finalize this ingest batch.
 
-## What was ingested
+INVESTIGATION_BRIEF:
+{INVESTIGATION_BRIEF}
 
-<One line per file: filename, document type, date of document, entity count.>
+RESULTS:
+{RESULTS}
 
-## New entities
+NEARDUP_ALERTS:
+{NEARDUP_ALERTS}
 
-<Entities that did not exist in the vault before this ingest, with type and source document.>
-
-## Connections to existing entities
-
-<Entities from the new documents that matched entities already in the vault. For each, state what the connection is and why it matters.>
-
-## Leads and follow-up ideas
-
-<Actionable leads from the documents:>
-- **[Question]** <Open question the documents raise but don't answer.> *Source: [[documents/...]]*
-- **[Contact]** <Person or entity worth reaching out to.> *Source: [[entities/...]]*
-- **[Document]** <Specific document that appears to exist but isn't in the vault.> *Source: [[documents/...]], p. N*
-- **[FOI]** <Records request worth filing based on a gap.> *Source: [[documents/...]], p. N*
-
-If context.md is filled in, orient leads toward the journalist's stated questions. Omit this section if nothing warrants a lead.
-
-## Anomalies worth a closer look
-
-<Flag if present: shared addresses between apparently unrelated entities; a person appearing in an unexpected role; a transaction disproportionate to the entity's apparent scale; an entity appearing in many documents with no documented relationships. Write "Nothing flagged." if clean.>
+CONTRADICTION_FLAGS:
+{CONTRADICTION_FLAGS}
 ```
 
-If `NEARDUP_ALERTS` is non-empty, append:
-
-```markdown
-## Near-duplicate alerts
-
-The following files are similar to existing documents. Review and decide whether to keep both or treat as the same document.
-
-- <FILENAME>: <similarity>% similar to <existing document title>
-```
-
-
-### Update hot.md
-
-Overwrite `hot.md`:
-
-```markdown
-# Hot cache
-
-*Last updated: <YYYY-MM-DD> — [[briefings/<briefing-slug>|Briefing <date>]]*
-
-## Investigation status
-
-<One sentence on where the investigation stands, drawing on context.md and what was just ingested.>
-
-## Recent additions
-
-<Bullet list of new entities and documents added this session, with type and source.>
-
-## Emerging patterns
-
-<New connections, contradictions, or anomalies surfaced in this ingest. Omit if nothing notable.>
-
-## Open questions
-
-<Leads from the briefing condensed to short bullets.>
-```
-
-Keep hot.md under ~40 lines.
-
-### Append to log.md
-
-```markdown
-## <YYYY-MM-DD HH:MM> — Ingest
-
-- **Files:** <n> processed, <n> skipped, <n> failed
-- **New entities:** <n> (<n> new, <n> updated)
-- **Briefing:** [[briefings/<briefing-slug>|<date>]]
-<If contradictions were flagged:>
-- **Contradictions flagged:** <n> — see entity notes for details
-```
+When it returns, print its `BRIEFING:` path so the user can open it. Do not read the scratchpads, timeline files, or the briefing yourself — the finalize subagent owns those.
 
 ---
 
-## 8. Release lock
+## 6. Release lock
 
 Run `watchdog unlock` to remove `.watchdog/Registry/.ingest-lock`, delete `ingest-state.json`, and clean up temp files.
 
+Print:
+```
+Ingest complete. Start a fresh Claude Code session for investigation work — this session's context is no longer needed.
+```
+
 ---
 
-## 9. Clarifying questions (optional)
+## 7. Clarifying questions (optional)
 
-After the briefing, if you encountered genuine ambiguities that would meaningfully change the entity graph, ask up to 3–5 targeted questions, batched together:
+After finalizing, if the extraction results surfaced genuine ambiguities that would meaningfully change the entity graph, ask up to 3–5 targeted questions, batched together. Draw these from `RESULTS`, `NEARDUP_ALERTS`, and `CONTRADICTION_FLAGS` — do not re-read documents:
 - Two entities that might be the same person or company
 - A document with no clear date, authority, or subject
 - A near-duplicate where journalist input would help
@@ -287,9 +246,11 @@ Frame questions as optional. If deferred, note the uncertainty in the relevant n
 
 ## Error handling
 
-If a subagent exits with an error or returns an unparseable result:
-1. Log to `.watchdog/Registry/ingest.log`: `[<ISO 8601>] ERROR <filename>: <error>`
-2. Move the queue file to `_INCOMING/_FAILED/` if possible
-3. Continue to the next file
+If a subagent returns `STATUS: failed`, exits with an error, or returns an unparseable result:
+1. Run `watchdog ingest-abort {SHA256}` — this removes the document's staging files (and any raw timeline files) and moves its queue file to `.watchdog/queue/_failed/`, leaving the vault registry untouched (a clean bail never wrote to it).
+2. Log to `.watchdog/Registry/ingest.log`: `[<ISO 8601>] FAILED <filename>: <reason>`
+3. Continue to the next file.
+
+The aborted document is in a clean state for a future ingest: its source is still in `_INCOMING/` and its chewed queue file is preserved in `_failed/`. To retry it, move the queue file back (`mv .watchdog/queue/_failed/<sha>.json .watchdog/queue/`) and run `watchdog ingest` again.
 
 Always release the lock at the end, even if every file failed.

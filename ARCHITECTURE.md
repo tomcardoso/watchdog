@@ -51,8 +51,10 @@ Two human-invoked phases, with a clean handoff via the queue:
 1. **Chew** (`watchdog chew`) — local, no model. OCR/layout extraction, large-PDF
    chunking, near-duplicate fingerprinting. Writes one queue JSON per document.
 2. **Ingest** (`watchdog ingest` → `/watchdog-ingest`) — model-driven. A Claude
-   orchestrator fans out extractor subagents, then a synthesis pass, then timeline
-   reconciliation and a briefing.
+   orchestrator fans out per-document extractor subagents (large documents are
+   extracted in sequential page-range sections), runs a gated entity-synthesis pass,
+   then delegates timeline reconciliation and the briefing to a single finalize
+   subagent. A runaway guard lets a stuck subagent bail cleanly without wedging the batch.
 
 ---
 
@@ -87,7 +89,7 @@ Chew is fully local and writes no model-derived fields — `document_type` is le
 
 `watchdog ingest` acquires a run lock (`.watchdog/Registry/.ingest-lock`, treated as
 stale after 30 minutes), scans the queue, clears the previous run's entity-fragment
-staging (§7), and writes `.watchdog/ingest-state.json` for the skill to read. The
+staging (§8), and writes `.watchdog/ingest-state.json` for the skill to read. The
 `/watchdog-ingest` skill reads that state and **must** release the lock on every
 exit path via `watchdog unlock` (which removes the lock, deletes the state file, and
 cleans `wdg_*` temp files).
@@ -103,9 +105,11 @@ actual registry/note writes so parallel subagents can write safely.
 `skills/watchdog-ingest-subagent.md` (per-document extractor).
 **Code:** `pipeline/preflight.py`, `pipeline/postflight.py`, `pipeline/write_vault.py`.
 
-The orchestrator (default model: sonnet, configurable) processes the queue in
-**batches of up to 5**, launching all extractor subagents in a batch in parallel.
-Each subagent:
+The orchestrator (default model: sonnet, configurable) partitions the queue by
+estimated size. **Normal** documents are processed in **batches of up to 5**, all
+extractor subagents in a batch launched in parallel. **Large** documents (over
+`section_token_threshold`) are extracted in sections instead (see "Large documents"
+below). Each normal subagent:
 
 1. **Pre-flight** (`watchdog pre-flight <sha>`) — packages everything the subagent
    needs: the page text path, and candidate existing entities matched by substring
@@ -122,9 +126,24 @@ Each subagent:
    `write_vault.run()` which performs all vault writes.
 
 `write_vault` is the single deterministic writer: it merges entities (reconciling
-near-duplicate slugs coined by parallel subagents via normalized name+type), writes
-entity and document notes, updates the four registry files, appends timeline events,
-and moves the source file to the morgue — all inside the write lock.
+near-duplicate slugs coined by parallel subagents via the shared `entity_norm`
+name+type normalization), writes entity and document notes, updates the four registry
+files, appends timeline events, and moves the source file to the morgue — all inside
+the write lock.
+
+**Large documents — sectioned extraction.** Code: `pipeline/section.py`,
+`pipeline/merge.py`; skill: `watchdog-ingest-section-subagent.md`. A document too big
+for one context is split by `watchdog section-plan` into overlapping page-range
+sections, extracted **one at a time in reading order** with a running scratchpad
+carried forward, then combined by `watchdog merge-sections` into a single extraction
+JSON that goes through the same post-flight / `write_vault` path. Section subagents
+self-classify like normal ones (no pre-classification — see §6).
+
+**Runaway guard & abort.** A subagent that cannot make progress returns `STATUS:
+failed` instead of looping. The orchestrator then runs `watchdog ingest-abort <sha>`
+(`pipeline/abort.py`), which clears the document's staging/section files and moves its
+queue file to `.watchdog/queue/_failed/`, leaving the registry untouched. Because a
+clean bail never wrote vault state, the document re-ingests cleanly once moved back.
 
 ---
 
@@ -149,6 +168,9 @@ extractor subagent reading the document** — not by a separate pre-pass.
   deleted an entire subsystem (the embedding cache, hashing, thresholds).
 - **Tradeoff.** `document_type` is `null` in the queue between chew and ingest; it is
   populated by extraction. Accepted — nothing downstream needs it earlier.
+- **Sections too.** Large documents are extracted in sections (§5); each section
+  subagent self-classifies from its own pages (consulting `_index.md`) rather than
+  receiving a precomputed type.
 - **Note.** The fastembed model is still used for the **search index** (§11); only
   the classifier was removed.
 
@@ -161,8 +183,8 @@ differently:
 
 | Section | Kind | Treatment |
 |---|---|---|
-| `## Summary` | synthesized prose | model — carryforward interim, finalizer synthesis |
-| `## Analysis` | synthesized prose | model — finalizer synthesis |
+| `## Summary` | synthesized prose | model — carryforward interim, then entity-synthesis subagent |
+| `## Analysis` | synthesized prose | model — entity-synthesis subagent |
 | `## Contradictions` | cited callouts | deterministic — append-only, deduped, audit-managed |
 | `## Timeline` | structured events | deterministic — merged, sorted by **event** date |
 | `## Relationships` | structured roles | deterministic — merged |
@@ -176,15 +198,23 @@ model.
   order; mechanical merge/sort is correct and free. Prose is a cross-source judgement
   that only the model can do well.
 - **Why Contradictions are their own cited section** (not folded into Analysis prose,
-  not made chronological). They are verifiable claims with citations, and the
-  orchestrator reviews them for false positives. Sorting them by date would make them
-  a worse Timeline keyed on the *document/provenance* date rather than the *event*
-  date — the wrong axis. So they stay a discrete, append-only, deduped log that the
-  prose synthesis never disturbs.
+  not made chronological). They are verifiable claims with citations. The extractor
+  subagent is the sole verifier — it confirms each one at extraction time, against the
+  entity's prior contradictions and context supplied by pre-flight, so there is no
+  later orchestrator removal pass. Sorting them by date would make them a worse
+  Timeline keyed on the *document/provenance* date rather than the *event* date — the
+  wrong axis. So they stay a discrete, append-only, deduped log that the prose
+  synthesis never disturbs.
 
 ---
 
-## 8. Entity synthesis: carryforward + gated finalizer
+## 8. Entity synthesis: carryforward + gated synthesis
+
+> **Two different post-extraction passes, don't confuse them.** This section is the
+> **entity-synthesis subagent** (`watchdog-entity-synthesis-subagent.md`), which
+> rewrites entity *prose*. §9's **finalize subagent**
+> (`watchdog-ingest-finalize-subagent.md`) reconciles the *timeline* and writes the
+> *briefing*. Separate skills, separate steps.
 
 Synthesizing an entity's prose across all its documents on every ingest would be
 expensive and would re-bloat the orchestrator context. Synthesizing nothing (the old
@@ -195,24 +225,23 @@ solution is **two complementary mechanisms covering disjoint cases:**
 |---|---|---|
 | Brand-new entity, 1 mention | plain write (extraction summary) | free |
 | Pre-existing entity, 1 mention | **inline carryforward** | ~free, parallel |
-| Any entity, **2+ mentions** | **gated finalizer** | bounded |
+| Any entity, **2+ mentions** | **gated entity-synthesis subagent** | bounded |
 
 - **Inline carryforward.** Pre-flight carries each matched entity's current
   `## Summary` into the subagent's candidate list; the subagent *revises* it with the
   new document rather than writing a fresh single-document summary. Handles the common
   single-touch case in the extractor that's already running — no extra agent.
-- **Gated finalizer.** As `write_vault` writes each entity, it appends a per-entity
+- **Gated synthesis.** As `write_vault` writes each entity, it appends a per-entity
   **fragment** (the entity's slice of the extraction JSON — summary, analysis, roles —
   plus document attribution) to `.watchdog/tmp/entity-fragments/<id>.md` and bumps a
   count in `_queue.json`. This is a *free byproduct* of data the extractor already
   produced — no extra extractor tokens. After extraction, the orchestrator (§3 of the
   ingest skill) reads `_queue.json`, selects entities with **count ≥ 2**, and fans out
-  finalizer subagents (batches of 5) that reconcile the fragments + current prose into
-  a synthesized Summary and Analysis via `watchdog write-entity-synthesis`
+  entity-synthesis subagents (batches of 5) that reconcile the fragments + current
+  prose into a synthesized Summary and Analysis via `watchdog write-entity-synthesis`
   (`pipeline/finalize_entity.py`).
 - **The gate is the cost control.** Most entities in a batch are single-mention and
-  never hit the finalizer. Synthesis cost scales with *contested* entities, not all
-  entities.
+  never hit synthesis. Cost scales with *contested* entities, not all entities.
 - **Why fragments are a byproduct, not extractor-written prose.** Having the extractor
   narrate per-entity notes would add token cost to the expensive parallel phase. The
   extraction JSON already contains everything a fragment needs.
@@ -221,30 +250,37 @@ solution is **two complementary mechanisms covering disjoint cases:**
   where reconciliation earns its cost.
 - **Known limitation.** Fragments are run-scoped (cleared at ingest start). A
   pre-existing entity touched by a single new document is handled by carryforward, not
-  the finalizer — its summary is revised incrementally, not re-synthesized from all
+  the entity-synthesis subagent — its summary is revised incrementally, not re-synthesized from all
   history. The deep, on-demand `/watchdog-entity` pass (`pipeline/write_entity.py`,
   which also re-synthesizes the Timeline) remains the tool for a full rebuild of a
   central figure.
 
-The finalizer writes **only** Summary and Analysis; Contradictions, Timeline,
-Relationships, and Notes are preserved untouched.
+The entity-synthesis subagent writes **only** Summary and Analysis; Contradictions,
+Timeline, Relationships, and Notes are preserved untouched.
 
 ---
 
-## 9. Timeline reconciliation
+## 9. Timeline reconciliation & briefing
 
-**Code:** `pipeline/timeline.py`. **Files:** `.watchdog/timeline/`.
+**Code:** `pipeline/timeline.py`. **Skill:** `watchdog-ingest-finalize-subagent.md`.
+**Files:** `.watchdog/timeline/`, `briefings/`.
 
-Each extractor subagent writes its events to a **raw** per-document file
-`{date}_{sha7}.ndjson`. After the batch, `watchdog timeline-collisions` promotes
-dates with no prior canonical to **canonical** `{date}.ndjson`, and returns the dates
-where a canonical already existed and new raw files arrived. The orchestrator
-semantically deduplicates those collisions and rewrites the canonical file, leaving
-raw files as an audit trail. `watchdog rebuild-timeline` renders `timeline.md` from
-all canonical files.
+Each extractor (or section) subagent writes its events to a **raw** per-document file
+`{date}_{sha7}.ndjson` — write-only and lock-free, since each filename is unique. All
+merge/dedup and the briefing are then deferred to a **single finalize subagent**
+(model `FINALIZER_MODEL`) launched once after extraction, so scratchpad prose and
+timeline NDJSON never enter the orchestrator's context. That subagent:
 
-This keeps subagents write-only and lock-free for the timeline (each writes a unique
-raw filename), deferring all merge/dedup to a single post-batch step.
+- runs `watchdog timeline-collisions` (promotes dates with no prior canonical to
+  **canonical** `{date}.ndjson`; returns the collisions where a canonical already
+  existed), semantically deduplicates each collision, and runs `watchdog
+  rebuild-timeline` to render `timeline.md`;
+- reads the per-document scratchpads and `RESULTS` / `NEARDUP_ALERTS` /
+  `CONTRADICTION_FLAGS` handed to it, and writes the post-ingest briefing under
+  `briefings/`.
+
+The orchestrator only prints the returned briefing path — it never reads the
+scratchpads, timeline files, or briefing itself.
 
 ---
 
@@ -307,8 +343,13 @@ registry for every document would be wasteful. The manifest is the cheap index.
 
 ## 13. Models & skills
 
-- **Models** (configurable; default sonnet for both orchestrator and extractor; the
-  finalizer reuses the extractor model). Subagents run at the extractor model.
+- **Models** (all configurable, default sonnet): the orchestrator, the extractor
+  model (used by the per-document, section, and entity-synthesis subagents), and the
+  finalize subagent's `--finalizer-model` (timeline + briefing).
+- **Subagent skills**: `watchdog-ingest-subagent.md` (per-document extraction),
+  `watchdog-ingest-section-subagent.md` (one page-range section of a large document),
+  `watchdog-entity-synthesis-subagent.md` (prose synthesis, §8), and
+  `watchdog-ingest-finalize-subagent.md` (timeline + briefing, §9).
 - **Domain skills** live in `src/watchdog/skills/records/` and are installed into a
   vault's `.claude/commands/records/` by `setup_cmd.install_skills`, which also
   generates `records/_index.md` (one-line description per skill, derived from each
@@ -332,10 +373,13 @@ registry for every document would be wasteful. The manifest is the cheap index.
 | D3 | Isolated extractor subagent per document | Flat orchestrator context regardless of batch size | Per-subagent startup overhead |
 | D4 | Classification at extraction time, by the model (§6) | Accurate, near-free (doc already read), deleted the embedding subsystem | `document_type` null until extraction |
 | D5 | Structured vs. synthesized note split (§7) | Mechanical merge is correct+free for facts; prose needs the model | Two write paths |
-| D6 | Contradictions as a discrete cited section (§7) | Verifiable, audit-reviewed; chronological sort would be a worse timeline | Extra section + extraction field |
-| D7 | Carryforward + gated finalizer (§8) | Cost scales with contested entities, not all entities; fixes summary clobber and the within-batch race | Single-new-mention entities only revised, not fully re-synthesized |
+| D6 | Contradictions as a discrete cited section, verified at extraction (§7) | Verifiable claims; the extractor is the sole verifier (no orchestrator removal pass); chronological sort would be a worse timeline | Extra section + extraction field; a bad callout isn't caught downstream |
+| D7 | Carryforward + gated entity-synthesis (§8) | Cost scales with contested entities, not all entities; fixes summary clobber and the within-batch race | Single-new-mention entities only revised, not fully re-synthesized |
 | D8 | Fragments as a write-time byproduct (§8) | Synthesis input with zero extra extractor tokens | Run-scoped scratch state in tmp |
 | D9 | Raw-then-canonical timeline files (§9) | Subagents write lock-free; merge deferred to one post-batch step | Two file generations on disk |
 | D10 | MinHash near-dup, detect-only (§10) | Cheap local dedup signal; journalist decides | Approximate similarity |
 | D11 | Separate lightweight manifest (§12) | Cheap candidate lookup in pre-flight | A second index to keep in sync (done in `write_vault`) |
 | D12 | Generate `records/_index.md` by scanning the records dir (§13), don't check in a static index; rebuild unconditionally on install/refresh/ingest | Single source of truth — the skill's own intro; a static file silently drifts and breaks the "just drop a skill file" workflow. Scanning the dir (not the package) indexes user-added skills; unconditional rebuild is cheap and self-heals on add/edit/delete (no mtime edge cases) | Descriptor quality depends on parsing the intro prose; a dedicated frontmatter descriptor field is the upgrade path if that heuristic gets fragile |
+| D13 | Sectioned extraction for large documents (§5) | Documents over the token threshold don't fit one context; sequential page-range sections with a carried scratchpad + deterministic `merge-sections` preserve cross-section consistency | Large docs are extracted serially (slower); needs overlap + merge-dedup |
+| D14 | Timeline reconciliation + briefing in one finalize subagent, off the orchestrator (§9) | Keeps the orchestrator context flat — scratchpad prose and timeline NDJSON never enter it | An extra subagent round-trip; the orchestrator can't see briefing internals |
+| D15 | Runaway guard + `ingest-abort` (§5) | A stuck subagent bails (`STATUS: failed`) instead of wedging the batch; clean bail leaves no partial vault writes, so the doc re-ingests cleanly | A failed doc must be manually moved back from `queue/_failed/` to retry |
