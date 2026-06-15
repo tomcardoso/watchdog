@@ -168,9 +168,13 @@ extractor subagent reading the document** — not by a separate pre-pass.
   deleted an entire subsystem (the embedding cache, hashing, thresholds).
 - **Tradeoff.** `document_type` is `null` in the queue between chew and ingest; it is
   populated by extraction. Accepted — nothing downstream needs it earlier.
-- **Sections too.** Large documents are extracted in sections (§5); each section
-  subagent self-classifies from its own pages (consulting `_index.md`) rather than
-  receiving a precomputed type.
+- **Sections too.** Large documents are extracted in sections (§5). Section 1
+  classifies from its pages (consulting `_index.md`, falling back to
+  `general-records.md`) and records the chosen skill path as a `Domain skill:` line
+  in the running scratchpad. Sections 2..N read that line and load the same skill
+  rather than re-classifying — guaranteeing all sections of a document use the same
+  domain skill. If the scratchpad line is somehow absent, later sections fall back to
+  self-classifying.
 - **Note.** The fastembed model is still used for the **search index** (§11); only
   the classifier was removed.
 
