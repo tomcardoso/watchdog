@@ -1,6 +1,6 @@
 """Tests for skill installation and the generated records index (setup_cmd.py)."""
 
-from watchdog.setup_cmd import install_skills, _skill_descriptor
+from watchdog.setup_cmd import install_skills, regenerate_records_index, _skill_descriptor
 
 
 def test_skill_descriptor_strips_boilerplate():
@@ -37,3 +37,27 @@ def test_install_skills_generates_index(tmp_path):
     assert len(entry_lines) == len(installed)
     assert "- `corporate-filings.md` —" in body
     assert "_index.md" not in "\n".join(entry_lines)
+
+
+def test_regenerate_index_includes_user_added_skill(tmp_path):
+    install_skills(tmp_path)
+    records = tmp_path / "records"
+    # A journalist drops their own skill straight into the vault — not via the package.
+    (records / "my-beat.md").write_text(
+        "# Domain knowledge — My beat\n\n"
+        "Loaded by `/ingest` when the document type is a widget inspection report.\n",
+        encoding="utf-8",
+    )
+    regenerate_records_index(records)
+
+    body = (records / "_index.md").read_text(encoding="utf-8")
+    assert "- `my-beat.md` — a widget inspection report" in body
+
+
+def test_regenerate_index_drops_removed_skill(tmp_path):
+    install_skills(tmp_path)
+    records = tmp_path / "records"
+    (records / "corporate-filings.md").unlink()
+    regenerate_records_index(records)
+
+    assert "corporate-filings.md" not in (records / "_index.md").read_text(encoding="utf-8")
