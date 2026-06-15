@@ -1,7 +1,7 @@
 You are extracting one document for the Watchdog investigative research system. Follow every step below exactly. Return the structured RESULT block at the end — no other output.
 
 **Hard constraints — violations will break the pipeline:**
-- Never pipe or post-process command output with `python3`, `awk`, `jq`, `sed`, `grep`, or any other tool. The Bash tool returns output directly — read it as-is.
+- Never pipe or post-process command output with `python3`, `awk`, `jq`, `sed`, `grep`, or any other tool. The Bash tool returns output directly — read it as-is. **This is not an optimization opportunity.** Piping `watchdog pre-flight` through `python3 -c` to condense the output loses the `existing_entities` detail (timeline events, roles, analysis, contradictions) that Step 7 requires. The result is silent data loss, not efficiency.
 - Never use absolute paths in bash commands. Always use paths relative to the vault root.
 - Never read `.watchdog/Registry/manifest.json`, `entities.json`, or `documents.json` directly — entity candidates come from PRE_FLIGHT.existing_entities (Step 1).
 - Never prefix commands with `cd <path> &&`.
@@ -23,11 +23,13 @@ watchdog pre-flight {SHA256}
 ```
 
 The stdout output is **metadata only** — it does not include page content. Read it directly from the Bash tool output. Fields:
-- `sha256`, `page_count`
+- `sha256`, `filename`, `original_path`, `page_count`
 - `already_extracted` — if true, return the SKIPPED block immediately
 - `near_dup.near_duplicates`, `near_dup.top_similarity`
 - `existing_entities[]` — entities already in vault whose names appear in this document: `{id, name, type, aliases, note_path, summary, timeline_events, roles, analysis, contradictions}`. `summary` is the entity's current note summary — carry it forward and revise (Step 5), don't overwrite. `timeline_events` and `roles` are the vault's current values; `analysis` is its existing Analysis section; `contradictions` is its existing Contradictions section. These are supplied so the contradiction check (Step 7) needs no note reads.
 - `pages_path` — path to a markdown file containing all pages separated by `<!-- PAGE N -->` markers and `---` dividers
+
+**There is no `pages` key in the stdout JSON.** Page content is deliberately excluded from stdout and written to the file at `pages_path` instead. Any attempt to extract pages by piping pre-flight output to `python3` or any other tool will return an empty list and produce nothing.
 
 If `already_extracted` is true, stop and return:
 ```
@@ -36,7 +38,7 @@ FILENAME: {FILENAME}
 REASON: already extracted (SHA-256 match)
 ```
 
-**Do NOT pipe or redirect this command's output.** Do NOT run `python3`, `awk`, `grep`, `sed`, or any other tool on its output.
+**Do NOT pipe or redirect this command's output.** Do NOT run `python3`, `awk`, `grep`, `sed`, or any other tool on its output. The JSON will be large when there are many existing entities — that is intentional. You need the full `existing_entities` array intact for Step 7's contradiction check. Summarizing or condensing the output to save context is data loss, not efficiency, and will cause Step 7 to silently miss contradictions.
 
 **Reading pages:** Use the Read tool on `pages_path` in a **single call with no `limit`**. The `<!-- PAGE N -->` markers tell you which page you are on. Only fall back to chunked reads (using `offset` and `limit`) if the file genuinely does not fit in one call. Do not proceed to extraction with a partial document.
 
@@ -109,7 +111,7 @@ Build this JSON exactly:
   "document": {
     "sha256": "<SHA256>",
     "filename": "<FILENAME>",
-    "original_path": "<source_path from queue JSON>",
+    "original_path": "<PRE_FLIGHT.original_path>",
     "title": "<inferred>",
     "document_type": "<inferred>",
     "date_of_document": "<YYYY-MM-DD or null>",

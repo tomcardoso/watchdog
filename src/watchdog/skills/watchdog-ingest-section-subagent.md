@@ -21,6 +21,7 @@ watchdog pre-flight {SHA256}
 
 Read the stdout directly. Use only these fields (ignore `pages_path` — you read your section file instead):
 - `already_extracted` — **only if `SECTION_INDEX` is 1**, and it is true, stop immediately and return the SKIPPED block. (Later sections: ignore.)
+- `original_path` — the source file path; include in extraction JSON only for section 1
 - `near_dup.near_duplicates`, `near_dup.top_similarity`
 - `existing_entities[]` — vault entities with `{id, name, type, aliases, timeline_events, roles, analysis}`. Match against these for vault dedup (use the existing `id`) and for the contradiction check (Step 6).
 
@@ -61,7 +62,7 @@ Write to `OUTPUT_PATH` exactly this shape (a partial extraction — your section
 {
   "document": {
     "sha256": "<SHA256>", "filename": "<FILENAME>",
-    "original_path": "<source_path from queue JSON, section 1 only — else omit>",
+    "original_path": "<PRE_FLIGHT.original_path, section 1 only — else omit>",
     "title": "<inferred, section 1 only — else omit>",
     "document_type": "<inferred, section 1 only — else omit>",
     "date_of_document": "<YYYY-MM-DD or null, section 1 only — else omit>",

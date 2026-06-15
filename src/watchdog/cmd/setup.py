@@ -366,8 +366,8 @@ def cmd_configure(args) -> None:
         print(f"  {_BOLD}Configuration{_RESET}  {_DIM}{CONFIG_FILE}{_RESET}")
         print()
         for k, meta in _CONFIGURE_KEYS.items():
-            print(f"  {_DIM}{k:<20}{_RESET} {_display_value(k, config.get(k))}")
-            print(f"  {' ' * 20} {_DIM}{meta['short']}{_RESET}")
+            print(f"  {_DIM}{k:<26}{_RESET} {_display_value(k, config.get(k))}")
+            print(f"  {' ' * 26} {_DIM}{meta['short']}{_RESET}")
             print()
         return
 

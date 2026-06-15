@@ -118,6 +118,7 @@ def run(vault: Path, sha256: str) -> dict:
     return {
         "sha256":             queue.get("sha256", sha256),
         "filename":           queue.get("filename", ""),
+        "original_path":      queue.get("source_path", ""),
         "page_count":         queue.get("page_count") or len(queue.get("pages", [])),
         "already_extracted":  already_extracted,
         "pages":              queue.get("pages", []),

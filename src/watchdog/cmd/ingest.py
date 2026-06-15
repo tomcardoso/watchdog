@@ -116,11 +116,16 @@ def cmd_ingest(args) -> None:
         return
     q = len(result["queue_files"])
     print(f"\n  {_BOLD}{q} document{'s' if q != 1 else ''}{_RESET} ready for extraction")
+    def _release_lock() -> None:
+        (vault / ".watchdog" / "Registry" / ".ingest-lock").unlink(missing_ok=True)
+        (vault / ".watchdog" / "ingest-state.json").unlink(missing_ok=True)
+
     try:
         answer = input(f"\n  Open in Claude Code to start ingestion? [Y/n] ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         print()
-        print(f"\n  When ready, open Claude Code and run:  {_CYAN}/watchdog-ingest{_RESET}\n")
+        _release_lock()
+        print(f"\n  When ready, run:  {_CYAN}watchdog ingest{_RESET}\n")
         return
     if answer in ("", "y", "yes"):
         log_path = vault / "log.md"
@@ -128,7 +133,8 @@ def cmd_ingest(args) -> None:
             log_path.write_text(_render_template("log.md"))
         _launch_claude(vault, "/watchdog-ingest", model=orchestrator_model)
     else:
-        print(f"\n  When ready, open Claude Code and run:  {_CYAN}/watchdog-ingest{_RESET}\n")
+        _release_lock()
+        print(f"\n  When ready, run:  {_CYAN}watchdog ingest{_RESET}\n")
 
 
 def cmd_context(args) -> None:
