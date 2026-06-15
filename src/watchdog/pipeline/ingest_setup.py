@@ -12,6 +12,7 @@ Human workflow:
 """
 
 import json
+import shutil
 import sys
 import time
 from datetime import datetime, timezone
@@ -64,6 +65,10 @@ def run(vault: Path, extractor_model: str = "sonnet") -> dict:
     if total == 0:
         state_file.unlink(missing_ok=True)
         return {"total": 0, "lock_acquired": False, "queue_files": []}
+
+    # Fresh run — clear any entity fragments left by a prior ingest so the finalizer
+    # gate counts only this run's documents.
+    shutil.rmtree(vault / ".watchdog" / "tmp" / "entity-fragments", ignore_errors=True)
 
     started_at = _iso_now()
     batch_start = int(time.time())

@@ -10,6 +10,8 @@ import json
 import sys
 from pathlib import Path
 
+from watchdog.pipeline.write_vault import _extract_summary
+
 
 def run(vault: Path, sha256: str) -> dict:
     queue_file = vault / ".watchdog" / "queue" / f"{sha256}.json"
@@ -31,12 +33,15 @@ def run(vault: Path, sha256: str) -> dict:
         for eid, entry in manifest.items():
             names = [entry.get("name", "")] + entry.get("aliases", [])
             if any(n and n.lower() in text_lower for n in names):
+                note_rel = entry.get("note_path", "")
                 candidates.append({
                     "id": eid,
                     "name": entry.get("name", ""),
                     "type": entry.get("type", ""),
                     "aliases": entry.get("aliases", []),
-                    "note_path": entry.get("note_path", ""),
+                    "note_path": note_rel,
+                    # Carried forward so the subagent revises the summary instead of clobbering it.
+                    "summary": _extract_summary(vault / f"{note_rel}.md") if note_rel else None,
                 })
 
     # Check if already extracted

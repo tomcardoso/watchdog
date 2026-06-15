@@ -52,19 +52,13 @@ Read `hot.md` if it exists. Note current investigation state.
 
 ---
 
-## 2. Resolve skill paths
-
-For each entry in `QUEUE_FILES`, set `DOMAIN_SKILL_PATH` = `records/<document_type>.md` if `document_type` is non-null, else `"none"`. No file reads at this stage — the skill is read by the subagent.
-
----
-
-## 3. Process each file
+## 2. Process each file
 
 Process files in **batches of up to 5**. Registry writes are serialized internally — concurrent subagents are safe.
 
 Split `QUEUE_FILES` into batches of at most 5 files. For each batch:
 
-1. For each file in the batch, get its `SHA256`, `FILENAME`, and `DOMAIN_SKILL_PATH` (already resolved in §2).
+1. For each file in the batch, get its `SHA256` and `FILENAME`.
 2. Print `[<N>/<TOTAL>] Launching: <FILENAME clamped to 50 chars> ...`
 3. **Launch all agents in the batch simultaneously** — send a single message with all Agent tool calls in parallel. Set each Agent's `description` to `Watchdog extraction: <FILENAME clamped to 50 chars>` and `model` to `EXTRACTOR_MODEL`.
 4. Process results (see "After each Agent call" below).
@@ -82,7 +76,6 @@ Read `.claude/commands/watchdog-ingest-subagent.md` for full extraction instruct
 
 SHA256: {SHA256}
 FILENAME: {FILENAME}
-DOMAIN_SKILL_PATH: {DOMAIN_SKILL_PATH}
 INVESTIGATION_BRIEF:
 {INVESTIGATION_BRIEF}
 ```
@@ -101,6 +94,29 @@ Print:
 ```
 [<N>/<TOTAL>] Done: <FILENAME> — <ENTITY_COUNT> entities (<new_count> new) | ETA: ~<rolling estimate>s
 ```
+
+---
+
+## 3. Entity synthesis (finalizer)
+
+Entities mentioned by **two or more documents in this ingest** get a synthesized Summary and Analysis, reconciling all of this run's fragments at once. Single-mention entities already have correct notes from extraction (their summaries were carried forward and revised in place), so they are skipped.
+
+Read `.watchdog/tmp/entity-fragments/_queue.json` with the Read tool. If it does not exist, skip this section entirely. It maps each entity id touched this run to `{name, note_path, count}`.
+
+Set `FINALIZE` = every entry with `count >= 2`. If `FINALIZE` is empty, skip.
+
+Process `FINALIZE` in **batches of up to 5** — launch all finalizer subagents in a batch simultaneously (a single message with parallel Agent calls). Set each Agent's `description` to `Watchdog finalize: <ENTITY_NAME clamped to 50 chars>` and `model` to `EXTRACTOR_MODEL`. Substitute `{placeholder}` values before sending:
+
+```
+Read `.claude/commands/watchdog-finalize-entity.md` for full instructions. Then synthesize this entity:
+
+ENTITY_ID: {id}
+ENTITY_NAME: {name}
+FRAGMENTS_PATH: .watchdog/tmp/entity-fragments/{id}.md
+NOTE_PATH: {note_path}.md
+```
+
+Each subagent returns `STATUS: ok` or `STATUS: error`. Log errors to `.watchdog/Registry/ingest.log` and continue — a failed finalize leaves the carryforward note in place, which is still correct.
 
 ---
 
@@ -142,7 +158,7 @@ This renders `timeline.md` from all canonical `.watchdog/timeline/{date}.ndjson`
 For each entry in `CONTRADICTION_FLAGS`:
 - Read the entity note (`entities/{type_lowercase}/{id}.md`)
 - Verify the contradiction is genuine, not a subagent false positive
-- If false positive: edit the note to remove the `[!contradiction]` callout that `write-vault` wrote
+- If false positive: edit the note's `## Contradictions` section to remove the `[!contradiction]` callout that `write-vault` wrote
 
 This step reads at most a handful of entity notes — typically 0–3 per batch.
 
