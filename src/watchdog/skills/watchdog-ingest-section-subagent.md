@@ -26,7 +26,7 @@ Read the stdout directly. Use only these fields (ignore `pages_path` — you rea
 
 ## Step 2 — Read the scratchpad (carry-forward)
 
-If `SCRATCHPAD_PATH` exists, read it. Its **Entities so far** block lists `id | name | type | aliases` for entities earlier sections already extracted — reuse those ids, and resolve back-references in your section (e.g. "the Company") against those names/aliases. Its **Observations** are prior salient notes. If the file does not exist (you are section 1), there is no carry-forward yet.
+If `SCRATCHPAD_PATH` exists, read it. Its **Entities so far** block lists `id | name | type | aliases` for entities earlier sections already extracted — reuse those ids, and resolve back-references in your section (e.g. "the Company") against those names/aliases. Its **Observations** are prior salient notes. **Also note the `Domain skill:` line if present** — you will use it in Step 4. If the file does not exist (you are section 1), there is no carry-forward yet.
 
 ## Step 3 — Read your section
 
@@ -34,7 +34,9 @@ Read `SECTION_PAGES_PATH` in a single Read. A **paginated** section contains `<!
 
 ## Step 4 — Load domain skill
 
-Scan your pages to identify the document type and read the closest match in `.claude/commands/records/`. The filenames are descriptive; consult `.claude/commands/records/_index.md` (a one-line description of every skill) if unsure, and fall back to `general-records.md` if nothing matches.
+**If you are section 1:** Scan your pages to identify the document type. Read the closest match in `.claude/commands/records/`. The filenames are descriptive; consult `.claude/commands/records/_index.md` (a one-line description of every skill) if unsure, and fall back to `general-records.md` if nothing matches. Note the resolved path (e.g. `records/corporate-filings.md`) — you will write it to the scratchpad as `Domain skill: <path>` in Step 8.
+
+**If you are section 2 or later:** Use the `Domain skill:` path you read from the scratchpad in Step 2 and load `.claude/commands/<that path>`. If no `Domain skill:` line was present in the scratchpad (unexpected fallback), self-classify from your pages as section 1 would.
 
 ## Step 5 — Extract entities (this section only)
 
@@ -87,12 +89,16 @@ Append to `SCRATCHPAD_PATH` (create it if you are section 1) so the next section
 ```markdown
 # Running notes — {FILENAME}
 
+Domain skill: <resolved skill path, e.g. records/corporate-filings.md — section 1 writes this; later sections omit>
+
 ## Entities so far
 - <id> | <name> | <type> | <aliases, comma-separated>
 
 ## Observations
 - p.<N>: <something that stuck out — a figure, a relationship, an anomaly, a "see Note X" cross-reference>
 ```
+
+**Section 1 only:** include the `Domain skill:` line (the path you resolved in Step 4) immediately after the heading, before `## Entities so far`. Later sections append only new entities and observations — do not add another `Domain skill:` line.
 
 Add any entities new to this section to **Entities so far**, and your salient notes to **Observations**. The Observations become the document's briefing notes, so keep them high-signal — what a reporter would jot down, not a summary.
 
