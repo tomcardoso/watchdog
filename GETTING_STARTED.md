@@ -162,13 +162,21 @@ watchdog ingest
 
 Watchdog scans the queue and prompts you to open Claude Code. When you confirm, it opens Claude Code with the extraction skill pre-loaded — extraction begins automatically.
 
-By default, Watchdog uses Claude Sonnet for all three components: the orchestrator, the extraction subagents (one per document), and the finalizer subagent (timeline reconciliation + briefing). You can override any of them at the command line:
+By default, Watchdog uses Claude Sonnet for all four components: the orchestrator, the extraction subagents (one per document), the entity synthesis subagents (run after extraction for entities mentioned in two or more documents), and the finalizer subagent (timeline reconciliation + briefing). You can set persistent defaults with `watchdog configure`, or override for a single run at the command line:
 
 ```bash
-watchdog ingest --extractor-model haiku      # faster, cheaper subagents
-watchdog ingest --orchestrator-model opus    # more capable orchestrator
-watchdog ingest --finalizer-model opus       # stronger model for timeline + briefing
+watchdog ingest --extractor-model haiku           # faster, cheaper subagents
+watchdog ingest --orchestrator-model opus         # more capable orchestrator
+watchdog ingest --finalizer-model opus            # stronger model for timeline + briefing
+watchdog ingest --entity-synthesizer-model haiku  # cheaper model for entity synthesis
 watchdog ingest --orchestrator-model opus --extractor-model haiku
+```
+
+To set a persistent default so you don't have to pass the flag every time:
+
+```bash
+watchdog configure extractor_model haiku
+watchdog configure orchestrator_model sonnet
 ```
 
 Claude works through each chewed file in the queue, processing up to 5 documents in parallel. For each document, it:

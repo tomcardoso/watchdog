@@ -143,6 +143,57 @@ _CONFIGURE_KEYS = {
         "type": "bool",
         "default": False,
     },
+    # ── Models ───────────────────────────────────────────────────────────────
+    "orchestrator_model": {
+        "short": "Claude model for the ingest orchestrator (default: sonnet)",
+        "help": (
+            "Model used for the orchestrator session launched by `watchdog ingest`.\n"
+            "  The orchestrator manages the extraction loop and kicks off subagents.\n"
+            "  Valid values: haiku, sonnet, opus. Default: sonnet.\n"
+            "  Override for a single run with: watchdog ingest --orchestrator-model M"
+        ),
+        "type": "enum",
+        "default": "sonnet",
+        "choices": ["haiku", "sonnet", "opus"],
+    },
+    "extractor_model": {
+        "short": "Claude model for per-document extraction subagents (default: sonnet)",
+        "help": (
+            "Model used for each per-document extraction subagent during ingest.\n"
+            "  Haiku is significantly cheaper and faster; use it for large batches of\n"
+            "  straightforward documents. Sonnet handles complex or ambiguous documents better.\n"
+            "  Valid values: haiku, sonnet, opus. Default: sonnet.\n"
+            "  Override for a single run with: watchdog ingest --extractor-model M"
+        ),
+        "type": "enum",
+        "default": "sonnet",
+        "choices": ["haiku", "sonnet", "opus"],
+    },
+    "finalizer_model": {
+        "short": "Claude model for the post-ingest finalizer subagent (default: sonnet)",
+        "help": (
+            "Model used for the finalizer subagent that reconciles the timeline and\n"
+            "  produces the post-ingest briefing after extraction is complete.\n"
+            "  Valid values: haiku, sonnet, opus. Default: sonnet.\n"
+            "  Override for a single run with: watchdog ingest --finalizer-model M"
+        ),
+        "type": "enum",
+        "default": "sonnet",
+        "choices": ["haiku", "sonnet", "opus"],
+    },
+    "entity_synthesizer_model": {
+        "short": "Claude model for entity synthesis subagents (default: sonnet)",
+        "help": (
+            "Model used for entity synthesis subagents — the pass that reconciles an\n"
+            "  entity's Summary and Analysis when it appears in two or more documents\n"
+            "  in a single ingest run.\n"
+            "  Valid values: haiku, sonnet, opus. Default: sonnet.\n"
+            "  Override for a single run with: watchdog ingest --entity-synthesizer-model M"
+        ),
+        "type": "enum",
+        "default": "sonnet",
+        "choices": ["haiku", "sonnet", "opus"],
+    },
     # ── Deduplication ─────────────────────────────────────────────────────────
     "dup_threshold": {
         "short": "Near-duplicate Jaccard similarity threshold — score at which documents are flagged (default: 0.85)",

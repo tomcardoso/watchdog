@@ -105,7 +105,7 @@ actual registry/note writes so parallel subagents can write safely.
 `skills/watchdog-ingest-subagent.md` (per-document extractor).
 **Code:** `pipeline/preflight.py`, `pipeline/postflight.py`, `pipeline/write_vault.py`.
 
-The orchestrator (default model: sonnet, configurable) partitions the queue by
+The orchestrator (model: `ORCHESTRATOR_MODEL`, configurable via `watchdog configure orchestrator_model` or `--orchestrator-model`) partitions the queue by
 estimated size. **Normal** documents are processed in **batches of up to 5**, all
 extractor subagents in a batch launched in parallel. **Large** documents (over
 `section_token_threshold`) are extracted in sections instead (see "Large documents"
@@ -242,7 +242,7 @@ solution is **two complementary mechanisms covering disjoint cases:**
   count in `_queue.json`. This is a *free byproduct* of data the extractor already
   produced — no extra extractor tokens. After extraction, the orchestrator (§3 of the
   ingest skill) reads `_queue.json`, selects entities with **count ≥ 2**, and fans out
-  entity-synthesis subagents (batches of 5) that reconcile the fragments + current
+  entity-synthesis subagents (batches of 5, model `ENTITY_SYNTHESIZER_MODEL`) that reconcile the fragments + current
   prose into a synthesized Summary and Analysis via `watchdog write-entity-synthesis`
   (`pipeline/finalize_entity.py`).
 - **The gate is the cost control.** Most entities in a batch are single-mention and
@@ -348,9 +348,11 @@ registry for every document would be wasteful. The manifest is the cheap index.
 
 ## 13. Models & skills
 
-- **Models** (all configurable, default sonnet): the orchestrator, the extractor
-  model (used by the per-document, section, and entity-synthesis subagents), and the
-  finalize subagent's `--finalizer-model` (timeline + briefing).
+- **Models** (all configurable via `watchdog configure`, default sonnet): four separate
+  model settings — `orchestrator_model` (ingest orchestrator), `extractor_model`
+  (per-document, section, and large-document subagents), `entity_synthesizer_model`
+  (entity synthesis subagents, §8), and `finalizer_model` (timeline + briefing, §9).
+  Each can also be overridden for a single run via the matching `watchdog ingest` flag.
 - **Subagent skills**: `watchdog-ingest-subagent.md` (per-document extraction),
   `watchdog-ingest-section-subagent.md` (one page-range section of a large document),
   `watchdog-entity-synthesis-subagent.md` (prose synthesis, §8), and

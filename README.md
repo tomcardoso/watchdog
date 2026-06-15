@@ -209,9 +209,10 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog chew --chew-workers N` | Override parallel file workers for this run |
 | `watchdog chew --chunk-workers N` | Override parallel chunk workers per file for this run |
 | `watchdog ingest` | Acquire the ingest lock, scan the queue, and open Claude Code — `/watchdog-ingest` fires automatically |
-| `watchdog ingest --orchestrator-model M` | Override the orchestrator model (`sonnet`/`opus`/`haiku`, default: `sonnet`) |
-| `watchdog ingest --extractor-model M` | Override the extraction subagent model (`sonnet`/`haiku`, default: `sonnet`) |
-| `watchdog ingest --finalizer-model M` | Override the finalizer subagent model — timeline reconciliation + briefing (`sonnet`/`opus`/`haiku`, default: `sonnet`) |
+| `watchdog ingest --orchestrator-model M` | Override the orchestrator model for this run (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
+| `watchdog ingest --extractor-model M` | Override the extraction subagent model for this run (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
+| `watchdog ingest --finalizer-model M` | Override the finalizer subagent model for this run — timeline reconciliation + briefing (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
+| `watchdog ingest --entity-synthesizer-model M` | Override the entity synthesis subagent model for this run (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
 | `watchdog context [name]` | Open Claude Code with the context seeding skill; omit name when inside the vault |
 | `watchdog context --model M` | Override the model for context seeding (`sonnet`/`opus`/`haiku`, default: `sonnet`) |
 | `watchdog watch [name]` | Watch `_INCOMING/` and chew files automatically as they arrive; omit name when inside the project directory |
@@ -445,6 +446,10 @@ watchdog configure <key> <value>
 | `embed_images` | `false` | Embed figures as base64 in the extracted markdown so Claude can read charts and image-based tables. Significantly increases token usage. |
 | `dup_threshold` | `0.85` | Jaccard similarity score at which two documents are flagged as near-duplicates. Range: 0.0–1.0. |
 | `shingle_size` | `3` | Word n-gram size for near-duplicate fingerprinting. Changing this invalidates existing MinHash signatures — re-ingest to rebuild. |
+| `orchestrator_model` | `sonnet` | Claude model for the ingest orchestrator. Options: `haiku`, `sonnet`, `opus`. Can be overridden per-run with `--orchestrator-model`. |
+| `extractor_model` | `sonnet` | Claude model for per-document extraction subagents. Options: `haiku`, `sonnet`, `opus`. Can be overridden per-run with `--extractor-model`. |
+| `finalizer_model` | `sonnet` | Claude model for the post-ingest finalizer subagent (timeline reconciliation + briefing). Options: `haiku`, `sonnet`, `opus`. Can be overridden per-run with `--finalizer-model`. |
+| `entity_synthesizer_model` | `sonnet` | Claude model for entity synthesis subagents (Summary + Analysis reconciliation for entities appearing in ≥2 documents). Options: `haiku`, `sonnet`, `opus`. Can be overridden per-run with `--entity-synthesizer-model`. |
 
 **Examples:**
 
@@ -460,6 +465,12 @@ watchdog configure ocr_languages "fr-FR,ar-SA"
 
 # Move investigation storage to an external drive
 watchdog configure projects_dir /Volumes/SecureDrive/Investigations
+
+# Use Haiku for extraction subagents by default (faster and cheaper)
+watchdog configure extractor_model haiku
+
+# Use Opus for the orchestrator on high-stakes investigations
+watchdog configure orchestrator_model opus
 ```
 
 ---

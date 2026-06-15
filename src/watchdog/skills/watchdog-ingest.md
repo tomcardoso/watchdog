@@ -40,6 +40,8 @@ Set `EXTRACTOR_MODEL = INGEST.extractor_model` if present, else `"sonnet"`.
 
 Set `FINALIZER_MODEL = INGEST.finalizer_model` if present, else `"sonnet"`.
 
+Set `ENTITY_SYNTHESIZER_MODEL = INGEST.entity_synthesizer_model` if present, else `"sonnet"`.
+
 Set `SECTION_TOKEN_THRESHOLD = INGEST.section_token_threshold` if present, else `120000`.
 
 Set `QUEUE_FILES = INGEST.queue_files`.
@@ -164,7 +166,7 @@ Read `.watchdog/tmp/entity-fragments/_queue.json` with the Read tool. If it does
 
 Set `SYNTHESIZE` = every entry with `count >= 2`. If `SYNTHESIZE` is empty, skip.
 
-Process `SYNTHESIZE` in **batches of up to 5** — launch all synthesis subagents in a batch simultaneously (a single message with parallel Agent calls). Set each Agent's `description` to `Watchdog entity synthesis: <ENTITY_NAME clamped to 50 chars>` and `model` to `EXTRACTOR_MODEL`. Substitute `{placeholder}` values before sending:
+Process `SYNTHESIZE` in **batches of up to 5** — launch all synthesis subagents in a batch simultaneously (a single message with parallel Agent calls). Set each Agent's `description` to `Watchdog entity synthesis: <ENTITY_NAME clamped to 50 chars>` and `model` to `ENTITY_SYNTHESIZER_MODEL`. Substitute `{placeholder}` values before sending:
 
 ```
 Read `.claude/commands/watchdog-entity-synthesis-subagent.md` for full instructions. Then synthesize this entity:
