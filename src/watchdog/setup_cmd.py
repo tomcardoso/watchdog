@@ -51,6 +51,51 @@ def _check_deps() -> list[str]:
     return blocking_missing
 
 
+def _skill_descriptor(text: str) -> str:
+    """The first content paragraph of a record skill, minus the boilerplate lead-in.
+
+    Each skill opens with an H1, then a sentence naming the document types it covers
+    (per the authoring template). That sentence is the index descriptor.
+    """
+    line = next(
+        (s for s in (ln.strip() for ln in text.splitlines()) if s and not s.startswith("#")),
+        "",
+    )
+    for prefix in (
+        "This skill is loaded by `/ingest` when the document type is ",
+        "Loaded by `/ingest` when the document type is ",
+    ):
+        line = line.removeprefix(prefix)
+    return line.rstrip(".")
+
+
+def regenerate_records_index(records_dir: Path) -> None:
+    """Rebuild records/_index.md from every skill actually present in records_dir.
+
+    Scans the destination directory — not the package — so user-added skills are
+    indexed too, and the index self-heals on add/edit/delete. Cheap enough (one
+    short read per skill, one write) to run unconditionally on every ingest, so a
+    dropped-in skill is picked up without a manual refresh.
+    """
+    if not records_dir.is_dir():
+        return
+    entries = [
+        (f.name, _skill_descriptor(f.read_text(encoding="utf-8")))
+        for f in sorted(records_dir.glob("*.md"))
+        if not f.name.startswith("_")
+    ]
+    lines = [
+        "# Record skill index",
+        "",
+        "One line per domain skill. Match the document to the closest description, then",
+        "read that one skill file. Generated from the skills in this directory — do not edit.",
+        "",
+    ]
+    lines += [f"- `{name}` — {descriptor}" for name, descriptor in entries]
+    lines.append("")
+    (records_dir / "_index.md").write_text("\n".join(lines), encoding="utf-8")
+
+
 def install_skills(commands_dir: Path) -> None:
     records_dir = commands_dir / "records"
     records_dir.mkdir(parents=True, exist_ok=True)
@@ -62,6 +107,7 @@ def install_skills(commands_dir: Path) -> None:
                     (records_dir / f.name).write_bytes(f.read_bytes())
         elif item.name.endswith(".md") and not item.name.startswith("_"):
             (commands_dir / item.name).write_bytes(item.read_bytes())
+    regenerate_records_index(records_dir)
 
 
 def _ask_projects_dir() -> Path:

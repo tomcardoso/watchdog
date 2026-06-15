@@ -56,25 +56,19 @@ Read `hot.md` if it exists. Note current investigation state.
 
 ---
 
-## 2. Resolve skill paths
+## 2. Process each file
 
-For each entry in `QUEUE_FILES`, set `DOMAIN_SKILL_PATH` = `records/<document_type>.md` if `document_type` is non-null, else `"none"`. No file reads at this stage — the skill is read by the subagent.
+Partition `QUEUE_FILES` by estimated size: **LARGE** = files whose `est_tokens` is greater than `SECTION_TOKEN_THRESHOLD`; **NORMAL** = all others (including files with no `est_tokens`). Estimated tokens — not page count — is the trigger, so dense table-heavy reports and large non-paginated files (`.txt`/`.csv`/`.md`, which are a single page) are handled correctly. Process NORMAL files first (§2a), then LARGE files (§2b). The `LIMIT` check applies across both — if `LIMIT` is set and `EXTRACTED >= LIMIT`, stop before starting the next batch or document.
 
-Then **sort `QUEUE_FILES` by `document_type`** (nulls last). Files sharing a `document_type` will be batched together, keeping the same domain skill file in the prompt cache across consecutive subagent spawns.
+Each subagent classifies its own document and loads the matching domain skill — there is no pre-classification step.
 
----
-
-## 3. Process each file
-
-Partition `QUEUE_FILES` by estimated size: **LARGE** = files whose `est_tokens` is greater than `SECTION_TOKEN_THRESHOLD`; **NORMAL** = all others (including files with no `est_tokens`). Estimated tokens — not page count — is the trigger, so dense table-heavy reports and large non-paginated files (`.txt`/`.csv`/`.md`, which are a single page) are handled correctly. Process NORMAL files first (§3a), then LARGE files (§3b). The `LIMIT` check applies across both — if `LIMIT` is set and `EXTRACTED >= LIMIT`, stop before starting the next batch or document.
-
-### 3a. Normal documents — parallel extraction
+### 2a. Normal documents — parallel extraction
 
 Process NORMAL files in **batches of up to 5**. Registry writes are serialized internally — concurrent subagents are safe.
 
-Split the NORMAL files (already sorted by `document_type`) into batches of at most 5 files. For each batch:
+Split the NORMAL files into batches of at most 5 files. For each batch:
 
-1. For each file in the batch, get its `SHA256`, `FILENAME`, and `DOMAIN_SKILL_PATH` (already resolved in §2).
+1. For each file in the batch, get its `SHA256` and `FILENAME`.
 2. Print `[<N>/<TOTAL>] Launching: <FILENAME clamped to 50 chars> ...`
 3. **Launch all agents in the batch simultaneously** — send a single message with all Agent tool calls in parallel. Set each Agent's `description` to `Watchdog extraction: <FILENAME clamped to 50 chars>` and `model` to `EXTRACTOR_MODEL`.
 4. Process results (see "After each Agent call" below).
@@ -87,14 +81,13 @@ Substitute all `{placeholder}` values before sending.
 
 ### SUBAGENT PROMPT TEMPLATE
 
-The stable prefix (the instruction to read the skill file) must remain byte-identical across all spawns so the Anthropic prompt cache can absorb it. Per-document values (`SHA256`, `FILENAME`, `DOMAIN_SKILL_PATH`, `INVESTIGATION_BRIEF`) always appear at the end.
+The stable prefix (the instruction to read the skill file) must remain byte-identical across all spawns so the Anthropic prompt cache can absorb it. Per-document values (`SHA256`, `FILENAME`, `INVESTIGATION_BRIEF`) always appear at the end.
 
 ```
 Read `.claude/commands/watchdog-ingest-subagent.md` for full extraction instructions. Then extract this document:
 
 SHA256: {SHA256}
 FILENAME: {FILENAME}
-DOMAIN_SKILL_PATH: {DOMAIN_SKILL_PATH}
 INVESTIGATION_BRIEF:
 {INVESTIGATION_BRIEF}
 ```
@@ -121,14 +114,14 @@ Print:
 
 ---
 
-### 3b. Large documents — sequential sectioned extraction
+### 2b. Large documents — sequential sectioned extraction
 
 Each LARGE document is too big to extract in one context, so it is split into overlapping page-range sections, extracted **in reading order** with a running scratchpad carried forward, then merged deterministically. Process LARGE files **one at a time**.
 
-For each LARGE file (`SHA256`, `FILENAME`, `DOMAIN_SKILL_PATH` from §2):
+For each LARGE file (`SHA256`, `FILENAME`):
 
 1. Run `watchdog section-plan {SHA256}` and read the JSON.
-   - If it returns `"sectioned": false`, the file isn't actually large — extract it via §3a instead.
+   - If it returns `"sectioned": false`, the file isn't actually large — extract it via §2a instead.
    - Otherwise you have `sections: [{index, label, paginated, pages_path}, …]` (`label` is e.g. `"pages 12–34"` or `"part 2 of 5"`).
 2. Extract the sections **strictly in order, one at a time** — launch a section subagent, wait for it to return, then launch the next. Do **not** parallelize them: each section reads the scratchpad the previous one wrote. Use the SECTION SUBAGENT PROMPT TEMPLATE below; set the Agent `description` to `Watchdog section {index}/{count}: <FILENAME clamped to 40 chars>` and `model` to `EXTRACTOR_MODEL`.
    - If **section 1** returns `STATUS: skipped`, the document is already extracted — skip the whole file; do not process the remaining sections.
@@ -150,7 +143,6 @@ Read `.claude/commands/watchdog-ingest-section-subagent.md` for full instruction
 
 SHA256: {SHA256}
 FILENAME: {FILENAME}
-DOMAIN_SKILL_PATH: {DOMAIN_SKILL_PATH}
 SECTION_INDEX: {index} of {count}
 SECTION_LABEL: {label}
 SECTION_PAGES_PATH: {pages_path}
@@ -161,6 +153,29 @@ INVESTIGATION_BRIEF:
 ```
 
 The running scratchpad (`notes_{SHA256}.md`) is the same per-document notes file the finalize subagent reads for the briefing — so a sectioned document's briefing notes are produced as a byproduct of carry-forward, with no extra step.
+
+---
+
+## 3. Entity synthesis
+
+Entities mentioned by **two or more documents in this ingest** get a synthesized Summary and Analysis, reconciling all of this run's fragments at once. Single-mention entities already have correct notes from extraction (their summaries were carried forward and revised in place), so they are skipped.
+
+Read `.watchdog/tmp/entity-fragments/_queue.json` with the Read tool. If it does not exist, skip this section entirely. It maps each entity id touched this run to `{name, note_path, count}`.
+
+Set `SYNTHESIZE` = every entry with `count >= 2`. If `SYNTHESIZE` is empty, skip.
+
+Process `SYNTHESIZE` in **batches of up to 5** — launch all synthesis subagents in a batch simultaneously (a single message with parallel Agent calls). Set each Agent's `description` to `Watchdog entity synthesis: <ENTITY_NAME clamped to 50 chars>` and `model` to `EXTRACTOR_MODEL`. Substitute `{placeholder}` values before sending:
+
+```
+Read `.claude/commands/watchdog-entity-synthesis-subagent.md` for full instructions. Then synthesize this entity:
+
+ENTITY_ID: {id}
+ENTITY_NAME: {name}
+FRAGMENTS_PATH: .watchdog/tmp/entity-fragments/{id}.md
+NOTE_PATH: {note_path}.md
+```
+
+Each subagent returns `STATUS: ok` or `STATUS: error`. Log errors to `.watchdog/Registry/ingest.log` and continue — a failed synthesis leaves the carried-forward note in place, which is still correct.
 
 ---
 

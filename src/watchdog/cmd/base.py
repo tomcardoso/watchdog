@@ -52,12 +52,13 @@ _ALIASES = {
 }
 
 _PIPELINE_COMMANDS = {
-    "near-dup":      ("watchdog.pipeline.near_dup",     "watchdog-near-dup"),
-    "write-vault":   ("watchdog.pipeline.write_vault",  "watchdog-write-vault"),
-    "write-entity":  ("watchdog.pipeline.write_entity", "watchdog-write-entity"),
-    "section-plan":  ("watchdog.pipeline.section",      "watchdog-section-plan"),
-    "merge-sections":("watchdog.pipeline.merge",        "watchdog-merge-sections"),
-    "ingest-abort":  ("watchdog.pipeline.abort",        "watchdog-ingest-abort"),
+    "near-dup":      ("watchdog.pipeline.near_dup",       "watchdog-near-dup"),
+    "write-vault":   ("watchdog.pipeline.write_vault",    "watchdog-write-vault"),
+    "write-entity":  ("watchdog.pipeline.write_entity",   "watchdog-write-entity"),
+    "write-entity-synthesis": ("watchdog.pipeline.finalize_entity", "watchdog-write-entity-synthesis"),
+    "section-plan":  ("watchdog.pipeline.section",        "watchdog-section-plan"),
+    "merge-sections":("watchdog.pipeline.merge",          "watchdog-merge-sections"),
+    "ingest-abort":  ("watchdog.pipeline.abort",          "watchdog-ingest-abort"),
 }
 
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates" / "vault"
@@ -70,6 +71,7 @@ _VAULT_PERMISSIONS = [
     "Bash(watchdog queue-status)",
     "Bash(watchdog is-duplicate *)",
     "Bash(watchdog write-entity --entity-id *)",
+    "Bash(watchdog write-entity-synthesis --entity-id *)",
     "Bash(watchdog unlock*)",
     "Bash(watchdog timeline-collisions)",
     "Bash(watchdog rebuild-timeline)",

@@ -1,28 +1,24 @@
 #!/usr/bin/env python3
 """
-Refresh a single entity note from a Claude-synthesized extraction.
+Write a finalizer's synthesized prose into an entity note.
 
-Used by /watchdog-entity to rewrite an entity's Summary and Timeline
-after re-reading all documents the entity appears in. Unlike
-watchdog-write-vault (which accumulates), this command replaces
-Summary and Timeline in full — it's a fresh synthesis.
+Used by the post-ingest finalizer subagent: after reconciling an entity's
+per-document fragments, it replaces *only* the prose sections — ## Summary and
+## Analysis. The append-only ## Contradictions log, the deterministically-merged
+## Timeline, ## Relationships, and the journalist ## Notes are left untouched.
+
+Unlike watchdog-write-entity (the /watchdog-entity full refresh, which also
+re-synthesizes the Timeline), this is a narrow prose-only write — it never reads
+or rewrites structured sections.
 
 Usage:
-    watchdog-write-entity --entity-id alice-smith --extraction .watchdog/tmp/entity-refresh-alice-smith.json [--vault .]
+    watchdog write-entity-synthesis --entity-id alice-smith --extraction .watchdog/tmp/wdg_synth-alice-smith.json [--vault .]
 
 Extraction JSON schema:
 {
   "entity_id": str,
   "summary": str,
-  "timeline_events": [
-    {
-      "date": str,         // YYYY-MM-DD, YYYY-MM, or YYYY
-      "event": str,
-      "source_sha256": str,
-      "page": int|null,
-      "confidence": str
-    }
-  ]
+  "analysis": str|null
 }
 """
 
@@ -33,21 +29,18 @@ from pathlib import Path
 
 from watchdog.pipeline.write_vault import (
     _extract_notes_section,
-    _extract_analysis,
     _extract_contradictions,
-    _rebuild_global_timeline,
     _update_manifest,
     build_entity_note,
     _today,
-    _now_iso,
 )
 
 
 def run(extraction_path: Path, vault_path: Path) -> None:
-    extraction = json.loads(extraction_path.read_text(encoding="utf-8"))
-    entity_id  = extraction["entity_id"]
-    new_summary = extraction.get("summary") or None
-    new_events  = extraction.get("timeline_events", [])
+    extraction  = json.loads(extraction_path.read_text(encoding="utf-8"))
+    entity_id   = extraction["entity_id"]
+    new_summary  = extraction.get("summary") or None
+    new_analysis = extraction.get("analysis") or ""
 
     registry_dir   = vault_path / ".watchdog" / "Registry"
     entities_path  = registry_dir / "entities.json"
@@ -65,18 +58,15 @@ def run(extraction_path: Path, vault_path: Path) -> None:
     entry = entities_reg[entity_id]
     note_path = vault_path / f"{entry['note_path']}.md"
 
-    # Replace timeline events entirely (full refresh from all documents)
-    entry["timeline_events"] = new_events
-    entry["date_last_updated"] = _today()
-
-    # Preserve existing analysis and contradictions — entity refresh doesn't touch them
-    existing_analysis = _extract_analysis(note_path)
-    existing_contradictions = _extract_contradictions(note_path)
+    # Timeline and Relationships come from the registry entry unchanged; contradictions
+    # and journalist notes are preserved from the existing note. Only the prose is new.
     notes_section = _extract_notes_section(note_path)
+    contradictions = _extract_contradictions(note_path)
+    entry["date_last_updated"] = _today()
 
     note_path.parent.mkdir(parents=True, exist_ok=True)
     note_content = build_entity_note(
-        entry, notes_section, documents_reg, new_summary, existing_analysis, existing_contradictions
+        entry, notes_section, documents_reg, new_summary, new_analysis, contradictions
     )
     note_path.write_text(note_content, encoding="utf-8")
     try:
@@ -88,19 +78,17 @@ def run(extraction_path: Path, vault_path: Path) -> None:
     entities_path.write_text(
         json.dumps(entities_reg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
-
     _update_manifest(vault_path, entities_reg)
-    _rebuild_global_timeline(vault_path, entities_reg, documents_reg)
 
-    print(f"OK  {entity_id}  timeline_events={len(new_events)}")
+    print(f"OK  {entity_id}  summary+analysis synthesized")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Refresh an entity note from a Claude-synthesized extraction"
+        description="Write a finalizer's synthesized Summary + Analysis into an entity note"
     )
     parser.add_argument("--entity-id", required=True, help="Entity ID (kebab-case)")
-    parser.add_argument("--extraction", required=True, help="Path to entity refresh JSON")
+    parser.add_argument("--extraction", required=True, help="Path to synthesis JSON")
     parser.add_argument("--vault", default=".", help="Vault root directory (default: .)")
     args = parser.parse_args()
 

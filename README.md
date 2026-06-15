@@ -74,7 +74,7 @@ The pipeline has two stages — a CLI stage you run in your terminal, and an ext
 Drop files into _INCOMING/
         ↓
 watchdog chew  (terminal)
-  SHA-256 dedup · OCR · Docling extraction · classification · embedding
+  SHA-256 dedup · OCR · Docling extraction · embedding
   → originals moved to .watchdog/staging/<sha256>/
   → extracted data written to .watchdog/queue/<sha256>.json
         ↓
@@ -96,7 +96,7 @@ finalizer subagent  (isolated Agent call)
   new entities · connections · leads · anomalies
 ```
 
-Splitting the pipeline this way keeps token costs down — the slow mechanical work (OCR, Docling, embeddings, classification) runs outside Claude Code entirely. Claude only sees clean, already-extracted text. The subagent architecture keeps each document's extraction isolated, so the orchestrator context stays flat regardless of batch size.
+Splitting the pipeline this way keeps token costs down — the slow mechanical work (OCR, Docling, embeddings) runs outside Claude Code entirely. Claude only sees clean, already-extracted text. The subagent architecture keeps each document's extraction isolated, so the orchestrator context stays flat regardless of batch size.
 
 The extraction step is a [Claude Code skill](src/watchdog/skills/watchdog-ingest.md). You keep the Obsidian vault and every original file.
 
@@ -113,13 +113,13 @@ Why Docling matters for investigative work:
 
 Docling runs locally. Your documents never leave your machine during preprocessing.
 
-### Automatic document classification
+### Document classification
 
-During chewing, Watchdog uses a lightweight embedding model to automatically classify each document's type. The first N pages (configurable via `classify_pages` in `watchdog configure`, default 10) are embedded and compared against cached skill embeddings — one per domain skill. The closest match above a confidence threshold determines which extraction skill Claude loads.
+Each document's type is identified at extraction time. The per-document subagent reads the first pages and selects the closest-matching domain skill from the [records skills](src/watchdog/skills/records/) — one per document type — by reading the (descriptive) filenames. The closest match determines which extraction skill Claude loads.
 
-This means Claude enters each document already loaded with the right domain knowledge — what fields to look for, what patterns are anomalous, what an experienced investigative journalist would notice that a first-year reporter would miss. For document types that don't match any skill confidently, the [general-records fallback](src/watchdog/skills/records/general-records.md) applies.
+This means Claude enters each document already loaded with the right domain knowledge — what fields to look for, what patterns are anomalous, what an experienced investigative journalist would notice that a first-year reporter would miss. For document types that don't match any skill, the [general-records fallback](src/watchdog/skills/records/general-records.md) applies.
 
-Classification runs entirely locally using the same [fastembed](https://github.com/qdrant/fastembed) model as the search index — no additional model, no cloud call.
+Because the model that extracts the document is the one that classifies it — reading the actual text rather than an embedding of it — no separate classifier, model, or cloud call is involved.
 
 ---
 
@@ -443,7 +443,6 @@ watchdog configure <key> <value>
 | `chunk_timeout` | `300` | Seconds before a chunk subprocess is killed. |
 | `table_structure` | `true` | Whether Docling runs its table detection model on PDFs. Set to `false` to speed up ingestion of text-only documents. |
 | `embed_images` | `false` | Embed figures as base64 in the extracted markdown so Claude can read charts and image-based tables. Significantly increases token usage. |
-| `classify_pages` | `10` | Number of pages used to classify document type at chew time. Watchdog embeds the first N pages and compares them against skill embeddings to select the extraction skill. Higher values improve accuracy on documents with long preambles; lower values are faster on large batches. |
 | `dup_threshold` | `0.85` | Jaccard similarity score at which two documents are flagged as near-duplicates. Range: 0.0–1.0. |
 | `shingle_size` | `3` | Word n-gram size for near-duplicate fingerprinting. Changing this invalidates existing MinHash signatures — re-ingest to rebuild. |
 

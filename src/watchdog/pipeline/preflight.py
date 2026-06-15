@@ -10,6 +10,8 @@ import json
 import sys
 from pathlib import Path
 
+from watchdog.pipeline.write_vault import _extract_summary, _extract_contradictions
+
 
 def _digest_events(events: list[dict]) -> list[dict]:
     """Comparison-relevant fields of an entity's timeline events."""
@@ -36,9 +38,9 @@ def _digest_roles(roles: list[dict]) -> list[dict]:
 def _existing_analysis(vault: Path, note_path: str) -> str:
     """Return the existing '## Analysis' section of an entity note.
 
-    The Analysis section holds any prior [!contradiction] callouts, so supplying
-    it lets the subagent run the contradiction check without reading note files.
-    Returns '' if the note or the section is absent.
+    Supplied alongside the entity's prior contradictions so the subagent can run
+    the contradiction check without reading note files. Returns '' if the note or
+    the section is absent.
     """
     if not note_path:
         return ""
@@ -93,9 +95,12 @@ def run(vault: Path, sha256: str) -> dict:
                     "type": entry.get("type", ""),
                     "aliases": entry.get("aliases", []),
                     "note_path": note_path,
+                    # Carried forward so the subagent revises rather than clobbers.
+                    "summary": _extract_summary(vault / f"{note_path}.md") if note_path else None,
                     "timeline_events": _digest_events(reg.get("timeline_events", [])),
                     "roles": _digest_roles(reg.get("roles", [])),
                     "analysis": _existing_analysis(vault, note_path),
+                    "contradictions": _extract_contradictions(vault / f"{note_path}.md") if note_path else "",
                 })
 
     # Check if already extracted

@@ -377,7 +377,7 @@ watchdog delete shell-company-investigation --purge    # also permanently delete
 Watchdog is designed to keep token costs predictable. A few things to know:
 
 - **Extraction runs outside Claude Code.** OCR, Docling document conversion, and embeddings all run in your terminal. Claude only sees clean, pre-extracted text — not raw document bytes.
-- **Documents are classified at chew time.** When you run `watchdog chew`, each document is automatically classified against Watchdog's domain skills. During extraction, only the matching skill is loaded — not all 34.
+- **Documents are classified during extraction, not in a separate pass.** The subagent that extracts a document also identifies its type and loads only the single matching domain skill — not all of them. There is no separate classification model or cloud call.
 - **Each document is an isolated subagent.** The orchestrator context stays flat regardless of batch size, so large batches don't accumulate context as they process.
 - **Use `--limit` for large batches.** If you have hundreds of documents, `/watchdog-ingest --limit 50` processes 50 and stops cleanly. Start a new session to continue — processed files are already in `morgue/` and won't be touched again.
 

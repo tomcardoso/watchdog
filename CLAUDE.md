@@ -1,5 +1,9 @@
 # Watchdog — developer notes
 
+## Architecture
+
+[ARCHITECTURE.md](ARCHITECTURE.md) records how the preprocessing and ingestion pipeline is built and the rationale behind each architectural decision. **When a change alters the pipeline's structure, the split between deterministic code and the model, the vault/registry layout, or any decision logged there, update `ARCHITECTURE.md` in the same change** — including its decision-log table. Treat it as part of the definition of done, like tests.
+
 ## Testing
 
 Write tests for new features and any non-trivial function. The suite lives in `tests/`.

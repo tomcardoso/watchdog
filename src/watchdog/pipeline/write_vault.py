@@ -22,7 +22,8 @@ Extraction JSON schema:
     {
       "id": str, "name": str, "type": str, "aliases": [],
       "summary": str|null,
-      "analysis": str|null,
+      "analysis": str|null,            // synthesized investigative narrative (no callouts)
+      "contradictions": [str]|null,    // each a `> [!contradiction]` callout block
       "timeline_events": [
         {
           "date": str,   // YYYY-MM-DD, YYYY-MM, or YYYY
@@ -90,8 +91,6 @@ def slugify(text: str) -> str:
 
 def _doc_slug(filename: str) -> str:
     return slugify(Path(filename).stem) or "document"
-
-
 
 
 def _reconcile_entity_ids(incoming_entities: list[dict], entities_reg: dict) -> None:
@@ -172,6 +171,23 @@ def _extract_summary(note_path: Path) -> str | None:
         return None
     text = _extract_section(note_path.read_text(encoding="utf-8"), "Summary")
     return text or None
+
+
+def _extract_contradictions(note_path: Path) -> str:
+    """Return the existing ## Contradictions body, or empty string."""
+    if not note_path.exists():
+        return ""
+    return _extract_section(note_path.read_text(encoding="utf-8"), "Contradictions")
+
+
+def _accumulate_contradictions(existing: str, incoming: list[str]) -> str:
+    """Append new contradiction callout blocks, skipping ones already present."""
+    result = existing.strip()
+    for callout in incoming:
+        callout = callout.strip()
+        if callout and callout not in result:
+            result = (result + "\n\n" + callout).strip() if result else callout
+    return result
 
 
 # ── Timeline helpers ──────────────────────────────────────────────────────────
@@ -473,6 +489,7 @@ def build_entity_note(
     docs_reg: dict,
     summary: str | None,
     accumulated_analysis: str,
+    contradictions: str = "",
 ) -> str:
     appears_in_links = []
     for sha in entry.get("appears_in", []):
@@ -498,6 +515,9 @@ def build_entity_note(
 
     if accumulated_analysis:
         body += f"\n## Analysis\n\n{accumulated_analysis}\n"
+
+    if contradictions:
+        body += f"\n## Contradictions\n\n{contradictions}\n"
 
     timeline_section = _build_timeline_section(
         entry.get("timeline_events", []), docs_reg, entity_name=entry["name"]
@@ -554,6 +574,48 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
     body += "\n## Notes\n\n<!-- Reserved for journalist annotations — never overwritten by ingestion. -->\n"
 
     return fm + body
+
+
+# ── Entity fragments (post-ingest finalizer input) ───────────────────────────
+
+def _fragments_dir(vault_path: Path) -> Path:
+    return vault_path / ".watchdog" / "tmp" / "entity-fragments"
+
+
+def _record_entity_fragment(
+    vault_path: Path, eid: str, entry: dict, incoming: dict, doc: dict, doc_title: str
+) -> None:
+    """Append this document's view of an entity to its fragment file and bump the
+    finalizer queue count. Runs inside the registry lock, so appends are race-free.
+
+    The fragments are the digest the post-ingest finalizer synthesizes from — it never
+    re-reads the source document. Only entities with 2+ fragments this run get finalized.
+    """
+    frag_dir = _fragments_dir(vault_path)
+    frag_dir.mkdir(parents=True, exist_ok=True)
+
+    dtype = doc.get("document_type") or "document"
+    ddate = doc.get("date_of_document") or "undated"
+    parts = [f"\n### {doc_title} — {dtype}, {ddate} (sha {doc['sha256'][:7]})\n"]
+    if incoming.get("summary"):
+        parts.append(incoming["summary"].strip() + "\n")
+    if incoming.get("analysis"):
+        parts.append(f"\nAnalysis: {incoming['analysis'].strip()}\n")
+    roles = incoming.get("roles", [])
+    if roles:
+        rendered = "; ".join(
+            f"{r.get('relationship', '')} {r.get('target_name', '')}".strip() for r in roles
+        )
+        parts.append(f"\nRoles: {rendered}\n")
+    with open(frag_dir / f"{eid}.md", "a", encoding="utf-8") as fh:
+        fh.write("".join(parts))
+
+    queue_path = frag_dir / "_queue.json"
+    queue = json.loads(queue_path.read_text(encoding="utf-8")) if queue_path.exists() else {}
+    rec = queue.get(eid, {"count": 0})
+    rec.update({"name": entry["name"], "note_path": entry["note_path"], "count": rec["count"] + 1})
+    queue[eid] = rec
+    queue_path.write_text(json.dumps(queue, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 # ── Main operation ────────────────────────────────────────────────────────────
@@ -671,13 +733,24 @@ def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False, ne
             else:
                 accumulated = existing_analysis
 
-            note_content = build_entity_note(entry, notes_section, documents_reg, new_summary, accumulated)
+            contradictions = _accumulate_contradictions(
+                _extract_contradictions(note_path), incoming.get("contradictions") or []
+            )
+
+            note_content = build_entity_note(
+                entry, notes_section, documents_reg, new_summary, accumulated, contradictions
+            )
             note_path.write_text(note_content, encoding="utf-8")
             try:
                 from watchdog.pipeline.embed import add_note
                 add_note(vault_path, entry["note_path"], note_content)
             except Exception as e:
                 print(f"  Warning: embed index update failed for {entry['note_path']}: {e}", file=sys.stderr)
+
+            # Record a per-entity fragment for the post-ingest finalizer — only for
+            # entities actually extracted from this document, not reverse-role touches.
+            if incoming:
+                _record_entity_fragment(vault_path, eid, entry, incoming, doc, doc_title)
 
         # ── 4. Write document note ────────────────────────────────────────────
 

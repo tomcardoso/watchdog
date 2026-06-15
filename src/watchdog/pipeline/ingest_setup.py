@@ -12,6 +12,7 @@ Human workflow:
 """
 
 import json
+import shutil
 import sys
 import time
 from datetime import datetime, timezone
@@ -71,6 +72,18 @@ def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "so
     if total == 0:
         state_file.unlink(missing_ok=True)
         return {"total": 0, "lock_acquired": False, "queue_files": []}
+
+    # Fresh run — clear any entity fragments left by a prior ingest so the finalizer
+    # gate counts only this run's documents.
+    shutil.rmtree(vault / ".watchdog" / "tmp" / "entity-fragments", ignore_errors=True)
+
+    # Keep the skill index current with whatever is in records/ — including skills the
+    # user added directly to the vault — so it never goes stale between refreshes.
+    try:
+        from watchdog.setup_cmd import regenerate_records_index
+        regenerate_records_index(vault / ".claude" / "commands" / "records")
+    except Exception:
+        pass
 
     started_at = _iso_now()
     batch_start = int(time.time())

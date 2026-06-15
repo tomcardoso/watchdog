@@ -26,7 +26,7 @@ The stdout output is **metadata only** — it does not include page content. Rea
 - `sha256`, `page_count`
 - `already_extracted` — if true, return the SKIPPED block immediately
 - `near_dup.near_duplicates`, `near_dup.top_similarity`
-- `existing_entities[]` — entities already in vault whose names appear in this document: `{id, name, type, aliases, note_path, timeline_events, roles, analysis}`. `timeline_events` and `roles` are the vault's current values for that entity; `analysis` is its existing Analysis section (including any prior `[!contradiction]` callouts). These are supplied so the contradiction check (Step 7) needs no note reads.
+- `existing_entities[]` — entities already in vault whose names appear in this document: `{id, name, type, aliases, note_path, summary, timeline_events, roles, analysis, contradictions}`. `summary` is the entity's current note summary — carry it forward and revise (Step 5), don't overwrite. `timeline_events` and `roles` are the vault's current values; `analysis` is its existing Analysis section; `contradictions` is its existing Contradictions section. These are supplied so the contradiction check (Step 7) needs no note reads.
 - `pages_path` — path to a markdown file containing all pages separated by `<!-- PAGE N -->` markers and `---` dividers
 
 If `already_extracted` is true, stop and return:
@@ -48,11 +48,7 @@ Check whether `_INCOMING/{FILENAME}.yml` exists. If it does, read it. Note `sour
 
 ## Step 3 — Load domain skill
 
-If `DOMAIN_SKILL_PATH` is not `"none"`, read `.claude/commands/{DOMAIN_SKILL_PATH}` and use it. Skip the inference below — the document was pre-classified at chew time.
-
-**Escape hatch:** if after reading the document in Step 1 the loaded skill is clearly wrong, read the correct skill from `.claude/commands/records/` instead. This should be rare.
-
-If `DOMAIN_SKILL_PATH` is `"none"`, scan the first few pages to identify the document type, then find and read the closest matching skill in `.claude/commands/records/`. Skill filenames are descriptive. If nothing clearly matches, read `.claude/commands/records/general-records.md`.
+You have the full document text from Step 1. Identify its type and read the **single** closest-matching skill in `.claude/commands/records/`. The filenames are descriptive (e.g. `corporate-filings.md`, `court-documents.md`, `land-registries.md`). If you are unsure which fits — e.g. distinguishing adjacent types like corporate filings vs. financial statements vs. regulatory filings — read `.claude/commands/records/_index.md`, a one-line description of every skill, and pick from that. Read only one skill; if nothing clearly matches, read `.claude/commands/records/general-records.md`.
 
 ## Step 4 — Infer document metadata
 
@@ -73,6 +69,8 @@ For each entity:
 - `aliases` — every other name or abbreviation used in this document
 - `timeline_events` — datable events directly involving this entity. Include any event where a journalist would want to know the date: something that happened, was decided, or changed. Ask "when did this entity do or experience X?" — if the date answers that, include it. Exclude dates that only answer "when was this form stamped?" unless that date connects causally to something substantive (e.g. a filing date that immediately precedes or follows a meeting or decision of interest).
 - `roles` — relationships to other entities with page citations
+- `summary` — one sentence: who is this entity and what role do they play. **If `PRE_FLIGHT.existing_entities` carries a `summary` for this matched entity, revise that carried-forward summary to fold in what this document adds — do not discard it and write a single-document summary from scratch.**
+- `analysis` — investigative narrative worth noting (significance, patterns, why this entity matters). Omit if nothing notable. **Do not put contradiction callouts here** — those go in `contradictions` (see Step 7).
 
 Confidence rules:
 - `high` — directly stated
@@ -90,7 +88,7 @@ Never upgrade a claim past its weakest element.
 
 For each entity that matched an entry in PRE_FLIGHT.existing_entities, compare what this document states against that entry's `timeline_events`, `roles`, and `analysis` fields — all supplied by pre-flight. **Do not read entity note files.**
 
-Compare key dates, roles, and relationships against what this document states. Flag material discrepancies where both sides are `high` or `medium` confidence. Format contradiction callouts as:
+Compare key dates, roles, and relationships against what this document states. Flag material discrepancies where both sides are `high` or `medium` confidence. Add each as a string in the matched entity's `contradictions` array (Step 8), formatted as a callout:
 
 ```
 > [!contradiction] <short label>
@@ -98,7 +96,7 @@ Compare key dates, roles, and relationships against what this document states. F
 > - **<new value>** — [[documents/<new-slug>|<title>]], p. <n> (confidence: <level>)
 ```
 
-Do not flag: low-confidence differences, trivially explainable name variations, or contradictions already present in the matched entity's `analysis` field for the same fact.
+These go in the `contradictions` array (Step 8), never in `analysis`. Do not flag: low-confidence differences, trivially explainable name variations, or contradictions already present in the entity's supplied `contradictions` for the same fact.
 
 Emit a `[!contradiction]` callout only when you are confident the discrepancy is genuine after this comparison. This is the only verification step in the pipeline — there is no later orchestrator pass to remove false positives — so any callout you write is saved to the vault as-is.
 
@@ -129,8 +127,9 @@ Build this JSON exactly:
       "name": "...",
       "type": "...",
       "aliases": [...],
-      "summary": "<one sentence: who is this entity and what role do they play>",
-      "analysis": "<contradiction callouts from Step 7 and any investigative notes; omit field entirely if nothing notable>",
+      "summary": "<one sentence; revise PRE_FLIGHT carried summary if matched>",
+      "analysis": "<investigative narrative only — no contradiction callouts; omit field entirely if nothing notable>",
+      "contradictions": ["<[!contradiction] callout block from Step 7>", "..."],
       "timeline_events": [
         {"date": "...", "event": "...", "page": <n or null>, "confidence": "..."}
       ],
