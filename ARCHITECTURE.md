@@ -313,7 +313,9 @@ registry for every document would be wasteful. The manifest is the cheap index.
   vault's `.claude/commands/records/` by `setup_cmd.install_skills`, which also
   generates `records/_index.md` (one-line description per skill, derived from each
   skill's intro). New skills are added by dropping a file in that directory — no code
-  changes — and the index regenerates on `watchdog refresh-skills`.
+  changes — and the index regenerates on `watchdog refresh-skills`. The index is
+  **generated, not checked in**, so it has a single source of truth and cannot drift
+  from the skills (see D12).
 
 ---
 
@@ -332,3 +334,4 @@ registry for every document would be wasteful. The manifest is the cheap index.
 | D9 | Raw-then-canonical timeline files (§9) | Subagents write lock-free; merge deferred to one post-batch step | Two file generations on disk |
 | D10 | MinHash near-dup, detect-only (§10) | Cheap local dedup signal; journalist decides | Approximate similarity |
 | D11 | Separate lightweight manifest (§12) | Cheap candidate lookup in pre-flight | A second index to keep in sync (done in `write_vault`) |
+| D12 | Generate `records/_index.md` from skill intros (§13), don't check in a static index | Single source of truth — the skill's own intro; a static file is a second copy that silently drifts and breaks the "just drop a skill file" workflow | Descriptor quality depends on parsing the intro prose; a dedicated frontmatter descriptor field is the upgrade path if that heuristic gets fragile |
