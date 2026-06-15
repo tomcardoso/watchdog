@@ -214,7 +214,8 @@ model.
 > **entity-synthesis subagent** (`watchdog-entity-synthesis-subagent.md`), which
 > rewrites entity *prose*. §9's **finalize subagent**
 > (`watchdog-ingest-finalize-subagent.md`) reconciles the *timeline* and writes the
-> *briefing*. Separate skills, separate steps.
+> *briefing*. Separate skills, separate steps — see D16 for why they're kept separate
+> rather than merged into one post-extraction agent.
 
 Synthesizing an entity's prose across all its documents on every ingest would be
 expensive and would re-bloat the orchestrator context. Synthesizing nothing (the old
@@ -383,3 +384,4 @@ registry for every document would be wasteful. The manifest is the cheap index.
 | D13 | Sectioned extraction for large documents (§5) | Documents over the token threshold don't fit one context; sequential page-range sections with a carried scratchpad + deterministic `merge-sections` preserve cross-section consistency | Large docs are extracted serially (slower); needs overlap + merge-dedup |
 | D14 | Timeline reconciliation + briefing in one finalize subagent, off the orchestrator (§9) | Keeps the orchestrator context flat — scratchpad prose and timeline NDJSON never enter it | An extra subagent round-trip; the orchestrator can't see briefing internals |
 | D15 | Runaway guard + `ingest-abort` (§5) | A stuck subagent bails (`STATUS: failed`) instead of wedging the batch; clean bail leaves no partial vault writes, so the doc re-ingests cleanly | A failed doc must be manually moved back from `queue/_failed/` to retry |
+| D16 | Entity synthesis (§8) and finalize (§9) kept as separate subagents, not merged | They differ on the axis the architecture optimizes: synthesis is per-entity parallel fan-out, finalize is a single whole-batch agent. Merging would serialize the entity work and re-concentrate every entity's fragments + all scratchpads + all timeline files into one context — the exact bloat the subagent split prevents. They also have independent failure domains and models. Briefing cohesion (reflecting synthesized entities) comes from ordering + passing the synthesized list to finalize, not from merging | Two post-extraction steps instead of one; the briefing doesn't see synthesized prose unless that list is explicitly passed |
