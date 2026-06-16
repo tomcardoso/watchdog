@@ -91,7 +91,8 @@ watchdog post-flight  (called by each subagent)
   updates global timeline and registries · file-locked for parallel safety
   → originals moved to morgue/
         ↓
-finalizer subagent  (isolated Agent call)
+post-ingest subagent  (single isolated Agent call)
+  entity synthesis (multi-mention entities, from a bundle) ·
   timeline collision resolution · post-ingest briefing
   new entities · connections · leads · anomalies
 ```
@@ -211,8 +212,7 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog ingest` | Acquire the ingest lock, scan the queue, and open Claude Code — `/watchdog-ingest` fires automatically |
 | `watchdog ingest --orchestrator-model M` | Override the orchestrator model for this run (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
 | `watchdog ingest --extractor-model M` | Override the extraction subagent model for this run (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
-| `watchdog ingest --finalizer-model M` | Override the finalizer subagent model for this run — timeline reconciliation + briefing (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
-| `watchdog ingest --entity-synthesizer-model M` | Override the entity synthesis subagent model for this run (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
+| `watchdog ingest --finalizer-model M` | Override the post-ingest subagent model for this run — entity synthesis + timeline reconciliation + briefing (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
 | `watchdog context [name]` | Open Claude Code with the context seeding skill; omit name when inside the vault |
 | `watchdog context --model M` | Override the model for context seeding (`sonnet`/`opus`/`haiku`, default: `sonnet`) |
 | `watchdog watch [name]` | Watch `_INCOMING/` and chew files automatically as they arrive; omit name when inside the project directory |
@@ -448,8 +448,7 @@ watchdog configure <key> <value>
 | `shingle_size` | `3` | Word n-gram size for near-duplicate fingerprinting. Changing this invalidates existing MinHash signatures — re-ingest to rebuild. |
 | `orchestrator_model` | `sonnet` | Claude model for the ingest orchestrator. Options: `haiku`, `sonnet`, `opus`. Can be overridden per-run with `--orchestrator-model`. |
 | `extractor_model` | `sonnet` | Claude model for per-document extraction subagents. Options: `haiku`, `sonnet`, `opus`. Can be overridden per-run with `--extractor-model`. |
-| `finalizer_model` | `sonnet` | Claude model for the post-ingest finalizer subagent (timeline reconciliation + briefing). Options: `haiku`, `sonnet`, `opus`. Can be overridden per-run with `--finalizer-model`. |
-| `entity_synthesizer_model` | `sonnet` | Claude model for entity synthesis subagents (Summary + Analysis reconciliation for entities appearing in ≥2 documents). Options: `haiku`, `sonnet`, `opus`. Can be overridden per-run with `--entity-synthesizer-model`. |
+| `finalizer_model` | `sonnet` | Claude model for the single post-ingest subagent — entity synthesis (Summary + Analysis for entities in ≥2 documents) + timeline reconciliation + briefing. Options: `haiku`, `sonnet`, `opus`. Can be overridden per-run with `--finalizer-model`. |
 
 **Examples:**
 
@@ -532,7 +531,7 @@ Please open an issue before starting significant work so we can discuss approach
 - **Near-duplicate detection** uses MinHash (128 hash functions) to approximate Jaccard similarity on word 3-gram shingles — no ML dependencies, runs locally.
 - **Registries** (`.watchdog/Registry/documents.json`, `entities.json`, `manifest.json`) are the source of truth. Obsidian notes are generated outputs — deleting a note doesn't lose data. `manifest.json` is a lightweight id/name/type/aliases index used for entity lookup without loading full registry data.
 - **Vault writes are file-locked** — `watchdog write-vault` acquires an exclusive lock on `.watchdog/Registry/.write-lock` before reading and writing registry files, so parallel subagent calls serialize safely without corruption.
-- **Extraction runs in isolated subagents** — each document is processed by a separate Claude Code Agent call. A second isolated subagent (the finalizer) handles timeline reconciliation and briefing after the extraction loop. Both keep the orchestrator context flat regardless of batch size.
+- **Extraction runs in isolated subagents** — each document is processed by a separate Claude Code Agent call. A single isolated post-ingest subagent then synthesizes multi-mention entity prose (from a Python-built bundle), reconciles the timeline, and writes the briefing. Both keep the orchestrator context flat regardless of batch size.
 - **Skills are per-vault** — domain knowledge skill files live in `.claude/commands/records/` inside each vault, installed by `watchdog new` and refreshed by `watchdog refresh-skills`. This means skills travel with the investigation and can be customized per-vault.
 - **Single CLI entry point** — `watchdog` is the only command installed on your PATH. All pipeline utilities are subcommands.
 

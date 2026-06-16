@@ -170,25 +170,13 @@ _CONFIGURE_KEYS = {
         "choices": ["haiku", "sonnet", "opus"],
     },
     "finalizer_model": {
-        "short": "Claude model for the post-ingest finalizer subagent (default: sonnet)",
+        "short": "Claude model for the post-ingest subagent (default: sonnet)",
         "help": (
-            "Model used for the finalizer subagent that reconciles the timeline and\n"
-            "  produces the post-ingest briefing after extraction is complete.\n"
+            "Model used for the single post-ingest subagent that synthesizes prose for\n"
+            "  multi-mention entities, reconciles the timeline, and produces the\n"
+            "  post-ingest briefing after extraction is complete.\n"
             "  Valid values: haiku, sonnet, opus. Default: sonnet.\n"
             "  Override for a single run with: watchdog ingest --finalizer-model M"
-        ),
-        "type": "enum",
-        "default": "sonnet",
-        "choices": ["haiku", "sonnet", "opus"],
-    },
-    "entity_synthesizer_model": {
-        "short": "Claude model for entity synthesis subagents (default: sonnet)",
-        "help": (
-            "Model used for entity synthesis subagents — the pass that reconciles an\n"
-            "  entity's Summary and Analysis when it appears in two or more documents\n"
-            "  in a single ingest run.\n"
-            "  Valid values: haiku, sonnet, opus. Default: sonnet.\n"
-            "  Override for a single run with: watchdog ingest --entity-synthesizer-model M"
         ),
         "type": "enum",
         "default": "sonnet",

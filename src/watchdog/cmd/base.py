@@ -56,6 +56,8 @@ _PIPELINE_COMMANDS = {
     "write-vault":   ("watchdog.pipeline.write_vault",    "watchdog-write-vault"),
     "write-entity":  ("watchdog.pipeline.write_entity",   "watchdog-write-entity"),
     "write-entity-synthesis": ("watchdog.pipeline.finalize_entity", "watchdog-write-entity-synthesis"),
+    "build-synthesis-bundle": ("watchdog.pipeline.synthesis_bundle", "watchdog-build-synthesis-bundle"),
+    "apply-syntheses":        ("watchdog.pipeline.synthesis_bundle", "watchdog-apply-syntheses"),
     "section-plan":  ("watchdog.pipeline.section",        "watchdog-section-plan"),
     "merge-sections":("watchdog.pipeline.merge",          "watchdog-merge-sections"),
     "ingest-abort":  ("watchdog.pipeline.abort",          "watchdog-ingest-abort"),
@@ -72,6 +74,8 @@ _VAULT_PERMISSIONS = [
     "Bash(watchdog is-duplicate *)",
     "Bash(watchdog write-entity --entity-id *)",
     "Bash(watchdog write-entity-synthesis --entity-id *)",
+    "Bash(watchdog build-synthesis-bundle)",
+    "Bash(watchdog apply-syntheses --bundle *)",
     "Bash(watchdog unlock*)",
     "Bash(watchdog timeline-collisions)",
     "Bash(watchdog rebuild-timeline)",
@@ -119,8 +123,7 @@ _CMD_HELP: dict[str, dict] = {
         "opts": [
             ("--orchestrator-model M",       "Override orchestrator model for this run (sonnet/opus/haiku; default from watchdog configure)"),
             ("--extractor-model M",          "Override extraction subagent model for this run (sonnet/opus/haiku; default from watchdog configure)"),
-            ("--finalizer-model M",          "Override finalizer subagent model for this run — timeline + briefing (sonnet/opus/haiku; default from watchdog configure)"),
-            ("--entity-synthesizer-model M", "Override entity synthesizer model for this run (sonnet/opus/haiku; default from watchdog configure)"),
+            ("--finalizer-model M",          "Override post-ingest subagent model for this run — entity synthesis + timeline + briefing (sonnet/opus/haiku; default from watchdog configure)"),
         ],
     },
     "context": {

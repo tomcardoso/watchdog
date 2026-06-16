@@ -30,7 +30,7 @@ def _iso_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "sonnet", entity_synthesizer_model: str = "sonnet") -> dict:
+def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "sonnet") -> dict:
     """Acquire lock, scan queue, write state file. Returns the state dict."""
     lock_file = vault / ".watchdog" / "Registry" / ".ingest-lock"
     state_file = vault / ".watchdog" / "ingest-state.json"
@@ -98,7 +98,6 @@ def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "so
         "queue_files": queue_files,
         "extractor_model": extractor_model,
         "finalizer_model": finalizer_model,
-        "entity_synthesizer_model": entity_synthesizer_model,
         "section_token_threshold": _section_token_threshold(),
     }
     state_file.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
