@@ -226,6 +226,11 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog search <name> "<query>"` | Semantic search across ingested documents |
 | `watchdog doctor` | Check all registered investigations for missing or broken vaults; suggests `watchdog move` or `watchdog delete` for each issue |
 | `watchdog configure` | View or change configuration |
+| `watchdog auth` | Show the auth mode and API-key status (masked) |
+| `watchdog auth use <mode>` | Set auth mode: `auto` (default), `subscription` (Claude Code login, not metered), or `api-key` (metered) |
+| `watchdog auth set [provider]` | Store an API key (prompted, hidden); `provider` defaults to `anthropic` |
+| `watchdog auth get [provider]` | Show one provider's key status and source (env var or stored) |
+| `watchdog auth remove [provider]` | Delete a stored API key |
 | `watchdog unlock <name>` | Release a stale chew or ingest lock; `--force` to remove even if recent |
 | `watchdog setup` | Set up Watchdog after installation; `--force` to re-run |
 | `watchdog refresh-skills [name]` | Update vault skill files after a watchdog upgrade; omit name when inside the project directory |

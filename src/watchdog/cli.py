@@ -83,6 +83,7 @@ from watchdog.cmd.setup import (
     cmd_setup,
     cmd_unlock,
 )
+from watchdog.cmd.auth import cmd_auth
 
 
 def _cmd_rebuild_timeline(args) -> None:
@@ -294,6 +295,13 @@ def main() -> None:
     p_context.add_argument("--model", choices=_model_choices, default="sonnet",
                            help="Model to use (default: sonnet)")
     p_context.set_defaults(func=cmd_context)
+
+    p_auth = sub.add_parser("auth", help="Choose auth mode and manage API keys for model backends")
+    p_auth.add_argument("action", nargs="?", choices=["status", "use", "set", "get", "remove"],
+                        help="status (default) | use <mode> | set/get/remove [provider]")
+    p_auth.add_argument("target", nargs="?",
+                        help="mode for `use` (auto/subscription/api-key); provider for set/get/remove (default: anthropic)")
+    p_auth.set_defaults(func=cmd_auth)
 
     try:
         import argcomplete

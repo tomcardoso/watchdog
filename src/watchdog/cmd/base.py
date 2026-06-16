@@ -453,6 +453,7 @@ def _print_banner() -> None:
         ("Settings", [
             ("setup",      "Set up Watchdog after installation"),
             ("configure",  "View or change configuration"),
+            ("auth",       "Manage API keys for model backends"),
             ("about",      "Show version and project links"),
         ]),
     ]
