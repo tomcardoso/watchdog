@@ -286,10 +286,7 @@ def main() -> None:
                           help="Model for extraction subagents — overrides watchdog configure (default: sonnet)")
     p_ingest.add_argument("--finalizer-model", choices=_model_choices, default=None,
                           dest="finalizer_model",
-                          help="Model for the finalizer subagent — timeline reconciliation + briefing — overrides watchdog configure (default: sonnet)")
-    p_ingest.add_argument("--entity-synthesizer-model", choices=_model_choices, default=None,
-                          dest="entity_synthesizer_model",
-                          help="Model for entity synthesis subagents — overrides watchdog configure (default: sonnet)")
+                          help="Model for the post-ingest subagent — entity synthesis + timeline + briefing — overrides watchdog configure (default: sonnet)")
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_context = sub.add_parser("context", help="Open Claude Code to seed investigation context from _CONTEXT/")

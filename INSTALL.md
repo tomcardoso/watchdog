@@ -188,7 +188,7 @@ watchdog ingest
 
 Watchdog scans the queue, then opens Claude Code with the extraction skill pre-loaded — extraction begins automatically.
 
-By default, Watchdog uses Claude Sonnet for all stages. You can configure persistent model defaults with `watchdog configure` (e.g. `watchdog configure extractor_model haiku`), or override for a single run with flags like `--extractor-model haiku`, `--orchestrator-model opus`, `--finalizer-model opus`, or `--entity-synthesizer-model haiku`. See the [Commands](README.md#processing) and [Configuration](README.md#configuration) sections of the README for details.
+By default, Watchdog uses Claude Sonnet for all stages. You can configure persistent model defaults with `watchdog configure` (e.g. `watchdog configure extractor_model haiku`), or override for a single run with flags like `--extractor-model haiku`, `--orchestrator-model opus`, or `--finalizer-model opus` (the finalizer model also covers entity synthesis). See the [Commands](README.md#processing) and [Configuration](README.md#configuration) sections of the README for details.
 
 Claude will work through each chewed file, extract entities, relationships, and key facts, and write everything to your vault. At the end it produces a briefing showing:
 - What documents were processed

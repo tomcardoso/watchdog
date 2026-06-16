@@ -91,13 +91,11 @@ def cmd_ingest(args) -> None:
     orchestrator_model      = _model(getattr(args, "orchestrator_model",      None), "orchestrator_model")
     extractor_model         = _model(getattr(args, "extractor_model",         None), "extractor_model")
     finalizer_model         = _model(getattr(args, "finalizer_model",         None), "finalizer_model")
-    entity_synthesizer_model = _model(getattr(args, "entity_synthesizer_model", None), "entity_synthesizer_model")
 
     for label, model in (
         ("orchestrator",       orchestrator_model),
         ("extractor",          extractor_model),
         ("finalizer",          finalizer_model),
-        ("entity-synthesizer", entity_synthesizer_model),
     ):
         if model not in _MODEL_IDS:
             sys.exit(f"Error: unknown {label} model '{model}' — choose sonnet, opus, or haiku")
@@ -106,7 +104,6 @@ def cmd_ingest(args) -> None:
         vault,
         extractor_model=extractor_model,
         finalizer_model=finalizer_model,
-        entity_synthesizer_model=entity_synthesizer_model,
     )
     if "error" in result:
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} {result['error']}\n")

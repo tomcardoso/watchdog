@@ -162,13 +162,12 @@ watchdog ingest
 
 Watchdog scans the queue and prompts you to open Claude Code. When you confirm, it opens Claude Code with the extraction skill pre-loaded — extraction begins automatically.
 
-By default, Watchdog uses Claude Sonnet for all four components: the orchestrator, the extraction subagents (one per document), the entity synthesis subagents (run after extraction for entities mentioned in two or more documents), and the finalizer subagent (timeline reconciliation + briefing). You can set persistent defaults with `watchdog configure`, or override for a single run at the command line:
+By default, Watchdog uses Claude Sonnet for all three components: the orchestrator, the extraction subagents (one per document), and the post-ingest subagent — a single agent that synthesizes prose for entities mentioned in two or more documents, reconciles the timeline, and writes the briefing (controlled by `finalizer_model`). You can set persistent defaults with `watchdog configure`, or override for a single run at the command line:
 
 ```bash
 watchdog ingest --extractor-model haiku           # faster, cheaper subagents
 watchdog ingest --orchestrator-model opus         # more capable orchestrator
-watchdog ingest --finalizer-model opus            # stronger model for timeline + briefing
-watchdog ingest --entity-synthesizer-model haiku  # cheaper model for entity synthesis
+watchdog ingest --finalizer-model opus            # stronger model for synthesis + timeline + briefing
 watchdog ingest --orchestrator-model opus --extractor-model haiku
 ```
 
@@ -189,7 +188,7 @@ Claude works through each chewed file in the queue, processing up to 5 documents
 6. Checks for contradictions against entities already in the vault
 7. Writes everything to the vault
 
-When extraction is complete, a separate finalizer subagent reconciles the timeline and produces a **post-ingest briefing** summarizing:
+When extraction is complete, a single post-ingest subagent synthesizes prose for multi-mention entities, reconciles the timeline, and produces a **post-ingest briefing** summarizing:
 - What documents were processed and what types they were
 - What entities were found and which already existed in the vault
 - Connections between entities — shared addresses, overlapping roles, entities appearing across multiple documents

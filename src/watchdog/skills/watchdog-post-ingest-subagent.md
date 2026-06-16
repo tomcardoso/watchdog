@@ -1,4 +1,4 @@
-You are finalizing one Watchdog ingest batch. Two jobs: (1) reconcile the timeline, (2) write the post-ingest briefing. Follow every step below exactly. Return ONLY the confirmation block at the end — no other output.
+You are finalizing one Watchdog ingest batch. Three jobs: (1) synthesize prose for entities mentioned by two or more documents this run, (2) reconcile the timeline, (3) write the post-ingest briefing. Doing all three in one subagent — instead of one agent per entity — keeps post-ingest cost flat. Follow every step below exactly. Return ONLY the confirmation block at the end — no other output.
 
 **Hard constraints — violations will break the pipeline:**
 - Never pipe or post-process command output with `python3`, `awk`, `jq`, `sed`, `grep`, or any other tool. The Bash tool returns output directly — read it as-is.
@@ -7,19 +7,64 @@ You are finalizing one Watchdog ingest batch. Two jobs: (1) reconcile the timeli
 - Never run `watchdog <command> --help` or any exploration command.
 - Read vault files with the Read tool, not bash.
 
-**Stop conditions (runaway guard).** Finish in a bounded number of steps. If a step can't complete — a collision file won't parse, a scratchpad won't read — skip that item and move on rather than retrying it repeatedly. Always reach Step 4 and return; write the briefing with whatever you have. Do not loop. (There is no vault state to undo here — the briefing and timeline are regenerable.)
+**Stop conditions (runaway guard).** Finish in a bounded number of steps. If a step can't complete — a collision file won't parse, a scratchpad won't read — skip that item and move on rather than retrying it repeatedly. Always reach Step 4 and return. Do not loop. (There is no vault state to undo here — synthesized prose, the briefing, and the timeline are all regenerable.)
 
 **Inputs (supplied in the prompt):**
+- `BUNDLE_PATH` — path to the entity-synthesis bundle Python built for this run.
 - `INVESTIGATION_BRIEF` — condensed investigation context. Use this instead of reading `context.md`.
 - `RESULTS` — one compact metadata block per successfully extracted document (filename, type, date, entity counts, new/updated entity ids).
 - `NEARDUP_ALERTS` — near-duplicate alerts (may be empty).
 - `CONTRADICTION_FLAGS` — contradictions flagged during extraction (may be empty).
 
-Source the narrative detail from the scratchpads (Step 2), not from `RESULTS` — `RESULTS` carries machine-readable metadata only.
+Source the narrative detail from the synthesis bundle and the scratchpads (Steps 1–2), not from `RESULTS` — `RESULTS` carries machine-readable metadata only.
 
 ---
 
-## Step 1 — Timeline reconciliation
+## Step 1 — Entity synthesis
+
+Read `BUNDLE_PATH` with the Read tool. It is `{"entities": [...]}`, where each entry is one entity mentioned by two or more documents in this ingest:
+
+```json
+{
+  "entity_id": "...",
+  "name": "...",
+  "note_path": "...",
+  "current_summary": "<the entity's accumulated Summary from prior ingests, may be empty>",
+  "current_analysis": "<the entity's accumulated Analysis from prior ingests, may be empty>",
+  "fragments": "<one ### block per document that mentioned this entity this run — each with that document's summary sentence, analysis, and roles>"
+}
+```
+
+If `entities` is empty, skip to Step 2.
+
+For **each** entity, synthesize two pieces of prose, reconciling all of this run's fragments with the carried prose at once:
+
+- **summary** — one coherent paragraph: who this entity is, the role they play, and why they matter to the investigation. Integrate `current_summary` and every fragment into a single account — do **not** concatenate per-document sentences, and do not lose specific detail (titles, figures, relationships) that any source established. Where sources genuinely conflict on a fact, prefer the higher-confidence one and note the uncertainty; do not invent a resolution.
+- **analysis** — an investigative narrative reconciling what the documents collectively reveal: patterns, significance, open threads. Use an empty string if there is nothing beyond the summary worth saying. **Never** include `[!contradiction]` callouts here — contradictions live in their own section, which the pipeline preserves.
+
+Synthesize from the bundle only. Do not re-read source documents or entity notes.
+
+Write all syntheses to `.watchdog/tmp/synthesis-result.json` with the Write tool:
+
+```json
+{
+  "entity_syntheses": [
+    {"entity_id": "<id>", "summary": "<synthesized paragraph>", "analysis": "<synthesized narrative, or empty string>"}
+  ]
+}
+```
+
+Then apply them in one deterministic write:
+
+```bash
+watchdog apply-syntheses --bundle .watchdog/tmp/synthesis-result.json
+```
+
+This replaces only the `## Summary` and `## Analysis` of each entity, leaving Contradictions, Timeline, Relationships, and Notes intact. Entities you omit, or give an empty summary, keep their carried-forward prose. If it prints an error, fix the JSON and run it once more.
+
+---
+
+## Step 2 — Timeline reconciliation
 
 Run:
 ```bash
@@ -46,13 +91,9 @@ This renders `timeline.md` from all canonical `.watchdog/timeline/{date}.ndjson`
 
 ---
 
-## Step 2 — Read scratchpads
+## Step 3 — Read scratchpads and write the briefing
 
 Read all subagent scratchpads from `.watchdog/tmp/notes_*.md` — one per successfully extracted document. These hold the high-signal detail (key figures, leads, contradictions, chronological context) the compact `RESULTS` blocks cannot carry. Build the briefing from the scratchpads, `RESULTS`, `NEARDUP_ALERTS`, `CONTRADICTION_FLAGS`, and `INVESTIGATION_BRIEF`. Do not read queue files or entity records.
-
----
-
-## Step 3 — Write the briefing
 
 Write a briefing note to `briefings/<YYYY-MM-DD-HH-MM>.md`:
 
@@ -152,5 +193,6 @@ Return ONLY the following block. No other output.
 STATUS: ok
 BRIEFING: briefings/<briefing-slug>.md
 FILES: <n>
+SYNTHESIZED: <n entities, or none>
 TIMELINE: <n collisions deduplicated, or none>
 ```

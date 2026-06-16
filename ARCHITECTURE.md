@@ -31,7 +31,8 @@ These run through every decision below.
 - **Flat orchestrator context.** Each document is extracted in an isolated subagent
   so document text, skill files, and extraction output never accumulate in the
   orchestrator's context. The orchestrator holds only compact state regardless of
-  batch size. The same fan-out shape is reused for entity synthesis.
+  batch size. Post-extraction work (entity synthesis, timeline, briefing) is likewise
+  pushed into one isolated post-ingest subagent fed a compact bundle.
 - **Parallel, with serialized writes.** Subagents run concurrently; all registry
   and note writes funnel through a single serialized, lock-guarded path so
   concurrency is safe without the model having to reason about it.
@@ -52,9 +53,9 @@ Two human-invoked phases, with a clean handoff via the queue:
    chunking, near-duplicate fingerprinting. Writes one queue JSON per document.
 2. **Ingest** (`watchdog ingest` → `/watchdog-ingest`) — model-driven. A Claude
    orchestrator fans out per-document extractor subagents (large documents are
-   extracted in sequential page-range sections), runs a gated entity-synthesis pass,
-   then delegates timeline reconciliation and the briefing to a single finalize
-   subagent. A runaway guard lets a stuck subagent bail cleanly without wedging the batch.
+   extracted in sequential page-range sections), then delegates a single post-ingest
+   subagent to synthesize multi-mention entity prose (from a Python-built bundle),
+   reconcile the timeline, and write the briefing. A runaway guard lets a stuck subagent bail cleanly without wedging the batch.
 
 ---
 
@@ -187,8 +188,8 @@ differently:
 
 | Section | Kind | Treatment |
 |---|---|---|
-| `## Summary` | synthesized prose | model — carryforward interim, then entity-synthesis subagent |
-| `## Analysis` | synthesized prose | model — entity-synthesis subagent |
+| `## Summary` | synthesized prose | model — carryforward interim, then bundled synthesis |
+| `## Analysis` | synthesized prose | model — bundled synthesis |
 | `## Contradictions` | cited callouts | deterministic — append-only, deduped, audit-managed |
 | `## Timeline` | structured events | deterministic — merged, sorted by **event** date |
 | `## Relationships` | structured roles | deterministic — merged |
@@ -214,12 +215,12 @@ model.
 
 ## 8. Entity synthesis: carryforward + gated synthesis
 
-> **Two different post-extraction passes, don't confuse them.** This section is the
-> **entity-synthesis subagent** (`watchdog-entity-synthesis-subagent.md`), which
-> rewrites entity *prose*. §9's **finalize subagent**
-> (`watchdog-ingest-finalize-subagent.md`) reconciles the *timeline* and writes the
-> *briefing*. Separate skills, separate steps — see D16 for why they're kept separate
-> rather than merged into one post-extraction agent.
+> **One post-ingest subagent does both synthesis and finalize.** Entity prose
+> synthesis (this section) and timeline reconciliation + briefing (§9) run in a
+> **single** `watchdog-post-ingest-subagent.md` agent, fed a compact Python-built
+> bundle. They were originally split into a per-entity synthesis fan-out plus a
+> separate finalize agent (old D16); the fan-out's per-agent startup overhead
+> dominated post-ingest cost, so they were merged — see D17.
 
 Synthesizing an entity's prose across all its documents on every ingest would be
 expensive and would re-bloat the orchestrator context. Synthesizing nothing (the old
@@ -230,7 +231,7 @@ solution is **two complementary mechanisms covering disjoint cases:**
 |---|---|---|
 | Brand-new entity, 1 mention | plain write (extraction summary) | free |
 | Pre-existing entity, 1 mention | **inline carryforward** | ~free, parallel |
-| Any entity, **2+ mentions** | **gated entity-synthesis subagent** | bounded |
+| Any entity, **2+ mentions** | **bundled synthesis in the post-ingest subagent** | bounded |
 
 - **Inline carryforward.** Pre-flight carries each matched entity's current
   `## Summary` into the subagent's candidate list; the subagent *revises* it with the
@@ -240,11 +241,12 @@ solution is **two complementary mechanisms covering disjoint cases:**
   **fragment** (the entity's slice of the extraction JSON — summary, analysis, roles —
   plus document attribution) to `.watchdog/tmp/entity-fragments/<id>.md` and bumps a
   count in `_queue.json`. This is a *free byproduct* of data the extractor already
-  produced — no extra extractor tokens. After extraction, the orchestrator (§3 of the
-  ingest skill) reads `_queue.json`, selects entities with **count ≥ 2**, and fans out
-  entity-synthesis subagents (batches of 5, model `ENTITY_SYNTHESIZER_MODEL`) that reconcile the fragments + current
-  prose into a synthesized Summary and Analysis via `watchdog write-entity-synthesis`
-  (`pipeline/finalize_entity.py`).
+  produced — no extra extractor tokens. After extraction, `watchdog
+  build-synthesis-bundle` (`pipeline/synthesis_bundle.py`, §3 of the ingest skill)
+  selects entities with **count ≥ 2** and packs each one's fragments + current prose
+  into a single compact `.watchdog/tmp/synthesis-bundle.json`. The post-ingest subagent
+  (§9) reads that one bundle, synthesizes all of them, and `watchdog apply-syntheses`
+  bulk-writes the Summary/Analysis via the shared writer in `pipeline/finalize_entity.py`.
 - **The gate is the cost control.** Most entities in a batch are single-mention and
   never hit synthesis. Cost scales with *contested* entities, not all entities.
 - **Why fragments are a byproduct, not extractor-written prose.** Having the extractor
@@ -255,25 +257,28 @@ solution is **two complementary mechanisms covering disjoint cases:**
   where reconciliation earns its cost.
 - **Known limitation.** Fragments are run-scoped (cleared at ingest start). A
   pre-existing entity touched by a single new document is handled by carryforward, not
-  the entity-synthesis subagent — its summary is revised incrementally, not re-synthesized from all
+  bundled synthesis — its summary is revised incrementally, not re-synthesized from all
   history. The deep, on-demand `/watchdog-entity` pass (`pipeline/write_entity.py`,
   which also re-synthesizes the Timeline) remains the tool for a full rebuild of a
   central figure.
 
-The entity-synthesis subagent writes **only** Summary and Analysis; Contradictions,
-Timeline, Relationships, and Notes are preserved untouched.
+Bundled synthesis writes **only** Summary and Analysis; Contradictions,
+Timeline, Relationships, and Notes are preserved untouched. `apply-syntheses` skips
+any entity the model omits or returns with an empty summary, so its carried-forward
+prose stays in place.
 
 ---
 
 ## 9. Timeline reconciliation & briefing
 
-**Code:** `pipeline/timeline.py`. **Skill:** `watchdog-ingest-finalize-subagent.md`.
+**Code:** `pipeline/timeline.py`. **Skill:** `watchdog-post-ingest-subagent.md`.
 **Files:** `.watchdog/timeline/`, `briefings/`.
 
 Each extractor (or section) subagent writes its events to a **raw** per-document file
 `{date}_{sha7}.ndjson` — write-only and lock-free, since each filename is unique. All
-merge/dedup and the briefing are then deferred to a **single finalize subagent**
-(model `FINALIZER_MODEL`) launched once after extraction, so scratchpad prose and
+merge/dedup and the briefing are then deferred to the **single post-ingest subagent**
+(model `FINALIZER_MODEL`) launched once after extraction — the same agent that did the
+bundled entity synthesis (§8) — so the synthesis bundle, scratchpad prose, and
 timeline NDJSON never enter the orchestrator's context. That subagent:
 
 - runs `watchdog timeline-collisions` (promotes dates with no prior canonical to
@@ -348,15 +353,15 @@ registry for every document would be wasteful. The manifest is the cheap index.
 
 ## 13. Models & skills
 
-- **Models** (all configurable via `watchdog configure`, default sonnet): four separate
-  model settings — `orchestrator_model` (ingest orchestrator), `extractor_model`
-  (per-document, section, and large-document subagents), `entity_synthesizer_model`
-  (entity synthesis subagents, §8), and `finalizer_model` (timeline + briefing, §9).
-  Each can also be overridden for a single run via the matching `watchdog ingest` flag.
+- **Models** (all configurable via `watchdog configure`, default sonnet):
+  `orchestrator_model` (ingest orchestrator), `extractor_model` (per-document, section,
+  and large-document subagents), and `finalizer_model` (the single post-ingest subagent
+  — bundled synthesis + timeline + briefing, §8–§9). Each can also be overridden for a
+  single run via the matching `watchdog ingest` flag.
 - **Subagent skills**: `watchdog-ingest-subagent.md` (per-document extraction),
   `watchdog-ingest-section-subagent.md` (one page-range section of a large document),
-  `watchdog-entity-synthesis-subagent.md` (prose synthesis, §8), and
-  `watchdog-ingest-finalize-subagent.md` (timeline + briefing, §9).
+  and `watchdog-post-ingest-subagent.md` (bundled entity synthesis + timeline +
+  briefing, §8–§9).
 - **Domain skills** live in `src/watchdog/skills/records/` and are installed into a
   vault's `.claude/commands/records/` by `setup_cmd.install_skills`, which also
   generates `records/_index.md` (one-line description per skill, derived from each
@@ -390,4 +395,5 @@ registry for every document would be wasteful. The manifest is the cheap index.
 | D13 | Sectioned extraction for large documents (§5) | Documents over the token threshold don't fit one context; sequential page-range sections with a carried scratchpad + deterministic `merge-sections` preserve cross-section consistency | Large docs are extracted serially (slower); needs overlap + merge-dedup |
 | D14 | Timeline reconciliation + briefing in one finalize subagent, off the orchestrator (§9) | Keeps the orchestrator context flat — scratchpad prose and timeline NDJSON never enter it | An extra subagent round-trip; the orchestrator can't see briefing internals |
 | D15 | Runaway guard + `ingest-abort` (§5) | A stuck subagent bails (`STATUS: failed`) instead of wedging the batch; clean bail leaves no partial vault writes, so the doc re-ingests cleanly | A failed doc must be manually moved back from `queue/_failed/` to retry |
-| D16 | Entity synthesis (§8) and finalize (§9) kept as separate subagents, not merged | They differ on the axis the architecture optimizes: synthesis is per-entity parallel fan-out, finalize is a single whole-batch agent. Merging would serialize the entity work and re-concentrate every entity's fragments + all scratchpads + all timeline files into one context — the exact bloat the subagent split prevents. They also have independent failure domains and models. Briefing cohesion (reflecting synthesized entities) comes from ordering + passing the synthesized list to finalize, not from merging | Two post-extraction steps instead of one; the briefing doesn't see synthesized prose unless that list is explicitly passed |
+| D16 | ~~Entity synthesis (§8) and finalize (§9) kept as separate subagents, not merged~~ **Superseded by D17.** | Original rationale: synthesis was a per-entity parallel fan-out, finalize a single whole-batch agent; merging would serialize entity work and re-concentrate fragments + scratchpads + timeline into one context. This held while synthesis was a fan-out — but the fan-out itself proved to be the cost problem (see D17) | — |
+| D17 | Merge synthesis + finalize into one post-ingest subagent fed a Python-built bundle (§8, §9) | The per-entity fan-out launched one subagent per `count ≥ 2` entity (36 in a representative run), each paying startup + preamble cache-write to do a few hundred tokens of judgement — ~$5 of a $19 run. D16 feared merging would re-bloat context, but fragments are *compact digests* (D8), so one agent reading the whole bundle stays small; the cost win (one agent, one cached preamble) dominates the serialization cost (turns in a shared context are far cheaper than agent startups). `build-synthesis-bundle` / `apply-syntheses` keep the model out of file I/O and bulk-write deterministically | One agent serializes the entity work instead of 5-way parallel; a very large batch could need bundle splitting by token budget (not yet implemented) |

@@ -10,7 +10,7 @@ Chewing (OCR, Docling) is handled separately by the `watchdog chew` CLI command.
 
 `LIMIT` caps how many files are **extracted** this run. When the limit is reached, stop cleanly and report how many files remain.
 
-**Architecture note:** Each document is extracted in an isolated Agent subagent. This keeps the orchestrator context flat regardless of batch size — queue file text, skill files, and extraction output never accumulate in this session. Timeline reconciliation and the post-ingest briefing are likewise delegated to a single finalize subagent, so scratchpad prose and timeline NDJSON never enter this session. The orchestrator holds only: the investigation brief, a compact entity index (id/name/type/aliases), and a running list of compact per-document result blocks.
+**Architecture note:** Each document is extracted in an isolated Agent subagent. This keeps the orchestrator context flat regardless of batch size — queue file text, skill files, and extraction output never accumulate in this session. Entity synthesis, timeline reconciliation, and the post-ingest briefing are likewise delegated to a single post-ingest subagent fed a compact bundle, so the synthesis bundle, scratchpad prose, and timeline NDJSON never enter this session. The orchestrator holds only: the investigation brief, a compact entity index (id/name/type/aliases), and a running list of compact per-document result blocks.
 
 **CWD:** All bash commands run from the vault root. Never prefix commands with `cd <path> &&`. Never use absolute paths in any bash command — always use paths relative to the vault root (e.g. `.watchdog/tmp/file.json`, not `/Users/…/file.json`).
 
@@ -38,9 +38,7 @@ Set `TOTAL = INGEST.total`. Set `BATCH_START = INGEST.batch_start`. Set `EXTRACT
 
 Set `EXTRACTOR_MODEL = INGEST.extractor_model` if present, else `"sonnet"`.
 
-Set `FINALIZER_MODEL = INGEST.finalizer_model` if present, else `"sonnet"`.
-
-Set `ENTITY_SYNTHESIZER_MODEL = INGEST.entity_synthesizer_model` if present, else `"sonnet"`.
+Set `FINALIZER_MODEL = INGEST.finalizer_model` if present, else `"sonnet"`. The single post-ingest subagent (synthesis + timeline + briefing, §5) runs on this model.
 
 Set `SECTION_TOKEN_THRESHOLD = INGEST.section_token_threshold` if present, else `120000`.
 
@@ -154,30 +152,20 @@ INVESTIGATION_BRIEF:
 {INVESTIGATION_BRIEF}
 ```
 
-The running scratchpad (`notes_{SHA256}.md`) is the same per-document notes file the finalize subagent reads for the briefing — so a sectioned document's briefing notes are produced as a byproduct of carry-forward, with no extra step.
+The running scratchpad (`notes_{SHA256}.md`) is the same per-document notes file the post-ingest subagent reads for the briefing — so a sectioned document's briefing notes are produced as a byproduct of carry-forward, with no extra step.
 
 ---
 
-## 3. Entity synthesis
+## 3. Build the synthesis bundle
 
-Entities mentioned by **two or more documents in this ingest** get a synthesized Summary and Analysis, reconciling all of this run's fragments at once. Single-mention entities already have correct notes from extraction (their summaries were carried forward and revised in place), so they are skipped.
+Entities mentioned by **two or more documents in this ingest** get a synthesized Summary and Analysis in the post-ingest step (§5), reconciling all of this run's fragments at once. Single-mention entities already have correct notes from extraction (their summaries were carried forward and revised in place), so they are skipped.
 
-Read `.watchdog/tmp/entity-fragments/_queue.json` with the Read tool. If it does not exist, skip this section entirely. It maps each entity id touched this run to `{name, note_path, count}`.
-
-Set `SYNTHESIZE` = every entry with `count >= 2`. If `SYNTHESIZE` is empty, skip.
-
-Process `SYNTHESIZE` in **batches of up to 5** — launch all synthesis subagents in a batch simultaneously (a single message with parallel Agent calls). Set each Agent's `description` to `Watchdog entity synthesis: <ENTITY_NAME clamped to 50 chars>` and `model` to `ENTITY_SYNTHESIZER_MODEL`. Substitute `{placeholder}` values before sending:
-
-```
-Read `.claude/commands/watchdog-entity-synthesis-subagent.md` for full instructions. Then synthesize this entity:
-
-ENTITY_ID: {id}
-ENTITY_NAME: {name}
-FRAGMENTS_PATH: .watchdog/tmp/entity-fragments/{id}.md
-NOTE_PATH: {note_path}.md
+Run:
+```bash
+watchdog build-synthesis-bundle
 ```
 
-Each subagent returns `STATUS: ok` or `STATUS: error`. Log errors to `.watchdog/Registry/ingest.log` and continue — a failed synthesis leaves the carried-forward note in place, which is still correct.
+This gathers every `count >= 2` entity's fragments and current prose into `.watchdog/tmp/synthesis-bundle.json`, so a **single** post-ingest subagent synthesizes them all at once instead of one agent per entity. It prints the entity count; if it is `0`, there is nothing to synthesize and §5's subagent skips that step. Do not read the bundle yourself.
 
 ---
 
@@ -187,7 +175,7 @@ After the loop completes, check whether any new entity type from the results is 
 
 ---
 
-## 5. Finalize: timeline + briefing
+## 5. Post-ingest: synthesis + timeline + briefing
 
 Print the batch summary:
 ```
@@ -200,12 +188,14 @@ Entities in vault: <total from registry.json>
 
 Read `.watchdog/Registry/registry.json` with the Read tool for the entity total used in the banner.
 
-If no documents were successfully extracted (`EXTRACTED == 0`), skip the finalize subagent and continue to §6.
+If no documents were successfully extracted (`EXTRACTED == 0`), skip the post-ingest subagent and continue to §6.
 
-Otherwise launch **one finalize subagent** (a single Agent call) to reconcile the timeline and write the briefing. This keeps scratchpad prose and timeline NDJSON out of this session. Set the Agent's `description` to `Watchdog finalize` and `model` to `FINALIZER_MODEL`. Send this prompt (substitute every `{placeholder}` first):
+Otherwise launch **one post-ingest subagent** (a single Agent call) to synthesize the multi-mention entity prose, reconcile the timeline, and write the briefing. Doing all three in one agent — instead of one agent per entity plus a separate finalize agent — keeps post-ingest cost flat. This also keeps the synthesis bundle, scratchpad prose, and timeline NDJSON out of this session. Set the Agent's `description` to `Watchdog post-ingest` and `model` to `FINALIZER_MODEL`. Send this prompt (substitute every `{placeholder}` first):
 
 ```
-Read `.claude/commands/watchdog-ingest-finalize-subagent.md` for full instructions. Then finalize this ingest batch.
+Read `.claude/commands/watchdog-post-ingest-subagent.md` for full instructions. Then finalize this ingest batch.
+
+BUNDLE_PATH: .watchdog/tmp/synthesis-bundle.json
 
 INVESTIGATION_BRIEF:
 {INVESTIGATION_BRIEF}
@@ -220,7 +210,7 @@ CONTRADICTION_FLAGS:
 {CONTRADICTION_FLAGS}
 ```
 
-When it returns, print its `BRIEFING:` path so the user can open it. Do not read the scratchpads, timeline files, or the briefing yourself — the finalize subagent owns those.
+When it returns, print its `BRIEFING:` path so the user can open it. Do not read the synthesis bundle, scratchpads, timeline files, or the briefing yourself — the post-ingest subagent owns those.
 
 ---
 
