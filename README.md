@@ -227,7 +227,7 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog doctor` | Check all registered investigations for missing or broken vaults; suggests `watchdog move` or `watchdog delete` for each issue |
 | `watchdog configure` | View or change configuration |
 | `watchdog auth` | Show the auth mode and API-key status (masked) |
-| `watchdog auth use <mode>` | Set auth mode: `auto` (default), `subscription` (Claude Code login, not metered), or `api-key` (metered) |
+| `watchdog auth use <mode>` | Switch auth mode: `subscription` (Claude Code login, not metered) or `api-key` (metered). Normally chosen during `watchdog setup` |
 | `watchdog auth set [provider]` | Store an API key (prompted, hidden); `provider` defaults to `anthropic` |
 | `watchdog auth get [provider]` | Show one provider's key status and source (env var or stored) |
 | `watchdog auth remove [provider]` | Delete a stored API key |

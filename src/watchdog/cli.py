@@ -300,7 +300,7 @@ def main() -> None:
     p_auth.add_argument("action", nargs="?", choices=["status", "use", "set", "get", "remove"],
                         help="status (default) | use <mode> | set/get/remove [provider]")
     p_auth.add_argument("target", nargs="?",
-                        help="mode for `use` (auto/subscription/api-key); provider for set/get/remove (default: anthropic)")
+                        help="mode for `use` (subscription/api-key); provider for set/get/remove (default: anthropic)")
     p_auth.set_defaults(func=cmd_auth)
 
     try:

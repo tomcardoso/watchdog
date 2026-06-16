@@ -18,6 +18,7 @@ The environment variable always takes precedence over a stored key.
 import json
 import os
 import stat
+import subprocess
 import sys
 from getpass import getpass
 from pathlib import Path
@@ -25,7 +26,7 @@ from pathlib import Path
 from watchdog.cmd import base
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 
-_MODES = ("auto", "subscription", "api-key")
+_MODES = ("subscription", "api-key")
 
 # Providers whose keys watchdog manages. `anthropic` covers both the Claude
 # Agent SDK and the Claude API backends — they share ANTHROPIC_API_KEY.
@@ -46,25 +47,47 @@ def _claude_code_creds_path() -> Path:
     return Path.home() / ".claude" / ".credentials.json"
 
 
+# macOS Claude Code stores its OAuth login as a Keychain generic-password item
+# under this service (account = the macOS username), not in the credentials file.
+_KEYCHAIN_SERVICE = "Claude Code-credentials"
+
+
+def _keychain_has_claude_creds() -> bool:
+    """macOS: is the Claude Code login present in the Keychain?
+
+    Queries attributes only (no `-w`/`-g`), so it does not read the secret or
+    trigger an access prompt.
+    """
+    if sys.platform != "darwin":
+        return False
+    try:
+        return subprocess.run(
+            ["security", "find-generic-password", "-s", _KEYCHAIN_SERVICE],
+            capture_output=True, timeout=5,
+        ).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def claude_code_logged_in() -> bool:
     """Best-effort check that the `claude` CLI is logged in.
 
-    The credentials file exists after an OAuth login. On macOS the CLI may instead
-    store credentials in the Keychain, so a False here does not prove logged-out —
-    the definitive test is an Agent SDK call succeeding without an API key.
+    Checks the credentials file (Linux / older setups) and the macOS Keychain item
+    the Agent SDK reads. The definitive test is still an SDK call succeeding.
     """
-    return _claude_code_creds_path().exists()
+    return _claude_code_creds_path().exists() or _keychain_has_claude_creds()
 
 
 def _load_state() -> dict:
+    """Return {"mode", "keys"}. `mode` is None until set by setup or `auth use`."""
     path = _credentials_path()
     if not path.exists():
-        return {"mode": "auto", "keys": {}}
+        return {"mode": None, "keys": {}}
     try:
         data = json.loads(path.read_text())
     except json.JSONDecodeError:
         sys.exit("Error: credentials file is corrupt; remove it and re-add your keys.")
-    data.setdefault("mode", "auto")
+    data.setdefault("mode", None)
     data.setdefault("keys", {})
     return data
 
@@ -98,59 +121,118 @@ def resolve_auth(provider: str = "anthropic") -> dict:
       {"mode": "subscription"}              → pass no key; the SDK uses Claude Code's login
       {"mode": "none", "reason": "<why>"}   → nothing configured; caller errors with guidance
     """
-    mode = _load_state().get("mode", "auto")
-    key = get_api_key(provider)
+    mode = _load_state().get("mode")
 
-    if mode == "api-key":
-        return {"mode": "api-key", "key": key} if key else {
-            "mode": "none", "reason": "api-key mode is set but no key is configured"}
+    if mode is None:
+        return {"mode": "none", "reason": "auth not configured — run `watchdog setup`"}
     if mode == "subscription":
         return {"mode": "subscription"}
-    # auto — mirror the SDK's own order: key wins, else Claude Code login.
-    if key:
-        return {"mode": "api-key", "key": key}
-    if claude_code_logged_in():
-        return {"mode": "subscription"}
-    return {"mode": "none", "reason": "no API key set and Claude Code is not logged in"}
+    # api-key
+    key = get_api_key(provider)
+    return {"mode": "api-key", "key": key} if key else {
+        "mode": "none", "reason": "api-key mode is set but no key is configured — run `watchdog auth set`"}
 
 
 # ── command surface ───────────────────────────────────────────────────────────
 
 def _status() -> None:
     state = _load_state()
-    mode = state.get("mode", "auto")
-    resolved = resolve_auth()
+    mode = state.get("mode")
+    meta = _PROVIDERS["anthropic"]
 
     print()
     print(f"  {_BOLD}Authentication{_RESET}  {_DIM}{_credentials_path()}{_RESET}")
     print()
-    print(f"  {_DIM}Mode{_RESET}           {_CYAN}{mode}{_RESET}"
-          + (f" {_DIM}→ {resolved['mode']}{_RESET}" if mode == "auto" else ""))
 
-    key, source = (get_api_key(), None)
+    if mode is None:
+        print(f"  {_YELLOW}Not configured.{_RESET}")
+        print(f"  {_DIM}Run{_RESET} {_CYAN}watchdog setup{_RESET} {_DIM}to choose how to authenticate "
+              f"(or{_RESET} {_CYAN}watchdog auth use <mode>{_RESET}{_DIM}).{_RESET}")
+        print()
+        return
+
+    print(f"  {_DIM}Mode{_RESET}           {_CYAN}{mode}{_RESET}")
+
+    if mode == "subscription":
+        cc = claude_code_logged_in()
+        cc_str = f"{_GREEN}detected{_RESET}" if cc else f"{_YELLOW}not detected{_RESET}"
+        print(f"  {_DIM}Claude Code{_RESET}    {cc_str}")
+        print()
+        if os.environ.get(meta["env"]):
+            print(f"  {_YELLOW}Warning:{_RESET} ${meta['env']} is set — the Agent SDK uses it before the")
+            print(f"  {_DIM}subscription login, so runs would be metered. Unset it to use the subscription.{_RESET}")
+        else:
+            print(f"  {_DIM}Runs use your{_RESET} {_BOLD}Claude Code subscription{_RESET} {_DIM}(not metered).{_RESET}")
+    else:  # api-key
+        key = get_api_key()
+        if key:
+            where = f"${meta['env']}" if os.environ.get(meta["env"]) else "stored"
+            print(f"  {_DIM}API key{_RESET}        {_CYAN}{_mask(key)}{_RESET} {_DIM}({where}){_RESET}")
+            print()
+            print(f"  {_DIM}Runs use a{_RESET} {_BOLD}metered API key{_RESET}{_DIM}.{_RESET}")
+        else:
+            print(f"  {_DIM}API key{_RESET}        {_YELLOW}(not set){_RESET}")
+            print()
+            print(f"  {_YELLOW}No key set.{_RESET} {_DIM}Add one with{_RESET} {_CYAN}watchdog auth set{_RESET}{_DIM}.{_RESET}")
+    print()
+
+
+def setup_auth_interactive(interactive: bool | None = None) -> None:
+    """Interactive auth picker for `watchdog setup`: choose subscription or API key.
+
+    Persists the chosen mode (and key, for api-key). Skips cleanly when not run on
+    a terminal. `interactive` is overridable for testing.
+    """
+    if interactive is None:
+        interactive = sys.stdin.isatty()
+
+    print()
+    print(f"  {_BOLD}How should Watchdog authenticate to Claude?{_RESET}")
+    print(f"    1. Claude Code subscription {_DIM}— use your existing `claude` login; not metered{_RESET}")
+    print(f"    2. API key {_DIM}— metered billing{_RESET}")
+    print()
+
+    if not interactive:
+        print(f"  {_DIM}Non-interactive — set this later with{_RESET} {_CYAN}watchdog auth use <mode>{_RESET}{_DIM}.{_RESET}")
+        return
+
+    try:
+        choice = input("  Choice [1]: ").strip() or "1"
+        while choice not in ("1", "2"):
+            choice = input("  Enter 1 or 2: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return
+
+    state = _load_state()
     meta = _PROVIDERS["anthropic"]
-    if os.environ.get(meta["env"]):
-        source = f"from ${meta['env']}"
-    elif _load_state()["keys"].get("anthropic"):
-        source = "stored"
-    key_str = f"{_CYAN}{_mask(key)}{_RESET} {_DIM}({source}){_RESET}" if key else f"{_YELLOW}(not set){_RESET}"
-    print(f"  {_DIM}API key{_RESET}        {key_str}")
 
-    cc = claude_code_logged_in()
-    cc_str = f"{_GREEN}detected{_RESET}" if cc else f"{_YELLOW}not detected{_RESET} {_DIM}(or stored in the macOS Keychain){_RESET}"
-    print(f"  {_DIM}Claude Code{_RESET}    {cc_str}")
-    print()
+    if choice == "1":
+        state["mode"] = "subscription"
+        _save_state(state)
+        if claude_code_logged_in():
+            print(f"\n  {_GREEN}✓{_RESET}  Claude Code login detected.")
+        else:
+            print(f"\n  {_YELLOW}!{_RESET}  Claude Code login not detected — run {_CYAN}claude{_RESET} to log in.")
+        if os.environ.get(meta["env"]):
+            print(f"  {_YELLOW}!{_RESET}  ${meta['env']} is set and the SDK uses it first — unset it to avoid metering.")
+        return
 
-    if resolved["mode"] == "none":
-        print(f"  {_YELLOW}No usable auth:{_RESET} {resolved['reason']}.")
-        print(f"  {_DIM}Run{_RESET} {_CYAN}watchdog auth set{_RESET} {_DIM}(API key) or{_RESET} {_CYAN}claude{_RESET} {_DIM}(subscription login).{_RESET}")
-    elif mode == "subscription" and os.environ.get(meta["env"]):
-        print(f"  {_YELLOW}Warning:{_RESET} ${meta['env']} is set — the Agent SDK uses it before the")
-        print(f"  {_DIM}subscription login, so runs would be metered despite subscription mode.{_RESET}")
+    print(f"\n  {_DIM}Create a key at{_RESET} {_CYAN}https://platform.claude.com/{_RESET} {_DIM}→ API keys.{_RESET}")
+    try:
+        key = getpass("  Paste your Anthropic API key (hidden): ").strip()
+    except (EOFError, KeyboardInterrupt):
+        key = ""
+    state["mode"] = "api-key"
+    if key:
+        if not key.startswith(meta["prefix"]):
+            print(f"  {_YELLOW}!{_RESET}  Key doesn't start with '{meta['prefix']}' — storing it anyway.")
+        state["keys"]["anthropic"] = key
+        _save_state(state)
+        print(f"\n  {_GREEN}✓{_RESET}  API key stored ({_mask(key)}).")
     else:
-        billed = "metered API key" if resolved["mode"] == "api-key" else "Claude Code subscription (not metered)"
-        print(f"  {_DIM}Runs will authenticate with:{_RESET} {_BOLD}{billed}{_RESET}")
-    print()
+        _save_state(state)
+        print(f"\n  {_YELLOW}!{_RESET}  No key entered — add one later with {_CYAN}watchdog auth set{_RESET}.")
 
 
 def _use(mode: str | None) -> None:
@@ -164,8 +246,7 @@ def _use(mode: str | None) -> None:
     meta = _PROVIDERS["anthropic"]
     if mode == "subscription":
         if not claude_code_logged_in():
-            print(f"  {_YELLOW}Note:{_RESET} Claude Code login not detected — run {_CYAN}claude{_RESET} to log in")
-            print(f"  {_DIM}(or it may be in the macOS Keychain, which can't be checked here).{_RESET}")
+            print(f"  {_YELLOW}Note:{_RESET} Claude Code login not detected — run {_CYAN}claude{_RESET} to log in.")
         if os.environ.get(meta["env"]):
             print(f"  {_YELLOW}Warning:{_RESET} ${meta['env']} is set and the SDK uses it first — unset it to avoid metering.")
         print(f"  {_DIM}Subscription mode runs watchdog under your own Claude login. Anthropic's terms")

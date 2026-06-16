@@ -1,4 +1,4 @@
-"""Tests for `watchdog auth` — modes, API key storage, env precedence, masking, perms."""
+"""Tests for `watchdog auth` — modes, setup picker, API key storage, env precedence."""
 
 import os
 import stat
@@ -41,7 +41,7 @@ def test_credentials_file_is_0600(home, monkeypatch):
 
 
 def test_env_var_takes_precedence(home, monkeypatch):
-    auth._save_state({"mode": "auto", "keys": {"anthropic": "sk-ant-stored"}})
+    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-stored"}})
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fromenv")
     assert auth.get_api_key("anthropic") == "sk-ant-fromenv"
 
@@ -53,7 +53,7 @@ def test_empty_key_not_stored(home, monkeypatch):
 
 
 def test_remove_deletes_stored_key(home):
-    auth._save_state({"mode": "auto", "keys": {"anthropic": "sk-ant-stored"}})
+    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-stored"}})
     auth.cmd_auth(_ns("remove"))
     assert auth.get_api_key("anthropic") is None
 
@@ -73,7 +73,7 @@ def test_set_does_not_clobber_mode(home, monkeypatch):
 # ── masking ───────────────────────────────────────────────────────────────────
 
 def test_get_masks_and_reports_source(home, capsys):
-    auth._save_state({"mode": "auto", "keys": {"anthropic": "sk-ant-api03-abcdefghij1234"}})
+    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-api03-abcdefghij1234"}})
     auth.cmd_auth(_ns("get"))
     out = capsys.readouterr().out
     assert "stored credential" in out
@@ -88,8 +88,15 @@ def test_unknown_provider_errors(home):
 
 # ── modes ─────────────────────────────────────────────────────────────────────
 
-def test_default_mode_is_auto(home):
-    assert auth._load_state()["mode"] == "auto"
+def test_default_mode_is_unconfigured(home):
+    assert auth._load_state()["mode"] is None
+
+
+def test_status_unconfigured_points_to_setup(home, capsys):
+    auth.cmd_auth(_ns())
+    out = capsys.readouterr().out
+    assert "Not configured" in out
+    assert "watchdog setup" in out
 
 
 def test_use_persists_mode(home):
@@ -99,30 +106,71 @@ def test_use_persists_mode(home):
 
 def test_use_rejects_unknown_mode(home):
     with pytest.raises(SystemExit):
-        auth.cmd_auth(_ns("use", "bogus"))
+        auth.cmd_auth(_ns("use", "auto"))   # 'auto' is no longer a mode
 
 
-def test_resolve_auto_prefers_key(home, monkeypatch):
-    monkeypatch.setattr(auth, "claude_code_logged_in", lambda: True)
-    auth._save_state({"mode": "auto", "keys": {"anthropic": "sk-ant-k"}})
-    assert auth.resolve_auth() == {"mode": "api-key", "key": "sk-ant-k"}
-
-
-def test_resolve_auto_falls_back_to_subscription(home, monkeypatch):
-    monkeypatch.setattr(auth, "claude_code_logged_in", lambda: True)
-    assert auth.resolve_auth() == {"mode": "subscription"}
-
-
-def test_resolve_auto_none_when_nothing_available(home):
-    # home fixture already stubs claude_code_logged_in → False, env key cleared
+def test_resolve_unconfigured_is_none(home):
     assert auth.resolve_auth()["mode"] == "none"
 
 
-def test_resolve_subscription_mode_ignores_key(home):
+def test_resolve_subscription_ignores_key(home):
     auth._save_state({"mode": "subscription", "keys": {"anthropic": "sk-ant-k"}})
     assert auth.resolve_auth() == {"mode": "subscription"}
 
 
-def test_resolve_api_key_mode_without_key_is_none(home):
+def test_resolve_api_key_with_key(home):
+    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-k"}})
+    assert auth.resolve_auth() == {"mode": "api-key", "key": "sk-ant-k"}
+
+
+def test_resolve_api_key_without_key_is_none(home):
     auth._save_state({"mode": "api-key", "keys": {}})
     assert auth.resolve_auth()["mode"] == "none"
+
+
+# ── Claude Code login detection ───────────────────────────────────────────────
+
+def test_keychain_check_skipped_off_darwin(monkeypatch):
+    monkeypatch.setattr(auth.sys, "platform", "linux")
+    assert auth._keychain_has_claude_creds() is False
+
+
+def test_keychain_check_handles_missing_security_binary(monkeypatch):
+    monkeypatch.setattr(auth.sys, "platform", "darwin")
+    monkeypatch.setattr(auth.subprocess, "run",
+                        lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError()))
+    assert auth._keychain_has_claude_creds() is False
+
+
+def test_logged_in_true_via_keychain_when_file_absent(tmp_path, monkeypatch):
+    monkeypatch.setattr(auth, "_claude_code_creds_path", lambda: tmp_path / "nope")
+    monkeypatch.setattr(auth, "_keychain_has_claude_creds", lambda: True)
+    assert auth.claude_code_logged_in() is True
+
+
+def test_logged_in_false_when_neither_present(tmp_path, monkeypatch):
+    monkeypatch.setattr(auth, "_claude_code_creds_path", lambda: tmp_path / "nope")
+    monkeypatch.setattr(auth, "_keychain_has_claude_creds", lambda: False)
+    assert auth.claude_code_logged_in() is False
+
+
+# ── setup picker ──────────────────────────────────────────────────────────────
+
+def test_setup_picks_subscription(home, monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda *a: "1")
+    auth.setup_auth_interactive(interactive=True)
+    assert auth._load_state()["mode"] == "subscription"
+
+
+def test_setup_picks_api_key_and_stores(home, monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda *a: "2")
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-setupkey-123456")
+    auth.setup_auth_interactive(interactive=True)
+    state = auth._load_state()
+    assert state["mode"] == "api-key"
+    assert state["keys"]["anthropic"] == "sk-ant-setupkey-123456"
+
+
+def test_setup_noninteractive_leaves_unconfigured(home):
+    auth.setup_auth_interactive(interactive=False)
+    assert auth._load_state()["mode"] is None
