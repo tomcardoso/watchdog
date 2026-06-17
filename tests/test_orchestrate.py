@@ -46,8 +46,15 @@ def _extraction(sha="abc123", filename="test-doc.pdf", *, valid=True):
 
 def _mock(monkeypatch, *, extraction):
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
-        parsed = ({"skill": "general-records.md", "document_type": "Annual Report"}
-                  if task == "classify" else extraction)
+        parsed = {
+            "classify": {"skill": "general-records.md", "document_type": "Annual Report"},
+            "extract": extraction,
+            "entity-synthesis": {"entity_syntheses": []},
+            "timeline-dedup": {"events": []},
+            "briefing": {"investigation_status": "Early days.",
+                         "what_was_ingested": ["test-doc.pdf — Annual Report"],
+                         "new_entities": ["Acme Corp"]},
+        }.get(task, extraction)
         return model_client.ModelResult(parsed=parsed, text="", model="m",
                                          backend="claude-agent-sdk", auth_mode="subscription", cost_usd=0.01)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
@@ -71,6 +78,13 @@ def test_orchestrator_extracts_and_writes_vault(tmp_path, monkeypatch):
     r = summary["results"][0]
     assert r["status"] == "ok" and r["entity_count"] == 1
     assert r["new_entities"] == ["acme-corp"] and r["document_type"] == "Annual Report"
+
+    # post-ingest ran: briefing + hot.md + log.md + timeline written
+    assert "post_ingest" in summary
+    assert list((vault / "briefings").glob("*.md"))
+    assert (vault / "hot.md").exists()
+    assert "— Ingest" in (vault / "log.md").read_text()
+    assert (vault / "timeline.md").exists()
 
 
 def test_orchestrator_reports_failed_on_postflight_rejection(tmp_path, monkeypatch):

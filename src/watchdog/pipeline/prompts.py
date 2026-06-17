@@ -156,7 +156,8 @@ def build_briefing_prompt(*, brief: str | None, results: list, scratchpads: list
 def build_timeline_dedup_prompt(date: str, events: list[dict]) -> str:
     return (
         f"These timeline events are all dated {date}. Some describe the same real-world occurrence "
-        "in different words. Return the deduplicated list: remove semantic duplicates, keeping the "
-        "more precise wording. Preserve every genuinely distinct event.\n\n"
+        "in different words. Return the deduplicated list of FULL event objects — remove semantic "
+        "duplicates (keep the more precise wording) and preserve every genuinely distinct event. "
+        "Keep each kept object's other fields (page, confidence, source_sha256) intact.\n\n"
         f"Events:\n{json.dumps(events, ensure_ascii=False)}"
     )

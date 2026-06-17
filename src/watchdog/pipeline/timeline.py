@@ -96,42 +96,40 @@ def stage_timeline_events(vault: Path, extraction: dict) -> int:
     return len(by_date)
 
 
-def cmd_timeline_collisions(vault: Path) -> None:
-    """
-    For dates with only raw files: merge → write canonical.
-    For dates with canonical + raw: return as collision for LLM dedup.
-    Prints a JSON array of collision objects to stdout.
+def collisions(vault: Path) -> list[dict]:
+    """Promote no-canonical dates to canonical; return the remaining collisions.
+
+    For dates with only raw files: merge → write canonical. For dates that already
+    had a canonical: return ``{date, canonical, raw}`` for semantic dedup by the caller.
     """
     td = _timeline_dir(vault)
     if not td.exists():
         td.mkdir(parents=True, exist_ok=True)
-        print("[]")
-        return
+        return []
 
     groups = _group_files(td)
-    collisions = []
-
+    result = []
     for date, g in sorted(groups.items()):
         raw_files = sorted(g["raw"])
         if not raw_files:
             continue
-
         if g["canonical"] is None:
-            # No canonical yet — merge all raw files for this date into one canonical
             lines: list[str] = []
             for rf in raw_files:
                 lines.extend(_read_ndjson_lines(rf))
-            canonical_path = td / f"{date}.ndjson"
-            canonical_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            (td / f"{date}.ndjson").write_text("\n".join(lines) + "\n", encoding="utf-8")
         else:
-            # Canonical exists — flag as collision for the orchestrator to dedup
-            collisions.append({
+            result.append({
                 "date": date,
                 "canonical": str(g["canonical"].relative_to(vault)),
                 "raw": [str(rf.relative_to(vault)) for rf in raw_files],
             })
+    return result
 
-    print(json.dumps(collisions, ensure_ascii=False))
+
+def cmd_timeline_collisions(vault: Path) -> None:
+    """Prints a JSON array of collision objects to stdout (CLI wrapper)."""
+    print(json.dumps(collisions(vault), ensure_ascii=False))
 
 
 def cmd_rebuild_timeline(vault: Path) -> None:

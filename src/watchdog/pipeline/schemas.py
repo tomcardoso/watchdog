@@ -145,13 +145,20 @@ BRIEFING = _obj(
     ["investigation_status", "what_was_ingested"],
 )
 
-# Semantic dedup of one date's colliding timeline events.
+# Semantic dedup of one date's colliding timeline events. The model returns the kept
+# full event objects (preserving page/confidence/source_sha256), minus duplicates.
 TIMELINE_DEDUP = _obj(
     {
         "events": {
             "type": "array",
             "items": _obj(
-                {"date": {"type": "string"}, "event": {"type": "string"}},
+                {
+                    "date": {"type": "string"},
+                    "event": {"type": "string"},
+                    "page": {"type": ["integer", "null"]},
+                    "confidence": {"type": "string"},
+                    "source_sha256": {"type": "string"},
+                },
                 ["date", "event"],
             ),
         }

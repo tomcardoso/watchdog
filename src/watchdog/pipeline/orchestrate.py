@@ -11,11 +11,14 @@ serializes the vault writes and `_reconcile_entity_ids` handles the parallel new
 """
 
 import asyncio
+import datetime
 import json
 from pathlib import Path
 
 from watchdog import model_client
-from watchdog.pipeline import preflight, postflight, prompts, schemas
+from watchdog.pipeline import (
+    preflight, postflight, prompts, schemas, synthesis_bundle, timeline,
+)
 
 DEFAULT_CONCURRENCY = 5
 _CLASSIFY_EXCERPT_CHARS = 6000
@@ -118,11 +121,112 @@ async def _extract_document(vault: Path, sha: str, brief: str | None) -> dict:
             "reason": "post-flight rejected: " + "; ".join(last_errors[:3])}
 
 
-async def run(vault: Path, concurrency: int = DEFAULT_CONCURRENCY) -> dict:
-    """Extract every queued document, bounded by `concurrency`. Returns a summary.
+def _lines(items: list) -> str:
+    return "\n".join(f"- {x}" for x in items) if items else "_None._"
 
-    Post-ingest synthesis/timeline/briefing is added in a later phase.
-    """
+
+def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
+                    contradiction_flags: list) -> str:
+    now = datetime.datetime.now()
+    slug = now.strftime("%Y-%m-%d-%H-%M")
+    n_new = len(b.get("new_entities", []))
+
+    body = (
+        f"---\ndate: {now.isoformat(timespec='seconds')}\nfiles_ingested: {len(results)}\n"
+        f"new_entities: {n_new}\n---\n\n# Ingest briefing — {slug}\n\n"
+        f"## What was ingested\n\n{_lines(b.get('what_was_ingested', []))}\n\n"
+        f"## New entities\n\n{_lines(b.get('new_entities', []))}\n\n"
+        f"## Connections to existing entities\n\n{_lines(b.get('connections', []))}\n\n"
+        f"## Leads and follow-up ideas\n\n{_lines(b.get('leads', []))}\n\n"
+        f"## Anomalies worth a closer look\n\n"
+        f"{_lines(b['anomalies']) if b.get('anomalies') else 'Nothing flagged.'}\n"
+    )
+    if neardup_alerts:
+        body += "\n## Near-duplicate alerts\n\n" + "\n".join(
+            f"- {a['filename']}: {a['similarity']:.0%} similar to an existing document"
+            for a in neardup_alerts) + "\n"
+    (vault / "briefings").mkdir(exist_ok=True)
+    (vault / "briefings" / f"{slug}.md").write_text(body, encoding="utf-8")
+
+    (vault / "hot.md").write_text(
+        f"# Hot cache\n\n*Last updated: {now.strftime('%Y-%m-%d')} — "
+        f"[[briefings/{slug}|Briefing {slug}]]*\n\n"
+        f"## Investigation status\n\n{b.get('investigation_status', '')}\n\n"
+        f"## Recent additions\n\n{_lines(b.get('new_entities', []))}\n\n"
+        f"## Emerging patterns\n\n{_lines(b.get('emerging_patterns', []))}\n\n"
+        f"## Open questions\n\n{_lines(b.get('open_questions', []))}\n",
+        encoding="utf-8")
+
+    entry = (f"\n## {now.strftime('%Y-%m-%d %H:%M')} — Ingest\n\n"
+             f"- **Files:** {len(results)} processed\n- **New entities:** {n_new}\n"
+             f"- **Briefing:** [[briefings/{slug}|{slug}]]\n")
+    if contradiction_flags:
+        entry += f"- **Contradictions flagged:** {len(contradiction_flags)}\n"
+    with open(vault / "log.md", "a", encoding="utf-8") as f:
+        f.write(entry)
+    return f"briefings/{slug}.md"
+
+
+async def _post_ingest(vault: Path, results: list, brief: str | None) -> dict:
+    out: dict = {"synthesized": 0, "timeline_collisions": 0, "briefing": None}
+
+    # 1. Entity synthesis for multi-mention entities (Python builds + applies; model reconciles).
+    bundle = synthesis_bundle.build_bundle(vault)
+    if bundle.get("entities"):
+        r = await model_client.acomplete_json(
+            task="entity-synthesis", schema=schemas.SYNTHESIS,
+            prompt=prompts.build_synthesis_prompt(bundle))
+        res_path = vault / ".watchdog" / "tmp" / "synthesis-result.json"
+        res_path.write_text(json.dumps(r.parsed, ensure_ascii=False), encoding="utf-8")
+        out["synthesized"] = len(synthesis_bundle.apply_bundle(res_path, vault).get("applied", []))
+
+    # 2. Timeline: promote pending, model-dedup any real collisions, rebuild timeline.md.
+    cols = timeline.collisions(vault)
+    out["timeline_collisions"] = len(cols)
+    for col in cols:
+        canonical = vault / col["canonical"]
+        events: list[dict] = []
+        for p in [canonical, *(vault / r for r in col["raw"])]:
+            for line in timeline._read_ndjson_lines(p):
+                try:
+                    events.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+        if not events:
+            continue
+        try:
+            r = await model_client.acomplete_json(
+                task="timeline-dedup", schema=schemas.TIMELINE_DEDUP,
+                prompt=prompts.build_timeline_dedup_prompt(col["date"], events))
+            kept = r.parsed.get("events") or events
+        except model_client.ModelError:
+            kept = events   # fall back to the union rather than losing events
+        canonical.write_text(
+            "\n".join(json.dumps(e, ensure_ascii=False) for e in kept) + "\n", encoding="utf-8")
+    timeline.cmd_rebuild_timeline(vault)
+
+    # 3. Briefing + hot.md + log.md (model writes prose; Python writes the files).
+    ok = [r for r in results if r.get("status") == "ok"]
+    scratchpads = [p.read_text(encoding="utf-8")
+                   for p in sorted((vault / ".watchdog" / "tmp").glob("notes_*.md"))]
+    neardup_alerts = [{"filename": r["filename"], "similarity": r["near_dup_similarity"]}
+                      for r in ok if r.get("near_dup_similarity", 0) >= 0.85]
+    contradiction_flags = [{"filename": r["filename"], "entities": r["contradictions"]}
+                           for r in ok if r.get("contradictions")]
+    try:
+        r = await model_client.acomplete_json(
+            task="briefing", schema=schemas.BRIEFING,
+            prompt=prompts.build_briefing_prompt(
+                brief=brief, results=ok, scratchpads=scratchpads,
+                neardup_alerts=neardup_alerts, contradiction_flags=contradiction_flags))
+        out["briefing"] = _write_briefing(vault, r.parsed, ok, neardup_alerts, contradiction_flags)
+    except model_client.ModelError as e:
+        out["briefing_error"] = str(e)
+    return out
+
+
+async def run(vault: Path, concurrency: int = DEFAULT_CONCURRENCY) -> dict:
+    """Extract every queued document (bounded by `concurrency`), then post-ingest."""
     queue_dir = vault / ".watchdog" / "queue"
     shas = [f.stem for f in sorted(queue_dir.glob("*.json"))] if queue_dir.exists() else []
     if not shas:
@@ -140,5 +244,8 @@ async def run(vault: Path, concurrency: int = DEFAULT_CONCURRENCY) -> dict:
 
     results = await asyncio.gather(*[_guarded(s) for s in shas])
     by_status = lambda s: sum(1 for r in results if r.get("status") == s)
-    return {"results": results, "extracted": by_status("ok"),
-            "skipped": by_status("skipped"), "failed": by_status("failed")}
+    summary = {"results": results, "extracted": by_status("ok"),
+               "skipped": by_status("skipped"), "failed": by_status("failed")}
+    if summary["extracted"]:
+        summary["post_ingest"] = await _post_ingest(vault, results, brief)
+    return summary
