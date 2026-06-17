@@ -297,7 +297,11 @@ def run(force: bool = False) -> None:
         ) + "\n"
     )
 
-    # 8. Done
+    # 8. Authentication
+    from watchdog.cmd.auth import setup_auth_interactive
+    setup_auth_interactive()
+
+    # 9. Done
     reload_hint = f"{_CYAN}source {profile}{_RESET}" if profile else "reload your shell"
     print()
     print(f"{_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{_RESET}")
