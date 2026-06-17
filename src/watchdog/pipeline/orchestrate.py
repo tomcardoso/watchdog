@@ -17,7 +17,7 @@ from pathlib import Path
 
 from watchdog import model_client
 from watchdog.pipeline import (
-    preflight, postflight, prompts, schemas, synthesis_bundle, timeline,
+    merge, preflight, postflight, prompts, schemas, section, synthesis_bundle, timeline,
 )
 
 DEFAULT_CONCURRENCY = 5
@@ -75,6 +75,69 @@ def _compact_result(sha: str, filename: str, extraction: dict, near_dup: dict, c
     }
 
 
+def _write_postflight(vault: Path, sha: str, extraction: dict) -> tuple[bool, list[str]]:
+    tmp = vault / ".watchdog" / "tmp" / f"wdg_ex_{sha}.json"
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+    tmp.write_text(json.dumps(extraction, ensure_ascii=False, indent=2), encoding="utf-8")
+    outcome = postflight.run(vault, tmp)
+    return ("errors" not in outcome), outcome.get("errors", [])
+
+
+async def _simple_extract(vault, sha, pf, skill_text, brief):
+    """Whole-document extraction, with one repair attempt if post-flight rejects."""
+    base = prompts.build_extract_prompt(
+        pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
+        skill_text=skill_text, sidecar=_read_sidecar(vault, pf["filename"]),
+        sha256=sha, filename=pf["filename"], original_path=pf.get("original_path"),
+        page_count=pf.get("page_count") or len(pf["pages"]), brief=brief,
+    )
+    cost, errors, extraction, scratchpad = 0.0, [], {}, ""
+    for _ in range(2):
+        p = base if not errors else (base + "\n\nThe previous extraction was rejected:\n"
+                                     + "\n".join(errors) + "\nReturn a corrected JSON object.")
+        r = await model_client.acomplete_json(task="extract", prompt=p, schema=schemas.EXTRACTION)
+        cost += r.cost_usd or 0.0
+        extraction = r.parsed
+        scratchpad = extraction.pop("scratchpad", "")
+        ok, errors = _write_postflight(vault, sha, extraction)
+        if ok:
+            return extraction, scratchpad, cost, True, []
+    return extraction, scratchpad, cost, False, errors
+
+
+def _carry_block(part: dict) -> str:
+    lines = []
+    if part.get("entities"):
+        lines.append("Entities so far:")
+        lines += [f"- {e.get('id')} | {e.get('name')} | {e.get('type')}" for e in part["entities"]]
+    if part.get("observations"):
+        lines.append("Observations:\n" + part["observations"])
+    return "\n".join(lines) + "\n"
+
+
+async def _extract_sectioned(vault, sha, pf, skill_text, plan):
+    """Sequential per-section extraction with carry-forward, then deterministic merge."""
+    parts, carry, cost = [], "", 0.0
+    sections = plan["sections"]
+    for sec in sections:
+        sec_text = (vault / sec["pages_path"]).read_text(encoding="utf-8")
+        prompt = prompts.build_section_prompt(
+            pages_text=sec_text, existing_entities=pf.get("existing_entities", []),
+            skill_text=skill_text, carry_forward=carry, section_label=sec["label"],
+            is_first=(sec["index"] == 1), sha256=sha, filename=pf["filename"],
+            original_path=pf.get("original_path"), page_count=pf.get("page_count") or len(pf["pages"]),
+        )
+        r = await model_client.acomplete_json(task="extract-section", prompt=prompt, schema=schemas.SECTION)
+        cost += r.cost_usd or 0.0
+        parts.append(r.parsed)
+        carry += _carry_block(r.parsed)
+
+    extraction = merge.merge_extractions(parts)
+    scratchpad = "\n".join(p["observations"] for p in parts if p.get("observations"))
+    ok, errors = _write_postflight(vault, sha, extraction)
+    return extraction, scratchpad, cost, ok, errors
+
+
 async def _extract_document(vault: Path, sha: str, brief: str | None) -> dict:
     pf = preflight.run(vault, sha)
     if pf.get("error"):
@@ -83,42 +146,22 @@ async def _extract_document(vault: Path, sha: str, brief: str | None) -> dict:
         return {"sha256": sha, "filename": pf.get("filename"), "status": "skipped"}
 
     filename = pf["filename"]
-    pages = pf.get("pages", [])
-    pages_text = _pages_text(pages)
+    skill_text = _read_skill(vault, await _classify(vault, _pages_text(pf.get("pages", []))[:_CLASSIFY_EXCERPT_CHARS]))
 
-    skill_file = await _classify(vault, pages_text[:_CLASSIFY_EXCERPT_CHARS])
-    prompt = prompts.build_extract_prompt(
-        pages_text=pages_text, existing_entities=pf.get("existing_entities", []),
-        skill_text=_read_skill(vault, skill_file), sidecar=_read_sidecar(vault, filename),
-        sha256=sha, filename=filename, original_path=pf.get("original_path"),
-        page_count=pf.get("page_count") or len(pages), brief=brief,
-    )
+    plan = section.run(vault, sha)
+    if plan.get("sectioned"):
+        extraction, scratchpad, cost, ok, errors = await _extract_sectioned(vault, sha, pf, skill_text, plan)
+    else:
+        extraction, scratchpad, cost, ok, errors = await _simple_extract(vault, sha, pf, skill_text, brief)
 
-    last_errors: list[str] = []
-    cost = 0.0
-    for repair in range(2):   # extract, then one repair attempt if post-flight rejects
-        p = prompt if not last_errors else (
-            prompt + "\n\nThe previous extraction was rejected:\n" + "\n".join(last_errors)
-            + "\nReturn a corrected JSON object.")
-        r = await model_client.acomplete_json(task="extract", prompt=p, schema=schemas.EXTRACTION)
-        cost += r.cost_usd or 0.0
-        extraction = r.parsed
-        scratchpad = extraction.pop("scratchpad", "")
+    if not ok:
+        return {"sha256": sha, "filename": filename, "status": "failed",
+                "reason": "post-flight rejected: " + "; ".join(errors[:3])}
 
-        tmp = vault / ".watchdog" / "tmp" / f"wdg_ex_{sha}.json"
-        tmp.parent.mkdir(parents=True, exist_ok=True)
-        tmp.write_text(json.dumps(extraction, ensure_ascii=False, indent=2), encoding="utf-8")
-
-        outcome = postflight.run(vault, tmp)
-        if "errors" not in outcome:
-            if scratchpad:
-                (vault / ".watchdog" / "tmp" / f"notes_{sha}.md").write_text(scratchpad, encoding="utf-8")
-            (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
-            return _compact_result(sha, filename, extraction, pf.get("near_dup", {}), round(cost, 6))
-        last_errors = outcome["errors"]
-
-    return {"sha256": sha, "filename": filename, "status": "failed",
-            "reason": "post-flight rejected: " + "; ".join(last_errors[:3])}
+    if scratchpad:
+        (vault / ".watchdog" / "tmp" / f"notes_{sha}.md").write_text(scratchpad, encoding="utf-8")
+    (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
+    return _compact_result(sha, filename, extraction, pf.get("near_dup", {}), round(cost, 6))
 
 
 def _lines(items: list) -> str:

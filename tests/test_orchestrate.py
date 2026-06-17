@@ -105,3 +105,53 @@ def test_orchestrator_empty_queue(tmp_path):
     vault = make_vault(tmp_path)
     summary = asyncio.run(orchestrate.run(vault))
     assert summary == {"results": [], "extracted": 0, "skipped": 0, "failed": 0}
+
+
+def test_orchestrator_sectioned_path(tmp_path, monkeypatch):
+    """Large doc → section.run plans sections → per-section extract → merge → vault."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, text="a very long document ...")
+    tmpd = vault / ".watchdog" / "tmp"
+    tmpd.mkdir(parents=True, exist_ok=True)
+    (tmpd / "section_abc123_01.md").write_text("<!-- PAGE 1 -->\n\nAcme part 1")
+    (tmpd / "section_abc123_02.md").write_text("<!-- PAGE 2 -->\n\nAcme part 2")
+
+    monkeypatch.setattr(orchestrate.section, "run", lambda v, s: {
+        "sectioned": True, "page_count": 2, "sections": [
+            {"index": 1, "label": "pages 1–1", "paginated": True, "pages_path": ".watchdog/tmp/section_abc123_01.md"},
+            {"index": 2, "label": "pages 2–2", "paginated": True, "pages_path": ".watchdog/tmp/section_abc123_02.md"},
+        ]})
+
+    sec1 = {
+        "document": {"sha256": "abc123", "filename": "test-doc.pdf", "title": "Acme AR",
+                     "document_type": "Annual Report", "summary": "Acme report.",
+                     "key_facts": [{"fact": "x", "confidence": "high"}]},
+        "entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
+                      "timeline_events": [], "roles": []}],
+        "morgue_entity_id": "acme-corp", "morgue_document_type": "annual-report",
+        "observations": "section 1 obs",
+    }
+    sec2 = {"entities": [{"id": "acme-corp", "name": "Acme Corporation", "type": "Company",
+                          "timeline_events": [], "roles": []}],
+            "observations": "section 2 obs"}
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+        if task == "classify":
+            parsed = {"skill": "general-records.md"}
+        elif task == "extract-section":
+            parsed = sec1 if "This is SECTION 1" in prompt else sec2
+        elif task == "briefing":
+            parsed = {"investigation_status": "x", "what_was_ingested": ["test-doc.pdf"]}
+        else:
+            parsed = {"entity_syntheses": []} if task == "entity-synthesis" else {"events": []}
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="claude-agent-sdk", auth_mode="subscription", cost_usd=0.02)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault))
+    assert summary["extracted"] == 1 and summary["failed"] == 0
+    assert (vault / "entities" / "company" / "acme-corp.md").exists()
+    # carry-forward merged the two sections into one entity
+    note = (vault / "entities" / "company" / "acme-corp.md").read_text()
+    assert "Acme Corporation" in note   # merge kept the longer surface form
+    assert (vault / ".watchdog" / "tmp" / "notes_abc123.md").read_text() == "section 1 obs\nsection 2 obs"
