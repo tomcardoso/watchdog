@@ -49,6 +49,8 @@ _TASK_TIERS:    dict[str, str] = {}
 _TASK_BACKENDS: dict[str, str] = {}
 DEFAULT_TIER = "sonnet"
 _API_MAX_TOKENS = 8000
+# Extraction output is large; give it more room. Other tasks use the default.
+_TASK_MAX_TOKENS = {"extract": 16000, "extract-section": 16000}
 
 _SYSTEM_PROMPT = (
     "You are a precise extraction engine for an investigative-records pipeline. "
@@ -133,11 +135,16 @@ async def _agent_query(prompt: str, model: str, env: dict | None) -> dict:
     return out
 
 
-def _agent_complete(prompt: str, model_id: str, schema: dict, api_key: str | None) -> dict:
-    """Claude Agent SDK backend. Works in either auth mode (key via env, or subscription)."""
+async def _agent_complete_async(prompt: str, model_id: str, schema: dict,
+                                api_key: str | None, max_tokens: int | None = None) -> dict:
+    """Claude Agent SDK backend. Works in either auth mode (key via env, or subscription).
+
+    `max_tokens` is accepted for a uniform backend signature but unused — the agent's
+    output is bounded by max_turns, not a token cap.
+    """
     full = f"{prompt}\n\nReturn JSON matching this schema:\n{json.dumps(schema)}"
     env = {"ANTHROPIC_API_KEY": api_key} if api_key else None
-    return asyncio.run(_agent_query(full, model_id, env))
+    return await _agent_query(full, model_id, env)
 
 
 def _api_cost(model_id: str, usage) -> float | None:
@@ -150,13 +157,14 @@ def _api_cost(model_id: str, usage) -> float | None:
             + g("cache_creation_input_tokens") * cw + g("cache_read_input_tokens") * cr)
 
 
-def _api_complete(prompt: str, model_id: str, schema: dict, api_key: str | None) -> dict:
+async def _api_complete_async(prompt: str, model_id: str, schema: dict,
+                              api_key: str | None, max_tokens: int) -> dict:
     """Raw Claude Messages API backend with structured outputs."""
     import anthropic
 
-    resp = anthropic.Anthropic(api_key=api_key).messages.create(
+    resp = await anthropic.AsyncAnthropic(api_key=api_key).messages.create(
         model=model_id,
-        max_tokens=_API_MAX_TOKENS,
+        max_tokens=max_tokens,
         system=_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
         output_config={"format": {"type": "json_schema", "schema": schema}},
@@ -167,14 +175,14 @@ def _api_complete(prompt: str, model_id: str, schema: dict, api_key: str | None)
     return {"text": text, "usage": usage_dict, "cost_usd": _api_cost(model_id, usage)}
 
 
-_BACKENDS = {"claude-api": _api_complete, "claude-agent-sdk": _agent_complete}
+_ABACKENDS = {"claude-api": _api_complete_async, "claude-agent-sdk": _agent_complete_async}
 
 
 def _choose_backend(task: str, requested: str | None, auth_mode: str, has_key: bool) -> str:
     """Pick a backend, honoring an explicit request, the task policy, then auth mode."""
     backend = requested or _TASK_BACKENDS.get(task) or (
         "claude-agent-sdk" if auth_mode == "subscription" else "claude-api")
-    if backend not in _BACKENDS:
+    if backend not in _ABACKENDS:
         raise ModelError(f"unknown backend '{backend}'")
     if backend == "claude-api" and not has_key:
         raise ModelError(
@@ -185,9 +193,9 @@ def _choose_backend(task: str, requested: str | None, auth_mode: str, has_key: b
 
 # ── public entry point ────────────────────────────────────────────────────────
 
-def complete_json(*, task: str, prompt: str, schema: dict, model: str | None = None,
-                  backend: str | None = None, max_retries: int = 1) -> ModelResult:
-    """Get schema-valid JSON for a reasoning task.
+async def acomplete_json(*, task: str, prompt: str, schema: dict, model: str | None = None,
+                         backend: str | None = None, max_retries: int = 1) -> ModelResult:
+    """Get schema-valid JSON for a reasoning task (async — the orchestrator awaits this).
 
     `model` may be a tier name (haiku/sonnet/opus) or a raw model id; omit it for the
     per-task default. `backend` forces 'claude-api' or 'claude-agent-sdk'; omit it to
@@ -201,7 +209,8 @@ def complete_json(*, task: str, prompt: str, schema: dict, model: str | None = N
     auth_mode = resolved["mode"]
 
     chosen = _choose_backend(task, backend, auth_mode, has_key=bool(api_key))
-    backend_fn = _BACKENDS[chosen]
+    backend_fn = _ABACKENDS[chosen]
+    max_tokens = _TASK_MAX_TOKENS.get(task, _API_MAX_TOKENS)
 
     requested = model or _TASK_TIERS.get(task, DEFAULT_TIER)
     if requested in _MODEL_IDS:
@@ -215,7 +224,7 @@ def complete_json(*, task: str, prompt: str, schema: dict, model: str | None = N
     attempts = 0
     for _ in range(max_retries + 1):
         attempts += 1
-        out = backend_fn(prompt, model_id, schema, api_key)
+        out = await backend_fn(prompt, model_id, schema, api_key, max_tokens)
         if out.get("cost_usd"):
             total_cost += out["cost_usd"]
 
@@ -240,3 +249,8 @@ def complete_json(*, task: str, prompt: str, schema: dict, model: str | None = N
     raise ModelError(
         f"task '{task}' failed JSON validation after {attempts} attempt(s) "
         f"on {chosen}: {last_err}")
+
+
+def complete_json(**kwargs) -> ModelResult:
+    """Sync wrapper around :func:`acomplete_json` for non-async callers and tests."""
+    return asyncio.run(acomplete_json(**kwargs))

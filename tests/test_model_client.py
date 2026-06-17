@@ -20,8 +20,9 @@ class FakeBackend:
         self.outputs = list(outputs)
         self.calls = []
 
-    def __call__(self, prompt, model_id, schema, api_key):
-        self.calls.append({"model_id": model_id, "api_key": api_key, "prompt": prompt})
+    async def __call__(self, prompt, model_id, schema, api_key, max_tokens):
+        self.calls.append({"model_id": model_id, "api_key": api_key,
+                           "prompt": prompt, "max_tokens": max_tokens})
         return self.outputs.pop(0)
 
 
@@ -43,7 +44,7 @@ def subscription_auth(monkeypatch):
 
 def test_api_key_mode_routes_to_claude_api(api_key_auth, monkeypatch):
     api = FakeBackend(_out('{"name": "Acme"}'))
-    monkeypatch.setitem(mc._BACKENDS, "claude-api", api)
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
     r = mc.complete_json(task="t", prompt="p", schema=SCHEMA)
     assert r.backend == "claude-api"
     assert r.parsed == {"name": "Acme"}
@@ -52,7 +53,7 @@ def test_api_key_mode_routes_to_claude_api(api_key_auth, monkeypatch):
 
 def test_subscription_mode_routes_to_agent_sdk(subscription_auth, monkeypatch):
     agent = FakeBackend(_out('{"name": "Acme"}'))
-    monkeypatch.setitem(mc._BACKENDS, "claude-agent-sdk", agent)
+    monkeypatch.setitem(mc._ABACKENDS, "claude-agent-sdk", agent)
     r = mc.complete_json(task="t", prompt="p", schema=SCHEMA)
     assert r.backend == "claude-agent-sdk"
     assert agent.calls[0]["api_key"] is None      # subscription → no key passed
@@ -60,7 +61,7 @@ def test_subscription_mode_routes_to_agent_sdk(subscription_auth, monkeypatch):
 
 def test_explicit_backend_override(api_key_auth, monkeypatch):
     agent = FakeBackend(_out('{"name": "Acme"}'))
-    monkeypatch.setitem(mc._BACKENDS, "claude-agent-sdk", agent)
+    monkeypatch.setitem(mc._ABACKENDS, "claude-agent-sdk", agent)
     r = mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="claude-agent-sdk")
     assert r.backend == "claude-agent-sdk"
 
@@ -82,7 +83,7 @@ def test_no_auth_errors(monkeypatch):
 def test_invalid_then_valid_retries_and_escalates(api_key_auth, monkeypatch):
     # haiker tier requested; first output bad JSON, second valid
     api = FakeBackend(_out("not json"), _out('{"name": "Acme"}'))
-    monkeypatch.setitem(mc._BACKENDS, "claude-api", api)
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
     r = mc.complete_json(task="t", prompt="p", schema=SCHEMA, model="haiku")
     assert r.parsed == {"name": "Acme"}
     assert r.attempts == 2
@@ -92,30 +93,38 @@ def test_invalid_then_valid_retries_and_escalates(api_key_auth, monkeypatch):
 
 def test_schema_violation_then_valid(api_key_auth, monkeypatch):
     api = FakeBackend(_out('{"wrong": 1}'), _out('{"name": "Acme"}'))
-    monkeypatch.setitem(mc._BACKENDS, "claude-api", api)
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
     r = mc.complete_json(task="t", prompt="p", schema=SCHEMA, model="sonnet")
     assert r.parsed == {"name": "Acme"} and r.attempts == 2
 
 
 def test_fails_after_retries(api_key_auth, monkeypatch):
     api = FakeBackend(_out("nope"), _out("still nope"))
-    monkeypatch.setitem(mc._BACKENDS, "claude-api", api)
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
     with pytest.raises(mc.ModelError, match="failed JSON validation after 2"):
         mc.complete_json(task="t", prompt="p", schema=SCHEMA, max_retries=1)
 
 
 def test_raw_model_id_does_not_escalate(api_key_auth, monkeypatch):
     api = FakeBackend(_out("bad"), _out('{"name": "Acme"}'))
-    monkeypatch.setitem(mc._BACKENDS, "claude-api", api)
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
     mc.complete_json(task="t", prompt="p", schema=SCHEMA, model="claude-sonnet-4-6")
     assert api.calls[0]["model_id"] == api.calls[1]["model_id"] == "claude-sonnet-4-6"
 
 
 def test_cost_accumulates_across_attempts(api_key_auth, monkeypatch):
     api = FakeBackend(_out("bad", cost=0.02), _out('{"name": "Acme"}', cost=0.03))
-    monkeypatch.setitem(mc._BACKENDS, "claude-api", api)
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
     r = mc.complete_json(task="t", prompt="p", schema=SCHEMA)
     assert r.cost_usd == pytest.approx(0.05)
+
+
+def test_extract_task_uses_larger_token_budget(api_key_auth, monkeypatch):
+    api = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    mc.complete_json(task="extract", prompt="p", schema=SCHEMA)
+    assert api.calls[0]["max_tokens"] == 16000           # per-task override
+    assert mc._TASK_MAX_TOKENS.get("other-task") is None  # default applies elsewhere
 
 
 # ── JSON extraction ───────────────────────────────────────────────────────────
