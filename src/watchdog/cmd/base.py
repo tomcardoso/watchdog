@@ -51,39 +51,27 @@ _ALIASES = {
     "rn":         "rename",
 }
 
+# The orchestrator (pipeline/orchestrate.py) drives extraction in Python and calls
+# preflight/postflight/synthesis_bundle/section/merge/abort as functions, so those no
+# longer need CLI registrations. What remains are commands the in-Claude-Code skills
+# (e.g. /watchdog-entity) still shell out to.
 _PIPELINE_COMMANDS = {
     "near-dup":      ("watchdog.pipeline.near_dup",       "watchdog-near-dup"),
     "write-vault":   ("watchdog.pipeline.write_vault",    "watchdog-write-vault"),
     "write-entity":  ("watchdog.pipeline.write_entity",   "watchdog-write-entity"),
-    "write-entity-synthesis": ("watchdog.pipeline.finalize_entity", "watchdog-write-entity-synthesis"),
-    "build-synthesis-bundle": ("watchdog.pipeline.synthesis_bundle", "watchdog-build-synthesis-bundle"),
-    "apply-syntheses":        ("watchdog.pipeline.synthesis_bundle", "watchdog-apply-syntheses"),
-    "section-plan":  ("watchdog.pipeline.section",        "watchdog-section-plan"),
-    "merge-sections":("watchdog.pipeline.merge",          "watchdog-merge-sections"),
-    "ingest-abort":  ("watchdog.pipeline.abort",          "watchdog-ingest-abort"),
 }
 
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates" / "vault"
 
 _VAULT_PERMISSIONS = [
-    # watchdog pipeline commands (subagent-facing)
-    "Bash(watchdog pre-flight *)",
-    "Bash(watchdog post-flight *)",
+    # watchdog commands the in-Claude-Code skills run (extraction is now a Python
+    # command — `watchdog ingest` — and needs no in-vault Bash permissions).
     "Bash(watchdog entity-index)",
     "Bash(watchdog queue-status)",
     "Bash(watchdog is-duplicate *)",
     "Bash(watchdog write-entity --entity-id *)",
-    "Bash(watchdog write-entity-synthesis --entity-id *)",
-    "Bash(watchdog build-synthesis-bundle)",
-    "Bash(watchdog apply-syntheses --bundle *)",
     "Bash(watchdog unlock*)",
-    "Bash(watchdog timeline-collisions)",
     "Bash(watchdog rebuild-timeline)",
-    "Bash(watchdog section-plan *)",
-    "Bash(watchdog merge-sections *)",
-    "Bash(watchdog ingest-abort *)",
-    # shell utilities
-    "Bash(find .watchdog/queue/ *)",
     # internal vault state
     "Write(.watchdog/tmp/**)",
     "Edit(.watchdog/tmp/**)",

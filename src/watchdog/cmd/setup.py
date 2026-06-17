@@ -156,24 +156,12 @@ _CONFIGURE_KEYS = {
         "default": False,
     },
     # ── Models ───────────────────────────────────────────────────────────────
-    "orchestrator_model": {
-        "short": "Claude model for the ingest orchestrator (default: sonnet)",
-        "help": (
-            "Model used for the orchestrator session launched by `watchdog ingest`.\n"
-            "  The orchestrator manages the extraction loop and kicks off subagents.\n"
-            "  Valid values: haiku, sonnet, opus. Default: sonnet.\n"
-            "  Override for a single run with: watchdog ingest --orchestrator-model M"
-        ),
-        "type": "enum",
-        "default": "sonnet",
-        "choices": ["haiku", "sonnet", "opus"],
-    },
     "extractor_model": {
-        "short": "Claude model for per-document extraction subagents (default: sonnet)",
+        "short": "Claude model for document extraction (default: sonnet)",
         "help": (
-            "Model used for each per-document extraction subagent during ingest.\n"
-            "  Haiku is significantly cheaper and faster; use it for large batches of\n"
-            "  straightforward documents. Sonnet handles complex or ambiguous documents better.\n"
+            "Model used to extract each document during `watchdog ingest`.\n"
+            "  Haiku is cheaper and faster for large batches of straightforward documents;\n"
+            "  Sonnet handles complex or ambiguous documents better.\n"
             "  Valid values: haiku, sonnet, opus. Default: sonnet.\n"
             "  Override for a single run with: watchdog ingest --extractor-model M"
         ),
@@ -182,11 +170,10 @@ _CONFIGURE_KEYS = {
         "choices": ["haiku", "sonnet", "opus"],
     },
     "finalizer_model": {
-        "short": "Claude model for the post-ingest subagent (default: sonnet)",
+        "short": "Claude model for post-ingest synthesis + timeline + briefing (default: sonnet)",
         "help": (
-            "Model used for the single post-ingest subagent that synthesizes prose for\n"
-            "  multi-mention entities, reconciles the timeline, and produces the\n"
-            "  post-ingest briefing after extraction is complete.\n"
+            "Model used for the post-ingest step: synthesizing prose for multi-mention\n"
+            "  entities, reconciling timeline collisions, and writing the briefing.\n"
             "  Valid values: haiku, sonnet, opus. Default: sonnet.\n"
             "  Override for a single run with: watchdog ingest --finalizer-model M"
         ),

@@ -78,28 +78,22 @@ watchdog chew  (terminal)
   → originals moved to .watchdog/staging/<sha256>/
   → extracted data written to .watchdog/queue/<sha256>.json
         ↓
-watchdog ingest  (terminal)
-  acquires lock · scans queue · opens Claude Code
+watchdog ingest  (terminal — a Python orchestrator)
+  acquires lock · scans queue · extracts documents in parallel
+  per document: classify → extract entities, relationships, timeline
+  events, key facts → flag contradictions
         ↓
-/watchdog-ingest  (Claude Code)
-  processes up to 5 documents in parallel, each in an isolated subagent
-  reads queue files · applies domain knowledge · extracts entities,
-  relationships, timeline events, key facts · flags contradictions
-        ↓
-watchdog post-flight  (called by each subagent)
+post-flight  (Python, per document)
   validates extraction · writes entity notes and document notes ·
   updates global timeline and registries · file-locked for parallel safety
   → originals moved to morgue/
         ↓
-post-ingest subagent  (single isolated Agent call)
-  entity synthesis (multi-mention entities, from a bundle) ·
-  timeline collision resolution · post-ingest briefing
-  new entities · connections · leads · anomalies
+post-ingest  (Python)
+  entity synthesis (multi-mention entities) · timeline collision
+  resolution · briefing — new entities, connections, leads, anomalies
 ```
 
-Splitting the pipeline this way keeps token costs down — the slow mechanical work (OCR, Docling, embeddings) runs outside Claude Code entirely. Claude only sees clean, already-extracted text. The subagent architecture keeps each document's extraction isolated, so the orchestrator context stays flat regardless of batch size.
-
-The extraction step is a [Claude Code skill](src/watchdog/skills/watchdog-ingest.md). You keep the Obsidian vault and every original file.
+The model is called **only for the reasoning steps** (classify, extract, synthesize, dedup the timeline, write the briefing); everything mechanical — OCR/Docling, dispatch, pre/post-flight, registry writes — is deterministic Python. `watchdog ingest` runs the whole thing in your terminal; you keep the Obsidian vault and every original file.
 
 ### Document conversion with Docling
 
@@ -116,7 +110,7 @@ Docling runs locally. Your documents never leave your machine during preprocessi
 
 ### Document classification
 
-Each document's type is identified at extraction time. The per-document subagent reads the first pages and selects the closest-matching domain skill from the [records skills](src/watchdog/skills/records/) — one per document type — by reading the (descriptive) filenames. The closest match determines which extraction skill Claude loads.
+Each document's type is identified at ingest time by a quick classification step that picks the closest-matching domain skill from the [records skills](src/watchdog/skills/records/) — one per document type — by their descriptive filenames. That skill is then fed into the extraction prompt.
 
 This means Claude enters each document already loaded with the right domain knowledge — what fields to look for, what patterns are anomalous, what an experienced investigative journalist would notice that a first-year reporter would miss. For document types that don't match any skill, the [general-records fallback](src/watchdog/skills/records/general-records.md) applies.
 
@@ -166,7 +160,7 @@ watchdog new "Shell Company Investigation"
 cd ~/Investigations/shell-company-investigation
 watchdog chew
 
-# Set up the extraction session and open in Claude Code
+# Extract all queued documents (runs in your terminal)
 watchdog ingest
 
 # Open the vault in Obsidian
@@ -209,10 +203,10 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog chew <file>` | Process a single specific file |
 | `watchdog chew --chew-workers N` | Override parallel file workers for this run |
 | `watchdog chew --chunk-workers N` | Override parallel chunk workers per file for this run |
-| `watchdog ingest` | Acquire the ingest lock, scan the queue, and open Claude Code — `/watchdog-ingest` fires automatically |
-| `watchdog ingest --orchestrator-model M` | Override the orchestrator model for this run (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
-| `watchdog ingest --extractor-model M` | Override the extraction subagent model for this run (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
-| `watchdog ingest --finalizer-model M` | Override the post-ingest subagent model for this run — entity synthesis + timeline reconciliation + briefing (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
+| `watchdog ingest` | Extract all queued documents — runs the Python pipeline in your terminal |
+| `watchdog ingest --extractor-model M` | Override the extraction model for this run (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
+| `watchdog ingest --finalizer-model M` | Override the post-ingest model for this run — synthesis + timeline + briefing (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
+| `watchdog ingest --concurrency N` | Documents extracted in parallel for this run (default from `watchdog configure`: 5) |
 | `watchdog context [name]` | Open Claude Code with the context seeding skill; omit name when inside the vault |
 | `watchdog context --model M` | Override the model for context seeding (`sonnet`/`opus`/`haiku`, default: `sonnet`) |
 | `watchdog watch [name]` | Watch `_INCOMING/` and chew files automatically as they arrive; omit name when inside the project directory |
@@ -240,10 +234,10 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 
 Run these inside a Claude Code session with your investigation open.
 
+Extraction is **not** a slash command — run `watchdog ingest` in your terminal. These run inside a Claude Code session with your investigation open:
+
 | Command | What it does |
 |---------|-------------|
-| `/watchdog-ingest` | Extract all chewed files into the vault (auto-fired by `watchdog ingest`) |
-| `/watchdog-ingest [file]` | Chew and extract a specific file |
 | `/watchdog-query [question]` | Answer a question from your vault |
 | `/watchdog-surface` | Find connections and anomalies across the full vault |
 | `/watchdog-entity [id ...]` | Refresh entity Summary and Timeline from all source documents |
@@ -451,9 +445,9 @@ watchdog configure <key> <value>
 | `embed_images` | `false` | Embed figures as base64 in the extracted markdown so Claude can read charts and image-based tables. Significantly increases token usage. |
 | `dup_threshold` | `0.85` | Jaccard similarity score at which two documents are flagged as near-duplicates. Range: 0.0–1.0. |
 | `shingle_size` | `3` | Word n-gram size for near-duplicate fingerprinting. Changing this invalidates existing MinHash signatures — re-ingest to rebuild. |
-| `orchestrator_model` | `sonnet` | Claude model for the ingest orchestrator. Options: `haiku`, `sonnet`, `opus`. Can be overridden per-run with `--orchestrator-model`. |
-| `extractor_model` | `sonnet` | Claude model for per-document extraction subagents. Options: `haiku`, `sonnet`, `opus`. Can be overridden per-run with `--extractor-model`. |
-| `finalizer_model` | `sonnet` | Claude model for the single post-ingest subagent — entity synthesis (Summary + Analysis for entities in ≥2 documents) + timeline reconciliation + briefing. Options: `haiku`, `sonnet`, `opus`. Can be overridden per-run with `--finalizer-model`. |
+| `extractor_model` | `sonnet` | Claude model for document extraction. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--extractor-model`. |
+| `finalizer_model` | `sonnet` | Claude model for post-ingest — entity synthesis (Summary + Analysis for entities in ≥2 documents) + timeline reconciliation + briefing. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--finalizer-model`. |
+| `extract_concurrency` | `5` | Documents extracted in parallel during `watchdog ingest`. Lower it if you hit model rate limits; raise it for throughput. Per-run override: `--concurrency`. |
 
 **Examples:**
 
@@ -470,11 +464,11 @@ watchdog configure ocr_languages "fr-FR,ar-SA"
 # Move investigation storage to an external drive
 watchdog configure projects_dir /Volumes/SecureDrive/Investigations
 
-# Use Haiku for extraction subagents by default (faster and cheaper)
+# Use Haiku for extraction by default (faster and cheaper)
 watchdog configure extractor_model haiku
 
-# Use Opus for the orchestrator on high-stakes investigations
-watchdog configure orchestrator_model opus
+# Lower parallelism if you hit model rate limits
+watchdog configure extract_concurrency 2
 ```
 
 ---
@@ -531,12 +525,12 @@ Please open an issue before starting significant work so we can discuss approach
 
 - **[Docling](https://github.com/DS4SD/docling)** handles all document conversion — layout analysis, table extraction, OCR. Structured output (not raw text) is important for table-heavy documents like financial statements and creditor lists.
 - **Large PDFs** are split into 40-page chunks and processed in parallel. Page numbers are preserved and reassembled in order.
-- **Two-stage queue** — `watchdog chew` writes extracted JSON to `.watchdog/queue/` and moves originals to `.watchdog/staging/`. After `/watchdog-ingest` completes, originals move from staging to `morgue/`. The queue is never touched by the journalist directly.
+- **Two-stage queue** — `watchdog chew` writes extracted JSON to `.watchdog/queue/` and moves originals to `.watchdog/staging/`. After `watchdog ingest` completes, originals move from staging to `morgue/`. The queue is never touched by the journalist directly.
 - **OCR engine:** Apple Vision on macOS (fast, hardware-accelerated); Tesseract on Linux/Windows (requires system install). Configurable via `watchdog configure ocr_engine`.
 - **Near-duplicate detection** uses MinHash (128 hash functions) to approximate Jaccard similarity on word 3-gram shingles — no ML dependencies, runs locally.
 - **Registries** (`.watchdog/Registry/documents.json`, `entities.json`, `manifest.json`) are the source of truth. Obsidian notes are generated outputs — deleting a note doesn't lose data. `manifest.json` is a lightweight id/name/type/aliases index used for entity lookup without loading full registry data.
-- **Vault writes are file-locked** — `watchdog write-vault` acquires an exclusive lock on `.watchdog/Registry/.write-lock` before reading and writing registry files, so parallel subagent calls serialize safely without corruption.
-- **Extraction runs in isolated subagents** — each document is processed by a separate Claude Code Agent call. A single isolated post-ingest subagent then synthesizes multi-mention entity prose (from a Python-built bundle), reconciles the timeline, and writes the briefing. Both keep the orchestrator context flat regardless of batch size.
+- **Vault writes are file-locked** — `write_vault` acquires an exclusive lock on `.watchdog/Registry/.write-lock` before reading and writing registry files, so the concurrent document workers serialize safely without corruption.
+- **Ingest is a Python orchestrator** — `watchdog ingest` runs the pipeline in your terminal and calls the model only for reasoning (classify, extract, synthesize, dedup the timeline, brief). Documents are extracted in parallel (bounded by `extract_concurrency`); the slow mechanical work and all bookkeeping stay in Python.
 - **Skills are per-vault** — domain knowledge skill files live in `.claude/commands/records/` inside each vault, installed by `watchdog new` and refreshed by `watchdog refresh-skills`. This means skills travel with the investigation and can be customized per-vault.
 - **Single CLI entry point** — `watchdog` is the only command installed on your PATH. All pipeline utilities are subcommands.
 

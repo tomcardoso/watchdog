@@ -165,7 +165,7 @@ watchdog chew
 
 You'll see a progress bar as Watchdog reads each file, runs OCR if needed, and prepares it for extraction. Each file shows its status: `OK` (queued), `SKP` (no text found — moved to `_INCOMING/_SKIPPED/`), or `ERR` (failed — moved to `_INCOMING/_FAILED/` with an explanation). Files where OCR produced noisy output show a `· garbled OCR` note but are still queued for Claude to interpret.
 
-On macOS, you'll receive a notification when chewing completes — useful if you've switched to another app. When it finishes, run `watchdog ingest` from the same directory to set up the extraction session and open Claude Code.
+On macOS, you'll receive a notification when chewing completes — useful if you've switched to another app. When it finishes, run `watchdog ingest` from the same directory to extract the queued documents — it runs in your terminal (no Claude Code session needed).
 
 To cancel a chew in progress, press **Ctrl+C** — the lock is cleaned up automatically and unfinished files stay in `_INCOMING/` for the next run.
 
@@ -186,9 +186,9 @@ From inside the vault directory, run:
 watchdog ingest
 ```
 
-Watchdog scans the queue, then opens Claude Code with the extraction skill pre-loaded — extraction begins automatically.
+Watchdog scans the queue, confirms, and runs the extraction pipeline in your terminal — there's no Claude Code session to open.
 
-By default, Watchdog uses Claude Sonnet for all stages. You can configure persistent model defaults with `watchdog configure` (e.g. `watchdog configure extractor_model haiku`), or override for a single run with flags like `--extractor-model haiku`, `--orchestrator-model opus`, or `--finalizer-model opus` (the finalizer model also covers entity synthesis). See the [Commands](README.md#processing) and [Configuration](README.md#configuration) sections of the README for details.
+By default, Watchdog uses Sonnet for extraction and post-ingest, and Haiku for classification. Configure persistent defaults with `watchdog configure` (e.g. `watchdog configure extractor_model haiku`), or override per run with `--extractor-model`, `--finalizer-model`, and `--concurrency`. See the [Commands](README.md#processing) and [Configuration](README.md#configuration) sections of the README for details.
 
 Claude will work through each chewed file, extract entities, relationships, and key facts, and write everything to your vault. At the end it produces a briefing showing:
 - What documents were processed
@@ -296,14 +296,10 @@ The document couldn't be processed. Common reasons:
 To retry: move the file from `_INCOMING/_FAILED/` back to `_INCOMING/`, then run `watchdog chew` again.
 
 **Ingesting a large batch (hundreds of documents)**
-For large batches, use `--limit` to control how many documents are processed per session:
-```
-/watchdog-ingest --limit 50
-```
-This extracts 50 documents and then stops cleanly. Start a new session and run the same command to continue. Watchdog moves each file to `morgue/` as soon as it's processed, so re-running always picks up where the previous session stopped.
+`watchdog ingest` extracts the whole queue, processing `extract_concurrency` documents in parallel (default 5). If you hit model rate limits, lower it (`watchdog configure extract_concurrency 2` or `watchdog ingest --concurrency 2`) or chew and ingest in groups. Each document is moved to `morgue/` as soon as it's processed, so re-running `watchdog ingest` only picks up what's still queued.
 
-**Session ended mid-ingest**
-If a Claude Code session ends unexpectedly — rate limit hit, window closed, session timed out — start a new session and run `/watchdog-ingest` again. Processed files are already in `morgue/`; only unfinished files remain. The new run picks up from where the previous one stopped.
+**A document failed during ingest**
+A document whose extraction fails is logged to `.watchdog/Registry/ingest.log` and moved to `.watchdog/queue/_failed/`; the rest of the batch still completes. To retry it, move its queue file back: `mv .watchdog/queue/_failed/<sha>.json .watchdog/queue/` and run `watchdog ingest` again.
 
 **Skills look outdated after a Watchdog upgrade**
 When you upgrade Watchdog (`pipx upgrade watchdog-intel`), existing vaults keep their old skill files. Refresh them from inside the vault:
