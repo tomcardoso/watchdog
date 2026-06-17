@@ -76,62 +76,66 @@ def cmd_ingest(args) -> None:
     if not (vault / ".watchdog").is_dir():
         sys.exit("Error: must be run from inside a Watchdog vault directory")
 
-    from watchdog.cmd.base import CONFIG_FILE
-    config: dict = {}
-    if CONFIG_FILE.exists():
-        import json as _json
-        try:
-            config = _json.loads(CONFIG_FILE.read_text())
-        except Exception:
-            pass
+    from watchdog.cmd.auth import resolve_auth
+    a = resolve_auth()
+    if a["mode"] == "none":
+        sys.exit(f"\n  {_YELLOW}Error:{_RESET} {a.get('reason', 'auth not configured')}\n"
+                 f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
 
-    def _model(flag_val: str | None, config_key: str) -> str:
-        return flag_val or config.get(config_key) or "sonnet"
-
-    orchestrator_model      = _model(getattr(args, "orchestrator_model",      None), "orchestrator_model")
-    extractor_model         = _model(getattr(args, "extractor_model",         None), "extractor_model")
-    finalizer_model         = _model(getattr(args, "finalizer_model",         None), "finalizer_model")
-
-    for label, model in (
-        ("orchestrator",       orchestrator_model),
-        ("extractor",          extractor_model),
-        ("finalizer",          finalizer_model),
-    ):
-        if model not in _MODEL_IDS:
-            sys.exit(f"Error: unknown {label} model '{model}' — choose sonnet, opus, or haiku")
     from watchdog.pipeline.ingest_setup import run as is_run
-    result = is_run(
-        vault,
-        extractor_model=extractor_model,
-        finalizer_model=finalizer_model,
-    )
+    result = is_run(vault)
     if "error" in result:
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} {result['error']}\n")
     if result["total"] == 0:
         print(f"\n  {_DIM}Queue is empty — nothing to ingest.{_RESET}")
         print(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in _INCOMING/ first.{_RESET}\n")
         return
+
     q = len(result["queue_files"])
     print(f"\n  {_BOLD}{q} document{'s' if q != 1 else ''}{_RESET} ready for extraction")
+
     def _release_lock() -> None:
         (vault / ".watchdog" / "Registry" / ".ingest-lock").unlink(missing_ok=True)
         (vault / ".watchdog" / "ingest-state.json").unlink(missing_ok=True)
 
     try:
-        answer = input(f"\n  Open in Claude Code to start ingestion? [Y/n] ").strip().lower()
+        answer = input(f"\n  Ingest now with your {_BOLD}{a['mode']}{_RESET} auth? [Y/n] ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         print()
         _release_lock()
         print(f"\n  When ready, run:  {_CYAN}watchdog ingest{_RESET}\n")
         return
-    if answer in ("", "y", "yes"):
-        log_path = vault / "log.md"
-        if not log_path.exists():
-            log_path.write_text(_render_template("log.md"))
-        _launch_claude(vault, "/watchdog-ingest", model=orchestrator_model)
-    else:
+    if answer not in ("", "y", "yes"):
         _release_lock()
         print(f"\n  When ready, run:  {_CYAN}watchdog ingest{_RESET}\n")
+        return
+
+    import asyncio
+    from watchdog.pipeline import orchestrate
+    log_path = vault / "log.md"
+    if not log_path.exists():
+        log_path.write_text(_render_template("log.md"))
+    print(f"\n  {_DIM}Extracting — the model is called only for reasoning; the pipeline runs in Python.{_RESET}\n")
+    try:
+        summary = asyncio.run(orchestrate.run(vault))
+    finally:
+        _release_lock()
+    _print_ingest_summary(summary)
+
+
+def _print_ingest_summary(summary: dict) -> None:
+    ext, skip, fail = summary["extracted"], summary["skipped"], summary["failed"]
+    print(f"  {_GREEN}Ingest complete{_RESET}  {_BOLD}{ext}{_RESET} extracted"
+          f"{f', {skip} skipped' if skip else ''}{f', {fail} failed' if fail else ''}\n")
+    for r in summary["results"]:
+        name = r.get("filename") or r.get("sha256", "?")
+        if r["status"] == "ok":
+            print(f"  {_GREEN}✓{_RESET} {name}  {_DIM}{r.get('entity_count', 0)} entities{_RESET}")
+        elif r["status"] == "skipped":
+            print(f"  {_DIM}– {name}  already extracted{_RESET}")
+        else:
+            print(f"  {_YELLOW}✗ {name}  {r.get('reason', '')}{_RESET}")
+    print(f"\n  {_DIM}Open a fresh Claude Code session to ask investigation questions.{_RESET}\n")
 
 
 def cmd_context(args) -> None:
