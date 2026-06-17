@@ -32,7 +32,7 @@ def _run_preprocess(
         if not files:
             queued = len(list(queue.glob("*.json"))) if queue.exists() else 0
             if queued:
-                print(f"\n  {_DIM}_INCOMING/ is empty — {queued} file{'s' if queued != 1 else ''} ready for {_RESET}{_CYAN}/watchdog-ingest{_RESET}{_DIM}.{_RESET}\n")
+                print(f"\n  {_DIM}_INCOMING/ is empty — {queued} file{'s' if queued != 1 else ''} ready. Run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM}.{_RESET}\n")
             else:
                 print(f"\n  {_DIM}_INCOMING/ is empty — nothing to chew.{_RESET}\n")
             return
@@ -68,7 +68,7 @@ def cmd_chew(args) -> None:
 
     new_queued = _count_queued(vault) - queued_before
     if new_queued > 0:
-        _notify("Watchdog", f"{new_queued} file{'s' if new_queued != 1 else ''} chewed — ready for /watchdog-ingest.")
+        _notify("Watchdog", f"{new_queued} file{'s' if new_queued != 1 else ''} chewed — run watchdog ingest.")
 
 
 def cmd_ingest(args) -> None:
@@ -81,6 +81,28 @@ def cmd_ingest(args) -> None:
     if a["mode"] == "none":
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} {a.get('reason', 'auth not configured')}\n"
                  f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
+
+    from watchdog.cmd.base import CONFIG_FILE
+    config: dict = {}
+    if CONFIG_FILE.exists():
+        try:
+            import json as _json
+            config = _json.loads(CONFIG_FILE.read_text())
+        except Exception:
+            pass
+
+    def _model(flag_val, config_key) -> str:
+        m = flag_val or config.get(config_key) or "sonnet"
+        if m not in _MODEL_IDS:
+            sys.exit(f"Error: unknown model '{m}' — choose sonnet, opus, or haiku")
+        return m
+
+    extract_model = _model(getattr(args, "extractor_model", None), "extractor_model")
+    post_model    = _model(getattr(args, "finalizer_model", None), "finalizer_model")
+    try:
+        concurrency = int(getattr(args, "concurrency", None) or config.get("extract_concurrency") or 5)
+    except (TypeError, ValueError):
+        concurrency = 5
 
     from watchdog.pipeline.ingest_setup import run as is_run
     result = is_run(vault)
@@ -115,9 +137,11 @@ def cmd_ingest(args) -> None:
     log_path = vault / "log.md"
     if not log_path.exists():
         log_path.write_text(_render_template("log.md"))
-    print(f"\n  {_DIM}Extracting — the model is called only for reasoning; the pipeline runs in Python.{_RESET}\n")
+    print(f"\n  {_DIM}Extracting (≤{concurrency} parallel) — the model is called only for reasoning; "
+          f"the pipeline runs in Python.{_RESET}\n")
     try:
-        summary = asyncio.run(orchestrate.run(vault))
+        summary = asyncio.run(orchestrate.run(
+            vault, concurrency=concurrency, extract_model=extract_model, post_model=post_model))
     finally:
         _release_lock()
     _print_ingest_summary(summary)

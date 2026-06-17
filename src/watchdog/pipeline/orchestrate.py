@@ -17,11 +17,49 @@ from pathlib import Path
 
 from watchdog import model_client
 from watchdog.pipeline import (
-    merge, preflight, postflight, prompts, schemas, section, synthesis_bundle, timeline,
+    abort, merge, preflight, postflight, prompts, schemas, section, synthesis_bundle, timeline,
 )
 
 DEFAULT_CONCURRENCY = 5
 _CLASSIFY_EXCERPT_CHARS = 6000
+# 24-bit RGB ints for Obsidian graph entity-type colour groups.
+_GRAPH_PALETTE = [0x4C9A2A, 0xC0392B, 0x2980B9, 0x8E44AD, 0xD35400,
+                  0x16A085, 0xF39C12, 0x7F8C8D, 0x2C3E50, 0xC2185B]
+
+
+def _log(vault: Path, msg: str) -> None:
+    log = vault / ".watchdog" / "Registry" / "ingest.log"
+    try:
+        log.parent.mkdir(parents=True, exist_ok=True)
+        ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with open(log, "a", encoding="utf-8") as f:
+            f.write(f"[{ts}] {msg}\n")
+    except OSError:
+        pass
+
+
+def _update_graph_colours(vault: Path) -> None:
+    """Give each entity-type folder a distinct colour group in Obsidian's graph view."""
+    gpath = vault / ".obsidian" / "graph.json"
+    edir = vault / "entities"
+    if not gpath.exists() or not edir.exists():
+        return
+    try:
+        graph = json.loads(gpath.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return
+    groups = graph.setdefault("colorGroups", [])
+    existing = {g.get("query") for g in groups}
+    added = False
+    for t in sorted(p.name for p in edir.iterdir() if p.is_dir()):
+        query = f"path:entities/{t}"
+        if query not in existing:
+            groups.append({"query": query,
+                           "color": {"a": 1, "rgb": _GRAPH_PALETTE[len(groups) % len(_GRAPH_PALETTE)]}})
+            existing.add(query)
+            added = True
+    if added:
+        gpath.write_text(json.dumps(graph, indent=2) + "\n", encoding="utf-8")
 
 
 def _records_dir(vault: Path) -> Path:
@@ -49,11 +87,11 @@ def _read_sidecar(vault: Path, filename: str) -> str | None:
     return sc.read_text(encoding="utf-8") if sc.exists() else None
 
 
-async def _classify(vault: Path, doc_excerpt: str) -> str:
+async def _classify(vault: Path, doc_excerpt: str, model: str) -> str:
     index = _records_dir(vault) / "_index.md"
     index_text = index.read_text(encoding="utf-8") if index.exists() else ""
     r = await model_client.acomplete_json(
-        task="classify", model="haiku", schema=schemas.CLASSIFY,
+        task="classify", model=model, schema=schemas.CLASSIFY,
         prompt=prompts.build_classify_prompt(doc_excerpt, index_text),
     )
     return r.parsed.get("skill") or "general-records.md"
@@ -83,7 +121,7 @@ def _write_postflight(vault: Path, sha: str, extraction: dict) -> tuple[bool, li
     return ("errors" not in outcome), outcome.get("errors", [])
 
 
-async def _simple_extract(vault, sha, pf, skill_text, brief):
+async def _simple_extract(vault, sha, pf, skill_text, brief, model):
     """Whole-document extraction, with one repair attempt if post-flight rejects."""
     base = prompts.build_extract_prompt(
         pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
@@ -95,7 +133,7 @@ async def _simple_extract(vault, sha, pf, skill_text, brief):
     for _ in range(2):
         p = base if not errors else (base + "\n\nThe previous extraction was rejected:\n"
                                      + "\n".join(errors) + "\nReturn a corrected JSON object.")
-        r = await model_client.acomplete_json(task="extract", prompt=p, schema=schemas.EXTRACTION)
+        r = await model_client.acomplete_json(task="extract", model=model, prompt=p, schema=schemas.EXTRACTION)
         cost += r.cost_usd or 0.0
         extraction = r.parsed
         scratchpad = extraction.pop("scratchpad", "")
@@ -115,7 +153,7 @@ def _carry_block(part: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-async def _extract_sectioned(vault, sha, pf, skill_text, plan):
+async def _extract_sectioned(vault, sha, pf, skill_text, plan, model):
     """Sequential per-section extraction with carry-forward, then deterministic merge."""
     parts, carry, cost = [], "", 0.0
     sections = plan["sections"]
@@ -127,7 +165,8 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan):
             is_first=(sec["index"] == 1), sha256=sha, filename=pf["filename"],
             original_path=pf.get("original_path"), page_count=pf.get("page_count") or len(pf["pages"]),
         )
-        r = await model_client.acomplete_json(task="extract-section", prompt=prompt, schema=schemas.SECTION)
+        r = await model_client.acomplete_json(task="extract-section", model=model,
+                                              prompt=prompt, schema=schemas.SECTION)
         cost += r.cost_usd or 0.0
         parts.append(r.parsed)
         carry += _carry_block(r.parsed)
@@ -138,29 +177,42 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan):
     return extraction, scratchpad, cost, ok, errors
 
 
-async def _extract_document(vault: Path, sha: str, brief: str | None) -> dict:
+def _fail(vault: Path, sha: str, filename: str, reason: str) -> dict:
+    """Log the failure and clean up this doc's artifacts (queue → _failed/) for retry."""
+    _log(vault, f"FAILED {filename or sha[:7]}: {reason}")
+    abort.run(vault, sha)   # removes staging/section temp, moves the queue file to _failed/
+    return {"sha256": sha, "filename": filename, "status": "failed", "reason": reason}
+
+
+async def _extract_document(vault: Path, sha: str, brief: str | None,
+                            extract_model: str, classify_model: str) -> dict:
     pf = preflight.run(vault, sha)
     if pf.get("error"):
-        return {"sha256": sha, "status": "failed", "reason": pf["error"]}
+        return _fail(vault, sha, "", pf["error"])
     if pf.get("already_extracted"):
         return {"sha256": sha, "filename": pf.get("filename"), "status": "skipped"}
 
     filename = pf["filename"]
-    skill_text = _read_skill(vault, await _classify(vault, _pages_text(pf.get("pages", []))[:_CLASSIFY_EXCERPT_CHARS]))
+    excerpt = _pages_text(pf.get("pages", []))[:_CLASSIFY_EXCERPT_CHARS]
+    skill_text = _read_skill(vault, await _classify(vault, excerpt, classify_model))
 
     plan = section.run(vault, sha)
     if plan.get("sectioned"):
-        extraction, scratchpad, cost, ok, errors = await _extract_sectioned(vault, sha, pf, skill_text, plan)
+        extraction, scratchpad, cost, ok, errors = await _extract_sectioned(
+            vault, sha, pf, skill_text, plan, extract_model)
     else:
-        extraction, scratchpad, cost, ok, errors = await _simple_extract(vault, sha, pf, skill_text, brief)
+        extraction, scratchpad, cost, ok, errors = await _simple_extract(
+            vault, sha, pf, skill_text, brief, extract_model)
 
     if not ok:
-        return {"sha256": sha, "filename": filename, "status": "failed",
-                "reason": "post-flight rejected: " + "; ".join(errors[:3])}
+        return _fail(vault, sha, filename, "post-flight rejected: " + "; ".join(errors[:3]))
 
     if scratchpad:
         (vault / ".watchdog" / "tmp" / f"notes_{sha}.md").write_text(scratchpad, encoding="utf-8")
+    for stale in (vault / ".watchdog" / "tmp").glob(f"section_{sha}_*.md"):
+        stale.unlink(missing_ok=True)
     (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
+    _log(vault, f"OK {filename}: {len(extraction.get('entities', []))} entities")
     return _compact_result(sha, filename, extraction, pf.get("near_dup", {}), round(cost, 6))
 
 
@@ -210,14 +262,14 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
     return f"briefings/{slug}.md"
 
 
-async def _post_ingest(vault: Path, results: list, brief: str | None) -> dict:
+async def _post_ingest(vault: Path, results: list, brief: str | None, post_model: str) -> dict:
     out: dict = {"synthesized": 0, "timeline_collisions": 0, "briefing": None}
 
     # 1. Entity synthesis for multi-mention entities (Python builds + applies; model reconciles).
     bundle = synthesis_bundle.build_bundle(vault)
     if bundle.get("entities"):
         r = await model_client.acomplete_json(
-            task="entity-synthesis", schema=schemas.SYNTHESIS,
+            task="entity-synthesis", model=post_model, schema=schemas.SYNTHESIS,
             prompt=prompts.build_synthesis_prompt(bundle))
         res_path = vault / ".watchdog" / "tmp" / "synthesis-result.json"
         res_path.write_text(json.dumps(r.parsed, ensure_ascii=False), encoding="utf-8")
@@ -239,7 +291,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None) -> dict:
             continue
         try:
             r = await model_client.acomplete_json(
-                task="timeline-dedup", schema=schemas.TIMELINE_DEDUP,
+                task="timeline-dedup", model=post_model, schema=schemas.TIMELINE_DEDUP,
                 prompt=prompts.build_timeline_dedup_prompt(col["date"], events))
             kept = r.parsed.get("events") or events
         except model_client.ModelError:
@@ -258,7 +310,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None) -> dict:
                            for r in ok if r.get("contradictions")]
     try:
         r = await model_client.acomplete_json(
-            task="briefing", schema=schemas.BRIEFING,
+            task="briefing", model=post_model, schema=schemas.BRIEFING,
             prompt=prompts.build_briefing_prompt(
                 brief=brief, results=ok, scratchpads=scratchpads,
                 neardup_alerts=neardup_alerts, contradiction_flags=contradiction_flags))
@@ -268,27 +320,36 @@ async def _post_ingest(vault: Path, results: list, brief: str | None) -> dict:
     return out
 
 
-async def run(vault: Path, concurrency: int = DEFAULT_CONCURRENCY) -> dict:
-    """Extract every queued document (bounded by `concurrency`), then post-ingest."""
+async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
+              extract_model: str = "sonnet", post_model: str = "sonnet",
+              classify_model: str = "haiku") -> dict:
+    """Extract every queued document (bounded by `concurrency`), then post-ingest.
+
+    `extract_model` drives extraction (whole-doc + section); `post_model` drives
+    synthesis/timeline/briefing; `classify_model` the cheap document classifier.
+    """
     queue_dir = vault / ".watchdog" / "queue"
     shas = [f.stem for f in sorted(queue_dir.glob("*.json"))] if queue_dir.exists() else []
     if not shas:
         return {"results": [], "extracted": 0, "skipped": 0, "failed": 0}
 
     brief = _read_brief(vault)
-    sem = asyncio.Semaphore(concurrency)
+    sem = asyncio.Semaphore(max(1, concurrency))
 
     async def _guarded(sha: str) -> dict:
         async with sem:
             try:
-                return await _extract_document(vault, sha, brief)
+                return await _extract_document(vault, sha, brief, extract_model, classify_model)
             except Exception as e:   # one bad doc must not sink the batch
-                return {"sha256": sha, "status": "failed", "reason": str(e)}
+                return _fail(vault, sha, "", f"unexpected error: {e}")
 
     results = await asyncio.gather(*[_guarded(s) for s in shas])
     by_status = lambda s: sum(1 for r in results if r.get("status") == s)
     summary = {"results": results, "extracted": by_status("ok"),
                "skipped": by_status("skipped"), "failed": by_status("failed")}
     if summary["extracted"]:
-        summary["post_ingest"] = await _post_ingest(vault, results, brief)
+        summary["post_ingest"] = await _post_ingest(vault, results, brief, post_model)
+        _update_graph_colours(vault)
+    _log(vault, f"INGEST complete — {summary['extracted']} extracted, "
+                f"{summary['skipped']} skipped, {summary['failed']} failed")
     return summary

@@ -119,11 +119,11 @@ _CMD_HELP: dict[str, dict] = {
         "opts": [("--dir DIR", "Parent directory (default: projects_dir from config)")],
     },
     "ingest": {
-        "desc": "Set up extraction session and open in Claude Code",
+        "desc": "Extract queued documents (runs the Python pipeline)",
         "opts": [
-            ("--orchestrator-model M",       "Override orchestrator model for this run (sonnet/opus/haiku; default from watchdog configure)"),
-            ("--extractor-model M",          "Override extraction subagent model for this run (sonnet/opus/haiku; default from watchdog configure)"),
-            ("--finalizer-model M",          "Override post-ingest subagent model for this run — entity synthesis + timeline + briefing (sonnet/opus/haiku; default from watchdog configure)"),
+            ("--extractor-model M",  "Override the extraction model for this run (sonnet/opus/haiku; default from watchdog configure)"),
+            ("--finalizer-model M",  "Override the synthesis + timeline + briefing model for this run (sonnet/opus/haiku; default from watchdog configure)"),
+            ("--concurrency N",      "Documents extracted in parallel for this run (default from watchdog configure: 5)"),
         ],
     },
     "context": {

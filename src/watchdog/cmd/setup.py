@@ -82,6 +82,18 @@ _CONFIGURE_KEYS = {
         "default": "auto",
         "min": 1,
     },
+    "extract_concurrency": {
+        "short": "Documents extracted in parallel during `watchdog ingest` (default: 5)",
+        "help": (
+            "How many documents `watchdog ingest` extracts simultaneously. Each runs a model\n"
+            "  call, so this is bounded by your model rate limits — lower it if you hit throttling,\n"
+            "  raise it for throughput. Override for one run with `watchdog ingest --concurrency N`.\n"
+            "  Default: 5. Minimum: 1 (sequential)."
+        ),
+        "type": "int",
+        "default": 5,
+        "min": 1,
+    },
     "chunk_size": {
         "short": "Pages per chunk when splitting large PDFs for parallel processing (default: 40)",
         "help": (

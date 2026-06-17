@@ -97,14 +97,55 @@ def test_orchestrator_reports_failed_on_postflight_rejection(tmp_path, monkeypat
     assert summary["failed"] == 1 and summary["extracted"] == 0
     assert summary["results"][0]["status"] == "failed"
     assert "post-flight rejected" in summary["results"][0]["reason"]
-    # the queue file is left in place so the doc can be retried
-    assert (vault / ".watchdog" / "queue" / "abc123.json").exists()
+    # abort cleanup: queue file moved to _failed/ (preserved, not auto-retried), failure logged
+    assert not (vault / ".watchdog" / "queue" / "abc123.json").exists()
+    assert (vault / ".watchdog" / "queue" / "_failed" / "abc123.json").exists()
+    assert "FAILED" in (vault / ".watchdog" / "Registry" / "ingest.log").read_text()
 
 
 def test_orchestrator_empty_queue(tmp_path):
     vault = make_vault(tmp_path)
     summary = asyncio.run(orchestrate.run(vault))
     assert summary == {"results": [], "extracted": 0, "skipped": 0, "failed": 0}
+
+
+def test_orchestrator_threads_configured_models(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    seen = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+        seen.append((task, model))
+        parsed = {
+            "classify": {"skill": "general-records.md"},
+            "extract": _extraction(),
+            "entity-synthesis": {"entity_syntheses": []},
+            "timeline-dedup": {"events": []},
+            "briefing": {"investigation_status": "x", "what_was_ingested": []},
+        }.get(task, _extraction())
+        return model_client.ModelResult(parsed=parsed, text="", model=model or "?",
+                                        backend="b", auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate.run(vault, extract_model="opus", post_model="haiku", classify_model="haiku"))
+    by_task = dict(seen)
+    assert by_task["classify"] == "haiku"
+    assert by_task["extract"] == "opus"
+    assert by_task["briefing"] == "haiku"
+
+
+def test_orchestrator_updates_graph_colours(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    (vault / ".obsidian").mkdir()
+    (vault / ".obsidian" / "graph.json").write_text(json.dumps({"colorGroups": []}))
+    _mock(monkeypatch, extraction=_extraction())
+
+    asyncio.run(orchestrate.run(vault))
+
+    graph = json.loads((vault / ".obsidian" / "graph.json").read_text())
+    queries = [g["query"] for g in graph["colorGroups"]]
+    assert "path:entities/company" in queries     # Acme Corp → entities/company/
 
 
 def test_orchestrator_sectioned_path(tmp_path, monkeypatch):
