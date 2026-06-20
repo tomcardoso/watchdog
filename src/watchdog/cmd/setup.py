@@ -94,6 +94,18 @@ _CONFIGURE_KEYS = {
         "default": 5,
         "min": 1,
     },
+    "classify_pages": {
+        "short": "Pages shown to the document classifier during `watchdog ingest` (default: 5)",
+        "help": (
+            "How many leading pages of each document the classifier reads to pick a record skill.\n"
+            "  Uses min(page_count, this). More pages classify ambiguous documents better (e.g. a\n"
+            "  cover letter before the real filing) at a small extra cost on the cheap classifier model.\n"
+            "  Override for one run with `watchdog ingest --classify-pages N`. Default: 5. Minimum: 1."
+        ),
+        "type": "int",
+        "default": 5,
+        "min": 1,
+    },
     "chunk_size": {
         "short": "Pages per chunk when splitting large PDFs for parallel processing (default: 40)",
         "help": (

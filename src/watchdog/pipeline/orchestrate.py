@@ -30,7 +30,10 @@ DEFAULT_CONCURRENCY = 5
 def _say(msg: str) -> None:
     """Print a styled progress line to the terminal (indented per the CLI style guide)."""
     print(f"  {msg}", flush=True)
-_CLASSIFY_EXCERPT_CHARS = 6000
+DEFAULT_CLASSIFY_PAGES = 5
+# Safety cap on classifier input: bounds a pathological single huge page; the page
+# count (classify_pages) is the primary limiter, so keep this generous.
+_CLASSIFY_EXCERPT_CHARS = 24000
 # 24-bit RGB ints for Obsidian graph entity-type colour groups.
 _GRAPH_PALETTE = [0x4C9A2A, 0xC0392B, 0x2980B9, 0x8E44AD, 0xD35400,
                   0x16A085, 0xF39C12, 0x7F8C8D, 0x2C3E50, 0xC2185B]
@@ -196,7 +199,8 @@ def _fail(vault: Path, sha: str, filename: str, reason: str) -> dict:
 
 
 async def _extract_document(vault: Path, sha: str, brief: str | None,
-                            extract_model: str, classify_model: str) -> dict:
+                            extract_model: str, classify_model: str,
+                            classify_pages: int = DEFAULT_CLASSIFY_PAGES) -> dict:
     pf = preflight.run(vault, sha)
     if pf.get("error"):
         return _fail(vault, sha, "", pf["error"])
@@ -205,9 +209,12 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         return {"sha256": sha, "filename": pf.get("filename"), "status": "skipped"}
 
     filename = pf["filename"]
-    page_count = pf.get("page_count") or len(pf.get("pages", []))
+    pages = pf.get("pages", [])
+    page_count = pf.get("page_count") or len(pages)
     _say(f"{_DIM}→  {filename}  classifying ({page_count} page{'s' if page_count != 1 else ''})…{_RESET}")
-    skill = await _classify(vault, _pages_text(pf.get("pages", []))[:_CLASSIFY_EXCERPT_CHARS], classify_model)
+    # Classify on the first N pages (page-aware, not a mid-page char cut); the char cap is a guard.
+    excerpt = _pages_text(pages[:max(1, classify_pages)])[:_CLASSIFY_EXCERPT_CHARS]
+    skill = await _classify(vault, excerpt, classify_model)
     skill_text = _read_skill(vault, skill)
     skill_label = skill.removesuffix(".md")
 
@@ -351,11 +358,13 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
 
 async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
               extract_model: str = "sonnet", post_model: str = "sonnet",
-              classify_model: str = "haiku") -> dict:
+              classify_model: str = "haiku",
+              classify_pages: int = DEFAULT_CLASSIFY_PAGES) -> dict:
     """Extract every queued document (bounded by `concurrency`), then post-ingest.
 
     `extract_model` drives extraction (whole-doc + section); `post_model` drives
-    synthesis/timeline/briefing; `classify_model` the cheap document classifier.
+    synthesis/timeline/briefing; `classify_model` the cheap document classifier,
+    which sees the first `classify_pages` pages of each document.
     """
     queue_dir = vault / ".watchdog" / "queue"
     shas = [f.stem for f in sorted(queue_dir.glob("*.json"))] if queue_dir.exists() else []
@@ -373,7 +382,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             if cancelled.is_set():
                 return {"sha256": sha, "filename": "", "status": "cancelled"}
             try:
-                return await _extract_document(vault, sha, brief, extract_model, classify_model)
+                return await _extract_document(vault, sha, brief, extract_model, classify_model,
+                                               classify_pages)
             except asyncio.CancelledError:           # ctrl+c mid-document — queue file stays
                 return {"sha256": sha, "filename": "", "status": "cancelled"}
             except Exception as e:                   # one bad doc must not sink the batch

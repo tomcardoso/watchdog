@@ -168,11 +168,13 @@ By default Watchdog uses Sonnet for extraction and for the post-ingest step (syn
 watchdog ingest --extractor-model haiku   # faster, cheaper extraction
 watchdog ingest --finalizer-model opus     # stronger synthesis + briefing
 watchdog ingest --concurrency 2            # fewer docs in parallel (if you hit rate limits)
+watchdog ingest --classify-pages 10        # show the classifier more pages of each document
 ```
 
 ```bash
 watchdog configure extractor_model haiku
 watchdog configure extract_concurrency 2
+watchdog configure classify_pages 10
 ```
 
 For each document, the pipeline:
