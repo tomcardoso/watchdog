@@ -240,6 +240,49 @@ def test_single_page_failure_does_not_section(tmp_path, monkeypatch):
     assert summary["failed"] == 1 and summary["extracted"] == 0
 
 
+def test_pinned_skill_skips_classification(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    tasks = []
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+        tasks.append(task)
+        parsed = {
+            "extract": _extraction(),
+            "entity-synthesis": {"entity_syntheses": []},
+            "briefing": {"investigation_status": "x", "what_was_ingested": []},
+        }.get(task, {"events": []})
+        return model_client.ModelResult(parsed=parsed, text="", model="m", backend="b",
+                                        auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault, pinned_skill="general-records"))
+    assert summary["extracted"] == 1
+    assert "classify" not in tasks          # classification skipped entirely
+
+
+def test_pinned_skill_is_injected_into_extraction(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    records = vault / ".claude" / "commands" / "records"
+    records.mkdir(parents=True, exist_ok=True)
+    (records / "corporate-filings.md").write_text("CORPORATE FILINGS SKILL BODY")
+    seen = {}
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+        if task == "extract":
+            seen["prompt"] = prompt
+        parsed = {
+            "extract": _extraction(),
+            "entity-synthesis": {"entity_syntheses": []},
+            "briefing": {"investigation_status": "x", "what_was_ingested": []},
+        }.get(task, {"events": []})
+        return model_client.ModelResult(parsed=parsed, text="", model="m", backend="b",
+                                        auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate.run(vault, pinned_skill="corporate-filings"))
+    assert "CORPORATE FILINGS SKILL BODY" in seen["prompt"]
+
+
 def test_orchestrator_cancels_gracefully_on_sigint(tmp_path, monkeypatch):
     """Ctrl+C during extraction → cancelled summary, no traceback, unfinished docs keep
     their queue file, and post-ingest is skipped."""

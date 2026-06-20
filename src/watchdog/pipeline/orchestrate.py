@@ -209,7 +209,8 @@ def _fail(vault: Path, sha: str, filename: str, reason: str) -> dict:
 
 async def _extract_document(vault: Path, sha: str, brief: str | None,
                             extract_model: str, classify_model: str,
-                            classify_pages: int = DEFAULT_CLASSIFY_PAGES) -> dict:
+                            classify_pages: int = DEFAULT_CLASSIFY_PAGES,
+                            pinned_skill: str | None = None) -> dict:
     pf = preflight.run(vault, sha)
     if pf.get("error"):
         return _fail(vault, sha, "", pf["error"])
@@ -220,10 +221,14 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     filename = pf["filename"]
     pages = pf.get("pages", [])
     page_count = pf.get("page_count") or len(pages)
-    _say(f"{_DIM}→  {filename}  classifying ({page_count} page{'s' if page_count != 1 else ''})…{_RESET}")
-    # Classify on the first N pages (page-aware, not a mid-page char cut); the char cap is a guard.
-    excerpt = _pages_text(pages[:max(1, classify_pages)])[:_CLASSIFY_EXCERPT_CHARS]
-    skill = await _classify(vault, excerpt, classify_model)
+    if pinned_skill:
+        # Skill pinned for the whole run — skip per-document classification entirely.
+        skill = pinned_skill if pinned_skill.endswith(".md") else f"{pinned_skill}.md"
+    else:
+        _say(f"{_DIM}→  {filename}  classifying ({page_count} page{'s' if page_count != 1 else ''})…{_RESET}")
+        # Classify on the first N pages (page-aware, not a mid-page char cut); the char cap is a guard.
+        excerpt = _pages_text(pages[:max(1, classify_pages)])[:_CLASSIFY_EXCERPT_CHARS]
+        skill = await _classify(vault, excerpt, classify_model)
     skill_text = _read_skill(vault, skill)
     skill_label = skill.removesuffix(".md")
 
@@ -381,12 +386,14 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
 async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
               extract_model: str = "sonnet", post_model: str = "sonnet",
               classify_model: str = "haiku",
-              classify_pages: int = DEFAULT_CLASSIFY_PAGES) -> dict:
+              classify_pages: int = DEFAULT_CLASSIFY_PAGES,
+              pinned_skill: str | None = None) -> dict:
     """Extract every queued document (bounded by `concurrency`), then post-ingest.
 
     `extract_model` drives extraction (whole-doc + section); `post_model` drives
     synthesis/timeline/briefing; `classify_model` the cheap document classifier,
-    which sees the first `classify_pages` pages of each document.
+    which sees the first `classify_pages` pages of each document. `pinned_skill`
+    (a record-skill name) skips classification and uses that skill for every document.
     """
     queue_dir = vault / ".watchdog" / "queue"
     shas = [f.stem for f in sorted(queue_dir.glob("*.json"))] if queue_dir.exists() else []
@@ -405,7 +412,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                 return {"sha256": sha, "filename": "", "status": "cancelled"}
             try:
                 return await _extract_document(vault, sha, brief, extract_model, classify_model,
-                                               classify_pages)
+                                               classify_pages, pinned_skill)
             except asyncio.CancelledError:           # ctrl+c mid-document — queue file stays
                 return {"sha256": sha, "filename": "", "status": "cancelled"}
             except Exception as e:                   # one bad doc must not sink the batch

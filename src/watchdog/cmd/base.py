@@ -114,6 +114,7 @@ _CMD_HELP: dict[str, dict] = {
             ("--classifier-model M", "Override the document-classification model for this run (sonnet/opus/haiku; default from watchdog configure)"),
             ("--concurrency N",      "Documents extracted in parallel for this run (default from watchdog configure: 5)"),
             ("--classify-pages N",   "Pages shown to the document classifier for this run (default from watchdog configure: 5)"),
+            ("--skill [NAME]",       "Pin a record skill for every document, skipping classification (no value = pick interactively)"),
         ],
     },
     "context": {

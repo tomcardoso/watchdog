@@ -100,9 +100,9 @@ Chew is fully local and writes no model-derived fields — `document_type` is le
 unconfigured), acquires a run lock (`.watchdog/Registry/.ingest-lock`, stale after 30
 minutes), scans the queue, and clears the previous run's entity-fragment staging (§8).
 It then runs the Python orchestrator in-process (`asyncio.run(orchestrate.run(...))`) and
-releases the lock in a `finally`. Models and concurrency come from `watchdog configure`
-(`classifier_model`, `extractor_model`, `finalizer_model`, `extract_concurrency`,
-`classify_pages`) or per-run flags.
+releases the lock in a `finally`. Models, concurrency, and classification come from
+`watchdog configure` (`classifier_model`, `extractor_model`, `finalizer_model`,
+`extract_concurrency`, `classify_pages`, `default_skill`) or per-run flags.
 
 A second, finer lock (`.watchdog/Registry/.write-lock`, `flock`) serializes the actual
 registry/note writes so the concurrent document workers write safely.
@@ -124,7 +124,9 @@ registry/note writes so the concurrent document workers write safely.
 2. **Classify** — one cheap model call (`model_client.acomplete_json`, `classifier_model`,
    default haiku) over the document's first `classify_pages` pages + the generated
    `records/_index.md`, returning the closest domain-skill filename (§6). Python reads that
-   one skill and injects it into the extraction prompt.
+   one skill and injects it into the extraction prompt. **Skipped entirely when a skill is
+   pinned** for the run (`--skill` / `default_skill`) — that one skill is used for every
+   document, saving a model call per doc on known-homogeneous batches.
 3. **Extract** — one model call against the `EXTRACTION` schema: title, date, entities
    (deduped against the pre-flight candidates), roles, timeline events, key facts,
    per-entity summary/analysis, contradictions, morgue fields, and a briefing scratchpad.
