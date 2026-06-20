@@ -12,7 +12,7 @@ Backends:
 Routing: subscription auth can only use claude-agent-sdk; api-key auth defaults to
 claude-api (cheaper) and may use either. A per-task policy or an explicit `backend=`
 overrides the default. Every call validates the returned JSON against the schema,
-escalates the model tier on failure, and reports usage/cost/latency.
+retries on the same model on failure, and reports usage/cost/latency.
 
 The model is invoked for *reasoning only* — callers pass a fully-formed prompt and a
 schema and get validated structured output back. Deterministic work stays in Python.
@@ -28,8 +28,7 @@ from dataclasses import dataclass
 
 from watchdog.cmd import auth
 
-# Model tiers, cheapest → strongest. Retries escalate up this ladder.
-_TIERS = ("haiku", "sonnet", "opus")
+# Tier name → model id. The configured model is used as-is — no automatic escalation.
 _MODEL_IDS = {
     "haiku":  "claude-haiku-4-5",
     "sonnet": "claude-sonnet-4-6",
@@ -199,8 +198,8 @@ async def acomplete_json(*, task: str, prompt: str, schema: dict, model: str | N
 
     `model` may be a tier name (haiku/sonnet/opus) or a raw model id; omit it for the
     per-task default. `backend` forces 'claude-api' or 'claude-agent-sdk'; omit it to
-    route by auth mode. On invalid/unparseable output the call retries, escalating to
-    the next-stronger tier each time (up to `max_retries` extra attempts).
+    route by auth mode. On invalid/unparseable output the call retries on the **same**
+    model (up to `max_retries` extra attempts) — never escalating — then raises.
     """
     resolved = auth.resolve_auth()
     if resolved["mode"] == "none":
@@ -213,10 +212,7 @@ async def acomplete_json(*, task: str, prompt: str, schema: dict, model: str | N
     max_tokens = _TASK_MAX_TOKENS.get(task, _API_MAX_TOKENS)
 
     requested = model or _TASK_TIERS.get(task, DEFAULT_TIER)
-    if requested in _MODEL_IDS:
-        tier_idx, model_id = _TIERS.index(requested), _MODEL_IDS[requested]
-    else:
-        tier_idx, model_id = None, requested   # raw id — no escalation
+    model_id = _MODEL_IDS.get(requested, requested)   # tier name → id, or a raw id as-is
 
     start = time.monotonic()
     total_cost = 0.0
@@ -241,10 +237,6 @@ async def acomplete_json(*, task: str, prompt: str, schema: dict, model: str | N
                     latency_s=round(time.monotonic() - start, 3), attempts=attempts,
                 )
             last_err = "; ".join(errors[:3])
-
-        if tier_idx is not None and tier_idx < len(_TIERS) - 1:
-            tier_idx += 1
-            model_id = _MODEL_IDS[_TIERS[tier_idx]]
 
     raise ModelError(
         f"task '{task}' failed JSON validation after {attempts} attempt(s) "

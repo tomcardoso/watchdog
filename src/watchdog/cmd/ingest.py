@@ -110,14 +110,15 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
         except Exception:
             pass
 
-    def _model(flag_val, config_key) -> str:
-        m = flag_val or config.get(config_key) or "sonnet"
+    def _model(flag_val, config_key, default="sonnet") -> str:
+        m = flag_val or config.get(config_key) or default
         if m not in _MODEL_IDS:
             sys.exit(f"Error: unknown model '{m}' — choose sonnet, opus, or haiku")
         return m
 
-    extract_model = _model(getattr(args, "extractor_model", None), "extractor_model")
-    post_model    = _model(getattr(args, "finalizer_model", None), "finalizer_model")
+    extract_model  = _model(getattr(args, "extractor_model", None), "extractor_model")
+    post_model     = _model(getattr(args, "finalizer_model", None), "finalizer_model")
+    classify_model = _model(getattr(args, "classifier_model", None), "classifier_model", default="haiku")
     try:
         concurrency = int(getattr(args, "concurrency", None) or config.get("extract_concurrency") or 5)
     except (TypeError, ValueError):
@@ -170,7 +171,7 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
     try:
         summary = asyncio.run(orchestrate.run(
             vault, concurrency=concurrency, extract_model=extract_model, post_model=post_model,
-            classify_pages=classify_pages))
+            classify_model=classify_model, classify_pages=classify_pages))
     except KeyboardInterrupt:
         # Fallback only — orchestrate.run normally traps SIGINT itself and returns a
         # cancelled summary. This catches a Ctrl+C in the brief window before/after that.

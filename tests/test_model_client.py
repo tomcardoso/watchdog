@@ -80,15 +80,14 @@ def test_no_auth_errors(monkeypatch):
 
 # ── validation, retry, escalation ─────────────────────────────────────────────
 
-def test_invalid_then_valid_retries_and_escalates(api_key_auth, monkeypatch):
-    # haiker tier requested; first output bad JSON, second valid
+def test_invalid_then_valid_retries_same_model(api_key_auth, monkeypatch):
+    # haiku requested; first output bad JSON, second valid — retry stays on haiku (no escalation)
     api = FakeBackend(_out("not json"), _out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
     r = mc.complete_json(task="t", prompt="p", schema=SCHEMA, model="haiku")
     assert r.parsed == {"name": "Acme"}
     assert r.attempts == 2
-    assert api.calls[0]["model_id"] == mc._MODEL_IDS["haiku"]    # first attempt
-    assert api.calls[1]["model_id"] == mc._MODEL_IDS["sonnet"]   # escalated
+    assert api.calls[0]["model_id"] == api.calls[1]["model_id"] == mc._MODEL_IDS["haiku"]
 
 
 def test_schema_violation_then_valid(api_key_auth, monkeypatch):

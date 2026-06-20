@@ -1388,6 +1388,15 @@ def test_offer_ingest_eof_prints_hint(configured, monkeypatch, capsys):
     assert "watchdog ingest" in capsys.readouterr().out
 
 
+# ── classifier_model config ───────────────────────────────────────────────────
+
+def test_classifier_model_is_a_configurable_key():
+    from watchdog.cmd.setup import _CONFIGURE_KEYS
+    entry = _CONFIGURE_KEYS["classifier_model"]
+    assert entry["default"] == "haiku"
+    assert set(entry["choices"]) == {"haiku", "sonnet", "opus"}
+
+
 # ── _notify ───────────────────────────────────────────────────────────────────
 
 def test_notify_no_op_on_non_darwin(monkeypatch):

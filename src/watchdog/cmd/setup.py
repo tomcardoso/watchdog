@@ -168,6 +168,19 @@ _CONFIGURE_KEYS = {
         "default": False,
     },
     # ── Models ───────────────────────────────────────────────────────────────
+    "classifier_model": {
+        "short": "Claude model that picks each document's record skill (default: haiku)",
+        "help": (
+            "Model used for the cheap classification step that reads a document's first pages\n"
+            "  and picks the matching record skill. Haiku is plenty for this; raise it only if\n"
+            "  classification is going wrong on ambiguous documents.\n"
+            "  Valid values: haiku, sonnet, opus. Default: haiku.\n"
+            "  Override for a single run with: watchdog ingest --classifier-model M"
+        ),
+        "type": "enum",
+        "default": "haiku",
+        "choices": ["haiku", "sonnet", "opus"],
+    },
     "extractor_model": {
         "short": "Claude model for document extraction (default: sonnet)",
         "help": (
