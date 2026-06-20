@@ -1397,6 +1397,72 @@ def test_classifier_model_is_a_configurable_key():
     assert set(entry["choices"]) == {"haiku", "sonnet", "opus"}
 
 
+# ── configure sections + default_skill ────────────────────────────────────────
+
+def test_configure_sections_cover_every_key_exactly_once():
+    from watchdog.cmd.setup import _CONFIGURE_KEYS, _CONFIGURE_SECTIONS
+    grouped = [k for _, _, ks in _CONFIGURE_SECTIONS for k in ks]
+    assert set(grouped) == set(_CONFIGURE_KEYS)     # nothing falls into "Other"
+    assert len(grouped) == len(set(grouped))        # no key in two sections
+
+
+def test_default_skill_is_a_configurable_key():
+    from watchdog.cmd.setup import _CONFIGURE_KEYS
+    assert "default_skill" in _CONFIGURE_KEYS
+
+
+# ── _resolve_pinned_skill ─────────────────────────────────────────────────────
+
+def _vault_with_skills(tmp_path, names=("general-records", "corporate-filings")):
+    records = tmp_path / "v" / ".claude" / "commands" / "records"
+    records.mkdir(parents=True)
+    for n in names:
+        (records / f"{n}.md").write_text("skill")
+    (records / "_index.md").write_text("internal")     # excluded from choices
+    return tmp_path / "v"
+
+
+def test_resolve_pinned_skill_from_flag(tmp_path):
+    from watchdog.cmd import ingest as ing
+    assert ing._resolve_pinned_skill(args(skill="corporate-filings"), _vault_with_skills(tmp_path), {}) == "corporate-filings"
+
+
+def test_resolve_pinned_skill_strips_md_suffix(tmp_path):
+    from watchdog.cmd import ingest as ing
+    assert ing._resolve_pinned_skill(args(skill="corporate-filings.md"), _vault_with_skills(tmp_path), {}) == "corporate-filings"
+
+
+def test_resolve_pinned_skill_unknown_exits(tmp_path):
+    from watchdog.cmd import ingest as ing
+    with pytest.raises(SystemExit, match="unknown record skill"):
+        ing._resolve_pinned_skill(args(skill="nope"), _vault_with_skills(tmp_path), {})
+
+
+def test_resolve_pinned_skill_from_config(tmp_path):
+    from watchdog.cmd import ingest as ing
+    vault = _vault_with_skills(tmp_path)
+    assert ing._resolve_pinned_skill(args(), vault, {"default_skill": "general-records"}) == "general-records"
+
+
+def test_resolve_pinned_skill_none_classifies(tmp_path):
+    from watchdog.cmd import ingest as ing
+    assert ing._resolve_pinned_skill(args(), _vault_with_skills(tmp_path), {}) is None
+
+
+def test_resolve_pinned_skill_interactive_pick(tmp_path, monkeypatch):
+    from watchdog.cmd import ingest as ing
+    vault = _vault_with_skills(tmp_path, names=("alpha", "beta"))   # sorted: alpha=1, beta=2
+    monkeypatch.setattr("builtins.input", lambda *a: "2")
+    assert ing._resolve_pinned_skill(args(skill=ing._PICK_SKILL), vault, {}) == "beta"
+
+
+def test_resolve_pinned_skill_interactive_enter_classifies(tmp_path, monkeypatch):
+    from watchdog.cmd import ingest as ing
+    vault = _vault_with_skills(tmp_path, names=("alpha", "beta"))
+    monkeypatch.setattr("builtins.input", lambda *a: "")
+    assert ing._resolve_pinned_skill(args(skill=ing._PICK_SKILL), vault, {}) is None
+
+
 # ── _notify ───────────────────────────────────────────────────────────────────
 
 def test_notify_no_op_on_non_darwin(monkeypatch):

@@ -292,6 +292,11 @@ def main() -> None:
                           help="Documents extracted in parallel — overrides watchdog configure (default: 5)")
     p_ingest.add_argument("--classify-pages", type=int, default=None, dest="classify_pages",
                           help="Pages shown to the document classifier — overrides watchdog configure (default: 5)")
+    from watchdog.cmd.ingest import _PICK_SKILL
+    p_ingest.add_argument("--skill", nargs="?", const=_PICK_SKILL, default=None, dest="skill",
+                          metavar="NAME",
+                          help="Pin a record skill for every document, skipping classification. "
+                               "Pass a skill name, or use --skill with no value to pick interactively.")
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_context = sub.add_parser("context", help="Open Claude Code to seed investigation context from _CONTEXT/")

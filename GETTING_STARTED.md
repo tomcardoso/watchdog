@@ -170,13 +170,17 @@ watchdog ingest --finalizer-model opus     # stronger synthesis + briefing
 watchdog ingest --classifier-model sonnet  # stronger document classification
 watchdog ingest --concurrency 2            # fewer docs in parallel (if you hit rate limits)
 watchdog ingest --classify-pages 10        # show the classifier more pages of each document
+watchdog ingest --skill corporate-filings  # pin one record skill, skip classification
 ```
+
+`--skill` with no value lists the installed record skills and lets you pick one interactively. For a vault that's always one document type, set it once:
 
 ```bash
 watchdog configure extractor_model haiku
 watchdog configure classifier_model sonnet
 watchdog configure extract_concurrency 2
 watchdog configure classify_pages 10
+watchdog configure default_skill corporate-filings
 ```
 
 For each document, the pipeline:

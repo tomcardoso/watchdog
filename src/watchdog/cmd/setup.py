@@ -106,6 +106,17 @@ _CONFIGURE_KEYS = {
         "default": 5,
         "min": 1,
     },
+    "default_skill": {
+        "short": "Pin a record skill for every ingested document, skipping classification (default: unset)",
+        "help": (
+            "When every document in a vault is the same type, set this to a record-skill name\n"
+            "  (a file in the vault's records dir, minus .md) to skip per-document classification\n"
+            "  and use that one skill for all of them. Leave unset to classify each document.\n"
+            "  Override for one run with: watchdog ingest --skill NAME (or --skill to pick one)."
+        ),
+        "type": "string",
+        "default": None,
+    },
     "chunk_size": {
         "short": "Pages per chunk when splitting large PDFs for parallel processing (default: 40)",
         "help": (
@@ -236,6 +247,24 @@ _CONFIGURE_KEYS = {
         "min": 1,
     },
 }
+
+# Display grouping for the `watchdog configure` listing (presentation only — set/get is
+# unaffected). Each section owns an ordered list of keys; any key missing from every
+# section is still shown, under "Other", so a newly added key never silently disappears.
+_CONFIGURE_SECTIONS = [
+    ("Vaults", "Where investigations are created.",
+     ["projects_dir"]),
+    ("OCR", "Text recognition for scanned documents.",
+     ["ocr_engine", "ocr_languages", "garbled_threshold"]),
+    ("Chew", "Local preprocessing — parallelism and large-PDF handling.",
+     ["chew_workers", "chunk_size", "chunk_workers", "chunk_timeout", "table_structure", "embed_images"]),
+    ("Ingest", "Extraction run — parallelism, classification, skill pinning.",
+     ["extract_concurrency", "classify_pages", "default_skill"]),
+    ("Models", "Which Claude model runs each step.",
+     ["classifier_model", "extractor_model", "finalizer_model"]),
+    ("Deduplication", "Near-duplicate detection.",
+     ["dup_threshold", "shingle_size"]),
+]
 
 _OCR_ENGINE_PACKAGES = {
     # engine → (import_name, pip_package) or None if bundled with docling
@@ -376,11 +405,29 @@ def cmd_configure(args) -> None:
     if key is None:
         print()
         print(f"  {_BOLD}Configuration{_RESET}  {_DIM}{CONFIG_FILE}{_RESET}")
-        print()
-        for k, meta in _CONFIGURE_KEYS.items():
+
+        def _print_key(k):
+            meta = _CONFIGURE_KEYS[k]
             print(f"  {_DIM}{k:<26}{_RESET} {_display_value(k, config.get(k))}")
             print(f"  {' ' * 26} {_DIM}{meta['short']}{_RESET}")
             print()
+
+        shown = set()
+        for title, blurb, keys in _CONFIGURE_SECTIONS:
+            print()
+            print(f"  {_BOLD}{title}{_RESET}  {_DIM}{blurb}{_RESET}")
+            print()
+            for k in keys:
+                if k in _CONFIGURE_KEYS:
+                    _print_key(k)
+                    shown.add(k)
+        leftovers = [k for k in _CONFIGURE_KEYS if k not in shown]
+        if leftovers:
+            print()
+            print(f"  {_BOLD}Other{_RESET}")
+            print()
+            for k in leftovers:
+                _print_key(k)
         return
 
     if key not in _CONFIGURE_KEYS:

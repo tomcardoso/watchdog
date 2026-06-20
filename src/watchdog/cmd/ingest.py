@@ -15,6 +15,55 @@ from watchdog.cmd.base import (
     load_projects,
 )
 
+# Sentinel for `--skill` with no value: trigger the interactive record-skill picker.
+_PICK_SKILL = "\x00pick"
+
+
+def _available_skills(vault: Path) -> list[str]:
+    """Installed record-skill names (filenames minus .md), excluding internal `_` files."""
+    records = vault / ".claude" / "commands" / "records"
+    if not records.is_dir():
+        return []
+    return sorted(p.stem for p in records.glob("*.md") if not p.name.startswith("_"))
+
+
+def _pick_skill_interactive(vault: Path) -> str | None:
+    """Numbered picker for `watchdog ingest --skill` (no value). Enter → classify per doc."""
+    skills = _available_skills(vault)
+    if not skills:
+        print(f"\n  {_DIM}No record skills installed — classifying each document.{_RESET}")
+        return None
+    print(f"\n  {_BOLD}Pin a record skill{_RESET} {_DIM}for all documents (skips per-document classification):{_RESET}\n")
+    for i, s in enumerate(skills, 1):
+        print(f"    {_CYAN}{i:>2}{_RESET}  {s}")
+    try:
+        ans = input("\n  Number, or Enter to classify each: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return None
+    if ans.isdigit() and 1 <= int(ans) <= len(skills):
+        return skills[int(ans) - 1]
+    if ans:
+        print(f"  {_DIM}Not a valid choice — classifying each document.{_RESET}")
+    return None
+
+
+def _resolve_pinned_skill(args, vault: Path, config: dict) -> str | None:
+    """Resolve the pinned record skill — `--skill` flag → interactive picker → `default_skill`
+    config. Exits with the available list if an explicitly named skill doesn't exist."""
+    raw = getattr(args, "skill", None)
+    if raw == _PICK_SKILL:
+        return _pick_skill_interactive(vault)          # the picker only offers valid skills
+    skill = raw or config.get("default_skill")
+    if not skill:
+        return None
+    canon = skill.removesuffix(".md")
+    if canon not in _available_skills(vault):
+        avail = ", ".join(_available_skills(vault)) or "(none installed)"
+        sys.exit(f"\n  {_YELLOW}Error:{_RESET} unknown record skill {_BOLD}{canon}{_RESET}.\n"
+                 f"  Available: {_CYAN}{avail}{_RESET}\n")
+    return canon
+
 
 def _run_preprocess(
     vault: Path,
@@ -141,6 +190,10 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
     q = len(result["queue_files"])
     print(f"\n  {_BOLD}{q} document{'s' if q != 1 else ''}{_RESET} ready for extraction")
 
+    pinned_skill = _resolve_pinned_skill(args, vault, config)
+    if pinned_skill:
+        print(f"  {_DIM}Skill pinned:{_RESET} {_CYAN}{pinned_skill}{_RESET}{_DIM} — classification skipped.{_RESET}")
+
     def _release_lock() -> None:
         (vault / ".watchdog" / "Registry" / ".ingest-lock").unlink(missing_ok=True)
         (vault / ".watchdog" / "ingest-state.json").unlink(missing_ok=True)
@@ -171,7 +224,7 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
     try:
         summary = asyncio.run(orchestrate.run(
             vault, concurrency=concurrency, extract_model=extract_model, post_model=post_model,
-            classify_model=classify_model, classify_pages=classify_pages))
+            classify_model=classify_model, classify_pages=classify_pages, pinned_skill=pinned_skill))
     except KeyboardInterrupt:
         # Fallback only — orchestrate.run normally traps SIGINT itself and returns a
         # cancelled summary. This catches a Ctrl+C in the brief window before/after that.
