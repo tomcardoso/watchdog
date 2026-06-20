@@ -278,16 +278,15 @@ def main() -> None:
     p_describe.set_defaults(func=cmd_describe)
 
     _model_choices = ["sonnet", "opus", "haiku"]
-    p_ingest = sub.add_parser("ingest", help="Set up extraction session and open in Claude Code")
-    p_ingest.add_argument("--orchestrator-model", choices=_model_choices, default=None,
-                          dest="orchestrator_model",
-                          help="Model for the orchestrator session — overrides watchdog configure (default: sonnet)")
+    p_ingest = sub.add_parser("ingest", help="Extract queued documents (runs the Python pipeline)")
     p_ingest.add_argument("--extractor-model", choices=_model_choices, default=None,
                           dest="extractor_model",
-                          help="Model for extraction subagents — overrides watchdog configure (default: sonnet)")
+                          help="Model for extraction — overrides watchdog configure (default: sonnet)")
     p_ingest.add_argument("--finalizer-model", choices=_model_choices, default=None,
                           dest="finalizer_model",
-                          help="Model for the post-ingest subagent — entity synthesis + timeline + briefing — overrides watchdog configure (default: sonnet)")
+                          help="Model for synthesis + timeline + briefing — overrides watchdog configure (default: sonnet)")
+    p_ingest.add_argument("--concurrency", type=int, default=None,
+                          help="Documents extracted in parallel — overrides watchdog configure (default: 5)")
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_context = sub.add_parser("context", help="Open Claude Code to seed investigation context from _CONTEXT/")

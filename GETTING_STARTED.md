@@ -129,7 +129,7 @@ If a file fails (password-protected, corrupted, unsupported format), it moves to
 
 Press **Ctrl+C** to cancel a chew — the lock is cleaned up automatically and unfinished files remain in `_INCOMING/` for the next run.
 
-When chewing finishes, run the next step from the same vault directory:
+When chewing finishes, Watchdog asks whether to **ingest now** (`Ingest now? [Y/n]`). Press Enter (or `y`) to extract the queued documents straight away — no need to type the next command yourself. If you decline, it prints the command to run when you're ready:
 
 ```bash
 watchdog ingest
@@ -152,7 +152,7 @@ Both flags override the persistent `chew_workers` / `chunk_workers` settings fro
 
 ---
 
-## Step 5: Open in Claude Code
+## Step 5: Ingest
 
 From inside the vault directory, run:
 
@@ -160,35 +160,32 @@ From inside the vault directory, run:
 watchdog ingest
 ```
 
-Watchdog scans the queue and prompts you to open Claude Code. When you confirm, it opens Claude Code with the extraction skill pre-loaded — extraction begins automatically.
+This runs the extraction pipeline **in your terminal** — there's no Claude Code session to open. Watchdog scans the queue, confirms, and processes documents in parallel. The model is called only for the reasoning steps; everything mechanical runs in Python. (Authentication is set during `watchdog setup` — your Claude subscription or an API key; see INSTALL.)
 
-By default, Watchdog uses Claude Sonnet for all three components: the orchestrator, the extraction subagents (one per document), and the post-ingest subagent — a single agent that synthesizes prose for entities mentioned in two or more documents, reconciles the timeline, and writes the briefing (controlled by `finalizer_model`). You can set persistent defaults with `watchdog configure`, or override for a single run at the command line:
+By default Watchdog uses Sonnet for extraction and for the post-ingest step (synthesis + timeline + briefing), and Haiku for the quick document classification. Set persistent defaults with `watchdog configure`, or override per run:
 
 ```bash
-watchdog ingest --extractor-model haiku           # faster, cheaper subagents
-watchdog ingest --orchestrator-model opus         # more capable orchestrator
-watchdog ingest --finalizer-model opus            # stronger model for synthesis + timeline + briefing
-watchdog ingest --orchestrator-model opus --extractor-model haiku
+watchdog ingest --extractor-model haiku   # faster, cheaper extraction
+watchdog ingest --finalizer-model opus     # stronger synthesis + briefing
+watchdog ingest --concurrency 2            # fewer docs in parallel (if you hit rate limits)
 ```
-
-To set a persistent default so you don't have to pass the flag every time:
 
 ```bash
 watchdog configure extractor_model haiku
-watchdog configure orchestrator_model sonnet
+watchdog configure extract_concurrency 2
 ```
 
-Claude works through each chewed file in the queue, processing up to 5 documents in parallel. For each document, it:
+For each document, the pipeline:
 
 1. Reads the extracted text
-2. Identifies the document type and loads the relevant extraction skill (there are 34 built-in skills for corporate filings, court documents, real estate records, and more)
+2. Classifies the document type and loads the matching domain skill (34 built-in skills for corporate filings, court documents, real estate records, and more)
 3. Extracts entities (people, companies, addresses) with page-level citations and confidence levels
 4. Extracts relationships between entities
 5. Extracts datable events for the timeline
 6. Checks for contradictions against entities already in the vault
 7. Writes everything to the vault
 
-When extraction is complete, a single post-ingest subagent synthesizes prose for multi-mention entities, reconciles the timeline, and produces a **post-ingest briefing** summarizing:
+When extraction is complete, the post-ingest step synthesizes prose for multi-mention entities, reconciles the timeline, and produces a **post-ingest briefing** summarizing:
 - What documents were processed and what types they were
 - What entities were found and which already existed in the vault
 - Connections between entities — shared addresses, overlapping roles, entities appearing across multiple documents
@@ -196,13 +193,7 @@ When extraction is complete, a single post-ingest subagent synthesizes prose for
 
 Read the briefing carefully. The connections section is often where the story is.
 
-For large batches (hundreds of documents), you can limit how many are processed per session:
-
-```
-/watchdog-ingest --limit 50
-```
-
-This processes 50 documents and stops cleanly. Start a new Claude Code session and run it again to continue. Files already ingested are in `morgue/` and won't be touched again.
+A failed document is logged to `.watchdog/Registry/ingest.log` and set aside in `.watchdog/queue/_failed/` — the rest of the batch still completes. For very large batches, chew and ingest in groups. When ingest finishes, **open a fresh Claude Code session** to ask investigation questions (`/watchdog-query`, `/watchdog-surface`).
 
 ---
 
@@ -384,8 +375,8 @@ watchdog delete shell-company-investigation --purge    # also permanently delete
 Watchdog is designed to keep token costs predictable. A few things to know:
 
 - **Extraction runs outside Claude Code.** OCR, Docling document conversion, and embeddings all run in your terminal. Claude only sees clean, pre-extracted text — not raw document bytes.
-- **Documents are classified during extraction, not in a separate pass.** The subagent that extracts a document also identifies its type and loads only the single matching domain skill — not all of them. There is no separate classification model or cloud call.
-- **Each document is an isolated subagent.** The orchestrator context stays flat regardless of batch size, so large batches don't accumulate context as they process.
-- **Use `--limit` for large batches.** If you have hundreds of documents, `/watchdog-ingest --limit 50` processes 50 and stops cleanly. Start a new session to continue — processed files are already in `morgue/` and won't be touched again.
+- **Ingest runs in Python, not Claude Code.** `watchdog ingest` drives the pipeline in your terminal and calls the model only for reasoning (classify, extract, synthesize, dedup the timeline, brief). Each document is classified by a quick step that loads only the single matching domain skill — not all of them.
+- **Documents are extracted in parallel.** Bounded by `extract_concurrency` (default 5); lower it with `watchdog configure extract_concurrency N` or `--concurrency N` if you hit model rate limits.
+- **Failed documents don't sink the batch.** A doc that fails extraction is logged to `.watchdog/Registry/ingest.log` and moved to `.watchdog/queue/_failed/`; move it back to retry. For very large collections, chew and ingest in groups.
 
 A Pro subscription ($20/month) is sufficient for most journalism work. If you're ingesting hundreds of documents at a time, a Max subscription gives higher session limits.

@@ -251,6 +251,7 @@ def run_ingest(
     workers: int | None = None,
     chunk_workers: int | None = None,
     files: list | None = None,
+    show_ingest_hint: bool = True,
 ) -> None:
     incoming = vault / "_INCOMING"
     queue    = vault / ".watchdog" / "queue"
@@ -266,7 +267,8 @@ def run_ingest(
     lock_file.write_text(f"started_at: {started_at}\npid: {os.getpid()}\n")
 
     try:
-        _run_ingest_inner(vault, incoming, queue, staging, workers, chunk_workers, files)
+        _run_ingest_inner(vault, incoming, queue, staging, workers, chunk_workers, files,
+                          show_ingest_hint)
     finally:
         try:
             lock_file.unlink()
@@ -282,13 +284,14 @@ def _run_ingest_inner(
     workers: int | None,
     chunk_workers: int | None,
     files: list | None,
+    show_ingest_hint: bool = True,
 ) -> None:
     if files is None:
         files = find_files([incoming])
     if not files:
         queued = len(list(queue.glob("*.json")))
         if queued:
-            print(f"\n  {_DIM}_INCOMING/ is empty — {queued} file{'s' if queued != 1 else ''} ready for {_RESET}{_CYAN}/watchdog-ingest{_RESET}{_DIM}.{_RESET}\n")
+            print(f"\n  {_DIM}_INCOMING/ is empty — {queued} file{'s' if queued != 1 else ''} ready. Run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM}.{_RESET}\n")
         else:
             print(f"\n  {_DIM}_INCOMING/ is empty — nothing to chew.{_RESET}\n")
         return
@@ -438,8 +441,8 @@ def _run_ingest_inner(
     print()
     print(f"  {'  ·  '.join(parts)}")
 
-    if ok:
+    if ok and show_ingest_hint:
         print()
-        print(f"  Open Claude Code and run:  {_CYAN}/watchdog-ingest{_RESET}")
+        print(f"  Run:  {_CYAN}watchdog ingest{_RESET}")
 
     print()

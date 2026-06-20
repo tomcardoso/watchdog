@@ -28,14 +28,15 @@ These run through every decision below.
 - **Cost-consciousness.** Token spend is treated as a budget. Work is pushed to the
   cheapest layer that can do it correctly, and model work is bounded (gated,
   fanned out, fed pre-digested inputs) rather than open-ended.
-- **Flat orchestrator context.** Each document is extracted in an isolated subagent
-  so document text, skill files, and extraction output never accumulate in the
-  orchestrator's context. The orchestrator holds only compact state regardless of
-  batch size. Post-extraction work (entity synthesis, timeline, briefing) is likewise
-  pushed into one isolated post-ingest subagent fed a compact bundle.
-- **Parallel, with serialized writes.** Subagents run concurrently; all registry
-  and note writes funnel through a single serialized, lock-guarded path so
-  concurrency is safe without the model having to reason about it.
+- **Model only for reasoning.** A Python orchestrator (`pipeline/orchestrate.py`) runs the
+  ingest loop and calls the model only for judgement — classify, extract, synthesize,
+  dedup timeline collisions, brief. Dispatch, file I/O, pre/post-flight, registry writes,
+  and the synthesis bundle are deterministic Python. Each document's text lives only in
+  its own extraction call, never in a long-lived context.
+- **Parallel, with serialized writes.** Documents are extracted concurrently
+  (semaphore-bounded); all registry and note writes funnel through a single serialized,
+  lock-guarded path (`write_vault`), so concurrency is safe without the model reasoning
+  about it.
 
 ---
 
@@ -43,19 +44,26 @@ These run through every decision below.
 
 ```
 _INCOMING/ ──▶ chew ──▶ .watchdog/queue/<sha>.json ──▶ ingest ──▶ vault notes + registry
- (raw docs)   (local)        (extracted text)         (Claude)     (entities, documents,
-                                                                     timeline, briefings)
+ (raw docs)   (local)        (extracted text)        (Python; model    (entities, documents,
+                                                       for reasoning)    timeline, briefings)
 ```
 
 Two human-invoked phases, with a clean handoff via the queue:
 
 1. **Chew** (`watchdog chew`) — local, no model. OCR/layout extraction, large-PDF
    chunking, near-duplicate fingerprinting. Writes one queue JSON per document.
-2. **Ingest** (`watchdog ingest` → `/watchdog-ingest`) — model-driven. A Claude
-   orchestrator fans out per-document extractor subagents (large documents are
-   extracted in sequential page-range sections), then delegates a single post-ingest
-   subagent to synthesize multi-mention entity prose (from a Python-built bundle),
-   reconcile the timeline, and write the briefing. A runaway guard lets a stuck subagent bail cleanly without wedging the batch.
+2. **Ingest** (`watchdog ingest`) — a **Python orchestrator** (`pipeline/orchestrate.py`)
+   that runs the whole pipeline in-process and calls the model (via `model_client`) **only
+   for the reasoning steps**: classify, extract, synthesize entity prose, dedup colliding
+   timeline events, write the briefing. Everything mechanical — dispatch, pre/post-flight,
+   registry writes, timeline staging, the synthesis bundle, near-dup — is deterministic
+   Python. Documents are extracted concurrently (semaphore-bounded); a failed document is
+   logged and set aside (`_failed/`) without sinking the batch.
+
+> **Earlier design (through #117):** ingest launched the `/watchdog-ingest` Claude Code
+> skill, which orchestrated extractor subagents and a post-ingest subagent. #118 (W3)
+> replaced that skill-as-orchestrator with the Python orchestrator above so the model
+> stops paying reasoning tokens to act as a control-flow engine — see D18.
 
 ---
 
@@ -88,94 +96,85 @@ Chew is fully local and writes no model-derived fields — `document_type` is le
 
 **Code:** `pipeline/ingest_setup.py`, `cmd/ingest.py`.
 
-`watchdog ingest` acquires a run lock (`.watchdog/Registry/.ingest-lock`, treated as
-stale after 30 minutes), scans the queue, clears the previous run's entity-fragment
-staging (§8), and writes `.watchdog/ingest-state.json` for the skill to read. The
-`/watchdog-ingest` skill reads that state and **must** release the lock on every
-exit path via `watchdog unlock` (which removes the lock, deletes the state file, and
-cleans `wdg_*` temp files).
+`watchdog ingest` resolves auth (`auth.resolve_auth`; errors to `watchdog setup` if
+unconfigured), acquires a run lock (`.watchdog/Registry/.ingest-lock`, stale after 30
+minutes), scans the queue, and clears the previous run's entity-fragment staging (§8).
+It then runs the Python orchestrator in-process (`asyncio.run(orchestrate.run(...))`) and
+releases the lock in a `finally`. Models and concurrency come from `watchdog configure`
+(`extractor_model`, `finalizer_model`, `extract_concurrency`) or per-run flags.
 
-A second, finer lock (`.watchdog/Registry/.write-lock`, `flock`) serializes the
-actual registry/note writes so parallel subagents can write safely.
+A second, finer lock (`.watchdog/Registry/.write-lock`, `flock`) serializes the actual
+registry/note writes so the concurrent document workers write safely.
 
 ---
 
 ## 5. Ingest (extraction)
 
-**Skills:** `skills/watchdog-ingest.md` (orchestrator),
-`skills/watchdog-ingest-subagent.md` (per-document extractor).
-**Code:** `pipeline/preflight.py`, `pipeline/postflight.py`, `pipeline/write_vault.py`.
+**Code:** `pipeline/orchestrate.py` (the loop), `model_client.py` (the model adapter),
+`pipeline/prompts.py` + `pipeline/schemas.py` (task prompts + JSON contracts),
+`pipeline/preflight.py`, `pipeline/postflight.py`, `pipeline/write_vault.py`.
 
-The orchestrator (model: `ORCHESTRATOR_MODEL`, configurable via `watchdog configure orchestrator_model` or `--orchestrator-model`) partitions the queue by
-estimated size. **Normal** documents are processed in **batches of up to 5**, all
-extractor subagents in a batch launched in parallel. **Large** documents (over
-`section_token_threshold`) are extracted in sections instead (see "Large documents"
-below). Each normal subagent:
+`orchestrate.run` scans the queue and extracts documents concurrently, bounded by an
+`asyncio.Semaphore(extract_concurrency)`. Per document (`_extract_document`):
 
-1. **Pre-flight** (`watchdog pre-flight <sha>`) — packages everything the subagent
-   needs: the page text path, and candidate existing entities matched by substring
-   against the manifest (no ML), each carrying its current note summary (§8).
-2. **Load domain skill** — identifies the document type from the full text and reads
-   the single closest-matching skill from `.claude/commands/records/`, consulting
-   `records/_index.md` (a generated one-line description per skill) when unsure.
-   Falls back to `general-records.md` (see §6).
-3. **Extract** — title, date, entities (with dedup against pre-flight candidates),
-   roles, timeline events, key facts, per-entity summary and analysis,
-   contradictions.
-4. **Post-flight** (`watchdog post-flight --extraction …`) — validates the JSON,
-   applies `match_id` merge decisions, reads the MinHash signature, and calls
-   `write_vault.run()` which performs all vault writes.
+1. **Pre-flight** (`preflight.run`, a function call) — packages the page text and the
+   candidate existing entities matched by substring against the manifest (no ML), each
+   carrying its current note summary + timeline/roles/contradictions digest (§8).
+2. **Classify** — one cheap model call (`model_client.acomplete_json`, haiku) over a text
+   excerpt + the generated `records/_index.md`, returning the closest domain-skill
+   filename (§6). Python reads that one skill and injects it into the extraction prompt.
+3. **Extract** — one model call against the `EXTRACTION` schema: title, date, entities
+   (deduped against the pre-flight candidates), roles, timeline events, key facts,
+   per-entity summary/analysis, contradictions, morgue fields, and a briefing scratchpad.
+   Schema validation + a tier-escalating retry live in `model_client`; the orchestrator
+   adds one post-flight repair retry.
+4. **Post-flight** (`postflight.run`, a function call) — validates the JSON, applies
+   `match_id` merges, and calls `write_vault.run()`.
 
 `write_vault` is the single deterministic writer: it merges entities (reconciling
-near-duplicate slugs coined by parallel subagents via the shared `entity_norm`
-name+type normalization), writes entity and document notes, updates the four registry
-files, appends timeline events, and moves the source file to the morgue — all inside
-the write lock.
+near-duplicate slugs coined by concurrent workers via the shared `entity_norm`
+name+type normalization), writes entity and document notes, updates the registry files,
+stages timeline events, and moves the source file to the morgue — all inside the write
+lock.
 
 **Large documents — sectioned extraction.** Code: `pipeline/section.py`,
-`pipeline/merge.py`; skill: `watchdog-ingest-section-subagent.md`. A document too big
-for one context is split by `watchdog section-plan` into overlapping page-range
-sections, extracted **one at a time in reading order** with a running scratchpad
-carried forward, then combined by `watchdog merge-sections` into a single extraction
-JSON that goes through the same post-flight / `write_vault` path. Section subagents
-self-classify like normal ones (no pre-classification — see §6).
+`pipeline/merge.py`. A document over `section_token_threshold` is split by `section.run`
+into overlapping page-range sections, extracted **one at a time in reading order** with a
+carry-forward block (entities-so-far + observations) in each section's prompt, then
+combined by `merge.merge_extractions` into a single extraction JSON that goes through the
+same post-flight / `write_vault` path.
 
-**Runaway guard & abort.** A subagent that cannot make progress returns `STATUS:
-failed` instead of looping. The orchestrator then runs `watchdog ingest-abort <sha>`
-(`pipeline/abort.py`), which clears the document's staging/section files and moves its
-queue file to `.watchdog/queue/_failed/`, leaving the registry untouched. Because a
-clean bail never wrote vault state, the document re-ingests cleanly once moved back.
+**Failure handling.** The model adapter raises if it can't get schema-valid JSON; a doc
+whose extraction or post-flight fails is logged to `.watchdog/Registry/ingest.log` and
+cleaned via `abort.run` (`pipeline/abort.py`) — staging/section temp removed, queue file
+moved to `.watchdog/queue/_failed/`, registry untouched. One bad document never sinks the
+batch; move the queue file back from `_failed/` to retry.
 
 ---
 
 ## 6. Document classification
 
-**Decision:** classification happens **at extraction time, performed by the
-extractor subagent reading the document** — not by a separate pre-pass.
+**Decision:** classification is a **dedicated, cheap model call the orchestrator makes
+before extraction** (`_classify`, on the haiku tier) — not an embedding pre-pass, and no
+longer folded into the extractor.
 
 - **History.** An earlier design embedded the first N pages with a local fastembed
   model (`bge-small-en-v1.5`) and matched them against embeddings of the skill files
   to pre-assign a `document_type` at chew time.
 - **Why it was removed (issue #95).** The comparison was register-mismatched — a
   document's text vs. *meta-text describing how to read that document type* — and
-  with ~35 adjacent skills the cosine similarity was noisy (misclassifications
-  including `null` and wrong categories). Worse, a confident-wrong classification
-  was the *most* harmful outcome: the subagent would load the wrong domain skill and
-  skip its own inference.
-- **Why model-at-extraction wins.** The subagent already reads the entire document;
-  having it pick the skill from descriptive filenames (plus the generated
-  `records/_index.md` for adjacent cases) is both more accurate and nearly free,
-  because the expensive work (reading the document) happens regardless. It also
-  deleted an entire subsystem (the embedding cache, hashing, thresholds).
+  with ~35 adjacent skills the cosine similarity was noisy. Worse, a confident-wrong
+  classification was the *most* harmful outcome: it loaded the wrong domain skill.
+- **Why a dedicated model call wins.** The orchestrator sends a text excerpt + the
+  generated `records/_index.md` to a cheap haiku call that returns the skill filename;
+  Python then reads that one skill and injects it into the extraction prompt. Accurate,
+  cheap, and it keeps the extraction prompt lean (only the relevant skill, not the
+  index). When the skill-based extractor self-classified, that work was turns inside the
+  expensive extraction call (the #87 tax); a separate haiku call is cheaper.
 - **Tradeoff.** `document_type` is `null` in the queue between chew and ingest; it is
-  populated by extraction. Accepted — nothing downstream needs it earlier.
-- **Sections too.** Large documents are extracted in sections (§5). Section 1
-  classifies from its pages (consulting `_index.md`, falling back to
-  `general-records.md`) and records the chosen skill path as a `Domain skill:` line
-  in the running scratchpad. Sections 2..N read that line and load the same skill
-  rather than re-classifying — guaranteeing all sections of a document use the same
-  domain skill. If the scratchpad line is somehow absent, later sections fall back to
-  self-classifying.
+  populated at ingest. Accepted — nothing downstream needs it earlier.
+- **Sections.** A sectioned document (§5) is classified once, on its full-text excerpt,
+  before sectioning; every section's prompt carries the same domain skill.
 - **Note.** The fastembed model is still used for the **search index** (§11); only
   the classifier was removed.
 
@@ -215,38 +214,36 @@ model.
 
 ## 8. Entity synthesis: carryforward + gated synthesis
 
-> **One post-ingest subagent does both synthesis and finalize.** Entity prose
-> synthesis (this section) and timeline reconciliation + briefing (§9) run in a
-> **single** `watchdog-post-ingest-subagent.md` agent, fed a compact Python-built
-> bundle. They were originally split into a per-entity synthesis fan-out plus a
-> separate finalize agent (old D16); the fan-out's per-agent startup overhead
-> dominated post-ingest cost, so they were merged — see D17.
+> **Post-ingest runs in the Python orchestrator.** Entity prose synthesis (this section)
+> and timeline reconciliation + briefing (§9) happen in `orchestrate._post_ingest`, each a
+> single deterministic-Python step wrapped around one model call. They were once a
+> per-entity synthesis fan-out (D16), then one bundled post-ingest subagent (D17), and now
+> plain function calls in the orchestrator (D18) — the progression that drove post-ingest
+> cost down.
 
 Synthesizing an entity's prose across all its documents on every ingest would be
-expensive and would re-bloat the orchestrator context. Synthesizing nothing (the old
-behaviour) let a later document's summary clobber an earlier, richer one. The
-solution is **two complementary mechanisms covering disjoint cases:**
+expensive. Synthesizing nothing (the old behaviour) let a later document's summary
+clobber an earlier, richer one. The solution is **two complementary mechanisms covering
+disjoint cases:**
 
 | Case (this ingest) | Mechanism | Cost |
 |---|---|---|
 | Brand-new entity, 1 mention | plain write (extraction summary) | free |
 | Pre-existing entity, 1 mention | **inline carryforward** | ~free, parallel |
-| Any entity, **2+ mentions** | **bundled synthesis in the post-ingest subagent** | bounded |
+| Any entity, **2+ mentions** | **bundled synthesis in `_post_ingest`** | bounded |
 
 - **Inline carryforward.** Pre-flight carries each matched entity's current
-  `## Summary` into the subagent's candidate list; the subagent *revises* it with the
-  new document rather than writing a fresh single-document summary. Handles the common
-  single-touch case in the extractor that's already running — no extra agent.
+  `## Summary` into the extraction prompt's candidate list; extraction *revises* it with
+  the new document rather than writing a fresh single-document summary. Handles the common
+  single-touch case in the extraction call that's already running — no extra call.
 - **Gated synthesis.** As `write_vault` writes each entity, it appends a per-entity
   **fragment** (the entity's slice of the extraction JSON — summary, analysis, roles —
   plus document attribution) to `.watchdog/tmp/entity-fragments/<id>.md` and bumps a
   count in `_queue.json`. This is a *free byproduct* of data the extractor already
-  produced — no extra extractor tokens. After extraction, `watchdog
-  build-synthesis-bundle` (`pipeline/synthesis_bundle.py`, §3 of the ingest skill)
-  selects entities with **count ≥ 2** and packs each one's fragments + current prose
-  into a single compact `.watchdog/tmp/synthesis-bundle.json`. The post-ingest subagent
-  (§9) reads that one bundle, synthesizes all of them, and `watchdog apply-syntheses`
-  bulk-writes the Summary/Analysis via the shared writer in `pipeline/finalize_entity.py`.
+  produced. In `_post_ingest`, `synthesis_bundle.build_bundle` selects entities with
+  **count ≥ 2** and packs each one's fragments + current prose into one compact bundle;
+  a single model call synthesizes them all; `synthesis_bundle.apply_bundle` bulk-writes
+  the Summary/Analysis via the shared writer in `pipeline/finalize_entity.py`.
 - **The gate is the cost control.** Most entities in a batch are single-mention and
   never hit synthesis. Cost scales with *contested* entities, not all entities.
 - **Why fragments are a byproduct, not extractor-written prose.** Having the extractor
@@ -263,7 +260,7 @@ solution is **two complementary mechanisms covering disjoint cases:**
   central figure.
 
 Bundled synthesis writes **only** Summary and Analysis; Contradictions,
-Timeline, Relationships, and Notes are preserved untouched. `apply-syntheses` skips
+Timeline, Relationships, and Notes are preserved untouched. `apply_bundle` skips
 any entity the model omits or returns with an empty summary, so its carried-forward
 prose stays in place.
 
@@ -271,26 +268,27 @@ prose stays in place.
 
 ## 9. Timeline reconciliation & briefing
 
-**Code:** `pipeline/timeline.py`. **Skill:** `watchdog-post-ingest-subagent.md`.
-**Files:** `.watchdog/timeline/`, `briefings/`.
+**Code:** `pipeline/orchestrate.py` (`_post_ingest`), `pipeline/timeline.py`.
+**Files:** `.watchdog/timeline/`, `briefings/`, `hot.md`, `log.md`.
 
-Each extractor (or section) subagent writes its events to a **raw** per-document file
-`{date}_{sha7}.ndjson` — write-only and lock-free, since each filename is unique. All
-merge/dedup and the briefing are then deferred to the **single post-ingest subagent**
-(model `FINALIZER_MODEL`) launched once after extraction — the same agent that did the
-bundled entity synthesis (§8) — so the synthesis bundle, scratchpad prose, and
-timeline NDJSON never enter the orchestrator's context. That subagent:
+Each document's extraction stages its events to **raw** per-document files
+`{date}_{sha7}.ndjson` (`timeline.stage_timeline_events`, called from post-flight) —
+write-only and lock-free, since each filename is unique. All merge/dedup and the briefing
+then run in `_post_ingest` (model: `post_model`) after extraction:
 
-- runs `watchdog timeline-collisions` (promotes dates with no prior canonical to
-  **canonical** `{date}.ndjson`; returns the collisions where a canonical already
-  existed), semantically deduplicates each collision, and runs `watchdog
-  rebuild-timeline` to render `timeline.md`;
-- reads the per-document scratchpads and `RESULTS` / `NEARDUP_ALERTS` /
-  `CONTRADICTION_FLAGS` handed to it, and writes the post-ingest briefing under
-  `briefings/`.
+- `timeline.collisions(vault)` promotes dates with no prior canonical to **canonical**
+  `{date}.ndjson` and returns the collisions where a canonical already existed; the
+  orchestrator sends each collision's events to one model call (`timeline-dedup`,
+  preserving full event objects), writes the deduped set back, then calls
+  `timeline.cmd_rebuild_timeline` to render `timeline.md`. If the dedup call fails it
+  falls back to the union rather than losing events;
+- builds a briefing prompt from the per-document scratchpads + the compact per-doc
+  results (near-dup alerts, contradiction flags), makes one model call (`briefing`), and
+  `_write_briefing` writes the structured prose into `briefings/<ts>.md`, `hot.md`, and a
+  `log.md` entry.
 
-The orchestrator only prints the returned briefing path — it never reads the
-scratchpads, timeline files, or briefing itself.
+`watchdog ingest` prints the per-document summary; the briefing/hot/log files are the
+durable record a fresh session reads.
 
 ---
 
@@ -353,15 +351,21 @@ registry for every document would be wasteful. The manifest is the cheap index.
 
 ## 13. Models & skills
 
-- **Models** (all configurable via `watchdog configure`, default sonnet):
-  `orchestrator_model` (ingest orchestrator), `extractor_model` (per-document, section,
-  and large-document subagents), and `finalizer_model` (the single post-ingest subagent
-  — bundled synthesis + timeline + briefing, §8–§9). Each can also be overridden for a
-  single run via the matching `watchdog ingest` flag.
-- **Subagent skills**: `watchdog-ingest-subagent.md` (per-document extraction),
-  `watchdog-ingest-section-subagent.md` (one page-range section of a large document),
-  and `watchdog-post-ingest-subagent.md` (bundled entity synthesis + timeline +
-  briefing, §8–§9).
+- **Models** (configurable via `watchdog configure`, default sonnet): `extractor_model`
+  (extraction, whole-doc + section) and `finalizer_model` (post-ingest synthesis +
+  timeline + briefing, §8–§9); classification runs on haiku. `extract_concurrency`
+  (default 5) bounds parallel extraction. Each is overridable per run via the matching
+  `watchdog ingest` flag (`--extractor-model` / `--finalizer-model` / `--concurrency`).
+- **Model client** (`model_client.py`): the orchestrator's single entry to the model.
+  Routes each task to a backend — `claude-agent-sdk` (subscription login or API key — the
+  only backend that works on a subscription) or `claude-api` (raw Messages + structured
+  outputs) — by auth mode and per-task policy, validates the JSON, escalates the tier on
+  failure, and reports cost/latency. Auth (subscription vs API key) is resolved by
+  `cmd/auth.py` (see #119).
+- **Claude Code skills** (in-vault, run interactively — *not* part of ingest):
+  `watchdog-context`, `watchdog-entity`, `watchdog-query`, `watchdog-surface`,
+  `watchdog-wiki`, `watchdog-health`. Ingest is the Python orchestrator (§5); it uses no
+  Claude Code skill.
 - **Domain skills** live in `src/watchdog/skills/records/` and are installed into a
   vault's `.claude/commands/records/` by `setup_cmd.install_skills`, which also
   generates `records/_index.md` (one-line description per skill, derived from each
@@ -382,7 +386,7 @@ registry for every document would be wasteful. The manifest is the cheap index.
 |---|---|---|---|
 | D1 | Local-first preprocessing | Source documents never leave the machine; no API cost for chew | Bound by local compute for OCR/layout |
 | D2 | Deterministic code writes, model decides | Reproducible, testable, cheap bookkeeping; model reserved for judgement | More Python surface to maintain |
-| D3 | Isolated extractor subagent per document | Flat orchestrator context regardless of batch size | Per-subagent startup overhead |
+| D3 | ~~Isolated extractor subagent per document~~ **Superseded by D18.** | Kept the (model) orchestrator's context flat by extracting each doc in a throwaway subagent. Moot once the orchestrator became Python (no model context to keep flat) | — |
 | D4 | Classification at extraction time, by the model (§6) | Accurate, near-free (doc already read), deleted the embedding subsystem | `document_type` null until extraction |
 | D5 | Structured vs. synthesized note split (§7) | Mechanical merge is correct+free for facts; prose needs the model | Two write paths |
 | D6 | Contradictions as a discrete cited section, verified at extraction (§7) | Verifiable claims; the extractor is the sole verifier (no orchestrator removal pass); chronological sort would be a worse timeline | Extra section + extraction field; a bad callout isn't caught downstream |
@@ -393,7 +397,8 @@ registry for every document would be wasteful. The manifest is the cheap index.
 | D11 | Separate lightweight manifest (§12) | Cheap candidate lookup in pre-flight | A second index to keep in sync (done in `write_vault`) |
 | D12 | Generate `records/_index.md` by scanning the records dir (§13), don't check in a static index; rebuild unconditionally on install/refresh/ingest | Single source of truth — the skill's own intro; a static file silently drifts and breaks the "just drop a skill file" workflow. Scanning the dir (not the package) indexes user-added skills; unconditional rebuild is cheap and self-heals on add/edit/delete (no mtime edge cases) | Descriptor quality depends on parsing the intro prose; a dedicated frontmatter descriptor field is the upgrade path if that heuristic gets fragile |
 | D13 | Sectioned extraction for large documents (§5) | Documents over the token threshold don't fit one context; sequential page-range sections with a carried scratchpad + deterministic `merge-sections` preserve cross-section consistency | Large docs are extracted serially (slower); needs overlap + merge-dedup |
-| D14 | Timeline reconciliation + briefing in one finalize subagent, off the orchestrator (§9) | Keeps the orchestrator context flat — scratchpad prose and timeline NDJSON never enter it | An extra subagent round-trip; the orchestrator can't see briefing internals |
+| D14 | ~~Timeline reconciliation + briefing in one finalize subagent~~ **Superseded by D18.** | Kept scratchpad prose and timeline NDJSON out of the model orchestrator's context. Moot under Python orchestration — `_post_ingest` reads them directly | — |
 | D15 | Runaway guard + `ingest-abort` (§5) | A stuck subagent bails (`STATUS: failed`) instead of wedging the batch; clean bail leaves no partial vault writes, so the doc re-ingests cleanly | A failed doc must be manually moved back from `queue/_failed/` to retry |
 | D16 | ~~Entity synthesis (§8) and finalize (§9) kept as separate subagents, not merged~~ **Superseded by D17.** | Original rationale: synthesis was a per-entity parallel fan-out, finalize a single whole-batch agent; merging would serialize entity work and re-concentrate fragments + scratchpads + timeline into one context. This held while synthesis was a fan-out — but the fan-out itself proved to be the cost problem (see D17) | — |
-| D17 | Merge synthesis + finalize into one post-ingest subagent fed a Python-built bundle (§8, §9) | The per-entity fan-out launched one subagent per `count ≥ 2` entity (36 in a representative run), each paying startup + preamble cache-write to do a few hundred tokens of judgement — ~$5 of a $19 run. D16 feared merging would re-bloat context, but fragments are *compact digests* (D8), so one agent reading the whole bundle stays small; the cost win (one agent, one cached preamble) dominates the serialization cost (turns in a shared context are far cheaper than agent startups). `build-synthesis-bundle` / `apply-syntheses` keep the model out of file I/O and bulk-write deterministically | One agent serializes the entity work instead of 5-way parallel; a very large batch could need bundle splitting by token budget (not yet implemented) |
+| D17 | Merge synthesis + finalize into one post-ingest subagent fed a Python-built bundle (§8, §9) | The per-entity fan-out launched one subagent per `count ≥ 2` entity (36 in a representative run), each paying startup + preamble cache-write to do a few hundred tokens of judgement — ~$5 of a $19 run. D16 feared merging would re-bloat context, but fragments are *compact digests* (D8), so one agent reading the whole bundle stays small; the cost win (one agent, one cached preamble) dominates the serialization cost. The bundle's `build_bundle`/`apply_bundle` survive into D18; only the surrounding subagent is gone | A very large batch could need bundle splitting by token budget (not yet implemented) |
+| D18 | Python orchestrator; the model is called only for reasoning (#118 W3) | A Claude Code skill session *is* a model loop, so the orchestrator (and per-turn coordination) cost model tokens even for pure dispatch — the orchestrator alone ran $1–3+ of a representative batch, ~38–86% of pipeline spend was per-turn context re-send. Moving the loop to Python (`orchestrate.py`) calling the model only for classify/extract/synthesis/timeline-dedup/briefing removes that floor and lets each task route to a backend + tier (`model_client`, D-auth #119). Supersedes the subagent split (D3) and the off-orchestrator finalize (D14) | Extraction now runs the Claude Agent SDK in-process and parallel concurrency is bounded by subscription/API rate limits (`extract_concurrency` knob); the `claude-api` backend is unproven until a metered key is used |

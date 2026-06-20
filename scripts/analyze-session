@@ -5,6 +5,7 @@ analyze-session — token usage and subagent breakdown for a Claude Code session
 Usage:
   analyze-session <session.jsonl>
   analyze-session <path/to/session-uuid>   (directory, no .jsonl extension)
+  analyze-session <project-folder>         (directory of .jsonl files — analyzes all)
 """
 
 import json
@@ -50,6 +51,8 @@ def _parse_log(path: Path) -> dict:
     turns = tool_calls = inp = cache_write = cache_read = out = 0
     model = None
     page_count = None
+    cwd = None
+    seen_ids: set[str] = set()   # the SDK logs each assistant message twice (same message.id)
 
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
@@ -59,6 +62,9 @@ def _parse_log(path: Path) -> dict:
             r = json.loads(line)
         except json.JSONDecodeError:
             continue
+
+        if cwd is None:
+            cwd = r.get("cwd")
 
         msg = r.get("message", {})
         if not isinstance(msg, dict):
@@ -76,6 +82,13 @@ def _parse_log(path: Path) -> dict:
 
         if msg.get("role") != "assistant":
             continue
+
+        # Skip duplicate records of the same response so tokens/tool calls aren't counted twice.
+        mid = msg.get("id")
+        if mid is not None:
+            if mid in seen_ids:
+                continue
+            seen_ids.add(mid)
 
         u = msg.get("usage", {})
         if u:
@@ -95,7 +108,7 @@ def _parse_log(path: Path) -> dict:
     return {
         "turns": turns, "tool_calls": tool_calls,
         "input": inp, "cache_write": cache_write, "cache_read": cache_read, "output": out,
-        "model": model, "page_count": page_count,
+        "model": model, "page_count": page_count, "cwd": cwd,
     }
 
 
@@ -114,11 +127,114 @@ def _add(a: dict, b: dict) -> dict:
     return {k: a[k] + b[k] for k in keys} | {"model": a.get("model") or b.get("model")}
 
 
-_ZERO = {"turns": 0, "tool_calls": 0, "input": 0, "cache_write": 0, "cache_read": 0, "output": 0, "model": None, "page_count": None}
+_ZERO = {"turns": 0, "tool_calls": 0, "input": 0, "cache_write": 0, "cache_read": 0, "output": 0, "model": None, "page_count": None, "cwd": None}
 
 
 def _fmt(n: int) -> str:
     return f"{n:,}"
+
+
+def _short_model(m: str | None) -> str:
+    if not m:
+        return "?"
+    # e.g. "claude-sonnet-4-6" → "sonnet", "claude-haiku-4-5-20251001" → "haiku"
+    parts = m.split("-")
+    return parts[1] if len(parts) > 1 else m
+
+
+def _collect_session(orch_log: Path) -> dict:
+    """Orchestrator + its subagents combined into one totals dict for the session."""
+    orch = _parse_log(orch_log)
+    total = dict(orch)
+    subagents_dir = orch_log.with_suffix("") / "subagents"
+    n_sub = 0
+    if subagents_dir.exists():
+        for mf in sorted(subagents_dir.glob("*.meta.json")):
+            agent_id = mf.stem.replace(".meta", "")
+            log_file = subagents_dir / f"{agent_id}.jsonl"
+            if not log_file.exists():
+                continue
+            total = _add(total, _parse_log(log_file))
+            n_sub += 1
+    return total | {"subagents": n_sub, "page_count": orch.get("page_count"), "cwd": orch.get("cwd")}
+
+
+def _corpus_pages(cwd: str | None) -> tuple[int, int] | None:
+    """(total_pages, document_count) from the vault registry at `cwd`, or None if unavailable.
+
+    The sessions run inside the investigation vault; its document registry records the
+    page_count of every ingested document, which is the right denominator for cost/page.
+    """
+    if not cwd:
+        return None
+    reg = Path(cwd) / ".watchdog" / "Registry" / "documents.json"
+    if not reg.exists():
+        return None
+    try:
+        docs = json.loads(reg.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    pages = sum((v.get("page_count") or 0) for v in docs.values() if isinstance(v, dict))
+    return (pages, len(docs))
+
+
+def analyze_folder(folder: Path):
+    """Compact per-session table + grand total for every .jsonl directly in a folder."""
+    logs = sorted(folder.glob("*.jsonl"))
+    if not logs:
+        sys.exit(f"Error: no .jsonl files found in {folder}")
+
+    W = 96
+    print()
+    print("━" * W)
+    print(f"  Project  {folder.name}  ({len(logs)} session{'s' if len(logs) != 1 else ''})")
+    print("━" * W)
+
+    rows = [(lg.stem, _collect_session(lg)) for lg in logs]
+    name_w = min(20, max(len(n) for n, _ in rows))
+    model_w = max(len(_short_model(s.get("model"))) for _, s in rows)
+
+    hdr = (f"  {'Session':<{name_w}}  {'Model':<{model_w}}  {'Sub':>3}  {'Turns':>5}  {'Tools':>5}  "
+           f"{'Input':>9}  {'C.read':>10}  {'Output':>8}  {'Cost':>8}")
+    print()
+    print(hdr)
+    print(f"  {'─' * (len(hdr) - 2)}")
+
+    grand = dict(_ZERO)
+    n_sub_total = 0
+    for name, s in sorted(rows, key=lambda x: -_cost(x[1])):
+        trunc = (name[:name_w - 1] + "…") if len(name) > name_w else name
+        print(
+            f"  {trunc:<{name_w}}  {_short_model(s.get('model')):<{model_w}}  "
+            f"{s['subagents']:>3}  {s['turns']:>5}  {s['tool_calls']:>5}  "
+            f"{_fmt(s['input']):>9}  {_fmt(s['cache_read']):>10}  "
+            f"{_fmt(s['output']):>8}  ${_cost(s):>7.4f}"
+        )
+        grand = _add(grand, s)
+        n_sub_total += s["subagents"]
+
+    print(f"  {'─' * (len(hdr) - 2)}")
+    label = f"TOTAL  ({len(logs)} sessions, {n_sub_total} subagent{'s' if n_sub_total != 1 else ''})"
+    total_cost = _cost(grand)
+    print(
+        f"  {label:<{name_w + model_w + 7}}  {grand['turns']:>5}  {grand['tool_calls']:>5}  "
+        f"{_fmt(grand['input']):>9}  {_fmt(grand['cache_read']):>10}  "
+        f"{_fmt(grand['output']):>8}  ${total_cost:>7.4f}"
+    )
+
+    # ── Cost per page ───────────────────────────────────────────────────────────
+    cwd = next((s["cwd"] for _, s in rows if s.get("cwd")), None)
+    corpus = _corpus_pages(cwd)
+    print()
+    if corpus and corpus[0] > 0:
+        pages, n_docs = corpus
+        print(f"  {'Corpus':<14} {_fmt(pages)} pages across {n_docs} document{'s' if n_docs != 1 else ''}")
+        print(f"  {'Cost / page':<14} ${total_cost / pages:.4f}  (${total_cost:.4f} / {_fmt(pages)} pages)")
+    elif cwd:
+        print(f"  {'Cost / page':<14} unavailable — no document registry at {cwd}")
+    else:
+        print(f"  {'Cost / page':<14} unavailable — could not determine the investigation vault")
+    print()
 
 
 def main():
@@ -127,6 +243,13 @@ def main():
         sys.exit(1)
 
     arg = Path(sys.argv[1])
+
+    # Folder of sessions: a directory containing .jsonl files directly (a session-uuid
+    # directory holds its logs under subagents/, so it falls through to single-session mode).
+    if arg.is_dir() and any(arg.glob("*.jsonl")):
+        analyze_folder(arg)
+        return
+
     orch_log = arg if arg.suffix == ".jsonl" else arg.with_suffix(".jsonl")
     session_dir = orch_log.with_suffix("")
 
@@ -175,14 +298,7 @@ def main():
         print(f"\n  SUBAGENTS  ({len(rows)} total)")
         print(f"  {SEP}")
 
-        def short_model(m: str | None) -> str:
-            if not m:
-                return "?"
-            # e.g. "claude-sonnet-4-6" → "sonnet", "claude-haiku-4-5-20251001" → "haiku"
-            parts = m.split("-")
-            return parts[1] if len(parts) > 1 else m
-
-        model_w = max(len(short_model(s.get("model"))) for _, s in rows)
+        model_w = max(len(_short_model(s.get("model"))) for _, s in rows)
         desc_w = min(48, max(len(r[0]) for r in rows))
         hdr = f"  {'Description':<{desc_w}}  {'Model':<{model_w}}  {'Pg':>4}  {'Turns':>5}  {'Tools':>5}  {'Input':>8}  {'C.read':>9}  {'Output':>7}  {'Cost':>7}  {'$/pg':>6}"
         print(hdr)
@@ -190,7 +306,7 @@ def main():
 
         for desc, s in sorted(rows, key=lambda x: -x[1]["tool_calls"]):
             trunc = (desc[:desc_w - 1] + "…") if len(desc) > desc_w else desc
-            m = short_model(s.get("model"))
+            m = _short_model(s.get("model"))
             pc = s.get("page_count")
             pg = str(pc) if pc is not None else "?"
             c = _cost(s)
