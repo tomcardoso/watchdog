@@ -1,3 +1,6 @@
+---
+description: a campaign finance disclosure, donor list, third-party advertising return, or similar electoral record
+---
 # Domain knowledge — Election filings
 
 This skill is loaded by `/ingest` when the document type is a campaign finance disclosure, donor list, third-party advertising return, or similar electoral record.

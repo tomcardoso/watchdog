@@ -1,3 +1,6 @@
+---
+description: a land registry extract, title search, cadastral record, RDPRM registration, or similar document from a property rights registration system
+---
 # Domain knowledge — Land registries and title systems
 
 This skill is loaded by `/ingest` when the document type is a land registry extract, title search, cadastral record, RDPRM registration, or similar document from a property rights registration system.

@@ -1,3 +1,6 @@
+---
+description: a government-produced report, departmental evaluation, royal commission report, public inquiry report, task force report, advisory council report, or similar policy document produced by or for a government body
+---
 # Domain knowledge — Government reports
 
 This skill is loaded by `/ingest` when the document type is a government-produced report, departmental evaluation, royal commission report, public inquiry report, task force report, advisory council report, or similar policy document produced by or for a government body.

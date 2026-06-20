@@ -1,3 +1,6 @@
+---
+description: a parole board decision, probation order, correctional investigator report, prison inspection report, institutional grievance decision, conditional release record, or similar document originating from correctional services, parole boards, or corrections oversight bodies. For police-generated documents (use-of-force reports, occurrence reports, misconduct decisions), use `police-records` instead
+---
 # Domain knowledge — Corrections, parole, and custody records
 
 This skill is loaded by `/ingest` when the document type is a parole board decision, probation order, correctional investigator report, prison inspection report, institutional grievance decision, conditional release record, or similar document originating from correctional services, parole boards, or corrections oversight bodies. For police-generated documents (use-of-force reports, occurrence reports, misconduct decisions), use `police-records` instead.

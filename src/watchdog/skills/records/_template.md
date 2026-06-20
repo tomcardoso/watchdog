@@ -1,3 +1,6 @@
+---
+description: [one line naming the document types this skill covers — shown in the classifier index]
+---
 # Domain knowledge — [Document type name]
 
 This skill is loaded by `/ingest` when the document type is a [list the trigger document types]. [One sentence on what the skill helps extract or identify.]

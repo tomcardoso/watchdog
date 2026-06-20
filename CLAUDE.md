@@ -51,14 +51,15 @@ The `pypi` GitHub environment and PyPI trusted-publisher entry for `watchdog-int
 
 ### Where skills live
 
-Skill files live in `src/watchdog/skills/records/`. They are plain markdown. No code changes are needed — skills are automatically picked up by the setup process when a new file is added to that directory.
+Record (domain) skill files live in `src/watchdog/skills/records/`. They are plain markdown and **global** — the ingest orchestrator reads them directly from the package via `watchdog.skills_catalog` (they are no longer copied into each vault). No code changes are needed when adding one. A user can add their own skills in `~/.watchdog/skills/records/`, which the catalog merges in (a user skill overrides a package skill of the same name). See ARCHITECTURE D21.
 
 ### Standard structure
 
-A blank template is at `src/watchdog/skills/records/_template.md` — copy it as the starting point for any new skill. Files starting with `_` are excluded from installation and will not be loaded by Claude.
+A blank template is at `src/watchdog/skills/records/_template.md` — copy it as the starting point for any new skill. Files starting with `_` are excluded from the catalog.
 
 Every skill file should follow this structure in order:
 
+0. **Frontmatter** — a YAML block with a `description:` line. This one line is the skill's entry in the classifier index, so make it a precise summary of the document types covered. (If omitted, the index falls back to the first sentence of the intro.)
 1. **Intro paragraph** — one or two sentences explaining when this skill is loaded by `/ingest`. Name the document types that trigger it.
 2. **Document types covered** — a bulleted list of the specific document types the skill applies to. This is the one section where it is acceptable to list jurisdiction-specific document names (since those are the literal names of the documents). Group by jurisdiction if there are many.
 3. **Always-present fields table** — a two-column table (`Field` | `What to look for`) listing the fields that appear in virtually every document of this type. Extract these even when not prominently displayed.

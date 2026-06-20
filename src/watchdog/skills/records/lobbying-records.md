@@ -1,3 +1,6 @@
+---
+description: a lobbyist registration, communication report, client-registrant relationship filing, or similar lobbying disclosure
+---
 # Domain knowledge — Lobbying records
 
 This skill is loaded by `/ingest` when the document type is a lobbyist registration, communication report, client-registrant relationship filing, or similar lobbying disclosure.

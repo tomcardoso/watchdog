@@ -1,3 +1,6 @@
+---
+description: a grievance arbitration award, labour board decision, collective agreement, interest arbitration award, unfair labour practice ruling, or similar labour relations document
+---
 # Domain knowledge — Labour and arbitration records
 
 This skill is loaded by `/ingest` when the document type is a grievance arbitration award, labour board decision, collective agreement, interest arbitration award, unfair labour practice ruling, or similar labour relations document.

@@ -1,3 +1,6 @@
+---
+description: a council agenda or minutes, development permit, variance application, zoning amendment, conflict-of-interest disclosure, or other municipal government record
+---
 # Domain knowledge — Municipal records
 
 This skill is loaded by `/ingest` when the document type is a council agenda or minutes, development permit, variance application, zoning amendment, conflict-of-interest disclosure, or other municipal government record.

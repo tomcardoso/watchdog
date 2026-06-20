@@ -1411,56 +1411,109 @@ def test_default_skill_is_a_configurable_key():
     assert "default_skill" in _CONFIGURE_KEYS
 
 
-# ── _resolve_pinned_skill ─────────────────────────────────────────────────────
+# ── show-skills ───────────────────────────────────────────────────────────────
 
-def _vault_with_skills(tmp_path, names=("general-records", "corporate-filings")):
-    records = tmp_path / "v" / ".claude" / "commands" / "records"
-    records.mkdir(parents=True)
+def _patch_catalog(monkeypatch, tmp_path, names=("court-documents",)):
+    from watchdog import skills_catalog as sc
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
     for n in names:
-        (records / f"{n}.md").write_text("skill")
-    (records / "_index.md").write_text("internal")     # excluded from choices
-    return tmp_path / "v"
+        (pkg / f"{n}.md").write_text(f"---\ndescription: {n} stuff\n---\n# {n} body\n")
+    monkeypatch.setattr(sc, "_package_records", lambda: pkg)
+    monkeypatch.setattr(sc, "USER_SKILLS_DIR", tmp_path / "nouser")
+    return pkg
 
 
-def test_resolve_pinned_skill_from_flag(tmp_path):
+def test_show_skills_lists_and_opens_github(tmp_path, monkeypatch, capsys):
+    from watchdog.cmd import setup as st
+    _patch_catalog(monkeypatch, tmp_path, names=("court-documents",))
+    opened = []
+    monkeypatch.setattr("webbrowser.open", lambda u: opened.append(u))
+    st.cmd_show_skills(args())
+    out = capsys.readouterr().out
+    assert "court-documents" in out and "github.com" in out
+    assert opened and "github.com" in opened[0]
+
+
+def test_show_skills_prints_one_skill(tmp_path, monkeypatch, capsys):
+    from watchdog.cmd import setup as st
+    _patch_catalog(monkeypatch, tmp_path, names=("court-documents",))
+    st.cmd_show_skills(args(name="court-documents"))
+    assert "court-documents body" in capsys.readouterr().out
+
+
+def test_show_skills_unknown_exits(tmp_path, monkeypatch):
+    from watchdog.cmd import setup as st
+    _patch_catalog(monkeypatch, tmp_path, names=("court-documents",))
+    with pytest.raises(SystemExit, match="no record skill"):
+        st.cmd_show_skills(args(name="nope"))
+
+
+# ── _resolve_pinned_skill (global catalog, returns paths) ─────────────────────
+
+def _fake_catalog(monkeypatch, tmp_path, names=("general-records", "corporate-filings")):
+    """Point the global skill catalog at a controlled package dir, no user dir."""
+    from watchdog import skills_catalog as sc
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    for n in names:
+        (pkg / f"{n}.md").write_text(f"# {n}\n")
+    monkeypatch.setattr(sc, "_package_records", lambda: pkg)
+    monkeypatch.setattr(sc, "USER_SKILLS_DIR", tmp_path / "nouser")
+    return pkg
+
+
+def test_resolve_pinned_skill_from_flag(tmp_path, monkeypatch):
     from watchdog.cmd import ingest as ing
-    assert ing._resolve_pinned_skill(args(skill="corporate-filings"), _vault_with_skills(tmp_path), {}) == "corporate-filings"
+    pkg = _fake_catalog(monkeypatch, tmp_path)
+    assert ing._resolve_pinned_skill(args(skill="corporate-filings"), {}) == str(pkg / "corporate-filings.md")
 
 
-def test_resolve_pinned_skill_strips_md_suffix(tmp_path):
+def test_resolve_pinned_skill_strips_md_suffix(tmp_path, monkeypatch):
     from watchdog.cmd import ingest as ing
-    assert ing._resolve_pinned_skill(args(skill="corporate-filings.md"), _vault_with_skills(tmp_path), {}) == "corporate-filings"
+    pkg = _fake_catalog(monkeypatch, tmp_path)
+    assert ing._resolve_pinned_skill(args(skill="corporate-filings.md"), {}) == str(pkg / "corporate-filings.md")
 
 
-def test_resolve_pinned_skill_unknown_exits(tmp_path):
+def test_resolve_pinned_skill_unknown_exits(tmp_path, monkeypatch):
     from watchdog.cmd import ingest as ing
-    with pytest.raises(SystemExit, match="unknown record skill"):
-        ing._resolve_pinned_skill(args(skill="nope"), _vault_with_skills(tmp_path), {})
+    _fake_catalog(monkeypatch, tmp_path)
+    with pytest.raises(SystemExit, match="not found"):
+        ing._resolve_pinned_skill(args(skill="nope"), {})
 
 
-def test_resolve_pinned_skill_from_config(tmp_path):
+def test_resolve_pinned_skill_from_config(tmp_path, monkeypatch):
     from watchdog.cmd import ingest as ing
-    vault = _vault_with_skills(tmp_path)
-    assert ing._resolve_pinned_skill(args(), vault, {"default_skill": "general-records"}) == "general-records"
+    pkg = _fake_catalog(monkeypatch, tmp_path)
+    assert ing._resolve_pinned_skill(args(), {"default_skill": "general-records"}) == str(pkg / "general-records.md")
 
 
-def test_resolve_pinned_skill_none_classifies(tmp_path):
+def test_resolve_pinned_skill_none_classifies(tmp_path, monkeypatch):
     from watchdog.cmd import ingest as ing
-    assert ing._resolve_pinned_skill(args(), _vault_with_skills(tmp_path), {}) is None
+    _fake_catalog(monkeypatch, tmp_path)
+    assert ing._resolve_pinned_skill(args(), {}) is None
+
+
+def test_resolve_pinned_skill_explicit_file_path(tmp_path, monkeypatch):
+    from watchdog.cmd import ingest as ing
+    _fake_catalog(monkeypatch, tmp_path)
+    custom = tmp_path / "custom-skill.md"
+    custom.write_text("body")
+    assert ing._resolve_pinned_skill(args(skill=str(custom)), {}) == str(custom.resolve())
 
 
 def test_resolve_pinned_skill_interactive_pick(tmp_path, monkeypatch):
     from watchdog.cmd import ingest as ing
-    vault = _vault_with_skills(tmp_path, names=("alpha", "beta"))   # sorted: alpha=1, beta=2
+    pkg = _fake_catalog(monkeypatch, tmp_path, names=("alpha", "beta"))  # sorted: alpha=1, beta=2
     monkeypatch.setattr("builtins.input", lambda *a: "2")
-    assert ing._resolve_pinned_skill(args(skill=ing._PICK_SKILL), vault, {}) == "beta"
+    assert ing._resolve_pinned_skill(args(skill=ing._PICK_SKILL), {}) == str(pkg / "beta.md")
 
 
 def test_resolve_pinned_skill_interactive_enter_classifies(tmp_path, monkeypatch):
     from watchdog.cmd import ingest as ing
-    vault = _vault_with_skills(tmp_path, names=("alpha", "beta"))
+    _fake_catalog(monkeypatch, tmp_path, names=("alpha", "beta"))
     monkeypatch.setattr("builtins.input", lambda *a: "")
-    assert ing._resolve_pinned_skill(args(skill=ing._PICK_SKILL), vault, {}) is None
+    assert ing._resolve_pinned_skill(args(skill=ing._PICK_SKILL), {}) is None
 
 
 # ── _notify ───────────────────────────────────────────────────────────────────

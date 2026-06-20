@@ -255,7 +255,9 @@ def test_pinned_skill_skips_classification(tmp_path, monkeypatch):
                                         auth_mode="subscription", cost_usd=0.0)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    summary = asyncio.run(orchestrate.run(vault, pinned_skill="general-records"))
+    skill_file = tmp_path / "pinned.md"
+    skill_file.write_text("PINNED SKILL BODY")
+    summary = asyncio.run(orchestrate.run(vault, pinned_skill=str(skill_file)))
     assert summary["extracted"] == 1
     assert "classify" not in tasks          # classification skipped entirely
 
@@ -263,9 +265,8 @@ def test_pinned_skill_skips_classification(tmp_path, monkeypatch):
 def test_pinned_skill_is_injected_into_extraction(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault)
-    records = vault / ".claude" / "commands" / "records"
-    records.mkdir(parents=True, exist_ok=True)
-    (records / "corporate-filings.md").write_text("CORPORATE FILINGS SKILL BODY")
+    skill_file = tmp_path / "corporate-filings.md"
+    skill_file.write_text("CORPORATE FILINGS SKILL BODY")
     seen = {}
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
         if task == "extract":
@@ -279,8 +280,20 @@ def test_pinned_skill_is_injected_into_extraction(tmp_path, monkeypatch):
                                         auth_mode="subscription", cost_usd=0.0)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    asyncio.run(orchestrate.run(vault, pinned_skill="corporate-filings"))
+    asyncio.run(orchestrate.run(vault, pinned_skill=str(skill_file)))
     assert "CORPORATE FILINGS SKILL BODY" in seen["prompt"]
+
+
+def test_record_skill_provenance_is_persisted(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    _mock(monkeypatch, extraction=_extraction())     # classify mock returns general-records.md
+    asyncio.run(orchestrate.run(vault))
+
+    docs = json.loads((vault / ".watchdog" / "Registry" / "documents.json").read_text())
+    assert next(iter(docs.values()))["record_skill"] == "general-records"
+    note = next((vault / "documents").glob("*.md")).read_text(encoding="utf-8")
+    assert "record_skill: general-records" in note
 
 
 def test_orchestrator_cancels_gracefully_on_sigint(tmp_path, monkeypatch):

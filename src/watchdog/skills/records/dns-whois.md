@@ -1,3 +1,6 @@
+---
+description: a WHOIS registration record, DNS zone file excerpt, domain registration history, IP address allocation, or related internet infrastructure record
+---
 # Domain knowledge — DNS and WHOIS records
 
 This skill is loaded by `/ingest` when the document type is a WHOIS registration record, DNS zone file excerpt, domain registration history, IP address allocation, or related internet infrastructure record.

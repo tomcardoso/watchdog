@@ -1,3 +1,6 @@
+---
+description: a grant application, research ethics board decision, conflict-of-interest disclosure, retraction notice, research agreement, or similar academic or scientific accountability document
+---
 # Domain knowledge — Academic and research documents
 
 This skill is loaded by `/ingest` when the document type is a grant application, research ethics board decision, conflict-of-interest disclosure, retraction notice, research agreement, or similar academic or scientific accountability document.

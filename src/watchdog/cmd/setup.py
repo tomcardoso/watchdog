@@ -375,6 +375,56 @@ def cmd_refresh_skills(args) -> None:
     print()
 
 
+def cmd_show_skills(args) -> None:
+    """List the global record skills, or print one. With no name, also opens the skills
+    folder on GitHub so the full text is easy to read."""
+    import webbrowser
+    from watchdog import skills_catalog
+
+    catalog = skills_catalog.catalog()
+    name = getattr(args, "name", None)
+
+    if name:
+        canon = name.removesuffix(".md")
+        if canon not in catalog:
+            sys.exit(f"\n  {_YELLOW}Error:{_RESET} no record skill {_BOLD}{canon}{_RESET}.\n"
+                     f"  Run {_CYAN}watchdog show-skills{_RESET}{_DIM} to list them.{_RESET}\n")
+        print()
+        print(Path(catalog[canon]).read_text(encoding="utf-8"))
+        return
+
+    print()
+    print(f"  {_BOLD}Record skills{_RESET}  {_DIM}{len(catalog)} available{_RESET}")
+    print()
+    for n, path in catalog.items():
+        desc = skills_catalog._skill_descriptor(Path(path).read_text(encoding="utf-8"))
+        if len(desc) > 96:
+            desc = desc[:95].rstrip() + "…"
+        print(f"  {_CYAN}{n}{_RESET}")
+        print(f"  {_DIM}{desc}{_RESET}\n")
+
+    try:
+        ver = _pkg_version()
+    except Exception:
+        ver = None
+    url = skills_catalog.github_skills_url("main")
+    print(f"  {_DIM}Read the full text:{_RESET} {_CYAN}{url}{_RESET}")
+    print(f"  {_DIM}Print one:{_RESET} {_CYAN}watchdog show-skills <name>{_RESET}")
+    print(f"  {_DIM}Add your own:{_RESET} {_CYAN}{skills_catalog.USER_SKILLS_DIR}{_RESET}")
+    if ver:
+        print(f"  {_DIM}(installed watchdog-intel {ver}){_RESET}")
+    print()
+    try:
+        webbrowser.open(url)
+    except Exception:
+        pass
+
+
+def _pkg_version() -> str:
+    from importlib.metadata import version
+    return version("watchdog-intel")
+
+
 def cmd_configure(args) -> None:
     config = {}
     if CONFIG_FILE.exists():

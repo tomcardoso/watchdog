@@ -1,3 +1,6 @@
+---
+description: an insurance regulatory return, actuarial report, reinsurance treaty, market conduct review report, or similar insurance industry regulatory document
+---
 # Domain knowledge — Insurance filings
 
 This skill is loaded by `/ingest` when the document type is an insurance regulatory return, actuarial report, reinsurance treaty, market conduct review report, or similar insurance industry regulatory document.

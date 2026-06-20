@@ -1,3 +1,6 @@
+---
+description: a securities disclosure, insider trading report, continuous disclosure document, prospectus, or similar filing with a securities regulator
+---
 # Domain knowledge — Regulatory filings
 
 This skill is loaded by `/ingest` when the document type is a securities disclosure, insider trading report, continuous disclosure document, prospectus, or similar filing with a securities regulator.

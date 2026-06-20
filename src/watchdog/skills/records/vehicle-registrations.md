@@ -1,3 +1,6 @@
+---
+description: a motor vehicle registration, certificate of title, vehicle lien record, vessel registration, or related transport registration document. For aircraft, use `aircraft-logs` instead, which covers aircraft registration, airworthiness, and flight tracking
+---
 # Domain knowledge — Vehicle and vessel registration records
 
 This skill is loaded by `/ingest` when the document type is a motor vehicle registration, certificate of title, vehicle lien record, vessel registration, or related transport registration document. For aircraft, use `aircraft-logs` instead, which covers aircraft registration, airworthiness, and flight tracking.

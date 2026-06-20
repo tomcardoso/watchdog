@@ -1,3 +1,6 @@
+---
+description: a statute, regulation, order-in-council, government policy directive, government white paper, consultation paper, or similar primary or secondary legislation. This skill covers the documents through which governments create legal obligations and policy frameworks — not the decisions applying them (see `court-documents`, `administrative-tribunals`, and others for adjudicative records)
+---
 # Domain knowledge — Laws, regulations, and policy documents
 
 This skill is loaded by `/ingest` when the document type is a statute, regulation, order-in-council, government policy directive, government white paper, consultation paper, or similar primary or secondary legislation. This skill covers the documents through which governments create legal obligations and policy frameworks — not the decisions applying them (see `court-documents`, `administrative-tribunals`, and others for adjudicative records).

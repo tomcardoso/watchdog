@@ -1,3 +1,6 @@
+---
+description: an auditor general report, value-for-money audit, performance audit, internal audit report, public accounts, inspector general report, or similar public accountability document
+---
 # Domain knowledge — Audit reports
 
 This skill is loaded by `/ingest` when the document type is an auditor general report, value-for-money audit, performance audit, internal audit report, public accounts, inspector general report, or similar public accountability document.

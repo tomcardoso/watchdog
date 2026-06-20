@@ -1,3 +1,6 @@
+---
+description: a police occurrence report, use-of-force report, disciplinary decision, public complaint decision, coroner's inquest, or similar law enforcement document. For parole board decisions, probation records, prison inspection reports, and corrections oversight documents, use `corrections-records` instead
+---
 # Domain knowledge — Police records
 
 This skill is loaded by `/ingest` when the document type is a police occurrence report, use-of-force report, disciplinary decision, public complaint decision, coroner's inquest, or similar law enforcement document. For parole board decisions, probation records, prison inspection reports, and corrections oversight documents, use `corrections-records` instead.

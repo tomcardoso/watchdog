@@ -1,3 +1,6 @@
+---
+description: a news article, press clipping, wire story, press release, or similar published or distributed text
+---
 # Domain knowledge — News stories and clippings
 
 This skill is loaded by `/ingest` when the document type is a news article, press clipping, wire story, press release, or similar published or distributed text.

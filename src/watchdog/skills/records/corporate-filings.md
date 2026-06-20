@@ -1,3 +1,6 @@
+---
+description: an annual report, corporate registration, director filing, or similar corporate record
+---
 # Domain knowledge — Corporate filings
 
 This skill is loaded by `/ingest` when the document type is an annual report, corporate registration, director filing, or similar corporate record.

@@ -77,14 +77,6 @@ def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "so
     # gate counts only this run's documents.
     shutil.rmtree(vault / ".watchdog" / "tmp" / "entity-fragments", ignore_errors=True)
 
-    # Keep the skill index current with whatever is in records/ — including skills the
-    # user added directly to the vault — so it never goes stale between refreshes.
-    try:
-        from watchdog.setup_cmd import regenerate_records_index
-        regenerate_records_index(vault / ".claude" / "commands" / "records")
-    except Exception:
-        pass
-
     started_at = _iso_now()
     batch_start = int(time.time())
     lock_file.parent.mkdir(parents=True, exist_ok=True)

@@ -1,3 +1,6 @@
+---
+description: an immigration tribunal decision, asylum ruling, deportation order, refugee protection decision, or related immigration record
+---
 # Domain knowledge — Immigration and refugee documents
 
 This skill is loaded by `/ingest` when the document type is an immigration tribunal decision, asylum ruling, deportation order, refugee protection decision, or related immigration record.

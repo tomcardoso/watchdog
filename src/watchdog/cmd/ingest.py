@@ -19,50 +19,51 @@ from watchdog.cmd.base import (
 _PICK_SKILL = "\x00pick"
 
 
-def _available_skills(vault: Path) -> list[str]:
-    """Installed record-skill names (filenames minus .md), excluding internal `_` files."""
-    records = vault / ".claude" / "commands" / "records"
-    if not records.is_dir():
-        return []
-    return sorted(p.stem for p in records.glob("*.md") if not p.name.startswith("_"))
-
-
-def _pick_skill_interactive(vault: Path) -> str | None:
-    """Numbered picker for `watchdog ingest --skill` (no value). Enter → classify per doc."""
-    skills = _available_skills(vault)
-    if not skills:
-        print(f"\n  {_DIM}No record skills installed — classifying each document.{_RESET}")
+def _pick_skill_interactive() -> str | None:
+    """Numbered picker for `watchdog ingest --skill` (no value), drawn from the global
+    skill catalog. Returns the chosen skill's file path; Enter → classify per doc."""
+    from watchdog import skills_catalog
+    catalog = skills_catalog.catalog()
+    if not catalog:
+        print(f"\n  {_DIM}No record skills available — classifying each document.{_RESET}")
         return None
+    names = list(catalog)
     print(f"\n  {_BOLD}Pin a record skill{_RESET} {_DIM}for all documents (skips per-document classification):{_RESET}\n")
-    for i, s in enumerate(skills, 1):
-        print(f"    {_CYAN}{i:>2}{_RESET}  {s}")
+    for i, name in enumerate(names, 1):
+        print(f"    {_CYAN}{i:>2}{_RESET}  {name}")
     try:
         ans = input("\n  Number, or Enter to classify each: ").strip()
     except (EOFError, KeyboardInterrupt):
         print()
         return None
-    if ans.isdigit() and 1 <= int(ans) <= len(skills):
-        return skills[int(ans) - 1]
+    if ans.isdigit() and 1 <= int(ans) <= len(names):
+        return catalog[names[int(ans) - 1]]
     if ans:
         print(f"  {_DIM}Not a valid choice — classifying each document.{_RESET}")
     return None
 
 
-def _resolve_pinned_skill(args, vault: Path, config: dict) -> str | None:
-    """Resolve the pinned record skill — `--skill` flag → interactive picker → `default_skill`
-    config. Exits with the available list if an explicitly named skill doesn't exist."""
+def _resolve_pinned_skill(args, config: dict) -> str | None:
+    """Resolve the pinned record skill to a file path — `--skill` flag → interactive picker
+    → `default_skill` config. The value may be a **skill name** (from the global catalog) or
+    a **path to a skill file**. Exits if a named skill isn't found and isn't a file."""
+    from watchdog import skills_catalog
     raw = getattr(args, "skill", None)
     if raw == _PICK_SKILL:
-        return _pick_skill_interactive(vault)          # the picker only offers valid skills
-    skill = raw or config.get("default_skill")
-    if not skill:
+        return _pick_skill_interactive()                   # picker returns a path or None
+    value = raw or config.get("default_skill")
+    if not value:
         return None
-    canon = skill.removesuffix(".md")
-    if canon not in _available_skills(vault):
-        avail = ", ".join(_available_skills(vault)) or "(none installed)"
-        sys.exit(f"\n  {_YELLOW}Error:{_RESET} unknown record skill {_BOLD}{canon}{_RESET}.\n"
-                 f"  Available: {_CYAN}{avail}{_RESET}\n")
-    return canon
+    as_path = Path(value).expanduser()
+    if as_path.is_file():                                   # an explicit skill file
+        return str(as_path.resolve())
+    catalog = skills_catalog.catalog()                      # otherwise a catalog name
+    canon = value.removesuffix(".md")
+    if canon in catalog:
+        return catalog[canon]
+    avail = ", ".join(catalog) or "(none available)"
+    sys.exit(f"\n  {_YELLOW}Error:{_RESET} record skill {_BOLD}{canon}{_RESET} not found "
+             f"(not a known skill or a file path).\n  Available: {_CYAN}{avail}{_RESET}\n")
 
 
 def _run_preprocess(
@@ -190,9 +191,9 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
     q = len(result["queue_files"])
     print(f"\n  {_BOLD}{q} document{'s' if q != 1 else ''}{_RESET} ready for extraction")
 
-    pinned_skill = _resolve_pinned_skill(args, vault, config)
+    pinned_skill = _resolve_pinned_skill(args, config)
     if pinned_skill:
-        print(f"  {_DIM}Skill pinned:{_RESET} {_CYAN}{pinned_skill}{_RESET}{_DIM} — classification skipped.{_RESET}")
+        print(f"  {_DIM}Skill pinned:{_RESET} {_CYAN}{Path(pinned_skill).stem}{_RESET}{_DIM} — classification skipped.{_RESET}")
 
     def _release_lock() -> None:
         (vault / ".watchdog" / "Registry" / ".ingest-lock").unlink(missing_ok=True)

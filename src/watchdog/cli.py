@@ -81,6 +81,7 @@ from watchdog.cmd.setup import (
     cmd_configure,
     cmd_refresh_skills,
     cmd_setup,
+    cmd_show_skills,
     cmd_unlock,
 )
 from watchdog.cmd.auth import cmd_auth
@@ -194,6 +195,10 @@ def main() -> None:
     p_refresh = sub.add_parser("refresh-skills", help="Update skill files in a vault after a watchdog upgrade")
     p_refresh.add_argument("name", nargs="?", help="Investigation name or slug (default: current directory)").completer = _project_completer
     p_refresh.set_defaults(func=cmd_refresh_skills)
+
+    p_show_skills = sub.add_parser("show-skills", help="List the record skills, or print one (opens the skills folder on GitHub)")
+    p_show_skills.add_argument("name", nargs="?", help="Skill name to print in full (omit to list all)")
+    p_show_skills.set_defaults(func=cmd_show_skills)
 
     p_about = sub.add_parser("about", help="Show version and project links")
     p_about.set_defaults(func=cmd_about)

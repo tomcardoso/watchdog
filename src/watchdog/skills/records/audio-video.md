@@ -1,3 +1,6 @@
+---
+description: a YouTube video transcript, podcast transcript, broadcast transcript, recorded speech, deposition video, or similar audio or video-derived text
+---
 # Domain knowledge — Audio and video content
 
 This skill is loaded by `/ingest` when the document type is a YouTube video transcript, podcast transcript, broadcast transcript, recorded speech, deposition video, or similar audio or video-derived text.

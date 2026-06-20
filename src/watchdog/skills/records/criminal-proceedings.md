@@ -1,3 +1,6 @@
+---
+description: a criminal court document — including a charging document, bail or remand decision, preliminary hearing transcript, trial decision, sentencing decision, or appeal in a criminal matter
+---
 # Domain knowledge — Criminal proceedings
 
 This skill is loaded by `/ingest` when the document type is a criminal court document — including a charging document, bail or remand decision, preliminary hearing transcript, trial decision, sentencing decision, or appeal in a criminal matter.

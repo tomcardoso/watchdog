@@ -1,3 +1,6 @@
+---
+description: a pollutant release inventory report, environmental assessment, spill record, inspection report, compliance order, or similar environmental regulatory document
+---
 # Domain knowledge — Environmental filings
 
 This skill is loaded by `/ingest` when the document type is a pollutant release inventory report, environmental assessment, spill record, inspection report, compliance order, or similar environmental regulatory document.
