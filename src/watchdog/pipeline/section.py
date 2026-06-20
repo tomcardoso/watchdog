@@ -96,7 +96,14 @@ def char_windows(total: int, size: int, overlap: int) -> list[tuple[int, int]]:
     return windows
 
 
-def run(vault: Path, sha256: str) -> dict:
+def run(vault: Path, sha256: str, *, force_budget: int | None = None) -> dict:
+    """Plan sections for a document.
+
+    Normally threshold-gated: documents at/under `section_token_threshold` are not
+    sectioned. Pass `force_budget` to always section (used as a fallback when
+    whole-document extraction overruns the model's output ceiling) — the per-section
+    budget is capped at half the document so a splittable document yields ≥2 sections.
+    """
     queue_file = vault / ".watchdog" / "queue" / f"{sha256}.json"
     if not queue_file.exists():
         return {"error": f"queue file not found for sha256 {sha256}"}
@@ -110,7 +117,10 @@ def run(vault: Path, sha256: str) -> dict:
     budget = _config_get("section_token_budget", DEFAULT_TOKEN_BUDGET)
     overlap_tokens = _config_get("section_overlap_tokens", DEFAULT_OVERLAP_TOKENS)
 
-    if total_tokens <= threshold:
+    if force_budget is not None:
+        budget = min(force_budget, max(1, total_tokens // 2))   # guarantee ≥2 sections
+        overlap_tokens = min(overlap_tokens, max(0, budget // 4))
+    elif total_tokens <= threshold:
         return {"sectioned": False, "page_count": page_count, "est_tokens": total_tokens}
 
     tmp = vault / ".watchdog" / "tmp"

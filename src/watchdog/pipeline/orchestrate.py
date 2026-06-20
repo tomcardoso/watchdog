@@ -31,6 +31,10 @@ def _say(msg: str) -> None:
     """Print a styled progress line to the terminal (indented per the CLI style guide)."""
     print(f"  {msg}", flush=True)
 DEFAULT_CLASSIFY_PAGES = 5
+# Per-section input budget when falling back to sectioning after a whole-doc extraction
+# overruns the output ceiling. Small, so each section's output stays well under the cap;
+# section.run caps it at half the document so a splittable doc yields ≥2 sections.
+_FALLBACK_SECTION_TOKENS = 15_000
 # Safety cap on classifier input: bounds a pathological single huge page; the page
 # count (classify_pages) is the primary limiter, so keep this generous.
 _CLASSIFY_EXCERPT_CHARS = 24000
@@ -145,7 +149,12 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model):
     for _ in range(2):
         p = base if not errors else (base + "\n\nThe previous extraction was rejected:\n"
                                      + "\n".join(errors) + "\nReturn a corrected JSON object.")
-        r = await model_client.acomplete_json(task="extract", model=model, prompt=p, schema=schemas.EXTRACTION)
+        try:
+            r = await model_client.acomplete_json(task="extract", model=model, prompt=p, schema=schemas.EXTRACTION)
+        except model_client.ModelError as e:
+            # No valid JSON after the client's own retries — often output truncated on a
+            # dense doc. Report failure so the caller can fall back to sectioning.
+            return extraction, scratchpad, cost, False, [f"extraction returned no valid JSON ({e})"]
         cost += r.cost_usd or 0.0
         extraction = r.parsed
         scratchpad = extraction.pop("scratchpad", "")
@@ -228,6 +237,19 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         _say(f"{_DIM}→  {filename}  extracting · {skill_label}…{_RESET}")
         extraction, scratchpad, cost, ok, errors = await _simple_extract(
             vault, sha, pf, skill_text, brief, extract_model)
+        # Whole-document extraction can overrun the model's output ceiling on entity-dense
+        # docs (the agent-SDK backend can't cap output) — the JSON truncates and is rejected.
+        # Fall back to the sectioned path, which bounds per-call output, before giving up.
+        if not ok and page_count > 1:
+            fb = section.run(vault, sha, force_budget=_FALLBACK_SECTION_TOKENS)
+            if fb.get("sectioned"):
+                n_sections = len(fb.get("sections", []))
+                _say(f"{_DIM}↻  {filename}  whole-doc extraction rejected — "
+                     f"re-extracting in {n_sections} sections…{_RESET}")
+                whole_cost = cost
+                extraction, scratchpad, cost, ok, errors = await _extract_sectioned(
+                    vault, sha, pf, skill_text, fb, extract_model)
+                cost += whole_cost   # account for the failed whole-doc attempt
 
     if not ok:
         return _fail(vault, sha, filename, "post-flight rejected: " + "; ".join(errors[:3]))

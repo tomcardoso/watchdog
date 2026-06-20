@@ -180,6 +180,66 @@ def test_classifier_sees_only_first_n_pages(tmp_path, monkeypatch):
     assert "distinctword3" not in seen["prompt"]   # page 3 excluded
 
 
+def test_whole_doc_failure_falls_back_to_sectioning(tmp_path, monkeypatch):
+    """A multi-page doc whose whole-doc extraction is rejected is re-extracted in sections."""
+    vault = make_vault(tmp_path)
+    monkeypatch.setattr(orchestrate.section, "_config_get", lambda k, d: d)   # deterministic defaults
+    qdir = vault / ".watchdog" / "queue"
+    qdir.mkdir(parents=True, exist_ok=True)
+    pages = [{"page": 1, "markdown": "Acme part one " * 50},
+             {"page": 2, "markdown": "Acme part two " * 50}]
+    (qdir / "abc123.json").write_text(json.dumps({
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "page_count": 2, "pages": pages,
+        "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
+    }))
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+
+    calls = {"extract": 0, "section": 0}
+    sec_first = {
+        "document": {"sha256": "abc123", "filename": "test-doc.pdf", "title": "Acme AR",
+                     "document_type": "Annual Report", "summary": "Acme report.",
+                     "key_facts": [{"fact": "x", "confidence": "high"}]},
+        "entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
+                      "timeline_events": [], "roles": []}],
+        "morgue_entity_id": "acme-corp", "morgue_document_type": "annual-report",
+        "observations": "sec1",
+    }
+    sec_later = {"entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
+                              "timeline_events": [], "roles": []}], "observations": "sec2"}
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+        if task == "classify":
+            parsed = {"skill": "general-records.md"}
+        elif task == "extract":
+            calls["extract"] += 1
+            parsed = _extraction(valid=False)                 # whole-doc → postflight rejects
+        elif task == "extract-section":
+            calls["section"] += 1
+            parsed = sec_first if "This is SECTION 1" in prompt else sec_later
+        elif task == "briefing":
+            parsed = {"investigation_status": "x", "what_was_ingested": []}
+        else:
+            parsed = {"entity_syntheses": []} if task == "entity-synthesis" else {"events": []}
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.01)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault))
+    assert calls["extract"] >= 1 and calls["section"] >= 2     # whole-doc tried, then sectioned
+    assert summary["extracted"] == 1 and summary["failed"] == 0
+    assert (vault / "entities" / "company" / "acme-corp.md").exists()
+
+
+def test_single_page_failure_does_not_section(tmp_path, monkeypatch):
+    """A 1-page doc can't be split, so a rejection just fails (no fallback loop)."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)                                          # single page
+    _mock(monkeypatch, extraction=_extraction(valid=False))
+    summary = asyncio.run(orchestrate.run(vault))
+    assert summary["failed"] == 1 and summary["extracted"] == 0
+
+
 def test_orchestrator_cancels_gracefully_on_sigint(tmp_path, monkeypatch):
     """Ctrl+C during extraction → cancelled summary, no traceback, unfinished docs keep
     their queue file, and post-ingest is skipped."""

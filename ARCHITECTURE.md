@@ -144,8 +144,17 @@ carry-forward block (entities-so-far + observations) in each section's prompt, t
 combined by `merge.merge_extractions` into a single extraction JSON that goes through the
 same post-flight / `write_vault` path.
 
+**Output-overrun fallback.** Sectioning is gated on *input* size, but a moderate-input,
+entity-dense document can overrun the model's *output* ceiling — the agent-SDK backend
+can't cap output tokens, so the JSON truncates and post-flight rejects it. When
+whole-document extraction fails on a **multi-page** document, the orchestrator
+force-sections it (`section.run(force_budget=…)`, capped at half the doc so it yields ≥2
+sections) and retries on the sectioned path — which bounds per-call output — before giving
+up. See D19.
+
 **Failure handling.** The model adapter raises if it can't get schema-valid JSON; a doc
-whose extraction or post-flight fails is logged to `.watchdog/Registry/ingest.log` and
+whose extraction or post-flight fails (after the output-overrun fallback, for multi-page
+docs) is logged to `.watchdog/Registry/ingest.log` and
 cleaned via `abort.run` (`pipeline/abort.py`) — staging/section temp removed, queue file
 moved to `.watchdog/queue/_failed/`, registry untouched. One bad document never sinks the
 batch; move the queue file back from `_failed/` to retry.
@@ -401,4 +410,5 @@ registry for every document would be wasteful. The manifest is the cheap index.
 | D15 | Runaway guard + `ingest-abort` (§5) | A stuck subagent bails (`STATUS: failed`) instead of wedging the batch; clean bail leaves no partial vault writes, so the doc re-ingests cleanly | A failed doc must be manually moved back from `queue/_failed/` to retry |
 | D16 | ~~Entity synthesis (§8) and finalize (§9) kept as separate subagents, not merged~~ **Superseded by D17.** | Original rationale: synthesis was a per-entity parallel fan-out, finalize a single whole-batch agent; merging would serialize entity work and re-concentrate fragments + scratchpads + timeline into one context. This held while synthesis was a fan-out — but the fan-out itself proved to be the cost problem (see D17) | — |
 | D17 | Merge synthesis + finalize into one post-ingest subagent fed a Python-built bundle (§8, §9) | The per-entity fan-out launched one subagent per `count ≥ 2` entity (36 in a representative run), each paying startup + preamble cache-write to do a few hundred tokens of judgement — ~$5 of a $19 run. D16 feared merging would re-bloat context, but fragments are *compact digests* (D8), so one agent reading the whole bundle stays small; the cost win (one agent, one cached preamble) dominates the serialization cost. The bundle's `build_bundle`/`apply_bundle` survive into D18; only the surrounding subagent is gone | A very large batch could need bundle splitting by token budget (not yet implemented) |
+| D19 | Force-section on whole-doc output overrun (§5) | Sectioning triggers on *input* size (`section_token_threshold`), but truncation is *output*-driven — a moderate-input, entity-dense doc overruns the model's output ceiling on the agent-SDK backend (which can't cap output), truncating the JSON and escalating the retry toward a pricier tier. On a multi-page doc whose whole-doc extraction is rejected, the orchestrator re-runs it through the sectioned path with a small forced budget (≥2 sections) to bound per-call output | Adds one (failed) whole-doc attempt before the fallback; single-page docs can't be split, so they still just fail |
 | D18 | Python orchestrator; the model is called only for reasoning (#118 W3) | A Claude Code skill session *is* a model loop, so the orchestrator (and per-turn coordination) cost model tokens even for pure dispatch — the orchestrator alone ran $1–3+ of a representative batch, ~38–86% of pipeline spend was per-turn context re-send. Moving the loop to Python (`orchestrate.py`) calling the model only for classify/extract/synthesis/timeline-dedup/briefing removes that floor and lets each task route to a backend + tier (`model_client`, D-auth #119). Supersedes the subagent split (D3) and the off-orchestrator finalize (D14) | Extraction now runs the Claude Agent SDK in-process and parallel concurrency is bounded by subscription/API rate limits (`extract_concurrency` knob); the `claude-api` backend is unproven until a metered key is used |
