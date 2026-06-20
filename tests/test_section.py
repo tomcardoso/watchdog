@@ -113,6 +113,17 @@ def test_run_non_paginated_splits_on_chars(tmp_path, monkeypatch):
     assert len(body) == 800                 # budget 200 tokens * 4 chars
 
 
+def test_run_force_budget_sections_below_threshold(tmp_path, monkeypatch):
+    monkeypatch.setattr(section, "_config_get", _config(threshold=100, budget=200, overlap=0))
+    vault = _vault(tmp_path)
+    _write_queue(vault, "doc1", [{"page": 1, "markdown": "x" * 40},
+                                 {"page": 2, "markdown": "x" * 40}], 2)  # 20 est tokens, under threshold
+    # force_budget sections it anyway, capped at half the doc → ≥2 sections
+    result = section.run(vault, "doc1", force_budget=1000)
+    assert result["sectioned"] is True
+    assert len(result["sections"]) >= 2
+
+
 def test_run_missing_queue_file_errors(tmp_path):
     vault = tmp_path / "vault"
     (vault / ".watchdog").mkdir(parents=True)
