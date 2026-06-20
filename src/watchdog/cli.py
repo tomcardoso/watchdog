@@ -285,6 +285,9 @@ def main() -> None:
     p_ingest.add_argument("--finalizer-model", choices=_model_choices, default=None,
                           dest="finalizer_model",
                           help="Model for synthesis + timeline + briefing — overrides watchdog configure (default: sonnet)")
+    p_ingest.add_argument("--classifier-model", choices=_model_choices, default=None,
+                          dest="classifier_model",
+                          help="Model for document classification — overrides watchdog configure (default: haiku)")
     p_ingest.add_argument("--concurrency", type=int, default=None,
                           help="Documents extracted in parallel — overrides watchdog configure (default: 5)")
     p_ingest.add_argument("--classify-pages", type=int, default=None, dest="classify_pages",

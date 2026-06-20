@@ -206,6 +206,7 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog ingest` | Extract all queued documents — runs the Python pipeline in your terminal |
 | `watchdog ingest --extractor-model M` | Override the extraction model for this run (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
 | `watchdog ingest --finalizer-model M` | Override the post-ingest model for this run — synthesis + timeline + briefing (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
+| `watchdog ingest --classifier-model M` | Override the document-classification model for this run (`sonnet`/`opus`/`haiku`; default from `watchdog configure`: `haiku`) |
 | `watchdog ingest --concurrency N` | Documents extracted in parallel for this run (default from `watchdog configure`: 5) |
 | `watchdog ingest --classify-pages N` | Pages shown to the document classifier for this run (default from `watchdog configure`: 5) |
 | `watchdog context [name]` | Open Claude Code with the context seeding skill; omit name when inside the vault |
@@ -446,6 +447,7 @@ watchdog configure <key> <value>
 | `embed_images` | `false` | Embed figures as base64 in the extracted markdown so Claude can read charts and image-based tables. Significantly increases token usage. |
 | `dup_threshold` | `0.85` | Jaccard similarity score at which two documents are flagged as near-duplicates. Range: 0.0–1.0. |
 | `shingle_size` | `3` | Word n-gram size for near-duplicate fingerprinting. Changing this invalidates existing MinHash signatures — re-ingest to rebuild. |
+| `classifier_model` | `haiku` | Claude model that reads a document's first pages and picks its record skill. Haiku is plenty; raise it only if classification goes wrong on ambiguous documents. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--classifier-model`. |
 | `extractor_model` | `sonnet` | Claude model for document extraction. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--extractor-model`. |
 | `finalizer_model` | `sonnet` | Claude model for post-ingest — entity synthesis (Summary + Analysis for entities in ≥2 documents) + timeline reconciliation + briefing. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--finalizer-model`. |
 | `extract_concurrency` | `5` | Documents extracted in parallel during `watchdog ingest`. Lower it if you hit model rate limits; raise it for throughput. Per-run override: `--concurrency`. |

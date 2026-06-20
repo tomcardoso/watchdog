@@ -111,6 +111,7 @@ _CMD_HELP: dict[str, dict] = {
         "opts": [
             ("--extractor-model M",  "Override the extraction model for this run (sonnet/opus/haiku; default from watchdog configure)"),
             ("--finalizer-model M",  "Override the synthesis + timeline + briefing model for this run (sonnet/opus/haiku; default from watchdog configure)"),
+            ("--classifier-model M", "Override the document-classification model for this run (sonnet/opus/haiku; default from watchdog configure)"),
             ("--concurrency N",      "Documents extracted in parallel for this run (default from watchdog configure: 5)"),
             ("--classify-pages N",   "Pages shown to the document classifier for this run (default from watchdog configure: 5)"),
         ],
