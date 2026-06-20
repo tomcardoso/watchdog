@@ -1,3 +1,6 @@
+---
+description: a procurement record, tender document, contract award, access-to-information/FOIA response, or similar government contracting record
+---
 # Domain knowledge — Government contracts and procurement records
 
 Loaded by `/ingest` when the document type is a procurement record, tender document, contract award, access-to-information/FOIA response, or similar government contracting record.

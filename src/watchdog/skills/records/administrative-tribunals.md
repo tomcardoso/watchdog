@@ -1,3 +1,6 @@
+---
+description: a decision, order, or ruling from a quasi-judicial administrative tribunal that is not a court of law, not a labour or employment arbitration (covered by `labour-arbitration`), not an immigration body (covered by `immigration-refugee`), and not a professional licensing panel (covered by `professional-licensing` or `healthcare-licensing`). Administrative tribunals are government-created bodies with statutory powers to hear disputes and make binding decisions
+---
 # Domain knowledge — Administrative tribunal records
 
 This skill is loaded by `/ingest` when the document type is a decision, order, or ruling from a quasi-judicial administrative tribunal that is not a court of law, not a labour or employment arbitration (covered by `labour-arbitration`), not an immigration body (covered by `immigration-refugee`), and not a professional licensing panel (covered by `professional-licensing` or `healthcare-licensing`). Administrative tribunals are government-created bodies with statutory powers to hear disputes and make binding decisions.

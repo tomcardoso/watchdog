@@ -123,7 +123,7 @@ registry/note writes so the concurrent document workers write safely.
    carrying its current note summary + timeline/roles/contradictions digest (§8).
 2. **Classify** — one cheap model call (`model_client.acomplete_json`, `classifier_model`,
    default haiku) over the document's first `classify_pages` pages + the generated
-   `records/_index.md`, returning the closest domain-skill filename (§6). Python reads that
+   in-memory skill index, returning the closest domain-skill filename (§6). Python reads that
    one skill and injects it into the extraction prompt. **Skipped entirely when a skill is
    pinned** for the run (`--skill` / `default_skill`) — that one skill is used for every
    document, saving a model call per doc on known-homogeneous batches.
@@ -178,12 +178,15 @@ longer folded into the extractor.
   document's text vs. *meta-text describing how to read that document type* — and
   with ~35 adjacent skills the cosine similarity was noisy. Worse, a confident-wrong
   classification was the *most* harmful outcome: it loaded the wrong domain skill.
-- **Why a dedicated model call wins.** The orchestrator sends a text excerpt + the
-  generated `records/_index.md` to a cheap haiku call that returns the skill filename;
-  Python then reads that one skill and injects it into the extraction prompt. Accurate,
-  cheap, and it keeps the extraction prompt lean (only the relevant skill, not the
-  index). When the skill-based extractor self-classified, that work was turns inside the
-  expensive extraction call (the #87 tax); a separate haiku call is cheaper.
+- **Why a dedicated model call wins.** The orchestrator sends a text excerpt + the skill
+  index (built in memory from the global catalog, `skills_catalog.build_index()`) to a
+  cheap haiku call that returns the skill filename; Python then reads that one skill (from
+  the global catalog) and injects it into the extraction prompt. Accurate, cheap, and it
+  keeps the extraction prompt lean (only the relevant skill, not the index). When the
+  skill-based extractor self-classified, that work was turns inside the expensive
+  extraction call (the #87 tax); a separate haiku call is cheaper.
+- **Pinning.** `--skill` / `default_skill` skips this call entirely and uses one skill
+  for the whole run (see §5, D21).
 - **Tradeoff.** `document_type` is `null` in the queue between chew and ingest; it is
   populated at ingest. Accepted — nothing downstream needs it earlier.
 - **Sections.** A sectioned document (§5) is classified once, on its full-text excerpt,
@@ -379,17 +382,16 @@ registry for every document would be wasteful. The manifest is the cheap index.
   `watchdog-context`, `watchdog-entity`, `watchdog-query`, `watchdog-surface`,
   `watchdog-wiki`, `watchdog-health`. Ingest is the Python orchestrator (§5); it uses no
   Claude Code skill.
-- **Domain skills** live in `src/watchdog/skills/records/` and are installed into a
-  vault's `.claude/commands/records/` by `setup_cmd.install_skills`, which also
-  generates `records/_index.md` (one-line description per skill, derived from each
-  skill's intro). New skills are added by dropping a file in that directory — no code
-  changes. The index is **generated, not checked in**, so it has a single source of
-  truth and cannot drift from the skills (see D12). It is rebuilt by *scanning the
-  records directory* — so skills a user adds directly to their vault are indexed too —
-  on install, on `watchdog refresh-skills`, and at the start of every ingest
-  (`ingest_setup.run` → `regenerate_records_index`). Regeneration is unconditional
-  rather than mtime-gated: it's cheap and that way it self-heals on add, edit, and
-  delete alike.
+- **Domain (record) skills are global** (`watchdog.skills_catalog`, see D21): the
+  package's `src/watchdog/skills/records/` plus the user's `~/.watchdog/skills/records/`
+  (a user skill overrides a package skill of the same name). The ingest orchestrator
+  reads them directly from there — nothing is copied into a vault — so they're always
+  current with no refresh step. New skills are added by dropping a file (in the package,
+  or the user dir). The classification index is **built in memory** from the catalog
+  (`build_index()`), so it never drifts (supersedes D12); each skill's index line comes
+  from its `description:` frontmatter, falling back to the first intro sentence.
+  `watchdog show-skills` lists them / opens the GitHub folder; `--skill` / `default_skill`
+  pin one (a catalog name or a file path).
 
 ---
 
@@ -408,7 +410,7 @@ registry for every document would be wasteful. The manifest is the cheap index.
 | D9 | Raw-then-canonical timeline files (§9) | Subagents write lock-free; merge deferred to one post-batch step | Two file generations on disk |
 | D10 | MinHash near-dup, detect-only (§10) | Cheap local dedup signal; journalist decides | Approximate similarity |
 | D11 | Separate lightweight manifest (§12) | Cheap candidate lookup in pre-flight | A second index to keep in sync (done in `write_vault`) |
-| D12 | Generate `records/_index.md` by scanning the records dir (§13), don't check in a static index; rebuild unconditionally on install/refresh/ingest | Single source of truth — the skill's own intro; a static file silently drifts and breaks the "just drop a skill file" workflow. Scanning the dir (not the package) indexes user-added skills; unconditional rebuild is cheap and self-heals on add/edit/delete (no mtime edge cases) | Descriptor quality depends on parsing the intro prose; a dedicated frontmatter descriptor field is the upgrade path if that heuristic gets fragile |
+| D12 | ~~Generate `records/_index.md` by scanning the per-vault records dir~~ **Superseded by D21.** Index is now built in memory from the global catalog at classify time, so there's no file to scan or keep fresh. | Single source of truth — the skill's own intro; a static file silently drifts and breaks the "just drop a skill file" workflow. Scanning the dir (not the package) indexes user-added skills; unconditional rebuild is cheap and self-heals on add/edit/delete (no mtime edge cases) | Descriptor quality depends on parsing the intro prose; a dedicated frontmatter descriptor field is the upgrade path if that heuristic gets fragile |
 | D13 | Sectioned extraction for large documents (§5) | Documents over the token threshold don't fit one context; sequential page-range sections with a carried scratchpad + deterministic `merge-sections` preserve cross-section consistency | Large docs are extracted serially (slower); needs overlap + merge-dedup |
 | D14 | ~~Timeline reconciliation + briefing in one finalize subagent~~ **Superseded by D18.** | Kept scratchpad prose and timeline NDJSON out of the model orchestrator's context. Moot under Python orchestration — `_post_ingest` reads them directly | — |
 | D15 | Runaway guard + `ingest-abort` (§5) | A stuck subagent bails (`STATUS: failed`) instead of wedging the batch; clean bail leaves no partial vault writes, so the doc re-ingests cleanly | A failed doc must be manually moved back from `queue/_failed/` to retry |
@@ -416,4 +418,5 @@ registry for every document would be wasteful. The manifest is the cheap index.
 | D17 | Merge synthesis + finalize into one post-ingest subagent fed a Python-built bundle (§8, §9) | The per-entity fan-out launched one subagent per `count ≥ 2` entity (36 in a representative run), each paying startup + preamble cache-write to do a few hundred tokens of judgement — ~$5 of a $19 run. D16 feared merging would re-bloat context, but fragments are *compact digests* (D8), so one agent reading the whole bundle stays small; the cost win (one agent, one cached preamble) dominates the serialization cost. The bundle's `build_bundle`/`apply_bundle` survive into D18; only the surrounding subagent is gone | A very large batch could need bundle splitting by token budget (not yet implemented) |
 | D19 | Force-section on whole-doc output overrun (§5) | Sectioning triggers on *input* size (`section_token_threshold`), but truncation is *output*-driven — a moderate-input, entity-dense doc overruns the model's output ceiling on the agent-SDK backend (which can't cap output), truncating the JSON and escalating the retry toward a pricier tier. On a multi-page doc whose whole-doc extraction is rejected, the orchestrator re-runs it through the sectioned path with a small forced budget (≥2 sections) to bound per-call output | Adds one (failed) whole-doc attempt before the fallback; single-page docs can't be split, so they still just fail |
 | D18 | Python orchestrator; the model is called only for reasoning (#118 W3) | A Claude Code skill session *is* a model loop, so the orchestrator (and per-turn coordination) cost model tokens even for pure dispatch — the orchestrator alone ran $1–3+ of a representative batch, ~38–86% of pipeline spend was per-turn context re-send. Moving the loop to Python (`orchestrate.py`) calling the model only for classify/extract/synthesis/timeline-dedup/briefing removes that floor and lets each task route to a backend + tier (`model_client`, D-auth #119). Supersedes the subagent split (D3) and the off-orchestrator finalize (D14) | Extraction now runs the Claude Agent SDK in-process and parallel concurrency is bounded by subscription/API rate limits (`extract_concurrency` knob); the `claude-api` backend is unproven until a metered key is used |
+| D21 | Record skills are global, not per-vault (`skills_catalog`) | Copying skills into every vault was a holdover from the Claude-Code-skill ingest, which needed them under `.claude/commands/` for discovery. The Python orchestrator (D18) just reads the file, so the copy was vestigial and created drift (each vault stale until `refresh-skills`). Skills now live in the package + `~/.watchdog/skills/records/` (user overrides) and are read directly; the classify index is built in memory (supersedes D12); per-skill `description:` frontmatter lets a user-added skill set its own index line. Pinning (`--skill`/`default_skill`, a name or path) and `watchdog show-skills` round it out. Pre-production, so vault-local copies are simply ignored (strictly global) rather than migrated | Loses per-vault skill freezing/customization; mitigated by `--skill PATH` for one-offs and by stamping the skill used into each document's note + registry (`record_skill`) for provenance. Custom skills in `~/.watchdog` aren't carried with a shared vault |
 | D20 | Configured model only — no automatic escalation; classifier model is its own knob | `model_client` originally bumped the tier up (haiku→sonnet→opus) on a JSON-validation failure. That makes ingest cost unpredictable and can silently spend opus money — the opposite of a budgeted pipeline. Now a failed call retries on the **same** configured model (the orchestrator's post-flight repair + D19 sectioning handle genuine failures), and the classify step gets its own `classifier_model` knob (default haiku) alongside `extractor_model`/`finalizer_model`, so each stage's model is explicit and stable | A doc that a stronger model would have salvaged now fails instead of auto-upgrading — the user opts into a stronger model deliberately via config |

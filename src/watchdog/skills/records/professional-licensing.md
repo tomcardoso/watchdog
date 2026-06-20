@@ -1,3 +1,6 @@
+---
+description: a discipline decision, conduct review, fitness-to-practise order, licence revocation or suspension, or similar regulatory action from a professional licensing body for non-healthcare professions. For healthcare professions (medicine, nursing, pharmacy, dentistry), use `healthcare-licensing` instead
+---
 # Domain knowledge — Professional licensing and discipline records
 
 This skill is loaded by `/ingest` when the document type is a discipline decision, conduct review, fitness-to-practise order, licence revocation or suspension, or similar regulatory action from a professional licensing body for non-healthcare professions. For healthcare professions (medicine, nursing, pharmacy, dentistry), use `healthcare-licensing` instead.

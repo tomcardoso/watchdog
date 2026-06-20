@@ -1,3 +1,6 @@
+---
+description: a charity information return, nonprofit tax filing, trust return, or similar tax filing by a nonprofit, charity, or trust
+---
 # Domain knowledge — Tax documents
 
 This skill is loaded by `/ingest` when the document type is a charity information return, nonprofit tax filing, trust return, or similar tax filing by a nonprofit, charity, or trust.

@@ -1,3 +1,6 @@
+---
+description: a bankruptcy filing, proposal, creditor list, trustee report, receiving order, or similar insolvency record
+---
 # Domain knowledge — Bankruptcy and insolvency records
 
 Loaded by `/ingest` when the document type is a bankruptcy filing, proposal, creditor list, trustee report, receiving order, or similar insolvency record.

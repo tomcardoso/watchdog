@@ -1,3 +1,6 @@
+---
+description: a health regulatory body discipline decision, fitness to practise finding, hospital incident report, public health inspection report, or similar professional licensing or healthcare regulatory document
+---
 # Domain knowledge — Healthcare licensing and regulatory records
 
 This skill is loaded by `/ingest` when the document type is a health regulatory body discipline decision, fitness to practise finding, hospital incident report, public health inspection report, or similar professional licensing or healthcare regulatory document.

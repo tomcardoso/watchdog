@@ -1,3 +1,6 @@
+---
+description: a statement of claim, affidavit, judgment, court order, or similar legal proceeding record
+---
 # Domain knowledge — Court documents
 
 Loaded by `/ingest` when the document type is a statement of claim, affidavit, judgment, court order, or similar legal proceeding record.

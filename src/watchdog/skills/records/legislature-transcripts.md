@@ -1,3 +1,6 @@
+---
+description: a Hansard transcript, committee transcript, parliamentary debate record, legislative assembly record, or similar verbatim record of legislative proceedings
+---
 # Domain knowledge — Legislature transcripts
 
 This skill is loaded by `/ingest` when the document type is a Hansard transcript, committee transcript, parliamentary debate record, legislative assembly record, or similar verbatim record of legislative proceedings.

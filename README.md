@@ -209,7 +209,7 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog ingest --classifier-model M` | Override the document-classification model for this run (`sonnet`/`opus`/`haiku`; default from `watchdog configure`: `haiku`) |
 | `watchdog ingest --concurrency N` | Documents extracted in parallel for this run (default from `watchdog configure`: 5) |
 | `watchdog ingest --classify-pages N` | Pages shown to the document classifier for this run (default from `watchdog configure`: 5) |
-| `watchdog ingest --skill [NAME]` | Pin a record skill for every document, skipping classification. Pass a name, or `--skill` with no value to pick interactively |
+| `watchdog ingest --skill [NAME\|PATH]` | Pin a record skill (a name or a path to a skill file) for every document, skipping classification. `--skill` with no value picks from the list |
 | `watchdog context [name]` | Open Claude Code with the context seeding skill; omit name when inside the vault |
 | `watchdog context --model M` | Override the model for context seeding (`sonnet`/`opus`/`haiku`, default: `sonnet`) |
 | `watchdog watch [name]` | Watch `_INCOMING/` and chew files automatically as they arrive; omit name when inside the project directory |
@@ -230,7 +230,8 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog auth remove [provider]` | Delete a stored API key |
 | `watchdog unlock <name>` | Release a stale chew or ingest lock; `--force` to remove even if recent |
 | `watchdog setup` | Set up Watchdog after installation; `--force` to re-run |
-| `watchdog refresh-skills [name]` | Update vault skill files after a watchdog upgrade; omit name when inside the project directory |
+| `watchdog refresh-skills [name]` | Update a vault's Claude Code command skills after a watchdog upgrade (record skills are global, so they never need refreshing); omit name when inside the project directory |
+| `watchdog show-skills [name]` | List the record skills (and open the skills folder on GitHub), or print one skill in full |
 | `watchdog about` | Show version and project links |
 
 ### Claude Code slash commands
@@ -388,7 +389,7 @@ Skills are jurisdiction-agnostic by default: universal principles come first, wi
 
 These skills encode real investigative knowledge — what fields are always present, what patterns are anomalous, what investigators typically miss. See [src/watchdog/skills/records/](src/watchdog/skills/records/) to read them or contribute new ones. A contributor template is at [`src/watchdog/skills/records/_template.md`](src/watchdog/skills/records/_template.md).
 
-Skills are installed into each vault's `.claude/commands/records/` folder when you run `watchdog new`, so they travel with the investigation and can be customized per-vault. After upgrading Watchdog, run `watchdog refresh-skills` from inside a vault to pull in updated skills.
+Record skills are **global** — the ingest pipeline reads them straight from the installed package, so they're always current with no per-vault copies to refresh. Add your own in `~/.watchdog/skills/records/` (a custom skill overrides a built-in one of the same name), point a single run at any file with `watchdog ingest --skill path/to/skill.md`, and read what a skill says with `watchdog show-skills`.
 
 ---
 
@@ -453,7 +454,7 @@ watchdog configure <key> <value>
 | `finalizer_model` | `sonnet` | Claude model for post-ingest — entity synthesis (Summary + Analysis for entities in ≥2 documents) + timeline reconciliation + briefing. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--finalizer-model`. |
 | `extract_concurrency` | `5` | Documents extracted in parallel during `watchdog ingest`. Lower it if you hit model rate limits; raise it for throughput. Per-run override: `--concurrency`. |
 | `classify_pages` | `5` | Leading pages of each document shown to the classifier (`min(page_count, this)`). More pages classify ambiguous documents better at a small extra cost on the cheap classifier model. Per-run override: `--classify-pages`. |
-| `default_skill` | _(unset)_ | Pin a record skill (a name from the vault's records dir) for every ingested document, skipping classification — for vaults that are always one document type. Per-run override: `--skill`. |
+| `default_skill` | _(unset)_ | Pin a record skill (a name from the global catalog, or a path to a skill file) for every ingested document, skipping classification — for vaults that are always one document type. Per-run override: `--skill`. |
 
 **Examples:**
 
@@ -537,7 +538,7 @@ Please open an issue before starting significant work so we can discuss approach
 - **Registries** (`.watchdog/Registry/documents.json`, `entities.json`, `manifest.json`) are the source of truth. Obsidian notes are generated outputs — deleting a note doesn't lose data. `manifest.json` is a lightweight id/name/type/aliases index used for entity lookup without loading full registry data.
 - **Vault writes are file-locked** — `write_vault` acquires an exclusive lock on `.watchdog/Registry/.write-lock` before reading and writing registry files, so the concurrent document workers serialize safely without corruption.
 - **Ingest is a Python orchestrator** — `watchdog ingest` runs the pipeline in your terminal and calls the model only for reasoning (classify, extract, synthesize, dedup the timeline, brief). Documents are extracted in parallel (bounded by `extract_concurrency`); the slow mechanical work and all bookkeeping stay in Python.
-- **Skills are per-vault** — domain knowledge skill files live in `.claude/commands/records/` inside each vault, installed by `watchdog new` and refreshed by `watchdog refresh-skills`. This means skills travel with the investigation and can be customized per-vault.
+- **Record skills are global** — domain-knowledge skill files ship with the package and are read directly by the ingest pipeline (`watchdog.skills_catalog`); nothing is copied per vault, so they're always current. Users add custom skills in `~/.watchdog/skills/records/`. (Claude Code *command* skills like `/watchdog-query` are still installed per vault by `watchdog new` / `refresh-skills`.)
 - **Single CLI entry point** — `watchdog` is the only command installed on your PATH. All pipeline utilities are subcommands.
 
 ---

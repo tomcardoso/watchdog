@@ -173,7 +173,7 @@ watchdog ingest --classify-pages 10        # show the classifier more pages of e
 watchdog ingest --skill corporate-filings  # pin one record skill, skip classification
 ```
 
-`--skill` with no value lists the installed record skills and lets you pick one interactively. For a vault that's always one document type, set it once:
+`--skill` with no value lists the available record skills and lets you pick one interactively; `--skill path/to/skill.md` pins an ad-hoc skill file. Run `watchdog show-skills` to see what the built-in skills cover (it also opens the skills folder on GitHub), and add your own in `~/.watchdog/skills/records/`. For a vault that's always one document type, set it once:
 
 ```bash
 watchdog configure extractor_model haiku

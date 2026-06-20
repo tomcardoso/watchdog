@@ -1,3 +1,6 @@
+---
+description: a freedom of information or access to information response package, severance log, exemption index, or related disclosure record
+---
 # Domain knowledge — Freedom of information responses
 
 This skill is loaded by `/ingest` when the document type is a freedom of information or access to information response package, severance log, exemption index, or related disclosure record.

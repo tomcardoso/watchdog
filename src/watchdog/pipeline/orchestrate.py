@@ -17,7 +17,7 @@ import signal
 import sys
 from pathlib import Path
 
-from watchdog import model_client
+from watchdog import model_client, skills_catalog
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 from watchdog.pipeline import (
     abort, merge, preflight, postflight, prompts, schemas, section, synthesis_bundle, timeline,
@@ -78,18 +78,9 @@ def _update_graph_colours(vault: Path) -> None:
         gpath.write_text(json.dumps(graph, indent=2) + "\n", encoding="utf-8")
 
 
-def _records_dir(vault: Path) -> Path:
-    return vault / ".claude" / "commands" / "records"
-
-
 def _read_brief(vault: Path) -> str | None:
     p = vault / "context.md"
     return p.read_text(encoding="utf-8") if p.exists() else None
-
-
-def _read_skill(vault: Path, skill_filename: str) -> str:
-    p = _records_dir(vault) / skill_filename
-    return p.read_text(encoding="utf-8") if p.exists() else ""
 
 
 def _pages_text(pages: list[dict]) -> str:
@@ -103,12 +94,10 @@ def _read_sidecar(vault: Path, filename: str) -> str | None:
     return sc.read_text(encoding="utf-8") if sc.exists() else None
 
 
-async def _classify(vault: Path, doc_excerpt: str, model: str) -> str:
-    index = _records_dir(vault) / "_index.md"
-    index_text = index.read_text(encoding="utf-8") if index.exists() else ""
+async def _classify(doc_excerpt: str, model: str) -> str:
     r = await model_client.acomplete_json(
         task="classify", model=model, schema=schemas.CLASSIFY,
-        prompt=prompts.build_classify_prompt(doc_excerpt, index_text),
+        prompt=prompts.build_classify_prompt(doc_excerpt, skills_catalog.build_index()),
     )
     return r.parsed.get("skill") or "general-records.md"
 
@@ -137,7 +126,7 @@ def _write_postflight(vault: Path, sha: str, extraction: dict) -> tuple[bool, li
     return ("errors" not in outcome), outcome.get("errors", [])
 
 
-async def _simple_extract(vault, sha, pf, skill_text, brief, model):
+async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label):
     """Whole-document extraction, with one repair attempt if post-flight rejects."""
     base = prompts.build_extract_prompt(
         pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
@@ -158,6 +147,7 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model):
         cost += r.cost_usd or 0.0
         extraction = r.parsed
         scratchpad = extraction.pop("scratchpad", "")
+        extraction.setdefault("document", {})["record_skill"] = skill_label   # provenance
         ok, errors = _write_postflight(vault, sha, extraction)
         if ok:
             return extraction, scratchpad, cost, True, []
@@ -174,7 +164,7 @@ def _carry_block(part: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-async def _extract_sectioned(vault, sha, pf, skill_text, plan, model):
+async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_label):
     """Sequential per-section extraction with carry-forward, then deterministic merge."""
     parts, carry, cost = [], "", 0.0
     sections = plan["sections"]
@@ -194,6 +184,7 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model):
 
     extraction = merge.merge_extractions(parts)
     scratchpad = "\n".join(p["observations"] for p in parts if p.get("observations"))
+    extraction.setdefault("document", {})["record_skill"] = skill_label   # provenance
     ok, errors = _write_postflight(vault, sha, extraction)
     return extraction, scratchpad, cost, ok, errors
 
@@ -222,26 +213,27 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     pages = pf.get("pages", [])
     page_count = pf.get("page_count") or len(pages)
     if pinned_skill:
-        # Skill pinned for the whole run — skip per-document classification entirely.
-        skill = pinned_skill if pinned_skill.endswith(".md") else f"{pinned_skill}.md"
+        # Skill pinned for the whole run (a resolved skill-file path) — skip classification.
+        skill_text = Path(pinned_skill).read_text(encoding="utf-8")
+        skill_label = Path(pinned_skill).stem
     else:
         _say(f"{_DIM}→  {filename}  classifying ({page_count} page{'s' if page_count != 1 else ''})…{_RESET}")
         # Classify on the first N pages (page-aware, not a mid-page char cut); the char cap is a guard.
         excerpt = _pages_text(pages[:max(1, classify_pages)])[:_CLASSIFY_EXCERPT_CHARS]
-        skill = await _classify(vault, excerpt, classify_model)
-    skill_text = _read_skill(vault, skill)
-    skill_label = skill.removesuffix(".md")
+        skill = await _classify(excerpt, classify_model)
+        skill_text = skills_catalog.read_skill(skill)
+        skill_label = skill.removesuffix(".md")
 
     plan = section.run(vault, sha)
     if plan.get("sectioned"):
         n_sections = len(plan.get("sections", []))
         _say(f"{_DIM}→  {filename}  extracting · {skill_label} · {n_sections} sections…{_RESET}")
         extraction, scratchpad, cost, ok, errors = await _extract_sectioned(
-            vault, sha, pf, skill_text, plan, extract_model)
+            vault, sha, pf, skill_text, plan, extract_model, skill_label)
     else:
         _say(f"{_DIM}→  {filename}  extracting · {skill_label}…{_RESET}")
         extraction, scratchpad, cost, ok, errors = await _simple_extract(
-            vault, sha, pf, skill_text, brief, extract_model)
+            vault, sha, pf, skill_text, brief, extract_model, skill_label)
         # Whole-document extraction can overrun the model's output ceiling on entity-dense
         # docs (the agent-SDK backend can't cap output) — the JSON truncates and is rejected.
         # Fall back to the sectioned path, which bounds per-call output, before giving up.
@@ -253,7 +245,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
                      f"re-extracting in {n_sections} sections…{_RESET}")
                 whole_cost = cost
                 extraction, scratchpad, cost, ok, errors = await _extract_sectioned(
-                    vault, sha, pf, skill_text, fb, extract_model)
+                    vault, sha, pf, skill_text, fb, extract_model, skill_label)
                 cost += whole_cost   # account for the failed whole-doc attempt
 
     if not ok:
@@ -393,7 +385,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     `extract_model` drives extraction (whole-doc + section); `post_model` drives
     synthesis/timeline/briefing; `classify_model` the cheap document classifier,
     which sees the first `classify_pages` pages of each document. `pinned_skill`
-    (a record-skill name) skips classification and uses that skill for every document.
+    (a path to a skill file) skips classification and uses that skill for every document.
     """
     queue_dir = vault / ".watchdog" / "queue"
     shas = [f.stem for f in sorted(queue_dir.glob("*.json"))] if queue_dir.exists() else []

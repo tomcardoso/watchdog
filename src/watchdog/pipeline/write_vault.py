@@ -549,6 +549,7 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
         ],
         "page_count":       doc.get("page_count"),
         "near_duplicate_of": doc.get("near_duplicate_of"),
+        "record_skill":     doc.get("record_skill"),
     })
 
     body = ""
@@ -703,6 +704,7 @@ def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False, ne
             "ingested_at":      _now_iso(),
             "page_count":       doc.get("page_count"),
             "document_type":    doc.get("document_type"),
+            "record_skill":     doc.get("record_skill"),
             "entities_extracted": [e["id"] for e in incoming_entities],
             "near_duplicate_of": doc.get("near_duplicate_of"),
             "minhash":          sig,

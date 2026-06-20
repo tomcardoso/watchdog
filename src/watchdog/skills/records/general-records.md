@@ -1,3 +1,6 @@
+---
+description: This skill is loaded by `/ingest` when the document type does not match any specific record skill. It provides a universal framework for reading an unfamiliar document: how to orient yourself, what to extract regardless of type, and what patterns are worth flagging in any record
+---
 # Domain knowledge — General records
 
 This skill is loaded by `/ingest` when the document type does not match any specific record skill. It provides a universal framework for reading an unfamiliar document: how to orient yourself, what to extract regardless of type, and what patterns are worth flagging in any record.

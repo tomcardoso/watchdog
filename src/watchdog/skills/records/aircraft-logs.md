@@ -1,3 +1,6 @@
+---
+description: an aircraft registration, flight log, airworthiness record, ADS-B flight track, safety investigation report, or similar aviation document
+---
 # Domain knowledge — Aircraft logs and aviation records
 
 This skill is loaded by `/ingest` when the document type is an aircraft registration, flight log, airworthiness record, ADS-B flight track, safety investigation report, or similar aviation document.

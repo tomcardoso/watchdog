@@ -1,3 +1,6 @@
+---
+description: a balance sheet, income statement, auditor's report, management discussion and analysis (MD&A), or similar financial disclosure
+---
 # Domain knowledge — Financial statements
 
 Loaded by `/ingest` when the document type is a balance sheet, income statement, auditor's report, management discussion and analysis (MD&A), or similar financial disclosure.

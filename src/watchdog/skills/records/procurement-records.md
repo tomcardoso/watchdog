@@ -1,3 +1,6 @@
+---
+description: a standing offer, task authorization, supply arrangement, vendor performance report, contract amendment, or similar post-award procurement document
+---
 # Domain knowledge — Procurement and contract records
 
 This skill is loaded by `/ingest` when the document type is a standing offer, task authorization, supply arrangement, vendor performance report, contract amendment, or similar post-award procurement document.

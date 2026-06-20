@@ -1,3 +1,6 @@
+---
+description: a title transfer, deed, mortgage instrument, lien, property assessment, or similar real property market transaction record
+---
 # Domain knowledge — Real estate records
 
 Loaded by `/ingest` when the document type is a title transfer, deed, mortgage instrument, lien, property assessment, or similar real property market transaction record.
