@@ -148,6 +148,38 @@ def test_orchestrator_updates_graph_colours(tmp_path, monkeypatch):
     assert "path:entities/company" in queries     # Acme Corp → entities/company/
 
 
+def test_classifier_sees_only_first_n_pages(tmp_path, monkeypatch):
+    """classify_pages bounds the classifier excerpt to the first N pages (page-aware)."""
+    vault = make_vault(tmp_path)
+    qdir = vault / ".watchdog" / "queue"
+    qdir.mkdir(parents=True, exist_ok=True)
+    pages = [{"page": i, "markdown": f"distinctword{i}"} for i in (1, 2, 3)]
+    (qdir / "abc123.json").write_text(json.dumps({
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "page_count": 3, "pages": pages,
+        "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
+    }))
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+
+    seen = {}
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+        if task == "classify":
+            seen["prompt"] = prompt
+        parsed = {
+            "classify": {"skill": "general-records.md"},
+            "extract": _extraction(),
+            "entity-synthesis": {"entity_syntheses": []},
+            "briefing": {"investigation_status": "x", "what_was_ingested": []},
+        }.get(task, {"events": []})
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate.run(vault, classify_pages=2))
+    assert "distinctword1" in seen["prompt"] and "distinctword2" in seen["prompt"]
+    assert "distinctword3" not in seen["prompt"]   # page 3 excluded
+
+
 def test_orchestrator_cancels_gracefully_on_sigint(tmp_path, monkeypatch):
     """Ctrl+C during extraction → cancelled summary, no traceback, unfinished docs keep
     their queue file, and post-ingest is skipped."""

@@ -122,6 +122,11 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
         concurrency = int(getattr(args, "concurrency", None) or config.get("extract_concurrency") or 5)
     except (TypeError, ValueError):
         concurrency = 5
+    try:
+        classify_pages = int(getattr(args, "classify_pages", None) or config.get("classify_pages") or 5)
+    except (TypeError, ValueError):
+        classify_pages = 5
+    classify_pages = max(1, classify_pages)
 
     from watchdog.pipeline.ingest_setup import run as is_run
     result = is_run(vault)
@@ -164,7 +169,8 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
     print(f"  {_DIM}Press {_RESET}{_CYAN}Ctrl+C{_RESET}{_DIM} to stop; finished documents are kept.{_RESET}\n")
     try:
         summary = asyncio.run(orchestrate.run(
-            vault, concurrency=concurrency, extract_model=extract_model, post_model=post_model))
+            vault, concurrency=concurrency, extract_model=extract_model, post_model=post_model,
+            classify_pages=classify_pages))
     except KeyboardInterrupt:
         # Fallback only — orchestrate.run normally traps SIGINT itself and returns a
         # cancelled summary. This catches a Ctrl+C in the brief window before/after that.

@@ -287,6 +287,8 @@ def main() -> None:
                           help="Model for synthesis + timeline + briefing — overrides watchdog configure (default: sonnet)")
     p_ingest.add_argument("--concurrency", type=int, default=None,
                           help="Documents extracted in parallel — overrides watchdog configure (default: 5)")
+    p_ingest.add_argument("--classify-pages", type=int, default=None, dest="classify_pages",
+                          help="Pages shown to the document classifier — overrides watchdog configure (default: 5)")
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_context = sub.add_parser("context", help="Open Claude Code to seed investigation context from _CONTEXT/")

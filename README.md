@@ -207,6 +207,7 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog ingest --extractor-model M` | Override the extraction model for this run (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
 | `watchdog ingest --finalizer-model M` | Override the post-ingest model for this run — synthesis + timeline + briefing (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
 | `watchdog ingest --concurrency N` | Documents extracted in parallel for this run (default from `watchdog configure`: 5) |
+| `watchdog ingest --classify-pages N` | Pages shown to the document classifier for this run (default from `watchdog configure`: 5) |
 | `watchdog context [name]` | Open Claude Code with the context seeding skill; omit name when inside the vault |
 | `watchdog context --model M` | Override the model for context seeding (`sonnet`/`opus`/`haiku`, default: `sonnet`) |
 | `watchdog watch [name]` | Watch `_INCOMING/` and chew files automatically as they arrive; omit name when inside the project directory |
@@ -448,6 +449,7 @@ watchdog configure <key> <value>
 | `extractor_model` | `sonnet` | Claude model for document extraction. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--extractor-model`. |
 | `finalizer_model` | `sonnet` | Claude model for post-ingest — entity synthesis (Summary + Analysis for entities in ≥2 documents) + timeline reconciliation + briefing. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--finalizer-model`. |
 | `extract_concurrency` | `5` | Documents extracted in parallel during `watchdog ingest`. Lower it if you hit model rate limits; raise it for throughput. Per-run override: `--concurrency`. |
+| `classify_pages` | `5` | Leading pages of each document shown to the classifier (`min(page_count, this)`). More pages classify ambiguous documents better at a small extra cost on the cheap classifier model. Per-run override: `--classify-pages`. |
 
 **Examples:**
 
