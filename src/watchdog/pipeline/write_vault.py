@@ -620,7 +620,7 @@ def _record_entity_fragment(
 
 # ── Main operation ────────────────────────────────────────────────────────────
 
-def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False, neardup_file: Path | None = None, neardup_data: dict | None = None) -> None:
+def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False, neardup_file: Path | None = None, neardup_data: dict | None = None, quiet: bool = False) -> None:
     extraction = json.loads(extraction_path.read_text(encoding="utf-8"))
     doc = extraction.get("document")
     if not doc:
@@ -642,7 +642,8 @@ def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False, ne
                 _head = _candidate.read_text(encoding="utf-8", errors="replace")
                 if f"file: {doc['filename']}" not in _head:
                     slug = f"{slug}-{doc_sha256[:6]}"
-                    print(f"WARN  slug collision — using documents/{slug}.md for {doc['filename']}")
+                    if not quiet:
+                        print(f"WARN  slug collision — using documents/{slug}.md for {doc['filename']}")
             except OSError:
                 pass
 
@@ -822,11 +823,12 @@ def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False, ne
             except OSError:
                 break
 
-    print(
-        f"OK  {doc['filename']}  "
-        f"entities={len(incoming_entities)}  "
-        f"doc=documents/{slug}"
-    )
+    if not quiet:
+        print(
+            f"OK  {doc['filename']}  "
+            f"entities={len(incoming_entities)}  "
+            f"doc=documents/{slug}"
+        )
 
 
 def main() -> None:

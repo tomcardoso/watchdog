@@ -13,14 +13,23 @@ serializes the vault writes and `_reconcile_entity_ids` handles the parallel new
 import asyncio
 import datetime
 import json
+import signal
+import sys
 from pathlib import Path
 
 from watchdog import model_client
+from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 from watchdog.pipeline import (
     abort, merge, preflight, postflight, prompts, schemas, section, synthesis_bundle, timeline,
 )
+from watchdog.pipeline.write_vault import _doc_slug
 
 DEFAULT_CONCURRENCY = 5
+
+
+def _say(msg: str) -> None:
+    """Print a styled progress line to the terminal (indented per the CLI style guide)."""
+    print(f"  {msg}", flush=True)
 _CLASSIFY_EXCERPT_CHARS = 6000
 # 24-bit RGB ints for Obsidian graph entity-type colour groups.
 _GRAPH_PALETTE = [0x4C9A2A, 0xC0392B, 0x2980B9, 0x8E44AD, 0xD35400,
@@ -117,7 +126,7 @@ def _write_postflight(vault: Path, sha: str, extraction: dict) -> tuple[bool, li
     tmp = vault / ".watchdog" / "tmp" / f"wdg_ex_{sha}.json"
     tmp.parent.mkdir(parents=True, exist_ok=True)
     tmp.write_text(json.dumps(extraction, ensure_ascii=False, indent=2), encoding="utf-8")
-    outcome = postflight.run(vault, tmp)
+    outcome = postflight.run(vault, tmp, quiet=True)
     return ("errors" not in outcome), outcome.get("errors", [])
 
 
@@ -179,7 +188,9 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model):
 
 def _fail(vault: Path, sha: str, filename: str, reason: str) -> dict:
     """Log the failure and clean up this doc's artifacts (queue → _failed/) for retry."""
-    _log(vault, f"FAILED {filename or sha[:7]}: {reason}")
+    name = filename or sha[:7]
+    _say(f"{_YELLOW}✗{_RESET}  {name}  {_DIM}{reason}{_RESET}")
+    _log(vault, f"FAILED {name}: {reason}")
     abort.run(vault, sha)   # removes staging/section temp, moves the queue file to _failed/
     return {"sha256": sha, "filename": filename, "status": "failed", "reason": reason}
 
@@ -190,17 +201,24 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     if pf.get("error"):
         return _fail(vault, sha, "", pf["error"])
     if pf.get("already_extracted"):
+        _say(f"{_DIM}–  {pf.get('filename')}  already extracted — skipping{_RESET}")
         return {"sha256": sha, "filename": pf.get("filename"), "status": "skipped"}
 
     filename = pf["filename"]
-    excerpt = _pages_text(pf.get("pages", []))[:_CLASSIFY_EXCERPT_CHARS]
-    skill_text = _read_skill(vault, await _classify(vault, excerpt, classify_model))
+    page_count = pf.get("page_count") or len(pf.get("pages", []))
+    _say(f"{_DIM}→  {filename}  classifying ({page_count} page{'s' if page_count != 1 else ''})…{_RESET}")
+    skill = await _classify(vault, _pages_text(pf.get("pages", []))[:_CLASSIFY_EXCERPT_CHARS], classify_model)
+    skill_text = _read_skill(vault, skill)
+    skill_label = skill.removesuffix(".md")
 
     plan = section.run(vault, sha)
     if plan.get("sectioned"):
+        n_sections = len(plan.get("sections", []))
+        _say(f"{_DIM}→  {filename}  extracting · {skill_label} · {n_sections} sections…{_RESET}")
         extraction, scratchpad, cost, ok, errors = await _extract_sectioned(
             vault, sha, pf, skill_text, plan, extract_model)
     else:
+        _say(f"{_DIM}→  {filename}  extracting · {skill_label}…{_RESET}")
         extraction, scratchpad, cost, ok, errors = await _simple_extract(
             vault, sha, pf, skill_text, brief, extract_model)
 
@@ -212,7 +230,10 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     for stale in (vault / ".watchdog" / "tmp").glob(f"section_{sha}_*.md"):
         stale.unlink(missing_ok=True)
     (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
-    _log(vault, f"OK {filename}: {len(extraction.get('entities', []))} entities")
+    n_entities = len(extraction.get("entities", []))
+    _say(f"{_GREEN}OK{_RESET}  {filename}  {_DIM}{n_entities} entit{'ies' if n_entities != 1 else 'y'}{_RESET}  "
+         f"{_CYAN}documents/{_doc_slug(filename)}{_RESET}")
+    _log(vault, f"OK {filename}: {n_entities} entities")
     return _compact_result(sha, filename, extraction, pf.get("near_dup", {}), round(cost, 6))
 
 
@@ -264,10 +285,14 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
 
 async def _post_ingest(vault: Path, results: list, brief: str | None, post_model: str) -> dict:
     out: dict = {"synthesized": 0, "timeline_collisions": 0, "briefing": None}
+    print()
+    _say(f"{_BOLD}Post-processing{_RESET}")
 
     # 1. Entity synthesis for multi-mention entities (Python builds + applies; model reconciles).
     bundle = synthesis_bundle.build_bundle(vault)
     if bundle.get("entities"):
+        _say(f"{_DIM}→  synthesizing {len(bundle['entities'])} multi-mention "
+             f"entit{'ies' if len(bundle['entities']) != 1 else 'y'}…{_RESET}")
         r = await model_client.acomplete_json(
             task="entity-synthesis", model=post_model, schema=schemas.SYNTHESIS,
             prompt=prompts.build_synthesis_prompt(bundle))
@@ -276,6 +301,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         out["synthesized"] = len(synthesis_bundle.apply_bundle(res_path, vault).get("applied", []))
 
     # 2. Timeline: promote pending, model-dedup any real collisions, rebuild timeline.md.
+    _say(f"{_DIM}→  rebuilding timeline…{_RESET}")
     cols = timeline.collisions(vault)
     out["timeline_collisions"] = len(cols)
     for col in cols:
@@ -298,9 +324,12 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             kept = events   # fall back to the union rather than losing events
         canonical.write_text(
             "\n".join(json.dumps(e, ensure_ascii=False) for e in kept) + "\n", encoding="utf-8")
-    timeline.cmd_rebuild_timeline(vault)
+    n_dates, n_events = timeline.cmd_rebuild_timeline(vault, quiet=True)
+    _say(f"{_DIM}   timeline.md · {n_dates} date{'s' if n_dates != 1 else ''}, "
+         f"{n_events} event{'s' if n_events != 1 else ''}{_RESET}")
 
     # 3. Briefing + hot.md + log.md (model writes prose; Python writes the files).
+    _say(f"{_DIM}→  writing briefing…{_RESET}")
     ok = [r for r in results if r.get("status") == "ok"]
     scratchpads = [p.read_text(encoding="utf-8")
                    for p in sorted((vault / ".watchdog" / "tmp").glob("notes_*.md"))]
@@ -335,21 +364,57 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
 
     brief = _read_brief(vault)
     sem = asyncio.Semaphore(max(1, concurrency))
+    cancelled = asyncio.Event()
 
     async def _guarded(sha: str) -> dict:
+        if cancelled.is_set():                       # never started — leave queue file for resume
+            return {"sha256": sha, "filename": "", "status": "cancelled"}
         async with sem:
+            if cancelled.is_set():
+                return {"sha256": sha, "filename": "", "status": "cancelled"}
             try:
                 return await _extract_document(vault, sha, brief, extract_model, classify_model)
-            except Exception as e:   # one bad doc must not sink the batch
+            except asyncio.CancelledError:           # ctrl+c mid-document — queue file stays
+                return {"sha256": sha, "filename": "", "status": "cancelled"}
+            except Exception as e:                   # one bad doc must not sink the batch
                 return _fail(vault, sha, "", f"unexpected error: {e}")
 
-    results = await asyncio.gather(*[_guarded(s) for s in shas])
+    # On ctrl+c, cancel in-flight work once and shut down cleanly instead of letting
+    # KeyboardInterrupt tear through the event loop with a traceback. Finished documents
+    # are already written to the vault; unfinished ones keep their queue file for resume.
+    tasks = [asyncio.ensure_future(_guarded(s)) for s in shas]
+
+    def _on_interrupt() -> None:
+        if cancelled.is_set():
+            return
+        cancelled.set()
+        print()
+        _say(f"{_YELLOW}Interrupted{_RESET}{_DIM} — finishing current writes, then stopping…{_RESET}")
+        for t in tasks:
+            t.cancel()
+
+    loop = asyncio.get_running_loop()
+    handler_set = False
+    try:
+        loop.add_signal_handler(signal.SIGINT, _on_interrupt)
+        handler_set = True
+    except (NotImplementedError, RuntimeError):       # e.g. non-main thread / unsupported platform
+        pass
+    try:
+        await asyncio.gather(*tasks, return_exceptions=True)
+    finally:
+        if handler_set:
+            loop.remove_signal_handler(signal.SIGINT)
+
+    results = [t.result() for t in tasks if t.done() and not t.cancelled()]
     by_status = lambda s: sum(1 for r in results if r.get("status") == s)
     summary = {"results": results, "extracted": by_status("ok"),
-               "skipped": by_status("skipped"), "failed": by_status("failed")}
-    if summary["extracted"]:
+               "skipped": by_status("skipped"), "failed": by_status("failed"),
+               "cancelled": cancelled.is_set()}
+    if summary["extracted"] and not cancelled.is_set():
         summary["post_ingest"] = await _post_ingest(vault, results, brief, post_model)
         _update_graph_colours(vault)
-    _log(vault, f"INGEST complete — {summary['extracted']} extracted, "
-                f"{summary['skipped']} skipped, {summary['failed']} failed")
+    _log(vault, f"INGEST {'cancelled' if cancelled.is_set() else 'complete'} — "
+                f"{summary['extracted']} extracted, {summary['skipped']} skipped, "
+                f"{summary['failed']} failed")
     return summary

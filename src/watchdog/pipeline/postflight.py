@@ -70,7 +70,7 @@ def _apply_match_ids(extraction: dict) -> dict:
     return extraction
 
 
-def run(vault: Path, extraction_path: Path) -> dict:
+def run(vault: Path, extraction_path: Path, quiet: bool = False) -> dict:
     if not extraction_path.exists():
         return {"errors": [f"extraction file not found: {extraction_path}"]}
 
@@ -109,6 +109,7 @@ def run(vault: Path, extraction_path: Path) -> dict:
             vault_path=vault,
             neardup_data=neardup_data,
             skip_timeline=True,
+            quiet=quiet,
         )
     except SystemExit as e:
         return {"errors": [str(e)]}

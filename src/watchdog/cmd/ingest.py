@@ -21,6 +21,7 @@ def _run_preprocess(
     workers: int | None = None,
     chunk_workers: int | None = None,
     confirm: bool = False,
+    show_ingest_hint: bool = True,
 ) -> None:
     from watchdog.pipeline.preprocess_batch import run_ingest, find_files
     incoming = vault / "_INCOMING"
@@ -45,7 +46,7 @@ def _run_preprocess(
             return
         if answer not in ("", "y", "yes"):
             return
-    run_ingest(vault, workers=workers, chunk_workers=chunk_workers)
+    run_ingest(vault, workers=workers, chunk_workers=chunk_workers, show_ingest_hint=show_ingest_hint)
 
 
 def cmd_chew(args) -> None:
@@ -62,16 +63,34 @@ def cmd_chew(args) -> None:
         f = Path(file_arg).resolve()
         if not f.exists():
             sys.exit(f"Error: file not found: {f}")
-        run_ingest(vault, workers=chew_workers, chunk_workers=chunk_workers, files=[f])
+        run_ingest(vault, workers=chew_workers, chunk_workers=chunk_workers, files=[f],
+                   show_ingest_hint=False)
     else:
-        _run_preprocess(vault, workers=chew_workers, chunk_workers=chunk_workers)
+        _run_preprocess(vault, workers=chew_workers, chunk_workers=chunk_workers,
+                        show_ingest_hint=False)
 
     new_queued = _count_queued(vault) - queued_before
     if new_queued > 0:
         _notify("Watchdog", f"{new_queued} file{'s' if new_queued != 1 else ''} chewed — run watchdog ingest.")
+        _offer_ingest(args, vault)
 
 
-def cmd_ingest(args) -> None:
+def _offer_ingest(args, vault: Path) -> None:
+    """After chew, offer to run ingest right away; print the command hint if declined."""
+    total = _count_queued(vault)
+    label = f"{total} document{'s' if total != 1 else ''}"
+    try:
+        answer = input(f"\n  {_BOLD}{label}{_RESET} ready. Ingest now? [Y/n] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print(f"\n\n  Run:  {_CYAN}watchdog ingest{_RESET}\n")
+        return
+    if answer in ("", "y", "yes"):
+        cmd_ingest(args, confirm=False)
+    else:
+        print(f"\n  Run:  {_CYAN}watchdog ingest{_RESET}\n")
+
+
+def cmd_ingest(args, *, confirm: bool = True) -> None:
     vault = Path(".").resolve()
     if not (vault / ".watchdog").is_dir():
         sys.exit("Error: must be run from inside a Watchdog vault directory")
@@ -120,17 +139,20 @@ def cmd_ingest(args) -> None:
         (vault / ".watchdog" / "Registry" / ".ingest-lock").unlink(missing_ok=True)
         (vault / ".watchdog" / "ingest-state.json").unlink(missing_ok=True)
 
-    try:
-        answer = input(f"\n  Ingest now with your {_BOLD}{a['mode']}{_RESET} auth? [Y/n] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        _release_lock()
-        print(f"\n  When ready, run:  {_CYAN}watchdog ingest{_RESET}\n")
-        return
-    if answer not in ("", "y", "yes"):
-        _release_lock()
-        print(f"\n  When ready, run:  {_CYAN}watchdog ingest{_RESET}\n")
-        return
+    if confirm:
+        try:
+            answer = input(f"\n  Ingest now with your {_BOLD}{a['mode']}{_RESET} auth? [Y/n] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            _release_lock()
+            print(f"\n  When ready, run:  {_CYAN}watchdog ingest{_RESET}\n")
+            return
+        if answer not in ("", "y", "yes"):
+            _release_lock()
+            print(f"\n  When ready, run:  {_CYAN}watchdog ingest{_RESET}\n")
+            return
+    else:
+        print(f"\n  {_DIM}Using your {_BOLD}{a['mode']}{_RESET}{_DIM} auth.{_RESET}")
 
     import asyncio
     from watchdog.pipeline import orchestrate
@@ -138,10 +160,18 @@ def cmd_ingest(args) -> None:
     if not log_path.exists():
         log_path.write_text(_render_template("log.md"))
     print(f"\n  {_DIM}Extracting (≤{concurrency} parallel) — the model is called only for reasoning; "
-          f"the pipeline runs in Python.{_RESET}\n")
+          f"the pipeline runs in Python.{_RESET}")
+    print(f"  {_DIM}Press {_RESET}{_CYAN}Ctrl+C{_RESET}{_DIM} to stop; finished documents are kept.{_RESET}\n")
     try:
         summary = asyncio.run(orchestrate.run(
             vault, concurrency=concurrency, extract_model=extract_model, post_model=post_model))
+    except KeyboardInterrupt:
+        # Fallback only — orchestrate.run normally traps SIGINT itself and returns a
+        # cancelled summary. This catches a Ctrl+C in the brief window before/after that.
+        _release_lock()
+        print(f"\n  {_YELLOW}Ingest cancelled.{_RESET}{_DIM} Finished documents are saved; "
+              f"re-run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} to resume the rest.{_RESET}\n")
+        sys.exit(130)
     finally:
         _release_lock()
     _print_ingest_summary(summary)
@@ -149,17 +179,26 @@ def cmd_ingest(args) -> None:
 
 def _print_ingest_summary(summary: dict) -> None:
     ext, skip, fail = summary["extracted"], summary["skipped"], summary["failed"]
-    print(f"  {_GREEN}Ingest complete{_RESET}  {_BOLD}{ext}{_RESET} extracted"
-          f"{f', {skip} skipped' if skip else ''}{f', {fail} failed' if fail else ''}\n")
+    cancelled = summary.get("cancelled")
+    n_cancelled = sum(1 for r in summary["results"] if r.get("status") == "cancelled")
+    headline = f"{_YELLOW}Ingest stopped{_RESET}" if cancelled else f"{_GREEN}Ingest complete{_RESET}"
+    print(f"\n  {headline}  {_BOLD}{ext}{_RESET} extracted"
+          f"{f', {skip} skipped' if skip else ''}{f', {fail} failed' if fail else ''}"
+          f"{f', {n_cancelled} not started' if n_cancelled else ''}\n")
     for r in summary["results"]:
         name = r.get("filename") or r.get("sha256", "?")
         if r["status"] == "ok":
             print(f"  {_GREEN}✓{_RESET} {name}  {_DIM}{r.get('entity_count', 0)} entities{_RESET}")
         elif r["status"] == "skipped":
             print(f"  {_DIM}– {name}  already extracted{_RESET}")
+        elif r["status"] == "cancelled":
+            continue
         else:
             print(f"  {_YELLOW}✗ {name}  {r.get('reason', '')}{_RESET}")
-    print(f"\n  {_DIM}Open a fresh Claude Code session to ask investigation questions.{_RESET}\n")
+    if cancelled:
+        print(f"\n  {_DIM}Re-run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} to process the remaining documents.{_RESET}\n")
+    else:
+        print(f"\n  {_DIM}Open a fresh Claude Code session to ask investigation questions.{_RESET}\n")
 
 
 def cmd_context(args) -> None:

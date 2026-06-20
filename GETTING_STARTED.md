@@ -129,7 +129,7 @@ If a file fails (password-protected, corrupted, unsupported format), it moves to
 
 Press **Ctrl+C** to cancel a chew — the lock is cleaned up automatically and unfinished files remain in `_INCOMING/` for the next run.
 
-When chewing finishes, run the next step from the same vault directory:
+When chewing finishes, Watchdog asks whether to **ingest now** (`Ingest now? [Y/n]`). Press Enter (or `y`) to extract the queued documents straight away — no need to type the next command yourself. If you decline, it prints the command to run when you're ready:
 
 ```bash
 watchdog ingest

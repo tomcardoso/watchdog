@@ -1226,7 +1226,7 @@ def test_cmd_chew_with_specific_file(configured, monkeypatch):
     f.write_bytes(b"")
 
     calls = []
-    def fake_run_ingest(v, workers=None, chunk_workers=None, files=None):
+    def fake_run_ingest(v, workers=None, chunk_workers=None, files=None, show_ingest_hint=True):
         calls.append({"vault": v, "files": files})
 
     monkeypatch.setattr(ppb, "run_ingest", fake_run_ingest)
@@ -1344,6 +1344,48 @@ def test_cmd_chew_with_nonexistent_file_exits(configured, monkeypatch):
     monkeypatch.chdir(vault)
     with pytest.raises(SystemExit, match="not found"):
         cli.cmd_chew(args(file="/no/such/file.pdf", chew_workers=None))
+
+
+# ── _offer_ingest (post-chew prompt) ──────────────────────────────────────────
+
+def _vault_with_queue(configured):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    (vault / ".watchdog" / "queue").mkdir(parents=True, exist_ok=True)
+    (vault / ".watchdog" / "queue" / "abc.json").write_text("{}")
+    return vault
+
+
+def test_offer_ingest_yes_runs_ingest_without_reconfirming(configured, monkeypatch):
+    from watchdog.cmd import ingest as ing
+    vault = _vault_with_queue(configured)
+    monkeypatch.setattr("builtins.input", lambda *a: "y")
+    seen = {}
+    monkeypatch.setattr(ing, "cmd_ingest", lambda a, *, confirm=True: seen.update(confirm=confirm))
+    ing._offer_ingest(args(), vault)
+    assert seen == {"confirm": False}   # chew's prompt is the only confirmation
+
+
+def test_offer_ingest_no_prints_hint_and_skips(configured, monkeypatch, capsys):
+    from watchdog.cmd import ingest as ing
+    vault = _vault_with_queue(configured)
+    monkeypatch.setattr("builtins.input", lambda *a: "n")
+    def _boom(*a, **k):
+        raise AssertionError("ingest must not run when declined")
+    monkeypatch.setattr(ing, "cmd_ingest", _boom)
+    ing._offer_ingest(args(), vault)
+    assert "watchdog ingest" in capsys.readouterr().out
+
+
+def test_offer_ingest_eof_prints_hint(configured, monkeypatch, capsys):
+    from watchdog.cmd import ingest as ing
+    vault = _vault_with_queue(configured)
+    def _eof(*a):
+        raise EOFError
+    monkeypatch.setattr("builtins.input", _eof)
+    monkeypatch.setattr(ing, "cmd_ingest", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no ingest")))
+    ing._offer_ingest(args(), vault)
+    assert "watchdog ingest" in capsys.readouterr().out
 
 
 # ── _notify ───────────────────────────────────────────────────────────────────

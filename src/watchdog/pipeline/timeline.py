@@ -132,8 +132,11 @@ def cmd_timeline_collisions(vault: Path) -> None:
     print(json.dumps(collisions(vault), ensure_ascii=False))
 
 
-def cmd_rebuild_timeline(vault: Path) -> None:
-    """Read all canonical {date}.ndjson files and render timeline.md."""
+def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
+    """Read all canonical {date}.ndjson files and render timeline.md.
+
+    Returns (date_count, event_count) so callers can report progress.
+    """
     td = _timeline_dir(vault)
     timeline_md = vault / "timeline.md"
 
@@ -141,8 +144,9 @@ def cmd_rebuild_timeline(vault: Path) -> None:
         timeline_md.write_text(
             "# Timeline\n\n*No events yet.*\n", encoding="utf-8"
         )
-        print("timeline.md written — no events yet")
-        return
+        if not quiet:
+            print("timeline.md written — no events yet")
+        return (0, 0)
 
     # Canonical files only: no underscore in stem
     canonical_files = sorted(
@@ -153,8 +157,9 @@ def cmd_rebuild_timeline(vault: Path) -> None:
         timeline_md.write_text(
             "# Timeline\n\n*No events yet.*\n", encoding="utf-8"
         )
-        print("timeline.md written — no canonical files yet")
-        return
+        if not quiet:
+            print("timeline.md written — no canonical files yet")
+        return (0, 0)
 
     sections: list[str] = []
     total_events = 0
@@ -181,7 +186,9 @@ def cmd_rebuild_timeline(vault: Path) -> None:
 
     content = "# Timeline\n\n" + "\n\n".join(sections) + "\n"
     timeline_md.write_text(content, encoding="utf-8")
-    print(f"timeline.md rebuilt — {len(canonical_files)} date(s), {total_events} event(s)")
+    if not quiet:
+        print(f"timeline.md rebuilt — {len(canonical_files)} date(s), {total_events} event(s)")
+    return (len(canonical_files), total_events)
 
 
 def main_collisions() -> None:

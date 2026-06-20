@@ -148,6 +148,37 @@ def test_orchestrator_updates_graph_colours(tmp_path, monkeypatch):
     assert "path:entities/company" in queries     # Acme Corp → entities/company/
 
 
+def test_orchestrator_cancels_gracefully_on_sigint(tmp_path, monkeypatch):
+    """Ctrl+C during extraction → cancelled summary, no traceback, unfinished docs keep
+    their queue file, and post-ingest is skipped."""
+    import os
+    import signal
+
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="aaa111", filename="one.pdf")
+    _queue_doc(vault, sha="bbb222", filename="two.pdf")
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+        if task == "extract":
+            # Simulate the user pressing Ctrl+C mid-extraction. The loop's SIGINT
+            # handler cancels the in-flight tasks; the sleep below is interrupted.
+            os.kill(os.getpid(), signal.SIGINT)
+            await asyncio.sleep(5)
+        parsed = {"classify": {"skill": "general-records.md"}}.get(task, _extraction())
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="claude-agent-sdk", auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault, concurrency=2))
+
+    assert summary["cancelled"] is True
+    assert summary["extracted"] == 0
+    assert "post_ingest" not in summary                      # post-ingest skipped on cancel
+    # both queue files survive for a clean resume
+    assert (vault / ".watchdog" / "queue" / "aaa111.json").exists()
+    assert (vault / ".watchdog" / "queue" / "bbb222.json").exists()
+
+
 def test_orchestrator_sectioned_path(tmp_path, monkeypatch):
     """Large doc → section.run plans sections → per-section extract → merge → vault."""
     vault = make_vault(tmp_path)
