@@ -425,6 +425,134 @@ def _pkg_version() -> str:
     return version("watchdog-intel")
 
 
+_PICK_UNSET  = "\x00unset"   # "(unset — classify each document)" row
+_PICK_CUSTOM = "\x00custom"  # "Type my own…" row
+
+
+def _pick_skill_arrow(catalog: dict, current) -> tuple[str, str | None]:
+    """Arrow-key picker for a record skill. Returns ``(action, value)`` where action is
+    ``"set"`` (value = chosen skill name or a typed name/path), ``"unset"``, or ``"cancel"``.
+
+    Uses raw-mode terminal input (↑/↓ or j/k to move, Enter to select, q to cancel). Falls
+    back to a numbered prompt when raw mode isn't available."""
+    import termios
+    import tty
+
+    names  = list(catalog)
+    items  = names + [_PICK_UNSET, _PICK_CUSTOM]
+    labels = names + ["(unset — classify each document)", "Type my own…"]
+    idx    = names.index(current) if current in names else 0
+
+    def _ask_custom() -> tuple[str, str | None]:
+        try:
+            ans = input("\n  Skill name or file path (Enter to cancel): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return ("cancel", None)
+        return ("set", ans) if ans else ("cancel", None)
+
+    try:
+        fd  = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+    except (termios.error, ValueError, OSError, AttributeError):
+        old = None
+
+    if old is None:  # no raw mode — numbered fallback
+        print(f"\n  {_BOLD}Pin a record skill{_RESET}\n")
+        for i, lab in enumerate(labels, 1):
+            print(f"    {_CYAN}{i:>2}{_RESET}  {lab}")
+        try:
+            ans = input("\n  Number, name, or path: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return ("cancel", None)
+        if ans.isdigit() and 1 <= int(ans) <= len(items):
+            sel = items[int(ans) - 1]
+            if sel == _PICK_UNSET:
+                return ("unset", None)
+            if sel == _PICK_CUSTOM:
+                return _ask_custom()
+            return ("set", sel)
+        if ans:
+            return ("set", ans)
+        return ("cancel", None)
+
+    def render(first: bool) -> None:
+        if not first:
+            sys.stdout.write(f"\x1b[{1 + len(labels)}A\r")  # back to the header line
+        sys.stdout.write(f"  {_BOLD}Pin a record skill{_RESET}{_DIM}  (use ↑/↓){_RESET}\x1b[K\n")
+        for i, lab in enumerate(labels):
+            if i == idx:
+                sys.stdout.write(f"  {_CYAN}❯ {lab}{_RESET}\x1b[K\n")
+            else:
+                sys.stdout.write(f"    {lab}\x1b[K\n")
+        sys.stdout.write(f"  {_DIM}↑/↓ move · Enter select · q cancel{_RESET}\x1b[K")
+        sys.stdout.flush()
+
+    result = None
+    print()
+    try:
+        tty.setcbreak(fd)
+        render(first=True)
+        while result is None:
+            ch = sys.stdin.read(1)
+            if ch in ("\r", "\n"):
+                result = items[idx]
+            elif ch in ("q", "\x03"):              # q or Ctrl-C
+                result = "\x00cancel"
+            elif ch == "\x1b":                     # arrow-key escape sequence
+                seq = sys.stdin.read(2)
+                if seq == "[A":
+                    idx = (idx - 1) % len(items); render(False)
+                elif seq == "[B":
+                    idx = (idx + 1) % len(items); render(False)
+            elif ch == "k":
+                idx = (idx - 1) % len(items); render(False)
+            elif ch == "j":
+                idx = (idx + 1) % len(items); render(False)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        print()
+
+    if result == "\x00cancel":
+        return ("cancel", None)
+    if result == _PICK_UNSET:
+        return ("unset", None)
+    if result == _PICK_CUSTOM:
+        return _ask_custom()
+    return ("set", result)
+
+
+def _configure_default_skill_interactive(key: str, config: dict) -> str | None:
+    """Interactive ``configure default_skill``: show the skills catalog's GitHub link, run the
+    arrow-key picker, and handle unset/cancel directly. Returns the chosen skill name or path
+    for the caller to persist (the ``"set"`` case), or ``None`` when there's nothing left to do
+    (unset, cancel, or no skills available)."""
+    from watchdog import skills_catalog
+    catalog = skills_catalog.catalog()
+    url = skills_catalog.github_skills_url("main")
+    print(f"  {_DIM}Read the full text:{_RESET} {_CYAN}{url}{_RESET}")
+    if not catalog:
+        print(f"\n  {_DIM}No record skills available — classification stays on.{_RESET}\n")
+        return None
+
+    action, picked = _pick_skill_arrow(catalog, config.get(key))
+    if action == "cancel":
+        print(f"  {_DIM}No change.{_RESET}\n")
+        return None
+    if action == "unset":
+        config.pop(key, None)
+        WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
+        CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")
+        print(f"  {_GREEN}Set:{_RESET} {_BOLD}{key}{_RESET} = "
+              f"{_DIM}(not set — classify each document){_RESET}\n")
+        return None
+    if picked not in catalog and not Path(picked).expanduser().is_file():
+        print(f"  {_YELLOW}Note:{_RESET} {_BOLD}{picked}{_RESET} isn't a known skill or an "
+              f"existing file; {_DIM}ingest will re-check it.{_RESET}")
+    return picked
+
+
 def cmd_configure(args) -> None:
     config = {}
     if CONFIG_FILE.exists():
@@ -494,16 +622,22 @@ def cmd_configure(args) -> None:
             print(f"  Current value:  {_display_value(key, config.get(key))}")
             if key in ("chunk_workers", "chew_workers"):
                 print(f"  Machine cores:  {os.cpu_count() or 1}")
-            print()
-            answer = input("  Change this value? [y/N] ").strip().lower()
-            if answer not in ("y", "yes"):
+
+            if key == "default_skill":
+                value = _configure_default_skill_interactive(key, config)
+                if value is None:   # unset / cancel handled inside, or no skills
+                    return
+            else:
                 print()
-                return
-            print()
-            value = input("  New value: ").strip()
-            if not value:
-                print(f"\n  {_DIM}No change.{_RESET}\n")
-                return
+                answer = input("  Change this value? [y/N] ").strip().lower()
+                if answer not in ("y", "yes"):
+                    print()
+                    return
+                print()
+                value = input("  New value: ").strip()
+                if not value:
+                    print(f"\n  {_DIM}No change.{_RESET}\n")
+                    return
         else:
             print(f"\n  {_BOLD}{key}{_RESET} = {_display_value(key, config.get(key))}\n")
             return

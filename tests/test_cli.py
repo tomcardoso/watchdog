@@ -737,6 +737,63 @@ def test_configure_unknown_key_exits(wdg_home):
         cli.cmd_configure(args(key="nonexistent_key", value="foo"))
 
 
+# ── default_skill picker ───────────────────────────────────────────────────────
+
+def test_configure_default_skill_noninteractive_set(wdg_home):
+    cli.cmd_configure(args(key="default_skill", value="court-documents"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["default_skill"] == "court-documents"
+
+
+def test_configure_default_skill_interactive_set(wdg_home, monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr(_setup, "_pick_skill_arrow", lambda cat, cur: ("set", "legislation"))
+    cli.cmd_configure(args(key="default_skill"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["default_skill"] == "legislation"
+
+
+def test_configure_default_skill_interactive_unset(wdg_home, monkeypatch):
+    (wdg_home / "config.json").write_text(json.dumps({"default_skill": "legislation"}) + "\n")
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr(_setup, "_pick_skill_arrow", lambda cat, cur: ("unset", None))
+    cli.cmd_configure(args(key="default_skill"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert "default_skill" not in config
+
+
+def test_configure_default_skill_interactive_cancel(wdg_home, monkeypatch):
+    (wdg_home / "config.json").write_text(json.dumps({"default_skill": "legislation"}) + "\n")
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr(_setup, "_pick_skill_arrow", lambda cat, cur: ("cancel", None))
+    cli.cmd_configure(args(key="default_skill"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["default_skill"] == "legislation"
+
+
+def test_configure_default_skill_custom_warns(wdg_home, monkeypatch, capsys):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr(_setup, "_pick_skill_arrow", lambda cat, cur: ("set", "not-a-real-skill"))
+    cli.cmd_configure(args(key="default_skill"))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "isn't a known skill" in out
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["default_skill"] == "not-a-real-skill"
+
+
+def test_pick_skill_arrow_numbered_fallback(monkeypatch):
+    # Under pytest, sys.stdin has no usable fd → the picker uses the numbered prompt.
+    monkeypatch.setattr("builtins.input", lambda *a: "2")
+    catalog = {"alpha": "/x/alpha.md", "beta": "/x/beta.md"}
+    assert _setup._pick_skill_arrow(catalog, None) == ("set", "beta")
+
+
+def test_pick_skill_arrow_numbered_fallback_unset(monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda *a: "3")  # the "(unset …)" row
+    catalog = {"alpha": "/x/alpha.md", "beta": "/x/beta.md"}
+    assert _setup._pick_skill_arrow(catalog, None) == ("unset", None)
+
+
 # ── aliases ───────────────────────────────────────────────────────────────────
 
 def test_about_prints_version_and_links(capsys, wdg_home):
