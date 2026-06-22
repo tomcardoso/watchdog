@@ -49,6 +49,11 @@ def _validate(data: dict) -> list[str]:
                     errors.append(f"entities[{i}].timeline_events[{j}] is not an object")
                 elif ev.get("confidence") and ev["confidence"] not in _VALID_CONFIDENCE:
                     errors.append(f"entities[{i}].timeline_events[{j}].confidence '{ev['confidence']}' must be one of: {', '.join(sorted(_VALID_CONFIDENCE))}")
+            for j, frag in enumerate(ent.get("evidence_fragments", [])):
+                if not isinstance(frag, dict):
+                    errors.append(f"entities[{i}].evidence_fragments[{j}] is not an object")
+                elif frag.get("confidence") and frag["confidence"] not in _VALID_CONFIDENCE:
+                    errors.append(f"entities[{i}].evidence_fragments[{j}].confidence '{frag['confidence']}' must be one of: {', '.join(sorted(_VALID_CONFIDENCE))}")
             for j, role in enumerate(ent.get("roles", [])):
                 if not isinstance(role, dict):
                     errors.append(f"entities[{i}].roles[{j}] must be an object with relationship/target_id/target_type/target_name/page/confidence/date_range keys — not a string")

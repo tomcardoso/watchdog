@@ -35,8 +35,12 @@ for new entities (do not set null or "").
 - `summary`: one sentence — who this entity is and the role it plays. If EXISTING_ENTITIES carries \
 a `summary` for a matched entity, REVISE that carried summary to fold in what this document adds — \
 do not discard it and write a single-document summary from scratch.
-- `analysis`: investigative narrative worth noting (significance, patterns). Omit if nothing \
-notable. Never put contradiction callouts here.
+- `evidence_fragments`: the investigatively significant claims this document makes about this \
+entity — each an OBJECT with `claim` (one factual sentence), `page`, `confidence`, an optional \
+`reason` (why it matters), and an optional `quote`. Summarize each claim in your own words by \
+default; include a verbatim `quote` ONLY when the exact wording is itself significant or quotable \
+(an admission, a precise figure, distinctive language) — usually omit it. Omit the whole array if \
+the document says nothing notable about this entity. Never put contradiction callouts here.
 - `timeline_events`: datable events directly involving this entity — anything a journalist would \
 want the date of (something that happened, was decided, or changed). Exclude pure stamp/filing \
 dates unless they connect causally to something substantive.
@@ -49,7 +53,7 @@ its weakest element.
 
 CONTRADICTION CHECK — for each entity that matched an EXISTING_ENTITIES entry, compare key dates, \
 roles, and relationships in this document against that entry's `timeline_events`, `roles`, and \
-`analysis`. Flag a material discrepancy only when both sides are high or medium confidence and you \
+recorded claims. Flag a material discrepancy only when both sides are high or medium confidence and you \
 are confident it is genuine — this is the only verification step; any callout is saved as-is. Put \
 each as a string in that entity's `contradictions` array, formatted exactly:
 > [!contradiction] <short label>
@@ -59,7 +63,8 @@ Do not flag low-confidence differences, trivial name variations, or contradictio
 
 Also produce:
 - `document.summary`: one paragraph. `document.key_facts`: the 5–15 most important facts (fact, \
-page, confidence).
+page, confidence, and an optional verbatim `quote` — include the exact source sentence only when \
+its precise wording matters; otherwise just summarize the fact).
 - `morgue_entity_id`: the kebab-case id of the entity this document is primarily *about* (debtor \
 for a bankruptcy, company for an annual report, defendant for a court order).
 - `morgue_document_type`: a type slug like annual-report, court-order, bankruptcy-filing.
@@ -130,6 +135,10 @@ def build_synthesis_prompt(bundle: dict) -> str:
         "invent a resolution. `analysis` is the investigative narrative (patterns, significance, "
         "open threads) — empty string if nothing beyond the summary. NEVER include "
         "[!contradiction] callouts; contradictions live in their own section.\n\n"
+        "The fragments contain structured claims, some carrying a verbatim `quote`. Compose the "
+        "prose from the claims in your own words; weave a verbatim quote into the prose ONLY in "
+        "exceptional cases where the quote itself is unusually strong or important — by default, "
+        "do not quote.\n\n"
         f"Entities:\n{json.dumps(bundle.get('entities', []), ensure_ascii=False)}"
     )
 

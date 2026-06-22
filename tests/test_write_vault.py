@@ -45,7 +45,10 @@ def make_extraction(tmp_path: Path, overrides: dict | None = None) -> Path:
             "near_duplicate_of": None,
             "minhash": [],
             "summary": "A test annual report.",
-            "key_facts": [{"fact": "Revenue was $1M.", "page": 3, "confidence": "high"}],
+            "key_facts": [
+                {"fact": "Revenue was $1M.", "page": 3, "confidence": "high",
+                 "quote": "Total revenue for the year was $1,000,000."},
+            ],
         },
         "entities": [
             {
@@ -54,7 +57,11 @@ def make_extraction(tmp_path: Path, overrides: dict | None = None) -> Path:
                 "type": "Person",
                 "aliases": ["A. Smith"],
                 "summary": "Alice Smith is a director of Acme Corp.",
-                "analysis": "Smith is listed as director with significant share holdings.",
+                "evidence_fragments": [
+                    {"claim": "Smith is listed as director with significant share holdings.",
+                     "page": 2, "confidence": "high", "reason": "establishes control of Acme",
+                     "quote": "Ms. Smith holds 4,200,000 common shares of Acme Corp."},
+                ],
                 "timeline_events": [
                     {"date": "2020-03-15", "event": "Appointed director of Acme Corp", "page": 2, "confidence": "high"},
                     {"date": "2024", "event": "Continued as director", "page": 2, "confidence": "medium"},
@@ -77,7 +84,6 @@ def make_extraction(tmp_path: Path, overrides: dict | None = None) -> Path:
                 "type": "Company",
                 "aliases": ["ACME"],
                 "summary": "Acme Corp is the subject of this annual report.",
-                "analysis": None,
                 "timeline_events": [],
                 "roles": [],
             },
@@ -148,7 +154,7 @@ def test_entity_note_analysis_omitted_when_null(tmp_path):
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
-    # acme-corp has analysis: None
+    # acme-corp has no evidence_fragments
     content = (vault / "entities" / "company" / "acme-corp.md").read_text()
     assert "## Analysis" not in content
 
@@ -711,6 +717,53 @@ def test_document_note_key_facts_have_page_links(tmp_path):
 
     content = (vault / "documents" / "test-doc.md").read_text()
     assert "[[morgue/acme-corp/annual-report/test-doc.pdf#page=3|p. 3]]" in content
+
+
+def test_document_note_key_fact_quote_renders_as_blockquote(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    run(make_extraction(tmp_path), vault)
+
+    content = (vault / "documents" / "test-doc.md").read_text()
+    # The optional verbatim quote renders as a blockquote beneath its key fact.
+    assert "  > Total revenue for the year was $1,000,000." in content
+
+
+def test_key_fact_without_quote_has_no_blockquote(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    run(make_extraction(tmp_path, {"document": {
+        "key_facts": [{"fact": "Revenue was $1M.", "page": 3, "confidence": "high"}],
+    }}), vault)
+
+    content = (vault / "documents" / "test-doc.md").read_text()
+    assert "Revenue was $1M." in content
+    assert "  > " not in content
+
+
+def test_entity_analysis_renders_claim_reason_and_quote(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    run(make_extraction(tmp_path), vault)
+
+    content = (vault / "entities" / "person" / "alice-smith.md").read_text()
+    # claim bullet, its `— reason`, page link, and the verbatim quote as a blockquote
+    assert "## Analysis" in content
+    assert "- Smith is listed as director with significant share holdings." in content
+    assert "— establishes control of Acme" in content
+    assert "  > Ms. Smith holds 4,200,000 common shares of Acme Corp." in content
+
+
+def test_fragment_digest_carries_claim_and_quote(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    run(make_extraction(tmp_path), vault)
+
+    frag = (vault / ".watchdog" / "tmp" / "entity-fragments" / "alice-smith.md").read_text()
+    # The synthesis digest carries the claim and its quote so the finalizer can choose to surface it.
+    assert "Claims:" in frag
+    assert "Smith is listed as director" in frag
+    assert "Ms. Smith holds 4,200,000 common shares" in frag
 
 
 def test_entity_timeline_has_page_link(tmp_path):

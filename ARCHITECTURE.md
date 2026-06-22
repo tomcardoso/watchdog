@@ -128,8 +128,10 @@ registry/note writes so the concurrent document workers write safely.
    pinned** for the run (`--skill` / `default_skill`) — that one skill is used for every
    document, saving a model call per doc on known-homogeneous batches.
 3. **Extract** — one model call against the `EXTRACTION` schema: title, date, entities
-   (deduped against the pre-flight candidates), roles, timeline events, key facts,
-   per-entity summary/analysis, contradictions, morgue fields, and a briefing scratchpad.
+   (deduped against the pre-flight candidates), roles, timeline events, key facts (each with
+   an optional verbatim `quote`), per-entity summary + structured **evidence fragments**
+   (claim/page/confidence/reason, plus an optional verbatim `quote` — see D22), contradictions,
+   morgue fields, and a briefing scratchpad.
    Schema validation + a same-model retry live in `model_client` (no automatic tier
    escalation — see D20); the orchestrator adds one post-flight repair retry.
 4. **Post-flight** (`postflight.run`, a function call) — validates the JSON, applies
@@ -204,7 +206,7 @@ differently:
 | Section | Kind | Treatment |
 |---|---|---|
 | `## Summary` | synthesized prose | model — carryforward interim, then bundled synthesis |
-| `## Analysis` | synthesized prose | model — bundled synthesis |
+| `## Analysis` | evidence-fragment claims → synthesized prose | deterministic claims for single-mention; model-synthesized prose once 2+ mentions (D22) |
 | `## Contradictions` | cited callouts | deterministic — append-only, deduped, audit-managed |
 | `## Timeline` | structured events | deterministic — merged, sorted by **event** date |
 | `## Relationships` | structured roles | deterministic — merged |
@@ -253,8 +255,9 @@ disjoint cases:**
   the new document rather than writing a fresh single-document summary. Handles the common
   single-touch case in the extraction call that's already running — no extra call.
 - **Gated synthesis.** As `write_vault` writes each entity, it appends a per-entity
-  **fragment** (the entity's slice of the extraction JSON — summary, analysis, roles —
-  plus document attribution) to `.watchdog/tmp/entity-fragments/<id>.md` and bumps a
+  **fragment** (the entity's slice of the extraction JSON — summary, evidence-fragment claims
+  with any quotes, roles — plus document attribution) to `.watchdog/tmp/entity-fragments/<id>.md`
+  and bumps a
   count in `_queue.json`. This is a *free byproduct* of data the extractor already
   produced. In `_post_ingest`, `synthesis_bundle.build_bundle` selects entities with
   **count ≥ 2** and packs each one's fragments + current prose into one compact bundle;
@@ -419,4 +422,5 @@ registry for every document would be wasteful. The manifest is the cheap index.
 | D19 | Force-section on whole-doc output overrun (§5) | Sectioning triggers on *input* size (`section_token_threshold`), but truncation is *output*-driven — a moderate-input, entity-dense doc overruns the model's output ceiling on the agent-SDK backend (which can't cap output), truncating the JSON and escalating the retry toward a pricier tier. On a multi-page doc whose whole-doc extraction is rejected, the orchestrator re-runs it through the sectioned path with a small forced budget (≥2 sections) to bound per-call output | Adds one (failed) whole-doc attempt before the fallback; single-page docs can't be split, so they still just fail |
 | D18 | Python orchestrator; the model is called only for reasoning (#118 W3) | A Claude Code skill session *is* a model loop, so the orchestrator (and per-turn coordination) cost model tokens even for pure dispatch — the orchestrator alone ran $1–3+ of a representative batch, ~38–86% of pipeline spend was per-turn context re-send. Moving the loop to Python (`orchestrate.py`) calling the model only for classify/extract/synthesis/timeline-dedup/briefing removes that floor and lets each task route to a backend + tier (`model_client`, D-auth #119). Supersedes the subagent split (D3) and the off-orchestrator finalize (D14) | Extraction now runs the Claude Agent SDK in-process and parallel concurrency is bounded by subscription/API rate limits (`extract_concurrency` knob); the `claude-api` backend is unproven until a metered key is used |
 | D21 | Record skills are global, not per-vault (`skills_catalog`) | Copying skills into every vault was a holdover from the Claude-Code-skill ingest, which needed them under `.claude/commands/` for discovery. The Python orchestrator (D18) just reads the file, so the copy was vestigial and created drift (each vault stale until `refresh-skills`). Skills now live in the package + `~/.watchdog/skills/records/` (user overrides) and are read directly; the classify index is built in memory (supersedes D12); per-skill `description:` frontmatter lets a user-added skill set its own index line. Pinning (`--skill`/`default_skill`, a name or path) and `watchdog show-skills` round it out. Pre-production, so vault-local copies are simply ignored (strictly global) rather than migrated | Loses per-vault skill freezing/customization; mitigated by `--skill PATH` for one-offs and by stamping the skill used into each document's note + registry (`record_skill`) for provenance. Custom skills in `~/.watchdog` aren't carried with a shared vault |
+| D22 | Extractor emits structured **evidence fragments** instead of prose `analysis`; optional verbatim `quote` on fragments and `key_facts` (#107) | The per-entity `analysis` prose was thrown away and rewritten by synthesis for every multi-mention entity (D7/D17), so the extractor did prose work twice. Replacing it with `{claim, page, confidence, reason}` fragments gives the synthesizer a clean, page-anchored, citable digest to compose from rather than re-prosing prose — and single-mention notes render the claims directly under `## Analysis`. Quotes are *captured* at extraction only when the wording is significant, and on entity fragments are *surfaced* into synthesized prose only in exceptional cases (the synthesis prompt gates this); on `key_facts` the quote renders verbatim in the document note (terminal, reader-facing — the strongest placement). This is a **quality/citability** change, not a cost trim (structured fragments cost slightly more output tokens than the prose they replace) — the cost trim is the separate #127 | More structured extractor output; a captured quote against garbled OCR isn't verified to appear on the page (that check is the deferred #106 evaluator); existing notes keep their old prose `## Analysis` until the entity is next extracted |
 | D20 | Configured model only — no automatic escalation; classifier model is its own knob | `model_client` originally bumped the tier up (haiku→sonnet→opus) on a JSON-validation failure. That makes ingest cost unpredictable and can silently spend opus money — the opposite of a budgeted pipeline. Now a failed call retries on the **same** configured model (the orchestrator's post-flight repair + D19 sectioning handle genuine failures), and the classify step gets its own `classifier_model` knob (default haiku) alongside `extractor_model`/`finalizer_model`, so each stage's model is explicit and stable | A doc that a stronger model would have salvaged now fails instead of auto-upgrading — the user opts into a stronger model deliberately via config |

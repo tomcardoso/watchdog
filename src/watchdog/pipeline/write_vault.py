@@ -16,13 +16,16 @@ Extraction JSON schema:
     "page_count": int, "source": str|null, "obtained": str|null,
     "near_duplicate_of": str|null, "shingles": [],
     "summary": str,
-    "key_facts": [{"fact": str, "page": int|null, "confidence": str}]
+    "key_facts": [{"fact": str, "page": int|null, "confidence": str, "quote": str|null}]
   },
   "entities": [
     {
       "id": str, "name": str, "type": str, "aliases": [],
       "summary": str|null,
-      "analysis": str|null,            // synthesized investigative narrative (no callouts)
+      "evidence_fragments": [          // significant claims about this entity (no callouts)
+        {"claim": str, "page": int|null, "confidence": str,
+         "reason": str|null, "quote": str|null}
+      ],
       "contradictions": [str]|null,    // each a `> [!contradiction]` callout block
       "timeline_events": [
         {
@@ -483,6 +486,29 @@ def _add_reverse_role(
 
 # ── Note builders ─────────────────────────────────────────────────────────────
 
+def _render_evidence_fragments(fragments: list, morgue_path: str = "") -> str:
+    """Render evidence-fragment claims as Markdown bullets.
+
+    Each claim becomes a bullet with an optional page link and `— reason`; an optional
+    verbatim quote renders as a blockquote beneath it. With no morgue_path, pages render
+    as plain "p. N" (used for the finalizer digest, which needs no clickable links).
+    """
+    lines = []
+    for f in fragments:
+        claim = (f.get("claim") or "").strip()
+        if not claim:
+            continue
+        pg = _page_link(morgue_path, f.get("page"))
+        page = f" ({pg})" if pg else ""
+        reason = f" — {f['reason'].strip()}" if f.get("reason") else ""
+        line = f"- {claim}{page}{reason}"
+        quote = (f.get("quote") or "").strip()
+        if quote:
+            line += f"\n  > {quote}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
 def build_entity_note(
     entry: dict,
     notes_section: str,
@@ -566,6 +592,9 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
             page = f" ({pg})" if pg else ""
             conf = f" — confidence: {kf['confidence']}" if kf.get("confidence") else ""
             body += f"- {kf['fact']}{page}{conf}\n"
+            quote = (kf.get("quote") or "").strip()
+            if quote:
+                body += f"  > {quote}\n"
 
     if entity_entries:
         body += "\n## Entities mentioned\n\n"
@@ -600,8 +629,9 @@ def _record_entity_fragment(
     parts = [f"\n### {doc_title} — {dtype}, {ddate} (sha {doc['sha256'][:7]})\n"]
     if incoming.get("summary"):
         parts.append(incoming["summary"].strip() + "\n")
-    if incoming.get("analysis"):
-        parts.append(f"\nAnalysis: {incoming['analysis'].strip()}\n")
+    fragments = incoming.get("evidence_fragments") or []
+    if fragments:
+        parts.append("\nClaims:\n" + _render_evidence_fragments(fragments) + "\n")
     roles = incoming.get("roles", [])
     if roles:
         rendered = "; ".join(
@@ -726,10 +756,13 @@ def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False, ne
             new_summary = incoming.get("summary") or _extract_summary(note_path)
 
             existing_analysis = _extract_analysis(note_path)
-            new_analysis_text = incoming.get("analysis") or ""
+            new_analysis_text = _render_evidence_fragments(
+                incoming.get("evidence_fragments") or [],
+                documents_reg[doc_sha256]["morgue_path"],
+            )
             if new_analysis_text:
                 doc_note = documents_reg[doc_sha256]["document_note"]
-                entry_line = f"*{_today()}, via [[{doc_note}|{doc_title}]]:* {new_analysis_text}"
+                entry_line = f"*{_today()}, via [[{doc_note}|{doc_title}]]:*\n{new_analysis_text}"
                 accumulated = (
                     existing_analysis.rstrip() + "\n\n" + entry_line
                 ).lstrip() if existing_analysis else entry_line

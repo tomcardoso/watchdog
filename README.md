@@ -313,7 +313,7 @@ Sidecar files (`.yml`) are not ingested as documents — they are metadata attac
 Each entity note has a consistent structure:
 
 - **`## Summary`** — synthesized overview of who this entity is and their significance; replaced on each ingest
-- **`## Analysis`** — accumulated investigative observations, dated and linked to source documents; never overwritten
+- **`## Analysis`** — investigative claims about the entity, each dated, page-linked, and with an optional verbatim quote; rendered as accumulated claims for single-document entities, and synthesized into prose once an entity appears in two or more documents
 - **`## Timeline`** — chronological list of datable events involving this entity, linked to source pages
 - **`## Relationships`** — connections to other entities, with source citations
 - **`## Notes`** — reserved for journalist annotations; never touched by Watchdog
@@ -451,7 +451,7 @@ watchdog configure <key> <value>
 | `shingle_size` | `3` | Word n-gram size for near-duplicate fingerprinting. Changing this invalidates existing MinHash signatures — re-ingest to rebuild. |
 | `classifier_model` | `haiku` | Claude model that reads a document's first pages and picks its record skill. Haiku is plenty; raise it only if classification goes wrong on ambiguous documents. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--classifier-model`. |
 | `extractor_model` | `sonnet` | Claude model for document extraction. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--extractor-model`. |
-| `finalizer_model` | `sonnet` | Claude model for post-ingest — entity synthesis (Summary + Analysis for entities in ≥2 documents) + timeline reconciliation + briefing. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--finalizer-model`. |
+| `finalizer_model` | `haiku` | Claude model for post-ingest — entity synthesis (Summary + Analysis for entities in ≥2 documents) + timeline reconciliation + briefing. This step composes prose from compact digests rather than reading raw documents, so Haiku is the default; raise it if synthesized prose feels thin. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--finalizer-model`. |
 | `extract_concurrency` | `5` | Documents extracted in parallel during `watchdog ingest`. Lower it if you hit model rate limits; raise it for throughput. Per-run override: `--concurrency`. |
 | `classify_pages` | `5` | Leading pages of each document shown to the classifier (`min(page_count, this)`). More pages classify ambiguous documents better at a small extra cost on the cheap classifier model. Per-run override: `--classify-pages`. |
 | `default_skill` | _(unset)_ | Pin a record skill (a name from the global catalog, or a path to a skill file) for every ingested document, skipping classification — for vaults that are always one document type. Per-run override: `--skill`. |
