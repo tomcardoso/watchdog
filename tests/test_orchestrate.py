@@ -327,6 +327,69 @@ def test_orchestrator_cancels_gracefully_on_sigint(tmp_path, monkeypatch):
     assert (vault / ".watchdog" / "queue" / "bbb222.json").exists()
 
 
+def test_rate_limit_stops_batch_keeps_queue(tmp_path, monkeypatch):
+    """A provider rate limit stops the batch cleanly: the summary carries the reason,
+    nothing is quarantined, and every queue file is kept for resume."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="aaa111", filename="one.pdf")
+    _queue_doc(vault, sha="bbb222", filename="two.pdf")
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+        if task == "classify":
+            return model_client.ModelResult(parsed={"skill": "general-records.md"}, text="",
+                                            model="m", backend="claude-agent-sdk", auth_mode="subscription")
+        raise model_client.RateLimitError("You've hit your session limit · resets 6:10pm")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault, concurrency=2))
+
+    assert summary["rate_limited"] is True
+    assert "session limit" in summary["stop_message"]
+    assert summary["extracted"] == 0
+    assert summary["quarantined"] == 0
+    assert "post_ingest" not in summary                      # skipped when the batch stops
+    # neither doc is quarantined; both stay queued for a clean resume
+    assert {p.name for p in (vault / ".watchdog" / "queue").glob("*.json")} == {"aaa111.json", "bbb222.json"}
+
+
+def test_failed_doc_is_named_and_quarantine_surfaced(tmp_path, monkeypatch):
+    """A genuine (non-rate-limit) error names the file rather than a bare sha, quarantines
+    it to _failed/, and the summary reports the quarantined count."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="ccc333", filename="boom.pdf")
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+        if task == "classify":
+            return model_client.ModelResult(parsed={"skill": "general-records.md"}, text="",
+                                            model="m", backend="claude-agent-sdk", auth_mode="subscription")
+        raise RuntimeError("kaboom")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault, concurrency=1))
+
+    assert summary["failed"] == 1
+    assert summary["quarantined"] == 1
+    failed = next(r for r in summary["results"] if r["status"] == "failed")
+    assert failed["filename"] == "boom.pdf"                   # resolved, not a bare sha
+    assert (vault / ".watchdog" / "queue" / "_failed" / "ccc333.json").exists()
+    assert not (vault / ".watchdog" / "queue" / "ccc333.json").exists()
+
+
+def test_requeue_moves_failed_back(tmp_path, monkeypatch):
+    """watchdog requeue moves quarantined queue files back into the active queue."""
+    from watchdog.cmd.ingest import cmd_requeue
+    vault = make_vault(tmp_path)
+    failed = vault / ".watchdog" / "queue" / "_failed"
+    failed.mkdir(parents=True, exist_ok=True)
+    (failed / "ddd444.json").write_text("{}")
+    monkeypatch.chdir(vault)
+
+    cmd_requeue(None)
+
+    assert (vault / ".watchdog" / "queue" / "ddd444.json").exists()
+    assert not (failed / "ddd444.json").exists()
+
+
 def test_orchestrator_sectioned_path(tmp_path, monkeypatch):
     """Large doc → section.run plans sections → per-section extract → merge → vault."""
     vault = make_vault(tmp_path)

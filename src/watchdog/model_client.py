@@ -62,6 +62,33 @@ class ModelError(RuntimeError):
     """The model could not return schema-valid JSON, or the chosen backend can't run."""
 
 
+class RateLimitError(RuntimeError):
+    """A provider rate/usage limit was hit — e.g. the Claude subscription session limit.
+
+    Deliberately **not** a :class:`ModelError`: a rate limit is a session-wide, transient
+    condition, not a per-document failure. It must propagate past extraction's retry +
+    sectioning fallback all the way to the orchestrator, which stops the batch cleanly and
+    leaves unfinished documents queued for resume (rather than quarantining a good doc).
+    """
+
+    def __init__(self, message: str, *, resets_at=None):
+        super().__init__(message)
+        self.resets_at = resets_at
+
+
+# Substrings that mark a rate/usage-limit error in a result, notice, or exception text.
+_RATE_LIMIT_HINTS = ("rate_limit", "rate limit", "session limit", "usage limit",
+                     "too many requests")
+
+
+def _looks_like_rate_limit(api_status, *texts: str) -> bool:
+    """True if an HTTP 429, or any of the given texts reads like a rate-limit notice."""
+    if api_status == 429:
+        return True
+    blob = " ".join(t for t in texts if t).lower()
+    return any(h in blob for h in _RATE_LIMIT_HINTS)
+
+
 @dataclass
 class ModelResult:
     parsed: dict
@@ -126,11 +153,32 @@ async def _agent_query(prompt: str, model: str, env: dict | None) -> dict:
         env=env or {},
     )
     out = {"text": "", "cost_usd": None, "usage": None}
-    async for message in query(prompt=prompt, options=options):
-        if type(message).__name__ == "ResultMessage":
-            out["text"] = getattr(message, "result", "") or ""
-            out["cost_usd"] = getattr(message, "total_cost_usd", None)
-            out["usage"] = getattr(message, "usage", None)
+    api_status = None        # ResultMessage.api_error_status (e.g. 429) since CLI v2.1.110
+    is_error = False
+    notice = ""              # human-readable limit notice, if the CLI emitted one as text
+    try:
+        async for message in query(prompt=prompt, options=options):
+            if type(message).__name__ == "ResultMessage":
+                out["text"] = getattr(message, "result", "") or ""
+                out["cost_usd"] = getattr(message, "total_cost_usd", None)
+                out["usage"] = getattr(message, "usage", None)
+                is_error = bool(getattr(message, "is_error", False))
+                api_status = getattr(message, "api_error_status", None)
+            # The session-limit message ("You've hit your session limit · resets …")
+            # arrives as a text block; capture it so we can show the real reason.
+            for block in getattr(message, "content", None) or []:
+                t = getattr(block, "text", "") or ""
+                if t and any(h in t.lower() for h in _RATE_LIMIT_HINTS):
+                    notice = t.strip()
+    except Exception as e:
+        # The SDK rewrites a CLI is_error result into a RuntimeError on the non-zero exit
+        # (often the only signal: "Claude Code returned an error result: success"). If it
+        # was a rate limit, raise a typed, actionable error instead of an opaque one.
+        if _looks_like_rate_limit(api_status, notice, out["text"], str(e)):
+            raise RateLimitError(notice or "Claude rate/usage limit reached") from e
+        raise
+    if is_error and _looks_like_rate_limit(api_status, notice, out["text"]):
+        raise RateLimitError(notice or "Claude rate/usage limit reached")
     return out
 
 
@@ -161,13 +209,16 @@ async def _api_complete_async(prompt: str, model_id: str, schema: dict,
     """Raw Claude Messages API backend with structured outputs."""
     import anthropic
 
-    resp = await anthropic.AsyncAnthropic(api_key=api_key).messages.create(
-        model=model_id,
-        max_tokens=max_tokens,
-        system=_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-        output_config={"format": {"type": "json_schema", "schema": schema}},
-    )
+    try:
+        resp = await anthropic.AsyncAnthropic(api_key=api_key).messages.create(
+            model=model_id,
+            max_tokens=max_tokens,
+            system=_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
+            output_config={"format": {"type": "json_schema", "schema": schema}},
+        )
+    except anthropic.RateLimitError as e:   # 429 — surface as the shared typed error
+        raise RateLimitError(str(e) or "Claude API rate limit reached") from e
     text = next((b.text for b in resp.content if getattr(b, "type", None) == "text"), "")
     usage = resp.usage
     usage_dict = usage.model_dump() if hasattr(usage, "model_dump") else dict(usage)

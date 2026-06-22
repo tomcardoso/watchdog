@@ -241,11 +241,19 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
 def _print_ingest_summary(summary: dict) -> None:
     ext, skip, fail = summary["extracted"], summary["skipped"], summary["failed"]
     cancelled = summary.get("cancelled")
+    rate_limited = summary.get("rate_limited")
     n_cancelled = sum(1 for r in summary["results"] if r.get("status") == "cancelled")
-    headline = f"{_YELLOW}Ingest stopped{_RESET}" if cancelled else f"{_GREEN}Ingest complete{_RESET}"
+    if rate_limited:
+        headline = f"{_YELLOW}Ingest paused — rate limit{_RESET}"
+    elif cancelled:
+        headline = f"{_YELLOW}Ingest stopped{_RESET}"
+    else:
+        headline = f"{_GREEN}Ingest complete{_RESET}"
     print(f"\n  {headline}  {_BOLD}{ext}{_RESET} extracted"
           f"{f', {skip} skipped' if skip else ''}{f', {fail} failed' if fail else ''}"
           f"{f', {n_cancelled} not started' if n_cancelled else ''}\n")
+    if rate_limited and summary.get("stop_message"):
+        print(f"  {_DIM}{summary['stop_message']}{_RESET}\n")
     for r in summary["results"]:
         name = r.get("filename") or r.get("sha256", "?")
         if r["status"] == "ok":
@@ -256,10 +264,33 @@ def _print_ingest_summary(summary: dict) -> None:
             continue
         else:
             print(f"  {_YELLOW}✗ {name}  {r.get('reason', '')}{_RESET}")
+    quarantined = summary.get("quarantined", 0)
+    if quarantined:
+        print(f"\n  {_YELLOW}{quarantined} document{'s' if quarantined != 1 else ''} need attention{_RESET}"
+              f"{_DIM} in {_RESET}{_CYAN}queue/_failed/{_RESET}{_DIM} — run {_RESET}"
+              f"{_CYAN}watchdog requeue{_RESET}{_DIM} to retry {'them' if quarantined != 1 else 'it'}.{_RESET}")
     if cancelled:
         print(f"\n  {_DIM}Re-run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} to process the remaining documents.{_RESET}\n")
     else:
         print(f"\n  {_DIM}Open a fresh Claude Code session to ask investigation questions.{_RESET}\n")
+
+
+def cmd_requeue(args) -> None:
+    """Move documents from queue/_failed/ back into the active queue for re-ingest."""
+    vault = Path(".").resolve()
+    if not (vault / ".watchdog").is_dir():
+        sys.exit("Error: must be run from inside a Watchdog vault directory")
+    failed_dir = vault / ".watchdog" / "queue" / "_failed"
+    files = sorted(failed_dir.glob("*.json")) if failed_dir.exists() else []
+    if not files:
+        print(f"\n  {_DIM}No documents in {_RESET}{_CYAN}queue/_failed/{_RESET}{_DIM} — nothing to requeue.{_RESET}\n")
+        return
+    queue_dir = vault / ".watchdog" / "queue"
+    for f in files:
+        f.replace(queue_dir / f.name)
+    n = len(files)
+    print(f"\n  {_GREEN}Requeued {_BOLD}{n}{_RESET}{_GREEN} document{'s' if n != 1 else ''}{_RESET}"
+          f"{_DIM} — run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} to retry.{_RESET}\n")
 
 
 def cmd_context(args) -> None:

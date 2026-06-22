@@ -189,13 +189,27 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
     return extraction, scratchpad, cost, ok, errors
 
 
+def _queued_filename(vault: Path, sha: str) -> str | None:
+    """Best-effort filename for a sha from its queue descriptor (active or _failed/)."""
+    for sub in ("", "_failed"):
+        p = vault / ".watchdog" / "queue" / sub / f"{sha}.json"
+        if p.exists():
+            try:
+                return json.loads(p.read_text(encoding="utf-8")).get("filename")
+            except (OSError, json.JSONDecodeError):
+                return None
+    return None
+
+
 def _fail(vault: Path, sha: str, filename: str, reason: str) -> dict:
     """Log the failure and clean up this doc's artifacts (queue → _failed/) for retry."""
-    name = filename or sha[:7]
+    # Resolve the filename (the catch-all path has only the sha) *before* abort.run moves
+    # the queue file, so the ✗ line and log name the file instead of a bare sha.
+    name = filename or _queued_filename(vault, sha) or sha[:7]
     _say(f"{_YELLOW}✗{_RESET}  {name}  {_DIM}{reason}{_RESET}")
     _log(vault, f"FAILED {name}: {reason}")
     abort.run(vault, sha)   # removes staging/section temp, moves the queue file to _failed/
-    return {"sha256": sha, "filename": filename, "status": "failed", "reason": reason}
+    return {"sha256": sha, "filename": filename or name, "status": "failed", "reason": reason}
 
 
 async def _extract_document(vault: Path, sha: str, brief: str | None,
@@ -223,15 +237,16 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         skill = await _classify(excerpt, classify_model)
         skill_text = skills_catalog.read_skill(skill)
         skill_label = skill.removesuffix(".md")
+        _say(f"{_DIM}·  {filename}  classified ·{_RESET} {_CYAN}{skill_label}{_RESET}")
 
     plan = section.run(vault, sha)
     if plan.get("sectioned"):
         n_sections = len(plan.get("sections", []))
-        _say(f"{_DIM}→  {filename}  extracting · {skill_label} · {n_sections} sections…{_RESET}")
+        _say(f"{_DIM}→  {filename}  extracting · {n_sections} sections…{_RESET}")
         extraction, scratchpad, cost, ok, errors = await _extract_sectioned(
             vault, sha, pf, skill_text, plan, extract_model, skill_label)
     else:
-        _say(f"{_DIM}→  {filename}  extracting · {skill_label}…{_RESET}")
+        _say(f"{_DIM}→  {filename}  extracting…{_RESET}")
         extraction, scratchpad, cost, ok, errors = await _simple_extract(
             vault, sha, pf, skill_text, brief, extract_model, skill_label)
         # Whole-document extraction can overrun the model's output ceiling on entity-dense
@@ -395,6 +410,18 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     brief = _read_brief(vault)
     sem = asyncio.Semaphore(max(1, concurrency))
     cancelled = asyncio.Event()
+    stop_reason: dict = {}          # {"rate_limit": "<notice>"} when a limit stopped the batch
+    tasks: list = []
+
+    def _request_stop(rate_limit: str | None = None) -> None:
+        """Stop the batch once: flag it, record why, cancel in-flight work. Idempotent."""
+        if cancelled.is_set():
+            return
+        cancelled.set()
+        if rate_limit:
+            stop_reason["rate_limit"] = rate_limit
+        for t in tasks:
+            t.cancel()
 
     async def _guarded(sha: str) -> dict:
         if cancelled.is_set():                       # never started — leave queue file for resume
@@ -405,6 +432,14 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             try:
                 return await _extract_document(vault, sha, brief, extract_model, classify_model,
                                                classify_pages, pinned_skill)
+            except model_client.RateLimitError as e:  # session-wide — stop, leave queued for resume
+                if not cancelled.is_set():
+                    print()
+                    _say(f"{_YELLOW}Rate limit reached{_RESET}{_DIM} — {e}{_RESET}")
+                    _say(f"{_DIM}Stopping; finished documents are saved. Re-run "
+                         f"{_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} once it resets to continue.{_RESET}")
+                    _request_stop(rate_limit=str(e))
+                return {"sha256": sha, "filename": "", "status": "cancelled"}
             except asyncio.CancelledError:           # ctrl+c mid-document — queue file stays
                 return {"sha256": sha, "filename": "", "status": "cancelled"}
             except Exception as e:                   # one bad doc must not sink the batch
@@ -413,16 +448,14 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     # On ctrl+c, cancel in-flight work once and shut down cleanly instead of letting
     # KeyboardInterrupt tear through the event loop with a traceback. Finished documents
     # are already written to the vault; unfinished ones keep their queue file for resume.
-    tasks = [asyncio.ensure_future(_guarded(s)) for s in shas]
+    tasks[:] = [asyncio.ensure_future(_guarded(s)) for s in shas]
 
     def _on_interrupt() -> None:
         if cancelled.is_set():
             return
-        cancelled.set()
         print()
         _say(f"{_YELLOW}Interrupted{_RESET}{_DIM} — finishing current writes, then stopping…{_RESET}")
-        for t in tasks:
-            t.cancel()
+        _request_stop()
 
     loop = asyncio.get_running_loop()
     handler_set = False
@@ -439,13 +472,18 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
 
     results = [t.result() for t in tasks if t.done() and not t.cancelled()]
     by_status = lambda s: sum(1 for r in results if r.get("status") == s)
+    failed_dir = vault / ".watchdog" / "queue" / "_failed"
+    quarantined = len(list(failed_dir.glob("*.json"))) if failed_dir.exists() else 0
     summary = {"results": results, "extracted": by_status("ok"),
                "skipped": by_status("skipped"), "failed": by_status("failed"),
-               "cancelled": cancelled.is_set()}
+               "cancelled": cancelled.is_set(),
+               "rate_limited": bool(stop_reason.get("rate_limit")),
+               "stop_message": stop_reason.get("rate_limit"),
+               "quarantined": quarantined}
     if summary["extracted"] and not cancelled.is_set():
         summary["post_ingest"] = await _post_ingest(vault, results, brief, post_model)
         _update_graph_colours(vault)
-    _log(vault, f"INGEST {'cancelled' if cancelled.is_set() else 'complete'} — "
-                f"{summary['extracted']} extracted, {summary['skipped']} skipped, "
-                f"{summary['failed']} failed")
+    state = "rate-limited" if summary["rate_limited"] else ("cancelled" if cancelled.is_set() else "complete")
+    _log(vault, f"INGEST {state} — {summary['extracted']} extracted, "
+                f"{summary['skipped']} skipped, {summary['failed']} failed")
     return summary

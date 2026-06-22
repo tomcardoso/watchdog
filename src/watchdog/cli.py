@@ -65,6 +65,7 @@ from watchdog.cmd.ingest import (
     cmd_postflight,
     cmd_preflight,
     cmd_queue_status,
+    cmd_requeue,
 )
 from watchdog.cmd.registry import (
     _VALID_CONFIDENCE,
@@ -214,6 +215,9 @@ def main() -> None:
     p_unlock.add_argument("project", nargs="?", help="Investigation name or slug (default: infer from cwd)").completer = _project_completer
     p_unlock.add_argument("--force", action="store_true", help="Remove lock even if recent")
     p_unlock.set_defaults(func=cmd_unlock)
+
+    p_requeue = sub.add_parser("requeue", help="Move documents from queue/_failed/ back into the queue for re-ingest")
+    p_requeue.set_defaults(func=cmd_requeue)
 
     p_configure = sub.add_parser("configure", help="View or change configuration")
     p_configure.add_argument("key",   nargs="?", help=f"Config key ({', '.join(_CONFIGURE_KEYS)})")
