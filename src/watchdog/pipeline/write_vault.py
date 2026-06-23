@@ -281,7 +281,7 @@ def _build_timeline_section(
         date_str = ev.get("date", "")
         year = date_str[:4] if date_str else "Unknown"
         rendered_date = _render_date(date_str)
-        conf = f" — confidence: {ev['confidence']}" if ev.get("confidence") else ""
+        conf = f" — confidence: {ev.get('confidence') or 'high'}"
 
         source_sha = ev.get("source_sha256", "")
         doc_entry = docs_reg.get(source_sha, {})
@@ -392,7 +392,7 @@ def _page_link(morgue_path: str, page: int | None) -> str:
 def _role_line(role: dict, docs_reg: dict) -> str:
     """Format a role dict as a Markdown relationship line with pretty links."""
     date_part = f" — {role['date_range']}" if role.get("date_range") else ""
-    conf_part = f" — confidence: {role['confidence']}"
+    conf_part = f" — confidence: {role.get('confidence') or 'high'}"
 
     target_link = f"[[entities/{_type_dir(role['target_type'])}/{role['target_id']}|{role['target_name']}]]"
 
@@ -498,7 +498,7 @@ def _add_reverse_role(
         "target_type":   from_entity["type"],
         "target_name":   from_entity["name"],
         "page":          role.get("page"),
-        "confidence":    role["confidence"],
+        "confidence":    role.get("confidence", "high"),
         "date_range":    role.get("date_range"),
         "source_sha256": doc_sha256,
         "is_reverse":    True,
@@ -613,7 +613,7 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
         for kf in key_facts:
             pg = _page_link(morgue_path or "", kf.get("page"))
             page = f" ({pg})" if pg else ""
-            conf = f" — confidence: {kf['confidence']}" if kf.get("confidence") else ""
+            conf = f" — confidence: {kf.get('confidence') or 'high'}"
             body += f"- {kf['fact']}{page}{conf}\n"
             quote = (kf.get("quote") or "").strip()
             if quote:
