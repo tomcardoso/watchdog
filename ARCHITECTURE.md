@@ -400,6 +400,8 @@ registry for every document would be wasteful. The manifest is the cheap index.
 
 ## 14. Decision log (summary)
 
+*Append new decisions in ascending number order — newest at the bottom.*
+
 | # | Decision | Rationale | Tradeoff |
 |---|---|---|---|
 | D1 | Local-first preprocessing | Source documents never leave the machine; no API cost for chew | Bound by local compute for OCR/layout |
