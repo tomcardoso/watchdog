@@ -48,9 +48,11 @@ dates unless they connect causally to something substantive.
 confidence/date_range — never a plain string. Identify the target by `target_id` only; its name \
 and type are filled in automatically, so do not emit them.
 
-Confidence (every event, fact, and role): `high` (directly stated), `medium` (one inference), \
-`low` (multi-statement inference), `disputed` (contradicts the vault). Never upgrade a claim past \
-its weakest element.
+Confidence (events, facts, roles): emit `confidence` ONLY when it is `medium` (one inference), \
+`low` (multi-statement inference), or `disputed` (contradicts the vault). OMIT it entirely when the \
+claim is directly stated — absent means `high`, which is the default. Never upgrade a claim past its \
+weakest element. Likewise omit `page` when there is no page marker (don't emit null), and omit empty \
+arrays rather than emitting `[]`.
 
 CONTRADICTION CHECK — for each entity that matched an EXISTING_ENTITIES entry, compare key dates, \
 roles, and relationships in this document against that entry's `timeline_events`, `roles`, and \

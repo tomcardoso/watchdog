@@ -176,6 +176,29 @@ def test_slim_role_target_resolved_from_id(tmp_path):
     assert "[[entities/company/acme-corp|Acme Corp]]" in note   # name + type resolved from the id
 
 
+def test_omitted_confidence_defaults_to_high(tmp_path):
+    """Confidence is omittable on the wire (absent ⇒ high); notes still render 'confidence: high'."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    run(make_extraction(tmp_path, {
+        "document": {"key_facts": [{"fact": "Revenue was $1M.", "page": 3}]},          # no confidence
+        "entities": [
+            {"id": "alice-smith", "name": "Alice Smith", "type": "Person", "aliases": [],
+             "summary": "A director.",
+             "timeline_events": [{"date": "2020", "event": "Appointed director"}],      # no confidence
+             "roles": [{"relationship": "Director of", "target_id": "acme-corp"}]},      # no confidence
+            {"id": "acme-corp", "name": "Acme Corp", "type": "Company", "aliases": [],
+             "summary": "The company.", "timeline_events": [], "roles": []},
+        ],
+    }), vault)
+
+    alice = (vault / "entities" / "person" / "alice-smith.md").read_text()
+    doc = (vault / "documents" / "test-doc.md").read_text()
+    assert "Director of [[entities/company/acme-corp|Acme Corp]] — confidence: high" in alice
+    assert "Appointed director" in alice and "— confidence: high" in alice
+    assert "Revenue was $1M." in doc and "— confidence: high" in doc
+
+
 def test_new_entity_note_has_relationships_section(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")

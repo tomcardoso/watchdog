@@ -25,7 +25,7 @@ _KEY_FACT = _obj(
         "confidence": _CONFIDENCE,
         "quote": {"type": "string"},   # optional verbatim source sentence (only when wording matters)
     },
-    ["fact", "confidence"],
+    ["fact"],   # confidence omitted ⇒ high (the overwhelming default)
 )
 
 # A single investigatively-significant claim a document makes about an entity. Replaces the
@@ -39,7 +39,7 @@ _EVIDENCE_FRAGMENT = _obj(
         "reason": {"type": "string"},   # why it matters (optional)
         "quote": {"type": "string"},    # verbatim source sentence (optional)
     },
-    ["claim", "confidence"],
+    ["claim"],
 )
 
 _TIMELINE_EVENT = _obj(
@@ -49,7 +49,7 @@ _TIMELINE_EVENT = _obj(
         "page": {"type": ["integer", "null"]},
         "confidence": _CONFIDENCE,
     },
-    ["date", "event", "confidence"],
+    ["date", "event"],
 )
 
 _ROLE = _obj(
@@ -60,7 +60,7 @@ _ROLE = _obj(
         "confidence": _CONFIDENCE,
         "date_range": {"type": ["string", "null"]},
     },
-    ["relationship", "target_id", "confidence"],
+    ["relationship", "target_id"],
 )
 
 _ENTITY = _obj(
