@@ -13,6 +13,7 @@ serializes the vault writes and `_reconcile_entity_ids` handles the parallel new
 import asyncio
 import datetime
 import json
+import shutil
 import signal
 import sys
 from pathlib import Path
@@ -189,13 +190,27 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
     return extraction, scratchpad, cost, ok, errors
 
 
+def _queued_filename(vault: Path, sha: str) -> str | None:
+    """Best-effort filename for a sha from its queue descriptor (active or _failed/)."""
+    for sub in ("", "_failed"):
+        p = vault / ".watchdog" / "queue" / sub / f"{sha}.json"
+        if p.exists():
+            try:
+                return json.loads(p.read_text(encoding="utf-8")).get("filename")
+            except (OSError, json.JSONDecodeError):
+                return None
+    return None
+
+
 def _fail(vault: Path, sha: str, filename: str, reason: str) -> dict:
     """Log the failure and clean up this doc's artifacts (queue → _failed/) for retry."""
-    name = filename or sha[:7]
+    # Resolve the filename (the catch-all path has only the sha) *before* abort.run moves
+    # the queue file, so the ✗ line and log name the file instead of a bare sha.
+    name = filename or _queued_filename(vault, sha) or sha[:7]
     _say(f"{_YELLOW}✗{_RESET}  {name}  {_DIM}{reason}{_RESET}")
     _log(vault, f"FAILED {name}: {reason}")
     abort.run(vault, sha)   # removes staging/section temp, moves the queue file to _failed/
-    return {"sha256": sha, "filename": filename, "status": "failed", "reason": reason}
+    return {"sha256": sha, "filename": filename or name, "status": "failed", "reason": reason}
 
 
 async def _extract_document(vault: Path, sha: str, brief: str | None,
@@ -223,15 +238,16 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         skill = await _classify(excerpt, classify_model)
         skill_text = skills_catalog.read_skill(skill)
         skill_label = skill.removesuffix(".md")
+        _say(f"{_DIM}·  {filename}  classified ·{_RESET} {_CYAN}{skill_label}{_RESET}")
 
     plan = section.run(vault, sha)
     if plan.get("sectioned"):
         n_sections = len(plan.get("sections", []))
-        _say(f"{_DIM}→  {filename}  extracting · {skill_label} · {n_sections} sections…{_RESET}")
+        _say(f"{_DIM}→  {filename}  extracting · {n_sections} sections…{_RESET}")
         extraction, scratchpad, cost, ok, errors = await _extract_sectioned(
             vault, sha, pf, skill_text, plan, extract_model, skill_label)
     else:
-        _say(f"{_DIM}→  {filename}  extracting · {skill_label}…{_RESET}")
+        _say(f"{_DIM}→  {filename}  extracting…{_RESET}")
         extraction, scratchpad, cost, ok, errors = await _simple_extract(
             vault, sha, pf, skill_text, brief, extract_model, skill_label)
         # Whole-document extraction can overrun the model's output ceiling on entity-dense
@@ -260,7 +276,11 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     _say(f"{_GREEN}OK{_RESET}  {filename}  {_DIM}{n_entities} entit{'ies' if n_entities != 1 else 'y'}{_RESET}  "
          f"{_CYAN}documents/{_doc_slug(filename)}{_RESET}")
     _log(vault, f"OK {filename}: {n_entities} entities")
-    return _compact_result(sha, filename, extraction, pf.get("near_dup", {}), round(cost, 6))
+    result = _compact_result(sha, filename, extraction, pf.get("near_dup", {}), round(cost, 6))
+    # Persist the compact result so `watchdog finalize` can run post-ingest from disk alone.
+    (vault / ".watchdog" / "tmp" / f"result_{sha}.json").write_text(
+        json.dumps(result, ensure_ascii=False), encoding="utf-8")
+    return result
 
 
 def _lines(items: list) -> str:
@@ -319,12 +339,19 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     if bundle.get("entities"):
         _say(f"{_DIM}→  synthesizing {len(bundle['entities'])} multi-mention "
              f"entit{'ies' if len(bundle['entities']) != 1 else 'y'}…{_RESET}")
-        r = await model_client.acomplete_json(
-            task="entity-synthesis", model=post_model, schema=schemas.SYNTHESIS,
-            prompt=prompts.build_synthesis_prompt(bundle))
-        res_path = vault / ".watchdog" / "tmp" / "synthesis-result.json"
-        res_path.write_text(json.dumps(r.parsed, ensure_ascii=False), encoding="utf-8")
-        out["synthesized"] = len(synthesis_bundle.apply_bundle(res_path, vault).get("applied", []))
+        try:
+            r = await model_client.acomplete_json(
+                task="entity-synthesis", model=post_model, schema=schemas.SYNTHESIS,
+                prompt=prompts.build_synthesis_prompt(bundle))
+        except (model_client.ModelError, model_client.RateLimitError) as e:
+            # Synthesis is enrichment: leave the structured claims already in the notes
+            # rather than crashing. The fragment queue persists, so a later ingest redoes it.
+            out["error"] = str(e)
+            _say(f"{_YELLOW}synthesis skipped{_RESET}{_DIM} — {e}{_RESET}")
+        else:
+            res_path = vault / ".watchdog" / "tmp" / "synthesis-result.json"
+            res_path.write_text(json.dumps(r.parsed, ensure_ascii=False), encoding="utf-8")
+            out["synthesized"] = len(synthesis_bundle.apply_bundle(res_path, vault).get("applied", []))
 
     # 2. Timeline: promote pending, model-dedup any real collisions, rebuild timeline.md.
     _say(f"{_DIM}→  rebuilding timeline…{_RESET}")
@@ -346,7 +373,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                 task="timeline-dedup", model=post_model, schema=schemas.TIMELINE_DEDUP,
                 prompt=prompts.build_timeline_dedup_prompt(col["date"], events))
             kept = r.parsed.get("events") or events
-        except model_client.ModelError:
+        except (model_client.ModelError, model_client.RateLimitError):
             kept = events   # fall back to the union rather than losing events
         canonical.write_text(
             "\n".join(json.dumps(e, ensure_ascii=False) for e in kept) + "\n", encoding="utf-8")
@@ -370,8 +397,70 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                 brief=brief, results=ok, scratchpads=scratchpads,
                 neardup_alerts=neardup_alerts, contradiction_flags=contradiction_flags))
         out["briefing"] = _write_briefing(vault, r.parsed, ok, neardup_alerts, contradiction_flags)
-    except model_client.ModelError as e:
+    except (model_client.ModelError, model_client.RateLimitError) as e:
         out["briefing_error"] = str(e)
+    return out
+
+
+def _load_results(vault: Path) -> list:
+    """Load persisted per-doc results (used by a standalone finalize run)."""
+    out = []
+    for p in sorted((vault / ".watchdog" / "tmp").glob("result_*.json")):
+        try:
+            out.append(json.loads(p.read_text(encoding="utf-8")))
+        except (OSError, json.JSONDecodeError):
+            pass
+    return out
+
+
+def _clear_post_ingest_inputs(vault: Path) -> None:
+    """Remove the per-run post-ingest inputs once they have been finalized cleanly."""
+    tmp = vault / ".watchdog" / "tmp"
+    shutil.rmtree(tmp / "entity-fragments", ignore_errors=True)
+    for p in list(tmp.glob("result_*.json")) + list(tmp.glob("notes_*.md")):
+        p.unlink(missing_ok=True)
+
+
+def has_pending_finalization(vault: Path) -> bool:
+    """True if an extracted-but-not-finalized batch is sitting in tmp (e.g. a rate-limited run)."""
+    tmp = vault / ".watchdog" / "tmp"
+    return ((tmp / "entity-fragments" / "_queue.json").exists()
+            or any(tmp.glob("result_*.json")))
+
+
+def pending_finalization(vault: Path) -> dict:
+    """Best-effort counts for an extracted-but-not-finalized batch sitting in tmp."""
+    tmp = vault / ".watchdog" / "tmp"
+    docs = len(list(tmp.glob("result_*.json")))
+    entities = 0
+    q = tmp / "entity-fragments" / "_queue.json"
+    if q.exists():
+        try:
+            entities = sum(1 for r in json.loads(q.read_text(encoding="utf-8")).values()
+                           if isinstance(r, dict) and r.get("count", 0) >= 2)
+        except (OSError, json.JSONDecodeError, AttributeError):
+            pass
+    return {"docs": docs, "entities": entities}
+
+
+async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None = None,
+                   results: list | None = None) -> dict:
+    """Run (or re-run) post-ingest over the current on-disk state: synthesize multi-mention
+    entities, reconcile the timeline, and write the briefing/hot.md/log.
+
+    Called at the tail of every ``watchdog ingest`` (with this run's results in memory) and
+    standalone by ``watchdog finalize`` (reading persisted ``result_*.json``) to complete a
+    post-ingest an earlier rate limit or interrupt left unfinished. On a clean pass the consumed
+    inputs (fragments, results, scratchpads) are cleared; if any step failed they are left in
+    place so a later finalize can retry.
+    """
+    if brief is None:
+        brief = _read_brief(vault)
+    if results is None:
+        results = _load_results(vault)
+    out = await _post_ingest(vault, results, brief, post_model)
+    if not out.get("error") and not out.get("briefing_error"):
+        _clear_post_ingest_inputs(vault)
     return out
 
 
@@ -395,6 +484,18 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     brief = _read_brief(vault)
     sem = asyncio.Semaphore(max(1, concurrency))
     cancelled = asyncio.Event()
+    stop_reason: dict = {}          # {"rate_limit": "<notice>"} when a limit stopped the batch
+    tasks: list = []
+
+    def _request_stop(rate_limit: str | None = None) -> None:
+        """Stop the batch once: flag it, record why, cancel in-flight work. Idempotent."""
+        if cancelled.is_set():
+            return
+        cancelled.set()
+        if rate_limit:
+            stop_reason["rate_limit"] = rate_limit
+        for t in tasks:
+            t.cancel()
 
     async def _guarded(sha: str) -> dict:
         if cancelled.is_set():                       # never started — leave queue file for resume
@@ -405,6 +506,14 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             try:
                 return await _extract_document(vault, sha, brief, extract_model, classify_model,
                                                classify_pages, pinned_skill)
+            except model_client.RateLimitError as e:  # session-wide — stop, leave queued for resume
+                if not cancelled.is_set():
+                    print()
+                    _say(f"{_YELLOW}Rate limit reached{_RESET}{_DIM} — {e}{_RESET}")
+                    _say(f"{_DIM}Stopping; finished documents are saved. Re-run "
+                         f"{_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} once it resets to continue.{_RESET}")
+                    _request_stop(rate_limit=str(e))
+                return {"sha256": sha, "filename": "", "status": "cancelled"}
             except asyncio.CancelledError:           # ctrl+c mid-document — queue file stays
                 return {"sha256": sha, "filename": "", "status": "cancelled"}
             except Exception as e:                   # one bad doc must not sink the batch
@@ -413,16 +522,14 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     # On ctrl+c, cancel in-flight work once and shut down cleanly instead of letting
     # KeyboardInterrupt tear through the event loop with a traceback. Finished documents
     # are already written to the vault; unfinished ones keep their queue file for resume.
-    tasks = [asyncio.ensure_future(_guarded(s)) for s in shas]
+    tasks[:] = [asyncio.ensure_future(_guarded(s)) for s in shas]
 
     def _on_interrupt() -> None:
         if cancelled.is_set():
             return
-        cancelled.set()
         print()
         _say(f"{_YELLOW}Interrupted{_RESET}{_DIM} — finishing current writes, then stopping…{_RESET}")
-        for t in tasks:
-            t.cancel()
+        _request_stop()
 
     loop = asyncio.get_running_loop()
     handler_set = False
@@ -439,13 +546,28 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
 
     results = [t.result() for t in tasks if t.done() and not t.cancelled()]
     by_status = lambda s: sum(1 for r in results if r.get("status") == s)
+    failed_dir = vault / ".watchdog" / "queue" / "_failed"
+    quarantined = len(list(failed_dir.glob("*.json"))) if failed_dir.exists() else 0
     summary = {"results": results, "extracted": by_status("ok"),
                "skipped": by_status("skipped"), "failed": by_status("failed"),
-               "cancelled": cancelled.is_set()}
+               "cancelled": cancelled.is_set(),
+               "rate_limited": bool(stop_reason.get("rate_limit")),
+               "stop_message": stop_reason.get("rate_limit"),
+               "quarantined": quarantined}
     if summary["extracted"] and not cancelled.is_set():
-        summary["post_ingest"] = await _post_ingest(vault, results, brief, post_model)
-        _update_graph_colours(vault)
-    _log(vault, f"INGEST {'cancelled' if cancelled.is_set() else 'complete'} — "
-                f"{summary['extracted']} extracted, {summary['skipped']} skipped, "
-                f"{summary['failed']} failed")
+        try:
+            # Finalize over the persisted per-doc results on disk (not just this run's in-memory
+            # ones) so a merged batch — a prior pending run kept via wipe_pending=False — is
+            # synthesized and briefed together with this run's documents.
+            summary["post_ingest"] = await finalize(vault, post_model=post_model, brief=brief)
+            _update_graph_colours(vault)
+        except Exception as e:   # post-ingest is enrichment — never let it crash a saved batch
+            summary["post_ingest_error"] = str(e)
+            print()
+            _say(f"{_YELLOW}Post-processing incomplete{_RESET}{_DIM} — {e}{_RESET}")
+            _say(f"{_DIM}Your {summary['extracted']} extracted document"
+                 f"{'s are' if summary['extracted'] != 1 else ' is'} saved.{_RESET}")
+    state = "rate-limited" if summary["rate_limited"] else ("cancelled" if cancelled.is_set() else "complete")
+    _log(vault, f"INGEST {state} — {summary['extracted']} extracted, "
+                f"{summary['skipped']} skipped, {summary['failed']} failed")
     return summary

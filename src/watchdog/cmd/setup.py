@@ -206,15 +206,17 @@ _CONFIGURE_KEYS = {
         "choices": ["haiku", "sonnet", "opus"],
     },
     "finalizer_model": {
-        "short": "Claude model for post-ingest synthesis + timeline + briefing (default: sonnet)",
+        "short": "Claude model for post-ingest synthesis + timeline + briefing (default: haiku)",
         "help": (
             "Model used for the post-ingest step: synthesizing prose for multi-mention\n"
             "  entities, reconciling timeline collisions, and writing the briefing.\n"
-            "  Valid values: haiku, sonnet, opus. Default: sonnet.\n"
+            "  This step composes prose from compact digests rather than reading raw documents,\n"
+            "  so the cheaper Haiku tier is the default; raise it if synthesized prose feels thin.\n"
+            "  Valid values: haiku, sonnet, opus. Default: haiku.\n"
             "  Override for a single run with: watchdog ingest --finalizer-model M"
         ),
         "type": "enum",
-        "default": "sonnet",
+        "default": "haiku",
         "choices": ["haiku", "sonnet", "opus"],
     },
     # ── Deduplication ─────────────────────────────────────────────────────────

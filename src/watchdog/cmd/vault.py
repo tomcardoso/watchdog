@@ -825,6 +825,17 @@ def cmd_status(args) -> None:
     if queued_n:
         print(f"  {_YELLOW}{queued_n} file{'s' if queued_n != 1 else ''}{_RESET} chewed and waiting for {_CYAN}/watchdog-ingest{_RESET}")
 
+    from watchdog.pipeline import orchestrate
+    if orchestrate.has_pending_finalization(vault):
+        p = orchestrate.pending_finalization(vault)
+        bits = []
+        if p["docs"]:
+            bits.append(f"{p['docs']} document{'s' if p['docs'] != 1 else ''}")
+        if p["entities"]:
+            bits.append(f"{p['entities']} entit{'ies' if p['entities'] != 1 else 'y'} to synthesize")
+        detail = f" {_DIM}({', '.join(bits)}){_RESET}" if bits else ""
+        print(f"  {_YELLOW}Batch pending finalization{_RESET}{detail} {_DIM}— run{_RESET} {_CYAN}watchdog finalize{_RESET}")
+
     if doc_types:
         print()
         print(f"  {_BOLD}Documents by type{_RESET}")

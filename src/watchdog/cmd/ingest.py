@@ -179,8 +179,49 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
         classify_pages = 5
     classify_pages = max(1, classify_pages)
 
+    from watchdog.pipeline import orchestrate as _orch
     from watchdog.pipeline.ingest_setup import run as is_run
-    result = is_run(vault)
+
+    queue_dir = vault / ".watchdog" / "queue"
+    queued = list(queue_dir.glob("*.json")) if queue_dir.exists() else []
+
+    # A prior run may have left a batch un-finalized (e.g. a rate limit hit during synthesis).
+    # A new ingest resets those inputs, so ask what to do rather than silently discarding them.
+    wipe_pending = True
+    if _orch.has_pending_finalization(vault):
+        if not queued:
+            print(f"\n  {_YELLOW}A previous batch is pending finalization{_RESET}{_DIM} — run "
+                  f"{_RESET}{_CYAN}watchdog finalize{_RESET}{_DIM} to complete it.{_RESET}\n")
+            return
+        p = _orch.pending_finalization(vault)
+        bits = []
+        if p["docs"]:
+            bits.append(f"{p['docs']} document{'s' if p['docs'] != 1 else ''}")
+        if p["entities"]:
+            bits.append(f"{p['entities']} entit{'ies' if p['entities'] != 1 else 'y'} to synthesize")
+        detail = f" {_DIM}({', '.join(bits)}){_RESET}" if bits else ""
+        print(f"\n  {_YELLOW}A previous batch is pending finalization{_RESET}{detail}{_DIM}.{_RESET}")
+        print(f"  {_DIM}A new ingest resets it — what would you like to do?{_RESET}\n")
+        print(f"    {_BOLD}m{_RESET}  merge it into this ingest {_DIM}— extract the new docs, then finalize everything together{_RESET}")
+        print(f"    {_BOLD}f{_RESET}  finalize it now, then stop {_DIM}— ingest the new docs afterward{_RESET}")
+        print(f"    {_BOLD}d{_RESET}  discard it and ingest only the new docs")
+        try:
+            choice = input(f"\n  Choice? [{_BOLD}m{_RESET}] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        if choice in ("f", "finalize"):
+            out = _run_finalize(vault, post_model)
+            if not (out.get("error") or out.get("briefing_error")):
+                print(f"  {_DIM}Now run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} for the queued documents.{_RESET}\n")
+            return
+        if choice in ("d", "discard"):
+            wipe_pending = True
+        else:                                  # default: merge (non-destructive)
+            wipe_pending = False
+            print(f"  {_DIM}Merging the pending batch into this ingest.{_RESET}")
+
+    result = is_run(vault, wipe_pending=wipe_pending)
     if "error" in result:
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} {result['error']}\n")
     if result["total"] == 0:
@@ -241,11 +282,19 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
 def _print_ingest_summary(summary: dict) -> None:
     ext, skip, fail = summary["extracted"], summary["skipped"], summary["failed"]
     cancelled = summary.get("cancelled")
+    rate_limited = summary.get("rate_limited")
     n_cancelled = sum(1 for r in summary["results"] if r.get("status") == "cancelled")
-    headline = f"{_YELLOW}Ingest stopped{_RESET}" if cancelled else f"{_GREEN}Ingest complete{_RESET}"
+    if rate_limited:
+        headline = f"{_YELLOW}Ingest paused — rate limit{_RESET}"
+    elif cancelled:
+        headline = f"{_YELLOW}Ingest stopped{_RESET}"
+    else:
+        headline = f"{_GREEN}Ingest complete{_RESET}"
     print(f"\n  {headline}  {_BOLD}{ext}{_RESET} extracted"
           f"{f', {skip} skipped' if skip else ''}{f', {fail} failed' if fail else ''}"
           f"{f', {n_cancelled} not started' if n_cancelled else ''}\n")
+    if rate_limited and summary.get("stop_message"):
+        print(f"  {_DIM}{summary['stop_message']}{_RESET}\n")
     for r in summary["results"]:
         name = r.get("filename") or r.get("sha256", "?")
         if r["status"] == "ok":
@@ -256,10 +305,103 @@ def _print_ingest_summary(summary: dict) -> None:
             continue
         else:
             print(f"  {_YELLOW}✗ {name}  {r.get('reason', '')}{_RESET}")
+    quarantined = summary.get("quarantined", 0)
+    if quarantined:
+        print(f"\n  {_YELLOW}{quarantined} document{'s' if quarantined != 1 else ''} need attention{_RESET}"
+              f"{_DIM} in {_RESET}{_CYAN}queue/_failed/{_RESET}{_DIM} — run {_RESET}"
+              f"{_CYAN}watchdog requeue{_RESET}{_DIM} to retry {'them' if quarantined != 1 else 'it'}.{_RESET}")
+    pi_error = summary.get("post_ingest_error") or (summary.get("post_ingest") or {}).get("error")
+    if pi_error:
+        print(f"\n  {_YELLOW}Post-processing didn't finish{_RESET}{_DIM} — {pi_error}.{_RESET}")
+        print(f"  {_DIM}Documents are saved with their extracted claims; run {_RESET}"
+              f"{_CYAN}watchdog finalize{_RESET}{_DIM} to complete synthesis + the briefing.{_RESET}")
     if cancelled:
         print(f"\n  {_DIM}Re-run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} to process the remaining documents.{_RESET}\n")
     else:
         print(f"\n  {_DIM}Open a fresh Claude Code session to ask investigation questions.{_RESET}\n")
+
+
+def cmd_finalize(args) -> None:
+    """Complete post-ingest (synthesis + timeline + briefing) for an already-extracted batch.
+
+    `watchdog ingest` finalizes automatically at the end; run this when a rate limit or
+    interrupt stopped post-processing before it finished, so the batch isn't left half-done."""
+    vault = Path(".").resolve()
+    if not (vault / ".watchdog").is_dir():
+        sys.exit("Error: must be run from inside a Watchdog vault directory")
+
+    from watchdog.pipeline import orchestrate
+    if not orchestrate.has_pending_finalization(vault):
+        print(f"\n  {_DIM}Nothing to finalize — run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} first.{_RESET}\n")
+        return
+
+    from watchdog.cmd.auth import resolve_auth
+    a = resolve_auth()
+    if a["mode"] == "none":
+        sys.exit(f"\n  {_YELLOW}Error:{_RESET} {a.get('reason', 'auth not configured')}\n"
+                 f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
+
+    from watchdog.cmd.base import CONFIG_FILE
+    config: dict = {}
+    if CONFIG_FILE.exists():
+        try:
+            import json as _json
+            config = _json.loads(CONFIG_FILE.read_text())
+        except Exception:
+            pass
+    post_model = getattr(args, "finalizer_model", None) or config.get("finalizer_model") or "haiku"
+    if post_model not in _MODEL_IDS:
+        sys.exit(f"Error: unknown model '{post_model}' — choose sonnet, opus, or haiku")
+
+    _run_finalize(vault, post_model)
+
+
+def _run_finalize(vault: Path, post_model: str) -> dict:
+    """Acquire the ingest lock, run post-ingest over the pending batch, print the outcome."""
+    from watchdog.pipeline import orchestrate
+    lock = vault / ".watchdog" / "Registry" / ".ingest-lock"
+    if lock.exists():
+        sys.exit(f"\n  {_YELLOW}Error:{_RESET} an ingest or finalize is already running (lock present).\n"
+                 f"  If stale, run {_CYAN}watchdog unlock{_RESET}.\n")
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text("pid: cli-finalize\n", encoding="utf-8")
+    print(f"\n  {_DIM}Finalizing — synthesis + timeline + briefing (model: {_RESET}"
+          f"{_BOLD}{post_model}{_RESET}{_DIM}).{_RESET}")
+    try:
+        import asyncio
+        out = asyncio.run(orchestrate.finalize(vault, post_model=post_model))
+    finally:
+        lock.unlink(missing_ok=True)
+
+    if out.get("error") or out.get("briefing_error"):
+        reason = out.get("error") or out.get("briefing_error")
+        print(f"\n  {_YELLOW}Finalize didn't finish{_RESET}{_DIM} — {reason}.{_RESET}")
+        print(f"  {_DIM}Re-run {_RESET}{_CYAN}watchdog finalize{_RESET}{_DIM} once the limit resets.{_RESET}\n")
+        return out
+    n = out.get("synthesized", 0)
+    parts = [f"{_BOLD}{n}{_RESET} entit{'ies' if n != 1 else 'y'} synthesized"]
+    if out.get("briefing"):
+        parts.append(f"briefing {_CYAN}{out['briefing']}{_RESET}")
+    print(f"\n  {_GREEN}Finalized{_RESET}  " + ", ".join(parts) + "\n")
+    return out
+
+
+def cmd_requeue(args) -> None:
+    """Move documents from queue/_failed/ back into the active queue for re-ingest."""
+    vault = Path(".").resolve()
+    if not (vault / ".watchdog").is_dir():
+        sys.exit("Error: must be run from inside a Watchdog vault directory")
+    failed_dir = vault / ".watchdog" / "queue" / "_failed"
+    files = sorted(failed_dir.glob("*.json")) if failed_dir.exists() else []
+    if not files:
+        print(f"\n  {_DIM}No documents in {_RESET}{_CYAN}queue/_failed/{_RESET}{_DIM} — nothing to requeue.{_RESET}\n")
+        return
+    queue_dir = vault / ".watchdog" / "queue"
+    for f in files:
+        f.replace(queue_dir / f.name)
+    n = len(files)
+    print(f"\n  {_GREEN}Requeued {_BOLD}{n}{_RESET}{_GREEN} document{'s' if n != 1 else ''}{_RESET}"
+          f"{_DIM} — run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} to retry.{_RESET}\n")
 
 
 def cmd_context(args) -> None:

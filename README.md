@@ -210,11 +210,17 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog ingest --concurrency N` | Documents extracted in parallel for this run (default from `watchdog configure`: 5) |
 | `watchdog ingest --classify-pages N` | Pages shown to the document classifier for this run (default from `watchdog configure`: 5) |
 | `watchdog ingest --skill [NAME\|PATH]` | Pin a record skill (a name or a path to a skill file) for every document, skipping classification. `--skill` with no value picks from the list |
+| `watchdog finalize` | Complete post-ingest (entity synthesis + timeline + briefing) for an already-extracted batch — run it if a rate limit or interrupt stopped post-processing before it finished. `--finalizer-model M` overrides the model |
+| `watchdog requeue` | Move documents quarantined in `queue/_failed/` back into the active queue, then re-run `watchdog ingest` to retry them |
 | `watchdog context [name]` | Open Claude Code with the context seeding skill; omit name when inside the vault |
 | `watchdog context --model M` | Override the model for context seeding (`sonnet`/`opus`/`haiku`, default: `sonnet`) |
 | `watchdog watch [name]` | Watch `_INCOMING/` and chew files automatically as they arrive; omit name when inside the project directory |
 
 `watchdog chew` sends a desktop notification when files finish processing (macOS only). Press **Ctrl+C** to cancel a chew in progress — the lock is cleaned up automatically and any partially-processed files remain in `_INCOMING/` for the next run.
+
+`watchdog ingest` is resumable: pressing **Ctrl+C**, or hitting a Claude subscription rate limit, stops the batch cleanly — finished documents are saved and unfinished ones stay queued, so re-running `watchdog ingest` (after the limit resets) picks up where it left off. A document that genuinely fails extraction is set aside in `queue/_failed/`; the run reports how many, and `watchdog requeue` moves them back to retry.
+
+Every ingest finalizes automatically at the end (entity synthesis + timeline + briefing). If that **post-processing** step is interrupted — e.g. the rate limit is hit *after* the documents extract — the batch is left finalizable. `watchdog status` flags it, and `watchdog finalize` completes synthesis and the briefing without re-extracting. If you start another `watchdog ingest` while a batch is pending, it asks what to do: **merge** the pending batch into the new run (finalize everything together), **finalize** it first then ingest, or **discard** it.
 
 ### Info and settings
 
@@ -313,7 +319,7 @@ Sidecar files (`.yml`) are not ingested as documents — they are metadata attac
 Each entity note has a consistent structure:
 
 - **`## Summary`** — synthesized overview of who this entity is and their significance; replaced on each ingest
-- **`## Analysis`** — accumulated investigative observations, dated and linked to source documents; never overwritten
+- **`## Analysis`** — investigative claims about the entity, each dated, page-linked, and with an optional verbatim quote; rendered as accumulated claims for single-document entities, and synthesized into prose once an entity appears in two or more documents
 - **`## Timeline`** — chronological list of datable events involving this entity, linked to source pages
 - **`## Relationships`** — connections to other entities, with source citations
 - **`## Notes`** — reserved for journalist annotations; never touched by Watchdog
@@ -451,7 +457,7 @@ watchdog configure <key> <value>
 | `shingle_size` | `3` | Word n-gram size for near-duplicate fingerprinting. Changing this invalidates existing MinHash signatures — re-ingest to rebuild. |
 | `classifier_model` | `haiku` | Claude model that reads a document's first pages and picks its record skill. Haiku is plenty; raise it only if classification goes wrong on ambiguous documents. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--classifier-model`. |
 | `extractor_model` | `sonnet` | Claude model for document extraction. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--extractor-model`. |
-| `finalizer_model` | `sonnet` | Claude model for post-ingest — entity synthesis (Summary + Analysis for entities in ≥2 documents) + timeline reconciliation + briefing. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--finalizer-model`. |
+| `finalizer_model` | `haiku` | Claude model for post-ingest — entity synthesis (Summary + Analysis for entities in ≥2 documents) + timeline reconciliation + briefing. This step composes prose from compact digests rather than reading raw documents, so Haiku is the default; raise it if synthesized prose feels thin. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--finalizer-model`. |
 | `extract_concurrency` | `5` | Documents extracted in parallel during `watchdog ingest`. Lower it if you hit model rate limits; raise it for throughput. Per-run override: `--concurrency`. |
 | `classify_pages` | `5` | Leading pages of each document shown to the classifier (`min(page_count, this)`). More pages classify ambiguous documents better at a small extra cost on the cheap classifier model. Per-run override: `--classify-pages`. |
 | `default_skill` | _(unset)_ | Pin a record skill (a name from the global catalog, or a path to a skill file) for every ingested document, skipping classification — for vaults that are always one document type. Per-run override: `--skill`. |

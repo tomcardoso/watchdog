@@ -65,7 +65,7 @@ def test_merge_dedups_timeline_and_key_facts():
     assert len(merged["document"]["key_facts"]) == 1
 
 
-def test_merge_omits_empty_summary_and_analysis():
+def test_merge_omits_empty_summary_and_evidence_fragments():
     merged = merge_extractions([
         {"document": {"sha256": "x"},
          "entities": [{"id": "a", "name": "A", "type": "Person", "aliases": [],
@@ -73,7 +73,24 @@ def test_merge_omits_empty_summary_and_analysis():
     ])
     ent = merged["entities"][0]
     assert "summary" not in ent
-    assert "analysis" not in ent
+    assert "evidence_fragments" not in ent
+
+
+def test_merge_unions_evidence_fragments_across_sections():
+    sections = [
+        {"document": {"sha256": "x", "filename": "f"},
+         "entities": [{"id": "a", "name": "A", "type": "Person", "aliases": [],
+                       "evidence_fragments": [{"claim": "Claim one.", "confidence": "high"}],
+                       "timeline_events": [], "roles": []}]},
+        {"document": {},
+         "entities": [{"id": "a", "name": "A", "type": "Person", "aliases": [],
+                       "evidence_fragments": [
+                           {"claim": "Claim one.", "confidence": "high"},      # dup → folded
+                           {"claim": "Claim two.", "confidence": "medium"}],
+                       "timeline_events": [], "roles": []}]},
+    ]
+    frags = merge_extractions(sections)["entities"][0]["evidence_fragments"]
+    assert {f["claim"] for f in frags} == {"Claim one.", "Claim two."}
 
 
 def test_run_merges_section_files(tmp_path):

@@ -6,7 +6,7 @@ Sectioned extraction carries a running scratchpad forward, so each section
 reuses the entity ids found by earlier sections. That makes this merge a pure
 set-union — no LLM reasoning:
 
-  * entities grouped by id; aliases / timeline_events / roles unioned
+  * entities grouped by id; aliases / evidence_fragments / timeline_events / roles unioned
   * a normalized-name pass folds any id drift (OCR variance) onto one id
   * document key_facts concatenated and deduped
 
@@ -27,6 +27,10 @@ def _event_key(ev: dict) -> str:
 
 def _role_key(role: dict) -> tuple:
     return ((role.get("relationship") or "").lower(), role.get("target_id"))
+
+
+def _fragment_key(f: dict) -> str:
+    return (f.get("claim") or "")[:120].lower()
 
 
 def _merge_into(acc: list, incoming: list, key_fn) -> None:
@@ -87,7 +91,7 @@ def merge_extractions(sections: list[dict]) -> dict:
                     "type": ent.get("type", ""),
                     "_surfaces": set(),
                     "summary": None,
-                    "analysis": None,
+                    "evidence_fragments": [],
                     "timeline_events": [],
                     "roles": [],
                 }
@@ -98,16 +102,10 @@ def merge_extractions(sections: list[dict]) -> dict:
             cur["type"] = cur["type"] or ent.get("type", "")
             cur["summary"] = cur["summary"] or ent.get("summary")
 
-            analysis = ent.get("analysis")
-            if analysis and (not cur["analysis"] or analysis not in cur["analysis"]):
-                cur["analysis"] = (
-                    (cur["analysis"] + "\n\n" + analysis).strip()
-                    if cur["analysis"] else analysis
-                )
-
             for nm in surfaces:
                 if nm:
                     cur["_surfaces"].add(nm)
+            _merge_into(cur["evidence_fragments"], ent.get("evidence_fragments", []), _fragment_key)
             _merge_into(cur["timeline_events"], ent.get("timeline_events", []), _event_key)
             _merge_into(cur["roles"], ent.get("roles", []), _role_key)
 
@@ -130,8 +128,8 @@ def merge_extractions(sections: list[dict]) -> dict:
         cur["aliases"] = aliases
         if not cur["summary"]:
             cur.pop("summary")
-        if not cur["analysis"]:
-            cur.pop("analysis")
+        if not cur["evidence_fragments"]:
+            cur.pop("evidence_fragments")
         entities.append(cur)
 
     document.pop("key_facts", None)

@@ -19,8 +19,27 @@ def _obj(properties: dict, required: list[str]) -> dict:
 
 
 _KEY_FACT = _obj(
-    {"fact": {"type": "string"}, "page": {"type": ["integer", "null"]}, "confidence": _CONFIDENCE},
+    {
+        "fact": {"type": "string"},
+        "page": {"type": ["integer", "null"]},
+        "confidence": _CONFIDENCE,
+        "quote": {"type": "string"},   # optional verbatim source sentence (only when wording matters)
+    },
     ["fact", "confidence"],
+)
+
+# A single investigatively-significant claim a document makes about an entity. Replaces the
+# extractor's free-text per-entity `analysis`: the post-ingest finalizer composes prose from
+# these. `quote` is an optional verbatim source sentence, set only when the exact wording matters.
+_EVIDENCE_FRAGMENT = _obj(
+    {
+        "claim": {"type": "string"},
+        "page": {"type": ["integer", "null"]},
+        "confidence": _CONFIDENCE,
+        "reason": {"type": "string"},   # why it matters (optional)
+        "quote": {"type": "string"},    # verbatim source sentence (optional)
+    },
+    ["claim", "confidence"],
 )
 
 _TIMELINE_EVENT = _obj(
@@ -54,7 +73,7 @@ _ENTITY = _obj(
         "type": {"type": "string"},
         "aliases": {"type": "array", "items": {"type": "string"}},
         "summary": {"type": "string"},
-        "analysis": {"type": "string"},          # omit if nothing notable
+        "evidence_fragments": {"type": "array", "items": _EVIDENCE_FRAGMENT},   # omit if nothing notable
         "contradictions": {"type": "array", "items": {"type": "string"}},
         "timeline_events": {"type": "array", "items": _TIMELINE_EVENT},
         "roles": {"type": "array", "items": _ROLE},

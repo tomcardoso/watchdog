@@ -26,7 +26,7 @@ def test_contradictions_go_to_own_section_not_analysis(tmp_path):
         "entities": [{
             "id": "alice-smith", "name": "Alice Smith", "type": "Person", "aliases": [],
             "summary": "A director.",
-            "analysis": "Holds significant shares.",
+            "evidence_fragments": [{"claim": "Holds significant shares.", "confidence": "high"}],
             "contradictions": [CALLOUT],
             "timeline_events": [], "roles": [],
         }],
@@ -106,7 +106,8 @@ def test_finalizer_replaces_summary_and_analysis_preserves_rest(tmp_path):
     wv_run(make_extraction(tmp_path, {
         "entities": [{
             "id": "alice-smith", "name": "Alice Smith", "type": "Person", "aliases": [],
-            "summary": "Old summary.", "analysis": "Old analysis.",
+            "summary": "Old summary.",
+            "evidence_fragments": [{"claim": "Old finding.", "confidence": "high"}],
             "contradictions": [CALLOUT],
             "timeline_events": [{"date": "2020-03-15", "event": "Appointed director", "page": 2, "confidence": "high"}],
             "roles": [{"relationship": "Director of", "target_id": "acme-corp", "target_type": "Company",
@@ -126,7 +127,7 @@ def test_finalizer_replaces_summary_and_analysis_preserves_rest(tmp_path):
     note = _note(vault)
     assert "SYNTHESIZED summary across sources." in _extract_section(note, "Summary")
     assert "SYNTHESIZED analysis." in _extract_section(note, "Analysis")
-    assert "Old summary." not in note and "Old analysis." not in note
+    assert "Old summary." not in note and "Old finding." not in note
     # Structured sections untouched:
     assert "[!contradiction]" in _extract_section(note, "Contradictions")
     assert "Appointed director" in _extract_section(note, "Timeline")

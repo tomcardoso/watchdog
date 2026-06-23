@@ -151,3 +151,17 @@ def test_api_cost_uses_pricing_table():
         cache_creation_input_tokens = 0
         cache_read_input_tokens = 0
     assert mc._api_cost("claude-sonnet-4-6", U()) == pytest.approx(3.0)   # $3 / 1M input
+
+
+def test_looks_like_rate_limit_detects_429_and_text():
+    assert mc._looks_like_rate_limit(429)                                  # HTTP 429
+    assert mc._looks_like_rate_limit(None, "You've hit your session limit")
+    assert mc._looks_like_rate_limit(None, "", "error: rate_limit")
+    assert not mc._looks_like_rate_limit(500, "internal server error")
+    assert not mc._looks_like_rate_limit(None, "all good")
+
+
+def test_rate_limit_error_is_not_a_model_error():
+    # Must NOT subclass ModelError, or extraction's retry + sectioning fallback would
+    # swallow it instead of letting the orchestrator stop the batch.
+    assert not issubclass(mc.RateLimitError, mc.ModelError)

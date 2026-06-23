@@ -61,10 +61,12 @@ from watchdog.cmd.ingest import (
     _run_preprocess,
     cmd_chew,
     cmd_context,
+    cmd_finalize,
     cmd_ingest,
     cmd_postflight,
     cmd_preflight,
     cmd_queue_status,
+    cmd_requeue,
 )
 from watchdog.cmd.registry import (
     _VALID_CONFIDENCE,
@@ -215,6 +217,9 @@ def main() -> None:
     p_unlock.add_argument("--force", action="store_true", help="Remove lock even if recent")
     p_unlock.set_defaults(func=cmd_unlock)
 
+    p_requeue = sub.add_parser("requeue", help="Move documents from queue/_failed/ back into the queue for re-ingest")
+    p_requeue.set_defaults(func=cmd_requeue)
+
     p_configure = sub.add_parser("configure", help="View or change configuration")
     p_configure.add_argument("key",   nargs="?", help=f"Config key ({', '.join(_CONFIGURE_KEYS)})")
     p_configure.add_argument("value", nargs="?", help="Value to set")
@@ -303,6 +308,12 @@ def main() -> None:
                           help="Pin a record skill for every document, skipping classification. "
                                "Pass a skill name, or use --skill with no value to pick interactively.")
     p_ingest.set_defaults(func=cmd_ingest)
+
+    p_finalize = sub.add_parser("finalize", help="Complete post-ingest (synthesis + timeline + briefing) for an already-extracted batch — e.g. after a rate limit stopped it")
+    p_finalize.add_argument("--finalizer-model", choices=_model_choices, default=None,
+                            dest="finalizer_model",
+                            help="Model for synthesis + timeline + briefing — overrides watchdog configure (default: haiku)")
+    p_finalize.set_defaults(func=cmd_finalize)
 
     p_context = sub.add_parser("context", help="Open Claude Code to seed investigation context from _CONTEXT/")
     p_context.add_argument("name", nargs="?", help="Investigation name or slug (default: current directory)").completer = _project_completer
