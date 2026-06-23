@@ -56,7 +56,7 @@ def _validate(data: dict) -> list[str]:
                     errors.append(f"entities[{i}].evidence_fragments[{j}].confidence '{frag['confidence']}' must be one of: {', '.join(sorted(_VALID_CONFIDENCE))}")
             for j, role in enumerate(ent.get("roles", [])):
                 if not isinstance(role, dict):
-                    errors.append(f"entities[{i}].roles[{j}] must be an object with relationship/target_id/target_type/target_name/page/confidence/date_range keys — not a string")
+                    errors.append(f"entities[{i}].roles[{j}] must be an object with relationship/target_id/page/confidence/date_range keys — not a string")
 
     if not data.get("morgue_entity_id"):
         errors.append("morgue_entity_id is missing or empty — this is the kebab-case id of the entity this document is primarily about")
