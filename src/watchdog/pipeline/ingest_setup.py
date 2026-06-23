@@ -30,8 +30,13 @@ def _iso_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "sonnet") -> dict:
-    """Acquire lock, scan queue, write state file. Returns the state dict."""
+def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "sonnet",
+        wipe_pending: bool = True) -> dict:
+    """Acquire lock, scan queue, write state file. Returns the state dict.
+
+    ``wipe_pending=False`` keeps a prior run's un-finalized post-ingest inputs so this
+    ingest *merges* into that batch (both finalize together) instead of discarding it.
+    """
     lock_file = vault / ".watchdog" / "Registry" / ".ingest-lock"
     state_file = vault / ".watchdog" / "ingest-state.json"
 
@@ -75,12 +80,13 @@ def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "so
 
     # Fresh run — clear the post-ingest inputs (entity fragments, per-doc results, and
     # scratchpads) left by a prior ingest so the finalizer gate + briefing see only this run's
-    # documents. A batch left unfinalized by an interrupt should be completed with
-    # `watchdog finalize` *before* the next ingest, which would otherwise discard it here.
-    tmp = vault / ".watchdog" / "tmp"
-    shutil.rmtree(tmp / "entity-fragments", ignore_errors=True)
-    for p in list(tmp.glob("result_*.json")) + list(tmp.glob("notes_*.md")):
-        p.unlink(missing_ok=True)
+    # documents. Skipped when merging into a pending batch (wipe_pending=False), so this run's
+    # documents accumulate onto it and they finalize together.
+    if wipe_pending:
+        tmp = vault / ".watchdog" / "tmp"
+        shutil.rmtree(tmp / "entity-fragments", ignore_errors=True)
+        for p in list(tmp.glob("result_*.json")) + list(tmp.glob("notes_*.md")):
+            p.unlink(missing_ok=True)
 
     started_at = _iso_now()
     batch_start = int(time.time())

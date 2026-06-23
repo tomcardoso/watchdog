@@ -220,7 +220,7 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 
 `watchdog ingest` is resumable: pressing **Ctrl+C**, or hitting a Claude subscription rate limit, stops the batch cleanly — finished documents are saved and unfinished ones stay queued, so re-running `watchdog ingest` (after the limit resets) picks up where it left off. A document that genuinely fails extraction is set aside in `queue/_failed/`; the run reports how many, and `watchdog requeue` moves them back to retry.
 
-Every ingest finalizes automatically at the end (entity synthesis + timeline + briefing). If that **post-processing** step is interrupted — e.g. the rate limit is hit *after* the documents extract — the batch is left finalizable: run `watchdog finalize` (once the limit resets) to complete synthesis and the briefing without re-extracting. **Finalize before starting another ingest**, since a new ingest resets the post-processing inputs.
+Every ingest finalizes automatically at the end (entity synthesis + timeline + briefing). If that **post-processing** step is interrupted — e.g. the rate limit is hit *after* the documents extract — the batch is left finalizable. `watchdog status` flags it, and `watchdog finalize` completes synthesis and the briefing without re-extracting. If you start another `watchdog ingest` while a batch is pending, it asks what to do: **merge** the pending batch into the new run (finalize everything together), **finalize** it first then ingest, or **discard** it.
 
 ### Info and settings
 

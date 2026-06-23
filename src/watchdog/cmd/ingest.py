@@ -179,8 +179,49 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
         classify_pages = 5
     classify_pages = max(1, classify_pages)
 
+    from watchdog.pipeline import orchestrate as _orch
     from watchdog.pipeline.ingest_setup import run as is_run
-    result = is_run(vault)
+
+    queue_dir = vault / ".watchdog" / "queue"
+    queued = list(queue_dir.glob("*.json")) if queue_dir.exists() else []
+
+    # A prior run may have left a batch un-finalized (e.g. a rate limit hit during synthesis).
+    # A new ingest resets those inputs, so ask what to do rather than silently discarding them.
+    wipe_pending = True
+    if _orch.has_pending_finalization(vault):
+        if not queued:
+            print(f"\n  {_YELLOW}A previous batch is pending finalization{_RESET}{_DIM} — run "
+                  f"{_RESET}{_CYAN}watchdog finalize{_RESET}{_DIM} to complete it.{_RESET}\n")
+            return
+        p = _orch.pending_finalization(vault)
+        bits = []
+        if p["docs"]:
+            bits.append(f"{p['docs']} document{'s' if p['docs'] != 1 else ''}")
+        if p["entities"]:
+            bits.append(f"{p['entities']} entit{'ies' if p['entities'] != 1 else 'y'} to synthesize")
+        detail = f" {_DIM}({', '.join(bits)}){_RESET}" if bits else ""
+        print(f"\n  {_YELLOW}A previous batch is pending finalization{_RESET}{detail}{_DIM}.{_RESET}")
+        print(f"  {_DIM}A new ingest resets it — what would you like to do?{_RESET}\n")
+        print(f"    {_BOLD}m{_RESET}  merge it into this ingest {_DIM}— extract the new docs, then finalize everything together{_RESET}")
+        print(f"    {_BOLD}f{_RESET}  finalize it now, then stop {_DIM}— ingest the new docs afterward{_RESET}")
+        print(f"    {_BOLD}d{_RESET}  discard it and ingest only the new docs")
+        try:
+            choice = input(f"\n  Choice? [{_BOLD}m{_RESET}] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        if choice in ("f", "finalize"):
+            out = _run_finalize(vault, post_model)
+            if not (out.get("error") or out.get("briefing_error")):
+                print(f"  {_DIM}Now run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} for the queued documents.{_RESET}\n")
+            return
+        if choice in ("d", "discard"):
+            wipe_pending = True
+        else:                                  # default: merge (non-destructive)
+            wipe_pending = False
+            print(f"  {_DIM}Merging the pending batch into this ingest.{_RESET}")
+
+    result = is_run(vault, wipe_pending=wipe_pending)
     if "error" in result:
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} {result['error']}\n")
     if result["total"] == 0:
@@ -312,7 +353,12 @@ def cmd_finalize(args) -> None:
     if post_model not in _MODEL_IDS:
         sys.exit(f"Error: unknown model '{post_model}' — choose sonnet, opus, or haiku")
 
-    # Guard against running concurrently with an ingest (or another finalize).
+    _run_finalize(vault, post_model)
+
+
+def _run_finalize(vault: Path, post_model: str) -> dict:
+    """Acquire the ingest lock, run post-ingest over the pending batch, print the outcome."""
+    from watchdog.pipeline import orchestrate
     lock = vault / ".watchdog" / "Registry" / ".ingest-lock"
     if lock.exists():
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} an ingest or finalize is already running (lock present).\n"
@@ -331,12 +377,13 @@ def cmd_finalize(args) -> None:
         reason = out.get("error") or out.get("briefing_error")
         print(f"\n  {_YELLOW}Finalize didn't finish{_RESET}{_DIM} — {reason}.{_RESET}")
         print(f"  {_DIM}Re-run {_RESET}{_CYAN}watchdog finalize{_RESET}{_DIM} once the limit resets.{_RESET}\n")
-        return
+        return out
     n = out.get("synthesized", 0)
     parts = [f"{_BOLD}{n}{_RESET} entit{'ies' if n != 1 else 'y'} synthesized"]
     if out.get("briefing"):
         parts.append(f"briefing {_CYAN}{out['briefing']}{_RESET}")
     print(f"\n  {_GREEN}Finalized{_RESET}  " + ", ".join(parts) + "\n")
+    return out
 
 
 def cmd_requeue(args) -> None:

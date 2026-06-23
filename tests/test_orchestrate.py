@@ -466,6 +466,32 @@ def test_finalize_completes_an_interrupted_run(tmp_path, monkeypatch):
     assert orchestrate.has_pending_finalization(vault) is False
 
 
+def test_ingest_setup_wipe_pending_controls_cleanup(tmp_path):
+    """wipe_pending=False (the merge choice) keeps a prior batch's post-ingest inputs;
+    the default clears them."""
+    from watchdog.pipeline import ingest_setup
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="new1", filename="new.pdf")          # a queued doc → total > 0
+    tmp = vault / ".watchdog" / "tmp"
+    frag = tmp / "entity-fragments"
+    frag.mkdir(parents=True, exist_ok=True)
+    (frag / "_queue.json").write_text('{"acme-corp": {"count": 2}}')
+    (tmp / "result_old.json").write_text("{}")
+    (tmp / "notes_old.md").write_text("obs")
+    lock = vault / ".watchdog" / "Registry" / ".ingest-lock"
+
+    # merge: inputs preserved so this run finalizes together with the pending batch
+    ingest_setup.run(vault, wipe_pending=False)
+    assert (frag / "_queue.json").exists()
+    assert (tmp / "result_old.json").exists() and (tmp / "notes_old.md").exists()
+
+    # default: inputs wiped for a fresh batch
+    lock.unlink(missing_ok=True)                               # release the lock from the prior call
+    ingest_setup.run(vault, wipe_pending=True)
+    assert not (frag / "_queue.json").exists()
+    assert not (tmp / "result_old.json").exists() and not (tmp / "notes_old.md").exists()
+
+
 def test_requeue_moves_failed_back(tmp_path, monkeypatch):
     """watchdog requeue moves quarantined queue files back into the active queue."""
     from watchdog.cmd.ingest import cmd_requeue

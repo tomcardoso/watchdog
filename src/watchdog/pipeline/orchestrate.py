@@ -428,6 +428,21 @@ def has_pending_finalization(vault: Path) -> bool:
             or any(tmp.glob("result_*.json")))
 
 
+def pending_finalization(vault: Path) -> dict:
+    """Best-effort counts for an extracted-but-not-finalized batch sitting in tmp."""
+    tmp = vault / ".watchdog" / "tmp"
+    docs = len(list(tmp.glob("result_*.json")))
+    entities = 0
+    q = tmp / "entity-fragments" / "_queue.json"
+    if q.exists():
+        try:
+            entities = sum(1 for r in json.loads(q.read_text(encoding="utf-8")).values()
+                           if isinstance(r, dict) and r.get("count", 0) >= 2)
+        except (OSError, json.JSONDecodeError, AttributeError):
+            pass
+    return {"docs": docs, "entities": entities}
+
+
 async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None = None,
                    results: list | None = None) -> dict:
     """Run (or re-run) post-ingest over the current on-disk state: synthesize multi-mention
@@ -541,7 +556,10 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                "quarantined": quarantined}
     if summary["extracted"] and not cancelled.is_set():
         try:
-            summary["post_ingest"] = await finalize(vault, post_model=post_model, brief=brief, results=results)
+            # Finalize over the persisted per-doc results on disk (not just this run's in-memory
+            # ones) so a merged batch — a prior pending run kept via wipe_pending=False — is
+            # synthesized and briefed together with this run's documents.
+            summary["post_ingest"] = await finalize(vault, post_model=post_model, brief=brief)
             _update_graph_colours(vault)
         except Exception as e:   # post-ingest is enrichment — never let it crash a saved batch
             summary["post_ingest_error"] = str(e)
