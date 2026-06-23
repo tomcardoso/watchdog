@@ -159,6 +159,23 @@ def test_entity_note_analysis_omitted_when_null(tmp_path):
     assert "## Analysis" not in content
 
 
+def test_slim_role_target_resolved_from_id(tmp_path):
+    """A role emitted with target_id only (no target_name/target_type) is re-inflated from the
+    batch's entities, so its relationship link renders with the resolved name + type."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    run(make_extraction(tmp_path, {"entities": [
+        {"id": "alice-smith", "name": "Alice Smith", "type": "Person", "aliases": [],
+         "summary": "A director.", "timeline_events": [],
+         "roles": [{"relationship": "Director of", "target_id": "acme-corp", "confidence": "high"}]},
+        {"id": "acme-corp", "name": "Acme Corp", "type": "Company", "aliases": [],
+         "summary": "The company.", "timeline_events": [], "roles": []},
+    ]}), vault)
+
+    note = (vault / "entities" / "person" / "alice-smith.md").read_text()
+    assert "[[entities/company/acme-corp|Acme Corp]]" in note   # name + type resolved from the id
+
+
 def test_new_entity_note_has_relationships_section(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")

@@ -55,14 +55,12 @@ _TIMELINE_EVENT = _obj(
 _ROLE = _obj(
     {
         "relationship": {"type": "string"},
-        "target_id": {"type": "string"},
-        "target_type": {"type": "string"},
-        "target_name": {"type": "string"},
+        "target_id": {"type": "string"},   # target_name + target_type are derivable from this id
         "page": {"type": ["integer", "null"]},
         "confidence": _CONFIDENCE,
         "date_range": {"type": ["string", "null"]},
     },
-    ["relationship", "target_id", "target_type", "target_name", "confidence"],
+    ["relationship", "target_id", "confidence"],
 )
 
 _ENTITY = _obj(

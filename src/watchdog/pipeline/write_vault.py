@@ -37,8 +37,8 @@ Extraction JSON schema:
       ],
       "roles": [
         {
-          "relationship": str, "target_id": str, "target_type": str,
-          "target_name": str, "page": int|null, "confidence": str,
+          "relationship": str, "target_id": str,   // target_name/target_type resolved from id
+          "page": int|null, "confidence": str,
           "date_range": str|null
         }
       ]
@@ -131,6 +131,29 @@ def _reconcile_entity_ids(incoming_entities: list[dict], entities_reg: dict) -> 
             for role in entity.get("roles", []):
                 if role.get("target_id") in remap:
                     role["target_id"] = remap[role["target_id"]]
+
+
+def _resolve_role_targets(incoming_entities: list[dict], entities_reg: dict) -> None:
+    """Re-inflate the role fields the extractor no longer emits.
+
+    Extraction identifies each role's target by ``target_id`` only; ``target_name`` and
+    ``target_type`` are derivable from the target entity (this batch's entities first, then
+    the registry). Filling them in here — after id reconciliation, before anything reads
+    roles — keeps the slim extraction wire format while leaving every downstream consumer
+    (note rendering, pre-flight context, the synthesis digest) unchanged. A dangling target
+    falls back to the id as name and ``Unknown`` as type.
+    """
+    lookup: dict[str, tuple] = {e["id"]: (e.get("name"), e.get("type")) for e in incoming_entities}
+    for eid, entry in entities_reg.items():
+        lookup.setdefault(eid, (entry.get("name"), entry.get("type")))
+    for entity in incoming_entities:
+        for role in entity.get("roles", []):
+            tid = role.get("target_id")
+            name, typ = lookup.get(tid, (None, None))
+            if not role.get("target_name"):
+                role["target_name"] = name or tid or ""
+            if not role.get("target_type"):
+                role["target_type"] = typ or "Unknown"
 
 
 def _frontmatter(data: dict) -> str:
@@ -696,6 +719,8 @@ def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False, ne
 
         # Reconcile near-duplicate slugs coined by parallel subagents before merging.
         _reconcile_entity_ids(incoming_entities, entities_reg)
+        # Roles arrive as target_id only; re-inflate target_name/target_type deterministically.
+        _resolve_role_targets(incoming_entities, entities_reg)
 
         modified: set[str] = set()
 

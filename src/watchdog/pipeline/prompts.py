@@ -44,8 +44,9 @@ the document says nothing notable about this entity. Never put contradiction cal
 - `timeline_events`: datable events directly involving this entity — anything a journalist would \
 want the date of (something that happened, was decided, or changed). Exclude pure stamp/filing \
 dates unless they connect causally to something substantive.
-- `roles`: relationships to other entities, each an OBJECT with relationship/target_id/target_type/\
-target_name/page/confidence/date_range — never a plain string.
+- `roles`: relationships to other entities, each an OBJECT with relationship/target_id/page/\
+confidence/date_range — never a plain string. Identify the target by `target_id` only; its name \
+and type are filled in automatically, so do not emit them.
 
 Confidence (every event, fact, and role): `high` (directly stated), `medium` (one inference), \
 `low` (multi-statement inference), `disputed` (contradicts the vault). Never upgrade a claim past \
