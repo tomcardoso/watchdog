@@ -71,9 +71,11 @@ def test_orchestrator_extracts_and_writes_vault(tmp_path, monkeypatch):
     # real write_vault produced the notes
     assert (vault / "entities" / "company" / "acme-corp.md").exists()
     assert list((vault / "documents").glob("*.md"))
-    # housekeeping: queue file consumed, scratchpad written for the briefing
+    # housekeeping: queue file consumed; post-ingest finalized and cleaned its per-run inputs
+    # (the scratchpad is consumed by the briefing, then removed on a clean finalize)
     assert not (vault / ".watchdog" / "queue" / "abc123.json").exists()
-    assert (vault / ".watchdog" / "tmp" / "notes_abc123.md").exists()
+    assert "post_ingest" in summary
+    assert not (vault / ".watchdog" / "tmp" / "notes_abc123.md").exists()
     # compact result block
     r = summary["results"][0]
     assert r["status"] == "ok" and r["entity_count"] == 1
@@ -418,6 +420,52 @@ def test_post_ingest_unexpected_crash_is_contained(tmp_path, monkeypatch):
     assert "post_ingest_error" in summary
 
 
+def test_finalize_completes_an_interrupted_run(tmp_path, monkeypatch):
+    """A rate limit during post-ingest leaves the batch finalizable; a later finalize
+    completes synthesis + briefing and clears the per-run inputs."""
+    import re
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="aaa", filename="a.pdf", text="Acme Corp filed.")
+    _queue_doc(vault, sha="bbb", filename="b.pdf", text="Acme Corp again.")
+    state = {"synthesis_ok": False}
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+        def res(parsed):
+            return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                            backend="claude-agent-sdk", auth_mode="subscription")
+        if task == "classify":
+            return res({"skill": "general-records.md"})
+        if task == "extract":
+            m = re.search(r"document\.sha256 = '([^']+)'", prompt)   # share one entity across both docs
+            return res(_extraction(sha=m.group(1), filename=f"{m.group(1)}.pdf"))
+        if task == "entity-synthesis":
+            if not state["synthesis_ok"]:
+                raise model_client.RateLimitError("You've hit your session limit · resets 7pm")
+            return res({"entity_syntheses": [{"entity_id": "acme-corp", "summary": "Synthesized prose.", "analysis": ""}]})
+        if task == "timeline-dedup":
+            return res({"events": []})
+        return res({"investigation_status": "x", "what_was_ingested": ["a.pdf", "b.pdf"]})
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    # Phase 1: ingest extracts both docs but the rate limit interrupts synthesis.
+    summary = asyncio.run(orchestrate.run(vault, concurrency=2))
+    assert summary["extracted"] == 2
+    assert "error" in summary["post_ingest"]                 # synthesis degraded
+    assert orchestrate.has_pending_finalization(vault) is True
+
+    # Phase 2: the limit has reset — watchdog finalize completes the batch.
+    state["synthesis_ok"] = True
+    out = asyncio.run(orchestrate.finalize(vault, post_model="haiku"))
+
+    assert out["synthesized"] == 1
+    assert "error" not in out
+    assert "Synthesized prose." in (vault / "entities" / "company" / "acme-corp.md").read_text()
+    # a clean finalize clears the per-run inputs, so there is nothing left pending
+    assert not (vault / ".watchdog" / "tmp" / "entity-fragments").exists()
+    assert not list((vault / ".watchdog" / "tmp").glob("result_*.json"))
+    assert orchestrate.has_pending_finalization(vault) is False
+
+
 def test_requeue_moves_failed_back(tmp_path, monkeypatch):
     """watchdog requeue moves quarantined queue files back into the active queue."""
     from watchdog.cmd.ingest import cmd_requeue
@@ -461,12 +509,15 @@ def test_orchestrator_sectioned_path(tmp_path, monkeypatch):
                           "timeline_events": [], "roles": []}],
             "observations": "section 2 obs"}
 
+    captured: dict = {}
+
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
         if task == "classify":
             parsed = {"skill": "general-records.md"}
         elif task == "extract-section":
             parsed = sec1 if "This is SECTION 1" in prompt else sec2
         elif task == "briefing":
+            captured["briefing_prompt"] = prompt
             parsed = {"investigation_status": "x", "what_was_ingested": ["test-doc.pdf"]}
         else:
             parsed = {"entity_syntheses": []} if task == "entity-synthesis" else {"events": []}
@@ -480,4 +531,6 @@ def test_orchestrator_sectioned_path(tmp_path, monkeypatch):
     # carry-forward merged the two sections into one entity
     note = (vault / "entities" / "company" / "acme-corp.md").read_text()
     assert "Acme Corporation" in note   # merge kept the longer surface form
-    assert (vault / ".watchdog" / "tmp" / "notes_abc123.md").read_text() == "section 1 obs\nsection 2 obs"
+    # the two sections' observations were merged into the scratchpad and fed to the briefing
+    assert "section 1 obs" in captured["briefing_prompt"]
+    assert "section 2 obs" in captured["briefing_prompt"]

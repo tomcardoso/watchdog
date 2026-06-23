@@ -272,12 +272,71 @@ def _print_ingest_summary(summary: dict) -> None:
     pi_error = summary.get("post_ingest_error") or (summary.get("post_ingest") or {}).get("error")
     if pi_error:
         print(f"\n  {_YELLOW}Post-processing didn't finish{_RESET}{_DIM} — {pi_error}.{_RESET}")
-        print(f"  {_DIM}Documents are saved with their extracted claims; entity synthesis + the "
-              f"briefing run on your next ingest.{_RESET}")
+        print(f"  {_DIM}Documents are saved with their extracted claims; run {_RESET}"
+              f"{_CYAN}watchdog finalize{_RESET}{_DIM} to complete synthesis + the briefing.{_RESET}")
     if cancelled:
         print(f"\n  {_DIM}Re-run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} to process the remaining documents.{_RESET}\n")
     else:
         print(f"\n  {_DIM}Open a fresh Claude Code session to ask investigation questions.{_RESET}\n")
+
+
+def cmd_finalize(args) -> None:
+    """Complete post-ingest (synthesis + timeline + briefing) for an already-extracted batch.
+
+    `watchdog ingest` finalizes automatically at the end; run this when a rate limit or
+    interrupt stopped post-processing before it finished, so the batch isn't left half-done."""
+    vault = Path(".").resolve()
+    if not (vault / ".watchdog").is_dir():
+        sys.exit("Error: must be run from inside a Watchdog vault directory")
+
+    from watchdog.pipeline import orchestrate
+    if not orchestrate.has_pending_finalization(vault):
+        print(f"\n  {_DIM}Nothing to finalize — run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} first.{_RESET}\n")
+        return
+
+    from watchdog.cmd.auth import resolve_auth
+    a = resolve_auth()
+    if a["mode"] == "none":
+        sys.exit(f"\n  {_YELLOW}Error:{_RESET} {a.get('reason', 'auth not configured')}\n"
+                 f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
+
+    from watchdog.cmd.base import CONFIG_FILE
+    config: dict = {}
+    if CONFIG_FILE.exists():
+        try:
+            import json as _json
+            config = _json.loads(CONFIG_FILE.read_text())
+        except Exception:
+            pass
+    post_model = getattr(args, "finalizer_model", None) or config.get("finalizer_model") or "haiku"
+    if post_model not in _MODEL_IDS:
+        sys.exit(f"Error: unknown model '{post_model}' — choose sonnet, opus, or haiku")
+
+    # Guard against running concurrently with an ingest (or another finalize).
+    lock = vault / ".watchdog" / "Registry" / ".ingest-lock"
+    if lock.exists():
+        sys.exit(f"\n  {_YELLOW}Error:{_RESET} an ingest or finalize is already running (lock present).\n"
+                 f"  If stale, run {_CYAN}watchdog unlock{_RESET}.\n")
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text("pid: cli-finalize\n", encoding="utf-8")
+    print(f"\n  {_DIM}Finalizing — synthesis + timeline + briefing (model: {_RESET}"
+          f"{_BOLD}{post_model}{_RESET}{_DIM}).{_RESET}")
+    try:
+        import asyncio
+        out = asyncio.run(orchestrate.finalize(vault, post_model=post_model))
+    finally:
+        lock.unlink(missing_ok=True)
+
+    if out.get("error") or out.get("briefing_error"):
+        reason = out.get("error") or out.get("briefing_error")
+        print(f"\n  {_YELLOW}Finalize didn't finish{_RESET}{_DIM} — {reason}.{_RESET}")
+        print(f"  {_DIM}Re-run {_RESET}{_CYAN}watchdog finalize{_RESET}{_DIM} once the limit resets.{_RESET}\n")
+        return
+    n = out.get("synthesized", 0)
+    parts = [f"{_BOLD}{n}{_RESET} entit{'ies' if n != 1 else 'y'} synthesized"]
+    if out.get("briefing"):
+        parts.append(f"briefing {_CYAN}{out['briefing']}{_RESET}")
+    print(f"\n  {_GREEN}Finalized{_RESET}  " + ", ".join(parts) + "\n")
 
 
 def cmd_requeue(args) -> None:

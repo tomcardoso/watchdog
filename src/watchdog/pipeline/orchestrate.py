@@ -13,6 +13,7 @@ serializes the vault writes and `_reconcile_entity_ids` handles the parallel new
 import asyncio
 import datetime
 import json
+import shutil
 import signal
 import sys
 from pathlib import Path
@@ -275,7 +276,11 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     _say(f"{_GREEN}OK{_RESET}  {filename}  {_DIM}{n_entities} entit{'ies' if n_entities != 1 else 'y'}{_RESET}  "
          f"{_CYAN}documents/{_doc_slug(filename)}{_RESET}")
     _log(vault, f"OK {filename}: {n_entities} entities")
-    return _compact_result(sha, filename, extraction, pf.get("near_dup", {}), round(cost, 6))
+    result = _compact_result(sha, filename, extraction, pf.get("near_dup", {}), round(cost, 6))
+    # Persist the compact result so `watchdog finalize` can run post-ingest from disk alone.
+    (vault / ".watchdog" / "tmp" / f"result_{sha}.json").write_text(
+        json.dumps(result, ensure_ascii=False), encoding="utf-8")
+    return result
 
 
 def _lines(items: list) -> str:
@@ -397,6 +402,53 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     return out
 
 
+def _load_results(vault: Path) -> list:
+    """Load persisted per-doc results (used by a standalone finalize run)."""
+    out = []
+    for p in sorted((vault / ".watchdog" / "tmp").glob("result_*.json")):
+        try:
+            out.append(json.loads(p.read_text(encoding="utf-8")))
+        except (OSError, json.JSONDecodeError):
+            pass
+    return out
+
+
+def _clear_post_ingest_inputs(vault: Path) -> None:
+    """Remove the per-run post-ingest inputs once they have been finalized cleanly."""
+    tmp = vault / ".watchdog" / "tmp"
+    shutil.rmtree(tmp / "entity-fragments", ignore_errors=True)
+    for p in list(tmp.glob("result_*.json")) + list(tmp.glob("notes_*.md")):
+        p.unlink(missing_ok=True)
+
+
+def has_pending_finalization(vault: Path) -> bool:
+    """True if an extracted-but-not-finalized batch is sitting in tmp (e.g. a rate-limited run)."""
+    tmp = vault / ".watchdog" / "tmp"
+    return ((tmp / "entity-fragments" / "_queue.json").exists()
+            or any(tmp.glob("result_*.json")))
+
+
+async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None = None,
+                   results: list | None = None) -> dict:
+    """Run (or re-run) post-ingest over the current on-disk state: synthesize multi-mention
+    entities, reconcile the timeline, and write the briefing/hot.md/log.
+
+    Called at the tail of every ``watchdog ingest`` (with this run's results in memory) and
+    standalone by ``watchdog finalize`` (reading persisted ``result_*.json``) to complete a
+    post-ingest an earlier rate limit or interrupt left unfinished. On a clean pass the consumed
+    inputs (fragments, results, scratchpads) are cleared; if any step failed they are left in
+    place so a later finalize can retry.
+    """
+    if brief is None:
+        brief = _read_brief(vault)
+    if results is None:
+        results = _load_results(vault)
+    out = await _post_ingest(vault, results, brief, post_model)
+    if not out.get("error") and not out.get("briefing_error"):
+        _clear_post_ingest_inputs(vault)
+    return out
+
+
 async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
               extract_model: str = "sonnet", post_model: str = "sonnet",
               classify_model: str = "haiku",
@@ -489,7 +541,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                "quarantined": quarantined}
     if summary["extracted"] and not cancelled.is_set():
         try:
-            summary["post_ingest"] = await _post_ingest(vault, results, brief, post_model)
+            summary["post_ingest"] = await finalize(vault, post_model=post_model, brief=brief, results=results)
             _update_graph_colours(vault)
         except Exception as e:   # post-ingest is enrichment — never let it crash a saved batch
             summary["post_ingest_error"] = str(e)

@@ -73,9 +73,14 @@ def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "so
         state_file.unlink(missing_ok=True)
         return {"total": 0, "lock_acquired": False, "queue_files": []}
 
-    # Fresh run — clear any entity fragments left by a prior ingest so the finalizer
-    # gate counts only this run's documents.
-    shutil.rmtree(vault / ".watchdog" / "tmp" / "entity-fragments", ignore_errors=True)
+    # Fresh run — clear the post-ingest inputs (entity fragments, per-doc results, and
+    # scratchpads) left by a prior ingest so the finalizer gate + briefing see only this run's
+    # documents. A batch left unfinalized by an interrupt should be completed with
+    # `watchdog finalize` *before* the next ingest, which would otherwise discard it here.
+    tmp = vault / ".watchdog" / "tmp"
+    shutil.rmtree(tmp / "entity-fragments", ignore_errors=True)
+    for p in list(tmp.glob("result_*.json")) + list(tmp.glob("notes_*.md")):
+        p.unlink(missing_ok=True)
 
     started_at = _iso_now()
     batch_start = int(time.time())

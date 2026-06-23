@@ -61,6 +61,7 @@ from watchdog.cmd.ingest import (
     _run_preprocess,
     cmd_chew,
     cmd_context,
+    cmd_finalize,
     cmd_ingest,
     cmd_postflight,
     cmd_preflight,
@@ -307,6 +308,12 @@ def main() -> None:
                           help="Pin a record skill for every document, skipping classification. "
                                "Pass a skill name, or use --skill with no value to pick interactively.")
     p_ingest.set_defaults(func=cmd_ingest)
+
+    p_finalize = sub.add_parser("finalize", help="Complete post-ingest (synthesis + timeline + briefing) for an already-extracted batch — e.g. after a rate limit stopped it")
+    p_finalize.add_argument("--finalizer-model", choices=_model_choices, default=None,
+                            dest="finalizer_model",
+                            help="Model for synthesis + timeline + briefing — overrides watchdog configure (default: haiku)")
+    p_finalize.set_defaults(func=cmd_finalize)
 
     p_context = sub.add_parser("context", help="Open Claude Code to seed investigation context from _CONTEXT/")
     p_context.add_argument("name", nargs="?", help="Investigation name or slug (default: current directory)").completer = _project_completer
