@@ -156,14 +156,22 @@ async def _agent_query(prompt: str, model: str, env: dict | None) -> dict:
     api_status = None        # ResultMessage.api_error_status (e.g. 429) since CLI v2.1.110
     is_error = False
     notice = ""              # human-readable limit notice, if the CLI emitted one as text
+    rejected = False         # the CLI emitted a rate-limit event with status "rejected"
+    resets_at = None
     try:
         async for message in query(prompt=prompt, options=options):
-            if type(message).__name__ == "ResultMessage":
+            name = type(message).__name__
+            if name == "ResultMessage":
                 out["text"] = getattr(message, "result", "") or ""
                 out["cost_usd"] = getattr(message, "total_cost_usd", None)
                 out["usage"] = getattr(message, "usage", None)
                 is_error = bool(getattr(message, "is_error", False))
                 api_status = getattr(message, "api_error_status", None)
+            elif name in ("RateLimitEvent", "RateLimitInfo"):
+                info = getattr(message, "rate_limit_info", message)
+                if getattr(info, "status", None) == "rejected":
+                    rejected = True
+                    resets_at = getattr(info, "resets_at", None)
             # The session-limit message ("You've hit your session limit · resets …")
             # arrives as a text block; capture it so we can show the real reason.
             for block in getattr(message, "content", None) or []:
@@ -171,14 +179,14 @@ async def _agent_query(prompt: str, model: str, env: dict | None) -> dict:
                 if t and any(h in t.lower() for h in _RATE_LIMIT_HINTS):
                     notice = t.strip()
     except Exception as e:
-        # The SDK rewrites a CLI is_error result into a RuntimeError on the non-zero exit
-        # (often the only signal: "Claude Code returned an error result: success"). If it
+        # The SDK raises on a CLI error result via two paths — a ProcessError rewritten to
+        # "Claude Code returned an error result: …", or a {type:error} stream message. If it
         # was a rate limit, raise a typed, actionable error instead of an opaque one.
-        if _looks_like_rate_limit(api_status, notice, out["text"], str(e)):
-            raise RateLimitError(notice or "Claude rate/usage limit reached") from e
+        if rejected or _looks_like_rate_limit(api_status, notice, out["text"], str(e)):
+            raise RateLimitError(notice or "Claude rate/usage limit reached", resets_at=resets_at) from e
         raise
-    if is_error and _looks_like_rate_limit(api_status, notice, out["text"]):
-        raise RateLimitError(notice or "Claude rate/usage limit reached")
+    if rejected or (is_error and _looks_like_rate_limit(api_status, notice, out["text"])):
+        raise RateLimitError(notice or "Claude rate/usage limit reached", resets_at=resets_at)
     return out
 
 
@@ -271,7 +279,12 @@ async def acomplete_json(*, task: str, prompt: str, schema: dict, model: str | N
     attempts = 0
     for _ in range(max_retries + 1):
         attempts += 1
-        out = await backend_fn(prompt, model_id, schema, api_key, max_tokens)
+        try:
+            out = await backend_fn(prompt, model_id, schema, api_key, max_tokens)
+        except (RateLimitError, ModelError):
+            raise
+        except Exception as e:                  # any backend/transport failure → typed error
+            raise ModelError(f"{chosen} backend error: {e}") from e
         if out.get("cost_usd"):
             total_cost += out["cost_usd"]
 

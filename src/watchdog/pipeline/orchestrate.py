@@ -334,12 +334,19 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     if bundle.get("entities"):
         _say(f"{_DIM}→  synthesizing {len(bundle['entities'])} multi-mention "
              f"entit{'ies' if len(bundle['entities']) != 1 else 'y'}…{_RESET}")
-        r = await model_client.acomplete_json(
-            task="entity-synthesis", model=post_model, schema=schemas.SYNTHESIS,
-            prompt=prompts.build_synthesis_prompt(bundle))
-        res_path = vault / ".watchdog" / "tmp" / "synthesis-result.json"
-        res_path.write_text(json.dumps(r.parsed, ensure_ascii=False), encoding="utf-8")
-        out["synthesized"] = len(synthesis_bundle.apply_bundle(res_path, vault).get("applied", []))
+        try:
+            r = await model_client.acomplete_json(
+                task="entity-synthesis", model=post_model, schema=schemas.SYNTHESIS,
+                prompt=prompts.build_synthesis_prompt(bundle))
+        except (model_client.ModelError, model_client.RateLimitError) as e:
+            # Synthesis is enrichment: leave the structured claims already in the notes
+            # rather than crashing. The fragment queue persists, so a later ingest redoes it.
+            out["error"] = str(e)
+            _say(f"{_YELLOW}synthesis skipped{_RESET}{_DIM} — {e}{_RESET}")
+        else:
+            res_path = vault / ".watchdog" / "tmp" / "synthesis-result.json"
+            res_path.write_text(json.dumps(r.parsed, ensure_ascii=False), encoding="utf-8")
+            out["synthesized"] = len(synthesis_bundle.apply_bundle(res_path, vault).get("applied", []))
 
     # 2. Timeline: promote pending, model-dedup any real collisions, rebuild timeline.md.
     _say(f"{_DIM}→  rebuilding timeline…{_RESET}")
@@ -361,7 +368,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                 task="timeline-dedup", model=post_model, schema=schemas.TIMELINE_DEDUP,
                 prompt=prompts.build_timeline_dedup_prompt(col["date"], events))
             kept = r.parsed.get("events") or events
-        except model_client.ModelError:
+        except (model_client.ModelError, model_client.RateLimitError):
             kept = events   # fall back to the union rather than losing events
         canonical.write_text(
             "\n".join(json.dumps(e, ensure_ascii=False) for e in kept) + "\n", encoding="utf-8")
@@ -385,7 +392,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                 brief=brief, results=ok, scratchpads=scratchpads,
                 neardup_alerts=neardup_alerts, contradiction_flags=contradiction_flags))
         out["briefing"] = _write_briefing(vault, r.parsed, ok, neardup_alerts, contradiction_flags)
-    except model_client.ModelError as e:
+    except (model_client.ModelError, model_client.RateLimitError) as e:
         out["briefing_error"] = str(e)
     return out
 
@@ -481,8 +488,15 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                "stop_message": stop_reason.get("rate_limit"),
                "quarantined": quarantined}
     if summary["extracted"] and not cancelled.is_set():
-        summary["post_ingest"] = await _post_ingest(vault, results, brief, post_model)
-        _update_graph_colours(vault)
+        try:
+            summary["post_ingest"] = await _post_ingest(vault, results, brief, post_model)
+            _update_graph_colours(vault)
+        except Exception as e:   # post-ingest is enrichment — never let it crash a saved batch
+            summary["post_ingest_error"] = str(e)
+            print()
+            _say(f"{_YELLOW}Post-processing incomplete{_RESET}{_DIM} — {e}{_RESET}")
+            _say(f"{_DIM}Your {summary['extracted']} extracted document"
+                 f"{'s are' if summary['extracted'] != 1 else ' is'} saved.{_RESET}")
     state = "rate-limited" if summary["rate_limited"] else ("cancelled" if cancelled.is_set() else "complete")
     _log(vault, f"INGEST {state} — {summary['extracted']} extracted, "
                 f"{summary['skipped']} skipped, {summary['failed']} failed")

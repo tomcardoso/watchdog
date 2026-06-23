@@ -375,6 +375,49 @@ def test_failed_doc_is_named_and_quarantine_surfaced(tmp_path, monkeypatch):
     assert not (vault / ".watchdog" / "queue" / "ccc333.json").exists()
 
 
+def test_post_ingest_model_failure_degrades_without_crashing(tmp_path, monkeypatch):
+    """A rate limit (or model error) during post-ingest must not crash: the extracted docs
+    are already saved, synthesis is skipped, and the run returns a summary cleanly."""
+    import re
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="aaa", filename="a.pdf", text="Acme Corp filed.")
+    _queue_doc(vault, sha="bbb", filename="b.pdf", text="Acme Corp again.")
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+        if task == "classify":
+            return model_client.ModelResult(parsed={"skill": "general-records.md"}, text="",
+                                            model="m", backend="claude-agent-sdk", auth_mode="subscription")
+        if task == "extract":
+            m = re.search(r"document\.sha256 = '([^']+)'", prompt)   # share an entity across both docs
+            return model_client.ModelResult(parsed=_extraction(sha=m.group(1), filename=f"{m.group(1)}.pdf"),
+                                            text="", model="m", backend="claude-agent-sdk", auth_mode="subscription")
+        raise model_client.RateLimitError("You've hit your session limit · resets 7pm")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault, concurrency=2))   # must not raise
+
+    assert summary["extracted"] == 2
+    assert summary["post_ingest"]["synthesized"] == 0
+    assert "error" in summary["post_ingest"]                       # synthesis degraded, recorded
+
+
+def test_post_ingest_unexpected_crash_is_contained(tmp_path, monkeypatch):
+    """An unforeseen error in post-ingest is caught at the batch level — the saved
+    extraction is reported and the CLI does not crash."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="aaa", filename="a.pdf")
+    _mock(monkeypatch, extraction=_extraction())
+
+    def boom(*a, **k):
+        raise RuntimeError("kaboom in post-ingest")
+    monkeypatch.setattr(orchestrate.synthesis_bundle, "build_bundle", boom)
+
+    summary = asyncio.run(orchestrate.run(vault, concurrency=1))   # must not raise
+
+    assert summary["extracted"] == 1
+    assert "post_ingest_error" in summary
+
+
 def test_requeue_moves_failed_back(tmp_path, monkeypatch):
     """watchdog requeue moves quarantined queue files back into the active queue."""
     from watchdog.cmd.ingest import cmd_requeue

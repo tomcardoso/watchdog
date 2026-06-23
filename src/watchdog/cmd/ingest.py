@@ -269,6 +269,11 @@ def _print_ingest_summary(summary: dict) -> None:
         print(f"\n  {_YELLOW}{quarantined} document{'s' if quarantined != 1 else ''} need attention{_RESET}"
               f"{_DIM} in {_RESET}{_CYAN}queue/_failed/{_RESET}{_DIM} — run {_RESET}"
               f"{_CYAN}watchdog requeue{_RESET}{_DIM} to retry {'them' if quarantined != 1 else 'it'}.{_RESET}")
+    pi_error = summary.get("post_ingest_error") or (summary.get("post_ingest") or {}).get("error")
+    if pi_error:
+        print(f"\n  {_YELLOW}Post-processing didn't finish{_RESET}{_DIM} — {pi_error}.{_RESET}")
+        print(f"  {_DIM}Documents are saved with their extracted claims; entity synthesis + the "
+              f"briefing run on your next ingest.{_RESET}")
     if cancelled:
         print(f"\n  {_DIM}Re-run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} to process the remaining documents.{_RESET}\n")
     else:
