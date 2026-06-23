@@ -112,6 +112,18 @@ def cmd_register(args) -> None:
     print(f"  {_CYAN}{vault}{_RESET}\n")
 
 
+def _pkg_version() -> str:
+    """Installed watchdog-intel version, for stamping into a new vault's README."""
+    try:
+        from importlib.metadata import version, PackageNotFoundError
+        try:
+            return version("watchdog-intel")
+        except PackageNotFoundError:
+            return "dev"
+    except Exception:
+        return "dev"
+
+
 def cmd_new(args) -> None:
     name = args.name or getattr(args, "name_flag", None)
     description = getattr(args, "description", None) or ""
@@ -197,7 +209,11 @@ def cmd_new(args) -> None:
     )
 
     (vault / "index.md").write_text(_render_template("index.md", name=name, today=today))
-    (vault / "CLAUDE.md").write_text(_render_template("CLAUDE.md", name=name))
+    # CLAUDE.md (Claude's internal instructions) lives in .claude/ to keep the vault root
+    # clean — Claude Code loads ./.claude/CLAUDE.md the same as ./CLAUDE.md. README.md is the
+    # human-facing entry point for anyone who opens the folder.
+    (vault / ".claude" / "CLAUDE.md").write_text(_render_template("CLAUDE.md", name=name))
+    (vault / "README.md").write_text(_render_template("README.md", name=name, version=_pkg_version()))
 
     from watchdog.setup_cmd import install_skills
     install_skills(vault / ".claude" / "commands")

@@ -170,10 +170,22 @@ def test_cmd_new_registry_initialized(configured):
     assert reg["schema_version"] == "1"
 
 
-def test_cmd_new_claude_md_contains_name(configured):
+def test_cmd_new_claude_md_in_dot_claude_not_root(configured):
     cli.cmd_new(args(name="City Hall Probe", dir=str(configured)))
-    text = (configured / "city-hall-probe" / "CLAUDE.md").read_text()
+    vault = configured / "city-hall-probe"
+    # CLAUDE.md lives in .claude/ (Claude Code loads ./.claude/CLAUDE.md the same), keeping the root clean
+    assert not (vault / "CLAUDE.md").exists()
+    text = (vault / ".claude" / "CLAUDE.md").read_text()
     assert "City Hall Probe" in text
+
+
+def test_cmd_new_creates_readme(configured):
+    cli.cmd_new(args(name="City Hall Probe", dir=str(configured)))
+    readme = (configured / "city-hall-probe" / "README.md").read_text()
+    assert "City Hall Probe" in readme
+    assert "github.com/tomcardoso/watchdog" in readme        # GitHub link
+    assert "/issues" in readme                                # report-an-issue link
+    assert "Public records only" in readme
 
 
 def test_cmd_new_registers_project(configured, wdg_home):
