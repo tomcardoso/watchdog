@@ -6,9 +6,10 @@ Sectioned extraction carries a running scratchpad forward, so each section
 reuses the entity ids found by earlier sections. That makes this merge a pure
 set-union — no LLM reasoning:
 
-  * entities grouped by id; aliases / evidence_fragments / timeline_events / roles unioned
+  * entities grouped by id; aliases / roles unioned (the graph layer)
   * a normalized-name pass folds any id drift (OCR variance) onto one id
-  * document key_facts concatenated and deduped
+  * document key_facts concatenated and deduped (the fact layer, including each
+    fact's date / entity tags — postflight fans these back out per entity)
 
 The output is shape-identical to a single-document extraction JSON, so it feeds
 straight into `watchdog post-flight` unchanged.
@@ -21,16 +22,8 @@ from pathlib import Path
 from watchdog.pipeline.entity_norm import normalize_entity_name
 
 
-def _event_key(ev: dict) -> str:
-    return f"{ev.get('date', '')}|{(ev.get('event') or '')[:80].lower()}"
-
-
 def _role_key(role: dict) -> tuple:
     return ((role.get("relationship") or "").lower(), role.get("target_id"))
-
-
-def _fragment_key(f: dict) -> str:
-    return (f.get("claim") or "")[:120].lower()
 
 
 def _merge_into(acc: list, incoming: list, key_fn) -> None:
@@ -43,12 +36,28 @@ def _merge_into(acc: list, incoming: list, key_fn) -> None:
 
 
 def _dedup_key_facts(facts: list) -> list:
-    out, seen = [], set()
+    """Dedup by fact text; union entity tags and keep a date if any duplicate carries one."""
+    out: list = []
+    by_key: dict[str, dict] = {}
     for f in facts:
         k = (f.get("fact") or "")[:120].lower()
-        if k and k not in seen:
-            seen.add(k)
-            out.append(f)
+        if not k:
+            continue
+        if k not in by_key:
+            kept = dict(f)
+            kept["entities"] = list(f.get("entities") or [])
+            by_key[k] = kept
+            out.append(kept)
+        else:
+            kept = by_key[k]
+            for eid in f.get("entities") or []:
+                if eid not in kept["entities"]:
+                    kept["entities"].append(eid)
+            if not kept.get("date") and f.get("date"):
+                kept["date"] = f["date"]
+    for kept in out:
+        if not kept.get("entities"):
+            kept.pop("entities", None)
     return out
 
 
@@ -90,9 +99,6 @@ def merge_extractions(sections: list[dict]) -> dict:
                     "name": ent.get("name", ""),
                     "type": ent.get("type", ""),
                     "_surfaces": set(),
-                    "summary": None,
-                    "evidence_fragments": [],
-                    "timeline_events": [],
                     "roles": [],
                 }
                 by_id[eid] = cur
@@ -100,13 +106,12 @@ def merge_extractions(sections: list[dict]) -> dict:
             if len(ent.get("name", "")) > len(cur["name"]):
                 cur["name"] = ent["name"]
             cur["type"] = cur["type"] or ent.get("type", "")
-            cur["summary"] = cur["summary"] or ent.get("summary")
+            if ent.get("contradictions"):
+                cur.setdefault("contradictions", []).extend(ent["contradictions"])
 
             for nm in surfaces:
                 if nm:
                     cur["_surfaces"].add(nm)
-            _merge_into(cur["evidence_fragments"], ent.get("evidence_fragments", []), _fragment_key)
-            _merge_into(cur["timeline_events"], ent.get("timeline_events", []), _event_key)
             _merge_into(cur["roles"], ent.get("roles", []), _role_key)
 
             for nm in surfaces:
@@ -126,10 +131,6 @@ def merge_extractions(sections: list[dict]) -> dict:
             seen.add(low)
             aliases.append(nm)
         cur["aliases"] = aliases
-        if not cur["summary"]:
-            cur.pop("summary")
-        if not cur["evidence_fragments"]:
-            cur.pop("evidence_fragments")
         entities.append(cur)
 
     document.pop("key_facts", None)

@@ -30,8 +30,11 @@ def _validate(data: dict) -> list[str]:
         for i, fact in enumerate(doc.get("key_facts", [])):
             if not isinstance(fact, dict):
                 errors.append(f"document.key_facts[{i}] is not an object")
-            elif fact.get("confidence") and fact["confidence"] not in _VALID_CONFIDENCE:
-                errors.append(f"document.key_facts[{i}].confidence '{fact['confidence']}' must be one of: {', '.join(sorted(_VALID_CONFIDENCE))}")
+            else:
+                if fact.get("confidence") and fact["confidence"] not in _VALID_CONFIDENCE:
+                    errors.append(f"document.key_facts[{i}].confidence '{fact['confidence']}' must be one of: {', '.join(sorted(_VALID_CONFIDENCE))}")
+                if "entities" in fact and not isinstance(fact["entities"], list):
+                    errors.append(f"document.key_facts[{i}].entities must be a list of entity ids")
 
     entities = data.get("entities")
     if not isinstance(entities, list):
@@ -44,16 +47,6 @@ def _validate(data: dict) -> list[str]:
             for field in ("id", "name", "type"):
                 if not ent.get(field):
                     errors.append(f"entities[{i}].{field} is missing or empty")
-            for j, ev in enumerate(ent.get("timeline_events", [])):
-                if not isinstance(ev, dict):
-                    errors.append(f"entities[{i}].timeline_events[{j}] is not an object")
-                elif ev.get("confidence") and ev["confidence"] not in _VALID_CONFIDENCE:
-                    errors.append(f"entities[{i}].timeline_events[{j}].confidence '{ev['confidence']}' must be one of: {', '.join(sorted(_VALID_CONFIDENCE))}")
-            for j, frag in enumerate(ent.get("evidence_fragments", [])):
-                if not isinstance(frag, dict):
-                    errors.append(f"entities[{i}].evidence_fragments[{j}] is not an object")
-                elif frag.get("confidence") and frag["confidence"] not in _VALID_CONFIDENCE:
-                    errors.append(f"entities[{i}].evidence_fragments[{j}].confidence '{frag['confidence']}' must be one of: {', '.join(sorted(_VALID_CONFIDENCE))}")
             for j, role in enumerate(ent.get("roles", [])):
                 if not isinstance(role, dict):
                     errors.append(f"entities[{i}].roles[{j}] must be an object with relationship/target_id/page/confidence/date_range keys — not a string")
@@ -67,12 +60,63 @@ def _validate(data: dict) -> list[str]:
 
 
 def _apply_match_ids(extraction: dict) -> dict:
-    """Rewrite entity IDs based on Claude's match_id merge decisions."""
+    """Rewrite entity IDs based on Claude's match_id merge decisions.
+
+    Also remaps any ``key_facts.entities`` tags that referenced the extraction-time id onto the
+    canonical matched id, so the explode step files facts under the right entity.
+    """
+    remap: dict[str, str] = {}
     for entity in extraction.get("entities", []):
         match_id = entity.pop("match_id", None)
         if match_id:
+            remap[entity["id"]] = match_id
             entity["id"] = match_id
+    if remap:
+        for fact in extraction.get("document", {}).get("key_facts", []):
+            tags = fact.get("entities")
+            if tags:
+                fact["entities"] = [remap.get(t, t) for t in tags]
     return extraction
+
+
+def explode_key_facts(extraction: dict) -> None:
+    """Reconstruct the per-entity views from the unified `key_facts` primitive (#140).
+
+    The model emits each material fact once on ``document.key_facts``, tagged with the entity ids
+    it concerns and an optional ``date``. Here we deterministically fan those tags back out onto
+    each entity as ``evidence_fragments`` (every tagged fact) and ``timeline_events`` (tagged facts
+    that carry a date), the per-entity shapes that write_vault already renders. Mutates the entities
+    in place. The document-level ``key_facts`` are left intact (the document note and the global
+    timeline read them directly).
+    """
+    by_id = {e["id"]: e for e in extraction.get("entities", []) if e.get("id")}
+    for fact in extraction.get("document", {}).get("key_facts", []):
+        text = (fact.get("fact") or "").strip()
+        if not text:
+            continue
+        page = fact.get("page")
+        confidence = fact.get("confidence")
+        quote = fact.get("quote")
+        date = (fact.get("date") or "").strip()
+        for eid in fact.get("entities", []) or []:
+            ent = by_id.get(eid)
+            if ent is None:
+                continue
+            frag = {"claim": text}
+            if page is not None:
+                frag["page"] = page
+            if confidence:
+                frag["confidence"] = confidence
+            if quote:
+                frag["quote"] = quote
+            ent.setdefault("evidence_fragments", []).append(frag)
+            if date:
+                event = {"date": date, "event": text}
+                if page is not None:
+                    event["page"] = page
+                if confidence:
+                    event["confidence"] = confidence
+                ent.setdefault("timeline_events", []).append(event)
 
 
 def run(vault: Path, extraction_path: Path, quiet: bool = False) -> dict:
@@ -89,6 +133,10 @@ def run(vault: Path, extraction_path: Path, quiet: bool = False) -> dict:
         return {"errors": errors}
 
     extraction = _apply_match_ids(extraction)
+
+    # Fan the unified key_facts out into the per-entity evidence_fragments / timeline_events that
+    # write_vault and timeline staging consume (#140).
+    explode_key_facts(extraction)
 
     # Get near-dup minhash from queue file (computed at chew time)
     sha256 = extraction.get("document", {}).get("sha256", "")

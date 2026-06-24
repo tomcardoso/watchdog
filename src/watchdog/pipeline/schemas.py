@@ -18,38 +18,23 @@ def _obj(properties: dict, required: list[str]) -> dict:
     }
 
 
+# The unified fact primitive (#140). Each material fact is emitted once and rendered into
+# multiple views deterministically: the document note's key-facts list, plus — via its optional
+# dimensions — the entity notes (`entities`: which entities the fact is about) and the timeline
+# (`date`: the date of the occurrence, set only when the fact IS a datable event). This replaces
+# the former separate per-entity `evidence_fragments` and `timeline_events`, which postflight now
+# reconstructs from these tags. `quote` is an optional verbatim source sentence (only when wording
+# matters).
 _KEY_FACT = _obj(
     {
         "fact": {"type": "string"},
         "page": {"type": ["integer", "null"]},
         "confidence": _CONFIDENCE,
+        "date": {"type": "string"},                                   # set ⇒ also a timeline event
+        "entities": {"type": "array", "items": {"type": "string"}},   # entity ids the fact is about
         "quote": {"type": "string"},   # optional verbatim source sentence (only when wording matters)
     },
     ["fact"],   # confidence omitted ⇒ high (the overwhelming default)
-)
-
-# A single investigatively-significant claim a document makes about an entity. Replaces the
-# extractor's free-text per-entity `analysis`: the post-ingest finalizer composes prose from
-# these. `quote` is an optional verbatim source sentence, set only when the exact wording matters.
-_EVIDENCE_FRAGMENT = _obj(
-    {
-        "claim": {"type": "string"},
-        "page": {"type": ["integer", "null"]},
-        "confidence": _CONFIDENCE,
-        "reason": {"type": "string"},   # why it matters (optional)
-        "quote": {"type": "string"},    # verbatim source sentence (optional)
-    },
-    ["claim"],
-)
-
-_TIMELINE_EVENT = _obj(
-    {
-        "date": {"type": "string"},
-        "event": {"type": "string"},
-        "page": {"type": ["integer", "null"]},
-        "confidence": _CONFIDENCE,
-    },
-    ["date", "event"],
 )
 
 _ROLE = _obj(
@@ -63,6 +48,9 @@ _ROLE = _obj(
     ["relationship", "target_id"],
 )
 
+# The graph layer (#140): entity identity + relationships + contradictions. What a document
+# *says* about an entity (claims, dated events) is no longer carried here — it lives in the
+# document's `key_facts`, tagged by entity id, and postflight reconstructs the per-entity views.
 _ENTITY = _obj(
     {
         "id": {"type": "string"},
@@ -70,10 +58,7 @@ _ENTITY = _obj(
         "name": {"type": "string"},
         "type": {"type": "string"},
         "aliases": {"type": "array", "items": {"type": "string"}},
-        "summary": {"type": "string"},
-        "evidence_fragments": {"type": "array", "items": _EVIDENCE_FRAGMENT},   # omit if nothing notable
         "contradictions": {"type": "array", "items": {"type": "string"}},
-        "timeline_events": {"type": "array", "items": _TIMELINE_EVENT},
         "roles": {"type": "array", "items": _ROLE},
     },
     ["id", "name", "type"],

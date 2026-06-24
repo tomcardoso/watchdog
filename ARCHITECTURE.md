@@ -127,15 +127,20 @@ registry/note writes so the concurrent document workers write safely.
    one skill and injects it into the extraction prompt. **Skipped entirely when a skill is
    pinned** for the run (`--skill` / `default_skill`) — that one skill is used for every
    document, saving a model call per doc on known-homogeneous batches.
-3. **Extract** — one model call against the `EXTRACTION` schema: title, date, entities
-   (deduped against the pre-flight candidates), roles, timeline events, key facts (each with
-   an optional verbatim `quote`), per-entity summary + structured **evidence fragments**
-   (claim/page/confidence/reason, plus an optional verbatim `quote` — see D22), contradictions,
-   morgue fields, and a briefing scratchpad.
+3. **Extract** — one model call against the `EXTRACTION` schema. The model emits two layers
+   (D26): a **fact layer** — `document.key_facts`, each a single material fact written once,
+   carrying an optional `date` (when the fact *is* a datable occurrence) and an optional
+   `entities` list (the ids the fact is about) plus an optional verbatim `quote`; and a **graph
+   layer** — entities (deduped against the pre-flight candidates) with aliases, roles, and
+   contradictions. It no longer restates the document as per-entity summaries, evidence
+   fragments, or timeline events, nor pads `key_facts` to a fixed count — the full Docling text
+   is retained in the morgue (§3, §12), so extraction indexes it rather than reproducing it.
    Schema validation + a same-model retry live in `model_client` (no automatic tier
    escalation — see D20); the orchestrator adds one post-flight repair retry.
 4. **Post-flight** (`postflight.run`, a function call) — validates the JSON, applies
-   `match_id` merges, and calls `write_vault.run()`.
+   `match_id` merges (remapping `key_facts.entities` tags onto canonical ids), **explodes** the
+   unified key_facts into the per-entity `evidence_fragments` + `timeline_events` that the
+   writers consume (`explode_key_facts`, D26), then calls `write_vault.run()`.
 
 `write_vault` is the single deterministic writer: it merges entities (reconciling
 near-duplicate slugs coined by concurrent workers via the shared `entity_norm`
@@ -205,10 +210,10 @@ differently:
 
 | Section | Kind | Treatment |
 |---|---|---|
-| `## Summary` | synthesized prose | model — carryforward interim, then bundled synthesis |
-| `## Analysis` | evidence-fragment claims → synthesized prose | deterministic claims for single-mention; model-synthesized prose once 2+ mentions (D22) |
+| `## Summary` | synthesized prose | model — provisional one-liner from the entity's top tagged fact, then bundled synthesis once 2+ mentions (D26) |
+| `## Analysis` | tagged-fact claims → synthesized prose | deterministic claims (key_facts tagged to the entity, exploded per D26) for single-mention; model-synthesized prose once 2+ mentions |
 | `## Contradictions` | cited callouts | deterministic — append-only, deduped, audit-managed |
-| `## Timeline` | structured events | deterministic — merged, sorted by **event** date |
+| `## Timeline` | structured events | deterministic — the entity's dated tagged facts, merged, sorted by **event** date |
 | `## Relationships` | structured roles | deterministic — merged |
 | `## Notes` | journalist annotations | never touched by the pipeline |
 
@@ -241,42 +246,48 @@ model.
 
 Synthesizing an entity's prose across all its documents on every ingest would be
 expensive. Synthesizing nothing (the old behaviour) let a later document's summary
-clobber an earlier, richer one. The solution is **two complementary mechanisms covering
-disjoint cases:**
+clobber an earlier, richer one. The gate is **project-wide recurrence** (D26): an entity
+earns a synthesized summary once it appears in **2+ documents across the whole
+investigation**, otherwise it stays a deterministic stub.
 
-| Case (this ingest) | Mechanism | Cost |
+| Entity's project-wide reach | Treatment | Cost |
 |---|---|---|
-| Brand-new entity, 1 mention | plain write (extraction summary) | free |
-| Pre-existing entity, 1 mention | **inline carryforward** | ~free, parallel |
-| Any entity, **2+ mentions** | **bundled synthesis in `_post_ingest`** | bounded |
+| In **1 document** total | deterministic stub — facts in `## Analysis`, relationships; **no Summary section** | free |
+| In **2+ documents** total (`appears_in ≥ 2`) | **bundled synthesis** — short model-written Summary (1–3 paragraphs) | bounded |
 
-- **Inline carryforward.** Pre-flight carries each matched entity's current
-  `## Summary` into the extraction prompt's candidate list; extraction *revises* it with
-  the new document rather than writing a fresh single-document summary. Handles the common
-  single-touch case in the extraction call that's already running — no extra call.
-- **Gated synthesis.** As `write_vault` writes each entity, it appends a per-entity
-  **fragment** (the entity's slice of the extraction JSON — summary, evidence-fragment claims
-  with any quotes, roles — plus document attribution) to `.watchdog/tmp/entity-fragments/<id>.md`
-  and bumps a
-  count in `_queue.json`. This is a *free byproduct* of data the extractor already
-  produced. In `_post_ingest`, `synthesis_bundle.build_bundle` selects entities with
-  **count ≥ 2** and packs each one's fragments + current prose into one compact bundle;
-  a single model call synthesizes them all; `synthesis_bundle.apply_bundle` bulk-writes
-  the Summary/Analysis via the shared writer in `pipeline/finalize_entity.py`.
-- **The gate is the cost control.** Most entities in a batch are single-mention and
-  never hit synthesis. Cost scales with *contested* entities, not all entities.
+- **Recurrence is the signal, counted across the project — not the batch.** `synthesis_bundle.build_bundle`
+  gates on the registry entity's `appears_in` length, so a registering agent or a law firm that
+  surfaces in a second document *in a later batch, years apart* is promoted the moment its
+  `appears_in` crosses 2. Only entities *touched this run* (present in the fragment queue) are
+  candidates — an untouched entity has nothing new to reconcile. (The `count` still written to
+  `_queue.json` is now just the touched-set marker, no longer the gate.)
+- **No summary for single-document entities, and no inline revision.** Under D26 the extractor emits
+  no per-entity summary, so the old carryforward trick (pre-flight feeds the current `## Summary`
+  back and extraction *revises* it) is gone. A one-document entity simply has no Summary section —
+  its facts live in `## Analysis` and its connections in `## Relationships`, which is all an
+  incidental actor needs. Summaries are only ever written by bundled synthesis, so a single new
+  document can never silently overwrite an established one.
+- **Association needs no special code.** An incidental entity tied to an important one — the
+  paralegal who filed for a tracked party — is captured for free: it gets a stub note whose
+  `## Relationships` records the link (and the reverse link lands on the tracked party's note). If
+  it keeps reappearing, its own `appears_in` promotes it to synthesis.
+- **No recency bias.** The synthesis prompt instructs the model to weight the full body of
+  evidence: an entity established across many documents is *not* redefined by a new passing
+  mention — a minor new reference is folded in without reshaping a settled account.
+- **Gated synthesis mechanics.** As `write_vault` writes each entity, it appends a per-entity
+  **fragment** (the entity's slice of the exploded extraction — its tagged-fact claims with any
+  quotes, roles — plus document attribution) to `.watchdog/tmp/entity-fragments/<id>.md`.
+  This is a *free byproduct* of data the extractor already produced. In `_post_ingest`,
+  `build_bundle` selects the recurring entities and packs each one's fragments + current prose
+  into one compact bundle; a single model call synthesizes them all; `synthesis_bundle.apply_bundle`
+  bulk-writes the Summary/Analysis via the shared writer in `pipeline/finalize_entity.py`.
 - **Why fragments are a byproduct, not extractor-written prose.** Having the extractor
   narrate per-entity notes would add token cost to the expensive parallel phase. The
   extraction JSON already contains everything a fragment needs.
-- **Why gate on "≥2 this ingest" specifically.** That is exactly the case inline
-  carryforward can't handle (multiple simultaneous fragments → last-write-wins) and
-  where reconciliation earns its cost.
-- **Known limitation.** Fragments are run-scoped (cleared at ingest start). A
-  pre-existing entity touched by a single new document is handled by carryforward, not
-  bundled synthesis — its summary is revised incrementally, not re-synthesized from all
-  history. The deep, on-demand `/watchdog-entity` pass (`pipeline/write_entity.py`,
-  which also re-synthesizes the Timeline) remains the tool for a full rebuild of a
-  central figure.
+- **Known limitation.** Synthesis reconciles this run's fragments with the entity note's *carried
+  prose*, not a fresh re-read of every source document. The deep, on-demand `/watchdog-entity`
+  pass (`pipeline/write_entity.py`, which also re-synthesizes the Timeline) remains the tool for a
+  full rebuild of a central figure from all its sources.
 
 Bundled synthesis writes **only** Summary and Analysis; Contradictions,
 Timeline, Relationships, and Notes are preserved untouched. `apply_bundle` skips
@@ -292,7 +303,9 @@ prose stays in place.
 
 Each document's extraction stages its events to **raw** per-document files
 `{date}_{sha7}.ndjson` (`timeline.stage_timeline_events`, called from post-flight) —
-write-only and lock-free, since each filename is unique. All merge/dedup and the briefing
+the events being the document's **dated** `key_facts`, with each fact's `entities` tags
+supplying the contributing entity ids (D26) — write-only and lock-free, since each filename
+is unique. All merge/dedup and the briefing
 then run in `_post_ingest` (model: `post_model`) after extraction:
 
 - `timeline.collisions(vault)` promotes dates with no prior canonical to **canonical**
@@ -336,7 +349,8 @@ This is the same model the removed classifier used, retained solely for search.
 ```
 entities/<type>/<id>.md     entity notes
 documents/<slug>.md         document notes
-morgue/<entity>/<type>/…     original source files, filed by subject
+morgue/<entity>/<type>/…     original source files + a sibling <name>.md of the
+                            Docling full text, filed by subject (D26)
 timeline.md                 rendered global timeline
 briefings/<date>.md         per-ingest briefings
 context.md / hot.md / log.md investigation context, hot cache, run log
@@ -425,7 +439,8 @@ registry for every document would be wasteful. The manifest is the cheap index.
 | D19 | Force-section on whole-doc output overrun (§5) | Sectioning triggers on *input* size (`section_token_threshold`), but truncation is *output*-driven — a moderate-input, entity-dense doc overruns the model's output ceiling on the agent-SDK backend (which can't cap output), truncating the JSON and escalating the retry toward a pricier tier. On a multi-page doc whose whole-doc extraction is rejected, the orchestrator re-runs it through the sectioned path with a small forced budget (≥2 sections) to bound per-call output | Adds one (failed) whole-doc attempt before the fallback; single-page docs can't be split, so they still just fail |
 | D20 | Configured model only — no automatic escalation; classifier model is its own knob | `model_client` originally bumped the tier up (haiku→sonnet→opus) on a JSON-validation failure. That makes ingest cost unpredictable and can silently spend opus money — the opposite of a budgeted pipeline. Now a failed call retries on the **same** configured model (the orchestrator's post-flight repair + D19 sectioning handle genuine failures), and the classify step gets its own `classifier_model` knob (default haiku) alongside `extractor_model`/`finalizer_model`, so each stage's model is explicit and stable | A doc that a stronger model would have salvaged now fails instead of auto-upgrading — the user opts into a stronger model deliberately via config |
 | D21 | Record skills are global, not per-vault (`skills_catalog`) | Copying skills into every vault was a holdover from the Claude-Code-skill ingest, which needed them under `.claude/commands/` for discovery. The Python orchestrator (D18) just reads the file, so the copy was vestigial and created drift (each vault stale until `refresh-skills`). Skills now live in the package + `~/.watchdog/skills/records/` (user overrides) and are read directly; the classify index is built in memory (supersedes D12); per-skill `description:` frontmatter lets a user-added skill set its own index line. Pinning (`--skill`/`default_skill`, a name or path) and `watchdog show-skills` round it out. Pre-production, so vault-local copies are simply ignored (strictly global) rather than migrated | Loses per-vault skill freezing/customization; mitigated by `--skill PATH` for one-offs and by stamping the skill used into each document's note + registry (`record_skill`) for provenance. Custom skills in `~/.watchdog` aren't carried with a shared vault |
-| D22 | Extractor emits structured **evidence fragments** instead of prose `analysis`; optional verbatim `quote` on fragments and `key_facts` (#107) | The per-entity `analysis` prose was thrown away and rewritten by synthesis for every multi-mention entity (D7/D17), so the extractor did prose work twice. Replacing it with `{claim, page, confidence, reason}` fragments gives the synthesizer a clean, page-anchored, citable digest to compose from rather than re-prosing prose — and single-mention notes render the claims directly under `## Analysis`. Quotes are *captured* at extraction only when the wording is significant, and on entity fragments are *surfaced* into synthesized prose only in exceptional cases (the synthesis prompt gates this); on `key_facts` the quote renders verbatim in the document note (terminal, reader-facing — the strongest placement). This is a **quality/citability** change, not a cost trim (structured fragments cost slightly more output tokens than the prose they replace) — the cost trim is the separate #127 | More structured extractor output; a captured quote against garbled OCR isn't verified to appear on the page (that check is the deferred #106 evaluator); existing notes keep their old prose `## Analysis` until the entity is next extracted |
+| D22 | Extractor emits structured **evidence fragments** instead of prose `analysis`; optional verbatim `quote` on fragments and `key_facts` (#107) **— the extractor no longer emits fragments directly (D26); they are reconstructed from tagged `key_facts`, but everything downstream (the structured-claims-feed-synthesis digest, the `## Analysis` render) is unchanged.** | The per-entity `analysis` prose was thrown away and rewritten by synthesis for every multi-mention entity (D7/D17), so the extractor did prose work twice. Replacing it with `{claim, page, confidence, reason}` fragments gives the synthesizer a clean, page-anchored, citable digest to compose from rather than re-prosing prose — and single-mention notes render the claims directly under `## Analysis`. Quotes are *captured* at extraction only when the wording is significant, and on entity fragments are *surfaced* into synthesized prose only in exceptional cases (the synthesis prompt gates this); on `key_facts` the quote renders verbatim in the document note (terminal, reader-facing — the strongest placement). This is a **quality/citability** change, not a cost trim (structured fragments cost slightly more output tokens than the prose they replace) — the cost trim is the separate #127 | More structured extractor output; a captured quote against garbled OCR isn't verified to appear on the page (that check is the deferred #106 evaluator); existing notes keep their old prose `## Analysis` until the entity is next extracted |
 | D23 | Post-ingest is a re-runnable `finalize` step over per-run on-disk inputs (#135) | Post-ingest (synthesis + timeline + briefing) calls the model, so a rate limit can interrupt it *after* extraction has already written the vault — and `ingest_setup` wipes the fragment queue at the next ingest's start, so a re-ingest would silently drop the un-synthesized batch. Post-ingest is now `orchestrate.finalize`, fed inputs that persist in `tmp` (entity fragments + per-doc `result_*.json` + scratchpads); `watchdog ingest` calls it at its tail, and `watchdog finalize` re-runs it standalone to complete an interrupted batch. A clean pass clears the inputs (idempotent, and fixes a latent scratchpad-accumulation bug where briefings re-included prior runs); an interrupted pass leaves them for retry. A new `watchdog ingest` over a pending batch prompts to **merge** (keep the inputs via `wipe_pending=False` so both batches finalize together), **finalize** first, or **discard**; `watchdog status` flags a pending batch | No cross-run finalization queue beyond the merge prompt; synthesis re-runs are idempotent (bulk overwrite), so a partial finalize is safe to repeat |
 | D24 | Roles are extracted by `target_id` only; `target_name`/`target_type` are re-inflated deterministically (#140) | Extraction output is ~95% of run cost and roles were the single largest field — and ~43% of the roles payload was the target's `target_name`/`target_type`, both *derivable from `target_id`* via the registry, re-typed by the model on every role (e.g. an 86-char case name repeated across a dozen roles). The extractor now emits roles by id; `write_vault._resolve_role_targets` fills name/type from this batch's entities + the registry right after id reconciliation, so every downstream consumer (note links, pre-flight context, synthesis digest) is unchanged. First concrete cut from #140 — moves derivable data out of paid model output into free deterministic code | A dangling `target_id` (no matching entity) falls back to the id as name + `Unknown` type; the win is only realized while extraction stays on a metered tier (Sonnet output is the cost) |
 | D25 | `confidence` is omitted when `high`; absent ⇒ `high` (#140) | Measured across a 5-doc run, **99% of all confidence values were `high`** (411 rendered, 8 non-high). Requiring it on every fact/role/event/key-fact paid model output to restate the default ~99% of the time (~6% of extraction output). The extractor now emits `confidence` only for `medium`/`low`/`disputed`; the schema makes it optional and every consumer defaults absent → `high`, so notes render identically and the rare exception stands out instead of hiding in a sea of `high`. Same omit-defaults pattern extends to `page` (omit when no marker) and empty arrays | Defaulting absent → `high` is the *optimistic* direction — a forgotten mark silently reads as `high` — but empirically the model flagged all 8 non-high cases, so exposure is ~8-in-411. Whether `confidence` is well-calibrated at all (≈always `high`) is a separate quality question (#143) |
+| D26 | Unified **fact primitive**: the model emits each material fact once on `document.key_facts`, tagged with `entities` + an optional `date`; postflight fans it back out (#140) | The extractor restated the same fact up to three times — as a `document.key_fact`, as each involved entity's `evidence_fragment`, and (if dated) as each entity's `timeline_event` — plus a per-entity `summary`, so a 5-page order emitted ~4× the source text in JSON (32K chars from 7.7K of Docling markdown). That redundancy was rational only because the Docling text was **discarded** after extraction, making the JSON the sole text record. D26 retains the full text in the morgue as a sibling `<name>.md` (deterministic, $0), then collapses the restatement: the model emits a fact once with `entities` tags (who it's about) and an optional `date` (when it occurred); `postflight.explode_key_facts` deterministically reconstructs the per-entity `evidence_fragments` and `timeline_events` the writers already consume, and `stage_timeline_events` reads the dated facts directly. Entities keep only the graph layer (identity, aliases, roles, contradictions); no per-entity summary/fragments/timeline. `key_facts` is materiality-driven with no fixed count. Stacks on D24/D25. Synthesis is now gated on **project-wide recurrence** (`appears_in ≥ 2`) rather than batch-local mention count, so an entity recurring across separate batches/years is promoted; single-document entities are deterministic stubs with no Summary section (§8) | A single-document entity gets no synthesized summary at all (by design — its facts sit in `## Analysis`), and a model only ever judges an entity from one document plus carried prose, never a fresh re-read of all sources (that's `/watchdog-entity`). A dated fact must be *tagged* to reach an entity's per-entity timeline (the global timeline still gets it untagged). Timeline recall now depends on the model attaching `date` to occurrence-facts rather than filling a dedicated field |

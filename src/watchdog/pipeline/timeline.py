@@ -46,41 +46,41 @@ def _stage_dedup_key(date: str, event: str) -> str:
 def stage_timeline_events(vault: Path, extraction: dict) -> int:
     """Write raw per-date NDJSON timeline files from an extraction blob.
 
-    Replaces the subagent's manual per-date writes (formerly Step 10). Collects
-    every entity's timeline_events, attaches the document sha and contributing
-    entity ids, deduplicates within the document by (date, event text) while
-    unioning entity ids, groups by date, and writes one raw
-    ``.watchdog/timeline/{date}_{sha[:7]}.ndjson`` file per date. The existing
-    ``timeline-collisions`` / ``rebuild-timeline`` flow consumes these unchanged.
+    Reads the dated facts on ``document.key_facts`` (#140): every key_fact carrying a ``date`` is a
+    timeline event, with its ``entities`` tags supplying the contributing entity ids. Attaches the
+    document sha, deduplicates within the document by (date, event text) while unioning entity ids,
+    groups by date, and writes one raw ``.watchdog/timeline/{date}_{sha[:7]}.ndjson`` file per date.
+    The existing ``timeline-collisions`` / ``rebuild-timeline`` flow consumes these unchanged.
 
     Returns the number of dates written.
     """
-    sha = (extraction.get("document") or {}).get("sha256", "")
+    doc = extraction.get("document") or {}
+    sha = doc.get("sha256", "")
     if not sha:
         return 0
 
     # date -> dedup_key -> record
     by_date: dict[str, dict[str, dict]] = {}
-    for entity in extraction.get("entities", []):
-        eid = entity.get("id")
-        for ev in entity.get("timeline_events", []):
-            date = (ev.get("date") or "").strip()
-            event_text = (ev.get("event") or "").strip()
-            if not date or not event_text:
-                continue
-            key = _stage_dedup_key(date, event_text)
-            bucket = by_date.setdefault(date, {})
-            if key in bucket:
-                if eid and eid not in bucket[key]["entity_ids"]:
+    for fact in doc.get("key_facts", []):
+        date = (fact.get("date") or "").strip()
+        event_text = (fact.get("fact") or "").strip()
+        if not date or not event_text:
+            continue
+        tags = [e for e in (fact.get("entities") or []) if e]
+        key = _stage_dedup_key(date, event_text)
+        bucket = by_date.setdefault(date, {})
+        if key in bucket:
+            for eid in tags:
+                if eid not in bucket[key]["entity_ids"]:
                     bucket[key]["entity_ids"].append(eid)
-            else:
-                bucket[key] = {
-                    "date": date,
-                    "event": event_text,
-                    "source_sha256": sha,
-                    "entity_ids": [eid] if eid else [],
-                    "confidence": ev.get("confidence", "high"),
-                }
+        else:
+            bucket[key] = {
+                "date": date,
+                "event": event_text,
+                "source_sha256": sha,
+                "entity_ids": list(tags),
+                "confidence": fact.get("confidence", "high"),
+            }
 
     if not by_date:
         return 0

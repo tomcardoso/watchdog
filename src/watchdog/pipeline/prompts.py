@@ -21,53 +21,67 @@ def build_classify_prompt(doc_excerpt: str, index_text: str) -> str:
 
 
 _EXTRACT_INSTRUCTIONS = """\
-Extract every real-world entity, relationship, datable event, and key fact from this document \
-for an investigative-records vault.
+The full text of this document is preserved in the vault, so do NOT restate or summarize it. \
+Your job is to produce a journalist's working notes: (1) the material FACTS worth writing down, \
+and (2) the GRAPH of entities and their relationships. Each fact is written ONCE and then tagged \
+so it can be filed under the entities it concerns and, if it is a datable occurrence, onto the \
+timeline.
 
-Use EXISTING_ENTITIES for deduplication — match on name or any alias (OCR errors are common; be \
-generous). For each entity:
+KEY FACTS — `document.key_facts` is the heart of the extraction. Capture the investigatively \
+material facts a reporter would jot down: who, amounts, dates, identifiers, addresses, ownership, \
+obligations, decisions, occurrences. Each fact is an OBJECT:
+- `fact`: one factual sentence, in your own words.
+- `entities`: the ids of the entities this fact is about (usually one or two — the people, \
+companies, addresses, or cases it concerns). Omit if the fact is about no specific entity.
+- `date`: set ONLY when the fact is itself a datable occurrence (something that happened, was \
+decided, or changed on a specific date) — this is what places it on the timeline. Omit for facts \
+that merely mention a date or have no single date (a ratio, a balance, a structural fact).
+- `page`, `confidence`: as below.
+- `quote`: an optional verbatim source sentence — include ONLY when the exact wording is itself \
+significant or quotable (an admission, a precise figure, distinctive language). Usually omit it.
+
+How many facts: as many as the document has material facts, and no more — a dense order may have \
+fifteen, a routine form two. Do NOT pad to a quota. Let MATERIALITY decide: omit boilerplate, \
+procedural recitation, jurisdictional/standard-form language, and reasoning or analysis that does \
+not establish a fact (e.g. recited case-law or argument). The loaded DOMAIN SKILL tells you what \
+matters most for this document type — lean on it. When in doubt, err toward capturing a hard fact \
+(a name, date, figure, address) rather than dropping it; err toward dropping prose and reasoning.
+
+ENTITIES — the graph. Use EXISTING_ENTITIES for deduplication — match on name or any alias (OCR \
+errors are common; be generous). For each entity:
 - `id`: the existing id from EXISTING_ENTITIES if matched, otherwise a new kebab-case slug.
 - `match_id`: set to the matched entity's id if this matches an existing entity; OMIT entirely \
 for new entities (do not set null or "").
 - `name`: the canonical full name as it appears most completely.
 - `type`: Person / Company / Address / Property / CourtCase / Transaction / or a new type if apt.
 - `aliases`: every other name or abbreviation used in this document.
-- `summary`: one sentence — who this entity is and the role it plays. If EXISTING_ENTITIES carries \
-a `summary` for a matched entity, REVISE that carried summary to fold in what this document adds — \
-do not discard it and write a single-document summary from scratch.
-- `evidence_fragments`: the investigatively significant claims this document makes about this \
-entity — each an OBJECT with `claim` (one factual sentence), `page`, `confidence`, an optional \
-`reason` (why it matters), and an optional `quote`. Summarize each claim in your own words by \
-default; include a verbatim `quote` ONLY when the exact wording is itself significant or quotable \
-(an admission, a precise figure, distinctive language) — usually omit it. Omit the whole array if \
-the document says nothing notable about this entity. Never put contradiction callouts here.
-- `timeline_events`: datable events directly involving this entity — anything a journalist would \
-want the date of (something that happened, was decided, or changed). Exclude pure stamp/filing \
-dates unless they connect causally to something substantive.
 - `roles`: relationships to other entities, each an OBJECT with relationship/target_id/page/\
 confidence/date_range — never a plain string. Identify the target by `target_id` only; its name \
 and type are filled in automatically, so do not emit them.
+Create an entity for anything a fact, a role, or the timeline needs to refer to — including \
+incidental actors (counsel, a clerk) named in a fact. Do NOT write a summary or per-entity prose: \
+who the entity is follows from the facts tagged to it.
 
-Confidence (events, facts, roles): emit `confidence` ONLY when it is `medium` (one inference), \
-`low` (multi-statement inference), or `disputed` (contradicts the vault). OMIT it entirely when the \
-claim is directly stated — absent means `high`, which is the default. Never upgrade a claim past its \
-weakest element. Likewise omit `page` when there is no page marker (don't emit null), and omit empty \
-arrays rather than emitting `[]`.
+Confidence (facts, roles): emit `confidence` ONLY when it is `medium` (one inference), `low` \
+(multi-statement inference), or `disputed` (contradicts the vault). OMIT it entirely when the \
+claim is directly stated — absent means `high`, which is the default. Never upgrade a claim past \
+its weakest element. Likewise omit `page` when there is no page marker (don't emit null), and omit \
+empty arrays rather than emitting `[]`.
 
 CONTRADICTION CHECK — for each entity that matched an EXISTING_ENTITIES entry, compare key dates, \
-roles, and relationships in this document against that entry's `timeline_events`, `roles`, and \
-recorded claims. Flag a material discrepancy only when both sides are high or medium confidence and you \
-are confident it is genuine — this is the only verification step; any callout is saved as-is. Put \
-each as a string in that entity's `contradictions` array, formatted exactly:
+roles, and relationships in this document against that entry's recorded roles and claims. Flag a \
+material discrepancy only when both sides are high or medium confidence and you are confident it \
+is genuine — this is the only verification step; any callout is saved as-is. Put each as a string \
+in that entity's `contradictions` array, formatted exactly:
 > [!contradiction] <short label>
 > - **<existing value>** — [[documents/<slug>|<title>]], p. <n> (confidence: <level>)
 > - **<new value>** — [[documents/<new-slug>|<title>]], p. <n> (confidence: <level>)
 Do not flag low-confidence differences, trivial name variations, or contradictions already present.
 
 Also produce:
-- `document.summary`: one paragraph. `document.key_facts`: the 5–15 most important facts (fact, \
-page, confidence, and an optional verbatim `quote` — include the exact source sentence only when \
-its precise wording matters; otherwise just summarize the fact).
+- `document.summary`: ONE or two sentences orienting the reader — what this document is and why it \
+exists. Not a recap of the facts (those are in key_facts and the full text); just enough to know \
+what you are looking at.
 - `morgue_entity_id`: the kebab-case id of the entity this document is primarily *about* (debtor \
 for a bankruptcy, company for an annual report, defendant for a court order).
 - `morgue_document_type`: a type slug like annual-report, court-order, bankruptcy-filing.
@@ -130,14 +144,19 @@ def build_section_prompt(*, pages_text: str, existing_entities: list, skill_text
 
 def build_synthesis_prompt(bundle: dict) -> str:
     return (
-        "Synthesize Summary and Analysis prose for each entity below. Each was mentioned by two or "
-        "more documents this ingest, so reconcile all of its fragments with its carried prose into "
-        "a single coherent account — do not concatenate per-document sentences, and do not lose "
-        "specific detail (titles, figures, relationships) any source established. Where sources "
-        "genuinely conflict, prefer the higher-confidence one and note the uncertainty; do not "
-        "invent a resolution. `analysis` is the investigative narrative (patterns, significance, "
-        "open threads) — empty string if nothing beyond the summary. NEVER include "
-        "[!contradiction] callouts; contradictions live in their own section.\n\n"
+        "Synthesize Summary and Analysis prose for each entity below. Each appears in two or more "
+        "documents across the investigation, so reconcile all of its fragments with its carried "
+        "prose into a single coherent account — do not concatenate per-document sentences, and do "
+        "not lose specific detail (titles, figures, relationships) any source established. Keep the "
+        "`summary` SHORT: one to three paragraphs, scaled to the entity's complexity — a paragraph "
+        "for a simple recurring actor, up to three for a central figure with a tangled history. "
+        "Weight the full body of evidence: an entity established across many documents is not "
+        "redefined by a new passing mention — fold a minor new reference in without letting it "
+        "reshape an account the prior sources already settled. Where sources genuinely conflict, "
+        "prefer the higher-confidence one and note the uncertainty; do not invent a resolution. "
+        "`analysis` is the investigative narrative (patterns, significance, open threads) — empty "
+        "string if nothing beyond the summary. NEVER include [!contradiction] callouts; "
+        "contradictions live in their own section.\n\n"
         "The fragments contain structured claims, some carrying a verbatim `quote`. Compose the "
         "prose from the claims in your own words; weave a verbatim quote into the prose ONLY in "
         "exceptional cases where the quote itself is unusually strong or important — by default, "
