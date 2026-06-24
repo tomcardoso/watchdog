@@ -8,7 +8,10 @@ write so Claude's per-file work is: read text → output JSON → done.
 Usage:
     watchdog-write-vault --extraction .watchdog/tmp/extraction.json [--vault .]
 
-Extraction JSON schema:
+Extraction JSON schema (as consumed here — i.e. AFTER postflight.explode_key_facts has fanned the
+unified `key_facts` out into per-entity `evidence_fragments` / `timeline_events`, #140). The model
+itself emits only `key_facts` (with `date` / `entities` tags) plus the entity graph; it no longer
+emits per-entity summaries, fragments, or timeline events:
 {
   "document": {
     "sha256": str, "filename": str, "original_path": str,
@@ -16,18 +19,19 @@ Extraction JSON schema:
     "page_count": int, "source": str|null, "obtained": str|null,
     "near_duplicate_of": str|null, "shingles": [],
     "summary": str,
-    "key_facts": [{"fact": str, "page": int|null, "confidence": str, "quote": str|null}]
+    "key_facts": [{"fact": str, "page": int|null, "confidence": str,
+                   "date": str|null, "entities": [str], "quote": str|null}]
   },
   "entities": [
     {
       "id": str, "name": str, "type": str, "aliases": [],
-      "summary": str|null,
-      "evidence_fragments": [          // significant claims about this entity (no callouts)
-        {"claim": str, "page": int|null, "confidence": str,
-         "reason": str|null, "quote": str|null}
+      // summary is no longer emitted by the model — synthesized post-ingest, with a provisional
+      // one-liner from the entity's top tagged fact in the meantime.
+      "evidence_fragments": [          // reconstructed by postflight from facts tagged to this id
+        {"claim": str, "page": int|null, "confidence": str, "quote": str|null}
       ],
       "contradictions": [str]|null,    // each a `> [!contradiction]` callout block
-      "timeline_events": [
+      "timeline_events": [             // reconstructed by postflight from this id's dated facts
         {
           "date": str,   // YYYY-MM-DD, YYYY-MM, or YYYY
           "event": str,
@@ -509,6 +513,31 @@ def _add_reverse_role(
 
 # ── Note builders ─────────────────────────────────────────────────────────────
 
+def _write_morgue_markdown(vault_path: Path, sha256: str, morgue_dir: Path, stem: str) -> None:
+    """Write the Docling per-page markdown next to the original in the morgue (#140).
+
+    Best-effort: the page markdown lives in the chew-time queue descriptor, which is present during
+    ingest but gone on a re-run from disk (`watchdog finalize`); skip silently if unavailable.
+    Pages are joined with `<!-- PAGE N -->` markers so the file is both greppable and page-aligned.
+    """
+    queue_file = vault_path / ".watchdog" / "queue" / f"{sha256}.json"
+    if not queue_file.exists():
+        return
+    try:
+        pages = json.loads(queue_file.read_text(encoding="utf-8")).get("pages", [])
+    except (OSError, json.JSONDecodeError):
+        return
+    if not pages:
+        return
+    body = "\n\n".join(
+        f"<!-- PAGE {p.get('page')} -->\n\n{p.get('markdown', '')}".rstrip() for p in pages
+    )
+    try:
+        (morgue_dir / f"{stem}.md").write_text(body + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
 def _render_evidence_fragments(fragments: list, morgue_path: str = "") -> str:
     """Render evidence-fragment claims as Markdown bullets.
 
@@ -604,6 +633,8 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
     body = ""
     if morgue_path:
         body += f"\n**Source file:** [[{morgue_path}]]\n"
+        md_path = str(Path(morgue_path).with_suffix(".md"))
+        body += f"\n**Full text:** [[{md_path}]]\n"
 
     body += f"\n## Summary\n\n{doc.get('summary', '')}\n"
 
@@ -778,6 +809,10 @@ def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False, ne
             notes_section = _extract_notes_section(note_path)
 
             incoming = incoming_by_id.get(eid, {})
+            # Extraction no longer emits a per-entity summary (#140). A recurring entity
+            # (appears_in >= 2) gets a model-synthesized summary in post-ingest; a single-document
+            # entity is a deterministic stub with no Summary section (its facts live in ## Analysis).
+            # So the only summary at write time is a carried one from a prior synthesis.
             new_summary = incoming.get("summary") or _extract_summary(note_path)
 
             existing_analysis = _extract_analysis(note_path)
@@ -873,6 +908,9 @@ def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False, ne
         sidecar = Path(str(source) + ".yml")
         if sidecar.exists():
             shutil.move(str(sidecar), str(morgue_dir / sidecar.name))
+        # Preserve the Docling text alongside the original so the full document stays greppable in
+        # the vault — extraction now indexes this substrate rather than restating it (#140).
+        _write_morgue_markdown(vault_path, doc_sha256, morgue_dir, source.stem)
 
         incoming_dir = vault_path / "_INCOMING"
         parent = source.parent

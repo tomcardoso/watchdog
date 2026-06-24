@@ -8,21 +8,18 @@ from watchdog.pipeline.merge import merge_extractions
 def test_merge_unions_entities_by_id():
     sections = [
         {"document": {"sha256": "x", "filename": "f",
-                      "key_facts": [{"fact": "A", "page": 1, "confidence": "high"}]},
+                      "key_facts": [{"fact": "Incorporated in Ontario", "date": "2020",
+                                     "page": 1, "entities": ["acme"]}]},
          "entities": [{"id": "acme", "name": "Acme Corp", "type": "Company",
-                       "aliases": ["the Company"],
-                       "timeline_events": [{"date": "2020", "event": "incorporated", "confidence": "high"}],
-                       "roles": []}],
+                       "aliases": ["the Company"], "roles": []}],
          "morgue_entity_id": "acme", "morgue_document_type": "annual-report"},
-        {"document": {"key_facts": [{"fact": "B", "page": 60, "confidence": "high"}]},
+        {"document": {"key_facts": [{"fact": "Filed its annual report", "date": "2021",
+                                     "page": 60, "entities": ["acme"]}]},
          "entities": [
              {"id": "acme", "name": "Acme Corp", "type": "Company", "aliases": [],
-              "timeline_events": [{"date": "2021", "event": "filed report", "confidence": "medium"}],
-              "roles": [{"relationship": "Director of", "target_id": "jane",
-                         "target_type": "Person", "target_name": "Jane", "page": 61,
-                         "confidence": "high", "date_range": None}]},
-             {"id": "jane", "name": "Jane Doe", "type": "Person", "aliases": [],
-              "timeline_events": [], "roles": []}],
+              "roles": [{"relationship": "Director of", "target_id": "jane", "page": 61,
+                         "date_range": None}]},
+             {"id": "jane", "name": "Jane Doe", "type": "Person", "aliases": [], "roles": []}],
          "morgue_entity_id": None, "morgue_document_type": None},
     ]
     merged = merge_extractions(sections)
@@ -30,9 +27,10 @@ def test_merge_unions_entities_by_id():
 
     assert set(ents) == {"acme", "jane"}
     assert "the Company" in ents["acme"]["aliases"]
-    assert {ev["date"] for ev in ents["acme"]["timeline_events"]} == {"2020", "2021"}
     assert len(ents["acme"]["roles"]) == 1
-    assert {f["fact"] for f in merged["document"]["key_facts"]} == {"A", "B"}
+    assert {f["fact"] for f in merged["document"]["key_facts"]} == {
+        "Incorporated in Ontario", "Filed its annual report"}
+    assert {f["date"] for f in merged["document"]["key_facts"]} == {"2020", "2021"}
     assert merged["document"]["sha256"] == "x"          # document from first non-empty
     assert merged["morgue_entity_id"] == "acme"          # first non-null wins
 
@@ -41,56 +39,55 @@ def test_merge_folds_id_drift_by_normalized_name():
     sections = [
         {"document": {"sha256": "x", "filename": "f"},
          "entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
-                       "aliases": [], "timeline_events": [], "roles": []}]},
+                       "aliases": [], "roles": []}]},
         {"document": {},
          "entities": [{"id": "acme-corp-2", "name": "ACME  CORP", "type": "Company",
-                       "aliases": [], "timeline_events": [{"date": "2021", "event": "x", "confidence": "high"}],
-                       "roles": []}]},
+                       "aliases": ["ACME"],
+                       "roles": [{"relationship": "Owns", "target_id": "widget"}]}]},
     ]
     merged = merge_extractions(sections)
     assert len(merged["entities"]) == 1                  # drift folded onto one id
     assert merged["entities"][0]["id"] == "acme-corp"
-    assert len(merged["entities"][0]["timeline_events"]) == 1
+    assert merged["entities"][0]["roles"][0]["target_id"] == "widget"   # roles carried over
 
 
-def test_merge_dedups_timeline_and_key_facts():
+def test_merge_dedups_key_facts():
     section = {
-        "document": {"sha256": "x", "key_facts": [{"fact": "Same fact", "page": 1, "confidence": "high"}]},
-        "entities": [{"id": "a", "name": "A", "type": "Person", "aliases": [],
-                      "timeline_events": [{"date": "2020", "event": "did thing", "confidence": "high"}],
-                      "roles": []}],
+        "document": {"sha256": "x", "key_facts": [
+            {"fact": "Same fact", "page": 1, "entities": ["a"]},
+            {"fact": "Did a thing", "date": "2020", "entities": ["a"]},
+        ]},
+        "entities": [{"id": "a", "name": "A", "type": "Person", "aliases": [], "roles": []}],
     }
     merged = merge_extractions([section, json.loads(json.dumps(section))])  # identical twice
-    assert len(merged["entities"][0]["timeline_events"]) == 1
-    assert len(merged["document"]["key_facts"]) == 1
+    assert len(merged["document"]["key_facts"]) == 2
 
 
-def test_merge_omits_empty_summary_and_evidence_fragments():
+def test_merge_entity_has_no_fact_or_timeline_fields():
+    """The merged entity is graph-only; facts/timeline live on document.key_facts (#140)."""
     merged = merge_extractions([
         {"document": {"sha256": "x"},
-         "entities": [{"id": "a", "name": "A", "type": "Person", "aliases": [],
-                       "timeline_events": [], "roles": []}]},
+         "entities": [{"id": "a", "name": "A", "type": "Person", "aliases": [], "roles": []}]},
     ])
     ent = merged["entities"][0]
     assert "summary" not in ent
     assert "evidence_fragments" not in ent
+    assert "timeline_events" not in ent
+    assert set(ent) >= {"id", "name", "type", "aliases", "roles"}
 
 
-def test_merge_unions_evidence_fragments_across_sections():
+def test_merge_unions_key_fact_entity_tags_across_sections():
+    """The same fact tagged with different entities in two sections folds, unioning the tags."""
     sections = [
-        {"document": {"sha256": "x", "filename": "f"},
-         "entities": [{"id": "a", "name": "A", "type": "Person", "aliases": [],
-                       "evidence_fragments": [{"claim": "Claim one.", "confidence": "high"}],
-                       "timeline_events": [], "roles": []}]},
-        {"document": {},
-         "entities": [{"id": "a", "name": "A", "type": "Person", "aliases": [],
-                       "evidence_fragments": [
-                           {"claim": "Claim one.", "confidence": "high"},      # dup → folded
-                           {"claim": "Claim two.", "confidence": "medium"}],
-                       "timeline_events": [], "roles": []}]},
+        {"document": {"sha256": "x", "filename": "f",
+                      "key_facts": [{"fact": "Shared an address.", "entities": ["a"]}]},
+         "entities": [{"id": "a", "name": "A", "type": "Person", "aliases": [], "roles": []}]},
+        {"document": {"key_facts": [{"fact": "Shared an address.", "entities": ["b"]}]},
+         "entities": [{"id": "b", "name": "B", "type": "Person", "aliases": [], "roles": []}]},
     ]
-    frags = merge_extractions(sections)["entities"][0]["evidence_fragments"]
-    assert {f["claim"] for f in frags} == {"Claim one.", "Claim two."}
+    facts = merge_extractions(sections)["document"]["key_facts"]
+    assert len(facts) == 1
+    assert sorted(facts[0]["entities"]) == ["a", "b"]
 
 
 def test_run_merges_section_files(tmp_path):
@@ -99,13 +96,11 @@ def test_run_merges_section_files(tmp_path):
     tmp.mkdir(parents=True)
     (tmp / "section_ex_doc1_01.json").write_text(json.dumps({
         "document": {"sha256": "doc1", "filename": "f"},
-        "entities": [{"id": "a", "name": "A", "type": "Person", "aliases": [],
-                      "timeline_events": [], "roles": []}],
+        "entities": [{"id": "a", "name": "A", "type": "Person", "aliases": [], "roles": []}],
         "morgue_entity_id": "a", "morgue_document_type": "t"}))
     (tmp / "section_ex_doc1_02.json").write_text(json.dumps({
         "document": {},
-        "entities": [{"id": "b", "name": "B", "type": "Person", "aliases": [],
-                      "timeline_events": [], "roles": []}]}))
+        "entities": [{"id": "b", "name": "B", "type": "Person", "aliases": [], "roles": []}]}))
 
     result = merge.run(vault, "doc1")
     assert result["ok"] is True
@@ -130,8 +125,8 @@ def test_run_splits_new_vs_updated_against_registry(tmp_path):
     (tmp / "section_ex_doc1_01.json").write_text(json.dumps({
         "document": {"sha256": "doc1", "filename": "f"},
         "entities": [
-            {"id": "a", "name": "A", "type": "Person", "aliases": [], "timeline_events": [], "roles": []},
-            {"id": "b", "name": "B", "type": "Person", "aliases": [], "timeline_events": [], "roles": []},
+            {"id": "a", "name": "A", "type": "Person", "aliases": [], "roles": []},
+            {"id": "b", "name": "B", "type": "Person", "aliases": [], "roles": []},
         ],
         "morgue_entity_id": "a", "morgue_document_type": "t"}))
 

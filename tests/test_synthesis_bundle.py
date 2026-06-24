@@ -45,6 +45,36 @@ def test_build_bundle_selects_multi_mention_with_fragments_and_prose(tmp_path):
     assert alice["note_path"].endswith("alice-smith")
 
 
+def test_build_bundle_gates_on_project_wide_appears_in(tmp_path):
+    """Recurrence is counted across the whole project (appears_in), not within the batch (#140):
+    an entity in 2 documents total is selected even if only touched once this run; an entity in
+    1 document total is skipped even when touched this run."""
+    vault = make_vault(tmp_path)
+    reg_path = vault / ".watchdog" / "Registry" / "entities.json"
+    reg = {
+        "recurring-co": {"id": "recurring-co", "name": "Recurring Co", "type": "Company",
+                         "note_path": "entities/company/recurring-co",
+                         "appears_in": ["sha-old", "sha-new"]},   # 2 docs, across batches
+        "one-off": {"id": "one-off", "name": "One Off", "type": "Person",
+                    "note_path": "entities/person/one-off", "appears_in": ["sha-new"]},   # 1 doc
+    }
+    reg_path.write_text(json.dumps(reg))
+
+    frag_dir = vault / ".watchdog" / "tmp" / "entity-fragments"
+    frag_dir.mkdir(parents=True, exist_ok=True)
+    queue = {}
+    for eid, e in reg.items():
+        (frag_dir / f"{eid}.md").write_text(f"### doc\nclaim about {eid}\n", encoding="utf-8")
+        note = vault / f"{e['note_path']}.md"
+        note.parent.mkdir(parents=True, exist_ok=True)
+        note.write_text(f"# {e['name']}\n\n## Summary\n\ns\n", encoding="utf-8")
+        queue[eid] = {"name": e["name"], "note_path": e["note_path"], "count": 1}   # touched once this run
+    (frag_dir / "_queue.json").write_text(json.dumps(queue), encoding="utf-8")
+
+    ids = {e["entity_id"] for e in build_bundle(vault)["entities"]}
+    assert ids == {"recurring-co"}   # promoted by project-wide recurrence; one-off stays a stub
+
+
 # ── apply_bundle ──────────────────────────────────────────────────────────────
 
 def _full_extraction(tmp_path):

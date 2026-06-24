@@ -16,8 +16,9 @@ def _vault(tmp_path: Path) -> Path:
     return v
 
 
-def _extraction(entities: list[dict], sha: str = "abcdef1234567") -> dict:
-    return {"document": {"sha256": sha}, "entities": entities}
+def _extraction(key_facts: list[dict], sha: str = "abcdef1234567") -> dict:
+    """Build an extraction whose timeline derives from dated document.key_facts (#140)."""
+    return {"document": {"sha256": sha, "key_facts": key_facts}, "entities": []}
 
 
 def _read_ndjson(path: Path) -> list[dict]:
@@ -29,10 +30,9 @@ def _read_ndjson(path: Path) -> list[dict]:
 def test_stage_writes_one_file_per_date(tmp_path):
     vault = _vault(tmp_path)
     n = stage_timeline_events(vault, _extraction([
-        {"id": "alice", "timeline_events": [
-            {"date": "2020-03-15", "event": "Appointed director", "page": 2, "confidence": "high"},
-            {"date": "2021", "event": "Resigned", "page": 5, "confidence": "medium"},
-        ]},
+        {"fact": "Appointed director", "date": "2020-03-15", "page": 2, "entities": ["alice"]},
+        {"fact": "Resigned", "date": "2021", "page": 5, "confidence": "medium", "entities": ["alice"]},
+        {"fact": "Owns a controlling stake", "entities": ["alice"]},   # no date → not a timeline event
     ], sha="abcdef1234567"))
 
     assert n == 2
@@ -52,10 +52,8 @@ def test_stage_writes_one_file_per_date(tmp_path):
 def test_stage_dedups_same_event_across_entities(tmp_path):
     vault = _vault(tmp_path)
     stage_timeline_events(vault, _extraction([
-        {"id": "alice", "timeline_events": [
-            {"date": "2020-03-15", "event": "Acme filed for bankruptcy", "confidence": "high"}]},
-        {"id": "acme", "timeline_events": [
-            {"date": "2020-03-15", "event": "Acme filed for bankruptcy", "confidence": "high"}]},
+        {"fact": "Acme filed for bankruptcy", "date": "2020-03-15", "entities": ["alice"]},
+        {"fact": "Acme filed for bankruptcy", "date": "2020-03-15", "entities": ["acme"]},
     ], sha="sha12340000"))
 
     recs = _read_ndjson(vault / ".watchdog" / "timeline" / "2020-03-15_sha1234.ndjson")
@@ -66,23 +64,31 @@ def test_stage_dedups_same_event_across_entities(tmp_path):
 def test_stage_keeps_distinct_events_on_same_date(tmp_path):
     vault = _vault(tmp_path)
     stage_timeline_events(vault, _extraction([
-        {"id": "alice", "timeline_events": [
-            {"date": "2020-03-15", "event": "Event A", "confidence": "high"},
-            {"date": "2020-03-15", "event": "Event B", "confidence": "low"}]},
+        {"fact": "Event A", "date": "2020-03-15", "entities": ["alice"]},
+        {"fact": "Event B", "date": "2020-03-15", "confidence": "low", "entities": ["alice"]},
     ], sha="zzzzzzz9999"))
 
     recs = _read_ndjson(vault / ".watchdog" / "timeline" / "2020-03-15_zzzzzzz.ndjson")
     assert {r["event"] for r in recs} == {"Event A", "Event B"}
 
 
-def test_stage_skips_events_without_date_or_text(tmp_path):
+def test_stage_keeps_untagged_dated_fact(tmp_path):
+    vault = _vault(tmp_path)
+    stage_timeline_events(vault, _extraction([
+        {"fact": "The hearing was held by Zoom", "date": "2020-03-15"},   # no entity tags
+    ], sha="untag00000aa"))
+
+    recs = _read_ndjson(vault / ".watchdog" / "timeline" / "2020-03-15_untag00.ndjson")
+    assert recs[0]["event"] == "The hearing was held by Zoom"
+    assert recs[0]["entity_ids"] == []
+
+
+def test_stage_skips_facts_without_date_or_text(tmp_path):
     vault = _vault(tmp_path)
     n = stage_timeline_events(vault, _extraction([
-        {"id": "alice", "timeline_events": [
-            {"date": "", "event": "no date", "confidence": "high"},
-            {"date": "2020", "event": "", "confidence": "high"},
-            {"event": "missing date key", "confidence": "high"},
-        ]},
+        {"fact": "no date", "entities": ["alice"]},
+        {"fact": "", "date": "2020"},
+        {"date": "2021"},   # missing fact text
     ]))
     assert n == 0
     td = vault / ".watchdog" / "timeline"
@@ -91,7 +97,7 @@ def test_stage_skips_events_without_date_or_text(tmp_path):
 
 def test_stage_returns_zero_without_sha(tmp_path):
     vault = _vault(tmp_path)
-    assert stage_timeline_events(vault, {"document": {}, "entities": []}) == 0
+    assert stage_timeline_events(vault, {"document": {"key_facts": []}, "entities": []}) == 0
 
 
 # ── Integration with the collisions / rebuild flow ──────────────────────────
@@ -99,8 +105,7 @@ def test_stage_returns_zero_without_sha(tmp_path):
 def test_stage_then_collisions_promotes_and_rebuild_renders(tmp_path, capsys):
     vault = _vault(tmp_path)
     stage_timeline_events(vault, _extraction([
-        {"id": "alice", "timeline_events": [
-            {"date": "2020-03-15", "event": "Appointed director", "confidence": "high"}]},
+        {"fact": "Appointed director", "date": "2020-03-15", "entities": ["alice"]},
     ], sha="doc1xxxxxxx"))
 
     cmd_timeline_collisions(vault)
@@ -126,8 +131,7 @@ def test_stage_collision_reported_when_canonical_exists(tmp_path, capsys):
     )
 
     stage_timeline_events(vault, _extraction([
-        {"id": "bob", "timeline_events": [
-            {"date": "2020-03-15", "event": "New event", "confidence": "high"}]},
+        {"fact": "New event", "date": "2020-03-15", "entities": ["bob"]},
     ], sha="newdoc12345"))
 
     cmd_timeline_collisions(vault)
@@ -166,12 +170,12 @@ def test_postflight_stages_timeline_files(tmp_path):
             "date_of_document": "2024-01-15",
             "page_count": 1,
             "summary": "x",
-            "key_facts": [],
+            "key_facts": [
+                {"fact": "Appointed", "date": "2020-03-15", "entities": ["alice"]},
+            ],
         },
         "entities": [
-            {"id": "alice", "name": "Alice", "type": "Person", "aliases": [],
-             "timeline_events": [{"date": "2020-03-15", "event": "Appointed", "confidence": "high"}],
-             "roles": []},
+            {"id": "alice", "name": "Alice", "type": "Person", "aliases": [], "roles": []},
         ],
         "morgue_entity_id": "alice",
         "morgue_document_type": "report",

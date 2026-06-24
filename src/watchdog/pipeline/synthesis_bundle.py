@@ -37,21 +37,29 @@ def _fragments_dir(vault_path: Path) -> Path:
 
 
 def build_bundle(vault_path: Path, min_docs: int = 2) -> dict:
-    """Gather every entity with >= min_docs fragments this run into one bundle.
+    """Gather every entity that recurs across the project into one synthesis bundle (#140).
 
-    Mirrors the selection the orchestrator previously made (``count >= 2``):
-    single-mention entities already have correct carried-forward notes and are
-    skipped here.
+    The gate is **project-wide recurrence**: an entity earns a synthesized summary once it
+    appears in ``min_docs`` (default 2) distinct documents across the whole investigation — read
+    from its registry ``appears_in``, not from this batch's mention count. Only entities *touched
+    this run* (present in the fragment queue) are candidates — an untouched entity has nothing new
+    to reconcile. Single-document entities are left as deterministic stubs (facts + relationships,
+    no summary section); a recurring entity that only got a fresh stub this run is promoted here as
+    its ``appears_in`` crosses the threshold, even when the two documents arrived in different
+    batches years apart.
     """
     frag_dir = _fragments_dir(vault_path)
     queue_path = frag_dir / "_queue.json"
     if not queue_path.exists():
         return {"entities": []}
 
+    entities_path = vault_path / ".watchdog" / "Registry" / "entities.json"
+    entities_reg = json.loads(entities_path.read_text(encoding="utf-8")) if entities_path.exists() else {}
+
     queue = json.loads(queue_path.read_text(encoding="utf-8"))
     entities = []
     for eid, rec in queue.items():
-        if rec.get("count", 0) < min_docs:
+        if len(entities_reg.get(eid, {}).get("appears_in", [])) < min_docs:
             continue
         frag_path = frag_dir / f"{eid}.md"
         if not frag_path.exists():

@@ -275,8 +275,8 @@ my-investigation/
 ├── _INCOMING/              ← Drop public records here
 │   └── _FAILED/           ← Files that could not be processed
 ├── _CONTEXT/               ← Background material (prior stories, notes)
-├── morgue/                 ← Original files after successful ingest
-│   └── <entity>/
+├── morgue/                 ← Original files after successful ingest, each beside
+│   └── <entity>/             a <name>.md of its full extracted text (greppable)
 │       └── <doc-type>/
 ├── .watchdog/
 │   ├── queue/             ← Extracted data awaiting ingest (.json per file)
