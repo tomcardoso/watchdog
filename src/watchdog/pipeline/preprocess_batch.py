@@ -246,6 +246,49 @@ def preprocess_one(
     return result
 
 
+def _filter_already_seen(files: list, vault: Path, incoming: Path, queue: Path) -> list:
+    """Drop files whose exact content is already known, before paying for OCR (#146).
+
+    Each file's sha256 is checked against the document registry (already ingested) and the pending
+    queue (already chewed this round, awaiting ingest), plus the shas seen earlier in this same
+    batch (intra-batch duplicates). A match is moved to ``_INCOMING/_SKIPPED/`` with a warning
+    rather than re-OCR'd and re-queued — the journalist keeps the file, it just isn't processed
+    again. (Exact bytes only; a near-duplicate has a different sha and is handled by the MinHash
+    check at ingest.)
+    """
+    docs_path = vault / ".watchdog" / "Registry" / "documents.json"
+    try:
+        ingested = set(json.loads(docs_path.read_text(encoding="utf-8"))) if docs_path.exists() else set()
+    except (OSError, json.JSONDecodeError):
+        ingested = set()
+    queued = {p.stem for p in queue.glob("*.json")}
+
+    keep, seen = [], set()
+    for f in files:
+        try:
+            sha = sha256_file(f)
+        except OSError:
+            keep.append(f)
+            continue
+        reason = ("already ingested" if sha in ingested
+                  else "already queued" if sha in queued
+                  else "duplicate in this batch" if sha in seen
+                  else None)
+        if reason is None:
+            seen.add(sha)
+            keep.append(f)
+            continue
+        skipped_dir = incoming / "_SKIPPED"
+        skipped_dir.mkdir(exist_ok=True)
+        try:
+            f.rename(skipped_dir / f.name)
+        except OSError:
+            pass
+        print(f"  {_YELLOW}⚠ duplicate{_RESET}  {f.name}  "
+              f"{_DIM}{reason} → _INCOMING/_SKIPPED/{_RESET}")
+    return keep
+
+
 def run_ingest(
     vault: Path,
     workers: int | None = None,
@@ -288,6 +331,7 @@ def _run_ingest_inner(
 ) -> None:
     if files is None:
         files = find_files([incoming])
+    files = _filter_already_seen(files, vault, incoming, queue)
     if not files:
         queued = len(list(queue.glob("*.json")))
         if queued:
