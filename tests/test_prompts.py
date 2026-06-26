@@ -29,18 +29,18 @@ def test_render_leaves_single_braces_untouched():
 def test_section_prompt_renders_label():
     p = prompts.build_section_prompt(
         pages_text="x", existing_entities=[], skill_text="", carry_forward="",
-        section_label="pp.1-10", is_first=True, sha256="abc", filename="f.pdf",
-        original_path=None, page_count=10)
+        section_label="pp.1-10", is_first=True)
     assert "pp.1-10" in p and "{{" not in p
 
 
 def test_extract_prompt_includes_instructions_and_data():
     p = prompts.build_extract_prompt(
         pages_text="DOCBODY", existing_entities=[{"id": "x"}], skill_text="SKILL",
-        sidecar=None, sha256="sha", filename="f.pdf", original_path=None,
-        page_count=3, brief=None)
+        sidecar=None, brief=None)
     assert "key_facts" in p              # instruction prose loaded
     assert "DOCBODY" in p and "SKILL" in p   # data assembled in
+    # identity fields are no longer asked of the model (stamped in Python)
+    assert "Set document.sha256" not in p
 
 
 def test_prompt_templates_not_in_skills_catalog():

@@ -60,6 +60,49 @@ def _mock(monkeypatch, *, extraction):
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
 
+def test_stamp_document_overwrites_model_identity(tmp_path):
+    """Identity fields are stamped from Python, overriding whatever the model emitted."""
+    vault = make_vault(tmp_path)
+    pf = {"filename": "real.pdf", "original_path": "_INCOMING/real.pdf",
+          "page_count": 7, "pages": [{}]}
+    ext = {"document": {"sha256": "WRONGSHA", "filename": "wrong.pdf", "page_count": 999}}
+    orchestrate._stamp_document(ext, sha="realsha", pf=pf, skill_label="court-documents", vault=vault)
+    d = ext["document"]
+    assert d["sha256"] == "realsha"
+    assert d["filename"] == "real.pdf"
+    assert d["original_path"] == "_INCOMING/real.pdf"
+    assert d["page_count"] == 7
+    assert d["record_skill"] == "court-documents"
+
+
+def test_sidecar_provenance_parsed_in_python(tmp_path):
+    """source/obtained come from the .yml sidecar (parsed in Python), not the model — and an
+    unquoted ISO date is coerced back to a string rather than a date object."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "doc.pdf.yml").write_text(
+        "source: https://sedar.com/x\nobtained: 2026-06-05\nnotes: check p.12\n", encoding="utf-8")
+    assert orchestrate._sidecar_provenance(vault, "doc.pdf") == {
+        "source": "https://sedar.com/x", "obtained": "2026-06-05"}
+
+
+def test_sidecar_provenance_absent_or_malformed(tmp_path):
+    vault = make_vault(tmp_path)
+    assert orchestrate._sidecar_provenance(vault, "missing.pdf") == {}
+    (vault / "_INCOMING" / "bad.pdf.yml").write_text("just a string, not a map\n", encoding="utf-8")
+    assert orchestrate._sidecar_provenance(vault, "bad.pdf") == {}
+
+
+def test_stamp_document_applies_sidecar_provenance(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "real.pdf.yml").write_text(
+        "source: FOI A-2026-001\nobtained: 2026-06-05\n", encoding="utf-8")
+    pf = {"filename": "real.pdf", "original_path": "_INCOMING/real.pdf", "page_count": 1, "pages": [{}]}
+    ext = {"document": {}}   # model emitted no source/obtained
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="foi-responses", vault=vault)
+    assert ext["document"]["source"] == "FOI A-2026-001"
+    assert ext["document"]["obtained"] == "2026-06-05"
+
+
 def test_orchestrator_extracts_and_writes_vault(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault)
@@ -380,7 +423,6 @@ def test_failed_doc_is_named_and_quarantine_surfaced(tmp_path, monkeypatch):
 def test_post_ingest_model_failure_degrades_without_crashing(tmp_path, monkeypatch):
     """A rate limit (or model error) during post-ingest must not crash: the extracted docs
     are already saved, synthesis is skipped, and the run returns a summary cleanly."""
-    import re
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="aaa", filename="a.pdf", text="Acme Corp filed.")
     _queue_doc(vault, sha="bbb", filename="b.pdf", text="Acme Corp again.")
@@ -390,8 +432,8 @@ def test_post_ingest_model_failure_degrades_without_crashing(tmp_path, monkeypat
             return model_client.ModelResult(parsed={"skill": "general-records.md"}, text="",
                                             model="m", backend="claude-agent-sdk", auth_mode="subscription")
         if task == "extract":
-            m = re.search(r"document\.sha256 = '([^']+)'", prompt)   # share an entity across both docs
-            return model_client.ModelResult(parsed=_extraction(sha=m.group(1), filename=f"{m.group(1)}.pdf"),
+            sha = "aaa" if "Acme Corp filed." in prompt else "bbb"   # share an entity across both docs
+            return model_client.ModelResult(parsed=_extraction(sha=sha, filename=f"{sha}.pdf"),
                                             text="", model="m", backend="claude-agent-sdk", auth_mode="subscription")
         raise model_client.RateLimitError("You've hit your session limit · resets 7pm")
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
@@ -423,7 +465,6 @@ def test_post_ingest_unexpected_crash_is_contained(tmp_path, monkeypatch):
 def test_finalize_completes_an_interrupted_run(tmp_path, monkeypatch):
     """A rate limit during post-ingest leaves the batch finalizable; a later finalize
     completes synthesis + briefing and clears the per-run inputs."""
-    import re
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="aaa", filename="a.pdf", text="Acme Corp filed.")
     _queue_doc(vault, sha="bbb", filename="b.pdf", text="Acme Corp again.")
@@ -436,8 +477,8 @@ def test_finalize_completes_an_interrupted_run(tmp_path, monkeypatch):
         if task == "classify":
             return res({"skill": "general-records.md"})
         if task == "extract":
-            m = re.search(r"document\.sha256 = '([^']+)'", prompt)   # share one entity across both docs
-            return res(_extraction(sha=m.group(1), filename=f"{m.group(1)}.pdf"))
+            sha = "aaa" if "Acme Corp filed." in prompt else "bbb"   # share one entity across both docs
+            return res(_extraction(sha=sha, filename=f"{sha}.pdf"))
         if task == "entity-synthesis":
             if not state["synthesis_ok"]:
                 raise model_client.RateLimitError("You've hit your session limit · resets 7pm")

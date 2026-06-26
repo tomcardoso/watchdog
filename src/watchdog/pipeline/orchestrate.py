@@ -18,6 +18,8 @@ import signal
 import sys
 from pathlib import Path
 
+import yaml
+
 from watchdog import model_client, skills_catalog
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 from watchdog.pipeline import (
@@ -95,6 +97,39 @@ def _read_sidecar(vault: Path, filename: str) -> str | None:
     return sc.read_text(encoding="utf-8") if sc.exists() else None
 
 
+def _sidecar_provenance(vault: Path, filename: str) -> dict:
+    """Parse `source`/`obtained` from the document's `.yml` sidecar — deterministically, in
+    Python, rather than passing the sidecar text through the model and reading the fields back
+    out of its response. The sidecar still reaches the model as extraction context (its `notes`)."""
+    text = _read_sidecar(vault, filename)
+    if not text:
+        return {}
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    # str() coerces YAML's auto-parsed scalars (e.g. `obtained: 2026-06-05` → a date) back to text.
+    return {k: str(data[k]) for k in ("source", "obtained") if data.get(k) is not None}
+
+
+def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str, vault: Path) -> None:
+    """Stamp the deterministic, Python-owned document fields onto the extraction, before
+    post-flight consumes it. Identity (sha256/filename/original_path/page_count) and provenance
+    (source/obtained) are values the pipeline already holds — the model is no longer asked to
+    echo them, so we set the authoritative values here. Stamping the sha in particular removes a
+    latent failure mode: write_vault keys the vault write on `document.sha256`, so a model
+    mis-transcription of the 64-char hash would desync the write from the queue/registry."""
+    doc = extraction.setdefault("document", {})
+    doc["record_skill"] = skill_label
+    doc["sha256"] = sha
+    doc["filename"] = pf["filename"]
+    doc["original_path"] = pf.get("original_path")
+    doc["page_count"] = pf.get("page_count") or len(pf["pages"])
+    doc.update(_sidecar_provenance(vault, pf["filename"]))
+
+
 async def _classify(doc_excerpt: str, model: str) -> str:
     r = await model_client.acomplete_json(
         task="classify", model=model, schema=schemas.CLASSIFY,
@@ -131,9 +166,7 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label)
     """Whole-document extraction, with one repair attempt if post-flight rejects."""
     base = prompts.build_extract_prompt(
         pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
-        skill_text=skill_text, sidecar=_read_sidecar(vault, pf["filename"]),
-        sha256=sha, filename=pf["filename"], original_path=pf.get("original_path"),
-        page_count=pf.get("page_count") or len(pf["pages"]), brief=brief,
+        skill_text=skill_text, sidecar=_read_sidecar(vault, pf["filename"]), brief=brief,
     )
     cost, errors, extraction, scratchpad = 0.0, [], {}, ""
     for _ in range(2):
@@ -148,7 +181,7 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label)
         cost += r.cost_usd or 0.0
         extraction = r.parsed
         scratchpad = extraction.pop("scratchpad", "")
-        extraction.setdefault("document", {})["record_skill"] = skill_label   # provenance
+        _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault)
         ok, errors = _write_postflight(vault, sha, extraction)
         if ok:
             return extraction, scratchpad, cost, True, []
@@ -174,8 +207,7 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
         prompt = prompts.build_section_prompt(
             pages_text=sec_text, existing_entities=pf.get("existing_entities", []),
             skill_text=skill_text, carry_forward=carry, section_label=sec["label"],
-            is_first=(sec["index"] == 1), sha256=sha, filename=pf["filename"],
-            original_path=pf.get("original_path"), page_count=pf.get("page_count") or len(pf["pages"]),
+            is_first=(sec["index"] == 1),
         )
         r = await model_client.acomplete_json(task="extract-section", model=model,
                                               prompt=prompt, schema=schemas.SECTION)
@@ -185,7 +217,7 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
 
     extraction = merge.merge_extractions(parts)
     scratchpad = "\n".join(p["observations"] for p in parts if p.get("observations"))
-    extraction.setdefault("document", {})["record_skill"] = skill_label   # provenance
+    _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault)
     ok, errors = _write_postflight(vault, sha, extraction)
     return extraction, scratchpad, cost, ok, errors
 

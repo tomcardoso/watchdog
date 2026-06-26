@@ -42,27 +42,24 @@ def build_classify_prompt(doc_excerpt: str, index_text: str) -> str:
 
 
 def build_extract_prompt(*, pages_text: str, existing_entities: list, skill_text: str,
-                         sidecar: str | None, sha256: str, filename: str,
-                         original_path: str | None, page_count: int,
-                         brief: str | None) -> str:
-    parts = [_text("extract_instructions"), ""]
-    parts.append(f"Set document.sha256 = {sha256!r}, document.filename = {filename!r}, "
-                 f"document.original_path = {original_path!r}, document.page_count = {page_count}.")
+                         sidecar: str | None, brief: str | None) -> str:
+    # Document identity (sha256/filename/original_path/page_count) and provenance
+    # (source/obtained) are stamped onto the result by Python — see
+    # orchestrate._stamp_document — so they are deliberately not asked of the model here.
+    parts = [_text("extract_instructions")]
     if brief:
         parts.append(f"\nINVESTIGATION BRIEF (orient extraction toward this):\n{brief}")
     parts.append(f"\nDOMAIN SKILL ({'matched' if skill_text else 'none'}):\n{skill_text or '(none)'}")
     parts.append(f"\nEXISTING_ENTITIES (for dedup + contradiction check):\n"
                  f"{json.dumps(existing_entities, ensure_ascii=False)}")
     if sidecar:
-        parts.append(f"\nSIDECAR (source/obtained metadata):\n{sidecar}")
+        parts.append(f"\nSIDECAR (provenance + notes — context for your extraction):\n{sidecar}")
     parts.append(f"\nDOCUMENT TEXT:\n{pages_text}")
     return "\n".join(parts)
 
 
 def build_section_prompt(*, pages_text: str, existing_entities: list, skill_text: str,
-                         carry_forward: str, section_label: str, is_first: bool,
-                         sha256: str, filename: str, original_path: str | None,
-                         page_count: int) -> str:
+                         carry_forward: str, section_label: str, is_first: bool) -> str:
     parts = [
         _render("section_intro", section_label=section_label),
         "",
@@ -71,10 +68,7 @@ def build_section_prompt(*, pages_text: str, existing_entities: list, skill_text
     ]
     if is_first:
         parts.append("This is SECTION 1: fill document metadata (title, document_type, "
-                     "date_of_document, page_count, sha256, filename, original_path) and the "
-                     "morgue_entity_id / morgue_document_type fields.")
-        parts.append(f"Set document.sha256 = {sha256!r}, document.filename = {filename!r}, "
-                     f"document.original_path = {original_path!r}, document.page_count = {page_count}.")
+                     "date_of_document) and the morgue_entity_id / morgue_document_type fields.")
     else:
         parts.append("This is a LATER section: omit document metadata and morgue fields; supply "
                      "entities + document.key_facts + document.summary for this section only.")

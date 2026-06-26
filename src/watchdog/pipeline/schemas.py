@@ -79,7 +79,10 @@ _DOCUMENT = _obj(
         "summary": {"type": "string"},
         "key_facts": {"type": "array", "items": _KEY_FACT},
     },
-    ["sha256", "filename", "title", "document_type", "summary", "key_facts"],
+    # sha256/filename/original_path/page_count and source/obtained are stamped by Python
+    # (orchestrate._stamp_document) — deterministic values the pipeline already holds, not
+    # echoed by the model. They stay in `properties` (optional) so the stamped dict validates.
+    ["title", "document_type", "summary", "key_facts"],
 )
 
 # Full single-document extraction (simple path, and the merged result of a sectioned doc).
