@@ -113,7 +113,7 @@ SECTION = _obj(
 
 # Classify a document to a domain-skill filename (records/<name>.md).
 CLASSIFY = _obj(
-    {"skill": {"type": "string"}, "document_type": {"type": "string"}},
+    {"skill": {"type": "string"}},
     ["skill"],
 )
 

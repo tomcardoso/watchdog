@@ -47,7 +47,7 @@ def _extraction(sha="abc123", filename="test-doc.pdf", *, valid=True):
 def _mock(monkeypatch, *, extraction):
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
         parsed = {
-            "classify": {"skill": "general-records.md", "document_type": "Annual Report"},
+            "classify": {"skill": "general-records.md"},
             "extract": extraction,
             "entity-synthesis": {"entity_syntheses": []},
             "timeline-dedup": {"events": []},
