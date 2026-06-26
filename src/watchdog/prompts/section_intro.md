@@ -1,0 +1,1 @@
+Extract ONE page-range section ({{section_label}}) of a large document. Same rules as a full extraction (entities, confidence, roles-as-objects, contradiction callouts), but scoped to this section's pages. Overlapping content may repeat from the adjacent section — that is expected; the merge deduplicates. Do NOT set match_id (ids are canonical).
