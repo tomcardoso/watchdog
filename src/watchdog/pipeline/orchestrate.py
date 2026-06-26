@@ -367,6 +367,23 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
     return f"briefings/{slug}.md"
 
 
+def _select_kept(events: list[dict], keep) -> list[dict]:
+    """Map the timeline-dedup model's kept-indices back to the original event objects (deduped,
+    in order). Falls back to all events when the model returns nothing usable — dedup must never
+    lose events. The originals carry the authoritative page/confidence/source_sha256."""
+    if not isinstance(keep, list):
+        return events
+    seen: set[int] = set()
+    kept: list[dict] = []
+    for i in keep:
+        if isinstance(i, bool):
+            continue
+        if isinstance(i, int) and 0 <= i < len(events) and i not in seen:
+            seen.add(i)
+            kept.append(events[i])
+    return kept or events
+
+
 async def _post_ingest(vault: Path, results: list, brief: str | None, post_model: str) -> dict:
     out: dict = {"synthesized": 0, "timeline_collisions": 0, "briefing": None}
     print()
@@ -410,7 +427,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             r = await model_client.acomplete_json(
                 task="timeline-dedup", model=post_model, schema=schemas.TIMELINE_DEDUP,
                 prompt=prompts.build_timeline_dedup_prompt(col["date"], events))
-            kept = r.parsed.get("events") or events
+            kept = _select_kept(events, r.parsed.get("keep"))
         except (model_client.ModelError, model_client.RateLimitError):
             kept = events   # fall back to the union rather than losing events
         canonical.write_text(

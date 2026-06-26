@@ -20,6 +20,19 @@ def test_render_substitutes_tokens():
     assert "{{date}}" not in out
 
 
+def test_timeline_dedup_prompt_enumerates_events_not_full_objects():
+    events = [
+        {"event": "Court declared insolvency", "page": 2, "source_sha256": "sha-xyz"},
+        {"event": "Insolvency declared under CCAA", "page": 9, "source_sha256": "sha-abc"},
+    ]
+    p = prompts.build_timeline_dedup_prompt("2021-02-01", events)
+    assert "[0] Court declared insolvency  (p.2)" in p
+    assert "[1] Insolvency declared under CCAA  (p.9)" in p
+    assert "keep" in p
+    # the 64-char hashes are not echoed into the prompt — that's the whole point
+    assert "sha-xyz" not in p and "sha-abc" not in p
+
+
 def test_render_leaves_single_braces_untouched():
     # A template may contain literal { } (e.g. JSON examples); only {{key}} is special.
     prompts._text.cache_clear()

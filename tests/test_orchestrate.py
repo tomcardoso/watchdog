@@ -50,7 +50,7 @@ def _mock(monkeypatch, *, extraction):
             "classify": {"skill": "general-records.md"},
             "extract": extraction,
             "entity-synthesis": {"entity_syntheses": []},
-            "timeline-dedup": {"events": []},
+            "timeline-dedup": {"keep": []},
             "briefing": {"investigation_status": "Early days.",
                          "what_was_ingested": ["test-doc.pdf — Annual Report"],
                          "new_entities": ["Acme Corp"]},
@@ -58,6 +58,27 @@ def _mock(monkeypatch, *, extraction):
         return model_client.ModelResult(parsed=parsed, text="", model="m",
                                          backend="claude-agent-sdk", auth_mode="subscription", cost_usd=0.01)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+
+def test_select_kept_maps_indices_to_original_objects():
+    """timeline-dedup returns indices; Python re-selects the authoritative originals (which
+    carry source_sha256/page/confidence) — deduped and order-preserving."""
+    events = [
+        {"event": "A", "source_sha256": "sha-a", "page": 1},
+        {"event": "B", "source_sha256": "sha-b", "page": 2},
+        {"event": "C", "source_sha256": "sha-c", "page": 3},
+    ]
+    kept = orchestrate._select_kept(events, [0, 2])
+    assert kept == [events[0], events[2]]            # full original objects, not re-typed
+    assert orchestrate._select_kept(events, [2, 2, 0]) == [events[2], events[0]]   # deduped
+
+
+def test_select_kept_falls_back_to_all_on_bad_input():
+    events = [{"event": "A"}, {"event": "B"}]
+    assert orchestrate._select_kept(events, None) == events          # missing/non-list
+    assert orchestrate._select_kept(events, []) == events            # empty → keep all
+    assert orchestrate._select_kept(events, [9, -1, "x"]) == events  # all invalid → keep all
+    assert orchestrate._select_kept(events, [1]) == [events[1]]      # partial valid honored
 
 
 def test_stamp_document_overwrites_model_identity(tmp_path):
@@ -183,7 +204,7 @@ def test_orchestrator_threads_configured_models(tmp_path, monkeypatch):
             "classify": {"skill": "general-records.md"},
             "extract": _extraction(),
             "entity-synthesis": {"entity_syntheses": []},
-            "timeline-dedup": {"events": []},
+            "timeline-dedup": {"keep": []},
             "briefing": {"investigation_status": "x", "what_was_ingested": []},
         }.get(task, _extraction())
         return model_client.ModelResult(parsed=parsed, text="", model=model or "?",
@@ -502,7 +523,7 @@ def test_finalize_completes_an_interrupted_run(tmp_path, monkeypatch):
                 raise model_client.RateLimitError("You've hit your session limit · resets 7pm")
             return res({"entity_syntheses": [{"entity_id": "acme-corp", "summary": "Synthesized prose.", "analysis": ""}]})
         if task == "timeline-dedup":
-            return res({"events": []})
+            return res({"keep": []})
         return res({"investigation_status": "x", "what_was_ingested": ["a.pdf", "b.pdf"]})
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
