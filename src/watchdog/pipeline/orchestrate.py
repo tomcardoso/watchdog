@@ -142,6 +142,31 @@ async def _classify(doc_excerpt: str, model: str) -> str:
     return r.parsed.get("skill") or "general-records.md"
 
 
+# Page-coverage heuristic (skim detection). Advisory only — emits a warning, never a failure.
+_COVERAGE_MIN_PAGES = 8         # don't flag short documents
+_COVERAGE_TAIL_FRACTION = 0.5   # flag when nothing is cited past roughly the first half
+
+
+def _coverage_warning(extraction: dict, page_count: int | None) -> str | None:
+    """Flag a possible skim: when a multi-page document's facts are front-loaded — nothing cited
+    past roughly the first half — the model likely stopped reading. A heuristic, deterministic
+    signal for review, not a hard check: a doc whose material genuinely sits up front trips it too.
+    Facts carry an optional `page`; a doc with no page anchors at all can't be assessed."""
+    if not page_count or page_count < _COVERAGE_MIN_PAGES:
+        return None
+    facts = extraction.get("document", {}).get("key_facts", [])
+    cited = sorted({f["page"] for f in facts
+                    if isinstance(f, dict) and isinstance(f.get("page"), int)
+                    and not isinstance(f.get("page"), bool)})
+    if not cited:
+        return None
+    max_cited = cited[-1]
+    if max_cited >= page_count * _COVERAGE_TAIL_FRACTION:
+        return None
+    return (f"facts cite pages {cited[0]}–{max_cited} of {page_count} "
+            f"({len(cited)} distinct); nothing past page {max_cited} — possible skim, review")
+
+
 def _compact_result(sha: str, filename: str, extraction: dict, near_dup: dict, cost: float | None) -> dict:
     entities = extraction.get("entities", [])
     doc = extraction.get("document", {})
@@ -314,6 +339,10 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     _say(f"{_GREEN}OK{_RESET}  {filename}  {_DIM}{n_entities} entit{'ies' if n_entities != 1 else 'y'}{_RESET}  "
          f"{_CYAN}documents/{_doc_slug(filename)}{_RESET}")
     _log(vault, f"OK {filename}: {n_entities} entities")
+    warn = _coverage_warning(extraction, page_count)
+    if warn:
+        _say(f"{_YELLOW}⚠{_RESET}  {filename}  {_DIM}{warn}{_RESET}")
+        _log(vault, f"WARN {filename}: {warn}")
     result = _compact_result(sha, filename, extraction, pf.get("near_dup", {}), round(cost, 6))
     # Persist the compact result so `watchdog finalize` can run post-ingest from disk alone.
     (vault / ".watchdog" / "tmp" / f"result_{sha}.json").write_text(

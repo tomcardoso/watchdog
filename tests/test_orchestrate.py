@@ -60,6 +60,34 @@ def _mock(monkeypatch, *, extraction):
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
 
+def _ext_with_fact_pages(pages):
+    return {"document": {"key_facts": [{"fact": "f", "page": p} for p in pages]}}
+
+
+def test_coverage_warning_flags_front_loaded_extraction():
+    # 36-page doc, facts only on pages 1-4 → nothing past page 4 (< 18) → warn
+    warn = orchestrate._coverage_warning(_ext_with_fact_pages([1, 2, 3, 4]), 36)
+    assert warn and "possible skim" in warn and "of 36" in warn
+
+
+def test_coverage_warning_silent_when_well_covered():
+    # facts reach page 30 of 36 (>= 18) → no warning
+    assert orchestrate._coverage_warning(_ext_with_fact_pages([1, 5, 20, 30]), 36) is None
+
+
+def test_coverage_warning_skips_short_docs():
+    assert orchestrate._coverage_warning(_ext_with_fact_pages([1]), 5) is None
+
+
+def test_coverage_warning_skips_when_no_page_anchors():
+    ext = {"document": {"key_facts": [{"fact": "f"}, {"fact": "g", "page": None}]}}
+    assert orchestrate._coverage_warning(ext, 40) is None
+
+
+def test_coverage_warning_handles_missing_page_count():
+    assert orchestrate._coverage_warning(_ext_with_fact_pages([1, 2]), None) is None
+
+
 def test_select_kept_maps_indices_to_original_objects():
     """timeline-dedup returns indices; Python re-selects the authoritative originals (which
     carry source_sha256/page/confidence) — deduped and order-preserving."""
