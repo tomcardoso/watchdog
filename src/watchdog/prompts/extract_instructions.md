@@ -29,9 +29,11 @@ CONTRADICTION CHECK — for each entity that matched an EXISTING_ENTITIES entry,
 Do not flag low-confidence differences, trivial name variations, or contradictions already present.
 
 Also produce:
+- `document.title`: the document's own title, or a concise descriptive name if it has none (it falls back to the filename if you leave it empty).
+- `document.document_type`: a short descriptive type for the document. KNOWN_DOCUMENT_TYPES lists the types already used in this investigation — **reuse one of those verbatim if it fits**, and only coin a new type (e.g. "Annual Report", "Affidavit", "CCAA Initial Order") if none match. Keeping this vocabulary consistent matters: document types are grouped and counted across the vault.
+- `document.date_of_document`: the date the document itself bears — the order date, filing date, report date — or null if it is undated. This is the document's own nominal date, not a date drawn from its contents.
 - `document.summary`: ONE or two sentences orienting the reader — what this document is and why it exists. Not a recap of the facts (those are in key_facts and the full text); just enough to know what you are looking at.
 - `morgue_entity_id`: the kebab-case id of the entity this document is primarily *about* (debtor for a bankruptcy, company for an annual report, defendant for a court order).
-- `morgue_document_type`: a type slug like annual-report, court-order, bankruptcy-filing.
 - `scratchpad`: tight, high-signal markdown notes for the briefing — Key figures, Leads, Contradictions, Chronological note. Only what a reporter would jot down; omit empty sections.
 
 Cite page numbers (from the <!-- PAGE N --> markers) wherever possible; use null when a section has no page markers.

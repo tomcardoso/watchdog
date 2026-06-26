@@ -75,7 +75,6 @@ _DOCUMENT = _obj(
         "page_count": {"type": ["integer", "null"]},
         "source": _NULLABLE_STR,
         "obtained": _NULLABLE_STR,
-        "near_duplicate_of": _NULLABLE_STR,
         "summary": {"type": "string"},
         "key_facts": {"type": "array", "items": _KEY_FACT},
     },
@@ -91,10 +90,12 @@ EXTRACTION = _obj(
         "document": _DOCUMENT,
         "entities": {"type": "array", "items": _ENTITY},
         "morgue_entity_id": {"type": "string"},
+        # morgue_document_type is derived in Python as slugify(document.document_type)
+        # (orchestrate._stamp_document) — kept optional here so the stamped dict validates.
         "morgue_document_type": {"type": "string"},
         "scratchpad": {"type": "string"},   # curated briefing notes (Step 9 of the old skill)
     },
-    ["document", "entities", "morgue_entity_id", "morgue_document_type", "scratchpad"],
+    ["document", "entities", "morgue_entity_id", "scratchpad"],
 )
 
 # One page-range section's partial contribution. Looser than EXTRACTION: only section 1

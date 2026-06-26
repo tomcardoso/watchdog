@@ -41,8 +41,18 @@ def build_classify_prompt(doc_excerpt: str, index_text: str) -> str:
     )
 
 
+def _known_types_block(known_document_types: list) -> str:
+    """The `document_type` vocabulary the model should reuse from — see extract_instructions.md."""
+    if not known_document_types:
+        return "\nKNOWN_DOCUMENT_TYPES: (none yet — coin a concise descriptive type)"
+    listed = "\n".join(f"- {t}" for t in known_document_types)
+    return ("\nKNOWN_DOCUMENT_TYPES (reuse one verbatim if it fits; only coin a new type "
+            f"if none match):\n{listed}")
+
+
 def build_extract_prompt(*, pages_text: str, existing_entities: list, skill_text: str,
-                         sidecar: str | None, brief: str | None) -> str:
+                         sidecar: str | None, brief: str | None,
+                         known_document_types: list) -> str:
     # Document identity (sha256/filename/original_path/page_count) and provenance
     # (source/obtained) are stamped onto the result by Python — see
     # orchestrate._stamp_document — so they are deliberately not asked of the model here.
@@ -52,6 +62,7 @@ def build_extract_prompt(*, pages_text: str, existing_entities: list, skill_text
     parts.append(f"\nDOMAIN SKILL ({'matched' if skill_text else 'none'}):\n{skill_text or '(none)'}")
     parts.append(f"\nEXISTING_ENTITIES (for dedup + contradiction check):\n"
                  f"{json.dumps(existing_entities, ensure_ascii=False)}")
+    parts.append(_known_types_block(known_document_types))
     if sidecar:
         parts.append(f"\nSIDECAR (provenance + notes — context for your extraction):\n{sidecar}")
     parts.append(f"\nDOCUMENT TEXT:\n{pages_text}")
@@ -59,7 +70,8 @@ def build_extract_prompt(*, pages_text: str, existing_entities: list, skill_text
 
 
 def build_section_prompt(*, pages_text: str, existing_entities: list, skill_text: str,
-                         carry_forward: str, section_label: str, is_first: bool) -> str:
+                         carry_forward: str, section_label: str, is_first: bool,
+                         known_document_types: list) -> str:
     parts = [
         _render("section_intro", section_label=section_label),
         "",
@@ -68,7 +80,8 @@ def build_section_prompt(*, pages_text: str, existing_entities: list, skill_text
     ]
     if is_first:
         parts.append("This is SECTION 1: fill document metadata (title, document_type, "
-                     "date_of_document) and the morgue_entity_id / morgue_document_type fields.")
+                     "date_of_document) and the morgue_entity_id field.")
+        parts.append(_known_types_block(known_document_types))
     else:
         parts.append("This is a LATER section: omit document metadata and morgue fields; supply "
                      "entities + document.key_facts + document.summary for this section only.")

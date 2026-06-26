@@ -29,18 +29,34 @@ def test_render_leaves_single_braces_untouched():
 def test_section_prompt_renders_label():
     p = prompts.build_section_prompt(
         pages_text="x", existing_entities=[], skill_text="", carry_forward="",
-        section_label="pp.1-10", is_first=True)
+        section_label="pp.1-10", is_first=True, known_document_types=[])
     assert "pp.1-10" in p and "{{" not in p
 
 
 def test_extract_prompt_includes_instructions_and_data():
     p = prompts.build_extract_prompt(
         pages_text="DOCBODY", existing_entities=[{"id": "x"}], skill_text="SKILL",
-        sidecar=None, brief=None)
+        sidecar=None, brief=None, known_document_types=[])
     assert "key_facts" in p              # instruction prose loaded
     assert "DOCBODY" in p and "SKILL" in p   # data assembled in
     # identity fields are no longer asked of the model (stamped in Python)
     assert "Set document.sha256" not in p
+
+
+def test_extract_prompt_lists_known_document_types():
+    p = prompts.build_extract_prompt(
+        pages_text="x", existing_entities=[], skill_text="", sidecar=None, brief=None,
+        known_document_types=["Annual Report", "Affidavit"])
+    assert "KNOWN_DOCUMENT_TYPES" in p
+    assert "- Annual Report" in p and "- Affidavit" in p
+    assert "reuse one verbatim" in p
+
+
+def test_extract_prompt_handles_no_known_types():
+    p = prompts.build_extract_prompt(
+        pages_text="x", existing_entities=[], skill_text="", sidecar=None, brief=None,
+        known_document_types=[])
+    assert "none yet" in p
 
 
 def test_prompt_templates_not_in_skills_catalog():

@@ -121,6 +121,7 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str, v
     echo them, so we set the authoritative values here. Stamping the sha in particular removes a
     latent failure mode: write_vault keys the vault write on `document.sha256`, so a model
     mis-transcription of the 64-char hash would desync the write from the queue/registry."""
+    from watchdog.pipeline.write_vault import slugify
     doc = extraction.setdefault("document", {})
     doc["record_skill"] = skill_label
     doc["sha256"] = sha
@@ -128,6 +129,9 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str, v
     doc["original_path"] = pf.get("original_path")
     doc["page_count"] = pf.get("page_count") or len(pf["pages"])
     doc.update(_sidecar_provenance(vault, pf["filename"]))
+    # morgue_document_type is just the slug form of document_type — derive it deterministically
+    # rather than asking the model for the same fact twice (it names the morgue folder).
+    extraction["morgue_document_type"] = slugify(doc.get("document_type") or "") or "document"
 
 
 async def _classify(doc_excerpt: str, model: str) -> str:
@@ -167,6 +171,7 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label)
     base = prompts.build_extract_prompt(
         pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
         skill_text=skill_text, sidecar=_read_sidecar(vault, pf["filename"]), brief=brief,
+        known_document_types=pf.get("known_document_types", []),
     )
     cost, errors, extraction, scratchpad = 0.0, [], {}, ""
     for _ in range(2):
@@ -208,6 +213,7 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
             pages_text=sec_text, existing_entities=pf.get("existing_entities", []),
             skill_text=skill_text, carry_forward=carry, section_label=sec["label"],
             is_first=(sec["index"] == 1),
+            known_document_types=pf.get("known_document_types", []),
         )
         r = await model_client.acomplete_json(task="extract-section", model=model,
                                               prompt=prompt, schema=schemas.SECTION)

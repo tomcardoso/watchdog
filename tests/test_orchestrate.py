@@ -75,6 +75,24 @@ def test_stamp_document_overwrites_model_identity(tmp_path):
     assert d["record_skill"] == "court-documents"
 
 
+def test_stamp_document_derives_morgue_type_from_document_type(tmp_path):
+    """morgue_document_type is slugify(document_type), derived in Python — the model's value
+    (if any) is overridden."""
+    vault = make_vault(tmp_path)
+    pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}]}
+    ext = {"document": {"document_type": "CCAA Initial Order"}, "morgue_document_type": "WRONG"}
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="court-documents", vault=vault)
+    assert ext["morgue_document_type"] == "ccaa-initial-order"
+
+
+def test_stamp_document_morgue_type_falls_back_when_no_type(tmp_path):
+    vault = make_vault(tmp_path)
+    pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}]}
+    ext = {"document": {}}
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault)
+    assert ext["morgue_document_type"] == "document"
+
+
 def test_sidecar_provenance_parsed_in_python(tmp_path):
     """source/obtained come from the .yml sidecar (parsed in Python), not the model — and an
     unquoted ISO date is coerced back to a string rather than a date object."""
