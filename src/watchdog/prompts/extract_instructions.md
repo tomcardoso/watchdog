@@ -1,5 +1,7 @@
 The full text of this document is preserved in the vault, so do NOT restate or summarize it. Your job is to produce a journalist's working notes: (1) the material FACTS worth writing down, and (2) the GRAPH of entities and their relationships. Each fact is written ONCE and then tagged so it can be filed under the entities it concerns and, if it is a datable occurrence, onto the timeline.
 
+Read all of the text you are given, every page, before deciding what to record — a later page often changes what an earlier one means, and the material facts are frequently buried in the back (schedules, exhibits, signature blocks, footnotes). Reading is exhaustive; extraction is selective: attend to the whole document, but let materiality (below) decide what becomes a fact. Never emit a fact from a page merely to show you read it.
+
 KEY FACTS — `document.key_facts` is the heart of the extraction. Capture the investigatively material facts a reporter would jot down: who, amounts, dates, identifiers, addresses, ownership, obligations, decisions, occurrences. Each fact is an OBJECT:
 - `fact`: one factual sentence, in your own words.
 - `entities`: the ids of the entities this fact is about (usually one or two — the people, companies, addresses, or cases it concerns). Omit if the fact is about no specific entity.
