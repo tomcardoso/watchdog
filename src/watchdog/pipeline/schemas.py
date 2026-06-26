@@ -75,11 +75,13 @@ _DOCUMENT = _obj(
         "page_count": {"type": ["integer", "null"]},
         "source": _NULLABLE_STR,
         "obtained": _NULLABLE_STR,
-        "near_duplicate_of": _NULLABLE_STR,
         "summary": {"type": "string"},
         "key_facts": {"type": "array", "items": _KEY_FACT},
     },
-    ["sha256", "filename", "title", "document_type", "summary", "key_facts"],
+    # sha256/filename/original_path/page_count and source/obtained are stamped by Python
+    # (orchestrate._stamp_document) — deterministic values the pipeline already holds, not
+    # echoed by the model. They stay in `properties` (optional) so the stamped dict validates.
+    ["title", "document_type", "summary", "key_facts"],
 )
 
 # Full single-document extraction (simple path, and the merged result of a sectioned doc).
@@ -88,10 +90,12 @@ EXTRACTION = _obj(
         "document": _DOCUMENT,
         "entities": {"type": "array", "items": _ENTITY},
         "morgue_entity_id": {"type": "string"},
+        # morgue_document_type is derived in Python as slugify(document.document_type)
+        # (orchestrate._stamp_document) — kept optional here so the stamped dict validates.
         "morgue_document_type": {"type": "string"},
         "scratchpad": {"type": "string"},   # curated briefing notes (Step 9 of the old skill)
     },
-    ["document", "entities", "morgue_entity_id", "morgue_document_type", "scratchpad"],
+    ["document", "entities", "morgue_entity_id", "scratchpad"],
 )
 
 # One page-range section's partial contribution. Looser than EXTRACTION: only section 1
@@ -113,7 +117,7 @@ SECTION = _obj(
 
 # Classify a document to a domain-skill filename (records/<name>.md).
 CLASSIFY = _obj(
-    {"skill": {"type": "string"}, "document_type": {"type": "string"}},
+    {"skill": {"type": "string"}},
     ["skill"],
 )
 
@@ -147,23 +151,10 @@ BRIEFING = _obj(
     ["investigation_status", "what_was_ingested"],
 )
 
-# Semantic dedup of one date's colliding timeline events. The model returns the kept
-# full event objects (preserving page/confidence/source_sha256), minus duplicates.
+# Semantic dedup of one date's colliding timeline events. The model returns `keep` — the
+# indices of the events to keep — and Python re-selects from the original objects (which
+# already carry page/confidence/source_sha256), rather than echoing full events back.
 TIMELINE_DEDUP = _obj(
-    {
-        "events": {
-            "type": "array",
-            "items": _obj(
-                {
-                    "date": {"type": "string"},
-                    "event": {"type": "string"},
-                    "page": {"type": ["integer", "null"]},
-                    "confidence": {"type": "string"},
-                    "source_sha256": {"type": "string"},
-                },
-                ["date", "event"],
-            ),
-        }
-    },
-    ["events"],
+    {"keep": {"type": "array", "items": {"type": "integer"}}},
+    ["keep"],
 )

@@ -103,13 +103,18 @@ def run(vault: Path, sha256: str) -> dict:
                     "contradictions": _extract_contradictions(vault / f"{note_path}.md") if note_path else "",
                 })
 
-    # Check if already extracted
+    # Check if already extracted; collect the document types already used in this vault so
+    # the extractor can reuse one rather than coining a near-duplicate (keeps the type
+    # vocabulary — and the `watchdog status` tally — consistent).
     documents_path = vault / ".watchdog" / "Registry" / "documents.json"
     already_extracted = False
+    known_document_types: list[str] = []
     if documents_path.exists():
         try:
             docs = json.loads(documents_path.read_text(encoding="utf-8"))
             already_extracted = sha256 in docs
+            known_document_types = sorted(
+                {t for d in docs.values() if (t := d.get("document_type"))})
         except Exception:
             pass
 
@@ -127,6 +132,7 @@ def run(vault: Path, sha256: str) -> dict:
             "top_similarity":  near_dup.get("top_similarity", 0.0),
         },
         "existing_entities":  candidates,
+        "known_document_types": known_document_types,
     }
 
 

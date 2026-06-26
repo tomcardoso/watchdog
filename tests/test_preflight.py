@@ -103,3 +103,25 @@ def test_candidate_without_registry_entry_has_empty_digest(tmp_path):
     assert a["timeline_events"] == []
     assert a["roles"] == []
     assert a["analysis"] == ""
+
+
+def test_known_document_types_collected_from_registry(tmp_path):
+    """preflight surfaces the distinct document_types already in the vault so the extractor
+    can reuse them (deduped, sorted; missing/empty types ignored)."""
+    vault = _vault(tmp_path)
+    _write_queue(vault, "sha-new", "Some new document text.")
+    (vault / ".watchdog" / "Registry" / "documents.json").write_text(json.dumps({
+        "a": {"sha256": "a", "document_type": "Annual Report"},
+        "b": {"sha256": "b", "document_type": "Affidavit"},
+        "c": {"sha256": "c", "document_type": "Annual Report"},   # dup
+        "d": {"sha256": "d"},                                     # no type
+    }))
+    pf = preflight.run(vault, "sha-new")
+    assert pf["known_document_types"] == ["Affidavit", "Annual Report"]
+
+
+def test_known_document_types_empty_on_fresh_vault(tmp_path):
+    vault = _vault(tmp_path)
+    _write_queue(vault, "sha-new", "First doc.")
+    pf = preflight.run(vault, "sha-new")
+    assert pf["known_document_types"] == []
