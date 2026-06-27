@@ -22,6 +22,7 @@ import yaml
 
 from watchdog import model_client, skills_catalog
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
+from watchdog.cmd.live import LiveRegion
 from watchdog.pipeline import (
     abort, merge, preflight, postflight, prompts, schemas, section, synthesis_bundle, timeline,
 )
@@ -30,9 +31,28 @@ from watchdog.pipeline.write_vault import _doc_slug
 DEFAULT_CONCURRENCY = 5
 
 
+# During extraction this holds the live status region (#151); per-document rows redraw in
+# place and finished/failed lines + notes scroll above it. None outside extraction (and when
+# stdout isn't a TTY), so `_say` falls back to plain append-only printing.
+_board: LiveRegion | None = None
+
+
 def _say(msg: str) -> None:
-    """Print a styled progress line to the terminal (indented per the CLI style guide)."""
-    print(f"  {msg}", flush=True)
+    """Print a styled progress line to the terminal (indented per the CLI style guide).
+    Routes through the live region as a scrollback note when one is active."""
+    line = f"  {msg}"
+    if _board is not None:
+        _board.note(line)
+    else:
+        print(line, flush=True)
+
+
+def _settle(sha: str, line: str) -> None:
+    """Print a document's terminal line (OK / ✗), clearing its in-flight live row if present."""
+    if _board is not None:
+        _board.finish(sha, line)
+    else:
+        print(line, flush=True)
 DEFAULT_CLASSIFY_PAGES = 5
 # Per-section input budget when falling back to sectioning after a whole-doc extraction
 # overruns the output ceiling. Small, so each section's output stays well under the cap;
@@ -270,7 +290,7 @@ def _fail(vault: Path, sha: str, filename: str, reason: str) -> dict:
     # Resolve the filename (the catch-all path has only the sha) *before* abort.run moves
     # the queue file, so the ✗ line and log name the file instead of a bare sha.
     name = filename or _queued_filename(vault, sha) or sha[:7]
-    _say(f"{_YELLOW}✗{_RESET}  {name}  {_DIM}{reason}{_RESET}")
+    _settle(sha, f"  {_YELLOW}✗{_RESET}  {name}  {_DIM}{reason}{_RESET}")
     _log(vault, f"FAILED {name}: {reason}")
     abort.run(vault, sha)   # removes staging/section temp, moves the queue file to _failed/
     return {"sha256": sha, "filename": filename or name, "status": "failed", "reason": reason}
@@ -290,27 +310,43 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     filename = pf["filename"]
     pages = pf.get("pages", [])
     page_count = pf.get("page_count") or len(pages)
+    pg = f"{page_count}p"
+
+    def _step(tty: str, plain: str) -> None:
+        """Mutate this document's single in-flight live row (TTY); append the plain transition
+        line when there's no live region (non-TTY) — keeping logged output unchanged."""
+        if _board is not None:
+            _board.update(sha, f"  {tty}", f"  {plain}")
+        else:
+            _say(plain)
+
     if pinned_skill:
         # Skill pinned for the whole run (a resolved skill-file path) — skip classification.
         skill_text = Path(pinned_skill).read_text(encoding="utf-8")
         skill_label = Path(pinned_skill).stem
     else:
-        _say(f"{_DIM}→  {filename}  classifying ({page_count} page{'s' if page_count != 1 else ''})…{_RESET}")
+        _step(f"{_DIM}→  {filename}  {pg} · classifying…{_RESET}",
+              f"{_DIM}→  {filename}  classifying ({page_count} page{'s' if page_count != 1 else ''})…{_RESET}")
         # Classify on the first N pages (page-aware, not a mid-page char cut); the char cap is a guard.
         excerpt = _pages_text(pages[:max(1, classify_pages)])[:_CLASSIFY_EXCERPT_CHARS]
         skill = await _classify(excerpt, classify_model)
         skill_text = skills_catalog.read_skill(skill)
         skill_label = skill.removesuffix(".md")
-        _say(f"{_DIM}·  {filename}  classified ·{_RESET} {_CYAN}{skill_label}{_RESET}")
+        _step(f"{_DIM}→  {filename}  {pg} · {skill_label}{_RESET}",
+              f"{_DIM}·  {filename}  classified ·{_RESET} {_CYAN}{skill_label}{_RESET}")
+
+    flow = f"{pg} · {skill_label}"        # the accumulated in-flight prefix for this document's row
 
     plan = section.run(vault, sha)
     if plan.get("sectioned"):
         n_sections = len(plan.get("sections", []))
-        _say(f"{_DIM}→  {filename}  extracting · {n_sections} sections…{_RESET}")
+        _step(f"{_DIM}→  {filename}  {flow} · extracting · {n_sections} sections…{_RESET}",
+              f"{_DIM}→  {filename}  extracting · {n_sections} sections…{_RESET}")
         extraction, scratchpad, cost, ok, errors = await _extract_sectioned(
             vault, sha, pf, skill_text, plan, extract_model, skill_label)
     else:
-        _say(f"{_DIM}→  {filename}  extracting…{_RESET}")
+        _step(f"{_DIM}→  {filename}  {flow} · extracting…{_RESET}",
+              f"{_DIM}→  {filename}  extracting…{_RESET}")
         extraction, scratchpad, cost, ok, errors = await _simple_extract(
             vault, sha, pf, skill_text, brief, extract_model, skill_label)
         # Whole-document extraction can overrun the model's output ceiling on entity-dense
@@ -320,8 +356,9 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
             fb = section.run(vault, sha, force_budget=_FALLBACK_SECTION_TOKENS)
             if fb.get("sectioned"):
                 n_sections = len(fb.get("sections", []))
-                _say(f"{_DIM}↻  {filename}  whole-doc extraction rejected — "
-                     f"re-extracting in {n_sections} sections…{_RESET}")
+                _step(f"{_DIM}↻  {filename}  {flow} · re-extracting in {n_sections} sections…{_RESET}",
+                      f"{_DIM}↻  {filename}  whole-doc extraction rejected — "
+                      f"re-extracting in {n_sections} sections…{_RESET}")
                 whole_cost = cost
                 extraction, scratchpad, cost, ok, errors = await _extract_sectioned(
                     vault, sha, pf, skill_text, fb, extract_model, skill_label)
@@ -336,8 +373,9 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         stale.unlink(missing_ok=True)
     (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
     n_entities = len(extraction.get("entities", []))
-    _say(f"{_GREEN}OK{_RESET}  {filename}  {_DIM}{n_entities} entit{'ies' if n_entities != 1 else 'y'}{_RESET}  "
-         f"{_CYAN}documents/{_doc_slug(filename)}{_RESET}")
+    _settle(sha, f"  {_GREEN}OK{_RESET}  {filename}  "
+            f"{_DIM}{n_entities} entit{'ies' if n_entities != 1 else 'y'}{_RESET}  "
+            f"{_CYAN}documents/{_doc_slug(filename)}{_RESET}")
     _log(vault, f"OK {filename}: {n_entities} entities")
     warn = _coverage_warning(extraction, page_count)
     if warn:
@@ -566,6 +604,11 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         return {"results": [], "extracted": 0, "skipped": 0, "failed": 0}
 
     brief = _read_brief(vault)
+    # Live status region for the concurrent extraction phase (#151): one in-place row per
+    # in-flight document, finished/failed lines scrolling above. Auto-disables off a TTY,
+    # where it degrades to the previous append-only output.
+    global _board
+    _board = LiveRegion()
     sem = asyncio.Semaphore(max(1, concurrency))
     cancelled = asyncio.Event()
     stop_reason: dict = {}          # {"rate_limit": "<notice>"} when a limit stopped the batch
@@ -627,6 +670,10 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     finally:
         if handler_set:
             loop.remove_signal_handler(signal.SIGINT)
+        # Close the live region: extraction is done, so post-processing (sequential) and the
+        # summary print plainly. _say falls back to plain printing once _board is None.
+        _board.stop()
+        _board = None
 
     results = [t.result() for t in tasks if t.done() and not t.cancelled()]
     by_status = lambda s: sum(1 for r in results if r.get("status") == s)

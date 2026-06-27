@@ -262,6 +262,8 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
         log_path.write_text(_render_template("log.md"))
     print(f"\n  {_DIM}Extracting (≤{concurrency} parallel) — the model is called only for reasoning; "
           f"the pipeline runs in Python.{_RESET}")
+    print(f"  {_YELLOW}Large documents can take several minutes each{_RESET}{_DIM} — a long pause on a "
+          f"row is normal, not a stall.{_RESET}")
     print(f"  {_DIM}Press {_RESET}{_CYAN}Ctrl+C{_RESET}{_DIM} to stop; finished documents are kept.{_RESET}\n")
     try:
         summary = asyncio.run(orchestrate.run(
