@@ -163,7 +163,7 @@ cd ~/Investigations/shell-company-investigation
 watchdog chew
 ```
 
-You'll see a progress bar as Watchdog reads each file, runs OCR if needed, and prepares it for extraction. Each file shows its status: `OK` (queued), `SKP` (no text found — moved to `_INCOMING/_SKIPPED/`), or `ERR` (failed — moved to `_INCOMING/_FAILED/` with an explanation). Files where OCR produced noisy output show a `· garbled OCR` note but are still queued for Claude to interpret.
+Watchdog reads the files in parallel, showing one live status row per file as it's read, OCR'd if needed, and prepared for extraction, with an overall progress row beneath; finished files settle into the log above. Each settled file shows its status: `OK` (queued), `SKP` (no text found — moved to `_INCOMING/_SKIPPED/`), or `ERR` (failed — moved to `_INCOMING/_FAILED/` with an explanation). Files where OCR produced noisy output show a `· garbled OCR` note but are still queued for Claude to interpret.
 
 On macOS, you'll receive a notification when chewing completes — useful if you've switched to another app. When it finishes, Watchdog asks `Ingest now? [Y/n]` — press Enter to extract the queued documents right away (it runs in your terminal, no Claude Code session needed). Decline and it prints the `watchdog ingest` command to run later.
 

@@ -16,6 +16,7 @@ truncates live rows to the terminal width so the redraw math stays one physical 
 import re
 import shutil
 import sys
+import threading
 
 _ANSI = re.compile(r"\033\[[0-9;]*m")
 _RESET = "\033[0m"
@@ -46,7 +47,12 @@ def _truncate(line: str, width: int) -> str:
 
 
 class LiveRegion:
-    """A redraw-in-place region of keyed rows with a scrollback of finished lines above it."""
+    """A redraw-in-place region of keyed rows with a scrollback of finished lines above it.
+
+    Thread-safe: a single internal lock serialises every public call, so concurrent workers
+    (e.g. chew's ThreadPoolExecutor, #158) can drive one region without interleaved redraws or
+    torn output lines. Single-threaded callers (ingest's asyncio loop) pay only an uncontended
+    lock acquire per call."""
 
     def __init__(self, stream=None, *, enabled: bool | None = None):
         self.stream = stream if stream is not None else sys.stdout
@@ -54,42 +60,47 @@ class LiveRegion:
         self._rows: dict[str, str] = {}
         self._order: list[str] = []
         self._rendered = 0          # live rows currently drawn (== physical lines, post-truncation)
+        self._lock = threading.Lock()
 
     # ── public API ────────────────────────────────────────────────────────────
 
     def update(self, key: str, tty_line: str, plain_line: str | None = None) -> None:
         """Add or mutate the in-flight row for `key`. Non-TTY prints `plain_line` (or `tty_line`)."""
-        if not self.enabled:
-            self._print(plain_line if plain_line is not None else tty_line)
-            return
-        if key not in self._rows:
-            self._order.append(key)
-        self._rows[key] = tty_line
-        self._render()
+        with self._lock:
+            if not self.enabled:
+                self._print(plain_line if plain_line is not None else tty_line)
+                return
+            if key not in self._rows:
+                self._order.append(key)
+            self._rows[key] = tty_line
+            self._render()
 
     def finish(self, key: str, line: str) -> None:
         """Settle `key`: print `line` permanently above the region and drop its live row."""
-        if not self.enabled:
-            self._print(line)
-            return
-        self._emit_above(line)
-        if key in self._rows:
-            self._order.remove(key)
-            del self._rows[key]
-        self._render()
+        with self._lock:
+            if not self.enabled:
+                self._print(line)
+                return
+            self._emit_above(line)
+            if key in self._rows:
+                self._order.remove(key)
+                del self._rows[key]
+            self._render()
 
     def note(self, line: str) -> None:
         """Print a permanent line above the live region (a log entry not tied to a row)."""
-        if not self.enabled:
-            self._print(line)
-            return
-        self._emit_above(line)
-        self._render()
+        with self._lock:
+            if not self.enabled:
+                self._print(line)
+                return
+            self._emit_above(line)
+            self._render()
 
     def stop(self) -> None:
         """Leave the final region on screen and flush. Call once when work is done."""
-        if self.enabled:
-            self.stream.flush()
+        with self._lock:
+            if self.enabled:
+                self.stream.flush()
 
     # ── rendering ─────────────────────────────────────────────────────────────
 

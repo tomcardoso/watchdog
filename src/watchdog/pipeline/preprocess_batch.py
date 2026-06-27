@@ -15,9 +15,13 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from watchdog.cmd.live import LiveRegion
 from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
 
 DEFAULT_FILE_TIMEOUT = 600
+
+# Key for the persistent progress/ETA row that sits above the in-flight file rows (#158).
+_PROGRESS_KEY = "__progress__"
 
 
 def _compute_near_dup(result: dict, vault: Path) -> dict:
@@ -352,17 +356,43 @@ def _run_ingest_inner(
         f"  {_DIM}({pre_workers} file · {chunk_workers} chunk workers{adaptive_tag}){_RESET}\n"
     )
 
-    sys.stdout.write(f"  {_DIM}Starting workers — first output may take a few seconds…{_RESET}")
-    sys.stdout.flush()
+    # Live status region (#158): one in-place row per in-flight file, finished/failed lines and
+    # notes scrolling above, plus a persistent progress/ETA row on top. Off a TTY it disables and
+    # only the finished lines + summary print (append-only), matching the previous logged output.
+    live = LiveRegion()
+
+    def _rel(path: Path) -> str:
+        try:
+            return str(path.relative_to(incoming))
+        except ValueError:
+            return path.name
+
+    def _refresh_progress(done: int) -> None:
+        if not live.enabled:
+            return
+        elapsed_wall = time.time() - batch_start
+        bar = _bar(done, total)
+        if done < total and done and elapsed_wall > 0:
+            tail = f"  {_DIM}{_fmt_eta(round((elapsed_wall / done) * (total - done)))}{_RESET}"
+        elif done == total:
+            tail = f"  {_DIM}{round(elapsed_wall)}s total{_RESET}"
+        else:
+            tail = ""
+        live.update(_PROGRESS_KEY, f"  {bar} {_BOLD}{done}/{total}{_RESET}{tail}")
+
+    def _chew(path: Path) -> dict:
+        # Runs in a worker thread: mark the file in-flight the moment a worker picks it up, so the
+        # row appears while OCR spins up. Gated to TTYs to keep non-TTY output to finished lines only.
+        if live.enabled:
+            live.update(str(path), f"  {_DIM}→  {_rel(path)}  chewing…{_RESET}")
+        return preprocess_one(path, str(vault), DEFAULT_FILE_TIMEOUT, chunk_workers)
 
     results: dict[str, dict] = {}
     _cancel_event.clear()
 
+    _refresh_progress(0)            # seed the progress row above any file rows
     pool = ThreadPoolExecutor(max_workers=pre_workers)
-    futures = {
-        pool.submit(preprocess_one, f, str(vault), DEFAULT_FILE_TIMEOUT, chunk_workers): f
-        for f in files
-    }
+    futures = {pool.submit(_chew, f): f for f in files}
     done = 0
     skipped = 0
     cancelled = False
@@ -375,7 +405,6 @@ def _run_ingest_inner(
             if done % 50 == 0:
                 _prune_empty_dirs(incoming)
 
-            elapsed_wall = time.time() - batch_start
             is_err     = "error" in result
             is_empty   = not is_err and result.get("char_count", 0) == 0
             is_garbled = not is_err and not is_empty and result.get("metadata", {}).get("garbled_detected", False)
@@ -386,32 +415,13 @@ def _run_ingest_inner(
             else:
                 status = f"{_GREEN}OK {_RESET}"
 
-            try:
-                rel = str(path.relative_to(incoming))
-            except ValueError:
-                rel = path.name
-
+            rel       = _rel(path)
             label     = _page_label(path, result.get("page_count", 0))
             label_str = f"  {_DIM}{label}{_RESET}" if label else ""
             garb_str  = f"  {_DIM}·  garbled OCR{_RESET}" if is_garbled else ""
 
-            # Progress bar + ETA
-            bar = _bar(done, total)
-            if done < total and elapsed_wall > 0:
-                eta       = round((elapsed_wall / done) * (total - done))
-                time_part = f"  {_DIM}{_fmt_eta(eta)}{_RESET}"
-            elif done == total:
-                time_part = f"  {_DIM}{round(elapsed_wall)}s total{_RESET}"
-            else:
-                time_part = ""
-
-            bar_display = f"{bar} {done}/{total}{time_part}          "
-
-            # Clear the bar line, print file result (scrolls), then re-print bar without newline
-            sys.stdout.write("\r\033[K")
-            print(f"  {status}  {_BOLD}{rel}{_RESET}{label_str}{garb_str}")
-            sys.stdout.write(f"  {bar_display}")
-            sys.stdout.flush()
+            # Settle this file's row: print its result above the live region, clearing the in-flight row.
+            live.finish(str(path), f"  {status}  {_BOLD}{rel}{_RESET}{label_str}{garb_str}")
 
             if is_err:
                 failed_dir = incoming / "_FAILED"
@@ -420,10 +430,7 @@ def _run_ingest_inner(
                     path.rename(failed_dir / path.name)
                 except OSError:
                     pass
-                sys.stdout.write("\r\033[K")
-                print(f"       {_YELLOW}→ _INCOMING/_FAILED/{_RESET}  {_DIM}{result['error'][:80]}{_RESET}")
-                sys.stdout.write(f"  {bar_display}")
-                sys.stdout.flush()
+                live.note(f"       {_YELLOW}→ _INCOMING/_FAILED/{_RESET}  {_DIM}{result['error'][:80]}{_RESET}")
             elif is_empty:
                 skipped += 1
                 skipped_dir = incoming / "_SKIPPED"
@@ -432,10 +439,7 @@ def _run_ingest_inner(
                     path.rename(skipped_dir / path.name)
                 except OSError:
                     pass
-                sys.stdout.write("\r\033[K")
-                print(f"       {_DIM}→ _INCOMING/_SKIPPED/  no text content extracted{_RESET}")
-                sys.stdout.write(f"  {bar_display}")
-                sys.stdout.flush()
+                live.note(f"       {_DIM}→ _INCOMING/_SKIPPED/  no text content extracted{_RESET}")
             else:
                 sha256 = result.get("sha256", "")
                 if sha256:
@@ -453,6 +457,8 @@ def _run_ingest_inner(
                         json.dumps(result, ensure_ascii=False)
                     )
 
+            _refresh_progress(done)
+
     except KeyboardInterrupt:
         cancelled = True
         _cancel_event.set()
@@ -460,14 +466,14 @@ def _run_ingest_inner(
             fut.cancel()
         pool.shutdown(wait=True, cancel_futures=True)
         _prune_empty_dirs(incoming)
-        sys.stdout.write("\r\033[K")
+        live.stop()
         print(f"\n  {_DIM}Cancelled — {done} of {total} files processed. Unfinished files remain in _INCOMING/.{_RESET}\n")
         return
     else:
         pool.shutdown(wait=False)
 
-    # Clear the progress bar before printing summary
-    sys.stdout.write("\r\033[K")
+    # Extraction phase done — leave the final region on screen and print the summary plainly.
+    live.stop()
 
     _prune_empty_dirs(incoming)
 

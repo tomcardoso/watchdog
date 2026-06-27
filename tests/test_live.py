@@ -1,6 +1,7 @@
 """LiveRegion: in-place TTY status rows with append-only non-TTY fallback (#151)."""
 
 import io
+import threading
 
 from watchdog.cmd.live import LiveRegion, _truncate
 
@@ -111,3 +112,30 @@ def test_tty_truncates_rows_to_terminal_width(monkeypatch):
     out = s.getvalue()
     assert "…\x1b[0m" in out                    # row was clipped to width
     assert "ABCDEF" not in out
+
+
+# ── thread-safety (#158) ─────────────────────────────────────────────────────────
+
+def test_concurrent_finishes_keep_every_line_intact():
+    """Many threads finishing rows at once must not interleave or drop any output line."""
+    s = _Stream(tty=True)
+    r = LiveRegion(s, enabled=True)
+    n = 50
+    start = threading.Barrier(n)
+
+    def worker(i):
+        key = f"k{i}"
+        r.update(key, f"row-{i}")
+        start.wait()                              # maximise contention on finish
+        r.finish(key, f"DONE-{i}")
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    out = s.getvalue()
+    for i in range(n):
+        assert f"DONE-{i}" in out                 # no finished line lost to a torn write
+    assert r._rows == {} and r._order == []       # every row settled, none orphaned
