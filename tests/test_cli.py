@@ -562,7 +562,7 @@ def _make_extraction(tmp_path, **overrides):
             "obtained": None,
             "near_duplicate_of": None,
             "summary": "A test document.",
-            "key_facts": [{"fact": "Revenue was $1M.", "page": 1, "confidence": "high"}],
+            "key_facts": [{"fact": "Revenue was $1M.", "page": 1, "basis": "stated"}],
         },
         "entities": [
             {
@@ -571,7 +571,7 @@ def _make_extraction(tmp_path, **overrides):
                 "type": "Company",
                 "aliases": [],
                 "summary": "A company.",
-                "timeline_events": [{"date": "2024-01-01", "event": "Founded.", "page": 1, "confidence": "high"}],
+                "timeline_events": [{"date": "2024-01-01", "event": "Founded.", "page": 1, "basis": "stated"}],
                 "roles": [],
             }
         ],
@@ -618,15 +618,15 @@ def test_validate_extraction_missing_entity_id(tmp_path, monkeypatch, capsys):
     assert "id" in capsys.readouterr().out
 
 
-def test_validate_extraction_bad_confidence(tmp_path, monkeypatch, capsys):
+def test_validate_extraction_bad_basis(tmp_path, monkeypatch, capsys):
     _vault_tmp(tmp_path, monkeypatch)
     f = _make_extraction(tmp_path)
     data = json.loads(f.read_text())
-    data["document"]["key_facts"][0]["confidence"] = "very_sure"
+    data["document"]["key_facts"][0]["basis"] = "very_sure"
     f.write_text(json.dumps(data))
     with pytest.raises(SystemExit):
         cli.cmd_validate_extraction(args(file=str(f)))
-    assert "confidence" in capsys.readouterr().out
+    assert "basis" in capsys.readouterr().out
 
 
 def test_validate_extraction_missing_morgue_entity_id(tmp_path, monkeypatch, capsys):

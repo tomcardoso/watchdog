@@ -6,7 +6,7 @@ KEY FACTS — `document.key_facts` is the heart of the extraction. Capture the i
 - `fact`: one factual sentence, in your own words.
 - `entities`: the ids of the entities this fact is about (usually one or two — the people, companies, addresses, or cases it concerns). Omit if the fact is about no specific entity.
 - `date`: set ONLY when the fact is itself a datable occurrence (something that happened, was decided, or changed on a specific date) — this is what places it on the timeline. Omit for facts that merely mention a date or have no single date (a ratio, a balance, a structural fact).
-- `page`, `confidence`: as below.
+- `page`, `basis`: as below.
 - `quote`: an optional verbatim source sentence — include ONLY when the exact wording is itself significant or quotable (an admission, a precise figure, distinctive language). Usually omit it.
 
 How many facts: as many as the document has material facts, and no more — a dense order may have fifteen, a routine form two. Do NOT pad to a quota. Let MATERIALITY decide: omit boilerplate, procedural recitation, jurisdictional/standard-form language, and reasoning or analysis that does not establish a fact (e.g. recited case-law or argument). The loaded DOMAIN SKILL tells you what matters most for this document type — lean on it. When in doubt, err toward capturing a hard fact (a name, date, figure, address) rather than dropping it; err toward dropping prose and reasoning.
@@ -17,18 +17,18 @@ ENTITIES — the graph. Use EXISTING_ENTITIES for deduplication — match on nam
 - `name`: the canonical full name as it appears most completely.
 - `type`: Person / Company / Address / Property / CourtCase / Transaction / or a new type if apt.
 - `aliases`: every other name or abbreviation used in this document.
-- `roles`: relationships to other entities, each an OBJECT with relationship/target_id/page/confidence/date_range — never a plain string. Identify the target by `target_id` only; its name and type are filled in automatically, so do not emit them.
+- `roles`: relationships to other entities, each an OBJECT with relationship/target_id/page/basis/date_range — never a plain string. Identify the target by `target_id` only; its name and type are filled in automatically, so do not emit them.
 
 Create an entity for anything a fact, a role, or the timeline needs to refer to — including incidental actors (counsel, a clerk) named in a fact. Do NOT write a summary or per-entity prose: who the entity is follows from the facts tagged to it.
 
-Confidence (facts, roles): emit `confidence` ONLY when it is `medium` (one inference), `low` (multi-statement inference), or `disputed` (contradicts the vault). OMIT it entirely when the claim is directly stated — absent means `high`, which is the default. Never upgrade a claim past its weakest element. Likewise omit `page` when there is no page marker (don't emit null), and omit empty arrays rather than emitting `[]`.
+Basis (facts, roles): emit `basis` as `"inferred"` ONLY when the claim is NOT directly stated in the document — i.e. you reasoned it from other statements rather than reading it. OMIT `basis` entirely when the claim is stated outright on the page; absent means `"stated"`, the overwhelming default. The test is concrete: could you point to a sentence that says this, or did you derive it? If derived, it is `inferred` — a lead to verify, not a finding. Tag a claim `inferred` if ANY step from page to claim is a reasoning step (never let a stated wrapper launder an inferred core). Do NOT use `basis` to flag a conflict with the vault — that is what the `[!contradiction]` callout is for. Likewise omit `page` when there is no page marker (don't emit null), and omit empty arrays rather than emitting `[]`.
 
-CONTRADICTION CHECK — for each entity that matched an EXISTING_ENTITIES entry, compare key dates, roles, and relationships in this document against that entry's recorded roles and claims. Flag a material discrepancy only when both sides are high or medium confidence and you are confident it is genuine — this is the only verification step; any callout is saved as-is. Put each as a string in that entity's `contradictions` array, formatted exactly:
+CONTRADICTION CHECK — for each entity that matched an EXISTING_ENTITIES entry, compare key dates, roles, and relationships in this document against that entry's recorded roles and claims. Flag a material discrepancy only when both sides are directly stated (not inferred) and you are confident it is genuine — this is the only verification step; any callout is saved as-is. Put each as a string in that entity's `contradictions` array, formatted exactly:
 > [!contradiction] <short label>
-> - **<existing value>** — [[documents/<slug>|<title>]], p. <n> (confidence: <level>)
-> - **<new value>** — [[documents/<new-slug>|<title>]], p. <n> (confidence: <level>)
+> - **<existing value>** — [[documents/<slug>|<title>]], p. <n>
+> - **<new value>** — [[documents/<new-slug>|<title>]], p. <n>
 
-Do not flag low-confidence differences, trivial name variations, or contradictions already present.
+Do not flag discrepancies that rest on an inferred value on either side, trivial name variations, or contradictions already present.
 
 Also produce:
 - `document.title`: the document's own title, or a concise descriptive name if it has none (it falls back to the filename if you leave it empty).

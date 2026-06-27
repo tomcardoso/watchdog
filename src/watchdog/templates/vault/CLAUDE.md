@@ -55,7 +55,7 @@ The following are auto-allowed in `.claude/settings.json` — never ask for conf
 2. Registry updates are atomic with note creation — never one without the other.
 3. No duplicate entities — check `.watchdog/Registry/manifest.json` before creating (it is lighter than `entities.json` and contains id, name, type, aliases, and note_path).
 4. Entity IDs are kebab-case: `john-doe`, `shell-co-ltd`, `123-main-st`.
-5. Every extracted fact must carry a confidence level: `high`, `medium`, `low`, or `disputed`. A `low`-confidence fact is a lead, not a finding.
+5. Every extracted fact records its `basis`: `stated` (directly in the document) or `inferred` (reasoned from it). An `inferred` fact is a lead, not a finding. `stated` is the default and is left implicit; only `inferred` facts are marked.
 6. The `## Notes` section in any note is reserved for journalist annotations — never overwrite it.
 7. Acquire `.watchdog/Registry/.ingest-lock` before any vault writes; release it on completion or failure.
 
@@ -71,11 +71,11 @@ The following are auto-allowed in `.claude/settings.json` — never ask for conf
 | `/watchdog-wiki` | Create or update investigation thread pages |
 | `/watchdog-health` | Check vault integrity |
 
-## Confidence levels
+## Fact basis
 
-| Level | When to use |
+| Basis | When to use |
 |-------|-------------|
-| `high` | Fact directly stated in the source document |
-| `medium` | Fact stated but requires one short inference |
-| `low` | Fact inferred across multiple sources |
-| `disputed` | Fact contradicted by another source in the vault |
+| `stated` | Fact directly stated in the source document (the default — left implicit) |
+| `inferred` | Fact reasoned from the document rather than stated outright — a lead to verify, not a finding (rendered as *(inferred)*) |
+
+A fact that *conflicts* with another source is not a basis level — it is captured by a `[!contradiction]` callout in the entity's note.

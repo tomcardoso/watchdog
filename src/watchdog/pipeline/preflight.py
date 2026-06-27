@@ -16,7 +16,7 @@ from watchdog.pipeline.write_vault import _extract_summary, _extract_contradicti
 def _digest_events(events: list[dict]) -> list[dict]:
     """Comparison-relevant fields of an entity's timeline events."""
     return [
-        {"date": e.get("date"), "event": e.get("event"), "confidence": e.get("confidence") or "high"}
+        {"date": e.get("date"), "event": e.get("event"), "basis": e.get("basis") or "stated"}
         for e in events
     ]
 
@@ -29,7 +29,7 @@ def _digest_roles(roles: list[dict]) -> list[dict]:
             "target_name": r.get("target_name"),
             "target_type": r.get("target_type"),
             "date_range": r.get("date_range"),
-            "confidence": r.get("confidence") or "high",
+            "basis": r.get("basis") or "stated",
         }
         for r in roles
     ]

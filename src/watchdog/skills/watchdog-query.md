@@ -40,7 +40,7 @@ grep -ri "<search term>" entities/ documents/ --include="*.md" -l
 - If the vault does not contain enough information to answer, say so explicitly — do not speculate
 
 **Citation format:**
-> John Doe is listed as Director of Shell Co Ltd (Annual Report 2023, p. 3 — confidence: high).
+> John Doe is listed as Director of Shell Co Ltd (Annual Report 2023, p. 3).
 
 **If the answer requires combining information from multiple documents:**
 > The address 123 Main St appears in two documents: the Shell Co corporate registration (p. 1) and the Smith Holdings annual report (p. 7). These documents have no other apparent connection.

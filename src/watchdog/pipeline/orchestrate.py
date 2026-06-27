@@ -190,7 +190,7 @@ def _coverage_warning(extraction: dict, page_count: int | None) -> str | None:
 
 def _briefing_facts(doc: dict) -> list[dict]:
     """Project key_facts down to what the briefing needs — the fact text and, when the fact is a
-    datable occurrence, its date (for chronology). Drops page/confidence/entities/quote, which are
+    datable occurrence, its date (for chronology). Drops page/basis/entities/quote, which are
     noise for narrative briefing. This is what now supplies the briefing its figures and timeline,
     in place of the scratchpad's hand-retyped 'Key figures'/'Chronological' sections (#150)."""
     out = []
@@ -453,7 +453,7 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
 def _select_kept(events: list[dict], keep) -> list[dict]:
     """Map the timeline-dedup model's kept-indices back to the original event objects (deduped,
     in order). Falls back to all events when the model returns nothing usable — dedup must never
-    lose events. The originals carry the authoritative page/confidence/source_sha256."""
+    lose events. The originals carry the authoritative page/basis/source_sha256."""
     if not isinstance(keep, list):
         return events
     seen: set[int] = set()

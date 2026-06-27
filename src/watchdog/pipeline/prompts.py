@@ -119,7 +119,7 @@ def build_briefing_prompt(*, brief: str | None, results: list, scratchpads: list
 
 def build_timeline_dedup_prompt(date: str, events: list[dict]) -> str:
     # Present each event by index with just the text it needs to judge duplication (the date
-    # is constant). page/confidence/source_sha256 stay in Python — the model returns indices.
+    # is constant). page/basis/source_sha256 stay in Python — the model returns indices.
     listed = "\n".join(
         f"[{i}] {e.get('event', '')}" + (f"  (p.{e['page']})" if e.get("page") else "")
         for i, e in enumerate(events))

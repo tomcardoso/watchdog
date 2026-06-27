@@ -19,7 +19,7 @@ emits per-entity summaries, fragments, or timeline events:
     "page_count": int, "source": str|null, "obtained": str|null,
     "near_duplicate_of": str|null, "shingles": [],
     "summary": str,
-    "key_facts": [{"fact": str, "page": int|null, "confidence": str,
+    "key_facts": [{"fact": str, "page": int|null, "basis": "stated"|"inferred",
                    "date": str|null, "entities": [str], "quote": str|null}]
   },
   "entities": [
@@ -28,7 +28,7 @@ emits per-entity summaries, fragments, or timeline events:
       // summary is no longer emitted by the model — synthesized post-ingest, with a provisional
       // one-liner from the entity's top tagged fact in the meantime.
       "evidence_fragments": [          // reconstructed by postflight from facts tagged to this id
-        {"claim": str, "page": int|null, "confidence": str, "quote": str|null}
+        {"claim": str, "page": int|null, "basis": "stated"|"inferred", "quote": str|null}
       ],
       "contradictions": [str]|null,    // each a `> [!contradiction]` callout block
       "timeline_events": [             // reconstructed by postflight from this id's dated facts
@@ -36,13 +36,13 @@ emits per-entity summaries, fragments, or timeline events:
           "date": str,   // YYYY-MM-DD, YYYY-MM, or YYYY
           "event": str,
           "page": int|null,
-          "confidence": str
+          "basis": "stated"|"inferred"
         }
       ],
       "roles": [
         {
           "relationship": str, "target_id": str,   // target_name/target_type resolved from id
-          "page": int|null, "confidence": str,
+          "page": int|null, "basis": "stated"|"inferred",
           "date_range": str|null
         }
       ]
@@ -285,7 +285,7 @@ def _build_timeline_section(
         date_str = ev.get("date", "")
         year = date_str[:4] if date_str else "Unknown"
         rendered_date = _render_date(date_str)
-        conf = f" — confidence: {ev.get('confidence') or 'high'}"
+        basis_note = " *(inferred)*" if ev.get("basis") == "inferred" else ""
 
         source_sha = ev.get("source_sha256", "")
         doc_entry = docs_reg.get(source_sha, {})
@@ -299,13 +299,13 @@ def _build_timeline_section(
             source_part = ""
 
         if entity_name is not None:
-            line = f"- **{rendered_date}** — {ev['event']}{source_part}{conf}"
+            line = f"- **{rendered_date}** — {ev['event']}{source_part}{basis_note}"
         else:
             etype = _type_dir(ev.get("entity_type", ""))
             eid = ev.get("entity_id", "")
             ename = ev.get("entity_name", "")
             entity_link = f"[[entities/{etype}/{eid}|{ename}]]" if etype and eid and ename else ename
-            line = f"- **{rendered_date}** — {entity_link} — {ev['event']}{source_part}{conf}"
+            line = f"- **{rendered_date}** — {entity_link} — {ev['event']}{source_part}{basis_note}"
 
         lines_by_year.setdefault(year, []).append(line)
 
@@ -396,7 +396,7 @@ def _page_link(morgue_path: str, page: int | None) -> str:
 def _role_line(role: dict, docs_reg: dict) -> str:
     """Format a role dict as a Markdown relationship line with pretty links."""
     date_part = f" — {role['date_range']}" if role.get("date_range") else ""
-    conf_part = f" — confidence: {role.get('confidence') or 'high'}"
+    basis_part = " *(inferred)*" if role.get("basis") == "inferred" else ""
 
     target_link = f"[[entities/{_type_dir(role['target_type'])}/{role['target_id']}|{role['target_name']}]]"
 
@@ -414,9 +414,9 @@ def _role_line(role: dict, docs_reg: dict) -> str:
         source_part = f" — {pg}" if pg else ""
 
     if role.get("is_reverse"):
-        return f"- {target_link} — {role['relationship']}{date_part}{conf_part}{source_part}"
+        return f"- {target_link} — {role['relationship']}{date_part}{basis_part}{source_part}"
     else:
-        return f"- {role['relationship']} {target_link}{date_part}{conf_part}{source_part}"
+        return f"- {role['relationship']} {target_link}{date_part}{basis_part}{source_part}"
 
 
 # ── Entity registry operations ────────────────────────────────────────────────
@@ -502,7 +502,7 @@ def _add_reverse_role(
         "target_type":   from_entity["type"],
         "target_name":   from_entity["name"],
         "page":          role.get("page"),
-        "confidence":    role.get("confidence", "high"),
+        "basis":         role.get("basis", "stated"),
         "date_range":    role.get("date_range"),
         "source_sha256": doc_sha256,
         "is_reverse":    True,
@@ -553,7 +553,8 @@ def _render_evidence_fragments(fragments: list, morgue_path: str = "") -> str:
         pg = _page_link(morgue_path, f.get("page"))
         page = f" ({pg})" if pg else ""
         reason = f" — {f['reason'].strip()}" if f.get("reason") else ""
-        line = f"- {claim}{page}{reason}"
+        basis_note = " *(inferred)*" if f.get("basis") == "inferred" else ""
+        line = f"- {claim}{page}{reason}{basis_note}"
         quote = (f.get("quote") or "").strip()
         if quote:
             line += f"\n  > {quote}"
@@ -644,8 +645,8 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
         for kf in key_facts:
             pg = _page_link(morgue_path or "", kf.get("page"))
             page = f" ({pg})" if pg else ""
-            conf = f" — confidence: {kf.get('confidence') or 'high'}"
-            body += f"- {kf['fact']}{page}{conf}\n"
+            basis_note = " *(inferred)*" if kf.get("basis") == "inferred" else ""
+            body += f"- {kf['fact']}{page}{basis_note}\n"
             quote = (kf.get("quote") or "").strip()
             if quote:
                 body += f"  > {quote}\n"

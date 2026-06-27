@@ -5,7 +5,11 @@ must return. EXTRACTION mirrors what ``postflight._validate`` requires (plus the
 fields write_vault consumes) — keep the two in sync.
 """
 
-_CONFIDENCE = {"type": "string", "enum": ["high", "medium", "low", "disputed"]}
+# Provenance of a fact/role: `stated` = directly in the document, `inferred` = the model reasoned
+# to it (a lead to verify, not a finding). Omit-default: absent ⇒ `stated`, so the model emits
+# `basis` only for the rare `inferred` exception (#143; supersedes the old 4-level `confidence`).
+# A fact that *conflicts* with the vault is not a basis level — it is captured by `[!contradiction]`.
+_BASIS = {"type": "string", "enum": ["stated", "inferred"]}
 _NULLABLE_STR = {"type": ["string", "null"]}
 
 
@@ -29,12 +33,12 @@ _KEY_FACT = _obj(
     {
         "fact": {"type": "string"},
         "page": {"type": ["integer", "null"]},
-        "confidence": _CONFIDENCE,
+        "basis": _BASIS,
         "date": {"type": "string"},                                   # set ⇒ also a timeline event
         "entities": {"type": "array", "items": {"type": "string"}},   # entity ids the fact is about
         "quote": {"type": "string"},   # optional verbatim source sentence (only when wording matters)
     },
-    ["fact"],   # confidence omitted ⇒ high (the overwhelming default)
+    ["fact"],   # basis omitted ⇒ stated (the overwhelming default)
 )
 
 _ROLE = _obj(
@@ -42,7 +46,7 @@ _ROLE = _obj(
         "relationship": {"type": "string"},
         "target_id": {"type": "string"},   # target_name + target_type are derivable from this id
         "page": {"type": ["integer", "null"]},
-        "confidence": _CONFIDENCE,
+        "basis": _BASIS,
         "date_range": {"type": ["string", "null"]},
     },
     ["relationship", "target_id"],
@@ -153,7 +157,7 @@ BRIEFING = _obj(
 
 # Semantic dedup of one date's colliding timeline events. The model returns `keep` — the
 # indices of the events to keep — and Python re-selects from the original objects (which
-# already carry page/confidence/source_sha256), rather than echoing full events back.
+# already carry page/basis/source_sha256), rather than echoing full events back.
 TIMELINE_DEDUP = _obj(
     {"keep": {"type": "array", "items": {"type": "integer"}}},
     ["keep"],
