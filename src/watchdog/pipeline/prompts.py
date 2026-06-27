@@ -85,7 +85,10 @@ def build_section_prompt(*, pages_text: str, existing_entities: list, skill_text
     else:
         parts.append("This is a LATER section: omit document metadata and morgue fields; supply "
                      "entities + document.key_facts + document.summary for this section only.")
-    parts.append("Put salient, high-signal notes for the briefing in `observations`.")
+    parts.append("Put only forward-looking reporting notes for the briefing in `observations` — "
+                 "leads to chase, open questions, missing documents, threads to other sections or "
+                 "documents. Do NOT restate figures, dates, chronology, or contradictions (those "
+                 "are captured in key_facts); leave it empty if there is nothing forward-looking.")
     if carry_forward:
         parts.append(f"\nCARRY-FORWARD (entities/observations from earlier sections — reuse these "
                      f"ids):\n{carry_forward}")
