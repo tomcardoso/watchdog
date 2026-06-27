@@ -163,8 +163,9 @@ def _coverage_warning(extraction: dict, page_count: int | None) -> str | None:
     max_cited = cited[-1]
     if max_cited >= page_count * _COVERAGE_TAIL_FRACTION:
         return None
-    return (f"facts cite pages {cited[0]}–{max_cited} of {page_count} "
-            f"({len(cited)} distinct); nothing past page {max_cited} — possible skim, review")
+    return (f"facts were only extracted from pages {cited[0]}–{max_cited} of {page_count} — the "
+            f"model may have stopped reading early; check pages {max_cited + 1}–{page_count} "
+            f"of the source for anything missed")
 
 
 def _compact_result(sha: str, filename: str, extraction: dict, near_dup: dict, cost: float | None) -> dict:
