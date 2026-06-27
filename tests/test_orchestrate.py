@@ -67,7 +67,8 @@ def _ext_with_fact_pages(pages):
 def test_coverage_warning_flags_front_loaded_extraction():
     # 36-page doc, facts only on pages 1-4 → nothing past page 4 (< 18) → warn
     warn = orchestrate._coverage_warning(_ext_with_fact_pages([1, 2, 3, 4]), 36)
-    assert warn and "possible skim" in warn and "of 36" in warn
+    assert warn and "may have stopped reading early" in warn and "of 36" in warn
+    assert "check pages 5–36" in warn        # actionable range = first uncited page → end
 
 
 def test_coverage_warning_silent_when_well_covered():
