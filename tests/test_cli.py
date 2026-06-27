@@ -188,6 +188,16 @@ def test_cmd_new_creates_readme(configured):
     assert "Public records only" in readme
 
 
+def test_cmd_new_creates_watchlist(configured):
+    cli.cmd_new(args(name="City Hall Probe", dir=str(configured)))
+    watchlist = (configured / "city-hall-probe" / "watchlist.md").read_text()
+    assert "Watch list" in watchlist
+    assert "case-insensitive" in watchlist
+    # comments/blank-only template parses to zero active terms
+    from watchdog.pipeline import watchlist as wl
+    assert wl.load_terms(configured / "city-hall-probe") == []
+
+
 def test_cmd_new_registers_project(configured, wdg_home):
     cli.cmd_new(args(name="My Story", dir=str(configured)))
     projects = json.loads((wdg_home / "projects.json").read_text())

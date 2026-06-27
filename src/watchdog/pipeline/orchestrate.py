@@ -25,6 +25,7 @@ from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 from watchdog.cmd.live import LiveRegion
 from watchdog.pipeline import (
     abort, merge, preflight, postflight, prompts, schemas, section, synthesis_bundle, timeline,
+    watchlist,
 )
 from watchdog.pipeline.write_vault import _doc_slug
 
@@ -537,6 +538,18 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         out["briefing"] = _write_briefing(vault, r.parsed, ok, neardup_alerts, contradiction_flags)
     except (model_client.ModelError, model_client.RateLimitError) as e:
         out["briefing_error"] = str(e)
+
+    # 4. Watch-word scan (deterministic, no model; #165). Scans this run's documents against
+    # the vault-root watchlist.md and writes briefings/alerts-<date>.md. No-op if the list is empty.
+    hits = watchlist.scan(vault, results)
+    alerts = watchlist.write_alerts(vault, hits)
+    if alerts:
+        relpath, n_terms, n_docs = alerts
+        out["watchlist_alerts"] = relpath
+        _say(f"{_YELLOW}⚠{_RESET}  {_BOLD}{len(hits)}{_RESET} watch-word match"
+             f"{'es' if len(hits) != 1 else ''} {_DIM}({n_terms} term"
+             f"{'s' if n_terms != 1 else ''} in {n_docs} document"
+             f"{'s' if n_docs != 1 else ''}){_RESET} — {_CYAN}{relpath}{_RESET}")
     return out
 
 
