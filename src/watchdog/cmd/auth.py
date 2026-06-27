@@ -29,12 +29,24 @@ from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 _MODES = ("subscription", "api-key")
 
 # Providers whose keys watchdog manages. `anthropic` covers both the Claude
-# Agent SDK and the Claude API backends — they share ANTHROPIC_API_KEY.
+# Agent SDK and the Claude API backends — they share ANTHROPIC_API_KEY. The
+# OpenAI-compatible providers (#125) each carry their own key, used by the
+# matching `model_client` backend independent of the Claude auth mode.
 _PROVIDERS: dict[str, dict] = {
     "anthropic": {
         "label":  "Anthropic — Claude API / Agent SDK",
         "env":    "ANTHROPIC_API_KEY",
         "prefix": "sk-ant-",
+    },
+    "openai": {
+        "label":  "OpenAI — Chat Completions",
+        "env":    "OPENAI_API_KEY",
+        "prefix": "sk-",
+    },
+    "deepseek": {
+        "label":  "DeepSeek — Chat Completions",
+        "env":    "DEEPSEEK_API_KEY",
+        "prefix": "sk-",
     },
 }
 
@@ -141,7 +153,7 @@ def _status() -> None:
     meta = _PROVIDERS["anthropic"]
 
     print()
-    print(f"  {_BOLD}Authentication{_RESET}  {_DIM}{_credentials_path()}{_RESET}")
+    print(f"  {_BOLD}Model access{_RESET}  {_DIM}{_credentials_path()}{_RESET}")
     print()
 
     if mode is None:
@@ -151,7 +163,7 @@ def _status() -> None:
         print()
         return
 
-    print(f"  {_DIM}Mode{_RESET}           {_CYAN}{mode}{_RESET}")
+    print(f"  {_DIM}Claude mode{_RESET}    {_CYAN}{mode}{_RESET}")
 
     if mode == "subscription":
         cc = claude_code_logged_in()
@@ -162,34 +174,48 @@ def _status() -> None:
             print(f"  {_YELLOW}Warning:{_RESET} ${meta['env']} is set — the Agent SDK uses it before the")
             print(f"  {_DIM}subscription login, so runs would be metered. Unset it to use the subscription.{_RESET}")
         else:
-            print(f"  {_DIM}Runs use your{_RESET} {_BOLD}Claude Code subscription{_RESET} {_DIM}(not metered).{_RESET}")
+            print(f"  {_DIM}Claude runs use your{_RESET} {_BOLD}Claude Code subscription{_RESET} {_DIM}(not metered).{_RESET}")
     else:  # api-key
         key = get_api_key()
         if key:
             where = f"${meta['env']}" if os.environ.get(meta["env"]) else "stored"
             print(f"  {_DIM}API key{_RESET}        {_CYAN}{_mask(key)}{_RESET} {_DIM}({where}){_RESET}")
             print()
-            print(f"  {_DIM}Runs use a{_RESET} {_BOLD}metered API key{_RESET}{_DIM}.{_RESET}")
+            print(f"  {_DIM}Claude runs use a{_RESET} {_BOLD}metered API key{_RESET}{_DIM}.{_RESET}")
         else:
             print(f"  {_DIM}API key{_RESET}        {_YELLOW}(not set){_RESET}")
             print()
             print(f"  {_YELLOW}No key set.{_RESET} {_DIM}Add one with{_RESET} {_CYAN}watchdog auth set{_RESET}{_DIM}.{_RESET}")
+
+    # Other (OpenAI-compatible) providers — shown only once a key exists for one (#125).
+    others = [(p, get_api_key(p)) for p in _PROVIDERS if p != "anthropic"]
+    if any(key for _, key in others):
+        print()
+        print(f"  {_DIM}Other providers{_RESET}")
+        for p, key in others:
+            if not key:
+                continue
+            where = f"${_PROVIDERS[p]['env']}" if os.environ.get(_PROVIDERS[p]["env"]) else "stored"
+            print(f"  {_DIM}{p:<13}{_RESET}{_CYAN}{_mask(key)}{_RESET} {_DIM}({where}){_RESET}")
     print()
 
 
 def setup_auth_interactive(interactive: bool | None = None) -> None:
-    """Interactive auth picker for `watchdog setup`: choose subscription or API key.
+    """Interactive auth setup for `watchdog setup`.
 
-    Persists the chosen mode (and key, for api-key). Skips cleanly when not run on
-    a terminal. `interactive` is overridable for testing.
+    Watchdog runs on Claude by default, so this sets up Claude access first (subscription or
+    API key), then optionally stores keys for other model providers (OpenAI, DeepSeek) that
+    individual stages can be routed to later. Persists the choice; skips cleanly off a
+    terminal. `interactive` is overridable for testing.
     """
     if interactive is None:
         interactive = sys.stdin.isatty()
 
     print()
-    print(f"  {_BOLD}How should Watchdog authenticate to Claude?{_RESET}")
+    print(f"  {_BOLD}Set up model access{_RESET}")
+    print(f"  {_DIM}Watchdog uses Claude by default. Choose how to reach it:{_RESET}")
     print(f"    1. Claude Code subscription {_DIM}— use your existing `claude` login; not metered{_RESET}")
-    print(f"    2. API key {_DIM}— metered billing{_RESET}")
+    print(f"    2. Claude API key {_DIM}— metered billing{_RESET}")
     print()
 
     if not interactive:
@@ -216,23 +242,63 @@ def setup_auth_interactive(interactive: bool | None = None) -> None:
             print(f"\n  {_YELLOW}!{_RESET}  Claude Code login not detected — run {_CYAN}claude{_RESET} to log in.")
         if os.environ.get(meta["env"]):
             print(f"  {_YELLOW}!{_RESET}  ${meta['env']} is set and the SDK uses it first — unset it to avoid metering.")
-        return
+    else:
+        print(f"\n  {_DIM}Create a key at{_RESET} {_CYAN}https://platform.claude.com/{_RESET} {_DIM}→ API keys.{_RESET}")
+        try:
+            key = getpass("  Paste your Anthropic API key (hidden): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            key = ""
+        state["mode"] = "api-key"
+        if key:
+            if not key.startswith(meta["prefix"]):
+                print(f"  {_YELLOW}!{_RESET}  Key doesn't start with '{meta['prefix']}' — storing it anyway.")
+            state["keys"]["anthropic"] = key
+            _save_state(state)
+            print(f"\n  {_GREEN}✓{_RESET}  API key stored ({_mask(key)}).")
+        else:
+            _save_state(state)
+            print(f"\n  {_YELLOW}!{_RESET}  No key entered — add one later with {_CYAN}watchdog auth set{_RESET}.")
 
-    print(f"\n  {_DIM}Create a key at{_RESET} {_CYAN}https://platform.claude.com/{_RESET} {_DIM}→ API keys.{_RESET}")
-    try:
-        key = getpass("  Paste your Anthropic API key (hidden): ").strip()
-    except (EOFError, KeyboardInterrupt):
-        key = ""
-    state["mode"] = "api-key"
-    if key:
+    _offer_extra_providers(state)
+    print(f"\n  {_DIM}Tune which model runs each stage anytime with{_RESET} {_CYAN}watchdog configure{_RESET} "
+          f"{_DIM}(extractor_model, finalizer_model, extractor_effort, …).{_RESET}")
+
+
+def _offer_extra_providers(state: dict) -> None:
+    """Optionally store keys for additional (OpenAI-compatible) providers during setup.
+
+    Skippable and provider-neutral — Watchdog still runs on Claude by default; these keys just
+    let a user route a stage to another provider later via a `backend:model` config value."""
+    extras = [p for p in _PROVIDERS if p != "anthropic"]
+    if not extras:
+        return
+    labels = ", ".join(_PROVIDERS[p]["label"].split(" — ")[0] for p in extras)
+    print(f"\n  {_BOLD}Other model providers?{_RESET} {_DIM}(optional — {labels}){_RESET}")
+    print(f"  {_DIM}Add a key to route some stages to a cheaper/alternative provider. Skip to stay on Claude.{_RESET}")
+    for p in extras:
+        meta = _PROVIDERS[p]
+        if os.environ.get(meta["env"]) or state["keys"].get(p):
+            continue                                   # already available
+        try:
+            ans = input(f"  Add a {meta['label']} key? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        if ans not in ("y", "yes"):
+            continue
+        try:
+            key = getpass(f"  Paste {p} API key (hidden): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            continue
+        if not key:
+            print(f"  {_DIM}No key entered — skipped.{_RESET}")
+            continue
         if not key.startswith(meta["prefix"]):
             print(f"  {_YELLOW}!{_RESET}  Key doesn't start with '{meta['prefix']}' — storing it anyway.")
-        state["keys"]["anthropic"] = key
+        state["keys"][p] = key
         _save_state(state)
-        print(f"\n  {_GREEN}✓{_RESET}  API key stored ({_mask(key)}).")
-    else:
-        _save_state(state)
-        print(f"\n  {_YELLOW}!{_RESET}  No key entered — add one later with {_CYAN}watchdog auth set{_RESET}.")
+        print(f"  {_GREEN}✓{_RESET}  {p} key stored ({_mask(key)}).")
 
 
 def _use(mode: str | None) -> None:
