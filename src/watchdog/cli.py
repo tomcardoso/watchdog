@@ -62,6 +62,7 @@ from watchdog.cmd.ingest import (
     cmd_chew,
     cmd_context,
     cmd_finalize,
+    cmd_guided,
     cmd_ingest,
     cmd_postflight,
     cmd_preflight,
@@ -352,7 +353,7 @@ def main() -> None:
         from pathlib import Path
         wddir = Path(".watchdog")
         if wddir.is_dir() and (wddir / "queue").is_dir():
-            _run_preprocess(Path(".").resolve(), confirm=True)
+            cmd_guided(args)
         else:
             _print_banner()
         return
