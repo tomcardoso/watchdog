@@ -279,7 +279,7 @@ def test_orchestrator_threads_configured_models(tmp_path, monkeypatch):
 
 
 def test_orchestrator_threads_configured_efforts(tmp_path, monkeypatch):
-    """extract_effort / post_effort reach the right stages; classify gets no effort (D29)."""
+    """extract_effort / post_effort reach the right stages; classify gets no effort (D34)."""
     vault = make_vault(tmp_path)
     _queue_doc(vault)
     seen = []
@@ -302,6 +302,33 @@ def test_orchestrator_threads_configured_efforts(tmp_path, monkeypatch):
     assert by_task["classify"] is None      # classify never gets an effort
     assert by_task["extract"] == "low"
     assert by_task["briefing"] == "medium"
+
+
+def test_orchestrator_threads_configured_backends(tmp_path, monkeypatch):
+    """extract_backend / post_backend / classify_backend reach the right stages (D37)."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    seen = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        seen.append((task, backend))
+        parsed = {
+            "classify": {"skill": "general-records.md"},
+            "extract": _extraction(),
+            "entity-synthesis": {"entity_syntheses": []},
+            "timeline-dedup": {"keep": []},
+            "briefing": {"investigation_status": "x", "what_was_ingested": []},
+        }.get(task, _extraction())
+        return model_client.ModelResult(parsed=parsed, text="", model=model or "?",
+                                        backend=backend or "b", auth_mode="api-key", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate.run(vault, extract_backend="deepseek", post_backend="openai",
+                                classify_backend="claude-api"))
+    by_task = dict(seen)
+    assert by_task["classify"] == "claude-api"
+    assert by_task["extract"] == "deepseek"
+    assert by_task["briefing"] == "openai"
 
 
 def test_orchestrator_updates_graph_colours(tmp_path, monkeypatch):
