@@ -2,7 +2,7 @@
 
 ## Architecture
 
-[ARCHITECTURE.md](ARCHITECTURE.md) records how the preprocessing and ingestion pipeline is built and the rationale behind each architectural decision. **When a change alters the pipeline's structure, the split between deterministic code and the model, the vault/registry layout, or any decision logged there, update `ARCHITECTURE.md` in the same change** — including its decision-log table. Treat it as part of the definition of done, like tests.
+[ARCHITECTURE.md](ARCHITECTURE.md) records how the preprocessing and ingestion pipeline is built and the rationale behind each architectural decision. Its §14 has two tiers: the **Invariants** (I1–I4) are the canonical governing rules; the **decision log** (D1, D2, …) is the dated history of specific decisions operating within them. **When a change alters the pipeline's structure, the split between deterministic code and the model, the vault/registry layout, or any decision logged there, update `ARCHITECTURE.md` in the same change** — append a new `D` entry, and if the change establishes or revises a governing rule, update the Invariants section too. A new decision only earns a log entry if it forecloses a future option or would read as a bug without the rationale; pure refactors belong in the commit message, not the log. Treat it as part of the definition of done, like tests.
 
 ## Documentation
 
