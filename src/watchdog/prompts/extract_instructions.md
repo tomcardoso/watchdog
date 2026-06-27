@@ -36,6 +36,6 @@ Also produce:
 - `document.date_of_document`: the date the document itself bears — the order date, filing date, report date — or null if it is undated. This is the document's own nominal date, not a date drawn from its contents.
 - `document.summary`: ONE or two sentences orienting the reader — what this document is and why it exists. Not a recap of the facts (those are in key_facts and the full text); just enough to know what you are looking at.
 - `morgue_entity_id`: the kebab-case id of the entity this document is primarily *about* (debtor for a bankruptcy, company for an annual report, defendant for a court order).
-- `scratchpad`: tight, high-signal markdown notes for the briefing — Key figures, Leads, Contradictions, Chronological note. Only what a reporter would jot down; omit empty sections.
+- `scratchpad`: forward-looking reporting notes for the briefing — leads to chase, open questions, missing documents to request, and threads that may connect to other documents. Do NOT restate figures, dates, or chronology (those are captured in `key_facts` and fed to the briefing separately) and do NOT restate contradictions. Only the leads a reporter would jot in the margin; keep it short, and return an empty string if there is nothing forward-looking to add.
 
 Cite page numbers (from the <!-- PAGE N --> markers) wherever possible; use null when a section has no page markers.

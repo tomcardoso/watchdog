@@ -89,6 +89,37 @@ def test_coverage_warning_handles_missing_page_count():
     assert orchestrate._coverage_warning(_ext_with_fact_pages([1, 2]), None) is None
 
 
+def test_briefing_facts_projects_fact_and_date_only():
+    """The briefing projection (#150) keeps the fact text and a date when present, and drops
+    page/confidence/entities/quote — narrative noise the briefing doesn't need."""
+    doc = {"key_facts": [
+        {"fact": "Filed in 2024", "page": 3, "confidence": "high", "entities": ["acme"]},
+        {"fact": "Order issued", "date": "2024-01-15", "quote": "It is ordered…", "page": 1},
+    ]}
+    assert orchestrate._briefing_facts(doc) == [
+        {"fact": "Filed in 2024"},
+        {"fact": "Order issued", "date": "2024-01-15"},
+    ]
+
+
+def test_briefing_facts_empty_when_no_key_facts():
+    assert orchestrate._briefing_facts({}) == []
+
+
+def test_compact_result_carries_key_facts_for_the_briefing():
+    """key_facts ride along on the compact result so the briefing (and a standalone finalize,
+    which reads only result_*.json) can draw figures + chronology from them (#150)."""
+    extraction = {
+        "document": {"document_type": "Annual Report", "date_of_document": "2024-01-15",
+                     "key_facts": [{"fact": "Revenue was $5M", "page": 2, "confidence": "high"},
+                                   {"fact": "Merger closed", "date": "2024-03-01"}]},
+        "entities": [{"id": "acme", "name": "Acme", "type": "Company"}],
+    }
+    r = orchestrate._compact_result("sha1", "doc.pdf", extraction, {}, 0.01)
+    assert r["key_facts"] == [{"fact": "Revenue was $5M"},
+                              {"fact": "Merger closed", "date": "2024-03-01"}]
+
+
 def test_select_kept_maps_indices_to_original_objects():
     """timeline-dedup returns indices; Python re-selects the authoritative originals (which
     carry source_sha256/page/confidence) — deduped and order-preserving."""
@@ -669,3 +700,5 @@ def test_orchestrator_sectioned_path(tmp_path, monkeypatch):
     # the two sections' observations were merged into the scratchpad and fed to the briefing
     assert "section 1 obs" in captured["briefing_prompt"]
     assert "section 2 obs" in captured["briefing_prompt"]
+    # and the compact result's key_facts reach the briefing too (#150)
+    assert '"key_facts"' in captured["briefing_prompt"]

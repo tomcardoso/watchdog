@@ -188,6 +188,20 @@ def _coverage_warning(extraction: dict, page_count: int | None) -> str | None:
             f"of the source for anything missed")
 
 
+def _briefing_facts(doc: dict) -> list[dict]:
+    """Project key_facts down to what the briefing needs — the fact text and, when the fact is a
+    datable occurrence, its date (for chronology). Drops page/confidence/entities/quote, which are
+    noise for narrative briefing. This is what now supplies the briefing its figures and timeline,
+    in place of the scratchpad's hand-retyped 'Key figures'/'Chronological' sections (#150)."""
+    out = []
+    for f in doc.get("key_facts", []):
+        item = {"fact": f["fact"]}
+        if f.get("date"):
+            item["date"] = f["date"]
+        out.append(item)
+    return out
+
+
 def _compact_result(sha: str, filename: str, extraction: dict, near_dup: dict, cost: float | None) -> dict:
     entities = extraction.get("entities", [])
     doc = extraction.get("document", {})
@@ -199,6 +213,7 @@ def _compact_result(sha: str, filename: str, extraction: dict, near_dup: dict, c
         "new_entities": [e["id"] for e in entities if not e.get("match_id")],
         "updated_entities": [e["match_id"] for e in entities if e.get("match_id")],
         "contradictions": [e["id"] for e in entities if e.get("contradictions")],
+        "key_facts": _briefing_facts(doc),
         "near_dup_similarity": near_dup.get("top_similarity", 0.0),
         "cost_usd": cost,
     }
