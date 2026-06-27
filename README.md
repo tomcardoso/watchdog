@@ -295,11 +295,12 @@ my-investigation/
 │   ├── company/           ← One note per company
 │   └── address/           ← One note per address
 ├── documents/             ← One note per ingested document
-├── briefings/             ← Post-ingest briefing notes
+├── briefings/             ← Post-ingest briefing notes + watch-word alerts (alerts-<date>.md)
 ├── wiki/                  ← Investigation thread pages
 ├── hot.md                 ← Current session state — rewritten after every ingest
 ├── log.md                 ← Append-only human-readable ingest history
 ├── context.md             ← Your investigation intent and key questions
+├── watchlist.md           ← Terms to watch for in new documents (one per line)
 └── index.md               ← Dataview index
 ```
 

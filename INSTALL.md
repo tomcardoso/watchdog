@@ -196,6 +196,8 @@ Watchdog works through the chewed files in parallel, showing one live status row
 - Connections between entities that were already in your vault
 - Anything that looks unusual
 
+If you've added terms to the vault's `watchlist.md` (one per line), Watchdog scans each new document for them and writes any matches — with document, page, and context — to `briefings/alerts-<date>.md`, flagging them in the terminal too.
+
 ---
 
 ## Asking questions

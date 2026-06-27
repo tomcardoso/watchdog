@@ -32,6 +32,22 @@ from watchdog.cmd.base import (
 )
 
 
+_WATCHLIST_TEMPLATE = """\
+# Watch list
+#
+# One term per line. When a newly-ingested document mentions a term listed here,
+# Watchdog writes an alert to briefings/alerts-<date>.md and flags it in the terminal.
+#
+#   - Lines starting with # are ignored (like this one).
+#   - Matching is case-insensitive and matches whole words ("Ana" won't match "banana").
+#   - Blank lines are ignored.
+#   - Advanced: wrap a line in slashes for a regular expression, e.g. /Smith,?\\s+John/
+#
+# Add your terms below:
+
+"""
+
+
 def _obsidian_config_path() -> Path:
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / "obsidian" / "obsidian.json"
@@ -214,6 +230,7 @@ def cmd_new(args) -> None:
     # human-facing entry point for anyone who opens the folder.
     (vault / ".claude" / "CLAUDE.md").write_text(_render_template("CLAUDE.md", name=name))
     (vault / "README.md").write_text(_render_template("README.md", name=name, version=_pkg_version()))
+    (vault / "watchlist.md").write_text(_WATCHLIST_TEMPLATE)
 
     from watchdog.setup_cmd import install_skills
     install_skills(vault / ".claude" / "commands")

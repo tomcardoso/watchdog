@@ -203,6 +203,8 @@ When extraction is complete, the post-ingest step synthesizes prose for multi-me
 
 Read the briefing carefully. The connections section is often where the story is.
 
+If you've listed any terms in the vault's `watchlist.md` (one per line — a name, company, address, or phrase), Watchdog also scans every newly-ingested document for them deterministically and, on a match, prints a terminal alert and writes the details (document, page, surrounding text, and a link to the matching entity if it resolved to one) to `briefings/alerts-<date>.md`. Matching is case-insensitive and whole-word; wrap a line in `/.../` for a regular expression. An empty watchlist does nothing.
+
 A failed document is logged to `.watchdog/Registry/ingest.log` and set aside in `.watchdog/queue/_failed/` — the rest of the batch still completes. For very large batches, chew and ingest in groups. When ingest finishes, **open a fresh Claude Code session** to ask investigation questions (`/watchdog-query`, `/watchdog-surface`).
 
 ---
@@ -233,6 +235,7 @@ The vault now contains:
 - **`documents/`** — one note per ingested document
 - **`hot.md`** — a current-state summary of the investigation, rewritten after every ingest
 - **`log.md`** — a running record of every ingest session
+- **`watchlist.md`** — terms to watch for in new documents; matches are written to `briefings/alerts-<date>.md`
 
 Each entity note has the same structure:
 
