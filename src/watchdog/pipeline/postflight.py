@@ -14,7 +14,7 @@ import json
 import sys
 from pathlib import Path
 
-_VALID_CONFIDENCE = {"high", "medium", "low", "disputed"}
+_VALID_BASIS = {"stated", "inferred"}
 
 
 def _validate(data: dict) -> list[str]:
@@ -31,8 +31,8 @@ def _validate(data: dict) -> list[str]:
             if not isinstance(fact, dict):
                 errors.append(f"document.key_facts[{i}] is not an object")
             else:
-                if fact.get("confidence") and fact["confidence"] not in _VALID_CONFIDENCE:
-                    errors.append(f"document.key_facts[{i}].confidence '{fact['confidence']}' must be one of: {', '.join(sorted(_VALID_CONFIDENCE))}")
+                if fact.get("basis") and fact["basis"] not in _VALID_BASIS:
+                    errors.append(f"document.key_facts[{i}].basis '{fact['basis']}' must be one of: {', '.join(sorted(_VALID_BASIS))}")
                 if "entities" in fact and not isinstance(fact["entities"], list):
                     errors.append(f"document.key_facts[{i}].entities must be a list of entity ids")
 
@@ -49,7 +49,7 @@ def _validate(data: dict) -> list[str]:
                     errors.append(f"entities[{i}].{field} is missing or empty")
             for j, role in enumerate(ent.get("roles", [])):
                 if not isinstance(role, dict):
-                    errors.append(f"entities[{i}].roles[{j}] must be an object with relationship/target_id/page/confidence/date_range keys — not a string")
+                    errors.append(f"entities[{i}].roles[{j}] must be an object with relationship/target_id/page/basis/date_range keys — not a string")
 
     if not data.get("morgue_entity_id"):
         errors.append("morgue_entity_id is missing or empty — this is the kebab-case id of the entity this document is primarily about")
@@ -95,7 +95,7 @@ def explode_key_facts(extraction: dict) -> None:
         if not text:
             continue
         page = fact.get("page")
-        confidence = fact.get("confidence")
+        basis = fact.get("basis")
         quote = fact.get("quote")
         date = (fact.get("date") or "").strip()
         for eid in fact.get("entities", []) or []:
@@ -105,8 +105,8 @@ def explode_key_facts(extraction: dict) -> None:
             frag = {"claim": text}
             if page is not None:
                 frag["page"] = page
-            if confidence:
-                frag["confidence"] = confidence
+            if basis:
+                frag["basis"] = basis
             if quote:
                 frag["quote"] = quote
             ent.setdefault("evidence_fragments", []).append(frag)
@@ -114,8 +114,8 @@ def explode_key_facts(extraction: dict) -> None:
                 event = {"date": date, "event": text}
                 if page is not None:
                     event["page"] = page
-                if confidence:
-                    event["confidence"] = confidence
+                if basis:
+                    event["basis"] = basis
                 ent.setdefault("timeline_events", []).append(event)
 
 

@@ -45,7 +45,7 @@ Re-read all document notes and extract every datable event involving this entity
 - `event` — what happened, one clear sentence naming this entity
 - `source_sha256` — SHA-256 of the source document (from `documents.json`)
 - `page` — page number if known, else null
-- `confidence` — `high`, `medium`, `low`, or `disputed`
+- `basis` — `stated` (directly in the document) or `inferred` (reasoned from it); omit for `stated`, the default
 
 Include only events that directly involve this entity — not background context. The Timeline **replaces** the existing one entirely (this is a full re-extraction, not an append).
 
@@ -63,7 +63,7 @@ Build the extraction JSON:
       "event": "<what happened>",
       "source_sha256": "<sha256>",
       "page": <n or null>,
-      "confidence": "<level>"
+      "basis": "<stated|inferred — omit for stated>"
     }
   ]
 }

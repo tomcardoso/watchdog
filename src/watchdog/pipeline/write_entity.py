@@ -20,7 +20,7 @@ Extraction JSON schema:
       "event": str,
       "source_sha256": str,
       "page": int|null,
-      "confidence": str
+      "basis": "stated"|"inferred"
     }
   ]
 }

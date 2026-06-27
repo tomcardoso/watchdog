@@ -46,7 +46,7 @@ def make_extraction(tmp_path: Path, overrides: dict | None = None) -> Path:
             "minhash": [],
             "summary": "A test annual report.",
             "key_facts": [
-                {"fact": "Revenue was $1M.", "page": 3, "confidence": "high",
+                {"fact": "Revenue was $1M.", "page": 3, "basis": "stated",
                  "quote": "Total revenue for the year was $1,000,000."},
             ],
         },
@@ -59,12 +59,12 @@ def make_extraction(tmp_path: Path, overrides: dict | None = None) -> Path:
                 "summary": "Alice Smith is a director of Acme Corp.",
                 "evidence_fragments": [
                     {"claim": "Smith is listed as director with significant share holdings.",
-                     "page": 2, "confidence": "high", "reason": "establishes control of Acme",
+                     "page": 2, "basis": "stated", "reason": "establishes control of Acme",
                      "quote": "Ms. Smith holds 4,200,000 common shares of Acme Corp."},
                 ],
                 "timeline_events": [
-                    {"date": "2020-03-15", "event": "Appointed director of Acme Corp", "page": 2, "confidence": "high"},
-                    {"date": "2024", "event": "Continued as director", "page": 2, "confidence": "medium"},
+                    {"date": "2020-03-15", "event": "Appointed director of Acme Corp", "page": 2, "basis": "stated"},
+                    {"date": "2024", "event": "Continued as director", "page": 2, "basis": "inferred"},
                 ],
                 "roles": [
                     {
@@ -73,7 +73,7 @@ def make_extraction(tmp_path: Path, overrides: dict | None = None) -> Path:
                         "target_type": "Company",
                         "target_name": "Acme Corp",
                         "page": 2,
-                        "confidence": "high",
+                        "basis": "stated",
                         "date_range": "2020–2024",
                     }
                 ],
@@ -167,7 +167,7 @@ def test_slim_role_target_resolved_from_id(tmp_path):
     run(make_extraction(tmp_path, {"entities": [
         {"id": "alice-smith", "name": "Alice Smith", "type": "Person", "aliases": [],
          "summary": "A director.", "timeline_events": [],
-         "roles": [{"relationship": "Director of", "target_id": "acme-corp", "confidence": "high"}]},
+         "roles": [{"relationship": "Director of", "target_id": "acme-corp", "basis": "stated"}]},
         {"id": "acme-corp", "name": "Acme Corp", "type": "Company", "aliases": [],
          "summary": "The company.", "timeline_events": [], "roles": []},
     ]}), vault)
@@ -176,17 +176,18 @@ def test_slim_role_target_resolved_from_id(tmp_path):
     assert "[[entities/company/acme-corp|Acme Corp]]" in note   # name + type resolved from the id
 
 
-def test_omitted_confidence_defaults_to_high(tmp_path):
-    """Confidence is omittable on the wire (absent ⇒ high); notes still render 'confidence: high'."""
+def test_omitted_basis_renders_unmarked(tmp_path):
+    """basis is omittable on the wire (absent ⇒ stated); a stated fact renders with no marker —
+    only the rare inferred fact gets an *(inferred)* tag."""
     vault = make_vault(tmp_path)
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path, {
-        "document": {"key_facts": [{"fact": "Revenue was $1M.", "page": 3}]},          # no confidence
+        "document": {"key_facts": [{"fact": "Revenue was $1M.", "page": 3}]},          # no basis ⇒ stated
         "entities": [
             {"id": "alice-smith", "name": "Alice Smith", "type": "Person", "aliases": [],
              "summary": "A director.",
-             "timeline_events": [{"date": "2020", "event": "Appointed director"}],      # no confidence
-             "roles": [{"relationship": "Director of", "target_id": "acme-corp"}]},      # no confidence
+             "timeline_events": [{"date": "2020", "event": "Appointed director"}],      # no basis ⇒ stated
+             "roles": [{"relationship": "Director of", "target_id": "acme-corp"}]},      # no basis ⇒ stated
             {"id": "acme-corp", "name": "Acme Corp", "type": "Company", "aliases": [],
              "summary": "The company.", "timeline_events": [], "roles": []},
         ],
@@ -194,9 +195,23 @@ def test_omitted_confidence_defaults_to_high(tmp_path):
 
     alice = (vault / "entities" / "person" / "alice-smith.md").read_text()
     doc = (vault / "documents" / "test-doc.md").read_text()
-    assert "Director of [[entities/company/acme-corp|Acme Corp]] — confidence: high" in alice
-    assert "Appointed director" in alice and "— confidence: high" in alice
-    assert "Revenue was $1M." in doc and "— confidence: high" in doc
+    assert "Director of [[entities/company/acme-corp|Acme Corp]]" in alice
+    assert "Appointed director" in alice and "Revenue was $1M." in doc
+    assert "inferred" not in alice and "inferred" not in doc   # stated facts carry no marker
+
+
+def test_inferred_fact_renders_marker(tmp_path):
+    """An inferred timeline event is tagged *(inferred)* in the note — the one marked exception
+    (the default fixture's 'Continued as director' event is inferred)."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    run(make_extraction(tmp_path), vault)
+
+    lines = (vault / "entities" / "person" / "alice-smith.md").read_text().splitlines()
+    # the inferred event's line carries the marker…
+    assert any("Continued as director" in ln and "*(inferred)*" in ln for ln in lines)
+    # …and the stated event alongside it does not
+    assert any("Appointed director of Acme Corp" in ln and "*(inferred)*" not in ln for ln in lines)
 
 
 def test_new_entity_note_has_relationships_section(tmp_path):
@@ -418,7 +433,7 @@ def test_merge_deduplicates_roles(tmp_path):
                     "target_type": "Company",
                     "target_name": "Acme Corp",
                     "page": 1,
-                    "confidence": "high",
+                    "basis": "stated",
                     "source_sha256": "prior-sha",
                     "is_reverse": False,
                 }
@@ -689,7 +704,7 @@ def test_timeline_events_deduplicated(tmp_path):
             "roles": [],
             "timeline_events": [
                 {"date": "2020-03-15", "event": "Appointed director of Acme Corp",
-                 "page": 2, "confidence": "high", "source_sha256": "prior-sha"},
+                 "page": 2, "basis": "stated", "source_sha256": "prior-sha"},
             ],
             "date_first_seen": "2020-03-15",
             "date_last_updated": "2020-03-15",
@@ -773,7 +788,7 @@ def test_key_fact_without_quote_has_no_blockquote(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path, {"document": {
-        "key_facts": [{"fact": "Revenue was $1M.", "page": 3, "confidence": "high"}],
+        "key_facts": [{"fact": "Revenue was $1M.", "page": 3, "basis": "stated"}],
     }}), vault)
 
     content = (vault / "documents" / "test-doc.md").read_text()
@@ -928,7 +943,7 @@ def test_two_sequential_runs_merge_shared_entity(tmp_path):
         "entities": [{
             "id": "alice-smith", "name": "Alice Smith", "type": "Person",
             "aliases": ["A. Smith"], "summary": "Director.", "analysis": None,
-            "timeline_events": [{"date": "2020-01-01", "event": "Joined board", "page": 1, "confidence": "high"}],
+            "timeline_events": [{"date": "2020-01-01", "event": "Joined board", "page": 1, "basis": "stated"}],
             "roles": [],
         }],
         "morgue_entity_id": "alice-smith",
@@ -943,7 +958,7 @@ def test_two_sequential_runs_merge_shared_entity(tmp_path):
         "entities": [{
             "id": "alice-smith", "name": "Alice Smith", "type": "Person",
             "aliases": ["Alice S."], "summary": "Director.", "analysis": None,
-            "timeline_events": [{"date": "2022-06-15", "event": "Resigned", "page": 3, "confidence": "high"}],
+            "timeline_events": [{"date": "2022-06-15", "event": "Resigned", "page": 3, "basis": "stated"}],
             "roles": [],
         }],
         "morgue_entity_id": "alice-smith",
@@ -1051,7 +1066,7 @@ def test_reconcile_remaps_role_target_in_same_document(tmp_path):
              "roles": [{
                  "relationship": "Partner at", "target_id": "ernst-young-inc",
                  "target_type": "Company", "target_name": "Ernst and Young Inc",
-                 "page": 1, "confidence": "high", "date_range": None,
+                 "page": 1, "basis": "stated", "date_range": None,
              }]},
             {"id": "ernst-young-inc", "name": "Ernst and Young Inc", "type": "Company",
              "aliases": [], "summary": None, "analysis": None,

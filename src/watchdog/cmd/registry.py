@@ -6,7 +6,7 @@ from pathlib import Path
 
 from watchdog.cmd.base import _find_project
 
-_VALID_CONFIDENCE = {"high", "medium", "low", "disputed"}
+_VALID_BASIS = {"stated", "inferred"}
 
 
 def cmd_entity_index(args) -> None:
@@ -62,8 +62,8 @@ def cmd_validate_extraction(args) -> None:
         for fact in doc.get("key_facts", []):
             if not isinstance(fact, dict):
                 errors.append("key_facts contains a non-object entry")
-            elif fact.get("confidence") and fact["confidence"] not in _VALID_CONFIDENCE:
-                errors.append(f"key_facts confidence '{fact['confidence']}' is not valid")
+            elif fact.get("basis") and fact["basis"] not in _VALID_BASIS:
+                errors.append(f"key_facts basis '{fact['basis']}' is not valid")
 
     entities = data.get("entities")
     if not isinstance(entities, list):
@@ -79,8 +79,8 @@ def cmd_validate_extraction(args) -> None:
             for j, ev in enumerate(ent.get("timeline_events", [])):
                 if not isinstance(ev, dict):
                     errors.append(f"entities[{i}].timeline_events[{j}] is not an object")
-                elif ev.get("confidence") and ev["confidence"] not in _VALID_CONFIDENCE:
-                    errors.append(f"entities[{i}].timeline_events[{j}] confidence '{ev['confidence']}' is not valid")
+                elif ev.get("basis") and ev["basis"] not in _VALID_BASIS:
+                    errors.append(f"entities[{i}].timeline_events[{j}] basis '{ev['basis']}' is not valid")
             for j, role in enumerate(ent.get("roles", [])):
                 if not isinstance(role, dict):
                     errors.append(f"entities[{i}].roles[{j}] is not an object")

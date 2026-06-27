@@ -79,7 +79,7 @@ def stage_timeline_events(vault: Path, extraction: dict) -> int:
                 "event": event_text,
                 "source_sha256": sha,
                 "entity_ids": list(tags),
-                "confidence": fact.get("confidence", "high"),
+                "basis": fact.get("basis", "stated"),
             }
 
     if not by_date:
@@ -179,9 +179,8 @@ def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
         total_events += len(events)
         lines = [f"### {date}", ""]
         for ev in events:
-            conf = ev.get("confidence", "high")
-            conf_note = f" *(confidence: {conf})*" if conf not in ("high", "") else ""
-            lines.append(f"- {ev['event']}{conf_note}")
+            basis_note = " *(inferred)*" if ev.get("basis") == "inferred" else ""
+            lines.append(f"- {ev['event']}{basis_note}")
         sections.append("\n".join(lines))
 
     content = "# Timeline\n\n" + "\n\n".join(sections) + "\n"

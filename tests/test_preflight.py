@@ -37,12 +37,12 @@ def _write_registry(vault: Path) -> None:
             "id": "alice-smith", "name": "Alice Smith", "type": "Person",
             "timeline_events": [
                 {"date": "2020-03-15", "event": "Appointed director",
-                 "page": 2, "confidence": "high", "source_sha256": "x"},
+                 "page": 2, "basis": "stated", "source_sha256": "x"},
             ],
             "roles": [
                 {"relationship": "Director of", "target_id": "acme",
                  "target_name": "Acme Corp", "target_type": "Company",
-                 "date_range": "2020–", "confidence": "high",
+                 "date_range": "2020–", "basis": "stated",
                  "source_sha256": "x", "is_reverse": False, "page": 2},
             ],
         },
@@ -74,12 +74,12 @@ def test_candidate_enriched_with_digest_and_analysis(tmp_path):
     a = by_id["alice-smith"]
     # timeline_events trimmed to comparison fields (no page / source_sha256)
     assert a["timeline_events"] == [
-        {"date": "2020-03-15", "event": "Appointed director", "confidence": "high"}
+        {"date": "2020-03-15", "event": "Appointed director", "basis": "stated"}
     ]
     # roles trimmed to comparison fields
     assert a["roles"] == [
         {"relationship": "Director of", "target_name": "Acme Corp",
-         "target_type": "Company", "date_range": "2020–", "confidence": "high"}
+         "target_type": "Company", "date_range": "2020–", "basis": "stated"}
     ]
     # analysis carries prior contradiction callouts, scoped to the Analysis section
     assert "[!contradiction] role mismatch" in a["analysis"]

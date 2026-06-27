@@ -70,7 +70,6 @@ from watchdog.cmd.ingest import (
     cmd_requeue,
 )
 from watchdog.cmd.registry import (
-    _VALID_CONFIDENCE,
     cmd_entity_index,
     cmd_is_duplicate,
     cmd_validate_extraction,

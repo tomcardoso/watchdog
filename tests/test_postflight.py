@@ -35,16 +35,16 @@ def test_explode_fans_facts_to_tagged_entities():
     assert len(extraction["document"]["key_facts"]) == 3
 
 
-def test_explode_carries_page_and_confidence_but_not_to_event_when_undated():
+def test_explode_carries_page_and_basis_but_not_to_event_when_undated():
     extraction = {
         "document": {"key_facts": [
-            {"fact": "An inferred claim.", "page": 7, "confidence": "medium", "entities": ["a"]},
+            {"fact": "An inferred claim.", "page": 7, "basis": "inferred", "entities": ["a"]},
         ]},
         "entities": [{"id": "a", "name": "A", "type": "Person"}],
     }
     explode_key_facts(extraction)
     frag = extraction["entities"][0]["evidence_fragments"][0]
-    assert frag == {"claim": "An inferred claim.", "page": 7, "confidence": "medium"}
+    assert frag == {"claim": "An inferred claim.", "page": 7, "basis": "inferred"}
     assert "timeline_events" not in extraction["entities"][0]
 
 

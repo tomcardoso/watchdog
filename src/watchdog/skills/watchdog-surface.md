@@ -68,7 +68,7 @@ Scan every entity note in `entities/` for `[!contradiction]` callouts. These are
 
 For each callout found:
 - Record the entity, the disputed fact, both values, and both source documents
-- Note the confidence levels of each claim
+- Note the basis (`stated` vs `inferred`) of each claim
 
 Also perform a cross-document scan for contradictions not yet flagged:
 
@@ -78,7 +78,7 @@ For each entity that appears in 3 or more documents, compare the following field
 - Director or officer appointments (is the person listed as the same role in all documents?)
 - Transaction amounts (does the same transaction appear with different values in different documents?)
 
-Flag any case where the same fact is stated differently in two documents at `medium` or higher confidence, and that discrepancy is not already captured in a `[!contradiction]` callout.
+Flag any case where the same fact is stated differently in two documents — both values directly stated (not `inferred`) — and that discrepancy is not already captured in a `[!contradiction]` callout.
 
 Add new `[!contradiction]` callouts to the relevant entity notes for any newly found discrepancies.
 
@@ -126,8 +126,8 @@ document_count: <n>
 
 ### <Entity name> — <disputed fact>
 - **[[entities/<type>/<id>|Entity Name]]**
-- <Value A> — [[documents/<slug>|Document Title]], p. <n> (confidence: <level>)
-- <Value B> — [[documents/<slug>|Document Title]], p. <n> (confidence: <level>)
+- <Value A> — [[documents/<slug>|Document Title]], p. <n>
+- <Value B> — [[documents/<slug>|Document Title]], p. <n>
 - **Suggested follow-up:** <what would resolve this discrepancy>
 
 <If no contradictions found: "No contradictions found.">

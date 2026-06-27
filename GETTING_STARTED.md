@@ -16,7 +16,7 @@ Two things to keep in mind before starting:
 
 1. **Public records only.** Every document Watchdog processes is read by an AI. Do not process documents from confidential sources, leaked materials, or anything obtained under a promise of confidentiality. If in doubt, do not process it.
 
-2. **Verify everything.** Watchdog extracts facts and assigns confidence levels, but AI makes mistakes. Every extracted claim links back to a source document and page. Follow the link before you publish anything.
+2. **Verify everything.** Watchdog extracts facts and flags the ones it inferred rather than read, but AI makes mistakes. Every extracted claim links back to a source document and page. Follow the link before you publish anything.
 
 ---
 
@@ -189,7 +189,7 @@ For each document, the pipeline:
 
 1. Reads the extracted text
 2. Classifies the document type and loads the matching domain skill (34 built-in skills for corporate filings, court documents, real estate records, and more)
-3. Extracts entities (people, companies, addresses) with page-level citations and confidence levels
+3. Extracts entities (people, companies, addresses) with page-level citations, flagging any fact it inferred rather than read
 4. Extracts relationships between entities
 5. Extracts datable events for the timeline
 6. Checks for contradictions against entities already in the vault
@@ -305,18 +305,18 @@ At the start of each Claude Code session, Claude reads `hot.md` automatically �
 
 ---
 
-## Confidence levels
+## Fact basis: stated vs inferred
 
-Every extracted fact carries one of four confidence levels:
+Every extracted fact records its **basis** — whether the document said it, or Watchdog reasoned to it:
 
-| Level | Meaning |
+| Basis | Meaning |
 |-------|---------|
-| `high` | Explicitly stated in the document; direct quote or clear figure |
-| `medium` | Reasonably inferred from document context |
-| `low` | Plausible but uncertain — a lead, not a finding |
-| `disputed` | Contradicts another fact already in the vault from a different source |
+| `stated` | Directly stated in the document — a quote, a figure, an explicit assertion. The default, and left implicit in the notes. |
+| `inferred` | Reasoned from the document rather than stated outright. A lead to verify, not a finding. Marked *(inferred)* in the notes. |
 
-Treat `low`-confidence facts as leads that require verification, not as established facts. `disputed` facts should be examined carefully — the contradiction itself is often newsworthy.
+Only `inferred` facts are flagged, so anything **unmarked is directly stated**. Treat an *(inferred)* fact as a lead that requires verification, not as an established fact.
+
+When a new document **contradicts** a fact already in the vault, that is not a basis level — it surfaces as a `[!contradiction]` callout in the entity's note, and the contradiction itself is often newsworthy.
 
 ---
 

@@ -51,7 +51,7 @@ Every document Watchdog processes is read by an AI. There is no way to take that
 ## What it does
 
 - **Ingests anything** — PDFs (scanned or text), Word documents, spreadsheets, images, court documents, corporate filings, financial statements, and more, powered by [Docling](https://github.com/DS4SD/docling)
-- **Extracts entities** — people, companies, addresses, properties, court cases, transactions — with page-level citations and confidence levels on every fact
+- **Extracts entities** — people, companies, addresses, properties, court cases, transactions — with page-level citations on every fact, flagging any it inferred rather than read
 - **Builds timelines** — datable events are extracted per entity and assembled into a global chronological view across the entire investigation
 - **Finds connections** — shared addresses, overlapping directors, unusual role combinations, entities appearing across unrelated documents
 - **Flags contradictions** — when a new document conflicts with a known fact (different address, conflicting date, mismatched role), Watchdog adds a `[!contradiction]` callout to the entity note with both sources cited
@@ -494,9 +494,9 @@ watchdog configure extract_concurrency 2
 Watchdog uses Claude to read documents and extract facts. AI can make mistakes — confabulate specificity, misread names, or draw incorrect inferences.
 
 A few safeguards are built in:
-- Every extracted fact carries a **confidence level** (`high`, `medium`, `low`, `disputed`)
+- Every extracted fact records its **basis** — `stated` (directly in the document) or `inferred` (reasoned from it); only `inferred` facts are marked, so anything unmarked is directly stated
 - Every claim links to the **source document and page** so you can verify it directly
-- `low`-confidence facts are **leads**, not findings — they belong in the vault but must not be treated as established
+- `inferred` facts are **leads**, not findings — they belong in the vault but must not be treated as established
 - `/watchdog-entity` lets you refresh an entity's Summary and Timeline at any time, re-synthesizing from all source documents rather than relying on a chain of incremental updates
 
 Treat everything Watchdog produces as a structured first read, not a finished product. The vault is a tool for your reporting, not a replacement for it.

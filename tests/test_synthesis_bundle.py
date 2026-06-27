@@ -82,11 +82,11 @@ def _full_extraction(tmp_path):
         "entities": [{
             "id": "alice-smith", "name": "Alice Smith", "type": "Person", "aliases": [],
             "summary": "Old summary.",
-            "evidence_fragments": [{"claim": "Old finding.", "confidence": "high"}],
+            "evidence_fragments": [{"claim": "Old finding.", "basis": "stated"}],
             "contradictions": [CALLOUT],
-            "timeline_events": [{"date": "2020-03-15", "event": "Appointed director", "page": 2, "confidence": "high"}],
+            "timeline_events": [{"date": "2020-03-15", "event": "Appointed director", "page": 2, "basis": "stated"}],
             "roles": [{"relationship": "Director of", "target_id": "acme-corp", "target_type": "Company",
-                       "target_name": "Acme Corp", "page": 2, "confidence": "high", "date_range": None}],
+                       "target_name": "Acme Corp", "page": 2, "basis": "stated", "date_range": None}],
         }],
     })
 

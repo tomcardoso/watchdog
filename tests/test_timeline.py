@@ -31,7 +31,7 @@ def test_stage_writes_one_file_per_date(tmp_path):
     vault = _vault(tmp_path)
     n = stage_timeline_events(vault, _extraction([
         {"fact": "Appointed director", "date": "2020-03-15", "page": 2, "entities": ["alice"]},
-        {"fact": "Resigned", "date": "2021", "page": 5, "confidence": "medium", "entities": ["alice"]},
+        {"fact": "Resigned", "date": "2021", "page": 5, "basis": "inferred", "entities": ["alice"]},
         {"fact": "Owns a controlling stake", "entities": ["alice"]},   # no date → not a timeline event
     ], sha="abcdef1234567"))
 
@@ -45,7 +45,7 @@ def test_stage_writes_one_file_per_date(tmp_path):
         "event": "Appointed director",
         "source_sha256": "abcdef1234567",
         "entity_ids": ["alice"],
-        "confidence": "high",
+        "basis": "stated",
     }
 
 
@@ -65,7 +65,7 @@ def test_stage_keeps_distinct_events_on_same_date(tmp_path):
     vault = _vault(tmp_path)
     stage_timeline_events(vault, _extraction([
         {"fact": "Event A", "date": "2020-03-15", "entities": ["alice"]},
-        {"fact": "Event B", "date": "2020-03-15", "confidence": "low", "entities": ["alice"]},
+        {"fact": "Event B", "date": "2020-03-15", "basis": "inferred", "entities": ["alice"]},
     ], sha="zzzzzzz9999"))
 
     recs = _read_ndjson(vault / ".watchdog" / "timeline" / "2020-03-15_zzzzzzz.ndjson")
@@ -126,7 +126,7 @@ def test_stage_collision_reported_when_canonical_exists(tmp_path, capsys):
     td.mkdir(parents=True)
     (td / "2020-03-15.ndjson").write_text(
         json.dumps({"date": "2020-03-15", "event": "Existing", "source_sha256": "old",
-                    "entity_ids": [], "confidence": "high"}) + "\n",
+                    "entity_ids": [], "basis": "stated"}) + "\n",
         encoding="utf-8",
     )
 

@@ -26,7 +26,7 @@ def make_vault(tmp_path: Path) -> Path:
             "roles": [],
             "timeline_events": [
                 {"date": "2015-11-03", "event": "Old event from prior ingest",
-                 "page": 1, "confidence": "high", "source_sha256": "sha-doc1"},
+                 "page": 1, "basis": "stated", "source_sha256": "sha-doc1"},
             ],
             "date_first_seen": "2015-11-03",
             "date_last_updated": "2015-11-03",
@@ -59,9 +59,9 @@ def make_extraction(tmp_path: Path, entity_id: str = "alice-smith") -> Path:
         "summary": "Alice Smith is a key figure appearing across 2 documents.",
         "timeline_events": [
             {"date": "2015-11-03", "event": "Transferred shares with no equity received",
-             "source_sha256": "sha-doc1", "page": 1, "confidence": "high"},
+             "source_sha256": "sha-doc1", "page": 1, "basis": "stated"},
             {"date": "2019-01-15", "event": "Listed as director in annual report",
-             "source_sha256": "sha-doc2", "page": 4, "confidence": "high"},
+             "source_sha256": "sha-doc2", "page": 4, "basis": "stated"},
         ],
     }
     path = tmp_path / "entity-refresh.json"
