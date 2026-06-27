@@ -209,10 +209,12 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog ingest --extractor-model M` | Override the extraction model for this run (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
 | `watchdog ingest --finalizer-model M` | Override the post-ingest model for this run — synthesis + timeline + briefing (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
 | `watchdog ingest --classifier-model M` | Override the document-classification model for this run (`sonnet`/`opus`/`haiku`; default from `watchdog configure`: `haiku`) |
+| `watchdog ingest --extractor-effort E` | Override the extraction reasoning effort for this run (`low`/`medium`/`high`; default from `watchdog configure`: `high`). Lower spends fewer tokens |
+| `watchdog ingest --finalizer-effort E` | Override the post-ingest reasoning effort for this run (`low`/`medium`/`high`; default from `watchdog configure`: `high`) |
 | `watchdog ingest --concurrency N` | Documents extracted in parallel for this run (default from `watchdog configure`: 5) |
 | `watchdog ingest --classify-pages N` | Pages shown to the document classifier for this run (default from `watchdog configure`: 5) |
 | `watchdog ingest --skill [NAME\|PATH]` | Pin a record skill (a name or a path to a skill file) for every document, skipping classification. `--skill` with no value picks from the list |
-| `watchdog finalize` | Complete post-ingest (entity synthesis + timeline + briefing) for an already-extracted batch — run it if a rate limit or interrupt stopped post-processing before it finished. `--finalizer-model M` overrides the model |
+| `watchdog finalize` | Complete post-ingest (entity synthesis + timeline + briefing) for an already-extracted batch — run it if a rate limit or interrupt stopped post-processing before it finished. `--finalizer-model M` / `--finalizer-effort E` override the model and effort |
 | `watchdog requeue` | Move documents quarantined in `queue/_failed/` back into the active queue, then re-run `watchdog ingest` to retry them |
 | `watchdog` | With no arguments inside a vault: walk the pipeline — offer to seed context, chew `_INCOMING/`, then ingest — skipping any stage with no pending work |
 | `watchdog context [name]` | Open Claude Code with the context seeding skill; omit name when inside the vault |
@@ -462,6 +464,8 @@ watchdog configure <key> <value>
 | `classifier_model` | `haiku` | Claude model that reads a document's first pages and picks its record skill. Haiku is plenty; raise it only if classification goes wrong on ambiguous documents. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--classifier-model`. |
 | `extractor_model` | `sonnet` | Claude model for document extraction. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--extractor-model`. |
 | `finalizer_model` | `haiku` | Claude model for post-ingest — entity synthesis (Summary + Analysis for entities in ≥2 documents) + timeline reconciliation + briefing. This step composes prose from compact digests rather than reading raw documents, so Haiku is the default; raise it if synthesized prose feels thin. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--finalizer-model`. |
+| `extractor_effort` | `high` | How hard the extractor model thinks. Thinking tokens bill as output, so a lower effort spends fewer tokens per document — the main cost lever for an extraction run. `high` is the model default (unchanged behaviour); try `medium` or `low` to cut cost and verify quality holds. Ignored when the extractor is Haiku (no effort control). Options: `low`, `medium`, `high`. Per-run override: `--extractor-effort`. |
+| `finalizer_effort` | `high` | How hard the finalizer model thinks during post-ingest. Reasoning helps the prose steps, so keep it higher than the extractor unless cost-trimming. Ignored when the finalizer is Haiku. Options: `low`, `medium`, `high`. Per-run override: `--finalizer-effort`. |
 | `extract_concurrency` | `5` | Documents extracted in parallel during `watchdog ingest`. Lower it if you hit model rate limits; raise it for throughput. Per-run override: `--concurrency`. |
 | `classify_pages` | `5` | Leading pages of each document shown to the classifier (`min(page_count, this)`). More pages classify ambiguous documents better at a small extra cost on the cheap classifier model. Per-run override: `--classify-pages`. |
 | `default_skill` | _(unset)_ | Pin a record skill (a name from the global catalog, or a path to a skill file) for every ingested document, skipping classification — for vaults that are always one document type. Per-run override: `--skill`. |
@@ -483,6 +487,9 @@ watchdog configure projects_dir /Volumes/SecureDrive/Investigations
 
 # Use Haiku for extraction by default (faster and cheaper)
 watchdog configure extractor_model haiku
+
+# Spend fewer thinking tokens on extraction (the main per-run cost lever)
+watchdog configure extractor_effort medium
 
 # Lower parallelism if you hit model rate limits
 watchdog configure extract_concurrency 2

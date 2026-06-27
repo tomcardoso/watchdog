@@ -20,9 +20,9 @@ class FakeBackend:
         self.outputs = list(outputs)
         self.calls = []
 
-    async def __call__(self, prompt, model_id, schema, api_key, max_tokens):
+    async def __call__(self, prompt, model_id, schema, api_key, max_tokens, effort=None):
         self.calls.append({"model_id": model_id, "api_key": api_key,
-                           "prompt": prompt, "max_tokens": max_tokens})
+                           "prompt": prompt, "max_tokens": max_tokens, "effort": effort})
         return self.outputs.pop(0)
 
 
@@ -124,6 +124,49 @@ def test_extract_task_uses_larger_token_budget(api_key_auth, monkeypatch):
     mc.complete_json(task="extract", prompt="p", schema=SCHEMA)
     assert api.calls[0]["max_tokens"] == 16000           # per-task override
     assert mc._TASK_MAX_TOKENS.get("other-task") is None  # default applies elsewhere
+
+
+# ── effort knob (D29) ─────────────────────────────────────────────────────────
+
+def test_effort_passed_to_backend_for_sonnet(api_key_auth, monkeypatch):
+    api = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    mc.complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet", effort="low")
+    assert api.calls[0]["effort"] == "low"
+
+
+def test_effort_high_is_treated_as_no_override(api_key_auth, monkeypatch):
+    # `high` is the model default — sending nothing preserves current behaviour.
+    api = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    mc.complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet", effort="high")
+    assert api.calls[0]["effort"] is None
+
+
+def test_effort_dropped_for_haiku(api_key_auth, monkeypatch):
+    # Haiku rejects output_config.effort (400) — it must never be sent there.
+    api = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    mc.complete_json(task="classify", prompt="p", schema=SCHEMA, model="haiku", effort="low")
+    assert api.calls[0]["effort"] is None
+
+
+def test_effort_omitted_when_unset(api_key_auth, monkeypatch):
+    api = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    mc.complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet")
+    assert api.calls[0]["effort"] is None
+
+
+@pytest.mark.parametrize("model_id,effort,expected", [
+    ("claude-sonnet-4-6", "low", "low"),
+    ("claude-opus-4-8", "medium", "medium"),
+    ("claude-sonnet-4-6", "high", None),     # default — no override
+    ("claude-haiku-4-5", "low", None),       # unsupported — dropped
+    ("claude-sonnet-4-6", None, None),       # unset
+])
+def test_resolve_effort(model_id, effort, expected):
+    assert mc._resolve_effort(model_id, effort) == expected
 
 
 # ── JSON extraction ───────────────────────────────────────────────────────────

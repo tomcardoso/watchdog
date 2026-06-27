@@ -165,9 +165,10 @@ This runs the extraction pipeline **in your terminal** — there's no Claude Cod
 By default Watchdog uses Sonnet for extraction and for the post-ingest step (synthesis + timeline + briefing), and Haiku for the quick document classification. Set persistent defaults with `watchdog configure`, or override per run:
 
 ```bash
-watchdog ingest --extractor-model haiku   # faster, cheaper extraction
+watchdog ingest --extractor-model haiku    # faster, cheaper extraction
 watchdog ingest --finalizer-model opus     # stronger synthesis + briefing
 watchdog ingest --classifier-model sonnet  # stronger document classification
+watchdog ingest --extractor-effort medium  # fewer thinking tokens — the main cost lever
 watchdog ingest --concurrency 2            # fewer docs in parallel (if you hit rate limits)
 watchdog ingest --classify-pages 10        # show the classifier more pages of each document
 watchdog ingest --skill corporate-filings  # pin one record skill, skip classification
@@ -178,6 +179,7 @@ watchdog ingest --skill corporate-filings  # pin one record skill, skip classifi
 ```bash
 watchdog configure extractor_model haiku
 watchdog configure classifier_model sonnet
+watchdog configure extractor_effort medium
 watchdog configure extract_concurrency 2
 watchdog configure classify_pages 10
 watchdog configure default_skill corporate-filings

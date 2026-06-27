@@ -972,6 +972,17 @@ def test_configure_ocr_engine_invalid_exits(wdg_home):
         cli.cmd_configure(args(key="ocr_engine", value="badengine"))
 
 
+def test_configure_set_extractor_effort(wdg_home):
+    cli.cmd_configure(args(key="extractor_effort", value="medium"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["extractor_effort"] == "medium"
+
+
+def test_configure_effort_invalid_exits(wdg_home):
+    with pytest.raises(SystemExit, match="must be one of"):
+        cli.cmd_configure(args(key="finalizer_effort", value="ludicrous"))
+
+
 # ── _ensure_ocr_engine ────────────────────────────────────────────────────────
 
 def test_ensure_ocr_engine_noop_for_auto(monkeypatch):
