@@ -1,11 +1,14 @@
 """Tests for preprocess_batch helpers (find_files + preprocess_one paths)."""
 
+import io
 import json
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+
+from watchdog.cmd.live import LiveRegion
 
 from watchdog.pipeline.preprocess_batch import (
     find_files,
@@ -511,6 +514,34 @@ def test_garbled_doc_still_queued(tmp_path, monkeypatch, capsys):
     assert (queue / "gg00.json").exists()
     assert not (incoming / "_SKIPPED").exists()
     assert not (incoming / "_FAILED").exists()
+
+
+# ── live status region (#158) ───────────────────────────────────────────────────
+
+def test_tty_run_shows_inflight_row_and_progress(tmp_path, monkeypatch):
+    """On a TTY the batch draws an in-flight 'chewing…' row per file plus a progress/ETA row,
+    and the file's result scrolls above when it settles."""
+    vault, incoming, queue, staging = _make_vault(tmp_path)
+    f = incoming / "report.pdf"
+    f.write_bytes(b"")
+
+    monkeypatch.setattr(ppb, "preprocess_one", lambda path, *a, **kw: {
+        "sha256": "feed01", "pages": [{"markdown": "hi"}], "char_count": 2,
+        "page_count": 1, "source_path": str(path),
+    })
+
+    buf = io.StringIO()
+    # Inject a TTY-enabled region over a capture buffer (the test process is not a real TTY).
+    monkeypatch.setattr(ppb, "LiveRegion", lambda *a, **kw: LiveRegion(buf, enabled=True))
+
+    _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
+
+    out = buf.getvalue()
+    assert "chewing…" in out              # in-flight row appeared while the worker ran
+    assert "report.pdf" in out            # settled result line scrolled above
+    assert "1/1" in out                   # progress row rendered
+    assert "\x1b[" in out                 # cursor escapes used (TTY path, not append-only)
+    assert (queue / "feed01.json").exists()
 
 
 def test_skipped_subdir_excluded_from_find_files(tmp_path):

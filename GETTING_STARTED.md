@@ -123,7 +123,7 @@ Chewing does the mechanical preprocessing work that runs outside Claude Code:
 
 Each file produces a `.json` file in `.watchdog/queue/` containing the extracted text and metadata. The original file moves to `.watchdog/staging/`. Nothing is written to the Obsidian vault yet.
 
-You'll see a progress bar as each file is processed. Each file shows one of three statuses: `OK` (queued for extraction), `SKP` (no text found — moved to `_INCOMING/_SKIPPED/`), or `ERR` (failed — moved to `_INCOMING/_FAILED/`). Files with noisy OCR output show a `· garbled OCR` note alongside `OK` — they're still queued, but worth verifying after extraction. On macOS, you'll receive a notification when the batch completes.
+Files are processed in parallel, each shown as a live status row while it's worked on, with an overall progress row beneath; finished files settle into the log above. Each settled file shows one of three statuses: `OK` (queued for extraction), `SKP` (no text found — moved to `_INCOMING/_SKIPPED/`), or `ERR` (failed — moved to `_INCOMING/_FAILED/`). Files with noisy OCR output show a `· garbled OCR` note alongside `OK` — they're still queued, but worth verifying after extraction. On macOS, you'll receive a notification when the batch completes.
 
 If a file fails (password-protected, corrupted, unsupported format), it moves to `_INCOMING/_FAILED/` with an error message. Fix the issue and move the file back to `_INCOMING/` to retry.
 
