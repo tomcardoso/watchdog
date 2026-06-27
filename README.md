@@ -172,6 +172,8 @@ watchdog obsidian shell-company-investigation
 1. Drop background files (clips, notes, screenshots) into `_CONTEXT/`
 2. Run `watchdog context` from inside the vault — opens Claude Code with the context skill pre-loaded, which reads the material, asks you questions, and writes `context.md`
 
+Running `watchdog` with no arguments from inside a vault walks you through whatever's next — seed context, chew `_INCOMING/`, then ingest — offering each step that has pending work.
+
 For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED.md](GETTING_STARTED.md).
 
 ---
@@ -212,6 +214,7 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog ingest --skill [NAME\|PATH]` | Pin a record skill (a name or a path to a skill file) for every document, skipping classification. `--skill` with no value picks from the list |
 | `watchdog finalize` | Complete post-ingest (entity synthesis + timeline + briefing) for an already-extracted batch — run it if a rate limit or interrupt stopped post-processing before it finished. `--finalizer-model M` overrides the model |
 | `watchdog requeue` | Move documents quarantined in `queue/_failed/` back into the active queue, then re-run `watchdog ingest` to retry them |
+| `watchdog` | With no arguments inside a vault: walk the pipeline — offer to seed context, chew `_INCOMING/`, then ingest — skipping any stage with no pending work |
 | `watchdog context [name]` | Open Claude Code with the context seeding skill; omit name when inside the vault |
 | `watchdog context --model M` | Override the model for context seeding (`sonnet`/`opus`/`haiku`, default: `sonnet`) |
 | `watchdog watch [name]` | Watch `_INCOMING/` and chew files automatically as they arrive; omit name when inside the project directory |

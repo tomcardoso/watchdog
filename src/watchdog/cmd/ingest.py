@@ -449,6 +449,47 @@ def cmd_context(args) -> None:
         print(f"\n  When ready, open Claude Code and run:  {_CYAN}/watchdog-context{_RESET}\n")
 
 
+def cmd_guided(args) -> None:
+    """Bare `watchdog` inside a project: walk the pipeline in order — context → chew → ingest —
+    offering each stage that has pending work and falling through to the next when declined (#132).
+
+    Each stage self-skips when its directory/queue is empty, so the flow always lands on the
+    sensible next step. Reuses the same prompt helpers as the individual commands for consistency.
+    """
+    from watchdog.pipeline.preprocess_batch import find_files
+    vault = Path(".").resolve()
+    did_offer = False
+
+    # 1. Context — when _CONTEXT/ has files and context.md hasn't been seeded yet. (Re-seeding an
+    #    existing context.md stays the explicit `watchdog context`; the guided flow won't nag.)
+    #    cmd_context offers to open Claude Code; accepting replaces this process (os.execvp), so
+    #    the walk ends there — seed context, then re-run `watchdog` for chew/ingest. Declining
+    #    returns here and falls through to chew below.
+    context_dir = vault / "_CONTEXT"
+    context_files = find_files([context_dir]) if context_dir.is_dir() else []
+    if context_files and not (vault / "context.md").exists():
+        did_offer = True
+        cmd_context(args)
+
+    # 2. Chew — when _INCOMING/ has files. _run_preprocess prompts and chews; the ingest offer
+    #    below then picks up whatever it queued.
+    incoming = vault / "_INCOMING"
+    if incoming.is_dir() and find_files([incoming]):
+        did_offer = True
+        _run_preprocess(vault, confirm=True, show_ingest_hint=False)
+
+    # 3. Ingest — when the queue has documents ready.
+    if _count_queued(vault):
+        did_offer = True
+        _offer_ingest(args, vault)
+        return
+
+    if not did_offer:
+        print(f"\n  {_DIM}Nothing pending — drop files in {_RESET}{_CYAN}_INCOMING/{_RESET}{_DIM} "
+              f"then run {_RESET}{_CYAN}watchdog{_RESET}{_DIM}, or {_RESET}{_CYAN}watchdog status{_RESET}"
+              f"{_DIM} for details.{_RESET}\n")
+
+
 def cmd_queue_status(args) -> None:
     cwd = Path(".").resolve()
     if (cwd / ".watchdog").is_dir():
