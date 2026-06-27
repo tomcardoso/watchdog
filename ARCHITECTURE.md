@@ -421,18 +421,20 @@ registry for every document would be wasteful. The manifest is the cheap index.
 
 ---
 
-## 14. Decision log (summary)
+## 14. Invariants and decision log
 
-### Invariants
+### Invariants (canonical)
 
-The principles below are always true; every entry in the log either establishes one or operates within it. Read these first — violating one needs a *new* decision, not just a code change.
+These are the **governing rules of the pipeline** — the canonical statement of each principle. They are always true; violating one needs a *new, numbered decision* that supersedes the invariant, not just a code change. Read them first. The decision log below is the dated history of how each was established and refined; where a log entry established or operates within an invariant, *this* section is the authority on the principle and the entry records the specific change, rationale, and tradeoff.
 
-- **Deterministic code writes; the model only reasons.** Anything derivable in Python (document identity, provenance, slugs, role targets, timeline fan-out) is stamped in code, never paid for in model output (D2, D18, D24–D26, D29–D31).
-- **Local-first preprocessing.** Source documents never leave the machine; chew costs no API tokens (D1).
-- **Skills and prompt templates are global package resources** — read directly, never copied per-vault — and prompt templates live in their own directory so they never leak into the classifier index (D21, D28).
-- **Configured model only — no automatic tier escalation.** Each stage's model is an explicit knob; a failed call retries on the *same* model (D20).
+- **I1 — Deterministic code writes; the model only reasons.** Anything derivable in Python (document identity, provenance, slugs, role targets, timeline fan-out) is stamped in code, never paid for in model output. *History: D2, D18, D24–D26, D29–D31.*
+- **I2 — Local-first preprocessing.** Source documents never leave the machine; chew costs no API tokens. *History: D1.*
+- **I3 — Skills and prompt templates are global package resources** — read directly, never copied per-vault — and prompt templates live in their own directory so they never leak into the classifier index. *History: D21, D28.*
+- **I4 — Configured model only; no automatic tier escalation.** Each stage's model is an explicit knob; a failed call retries on the *same* model. *History: D20.*
 
-*Append new decisions in ascending number order — newest at the bottom.*
+### Decision log (summary)
+
+The dated record of individual decisions, each operating within the invariants above. An entry is the authority on its *specific* change — the rationale weighed and the tradeoff accepted — not on the general principle (that's an invariant). *Append new decisions in ascending number order — newest at the bottom; when a decision establishes or revises an invariant, update the Invariants section too.*
 
 | # | Decision | Rationale | Tradeoff |
 |---|---|---|---|
