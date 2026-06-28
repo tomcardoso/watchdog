@@ -45,7 +45,7 @@ def _extraction(sha="abc123", filename="test-doc.pdf", *, valid=True):
 
 
 def _mock(monkeypatch, *, extraction):
-    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
         parsed = {
             "classify": {"skill": "general-records.md"},
             "extract": extraction,
@@ -258,7 +258,7 @@ def test_orchestrator_threads_configured_models(tmp_path, monkeypatch):
     _queue_doc(vault)
     seen = []
 
-    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
         seen.append((task, model))
         parsed = {
             "classify": {"skill": "general-records.md"},
@@ -276,6 +276,32 @@ def test_orchestrator_threads_configured_models(tmp_path, monkeypatch):
     assert by_task["classify"] == "haiku"
     assert by_task["extract"] == "opus"
     assert by_task["briefing"] == "haiku"
+
+
+def test_orchestrator_threads_configured_efforts(tmp_path, monkeypatch):
+    """extract_effort / post_effort reach the right stages; classify gets no effort (D29)."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    seen = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        seen.append((task, effort))
+        parsed = {
+            "classify": {"skill": "general-records.md"},
+            "extract": _extraction(),
+            "entity-synthesis": {"entity_syntheses": []},
+            "timeline-dedup": {"keep": []},
+            "briefing": {"investigation_status": "x", "what_was_ingested": []},
+        }.get(task, _extraction())
+        return model_client.ModelResult(parsed=parsed, text="", model=model or "?",
+                                        backend="b", auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate.run(vault, extract_effort="low", post_effort="medium"))
+    by_task = dict(seen)
+    assert by_task["classify"] is None      # classify never gets an effort
+    assert by_task["extract"] == "low"
+    assert by_task["briefing"] == "medium"
 
 
 def test_orchestrator_updates_graph_colours(tmp_path, monkeypatch):
@@ -306,7 +332,7 @@ def test_classifier_sees_only_first_n_pages(tmp_path, monkeypatch):
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
 
     seen = {}
-    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
         if task == "classify":
             seen["prompt"] = prompt
         parsed = {
@@ -352,7 +378,7 @@ def test_whole_doc_failure_falls_back_to_sectioning(tmp_path, monkeypatch):
     sec_later = {"entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
                               "timeline_events": [], "roles": []}], "observations": "sec2"}
 
-    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
         if task == "classify":
             parsed = {"skill": "general-records.md"}
         elif task == "extract":
@@ -388,7 +414,7 @@ def test_pinned_skill_skips_classification(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault)
     tasks = []
-    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
         tasks.append(task)
         parsed = {
             "extract": _extraction(),
@@ -412,7 +438,7 @@ def test_pinned_skill_is_injected_into_extraction(tmp_path, monkeypatch):
     skill_file = tmp_path / "corporate-filings.md"
     skill_file.write_text("CORPORATE FILINGS SKILL BODY")
     seen = {}
-    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
         if task == "extract":
             seen["prompt"] = prompt
         parsed = {
@@ -450,7 +476,7 @@ def test_orchestrator_cancels_gracefully_on_sigint(tmp_path, monkeypatch):
     _queue_doc(vault, sha="aaa111", filename="one.pdf")
     _queue_doc(vault, sha="bbb222", filename="two.pdf")
 
-    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
         if task == "extract":
             # Simulate the user pressing Ctrl+C mid-extraction. The loop's SIGINT
             # handler cancels the in-flight tasks; the sleep below is interrupted.
@@ -478,7 +504,7 @@ def test_rate_limit_stops_batch_keeps_queue(tmp_path, monkeypatch):
     _queue_doc(vault, sha="aaa111", filename="one.pdf")
     _queue_doc(vault, sha="bbb222", filename="two.pdf")
 
-    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
         if task == "classify":
             return model_client.ModelResult(parsed={"skill": "general-records.md"}, text="",
                                             model="m", backend="claude-agent-sdk", auth_mode="subscription")
@@ -502,7 +528,7 @@ def test_failed_doc_is_named_and_quarantine_surfaced(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="ccc333", filename="boom.pdf")
 
-    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
         if task == "classify":
             return model_client.ModelResult(parsed={"skill": "general-records.md"}, text="",
                                             model="m", backend="claude-agent-sdk", auth_mode="subscription")
@@ -526,7 +552,7 @@ def test_post_ingest_model_failure_degrades_without_crashing(tmp_path, monkeypat
     _queue_doc(vault, sha="aaa", filename="a.pdf", text="Acme Corp filed.")
     _queue_doc(vault, sha="bbb", filename="b.pdf", text="Acme Corp again.")
 
-    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
         if task == "classify":
             return model_client.ModelResult(parsed={"skill": "general-records.md"}, text="",
                                             model="m", backend="claude-agent-sdk", auth_mode="subscription")
@@ -569,7 +595,7 @@ def test_finalize_completes_an_interrupted_run(tmp_path, monkeypatch):
     _queue_doc(vault, sha="bbb", filename="b.pdf", text="Acme Corp again.")
     state = {"synthesis_ok": False}
 
-    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
         def res(parsed):
             return model_client.ModelResult(parsed=parsed, text="", model="m",
                                             backend="claude-agent-sdk", auth_mode="subscription")
@@ -677,7 +703,7 @@ def test_orchestrator_sectioned_path(tmp_path, monkeypatch):
 
     captured: dict = {}
 
-    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1):
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
         if task == "classify":
             parsed = {"skill": "general-records.md"}
         elif task == "extract-section":

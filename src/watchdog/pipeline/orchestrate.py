@@ -228,7 +228,7 @@ def _write_postflight(vault: Path, sha: str, extraction: dict) -> tuple[bool, li
     return ("errors" not in outcome), outcome.get("errors", [])
 
 
-async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label):
+async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label, effort=None):
     """Whole-document extraction, with one repair attempt if post-flight rejects."""
     base = prompts.build_extract_prompt(
         pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
@@ -240,7 +240,8 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label)
         p = base if not errors else (base + "\n\nThe previous extraction was rejected:\n"
                                      + "\n".join(errors) + "\nReturn a corrected JSON object.")
         try:
-            r = await model_client.acomplete_json(task="extract", model=model, prompt=p, schema=schemas.EXTRACTION)
+            r = await model_client.acomplete_json(task="extract", model=model, prompt=p,
+                                                  schema=schemas.EXTRACTION, effort=effort)
         except model_client.ModelError as e:
             # No valid JSON after the client's own retries — often output truncated on a
             # dense doc. Report failure so the caller can fall back to sectioning.
@@ -265,7 +266,7 @@ def _carry_block(part: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_label):
+async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_label, effort=None):
     """Sequential per-section extraction with carry-forward, then deterministic merge."""
     parts, carry, cost = [], "", 0.0
     sections = plan["sections"]
@@ -278,7 +279,7 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
             known_document_types=pf.get("known_document_types", []),
         )
         r = await model_client.acomplete_json(task="extract-section", model=model,
-                                              prompt=prompt, schema=schemas.SECTION)
+                                              prompt=prompt, schema=schemas.SECTION, effort=effort)
         cost += r.cost_usd or 0.0
         parts.append(r.parsed)
         carry += _carry_block(r.parsed)
@@ -316,7 +317,8 @@ def _fail(vault: Path, sha: str, filename: str, reason: str) -> dict:
 async def _extract_document(vault: Path, sha: str, brief: str | None,
                             extract_model: str, classify_model: str,
                             classify_pages: int = DEFAULT_CLASSIFY_PAGES,
-                            pinned_skill: str | None = None) -> dict:
+                            pinned_skill: str | None = None,
+                            extract_effort: str | None = None) -> dict:
     pf = preflight.run(vault, sha)
     if pf.get("error"):
         return _fail(vault, sha, "", pf["error"])
@@ -360,12 +362,12 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         _step(f"{_DIM}→  {filename}  {flow} · extracting · {n_sections} sections…{_RESET}",
               f"{_DIM}→  {filename}  extracting · {n_sections} sections…{_RESET}")
         extraction, scratchpad, cost, ok, errors = await _extract_sectioned(
-            vault, sha, pf, skill_text, plan, extract_model, skill_label)
+            vault, sha, pf, skill_text, plan, extract_model, skill_label, extract_effort)
     else:
         _step(f"{_DIM}→  {filename}  {flow} · extracting…{_RESET}",
               f"{_DIM}→  {filename}  extracting…{_RESET}")
         extraction, scratchpad, cost, ok, errors = await _simple_extract(
-            vault, sha, pf, skill_text, brief, extract_model, skill_label)
+            vault, sha, pf, skill_text, brief, extract_model, skill_label, extract_effort)
         # Whole-document extraction can overrun the model's output ceiling on entity-dense
         # docs (the agent-SDK backend can't cap output) — the JSON truncates and is rejected.
         # Fall back to the sectioned path, which bounds per-call output, before giving up.
@@ -378,7 +380,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
                       f"re-extracting in {n_sections} sections…{_RESET}")
                 whole_cost = cost
                 extraction, scratchpad, cost, ok, errors = await _extract_sectioned(
-                    vault, sha, pf, skill_text, fb, extract_model, skill_label)
+                    vault, sha, pf, skill_text, fb, extract_model, skill_label, extract_effort)
                 cost += whole_cost   # account for the failed whole-doc attempt
 
     if not ok:
@@ -468,7 +470,8 @@ def _select_kept(events: list[dict], keep) -> list[dict]:
     return kept or events
 
 
-async def _post_ingest(vault: Path, results: list, brief: str | None, post_model: str) -> dict:
+async def _post_ingest(vault: Path, results: list, brief: str | None, post_model: str,
+                       post_effort: str | None = None) -> dict:
     out: dict = {"synthesized": 0, "timeline_collisions": 0, "briefing": None}
     print()
     _say(f"{_BOLD}Post-processing{_RESET}")
@@ -481,7 +484,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         try:
             r = await model_client.acomplete_json(
                 task="entity-synthesis", model=post_model, schema=schemas.SYNTHESIS,
-                prompt=prompts.build_synthesis_prompt(bundle))
+                prompt=prompts.build_synthesis_prompt(bundle), effort=post_effort)
         except (model_client.ModelError, model_client.RateLimitError) as e:
             # Synthesis is enrichment: leave the structured claims already in the notes
             # rather than crashing. The fragment queue persists, so a later ingest redoes it.
@@ -510,7 +513,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         try:
             r = await model_client.acomplete_json(
                 task="timeline-dedup", model=post_model, schema=schemas.TIMELINE_DEDUP,
-                prompt=prompts.build_timeline_dedup_prompt(col["date"], events))
+                prompt=prompts.build_timeline_dedup_prompt(col["date"], events), effort=post_effort)
             kept = _select_kept(events, r.parsed.get("keep"))
         except (model_client.ModelError, model_client.RateLimitError):
             kept = events   # fall back to the union rather than losing events
@@ -534,7 +537,8 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             task="briefing", model=post_model, schema=schemas.BRIEFING,
             prompt=prompts.build_briefing_prompt(
                 brief=brief, results=ok, scratchpads=scratchpads,
-                neardup_alerts=neardup_alerts, contradiction_flags=contradiction_flags))
+                neardup_alerts=neardup_alerts, contradiction_flags=contradiction_flags),
+            effort=post_effort)
         out["briefing"] = _write_briefing(vault, r.parsed, ok, neardup_alerts, contradiction_flags)
     except (model_client.ModelError, model_client.RateLimitError) as e:
         out["briefing_error"] = str(e)
@@ -595,7 +599,7 @@ def pending_finalization(vault: Path) -> dict:
 
 
 async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None = None,
-                   results: list | None = None) -> dict:
+                   results: list | None = None, post_effort: str | None = None) -> dict:
     """Run (or re-run) post-ingest over the current on-disk state: synthesize multi-mention
     entities, reconcile the timeline, and write the briefing/hot.md/log.
 
@@ -609,7 +613,7 @@ async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None 
         brief = _read_brief(vault)
     if results is None:
         results = _load_results(vault)
-    out = await _post_ingest(vault, results, brief, post_model)
+    out = await _post_ingest(vault, results, brief, post_model, post_effort)
     if not out.get("error") and not out.get("briefing_error"):
         _clear_post_ingest_inputs(vault)
     return out
@@ -619,13 +623,16 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
               extract_model: str = "sonnet", post_model: str = "sonnet",
               classify_model: str = "haiku",
               classify_pages: int = DEFAULT_CLASSIFY_PAGES,
-              pinned_skill: str | None = None) -> dict:
+              pinned_skill: str | None = None,
+              extract_effort: str | None = None, post_effort: str | None = None) -> dict:
     """Extract every queued document (bounded by `concurrency`), then post-ingest.
 
     `extract_model` drives extraction (whole-doc + section); `post_model` drives
     synthesis/timeline/briefing; `classify_model` the cheap document classifier,
     which sees the first `classify_pages` pages of each document. `pinned_skill`
     (a path to a skill file) skips classification and uses that skill for every document.
+    `extract_effort`/`post_effort` (`low`/`medium`/`high`) tune reasoning depth for the
+    extraction and post-ingest stages respectively (D36); classify has no knob (Haiku).
     """
     queue_dir = vault / ".watchdog" / "queue"
     shas = [f.stem for f in sorted(queue_dir.glob("*.json"))] if queue_dir.exists() else []
@@ -661,7 +668,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                 return {"sha256": sha, "filename": "", "status": "cancelled"}
             try:
                 return await _extract_document(vault, sha, brief, extract_model, classify_model,
-                                               classify_pages, pinned_skill)
+                                               classify_pages, pinned_skill, extract_effort)
             except model_client.RateLimitError as e:  # session-wide — stop, leave queued for resume
                 if not cancelled.is_set():
                     print()
@@ -719,7 +726,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             # Finalize over the persisted per-doc results on disk (not just this run's in-memory
             # ones) so a merged batch — a prior pending run kept via wipe_pending=False — is
             # synthesized and briefed together with this run's documents.
-            summary["post_ingest"] = await finalize(vault, post_model=post_model, brief=brief)
+            summary["post_ingest"] = await finalize(vault, post_model=post_model, brief=brief,
+                                                    post_effort=post_effort)
             _update_graph_colours(vault)
         except Exception as e:   # post-ingest is enrichment — never let it crash a saved batch
             summary["post_ingest_error"] = str(e)

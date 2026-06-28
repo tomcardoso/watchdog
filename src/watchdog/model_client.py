@@ -57,6 +57,21 @@ _SYSTEM_PROMPT = (
     "no prose, no markdown fences, no explanation."
 )
 
+# Reasoning-effort levels accepted by the per-stage `effort` knob (D36). A lower effort
+# means fewer thinking tokens, which bill as output tokens — the lever for cutting cost.
+# `high` is the model default (≡ sending nothing), so it is treated as "no override".
+_EFFORT_LEVELS = ("low", "medium", "high")
+# Models that reject `output_config.effort` with a 400 (Haiku-tier). The effort knob is
+# silently dropped for these, so a Haiku stage (e.g. classify) never errors on it.
+_EFFORT_UNSUPPORTED = {"claude-haiku-4-5"}
+
+
+def _resolve_effort(model_id: str, effort: str | None) -> str | None:
+    """The effort to actually send, or None to omit it. `high` and unsupported models → None."""
+    if not effort or effort == "high" or model_id in _EFFORT_UNSUPPORTED:
+        return None
+    return effort
+
 
 class ModelError(RuntimeError):
     """The model could not return schema-valid JSON, or the chosen backend can't run."""
@@ -141,10 +156,11 @@ def _validate(obj: dict, schema: dict) -> list[str]:
 
 # ── backends: each is (prompt, model_id, schema, api_key) -> {text, usage, cost_usd} ──
 
-async def _agent_query(prompt: str, model: str, env: dict | None) -> dict:
+async def _agent_query(prompt: str, model: str, env: dict | None,
+                       effort: str | None = None) -> dict:
     from claude_agent_sdk import query, ClaudeAgentOptions
 
-    options = ClaudeAgentOptions(
+    opts = dict(
         model=model,
         system_prompt=_SYSTEM_PROMPT,
         allowed_tools=[],       # reasoning only — no tools
@@ -152,6 +168,9 @@ async def _agent_query(prompt: str, model: str, env: dict | None) -> dict:
         max_turns=1,            # single completion, no agent loop
         env=env or {},
     )
+    if effort:                  # only set when overriding the model default (D36)
+        opts["effort"] = effort
+    options = ClaudeAgentOptions(**opts)
     out = {"text": "", "cost_usd": None, "usage": None}
     api_status = None        # ResultMessage.api_error_status (e.g. 429) since CLI v2.1.110
     is_error = False
@@ -191,7 +210,8 @@ async def _agent_query(prompt: str, model: str, env: dict | None) -> dict:
 
 
 async def _agent_complete_async(prompt: str, model_id: str, schema: dict,
-                                api_key: str | None, max_tokens: int | None = None) -> dict:
+                                api_key: str | None, max_tokens: int | None = None,
+                                effort: str | None = None) -> dict:
     """Claude Agent SDK backend. Works in either auth mode (key via env, or subscription).
 
     `max_tokens` is accepted for a uniform backend signature but unused — the agent's
@@ -199,7 +219,7 @@ async def _agent_complete_async(prompt: str, model_id: str, schema: dict,
     """
     full = f"{prompt}\n\nReturn JSON matching this schema:\n{json.dumps(schema)}"
     env = {"ANTHROPIC_API_KEY": api_key} if api_key else None
-    return await _agent_query(full, model_id, env)
+    return await _agent_query(full, model_id, env, effort)
 
 
 def _api_cost(model_id: str, usage) -> float | None:
@@ -213,17 +233,22 @@ def _api_cost(model_id: str, usage) -> float | None:
 
 
 async def _api_complete_async(prompt: str, model_id: str, schema: dict,
-                              api_key: str | None, max_tokens: int) -> dict:
+                              api_key: str | None, max_tokens: int,
+                              effort: str | None = None) -> dict:
     """Raw Claude Messages API backend with structured outputs."""
     import anthropic
 
+    # `effort` composes with the structured-output `format` inside the one output_config dict.
+    output_config = {"format": {"type": "json_schema", "schema": schema}}
+    if effort:
+        output_config["effort"] = effort
     try:
         resp = await anthropic.AsyncAnthropic(api_key=api_key).messages.create(
             model=model_id,
             max_tokens=max_tokens,
             system=_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
-            output_config={"format": {"type": "json_schema", "schema": schema}},
+            output_config=output_config,
         )
     except anthropic.RateLimitError as e:   # 429 — surface as the shared typed error
         raise RateLimitError(str(e) or "Claude API rate limit reached") from e
@@ -252,13 +277,17 @@ def _choose_backend(task: str, requested: str | None, auth_mode: str, has_key: b
 # ── public entry point ────────────────────────────────────────────────────────
 
 async def acomplete_json(*, task: str, prompt: str, schema: dict, model: str | None = None,
-                         backend: str | None = None, max_retries: int = 1) -> ModelResult:
+                         backend: str | None = None, max_retries: int = 1,
+                         effort: str | None = None) -> ModelResult:
     """Get schema-valid JSON for a reasoning task (async — the orchestrator awaits this).
 
     `model` may be a tier name (haiku/sonnet/opus) or a raw model id; omit it for the
     per-task default. `backend` forces 'claude-api' or 'claude-agent-sdk'; omit it to
-    route by auth mode. On invalid/unparseable output the call retries on the **same**
-    model (up to `max_retries` extra attempts) — never escalating — then raises.
+    route by auth mode. `effort` (`low`/`medium`/`high`) tunes reasoning depth — lower
+    means fewer thinking tokens, which bill as output (D36); it is dropped on Haiku-tier
+    models (which reject it) and when `high` (the model default). On invalid/unparseable
+    output the call retries on the **same** model (up to `max_retries` extra attempts) —
+    never escalating — then raises.
     """
     resolved = auth.resolve_auth()
     if resolved["mode"] == "none":
@@ -272,6 +301,7 @@ async def acomplete_json(*, task: str, prompt: str, schema: dict, model: str | N
 
     requested = model or _TASK_TIERS.get(task, DEFAULT_TIER)
     model_id = _MODEL_IDS.get(requested, requested)   # tier name → id, or a raw id as-is
+    effort_arg = _resolve_effort(model_id, effort)    # None on Haiku / when high (D36)
 
     start = time.monotonic()
     total_cost = 0.0
@@ -280,7 +310,7 @@ async def acomplete_json(*, task: str, prompt: str, schema: dict, model: str | N
     for _ in range(max_retries + 1):
         attempts += 1
         try:
-            out = await backend_fn(prompt, model_id, schema, api_key, max_tokens)
+            out = await backend_fn(prompt, model_id, schema, api_key, max_tokens, effort_arg)
         except (RateLimitError, ModelError):
             raise
         except Exception as e:                  # any backend/transport failure → typed error

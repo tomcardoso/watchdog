@@ -188,7 +188,7 @@ watchdog ingest
 
 Watchdog scans the queue, confirms, and runs the extraction pipeline in your terminal — there's no Claude Code session to open.
 
-By default, Watchdog uses Sonnet for extraction, and Haiku for classification and post-ingest. Configure persistent defaults with `watchdog configure` (e.g. `watchdog configure extractor_model haiku`), or override per run with `--extractor-model`, `--finalizer-model`, and `--concurrency`. See the [Commands](README.md#processing) and [Configuration](README.md#configuration) sections of the README for details.
+By default, Watchdog uses Sonnet for extraction, and Haiku for classification and post-ingest. Configure persistent defaults with `watchdog configure` (e.g. `watchdog configure extractor_model haiku`), or override per run with `--extractor-model`, `--finalizer-model`, and `--concurrency`. To trim cost, `extractor_effort` / `finalizer_effort` (`low`/`medium`/`high`, default `high`) tune how many thinking tokens each stage spends — thinking bills as output, so a lower effort is the main per-run cost lever (e.g. `watchdog configure extractor_effort medium` or `watchdog ingest --extractor-effort medium`). See the [Commands](README.md#processing) and [Configuration](README.md#configuration) sections of the README for details.
 
 Watchdog works through the chewed files in parallel, showing one live status row per document as it moves from classifying to extracting to done; finished files settle into the log above. Large documents can take several minutes each, so a long pause on a row is normal, not a stall. It extracts entities, relationships, and key facts and writes everything to your vault. At the end it produces a briefing showing:
 - What documents were processed

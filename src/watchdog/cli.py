@@ -288,6 +288,7 @@ def main() -> None:
     p_describe.set_defaults(func=cmd_describe)
 
     _model_choices = ["sonnet", "opus", "haiku"]
+    _effort_choices = ["low", "medium", "high"]
     p_ingest = sub.add_parser("ingest", help="Extract queued documents (runs the Python pipeline)")
     p_ingest.add_argument("--extractor-model", choices=_model_choices, default=None,
                           dest="extractor_model",
@@ -298,6 +299,14 @@ def main() -> None:
     p_ingest.add_argument("--classifier-model", choices=_model_choices, default=None,
                           dest="classifier_model",
                           help="Model for document classification — overrides watchdog configure (default: haiku)")
+    p_ingest.add_argument("--extractor-effort", choices=_effort_choices, default=None,
+                          dest="extractor_effort",
+                          help="Reasoning effort for extraction — lower spends fewer tokens; "
+                               "overrides watchdog configure (default: high)")
+    p_ingest.add_argument("--finalizer-effort", choices=_effort_choices, default=None,
+                          dest="finalizer_effort",
+                          help="Reasoning effort for synthesis + timeline + briefing — "
+                               "overrides watchdog configure (default: high)")
     p_ingest.add_argument("--concurrency", type=int, default=None,
                           help="Documents extracted in parallel — overrides watchdog configure (default: 5)")
     p_ingest.add_argument("--classify-pages", type=int, default=None, dest="classify_pages",
@@ -313,6 +322,10 @@ def main() -> None:
     p_finalize.add_argument("--finalizer-model", choices=_model_choices, default=None,
                             dest="finalizer_model",
                             help="Model for synthesis + timeline + briefing — overrides watchdog configure (default: haiku)")
+    p_finalize.add_argument("--finalizer-effort", choices=_effort_choices, default=None,
+                            dest="finalizer_effort",
+                            help="Reasoning effort for synthesis + timeline + briefing — "
+                                 "overrides watchdog configure (default: high)")
     p_finalize.set_defaults(func=cmd_finalize)
 
     p_context = sub.add_parser("context", help="Open Claude Code to seed investigation context from _CONTEXT/")

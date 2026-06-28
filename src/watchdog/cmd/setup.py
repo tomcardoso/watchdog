@@ -219,6 +219,34 @@ _CONFIGURE_KEYS = {
         "default": "haiku",
         "choices": ["haiku", "sonnet", "opus"],
     },
+    "extractor_effort": {
+        "short": "Reasoning effort for document extraction (default: high)",
+        "help": (
+            "How hard the extractor model thinks. Thinking tokens bill as output, so a lower\n"
+            "  effort spends fewer tokens per document — the main cost lever for an extraction run.\n"
+            "  'high' is the model default (unchanged behaviour); try 'medium' or 'low' to cut cost\n"
+            "  and verify extraction quality holds. Ignored when the extractor is Haiku (which has\n"
+            "  no effort control).\n"
+            "  Valid values: low, medium, high. Default: high.\n"
+            "  Override for a single run with: watchdog ingest --extractor-effort E"
+        ),
+        "type": "enum",
+        "default": "high",
+        "choices": ["low", "medium", "high"],
+    },
+    "finalizer_effort": {
+        "short": "Reasoning effort for post-ingest synthesis + timeline + briefing (default: high)",
+        "help": (
+            "How hard the finalizer model thinks during post-ingest. Reasoning helps the prose\n"
+            "  steps, so keep this higher than the extractor unless cost-trimming; lower it to spend\n"
+            "  fewer tokens. Ignored when the finalizer is Haiku (which has no effort control).\n"
+            "  Valid values: low, medium, high. Default: high.\n"
+            "  Override for a single run with: watchdog ingest --finalizer-effort E"
+        ),
+        "type": "enum",
+        "default": "high",
+        "choices": ["low", "medium", "high"],
+    },
     # ── Deduplication ─────────────────────────────────────────────────────────
     "dup_threshold": {
         "short": "Near-duplicate Jaccard similarity threshold — score at which documents are flagged (default: 0.85)",
@@ -262,8 +290,9 @@ _CONFIGURE_SECTIONS = [
      ["chew_workers", "chunk_size", "chunk_workers", "chunk_timeout", "table_structure", "embed_images"]),
     ("Ingest", "Extraction run — parallelism, classification, skill pinning.",
      ["extract_concurrency", "classify_pages", "default_skill"]),
-    ("Models", "Which Claude model runs each step.",
-     ["classifier_model", "extractor_model", "finalizer_model"]),
+    ("Models", "Which Claude model runs each step, and how hard it thinks.",
+     ["classifier_model", "extractor_model", "finalizer_model",
+      "extractor_effort", "finalizer_effort"]),
     ("Deduplication", "Near-duplicate detection.",
      ["dup_threshold", "shingle_size"]),
 ]
