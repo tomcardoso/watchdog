@@ -190,9 +190,27 @@ _CMD_HELP: dict[str, dict] = {
         "desc": "Semantic search across ingested documents",
         "args": [
             ("project", "Investigation name or slug (omit when inside the project folder)", True),
-            ("query",   "Search query"),
+            ("query",   "Search query (supports +/- phrases — see Notes)"),
         ],
-        "opts": [("--top N", "Number of results to return (default: 5)")],
+        "opts": [
+            ("--top N", "Results to return per section (default: 5)"),
+            ("--threshold S", "Hide results scoring below S (0.0–1.0); ~0.5 keeps strong matches"),
+        ],
+        "notes": [
+            "Searches by meaning, not keywords: \"conflict of interest\" surfaces passages about",
+            "recusals or related-party dealings even when that phrase never appears. Returns the",
+            "matching source passage with its page — not a generated answer.",
+            "",
+            "Steer with +/-: lead a phrase with - to push away from it, + to pull toward another",
+            "idea. The whole phrase up to the next +/- is one term (no quotes needed); a hyphenated",
+            "word like no-bid stays intact.",
+            "    watchdog search \"shell company -real estate\"",
+            "    watchdog search \"consulting fee +offshore -salary\"",
+            "",
+            "Scores run 0–1 and are relative: a strong conceptual match sits around 0.5–0.65,",
+            "below ~0.4 is usually noise. There's no universal cutoff — tune --threshold to your",
+            "corpus. (A +/- query shifts the scale lower, so judge those by ranking, not score.)",
+        ],
     },
     "rebuild-timeline": {
         "desc": "Rebuild timeline.md from canonical .watchdog/timeline/ files",
@@ -407,6 +425,12 @@ def _print_cmd_help(cmd: str) -> None:
     for flag, desc in opts:
         print(f"    {_CYAN}{flag:<18}{_RESET} {desc}")
     print(f"    {_CYAN}{'--help':<18}{_RESET} Show this message and exit")
+    notes = info.get("notes", [])
+    if notes:
+        print()
+        print(f"  {_BOLD}Notes{_RESET}")
+        for line in notes:
+            print(f"    {_DIM}{line}{_RESET}")
     print()
 
 

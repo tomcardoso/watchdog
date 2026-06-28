@@ -248,6 +248,25 @@ _CONFIGURE_KEYS = {
         "default": 3,
         "min": 1,
     },
+    # ── Search ────────────────────────────────────────────────────────────────
+    "embed_model": {
+        "short": "Local embedding model for semantic search (default: BAAI/bge-small-en-v1.5)",
+        "help": (
+            "The fastembed model used to index source passages and notes for `watchdog search`.\n"
+            "  Runs entirely on your machine — no API, no cost, nothing leaves the computer.\n"
+            "  bge-small-en-v1.5 is small (67 MB), fast, and a strong retriever; raise it only if\n"
+            "  you want more recall on a large vault. Stronger fastembed options, biggest gain first:\n"
+            "    mxbai-embed-large-v1   (1024-dim, 640 MB — best quality-per-MB)\n"
+            "    BAAI/bge-base-en-v1.5  (768-dim, 210 MB — same family, easy step up)\n"
+            "    snowflake/snowflake-arctic-embed-s  (384-dim, 130 MB — same size class)\n"
+            "  Must be a model fastembed can load (see `TextEmbedding.list_supported_models()`).\n"
+            "  Changing this requires re-chewing documents — vectors from two models aren't\n"
+            "  comparable, so the old index can't be mixed with the new one.\n"
+            "  Default: BAAI/bge-small-en-v1.5."
+        ),
+        "type": "str",
+        "default": "BAAI/bge-small-en-v1.5",
+    },
 }
 
 # Display grouping for the `watchdog configure` listing (presentation only — set/get is
@@ -266,6 +285,8 @@ _CONFIGURE_SECTIONS = [
      ["classifier_model", "extractor_model", "finalizer_model"]),
     ("Deduplication", "Near-duplicate detection.",
      ["dup_threshold", "shingle_size"]),
+    ("Search", "Local semantic search over the source corpus.",
+     ["embed_model"]),
 ]
 
 _OCR_ENGINE_PACKAGES = {

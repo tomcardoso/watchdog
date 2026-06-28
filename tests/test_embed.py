@@ -1,4 +1,4 @@
-"""Tests for the embedding index (embed.py). Fastembed is monkeypatched out."""
+"""Tests for the search index (embed.py). Fastembed is monkeypatched out."""
 
 import hashlib
 import numpy as np
@@ -40,13 +40,13 @@ def _pages(*texts):
 # --- index_stats ---
 
 def test_stats_empty(vault):
-    assert embed_mod.index_stats(vault) == {"pages": 0, "notes": 0, "total": 0}
+    assert embed_mod.index_stats(vault) == {"passages": 0, "notes": 0, "total": 0}
 
 
 def test_stats_after_add(vault):
     embed_mod.add_document(vault, "doc.pdf", _pages("a", "b", "c"))
     s = embed_mod.index_stats(vault)
-    assert s["pages"] == 3
+    assert s["passages"] == 3   # three short pages → one passage each
     assert s["notes"] == 0
     assert s["total"] == 3
 
@@ -55,16 +55,16 @@ def test_stats_notes_counted_separately(vault):
     embed_mod.add_document(vault, "doc.pdf", _pages("page text"))
     embed_mod.add_note(vault, "entities/alice.md", "Alice is a person")
     s = embed_mod.index_stats(vault)
-    assert s["pages"] == 1
+    assert s["passages"] == 1
     assert s["notes"] == 1
     assert s["total"] == 2
 
 
 # --- add_document ---
 
-def test_add_returns_page_count(vault):
+def test_add_returns_passage_count(vault):
     n = embed_mod.add_document(vault, "doc.pdf", _pages("hello", "world"))
-    assert n == 2
+    assert n == 2  # two short pages → two passages
 
 
 def test_add_creates_index_files(vault):
@@ -75,28 +75,83 @@ def test_add_creates_index_files(vault):
 def test_add_multiple_documents(vault):
     embed_mod.add_document(vault, "a.pdf", _pages("first"))
     embed_mod.add_document(vault, "b.pdf", _pages("second"))
-    assert embed_mod.index_stats(vault)["pages"] == 2
+    assert embed_mod.index_stats(vault)["passages"] == 2
 
 
 def test_reingest_replaces_not_duplicates(vault):
     embed_mod.add_document(vault, "doc.pdf", _pages("v1 content"))
     embed_mod.add_document(vault, "doc.pdf", _pages("v2 content", "v2 page 2"))
-    assert embed_mod.index_stats(vault)["pages"] == 2  # not 3
+    assert embed_mod.index_stats(vault)["passages"] == 2  # not 3
 
 
-def test_preview_truncated_to_300(vault):
-    long = "x" * 500
-    embed_mod.add_document(vault, "doc.pdf", _pages(long))
-    _, meta = embed_mod._load(vault)
-    assert len(meta[0]["preview"]) == 300
+def test_blank_pages_index_nothing(vault):
+    assert embed_mod.add_document(vault, "doc.pdf", _pages("", "   ")) == 0
+    assert embed_mod.index_stats(vault)["passages"] == 0
 
 
 def test_meta_fields(vault):
     embed_mod.add_document(vault, "report.pdf", _pages("some text"))
     _, meta = embed_mod._load(vault)
+    assert meta[0]["type"] == "passage"
     assert meta[0]["filename"] == "report.pdf"
     assert meta[0]["page"] == 1
-    assert "preview" in meta[0]
+    assert meta[0]["text"] == "some text"
+
+
+# --- windowing ---
+
+def test_short_page_is_single_window():
+    assert embed_mod._windows("just a few words") == ["just a few words"]
+
+
+def test_empty_text_yields_no_windows():
+    assert embed_mod._windows("") == []
+    assert embed_mod._windows("   ") == []
+
+
+def test_long_page_splits_into_overlapping_windows():
+    text = " ".join(f"w{i}" for i in range(300))  # 300 words
+    windows = embed_mod._windows(text)
+    assert len(windows) > 1
+    # each window is at most _WINDOW_SIZE words
+    assert all(len(w.split()) <= embed_mod._WINDOW_SIZE for w in windows)
+    # consecutive windows overlap by _WINDOW_OVERLAP words
+    first_tail = windows[0].split()[-embed_mod._WINDOW_OVERLAP:]
+    second_head = windows[1].split()[:embed_mod._WINDOW_OVERLAP]
+    assert first_tail == second_head
+
+
+def test_long_page_produces_multiple_passages(vault):
+    text = " ".join(f"w{i}" for i in range(300))
+    n = embed_mod.add_document(vault, "long.pdf", [{"page": 4, "markdown": text}])
+    assert n > 1
+    _, meta = embed_mod._load(vault)
+    # every passage from this page keeps the page citation
+    assert all(m["page"] == 4 for m in meta)
+
+
+# --- query parsing ---
+
+def test_parse_plain_query():
+    assert embed_mod._parse_query("kickback scheme") == (["kickback scheme"], [])
+
+
+def test_parse_negative_phrase():
+    pos, neg = embed_mod._parse_query("kickback scheme -legitimate consulting")
+    assert pos == ["kickback scheme"]
+    assert neg == ["legitimate consulting"]
+
+
+def test_parse_positive_and_negative():
+    pos, neg = embed_mod._parse_query("payment +offshore -salary")
+    assert pos == ["payment", "offshore"]
+    assert neg == ["salary"]
+
+
+def test_parse_keeps_hyphenated_word_intact():
+    pos, neg = embed_mod._parse_query("anti-bribery controls")
+    assert pos == ["anti-bribery controls"]
+    assert neg == []
 
 
 # --- search ---
@@ -109,7 +164,7 @@ def test_search_returns_results(vault):
     embed_mod.add_document(vault, "doc.pdf", _pages("alpha", "beta", "gamma"))
     results = embed_mod.search(vault, "alpha", top_n=3)
     assert len(results) == 3
-    assert all("filename" in r and "page" in r and "score" in r and "preview" in r for r in results)
+    assert all("filename" in r and "page" in r and "score" in r and "text" in r for r in results)
 
 
 def test_search_respects_top_n(vault):
@@ -123,6 +178,43 @@ def test_search_scores_descending(vault):
     results = embed_mod.search(vault, "query", top_n=3)
     scores = [r["score"] for r in results]
     assert scores == sorted(scores, reverse=True)
+
+
+def test_search_min_score_filters(vault):
+    embed_mod.add_document(vault, "doc.pdf", _pages("alpha", "beta", "gamma"))
+    # A very high threshold drops everything but a (near-)exact match.
+    results = embed_mod.search(vault, "query", min_score=0.99)
+    assert all(r["score"] >= 0.99 for r in results)
+
+
+def test_search_scope_corpus_excludes_notes(vault):
+    embed_mod.add_document(vault, "doc.pdf", _pages("corporation filing"))
+    embed_mod.add_note(vault, "entities/person/alice", "Alice is a director")
+    results = embed_mod.search(vault, "director", scope="corpus")
+    assert all(r.get("type") == "passage" for r in results)
+
+
+def test_search_scope_notes_excludes_passages(vault):
+    embed_mod.add_document(vault, "doc.pdf", _pages("corporation filing"))
+    embed_mod.add_note(vault, "entities/person/alice", "Alice is a director")
+    results = embed_mod.search(vault, "director", scope="notes")
+    assert all(r.get("type") == "note" for r in results)
+
+
+# --- query embedding / prefix ---
+
+def test_query_uses_bge_prefix(vault, monkeypatch):
+    captured = {}
+
+    class _Spy(_FakeEmbedder):
+        def embed(self, texts):
+            captured.setdefault("texts", []).extend(texts)
+            return super().embed(texts)
+
+    embed_mod.add_document(vault, "doc.pdf", _pages("some corpus text"))
+    monkeypatch.setattr(embed_mod, "_embedder", _Spy())
+    embed_mod.search(vault, "shell company")
+    assert any(t == embed_mod._QUERY_PREFIX + "shell company" for t in captured["texts"])
 
 
 # --- add_note ---
@@ -153,21 +245,21 @@ def test_add_note_deduplicates(vault):
     assert "updated" in meta[0]["preview"]
 
 
-def test_page_and_note_coexist(vault):
+def test_passage_and_note_coexist(vault):
     embed_mod.add_document(vault, "doc.pdf", _pages("page text"))
     embed_mod.add_note(vault, "entities/person/alice", "Alice is a director")
     s = embed_mod.index_stats(vault)
-    assert s["pages"] == 1
+    assert s["passages"] == 1
     assert s["notes"] == 1
     assert s["total"] == 2
 
 
-def test_note_reingest_does_not_remove_pages(vault):
+def test_note_reingest_does_not_remove_passages(vault):
     embed_mod.add_document(vault, "doc.pdf", _pages("a", "b"))
     embed_mod.add_note(vault, "entities/person/alice", "Alice")
     embed_mod.add_note(vault, "entities/person/alice", "Alice updated")
     s = embed_mod.index_stats(vault)
-    assert s["pages"] == 2
+    assert s["passages"] == 2
     assert s["notes"] == 1
     assert s["total"] == 3
 
@@ -189,20 +281,20 @@ def test_search_returns_note_type(vault):
     assert results[0]["note_path"] == "entities/person/alice"
 
 
-def test_search_returns_page_type(vault):
+def test_search_returns_passage_type(vault):
     embed_mod.add_document(vault, "doc.pdf", _pages("corporation filing"))
-    results = embed_mod.search(vault, "corporation", top_n=1)
-    assert results[0].get("type", "page") == "page"
+    results = embed_mod.search(vault, "corporation", top_n=1, scope="corpus")
+    assert results[0].get("type") == "passage"
 
 
 # --- exact match test (kept at end) ---
 
-def test_search_exact_match_scores_high(vault):
-    # Two texts: one identical to query, one different
-    # hash("needle") and hash("haystack") land on different dims
-    # so the vector for "needle" will have score 1.0 with query "needle"
+def test_search_exact_match_scores_high(vault, monkeypatch):
+    # With the bge query prefix, an exact-text match no longer hashes to the same
+    # fake vector — so disable the prefix to test the pure exact-match behaviour.
+    monkeypatch.setattr(embed_mod, "_QUERY_PREFIX", "")
     embed_mod.add_document(vault, "doc.pdf", _pages("needle", "haystack"))
     results = embed_mod.search(vault, "needle", top_n=2)
-    # The page containing "needle" should score 1.0 (same unit vector as query)
+    # The passage containing "needle" should score 1.0 (same unit vector as query)
     assert results[0]["score"] == pytest.approx(1.0)
     assert results[0]["page"] == 1

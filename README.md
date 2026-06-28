@@ -229,7 +229,7 @@ Every ingest finalizes automatically at the end (entity synthesis + timeline + b
 
 | Command | What it does |
 |---------|-------------|
-| `watchdog search <name> "<query>"` | Semantic search across ingested documents |
+| `watchdog search <name> "<query>"` | Semantic search across ingested documents — matches passages by meaning, not keywords, and returns the source passage with its page (not a generated answer). Supports `+`/`-` phrases to steer toward/away from a concept (`"shell company -real estate"`) and `--threshold S` to hide weak matches. Source passages and entity/document notes are shown as separate result sections. |
 | `watchdog doctor` | Check all registered investigations for missing or broken vaults; suggests `watchdog move` or `watchdog delete` for each issue |
 | `watchdog configure` | View or change configuration |
 | `watchdog auth` | Show the auth mode and API-key status (masked) |
@@ -459,6 +459,7 @@ watchdog configure <key> <value>
 | `embed_images` | `false` | Embed figures as base64 in the extracted markdown so Claude can read charts and image-based tables. Significantly increases token usage. |
 | `dup_threshold` | `0.85` | Jaccard similarity score at which two documents are flagged as near-duplicates. Range: 0.0–1.0. |
 | `shingle_size` | `3` | Word n-gram size for near-duplicate fingerprinting. Changing this invalidates existing MinHash signatures — re-ingest to rebuild. |
+| `embed_model` | `BAAI/bge-small-en-v1.5` | Local fastembed model used to index passages and notes for `watchdog search`. Must be a model fastembed can load; stronger options include `BAAI/bge-base-en-v1.5` and `mxbai-embed-large-v1`. Changing it requires re-chewing documents — vectors from two models aren't comparable. |
 | `classifier_model` | `haiku` | Claude model that reads a document's first pages and picks its record skill. Haiku is plenty; raise it only if classification goes wrong on ambiguous documents. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--classifier-model`. |
 | `extractor_model` | `sonnet` | Claude model for document extraction. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--extractor-model`. |
 | `finalizer_model` | `haiku` | Claude model for post-ingest — entity synthesis (Summary + Analysis for entities in ≥2 documents) + timeline reconciliation + briefing. This step composes prose from compact digests rather than reading raw documents, so Haiku is the default; raise it if synthesized prose feels thin. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--finalizer-model`. |
@@ -557,7 +558,7 @@ Please open an issue before starting significant work so we can discuss approach
 
 Watchdog's vault structure and session-context approach were partly inspired by [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian) by Daniel Agrici — a PKM framework built on Claude Code that demonstrated how to make an AI assistant genuinely vault-aware across sessions. The `hot.md` session state file and the general principle of teaching Claude to orient itself from structured vault context both draw on ideas in that project.
 
-The semantic search index uses [fastembed](https://github.com/qdrant/fastembed) (by Qdrant) with the `BAAI/bge-small-en-v1.5` model — a lightweight ONNX-based embedding library that avoids the PyTorch dependency footprint while matching the quality of heavier alternatives. The idea of embedding raw document pages for retroactive search across a large corpus, separate from the extracted knowledge graph, was partly informed by [obsidian-smart-connections](https://github.com/brianpetro/obsidian-smart-connections) by Brian Petro. The pattern of using a structured vault index for entity lookup — rather than embedding everything — was informed by [obsidian-claude-code](https://github.com/Roasbeef/obsidian-claude-code).
+The semantic search index uses [fastembed](https://github.com/qdrant/fastembed) (by Qdrant) with the `BAAI/bge-small-en-v1.5` model — a lightweight ONNX-based embedding library that avoids the PyTorch dependency footprint while matching the quality of heavier alternatives. Rather than embedding a whole page (which averages many topics into one vector and dilutes a short query), each page is split into overlapping word *windows*, so a result points at a specific passage with its page — the citable span, not a paraphrase. The windowing approach, `+`/`-` associative queries, and the "show the source passage, don't generate an answer" principle are borrowed from [Semantra](https://github.com/freedmand/semantra) by Dylan Freedman. The idea of embedding the raw corpus for retroactive search, separate from the extracted knowledge graph, was partly informed by [obsidian-smart-connections](https://github.com/brianpetro/obsidian-smart-connections) by Brian Petro. The pattern of using a structured vault index for entity lookup — rather than embedding everything — was informed by [obsidian-claude-code](https://github.com/Roasbeef/obsidian-claude-code).
 
 The ASCII dog displayed by `watchdog new` was created by Felix Lee. The ASCII dog displayed by `watchdog about` was created by Sarah Kearsley.
 

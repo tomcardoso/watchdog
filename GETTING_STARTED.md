@@ -263,14 +263,21 @@ From inside a Claude Code session with the vault open:
 
 Claude answers using only the documents and entities in your vault, and cites the source for every claim.
 
-Semantic search is available directly from the terminal:
+Semantic search is available directly from the terminal. It matches by *meaning*, not keywords — searching `"conflict of interest"` surfaces passages about recusals or related-party dealings even when that phrase never appears — and returns the matching **source passage with its page**, not a generated answer:
 
 ```bash
 watchdog search shell-company-investigation "offshore account transfers"
 watchdog search shell-company-investigation "shell company director" --top 10
 ```
 
-This returns raw document pages and vault notes ranked by semantic similarity to your query.
+Steer results with `+`/`-` phrases — lead a phrase with `-` to push away from it, `+` to pull toward another idea (the whole phrase up to the next sign is one term, no quotes needed):
+
+```bash
+watchdog search shell-company-investigation "shell company -real estate"
+watchdog search shell-company-investigation "consulting fee +offshore -salary"
+```
+
+Results come in two sections — **source passages** (what a document says) and **notes** (what the investigation concluded) — each ranked by similarity. Scores run 0–1; a strong conceptual match sits around 0.5–0.65. Add `--threshold 0.5` to hide weak matches. Run `watchdog search --help` for the full query syntax.
 
 ---
 

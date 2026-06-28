@@ -207,9 +207,11 @@ def main() -> None:
 
     p_search = sub.add_parser("search", help="Semantic search across ingested documents")
     p_search.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
-    p_search.add_argument("query", nargs="?", help="Search query")
+    p_search.add_argument("query", nargs="?", help="Search query (supports +/- phrases)")
     p_search.add_argument("--top", dest="top_n", type=int, default=5, metavar="N",
-                          help="Number of results to return (default: 5)")
+                          help="Number of results to return per section (default: 5)")
+    p_search.add_argument("--threshold", type=float, default=None, metavar="S",
+                          help="Hide results scoring below S (0.0–1.0)")
     p_search.set_defaults(func=cmd_search)
 
     p_unlock = sub.add_parser("unlock", help="Release a stale ingest lock")
