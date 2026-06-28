@@ -963,17 +963,32 @@ def cmd_search(args) -> None:
         print(f"\n  {_DIM}No embeddings found. Index is built automatically during ingest.{_RESET}\n")
         return
 
-    results = search(vault, args.query, top_n=args.top_n)
+    # Without an explicit --threshold, don't filter (cosine ≥ -1 always holds), so a plain
+    # search always returns its top-N; --threshold opts into hiding weak matches.
+    min_score = args.threshold if args.threshold is not None else -1.0
+    passages = search(vault, args.query, top_n=args.top_n, min_score=min_score, scope="corpus")
+    notes    = search(vault, args.query, top_n=args.top_n, min_score=min_score, scope="notes")
+
     print()
-    if not results:
-        print(f"  {_DIM}No results.{_RESET}\n")
+    if not passages and not notes:
+        hint = f" above {args.threshold:.2f}" if args.threshold is not None else ""
+        print(f"  {_DIM}No results{hint}.{_RESET}\n")
         return
-    for r in results:
-        score = f"{r['score']:.2f}"
-        if r.get("type") == "note":
-            print(f"  {_BOLD}{r['note_path']}{_RESET}  {_DIM}score {score}{_RESET}")
-        else:
+
+    if passages:
+        print(f"  {_BOLD}Source passages{_RESET}\n")
+        for r in passages:
+            score   = f"{r['score']:.2f}"
+            snippet = r.get("text", "").replace("\n", " ").strip()
             print(f"  {_BOLD}{r.get('filename', '?')}{_RESET}  {_DIM}p.{r.get('page')}  score {score}{_RESET}")
-        preview = r["preview"].replace("\n", " ").strip()
-        print(f"  {_DIM}{preview[:200]}{_RESET}")
-        print()
+            print(f"  {_DIM}{snippet[:240]}{_RESET}")
+            print()
+
+    if notes:
+        print(f"  {_BOLD}Notes{_RESET}\n")
+        for r in notes:
+            score   = f"{r['score']:.2f}"
+            preview = r.get("preview", "").replace("\n", " ").strip()
+            print(f"  {_BOLD}{r['note_path']}{_RESET}  {_DIM}score {score}{_RESET}")
+            print(f"  {_DIM}{preview[:200]}{_RESET}")
+            print()
