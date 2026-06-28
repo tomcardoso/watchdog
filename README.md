@@ -209,10 +209,12 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog ingest --extractor-model M` | Override the extraction model for this run (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
 | `watchdog ingest --finalizer-model M` | Override the post-ingest model for this run — synthesis + timeline + briefing (`sonnet`/`opus`/`haiku`; default from `watchdog configure`) |
 | `watchdog ingest --classifier-model M` | Override the document-classification model for this run (`sonnet`/`opus`/`haiku`; default from `watchdog configure`: `haiku`) |
+| `watchdog ingest --extractor-effort E` | Override the extraction reasoning effort for this run (`low`/`medium`/`high`; default from `watchdog configure`: `high`). Lower spends fewer tokens |
+| `watchdog ingest --finalizer-effort E` | Override the post-ingest reasoning effort for this run (`low`/`medium`/`high`; default from `watchdog configure`: `high`) |
 | `watchdog ingest --concurrency N` | Documents extracted in parallel for this run (default from `watchdog configure`: 5) |
 | `watchdog ingest --classify-pages N` | Pages shown to the document classifier for this run (default from `watchdog configure`: 5) |
 | `watchdog ingest --skill [NAME\|PATH]` | Pin a record skill (a name or a path to a skill file) for every document, skipping classification. `--skill` with no value picks from the list |
-| `watchdog finalize` | Complete post-ingest (entity synthesis + timeline + briefing) for an already-extracted batch — run it if a rate limit or interrupt stopped post-processing before it finished. `--finalizer-model M` overrides the model |
+| `watchdog finalize` | Complete post-ingest (entity synthesis + timeline + briefing) for an already-extracted batch — run it if a rate limit or interrupt stopped post-processing before it finished. `--finalizer-model M` / `--finalizer-effort E` override the model and effort |
 | `watchdog requeue` | Move documents quarantined in `queue/_failed/` back into the active queue, then re-run `watchdog ingest` to retry them |
 | `watchdog` | With no arguments inside a vault: walk the pipeline — offer to seed context, chew `_INCOMING/`, then ingest — skipping any stage with no pending work |
 | `watchdog context [name]` | Open Claude Code with the context seeding skill; omit name when inside the vault |
@@ -234,7 +236,7 @@ Every ingest finalizes automatically at the end (entity synthesis + timeline + b
 | `watchdog configure` | View or change configuration |
 | `watchdog auth` | Show the auth mode and API-key status (masked) |
 | `watchdog auth use <mode>` | Switch auth mode: `subscription` (Claude Code login, not metered) or `api-key` (metered). Normally chosen during `watchdog setup` |
-| `watchdog auth set [provider]` | Store an API key (prompted, hidden); `provider` defaults to `anthropic` |
+| `watchdog auth set [provider]` | Store an API key (prompted, hidden); `provider` is `anthropic` (default), `openai`, or `deepseek` |
 | `watchdog auth get [provider]` | Show one provider's key status and source (env var or stored) |
 | `watchdog auth remove [provider]` | Delete a stored API key |
 | `watchdog unlock <name>` | Release a stale chew or ingest lock; `--force` to remove even if recent |
@@ -460,9 +462,11 @@ watchdog configure <key> <value>
 | `dup_threshold` | `0.85` | Jaccard similarity score at which two documents are flagged as near-duplicates. Range: 0.0–1.0. |
 | `shingle_size` | `3` | Word n-gram size for near-duplicate fingerprinting. Changing this invalidates existing MinHash signatures — re-ingest to rebuild. |
 | `embed_model` | `BAAI/bge-small-en-v1.5` | Local fastembed model used to index passages and notes for `watchdog search`. Must be a model fastembed can load; stronger options include `BAAI/bge-base-en-v1.5` and `mxbai-embed-large-v1`. Changing it requires re-chewing documents — vectors from two models aren't comparable. |
-| `classifier_model` | `haiku` | Claude model that reads a document's first pages and picks its record skill. Haiku is plenty; raise it only if classification goes wrong on ambiguous documents. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--classifier-model`. |
-| `extractor_model` | `sonnet` | Claude model for document extraction. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--extractor-model`. |
-| `finalizer_model` | `haiku` | Claude model for post-ingest — entity synthesis (Summary + Analysis for entities in ≥2 documents) + timeline reconciliation + briefing. This step composes prose from compact digests rather than reading raw documents, so Haiku is the default; raise it if synthesized prose feels thin. Options: `haiku`, `sonnet`, `opus`. Per-run override: `--finalizer-model`. |
+| `classifier_model` | `haiku` | Model that reads a document's first pages and picks its record skill. Haiku is plenty; raise it only if classification goes wrong on ambiguous documents. Value: a Claude tier (`haiku`/`sonnet`/`opus`) or a `backend:model` form (see [Model backends](#model-backends)). Per-run override: `--classifier-model`. |
+| `extractor_model` | `sonnet` | Model for document extraction. Value: a Claude tier (`haiku`/`sonnet`/`opus`) or a `backend:model` form (see [Model backends](#model-backends)). Per-run override: `--extractor-model`. |
+| `finalizer_model` | `haiku` | Model for post-ingest — entity synthesis (Summary + Analysis for entities in ≥2 documents) + timeline reconciliation + briefing. This step composes prose from compact digests rather than reading raw documents, so Haiku is the default; raise it if synthesized prose feels thin. Value: a Claude tier (`haiku`/`sonnet`/`opus`) or a `backend:model` form (see [Model backends](#model-backends)). Per-run override: `--finalizer-model`. |
+| `extractor_effort` | `high` | How hard the extractor model thinks. Thinking tokens bill as output, so a lower effort spends fewer tokens per document — the main cost lever for an extraction run. `high` is the model default (unchanged behaviour); try `medium` or `low` to cut cost and verify quality holds. Ignored when the extractor is Haiku (no effort control). Options: `low`, `medium`, `high`. Per-run override: `--extractor-effort`. |
+| `finalizer_effort` | `high` | How hard the finalizer model thinks during post-ingest. Reasoning helps the prose steps, so keep it higher than the extractor unless cost-trimming. Ignored when the finalizer is Haiku. Options: `low`, `medium`, `high`. Per-run override: `--finalizer-effort`. |
 | `extract_concurrency` | `5` | Documents extracted in parallel during `watchdog ingest`. Lower it if you hit model rate limits; raise it for throughput. Per-run override: `--concurrency`. |
 | `classify_pages` | `5` | Leading pages of each document shown to the classifier (`min(page_count, this)`). More pages classify ambiguous documents better at a small extra cost on the cheap classifier model. Per-run override: `--classify-pages`. |
 | `default_skill` | _(unset)_ | Pin a record skill (a name from the global catalog, or a path to a skill file) for every ingested document, skipping classification — for vaults that are always one document type. Per-run override: `--skill`. |
@@ -485,9 +489,33 @@ watchdog configure projects_dir /Volumes/SecureDrive/Investigations
 # Use Haiku for extraction by default (faster and cheaper)
 watchdog configure extractor_model haiku
 
+# Spend fewer thinking tokens on extraction (the main per-run cost lever)
+watchdog configure extractor_effort medium
+
 # Lower parallelism if you hit model rate limits
 watchdog configure extract_concurrency 2
 ```
+
+### Model backends
+
+Watchdog is designed around Claude and uses it by default, but each stage — classification, extraction, post-ingest — can run on a different model provider. A stage's model knob takes either a **Claude tier** (`haiku`/`sonnet`/`opus`, routed by your `watchdog auth` mode) or a **`backend:model`** value naming the provider and its model:
+
+| Value | Runs on |
+|---|---|
+| `sonnet` | Claude, via your auth mode (subscription or API key) |
+| `claude-api:opus` / `claude-agent-sdk:sonnet` | Claude, forcing a specific backend |
+| `openai:gpt-5-mini` | OpenAI (Chat Completions) |
+| `deepseek:deepseek-chat` | DeepSeek (Chat Completions) |
+
+Store the provider's key first, then point a stage at it (persistently or per run):
+
+```bash
+watchdog auth set deepseek                              # store the key (or set DEEPSEEK_API_KEY)
+watchdog configure extractor_model deepseek:deepseek-chat
+watchdog ingest --extractor-model openai:gpt-5-mini     # one-off override
+```
+
+Each stage is independent — e.g. keep extraction on Claude Sonnet while routing the cheaper classification or post-ingest steps to another provider. Non-Claude backends are unproven on dense legal/financial extraction, so the defaults stay on Claude and nothing routes to another provider unless you ask it to. The reasoning-effort knobs apply where the provider supports them (Claude effort, OpenAI `reasoning_effort` on reasoning models) and are ignored where they don't.
 
 ---
 

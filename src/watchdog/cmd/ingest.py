@@ -18,6 +18,43 @@ from watchdog.cmd.base import (
 # Sentinel for `--skill` with no value: trigger the interactive record-skill picker.
 _PICK_SKILL = "\x00pick"
 
+# Reasoning-effort levels for the per-stage effort knobs (D36). `high` is the model
+# default, so an unset knob behaves as before (the orchestrator sends no effort param).
+_EFFORT_LEVELS = ("low", "medium", "high")
+
+
+def _effort(flag_val, config_val):
+    """Resolve a per-stage effort knob (flag > config > unset). None when unset; validated."""
+    e = flag_val or config_val
+    if e is None:
+        return None
+    if e not in _EFFORT_LEVELS:
+        sys.exit(f"Error: unknown effort '{e}' — choose {', '.join(_EFFORT_LEVELS)}")
+    return e
+
+
+def _resolve_stage(flag_val, config_val, default="sonnet") -> tuple[str | None, str]:
+    """Resolve a stage's `[backend:]model` knob into (backend, model) (#125).
+
+    Plain `sonnet`/`opus`/`haiku` → (None, tier): Claude, routed by auth mode (unchanged). A
+    `backend:model` form selects a backend explicitly — `claude-api:opus` (a Claude tier), or
+    `openai:gpt-5-mini` / `deepseek:deepseek-chat` (a raw provider model id). Carrying both in
+    one value means a stage can never be half-configured."""
+    from watchdog.model_client import BACKENDS, CLAUDE_BACKENDS
+    raw = flag_val or config_val or default
+    backend, sep, model = raw.rpartition(":")
+    backend = backend or None
+    if backend is not None and backend not in BACKENDS:
+        sys.exit(f"Error: unknown backend '{backend}' — choose {', '.join(BACKENDS)}")
+    if backend is None or backend in CLAUDE_BACKENDS:
+        if model not in _MODEL_IDS:
+            sys.exit(f"Error: unknown model '{model}' — choose sonnet, opus, or haiku, "
+                     f"or a backend:model form like deepseek:deepseek-chat")
+    elif not model:
+        sample = "deepseek-chat" if backend == "deepseek" else "gpt-5-mini"
+        sys.exit(f"Error: backend '{backend}' needs a model id, e.g. {backend}:{sample}")
+    return backend, model
+
 
 def _pick_skill_interactive() -> str | None:
     """Numbered picker for `watchdog ingest --skill` (no value), drawn from the global
@@ -160,15 +197,14 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
         except Exception:
             pass
 
-    def _model(flag_val, config_key, default="sonnet") -> str:
-        m = flag_val or config.get(config_key) or default
-        if m not in _MODEL_IDS:
-            sys.exit(f"Error: unknown model '{m}' — choose sonnet, opus, or haiku")
-        return m
-
-    extract_model  = _model(getattr(args, "extractor_model", None), "extractor_model")
-    post_model     = _model(getattr(args, "finalizer_model", None), "finalizer_model")
-    classify_model = _model(getattr(args, "classifier_model", None), "classifier_model", default="haiku")
+    extract_backend, extract_model = _resolve_stage(
+        getattr(args, "extractor_model", None), config.get("extractor_model"))
+    post_backend, post_model = _resolve_stage(
+        getattr(args, "finalizer_model", None), config.get("finalizer_model"))
+    classify_backend, classify_model = _resolve_stage(
+        getattr(args, "classifier_model", None), config.get("classifier_model"), default="haiku")
+    extract_effort = _effort(getattr(args, "extractor_effort", None), config.get("extractor_effort"))
+    post_effort    = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
     try:
         concurrency = int(getattr(args, "concurrency", None) or config.get("extract_concurrency") or 5)
     except (TypeError, ValueError):
@@ -211,7 +247,7 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
             print()
             return
         if choice in ("f", "finalize"):
-            out = _run_finalize(vault, post_model)
+            out = _run_finalize(vault, post_model, post_effort, post_backend)
             if not (out.get("error") or out.get("briefing_error")):
                 print(f"  {_DIM}Now run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} for the queued documents.{_RESET}\n")
             return
@@ -268,7 +304,10 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
     try:
         summary = asyncio.run(orchestrate.run(
             vault, concurrency=concurrency, extract_model=extract_model, post_model=post_model,
-            classify_model=classify_model, classify_pages=classify_pages, pinned_skill=pinned_skill))
+            classify_model=classify_model, classify_pages=classify_pages, pinned_skill=pinned_skill,
+            extract_effort=extract_effort, post_effort=post_effort,
+            extract_backend=extract_backend, post_backend=post_backend,
+            classify_backend=classify_backend))
     except KeyboardInterrupt:
         # Fallback only — orchestrate.run normally traps SIGINT itself and returns a
         # cancelled summary. This catches a Ctrl+C in the brief window before/after that.
@@ -351,14 +390,15 @@ def cmd_finalize(args) -> None:
             config = _json.loads(CONFIG_FILE.read_text())
         except Exception:
             pass
-    post_model = getattr(args, "finalizer_model", None) or config.get("finalizer_model") or "haiku"
-    if post_model not in _MODEL_IDS:
-        sys.exit(f"Error: unknown model '{post_model}' — choose sonnet, opus, or haiku")
+    post_backend, post_model = _resolve_stage(
+        getattr(args, "finalizer_model", None), config.get("finalizer_model"), default="haiku")
+    post_effort = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
 
-    _run_finalize(vault, post_model)
+    _run_finalize(vault, post_model, post_effort, post_backend)
 
 
-def _run_finalize(vault: Path, post_model: str) -> dict:
+def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
+                  post_backend: str | None = None) -> dict:
     """Acquire the ingest lock, run post-ingest over the pending batch, print the outcome."""
     from watchdog.pipeline import orchestrate
     lock = vault / ".watchdog" / "Registry" / ".ingest-lock"
@@ -371,7 +411,8 @@ def _run_finalize(vault: Path, post_model: str) -> dict:
           f"{_BOLD}{post_model}{_RESET}{_DIM}).{_RESET}")
     try:
         import asyncio
-        out = asyncio.run(orchestrate.finalize(vault, post_model=post_model))
+        out = asyncio.run(orchestrate.finalize(vault, post_model=post_model, post_effort=post_effort,
+                                               post_backend=post_backend))
     finally:
         lock.unlink(missing_ok=True)
 

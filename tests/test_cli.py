@@ -972,6 +972,17 @@ def test_configure_ocr_engine_invalid_exits(wdg_home):
         cli.cmd_configure(args(key="ocr_engine", value="badengine"))
 
 
+def test_configure_set_extractor_effort(wdg_home):
+    cli.cmd_configure(args(key="extractor_effort", value="medium"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["extractor_effort"] == "medium"
+
+
+def test_configure_effort_invalid_exits(wdg_home):
+    with pytest.raises(SystemExit, match="must be one of"):
+        cli.cmd_configure(args(key="finalizer_effort", value="ludicrous"))
+
+
 # ── _ensure_ocr_engine ────────────────────────────────────────────────────────
 
 def test_ensure_ocr_engine_noop_for_auto(monkeypatch):
@@ -1473,7 +1484,52 @@ def test_classifier_model_is_a_configurable_key():
     from watchdog.cmd.setup import _CONFIGURE_KEYS
     entry = _CONFIGURE_KEYS["classifier_model"]
     assert entry["default"] == "haiku"
-    assert set(entry["choices"]) == {"haiku", "sonnet", "opus"}
+    # Now a free-form [backend:]model string (Claude tier or provider model), not an enum.
+    assert entry["type"] == "string"
+
+
+# ── _resolve_stage: [backend:]model parsing (#125) ─────────────────────────────
+
+def test_resolve_stage_claude_tier_has_no_backend():
+    from watchdog.cmd.ingest import _resolve_stage
+    assert _resolve_stage(None, None, default="sonnet") == (None, "sonnet")
+    assert _resolve_stage("opus", None) == (None, "opus")
+    assert _resolve_stage(None, "haiku") == (None, "haiku")        # from config
+
+
+def test_resolve_stage_explicit_claude_backend():
+    from watchdog.cmd.ingest import _resolve_stage
+    assert _resolve_stage("claude-api:opus", None) == ("claude-api", "opus")
+
+
+def test_resolve_stage_non_claude_backend_keeps_raw_model():
+    from watchdog.cmd.ingest import _resolve_stage
+    assert _resolve_stage("deepseek:deepseek-chat", None) == ("deepseek", "deepseek-chat")
+    assert _resolve_stage("openai:gpt-5-mini", None) == ("openai", "gpt-5-mini")
+
+
+def test_resolve_stage_flag_beats_config():
+    from watchdog.cmd.ingest import _resolve_stage
+    assert _resolve_stage("openai:gpt-5-mini", "sonnet") == ("openai", "gpt-5-mini")
+
+
+def test_resolve_stage_unknown_backend_exits():
+    from watchdog.cmd.ingest import _resolve_stage
+    with pytest.raises(SystemExit, match="unknown backend"):
+        _resolve_stage("groq:llama", None)
+
+
+def test_resolve_stage_non_claude_requires_model():
+    from watchdog.cmd.ingest import _resolve_stage
+    with pytest.raises(SystemExit, match="needs a model id"):
+        _resolve_stage("deepseek:", None)
+
+
+def test_resolve_stage_bare_non_tier_is_treated_as_claude_and_rejected():
+    from watchdog.cmd.ingest import _resolve_stage
+    # No backend prefix → interpreted as a Claude tier → invalid (use openai:gpt-5-mini instead).
+    with pytest.raises(SystemExit, match="unknown model"):
+        _resolve_stage("gpt-5-mini", None)
 
 
 # ── configure sections + default_skill ────────────────────────────────────────

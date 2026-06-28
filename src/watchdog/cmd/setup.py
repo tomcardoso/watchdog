@@ -180,44 +180,72 @@ _CONFIGURE_KEYS = {
     },
     # ── Models ───────────────────────────────────────────────────────────────
     "classifier_model": {
-        "short": "Claude model that picks each document's record skill (default: haiku)",
+        "short": "Model that picks each document's record skill (default: haiku)",
         "help": (
             "Model used for the cheap classification step that reads a document's first pages\n"
             "  and picks the matching record skill. Haiku is plenty for this; raise it only if\n"
             "  classification is going wrong on ambiguous documents.\n"
-            "  Valid values: haiku, sonnet, opus. Default: haiku.\n"
+            "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
+            "  another provider (openai:gpt-5-mini, deepseek:deepseek-chat). Default: haiku.\n"
             "  Override for a single run with: watchdog ingest --classifier-model M"
         ),
-        "type": "enum",
+        "type": "string",
         "default": "haiku",
-        "choices": ["haiku", "sonnet", "opus"],
     },
     "extractor_model": {
-        "short": "Claude model for document extraction (default: sonnet)",
+        "short": "Model for document extraction (default: sonnet)",
         "help": (
             "Model used to extract each document during `watchdog ingest`.\n"
             "  Haiku is cheaper and faster for large batches of straightforward documents;\n"
             "  Sonnet handles complex or ambiguous documents better.\n"
-            "  Valid values: haiku, sonnet, opus. Default: sonnet.\n"
+            "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
+            "  another provider (openai:gpt-5-mini, deepseek:deepseek-chat). Default: sonnet.\n"
             "  Override for a single run with: watchdog ingest --extractor-model M"
         ),
-        "type": "enum",
+        "type": "string",
         "default": "sonnet",
-        "choices": ["haiku", "sonnet", "opus"],
     },
     "finalizer_model": {
-        "short": "Claude model for post-ingest synthesis + timeline + briefing (default: haiku)",
+        "short": "Model for post-ingest synthesis + timeline + briefing (default: haiku)",
         "help": (
             "Model used for the post-ingest step: synthesizing prose for multi-mention\n"
             "  entities, reconciling timeline collisions, and writing the briefing.\n"
             "  This step composes prose from compact digests rather than reading raw documents,\n"
             "  so the cheaper Haiku tier is the default; raise it if synthesized prose feels thin.\n"
-            "  Valid values: haiku, sonnet, opus. Default: haiku.\n"
+            "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
+            "  another provider (openai:gpt-5-mini, deepseek:deepseek-chat). Default: haiku.\n"
             "  Override for a single run with: watchdog ingest --finalizer-model M"
         ),
-        "type": "enum",
+        "type": "string",
         "default": "haiku",
-        "choices": ["haiku", "sonnet", "opus"],
+    },
+    "extractor_effort": {
+        "short": "Reasoning effort for document extraction (default: high)",
+        "help": (
+            "How hard the extractor model thinks. Thinking tokens bill as output, so a lower\n"
+            "  effort spends fewer tokens per document — the main cost lever for an extraction run.\n"
+            "  'high' is the model default (unchanged behaviour); try 'medium' or 'low' to cut cost\n"
+            "  and verify extraction quality holds. Ignored when the extractor is Haiku (which has\n"
+            "  no effort control).\n"
+            "  Valid values: low, medium, high. Default: high.\n"
+            "  Override for a single run with: watchdog ingest --extractor-effort E"
+        ),
+        "type": "enum",
+        "default": "high",
+        "choices": ["low", "medium", "high"],
+    },
+    "finalizer_effort": {
+        "short": "Reasoning effort for post-ingest synthesis + timeline + briefing (default: high)",
+        "help": (
+            "How hard the finalizer model thinks during post-ingest. Reasoning helps the prose\n"
+            "  steps, so keep this higher than the extractor unless cost-trimming; lower it to spend\n"
+            "  fewer tokens. Ignored when the finalizer is Haiku (which has no effort control).\n"
+            "  Valid values: low, medium, high. Default: high.\n"
+            "  Override for a single run with: watchdog ingest --finalizer-effort E"
+        ),
+        "type": "enum",
+        "default": "high",
+        "choices": ["low", "medium", "high"],
     },
     # ── Deduplication ─────────────────────────────────────────────────────────
     "dup_threshold": {
@@ -281,8 +309,9 @@ _CONFIGURE_SECTIONS = [
      ["chew_workers", "chunk_size", "chunk_workers", "chunk_timeout", "table_structure", "embed_images"]),
     ("Ingest", "Extraction run — parallelism, classification, skill pinning.",
      ["extract_concurrency", "classify_pages", "default_skill"]),
-    ("Models", "Which Claude model runs each step.",
-     ["classifier_model", "extractor_model", "finalizer_model"]),
+    ("Models", "Which Claude model runs each step, and how hard it thinks.",
+     ["classifier_model", "extractor_model", "finalizer_model",
+      "extractor_effort", "finalizer_effort"]),
     ("Deduplication", "Near-duplicate detection.",
      ["dup_threshold", "shingle_size"]),
     ("Search", "Local semantic search over the source corpus.",

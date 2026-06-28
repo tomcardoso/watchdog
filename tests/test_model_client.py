@@ -1,6 +1,8 @@
 """Tests for ModelClient — backend routing, JSON extraction, schema validation,
 tier escalation on retry, telemetry. The two SDK backends are mocked."""
 
+import asyncio
+
 import pytest
 
 from watchdog import model_client as mc
@@ -20,9 +22,9 @@ class FakeBackend:
         self.outputs = list(outputs)
         self.calls = []
 
-    async def __call__(self, prompt, model_id, schema, api_key, max_tokens):
+    async def __call__(self, prompt, model_id, schema, api_key, max_tokens, effort=None):
         self.calls.append({"model_id": model_id, "api_key": api_key,
-                           "prompt": prompt, "max_tokens": max_tokens})
+                           "prompt": prompt, "max_tokens": max_tokens, "effort": effort})
         return self.outputs.pop(0)
 
 
@@ -124,6 +126,140 @@ def test_extract_task_uses_larger_token_budget(api_key_auth, monkeypatch):
     mc.complete_json(task="extract", prompt="p", schema=SCHEMA)
     assert api.calls[0]["max_tokens"] == 16000           # per-task override
     assert mc._TASK_MAX_TOKENS.get("other-task") is None  # default applies elsewhere
+
+
+# ── effort knob (D29) ─────────────────────────────────────────────────────────
+
+def test_effort_passed_to_backend_for_sonnet(api_key_auth, monkeypatch):
+    api = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    mc.complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet", effort="low")
+    assert api.calls[0]["effort"] == "low"
+
+
+def test_effort_high_is_treated_as_no_override(api_key_auth, monkeypatch):
+    # `high` is the model default — sending nothing preserves current behaviour.
+    api = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    mc.complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet", effort="high")
+    assert api.calls[0]["effort"] is None
+
+
+def test_effort_dropped_for_haiku(api_key_auth, monkeypatch):
+    # Haiku rejects output_config.effort (400) — it must never be sent there.
+    api = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    mc.complete_json(task="classify", prompt="p", schema=SCHEMA, model="haiku", effort="low")
+    assert api.calls[0]["effort"] is None
+
+
+def test_effort_omitted_when_unset(api_key_auth, monkeypatch):
+    api = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    mc.complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet")
+    assert api.calls[0]["effort"] is None
+
+
+@pytest.mark.parametrize("provider,model_id,effort,expected", [
+    ("anthropic", "claude-sonnet-4-6", "low", "low"),
+    ("anthropic", "claude-opus-4-8", "medium", "medium"),
+    ("anthropic", "claude-sonnet-4-6", "high", None),    # Claude: high ≡ default
+    ("anthropic", "claude-haiku-4-5", "low", None),      # Claude: Haiku rejects effort
+    ("anthropic", "claude-sonnet-4-6", None, None),      # unset
+    ("openai", "gpt-5-mini", "low", "low"),              # OpenAI reasoning model → pass through
+    ("openai", "gpt-5", "high", "high"),                 # OpenAI: high is NOT a no-op default
+    ("openai", "gpt-4o", "low", None),                   # OpenAI chat model → dropped
+    ("deepseek", "deepseek-reasoner", "high", None),     # DeepSeek: no portable knob
+    ("deepseek", "deepseek-chat", "low", None),
+])
+def test_resolve_effort(provider, model_id, effort, expected):
+    assert mc._resolve_effort(provider, model_id, effort) == expected
+
+
+# ── OpenAI-compatible backends (#125) ──────────────────────────────────────────
+
+@pytest.fixture
+def openai_key(monkeypatch):
+    monkeypatch.setattr(mc.auth, "get_api_key",
+                        lambda provider="anthropic": "sk-openai-x" if provider == "openai" else None)
+
+
+def test_openai_backend_routes_with_stored_key(openai_key, monkeypatch):
+    be = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "openai", be)
+    r = mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
+    assert r.backend == "openai"
+    assert be.calls[0]["api_key"] == "sk-openai-x"     # uses the provider key, not Claude auth
+
+
+def test_openai_backend_without_key_errors(monkeypatch):
+    monkeypatch.setattr(mc.auth, "get_api_key", lambda provider="anthropic": None)
+    with pytest.raises(mc.ModelError, match="watchdog auth set openai"):
+        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai")
+
+
+def test_openai_effort_passed_for_reasoning_model(openai_key, monkeypatch):
+    be = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "openai", be)
+    mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai", model="gpt-5-mini", effort="low")
+    assert be.calls[0]["effort"] == "low"
+
+
+def test_openai_effort_dropped_for_chat_model(openai_key, monkeypatch):
+    be = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "openai", be)
+    # high is not a no-op default on OpenAI, but a chat model can't take reasoning_effort → dropped
+    mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o", effort="high")
+    assert be.calls[0]["effort"] is None
+
+
+def test_deepseek_drops_effort(monkeypatch):
+    monkeypatch.setattr(mc.auth, "get_api_key",
+                        lambda provider="anthropic": "sk-ds" if provider == "deepseek" else None)
+    be = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "deepseek", be)
+    mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="deepseek",
+                     model="deepseek-reasoner", effort="high")
+    assert be.calls[0]["effort"] is None               # no portable knob on DeepSeek
+
+
+def test_openai_cost():
+    assert mc._openai_cost("deepseek-chat",
+                           {"prompt_tokens": 1_000_000, "completion_tokens": 0}) == pytest.approx(0.27)
+    assert mc._openai_cost("unknown-model", {"prompt_tokens": 100}) is None
+    assert mc._openai_cost("deepseek-chat", None) is None
+
+
+def test_openai_backend_request_shape(monkeypatch):
+    import httpx
+    captured = {}
+
+    class FakeResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self):
+            return {"choices": [{"message": {"content": '{"name": "Acme"}'}}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+
+    class FakeClient:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, headers=None, json=None):
+            captured.update(url=url, headers=headers, body=json)
+            return FakeResp()
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+    out = asyncio.run(mc._openai_complete_async("prompt", "deepseek-reasoner", SCHEMA,
+                                                "sk-ds", 8000, "high",
+                                                base_url="https://api.deepseek.com"))
+    assert out["text"] == '{"name": "Acme"}'
+    assert captured["url"] == "https://api.deepseek.com/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer sk-ds"
+    assert captured["body"]["reasoning_effort"] == "high"
+    assert captured["body"]["response_format"] == {"type": "json_object"}
+    assert "JSON" in captured["body"]["messages"][1]["content"]   # required for json_object mode
+    assert out["cost_usd"] == pytest.approx(10 * 0.55e-6 + 5 * 2.19e-6)
 
 
 # ── JSON extraction ───────────────────────────────────────────────────────────

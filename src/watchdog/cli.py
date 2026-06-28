@@ -290,16 +290,24 @@ def main() -> None:
     p_describe.set_defaults(func=cmd_describe)
 
     _model_choices = ["sonnet", "opus", "haiku"]
+    _effort_choices = ["low", "medium", "high"]
+    _model_help = ("a Claude tier (sonnet/opus/haiku) or a backend:model form "
+                   "(claude-api:opus, openai:gpt-5-mini, deepseek:deepseek-chat)")
     p_ingest = sub.add_parser("ingest", help="Extract queued documents (runs the Python pipeline)")
-    p_ingest.add_argument("--extractor-model", choices=_model_choices, default=None,
-                          dest="extractor_model",
-                          help="Model for extraction — overrides watchdog configure (default: sonnet)")
-    p_ingest.add_argument("--finalizer-model", choices=_model_choices, default=None,
-                          dest="finalizer_model",
-                          help="Model for synthesis + timeline + briefing — overrides watchdog configure (default: sonnet)")
-    p_ingest.add_argument("--classifier-model", choices=_model_choices, default=None,
-                          dest="classifier_model",
-                          help="Model for document classification — overrides watchdog configure (default: haiku)")
+    p_ingest.add_argument("--extractor-model", default=None, dest="extractor_model", metavar="MODEL",
+                          help=f"Model for extraction — {_model_help}; overrides watchdog configure (default: sonnet)")
+    p_ingest.add_argument("--finalizer-model", default=None, dest="finalizer_model", metavar="MODEL",
+                          help=f"Model for synthesis + timeline + briefing — {_model_help}; overrides watchdog configure (default: haiku)")
+    p_ingest.add_argument("--classifier-model", default=None, dest="classifier_model", metavar="MODEL",
+                          help=f"Model for document classification — {_model_help}; overrides watchdog configure (default: haiku)")
+    p_ingest.add_argument("--extractor-effort", choices=_effort_choices, default=None,
+                          dest="extractor_effort",
+                          help="Reasoning effort for extraction — lower spends fewer tokens; "
+                               "overrides watchdog configure (default: high)")
+    p_ingest.add_argument("--finalizer-effort", choices=_effort_choices, default=None,
+                          dest="finalizer_effort",
+                          help="Reasoning effort for synthesis + timeline + briefing — "
+                               "overrides watchdog configure (default: high)")
     p_ingest.add_argument("--concurrency", type=int, default=None,
                           help="Documents extracted in parallel — overrides watchdog configure (default: 5)")
     p_ingest.add_argument("--classify-pages", type=int, default=None, dest="classify_pages",
@@ -312,9 +320,12 @@ def main() -> None:
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_finalize = sub.add_parser("finalize", help="Complete post-ingest (synthesis + timeline + briefing) for an already-extracted batch — e.g. after a rate limit stopped it")
-    p_finalize.add_argument("--finalizer-model", choices=_model_choices, default=None,
-                            dest="finalizer_model",
-                            help="Model for synthesis + timeline + briefing — overrides watchdog configure (default: haiku)")
+    p_finalize.add_argument("--finalizer-model", default=None, dest="finalizer_model", metavar="MODEL",
+                            help=f"Model for synthesis + timeline + briefing — {_model_help}; overrides watchdog configure (default: haiku)")
+    p_finalize.add_argument("--finalizer-effort", choices=_effort_choices, default=None,
+                            dest="finalizer_effort",
+                            help="Reasoning effort for synthesis + timeline + briefing — "
+                                 "overrides watchdog configure (default: high)")
     p_finalize.set_defaults(func=cmd_finalize)
 
     p_context = sub.add_parser("context", help="Open Claude Code to seed investigation context from _CONTEXT/")
@@ -327,7 +338,8 @@ def main() -> None:
     p_auth.add_argument("action", nargs="?", choices=["status", "use", "set", "get", "remove"],
                         help="status (default) | use <mode> | set/get/remove [provider]")
     p_auth.add_argument("target", nargs="?",
-                        help="mode for `use` (subscription/api-key); provider for set/get/remove (default: anthropic)")
+                        help="mode for `use` (subscription/api-key); provider for set/get/remove "
+                             "(anthropic [default], openai, deepseek)")
     p_auth.set_defaults(func=cmd_auth)
 
     try:
