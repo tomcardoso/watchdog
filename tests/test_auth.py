@@ -52,6 +52,24 @@ def test_empty_key_not_stored(home, monkeypatch):
     assert auth.get_api_key("anthropic") is None
 
 
+def test_set_get_openai_provider(home, monkeypatch):
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-openai-abc1234567")
+    auth.cmd_auth(_ns("set", "openai"))
+    assert auth.get_api_key("openai") == "sk-openai-abc1234567"
+    assert auth.get_api_key("anthropic") is None     # stored per-provider, independent of Claude
+
+
+def test_openai_env_var_precedence(home, monkeypatch):
+    auth._save_state({"mode": "api-key", "keys": {"openai": "sk-stored"}})
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-fromenv")
+    assert auth.get_api_key("openai") == "sk-fromenv"
+
+
+def test_deepseek_is_a_known_provider(home):
+    assert "deepseek" in auth._PROVIDERS
+    assert auth._PROVIDERS["deepseek"]["env"] == "DEEPSEEK_API_KEY"
+
+
 def test_remove_deletes_stored_key(home):
     auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-stored"}})
     auth.cmd_auth(_ns("remove"))
@@ -174,3 +192,15 @@ def test_setup_picks_api_key_and_stores(home, monkeypatch):
 def test_setup_noninteractive_leaves_unconfigured(home):
     auth.setup_auth_interactive(interactive=False)
     assert auth._load_state()["mode"] is None
+
+
+def test_setup_offers_extra_provider_keys(home, monkeypatch):
+    # mode=subscription (1), then add an OpenAI key (y), skip DeepSeek (n).
+    answers = iter(["1", "y", "n"])
+    monkeypatch.setattr("builtins.input", lambda *a: next(answers))
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-openai-setup-123456")
+    auth.setup_auth_interactive(interactive=True)
+    state = auth._load_state()
+    assert state["mode"] == "subscription"
+    assert state["keys"]["openai"] == "sk-openai-setup-123456"
+    assert "deepseek" not in state["keys"]       # declined
