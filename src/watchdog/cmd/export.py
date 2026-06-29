@@ -1,6 +1,6 @@
 """Knowledge-graph export: emit the entity/relationship graph as Neo4j-import CSV
 (or a single Cypher file). Fully deterministic — reads `.watchdog/Registry/entities.json`
-and writes; no model calls, no markdown parsing. See ARCHITECTURE D39."""
+and writes; no model calls, no markdown parsing. See DECISIONS D39."""
 
 import csv
 import json

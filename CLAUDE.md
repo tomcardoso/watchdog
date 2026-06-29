@@ -2,7 +2,9 @@
 
 ## Architecture
 
-[ARCHITECTURE.md](ARCHITECTURE.md) records how the preprocessing and ingestion pipeline is built and the rationale behind each architectural decision. Its §14 has two tiers: the **Invariants** (I1–I4) are the canonical governing rules; the **decision log** (D1, D2, …) is the dated history of specific decisions operating within them. **When a change alters the pipeline's structure, the split between deterministic code and the model, the vault/registry layout, or any decision logged there, update `ARCHITECTURE.md` in the same change** — append a new `D` entry, and if the change establishes or revises a governing rule, update the Invariants section too. A new decision only earns a log entry if it forecloses a future option or would read as a bug without the rationale; pure refactors belong in the commit message, not the log. Treat it as part of the definition of done, like tests.
+Two files, split by how often they're read. **[ARCHITECTURE.md](ARCHITECTURE.md)** is the current-state map — how the pipeline is built, plus §14's **Invariants** (I1–I4), the canonical governing rules. Read it to orient; it's kept lean so it stays loadable every session. **[DECISIONS.md](DECISIONS.md)** is the dated, numbered history of specific decisions (D1, D2, …) — the rationale and tradeoff for each — read on demand when you need the *why* behind a past choice.
+
+**When a change alters the pipeline's structure, the split between deterministic code and the model, or the vault/registry layout, update `ARCHITECTURE.md` in the same change**, and append a `### D<n>` entry to `DECISIONS.md` (ascending order, newest last). If the change establishes or revises a governing rule, update the Invariants section in `ARCHITECTURE.md` too. **Keep decision entries concise** — a few sentences of rationale, then the tradeoff; the full record is in git and the PR, not the log. A decision earns an entry only if it forecloses a future option or would read as a bug without the rationale; pure refactors belong in the commit message. Treat both as part of the definition of done, like tests.
 
 ## Documentation
 
@@ -51,7 +53,7 @@ The `pypi` GitHub environment and PyPI trusted-publisher entry for `watchdog-int
 
 ### Where skills live
 
-Record (domain) skill files live in `src/watchdog/skills/records/`. They are plain markdown and **global** — the ingest orchestrator reads them directly from the package via `watchdog.skills_catalog` (they are no longer copied into each vault). No code changes are needed when adding one. A user can add their own skills in `~/.watchdog/skills/records/`, which the catalog merges in (a user skill overrides a package skill of the same name). See ARCHITECTURE D21.
+Record (domain) skill files live in `src/watchdog/skills/records/`. They are plain markdown and **global** — the ingest orchestrator reads them directly from the package via `watchdog.skills_catalog` (they are no longer copied into each vault). No code changes are needed when adding one. A user can add their own skills in `~/.watchdog/skills/records/`, which the catalog merges in (a user skill overrides a package skill of the same name). See DECISIONS D21.
 
 ### Standard structure
 

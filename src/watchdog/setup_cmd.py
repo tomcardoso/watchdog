@@ -55,7 +55,7 @@ def install_skills(commands_dir: Path) -> None:
     """Install the per-vault Claude Code command skills (e.g. /watchdog-query).
 
     Record (domain extraction) skills are NOT copied here — they live globally and are
-    read by the ingest orchestrator from `watchdog.skills_catalog` (see ARCHITECTURE D21).
+    read by the ingest orchestrator from `watchdog.skills_catalog` (see DECISIONS D21).
     """
     commands_dir.mkdir(parents=True, exist_ok=True)
     skills = importlib.resources.files("watchdog") / "skills"
