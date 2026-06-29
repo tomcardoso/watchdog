@@ -113,7 +113,29 @@ Find all entities in `entities.json` where `roles` is an empty list or absent. T
 
 ---
 
-## 8. Report
+## 8. Unresolved contradictions
+
+The pipeline flags conflicts between sources as `> [!contradiction]` callouts in an entity's `## Contradictions` section, verified at extraction time and never auto-removed. They sit there until a journalist resolves them — but nothing surfaces the full list in one place. Find them:
+
+```bash
+grep -rn '\[!contradiction\]' entities/ --include="*.md"
+```
+
+For each callout, report: `CONTRADICTION: entities/<type>/<id>.md — <first line of the callout>`. These are conflicting claims a journalist should resolve (confirm which source is right; check dates and primary sources). Count them for the summary. They are append-only by design, so a callout the journalist has already worked through may still appear — treat the list as "conflicts on record," highest-value first.
+
+---
+
+## 9. Unreviewed near-duplicates
+
+During chew, MinHash flags a document that closely matches an earlier one by writing `near_duplicate_of` into its registry entry — detection only, never auto-discarded, so the journalist decides whether they are the same document. Read `.watchdog/Registry/documents.json`; for every entry with a non-empty `near_duplicate_of`, report:
+
+`NEAR-DUPLICATE: documents/<slug>.md ~ <near_duplicate_of> — confirm same or different`
+
+Count them for the summary. A flagged pair stays flagged until the journalist acts (delete one, or annotate the document note's `## Notes`), so this list is everything still awaiting that judgement.
+
+---
+
+## 10. Report
 
 Print a health summary to the terminal:
 
@@ -124,11 +146,13 @@ Documents:   <n> registered, <n> notes found
 Entities:    <n> registered, <n> notes found
 Dead links:  <n>
 Missing fields: <n>
+Contradictions: <n> unresolved
+Near-duplicates: <n> unreviewed
 
 Issues:
   CRITICAL  (<n>): missing notes, orphaned notes, stale lock
-  WARNING   (<n>): missing frontmatter fields, dead links, count mismatches
-  INFO      (<n>): isolated entities
+  WARNING   (<n>): missing frontmatter fields, dead links, count mismatches, unresolved contradictions
+  INFO      (<n>): isolated entities, unreviewed near-duplicates
 
 <list of issues>
 
