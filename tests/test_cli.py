@@ -213,6 +213,21 @@ def test_cmd_new_creates_bases_dashboard(configured):
     assert "dashboard" in index.lower()
 
 
+def test_cmd_new_session_start_hook_loads_hot_md(configured):
+    cli.cmd_new(args(name="City Hall Probe", dir=str(configured)))
+    settings = json.loads(
+        (configured / "city-hall-probe" / ".claude" / "settings.json").read_text()
+    )
+    hooks = settings["hooks"]["SessionStart"]
+    matcher = hooks[0]["matcher"]
+    # one hook covers fresh start, resume, and post-compaction reload
+    assert "startup" in matcher and "resume" in matcher and "compact" in matcher
+    cmd = hooks[0]["hooks"][0]["command"]
+    assert "hot.md" in cmd
+    # the queue-reminder hook is preserved alongside it
+    assert "UserPromptSubmit" in settings["hooks"]
+
+
 def test_cmd_new_registers_project(configured, wdg_home):
     cli.cmd_new(args(name="My Story", dir=str(configured)))
     projects = json.loads((wdg_home / "projects.json").read_text())
