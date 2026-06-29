@@ -594,8 +594,7 @@ def _configure_default_skill_interactive(key: str, config: dict) -> str | None:
         return None
     if action == "unset":
         config.pop(key, None)
-        WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
-        CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")
+        _persist(config)
         print(f"  {_GREEN}Set:{_RESET} {_BOLD}{key}{_RESET} = "
               f"{_DIM}(not set — classify each document){_RESET}\n")
         return None
@@ -603,6 +602,260 @@ def _configure_default_skill_interactive(key: str, config: dict) -> str | None:
         print(f"  {_YELLOW}Note:{_RESET} {_BOLD}{picked}{_RESET} isn't a known skill or an "
               f"existing file; {_DIM}ingest will re-check it.{_RESET}")
     return picked
+
+
+class _ConfigError(Exception):
+    """Raised by `_coerce_value` when a value fails validation. Callers decide whether to
+    exit (command-line set) or print and continue (interactive edit / wizard)."""
+
+
+def _persist(config: dict) -> None:
+    WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
+    CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")
+
+
+def _display_value(k, v):
+    meta = _CONFIGURE_KEYS.get(k, {})
+    if v is None:
+        if k == "ocr_languages":
+            return f"{_DIM}auto-detect (default){_RESET}"
+        d = meta.get("default")
+        if d is not None:
+            v = d
+        else:
+            return f"{_DIM}(not set){_RESET}"
+    if k == "ocr_languages":
+        return f"{_CYAN}{', '.join(v)}{_RESET}" if v else f"{_DIM}auto-detect (default){_RESET}"
+    if isinstance(v, bool):
+        return f"{_CYAN}{'true' if v else 'false'}{_RESET}"
+    return f"{_CYAN}{v}{_RESET}"
+
+
+def _coerce_value(config: dict, key: str, value: str) -> str:
+    """Validate and coerce raw string `value` for `key`, mutating `config` in place and
+    returning the display string. Raises `_ConfigError` on invalid input. Side effects:
+    `projects_dir` creates the directory; `ocr_engine` ensures the engine package."""
+    meta = _CONFIGURE_KEYS[key]
+    if key == "ocr_languages":
+        langs = [lang.strip() for lang in value.split(",") if lang.strip()]
+        config[key] = langs
+        return ", ".join(langs) if langs else "auto-detect"
+    if key == "projects_dir":
+        path = Path(value).expanduser().resolve()
+        path.mkdir(parents=True, exist_ok=True)
+        config[key] = str(path)
+        return str(path)
+    if meta["type"] == "float":
+        try:
+            v = float(value)
+        except ValueError:
+            raise _ConfigError(f"'{key}' must be a number (e.g. 0.85)")
+        lo, hi = meta.get("min"), meta.get("max")
+        if lo is not None and v < lo:
+            raise _ConfigError(f"'{key}' must be >= {lo}")
+        if hi is not None and v > hi:
+            raise _ConfigError(f"'{key}' must be <= {hi}")
+        config[key] = v
+        return str(v)
+    if meta["type"] == "int_or_auto":
+        if value.lower() == "auto":
+            config[key] = "auto"
+            return "auto"
+        try:
+            v = int(value)
+        except ValueError:
+            raise _ConfigError(f"'{key}' must be 'auto' or a whole number")
+        lo = meta.get("min")
+        if lo is not None and v < lo:
+            raise _ConfigError(f"'{key}' must be >= {lo}")
+        config[key] = v
+        return str(v)
+    if meta["type"] == "int":
+        try:
+            v = int(value)
+        except ValueError:
+            raise _ConfigError(f"'{key}' must be a whole number")
+        lo = meta.get("min")
+        if lo is not None and v < lo:
+            raise _ConfigError(f"'{key}' must be >= {lo}")
+        config[key] = v
+        return str(v)
+    if meta["type"] == "bool":
+        if value.lower() in ("true", "yes", "1", "on"):
+            v = True
+        elif value.lower() in ("false", "no", "0", "off"):
+            v = False
+        else:
+            raise _ConfigError(f"'{key}' must be true or false")
+        config[key] = v
+        return "true" if v else "false"
+    if meta["type"] == "enum":
+        choices = meta.get("choices", [])
+        if value not in choices:
+            raise _ConfigError(f"'{key}' must be one of: {', '.join(choices)}")
+        config[key] = value
+        if key == "ocr_engine":
+            _ensure_ocr_engine(value)
+        return value
+    config[key] = value
+    return value
+
+
+def _edit_key_interactive(config: dict, key: str) -> None:
+    """Show a key's help and current value, prompt for a new value, then coerce, persist, and
+    report. Used by `watchdog configure <key>` and the wizard. Prints an error and returns
+    (without exiting) on invalid input so the wizard can carry on."""
+    meta = _CONFIGURE_KEYS[key]
+    print(f"\n  {_BOLD}{key}{_RESET}\n")
+    for line in meta["help"].split("\n"):
+        print(f"  {_DIM}{line.strip()}{_RESET}")
+    print()
+    print(f"  Current value:  {_display_value(key, config.get(key))}")
+    if key in ("chunk_workers", "chew_workers"):
+        print(f"  Machine cores:  {os.cpu_count() or 1}")
+
+    if key == "default_skill":
+        value = _configure_default_skill_interactive(key, config)
+        if value is None:   # unset / cancel handled inside, or no skills
+            return
+    else:
+        print()
+        answer = input("  Change this value? [y/N] ").strip().lower()
+        if answer not in ("y", "yes"):
+            print()
+            return
+        print()
+        value = input("  New value: ").strip()
+        if not value:
+            print(f"\n  {_DIM}No change.{_RESET}\n")
+            return
+
+    try:
+        display = _coerce_value(config, key, value)
+    except _ConfigError as e:
+        print(f"\n  {_YELLOW}Error:{_RESET} {e}\n")
+        return
+    _persist(config)
+    print(f"\n  {_GREEN}Set:{_RESET} {_BOLD}{key}{_RESET} = {_CYAN}{display}{_RESET}\n")
+
+
+def _wizard_menu(config: dict, initial_sel: int = 0):
+    """Flat arrow-key menu over every configure key, grouped under dim section headers and
+    showing each key's current value. Returns ``(key, sel)`` — the chosen key and the menu
+    position so the caller can restore it on the next pass — or ``(None, sel)`` to quit.
+
+    Uses raw-mode terminal input (↑/↓ or j/k, Enter, q). Falls back to a numbered prompt when
+    raw mode isn't available or the menu is taller than the terminal."""
+    import termios
+    import tty
+
+    rows = []            # (is_key: bool, text: str, key: str | None)
+    shown = set()
+
+    def _label(k):
+        return f"{k:<22} {_display_value(k, config.get(k))}"
+
+    for title, _blurb, keys in _CONFIGURE_SECTIONS:
+        present = [k for k in keys if k in _CONFIGURE_KEYS]
+        if not present:
+            continue
+        rows.append((False, title, None))
+        for k in present:
+            rows.append((True, _label(k), k))
+            shown.add(k)
+    leftovers = [k for k in _CONFIGURE_KEYS if k not in shown]
+    if leftovers:
+        rows.append((False, "Other", None))
+        for k in leftovers:
+            rows.append((True, _label(k), k))
+
+    selectable = [i for i, r in enumerate(rows) if r[0]]
+    if not selectable:
+        return (None, 0)
+    sel = max(0, min(initial_sel, len(selectable) - 1))
+
+    try:
+        fd  = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+    except (termios.error, ValueError, OSError, AttributeError):
+        old = None
+
+    try:
+        fits = os.get_terminal_size().lines >= len(rows) + 3
+    except OSError:
+        fits = True
+
+    if old is None or not fits:   # numbered fallback
+        print(f"\n  {_BOLD}Configure{_RESET}  {_DIM}pick a setting to change{_RESET}")
+        numbered = []
+        for is_key, text, k in rows:
+            if is_key:
+                numbered.append(k)
+                print(f"    {_CYAN}{len(numbered):>2}{_RESET}  {text}")
+            else:
+                print(f"\n  {_BOLD}{text}{_RESET}")
+        try:
+            ans = input("\n  Number to edit (Enter to quit): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return (None, sel)
+        if ans.isdigit() and 1 <= int(ans) <= len(numbered):
+            return (numbered[int(ans) - 1], int(ans) - 1)
+        return (None, sel)
+
+    def render(first: bool) -> None:
+        if not first:
+            sys.stdout.write(f"\x1b[{1 + len(rows)}A\r")
+        sys.stdout.write(f"  {_BOLD}Configure{_RESET}\x1b[K\n")
+        for i, (is_key, text, k) in enumerate(rows):
+            if not is_key:
+                sys.stdout.write(f"  {_DIM}{text}{_RESET}\x1b[K\n")
+            elif i == selectable[sel]:
+                sys.stdout.write(f"  {_CYAN}❯{_RESET} {text}\x1b[K\n")
+            else:
+                sys.stdout.write(f"    {text}\x1b[K\n")
+        sys.stdout.write(f"  {_DIM}↑/↓ move · Enter edit · q quit{_RESET}\x1b[K")
+        sys.stdout.flush()
+
+    chosen = None
+    print()
+    try:
+        tty.setcbreak(fd)
+        render(first=True)
+        while chosen is None:
+            ch = sys.stdin.read(1)
+            if ch in ("\r", "\n"):
+                chosen = rows[selectable[sel]][2]
+            elif ch in ("q", "\x03"):              # q or Ctrl-C
+                chosen = "\x00quit"
+            elif ch == "\x1b":                     # arrow-key escape sequence
+                seq = sys.stdin.read(2)
+                if seq == "[A":
+                    sel = (sel - 1) % len(selectable); render(False)
+                elif seq == "[B":
+                    sel = (sel + 1) % len(selectable); render(False)
+            elif ch == "k":
+                sel = (sel - 1) % len(selectable); render(False)
+            elif ch == "j":
+                sel = (sel + 1) % len(selectable); render(False)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        print()
+
+    if chosen == "\x00quit":
+        return (None, sel)
+    return (chosen, sel)
+
+
+def _run_configure_wizard(config: dict) -> None:
+    """Interactive loop: pick a setting from the flat arrow menu, edit it, repeat until quit."""
+    sel = 0
+    while True:
+        key, sel = _wizard_menu(config, sel)
+        if key is None:
+            print()
+            return
+        _edit_key_interactive(config, key)
 
 
 def cmd_configure(args) -> None:
@@ -615,22 +868,6 @@ def cmd_configure(args) -> None:
 
     key   = getattr(args, "key",   None)
     value = getattr(args, "value", None)
-
-    def _display_value(k, v):
-        meta = _CONFIGURE_KEYS.get(k, {})
-        if v is None:
-            if k == "ocr_languages":
-                return f"{_DIM}auto-detect (default){_RESET}"
-            d = meta.get("default")
-            if d is not None:
-                v = d
-            else:
-                return f"{_DIM}(not set){_RESET}"
-        if k == "ocr_languages":
-            return f"{_CYAN}{', '.join(v)}{_RESET}" if v else f"{_DIM}auto-detect (default){_RESET}"
-        if isinstance(v, bool):
-            return f"{_CYAN}{'true' if v else 'false'}{_RESET}"
-        return f"{_CYAN}{v}{_RESET}"
 
     if key is None:
         print()
@@ -658,110 +895,33 @@ def cmd_configure(args) -> None:
             print()
             for k in leftovers:
                 _print_key(k)
+
+        if sys.stdin.isatty():
+            print()
+            try:
+                answer = input("  Configure a setting? [y/N] ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return
+            if answer in ("y", "yes"):
+                _run_configure_wizard(config)
         return
 
     if key not in _CONFIGURE_KEYS:
         sys.exit(f"Error: unknown key '{key}'. Known keys: {', '.join(_CONFIGURE_KEYS)}")
 
-    meta = _CONFIGURE_KEYS[key]
-
     if value is None:
         if sys.stdin.isatty():
-            print(f"\n  {_BOLD}{key}{_RESET}\n")
-            for line in meta["help"].split("\n"):
-                print(f"  {_DIM}{line.strip()}{_RESET}")
-            print()
-            print(f"  Current value:  {_display_value(key, config.get(key))}")
-            if key in ("chunk_workers", "chew_workers"):
-                print(f"  Machine cores:  {os.cpu_count() or 1}")
-
-            if key == "default_skill":
-                value = _configure_default_skill_interactive(key, config)
-                if value is None:   # unset / cancel handled inside, or no skills
-                    return
-            else:
-                print()
-                answer = input("  Change this value? [y/N] ").strip().lower()
-                if answer not in ("y", "yes"):
-                    print()
-                    return
-                print()
-                value = input("  New value: ").strip()
-                if not value:
-                    print(f"\n  {_DIM}No change.{_RESET}\n")
-                    return
+            _edit_key_interactive(config, key)
         else:
             print(f"\n  {_BOLD}{key}{_RESET} = {_display_value(key, config.get(key))}\n")
-            return
+        return
 
-    if key == "ocr_languages":
-        langs = [lang.strip() for lang in value.split(",") if lang.strip()]
-        config[key] = langs
-        display = ", ".join(langs) if langs else "auto-detect"
-    elif key == "projects_dir":
-        path = Path(value).expanduser().resolve()
-        path.mkdir(parents=True, exist_ok=True)
-        config[key] = str(path)
-        display = str(path)
-    elif meta["type"] == "float":
-        try:
-            v = float(value)
-        except ValueError:
-            sys.exit(f"Error: '{key}' must be a number (e.g. 0.85)")
-        lo, hi = meta.get("min"), meta.get("max")
-        if lo is not None and v < lo:
-            sys.exit(f"Error: '{key}' must be >= {lo}")
-        if hi is not None and v > hi:
-            sys.exit(f"Error: '{key}' must be <= {hi}")
-        config[key] = v
-        display = str(v)
-    elif meta["type"] == "int_or_auto":
-        if value.lower() == "auto":
-            config[key] = "auto"
-            display = "auto"
-        else:
-            try:
-                v = int(value)
-            except ValueError:
-                sys.exit(f"Error: '{key}' must be 'auto' or a whole number")
-            lo = meta.get("min")
-            if lo is not None and v < lo:
-                sys.exit(f"Error: '{key}' must be >= {lo}")
-            config[key] = v
-            display = str(v)
-    elif meta["type"] == "int":
-        try:
-            v = int(value)
-        except ValueError:
-            sys.exit(f"Error: '{key}' must be a whole number")
-        lo = meta.get("min")
-        if lo is not None and v < lo:
-            sys.exit(f"Error: '{key}' must be >= {lo}")
-        config[key] = v
-        display = str(v)
-    elif meta["type"] == "bool":
-        if value.lower() in ("true", "yes", "1", "on"):
-            v = True
-        elif value.lower() in ("false", "no", "0", "off"):
-            v = False
-        else:
-            sys.exit(f"Error: '{key}' must be true or false")
-        config[key] = v
-        display = "true" if v else "false"
-    elif meta["type"] == "enum":
-        choices = meta.get("choices", [])
-        if value not in choices:
-            sys.exit(f"Error: '{key}' must be one of: {', '.join(choices)}")
-        config[key] = value
-        display = value
-        if key == "ocr_engine":
-            _ensure_ocr_engine(value)
-    else:
-        config[key] = value
-        display = value
-
-    WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
-    CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")
+    try:
+        display = _coerce_value(config, key, value)
+    except _ConfigError as e:
+        sys.exit(f"Error: {e}")
+    _persist(config)
     print(f"\n  {_GREEN}Set:{_RESET} {_BOLD}{key}{_RESET} = {_CYAN}{display}{_RESET}\n")
 
 
