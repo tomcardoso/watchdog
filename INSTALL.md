@@ -144,7 +144,7 @@ watchdog obsidian shell-company-investigation
 
 You can also run `watchdog obsidian` with no arguments from inside the vault directory. If Obsidian opens and the vault isn't visible, go to **Open folder as vault** in Obsidian, navigate to the investigation folder, and click Open. Once you've done that once, `watchdog obsidian` will open it directly in future.
 
-**Optional — turn on the dashboard.** The vault's `index.md` is a dashboard of live tables (most-mentioned entities, recent documents, possible duplicates) powered by Obsidian's **Dataview** plugin. To make it render, go to **Settings → Community plugins** in the vault, turn on community plugins (a new vault starts in restricted mode), then **Browse → Dataview → Install → Enable**. Until then, `index.md` shows raw query blocks instead of tables.
+**The dashboard.** The vault's `dashboard.base` is a dashboard of live tables (most-mentioned entities, recent documents, possible duplicates, and more); `index.md` links to it. It uses **Obsidian Bases**, a core Obsidian feature (version 1.9 and up), so there is nothing to install — open the dashboard and the tables are already there. Click a column header to sort; click a row to open the note.
 
 For a complete walkthrough of a first investigation from start to finish, see [GETTING_STARTED.md](GETTING_STARTED.md).
 

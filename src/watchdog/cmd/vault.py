@@ -48,6 +48,105 @@ _WATCHLIST_TEMPLATE = """\
 """
 
 
+# Native Obsidian Bases dashboard (core feature, Obsidian 1.9+ — no plugin needed).
+# Written verbatim at scaffold time; queries the entity/document note frontmatter the
+# pipeline already writes. Bases has no documented `sort:` key, so recurrence (an
+# entity's appears_in count) is surfaced as a column the user sorts on by clicking the
+# header. See DECISIONS D42.
+_DASHBOARD_BASE = """\
+filters:
+  and:
+    - file.ext == "md"
+formulas:
+  documents: appears_in.length
+properties:
+  name:
+    displayName: Name
+  type:
+    displayName: Type
+  aliases:
+    displayName: Also known as
+  document_type:
+    displayName: Document type
+  date_of_document:
+    displayName: Dated
+  date_ingested:
+    displayName: Ingested
+  date_last_updated:
+    displayName: Updated
+  page_count:
+    displayName: Pages
+  near_duplicate_of:
+    displayName: Near-duplicate of
+  formula.documents:
+    displayName: Documents
+views:
+  - type: table
+    name: Most-mentioned entities
+    filters:
+      and:
+        - file.inFolder("entities")
+    order:
+      - file.name
+      - name
+      - type
+      - formula.documents
+      - date_last_updated
+    limit: 20
+  - type: table
+    name: Recent documents
+    filters:
+      and:
+        - file.inFolder("documents")
+    order:
+      - file.name
+      - document_type
+      - date_of_document
+      - date_ingested
+      - page_count
+    limit: 15
+  - type: table
+    name: People
+    filters:
+      and:
+        - file.inFolder("entities/person")
+    order:
+      - file.name
+      - name
+      - aliases
+      - formula.documents
+  - type: table
+    name: Companies
+    filters:
+      and:
+        - file.inFolder("entities/company")
+    order:
+      - file.name
+      - name
+      - aliases
+      - formula.documents
+  - type: table
+    name: Single-source entities (review)
+    filters:
+      and:
+        - file.inFolder("entities")
+        - appears_in.length == 1
+    order:
+      - file.name
+      - name
+      - type
+  - type: table
+    name: Possible duplicates
+    filters:
+      and:
+        - file.inFolder("documents")
+        - near_duplicate_of
+    order:
+      - file.name
+      - near_duplicate_of
+"""
+
+
 def _obsidian_config_path() -> Path:
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / "obsidian" / "obsidian.json"
@@ -225,6 +324,7 @@ def cmd_new(args) -> None:
     )
 
     (vault / "index.md").write_text(_render_template("index.md", name=name, today=today))
+    (vault / "dashboard.base").write_text(_DASHBOARD_BASE)
     # CLAUDE.md (Claude's internal instructions) lives in .claude/ to keep the vault root
     # clean — Claude Code loads ./.claude/CLAUDE.md the same as ./CLAUDE.md. README.md is the
     # human-facing entry point for anyone who opens the folder.

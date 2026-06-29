@@ -399,6 +399,7 @@ morgue/<entity>/<type>/…     original source files + a sibling <name>.md of th
 timeline.md                 rendered global timeline
 briefings/<date>.md         per-ingest briefings
 context.md / hot.md / log.md investigation context, hot cache, run log
+index.md / dashboard.base    landing page + native Obsidian Bases dashboard (D42)
 .embeddings/                search index
 .obsidian/graph.json        graph colours per entity type
 .watchdog/                  pipeline state (below)

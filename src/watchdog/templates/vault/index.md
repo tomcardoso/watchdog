@@ -2,50 +2,8 @@
 
 *Watchdog investigation vault — created {today}.*
 
-> The tables below are live [Dataview](https://github.com/blacksmithgu/obsidian-dataview) queries. Install and enable the **Dataview** community plugin (Settings → Community plugins → turn on community plugins, then Browse → Dataview → Install → Enable) to render them; without it you'll see the raw query blocks. The tables refresh themselves as you ingest.
+## Dashboard
 
-## Most-mentioned entities
+Open **[[dashboard.base|the dashboard]]** for live, sortable tables of the investigation: most-mentioned entities, recent documents, people, companies, single-source entities to review, and possible duplicates.
 
-The people, companies, and addresses appearing in the most documents — a quick read on who is central to the investigation.
-
-```dataview
-TABLE type AS "Type", length(appears_in) AS "Documents", date_last_updated AS "Updated"
-FROM "entities"
-SORT length(appears_in) DESC
-LIMIT 20
-```
-
-## Recent documents
-
-```dataview
-TABLE document_type AS "Type", date_of_document AS "Dated", page_count AS "Pages"
-FROM "documents"
-SORT date_ingested DESC
-LIMIT 10
-```
-
-## People
-
-```dataview
-TABLE aliases AS "Also known as", length(appears_in) AS "Documents"
-FROM "entities/person"
-SORT length(appears_in) DESC
-```
-
-## Companies
-
-```dataview
-TABLE aliases AS "Also known as", length(appears_in) AS "Documents"
-FROM "entities/company"
-SORT length(appears_in) DESC
-```
-
-## Possible duplicates
-
-Documents flagged during chew as near-duplicates of an earlier one.
-
-```dataview
-TABLE near_duplicate_of AS "Near-duplicate of"
-FROM "documents"
-WHERE near_duplicate_of
-```
+It is powered by **Obsidian Bases**, which is built into Obsidian (version 1.9 and up) — there is nothing to install and no community-plugin "restricted mode" to clear. The tables refresh themselves as you ingest. Click a column header to sort (e.g. by **Documents** to surface the most-mentioned entities); click a row to open the note.
