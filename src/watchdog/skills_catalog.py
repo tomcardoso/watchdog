@@ -7,7 +7,7 @@ vault:
   - the user's custom dir (``~/.watchdog/skills/records/*.md``) — additions / overrides.
 
 The ingest orchestrator reads skills from here and builds the classification index in
-memory; nothing is copied into individual vaults (see ARCHITECTURE D21). A user skill
+memory; nothing is copied into individual vaults (see DECISIONS D21). A user skill
 overrides a package skill of the same name.
 """
 

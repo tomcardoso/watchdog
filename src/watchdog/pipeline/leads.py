@@ -16,7 +16,7 @@ read straight from `.watchdog/Registry/entities.json`:
 `scan` loads the registry and returns the three lists; `write_leads` snapshots them to
 `briefings/leads-<date>.md` (overwrite, not append — it is current-state, not an event log).
 The model-driven whole-vault pieces (cross-document contradiction re-check, stale/superseded
-claims) are deliberately out of scope here — see ARCHITECTURE D40 and #155.
+claims) are deliberately out of scope here — see DECISIONS D40 and #155.
 """
 
 import datetime
