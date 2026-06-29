@@ -262,7 +262,7 @@ Extraction is **not** a slash command — run `watchdog ingest` in your terminal
 | `/watchdog-entity [id ...]` | Refresh entity Summary and Timeline from all source documents |
 | `/watchdog-wiki` | Create or update investigation thread pages |
 | `/watchdog-context` | Seed `context.md` from background files in `_CONTEXT/` |
-| `/watchdog-health` | Check vault integrity — orphaned notes, broken links, registry mismatches |
+| `/watchdog-health` | Check vault integrity — orphaned notes, broken links, registry mismatches, unresolved contradictions, unreviewed near-duplicates |
 
 **Query examples:**
 
