@@ -190,6 +190,8 @@ watchdog configure default_skill corporate-filings
 
 Run `watchdog configure default_skill` with no value to pick from the catalog interactively (arrow keys to choose a skill, an "unset" row to turn pinning off, or "Type my own…" for a name or file path).
 
+Not sure which knob you need? Run `watchdog configure` with no arguments: it prints every setting and its current value, then offers a wizard — an arrow-key menu of all the settings, so you can browse, read each one's help, and change values without memorizing key names.
+
 For each document, the pipeline:
 
 1. Reads the extracted text

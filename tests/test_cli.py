@@ -816,6 +816,81 @@ def test_pick_skill_arrow_numbered_fallback_unset(monkeypatch):
     assert _setup._pick_skill_arrow(catalog, None) == ("unset", None)
 
 
+# ── configure wizard ──────────────────────────────────────────────────────────
+
+def test_wizard_menu_numbered_selects_first_key(wdg_home, monkeypatch):
+    # Under pytest, sys.stdin has no usable fd → the menu uses the numbered prompt.
+    monkeypatch.setattr("builtins.input", lambda *a: "1")
+    key, sel = _setup._wizard_menu({}, 0)
+    assert key == "projects_dir"  # first selectable key (Vaults section leads)
+    assert sel == 0
+
+
+def test_wizard_menu_numbered_quit_on_empty(wdg_home, monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda *a: "")
+    key, _ = _setup._wizard_menu({}, 0)
+    assert key is None
+
+
+def test_run_configure_wizard_edits_then_quits(wdg_home, monkeypatch):
+    import sys
+    monkeypatch.setattr(sys, "stdin", _FakeTTY())
+    # menu hands back chunk_size once, then quits
+    picks = iter([("chunk_size", 0), (None, 0)])
+    monkeypatch.setattr(_setup, "_wizard_menu", lambda config, sel: next(picks))
+    responses = iter(["y", "20"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(responses))
+
+    config = {}
+    _setup._run_configure_wizard(config)
+
+    assert config["chunk_size"] == 20
+    saved = json.loads((wdg_home / "config.json").read_text())
+    assert saved["chunk_size"] == 20
+
+
+def test_edit_key_interactive_invalid_value_does_not_exit(wdg_home, monkeypatch, capsys):
+    import sys
+    monkeypatch.setattr(sys, "stdin", _FakeTTY())
+    responses = iter(["y", "not-a-number"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(responses))
+    # Must NOT raise SystemExit — the wizard relies on this to keep going.
+    _setup._edit_key_interactive({}, "garbled_threshold")
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "must be a number" in out
+    assert not (wdg_home / "config.json").exists()
+
+
+def test_configure_bare_offers_wizard_on_tty(wdg_home, monkeypatch):
+    import sys
+    monkeypatch.setattr(sys, "stdin", _FakeTTY())
+    called = []
+    monkeypatch.setattr(_setup, "_run_configure_wizard", lambda config: called.append(True))
+    monkeypatch.setattr("builtins.input", lambda prompt="": "y")
+    cli.cmd_configure(args())
+    assert called == [True]
+
+
+def test_configure_bare_skips_wizard_when_declined(wdg_home, monkeypatch):
+    import sys
+    monkeypatch.setattr(sys, "stdin", _FakeTTY())
+    called = []
+    monkeypatch.setattr(_setup, "_run_configure_wizard", lambda config: called.append(True))
+    monkeypatch.setattr("builtins.input", lambda prompt="": "n")
+    cli.cmd_configure(args())
+    assert called == []
+
+
+def test_configure_bare_non_tty_does_not_prompt(wdg_home, monkeypatch):
+    called = []
+    monkeypatch.setattr(_setup, "_run_configure_wizard", lambda config: called.append(True))
+    def _boom(*a, **k):
+        raise AssertionError("should not prompt when stdin is not a TTY")
+    monkeypatch.setattr("builtins.input", _boom)
+    cli.cmd_configure(args())  # pytest stdin is not a TTY
+    assert called == []
+
+
 # ── aliases ───────────────────────────────────────────────────────────────────
 
 def test_about_prints_version_and_links(capsys, wdg_home):

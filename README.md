@@ -435,17 +435,21 @@ watchdog move municipal-contracts-investigation /Volumes/Archive/Investigations
 
 ## Configuration
 
-`watchdog configure` reads and writes `~/.watchdog/config.json`. Run it with no arguments to see current values:
+`watchdog configure` reads and writes `~/.watchdog/config.json`. Run it with no arguments to see current values, grouped by section:
 
 ```bash
 watchdog configure
 ```
 
-To set a value:
+In an interactive terminal, the listing ends with a prompt to launch a **configuration wizard** — a flat arrow-key menu of every setting and its current value. Arrow to a setting, press Enter to see its help and change it, and repeat; press `q` to quit. (When the terminal can't support arrow keys, the wizard falls back to a numbered prompt.)
+
+To set a value directly:
 
 ```bash
 watchdog configure <key> <value>
 ```
+
+Or run `watchdog configure <key>` with no value to see that one key's help and change it interactively.
 
 | Key | Default | Description |
 |-----|---------|-------------|
