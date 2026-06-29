@@ -87,6 +87,7 @@ from watchdog.cmd.setup import (
     cmd_unlock,
 )
 from watchdog.cmd.auth import cmd_auth
+from watchdog.cmd.export import cmd_export
 
 
 def _cmd_rebuild_timeline(args) -> None:
@@ -213,6 +214,13 @@ def main() -> None:
     p_search.add_argument("--threshold", type=float, default=None, metavar="S",
                           help="Hide results scoring below S (0.0–1.0)")
     p_search.set_defaults(func=cmd_search)
+
+    p_export = sub.add_parser("export", help="Export the knowledge graph as Neo4j-import CSV (or Cypher)")
+    p_export.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
+    p_export.add_argument("--output", metavar="DIR", help="Output directory (default: <slug>-export/)")
+    p_export.add_argument("--format", choices=["csv", "cypher"], default="csv",
+                          help="Output format (default: csv)")
+    p_export.set_defaults(func=cmd_export)
 
     p_unlock = sub.add_parser("unlock", help="Release a stale ingest lock")
     p_unlock.add_argument("project", nargs="?", help="Investigation name or slug (default: infer from cwd)").completer = _project_completer

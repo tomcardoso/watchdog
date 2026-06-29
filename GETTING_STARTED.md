@@ -256,6 +256,14 @@ Every link to a source document includes a direct page link, so you can jump fro
 
 Use Obsidian's graph view to see the relationship network across your entire investigation. Entities that appear in many documents, or that are connected to many other entities, will be visually prominent.
 
+For deeper network analysis in a dedicated graph tool, export the relationship graph:
+
+```bash
+watchdog export shell-company-investigation
+```
+
+This writes `nodes.csv` and `relationships.csv` (loadable with `neo4j-admin database import` or directly in Gephi) to a `shell-company-investigation-export/` folder; `--format cypher` writes a single `graph.cypher` of `MERGE` statements instead. The export reads the registry directly — no model calls — and reflects only what ingest-time entity deduplication resolved, so the same person under slightly different names may appear as separate nodes.
+
 ---
 
 ## Asking questions
