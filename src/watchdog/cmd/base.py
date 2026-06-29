@@ -79,6 +79,11 @@ _VAULT_PERMISSIONS = [
     "Edit(.watchdog/Registry/**)",
     "Write(.watchdog/timeline/**)",
     "Edit(.watchdog/timeline/**)",
+    # session-authored pages (compounding queries → wiki threads)
+    "Write(queries/**)",
+    "Edit(queries/**)",
+    "Write(wiki/**)",
+    "Edit(wiki/**)",
     # post-ingest output files
     "Write(briefings/**)",
     "Write(entities/**)",

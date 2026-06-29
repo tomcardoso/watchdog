@@ -38,6 +38,20 @@ These run through every decision below.
   (semaphore-bounded); all registry and note writes funnel through a single serialized,
   lock-guarded path (`write_vault`), so concurrency is safe without the model reasoning
   about it.
+- **Two runtimes, one boundary — Claude Code is required.** Watchdog runs in two places, and
+  the line between them is a governing constraint. The **document pipeline** (`watchdog chew` /
+  `ingest`) is a terminal program whose bounded reasoning calls go through a provider-agnostic
+  `model_client`: Claude by default, but offloadable to OpenAI/DeepSeek per stage (D37) because
+  a single-shot, schema-bound extraction call tolerates a cheaper model. The **investigation**
+  (`/watchdog-query`, `-surface`, `-wiki`, `-context`, `-health`) runs *inside Claude Code* as
+  agentic, multi-turn, user-in-the-loop sessions — and is deliberately **not** offloadable:
+  Claude Code is a hard requirement, and these stay on Claude. The split tracks capability, not
+  preference — open-ended exploration that asks the user questions and follows links across the
+  vault is where model and harness quality are hardest to substitute. The practical rule this
+  sets: "make it backend-portable" applies only to pipeline steps; collapsing an interactive
+  command into the single-shot pipeline pattern to gain portability would forfeit the iteration
+  that makes it useful (see D18 for the one move that *was* worth it — ingest, which is batch,
+  not interactive).
 
 ---
 

@@ -17,7 +17,8 @@ At the start of every session: (1) read `hot.md` for a summary of recent activit
 | `entities/` | One note per real-world entity |
 | `documents/` | One note per ingested document |
 | `briefings/` | Post-ingest briefing notes |
-| `wiki/` | Investigation thread pages |
+| `wiki/` | Investigation thread pages — matured angles that deepen over time |
+| `queries/` | Saved answers to questions you've asked — substantive findings filed here so explorations compound |
 | `hot.md` | Session-to-session context cache — updated after every ingest |
 | `log.md` | Append-only ingest history — human-readable in Obsidian |
 | `context.md` | Your investigation intent and key questions — read this before every skill |
@@ -66,10 +67,16 @@ The following are auto-allowed in `.claude/settings.json` — never ask for conf
 | `/watchdog-context` | Seed context.md from background files in `_CONTEXT/` |
 | `/watchdog-ingest` | Extract all preprocessed files in `.watchdog/queue/` |
 | `/watchdog-ingest [file]` | Preprocess and extract a specific file |
-| `/watchdog-query [question]` | Answer a question from the vault |
+| `/watchdog-query [question]` | Answer a question from the vault; file substantive answers to `queries/` |
 | `/watchdog-surface` | Find connections and anomalies across the vault |
 | `/watchdog-wiki` | Create or update investigation thread pages |
 | `/watchdog-health` | Check vault integrity |
+
+## Compounding — file what you find
+
+An investigation compounds when findings are written down instead of re-derived from scratch each session. Whenever a question you answer or an analysis you run in this session produces a **substantive** finding — a synthesis across documents, a surfaced connection, a resolved or newly-raised question — file it to `queries/<slug>.md` so it persists (preserve the citations; never touch a `## Notes` section). Skip trivial single-fact lookups. When a finding matures into an angle — at least two entities connected by at least two documents — promote it to a `wiki/` thread with `/watchdog-wiki`. This is the difference between an investigation that accumulates knowledge and one that starts cold every time.
+
+---
 
 ## Fact basis
 

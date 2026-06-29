@@ -45,10 +45,46 @@ grep -ri "<search term>" entities/ documents/ --include="*.md" -l
 **If the answer requires combining information from multiple documents:**
 > The address 123 Main St appears in two documents: the Shell Co corporate registration (p. 1) and the Smith Holdings annual report (p. 7). These documents have no other apparent connection.
 
-### 4. Suggest follow-up
+### 4. Persist substantive answers to `queries/`
 
-If the question reveals a gap — an entity that appears but has no document note, a relationship that's implied but not explicitly confirmed — note it briefly:
-> "This relationship is inferred from two separate documents but no direct confirmation was found. Run `/watchdog-surface` for a broader connection analysis."
+Investigations compound when explorations are written down instead of vanishing into chat. After composing the answer, **file it to `queries/`** so the work accumulates as the investigation grows.
+
+**When to persist:** any answer that synthesises across documents, surfaces a connection, resolves or raises a question, or analyses a pattern. **Skip** trivial single-fact lookups ("who is the director of X?", "what address is on document Y?") — a page for those is noise, not knowledge.
+
+**How:**
+- Slug the question into a short topic: `who-controls-shell-co`, `123-main-st-connections`.
+- If a `queries/<slug>.md` already covers the same question, **update** it — sharpen the answer, add newly-relevant documents, refresh `last_updated` — rather than create a near-duplicate.
+- Otherwise create `queries/<slug>.md`:
+
+```yaml
+---
+id: <slug>
+question: <the question as asked>
+type: Query
+entities:
+  - "[[entities/<type>/<id>|Entity Name]]"
+documents:
+  - "[[documents/<slug>|Document Title]]"
+created: <today>
+last_updated: <today>
+---
+
+## Answer
+
+<The composed answer, every claim cited inline as in step 3. Preserve the citations — this page must stand on its own months from now.>
+
+## Open questions
+
+<Any gap the question revealed: a missing document, an unconfirmed relationship, an ambiguous identity. One sentence each. Omit the section if there are none.>
+
+## Notes
+
+<!-- Journalist annotations — never overwritten. -->
+```
+
+Then tell the journalist where it went: `Filed to queries/<slug>.md`.
+
+**Graduate to a thread.** If the answer establishes a genuine investigative angle — at least two entities connected by at least two documents — it has outgrown a query page. Say so, and run `/watchdog-wiki <angle>` to promote it to a `wiki/` thread that deepens over time. For a broader connection sweep, suggest `/watchdog-surface`.
 
 ---
 
