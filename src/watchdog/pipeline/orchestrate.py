@@ -24,8 +24,8 @@ from watchdog import model_client, skills_catalog
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 from watchdog.cmd.live import LiveRegion
 from watchdog.pipeline import (
-    abort, merge, preflight, postflight, prompts, schemas, section, synthesis_bundle, timeline,
-    watchlist,
+    abort, leads, merge, preflight, postflight, prompts, schemas, section, synthesis_bundle,
+    timeline, watchlist,
 )
 from watchdog.pipeline.write_vault import _doc_slug
 
@@ -558,6 +558,17 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
              f"{'es' if len(hits) != 1 else ''} {_DIM}({n_terms} term"
              f"{'s' if n_terms != 1 else ''} in {n_docs} document"
              f"{'s' if n_docs != 1 else ''}){_RESET} — {_CYAN}{relpath}{_RESET}")
+
+    # 5. Lead sweep (deterministic, no model; #155). Whole-vault snapshot of entities named
+    # but never profiled, recurring-but-unconnected entities, and unresolved contradictions.
+    leads_data = leads.scan(vault)
+    leads_relpath = leads.write_leads(vault, leads_data)
+    if leads_relpath:
+        n = leads.total(leads_data)
+        out["leads"] = leads_relpath
+        _say(f"{_YELLOW}⚠{_RESET}  {_BOLD}{n}{_RESET} lead{'s' if n != 1 else ''} "
+             f"{_DIM}(named-but-unprofiled, isolated, contradictions){_RESET} — "
+             f"{_CYAN}{leads_relpath}{_RESET}")
     return out
 
 

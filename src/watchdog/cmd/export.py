@@ -14,25 +14,8 @@ from watchdog.cmd.base import (
     _DIM,
     _GREEN,
     _RESET,
-    _find_project,
-    load_projects,
-    slugify,
+    _resolve_vault,
 )
-
-
-def _resolve_vault(project: str | None) -> tuple[str, dict, Path]:
-    """(slug, info, vault_path) from a name arg, or the current directory."""
-    if project:
-        slug, info = _find_project(project)
-        return slug, info, Path(info["path"])
-
-    cwd = Path(".").resolve()
-    if not (cwd / ".watchdog").is_dir():
-        sys.exit("Error: not inside a Watchdog vault — provide an investigation name.")
-    for slug, info in load_projects().items():
-        if Path(info["path"]).resolve() == cwd:
-            return slug, info, cwd
-    return slugify(cwd.name), {"name": cwd.name, "path": str(cwd)}, cwd
 
 
 def _forward_edges(entities: dict) -> tuple[list[dict], int]:

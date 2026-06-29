@@ -71,7 +71,7 @@ _VAULT_PERMISSIONS = [
     "Bash(watchdog is-duplicate *)",
     "Bash(watchdog write-entity --entity-id *)",
     "Bash(watchdog unlock*)",
-    "Bash(watchdog rebuild-timeline)",
+    "Bash(watchdog timeline)",
     # internal vault state
     "Write(.watchdog/tmp/**)",
     "Edit(.watchdog/tmp/**)",
@@ -214,6 +214,18 @@ _CMD_HELP: dict[str, dict] = {
             "corpus. (A +/- query shifts the scale lower, so judge those by ranking, not score.)",
         ],
     },
+    "leads": {
+        "desc": "Surface investigative leads from the entity graph (deterministic, no model)",
+        "args": [("project", "Investigation name or slug (omit when inside the project folder)", True)],
+        "notes": [
+            "Reads the entity registry and reports, with no model call: entities named as a",
+            "relationship target but never profiled, entities recurring across documents with no",
+            "relationships, and entities carrying unresolved contradiction flags.",
+            "",
+            "The same sweep runs at the end of every `watchdog ingest`, writing the full report",
+            "to briefings/leads-<date>.md; this command re-runs it on demand between ingests.",
+        ],
+    },
     "export": {
         "desc": "Export the entity/relationship graph for Neo4j, Gephi, or NetworkX",
         "args": [("project", "Investigation name or slug (omit when inside the project folder)", True)],
@@ -231,7 +243,7 @@ _CMD_HELP: dict[str, dict] = {
             "stays valid. Graph quality is bounded by ingest-time entity deduplication.",
         ],
     },
-    "rebuild-timeline": {
+    "timeline": {
         "desc": "Rebuild timeline.md from canonical .watchdog/timeline/ files",
         "args": [("name", "Investigation name or slug (default: current directory)", True)],
     },
@@ -370,6 +382,25 @@ def _count_queued(vault: Path) -> int:
     return sum(1 for f in queue.iterdir() if f.suffix == ".json")
 
 
+def _resolve_vault(project: str | None) -> tuple[str, dict, Path]:
+    """(slug, info, vault_path) from a name arg, or the current directory.
+
+    Used by read-only, whole-vault commands (export, leads): a name resolves through the
+    registry; with no name the cwd must itself be a vault. A vault opened by path that isn't
+    registered still works — it falls back to a synthetic info dict keyed on the folder name."""
+    if project:
+        slug, info = _find_project(project)
+        return slug, info, Path(info["path"])
+
+    cwd = Path(".").resolve()
+    if not (cwd / ".watchdog").is_dir():
+        sys.exit("Error: not inside a Watchdog vault — provide an investigation name.")
+    for slug, info in load_projects().items():
+        if Path(info["path"]).resolve() == cwd:
+            return slug, info, cwd
+    return slugify(cwd.name), {"name": cwd.name, "path": str(cwd)}, cwd
+
+
 def _find_project(name: str) -> tuple[str, dict]:
     projects = load_projects()
     slug = slugify(name)
@@ -476,12 +507,13 @@ def _print_banner() -> None:
             ("context",          "Seed investigation context from _CONTEXT/"),
             ("watch",            "Watch _INCOMING/ and chew files automatically"),
             ("log",              "Show ingest history"),
-            ("rebuild-timeline", "Rebuild timeline.md from canonical timeline files"),
+            ("timeline",         "Rebuild timeline.md from canonical timeline files"),
         ]),
         ("Info", [
             ("list",       "List all investigations"),
             ("status",     "Show detailed status"),
             ("search",     "Semantic search across ingested documents"),
+            ("leads",      "Surface investigative leads from the entity graph"),
             ("export",     "Export the knowledge graph (Neo4j / Gephi / Cypher)"),
             ("doctor",     "Check for missing or broken vaults"),
         ]),
