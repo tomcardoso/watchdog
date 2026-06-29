@@ -214,6 +214,23 @@ _CMD_HELP: dict[str, dict] = {
             "corpus. (A +/- query shifts the scale lower, so judge those by ranking, not score.)",
         ],
     },
+    "export": {
+        "desc": "Export the entity/relationship graph for Neo4j, Gephi, or NetworkX",
+        "args": [("project", "Investigation name or slug (omit when inside the project folder)", True)],
+        "opts": [
+            ("--output DIR",     "Output directory (default: <slug>-export/)"),
+            ("--format FMT",     "csv (default) or cypher"),
+        ],
+        "notes": [
+            "Reads the entity registry and emits a graph — no model calls, fully deterministic.",
+            "csv writes nodes.csv + relationships.csv for `neo4j-admin database import` (also",
+            "loadable in Gephi); cypher writes a single graph.cypher of MERGE statements.",
+            "",
+            "Only stated-direction relationships are emitted (the auto-generated reverse edges are",
+            "skipped), and edges to entities that were never profiled are dropped so the import",
+            "stays valid. Graph quality is bounded by ingest-time entity deduplication.",
+        ],
+    },
     "rebuild-timeline": {
         "desc": "Rebuild timeline.md from canonical .watchdog/timeline/ files",
         "args": [("name", "Investigation name or slug (default: current directory)", True)],
@@ -465,6 +482,7 @@ def _print_banner() -> None:
             ("list",       "List all investigations"),
             ("status",     "Show detailed status"),
             ("search",     "Semantic search across ingested documents"),
+            ("export",     "Export the knowledge graph (Neo4j / Gephi / Cypher)"),
             ("doctor",     "Check for missing or broken vaults"),
         ]),
         ("Settings", [

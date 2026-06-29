@@ -232,6 +232,7 @@ Every ingest finalizes automatically at the end (entity synthesis + timeline + b
 | Command | What it does |
 |---------|-------------|
 | `watchdog search <name> "<query>"` | Semantic search across ingested documents — matches passages by meaning, not keywords, and returns the source passage with its page (not a generated answer). Supports `+`/`-` phrases to steer toward/away from a concept (`"shell company -real estate"`) and `--threshold S` to hide weak matches. Source passages and entity/document notes are shown as separate result sections. |
+| `watchdog export [name]` | Export the investigation's entity/relationship graph as Neo4j-import CSV (`nodes.csv` + `relationships.csv`, also loadable in Gephi); `--format cypher` writes a single `graph.cypher` of `MERGE` statements instead; `--output DIR` sets the destination (default `<slug>-export/`). Fully deterministic — reads the registry, no model calls. Only stated-direction relationships are exported (auto-generated reverse edges are skipped) and edges to never-profiled entities are dropped so the import stays valid. Graph quality is bounded by ingest-time entity deduplication |
 | `watchdog doctor` | Check all registered investigations for missing or broken vaults; suggests `watchdog move` or `watchdog delete` for each issue |
 | `watchdog configure` | View or change configuration |
 | `watchdog auth` | Show the auth mode and API-key status (masked) |
