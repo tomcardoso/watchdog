@@ -12,12 +12,12 @@ This guide assumes you have never used a terminal before. Read through it once b
 |------|-----|-------|
 | A computer running macOS, Linux, or Windows | Watchdog runs on your computer, not in the cloud | n/a |
 | [Obsidian](https://obsidian.md) | The app where you'll read and explore your documents | Free |
-| [Claude Code](https://claude.ai/download) | The AI assistant that reads and connects your documents | Free to install |
+| [Claude Code](https://claude.ai/download) | The AI assistant you ask questions, surface connections, and build your investigation in — **required** | Free to install |
 | Claude access | Powers the AI — required for document processing | Pro/Max subscription, or Anthropic API key |
 
 **Obsidian** is a note-taking app that Watchdog uses to organize and display your research. You don't need to know how to use it before starting — Watchdog sets it up for you.
 
-**Claude Code** is the AI assistant that does the document processing. It's made by Anthropic, the same company that makes Claude. You install it once on your computer.
+**Claude Code** is the AI assistant where you do your investigative work — asking questions of your documents, surfacing connections, and building up wiki threads. It's made by Anthropic, the same company that makes Claude, and you install it once on your computer. It is required: the interactive investigation commands run inside it. (If you want to cut cost, the separate document-*ingestion* step can be pointed at other AI providers like OpenAI or DeepSeek — see the README's Model backends section — but Claude Code itself is still needed for everything else.)
 
 **Claude access** is required because processing documents requires AI. A Pro subscription ($20/month) is enough for most journalism work. If you're ingesting hundreds of documents at a time, Max (from $100/month) gives you higher limits. If you have an Anthropic API key, you can use that instead — see Step 2.
 

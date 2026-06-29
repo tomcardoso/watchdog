@@ -68,7 +68,7 @@ Every document Watchdog processes is read by an AI. There is no way to take that
 
 ## How it works
 
-The pipeline has two stages — a CLI stage you run in your terminal, and an extraction stage that runs inside Claude Code.
+Watchdog runs in two places: a **document pipeline** you run in your terminal (`watchdog chew`, then `watchdog ingest` — a Python orchestrator that calls a model only for the bounded reasoning steps, and can be pointed at Claude, OpenAI, or DeepSeek), and your **investigation**, which you run inside Claude Code (`/watchdog-query`, `/watchdog-surface`, `/watchdog-wiki`, and the other commands — interactive, multi-turn, always on Claude). The diagram below covers the terminal pipeline.
 
 ```
 Drop files into _INCOMING/
@@ -122,13 +122,15 @@ Because the model that extracts the document is the one that classifies it — r
 
 - **macOS, Linux, or Windows**
 - **[Obsidian](https://obsidian.md) v1.6+** — free
-- **[Claude Code](https://claude.ai/download)** — free to install
+- **[Claude Code](https://claude.ai/download)** — free to install; **required**
 - **Claude access** — a Claude.ai Pro or Max subscription, or an Anthropic API key
 - **Python 3.10+**
 - **qpdf + Ghostscript** — PDF decryption and repair
 - **Tesseract OCR** — Linux/Windows only (macOS uses Apple Vision)
 
 A Claude.ai Pro or Max subscription is the simplest starting point — no API key setup, no per-token billing. If you have an Anthropic API key, run `claude login` in your terminal after installing Claude Code and authenticate that way instead.
+
+**Claude Code is required and is not optional.** The investigation commands — `/watchdog-query`, `/watchdog-surface`, `/watchdog-wiki`, `/watchdog-context`, `/watchdog-health` — are agentic, multi-turn sessions (they read across the vault, follow links, and ask you questions), and they run inside Claude Code on Claude. What *is* flexible is the **document-ingestion pipeline**: its reasoning steps (classification, extraction, post-ingest synthesis) can be offloaded to other model providers — OpenAI or DeepSeek — to cut cost, while the interactive analysis stays on Claude. See [Model backends](#model-backends).
 
 ---
 
@@ -507,7 +509,9 @@ watchdog configure extract_concurrency 2
 
 ### Model backends
 
-Watchdog is designed around Claude and uses it by default, but each stage — classification, extraction, post-ingest — can run on a different model provider. A stage's model knob takes either a **Claude tier** (`haiku`/`sonnet`/`opus`, routed by your `watchdog auth` mode) or a **`backend:model`** value naming the provider and its model:
+Backend choice applies **only to the `watchdog ingest` pipeline** — the batch reasoning steps that run in your terminal. The interactive investigation commands (`/watchdog-query`, `/watchdog-surface`, `/watchdog-wiki`, `/watchdog-context`, `/watchdog-health`) are not affected: they run inside Claude Code, on Claude, always. (Those commands are open-ended, multi-turn agent sessions, where model capability is hardest to substitute; the ingest stages are bounded single-shot calls, which tolerate a cheaper provider far better.)
+
+Within ingest, Watchdog is designed around Claude and uses it by default, but each stage — classification, extraction, post-ingest — can run on a different model provider. A stage's model knob takes either a **Claude tier** (`haiku`/`sonnet`/`opus`, routed by your `watchdog auth` mode) or a **`backend:model`** value naming the provider and its model:
 
 | Value | Runs on |
 |---|---|
