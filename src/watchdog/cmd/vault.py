@@ -343,6 +343,22 @@ def cmd_new(args) -> None:
                     "allow": _VAULT_PERMISSIONS,
                 },
                 "hooks": {
+                    # Load hot.md into context at the start of a session — and again
+                    # after compaction, which drops hook-injected context. The `compact`
+                    # matcher fires once compaction completes, so this one hook covers a
+                    # fresh start, a resume, and a post-compaction reload. SessionStart
+                    # stdout is added to Claude's context, so `cat` is all it takes.
+                    "SessionStart": [
+                        {
+                            "matcher": "startup|resume|compact",
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "[ -f hot.md ] && cat hot.md || true",
+                                }
+                            ],
+                        }
+                    ],
                     "UserPromptSubmit": [
                         {
                             "matcher": "",
@@ -360,7 +376,7 @@ def cmd_new(args) -> None:
                                 }
                             ],
                         }
-                    ]
+                    ],
                 },
             },
             indent=2,
