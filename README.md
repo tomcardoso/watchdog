@@ -308,10 +308,11 @@ my-investigation/
 ├── log.md                 ← Append-only human-readable ingest history
 ├── context.md             ← Your investigation intent and key questions
 ├── watchlist.md           ← Terms to watch for in new documents (one per line)
-└── index.md               ← Dashboard of live tables (requires the Dataview plugin — see below)
+├── index.md               ← Landing page linking to the dashboard
+└── dashboard.base         ← Dashboard of live tables (Obsidian Bases — built in, no plugin)
 ```
 
-`index.md` is a dashboard of live tables — most-mentioned entities, recent documents, people, companies, and possible duplicates — that refresh as you ingest. The tables are [Dataview](https://github.com/blacksmithgu/obsidian-dataview) queries, so they only render if you install and enable Obsidian's **Dataview** community plugin: in the vault, go to **Settings → Community plugins**, turn on community plugins (a fresh vault starts in restricted mode), then **Browse → Dataview → Install → Enable**. Without the plugin you'll just see the raw query blocks.
+`dashboard.base` is a dashboard of live tables — most-mentioned entities, recent documents, people, companies, single-source entities to review, and possible duplicates — that refresh as you ingest (`index.md` is a thin landing page that links to it). The tables use [Obsidian Bases](https://help.obsidian.md/bases), a **core** Obsidian feature (version 1.9 and up), so there is nothing to install: the dashboard renders out of the box, no community plugin and no "restricted mode" to clear. Click a column header to sort (e.g. by **Documents** to surface the most-mentioned entities); click a row to open the note.
 
 ### Supported file types
 

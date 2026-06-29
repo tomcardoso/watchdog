@@ -198,6 +198,21 @@ def test_cmd_new_creates_watchlist(configured):
     assert wl.load_terms(configured / "city-hall-probe") == []
 
 
+def test_cmd_new_creates_bases_dashboard(configured):
+    cli.cmd_new(args(name="City Hall Probe", dir=str(configured)))
+    vault = configured / "city-hall-probe"
+    base = (vault / "dashboard.base").read_text()
+    # native Bases file with the views built from existing note frontmatter
+    assert "views:" in base
+    assert "Most-mentioned entities" in base
+    assert "appears_in.length" in base          # recurrence as a sortable column
+    assert 'file.inFolder("entities/person")' in base
+    # index.md is now a Bases landing page — no Dataview dependency anywhere
+    index = (vault / "index.md").read_text()
+    assert "dataview" not in index.lower()
+    assert "dashboard" in index.lower()
+
+
 def test_cmd_new_registers_project(configured, wdg_home):
     cli.cmd_new(args(name="My Story", dir=str(configured)))
     projects = json.loads((wdg_home / "projects.json").read_text())
