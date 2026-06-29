@@ -243,6 +243,9 @@ The vault now contains:
 - **`hot.md`** — a current-state summary of the investigation, rewritten after every ingest
 - **`log.md`** — a running record of every ingest session
 - **`watchlist.md`** — terms to watch for in new documents; matches are written to `briefings/alerts-<date>.md`
+- **`index.md`** — a dashboard of live tables (most-mentioned entities, recent documents, people, companies, possible duplicates) that refresh as you ingest
+
+The `index.md` dashboard is built on Obsidian's **Dataview** community plugin, so you have to add it once per vault: open **Settings → Community plugins**, turn on community plugins (a new vault starts in restricted mode), then **Browse → Dataview → Install → Enable**. Until you do, `index.md` shows the raw query blocks rather than rendered tables.
 
 Each entity note has the same structure:
 
