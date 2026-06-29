@@ -300,7 +300,8 @@ my-investigation/
 │   └── address/           ← One note per address
 ├── documents/             ← One note per ingested document
 ├── briefings/             ← Post-ingest briefing notes + watch-word alerts (alerts-<date>.md)
-├── wiki/                  ← Investigation thread pages
+├── wiki/                  ← Investigation thread pages (matured angles)
+├── queries/               ← Saved answers to questions you've asked (filed by /watchdog-query)
 ├── hot.md                 ← Current session state — rewritten after every ingest
 ├── log.md                 ← Append-only human-readable ingest history
 ├── context.md             ← Your investigation intent and key questions
