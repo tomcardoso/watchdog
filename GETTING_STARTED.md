@@ -283,6 +283,8 @@ From inside a Claude Code session with the vault open:
 
 Claude answers using only the documents and entities in your vault, and cites the source for every claim.
 
+Substantive answers don't vanish into the chat: `/watchdog-query` files anything that synthesises across documents or surfaces a connection to `queries/<slug>.md` (citations preserved), so your explorations accumulate instead of being re-derived each session. Trivial one-off lookups are skipped. When a finding grows into a real angle — two or more entities tied together by two or more documents — it graduates to a `wiki/` thread via `/watchdog-wiki`. Over a long investigation, `queries/` and `wiki/` become the compounding record of what you've worked out.
+
 Semantic search is available directly from the terminal. It matches by *meaning*, not keywords — searching `"conflict of interest"` surfaces passages about recusals or related-party dealings even when that phrase never appears — and returns the matching **source passage with its page**, not a generated answer:
 
 ```bash

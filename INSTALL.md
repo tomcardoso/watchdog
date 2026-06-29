@@ -214,7 +214,7 @@ Once documents are ingested, you can ask questions in plain English:
 - `/watchdog-query What address does John Doe use?`
 - `/watchdog-query Which companies share the address 123 Main St?`
 
-Claude will answer using only the documents in your vault and will cite the specific page it draws from.
+Claude will answer using only the documents in your vault and will cite the specific page it draws from. Substantive answers are saved to the `queries/` folder so your work builds up over time instead of disappearing into the chat; the big ones graduate into `wiki/` thread pages.
 
 ---
 
