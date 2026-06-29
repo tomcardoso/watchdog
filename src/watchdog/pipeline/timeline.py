@@ -132,6 +132,15 @@ def cmd_timeline_collisions(vault: Path) -> None:
     print(json.dumps(collisions(vault), ensure_ascii=False))
 
 
+# Prepended to every rendered timeline.md. The file is fully regenerated from the canonical
+# .watchdog/timeline/ NDJSON on each rebuild, so hand edits are silently lost — say so up top.
+_TIMELINE_HEADER = (
+    "# Timeline\n\n"
+    "*Auto-generated from `.watchdog/timeline/`. Do not edit by hand — this file is "
+    "overwritten on the next ingest or `watchdog timeline`.*\n\n"
+)
+
+
 def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
     """Read all canonical {date}.ndjson files and render timeline.md.
 
@@ -142,7 +151,7 @@ def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
 
     if not td.exists() or not any(td.glob("*.ndjson")):
         timeline_md.write_text(
-            "# Timeline\n\n*No events yet.*\n", encoding="utf-8"
+            _TIMELINE_HEADER + "*No events yet.*\n", encoding="utf-8"
         )
         if not quiet:
             print("timeline.md written — no events yet")
@@ -155,7 +164,7 @@ def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
 
     if not canonical_files:
         timeline_md.write_text(
-            "# Timeline\n\n*No events yet.*\n", encoding="utf-8"
+            _TIMELINE_HEADER + "*No events yet.*\n", encoding="utf-8"
         )
         if not quiet:
             print("timeline.md written — no canonical files yet")
@@ -183,7 +192,7 @@ def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
             lines.append(f"- {ev['event']}{basis_note}")
         sections.append("\n".join(lines))
 
-    content = "# Timeline\n\n" + "\n\n".join(sections) + "\n"
+    content = _TIMELINE_HEADER + "\n\n".join(sections) + "\n"
     timeline_md.write_text(content, encoding="utf-8")
     if not quiet:
         print(f"timeline.md rebuilt — {len(canonical_files)} date(s), {total_events} event(s)")

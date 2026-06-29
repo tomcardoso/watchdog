@@ -118,6 +118,15 @@ def test_stage_then_collisions_promotes_and_rebuild_renders(tmp_path, capsys):
     timeline_md = (vault / "timeline.md").read_text(encoding="utf-8")
     assert "2020-03-15" in timeline_md
     assert "Appointed director" in timeline_md
+    assert "Do not edit by hand" in timeline_md   # auto-generated warning header
+
+
+def test_rebuild_empty_carries_generated_warning(tmp_path):
+    vault = _vault(tmp_path)
+    cmd_rebuild_timeline(vault)
+    timeline_md = (vault / "timeline.md").read_text(encoding="utf-8")
+    assert "*No events yet.*" in timeline_md
+    assert "Do not edit by hand" in timeline_md
 
 
 def test_stage_collision_reported_when_canonical_exists(tmp_path, capsys):

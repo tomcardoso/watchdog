@@ -88,6 +88,7 @@ from watchdog.cmd.setup import (
 )
 from watchdog.cmd.auth import cmd_auth
 from watchdog.cmd.export import cmd_export
+from watchdog.cmd.leads import cmd_leads
 
 
 def _cmd_rebuild_timeline(args) -> None:
@@ -99,7 +100,7 @@ def _cmd_rebuild_timeline(args) -> None:
     else:
         vault = Path(".").resolve()
         if not (vault / ".watchdog").is_dir():
-            sys.exit("Error: not inside a watchdog project. Run `watchdog rebuild-timeline <name>` or cd into a project first.")
+            sys.exit("Error: not inside a watchdog project. Run `watchdog timeline <name>` or cd into a project first.")
     cmd_rebuild_timeline(vault)
 
 
@@ -222,6 +223,10 @@ def main() -> None:
                           help="Output format (default: csv)")
     p_export.set_defaults(func=cmd_export)
 
+    p_leads = sub.add_parser("leads", help="Surface investigative leads from the entity graph (deterministic)")
+    p_leads.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
+    p_leads.set_defaults(func=cmd_leads)
+
     p_unlock = sub.add_parser("unlock", help="Release a stale ingest lock")
     p_unlock.add_argument("project", nargs="?", help="Investigation name or slug (default: infer from cwd)").completer = _project_completer
     p_unlock.add_argument("--force", action="store_true", help="Remove lock even if recent")
@@ -283,9 +288,9 @@ def main() -> None:
     p_watch.add_argument("name", nargs="?", help="Investigation name or slug (omit when inside the project directory)").completer = _project_completer
     p_watch.set_defaults(func=cmd_watch)
 
-    p_rebuild_timeline = sub.add_parser("rebuild-timeline", help="Rebuild timeline.md from canonical .watchdog/timeline/ files")
-    p_rebuild_timeline.add_argument("name", nargs="?", help="Investigation name or slug (default: current directory)").completer = _project_completer
-    p_rebuild_timeline.set_defaults(func=_cmd_rebuild_timeline)
+    p_timeline = sub.add_parser("timeline", help="Rebuild timeline.md from canonical .watchdog/timeline/ files")
+    p_timeline.add_argument("name", nargs="?", help="Investigation name or slug (default: current directory)").completer = _project_completer
+    p_timeline.set_defaults(func=_cmd_rebuild_timeline)
 
     p_rename = sub.add_parser("rename", help="Rename an investigation (folder and registry)")
     p_rename.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer

@@ -530,7 +530,14 @@ def cmd_guided(args) -> None:
     if not did_offer:
         print(f"\n  {_DIM}Nothing pending — drop files in {_RESET}{_CYAN}_INCOMING/{_RESET}{_DIM} "
               f"then run {_RESET}{_CYAN}watchdog{_RESET}{_DIM}, or {_RESET}{_CYAN}watchdog status{_RESET}"
-              f"{_DIM} for details.{_RESET}\n")
+              f"{_DIM} for details.{_RESET}")
+        # With nothing to process, surface standing leads as a nudge (deterministic, no model).
+        from watchdog.pipeline import leads
+        n = leads.total(leads.scan(vault))
+        if n:
+            print(f"  {_YELLOW}⚠{_RESET}  {_BOLD}{n}{_RESET} open lead{'s' if n != 1 else ''} "
+                  f"{_DIM}— run {_RESET}{_CYAN}watchdog leads{_RESET}{_DIM} to review{_RESET}")
+        print()
 
 
 def cmd_queue_status(args) -> None:
