@@ -391,8 +391,9 @@ sections so synthesized prose never dilutes source-passage ranking.
 **Hybrid corpus retrieval (D43).** The corpus stream is ranked by a three-stage pipeline:
 a dense cosine ranking and a sparse **BM25** ranking are fused with reciprocal-rank fusion
 (`_RRF_K`), then the fused candidate pool (`_RERANK_POOL`) is reordered by a local
-**cross-encoder reranker** (`rerank_model`, default `bge-reranker-base`; downloads on first
-search, disable with `rerank_model = none` or `--no-rerank`). BM25 recovers the exact tokens
+**cross-encoder reranker** (`rerank_model`, default `bge-reranker-base`; warmed by
+`watchdog setup`, else downloaded on first search; disable with `rerank_model = none` or
+`--no-rerank`). BM25 recovers the exact tokens
 embeddings blur — case numbers, dollar amounts, statute cites, names — and the reranker is
 the single biggest precision lever. BM25 is computed in-memory from the loaded passages (no
 persisted sparse index); if the reranker can't load, search degrades to the fusion order.

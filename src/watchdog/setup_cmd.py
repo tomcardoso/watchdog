@@ -235,6 +235,19 @@ def run(force: bool = False) -> None:
             _ok(f"Embedding model ({_FASTEMBED_MODEL})")
         except Exception as e:
             _warn(f"Embedding model download failed: {e}")
+        # Pre-fetch the search reranker too, so the first `watchdog search` isn't a
+        # surprise ~300MB download — and a blocked download surfaces here, with guidance,
+        # instead of silently degrading to fusion mid-investigation. Skipped if disabled.
+        from watchdog.pipeline import embed as _embed
+        if _embed._rerank_enabled():
+            try:
+                from fastembed.rerank.cross_encoder import TextCrossEncoder
+                TextCrossEncoder(_embed._rerank_model_name())
+                _ok(f"Search reranker ({_embed._rerank_model_name()})")
+            except Exception as e:
+                _warn(f"Reranker download failed: {e}\n"
+                      f"      Search still works (ranks by BM25 + embedding fusion); the reranker\n"
+                      f"      retries on first search. Disable it with `watchdog configure rerank_model none`.")
         try:
             from docling.document_converter import DocumentConverter
             DocumentConverter()
