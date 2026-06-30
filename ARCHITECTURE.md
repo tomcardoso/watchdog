@@ -7,7 +7,7 @@ changes against the choices already made.
 
 > **Keep this current.** Any change that alters the pipeline's structure, the
 > division of labour between deterministic code and the model, the vault/registry
-> layout, or one of the **Invariants** (§14) must update this file in the same change;
+> layout, or one of the **Invariants** (§15) must update this file in the same change;
 > the dated rationale for a specific decision is appended to [DECISIONS.md](DECISIONS.md).
 > See [CLAUDE.md](CLAUDE.md).
 
@@ -44,8 +44,8 @@ These run through every decision below.
   `ingest`) is a terminal program whose bounded reasoning calls go through a provider-agnostic
   `model_client`: Claude by default, but offloadable to OpenAI/DeepSeek per stage (D37) because
   a single-shot, schema-bound extraction call tolerates a cheaper model. The **investigation**
-  (`/watchdog-query`, `-surface`, `-wiki`, `-context`, `-health`) runs *inside Claude Code* as
-  agentic, multi-turn, user-in-the-loop sessions — and is deliberately **not** offloadable:
+  (`/watchdog-query`, `-surface`, `-wiki`, `-context`, `-health`, `-research`) runs *inside Claude
+  Code* as agentic, multi-turn, user-in-the-loop sessions — and is deliberately **not** offloadable:
   Claude Code is a hard requirement, and these stay on Claude. The split tracks capability, not
   preference — open-ended exploration that asks the user questions and follows links across the
   vault is where model and harness quality are hardest to substitute. The practical rule this
@@ -478,9 +478,10 @@ registry for every document would be wasteful. The manifest is the cheap index.
   mode. Auth is resolved by `cmd/auth.py` (see #119, D37).
 - **Claude Code skills** (in-vault, run interactively — *not* part of ingest):
   `watchdog-context`, `watchdog-entity`, `watchdog-query`, `watchdog-surface`,
-  `watchdog-wiki`, `watchdog-health`. Ingest is the Python orchestrator (§5); it uses no
-  Claude Code skill. `watchdog-query` reads the manifest/notes first but can shell out to
-  `watchdog search --json` as a **semantic lane** for conceptual/passage-level questions (§11, D44).
+  `watchdog-wiki`, `watchdog-health`, `watchdog-research` (§14). Ingest is the Python
+  orchestrator (§5); it uses no Claude Code skill. `watchdog-query` reads the manifest/notes
+  first but can shell out to `watchdog search --json` as a **semantic lane** for
+  conceptual/passage-level questions (§11, D44).
 - **Domain (record) skills are global** (`watchdog.skills_catalog`, see D21): the
   package's `src/watchdog/skills/records/` plus the user's `~/.watchdog/skills/records/`
   (a user skill overrides a package skill of the same name). The ingest orchestrator
@@ -494,14 +495,66 @@ registry for every document would be wasteful. The manifest is the cheap index.
 
 ---
 
-## 14. Invariants
+## 14. Web research mode (investigation layer)
+
+**Code:** `pipeline/research.py` (the egress gate), `cmd/research.py` (`watchdog research` launcher
++ post-flight download; the internal `research-fetch` recovery command). **Skill:**
+`skills/watchdog-research.md`.
+
+A bounded, agentic web-research session that **queues findings for `_INCOMING/`** so they flow
+through the normal `chew → ingest` pipeline — it never writes vault notes directly. `watchdog
+research` explains the mode, takes a question (or prompts for one), and opens Claude Code on
+`/watchdog-research` (launched via `subprocess`, not `execvp`, so control returns afterward). The
+skill seeds from the vault's open state (`manifest.json`, `watchdog leads`, health gaps,
+`context.md`), proposes a mission, confirms scope + an effort tier (quick / standard / deep), then
+researches in rounds — reading the web selectively to follow leads, checking in between rounds —
+recording each kept source in a **links file** (`.watchdog/tmp/research-queue.tsv`: `url ⇥ title ⇥
+source_type ⇥ relevance`). When the session ends, `watchdog research` downloads the queued sources
+(after a confirm) and stops at `_INCOMING/`, leaving `chew`/`ingest` to the journalist.
+
+- **The skill curates URLs; Python downloads them.** Splitting *curation* (model) from *fetching*
+  (deterministic Python) is the core of the design. The skill never downloads a source — it only
+  reads the web (WebSearch/WebFetch) and appends to the links file. The download is a deterministic
+  **post-flight** of `watchdog research`: `pipeline/research.py` validates each URL *before* the
+  network call (http/https only; host must not resolve to private/loopback/link-local space — the
+  SSRF guard, re-checked on every redirect hop), fetches with a body-size cap, strips
+  `<script>`/`<iframe>`, defangs wikilink/frontmatter-delimiter injection in sidecar values, and
+  writes the source + `.yml` sidecar. It runs in the terminal (ungated), never folded into `chew`
+  (which stays local-first/no-network, I2).
+- **Faithful artifact + existing provenance plumbing.** A finding is downloaded as the original
+  artifact (HTML → Docling, or any Docling-supported type by Content-Type), not a model-summarized
+  capture. Provenance rides the existing `.yml` sidecar (§5, §12): `source`/`obtained` are stamped
+  deterministically at ingest, and `retrieved_by: research-mode`, a `source_type` reliability tag,
+  and per-doc `relevance` reach the extractor as notes and travel to the morgue.
+- **Per-doc rationale → sidecar; batch rationale → memo.** The connective tissue of a research round
+  (what gap it targeted, what was pulled, what's still open) is written to a
+  `briefings/research-<date>.md` memo as forward-looking leads — **never** `context.md`, which is the
+  human-anchored orientation layer and must not be machine-seeded with unverified web inference.
+- **Durability.** The links file *is* the durable product: the skill updates it as it goes, so a long
+  run that exhausts its tokens never loses what it queued. `watchdog research` offers to download a
+  leftover queue on its next run, and the internal `research-fetch` re-pulls one on demand; downloads
+  are idempotent (deposit names are a stable hash of the URL).
+- **Bounds are advisory.** `research_max_rounds` / `research_max_fetches` (and the effort tiers) are
+  a budget the interactive skill self-limits to; only the egress hygiene is hard-enforced in Python.
+- **Web access is scoped to the skill.** `WebSearch` and `WebFetch` (the skill's only outbound
+  reach, for *reading*) are pre-approved only by the `watchdog-research` skill's `allowed-tools`
+  frontmatter — granted while the skill is active, *not* added to the vault-wide `_VAULT_PERMISSIONS`.
+  Archival downloading is a terminal post-flight, never granted to the skill — so a vault of sensitive
+  source material carries no standing outbound-fetch permission.
+
+See D45.
+
+---
+
+## 15. Invariants
 
 These are the **governing rules of the pipeline** — the canonical statement of each principle. They are always true; violating one needs a *new, numbered decision* that supersedes the invariant, not just a code change. Read them first. The dated history of how each was established and refined lives in [DECISIONS.md](DECISIONS.md); where a decision operates within an invariant, *this* section is the authority on the principle and the decision entry records the specific change, rationale, and tradeoff.
 
 - **I1 — Deterministic code writes; the model only reasons.** Anything derivable in Python (document identity, provenance, slugs, role targets, timeline fan-out) is stamped in code, never paid for in model output — and the model is not asked to restate as prose what it already emitted structurally. *History: D2, D18, D24–D26, D29–D31, D33, D34.*
-- **I2 — Local-first preprocessing.** Source documents never leave the machine; chew costs no API tokens. *History: D1.*
+- **I2 — Local-first preprocessing.** The *source documents you were given* never leave the machine, and chew costs no API tokens. This is a boundary on **source-doc egress**, not a vow of web abstinence — the investigation layer runs as agentic Claude Code sessions and web research (§14, I5) is allowed, since anything on the open web is already public. *History: D1, D45.*
 - **I3 — Skills and prompt templates are global package resources** — read directly, never copied per-vault — and prompt templates live in their own directory so they never leak into the classifier index. *History: D21, D28.*
 - **I4 — Configured model and effort only; no automatic escalation.** Each stage's model *and* its reasoning effort are explicit knobs with stable defaults; a failed call retries on the *same* model at the *same* effort — the pipeline never silently bumps either to recover. *History: D20, D36.*
+- **I5 — Research output re-enters through `_INCOMING/`, never as a direct vault write.** Web research deposits findings as documents that flow through `chew → ingest`, keeping the deterministic pipeline the single writer (dedup, provenance, registry bookkeeping). Per-doc rationale rides the `.yml` sidecar; batch rationale goes to a `briefings/research-<date>.md` memo — never `context.md`. *History: D45.*
 
 ### Decision log
 

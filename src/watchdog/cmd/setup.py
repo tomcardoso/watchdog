@@ -311,6 +311,32 @@ _CONFIGURE_KEYS = {
         "type": "str",
         "default": "BAAI/bge-reranker-base",
     },
+    # ── Research ──────────────────────────────────────────────────────────────
+    "research_max_rounds": {
+        "short": "Default search rounds for `watchdog research` standard effort (default: 3)",
+        "help": (
+            "How many search rounds the /watchdog-research skill runs by default before it must\n"
+            "  check in and stop. An advisory budget the interactive skill self-limits to — a wider\n"
+            "  net (the 'deep' effort tier) overrides it per run. Higher = more thorough, more cost.\n"
+            "  Default: 3. Minimum: 1."
+        ),
+        "type": "int",
+        "default": 3,
+        "min": 1,
+    },
+    "research_max_fetches": {
+        "short": "Default sources captured per `watchdog research` standard run (default: 25)",
+        "help": (
+            "About how many web sources the /watchdog-research skill captures into _INCOMING/ in a\n"
+            "  default (standard-effort) run. An advisory budget the interactive skill self-limits to;\n"
+            "  the 'quick' and 'deep' effort tiers scale it down or up per run. Each captured source\n"
+            "  is later read by the local pipeline, not in the research session, so this bounds scope\n"
+            "  and ingest cost rather than session tokens. Default: 25. Minimum: 1."
+        ),
+        "type": "int",
+        "default": 25,
+        "min": 1,
+    },
 }
 
 # Display grouping for the `watchdog configure` listing (presentation only — set/get is
@@ -332,6 +358,8 @@ _CONFIGURE_SECTIONS = [
      ["dup_threshold", "shingle_size"]),
     ("Search", "Local semantic search over the source corpus.",
      ["embed_model", "rerank_model"]),
+    ("Research", "Web research mode — default effort budget for `watchdog research`.",
+     ["research_max_rounds", "research_max_fetches"]),
 ]
 
 _OCR_ENGINE_PACKAGES = {

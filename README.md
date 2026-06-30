@@ -235,6 +235,7 @@ Every ingest finalizes automatically at the end (entity synthesis + timeline + b
 |---------|-------------|
 | `watchdog search <name> "<query>"` | Hybrid search across ingested documents — source passages are ranked by meaning (embeddings) **and** exact terms (BM25), then reranked by a local cross-encoder, and returned with their page (not a generated answer). Matches concepts *and* exact tokens like case numbers, dollar amounts, and names. Supports `+`/`-` phrases to steer toward/away from a concept (`"shell company -real estate"`), `--threshold S` to hide weak matches, `--no-rerank` to skip the reranker, and `--json` for machine-readable output. Source passages and entity/document notes are shown as separate result sections. |
 | `watchdog leads [name]` | Surface investigative leads from the entity graph — fully deterministic, no model call. Reports entities named as a relationship target but never profiled ("named by 3 people across 4 documents, no profile"), entities recurring across documents with no relationships, and entities carrying unresolved contradiction flags. The same sweep runs automatically at the end of every `watchdog ingest` (writing `briefings/leads-<date>.md`) and is nudged by a bare `watchdog` when nothing is pending; this command re-runs it on demand. Omit the name when inside the project folder |
+| `watchdog research [name]` | Open Claude Code to research the vault's open questions on the web. Seeded by the vault's entities, leads, and gaps, Claude conducts bounded web research and **queues the sources it finds**; when the session ends, watchdog downloads them into `_INCOMING/` (with egress hygiene), so findings flow through the normal `chew → ingest` pipeline. Claude never writes vault notes directly. `--question "<q>"` (or `-q`) seeds a question (omit to be prompted); `--model M` overrides the model. After download, run `watchdog chew` then `watchdog ingest`. Omit the name when inside the project folder |
 | `watchdog export [name]` | Export the investigation's entity/relationship graph as Neo4j-import CSV (`nodes.csv` + `relationships.csv`, also loadable in Gephi); `--format cypher` writes a single `graph.cypher` of `MERGE` statements instead; `--output DIR` sets the destination (default `<slug>-export/`). Fully deterministic — reads the registry, no model calls. Only stated-direction relationships are exported (auto-generated reverse edges are skipped) and edges to never-profiled entities are dropped so the import stays valid. Graph quality is bounded by ingest-time entity deduplication |
 | `watchdog doctor` | Check all registered investigations for missing or broken vaults; suggests `watchdog move` or `watchdog delete` for each issue |
 | `watchdog configure` | View or change configuration |
@@ -263,6 +264,7 @@ Extraction is **not** a slash command — run `watchdog ingest` in your terminal
 | `/watchdog-wiki` | Create or update investigation thread pages |
 | `/watchdog-context` | Seed `context.md` from background files in `_CONTEXT/` |
 | `/watchdog-health` | Check vault integrity — orphaned notes, broken links, registry mismatches, unresolved contradictions, unreviewed near-duplicates |
+| `/watchdog-research [question]` | Research open questions on the web, queuing sources that watchdog downloads into `_INCOMING/` to flow through `chew → ingest` (launch with `watchdog research`) |
 
 **Query examples:**
 
@@ -483,6 +485,8 @@ Or run `watchdog configure <key>` with no value to see that one key's help and c
 | `extract_concurrency` | `5` | Documents extracted in parallel during `watchdog ingest`. Lower it if you hit model rate limits; raise it for throughput. Per-run override: `--concurrency`. |
 | `classify_pages` | `5` | Leading pages of each document shown to the classifier (`min(page_count, this)`). More pages classify ambiguous documents better at a small extra cost on the cheap classifier model. Per-run override: `--classify-pages`. |
 | `default_skill` | _(unset)_ | Pin a record skill (a name from the global catalog, or a path to a skill file) for every ingested document, skipping classification — for vaults that are always one document type. Per-run override: `--skill`. |
+| `research_max_rounds` | `3` | Default number of search rounds `watchdog research` runs before it must check in and stop. An advisory budget the interactive skill self-limits to; the `deep` effort tier overrides it per run. |
+| `research_max_fetches` | `25` | Roughly how many web sources `watchdog research` captures into `_INCOMING/` in a default (standard-effort) run. Advisory; the `quick` and `deep` effort tiers scale it down or up per run. Bounds scope and ingest cost, not session tokens. |
 
 **Examples:**
 

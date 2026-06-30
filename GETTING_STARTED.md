@@ -320,6 +320,28 @@ Run this after each significant batch of ingest. The connections it surfaces are
 
 ---
 
+## Researching open questions on the web
+
+When the vault raises a question its own documents can't answer — a director you can't profile, a contradiction you can't resolve, a company you need background on — Watchdog can research it on the web:
+
+```bash
+watchdog research shell-company-investigation
+watchdog research shell-company-investigation -q "Who controls Acme Holdings?"
+```
+
+This opens Claude Code on the research skill. Seeded by your vault's entities, leads, and gaps, it proposes a research mission, confirms how wide to cast the net (quick / standard / deep), then researches in rounds — checking in with you between each. Crucially, it **doesn't write vault notes**: it *queues* every source it keeps (URL, a reliability tag, and why it matters) in a links file. When you exit the session, `watchdog research` downloads the queued sources into `_INCOMING/` — validating and sanitizing each one — so findings flow through the same `chew → ingest` pipeline as documents you obtained yourself: deduped, entity-extracted, and cited. A scraped blog post is never confused with a primary document.
+
+It writes a research memo to `briefings/`, then offers to download. Confirm, then fold the findings in the normal way:
+
+```bash
+watchdog chew
+watchdog ingest
+```
+
+Then open a fresh session to investigate what came back. The links file is the durable product of the session, so even a long "deep" run never loses what it queued if it's interrupted — re-run `watchdog research` (it offers to download a leftover queue) to finish the download.
+
+---
+
 ## Subsequent sessions
 
 After the first ingest, the typical workflow is:

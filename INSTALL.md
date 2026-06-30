@@ -228,6 +228,12 @@ Type `/watchdog-surface` to run a full connection analysis across your entire va
 
 ---
 
+## Researching on the web
+
+When your documents raise a question they can't answer, run `watchdog research` (from inside the vault, or `watchdog research <name>`). Seeded by what's already in your vault, Claude conducts bounded web research and **queues the sources it finds**; when you exit the session, watchdog downloads them into `_INCOMING/` (validated and sanitized, with provenance and a reliability tag) — so the findings flow through the same `chew → ingest` pipeline as documents you obtained yourself. It never writes vault notes directly. After the download, run `watchdog chew` then `watchdog ingest` to fold the sources in. See [GETTING_STARTED.md](GETTING_STARTED.md#researching-open-questions-on-the-web) for the full walkthrough.
+
+---
+
 ## Tips
 
 **Ingesting web pages directly from your browser:**
