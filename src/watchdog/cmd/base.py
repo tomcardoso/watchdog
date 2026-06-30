@@ -495,7 +495,7 @@ def _print_banner() -> None:
     print(f"  {_DIM}Usage:  watchdog <command> [options]{_RESET}")
     print()
     groups = [
-        ("Investigation", [
+        ("Manage investigations", [
             ("new",        "Create a new investigation vault"),
             ("register",   "Register an existing vault folder"),
             ("obsidian",   "Open in Obsidian"),
@@ -506,7 +506,7 @@ def _print_banner() -> None:
             ("move",       "Move vault to a new path"),
             ("delete",     "Remove an investigation from registry"),
         ]),
-        ("Processing", [
+        ("Document processing", [
             ("chew",             "Process documents in _INCOMING/"),
             ("ingest",           "Set up extraction session and open in Claude Code"),
             ("context",          "Seed investigation context from _CONTEXT/"),
