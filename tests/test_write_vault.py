@@ -62,9 +62,11 @@ def make_extraction(tmp_path: Path, overrides: dict | None = None) -> Path:
                      "page": 2, "basis": "stated", "reason": "establishes control of Acme",
                      "quote": "Ms. Smith holds 4,200,000 common shares of Acme Corp."},
                 ],
+                # Deliberately out of chronological order so the sort test exercises
+                # the sort rather than asserting on already-ordered input.
                 "timeline_events": [
-                    {"date": "2020-03-15", "event": "Appointed director of Acme Corp", "page": 2, "basis": "stated"},
                     {"date": "2024", "event": "Continued as director", "page": 2, "basis": "inferred"},
+                    {"date": "2020-03-15", "event": "Appointed director of Acme Corp", "page": 2, "basis": "stated"},
                 ],
                 "roles": [
                     {
