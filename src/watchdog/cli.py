@@ -216,6 +216,8 @@ def main() -> None:
                           help="Hide results scoring below S (0.0–1.0)")
     p_search.add_argument("--no-rerank", action="store_true",
                           help="Skip the cross-encoder rerank of corpus results (faster; lower quality)")
+    p_search.add_argument("--json", action="store_true",
+                          help="Emit results as JSON (for skills/scripts) instead of the formatted listing")
     p_search.set_defaults(func=cmd_search)
 
     p_export = sub.add_parser("export", help="Export the knowledge graph as Neo4j-import CSV (or Cypher)")

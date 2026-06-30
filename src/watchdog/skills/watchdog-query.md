@@ -31,6 +31,14 @@ If the manifest doesn't surface the right entity by name, fall back to grep:
 grep -ri "<search term>" entities/ documents/ --include="*.md" -l
 ```
 
+**Semantic lane — `watchdog search`.** The manifest + grep above are entity-anchored and exact-string: perfect for "what do we know about Acme Corp?" but blind to *conceptual* or *passage-level* questions ("which documents describe a shell-company structure?", "find passages about the rezoning vote") and to wording the documents phrase differently. For those — or when manifest + grep don't surface a confident answer — reach for hybrid search over the source corpus:
+
+```bash
+watchdog search "<the question, or its key concept>" --json
+```
+
+The JSON has a `passages` array, each with `filename`, `page`, `text`, and `score`, ranked by meaning **and** exact terms (so an exact token like a case number or dollar figure still lands). The `text` is the citable span: cite it as `(<filename>, p. <page>)`, and open the matching `documents/<...>.md` note if you need surrounding context. Use this lane to *find* the right documents, then confirm against the entity/document notes — read the synthesized digest first (it's why the vault exists); don't synthesize from raw passages alone when a note already covers it. The `notes` array (synthesized prose) is there too, but prefer reading those notes directly.
+
 ### 3. Compose the answer
 
 **Structure:**

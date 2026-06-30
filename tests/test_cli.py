@@ -1776,3 +1776,26 @@ def test_notify_calls_osascript_on_darwin(monkeypatch):
     assert len(calls) == 1
     assert calls[0][0] == "osascript"
     assert "3 files chewed" in calls[0][2]
+
+
+# ── search --json output (consumed by the watchdog-query semantic lane) ──────────
+
+def test_build_search_json_shape():
+    from watchdog.cmd.vault import _build_search_json
+    passages = [{"type": "passage", "filename": "acme.pdf", "page": 3,
+                 "text": "the kickback to Cyprus", "context": "Acme filing", "score": 0.51234}]
+    notes = [{"type": "note", "note_path": "entities/person/jane",
+              "preview": "Jane is a director", "score": 0.4}]
+    out = _build_search_json("kickback", passages, notes)
+    assert out["query"] == "kickback"
+    # only the fields a consumer needs — internal type/context dropped, score rounded
+    assert out["passages"][0] == {
+        "filename": "acme.pdf", "page": 3, "text": "the kickback to Cyprus", "score": 0.5123}
+    assert out["notes"][0]["note_path"] == "entities/person/jane"
+    # round-trips as JSON
+    assert json.loads(json.dumps(out, ensure_ascii=False))["passages"][0]["page"] == 3
+
+
+def test_build_search_json_empty():
+    from watchdog.cmd.vault import _build_search_json
+    assert _build_search_json("nothing", [], []) == {"query": "nothing", "passages": [], "notes": []}
