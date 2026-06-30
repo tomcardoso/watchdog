@@ -57,11 +57,13 @@ def make_extraction(tmp_path: Path, entity_id: str = "alice-smith") -> Path:
     data = {
         "entity_id": entity_id,
         "summary": "Alice Smith is a key figure appearing across 2 documents.",
+        # Out of chronological order on purpose so test_timeline_sorted_in_note
+        # actually exercises the sort instead of pre-ordered input.
         "timeline_events": [
-            {"date": "2015-11-03", "event": "Transferred shares with no equity received",
-             "source_sha256": "sha-doc1", "page": 1, "basis": "stated"},
             {"date": "2019-01-15", "event": "Listed as director in annual report",
              "source_sha256": "sha-doc2", "page": 4, "basis": "stated"},
+            {"date": "2015-11-03", "event": "Transferred shares with no equity received",
+             "source_sha256": "sha-doc1", "page": 1, "basis": "stated"},
         ],
     }
     path = tmp_path / "entity-refresh.json"
