@@ -538,6 +538,30 @@ def _write_morgue_markdown(vault_path: Path, sha256: str, morgue_dir: Path, stem
         pass
 
 
+def _index_corpus_passages(vault_path: Path, doc: dict, entity_entries: list[dict]) -> None:
+    """Embed this document's source passages into the search index, with a contextual
+    prefix built from what extraction produced — the document's title, type, and the
+    entities it names. The prefix anchors a passage that lacks the document's who/what,
+    improving retrieval (Anthropic contextual-retrieval). Best-effort: the page text lives
+    in the chew-time queue descriptor, gone on a finalize re-run from disk; skip if absent.
+    """
+    sha256 = doc["sha256"]
+    queue_file = vault_path / ".watchdog" / "queue" / f"{sha256}.json"
+    if not queue_file.exists():
+        return
+    pages = json.loads(queue_file.read_text(encoding="utf-8")).get("pages", [])
+    if not pages:
+        return
+    names = [e.get("name", "") for e in entity_entries if e.get("name")][:20]
+    title = doc.get("title") or doc.get("filename", "")
+    dtype = doc.get("document_type") or "document"
+    context = f"{title} — {dtype}."
+    if names:
+        context += " Mentions: " + ", ".join(names) + "."
+    from watchdog.pipeline.embed import add_document
+    add_document(vault_path, doc["filename"], pages, context=context)
+
+
 def _render_evidence_fragments(fragments: list, morgue_path: str = "") -> str:
     """Render evidence-fragment claims as Markdown bullets.
 
@@ -861,6 +885,13 @@ def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False, ne
             add_note(vault_path, f"documents/{slug}", doc_note_content)
         except Exception as e:
             print(f"  Warning: embed index update failed for documents/{slug}: {e}", file=sys.stderr)
+
+        # Index the source passages (corpus stream) with a contextual prefix — now that
+        # extraction has supplied the title, type, and entities the prefix needs (D43).
+        try:
+            _index_corpus_passages(vault_path, doc, entity_entries_for_note)
+        except Exception as e:
+            print(f"  Warning: corpus index update failed for {doc['filename']}: {e}", file=sys.stderr)
 
         # ── 5. Persist registries (atomic temp-then-rename) ──────────────────
 

@@ -31,6 +31,7 @@ with an instruction prefix, passages without one. We honour that — see ``_QUER
 
 import hashlib
 import json
+import math
 import os
 import re
 import numpy as np
@@ -53,7 +54,18 @@ _PREVIEW_LEN = 300       # note preview length (notes only)
 _WINDOW_SIZE = 128       # words per passage window (≈ tokens)
 _WINDOW_OVERLAP = 16     # words shared between adjacent windows
 
+# Hybrid corpus retrieval (scope="corpus"): dense cosine fused with a sparse BM25 leg,
+# then a cross-encoder rerank of the fused candidate pool. Sparse retrieval catches the
+# exact tokens embeddings blur — case numbers, dollar amounts, statute cites, names.
+_RERANK_DEFAULT = "BAAI/bge-reranker-base"   # cross-encoder; configurable via rerank_model
+_RERANK_POOL = 100       # fused candidates reranked before truncation (Anthropic: ~150→20)
+_BM25_K1 = 1.5
+_BM25_B = 0.75
+_RRF_K = 60              # reciprocal-rank-fusion constant (standard)
+_TOKEN_RE = re.compile(r"\w[\w'\-]*", re.UNICODE)   # unicode-aware (CJK/Cyrillic/accented)
+
 _embedder = None
+_reranker = None
 
 
 def _config_get(key: str, default):
@@ -76,6 +88,81 @@ def _get_embedder():
         from fastembed import TextEmbedding
         _embedder = TextEmbedding(_model_name())
     return _embedder
+
+
+def _rerank_model_name() -> str:
+    return _config_get("rerank_model", _RERANK_DEFAULT)
+
+
+def _rerank_enabled() -> bool:
+    """Reranking is on unless rerank_model is explicitly cleared/disabled in config."""
+    return (_rerank_model_name() or "").strip().lower() not in ("", "none", "off", "false", "0")
+
+
+_rerank_notified = False
+
+
+def _notify_rerank_once(msg: str) -> None:
+    """Emit a reranker status line to stderr at most once per process, so a fall-back to
+    fusion (e.g. the model can't download) is announced rather than silent."""
+    global _rerank_notified
+    if not _rerank_notified:
+        import sys
+        print(f"  {msg}", file=sys.stderr)
+        _rerank_notified = True
+
+
+def _get_reranker():
+    # First construction downloads the model (~300MB); fastembed prints its own progress.
+    global _reranker
+    if _reranker is None:
+        from fastembed.rerank.cross_encoder import TextCrossEncoder
+        _reranker = TextCrossEncoder(_rerank_model_name())
+    return _reranker
+
+
+def _tokenize(text: str) -> list[str]:
+    return _TOKEN_RE.findall(text.lower())
+
+
+def _bm25_scores(query_tokens: list[str], docs_tokens: list[list[str]]) -> list[float]:
+    """Okapi BM25 score of each passage against the query, computed in-memory over the
+    loaded corpus (no persisted index — passages already live in memory at query time)."""
+    n = len(docs_tokens)
+    if n == 0 or not query_tokens:
+        return [0.0] * n
+    dls = [len(t) for t in docs_tokens]
+    avgdl = (sum(dls) / n) or 1.0
+    df: dict[str, int] = {}
+    for toks in docs_tokens:
+        for t in set(toks):
+            df[t] = df.get(t, 0) + 1
+    q = set(query_tokens)
+    idf = {t: math.log(1 + (n - df.get(t, 0) + 0.5) / (df.get(t, 0) + 0.5)) for t in q}
+    scores = [0.0] * n
+    for i, toks in enumerate(docs_tokens):
+        if not toks:
+            continue
+        tf: dict[str, int] = {}
+        for t in toks:
+            if t in q:
+                tf[t] = tf.get(t, 0) + 1
+        dl = dls[i]
+        s = 0.0
+        for t, f in tf.items():
+            s += idf[t] * (f * (_BM25_K1 + 1)) / (f + _BM25_K1 * (1 - _BM25_B + _BM25_B * dl / avgdl))
+        scores[i] = s
+    return scores
+
+
+def _rrf(*rankings: list[int]) -> list[int]:
+    """Reciprocal-rank fusion: combine several best-first rankings of the same item set
+    into one. An item absent from a ranking simply contributes nothing from it."""
+    fused: dict[int, float] = {}
+    for ranking in rankings:
+        for rank, idx in enumerate(ranking):
+            fused[idx] = fused.get(idx, 0.0) + 1.0 / (_RRF_K + rank)
+    return sorted(fused, key=lambda i: fused[i], reverse=True)
 
 
 def _emb_root(vault_path: Path) -> Path:
@@ -181,17 +268,26 @@ def _load_all(vault_path: Path) -> tuple["np.ndarray | None", list[dict]]:
 _load = _load_all
 
 
-def add_document(vault_path: Path, filename: str, pages: list[dict]) -> int:
+def add_document(vault_path: Path, filename: str, pages: list[dict], context: str = "") -> int:
     """Window each page, embed the passages, and write the per-document index file.
+
+    ``context`` is an optional document-level contextual prefix (title, type, the entities
+    the document is about — built at ingest in ``write_vault``). It is prepended to each
+    window *before embedding* and stored alongside the window so the sparse (BM25) leg sees
+    it too, anchoring a passage that lacks the document's who/what to its document (Anthropic
+    contextual-retrieval). The stored ``text`` stays the clean window, so the citation and
+    the displayed snippet are unaffected.
 
     Returns the number of passages indexed.
     """
+    ctx = (context or "").strip()
     texts: list[str] = []
     meta: list[dict] = []
     for p in pages:
         for window in _windows(p.get("markdown", "")):
-            texts.append(window)
-            meta.append({"type": "passage", "filename": filename, "page": p.get("page"), "text": window})
+            texts.append(f"{ctx}\n\n{window}" if ctx else window)
+            meta.append({"type": "passage", "filename": filename, "page": p.get("page"),
+                         "text": window, "context": ctx})
     if not texts:
         return 0
     embedder = _get_embedder()
@@ -236,11 +332,17 @@ def _embed_query(query: str) -> "np.ndarray | None":
 
 
 def search(vault_path: Path, query: str, top_n: int = 5,
-           min_score: float = 0.0, scope: str = "all") -> list[dict]:
-    """Return the top_n entries most similar to query, scored by cosine similarity.
+           min_score: float = 0.0, scope: str = "all", rerank: bool = True) -> list[dict]:
+    """Return the top_n best entries for the query.
 
     ``scope`` is ``"corpus"`` (source passages only), ``"notes"`` (entity/document notes
-    only), or ``"all"``. Results scoring below ``min_score`` are dropped.
+    only), or ``"all"``. ``"corpus"`` runs the hybrid pipeline — dense cosine fused with a
+    sparse BM25 leg, then a cross-encoder rerank of the fused pool (``rerank``, on by
+    default; configurable via ``rerank_model``). ``"notes"`` and ``"all"`` rank by cosine.
+
+    Each result's ``score`` is the cosine similarity (so ``min_score`` / the CLI
+    ``--threshold`` keep their dense-cutoff meaning), even when the *order* is set by
+    fusion + rerank.
     """
     vectors, meta = _load_all(vault_path)
     if vectors is None or not meta:
@@ -248,19 +350,57 @@ def search(vault_path: Path, query: str, top_n: int = 5,
     q = _embed_query(query)
     if q is None:
         return []
-    scores  = vectors @ q
+    dense = vectors @ q
+    if scope == "corpus":
+        return _hybrid_corpus_search(query, dense, meta, top_n, min_score, rerank)
+    # notes / all: cosine ranking (synthesized prose; the dense signal is what matters)
     results: list[dict] = []
-    for i in np.argsort(scores)[::-1]:
-        score = float(scores[i])
+    for i in np.argsort(dense)[::-1]:
+        score = float(dense[i])
         if score < min_score:
             break  # argsort is descending, so nothing past here qualifies
-        m = meta[i]
-        is_note = m.get("type") == "note"
-        if scope == "corpus" and is_note:
+        if scope == "notes" and meta[i].get("type") != "note":
             continue
-        if scope == "notes" and not is_note:
-            continue
-        results.append({**m, "score": score})
+        results.append({**meta[i], "score": score})
+        if len(results) >= top_n:
+            break
+    return results
+
+
+def _hybrid_corpus_search(query: str, dense: "np.ndarray", meta: list[dict],
+                          top_n: int, min_score: float, rerank: bool) -> list[dict]:
+    cidx = [i for i, m in enumerate(meta) if m.get("type") != "note"]
+    if not cidx:
+        return []
+    # Two candidate rankings over the corpus-local index space, then fuse.
+    dense_order = sorted(range(len(cidx)), key=lambda j: dense[cidx[j]], reverse=True)
+    corpus_tokens = [
+        _tokenize(f"{meta[cidx[j]].get('context', '')} {meta[cidx[j]].get('text', '')}")
+        for j in range(len(cidx))
+    ]
+    bm = _bm25_scores(_tokenize(query), corpus_tokens)
+    bm25_order = [j for j in sorted(range(len(cidx)), key=lambda j: bm[j], reverse=True) if bm[j] > 0]
+    order = _rrf(dense_order, bm25_order) if bm25_order else dense_order
+    pool = order[:_RERANK_POOL]
+    if rerank and _rerank_enabled() and len(pool) > 1:
+        try:
+            reranker = _get_reranker()
+            scores = list(reranker.rerank(query, [meta[cidx[j]].get("text", "") for j in pool]))
+            pool = [j for j, _ in sorted(zip(pool, scores), key=lambda x: x[1], reverse=True)]
+        except Exception as exc:
+            # Reranker unavailable (e.g. model download blocked) → keep the fusion order
+            # rather than failing the search, but say so once so it's not silent.
+            _notify_rerank_once(
+                f"Reranker {_rerank_model_name()} unavailable ({exc.__class__.__name__}); "
+                f"ranking by BM25 + embedding fusion. Use --no-rerank to silence."
+            )
+    results: list[dict] = []
+    for j in pool:
+        gi = cidx[j]
+        score = float(dense[gi])
+        if score < min_score:
+            continue  # advisory cosine floor; ordering is by fusion/rerank, so don't break
+        results.append({**meta[gi], "score": score})
         if len(results) >= top_n:
             break
     return results

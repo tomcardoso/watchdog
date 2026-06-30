@@ -118,7 +118,6 @@ Chewing does the mechanical preprocessing work that runs outside Claude Code:
 - Converts documents to structured text using Docling
 - Detects and applies OCR to scanned documents (Apple Vision on macOS; Tesseract on Linux/Windows)
 - Splits large PDFs into chunks and processes them in parallel
-- Embeds documents for semantic search
 - Detects near-duplicates
 
 Each file produces a `.json` file in `.watchdog/queue/` containing the extracted text and metadata. The original file moves to `.watchdog/staging/`. Nothing is written to the Obsidian vault yet.
@@ -285,7 +284,7 @@ Claude answers using only the documents and entities in your vault, and cites th
 
 Substantive answers don't vanish into the chat: `/watchdog-query` files anything that synthesises across documents or surfaces a connection to `queries/<slug>.md` (citations preserved), so your explorations accumulate instead of being re-derived each session. Trivial one-off lookups are skipped. When a finding grows into a real angle — two or more entities tied together by two or more documents — it graduates to a `wiki/` thread via `/watchdog-wiki`. Over a long investigation, `queries/` and `wiki/` become the compounding record of what you've worked out.
 
-Semantic search is available directly from the terminal. It matches by *meaning*, not keywords — searching `"conflict of interest"` surfaces passages about recusals or related-party dealings even when that phrase never appears — and returns the matching **source passage with its page**, not a generated answer:
+Search is available directly from the terminal. Source passages are ranked by a hybrid of *meaning* (embeddings) and *exact terms* (BM25), then reranked by a local cross-encoder for precision — so searching `"conflict of interest"` surfaces passages about recusals or related-party dealings even when that phrase never appears, while an exact token like a case number or dollar figure still lands its passage. It returns the matching **source passage with its page**, not a generated answer:
 
 ```bash
 watchdog search shell-company-investigation "offshore account transfers"
@@ -299,7 +298,7 @@ watchdog search shell-company-investigation "shell company -real estate"
 watchdog search shell-company-investigation "consulting fee +offshore -salary"
 ```
 
-Results come in two sections — **source passages** (what a document says) and **notes** (what the investigation concluded) — each ranked by similarity. Scores run 0–1; a strong conceptual match sits around 0.5–0.65. Add `--threshold 0.5` to hide weak matches. Run `watchdog search --help` for the full query syntax.
+Results come in two sections — **source passages** (what a document says) and **notes** (what the investigation concluded). The score shown is cosine similarity (0–1; a strong conceptual match sits around 0.5–0.65), even though the passage order is set by the fusion + rerank. Add `--threshold 0.5` to hide weak matches, or `--no-rerank` to skip the cross-encoder (faster, lower quality — the reranker downloads a ~300 MB local model on first use). Run `watchdog search --help` for the full query syntax.
 
 ---
 
