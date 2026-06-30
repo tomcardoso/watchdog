@@ -128,7 +128,10 @@ def cmd_research(args) -> None:
             return
 
     # Launch interactively via subprocess (not execvp) so control returns for the post-flight
-    # download. claude takes over the terminal and we resume when it exits.
+    # download. claude takes over the terminal and we resume when it exits — Claude Code does not
+    # self-exit when the skill finishes, so flag that the download waits on the user leaving.
+    print(f"  {_DIM}When you're done, exit Claude Code (Ctrl-D) — watchdog will then offer to "
+          f"download the sources it queued.{_RESET}\n")
     prompt = f"/watchdog-research {question}".strip()
     try:
         subprocess.run(["claude", "--model", _MODEL_IDS.get(model, model), prompt], cwd=str(vault))
