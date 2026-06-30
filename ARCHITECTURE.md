@@ -18,9 +18,10 @@ changes against the choices already made.
 These run through every decision below.
 
 - **Local-first.** Preprocessing (OCR, layout, near-duplicate detection,
-  classification inputs, the search index) runs entirely on the user's machine.
-  Documents never leave it during chew. The only network calls are the Claude API
-  during the ingest (extraction/synthesis) phase.
+  classification inputs) runs entirely on the user's machine. Documents never leave it
+  during chew. The search index — embeddings, BM25, and the cross-encoder reranker — is
+  also fully local (built at ingest, see §11), so it costs no API tokens either. The only
+  network calls are the Claude API during the ingest (extraction/synthesis) phase.
 - **Deterministic code writes; the model decides.** Anything that can be done
   reliably and cheaply in Python — file writing, merging, sorting, deduplication,
   registry bookkeeping — is done in Python. The model is reserved for judgement:
@@ -366,6 +367,15 @@ A local fastembed semantic index (`embed_model`, default `bge-small-en-v1.5`), o
 only its own files. Indexing is deterministic and entirely on-machine — no API, no
 metered call (I2).
 
+**Built at ingest, not chew (D43).** Notes are embedded by `write_vault` as they're
+written; corpus passages are embedded by `write_vault` too, right after the document note,
+so the index is wholly an ingest product. Embedding moved off chew because each passage is
+stored with a **contextual prefix** — the document's title, type, and the entities it names
+— and those only exist after extraction. The prefix is prepended to the window before
+embedding and kept alongside it for the sparse leg, anchoring a passage that lacks the
+document's who/what to its document (Anthropic contextual-retrieval); the stored/cited
+`text` stays the clean window.
+
 **Passages, not pages (D38).** Each page is split into overlapping word *windows*
 (`_WINDOW_SIZE` words, `_WINDOW_OVERLAP` shared with the neighbour) and one vector is
 stored per window, tagged with its page. A whole page averages many topics into one
@@ -378,12 +388,23 @@ boundary, so every passage carries an exact page citation.
 scope=)` selects `corpus` / `notes` / `all`, and `watchdog search` shows them as two
 sections so synthesized prose never dilutes source-passage ranking.
 
+**Hybrid corpus retrieval (D43).** The corpus stream is ranked by a three-stage pipeline:
+a dense cosine ranking and a sparse **BM25** ranking are fused with reciprocal-rank fusion
+(`_RRF_K`), then the fused candidate pool (`_RERANK_POOL`) is reordered by a local
+**cross-encoder reranker** (`rerank_model`, default `bge-reranker-base`; downloads on first
+search, disable with `rerank_model = none` or `--no-rerank`). BM25 recovers the exact tokens
+embeddings blur — case numbers, dollar amounts, statute cites, names — and the reranker is
+the single biggest precision lever. BM25 is computed in-memory from the loaded passages (no
+persisted sparse index); if the reranker can't load, search degrades to the fusion order.
+The notes stream stays pure cosine.
+
 **Query handling.** Short queries are embedded with the bge instruction prefix
 (asymmetric retrieval — passages get no prefix); a query supports Semantra-style
 `+`/`-` arithmetic (`_parse_query` → sum of positive minus negative phrase vectors);
-`min_score` (CLI `--threshold`) drops weak hits. Cosine has no universal cutoff — a
-strong conceptual match sits ≈ 0.5–0.65 for the default model, so the threshold is
-advisory and corpus-tuned, not a fixed gate.
+`min_score` (CLI `--threshold`) drops weak hits on the **cosine** score (each result's
+`score` stays the cosine even when fusion + rerank set the order). Cosine has no universal
+cutoff — a strong conceptual match sits ≈ 0.5–0.65 for the default model, so the threshold
+is advisory and corpus-tuned, not a fixed gate.
 
 ---
 

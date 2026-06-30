@@ -1082,7 +1082,8 @@ def cmd_search(args) -> None:
     # Without an explicit --threshold, don't filter (cosine ≥ -1 always holds), so a plain
     # search always returns its top-N; --threshold opts into hiding weak matches.
     min_score = args.threshold if args.threshold is not None else -1.0
-    passages = search(vault, args.query, top_n=args.top_n, min_score=min_score, scope="corpus")
+    rerank = not getattr(args, "no_rerank", False)
+    passages = search(vault, args.query, top_n=args.top_n, min_score=min_score, scope="corpus", rerank=rerank)
     notes    = search(vault, args.query, top_n=args.top_n, min_score=min_score, scope="notes")
 
     print()

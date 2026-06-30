@@ -288,12 +288,27 @@ _CONFIGURE_KEYS = {
             "    BAAI/bge-base-en-v1.5  (768-dim, 210 MB — same family, easy step up)\n"
             "    snowflake/snowflake-arctic-embed-s  (384-dim, 130 MB — same size class)\n"
             "  Must be a model fastembed can load (see `TextEmbedding.list_supported_models()`).\n"
-            "  Changing this requires re-chewing documents — vectors from two models aren't\n"
+            "  Changing this requires re-ingesting documents — vectors from two models aren't\n"
             "  comparable, so the old index can't be mixed with the new one.\n"
             "  Default: BAAI/bge-small-en-v1.5."
         ),
         "type": "str",
         "default": "BAAI/bge-small-en-v1.5",
+    },
+    "rerank_model": {
+        "short": "Local cross-encoder that reranks corpus search results (default: BAAI/bge-reranker-base)",
+        "help": (
+            "After `watchdog search` fuses the dense (embedding) and sparse (BM25) candidate\n"
+            "  lists, a cross-encoder reranks the top of that pool for precision — the biggest\n"
+            "  single retrieval-quality lever (Anthropic contextual-retrieval). Runs entirely on\n"
+            "  your machine via fastembed — no API, no cost. Downloads on first search (~300 MB).\n"
+            "  Set to `none` (or empty) to turn reranking off and rank by fusion alone.\n"
+            "  Other fastembed cross-encoders: Xenova/ms-marco-MiniLM-L-6-v2 (English, ~90 MB),\n"
+            "    jinaai/jina-reranker-v2-base-multilingual.\n"
+            "  Default: BAAI/bge-reranker-base."
+        ),
+        "type": "str",
+        "default": "BAAI/bge-reranker-base",
     },
 }
 
@@ -315,7 +330,7 @@ _CONFIGURE_SECTIONS = [
     ("Deduplication", "Near-duplicate detection.",
      ["dup_threshold", "shingle_size"]),
     ("Search", "Local semantic search over the source corpus.",
-     ["embed_model"]),
+     ["embed_model", "rerank_model"]),
 ]
 
 _OCR_ENGINE_PACKAGES = {

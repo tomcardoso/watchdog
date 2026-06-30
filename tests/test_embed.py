@@ -28,6 +28,13 @@ def fake_embedder(monkeypatch):
     monkeypatch.setattr(embed_mod, "_embedder", _FakeEmbedder())
 
 
+@pytest.fixture(autouse=True)
+def no_rerank(monkeypatch):
+    # Reranking would load the real ~300MB cross-encoder; disable it for the unit tests
+    # that exercise indexing + fusion. The reranker is tested separately with a fake.
+    monkeypatch.setattr(embed_mod, "_rerank_enabled", lambda: False)
+
+
 @pytest.fixture
 def vault(tmp_path):
     return tmp_path / "vault"
@@ -297,4 +304,89 @@ def test_search_exact_match_scores_high(vault, monkeypatch):
     results = embed_mod.search(vault, "needle", top_n=2)
     # The passage containing "needle" should score 1.0 (same unit vector as query)
     assert results[0]["score"] == pytest.approx(1.0)
+
+
+# --- hybrid corpus retrieval: BM25 + fusion ---
+
+def test_tokenize_unicode():
+    # exact-term retrieval must not silently drop non-ASCII corpora (symbols like № are dropped)
+    assert embed_mod._tokenize("Acme Corp. №42 café Москва") == [
+        "acme", "corp", "42", "café", "москва"]
+
+
+def test_bm25_ranks_exact_term_match_first():
+    docs = [embed_mod._tokenize(t) for t in
+            ["the quarterly report", "shell company in cyprus", "annual filing"]]
+    scores = embed_mod._bm25_scores(embed_mod._tokenize("cyprus shell"), docs)
+    assert scores[1] == max(scores) and scores[1] > 0
+    assert scores[0] == 0 and scores[2] == 0
+
+
+def test_bm25_no_query_terms_is_uniform_zero():
+    docs = [embed_mod._tokenize("alpha"), embed_mod._tokenize("beta")]
+    assert embed_mod._bm25_scores(embed_mod._tokenize("zzz"), docs) == [0.0, 0.0]
+
+
+def test_rrf_fuses_rankings():
+    # identical rankings preserve order
+    assert embed_mod._rrf([0, 1, 2], [0, 1, 2])[0] == 0
+    # an item present in BOTH rankings outranks one present in only a single ranking
+    assert embed_mod._rrf([0, 1], [1])[0] == 1
+
+
+def test_bm25_recovers_exact_token_cosine_misses(vault):
+    # Dense FakeEmbedder hashes whole strings, so an exact token inside a longer
+    # passage won't match by cosine — BM25 must surface it. Query token "kickback"
+    # appears only in the second passage.
+    embed_mod.add_document(vault, "doc.pdf", _pages(
+        "routine administrative correspondence about scheduling",
+        "the kickback was wired through an offshore intermediary"))
+    results = embed_mod.search(vault, "kickback", top_n=2, scope="corpus")
+    assert results[0]["text"].startswith("the kickback")
+
+
+def test_context_prefix_stored_and_embedded(vault, monkeypatch):
+    captured = {}
+
+    class _Spy(_FakeEmbedder):
+        def embed(self, texts):
+            captured.setdefault("texts", []).extend(texts)
+            return super().embed(texts)
+
+    monkeypatch.setattr(embed_mod, "_embedder", _Spy())
+    embed_mod.add_document(vault, "doc.pdf", _pages("the board approved the transfer"),
+                           context="Acme 2024 filing — corporate. Mentions: Acme Corp.")
+    # the prefix is embedded with the window…
+    assert any("Acme Corp" in t and "board approved" in t for t in captured["texts"])
+    # …but the stored/cited text stays the clean window, with the prefix kept separately
+    _, meta = embed_mod._load(vault)
+    assert meta[0]["text"] == "the board approved the transfer"
+    assert "Acme Corp" in meta[0]["context"]
+
+
+def test_rerank_reorders_pool(vault, monkeypatch):
+    embed_mod.add_document(vault, "doc.pdf", _pages("first passage", "second passage", "third passage"))
+
+    class _FakeReranker:
+        def rerank(self, query, docs):
+            # score so the passage containing "third" wins regardless of fusion order
+            return [10.0 if "third" in d else 0.0 for d in docs]
+
+    monkeypatch.setattr(embed_mod, "_rerank_enabled", lambda: True)
+    monkeypatch.setattr(embed_mod, "_get_reranker", lambda: _FakeReranker())
+    results = embed_mod.search(vault, "passage", top_n=3, scope="corpus", rerank=True)
+    assert results[0]["text"] == "third passage"
+
+
+def test_rerank_failure_falls_back_to_fusion(vault, monkeypatch):
+    embed_mod.add_document(vault, "doc.pdf", _pages("alpha", "beta"))
+
+    def _boom():
+        raise RuntimeError("reranker model unavailable")
+
+    monkeypatch.setattr(embed_mod, "_rerank_enabled", lambda: True)
+    monkeypatch.setattr(embed_mod, "_get_reranker", _boom)
+    # must not raise — search degrades to fusion order
+    results = embed_mod.search(vault, "alpha", top_n=2, scope="corpus", rerank=True)
+    assert len(results) == 2
     assert results[0]["page"] == 1

@@ -521,12 +521,9 @@ def main() -> None:
         print(json.dumps(result))
         sys.exit(1)
 
-    if args.vault_path:
-        try:
-            from watchdog.pipeline.embed import add_document
-            add_document(Path(args.vault_path), result["filename"], result["pages"])
-        except Exception as e:
-            print(f"Warning: embed index update failed: {e}", file=sys.stderr)
+    # The corpus search index is built at ingest, not chew: write_vault embeds each
+    # document's passages with a contextual prefix (title, type, the entities it names),
+    # which only exists after extraction. See embed.add_document / DECISIONS D43.
 
     print(json.dumps(result, ensure_ascii=False))
 
