@@ -1,0 +1,195 @@
+"""Tests for the web research egress gate (pipeline/research.py, #186).
+
+The security-critical guarantee — nothing reaches `_INCOMING/` without passing URL validation
+and content sanitization — is enforced here, so these tests exercise the hygiene directly. The
+network is never touched: `fetch` is unit-tested only for its pure helpers, and `deposit_*` take
+an injected fake fetcher."""
+
+import sys
+from pathlib import Path
+
+import pytest
+import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from watchdog.pipeline import research
+from watchdog.pipeline.research import ResearchError
+
+
+# ── URL validation (SSRF guard) ───────────────────────────────────────────────
+
+@pytest.mark.parametrize("url", [
+    "file:///etc/passwd",
+    "javascript:alert(1)",
+    "data:text/html,<h1>x</h1>",
+    "ftp://example.com/x",
+    "ssh://example.com",
+    "https://",                 # no host
+])
+def test_validate_url_rejects_bad_schemes_and_missing_host(url):
+    with pytest.raises(ResearchError):
+        research.validate_url(url)
+
+
+@pytest.mark.parametrize("url", [
+    "http://localhost/admin",
+    "http://127.0.0.1/secret",
+    "https://10.0.0.5/internal",
+    "http://192.168.1.1/router",
+    "http://172.16.0.1/x",
+    "http://169.254.169.254/latest/meta-data/",   # cloud metadata endpoint
+    "http://[::1]/x",                              # IPv6 loopback
+])
+def test_validate_url_rejects_private_and_loopback_hosts(url):
+    with pytest.raises(ResearchError):
+        research.validate_url(url)
+
+
+def test_validate_url_accepts_public(monkeypatch):
+    # Pin DNS resolution to a public address so the test never hits the network.
+    monkeypatch.setattr(research.socket, "getaddrinfo",
+                        lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))])
+    assert research.validate_url("https://example.com/page") == "https://example.com/page"
+
+
+def test_check_host_public_rejects_private_resolution(monkeypatch):
+    # A public-looking name that resolves into RFC1918 (DNS rebinding-style) is still rejected.
+    monkeypatch.setattr(research.socket, "getaddrinfo",
+                        lambda *a, **k: [(2, 1, 6, "", ("10.1.2.3", 0))])
+    with pytest.raises(ResearchError):
+        research.validate_url("https://sneaky.example.com/")
+
+
+# ── Content type → extension ──────────────────────────────────────────────────
+
+def test_extension_for_strips_charset_params():
+    assert research.extension_for("text/html; charset=utf-8", "http://e.com/a") == ".html"
+
+
+def test_extension_for_falls_back_to_url_suffix():
+    assert research.extension_for("application/octet-stream", "http://e.com/report.pdf") == ".pdf"
+
+
+def test_extension_for_rejects_unsupported():
+    with pytest.raises(ResearchError):
+        research.extension_for("application/zip", "http://e.com/archive")
+
+
+# ── Sanitization ──────────────────────────────────────────────────────────────
+
+def test_sanitize_html_strips_script_and_iframe():
+    out = research.sanitize_html("a<script>steal()</script>b<iframe src=evil></iframe>c")
+    assert out == "abc"
+    assert "script" not in out.lower() and "iframe" not in out.lower()
+
+
+def test_sanitize_html_strips_unclosed_tags():
+    out = research.sanitize_html("ok<script src=x.js>trailing")
+    assert "script" not in out.lower()
+
+
+def test_neutralize_defangs_wikilinks_and_collapses_newlines():
+    out = research.neutralize("Forged [[entities/person/x]] link\n---\ninjected")
+    assert "[[" not in out and "]]" not in out
+    assert "\n" not in out
+
+
+# ── Sidecar ───────────────────────────────────────────────────────────────────
+
+def test_build_sidecar_is_parseable_and_carries_provenance():
+    text = research.build_sidecar(source="https://e.com/x", title="A Filing",
+                                  source_type="official-registry",
+                                  relevance="names the director", obtained="2026-06-30")
+    data = yaml.safe_load(text)
+    assert data["source"] == "https://e.com/x"
+    assert data["obtained"] == "2026-06-30"
+    assert data["retrieved_by"] == "research-mode"
+    assert data["source_type"] == "official-registry"
+
+
+def test_build_sidecar_defangs_malicious_title():
+    text = research.build_sidecar(source="https://e.com/x", title="Pwn [[entities/x]]",
+                                  source_type="blog", relevance="", obtained="2026-06-30")
+    data = yaml.safe_load(text)
+    assert "[[" not in data["title"]
+
+
+# ── Deposit ───────────────────────────────────────────────────────────────────
+
+def _fake_fetcher(body: bytes, content_type: str, final_url: str | None = None):
+    def _fetch(url, **kwargs):
+        return body, content_type, final_url or url
+    return _fetch
+
+
+def test_deposit_one_writes_document_and_sidecar(tmp_path):
+    vault = tmp_path / "vault"
+    fetcher = _fake_fetcher(b"<html><body><script>x</script>hello</body></html>", "text/html")
+    path = research.deposit_one(vault, "https://e.com/post", title="A Post",
+                                source_type="news", relevance="why", obtained="2026-06-30",
+                                fetcher=fetcher)
+    assert path.exists()
+    assert path.suffix == ".html"
+    assert path.parent == vault / "_INCOMING"
+    # Script was stripped from the deposited body.
+    assert b"script" not in path.read_bytes()
+    # Sidecar sits beside it under the `<name>.html.yml` convention the ingest path reads.
+    sidecar = path.with_name(path.name + ".yml")
+    assert sidecar.exists()
+    data = yaml.safe_load(sidecar.read_text())
+    assert data["source"] == "https://e.com/post"
+    assert data["retrieved_by"] == "research-mode"
+
+
+def test_deposit_one_size_cap_enforced(tmp_path):
+    # fetch (the real one) enforces the cap; deposit_one passes max_bytes through. Here we assert
+    # the cap travels to the fetcher.
+    seen = {}
+
+    def _fetch(url, **kwargs):
+        seen["max_bytes"] = kwargs["max_bytes"]
+        return b"<html>x</html>", "text/html", url
+
+    research.deposit_one(tmp_path / "v", "https://e.com/x", max_bytes=1234, fetcher=_fetch)
+    assert seen["max_bytes"] == 1234
+
+
+def test_deposit_name_is_stable_per_url(tmp_path):
+    vault = tmp_path / "v"
+    f = _fake_fetcher(b"<html>x</html>", "text/html")
+    p1 = research.deposit_one(vault, "https://e.com/x", title="T", fetcher=f)
+    p2 = research.deposit_one(vault, "https://e.com/x", title="T", fetcher=f)
+    # Re-pulling the same URL overwrites the same file (idempotent recovery), never duplicates.
+    assert p1 == p2
+    assert len(list((vault / "_INCOMING").glob("*.html"))) == 1
+
+
+def test_parse_worklist_skips_comments_and_blanks():
+    entries = research.parse_worklist(
+        "https://a.com\tTitle A\tnews\twhy a\n# a comment\n\nhttps://b.com\n")
+    assert entries == [
+        {"url": "https://a.com", "title": "Title A", "source_type": "news", "relevance": "why a"},
+        {"url": "https://b.com", "title": "", "source_type": "", "relevance": ""},
+    ]
+
+
+def test_deposit_many_continues_past_failures(tmp_path):
+    vault = tmp_path / "v"
+    calls = {"n": 0}
+
+    def _fetch(url, **kwargs):
+        calls["n"] += 1
+        if "bad" in url:
+            raise ResearchError("refused: simulated")
+        return b"<html>ok</html>", "text/html", url
+
+    entries = [
+        {"url": "https://good1.com"},
+        {"url": "https://bad.com"},
+        {"url": "https://good2.com"},
+    ]
+    results = research.deposit_many(vault, entries, fetcher=_fetch)
+    assert [bool(r.path) for r in results] == [True, False, True]
+    assert results[1].error and "simulated" in results[1].error
+    assert len(list((vault / "_INCOMING").glob("*.html"))) == 2

@@ -89,6 +89,7 @@ from watchdog.cmd.setup import (
 from watchdog.cmd.auth import cmd_auth
 from watchdog.cmd.export import cmd_export
 from watchdog.cmd.leads import cmd_leads
+from watchdog.cmd.research import cmd_research, cmd_research_fetch
 
 
 def _cmd_rebuild_timeline(args) -> None:
@@ -134,7 +135,7 @@ def main() -> None:
     _INTERNAL_CMDS = {
         "entity-index", "queue-status", "validate-extraction",
         "is-duplicate",  "pre-flight",  "post-flight",
-        "timeline-collisions",
+        "timeline-collisions", "research-fetch",
     }
     if len(sys.argv) >= 2 and sys.argv[1] in _INTERNAL_CMDS:
         cmd = sys.argv[1]
@@ -161,6 +162,10 @@ def main() -> None:
         elif cmd == "timeline-collisions":
             from watchdog.pipeline.timeline import main_collisions
             main_collisions()
+        elif cmd == "research-fetch":
+            _p.add_argument("project", nargs="?")
+            _p.add_argument("--file")
+            cmd_research_fetch(_p.parse_args(sys.argv[2:]))
         return
 
     parser = argparse.ArgumentParser(
@@ -230,6 +235,12 @@ def main() -> None:
     p_leads = sub.add_parser("leads", help="Surface investigative leads from the entity graph (deterministic)")
     p_leads.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
     p_leads.set_defaults(func=cmd_leads)
+
+    p_research = sub.add_parser("research", help="Open Claude Code to research open questions on the web")
+    p_research.add_argument("name", nargs="?", help="Investigation name or slug (default: current directory)").completer = _project_completer
+    p_research.add_argument("--question", "-q", help="Research question to seed (omit to be prompted)")
+    p_research.add_argument("--model", help="Model to use (sonnet/opus/haiku, default: sonnet)")
+    p_research.set_defaults(func=cmd_research)
 
     p_unlock = sub.add_parser("unlock", help="Release a stale ingest lock")
     p_unlock.add_argument("project", nargs="?", help="Investigation name or slug (default: infer from cwd)").completer = _project_completer

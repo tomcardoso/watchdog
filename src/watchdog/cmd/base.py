@@ -72,6 +72,10 @@ _VAULT_PERMISSIONS = [
     "Bash(watchdog write-entity --entity-id *)",
     "Bash(watchdog unlock*)",
     "Bash(watchdog timeline)",
+    # WebSearch / WebFetch are deliberately NOT here — they make outbound requests, so they are
+    # pre-approved only by the watchdog-research skill's own `allowed-tools` frontmatter, scoped to
+    # when /watchdog-research is active. Archival downloads run as a deterministic post-flight of
+    # `watchdog research` (in the terminal, ungated), never from the skill (#186, D45).
     # internal vault state
     "Write(.watchdog/tmp/**)",
     "Edit(.watchdog/tmp/**)",
@@ -229,6 +233,21 @@ _CMD_HELP: dict[str, dict] = {
             "",
             "The same sweep runs at the end of every `watchdog ingest`, writing the full report",
             "to briefings/leads-<date>.md; this command re-runs it on demand between ingests.",
+        ],
+    },
+    "research": {
+        "desc": "Open Claude Code to research the vault's open questions on the web",
+        "args": [("name", "Investigation name or slug (default: current directory)", True)],
+        "opts": [
+            ("--question Q, -q Q", "Research question to seed (omit to be prompted)"),
+            ("--model M",          "Model to use (sonnet/opus/haiku, default: sonnet)"),
+        ],
+        "notes": [
+            "Seeded by the vault's entities, leads, and gaps, Claude conducts bounded web research",
+            "and queues the sources it finds; when the session ends, watchdog downloads them into",
+            "_INCOMING/ — so findings flow through the normal chew → ingest pipeline. Claude never",
+            "writes vault notes directly. After the download, run `watchdog chew` then",
+            "`watchdog ingest` to fold the sources into the vault.",
         ],
     },
     "export": {
@@ -519,6 +538,7 @@ def _print_banner() -> None:
             ("status",     "Show detailed status"),
             ("search",     "Semantic search across ingested documents"),
             ("leads",      "Surface investigative leads from the entity graph"),
+            ("research",   "Research open questions on the web (downloads into _INCOMING/)"),
             ("export",     "Export the knowledge graph (Neo4j / Gephi / Cypher)"),
             ("doctor",     "Check for missing or broken vaults"),
         ]),
