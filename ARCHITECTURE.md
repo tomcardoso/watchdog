@@ -479,7 +479,8 @@ registry for every document would be wasteful. The manifest is the cheap index.
 - **Claude Code skills** (in-vault, run interactively — *not* part of ingest):
   `watchdog-context`, `watchdog-entity`, `watchdog-query`, `watchdog-surface`,
   `watchdog-wiki`, `watchdog-health`. Ingest is the Python orchestrator (§5); it uses no
-  Claude Code skill.
+  Claude Code skill. `watchdog-query` reads the manifest/notes first but can shell out to
+  `watchdog search --json` as a **semantic lane** for conceptual/passage-level questions (§11, D44).
 - **Domain (record) skills are global** (`watchdog.skills_catalog`, see D21): the
   package's `src/watchdog/skills/records/` plus the user's `~/.watchdog/skills/records/`
   (a user skill overrides a package skill of the same name). The ingest orchestrator

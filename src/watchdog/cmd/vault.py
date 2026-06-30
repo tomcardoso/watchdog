@@ -1049,6 +1049,25 @@ def cmd_doctor(args) -> None:
         print()
 
 
+def _build_search_json(query: str, passages: list[dict], notes: list[dict]) -> dict:
+    """Shape `watchdog search` results for `--json` consumers (the watchdog-query semantic
+    lane, scripts). Each passage carries the citable span (`text`) + its page; `score` is the
+    cosine similarity (ordering already reflects fusion + rerank)."""
+    return {
+        "query": query,
+        "passages": [
+            {"filename": r.get("filename"), "page": r.get("page"),
+             "text": r.get("text"), "score": round(float(r["score"]), 4)}
+            for r in passages
+        ],
+        "notes": [
+            {"note_path": r.get("note_path"), "preview": r.get("preview"),
+             "score": round(float(r["score"]), 4)}
+            for r in notes
+        ],
+    }
+
+
 def cmd_search(args) -> None:
     project_arg = args.project
     query_arg   = args.query
@@ -1073,10 +1092,15 @@ def cmd_search(args) -> None:
 
     vault = Path(info["path"])
 
+    as_json = getattr(args, "json", False)
+
     from watchdog.pipeline.embed import search, index_stats
     stats = index_stats(vault)
     if stats["total"] == 0:
-        print(f"\n  {_DIM}No embeddings found. Index is built automatically during ingest.{_RESET}\n")
+        if as_json:
+            print(json.dumps(_build_search_json(args.query, [], [])))
+        else:
+            print(f"\n  {_DIM}No embeddings found. Index is built automatically during ingest.{_RESET}\n")
         return
 
     # Without an explicit --threshold, don't filter (cosine ≥ -1 always holds), so a plain
@@ -1085,6 +1109,10 @@ def cmd_search(args) -> None:
     rerank = not getattr(args, "no_rerank", False)
     passages = search(vault, args.query, top_n=args.top_n, min_score=min_score, scope="corpus", rerank=rerank)
     notes    = search(vault, args.query, top_n=args.top_n, min_score=min_score, scope="notes")
+
+    if as_json:
+        print(json.dumps(_build_search_json(args.query, passages, notes), ensure_ascii=False))
+        return
 
     print()
     if not passages and not notes:
