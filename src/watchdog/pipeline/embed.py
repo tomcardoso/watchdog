@@ -99,7 +99,21 @@ def _rerank_enabled() -> bool:
     return (_rerank_model_name() or "").strip().lower() not in ("", "none", "off", "false", "0")
 
 
+_rerank_notified = False
+
+
+def _notify_rerank_once(msg: str) -> None:
+    """Emit a reranker status line to stderr at most once per process, so a fall-back to
+    fusion (e.g. the model can't download) is announced rather than silent."""
+    global _rerank_notified
+    if not _rerank_notified:
+        import sys
+        print(f"  {msg}", file=sys.stderr)
+        _rerank_notified = True
+
+
 def _get_reranker():
+    # First construction downloads the model (~300MB); fastembed prints its own progress.
     global _reranker
     if _reranker is None:
         from fastembed.rerank.cross_encoder import TextCrossEncoder
@@ -373,8 +387,13 @@ def _hybrid_corpus_search(query: str, dense: "np.ndarray", meta: list[dict],
             reranker = _get_reranker()
             scores = list(reranker.rerank(query, [meta[cidx[j]].get("text", "") for j in pool]))
             pool = [j for j, _ in sorted(zip(pool, scores), key=lambda x: x[1], reverse=True)]
-        except Exception:
-            pass  # reranker unavailable → keep the fusion order rather than failing the search
+        except Exception as exc:
+            # Reranker unavailable (e.g. model download blocked) → keep the fusion order
+            # rather than failing the search, but say so once so it's not silent.
+            _notify_rerank_once(
+                f"Reranker {_rerank_model_name()} unavailable ({exc.__class__.__name__}); "
+                f"ranking by BM25 + embedding fusion. Use --no-rerank to silence."
+            )
     results: list[dict] = []
     for j in pool:
         gi = cidx[j]

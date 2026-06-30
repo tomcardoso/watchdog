@@ -33,6 +33,7 @@ def no_rerank(monkeypatch):
     # Reranking would load the real ~300MB cross-encoder; disable it for the unit tests
     # that exercise indexing + fusion. The reranker is tested separately with a fake.
     monkeypatch.setattr(embed_mod, "_rerank_enabled", lambda: False)
+    monkeypatch.setattr(embed_mod, "_rerank_notified", False)  # one-shot notice, reset per test
 
 
 @pytest.fixture
@@ -378,7 +379,7 @@ def test_rerank_reorders_pool(vault, monkeypatch):
     assert results[0]["text"] == "third passage"
 
 
-def test_rerank_failure_falls_back_to_fusion(vault, monkeypatch):
+def test_rerank_failure_falls_back_to_fusion(vault, monkeypatch, capsys):
     embed_mod.add_document(vault, "doc.pdf", _pages("alpha", "beta"))
 
     def _boom():
@@ -386,7 +387,9 @@ def test_rerank_failure_falls_back_to_fusion(vault, monkeypatch):
 
     monkeypatch.setattr(embed_mod, "_rerank_enabled", lambda: True)
     monkeypatch.setattr(embed_mod, "_get_reranker", _boom)
-    # must not raise — search degrades to fusion order
+    # must not raise — search degrades to fusion order…
     results = embed_mod.search(vault, "alpha", top_n=2, scope="corpus", rerank=True)
     assert len(results) == 2
+    # …and the fallback is announced rather than silent
+    assert "unavailable" in capsys.readouterr().err.lower()
     assert results[0]["page"] == 1
