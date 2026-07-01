@@ -1967,3 +1967,113 @@ def test_cmd_fetch_passes_wayback_when_configured(configured, wdg_home, monkeypa
     _fake_deposit_many(monkeypatch, captured)
     cli.cmd_fetch(args(targets=["https://a.com/x"], project=None))
     assert captured["wayback"] == ("a", "s")
+
+
+# ── search snippet helpers ──────────────────────────────────────────────────
+
+def test_search_query_terms_extracts_positive_words():
+    assert _vault._search_query_terms("shell company -real estate") == ["company", "shell"]
+
+
+def test_search_query_terms_ignores_single_letter_tokens():
+    terms = _vault._search_query_terms("a shell company")
+    assert "a" not in terms
+    assert "shell" in terms and "company" in terms
+
+
+def test_search_query_terms_empty_for_negative_only_query():
+    assert _vault._search_query_terms("-real estate") == []
+
+
+def test_highlight_snippet_bolds_matches_case_insensitively():
+    out = _vault._highlight_snippet("The Shell company filed", ["shell"])
+    assert f"{_vault._BOLD}Shell{_vault._RESET}" in out
+
+
+def test_highlight_snippet_no_terms_returns_unchanged():
+    text = "plain text"
+    assert _vault._highlight_snippet(text, []) == text
+
+
+def test_highlight_snippet_respects_word_boundaries():
+    out = _vault._highlight_snippet("shellfish market", ["shell"])
+    assert _vault._BOLD not in out
+
+
+def test_windowed_snippet_returns_full_text_when_short():
+    text = "short text"
+    assert _vault._windowed_snippet(text, ["short"], 240) == text
+
+
+def test_windowed_snippet_centers_on_match():
+    text = "x" * 500 + "TARGET" + "y" * 500
+    snippet = _vault._windowed_snippet(text, ["target"], 100)
+    assert "TARGET" in snippet
+    assert snippet.startswith("…")
+    assert snippet.endswith("…")
+
+
+def test_windowed_snippet_falls_back_to_start_when_no_match():
+    text = "z" * 1000
+    assert _vault._windowed_snippet(text, ["missing"], 100) == text[:100] + "…"
+
+
+# ── cmd_search ────────────────────────────────────────────────────────────────
+
+def _register_search_project(configured):
+    vault = configured / "test-proj"
+    vault.mkdir(parents=True)
+    cli.save_projects({"test-proj": {"name": "Test Proj", "path": str(vault), "created": "2026-01-01"}})
+    return vault
+
+
+def _stub_search(passage=None, note=None):
+    def fake(vault, query, **kw):
+        if kw.get("scope") == "corpus":
+            return [passage] if passage else []
+        return [note] if note else []
+    return fake
+
+
+def test_search_highlights_matched_terms(configured, monkeypatch, capsys):
+    _register_search_project(configured)
+    monkeypatch.setattr("watchdog.pipeline.embed.index_stats", lambda vault: {"total": 1})
+    monkeypatch.setattr("watchdog.pipeline.embed.search", _stub_search(
+        passage={"filename": "doc.pdf", "page": 3, "text": "The shell company filed papers.", "score": 0.5}))
+
+    cli.cmd_search(args(project="test-proj", query="shell company", top_n=5,
+                         threshold=None, no_rerank=False, json=False, full=False))
+    out = capsys.readouterr().out
+    assert f"{_vault._BOLD}shell{_vault._RESET}" in out.lower()
+
+
+def test_search_full_flag_skips_truncation(configured, monkeypatch, capsys):
+    _register_search_project(configured)
+    long_text = "word " * 100
+    monkeypatch.setattr("watchdog.pipeline.embed.index_stats", lambda vault: {"total": 1})
+    monkeypatch.setattr("watchdog.pipeline.embed.search", _stub_search(
+        passage={"filename": "doc.pdf", "page": 1, "text": long_text, "score": 0.5}))
+
+    cli.cmd_search(args(project="test-proj", query="word", top_n=5,
+                         threshold=None, no_rerank=False, json=False, full=False))
+    assert "…" in _strip_ansi(capsys.readouterr().out)
+
+    cli.cmd_search(args(project="test-proj", query="word", top_n=5,
+                         threshold=None, no_rerank=False, json=False, full=True))
+    full_out = _strip_ansi(capsys.readouterr().out)
+    assert "…" not in full_out
+    assert long_text.strip() in full_out
+
+
+def test_search_json_output_has_no_ansi_and_full_text(configured, monkeypatch, capsys):
+    _register_search_project(configured)
+    monkeypatch.setattr("watchdog.pipeline.embed.index_stats", lambda vault: {"total": 1})
+    monkeypatch.setattr("watchdog.pipeline.embed.search", _stub_search(
+        passage={"filename": "doc.pdf", "page": 1, "text": "shell company filed", "score": 0.5}))
+
+    cli.cmd_search(args(project="test-proj", query="shell", top_n=5,
+                         threshold=None, no_rerank=False, json=True, full=False))
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    assert payload["passages"][0]["text"] == "shell company filed"
+    assert "\x1b[" not in out

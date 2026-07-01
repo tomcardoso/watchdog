@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -1051,6 +1052,44 @@ def cmd_doctor(args) -> None:
         print()
 
 
+def _search_query_terms(query: str) -> list[str]:
+    """Positive-phrase word tokens from a search query, for highlighting matches in
+    printed snippets (excludes -phrase exclusions and single-letter tokens)."""
+    from watchdog.pipeline.embed import _parse_query, _TOKEN_RE
+    pos, _neg = _parse_query(query)
+    terms = {m.group(0).lower() for phrase in pos for m in _TOKEN_RE.finditer(phrase)}
+    return sorted((t for t in terms if len(t) > 1), key=len, reverse=True)
+
+
+def _highlight_snippet(text: str, terms: list[str]) -> str:
+    """Bold case-insensitive whole-word matches of `terms` within `text` (the rest keeps
+    whatever colour the caller already opened, e.g. dim)."""
+    if not terms:
+        return text
+    pattern = re.compile(r"\b(" + "|".join(re.escape(t) for t in terms) + r")\b", re.IGNORECASE)
+    return pattern.sub(lambda m: f"{_RESET}{_BOLD}{m.group(0)}{_RESET}{_DIM}", text)
+
+
+def _windowed_snippet(text: str, terms: list[str], width: int) -> str:
+    """Truncate `text` to `width` chars, centred on the first matched term instead of
+    always keeping the start — a hit late in a passage would otherwise be cut off."""
+    if len(text) <= width:
+        return text
+    idx = None
+    if terms:
+        pattern = re.compile("|".join(re.escape(t) for t in terms), re.IGNORECASE)
+        match = pattern.search(text)
+        if match:
+            idx = match.start()
+    if idx is None:
+        return text[:width] + "…"
+    start = max(0, min(idx - width // 2, len(text) - width))
+    end   = start + width
+    prefix = "…" if start > 0 else ""
+    suffix = "…" if end < len(text) else ""
+    return f"{prefix}{text[start:end]}{suffix}"
+
+
 def _build_search_json(query: str, passages: list[dict], notes: list[dict]) -> dict:
     """Shape `watchdog search` results for `--json` consumers (the watchdog-query semantic
     lane, scripts). Each passage carries the citable span (`text`) + its page; `score` is the
@@ -1122,13 +1161,19 @@ def cmd_search(args) -> None:
         print(f"  {_DIM}No results{hint}.{_RESET}\n")
         return
 
+    full  = getattr(args, "full", False)
+    terms = _search_query_terms(args.query)
+
     if passages:
         print(f"  {_BOLD}Source passages{_RESET}\n")
         for r in passages:
             score   = f"{r['score']:.2f}"
             snippet = r.get("text", "").replace("\n", " ").strip()
+            if not full:
+                snippet = _windowed_snippet(snippet, terms, 240)
+            snippet = _highlight_snippet(snippet, terms)
             print(f"  {_BOLD}{r.get('filename', '?')}{_RESET}  {_DIM}p.{r.get('page')}  score {score}{_RESET}")
-            print(f"  {_DIM}{snippet[:240]}{_RESET}")
+            print(f"  {_DIM}{snippet}{_RESET}")
             print()
 
     if notes:
@@ -1136,6 +1181,9 @@ def cmd_search(args) -> None:
         for r in notes:
             score   = f"{r['score']:.2f}"
             preview = r.get("preview", "").replace("\n", " ").strip()
+            if not full:
+                preview = _windowed_snippet(preview, terms, 200)
+            preview = _highlight_snippet(preview, terms)
             print(f"  {_BOLD}{r['note_path']}{_RESET}  {_DIM}score {score}{_RESET}")
-            print(f"  {_DIM}{preview[:200]}{_RESET}")
+            print(f"  {_DIM}{preview}{_RESET}")
             print()
