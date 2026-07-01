@@ -7,6 +7,7 @@ from pathlib import Path
 
 import watchdog.cli as cli
 import watchdog.cmd.base as _base
+import watchdog.cmd.research as _research
 import watchdog.cmd.setup as _setup
 import watchdog.cmd.vault as _vault
 
@@ -1830,3 +1831,80 @@ def test_build_search_json_shape():
 def test_build_search_json_empty():
     from watchdog.cmd.vault import _build_search_json
     assert _build_search_json("nothing", [], []) == {"query": "nothing", "passages": [], "notes": []}
+
+
+# ── Wayback credential gate (#201) ─────────────────────────────────────────────
+
+def _write_config(tmp_path, monkeypatch, data):
+    cfg = tmp_path / "config.json"
+    cfg.write_text(json.dumps(data))
+    monkeypatch.setattr(_research, "CONFIG_FILE", cfg)
+    return cfg
+
+
+def test_wayback_creds_none_when_disabled(tmp_path, monkeypatch):
+    _write_config(tmp_path, monkeypatch,
+                  {"wayback_access_key": "a", "wayback_secret_key": "s"})  # save flag off
+    assert _research._wayback_creds() is None
+
+
+def test_wayback_creds_none_when_keys_missing(tmp_path, monkeypatch):
+    _write_config(tmp_path, monkeypatch, {"wayback_save": True, "wayback_access_key": "a"})
+    assert _research._wayback_creds() is None
+
+
+def test_wayback_creds_returns_pair_when_enabled_and_set(tmp_path, monkeypatch):
+    _write_config(tmp_path, monkeypatch,
+                  {"wayback_save": True, "wayback_access_key": "a", "wayback_secret_key": "s"})
+    assert _research._wayback_creds() == ("a", "s")
+
+
+def test_wayback_creds_none_when_no_config(tmp_path, monkeypatch):
+    monkeypatch.setattr(_research, "CONFIG_FILE", tmp_path / "missing.json")
+    assert _research._wayback_creds() is None
+
+
+def test_configure_masks_wayback_secret(tmp_path, monkeypatch, capsys):
+    cfg = tmp_path / "config.json"
+    cfg.write_text(json.dumps({"projects_dir": str(tmp_path),
+                               "wayback_save": True,
+                               "wayback_access_key": "SUPERSECRETKEY"}))
+    monkeypatch.setattr(_setup, "CONFIG_FILE", cfg)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    _setup.cmd_configure(argparse.Namespace(key=None, value=None))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "SUPERSECRETKEY" not in out       # never echoed back
+    assert "wayback_access_key" in out and "(set)" in out
+
+
+# ── Boolean config toggle (#201 follow-up) ─────────────────────────────────────
+
+def test_edit_bool_toggle_on(wdg_home, monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda *a: "y")
+    config = {}
+    _setup._edit_key_interactive(config, "wayback_save")
+    assert config["wayback_save"] is True
+    assert json.loads((wdg_home / "config.json").read_text())["wayback_save"] is True
+
+
+def test_edit_bool_toggle_off(wdg_home, monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda *a: "n")
+    config = {"wayback_save": True}
+    _setup._edit_key_interactive(config, "wayback_save")
+    assert config["wayback_save"] is False
+
+
+def test_edit_bool_enter_keeps_current(wdg_home, monkeypatch, capsys):
+    monkeypatch.setattr("builtins.input", lambda *a: "")   # Enter
+    config = {"wayback_save": True}
+    _setup._edit_key_interactive(config, "wayback_save")
+    assert config["wayback_save"] is True                  # unchanged
+    assert "No change" in _strip_ansi(capsys.readouterr().out)
+
+
+def test_edit_bool_rejects_freetext(wdg_home, monkeypatch, capsys):
+    monkeypatch.setattr("builtins.input", lambda *a: "maybe")
+    config = {"wayback_save": False}
+    _setup._edit_key_interactive(config, "wayback_save")
+    assert config["wayback_save"] is False                 # untouched
+    assert "enter y or n" in _strip_ansi(capsys.readouterr().out)

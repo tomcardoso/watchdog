@@ -27,6 +27,7 @@ import re
 import socket
 import ssl
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import date
@@ -180,9 +181,10 @@ def neutralize(value: str) -> str:
 
 
 def build_sidecar(*, source: str, title: str, source_type: str, relevance: str,
-                  obtained: str) -> str:
+                  obtained: str, archived: str = "") -> str:
     """Render the provenance `.yml` sidecar. `source`/`obtained` are stamped deterministically at
-    ingest; `retrieved_by`/`source_type`/`title`/`relevance` reach the extractor as notes."""
+    ingest; `retrieved_by`/`source_type`/`title`/`relevance` reach the extractor as notes. When the
+    source was saved to the Wayback Machine (#201), `archived` carries the snapshot URL."""
     data = {
         "source": source,
         "obtained": obtained,
@@ -191,7 +193,46 @@ def build_sidecar(*, source: str, title: str, source_type: str, relevance: str,
         "title": neutralize(title) if title else "",
         "relevance": neutralize(relevance) if relevance else "",
     }
+    if archived:
+        data["archived"] = archived
     return yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
+
+
+# ── Wayback Machine — Save Page Now (#201) ─────────────────────────────────────
+# Optional, off by default, gated on archive.org S3 keys set via `watchdog configure`. A best-effort
+# provenance win: alongside the local deposit, ask the Wayback Machine to archive the source so a
+# citable public snapshot survives even if the original is later changed or taken down. The snapshot
+# URL is recorded in the `.yml` sidecar's `archived:` field. Never fails a deposit — archiving is a
+# bonus, not a gate.
+
+_WAYBACK_SAVE_URL = "https://web.archive.org/save"
+_WAYBACK_TIMEOUT = 30
+
+
+def save_to_wayback(url: str, access_key: str, secret_key: str, *,
+                    timeout: int = _WAYBACK_TIMEOUT, opener=urllib.request.urlopen) -> str | None:
+    """Submit `url` to the Wayback Machine's Save Page Now (SPN2) API and return a citable snapshot
+    URL, or None if the submission didn't succeed. Best-effort: catches every error and returns None
+    rather than raising, so archiving never sinks a deposit. Fires the save and records the
+    latest-capture URL (`…/web/<url>`, which resolves to the newest snapshot once the async job
+    completes) — it does not poll for the timestamped permalink, keeping the download loop fast."""
+    try:
+        data = urllib.parse.urlencode({"url": url}).encode("utf-8")
+        req = urllib.request.Request(
+            _WAYBACK_SAVE_URL, data=data,
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"LOW {access_key}:{secret_key}",
+                "User-Agent": _USER_AGENT,
+            },
+        )
+        with opener(req, timeout=timeout) as resp:
+            body = json.loads(resp.read().decode("utf-8", "replace"))
+    except (urllib.error.URLError, ssl.SSLError, OSError, ValueError):
+        return None
+    if not isinstance(body, dict) or not body.get("job_id"):
+        return None  # no job accepted (bad keys, rate limit) — record nothing rather than a dead link
+    return f"https://web.archive.org/web/{url}"
 
 
 # ── Deposit ───────────────────────────────────────────────────────────────────
@@ -213,14 +254,19 @@ def _deposit_name(url: str, title: str) -> str:
 
 def deposit_one(vault: Path, url: str, *, title: str = "", source_type: str = "",
                 relevance: str = "", max_bytes: int = _MAX_BYTES_DEFAULT,
-                obtained: str | None = None, fetcher=fetch) -> Path:
+                obtained: str | None = None, fetcher=fetch,
+                wayback: tuple[str, str] | None = None) -> Path:
     """Validate, fetch, sanitize, and write a source document + its `.yml` sidecar to
-    `_INCOMING/`. Returns the deposited document path; raises ResearchError on rejection."""
+    `_INCOMING/`. Returns the deposited document path; raises ResearchError on rejection. When
+    `wayback` (access_key, secret_key) is given, best-effort-archives the source to the Wayback
+    Machine and records the snapshot URL in the sidecar (#201)."""
     obtained = obtained or date.today().isoformat()
     body, content_type, final_url = fetcher(url, max_bytes=max_bytes)
     ext = extension_for(content_type, final_url)
     if ext in _HTML_EXTS:
         body = sanitize_html(body.decode("utf-8", "replace")).encode("utf-8")
+
+    archived = save_to_wayback(final_url, wayback[0], wayback[1]) or "" if wayback else ""
 
     incoming = vault / "_INCOMING"
     incoming.mkdir(parents=True, exist_ok=True)
@@ -229,7 +275,7 @@ def deposit_one(vault: Path, url: str, *, title: str = "", source_type: str = ""
     doc_path.write_bytes(body)
     (incoming / f"{name}{ext}.yml").write_text(
         build_sidecar(source=final_url, title=title, source_type=source_type,
-                      relevance=relevance, obtained=obtained),
+                      relevance=relevance, obtained=obtained, archived=archived),
         encoding="utf-8",
     )
     return doc_path
@@ -254,15 +300,16 @@ def parse_worklist(text: str) -> list[dict]:
 
 
 def deposit_many(vault: Path, entries: list[dict], *, max_bytes: int = _MAX_BYTES_DEFAULT,
-                 fetcher=fetch) -> list[Deposit]:
+                 fetcher=fetch, wayback: tuple[str, str] | None = None) -> list[Deposit]:
     """Deposit every entry, continuing past individual failures so one bad URL can't lose the
-    rest of the list. Idempotent: re-pulling overwrites same-named deposits."""
+    rest of the list. Idempotent: re-pulling overwrites same-named deposits. `wayback` credentials,
+    when given, archive each source to the Wayback Machine (#201)."""
     results = []
     for e in entries:
         try:
             path = deposit_one(vault, e["url"], title=e.get("title", ""),
                                source_type=e.get("source_type", ""), relevance=e.get("relevance", ""),
-                               max_bytes=max_bytes, fetcher=fetcher)
+                               max_bytes=max_bytes, fetcher=fetcher, wayback=wayback)
             results.append(Deposit(e["url"], path))
         except ResearchError as ex:
             results.append(Deposit(e["url"], None, str(ex)))
