@@ -89,7 +89,7 @@ from watchdog.cmd.setup import (
 from watchdog.cmd.auth import cmd_auth
 from watchdog.cmd.export import cmd_export
 from watchdog.cmd.leads import cmd_leads
-from watchdog.cmd.research import cmd_research, cmd_research_fetch, cmd_research_seen
+from watchdog.cmd.research import cmd_fetch, cmd_research, cmd_research_fetch, cmd_research_seen
 
 
 def _cmd_rebuild_timeline(args) -> None:
@@ -244,6 +244,13 @@ def main() -> None:
     p_research.add_argument("--question", "-q", help="Research question to seed (omit to be prompted)")
     p_research.add_argument("--model", help="Model to use (sonnet/opus/haiku, default: sonnet)")
     p_research.set_defaults(func=cmd_research)
+
+    p_fetch = sub.add_parser("fetch", help="Download a batch of URLs (or a links file) into _INCOMING/")
+    p_fetch.add_argument("targets", nargs="+", metavar="URL|FILE",
+                         help="One or more URLs, or the path to a links file (one URL per line, or the "
+                              "tab-separated url⇥title⇥source_type⇥relevance form)")
+    p_fetch.add_argument("--project", help="Investigation name or slug (default: current directory)").completer = _project_completer
+    p_fetch.set_defaults(func=cmd_fetch)
 
     p_unlock = sub.add_parser("unlock", help="Release a stale ingest lock")
     p_unlock.add_argument("project", nargs="?", help="Investigation name or slug (default: infer from cwd)").completer = _project_completer

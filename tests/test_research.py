@@ -143,6 +143,17 @@ def test_deposit_one_writes_document_and_sidecar(tmp_path):
     assert data["retrieved_by"] == "research-mode"
 
 
+def test_deposit_one_records_retrieved_by(tmp_path):
+    # `watchdog fetch` deposits carry an honest acquisition tag, not "research-mode" (#197).
+    vault = tmp_path / "vault"
+    path = research.deposit_one(vault, "https://e.com/x",
+                                fetcher=_fake_fetcher(b"<html>ok</html>", "text/html"),
+                                retrieved_by="fetch")
+    data = yaml.safe_load((path.with_name(path.name + ".yml")).read_text())
+    assert data["retrieved_by"] == "fetch"
+    assert data["source_type"] == "unverified"   # no reliability tag supplied for a bare URL
+
+
 def test_deposit_one_size_cap_enforced(tmp_path):
     # fetch (the real one) enforces the cap; deposit_one passes max_bytes through. Here we assert
     # the cap travels to the fetcher.
