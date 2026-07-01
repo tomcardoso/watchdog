@@ -487,6 +487,9 @@ Or run `watchdog configure <key>` with no value to see that one key's help and c
 | `default_skill` | _(unset)_ | Pin a record skill (a name from the global catalog, or a path to a skill file) for every ingested document, skipping classification — for vaults that are always one document type. Per-run override: `--skill`. |
 | `research_max_rounds` | `3` | Default number of search rounds `watchdog research` runs before it must check in and stop. An advisory budget the interactive skill self-limits to; the `deep` effort tier overrides it per run. |
 | `research_max_fetches` | `25` | Roughly how many web sources `watchdog research` captures into `_INCOMING/` in a default (standard-effort) run. Advisory; the `quick` and `deep` effort tiers scale it down or up per run. Bounds scope and ingest cost, not session tokens. |
+| `wayback_save` | `false` | Also submit every research source to the Internet Archive's Wayback Machine (Save Page Now), recording the snapshot URL in each source's provenance sidecar — a citable copy that survives if the original changes or is taken down. Off by default; a no-op until both keys below are set. Best-effort — never blocks or fails a download. |
+| `wayback_access_key` | _(unset)_ | archive.org S3 access key for `wayback_save`. Generate a free pair at [archive.org/account/s3.php](https://archive.org/account/s3.php). Stored in the config file; masked in `watchdog configure`. |
+| `wayback_secret_key` | _(unset)_ | archive.org S3 secret key, paired with `wayback_access_key`. |
 
 **Examples:**
 

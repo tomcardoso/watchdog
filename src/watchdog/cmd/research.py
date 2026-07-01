@@ -8,6 +8,7 @@ deterministic egress gate in `pipeline.research` (validate URL → fetch → san
 never granted to the interactive skill, whose only web access is WebSearch/WebFetch for its own
 reading. The internal `research-fetch` command runs the same download on demand (recovery)."""
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -20,11 +21,28 @@ from watchdog.cmd.base import (
     _MODEL_IDS,
     _RESET,
     _YELLOW,
+    CONFIG_FILE,
     _find_project,
     _resolve_vault,
     load_projects,
 )
 from watchdog.pipeline import research
+
+
+def _wayback_creds() -> tuple[str, str] | None:
+    """Return the archive.org (access_key, secret_key) when Wayback archiving is enabled and both
+    keys are configured; else None (the off-by-default case, #201)."""
+    if not CONFIG_FILE.exists():
+        return None
+    try:
+        config = json.loads(CONFIG_FILE.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not config.get("wayback_save"):
+        return None
+    access = (config.get("wayback_access_key") or "").strip()
+    secret = (config.get("wayback_secret_key") or "").strip()
+    return (access, secret) if access and secret else None
 
 
 def _queue_path(vault: Path) -> Path:
@@ -42,7 +60,8 @@ def _run_download(vault: Path, source_file: Path | None = None) -> int:
     An explicit `source_file` (recovery) is read but left untouched."""
     text = source_file.read_text(encoding="utf-8") if source_file else research.read_queue_text(vault)
     entries = research.parse_worklist(text) if text else []
-    results = research.deposit_many(vault, entries)
+    wayback = _wayback_creds()
+    results = research.deposit_many(vault, entries, wayback=wayback)
     deposited = [r for r in results if r.path]
     failed = [r for r in results if not r.path]
     if source_file is None:
@@ -51,6 +70,8 @@ def _run_download(vault: Path, source_file: Path | None = None) -> int:
     print()
     print(f"  {_GREEN}Downloaded{_RESET} {_BOLD}{len(deposited)}{_RESET} of {len(results)} "
           f"into {_CYAN}_INCOMING/{_RESET}")
+    if wayback and deposited:
+        print(f"  {_DIM}Archived each to the Wayback Machine — snapshot URL in every source's sidecar.{_RESET}")
     for r in deposited:
         print(f"    {_CYAN}{r.path.name}{_RESET}  {_DIM}{r.url}{_RESET}")
     if failed:

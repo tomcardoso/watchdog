@@ -340,6 +340,8 @@ watchdog ingest
 
 Then open a fresh session to investigate what came back. The links file is the durable product of the session, held in `.watchdog/research/` — so even a long "deep" run never loses what it queued if it's interrupted. If a session dies before the download runs, `watchdog`, `watchdog chew`, and `watchdog status` all warn that sources are queued but not downloaded; run `watchdog research-fetch` (or re-run `watchdog research`, which offers to download a leftover queue) to finish. Across repeated research on the same investigation, Claude also skips sources the vault has already captured, so it doesn't re-fetch what you already have — unless you ask it to re-check a source for updates.
 
+**Optional: archive sources to the Wayback Machine.** If you set `wayback_save true` and add archive.org S3 keys (`watchdog configure wayback_access_key` / `wayback_secret_key`, free from [archive.org/account/s3.php](https://archive.org/account/s3.php)), each downloaded source is also saved to the Internet Archive, and its snapshot URL is recorded in the source's provenance sidecar — a citable public copy that survives if the original is later changed or taken down. It's off by default and never blocks a download.
+
 ---
 
 ## Subsequent sessions

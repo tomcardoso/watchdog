@@ -545,6 +545,12 @@ source_type ⇥ relevance`). When the session ends, `watchdog research` download
   journalist asks to re-check a source. The "seen" set is **derived, not stored**: the union of every
   `documents.json` `source` (ingested) and every in-flight `_INCOMING/**.yml` `source` (downloaded, not
   yet ingested) — mirroring how `chew` dedups against the registry (D27).
+- **Optional Wayback archiving (#201).** When `wayback_save` is on and archive.org S3 keys are set
+  (both via `watchdog configure`), the download step also submits each source to the Wayback Machine's
+  Save Page Now and records the snapshot URL in the sidecar's `archived:` field — a citable public
+  copy that outlives the original. Off by default, gated on the keys, and strictly best-effort:
+  `save_to_wayback` catches every error and returns `None`, so archiving never blocks or fails a
+  local deposit (which remains the source of record for ingest).
 - **Bounds are advisory.** `research_max_rounds` / `research_max_fetches` (and the effort tiers) are
   a budget the interactive skill self-limits to; only the egress hygiene is hard-enforced in Python.
 - **Web access is scoped to the skill.** `WebSearch` and `WebFetch` (the skill's only outbound
@@ -553,7 +559,7 @@ source_type ⇥ relevance`). When the session ends, `watchdog research` download
   Archival downloading is a terminal post-flight, never granted to the skill — so a vault of sensitive
   source material carries no standing outbound-fetch permission.
 
-See D45, D46.
+See D45, D46, D47.
 
 ---
 

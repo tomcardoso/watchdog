@@ -306,3 +306,77 @@ def test_fetch_rejects_over_cap_with_readable_error(monkeypatch):
     with pytest.raises(ResearchError) as exc:
         research.fetch("https://example.com/big", max_bytes=cap)
     assert "2 MiB download cap" in str(exc.value)
+
+
+# ── Wayback Machine — Save Page Now (#201) ─────────────────────────────────────
+
+class _WaybackResp:
+    def __init__(self, payload: bytes):
+        self._payload = payload
+
+    def read(self):
+        return self._payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def test_save_to_wayback_returns_snapshot_url_on_accepted_job():
+    seen = {}
+
+    def opener(req, timeout=None):
+        seen["method"] = req.get_method()
+        seen["auth"] = req.headers.get("Authorization")
+        return _WaybackResp(b'{"url":"https://e.com/x","job_id":"spn2-abc"}')
+
+    url = research.save_to_wayback("https://e.com/x", "acc", "sec", opener=opener)
+    assert url == "https://web.archive.org/web/https://e.com/x"
+    assert seen["method"] == "POST"          # a save must be a POST, not a GET
+    assert seen["auth"] == "LOW acc:sec"     # SPN2 auth header
+
+
+def test_save_to_wayback_returns_none_when_no_job_accepted():
+    def opener(req, timeout=None):
+        return _WaybackResp(b'{"message":"Rate limit"}')  # no job_id
+    assert research.save_to_wayback("https://e.com/x", "acc", "sec", opener=opener) is None
+
+
+def test_save_to_wayback_swallows_network_errors():
+    def opener(req, timeout=None):
+        raise OSError("network down")
+    # Best-effort: archiving must never raise into the deposit path.
+    assert research.save_to_wayback("https://e.com/x", "acc", "sec", opener=opener) is None
+
+
+def test_deposit_one_stamps_archived_when_wayback_enabled(tmp_path, monkeypatch):
+    vault = tmp_path / "v"
+    monkeypatch.setattr(research, "save_to_wayback",
+                        lambda url, a, s, **kw: "https://web.archive.org/web/" + url)
+    path = research.deposit_one(vault, "https://e.com/x", title="T",
+                                fetcher=_fake_fetcher(b"<html>ok</html>", "text/html"),
+                                wayback=("acc", "sec"))
+    sidecar = yaml.safe_load((path.parent / f"{path.name}.yml").read_text())
+    assert sidecar["archived"] == "https://web.archive.org/web/https://e.com/x"
+
+
+def test_deposit_one_no_archived_field_without_wayback(tmp_path):
+    vault = tmp_path / "v"
+    path = research.deposit_one(vault, "https://e.com/x", title="T",
+                                fetcher=_fake_fetcher(b"<html>ok</html>", "text/html"))
+    sidecar = yaml.safe_load((path.parent / f"{path.name}.yml").read_text())
+    assert "archived" not in sidecar
+
+
+def test_deposit_one_survives_failed_archiving(tmp_path, monkeypatch):
+    vault = tmp_path / "v"
+    monkeypatch.setattr(research, "save_to_wayback", lambda url, a, s, **kw: None)  # archiving failed
+    path = research.deposit_one(vault, "https://e.com/x", title="T",
+                                fetcher=_fake_fetcher(b"<html>ok</html>", "text/html"),
+                                wayback=("acc", "sec"))
+    # The deposit still lands; the sidecar just carries no archived URL.
+    assert path.exists()
+    sidecar = yaml.safe_load((path.parent / f"{path.name}.yml").read_text())
+    assert "archived" not in sidecar

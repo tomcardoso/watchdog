@@ -337,6 +337,41 @@ _CONFIGURE_KEYS = {
         "default": 25,
         "min": 1,
     },
+    # ── Web archiving ─────────────────────────────────────────────────────────
+    "wayback_save": {
+        "short": "Also save each research source to the Wayback Machine (default: false)",
+        "help": (
+            "When enabled, `watchdog research` submits every source it downloads to the Internet\n"
+            "  Archive's Wayback Machine (Save Page Now), and records the resulting snapshot URL in\n"
+            "  each source's provenance sidecar — a permanent, citable copy that survives if the\n"
+            "  original page later changes or is taken down. Off by default, and a no-op until both\n"
+            "  wayback_access_key and wayback_secret_key are set. The local download is unaffected —\n"
+            "  archiving is a best-effort bonus that never blocks or fails a download.\n"
+            "  Default: false."
+        ),
+        "type": "bool",
+        "default": False,
+    },
+    "wayback_access_key": {
+        "short": "archive.org S3 access key (for wayback_save)",
+        "help": (
+            "The 'S3-like' access key for your archive.org account, used to authenticate Save Page\n"
+            "  Now requests when wayback_save is on. Create a free account and generate keys at\n"
+            "  https://archive.org/account/s3.php. Stored in this config file; leave unset to disable.\n"
+            "  Paired with wayback_secret_key."
+        ),
+        "type": "string",
+        "secret": True,
+    },
+    "wayback_secret_key": {
+        "short": "archive.org S3 secret key (for wayback_save)",
+        "help": (
+            "The 'S3-like' secret key that pairs with wayback_access_key. Generate both together at\n"
+            "  https://archive.org/account/s3.php. Stored in this config file; leave unset to disable."
+        ),
+        "type": "string",
+        "secret": True,
+    },
 }
 
 # Display grouping for the `watchdog configure` listing (presentation only — set/get is
@@ -360,6 +395,8 @@ _CONFIGURE_SECTIONS = [
      ["embed_model", "rerank_model"]),
     ("Research", "Web research mode — default effort budget for `watchdog research`.",
      ["research_max_rounds", "research_max_fetches"]),
+    ("Web archiving", "Optionally save research sources to the Wayback Machine.",
+     ["wayback_save", "wayback_access_key", "wayback_secret_key"]),
 ]
 
 _OCR_ENGINE_PACKAGES = {
@@ -672,6 +709,8 @@ def _display_value(k, v):
         return f"{_CYAN}{', '.join(v)}{_RESET}" if v else f"{_DIM}auto-detect (default){_RESET}"
     if isinstance(v, bool):
         return f"{_CYAN}{'true' if v else 'false'}{_RESET}"
+    if meta.get("secret") and v:
+        return f"{_CYAN}••••••••{_RESET} {_DIM}(set){_RESET}"  # never print a stored secret back
     return f"{_CYAN}{v}{_RESET}"
 
 
