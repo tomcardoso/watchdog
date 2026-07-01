@@ -498,8 +498,9 @@ registry for every document would be wasteful. The manifest is the cheap index.
 ## 14. Web research mode (investigation layer)
 
 **Code:** `pipeline/research.py` (the egress gate + the durable worklist store), `cmd/research.py`
-(`watchdog research` launcher + post-flight download; the internal `research-fetch` recovery and
-`research-seen` re-fetch-avoidance commands). **Skill:** `skills/watchdog-research.md`.
+(`watchdog research` launcher + post-flight download; `watchdog fetch` bulk downloader; the internal
+`research-fetch` recovery and `research-seen` re-fetch-avoidance commands). **Skill:**
+`skills/watchdog-research.md`.
 
 A bounded, agentic web-research session that **queues findings for `_INCOMING/`** so they flow
 through the normal `chew → ingest` pipeline — it never writes vault notes directly. `watchdog
@@ -551,6 +552,12 @@ source_type ⇥ relevance`). When the session ends, `watchdog research` download
   copy that outlives the original. Off by default, gated on the keys, and strictly best-effort:
   `save_to_wayback` catches every error and returns `None`, so archiving never blocks or fails a
   local deposit (which remains the source of record for ingest).
+- **`watchdog fetch` — the non-agentic front door (#197).** When you already have a list of links,
+  `watchdog fetch <url… | file>` downloads them straight into `_INCOMING/` with no research session.
+  It is a thin CLI wrapper over the same `deposit_many` egress path (validation, size cap,
+  sanitization, `.yml` sidecar, optional Wayback) — deliberately decoupled from the fetching internals
+  so the downloader can be swapped without touching the command. Unlike the research post-flight it
+  does not touch the durable worklist; its input is the explicit list you hand it.
 - **Bounds are advisory.** `research_max_rounds` / `research_max_fetches` (and the effort tiers) are
   a budget the interactive skill self-limits to; only the egress hygiene is hard-enforced in Python.
 - **Web access is scoped to the skill.** `WebSearch` and `WebFetch` (the skill's only outbound
@@ -559,7 +566,7 @@ source_type ⇥ relevance`). When the session ends, `watchdog research` download
   Archival downloading is a terminal post-flight, never granted to the skill — so a vault of sensitive
   source material carries no standing outbound-fetch permission.
 
-See D45, D46, D47.
+See D45, D46, D47, D48.
 
 ---
 

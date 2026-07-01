@@ -12,6 +12,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from watchdog.cmd.base import (
     _BOLD,
@@ -53,6 +54,28 @@ def _queue_count(vault: Path) -> int:
     return research.pending_count(vault)
 
 
+def _report_deposits(results: list, *, wayback, requeued_failures: bool) -> int:
+    """Print the shared download summary and return the number deposited. `requeued_failures` picks
+    the failure note: the research flow leaves failed rows in the durable queue for retry, whereas
+    `watchdog fetch` (an explicit list) does not."""
+    deposited = [r for r in results if r.path]
+    failed = [r for r in results if not r.path]
+    print()
+    print(f"  {_GREEN}Downloaded{_RESET} {_BOLD}{len(deposited)}{_RESET} of {len(results)} "
+          f"into {_CYAN}_INCOMING/{_RESET}")
+    if wayback and deposited:
+        print(f"  {_DIM}Archived each to the Wayback Machine — snapshot URL in every source's sidecar.{_RESET}")
+    for r in deposited:
+        print(f"    {_CYAN}{r.path.name}{_RESET}  {_DIM}{r.url}{_RESET}")
+    if failed:
+        note = (f" {_DIM}(left queued — retry with {_RESET}{_CYAN}watchdog research-fetch{_RESET}{_DIM}){_RESET}"
+                if requeued_failures else "")
+        print(f"\n  {_YELLOW}Skipped {len(failed)}{_RESET}{note}")
+        for r in failed:
+            print(f"    {_DIM}{r.url}{_RESET}  {_YELLOW}{r.error}{_RESET}")
+    return len(deposited)
+
+
 def _run_download(vault: Path, source_file: Path | None = None) -> int:
     """Download every queued source into `_INCOMING/`, continuing past failures. Returns the number
     deposited. With no `source_file`, consumes the durable worklist — downloaded rows drop out;
@@ -62,25 +85,10 @@ def _run_download(vault: Path, source_file: Path | None = None) -> int:
     entries = research.parse_worklist(text) if text else []
     wayback = _wayback_creds()
     results = research.deposit_many(vault, entries, wayback=wayback)
-    deposited = [r for r in results if r.path]
-    failed = [r for r in results if not r.path]
     if source_file is None:
-        failed_urls = {r.url for r in failed}
+        failed_urls = {r.url for r in results if not r.path}
         research.retain_pending(vault, [e for e in entries if e["url"] in failed_urls])
-    print()
-    print(f"  {_GREEN}Downloaded{_RESET} {_BOLD}{len(deposited)}{_RESET} of {len(results)} "
-          f"into {_CYAN}_INCOMING/{_RESET}")
-    if wayback and deposited:
-        print(f"  {_DIM}Archived each to the Wayback Machine — snapshot URL in every source's sidecar.{_RESET}")
-    for r in deposited:
-        print(f"    {_CYAN}{r.path.name}{_RESET}  {_DIM}{r.url}{_RESET}")
-    if failed:
-        note = ("" if source_file is not None else
-                f" {_DIM}(left queued — retry with {_RESET}{_CYAN}watchdog research-fetch{_RESET}{_DIM}){_RESET}")
-        print(f"\n  {_YELLOW}Skipped {len(failed)}{_RESET}{note}")
-        for r in failed:
-            print(f"    {_DIM}{r.url}{_RESET}  {_YELLOW}{r.error}{_RESET}")
-    return len(deposited)
+    return _report_deposits(results, wayback=wayback, requeued_failures=source_file is None)
 
 
 def _confirm(prompt: str) -> bool:
@@ -188,3 +196,31 @@ def cmd_research_fetch(args) -> None:
         sys.exit(f"Error: no queued sources at {_queue_path(vault)}")
     _run_download(vault, source_file)
     print()
+
+
+def cmd_fetch(args) -> None:
+    """`watchdog fetch <file | urls…>` — download a batch of URLs into `_INCOMING/`, independent of
+    the agentic research flow (#197). Each URL goes through the same egress gate as research sources
+    (validate → fetch → sanitize → `.yml` sidecar), and Wayback archiving applies if configured. The
+    input is either a links/TSV file (one URL per line) or URLs given directly on the command line."""
+    _, _info, vault = _resolve_vault(getattr(args, "project", None))
+    targets = args.targets
+
+    # A single argument that names a file is a links file; anything else is treated as URLs.
+    if len(targets) == 1 and not urlsplit(targets[0]).scheme and Path(targets[0]).is_file():
+        entries = research.parse_worklist(Path(targets[0]).read_text(encoding="utf-8"))
+        if not entries:
+            sys.exit(f"Error: no URLs found in {targets[0]}")
+    else:
+        entries = [{"url": t.strip()} for t in targets if t.strip()]
+        if not entries:
+            sys.exit("Error: no URLs to fetch")
+
+    wayback = _wayback_creds()
+    results = research.deposit_many(vault, entries, wayback=wayback, retrieved_by="fetch")
+    count = _report_deposits(results, wayback=wayback, requeued_failures=False)
+    if count:
+        print(f"\n  Next: {_CYAN}watchdog chew{_RESET} then {_CYAN}watchdog ingest{_RESET} "
+              f"to fold {'them' if count != 1 else 'it'} into the vault.\n")
+    else:
+        print()

@@ -239,6 +239,9 @@ When your documents raise a question they can't answer, run `watchdog research` 
 **Ingesting web pages directly from your browser:**
 Install the [Obsidian Web Clipper](https://obsidian.md/clipper) browser extension. Point it at your investigation vault and set the destination folder to `_INCOMING`. You can then clip any web page — news articles, company profiles, government announcements — directly into the ingest pipeline with one click, without downloading anything manually.
 
+**Pulling in a list of links:**
+If you already have a batch of URLs, run `watchdog fetch <url…>` or `watchdog fetch links.txt` (one URL per line) to download them into `_INCOMING/` — validated, sanitized, and stamped with provenance — then `watchdog chew` and `watchdog ingest` as usual.
+
 **Rename files before dropping them in:**
 Watchdog uses the filename to help organize and label documents. A filename like `shell-co-annual-report-2023.pdf` is much more useful than `scan0042.pdf`. Rename files before dropping them into `_INCOMING` when possible.
 

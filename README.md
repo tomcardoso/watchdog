@@ -203,6 +203,8 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 
 | Command | What it does |
 |---------|-------------|
+| `watchdog fetch <url…>` | Download one or more URLs into `_INCOMING/` (validated, sanitized, with a provenance sidecar) — for when you already have a list of links and just want them pulled into the pipeline, no research session needed. Then run `watchdog chew` and `watchdog ingest`. |
+| `watchdog fetch <file>` | Same, from a links file — one URL per line, or the tab-separated `url⇥title⇥source_type⇥relevance` form |
 | `watchdog chew` | Process all files in `_INCOMING/` — run from inside the vault directory |
 | `watchdog chew <file>` | Process a single specific file |
 | `watchdog chew --chew-workers N` | Override parallel file workers for this run |

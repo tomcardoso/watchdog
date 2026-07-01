@@ -181,14 +181,15 @@ def neutralize(value: str) -> str:
 
 
 def build_sidecar(*, source: str, title: str, source_type: str, relevance: str,
-                  obtained: str, archived: str = "") -> str:
+                  obtained: str, archived: str = "", retrieved_by: str = "research-mode") -> str:
     """Render the provenance `.yml` sidecar. `source`/`obtained` are stamped deterministically at
-    ingest; `retrieved_by`/`source_type`/`title`/`relevance` reach the extractor as notes. When the
-    source was saved to the Wayback Machine (#201), `archived` carries the snapshot URL."""
+    ingest; `retrieved_by`/`source_type`/`title`/`relevance` reach the extractor as notes.
+    `retrieved_by` records how the source was acquired (`research-mode` vs `fetch`). When the source
+    was saved to the Wayback Machine (#201), `archived` carries the snapshot URL."""
     data = {
         "source": source,
         "obtained": obtained,
-        "retrieved_by": "research-mode",
+        "retrieved_by": retrieved_by,
         "source_type": neutralize(source_type) if source_type else "unverified",
         "title": neutralize(title) if title else "",
         "relevance": neutralize(relevance) if relevance else "",
@@ -255,11 +256,13 @@ def _deposit_name(url: str, title: str) -> str:
 def deposit_one(vault: Path, url: str, *, title: str = "", source_type: str = "",
                 relevance: str = "", max_bytes: int = _MAX_BYTES_DEFAULT,
                 obtained: str | None = None, fetcher=fetch,
-                wayback: tuple[str, str] | None = None) -> Path:
+                wayback: tuple[str, str] | None = None,
+                retrieved_by: str = "research-mode") -> Path:
     """Validate, fetch, sanitize, and write a source document + its `.yml` sidecar to
     `_INCOMING/`. Returns the deposited document path; raises ResearchError on rejection. When
     `wayback` (access_key, secret_key) is given, best-effort-archives the source to the Wayback
-    Machine and records the snapshot URL in the sidecar (#201)."""
+    Machine and records the snapshot URL in the sidecar (#201). `retrieved_by` records the
+    acquisition path in the sidecar (`research-mode` vs `fetch`)."""
     obtained = obtained or date.today().isoformat()
     body, content_type, final_url = fetcher(url, max_bytes=max_bytes)
     ext = extension_for(content_type, final_url)
@@ -275,7 +278,8 @@ def deposit_one(vault: Path, url: str, *, title: str = "", source_type: str = ""
     doc_path.write_bytes(body)
     (incoming / f"{name}{ext}.yml").write_text(
         build_sidecar(source=final_url, title=title, source_type=source_type,
-                      relevance=relevance, obtained=obtained, archived=archived),
+                      relevance=relevance, obtained=obtained, archived=archived,
+                      retrieved_by=retrieved_by),
         encoding="utf-8",
     )
     return doc_path
@@ -300,16 +304,19 @@ def parse_worklist(text: str) -> list[dict]:
 
 
 def deposit_many(vault: Path, entries: list[dict], *, max_bytes: int = _MAX_BYTES_DEFAULT,
-                 fetcher=fetch, wayback: tuple[str, str] | None = None) -> list[Deposit]:
+                 fetcher=fetch, wayback: tuple[str, str] | None = None,
+                 retrieved_by: str = "research-mode") -> list[Deposit]:
     """Deposit every entry, continuing past individual failures so one bad URL can't lose the
     rest of the list. Idempotent: re-pulling overwrites same-named deposits. `wayback` credentials,
-    when given, archive each source to the Wayback Machine (#201)."""
+    when given, archive each source to the Wayback Machine (#201). `retrieved_by` records the
+    acquisition path (`research-mode` vs `fetch`) in each sidecar."""
     results = []
     for e in entries:
         try:
             path = deposit_one(vault, e["url"], title=e.get("title", ""),
                                source_type=e.get("source_type", ""), relevance=e.get("relevance", ""),
-                               max_bytes=max_bytes, fetcher=fetcher, wayback=wayback)
+                               max_bytes=max_bytes, fetcher=fetcher, wayback=wayback,
+                               retrieved_by=retrieved_by)
             results.append(Deposit(e["url"], path))
         except ResearchError as ex:
             results.append(Deposit(e["url"], None, str(ex)))

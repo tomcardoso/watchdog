@@ -1910,6 +1910,65 @@ def test_edit_bool_rejects_freetext(wdg_home, monkeypatch, capsys):
     assert "enter y or n" in _strip_ansi(capsys.readouterr().out)
 
 
+# ── watchdog fetch (#197) ──────────────────────────────────────────────────────
+
+def _fake_deposit_many(monkeypatch, captured):
+    from watchdog.pipeline.research import Deposit
+
+    def fake(vault, entries, **kw):
+        captured["entries"] = entries
+        captured["wayback"] = kw.get("wayback")
+        return [Deposit(e["url"], vault / "_INCOMING" / "x.html") for e in entries]
+
+    monkeypatch.setattr("watchdog.pipeline.research.deposit_many", fake)
+
+
+def test_cmd_fetch_inline_urls(configured, monkeypatch, capsys):
+    cli.cmd_new(args(name="Test Proj", dir=str(configured)))
+    monkeypatch.chdir(configured / "test-proj")
+    captured = {}
+    _fake_deposit_many(monkeypatch, captured)
+    cli.cmd_fetch(args(targets=["https://a.com/x", "https://b.com/y"], project=None))
+    assert [e["url"] for e in captured["entries"]] == ["https://a.com/x", "https://b.com/y"]
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Downloaded 2 of 2" in out and "watchdog chew" in out
+
+
+def test_cmd_fetch_reads_links_file(configured, monkeypatch):
+    cli.cmd_new(args(name="Test Proj", dir=str(configured)))
+    vault = configured / "test-proj"
+    monkeypatch.chdir(vault)
+    (vault / "links.txt").write_text("https://a.com\n# a comment\n\nhttps://b.com\tTitle B\n")
+    captured = {}
+    _fake_deposit_many(monkeypatch, captured)
+    cli.cmd_fetch(args(targets=["links.txt"], project=None))
+    assert [e["url"] for e in captured["entries"]] == ["https://a.com", "https://b.com"]
+    assert captured["entries"][1]["title"] == "Title B"   # TSV columns preserved
+
+
+def test_cmd_fetch_empty_file_errors(configured, monkeypatch):
+    cli.cmd_new(args(name="Test Proj", dir=str(configured)))
+    vault = configured / "test-proj"
+    monkeypatch.chdir(vault)
+    (vault / "empty.txt").write_text("# only a comment\n")
+    with pytest.raises(SystemExit):
+        cli.cmd_fetch(args(targets=["empty.txt"], project=None))
+
+
+def test_cmd_fetch_passes_wayback_when_configured(configured, wdg_home, monkeypatch):
+    cli.cmd_new(args(name="Test Proj", dir=str(configured)))
+    monkeypatch.chdir(configured / "test-proj")
+    cfg = wdg_home / "config.json"
+    data = json.loads(cfg.read_text())
+    data.update({"wayback_save": True, "wayback_access_key": "a", "wayback_secret_key": "s"})
+    cfg.write_text(json.dumps(data))
+    monkeypatch.setattr(_research, "CONFIG_FILE", cfg)
+    captured = {}
+    _fake_deposit_many(monkeypatch, captured)
+    cli.cmd_fetch(args(targets=["https://a.com/x"], project=None))
+    assert captured["wayback"] == ("a", "s")
+
+
 # ── search snippet helpers ──────────────────────────────────────────────────
 
 def test_search_query_terms_extracts_positive_words():

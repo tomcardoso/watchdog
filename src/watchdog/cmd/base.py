@@ -255,6 +255,19 @@ _CMD_HELP: dict[str, dict] = {
             "`watchdog ingest` to fold the sources into the vault.",
         ],
     },
+    "fetch": {
+        "desc": "Download a batch of URLs (or a links file) into _INCOMING/",
+        "args": [("URL|FILE", "One or more URLs, or the path to a links file (one URL per line, or the "
+                  "tab-separated url⇥title⇥source_type⇥relevance form)")],
+        "opts": [("--project P", "Investigation name or slug (default: current directory)")],
+        "notes": [
+            "For when you already have a list of links — from a spreadsheet, a colleague, your own",
+            "browsing — and just want them pulled into the pipeline, no research session needed. Each",
+            "URL runs through the same egress hygiene as research sources (public host only, size cap,",
+            "scripts stripped) and lands as a document + provenance sidecar. Then run `watchdog chew`",
+            "and `watchdog ingest`. Archives to the Wayback Machine too when wayback_save is on.",
+        ],
+    },
     "export": {
         "desc": "Export the entity/relationship graph for Neo4j, Gephi, or NetworkX",
         "args": [("project", "Investigation name or slug (omit when inside the project folder)", True)],
@@ -542,6 +555,7 @@ def _print_banner() -> None:
             ("delete",     "Remove an investigation from registry"),
         ]),
         ("Document processing", [
+            ("fetch",            "Download a batch of URLs into _INCOMING/"),
             ("chew",             "Process documents in _INCOMING/"),
             ("ingest",           "Set up extraction session and open in Claude Code"),
             ("context",          "Seed investigation context from _CONTEXT/"),

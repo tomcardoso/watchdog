@@ -149,6 +149,17 @@ watchdog chew --chunk-workers 2   # parallel chunks per file, for large PDFs
 
 Both flags override the persistent `chew_workers` / `chunk_workers` settings from `watchdog configure` for that run only.
 
+### Already have a list of links?
+
+If you have a batch of URLs — from a spreadsheet, a colleague, or your own browsing — hand them to `watchdog fetch` and Watchdog downloads each one into `_INCOMING/` for you, no research session needed:
+
+```bash
+watchdog fetch https://example.gov/filing https://news.example/article
+watchdog fetch links.txt        # one URL per line (or the tab-separated form)
+```
+
+Each URL is validated, size-capped, sanitized, and saved with a provenance sidecar — the same hygiene as web-research sources — then you `chew` and `ingest` as normal. (This is the "give me the URL, you fetch it faithfully" companion to the Obsidian Web Clipper, which clips already-rendered pages.)
+
 ---
 
 ## Step 5: Ingest
