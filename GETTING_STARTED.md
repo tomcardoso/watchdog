@@ -338,7 +338,7 @@ watchdog chew
 watchdog ingest
 ```
 
-Then open a fresh session to investigate what came back. The links file is the durable product of the session, so even a long "deep" run never loses what it queued if it's interrupted — re-run `watchdog research` (it offers to download a leftover queue) to finish the download.
+Then open a fresh session to investigate what came back. The links file is the durable product of the session, held in `.watchdog/research/` — so even a long "deep" run never loses what it queued if it's interrupted. If a session dies before the download runs, `watchdog`, `watchdog chew`, and `watchdog status` all warn that sources are queued but not downloaded; run `watchdog research-fetch` (or re-run `watchdog research`, which offers to download a leftover queue) to finish. Across repeated research on the same investigation, Claude also skips sources the vault has already captured, so it doesn't re-fetch what you already have — unless you ask it to re-check a source for updates.
 
 ---
 

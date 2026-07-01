@@ -5,6 +5,7 @@ and content sanitization — is enforced here, so these tests exercise the hygie
 network is never touched: `fetch` is unit-tested only for its pure helpers, and `deposit_*` take
 an injected fake fetcher."""
 
+import json
 import sys
 from pathlib import Path
 
@@ -193,3 +194,115 @@ def test_deposit_many_continues_past_failures(tmp_path):
     assert [bool(r.path) for r in results] == [True, False, True]
     assert results[1].error and "simulated" in results[1].error
     assert len(list((vault / "_INCOMING").glob("*.html"))) == 2
+
+
+# ── Durable worklist store (#196) ──────────────────────────────────────────────
+
+def test_pending_count_and_queue_path(tmp_path):
+    vault = tmp_path / "v"
+    assert research.pending_count(vault) == 0  # no worklist yet
+    q = research.queue_path(vault)
+    q.parent.mkdir(parents=True)
+    q.write_text("https://a.com\tA\tnews\twhy\n# comment\n\nhttps://b.com\n", encoding="utf-8")
+    assert research.pending_count(vault) == 2  # comments/blanks skipped
+
+
+def test_read_queue_text_falls_back_to_old_tmp_location(tmp_path):
+    vault = tmp_path / "v"
+    old = vault / research._OLD_QUEUE_REL
+    old.parent.mkdir(parents=True)
+    old.write_text("https://legacy.com\n", encoding="utf-8")
+    assert research.pending_count(vault) == 1  # read via fallback
+    # A worklist at the new path takes precedence over the old one.
+    new = research.queue_path(vault)
+    new.parent.mkdir(parents=True)
+    new.write_text("https://a.com\nhttps://b.com\n", encoding="utf-8")
+    assert research.pending_count(vault) == 2
+
+
+def test_serialize_worklist_round_trips(tmp_path):
+    text = "https://a.com\tTitle A\tnews\twhy a\nhttps://b.com\n"
+    entries = research.parse_worklist(text)
+    assert research.parse_worklist(research.serialize_worklist(entries)) == entries
+
+
+def test_retain_pending_keeps_only_given_rows(tmp_path):
+    vault = tmp_path / "v"
+    q = research.queue_path(vault)
+    q.parent.mkdir(parents=True)
+    q.write_text("https://a.com\tA\nhttps://b.com\tB\n", encoding="utf-8")
+    entries = research.parse_worklist(q.read_text())
+    research.retain_pending(vault, [entries[1]])  # keep only the second row
+    remaining = research.parse_worklist(q.read_text())
+    assert [e["url"] for e in remaining] == ["https://b.com"]
+
+
+def test_retain_pending_empty_deletes_worklist(tmp_path):
+    vault = tmp_path / "v"
+    q = research.queue_path(vault)
+    q.parent.mkdir(parents=True)
+    q.write_text("https://a.com\n", encoding="utf-8")
+    old = vault / research._OLD_QUEUE_REL
+    old.parent.mkdir(parents=True)
+    old.write_text("https://a.com\n", encoding="utf-8")
+    research.retain_pending(vault, [])
+    assert not q.exists()
+    assert not old.exists()  # the fallback is cleared too, so it can't re-nag
+
+
+# ── seen_urls: re-fetch avoidance (#196, Part A) ───────────────────────────────
+
+def test_seen_urls_unions_documents_and_incoming_sidecars(tmp_path):
+    vault = tmp_path / "v"
+    reg = vault / ".watchdog" / "Registry"
+    reg.mkdir(parents=True)
+    (reg / "documents.json").write_text(json.dumps({
+        "sha1": {"source": "https://doc.example/ingested"},
+        "sha2": {"source": None},        # a non-web document — no source
+        "sha3": {},                      # missing source key
+    }))
+    incoming = vault / "_INCOMING"
+    incoming.mkdir()
+    (incoming / "a.html.yml").write_text("source: https://inflight.example/downloaded\ntitle: t\n")
+    (incoming / "b.pdf.yml").write_text("title: no-source-here\n")
+    assert research.seen_urls(vault) == {
+        "https://doc.example/ingested",
+        "https://inflight.example/downloaded",
+    }
+
+
+def test_seen_urls_empty_when_no_artifacts(tmp_path):
+    assert research.seen_urls(tmp_path / "v") == set()
+
+
+# ── Size cap (#196) ────────────────────────────────────────────────────────────
+
+def test_default_size_cap_is_20_mib():
+    assert research._MAX_BYTES_DEFAULT == 20 * 1024 * 1024
+
+
+def test_fetch_rejects_over_cap_with_readable_error(monkeypatch):
+    cap = 2 * 1024 * 1024  # 2 MiB
+
+    class _Headers:
+        def get_content_type(self):
+            return "text/html"
+
+    class _Resp:
+        def read(self, n):
+            return b"x" * n            # always fills the read → looks over-cap
+        headers = _Headers()
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+
+    class _Opener:
+        def open(self, req, timeout=None):
+            return _Resp()
+
+    monkeypatch.setattr(research, "_check_host_public", lambda host: None)
+    monkeypatch.setattr(research, "_opener", _Opener())
+    with pytest.raises(ResearchError) as exc:
+        research.fetch("https://example.com/big", max_bytes=cap)
+    assert "2 MiB download cap" in str(exc.value)

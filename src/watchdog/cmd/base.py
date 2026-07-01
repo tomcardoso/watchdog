@@ -79,6 +79,10 @@ _VAULT_PERMISSIONS = [
     # internal vault state
     "Write(.watchdog/tmp/**)",
     "Edit(.watchdog/tmp/**)",
+    # durable web-research worklist (#196) — the skill writes queued URLs here (not tmp/, which
+    # setup sweeps), so a crashed session's queue survives.
+    "Write(.watchdog/research/**)",
+    "Edit(.watchdog/research/**)",
     "Write(.watchdog/Registry/**)",
     "Edit(.watchdog/Registry/**)",
     "Write(.watchdog/timeline/**)",
@@ -404,6 +408,17 @@ def _count_queued(vault: Path) -> int:
     if not queue.exists():
         return 0
     return sum(1 for f in queue.iterdir() if f.suffix == ".json")
+
+
+def _warn_pending_research(vault: Path) -> None:
+    """Warn when web-research URLs are queued but not downloaded (#196). A crashed research session
+    leaves them in the durable worklist; bare `watchdog`, `chew`, and `status` surface them so they
+    aren't silently lost. No-op when none are pending."""
+    from watchdog.pipeline import research
+    n = research.pending_count(vault)
+    if n:
+        print(f"  {_YELLOW}{n} research URL{'s' if n != 1 else ''}{_RESET} queued but not downloaded "
+              f"{_DIM}— run{_RESET} {_CYAN}watchdog research-fetch{_RESET}")
 
 
 def _resolve_vault(project: str | None) -> tuple[str, dict, Path]:

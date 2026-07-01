@@ -1,6 +1,6 @@
 ---
 description: Bounded web research, seeded by the vault, that queues findings for _INCOMING/
-allowed-tools: WebSearch, WebFetch, Bash(watchdog leads)
+allowed-tools: WebSearch, WebFetch, Bash(watchdog leads), Bash(watchdog research-seen)
 ---
 
 # /watchdog-research — Bounded web research that re-enters via _INCOMING/
@@ -36,6 +36,11 @@ Read the vault's open state to ground the research in real gaps — do not start
    watchdog leads
    ```
 3. **`.watchdog/Registry/manifest.json`** — the entity directory (`id`, `name`, `type`, `aliases`). Use it to know who/what is already in the vault, so you research *around* the known graph and avoid re-pulling what is already documented.
+4. **`watchdog research-seen`** — the URLs the vault has already captured (downloaded or ingested) in prior cycles. Run it and hold the list:
+   ```bash
+   watchdog research-seen
+   ```
+   **Do not queue a URL that appears here** — it is already in the pipeline — *unless the journalist explicitly asks to re-check that source for updates.* This keeps a recurring investigation from re-fetching what it already has.
 
 From this, propose a concrete **mission**, typically one of:
 - **Fill an entity gap** — a named-but-unprofiled person/company → find filings, registries, news.
@@ -65,7 +70,7 @@ Before spending anything, confirm two things with the journalist:
 
 ## 3. Open the links file
 
-Every source you keep goes into a tab-separated links file at **`.watchdog/tmp/research-queue.tsv`** — one row per source, columns `url ⇥ title ⇥ source_type ⇥ relevance`. This file is the durable product of the session: `watchdog research` downloads every row into `_INCOMING/` after you finish, so nothing is lost even if the session runs out of tokens mid-research.
+Every source you keep goes into a tab-separated links file at **`.watchdog/research/queue.tsv`** — one row per source, columns `url ⇥ title ⇥ source_type ⇥ relevance`. This file is the durable product of the session: it lives in `.watchdog/research/` (not scratch), so if the session crashes before the download runs, the queued URLs survive and `watchdog`, `watchdog chew`, and `watchdog status` all warn that they're still pending. `watchdog research` downloads every row into `_INCOMING/` after you finish, so nothing is lost even if the session runs out of tokens mid-research.
 
 Write it with the Write tool (rewriting the whole file as it grows — keep the running list in mind and update the file whenever you add a source). A row looks like:
 

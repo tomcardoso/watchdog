@@ -12,6 +12,7 @@ from watchdog.cmd.base import (
     _MODEL_IDS,
     _notify,
     _render_template,
+    _warn_pending_research,
     load_projects,
 )
 
@@ -141,6 +142,7 @@ def cmd_chew(args) -> None:
     if not (vault / ".watchdog").is_dir():
         sys.exit("Error: not inside a Watchdog project folder. cd into your investigation first.")
 
+    _warn_pending_research(vault)
     queued_before = _count_queued(vault)
     file_arg = getattr(args, "file", None)
     chew_workers  = getattr(args, "chew_workers", None)
@@ -500,8 +502,14 @@ def cmd_guided(args) -> None:
     sensible next step. Reuses the same prompt helpers as the individual commands for consistency.
     """
     from watchdog.pipeline.preprocess_batch import find_files
+    from watchdog.pipeline import research
     vault = Path(".").resolve()
     did_offer = False
+
+    # Crash-recovery: a research session that died before its post-flight download left URLs queued.
+    if research.pending_count(vault):
+        print()
+        _warn_pending_research(vault)
 
     # 1. Context — when _CONTEXT/ has files and context.md hasn't been seeded yet. (Re-seeding an
     #    existing context.md stays the explicit `watchdog context`; the guided flow won't nag.)

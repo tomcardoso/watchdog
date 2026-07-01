@@ -547,6 +547,37 @@ def test_cmd_status_pending_files(configured, capsys):
     assert "_INCOMING/" in out
 
 
+def test_cmd_status_warns_pending_research(configured, capsys):
+    cli.cmd_new(args(name="Test Proj", dir=str(configured)))
+    vault = configured / "test-proj"
+    q = vault / ".watchdog" / "research" / "queue.tsv"
+    q.parent.mkdir(parents=True, exist_ok=True)
+    q.write_text("https://a.com\tA\nhttps://b.com\tB\n", encoding="utf-8")
+    cli.cmd_status(args(name="Test Proj"))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "2 research URLs" in out
+    assert "watchdog research-fetch" in out
+
+
+def test_cmd_status_no_research_warning_when_none_pending(configured, capsys):
+    cli.cmd_new(args(name="Test Proj", dir=str(configured)))
+    cli.cmd_status(args(name="Test Proj"))
+    assert "research URL" not in _strip_ansi(capsys.readouterr().out)
+
+
+def test_cmd_guided_warns_pending_research(configured, capsys, monkeypatch):
+    cli.cmd_new(args(name="Test Proj", dir=str(configured)))
+    vault = configured / "test-proj"
+    q = vault / ".watchdog" / "research" / "queue.tsv"
+    q.parent.mkdir(parents=True, exist_ok=True)
+    q.write_text("https://a.com\n", encoding="utf-8")
+    monkeypatch.chdir(vault)
+    cli.cmd_guided(args())
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "1 research URL" in out
+    assert "watchdog research-fetch" in out
+
+
 def test_cmd_status_shows_document_count(configured, capsys):
     cli.cmd_new(args(name="Test Proj", dir=str(configured)))
     _make_vault_with_data(
