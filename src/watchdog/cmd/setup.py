@@ -801,6 +801,23 @@ def _edit_key_interactive(config: dict, key: str) -> None:
         value = _configure_default_skill_interactive(key, config)
         if value is None:   # unset / cancel handled inside, or no skills
             return
+    elif meta["type"] == "bool":
+        # A two-state value doesn't need a free-text box — toggle it. The capitalised letter in the
+        # bracket is what Enter does, so Enter always keeps the current value.
+        current = config.get(key)
+        current = bool(meta.get("default", False) if current is None else current)
+        print()
+        answer = input(f"  Enable? [{'Y/n' if current else 'y/N'}]  (Enter to keep current) ").strip().lower()
+        if answer == "":
+            print(f"\n  {_DIM}No change.{_RESET}\n")
+            return
+        if answer in ("y", "yes", "true", "on", "1"):
+            value = "true"
+        elif answer in ("n", "no", "false", "off", "0"):
+            value = "false"
+        else:
+            print(f"\n  {_YELLOW}Error:{_RESET} enter y or n\n")
+            return
     else:
         print()
         answer = input("  Change this value? [y/N] ").strip().lower()

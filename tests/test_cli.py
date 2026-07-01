@@ -1875,3 +1875,36 @@ def test_configure_masks_wayback_secret(tmp_path, monkeypatch, capsys):
     out = _strip_ansi(capsys.readouterr().out)
     assert "SUPERSECRETKEY" not in out       # never echoed back
     assert "wayback_access_key" in out and "(set)" in out
+
+
+# ── Boolean config toggle (#201 follow-up) ─────────────────────────────────────
+
+def test_edit_bool_toggle_on(wdg_home, monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda *a: "y")
+    config = {}
+    _setup._edit_key_interactive(config, "wayback_save")
+    assert config["wayback_save"] is True
+    assert json.loads((wdg_home / "config.json").read_text())["wayback_save"] is True
+
+
+def test_edit_bool_toggle_off(wdg_home, monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda *a: "n")
+    config = {"wayback_save": True}
+    _setup._edit_key_interactive(config, "wayback_save")
+    assert config["wayback_save"] is False
+
+
+def test_edit_bool_enter_keeps_current(wdg_home, monkeypatch, capsys):
+    monkeypatch.setattr("builtins.input", lambda *a: "")   # Enter
+    config = {"wayback_save": True}
+    _setup._edit_key_interactive(config, "wayback_save")
+    assert config["wayback_save"] is True                  # unchanged
+    assert "No change" in _strip_ansi(capsys.readouterr().out)
+
+
+def test_edit_bool_rejects_freetext(wdg_home, monkeypatch, capsys):
+    monkeypatch.setattr("builtins.input", lambda *a: "maybe")
+    config = {"wayback_save": False}
+    _setup._edit_key_interactive(config, "wayback_save")
+    assert config["wayback_save"] is False                 # untouched
+    assert "enter y or n" in _strip_ansi(capsys.readouterr().out)
