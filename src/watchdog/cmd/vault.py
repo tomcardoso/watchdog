@@ -17,6 +17,7 @@ from watchdog.cmd.base import (
     _check_vault_locks,
     _count_incoming,
     _count_queued,
+    _warn_pending_research,
     _find_project,
     _fmt_date,
     _fmt_size,
@@ -973,6 +974,7 @@ def cmd_status(args) -> None:
         print(f"  {_YELLOW}{incoming_n} file{'s' if incoming_n != 1 else ''}{_RESET} in {_CYAN}_INCOMING/{_RESET} {_DIM}— run{_RESET} {_CYAN}watchdog chew{_RESET}")
     if queued_n:
         print(f"  {_YELLOW}{queued_n} file{'s' if queued_n != 1 else ''}{_RESET} chewed and waiting for {_CYAN}/watchdog-ingest{_RESET}")
+    _warn_pending_research(vault)
 
     from watchdog.pipeline import orchestrate
     if orchestrate.has_pending_finalization(vault):

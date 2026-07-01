@@ -10,7 +10,6 @@ reading. The internal `research-fetch` command runs the same download on demand 
 
 import subprocess
 import sys
-from datetime import datetime
 from pathlib import Path
 
 from watchdog.cmd.base import (
@@ -27,46 +26,40 @@ from watchdog.cmd.base import (
 )
 from watchdog.pipeline import research
 
-# Where the skill writes its links file. Under `.watchdog/tmp/` so it is write-permitted for the
-# skill and never picked up by chew. The `.tsv` carries url ⇥ title ⇥ source_type ⇥ relevance.
-_QUEUE_REL = Path(".watchdog") / "tmp" / "research-queue.tsv"
-
 
 def _queue_path(vault: Path) -> Path:
-    return vault / _QUEUE_REL
+    return research.queue_path(vault)
 
 
-def _queue_count(queue: Path) -> int:
-    if not queue.exists():
-        return 0
-    return len(research.parse_worklist(queue.read_text(encoding="utf-8")))
+def _queue_count(vault: Path) -> int:
+    return research.pending_count(vault)
 
 
-def _run_download(vault: Path, queue: Path) -> int:
-    """Download every queued source into `_INCOMING/`, continuing past failures. Returns the
-    number deposited."""
-    entries = research.parse_worklist(queue.read_text(encoding="utf-8"))
+def _run_download(vault: Path, source_file: Path | None = None) -> int:
+    """Download every queued source into `_INCOMING/`, continuing past failures. Returns the number
+    deposited. With no `source_file`, consumes the durable worklist — downloaded rows drop out;
+    rows that failed stay queued for a later retry so a transient failure is never silently lost.
+    An explicit `source_file` (recovery) is read but left untouched."""
+    text = source_file.read_text(encoding="utf-8") if source_file else research.read_queue_text(vault)
+    entries = research.parse_worklist(text) if text else []
     results = research.deposit_many(vault, entries)
     deposited = [r for r in results if r.path]
     failed = [r for r in results if not r.path]
+    if source_file is None:
+        failed_urls = {r.url for r in failed}
+        research.retain_pending(vault, [e for e in entries if e["url"] in failed_urls])
     print()
     print(f"  {_GREEN}Downloaded{_RESET} {_BOLD}{len(deposited)}{_RESET} of {len(results)} "
           f"into {_CYAN}_INCOMING/{_RESET}")
     for r in deposited:
         print(f"    {_CYAN}{r.path.name}{_RESET}  {_DIM}{r.url}{_RESET}")
     if failed:
-        print(f"\n  {_YELLOW}Skipped {len(failed)}{_RESET}")
+        note = ("" if source_file is not None else
+                f" {_DIM}(left queued — retry with {_RESET}{_CYAN}watchdog research-fetch{_RESET}{_DIM}){_RESET}")
+        print(f"\n  {_YELLOW}Skipped {len(failed)}{_RESET}{note}")
         for r in failed:
             print(f"    {_DIM}{r.url}{_RESET}  {_YELLOW}{r.error}{_RESET}")
     return len(deposited)
-
-
-def _archive_queue(vault: Path, queue: Path) -> None:
-    """Move a consumed queue out of the way so it is never re-downloaded by a later run."""
-    dest_dir = vault / ".watchdog" / "research"
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-    queue.replace(dest_dir / f"fetched-{ts}.tsv")
 
 
 def _confirm(prompt: str) -> bool:
@@ -94,18 +87,18 @@ def cmd_research(args) -> None:
     info = next((v for v in load_projects().values()
                  if Path(v["path"]).resolve() == vault.resolve()), None)
     name = info["name"] if info else vault.name
-    queue = _queue_path(vault)
 
     # Recover an unfetched queue left by a previous (e.g. interrupted) session before starting fresh.
-    stale = _queue_count(queue)
+    # Declining leaves it queued (a later download or the pending warnings will surface it) — never
+    # silently discarded.
+    stale = _queue_count(vault)
     if stale:
         s = "s" if stale != 1 else ""
         them = "them" if stale != 1 else "it"
         print(f"\n  {_YELLOW}{stale} source{s} from a previous research session "
               f"{'are' if stale != 1 else 'is'} queued and not downloaded.{_RESET}")
         if _confirm(f"  Download {them} into _INCOMING/ now? [Y/n] "):
-            _run_download(vault, queue)
-        _archive_queue(vault, queue)
+            _run_download(vault)
 
     print(f"\n  {_BOLD}Web research — {name}{_RESET}\n")
     print(f"  {_DIM}Seeded by your vault, Claude conducts bounded web research and queues the{_RESET}")
@@ -139,7 +132,7 @@ def cmd_research(args) -> None:
         sys.exit("Error: Claude Code not found — install from https://claude.ai/download")
 
     # Post-flight: download what the session queued.
-    found = _queue_count(queue)
+    found = _queue_count(vault)
     if not found:
         print(f"\n  {_DIM}No sources were queued this session — nothing to download.{_RESET}\n")
         return
@@ -147,8 +140,7 @@ def cmd_research(args) -> None:
     them = "them" if found != 1 else "it"
     print(f"\n  {_BOLD}{found}{_RESET} source{s} queued for download.")
     if _confirm(f"  Download {them} into _INCOMING/ now? [Y/n] "):
-        count = _run_download(vault, queue)
-        _archive_queue(vault, queue)
+        count = _run_download(vault)
         if count:
             print(f"\n  Next: {_CYAN}watchdog chew{_RESET} then {_CYAN}watchdog ingest{_RESET} "
                   f"to fold {'them' if count != 1 else 'it'} into the vault.\n")
@@ -156,12 +148,22 @@ def cmd_research(args) -> None:
         print(f"\n  Left queued. Run {_CYAN}watchdog research-fetch{_RESET} to download later.\n")
 
 
-def cmd_research_fetch(args) -> None:
-    """Internal: download a research links file into _INCOMING/ (manual / recovery path)."""
+def cmd_research_seen(args) -> None:
+    """Internal: print URLs already captured (one per line), so /watchdog-research can skip
+    re-fetching them. Derived from documents.json + in-flight _INCOMING/ sidecars (research.seen_urls)."""
     _, _info, vault = _resolve_vault(getattr(args, "project", None))
-    queue = Path(args.file) if getattr(args, "file", None) else _queue_path(vault)
-    if not _queue_count(queue):
-        sys.exit(f"Error: no queued sources at {queue}")
-    _run_download(vault, queue)
-    _archive_queue(vault, queue)
+    for url in sorted(research.seen_urls(vault)):
+        print(url)
+
+
+def cmd_research_fetch(args) -> None:
+    """Internal: download the queued research sources into _INCOMING/ (manual / recovery path)."""
+    _, _info, vault = _resolve_vault(getattr(args, "project", None))
+    source_file = Path(args.file) if getattr(args, "file", None) else None
+    if source_file is not None:
+        if not source_file.exists() or not research.parse_worklist(source_file.read_text(encoding="utf-8")):
+            sys.exit(f"Error: no queued sources at {source_file}")
+    elif not _queue_count(vault):
+        sys.exit(f"Error: no queued sources at {_queue_path(vault)}")
+    _run_download(vault, source_file)
     print()

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import ipaddress
+import json
 import re
 import socket
 import ssl
@@ -43,7 +44,7 @@ class ResearchError(Exception):
 
 
 _ALLOWED_SCHEMES = {"http", "https"}
-_MAX_BYTES_DEFAULT = 5 * 1024 * 1024  # 5 MiB — caps both the network read and the deposited file
+_MAX_BYTES_DEFAULT = 20 * 1024 * 1024  # 20 MiB — caps both the network read and the deposited file
 _MAX_REDIRECTS = 5
 _TIMEOUT = 30
 _USER_AGENT = "watchdog-research/1.0 (+https://github.com/tomcardoso/watchdog)"
@@ -134,7 +135,8 @@ def fetch(url: str, *, max_bytes: int = _MAX_BYTES_DEFAULT, timeout: int = _TIME
         with resp:
             body = resp.read(max_bytes + 1)
             if len(body) > max_bytes:
-                raise ResearchError(f"refused: response exceeds {max_bytes}-byte cap")
+                raise ResearchError(
+                    f"refused: {current} exceeds the {max_bytes // (1024 * 1024)} MiB download cap")
             return body, resp.headers.get_content_type(), current
     raise ResearchError("refused: too many redirects")
 
@@ -265,3 +267,91 @@ def deposit_many(vault: Path, entries: list[dict], *, max_bytes: int = _MAX_BYTE
         except ResearchError as ex:
             results.append(Deposit(e["url"], None, str(ex)))
     return results
+
+
+# ── Durable worklist store (#196) ──────────────────────────────────────────────
+# The pending-download list is the one URL-specific piece of state: a queued URL has no file yet,
+# so — unlike a pending PDF, which is tracked by its presence in _INCOMING/ — it needs an explicit
+# store. It lives under `.watchdog/research/` (durable), not `.watchdog/tmp/` (swept by setup), so a
+# crashed session's queued URLs survive. Once downloaded a URL becomes an _INCOMING/ file and is
+# tracked like any pending document; once ingested it lands in documents.json `source`. There is no
+# separate "done" ledger — done-ness is derived from those artifacts (see `seen_urls`).
+
+QUEUE_REL = Path(".watchdog") / "research" / "queue.tsv"
+_OLD_QUEUE_REL = Path(".watchdog") / "tmp" / "research-queue.tsv"  # pre-#196 location, read once
+
+
+def queue_path(vault: Path) -> Path:
+    return vault / QUEUE_REL
+
+
+def read_queue_text(vault: Path) -> str | None:
+    """Return the worklist text, falling back to the pre-#196 `.watchdog/tmp/` path so a queue left
+    by an older session isn't lost across the move. Returns None when no worklist exists."""
+    new = queue_path(vault)
+    if new.exists():
+        return new.read_text(encoding="utf-8")
+    old = vault / _OLD_QUEUE_REL
+    if old.exists():
+        return old.read_text(encoding="utf-8")
+    return None
+
+
+def pending_count(vault: Path) -> int:
+    """Count queued-but-not-downloaded URLs — what the `watchdog`/`chew`/`status` warnings surface."""
+    text = read_queue_text(vault)
+    return len(parse_worklist(text)) if text else 0
+
+
+def serialize_worklist(entries: list[dict]) -> str:
+    """Inverse of `parse_worklist`: render entries back to TSV, trimming trailing empty columns."""
+    lines = []
+    for e in entries:
+        cols = [e.get("url", ""), e.get("title", ""), e.get("source_type", ""), e.get("relevance", "")]
+        while len(cols) > 1 and not cols[-1]:
+            cols.pop()
+        lines.append("\t".join(cols))
+    return "\n".join(lines) + "\n" if lines else ""
+
+
+def retain_pending(vault: Path, keep: list[dict]) -> None:
+    """Rewrite the worklist to just `keep` (the rows still to download); delete it when empty. Used
+    after a download pass to drop the URLs now captured while leaving failures queued for retry."""
+    path = queue_path(vault)
+    old = vault / _OLD_QUEUE_REL
+    if not keep:
+        path.unlink(missing_ok=True)
+        old.unlink(missing_ok=True)
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(serialize_worklist(keep), encoding="utf-8")
+    old.unlink(missing_ok=True)  # consumed the fallback; the durable path is now canonical
+
+
+def seen_urls(vault: Path) -> set[str]:
+    """URLs already captured — so research can skip re-fetching them. Derived, not stored: the union
+    of every ingested document's `source` (documents.json) and every in-flight `_INCOMING/**.yml`
+    sidecar `source` (downloaded, not yet ingested). Mirrors how chew dedups against the registry."""
+    urls: set[str] = set()
+
+    docs_file = vault / ".watchdog" / "Registry" / "documents.json"
+    if docs_file.exists():
+        try:
+            for entry in json.loads(docs_file.read_text(encoding="utf-8")).values():
+                src = entry.get("source") if isinstance(entry, dict) else None
+                if src:
+                    urls.add(str(src))
+        except (OSError, json.JSONDecodeError, AttributeError):
+            pass
+
+    incoming = vault / "_INCOMING"
+    if incoming.is_dir():
+        for sidecar in incoming.rglob("*.yml"):
+            try:
+                data = yaml.safe_load(sidecar.read_text(encoding="utf-8"))
+            except (OSError, yaml.YAMLError):
+                continue
+            if isinstance(data, dict) and data.get("source"):
+                urls.add(str(data["source"]))
+
+    return urls

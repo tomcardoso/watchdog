@@ -89,7 +89,7 @@ from watchdog.cmd.setup import (
 from watchdog.cmd.auth import cmd_auth
 from watchdog.cmd.export import cmd_export
 from watchdog.cmd.leads import cmd_leads
-from watchdog.cmd.research import cmd_research, cmd_research_fetch
+from watchdog.cmd.research import cmd_research, cmd_research_fetch, cmd_research_seen
 
 
 def _cmd_rebuild_timeline(args) -> None:
@@ -135,7 +135,7 @@ def main() -> None:
     _INTERNAL_CMDS = {
         "entity-index", "queue-status", "validate-extraction",
         "is-duplicate",  "pre-flight",  "post-flight",
-        "timeline-collisions", "research-fetch",
+        "timeline-collisions", "research-fetch", "research-seen",
     }
     if len(sys.argv) >= 2 and sys.argv[1] in _INTERNAL_CMDS:
         cmd = sys.argv[1]
@@ -166,6 +166,9 @@ def main() -> None:
             _p.add_argument("project", nargs="?")
             _p.add_argument("--file")
             cmd_research_fetch(_p.parse_args(sys.argv[2:]))
+        elif cmd == "research-seen":
+            _p.add_argument("project", nargs="?")
+            cmd_research_seen(_p.parse_args(sys.argv[2:]))
         return
 
     parser = argparse.ArgumentParser(

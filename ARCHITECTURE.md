@@ -497,9 +497,9 @@ registry for every document would be wasteful. The manifest is the cheap index.
 
 ## 14. Web research mode (investigation layer)
 
-**Code:** `pipeline/research.py` (the egress gate), `cmd/research.py` (`watchdog research` launcher
-+ post-flight download; the internal `research-fetch` recovery command). **Skill:**
-`skills/watchdog-research.md`.
+**Code:** `pipeline/research.py` (the egress gate + the durable worklist store), `cmd/research.py`
+(`watchdog research` launcher + post-flight download; the internal `research-fetch` recovery and
+`research-seen` re-fetch-avoidance commands). **Skill:** `skills/watchdog-research.md`.
 
 A bounded, agentic web-research session that **queues findings for `_INCOMING/`** so they flow
 through the normal `chew → ingest` pipeline — it never writes vault notes directly. `watchdog
@@ -508,7 +508,7 @@ research` explains the mode, takes a question (or prompts for one), and opens Cl
 skill seeds from the vault's open state (`manifest.json`, `watchdog leads`, health gaps,
 `context.md`), proposes a mission, confirms scope + an effort tier (quick / standard / deep), then
 researches in rounds — reading the web selectively to follow leads, checking in between rounds —
-recording each kept source in a **links file** (`.watchdog/tmp/research-queue.tsv`: `url ⇥ title ⇥
+recording each kept source in a **links file** (`.watchdog/research/queue.tsv`: `url ⇥ title ⇥
 source_type ⇥ relevance`). When the session ends, `watchdog research` downloads the queued sources
 (after a confirm) and stops at `_INCOMING/`, leaving `chew`/`ingest` to the journalist.
 
@@ -517,7 +517,7 @@ source_type ⇥ relevance`). When the session ends, `watchdog research` download
   reads the web (WebSearch/WebFetch) and appends to the links file. The download is a deterministic
   **post-flight** of `watchdog research`: `pipeline/research.py` validates each URL *before* the
   network call (http/https only; host must not resolve to private/loopback/link-local space — the
-  SSRF guard, re-checked on every redirect hop), fetches with a body-size cap, strips
+  SSRF guard, re-checked on every redirect hop), fetches with a body-size cap (20 MiB), strips
   `<script>`/`<iframe>`, defangs wikilink/frontmatter-delimiter injection in sidecar values, and
   writes the source + `.yml` sidecar. It runs in the terminal (ungated), never folded into `chew`
   (which stays local-first/no-network, I2).
@@ -530,10 +530,21 @@ source_type ⇥ relevance`). When the session ends, `watchdog research` download
   (what gap it targeted, what was pulled, what's still open) is written to a
   `briefings/research-<date>.md` memo as forward-looking leads — **never** `context.md`, which is the
   human-anchored orientation layer and must not be machine-seeded with unverified web inference.
-- **Durability.** The links file *is* the durable product: the skill updates it as it goes, so a long
-  run that exhausts its tokens never loses what it queued. `watchdog research` offers to download a
-  leftover queue on its next run, and the internal `research-fetch` re-pulls one on demand; downloads
-  are idempotent (deposit names are a stable hash of the URL).
+- **Durability — a URL mirrors a PDF's stages (#196).** The worklist is the one URL-specific piece of
+  state, so it lives under `.watchdog/research/` (durable), not `.watchdog/tmp/` (which `setup` sweeps):
+  a session that crashes before its post-flight never loses what it queued, and **bare `watchdog`,
+  `watchdog chew`, and `watchdog status` all warn** when URLs are queued-but-not-downloaded. Past that
+  point a URL is tracked exactly as a pending PDF is — by filesystem presence: a downloaded URL is an
+  `_INCOMING/` file, an ingested one is a `documents.json` entry with `source`. A download pass consumes
+  the worklist, retaining only rows that *failed* to fetch (at-least-once, so a transient failure is
+  never silently dropped); there is **no separate "done" ledger**. `watchdog research` offers to
+  download a leftover queue on its next run, and `research-fetch` re-pulls on demand; downloads are
+  idempotent (deposit names are a stable hash of the URL).
+- **Re-fetch avoidance (#196).** So a recurring investigation doesn't re-pull sources it already has,
+  the skill runs `watchdog research-seen` at seed time and skips any URL it returns — unless the
+  journalist asks to re-check a source. The "seen" set is **derived, not stored**: the union of every
+  `documents.json` `source` (ingested) and every in-flight `_INCOMING/**.yml` `source` (downloaded, not
+  yet ingested) — mirroring how `chew` dedups against the registry (D27).
 - **Bounds are advisory.** `research_max_rounds` / `research_max_fetches` (and the effort tiers) are
   a budget the interactive skill self-limits to; only the egress hygiene is hard-enforced in Python.
 - **Web access is scoped to the skill.** `WebSearch` and `WebFetch` (the skill's only outbound
@@ -542,7 +553,7 @@ source_type ⇥ relevance`). When the session ends, `watchdog research` download
   Archival downloading is a terminal post-flight, never granted to the skill — so a vault of sensitive
   source material carries no standing outbound-fetch permission.
 
-See D45.
+See D45, D46.
 
 ---
 
@@ -554,7 +565,7 @@ These are the **governing rules of the pipeline** — the canonical statement of
 - **I2 — Local-first preprocessing.** The *source documents you were given* never leave the machine, and chew costs no API tokens. This is a boundary on **source-doc egress**, not a vow of web abstinence — the investigation layer runs as agentic Claude Code sessions and web research (§14, I5) is allowed, since anything on the open web is already public. *History: D1, D45.*
 - **I3 — Skills and prompt templates are global package resources** — read directly, never copied per-vault — and prompt templates live in their own directory so they never leak into the classifier index. *History: D21, D28.*
 - **I4 — Configured model and effort only; no automatic escalation.** Each stage's model *and* its reasoning effort are explicit knobs with stable defaults; a failed call retries on the *same* model at the *same* effort — the pipeline never silently bumps either to recover. *History: D20, D36.*
-- **I5 — Research output re-enters through `_INCOMING/`, never as a direct vault write.** Web research deposits findings as documents that flow through `chew → ingest`, keeping the deterministic pipeline the single writer (dedup, provenance, registry bookkeeping). Per-doc rationale rides the `.yml` sidecar; batch rationale goes to a `briefings/research-<date>.md` memo — never `context.md`. *History: D45.*
+- **I5 — Research output re-enters through `_INCOMING/`, never as a direct vault write.** Web research deposits findings as documents that flow through `chew → ingest`, keeping the deterministic pipeline the single writer (dedup, provenance, registry bookkeeping). Per-doc rationale rides the `.yml` sidecar; batch rationale goes to a `briefings/research-<date>.md` memo — never `context.md`. *History: D45, D46.*
 
 ### Decision log
 
