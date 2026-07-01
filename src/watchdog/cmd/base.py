@@ -210,6 +210,7 @@ _CMD_HELP: dict[str, dict] = {
         "opts": [
             ("--top N", "Results to return per section (default: 5)"),
             ("--threshold S", "Hide results scoring below S (0.0–1.0); ~0.5 keeps strong matches"),
+            ("--full", "Print the complete passage/note instead of a truncated snippet"),
         ],
         "notes": [
             "Searches by meaning, not keywords: \"conflict of interest\" surfaces passages about",
