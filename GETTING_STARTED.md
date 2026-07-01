@@ -298,7 +298,7 @@ watchdog search shell-company-investigation "shell company -real estate"
 watchdog search shell-company-investigation "consulting fee +offshore -salary"
 ```
 
-Results come in two sections — **source passages** (what a document says) and **notes** (what the investigation concluded). The score shown is cosine similarity (0–1; a strong conceptual match sits around 0.5–0.65), even though the passage order is set by the fusion + rerank. Add `--threshold 0.5` to hide weak matches, `--no-rerank` to skip the cross-encoder (faster, lower quality — the reranker downloads a ~300 MB local model on first use), or `--json` for machine-readable output (what `/watchdog-query` uses internally). Run `watchdog search --help` for the full query syntax.
+Results come in two sections — **source passages** (what a document says) and **notes** (what the investigation concluded). Matched query terms are bolded in the printed snippet, and the snippet is centred on the first match rather than always showing the start of the passage. The score shown is cosine similarity (0–1; a strong conceptual match sits around 0.5–0.65), even though the passage order is set by the fusion + rerank. Add `--threshold 0.5` to hide weak matches, `--no-rerank` to skip the cross-encoder (faster, lower quality — the reranker downloads a ~300 MB local model on first use), `--full` to print the complete passage/note instead of a snippet, or `--json` for machine-readable output (what `/watchdog-query` uses internally). Run `watchdog search --help` for the full query syntax.
 
 ---
 
