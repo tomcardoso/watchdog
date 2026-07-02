@@ -175,9 +175,12 @@ lock.
 **Large documents — sectioned extraction.** Code: `pipeline/section.py`,
 `pipeline/merge.py`. A document over `section_token_threshold` is split by `section.run`
 into overlapping page-range sections, extracted **one at a time in reading order** with a
-carry-forward block (entities-so-far + observations) in each section's prompt, then
-combined by `merge.merge_extractions` into a single extraction JSON that goes through the
-same post-flight / `write_vault` path.
+carry-forward block in each section's prompt, then combined by `merge.merge_extractions`
+into a single extraction JSON that goes through the same post-flight / `write_vault` path.
+The carry-forward is a deduplicated entity-id → name/type map accumulated across every
+section seen so far (rebuilt fresh each section, one line per entity, not a running
+concatenation) plus only the immediately preceding section's `observations` text; and,
+like whole-document extraction, it includes the investigation brief (D49).
 
 **Output-overrun fallback.** Sectioning is gated on *input* size, but a moderate-input,
 entity-dense document can overrun the model's *output* ceiling — the agent-SDK backend
@@ -440,6 +443,7 @@ Registry/
   registry.json             counts + last-updated
   manifest.json             lightweight id→{name,type,aliases,note_path} lookup
   ingest.log                append-only ingest log
+  usage-<ts>.json           per-run model-call token/cost telemetry (D50)
   .ingest-lock / .write-lock  run lock / write serialization
 ingest-state.json           handoff from `watchdog ingest` to the skill
 ```

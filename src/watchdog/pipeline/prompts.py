@@ -71,13 +71,15 @@ def build_extract_prompt(*, pages_text: str, existing_entities: list, skill_text
 
 def build_section_prompt(*, pages_text: str, existing_entities: list, skill_text: str,
                          carry_forward: str, section_label: str, is_first: bool,
-                         known_document_types: list) -> str:
+                         known_document_types: list, brief: str | None = None) -> str:
     parts = [
         _render("section_intro", section_label=section_label),
         "",
         _text("extract_instructions"),
         "",
     ]
+    if brief:
+        parts.append(f"\nINVESTIGATION BRIEF (orient extraction toward this):\n{brief}")
     if is_first:
         parts.append("This is SECTION 1: fill document metadata (title, document_type, "
                      "date_of_document) and the morgue_entity_id field.")

@@ -493,6 +493,89 @@ def test_record_skill_provenance_is_persisted(tmp_path, monkeypatch):
     assert "record_skill: general-records" in note
 
 
+def test_nudge_skill_pin_fires_when_batch_is_homogeneous(capsys):
+    orchestrate._nudge_skill_pin([
+        {"status": "ok", "record_skill": "general-records"},
+        {"status": "ok", "record_skill": "general-records"},
+    ])
+    assert "watchdog ingest --skill general-records" in capsys.readouterr().out
+
+
+def test_nudge_skill_pin_silent_when_mixed_or_single_or_failed(capsys):
+    orchestrate._nudge_skill_pin([
+        {"status": "ok", "record_skill": "general-records"},
+        {"status": "ok", "record_skill": "court-documents"},
+    ])
+    assert capsys.readouterr().out == ""                       # mixed skills
+
+    orchestrate._nudge_skill_pin([{"status": "ok", "record_skill": "general-records"}])
+    assert capsys.readouterr().out == ""                       # only one document
+
+    orchestrate._nudge_skill_pin([
+        {"status": "ok", "record_skill": "general-records"},
+        {"status": "failed", "record_skill": None},
+    ])
+    assert capsys.readouterr().out == ""                       # only one succeeded
+
+
+def test_skill_pin_nudge_silent_when_run_was_pinned(tmp_path, monkeypatch, capsys):
+    """The nudge only makes sense when classification ran at all."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="aaa", filename="a.pdf")
+    _queue_doc(vault, sha="bbb", filename="b.pdf")
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        # _stamp_document overwrites sha256/filename from the queue entry regardless of what the
+        # mocked extraction returns, so both docs can safely share one fixture body here.
+        parsed = {
+            "extract": _extraction(sha="aaa", filename="a.pdf"),
+            "entity-synthesis": {"entity_syntheses": []},
+            "timeline-dedup": {"keep": []},
+            "briefing": {"investigation_status": "x", "what_was_ingested": []},
+        }.get(task, {})
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+    skill_file = tmp_path / "pinned.md"
+    skill_file.write_text("PINNED SKILL BODY")
+
+    asyncio.run(orchestrate.run(vault, concurrency=2, pinned_skill=str(skill_file)))
+    assert "watchdog ingest --skill" not in capsys.readouterr().out
+
+
+def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
+    """A2: every model call's usage is accumulated and written to a per-run usage file, with
+    totals surfaced on the run summary — `ModelResult.usage` was previously discarded."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        parsed = {
+            "classify": {"skill": "general-records.md"},
+            "extract": _extraction(),
+            "briefing": {"investigation_status": "x", "what_was_ingested": []},
+        }.get(task, {"entity_syntheses": []} if task == "entity-synthesis" else {"keep": []})
+        return model_client.ModelResult(
+            parsed=parsed, text="", model="claude-sonnet-4-6", backend="claude-api",
+            auth_mode="api-key", cost_usd=0.01, usage={"input_tokens": 100, "output_tokens": 20})
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault))
+    assert summary["extracted"] == 1
+
+    usage_path = summary["usage_path"]
+    assert usage_path and (vault / usage_path).exists()
+    data = json.loads((vault / usage_path).read_text())
+    tasks = [c["task"] for c in data["calls"]]
+    assert "classify" in tasks and "extract" in tasks and "briefing" in tasks
+    assert all(c["input_tokens"] == 100 for c in data["calls"])
+
+    n_calls = len(data["calls"])
+    assert data["totals"]["input_tokens"] == 100 * n_calls
+    assert data["totals"]["output_tokens"] == 20 * n_calls
+    assert summary["usage"]["input_tokens"] == 100 * n_calls
+    assert round(summary["usage"]["cost_usd"], 4) == round(0.01 * n_calls, 4)
+
+
 def test_orchestrator_cancels_gracefully_on_sigint(tmp_path, monkeypatch):
     """Ctrl+C during extraction → cancelled summary, no traceback, unfinished docs keep
     their queue file, and post-ingest is skipped."""
@@ -659,6 +742,28 @@ def test_finalize_completes_an_interrupted_run(tmp_path, monkeypatch):
     assert orchestrate.has_pending_finalization(vault) is False
 
 
+def test_pending_finalization_uses_registry_appears_in_gate(tmp_path):
+    """Entity count reflects the registry's `appears_in >= 2` gate (D26), not the fragment
+    queue's `count`, which is only a touched-set marker post-D26."""
+    vault = make_vault(tmp_path)
+    tmp = vault / ".watchdog" / "tmp"
+    frag = tmp / "entity-fragments"
+    frag.mkdir(parents=True, exist_ok=True)
+    (frag / "_queue.json").write_text(json.dumps({
+        "acme-corp": {"count": 1},   # touched once this run...
+        "beta-llc": {"count": 1},
+    }))
+    (vault / ".watchdog" / "Registry" / "entities.json").write_text(json.dumps({
+        "acme-corp": {"appears_in": ["doc1", "doc2"]},   # ...but recurs project-wide → eligible
+        "beta-llc": {"appears_in": ["doc1"]},            # single-document → not eligible
+    }))
+    (tmp / "result_a.json").write_text("{}")
+
+    result = orchestrate.pending_finalization(vault)
+    assert result["docs"] == 1
+    assert result["entities"] == 1   # only acme-corp crosses appears_in >= 2
+
+
 def test_ingest_setup_wipe_pending_controls_cleanup(tmp_path):
     """wipe_pending=False (the merge choice) keeps a prior batch's post-ingest inputs;
     the default clears them."""
@@ -755,3 +860,58 @@ def test_orchestrator_sectioned_path(tmp_path, monkeypatch):
     assert "section 2 obs" in captured["briefing_prompt"]
     # and the compact result's key_facts reach the briefing too (#150)
     assert '"key_facts"' in captured["briefing_prompt"]
+
+
+def test_sectioned_carry_forward_dedupes_entities_and_caps_observations(tmp_path, monkeypatch):
+    """A5/A6: across 3 sections, an entity present in every section is carried forward once
+    (not once per section it already appeared in), only the immediately preceding section's
+    observations are carried (not every prior section's concatenated), and the investigation
+    brief reaches every section's prompt."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, text="a very long document ...")
+    tmpd = vault / ".watchdog" / "tmp"
+    tmpd.mkdir(parents=True, exist_ok=True)
+    for i in (1, 2, 3):
+        (tmpd / f"section_abc123_0{i}.md").write_text(f"<!-- PAGE {i} -->\n\npart {i}")
+    plan = {"sectioned": True, "page_count": 3, "sections": [
+        {"index": i, "label": f"pages {i}", "paginated": True,
+         "pages_path": f".watchdog/tmp/section_abc123_0{i}.md"} for i in (1, 2, 3)
+    ]}
+    pf = {"filename": "test-doc.pdf", "existing_entities": [], "known_document_types": [],
+          "page_count": 3}
+
+    acme_entity = {"id": "acme-corp", "name": "Acme Corp", "type": "Company",
+                   "timeline_events": [], "roles": []}
+    sections_out = [
+        {"document": {"sha256": "abc123", "filename": "test-doc.pdf", "title": "Acme AR",
+                      "document_type": "Annual Report", "summary": "s",
+                      "key_facts": [{"fact": "x", "basis": "stated"}]},
+         "entities": [acme_entity], "morgue_entity_id": "acme-corp",
+         "morgue_document_type": "annual-report", "observations": "section 1 obs"},
+        {"entities": [acme_entity], "observations": "section 2 obs"},
+        {"entities": [acme_entity], "observations": "section 3 obs"},
+    ]
+    seen_prompts = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        seen_prompts.append(prompt)
+        return model_client.ModelResult(parsed=sections_out[len(seen_prompts) - 1], text="",
+                                        model="m", backend="b", auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate._extract_sectioned(
+        vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report",
+        brief="INVESTIGATE THE FRAUD"))
+
+    assert len(seen_prompts) == 3
+    # section 2's prompt carries section 1's single entity line, once (not duplicated)
+    assert seen_prompts[1].count("acme-corp | Acme Corp | Company") == 1
+    assert "section 1 obs" in seen_prompts[1]
+    # section 3's prompt still lists the entity exactly once — no per-section duplication
+    assert seen_prompts[2].count("acme-corp | Acme Corp | Company") == 1
+    # only the immediately preceding section's observations are carried forward
+    assert "section 2 obs" in seen_prompts[2]
+    assert "section 1 obs" not in seen_prompts[2]
+    # A6: the investigation brief reaches every section's prompt
+    for p in seen_prompts:
+        assert "INVESTIGATE THE FRAUD" in p

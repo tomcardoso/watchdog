@@ -178,6 +178,41 @@ _CONFIGURE_KEYS = {
         "type": "bool",
         "default": False,
     },
+    "section_token_threshold": {
+        "short": "Estimated tokens above which a document is split for sectioned extraction (default: 120000)",
+        "help": (
+            "Documents whose estimated token count is at or under this value are extracted\n"
+            "  whole; larger ones are split into overlapping sections and extracted sequentially\n"
+            "  with a carried-forward entity list. Token count is estimated as chars/4.\n"
+            "  Lower it if whole-document extraction is overrunning the model's output ceiling on\n"
+            "  dense documents. Default: 120000."
+        ),
+        "type": "int",
+        "default": 120_000,
+        "min": 1,
+    },
+    "section_token_budget": {
+        "short": "Target estimated tokens per section when sectioning a large document (default: 60000)",
+        "help": (
+            "When a document is sectioned (see section_token_threshold), pages are grouped into\n"
+            "  sections targeting roughly this many estimated tokens each.\n"
+            "  Default: 60000."
+        ),
+        "type": "int",
+        "default": 60_000,
+        "min": 1,
+    },
+    "section_overlap_tokens": {
+        "short": "Estimated-token overlap between consecutive sections (default: 4000)",
+        "help": (
+            "Consecutive sections of a large document share this many estimated tokens of overlap,\n"
+            "  so entities and events spanning a section boundary aren't lost.\n"
+            "  Default: 4000."
+        ),
+        "type": "int",
+        "default": 4_000,
+        "min": 0,
+    },
     # ── Models ───────────────────────────────────────────────────────────────
     "classifier_model": {
         "short": "Model that picks each document's record skill (default: haiku)",
@@ -384,8 +419,9 @@ _CONFIGURE_SECTIONS = [
      ["ocr_engine", "ocr_languages", "garbled_threshold"]),
     ("Chew", "Local preprocessing — parallelism and large-PDF handling.",
      ["chew_workers", "chunk_size", "chunk_workers", "chunk_timeout", "table_structure", "embed_images"]),
-    ("Ingest", "Extraction run — parallelism, classification, skill pinning.",
-     ["extract_concurrency", "classify_pages", "default_skill"]),
+    ("Ingest", "Extraction run — parallelism, classification, skill pinning, sectioning.",
+     ["extract_concurrency", "classify_pages", "default_skill",
+      "section_token_threshold", "section_token_budget", "section_overlap_tokens"]),
     ("Models", "Which Claude model runs each step, and how hard it thinks.",
      ["classifier_model", "extractor_model", "finalizer_model",
       "extractor_effort", "finalizer_effort"]),

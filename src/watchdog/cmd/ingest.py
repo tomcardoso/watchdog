@@ -358,6 +358,11 @@ def _print_ingest_summary(summary: dict) -> None:
         print(f"\n  {_YELLOW}Post-processing didn't finish{_RESET}{_DIM} — {pi_error}.{_RESET}")
         print(f"  {_DIM}Documents are saved with their extracted claims; run {_RESET}"
               f"{_CYAN}watchdog finalize{_RESET}{_DIM} to complete synthesis + the briefing.{_RESET}")
+    usage = summary.get("usage")
+    if usage:
+        cost = f" · ~${usage['cost_usd']:.4f}" if usage.get("cost_usd") else ""
+        print(f"  {_DIM}{ext} doc{'s' if ext != 1 else ''} · "
+              f"{usage['input_tokens']:,} in / {usage['output_tokens']:,} out tokens{cost}{_RESET}")
     if cancelled:
         print(f"\n  {_DIM}Re-run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} to process the remaining documents.{_RESET}\n")
     else:

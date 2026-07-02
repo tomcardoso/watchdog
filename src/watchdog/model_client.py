@@ -51,9 +51,6 @@ _PRICING = {
     "claude-haiku-4-5":  (1e-6,  5e-6, 1.25e-6, 0.10e-6),
 }
 
-# Per-task overrides, populated as the pipeline's tasks are defined (Workstream 3).
-_TASK_TIERS:    dict[str, str] = {}
-_TASK_BACKENDS: dict[str, str] = {}
 DEFAULT_TIER = "sonnet"
 _API_MAX_TOKENS = 8000
 # Extraction output is large; give it more room. Other tasks use the default.
@@ -383,14 +380,14 @@ BACKENDS = tuple(_BACKEND_PROVIDER)
 CLAUDE_BACKENDS = ("claude-api", "claude-agent-sdk")
 
 
-def _resolve_backend_auth(task: str, requested: str | None) -> tuple[str, str, str | None, str]:
+def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, str]:
     """Resolve (backend, provider, api_key, auth_mode) for a call.
 
     Claude backends consult the subscription/api-key mode (`auth.resolve_auth`); other providers
     use their stored API key directly (`auth.get_api_key`), independent of the Claude mode — so a
     user with only an OpenAI/DeepSeek key can run those backends without configuring Claude (#125).
     With no explicit backend, defaults among the Claude backends by auth mode (unchanged)."""
-    chosen = requested or _TASK_BACKENDS.get(task)
+    chosen = requested
     if chosen is not None and chosen not in _ABACKENDS:
         raise ModelError(f"unknown backend '{chosen}'")
     provider = _BACKEND_PROVIDER[chosen] if chosen else "anthropic"
@@ -429,11 +426,11 @@ async def acomplete_json(*, task: str, prompt: str, schema: dict, model: str | N
     or ignores it (D36, #125). On invalid/unparseable output the call retries on the **same**
     model (up to `max_retries` extra attempts) — never escalating — then raises.
     """
-    chosen, provider, api_key, auth_mode = _resolve_backend_auth(task, backend)
+    chosen, provider, api_key, auth_mode = _resolve_backend_auth(backend)
     backend_fn = _ABACKENDS[chosen]
     max_tokens = _TASK_MAX_TOKENS.get(task, _API_MAX_TOKENS)
 
-    requested = model or _TASK_TIERS.get(task, DEFAULT_TIER)
+    requested = model or DEFAULT_TIER
     model_id = _MODEL_IDS.get(requested, requested)   # tier name → id, or a raw id as-is
     effort_arg = _resolve_effort(provider, model_id, effort)   # provider-native value or None
 
