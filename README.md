@@ -475,6 +475,9 @@ Or run `watchdog configure <key>` with no value to see that one key's help and c
 | `chunk_timeout` | `300` | Seconds before a chunk subprocess is killed. |
 | `table_structure` | `true` | Whether Docling runs its table detection model on PDFs. Set to `false` to speed up ingestion of text-only documents. |
 | `embed_images` | `false` | Embed figures as base64 in the extracted markdown so Claude can read charts and image-based tables. Significantly increases token usage. |
+| `section_token_threshold` | `120000` | Estimated tokens above which a document is split for sectioned (sequential, per-section) extraction instead of extracted whole. Lower it if whole-document extraction is overrunning the model's output ceiling on dense documents. |
+| `section_token_budget` | `60000` | Target estimated tokens per section when a document is sectioned. |
+| `section_overlap_tokens` | `4000` | Estimated-token overlap between consecutive sections, so entities/events spanning a section boundary aren't lost. |
 | `dup_threshold` | `0.85` | Jaccard similarity score at which two documents are flagged as near-duplicates. Range: 0.0–1.0. |
 | `shingle_size` | `3` | Word n-gram size for near-duplicate fingerprinting. Changing this invalidates existing MinHash signatures — re-ingest to rebuild. |
 | `embed_model` | `BAAI/bge-small-en-v1.5` | Local fastembed model used to index passages and notes for `watchdog search`. Must be a model fastembed can load; stronger options include `BAAI/bge-base-en-v1.5` and `mxbai-embed-large-v1`. Changing it requires re-ingesting documents — vectors from two models aren't comparable. |

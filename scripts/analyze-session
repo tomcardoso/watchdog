@@ -14,11 +14,11 @@ import sys
 from pathlib import Path
 
 
-# Pricing per million tokens (as of June 2026)
+# Pricing per million tokens — keep in sync with model_client._PRICING (the source of truth).
 _COSTS = {
     "claude-sonnet-4-6":          {"input": 3.00, "cache_write": 3.75, "cache_read": 0.30, "output": 15.00},
-    "claude-opus-4-8":            {"input": 15.00, "cache_write": 18.75, "cache_read": 1.50, "output": 75.00},
-    "claude-haiku-4-5-20251001":  {"input": 0.80, "cache_write": 1.00,  "cache_read": 0.08, "output": 4.00},
+    "claude-opus-4-8":            {"input": 5.00, "cache_write": 6.25, "cache_read": 0.50, "output": 25.00},
+    "claude-haiku-4-5-20251001":  {"input": 1.00, "cache_write": 1.25, "cache_read": 0.10, "output": 5.00},
 }
 _DEFAULT_COSTS = _COSTS["claude-sonnet-4-6"]
 

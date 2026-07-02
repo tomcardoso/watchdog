@@ -37,6 +37,14 @@ DEFAULT_CONCURRENCY = 5
 # stdout isn't a TTY), so `_say` falls back to plain append-only printing.
 _board: LiveRegion | None = None
 
+# Per-call token/cost telemetry for the current run (A2) — a list of dicts, one per successful
+# model call, accumulated by `_call_model`. None outside a `run`/standalone `finalize` call, so
+# unit tests that exercise the per-document helpers directly (without going through either) don't
+# need to know about it. `ModelResult.usage`/`cost_usd` were previously computed and discarded —
+# this is the prerequisite for answering "how many tokens did this ingest spend, by stage?"
+# without spelunking Claude Code session logs.
+_usage: list[dict] | None = None
+
 
 def _say(msg: str) -> None:
     """Print a styled progress line to the terminal (indented per the CLI style guide).
@@ -54,6 +62,63 @@ def _settle(sha: str, line: str) -> None:
         _board.finish(sha, line)
     else:
         print(line, flush=True)
+
+
+def _record_usage(task: str, r: "model_client.ModelResult") -> None:
+    """Append one call's usage to the run-scoped `_usage` accumulator, if one is active.
+    Tolerates both Anthropic-style (`input_tokens`/`output_tokens`) and OpenAI-compatible
+    (`prompt_tokens`/`completion_tokens`) usage dicts (D37) — the latter's cache-token fields
+    aren't modelled yet (matches `model_client._openai_cost`'s own v1 simplification)."""
+    if _usage is None:
+        return
+    u = r.usage or {}
+    _usage.append({
+        "task": task, "model": r.model, "backend": r.backend,
+        "input_tokens": u.get("input_tokens", u.get("prompt_tokens", 0)) or 0,
+        "output_tokens": u.get("output_tokens", u.get("completion_tokens", 0)) or 0,
+        "cache_read_tokens": u.get("cache_read_input_tokens", 0) or 0,
+        "cache_write_tokens": u.get("cache_creation_input_tokens", 0) or 0,
+        "cost_usd": r.cost_usd, "attempts": r.attempts,
+    })
+
+
+async def _call_model(*, task, prompt, schema, model=None, backend=None,
+                      max_retries=1, effort=None) -> "model_client.ModelResult":
+    """Thin wrapper around `model_client.acomplete_json` that also records this call's usage
+    (A2) — every reasoning call in the orchestrator goes through here instead of the client
+    directly, so telemetry can't silently miss a call site."""
+    r = await model_client.acomplete_json(task=task, prompt=prompt, schema=schema, model=model,
+                                          backend=backend, max_retries=max_retries, effort=effort)
+    _record_usage(task, r)
+    return r
+
+
+def _usage_totals(records: list[dict]) -> dict:
+    return {
+        "input_tokens": sum(r["input_tokens"] for r in records),
+        "output_tokens": sum(r["output_tokens"] for r in records),
+        "cache_read_tokens": sum(r["cache_read_tokens"] for r in records),
+        "cache_write_tokens": sum(r["cache_write_tokens"] for r in records),
+        "cost_usd": round(sum(r["cost_usd"] or 0.0 for r in records), 6) if records else None,
+    }
+
+
+def _write_usage(vault: Path, records: list[dict]) -> str | None:
+    """Persist this run's per-call token/cost telemetry to `.watchdog/Registry/usage-<ts>.json`
+    (A2). Returns the vault-relative path, or None if the run made no model calls (e.g. an
+    all-skipped batch)."""
+    if not records:
+        return None
+    reg_dir = vault / ".watchdog" / "Registry"
+    reg_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    relpath = f".watchdog/Registry/usage-{ts}.json"
+    (vault / relpath).write_text(
+        json.dumps({"calls": records, "totals": _usage_totals(records)}, ensure_ascii=False, indent=2),
+        encoding="utf-8")
+    return relpath
+
+
 DEFAULT_CLASSIFY_PAGES = 5
 # Per-section input budget when falling back to sectioning after a whole-doc extraction
 # overruns the output ceiling. Small, so each section's output stays well under the cap;
@@ -156,7 +221,7 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str, v
 
 
 async def _classify(doc_excerpt: str, model: str, backend: str | None = None) -> str:
-    r = await model_client.acomplete_json(
+    r = await _call_model(
         task="classify", model=model, backend=backend, schema=schemas.CLASSIFY,
         prompt=prompts.build_classify_prompt(doc_excerpt, skills_catalog.build_index()),
     )
@@ -209,6 +274,7 @@ def _compact_result(sha: str, filename: str, extraction: dict, near_dup: dict, c
     return {
         "sha256": sha, "filename": filename, "status": "ok",
         "document_type": doc.get("document_type"),
+        "record_skill": doc.get("record_skill"),
         "date": doc.get("date_of_document"),
         "entity_count": len(entities),
         "new_entities": [e["id"] for e in entities if not e.get("match_id")],
@@ -241,8 +307,8 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
         p = base if not errors else (base + "\n\nThe previous extraction was rejected:\n"
                                      + "\n".join(errors) + "\nReturn a corrected JSON object.")
         try:
-            r = await model_client.acomplete_json(task="extract", model=model, backend=backend,
-                                                  prompt=p, schema=schemas.EXTRACTION, effort=effort)
+            r = await _call_model(task="extract", model=model, backend=backend,
+                                  prompt=p, schema=schemas.EXTRACTION, effort=effort)
         except model_client.ModelError as e:
             # No valid JSON after the client's own retries — often output truncated on a
             # dense doc. Report failure so the caller can fall back to sectioning.
@@ -257,34 +323,48 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
     return extraction, scratchpad, cost, False, errors
 
 
-def _carry_block(part: dict) -> str:
+# Cap on the observations text carried into the next section's prompt (A5) — only the most
+# recent section's, not every prior section's concatenated, since observations are
+# forward-looking briefing leads (D33), not extraction context the model needs preserved.
+_CARRY_OBSERVATIONS_CHARS = 2000
+
+
+def _carry_text(entities_seen: dict, observations: str) -> str:
+    """Build the carry-forward block from the entity ids seen in *any* section so far (deduped,
+    one line each — not the running string-concatenation A5 replaced, which re-listed an entity
+    once per section it appeared in) plus only the just-produced section's observations."""
     lines = []
-    if part.get("entities"):
+    if entities_seen:
         lines.append("Entities so far:")
-        lines += [f"- {e.get('id')} | {e.get('name')} | {e.get('type')}" for e in part["entities"]]
-    if part.get("observations"):
-        lines.append("Observations:\n" + part["observations"])
-    return "\n".join(lines) + "\n"
+        lines += [f"- {eid} | {e.get('name')} | {e.get('type')}" for eid, e in entities_seen.items()]
+    if observations:
+        lines.append("Observations:\n" + observations[-_CARRY_OBSERVATIONS_CHARS:])
+    return "\n".join(lines) + "\n" if lines else ""
 
 
 async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_label,
-                             effort=None, backend=None):
+                             effort=None, backend=None, brief=None):
     """Sequential per-section extraction with carry-forward, then deterministic merge."""
-    parts, carry, cost = [], "", 0.0
+    parts, cost = [], 0.0
+    entities_seen: dict[str, dict] = {}
+    carry = ""
     sections = plan["sections"]
     for sec in sections:
         sec_text = (vault / sec["pages_path"]).read_text(encoding="utf-8")
         prompt = prompts.build_section_prompt(
             pages_text=sec_text, existing_entities=pf.get("existing_entities", []),
             skill_text=skill_text, carry_forward=carry, section_label=sec["label"],
-            is_first=(sec["index"] == 1),
+            is_first=(sec["index"] == 1), brief=brief,
             known_document_types=pf.get("known_document_types", []),
         )
-        r = await model_client.acomplete_json(task="extract-section", model=model, backend=backend,
-                                              prompt=prompt, schema=schemas.SECTION, effort=effort)
+        r = await _call_model(task="extract-section", model=model, backend=backend,
+                              prompt=prompt, schema=schemas.SECTION, effort=effort)
         cost += r.cost_usd or 0.0
         parts.append(r.parsed)
-        carry += _carry_block(r.parsed)
+        for e in r.parsed.get("entities") or []:
+            if e.get("id"):
+                entities_seen[e["id"]] = {"name": e.get("name"), "type": e.get("type")}
+        carry = _carry_text(entities_seen, r.parsed.get("observations") or "")
 
     extraction = merge.merge_extractions(parts)
     scratchpad = "\n".join(p["observations"] for p in parts if p.get("observations"))
@@ -366,7 +446,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         _step(f"{_DIM}→  {filename}  {flow} · extracting · {n_sections} sections…{_RESET}",
               f"{_DIM}→  {filename}  extracting · {n_sections} sections…{_RESET}")
         extraction, scratchpad, cost, ok, errors = await _extract_sectioned(
-            vault, sha, pf, skill_text, plan, extract_model, skill_label, extract_effort, extract_backend)
+            vault, sha, pf, skill_text, plan, extract_model, skill_label, extract_effort, extract_backend, brief)
     else:
         _step(f"{_DIM}→  {filename}  {flow} · extracting…{_RESET}",
               f"{_DIM}→  {filename}  extracting…{_RESET}")
@@ -384,7 +464,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
                       f"re-extracting in {n_sections} sections…{_RESET}")
                 whole_cost = cost
                 extraction, scratchpad, cost, ok, errors = await _extract_sectioned(
-                    vault, sha, pf, skill_text, fb, extract_model, skill_label, extract_effort, extract_backend)
+                    vault, sha, pf, skill_text, fb, extract_model, skill_label, extract_effort, extract_backend, brief)
                 cost += whole_cost   # account for the failed whole-doc attempt
 
     if not ok:
@@ -409,6 +489,20 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     (vault / ".watchdog" / "tmp" / f"result_{sha}.json").write_text(
         json.dumps(result, ensure_ascii=False), encoding="utf-8")
     return result
+
+
+def _nudge_skill_pin(results: list) -> None:
+    """If every successfully-extracted document in a run classified to the same record skill,
+    tell the user they could have skipped classification with `--skill` (A4) — a batch of one
+    filing type is the common case this tool targets, and the flag already exists but nothing
+    surfaces that a run *was* homogeneous."""
+    ok_skills = [r.get("record_skill") for r in results if r.get("status") == "ok"]
+    distinct = {s for s in ok_skills if s}
+    if len(ok_skills) > 1 and len(distinct) == 1:
+        skill = next(iter(distinct))
+        _say(f"{_DIM}All {len(ok_skills)} documents classified as {_RESET}{_CYAN}{skill}{_RESET}"
+             f"{_DIM} — next time run {_RESET}{_CYAN}watchdog ingest --skill {skill}{_RESET}"
+             f"{_DIM} to skip classification.{_RESET}")
 
 
 def _lines(items: list) -> str:
@@ -486,7 +580,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         _say(f"{_DIM}→  synthesizing {len(bundle['entities'])} multi-mention "
              f"entit{'ies' if len(bundle['entities']) != 1 else 'y'}…{_RESET}")
         try:
-            r = await model_client.acomplete_json(
+            r = await _call_model(
                 task="entity-synthesis", model=post_model, backend=post_backend, schema=schemas.SYNTHESIS,
                 prompt=prompts.build_synthesis_prompt(bundle), effort=post_effort)
         except (model_client.ModelError, model_client.RateLimitError) as e:
@@ -515,7 +609,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         if not events:
             continue
         try:
-            r = await model_client.acomplete_json(
+            r = await _call_model(
                 task="timeline-dedup", model=post_model, backend=post_backend, schema=schemas.TIMELINE_DEDUP,
                 prompt=prompts.build_timeline_dedup_prompt(col["date"], events), effort=post_effort)
             kept = _select_kept(events, r.parsed.get("keep"))
@@ -537,7 +631,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     contradiction_flags = [{"filename": r["filename"], "entities": r["contradictions"]}
                            for r in ok if r.get("contradictions")]
     try:
-        r = await model_client.acomplete_json(
+        r = await _call_model(
             task="briefing", model=post_model, backend=post_backend, schema=schemas.BRIEFING,
             prompt=prompts.build_briefing_prompt(
                 brief=brief, results=ok, scratchpads=scratchpads,
@@ -599,15 +693,22 @@ def has_pending_finalization(vault: Path) -> bool:
 
 
 def pending_finalization(vault: Path) -> dict:
-    """Best-effort counts for an extracted-but-not-finalized batch sitting in tmp."""
+    """Best-effort counts for an extracted-but-not-finalized batch sitting in tmp.
+
+    Entity count uses the same gate as `synthesis_bundle.build_bundle` — registry
+    `appears_in >= 2` (D26) — not the fragment queue's `count`, which is only a
+    touched-set marker post-D26 and no longer the synthesis gate."""
     tmp = vault / ".watchdog" / "tmp"
     docs = len(list(tmp.glob("result_*.json")))
     entities = 0
     q = tmp / "entity-fragments" / "_queue.json"
     if q.exists():
         try:
-            entities = sum(1 for r in json.loads(q.read_text(encoding="utf-8")).values()
-                           if isinstance(r, dict) and r.get("count", 0) >= 2)
+            queue = json.loads(q.read_text(encoding="utf-8"))
+            reg_path = vault / ".watchdog" / "Registry" / "entities.json"
+            registry = json.loads(reg_path.read_text(encoding="utf-8")) if reg_path.exists() else {}
+            entities = sum(1 for eid in queue
+                           if len(registry.get(eid, {}).get("appears_in", [])) >= 2)
         except (OSError, json.JSONDecodeError, AttributeError):
             pass
     return {"docs": docs, "entities": entities}
@@ -625,6 +726,10 @@ async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None 
     inputs (fragments, results, scratchpads) are cleared; if any step failed they are left in
     place so a later finalize can retry.
     """
+    global _usage
+    standalone_usage = _usage is None   # not nested inside `run` — this call owns the usage file
+    if standalone_usage:
+        _usage = []
     if brief is None:
         brief = _read_brief(vault)
     if results is None:
@@ -632,6 +737,10 @@ async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None 
     out = await _post_ingest(vault, results, brief, post_model, post_effort, post_backend)
     if not out.get("error") and not out.get("briefing_error"):
         _clear_post_ingest_inputs(vault)
+    if standalone_usage:
+        out["usage_path"] = _write_usage(vault, _usage)
+        out["usage"] = _usage_totals(_usage) if _usage else None
+        _usage = None
     return out
 
 
@@ -663,8 +772,9 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     # Live status region for the concurrent extraction phase (#151): one in-place row per
     # in-flight document, finished/failed lines scrolling above. Auto-disables off a TTY,
     # where it degrades to the previous append-only output.
-    global _board
+    global _board, _usage
     _board = LiveRegion()
+    _usage = []
     sem = asyncio.Semaphore(max(1, concurrency))
     cancelled = asyncio.Event()
     stop_reason: dict = {}          # {"rate_limit": "<notice>"} when a limit stopped the batch
@@ -742,6 +852,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                "rate_limited": bool(stop_reason.get("rate_limit")),
                "stop_message": stop_reason.get("rate_limit"),
                "quarantined": quarantined}
+    if not pinned_skill:
+        _nudge_skill_pin(results)
     if summary["extracted"] and not cancelled.is_set():
         try:
             # Finalize over the persisted per-doc results on disk (not just this run's in-memory
@@ -759,4 +871,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     state = "rate-limited" if summary["rate_limited"] else ("cancelled" if cancelled.is_set() else "complete")
     _log(vault, f"INGEST {state} — {summary['extracted']} extracted, "
                 f"{summary['skipped']} skipped, {summary['failed']} failed")
+    summary["usage"] = _usage_totals(_usage) if _usage else None
+    summary["usage_path"] = _write_usage(vault, _usage)
+    _usage = None
     return summary
