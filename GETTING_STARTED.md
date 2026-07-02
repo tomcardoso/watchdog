@@ -225,6 +225,8 @@ If you've listed any terms in the vault's `watchlist.md` (one per line — a nam
 
 Watchdog also runs a deterministic **lead sweep** over the whole entity graph at the end of each ingest, printing a one-line count and writing `briefings/leads-<date>.md`. It flags three things, all without a model call: entities named as a relationship target but never profiled (a company you should go find records on), entities that recur across several documents with no relationships at all, and entities carrying unresolved contradiction flags. Re-run it any time with `watchdog leads`; a bare `watchdog` with nothing pending nudges you when leads are open.
 
+If the same real-world person or company ends up extracted under two different entity ids — a name spelled differently across documents, most often — `watchdog merge-entities <keep-id> <merge-id>` folds the duplicate into the survivor: aliases, documents, relationships, and timeline events all combine onto one id, and every relationship elsewhere in the vault that named the losing id follows the merge. Run `watchdog reindex` afterward to drop the merged entity's stale search-index entries.
+
 A failed document is logged to `.watchdog/Registry/ingest.log` and set aside in `.watchdog/queue/_failed/` — the rest of the batch still completes. For very large batches, chew and ingest in groups. When ingest finishes, **open a fresh Claude Code session** to ask investigation questions (`/watchdog-query`, `/watchdog-surface`).
 
 ---
@@ -258,7 +260,7 @@ The vault now contains:
 - **`watchlist.md`** — terms to watch for in new documents; matches are written to `briefings/alerts-<date>.md`
 - **`dashboard.base`** — a dashboard of live tables (most-mentioned entities, recent documents, people, companies, single-source entities to review, possible duplicates) that refresh as you ingest; **`index.md`** is a landing page that links to it
 
-The dashboard is built on **Obsidian Bases**, a core Obsidian feature (version 1.9 and up), so there is nothing to add per vault — open `dashboard.base` and the tables are already rendered. Click a column header to sort (e.g. by **Documents** to surface the most-mentioned entities); click a row to open the note.
+The dashboard is built on **Obsidian Bases**, a core Obsidian feature (version 1.9 and up), so there is nothing to add per vault — open `dashboard.base` and the tables are already rendered. Click a column header to sort (e.g. by **Documents** to surface the most-mentioned entities); click a row to open the note. The "Possible duplicates" and "Single-source entities to review" tables flag candidates for a look — `watchdog merge-entities <keep-id> <merge-id>` is the fix once you've confirmed two rows are the same entity.
 
 Each entity note has the same structure:
 

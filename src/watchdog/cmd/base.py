@@ -240,6 +240,24 @@ _CMD_HELP: dict[str, dict] = {
             "to briefings/leads-<date>.md; this command re-runs it on demand between ingests.",
         ],
     },
+    "merge-entities": {
+        "desc": "Merge a duplicate entity into another, deterministically",
+        "args": [
+            ("keep-id",  "Entity id to keep (the survivor)"),
+            ("merge-id", "Entity id to merge away (folded into keep-id)"),
+        ],
+        "notes": [
+            "Must be run from inside the vault. Unions aliases, appears_in, roles, and timeline",
+            "events onto keep-id; remaps every role.target_id across the whole registry that",
+            "pointed at merge-id (not just the two entities involved); concatenates the losing",
+            "note's Analysis into the survivor's with provenance intact; and redirects the losing",
+            "note to a stub linking to the survivor. No model calls.",
+            "",
+            "This is the fix for what the dashboard's \"Possible duplicates\" view and",
+            "`/watchdog-health`'s near-duplicate check can only ever flag. Run `watchdog reindex`",
+            "afterward to drop the merged entity's stale search-index entries.",
+        ],
+    },
     "research": {
         "desc": "Open Claude Code to research the vault's open questions on the web",
         "args": [("name", "Investigation name or slug (default: current directory)", True)],
@@ -568,6 +586,7 @@ def _print_banner() -> None:
             ("status",     "Show detailed status"),
             ("search",     "Semantic search across ingested documents"),
             ("leads",      "Surface investigative leads from the entity graph"),
+            ("merge-entities", "Merge a duplicate entity into another, deterministically"),
             ("research",   "Research open questions on the web (downloads into _INCOMING/)"),
             ("export",     "Export the knowledge graph (Neo4j / Gephi / Cypher)"),
             ("doctor",     "Check for missing or broken vaults"),
@@ -582,5 +601,5 @@ def _print_banner() -> None:
     for group_name, cmds in groups:
         print(f"  {_BOLD}{group_name}{_RESET}")
         for cmd, desc in cmds:
-            print(f"    {_CYAN}{cmd:<12}{_RESET} {desc}")
+            print(f"    {_CYAN}{cmd:<15}{_RESET} {desc}")
         print()
