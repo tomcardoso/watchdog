@@ -294,6 +294,17 @@ def _write_postflight(vault: Path, sha: str, extraction: dict) -> tuple[bool, li
     return ("errors" not in outcome), outcome.get("errors", [])
 
 
+def _append_repair_note(base, errors: list[str]):
+    """Append the post-flight repair note to a prompt, whether it's a plain string or a
+    content-block list (A1) — the note is inherently volatile (only exists on retry), so it
+    never belongs inside the cacheable prefix regardless of representation."""
+    note = ("\n\nThe previous extraction was rejected:\n" + "\n".join(errors)
+            + "\nReturn a corrected JSON object.")
+    if isinstance(base, list):
+        return base + [{"type": "text", "text": note}]
+    return base + note
+
+
 async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
                           effort=None, backend=None):
     """Whole-document extraction, with one repair attempt if post-flight rejects."""
@@ -304,8 +315,7 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
     )
     cost, errors, extraction, scratchpad = 0.0, [], {}, ""
     for _ in range(2):
-        p = base if not errors else (base + "\n\nThe previous extraction was rejected:\n"
-                                     + "\n".join(errors) + "\nReturn a corrected JSON object.")
+        p = base if not errors else _append_repair_note(base, errors)
         try:
             r = await _call_model(task="extract", model=model, backend=backend,
                                   prompt=p, schema=schemas.EXTRACTION, effort=effort)

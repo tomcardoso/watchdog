@@ -182,6 +182,16 @@ section seen so far (rebuilt fresh each section, one line per entity, not a runn
 concatenation) plus only the immediately preceding section's `observations` text; and,
 like whole-document extraction, it includes the investigation brief (D49).
 
+**Prompt caching (`claude-api` only).** `build_extract_prompt`/`build_section_prompt` return a
+list of Anthropic content blocks instead of one string: a stable block (instructions + brief,
+constant for the whole run), a skill block (constant per document type, carrying the
+`cache_control` breakpoint), then a volatile block (per-document data, never cached). Every
+extraction call sharing a skill within a run re-pays only the 0.1× cache-read rate for the
+stable+skill prefix instead of full price. Only `_api_complete_async` (the metered-key
+backend) understands blocks; `claude-agent-sdk` and the OpenAI-compatible backends flatten
+them to plain text (`model_client._flatten_prompt`) since neither exposes a cache knob to us
+(D51). `cache_read_input_tokens` is surfaced in the usage telemetry (§12) to verify hits.
+
 **Output-overrun fallback.** Sectioning is gated on *input* size, but a moderate-input,
 entity-dense document can overrun the model's *output* ceiling — the agent-SDK backend
 can't cap output tokens, so the JSON truncates and post-flight rejects it. When

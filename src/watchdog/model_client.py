@@ -195,6 +195,19 @@ def _validate(obj: dict, schema: dict) -> list[str]:
 
 # ── backends: each is (prompt, model_id, schema, api_key) -> {text, usage, cost_usd} ──
 
+# `prompt` is normally a plain string, but a caller that wants prompt caching (A1) — currently
+# just the extraction/section builders — can pass a list of Anthropic content blocks instead,
+# with `cache_control` on the block marking the end of the cacheable prefix. Only `_api_complete_async`
+# understands blocks natively (the Messages API accepts either shape for `content`); every other
+# backend needs a plain string, so it flattens first.
+def _flatten_prompt(prompt: str | list[dict]) -> str:
+    """Join a content-block prompt back into plain text for backends that don't support
+    structured content (`claude-agent-sdk`, OpenAI-compatible). A no-op for a plain string."""
+    if isinstance(prompt, str):
+        return prompt
+    return "\n".join(b.get("text", "") for b in prompt)
+
+
 async def _agent_query(prompt: str, model: str, env: dict | None,
                        effort: str | None = None) -> dict:
     from claude_agent_sdk import query, ClaudeAgentOptions
@@ -248,15 +261,16 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
     return out
 
 
-async def _agent_complete_async(prompt: str, model_id: str, schema: dict,
+async def _agent_complete_async(prompt: str | list[dict], model_id: str, schema: dict,
                                 api_key: str | None, max_tokens: int | None = None,
                                 effort: str | None = None) -> dict:
     """Claude Agent SDK backend. Works in either auth mode (key via env, or subscription).
 
     `max_tokens` is accepted for a uniform backend signature but unused — the agent's
-    output is bounded by max_turns, not a token cap.
+    output is bounded by max_turns, not a token cap. The agent SDK has no `cache_control`
+    knob (A1), so a content-block prompt is flattened to plain text here.
     """
-    full = f"{prompt}\n\nReturn JSON matching this schema:\n{json.dumps(schema)}"
+    full = f"{_flatten_prompt(prompt)}\n\nReturn JSON matching this schema:\n{json.dumps(schema)}"
     env = {"ANTHROPIC_API_KEY": api_key} if api_key else None
     return await _agent_query(full, model_id, env, effort)
 
@@ -271,10 +285,14 @@ def _api_cost(model_id: str, usage) -> float | None:
             + g("cache_creation_input_tokens") * cw + g("cache_read_input_tokens") * cr)
 
 
-async def _api_complete_async(prompt: str, model_id: str, schema: dict,
+async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: dict,
                               api_key: str | None, max_tokens: int,
                               effort: str | None = None) -> dict:
-    """Raw Claude Messages API backend with structured outputs."""
+    """Raw Claude Messages API backend with structured outputs.
+
+    `prompt` may be a plain string or a list of Anthropic content blocks with a
+    `cache_control` breakpoint (A1) — the Messages API's `content` field accepts either
+    shape natively, so no conversion is needed here."""
     import anthropic
 
     # `effort` composes with the structured-output `format` inside the one output_config dict.
@@ -315,7 +333,7 @@ def _openai_cost(model_id: str, usage: dict | None) -> float | None:
             + (usage.get("completion_tokens", 0) or 0) * outp)
 
 
-async def _openai_complete_async(prompt: str, model_id: str, schema: dict,
+async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema: dict,
                                  api_key: str | None, max_tokens: int,
                                  effort: str | None = None, *, base_url: str) -> dict:
     """OpenAI-compatible Chat Completions backend — OpenAI, DeepSeek, and any service that
@@ -324,7 +342,9 @@ async def _openai_complete_async(prompt: str, model_id: str, schema: dict,
     Structured output is requested via JSON mode plus the schema appended to the prompt, then
     validated by the shared `acomplete_json` shell — the portable path across providers, since
     full `json_schema` mode is not universal. `effort` arrives already resolved to the
-    provider's native value (or None) and is sent as `reasoning_effort` (#125)."""
+    provider's native value (or None) and is sent as `reasoning_effort` (#125). No provider-
+    agnostic cache_control equivalent is wired here (A1 is Claude-only), so a content-block
+    prompt is flattened to plain text."""
     import httpx
 
     body = {
@@ -334,7 +354,7 @@ async def _openai_complete_async(prompt: str, model_id: str, schema: dict,
         "messages": [
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user",
-             "content": f"{prompt}\n\nReturn JSON matching this schema:\n{json.dumps(schema)}"},
+             "content": f"{_flatten_prompt(prompt)}\n\nReturn JSON matching this schema:\n{json.dumps(schema)}"},
         ],
     }
     if effort:
@@ -414,11 +434,14 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
 
 # ── public entry point ────────────────────────────────────────────────────────
 
-async def acomplete_json(*, task: str, prompt: str, schema: dict, model: str | None = None,
+async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, model: str | None = None,
                          backend: str | None = None, max_retries: int = 1,
                          effort: str | None = None) -> ModelResult:
     """Get schema-valid JSON for a reasoning task (async — the orchestrator awaits this).
 
+    `prompt` is normally a string; a caller may instead pass a list of Anthropic content
+    blocks with a `cache_control` breakpoint (A1) to make part of the prompt cache-eligible —
+    only `claude-api` uses it natively, other backends flatten it to text (`_flatten_prompt`).
     `model` may be a tier name (haiku/sonnet/opus) or a raw model id; omit it for the
     per-task default. `backend` forces a backend ('claude-api', 'claude-agent-sdk',
     'openai', 'deepseek'); omit it to route by auth mode. `effort` (`low`/`medium`/`high`)

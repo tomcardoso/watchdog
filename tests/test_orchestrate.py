@@ -11,6 +11,8 @@ from watchdog.pipeline import orchestrate
 
 from tests.test_write_vault import make_vault
 
+_flat = model_client._flatten_prompt   # extract/section prompts are content-block lists (A1)
+
 
 def _queue_doc(vault, sha="abc123", filename="test-doc.pdf", text="Acme Corp filed an annual report."):
     qdir = vault / ".watchdog" / "queue"
@@ -413,7 +415,7 @@ def test_whole_doc_failure_falls_back_to_sectioning(tmp_path, monkeypatch):
             parsed = _extraction(valid=False)                 # whole-doc → postflight rejects
         elif task == "extract-section":
             calls["section"] += 1
-            parsed = sec_first if "This is SECTION 1" in prompt else sec_later
+            parsed = sec_first if "This is SECTION 1" in _flat(prompt) else sec_later
         elif task == "briefing":
             parsed = {"investigation_status": "x", "what_was_ingested": []}
         else:
@@ -478,7 +480,7 @@ def test_pinned_skill_is_injected_into_extraction(tmp_path, monkeypatch):
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
     asyncio.run(orchestrate.run(vault, pinned_skill=str(skill_file)))
-    assert "CORPORATE FILINGS SKILL BODY" in seen["prompt"]
+    assert "CORPORATE FILINGS SKILL BODY" in _flat(seen["prompt"])
 
 
 def test_record_skill_provenance_is_persisted(tmp_path, monkeypatch):
@@ -839,7 +841,7 @@ def test_orchestrator_sectioned_path(tmp_path, monkeypatch):
         if task == "classify":
             parsed = {"skill": "general-records.md"}
         elif task == "extract-section":
-            parsed = sec1 if "This is SECTION 1" in prompt else sec2
+            parsed = sec1 if "This is SECTION 1" in _flat(prompt) else sec2
         elif task == "briefing":
             captured["briefing_prompt"] = prompt
             parsed = {"investigation_status": "x", "what_was_ingested": ["test-doc.pdf"]}
@@ -904,14 +906,15 @@ def test_sectioned_carry_forward_dedupes_entities_and_caps_observations(tmp_path
         brief="INVESTIGATE THE FRAUD"))
 
     assert len(seen_prompts) == 3
+    flat_prompts = [_flat(p) for p in seen_prompts]
     # section 2's prompt carries section 1's single entity line, once (not duplicated)
-    assert seen_prompts[1].count("acme-corp | Acme Corp | Company") == 1
-    assert "section 1 obs" in seen_prompts[1]
+    assert flat_prompts[1].count("acme-corp | Acme Corp | Company") == 1
+    assert "section 1 obs" in flat_prompts[1]
     # section 3's prompt still lists the entity exactly once — no per-section duplication
-    assert seen_prompts[2].count("acme-corp | Acme Corp | Company") == 1
+    assert flat_prompts[2].count("acme-corp | Acme Corp | Company") == 1
     # only the immediately preceding section's observations are carried forward
-    assert "section 2 obs" in seen_prompts[2]
-    assert "section 1 obs" not in seen_prompts[2]
+    assert "section 2 obs" in flat_prompts[2]
+    assert "section 1 obs" not in flat_prompts[2]
     # A6: the investigation brief reaches every section's prompt
-    for p in seen_prompts:
+    for p in flat_prompts:
         assert "INVESTIGATE THE FRAUD" in p

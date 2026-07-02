@@ -50,54 +50,77 @@ def _known_types_block(known_document_types: list) -> str:
             f"if none match):\n{listed}")
 
 
+def _cache_block(text: str) -> dict:
+    """A content block marking the end of the cacheable prefix (A1) — Anthropic's Messages
+    API caches everything up to and including the block carrying `cache_control`."""
+    return {"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}
+
+
 def build_extract_prompt(*, pages_text: str, existing_entities: list, skill_text: str,
                          sidecar: str | None, brief: str | None,
-                         known_document_types: list) -> str:
+                         known_document_types: list) -> list[dict]:
     # Document identity (sha256/filename/original_path/page_count) and provenance
     # (source/obtained) are stamped onto the result by Python — see
     # orchestrate._stamp_document — so they are deliberately not asked of the model here.
-    parts = [_text("extract_instructions")]
+    #
+    # Returned as content blocks, not one string (A1): block 1 (instructions + brief) is
+    # constant for the whole run; block 2 (the domain skill) is constant per document type and
+    # carries the cache breakpoint, so blocks 1+2 together are the cacheable prefix — every
+    # extraction call sharing a skill within a run re-pays only the 0.1x cache-read rate for it.
+    # Block 3 is per-document volatile data and is never cached.
+    stable = [_text("extract_instructions")]
     if brief:
-        parts.append(f"\nINVESTIGATION BRIEF (orient extraction toward this):\n{brief}")
-    parts.append(f"\nDOMAIN SKILL ({'matched' if skill_text else 'none'}):\n{skill_text or '(none)'}")
-    parts.append(f"\nEXISTING_ENTITIES (for dedup + contradiction check):\n"
-                 f"{json.dumps(existing_entities, ensure_ascii=False)}")
-    parts.append(_known_types_block(known_document_types))
+        stable.append(f"\nINVESTIGATION BRIEF (orient extraction toward this):\n{brief}")
+
+    volatile = [f"\nEXISTING_ENTITIES (for dedup + contradiction check):\n"
+               f"{json.dumps(existing_entities, ensure_ascii=False)}",
+               _known_types_block(known_document_types)]
     if sidecar:
-        parts.append(f"\nSIDECAR (provenance + notes — context for your extraction):\n{sidecar}")
-    parts.append(f"\nDOCUMENT TEXT:\n{pages_text}")
-    return "\n".join(parts)
+        volatile.append(f"\nSIDECAR (provenance + notes — context for your extraction):\n{sidecar}")
+    volatile.append(f"\nDOCUMENT TEXT:\n{pages_text}")
+
+    return [
+        {"type": "text", "text": "\n".join(stable)},
+        _cache_block(f"\nDOMAIN SKILL ({'matched' if skill_text else 'none'}):\n{skill_text or '(none)'}"),
+        {"type": "text", "text": "\n".join(volatile)},
+    ]
 
 
 def build_section_prompt(*, pages_text: str, existing_entities: list, skill_text: str,
                          carry_forward: str, section_label: str, is_first: bool,
-                         known_document_types: list, brief: str | None = None) -> str:
-    parts = [
-        _render("section_intro", section_label=section_label),
-        "",
-        _text("extract_instructions"),
-        "",
-    ]
+                         known_document_types: list, brief: str | None = None) -> list[dict]:
+    # Same cache-block split as build_extract_prompt (A1): instructions + brief + skill lead,
+    # since those are the only parts stable across every section of one run — the section
+    # label/metadata-mode note, carry-forward, and section text change on every call, so they
+    # move after the skill block instead of leading (as in the old single-string layout) to
+    # keep the cacheable prefix at the front of the content array.
+    stable = [_text("extract_instructions")]
     if brief:
-        parts.append(f"\nINVESTIGATION BRIEF (orient extraction toward this):\n{brief}")
+        stable.append(f"\nINVESTIGATION BRIEF (orient extraction toward this):\n{brief}")
+
+    volatile = [_render("section_intro", section_label=section_label)]
     if is_first:
-        parts.append("This is SECTION 1: fill document metadata (title, document_type, "
-                     "date_of_document) and the morgue_entity_id field.")
-        parts.append(_known_types_block(known_document_types))
+        volatile.append("This is SECTION 1: fill document metadata (title, document_type, "
+                        "date_of_document) and the morgue_entity_id field.")
+        volatile.append(_known_types_block(known_document_types))
     else:
-        parts.append("This is a LATER section: omit document metadata and morgue fields; supply "
-                     "entities + document.key_facts + document.summary for this section only.")
-    parts.append("Put only forward-looking reporting notes for the briefing in `observations` — "
-                 "leads to chase, open questions, missing documents, threads to other sections or "
-                 "documents. Do NOT restate figures, dates, chronology, or contradictions (those "
-                 "are captured in key_facts); leave it empty if there is nothing forward-looking.")
+        volatile.append("This is a LATER section: omit document metadata and morgue fields; supply "
+                        "entities + document.key_facts + document.summary for this section only.")
+    volatile.append("Put only forward-looking reporting notes for the briefing in `observations` — "
+                    "leads to chase, open questions, missing documents, threads to other sections or "
+                    "documents. Do NOT restate figures, dates, chronology, or contradictions (those "
+                    "are captured in key_facts); leave it empty if there is nothing forward-looking.")
     if carry_forward:
-        parts.append(f"\nCARRY-FORWARD (entities/observations from earlier sections — reuse these "
-                     f"ids):\n{carry_forward}")
-    parts.append(f"\nDOMAIN SKILL:\n{skill_text or '(none)'}")
-    parts.append(f"\nEXISTING_ENTITIES:\n{json.dumps(existing_entities, ensure_ascii=False)}")
-    parts.append(f"\nSECTION TEXT:\n{pages_text}")
-    return "\n".join(parts)
+        volatile.append(f"\nCARRY-FORWARD (entities/observations from earlier sections — reuse these "
+                        f"ids):\n{carry_forward}")
+    volatile.append(f"\nEXISTING_ENTITIES:\n{json.dumps(existing_entities, ensure_ascii=False)}")
+    volatile.append(f"\nSECTION TEXT:\n{pages_text}")
+
+    return [
+        {"type": "text", "text": "\n".join(stable)},
+        _cache_block(f"\nDOMAIN SKILL:\n{skill_text or '(none)'}"),
+        {"type": "text", "text": "\n".join(volatile)},
+    ]
 
 
 def build_synthesis_prompt(bundle: dict) -> str:
