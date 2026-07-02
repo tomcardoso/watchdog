@@ -420,6 +420,19 @@ The notes stream stays pure cosine.
 cutoff — a strong conceptual match sits ≈ 0.5–0.65 for the default model, so the threshold
 is advisory and corpus-tuned, not a fixed gate.
 
+**Rebuilding without re-ingest (`watchdog reindex`, D53).** Code: `cmd/reindex.py`. Since
+`documents.json`/`entities.json` already hold everything the D43 contextual prefix needs,
+and the morgue `<stem>.md` sibling (D26) holds the full page-marked text, the index can be
+rebuilt from disk alone — no OCR, no model call. `reindex` wipes `.embeddings/` and replays
+`embed.add_document`/`add_note` for every registry entry, reconstructing pages from the
+morgue text's `<!-- PAGE N -->` markers and each document's mentioned-entities list from
+`appears_in`. This is the documented way to change `embed_model` after ingest — its vectors
+are persisted, so switching models means every one is stale. `rerank_model` needs no
+reindex: the cross-encoder only runs inside `search` at query time (`_get_reranker`) and
+nothing about it is persisted, so a change takes effect on the next `watchdog search`. A
+pre-D26 document with no morgue text on disk is skipped (its note still reindexes) rather
+than failing the whole run.
+
 ---
 
 ## 12. Vault & registry layout
