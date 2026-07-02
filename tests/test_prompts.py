@@ -2,8 +2,10 @@
 
 import pytest
 
-from watchdog import skills_catalog
+from watchdog import model_client, skills_catalog
 from watchdog.pipeline import prompts
+
+_flat = model_client._flatten_prompt   # extract/section prompts are content-block lists (A1)
 
 _TEMPLATES = ["classify", "extract_instructions", "section_intro",
               "synthesis", "briefing", "timeline_dedup"]
@@ -43,33 +45,75 @@ def test_section_prompt_renders_label():
     p = prompts.build_section_prompt(
         pages_text="x", existing_entities=[], skill_text="", carry_forward="",
         section_label="pp.1-10", is_first=True, known_document_types=[])
-    assert "pp.1-10" in p and "{{" not in p
+    assert "pp.1-10" in _flat(p) and "{{" not in _flat(p)
 
 
 def test_extract_prompt_includes_instructions_and_data():
     p = prompts.build_extract_prompt(
         pages_text="DOCBODY", existing_entities=[{"id": "x"}], skill_text="SKILL",
         sidecar=None, brief=None, known_document_types=[])
-    assert "key_facts" in p              # instruction prose loaded
-    assert "DOCBODY" in p and "SKILL" in p   # data assembled in
+    text = _flat(p)
+    assert "key_facts" in text              # instruction prose loaded
+    assert "DOCBODY" in text and "SKILL" in text   # data assembled in
     # identity fields are no longer asked of the model (stamped in Python)
-    assert "Set document.sha256" not in p
+    assert "Set document.sha256" not in text
 
 
 def test_extract_prompt_lists_known_document_types():
     p = prompts.build_extract_prompt(
         pages_text="x", existing_entities=[], skill_text="", sidecar=None, brief=None,
         known_document_types=["Annual Report", "Affidavit"])
-    assert "KNOWN_DOCUMENT_TYPES" in p
-    assert "- Annual Report" in p and "- Affidavit" in p
-    assert "reuse one verbatim" in p
+    text = _flat(p)
+    assert "KNOWN_DOCUMENT_TYPES" in text
+    assert "- Annual Report" in text and "- Affidavit" in text
+    assert "reuse one verbatim" in text
 
 
 def test_extract_prompt_handles_no_known_types():
     p = prompts.build_extract_prompt(
         pages_text="x", existing_entities=[], skill_text="", sidecar=None, brief=None,
         known_document_types=[])
-    assert "none yet" in p
+    assert "none yet" in _flat(p)
+
+
+# ── prompt caching (A1): extract/section prompts are content-block lists ──────────────────
+
+def test_extract_prompt_cache_prefix_is_stable_across_volatile_data():
+    """The cacheable prefix (instructions+brief, then skill) must be byte-identical regardless
+    of per-document volatile data — that's the property Anthropic's prompt cache depends on."""
+    kwargs = dict(skill_text="SKILL", brief="Investigate the fraud", known_document_types=[])
+    p1 = prompts.build_extract_prompt(pages_text="doc one", existing_entities=[{"id": "a"}],
+                                      sidecar=None, **kwargs)
+    p2 = prompts.build_extract_prompt(pages_text="doc two, much longer text entirely",
+                                      existing_entities=[{"id": "b"}, {"id": "c"}],
+                                      sidecar="unrelated sidecar notes", **kwargs)
+    assert [b["text"] for b in p1[:2]] == [b["text"] for b in p2[:2]]
+    assert p1[2]["text"] != p2[2]["text"]         # volatile block does differ
+
+
+def test_extract_prompt_cache_control_marks_the_skill_block():
+    p = prompts.build_extract_prompt(pages_text="x", existing_entities=[], skill_text="SKILL",
+                                     sidecar=None, brief=None, known_document_types=[])
+    assert len(p) == 3
+    assert "cache_control" not in p[0]
+    assert p[1]["cache_control"] == {"type": "ephemeral"}
+    assert "SKILL" in p[1]["text"]
+    assert "cache_control" not in p[2]
+
+
+def test_section_prompt_cache_prefix_is_stable_across_sections():
+    """The stable block (instructions+brief) and the skill block must be identical whether this
+    is section 1 or a later section, with different carry-forward/section text — sequential
+    sections of one document need a stable prefix to actually hit the cache."""
+    kwargs = dict(existing_entities=[], skill_text="SKILL", known_document_types=[],
+                 brief="Investigate the fraud")
+    p1 = prompts.build_section_prompt(pages_text="section one text", carry_forward="",
+                                      section_label="pages 1", is_first=True, **kwargs)
+    p2 = prompts.build_section_prompt(pages_text="section two, different text", carry_forward="carried",
+                                      section_label="pages 2", is_first=False, **kwargs)
+    assert [b["text"] for b in p1[:2]] == [b["text"] for b in p2[:2]]
+    assert p1[2]["text"] != p2[2]["text"]
+    assert p1[1]["cache_control"] == {"type": "ephemeral"} == p2[1]["cache_control"]
 
 
 def test_prompt_templates_not_in_skills_catalog():
