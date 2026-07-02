@@ -971,13 +971,19 @@ def cmd_status(args) -> None:
     pages_note = f" {_DIM}({total_pages} pages){_RESET}" if total_pages else ""
     print(f"  {_BOLD}{reg['document_count']}{_RESET} documents{pages_note} · {_BOLD}{reg['entity_count']}{_RESET} entities · {_DIM}last updated {_fmt_date(reg['last_updated'])}{_RESET}")
 
+    from watchdog.pipeline import orchestrate
+    last_usage = orchestrate.latest_usage(vault)
+    if last_usage:
+        cost = f" · ~${last_usage['cost_usd']:.4f}" if last_usage.get("cost_usd") else ""
+        print(f"  {_DIM}Last ingest: {last_usage['input_tokens']:,} in / "
+              f"{last_usage['output_tokens']:,} out tokens{cost}{_RESET}")
+
     if incoming_n:
         print(f"  {_YELLOW}{incoming_n} file{'s' if incoming_n != 1 else ''}{_RESET} in {_CYAN}_INCOMING/{_RESET} {_DIM}— run{_RESET} {_CYAN}watchdog chew{_RESET}")
     if queued_n:
         print(f"  {_YELLOW}{queued_n} file{'s' if queued_n != 1 else ''}{_RESET} chewed and waiting for {_CYAN}/watchdog-ingest{_RESET}")
     _warn_pending_research(vault)
 
-    from watchdog.pipeline import orchestrate
     if orchestrate.has_pending_finalization(vault):
         p = orchestrate.pending_finalization(vault)
         bits = []

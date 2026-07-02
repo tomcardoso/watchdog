@@ -589,6 +589,29 @@ def test_cmd_status_no_batch_line_when_none_pending(configured, capsys):
     assert "Batch extraction pending" not in _strip_ansi(capsys.readouterr().out)
 
 
+def test_cmd_status_shows_last_ingest_usage(configured, capsys):
+    """#222: the user-facing half of A2's telemetry — watchdog status shows what the last
+    ingest cost, without having to go spelunking in .watchdog/Registry/."""
+    cli.cmd_new(args(name="Test Proj", dir=str(configured)))
+    vault = configured / "test-proj"
+    reg = vault / ".watchdog" / "Registry"
+    (reg / "usage-20260101T000000Z.json").write_text(json.dumps({
+        "calls": [], "totals": {"input_tokens": 41200, "output_tokens": 9600,
+                                "cache_read_tokens": 0, "cache_write_tokens": 0, "cost_usd": 1.87},
+    }))
+    cli.cmd_status(args(name="Test Proj"))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Last ingest" in out
+    assert "41,200 in" in out and "9,600 out" in out
+    assert "$1.87" in out
+
+
+def test_cmd_status_no_usage_line_before_any_ingest(configured, capsys):
+    cli.cmd_new(args(name="Test Proj", dir=str(configured)))
+    cli.cmd_status(args(name="Test Proj"))
+    assert "Last ingest" not in _strip_ansi(capsys.readouterr().out)
+
+
 def test_cmd_guided_warns_pending_research(configured, capsys, monkeypatch):
     cli.cmd_new(args(name="Test Proj", dir=str(configured)))
     vault = configured / "test-proj"
