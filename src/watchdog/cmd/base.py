@@ -255,7 +255,7 @@ _CMD_HELP: dict[str, dict] = {
             "`watchdog ingest` to fold the sources into the vault.",
         ],
     },
-    "watchlist-scan": {
+    "watchlist": {
         "desc": "Sweep the whole vault against watchlist.md (deterministic, no model)",
         "args": [("project", "Investigation name or slug (omit when inside the project folder)", True)],
         "notes": [
@@ -582,7 +582,7 @@ def _print_banner() -> None:
             ("status",     "Show detailed status"),
             ("search",     "Semantic search across ingested documents"),
             ("leads",      "Surface investigative leads from the entity graph"),
-            ("watchlist-scan", "Sweep the whole vault against watchlist.md"),
+            ("watchlist", "Sweep the whole vault against watchlist.md"),
             ("research",   "Research open questions on the web (downloads into _INCOMING/)"),
             ("export",     "Export the knowledge graph (Neo4j / Gephi / Cypher)"),
             ("doctor",     "Check for missing or broken vaults"),

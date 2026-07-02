@@ -1,4 +1,4 @@
-"""`watchdog watchlist-scan` — sweep the whole vault against `watchlist.md` (#220).
+"""`watchdog watchlist` — sweep the whole vault against `watchlist.md` (#220).
 
 `pipeline.watchlist.scan` normally only sees the current ingest run's documents (D35), so
 adding a term never re-checks documents ingested before it was added. This command builds a
@@ -13,7 +13,7 @@ from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW, _reso
 from watchdog.pipeline import watchlist as _watchlist
 
 
-def cmd_watchlist_scan(args) -> None:
+def cmd_watchlist(args) -> None:
     _, info, vault = _resolve_vault(getattr(args, "project", None))
 
     documents_path = vault / ".watchdog" / "Registry" / "documents.json"

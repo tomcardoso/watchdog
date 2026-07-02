@@ -1,11 +1,11 @@
 """Tests for the deterministic watch-word scan (#165) and the whole-vault retro-scan
-command, `watchdog watchlist-scan` (#220)."""
+command, `watchdog watchlist` (#220)."""
 
 import argparse
 import json
 from pathlib import Path
 
-from watchdog.cmd.watchlist import cmd_watchlist_scan
+from watchdog.cmd.watchlist import cmd_watchlist
 from watchdog.pipeline import watchlist
 
 
@@ -175,7 +175,7 @@ def test_write_alerts_no_hits_returns_none(tmp_path):
     assert not (vault / "briefings" / f"alerts-{today}.md").exists()
 
 
-# ── cmd_watchlist_scan: whole-vault retro-scan (#220) ────────────────────────
+# ── cmd_watchlist: whole-vault retro-scan (#220) ────────────────────────
 
 def _build_multi_doc_vault(tmp_path: Path, *, watchlist_text=None, docs=()) -> Path:
     """A vault with `watchlist.md` and an arbitrary number of already-ingested documents
@@ -205,7 +205,7 @@ def _args(project=None):
     return argparse.Namespace(project=project)
 
 
-def test_cmd_watchlist_scan_sweeps_whole_vault(tmp_path, monkeypatch, capsys):
+def test_cmd_watchlist_sweeps_whole_vault(tmp_path, monkeypatch, capsys):
     import datetime
     docs = [
         {"sha": "sha1", "filename": "one.pdf", "morgue_path": "morgue/a/one.pdf",
@@ -216,7 +216,7 @@ def test_cmd_watchlist_scan_sweeps_whole_vault(tmp_path, monkeypatch, capsys):
     vault = _build_multi_doc_vault(tmp_path, watchlist_text="Acme Corp\n", docs=docs)
     monkeypatch.chdir(vault)
 
-    cmd_watchlist_scan(_args())
+    cmd_watchlist(_args())
 
     today = datetime.date.today().strftime("%Y-%m-%d")
     relpath = f"briefings/alerts-{today}.md"
@@ -230,38 +230,38 @@ def test_cmd_watchlist_scan_sweeps_whole_vault(tmp_path, monkeypatch, capsys):
     assert relpath in out
 
 
-def test_cmd_watchlist_scan_no_documents(tmp_path, monkeypatch, capsys):
+def test_cmd_watchlist_no_documents(tmp_path, monkeypatch, capsys):
     vault = _build_multi_doc_vault(tmp_path, watchlist_text="Acme\n", docs=[])
     monkeypatch.chdir(vault)
-    cmd_watchlist_scan(_args())
+    cmd_watchlist(_args())
     out = capsys.readouterr().out
     assert "No documents ingested yet" in out
     assert not (vault / "briefings").exists()
 
 
-def test_cmd_watchlist_scan_no_watchlist(tmp_path, monkeypatch, capsys):
+def test_cmd_watchlist_no_watchlist(tmp_path, monkeypatch, capsys):
     docs = [{"sha": "sha1", "filename": "one.pdf", "morgue_path": "morgue/a/one.pdf",
              "pages": [(1, "Some text.")]}]
     vault = _build_multi_doc_vault(tmp_path, watchlist_text=None, docs=docs)
     monkeypatch.chdir(vault)
-    cmd_watchlist_scan(_args())
+    cmd_watchlist(_args())
     out = capsys.readouterr().out
     assert "nothing to scan for" in out
     assert not (vault / "briefings").exists()
 
 
-def test_cmd_watchlist_scan_no_matches(tmp_path, monkeypatch, capsys):
+def test_cmd_watchlist_no_matches(tmp_path, monkeypatch, capsys):
     docs = [{"sha": "sha1", "filename": "one.pdf", "morgue_path": "morgue/a/one.pdf",
              "pages": [(1, "Nothing to see here.")]}]
     vault = _build_multi_doc_vault(tmp_path, watchlist_text="Nonexistent\n", docs=docs)
     monkeypatch.chdir(vault)
-    cmd_watchlist_scan(_args())
+    cmd_watchlist(_args())
     out = capsys.readouterr().out
     assert "no matches" in out
     assert not (vault / "briefings").exists()
 
 
-def test_cmd_watchlist_scan_appends_to_existing_run_alert(tmp_path, monkeypatch):
+def test_cmd_watchlist_appends_to_existing_run_alert(tmp_path, monkeypatch):
     """A retro-scan run after the per-run scan already wrote today's alert file appends a
     second dated section rather than overwriting (write_alerts' existing append behavior)."""
     docs = [{"sha": "sha1", "filename": "one.pdf", "morgue_path": "morgue/a/one.pdf",
@@ -273,7 +273,7 @@ def test_cmd_watchlist_scan_appends_to_existing_run_alert(tmp_path, monkeypatch)
     hits = watchlist.scan(vault, [{"sha256": "sha1", "status": "ok"}])
     relpath = watchlist.write_alerts(vault, hits)[0]
 
-    cmd_watchlist_scan(_args())
+    cmd_watchlist(_args())
 
     content = (vault / relpath).read_text(encoding="utf-8")
     assert content.count("# Watch-word alerts") == 1
