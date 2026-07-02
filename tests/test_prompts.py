@@ -101,6 +101,15 @@ def test_extract_prompt_cache_control_marks_the_skill_block():
     assert "cache_control" not in p[2]
 
 
+def test_extract_prompt_cache_ttl_overridable_for_batch():
+    """Batch submissions (#214) use the 1-hour cache TTL — a batch routinely outlives the
+    default 5-minute window before its requests are even picked up."""
+    p = prompts.build_extract_prompt(pages_text="x", existing_entities=[], skill_text="SKILL",
+                                     sidecar=None, brief=None, known_document_types=[],
+                                     cache_ttl="1h")
+    assert p[1]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+
+
 def test_section_prompt_cache_prefix_is_stable_across_sections():
     """The stable block (instructions+brief) and the skill block must be identical whether this
     is section 1 or a later section, with different carry-forward/section text — sequential

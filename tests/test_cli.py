@@ -566,6 +566,29 @@ def test_cmd_status_no_research_warning_when_none_pending(configured, capsys):
     assert "research URL" not in _strip_ansi(capsys.readouterr().out)
 
 
+def test_cmd_status_shows_pending_batch_extraction(configured, capsys):
+    """#214: a pending claude-batch extraction is surfaced the same way a pending
+    finalization is — the journalist shouldn't have to remember it's in flight."""
+    cli.cmd_new(args(name="Test Proj", dir=str(configured)))
+    vault = configured / "test-proj"
+    from watchdog.pipeline import batch_extract
+    batch_extract.write_state(vault, {"batch_id": "batch_abc", "shas": ["a", "b", "c"],
+                                      "model": "claude-sonnet-4-6", "skill_label": "s",
+                                      "effort": None})
+    cli.cmd_status(args(name="Test Proj"))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Batch extraction pending" in out
+    assert "3 documents" in out
+    assert "batch_abc" in out
+    assert "watchdog ingest" in out
+
+
+def test_cmd_status_no_batch_line_when_none_pending(configured, capsys):
+    cli.cmd_new(args(name="Test Proj", dir=str(configured)))
+    cli.cmd_status(args(name="Test Proj"))
+    assert "Batch extraction pending" not in _strip_ansi(capsys.readouterr().out)
+
+
 def test_cmd_guided_warns_pending_research(configured, capsys, monkeypatch):
     cli.cmd_new(args(name="Test Proj", dir=str(configured)))
     vault = configured / "test-proj"
@@ -1639,6 +1662,12 @@ def test_resolve_stage_explicit_claude_backend():
     assert _resolve_stage("claude-api:opus", None) == ("claude-api", "opus")
 
 
+def test_resolve_stage_claude_batch_backend():
+    """claude-batch (#214) parses as a Claude-tier backend, same as claude-api/claude-agent-sdk."""
+    from watchdog.cmd.ingest import _resolve_stage
+    assert _resolve_stage("claude-batch:sonnet", None) == ("claude-batch", "sonnet")
+
+
 def test_resolve_stage_non_claude_backend_keeps_raw_model():
     from watchdog.cmd.ingest import _resolve_stage
     assert _resolve_stage("deepseek:deepseek-chat", None) == ("deepseek", "deepseek-chat")
@@ -1667,6 +1696,60 @@ def test_resolve_stage_bare_non_tier_is_treated_as_claude_and_rejected():
     # No backend prefix → interpreted as a Claude tier → invalid (use openai:gpt-5-mini instead).
     with pytest.raises(SystemExit, match="unknown model"):
         _resolve_stage("gpt-5-mini", None)
+
+
+# ── cmd_ingest: claude-batch validation guards (#214) ──────────────────────────
+
+def _vault_with_queued_doc(tmp_path):
+    from tests.test_write_vault import make_vault
+    vault = make_vault(tmp_path)
+    qdir = vault / ".watchdog" / "queue"
+    qdir.mkdir(parents=True, exist_ok=True)
+    (qdir / "sha1.json").write_text(json.dumps({
+        "sha256": "sha1", "filename": "a.pdf", "page_count": 1,
+        "pages": [{"page": 1, "markdown": "text"}],
+        "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
+    }))
+    (vault / "_INCOMING").mkdir(exist_ok=True)
+    return vault
+
+
+def test_cmd_ingest_claude_batch_requires_pinned_skill(wdg_home, tmp_path, monkeypatch):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    (wdg_home / "config.json").write_text(json.dumps({"extractor_model": "claude-batch:sonnet"}))
+
+    with pytest.raises(SystemExit, match="pinned skill"):
+        cmd_ingest(args(), confirm=False)
+
+
+def test_cmd_ingest_claude_batch_requires_api_key_auth(wdg_home, tmp_path, monkeypatch):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "subscription"})
+    (wdg_home / "config.json").write_text(json.dumps({"extractor_model": "claude-batch:sonnet"}))
+    skill_file = tmp_path / "pinned.md"
+    skill_file.write_text("SKILL")
+
+    with pytest.raises(SystemExit, match="api-key auth"):
+        cmd_ingest(args(skill=str(skill_file)), confirm=False)
+
+
+def test_cmd_ingest_rejects_claude_batch_for_classifier_or_finalizer(wdg_home, tmp_path, monkeypatch):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    (wdg_home / "config.json").write_text(json.dumps({"classifier_model": "claude-batch:sonnet"}))
+
+    with pytest.raises(SystemExit, match="only valid for extractor_model"):
+        cmd_ingest(args(), confirm=False)
 
 
 # ── configure sections + default_skill ────────────────────────────────────────

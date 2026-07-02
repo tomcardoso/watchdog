@@ -454,6 +454,7 @@ Registry/
   manifest.json             lightweight id→{name,type,aliases,note_path} lookup
   ingest.log                append-only ingest log
   usage-<ts>.json           per-run model-call token/cost telemetry (D50)
+  batch-pending.json        pending claude-batch extraction state (D52)
   .ingest-lock / .write-lock  run lock / write serialization
 ingest-state.json           handoff from `watchdog ingest` to the skill
 ```
@@ -496,6 +497,21 @@ registry for every document would be wasteful. The manifest is the cheap index.
   orchestrator (§5); it uses no Claude Code skill. `watchdog-query` reads the manifest/notes
   first but can shell out to `watchdog search --json` as a **semantic lane** for
   conceptual/passage-level questions (§11, D44).
+- **`claude-batch` — bulk extraction via the Message Batches API** (`pipeline/batch_extract.py`,
+  D52): a fundamentally different flow from the other backends — submit-many/poll/collect over
+  minutes-to-24h rather than one call per document — so it isn't in `model_client._ABACKENDS`
+  and is never dispatched through `acomplete_json`; `orchestrate._run_batch` handles it
+  entirely, called from `run` instead of the concurrent per-document loop. It requires a
+  pinned skill (classification isn't batchable) and `api-key` auth (a metered key; not
+  available on subscription). Documents needing **sectioned** extraction fall back to
+  `claude-api` — a section's carry-forward depends on the previous section's result, so it
+  can't be an independent batch request. `watchdog ingest` submits and exits rather than
+  blocking; state persists to `.watchdog/Registry/batch-pending.json` (one batch in flight
+  per vault, mirroring `has_pending_finalization`'s precedent), and a *later* `watchdog
+  ingest` invocation checks it — collecting and writing to the vault if `ended`, or reporting
+  progress and exiting if still processing. 50% off every token, stacking with the A1 prompt
+  caching above (batch requests use the 1-hour cache TTL, since a batch routinely outlives
+  the default 5-minute window).
 - **Domain (record) skills are global** (`watchdog.skills_catalog`, see D21): the
   package's `src/watchdog/skills/records/` plus the user's `~/.watchdog/skills/records/`
   (a user skill overrides a package skill of the same name). The ingest orchestrator

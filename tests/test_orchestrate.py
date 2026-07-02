@@ -7,7 +7,8 @@ import json
 import pytest
 
 from watchdog import model_client
-from watchdog.pipeline import orchestrate
+from watchdog.cmd import auth as auth_module
+from watchdog.pipeline import batch_extract, orchestrate
 
 from tests.test_write_vault import make_vault
 
@@ -918,3 +919,185 @@ def test_sectioned_carry_forward_dedupes_entities_and_caps_observations(tmp_path
     # A6: the investigation brief reaches every section's prompt
     for p in flat_prompts:
         assert "INVESTIGATE THE FRAUD" in p
+
+
+# ── claude-batch (#214) ─────────────────────────────────────────────────────────
+
+def test_run_batch_requires_pinned_skill(tmp_path):
+    vault = make_vault(tmp_path)
+    with pytest.raises(model_client.ModelError, match="pinned skill"):
+        asyncio.run(orchestrate._run_batch(vault, [], None, "sonnet", None, None, 5,
+                                           "haiku", 5, None))
+
+
+def test_run_batch_requires_api_key_auth(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "subscription"})
+    with pytest.raises(model_client.ModelError, match="api-key auth"):
+        asyncio.run(orchestrate._run_batch(vault, [], None, "sonnet", "/tmp/skill.md", None, 5,
+                                           "haiku", 5, None))
+
+
+def test_submit_batch_splits_sectioned_and_whole_doc(tmp_path, monkeypatch):
+    """A sectioned doc is routed to the normal synchronous _extract_document (forced onto
+    claude-api — a batch request can't carry sequential section carry-forward); a non-sectioned
+    doc's prompt is handed to batch_extract.submit instead of extracted synchronously."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="small", filename="small.pdf", text="short doc")
+    _queue_doc(vault, sha="big", filename="big.pdf", text="a very long document ...")
+    monkeypatch.setattr(orchestrate.section, "run", lambda v, s, **kw: {"sectioned": s == "big"})
+
+    sectioned_calls = []
+    async def fake_extract_document(vault, sha, brief, extract_model, classify_model,
+                                    classify_pages, pinned_skill, extract_effort,
+                                    extract_backend, classify_backend):
+        sectioned_calls.append({"sha": sha, "extract_backend": extract_backend})
+        return {"sha256": sha, "filename": f"{sha}.pdf", "status": "ok", "record_skill": "s"}
+    monkeypatch.setattr(orchestrate, "_extract_document", fake_extract_document)
+
+    submitted = {}
+    async def fake_submit(vault, docs, *, model, effort, skill_label, api_key):
+        submitted["docs"] = docs
+        return "batch_xyz"
+    monkeypatch.setattr(orchestrate.batch_extract, "submit", fake_submit)
+
+    skill_file = tmp_path / "pinned.md"
+    skill_file.write_text("SKILL BODY")
+
+    out = asyncio.run(orchestrate._submit_batch(
+        vault, ["small", "big"], None, "sonnet", str(skill_file), None, 5, "haiku", 5, None,
+        api_key="sk-x"))
+
+    assert out["batch_pending"] is True
+    assert sectioned_calls == [{"sha": "big", "extract_backend": "claude-api"}]
+    assert any(r.get("sha256") == "big" for r in out["results"])
+    assert [d["sha"] for d in submitted["docs"]] == ["small"]
+    assert submitted["docs"][0]["prompt"][1]["cache_control"]["ttl"] == "1h"
+
+
+def test_submit_batch_skips_already_extracted_and_preflight_errors(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    monkeypatch.setattr(orchestrate.preflight, "run", lambda v, s: (
+        {"error": "not found"} if s == "gone" else
+        {"already_extracted": True, "filename": "done.pdf"}))
+    skill_file = tmp_path / "pinned.md"
+    skill_file.write_text("SKILL")
+
+    out = asyncio.run(orchestrate._submit_batch(
+        vault, ["gone", "done"], None, "sonnet", str(skill_file), None, 5, "haiku", 5, None,
+        api_key="sk-x"))
+
+    statuses = {r["sha256"]: r["status"] for r in out["results"]}
+    assert statuses == {"gone": "failed", "done": "skipped"}
+    assert out["batch_pending"] is False   # nothing left to submit
+
+
+def test_resume_batch_reports_progress_when_not_ended(tmp_path, monkeypatch, capsys):
+    vault = make_vault(tmp_path)
+    state = {"batch_id": "b1", "shas": ["a", "b"], "model": "claude-sonnet-4-6",
+            "skill_label": "s", "effort": None}
+
+    async def fake_status(batch_id, api_key):
+        return {"processing_status": "in_progress", "request_counts": {"processing": 1, "succeeded": 1}}
+    monkeypatch.setattr(orchestrate.batch_extract, "status", fake_status)
+
+    out = asyncio.run(orchestrate._resume_batch(vault, state, "/tmp/x.md", None, "sk-x"))
+    assert out == {"results": [], "batch_pending": True}
+    assert "still processing" in capsys.readouterr().out
+
+
+def test_resume_batch_collects_and_clears_state_when_ended(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+    state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-4-6",
+            "skill_label": "annual-report", "effort": None}
+    batch_extract.write_state(vault, state)
+
+    async def fake_status(batch_id, api_key):
+        return {"processing_status": "ended", "request_counts": {"succeeded": 1}}
+    monkeypatch.setattr(orchestrate.batch_extract, "status", fake_status)
+
+    async def fake_collect(batch_id, api_key, model_id):
+        return {"sha1": {"ok": True, "parsed": _extraction(sha="sha1", filename="a.pdf"),
+                         "usage": {}, "cost_usd": 0.02, "error": None}}
+    monkeypatch.setattr(orchestrate.batch_extract, "collect", fake_collect)
+
+    skill_file = tmp_path / "pinned.md"
+    skill_file.write_text("SKILL")
+
+    out = asyncio.run(orchestrate._resume_batch(vault, state, str(skill_file), None, "sk-x"))
+    assert out["batch_pending"] is False
+    assert out["results"][0]["status"] == "ok"
+    assert batch_extract.read_state(vault) is None   # state cleared on a clean collection
+
+
+def test_finish_batch_item_repairs_invalid_result_via_claude_api(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+
+    seen_backends = []
+    async def fake_acomplete(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        seen_backends.append(backend)
+        return model_client.ModelResult(parsed=_extraction(sha="sha1", filename="a.pdf"),
+                                        text="", model="m", backend="claude-api",
+                                        auth_mode="api-key", cost_usd=0.03)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake_acomplete)
+
+    item = {"ok": False, "parsed": None, "usage": None, "cost_usd": None,
+           "error": "batch response was not valid JSON"}
+    result = asyncio.run(orchestrate._finish_batch_item(
+        vault, "sha1", item, "SKILL BODY", "annual-report", None, "sk-x"))
+
+    assert result["status"] == "ok"
+    assert seen_backends == ["claude-api"]   # repaired synchronously, not re-batched
+
+
+def test_finish_batch_item_fails_when_result_missing(tmp_path):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+    result = asyncio.run(orchestrate._finish_batch_item(
+        vault, "sha1", None, "SKILL", "s", None, "sk-x"))
+    assert result["status"] == "failed"
+
+
+def test_run_dispatches_to_batch_and_merges_batch_pending_into_summary(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+    skill_file = tmp_path / "pinned.md"
+    skill_file.write_text("SKILL")
+
+    async def fake_run_batch(*args, **kwargs):
+        return {"results": [], "batch_pending": True}
+    monkeypatch.setattr(orchestrate, "_run_batch", fake_run_batch)
+
+    summary = asyncio.run(orchestrate.run(vault, extract_backend="claude-batch",
+                                          pinned_skill=str(skill_file)))
+    assert summary["batch_pending"] is True
+    assert summary["extracted"] == 0
+    assert "post_ingest" not in summary   # nothing extracted this run → no finalize
+
+
+def test_run_resumes_pending_batch_even_with_empty_queue(tmp_path, monkeypatch):
+    """A pending batch must be checked even when nothing is newly queued — mirrors
+    has_pending_finalization's 'resolve the pending thing first' precedent."""
+    vault = make_vault(tmp_path)
+    skill_file = tmp_path / "pinned.md"
+    skill_file.write_text("SKILL")
+    batch_extract.write_state(vault, {"batch_id": "b1", "shas": [], "model": "claude-sonnet-4-6",
+                                      "skill_label": "s", "effort": None})
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+
+    submit_calls = []
+    async def fake_submit(*a, **k):
+        submit_calls.append(1)
+        return "should-not-be-called"
+    monkeypatch.setattr(orchestrate.batch_extract, "submit", fake_submit)
+
+    async def fake_status(batch_id, api_key):
+        return {"processing_status": "in_progress", "request_counts": {}}
+    monkeypatch.setattr(orchestrate.batch_extract, "status", fake_status)
+
+    summary = asyncio.run(orchestrate.run(vault, extract_backend="claude-batch",
+                                          pinned_skill=str(skill_file)))
+    assert summary["batch_pending"] is True
+    assert not submit_calls   # resumed the pending batch instead of submitting a new one

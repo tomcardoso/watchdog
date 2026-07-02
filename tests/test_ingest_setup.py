@@ -29,6 +29,26 @@ def test_empty_queue_returns_total_zero(tmp_path):
     assert not (vault / ".watchdog" / "ingest-state.json").exists()
 
 
+def test_force_lock_acquires_lock_despite_empty_queue(tmp_path):
+    """#214: a pending claude-batch collection needs mutual exclusion even when nothing new
+    is queued — two concurrent `watchdog ingest` invocations must not both try to collect it."""
+    vault = _make_vault(tmp_path)
+    result = run(vault, force_lock=True)
+    assert result["total"] == 0
+    assert result["lock_acquired"] is True
+    lock_file = vault / ".watchdog" / "Registry" / ".ingest-lock"
+    assert lock_file.exists()
+
+
+def test_force_lock_still_blocked_by_a_fresh_existing_lock(tmp_path):
+    vault = _make_vault(tmp_path)
+    lock_file = vault / ".watchdog" / "Registry" / ".ingest-lock"
+    lock_file.write_text(f"pid: cli\nstarted_at: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}\n")
+    result = run(vault, force_lock=True)
+    assert "error" in result
+    assert "already running" in result["error"]
+
+
 def test_queued_files_acquires_lock_and_writes_state(tmp_path):
     vault = _make_vault(tmp_path)
     _write_queue_file(vault, "abc123")

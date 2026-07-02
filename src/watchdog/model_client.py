@@ -43,6 +43,11 @@ _MODEL_IDS = {
     "opus":   "claude-opus-4-8",
 }
 
+
+def resolve_model_id(model: str) -> str:
+    """Tier name (haiku/sonnet/opus) → API model id, or a raw id returned as-is."""
+    return _MODEL_IDS.get(model, model)
+
 # USD per token: (input, output, cache_write_5m, cache_read). Used to price claude-api
 # usage (the Agent SDK reports its own cost). Update when pricing changes.
 _PRICING = {
@@ -285,6 +290,13 @@ def _api_cost(model_id: str, usage) -> float | None:
             + g("cache_creation_input_tokens") * cw + g("cache_read_input_tokens") * cr)
 
 
+def _batch_cost(model_id: str, usage) -> float | None:
+    """Message Batches pricing is a flat 50% off every standard per-token rate, including
+    cache read/write (#214) — so batch cost is just the normal API cost at half price."""
+    cost = _api_cost(model_id, usage)
+    return cost * 0.5 if cost is not None else None
+
+
 async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: dict,
                               api_key: str | None, max_tokens: int,
                               effort: str | None = None) -> dict:
@@ -390,6 +402,7 @@ _ABACKENDS = {
 _BACKEND_PROVIDER = {
     "claude-api":       "anthropic",
     "claude-agent-sdk": "anthropic",
+    "claude-batch":     "anthropic",
     "openai":           "openai",
     "deepseek":         "deepseek",
 }
@@ -397,7 +410,15 @@ _BACKEND_PROVIDER = {
 # Selectable backend names (public — the CLI validates a stage's `backend:model` against this).
 BACKENDS = tuple(_BACKEND_PROVIDER)
 # Backends that take a Claude tier name (haiku/sonnet/opus); the rest take a raw provider id.
-CLAUDE_BACKENDS = ("claude-api", "claude-agent-sdk")
+CLAUDE_BACKENDS = ("claude-api", "claude-agent-sdk", "claude-batch")
+
+# claude-batch is a real, selectable backend (CLI validation, auth resolution) but is never
+# dispatched through the single-call acomplete_json path — the Message Batches API is
+# submit-many/poll/collect, handled entirely by orchestrate._run_batch + pipeline.batch_extract
+# (#214). Deliberately excluded from _ABACKENDS; this set exists only to turn a misrouted call
+# (e.g. a classifier/finalizer stage accidentally set to claude-batch) into a clear error instead
+# of the generic "unknown backend" one.
+_BATCH_ONLY_BACKENDS = {"claude-batch"}
 
 
 def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, str]:
@@ -408,6 +429,9 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
     user with only an OpenAI/DeepSeek key can run those backends without configuring Claude (#125).
     With no explicit backend, defaults among the Claude backends by auth mode (unchanged)."""
     chosen = requested
+    if chosen in _BATCH_ONLY_BACKENDS:
+        raise ModelError(f"'{chosen}' is a batch-mode-only backend — it cannot be used for a "
+                         "single-call task; it's only valid as extractor_model (#214)")
     if chosen is not None and chosen not in _ABACKENDS:
         raise ModelError(f"unknown backend '{chosen}'")
     provider = _BACKEND_PROVIDER[chosen] if chosen else "anthropic"
@@ -454,7 +478,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
     max_tokens = _TASK_MAX_TOKENS.get(task, _API_MAX_TOKENS)
 
     requested = model or DEFAULT_TIER
-    model_id = _MODEL_IDS.get(requested, requested)   # tier name → id, or a raw id as-is
+    model_id = resolve_model_id(requested)
     effort_arg = _resolve_effort(provider, model_id, effort)   # provider-native value or None
 
     start = time.monotonic()

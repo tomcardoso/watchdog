@@ -544,6 +544,38 @@ watchdog ingest --extractor-model openai:gpt-5-mini     # one-off override
 
 Each stage is independent — e.g. keep extraction on Claude Sonnet while routing the cheaper classification or post-ingest steps to another provider. Non-Claude backends are unproven on dense legal/financial extraction, so the defaults stay on Claude and nothing routes to another provider unless you ask it to. The reasoning-effort knobs apply where the provider supports them (Claude effort, OpenAI `reasoning_effort` on reasoning models) and are ignored where they don't.
 
+#### `claude-batch`: bulk extraction on a metered key, at half price
+
+If you're running the Claude API on a metered key (not a subscription) and ingesting a large,
+same-type dump — the common case this tool targets, e.g. 200 pages of one filing type —
+`extractor_model claude-batch:sonnet` submits every whole-document extraction as one Anthropic
+Message Batch: 50% off every token, stacking with the prompt caching `claude-api` already gets.
+The tradeoff is latency, not cost: a batch typically finishes within an hour (up to 24h), so
+`watchdog ingest` submits it and exits rather than waiting — run `watchdog ingest` again later
+(or check `watchdog status`) to collect the results once it's ready.
+
+Constraints, both enforced with a clear error if unmet:
+- **Requires a pinned skill** (`--skill` or `default_skill`) — classification is inherently
+  one-document-at-a-time and isn't batchable, so there's nothing to classify against.
+- **Requires `api-key` auth mode** (`watchdog auth use api-key`) — the Batches API needs a
+  metered key; it's not available on a subscription.
+- Valid only as `extractor_model` — not `classifier_model`/`finalizer_model`.
+- A document large enough to need **sectioned** extraction can't go through the batch (each
+  section depends on the previous one's result), so those extract via `claude-api` instead,
+  automatically — announced in the run's output, not silent.
+
+This is also the recipe for keeping a Claude subscription's session limits for interactive work
+only, spending zero subscription tokens on bulk ingest:
+
+```bash
+watchdog auth use api-key                                 # a metered key, not your subscription
+watchdog configure classifier_model claude-api:haiku
+watchdog configure extractor_model claude-batch:sonnet
+watchdog configure finalizer_model claude-api:haiku
+watchdog ingest --skill court-documents                   # submits the batch, exits
+watchdog ingest                                            # later: collects it once ready
+```
+
 ---
 
 ## A note on AI and hallucination
