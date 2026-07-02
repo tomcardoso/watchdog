@@ -579,6 +579,50 @@ def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
     assert round(summary["usage"]["cost_usd"], 4) == round(0.01 * n_calls, 4)
 
 
+def test_log_md_ingest_entry_includes_usage_line(tmp_path, monkeypatch):
+    """F5/#222: the log.md entry for an ingest carries the run's token/cost totals, the
+    user-facing half of A2's telemetry."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        parsed = {
+            "classify": {"skill": "general-records.md"},
+            "extract": _extraction(),
+            "briefing": {"investigation_status": "x", "what_was_ingested": []},
+        }.get(task, {"entity_syntheses": []} if task == "entity-synthesis" else {"keep": []})
+        return model_client.ModelResult(
+            parsed=parsed, text="", model="claude-sonnet-4-6", backend="claude-api",
+            auth_mode="api-key", cost_usd=0.01, usage={"input_tokens": 100, "output_tokens": 20})
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate.run(vault))
+    log = (vault / "log.md").read_text()
+    assert "**Usage:**" in log
+    assert "in /" in log and "out tokens" in log
+    assert "$0.0" in log   # non-zero cost rendered
+
+
+def test_latest_usage_none_before_any_ingest(tmp_path):
+    vault = make_vault(tmp_path)
+    assert orchestrate.latest_usage(vault) is None
+
+
+def test_latest_usage_returns_the_most_recent_run(tmp_path):
+    vault = make_vault(tmp_path)
+    reg = vault / ".watchdog" / "Registry"
+    (reg / "usage-20260101T000000Z.json").write_text(
+        json.dumps({"calls": [], "totals": {"input_tokens": 1, "output_tokens": 1,
+                                            "cache_read_tokens": 0, "cache_write_tokens": 0,
+                                            "cost_usd": 0.001}}))
+    (reg / "usage-20260102T000000Z.json").write_text(
+        json.dumps({"calls": [], "totals": {"input_tokens": 999, "output_tokens": 999,
+                                            "cache_read_tokens": 0, "cache_write_tokens": 0,
+                                            "cost_usd": 0.05}}))
+    totals = orchestrate.latest_usage(vault)
+    assert totals["input_tokens"] == 999
+
+
 def test_orchestrator_cancels_gracefully_on_sigint(tmp_path, monkeypatch):
     """Ctrl+C during extraction → cancelled summary, no traceback, unfinished docs keep
     their queue file, and post-ingest is skipped."""

@@ -119,6 +119,22 @@ def _write_usage(vault: Path, records: list[dict]) -> str | None:
     return relpath
 
 
+def latest_usage(vault: Path) -> dict | None:
+    """The most recent ingest run's token/cost totals (F5, #222), or None if none exist yet —
+    `watchdog status` surfaces this so a subscription user can see what a dump cost before
+    deciding whether to kick off another one. Filenames sort chronologically (the timestamp
+    format is lexicographically ordered), so the last one is the most recent."""
+    reg_dir = vault / ".watchdog" / "Registry"
+    files = sorted(reg_dir.glob("usage-*.json")) if reg_dir.exists() else []
+    if not files:
+        return None
+    try:
+        data = json.loads(files[-1].read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data.get("totals")
+
+
 DEFAULT_CLASSIFY_PAGES = 5
 # Per-section input budget when falling back to sectioning after a whole-doc extraction
 # overruns the output ceiling. Small, so each section's output stays well under the cap;
@@ -740,6 +756,11 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
              f"- **Briefing:** [[briefings/{slug}|{slug}]]\n")
     if contradiction_flags:
         entry += f"- **Contradictions flagged:** {len(contradiction_flags)}\n"
+    if _usage:   # (F5, #222) — _post_ingest's own calls (synthesis/timeline-dedup/briefing)
+        totals = _usage_totals(_usage)   # are already recorded by the time this runs
+        cost = f" · ~${totals['cost_usd']:.4f}" if totals.get("cost_usd") else ""
+        entry += (f"- **Usage:** {totals['input_tokens']:,} in / "
+                 f"{totals['output_tokens']:,} out tokens{cost}\n")
     with open(vault / "log.md", "a", encoding="utf-8") as f:
         f.write(entry)
     return f"briefings/{slug}.md"
