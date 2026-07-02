@@ -89,6 +89,7 @@ from watchdog.cmd.setup import (
 from watchdog.cmd.auth import cmd_auth
 from watchdog.cmd.export import cmd_export
 from watchdog.cmd.leads import cmd_leads
+from watchdog.cmd.reindex import cmd_reindex
 from watchdog.cmd.research import cmd_fetch, cmd_research, cmd_research_fetch, cmd_research_seen
 
 
@@ -240,6 +241,10 @@ def main() -> None:
     p_leads = sub.add_parser("leads", help="Surface investigative leads from the entity graph (deterministic)")
     p_leads.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
     p_leads.set_defaults(func=cmd_leads)
+
+    p_reindex = sub.add_parser("reindex", help="Rebuild the search index from disk — no OCR re-run, no model calls")
+    p_reindex.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
+    p_reindex.set_defaults(func=cmd_reindex)
 
     p_research = sub.add_parser("research", help="Open Claude Code to research open questions on the web")
     p_research.add_argument("name", nargs="?", help="Investigation name or slug (default: current directory)").completer = _project_completer
