@@ -988,6 +988,14 @@ def cmd_status(args) -> None:
         detail = f" {_DIM}({', '.join(bits)}){_RESET}" if bits else ""
         print(f"  {_YELLOW}Batch pending finalization{_RESET}{detail} {_DIM}— run{_RESET} {_CYAN}watchdog finalize{_RESET}")
 
+    from watchdog.pipeline import batch_extract
+    pending_batch = batch_extract.read_state(vault)
+    if pending_batch:
+        n = len(pending_batch.get("shas", []))
+        print(f"  {_YELLOW}Batch extraction pending{_RESET} {_DIM}({n} document{'s' if n != 1 else ''}, "
+              f"{pending_batch.get('batch_id', '?')}) — run{_RESET} {_CYAN}watchdog ingest{_RESET}"
+              f"{_DIM} to check on it{_RESET}")
+
     if doc_types:
         print()
         print(f"  {_BOLD}Documents by type{_RESET}")

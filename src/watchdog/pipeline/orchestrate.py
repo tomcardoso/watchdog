@@ -24,8 +24,8 @@ from watchdog import model_client, skills_catalog
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 from watchdog.cmd.live import LiveRegion
 from watchdog.pipeline import (
-    abort, leads, merge, preflight, postflight, prompts, schemas, section, synthesis_bundle,
-    timeline, watchlist,
+    abort, batch_extract, leads, merge, preflight, postflight, prompts, schemas, section,
+    synthesis_bundle, timeline, watchlist,
 )
 from watchdog.pipeline.write_vault import _doc_slug
 
@@ -479,7 +479,15 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
 
     if not ok:
         return _fail(vault, sha, filename, "post-flight rejected: " + "; ".join(errors[:3]))
+    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, page_count)
 
+
+def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, scratchpad: str,
+                       cost: float, pf: dict, page_count: int | None) -> dict:
+    """Shared tail once an extraction has passed post-flight: settle-print, coverage warning,
+    log, persist `result_<sha>.json`. Used by both the synchronous per-document path
+    (`_extract_document`) and the batch-collect path (`_finish_batch_item`, #214) so a
+    batch-extracted document produces an identical result shape to a synchronous one."""
     if scratchpad:
         (vault / ".watchdog" / "tmp" / f"notes_{sha}.md").write_text(scratchpad, encoding="utf-8")
     for stale in (vault / ".watchdog" / "tmp").glob(f"section_{sha}_*.md"):
@@ -499,6 +507,182 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     (vault / ".watchdog" / "tmp" / f"result_{sha}.json").write_text(
         json.dumps(result, ensure_ascii=False), encoding="utf-8")
     return result
+
+
+# ── claude-batch: submit-many/poll/collect bulk extraction (#214) ────────────────────────────
+#
+# A fundamentally different flow from the concurrent per-document loop above: the Message
+# Batches API is submit-many/poll/collect over minutes-to-24h, not one-await-per-document.
+# `_run_batch` (called by `run`, not `_extract_document`) resumes a pending batch if one exists,
+# otherwise splits the queue into sectioned documents (extracted synchronously via claude-api —
+# a section's carry-forward depends on the previous section's result, so it can't be an
+# independent batch request) and whole documents (submitted as one batch). Requires a pinned
+# skill: classification is inherently one-document-at-a-time and not batchable.
+
+async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_text: str,
+                             skill_label: str, brief: str | None, api_key: str) -> dict:
+    """Turn one collected batch result into a finished document. `item` is `batch_extract.collect`'s
+    per-sha entry (or None if the batch has no result for this sha at all). A batch response that
+    didn't pass schema validation gets exactly one synchronous claude-api repair attempt — not a
+    whole new batch submission for a single document — mirroring `_simple_extract`'s own
+    single-repair-attempt semantics."""
+    pf = preflight.run(vault, sha)
+    if pf.get("error"):
+        return _fail(vault, sha, "", pf["error"])
+    if pf.get("already_extracted"):     # a retried collection pass after a partial rate limit
+        filename = pf.get("filename")
+        _say(f"{_DIM}–  {filename}  already extracted — skipping{_RESET}")
+        return {"sha256": sha, "filename": filename, "status": "skipped"}
+
+    filename = pf["filename"]
+    page_count = pf.get("page_count") or len(pf.get("pages", []))
+    if item is None:
+        return _fail(vault, sha, filename, "batch result missing for this document")
+
+    extraction, cost = item["parsed"], item.get("cost_usd") or 0.0
+    if not item["ok"]:
+        prompt = prompts.build_extract_prompt(
+            pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
+            skill_text=skill_text, sidecar=_read_sidecar(vault, filename), brief=brief,
+            known_document_types=pf.get("known_document_types", []))
+        if item.get("error"):
+            prompt = _append_repair_note(prompt, [item["error"]])
+        try:
+            r = await _call_model(task="extract", model=None, backend="claude-api",
+                                  prompt=prompt, schema=schemas.EXTRACTION)
+        except model_client.ModelError as e:
+            return _fail(vault, sha, filename, f"batch result invalid and repair failed: {e}")
+        extraction = r.parsed
+        cost += r.cost_usd or 0.0
+
+    scratchpad = extraction.pop("scratchpad", "") if isinstance(extraction, dict) else ""
+    _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault)
+    ok, errors = _write_postflight(vault, sha, extraction)
+    if not ok:
+        return _fail(vault, sha, filename, "post-flight rejected: " + "; ".join(errors[:3]))
+    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, page_count)
+
+
+async def _resume_batch(vault: Path, state: dict, pinned_skill: str, brief: str | None,
+                        api_key: str) -> dict:
+    """Check a pending batch's status; collect and write it if `ended`, otherwise report
+    progress and return without touching the vault."""
+    st = await batch_extract.status(state["batch_id"], api_key)
+    if st["processing_status"] != "ended":
+        counts = st.get("request_counts", {})
+        done = sum(v for k, v in counts.items() if k != "processing")
+        _say(f"{_YELLOW}A batch extraction is still processing{_RESET}{_DIM} "
+             f"({done}/{len(state['shas'])} finished so far) — re-run {_RESET}"
+             f"{_CYAN}watchdog ingest{_RESET}{_DIM} later to check again.{_RESET}")
+        return {"results": [], "batch_pending": True}
+
+    _say(f"{_DIM}→  batch {state['batch_id']} finished — collecting {len(state['shas'])} "
+         f"document{'s' if len(state['shas']) != 1 else ''}…{_RESET}")
+    collected = await batch_extract.collect(state["batch_id"], api_key, state["model"])
+    skill_text = Path(pinned_skill).read_text(encoding="utf-8")
+    skill_label = Path(pinned_skill).stem
+
+    results = []
+    try:
+        for sha in state["shas"]:
+            results.append(await _finish_batch_item(vault, sha, collected.get(sha), skill_text,
+                                                     skill_label, brief, api_key))
+    except model_client.RateLimitError as e:
+        # A repair-retry call (claude-api) hit a rate limit partway through collection. Leave
+        # the batch state in place — already-written documents are safe (preflight's
+        # already_extracted check skips them on the next pass) — so a later run finishes.
+        _say(f"{_YELLOW}Rate limit reached during batch collection{_RESET}{_DIM} — {e} "
+             f"{len(results)}/{len(state['shas'])} written; re-run {_RESET}"
+             f"{_CYAN}watchdog ingest{_RESET}{_DIM} to finish once it resets.{_RESET}")
+        return {"results": results, "batch_pending": True}
+
+    batch_extract.clear_state(vault)
+    return {"results": results, "batch_pending": False}
+
+
+async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract_model: str,
+                        pinned_skill: str, extract_effort: str | None, concurrency: int,
+                        classify_model: str, classify_pages: int, classify_backend: str | None,
+                        api_key: str) -> dict:
+    """Split the queue into sectioned (→ synchronous claude-api, via the normal
+    `_extract_document`) and whole-document (→ one batch submission) shas, run the former, then
+    submit the latter and return — submit-and-exit, not blocking-poll (a batch can take up to
+    24h; a *later* `watchdog ingest` invocation collects it, see `_resume_batch`)."""
+    skill_text = Path(pinned_skill).read_text(encoding="utf-8")
+    skill_label = Path(pinned_skill).stem
+
+    results: list[dict] = []
+    batch_docs: list[dict] = []
+    sectioned_shas: list[str] = []
+    for sha in shas:
+        pf = preflight.run(vault, sha)
+        if pf.get("error"):
+            results.append(_fail(vault, sha, "", pf["error"]))
+            continue
+        if pf.get("already_extracted"):
+            _say(f"{_DIM}–  {pf.get('filename')}  already extracted — skipping{_RESET}")
+            results.append({"sha256": sha, "filename": pf.get("filename"), "status": "skipped"})
+            continue
+        if section.run(vault, sha).get("sectioned"):
+            sectioned_shas.append(sha)
+        else:
+            prompt = prompts.build_extract_prompt(
+                pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
+                skill_text=skill_text, sidecar=_read_sidecar(vault, pf["filename"]), brief=brief,
+                known_document_types=pf.get("known_document_types", []), cache_ttl="1h")
+            batch_docs.append({"sha": sha, "prompt": prompt})
+
+    if sectioned_shas:
+        _say(f"{_DIM}→  {len(sectioned_shas)} large document"
+             f"{'s' if len(sectioned_shas) != 1 else ''} need sectioning — not batchable, "
+             f"extracting via claude-api{_RESET}")
+        sem = asyncio.Semaphore(max(1, concurrency))
+
+        async def _sectioned(sha: str) -> dict:
+            async with sem:
+                return await _extract_document(vault, sha, brief, extract_model, classify_model,
+                                               classify_pages, pinned_skill, extract_effort,
+                                               extract_backend="claude-api",
+                                               classify_backend=classify_backend)
+        results.extend(await asyncio.gather(*[_sectioned(s) for s in sectioned_shas]))
+
+    if not batch_docs:
+        return {"results": results, "batch_pending": False}
+
+    _say(f"{_DIM}→  submitting {len(batch_docs)} document"
+         f"{'s' if len(batch_docs) != 1 else ''} as one batch ({skill_label})…{_RESET}")
+    batch_id = await batch_extract.submit(vault, batch_docs, model=extract_model,
+                                          effort=extract_effort, skill_label=skill_label,
+                                          api_key=api_key)
+    _say(f"{_GREEN}Batch submitted{_RESET}  {_CYAN}{batch_id}{_RESET}{_DIM} — this can take up "
+         f"to a few hours (max 24h); re-run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} later "
+         f"to collect it.{_RESET}")
+    return {"results": results, "batch_pending": True}
+
+
+async def _run_batch(vault: Path, shas: list[str], brief: str | None, extract_model: str,
+                     pinned_skill: str | None, extract_effort: str | None, concurrency: int,
+                     classify_model: str, classify_pages: int,
+                     classify_backend: str | None) -> dict:
+    """Entry point for `run` when `extract_backend == "claude-batch"`. Defense-in-depth guards
+    beyond `cmd_ingest`'s own checks — a programmatic caller that skips CLI validation still
+    gets a clear error rather than a confusing downstream failure."""
+    if not pinned_skill:
+        raise model_client.ModelError(
+            "claude-batch requires a pinned skill (--skill/default_skill) — classification "
+            "is not batchable (#214)")
+    from watchdog.cmd import auth
+    api_key = auth.resolve_auth().get("key")
+    if not api_key:
+        raise model_client.ModelError(
+            "claude-batch requires api-key auth mode — run `watchdog auth use api-key`")
+
+    state = batch_extract.read_state(vault)
+    if state is not None:
+        return await _resume_batch(vault, state, pinned_skill, brief, api_key)
+    return await _submit_batch(vault, shas, brief, extract_model, pinned_skill, extract_effort,
+                               concurrency, classify_model, classify_pages, classify_backend,
+                               api_key)
 
 
 def _nudge_skill_pin(results: list) -> None:
@@ -775,96 +959,117 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     """
     queue_dir = vault / ".watchdog" / "queue"
     shas = [f.stem for f in sorted(queue_dir.glob("*.json"))] if queue_dir.exists() else []
-    if not shas:
-        return {"results": [], "extracted": 0, "skipped": 0, "failed": 0}
 
-    brief = _read_brief(vault)
-    # Live status region for the concurrent extraction phase (#151): one in-place row per
-    # in-flight document, finished/failed lines scrolling above. Auto-disables off a TTY,
-    # where it degrades to the previous append-only output.
     global _board, _usage
-    _board = LiveRegion()
-    _usage = []
-    sem = asyncio.Semaphore(max(1, concurrency))
-    cancelled = asyncio.Event()
-    stop_reason: dict = {}          # {"rate_limit": "<notice>"} when a limit stopped the batch
-    tasks: list = []
 
-    def _request_stop(rate_limit: str | None = None) -> None:
-        """Stop the batch once: flag it, record why, cancel in-flight work. Idempotent."""
-        if cancelled.is_set():
-            return
-        cancelled.set()
-        if rate_limit:
-            stop_reason["rate_limit"] = rate_limit
-        for t in tasks:
-            t.cancel()
+    # claude-batch (#214): submit-many/poll/collect, not one-await-per-document, so it's a
+    # genuinely different flow — handled entirely by _run_batch (which also covers a resumed
+    # pending batch even when `shas` is empty). Both branches converge on `results` /
+    # `cancelled_flag` / `rate_limit_msg` / `extra_summary` and rejoin the shared tail below.
+    if extract_backend == "claude-batch":
+        _usage = []
+        brief = _read_brief(vault)
+        batch_out = await _run_batch(vault, shas, brief, extract_model, pinned_skill,
+                                     extract_effort, concurrency, classify_model, classify_pages,
+                                     classify_backend)
+        results = batch_out["results"]
+        cancelled_flag = False
+        rate_limit_msg = None
+        extra_summary = {"batch_pending": batch_out.get("batch_pending", False)}
+    else:
+        if not shas:
+            return {"results": [], "extracted": 0, "skipped": 0, "failed": 0}
 
-    async def _guarded(sha: str) -> dict:
-        if cancelled.is_set():                       # never started — leave queue file for resume
-            return {"sha256": sha, "filename": "", "status": "cancelled"}
-        async with sem:
+        brief = _read_brief(vault)
+        # Live status region for the concurrent extraction phase (#151): one in-place row per
+        # in-flight document, finished/failed lines scrolling above. Auto-disables off a TTY,
+        # where it degrades to the previous append-only output.
+        _board = LiveRegion()
+        _usage = []
+        sem = asyncio.Semaphore(max(1, concurrency))
+        cancelled = asyncio.Event()
+        stop_reason: dict = {}      # {"rate_limit": "<notice>"} when a limit stopped the batch
+        tasks: list = []
+
+        def _request_stop(rate_limit: str | None = None) -> None:
+            """Stop the batch once: flag it, record why, cancel in-flight work. Idempotent."""
             if cancelled.is_set():
+                return
+            cancelled.set()
+            if rate_limit:
+                stop_reason["rate_limit"] = rate_limit
+            for t in tasks:
+                t.cancel()
+
+        async def _guarded(sha: str) -> dict:
+            if cancelled.is_set():                   # never started — leave queue file for resume
                 return {"sha256": sha, "filename": "", "status": "cancelled"}
-            try:
-                return await _extract_document(vault, sha, brief, extract_model, classify_model,
-                                               classify_pages, pinned_skill, extract_effort,
-                                               extract_backend, classify_backend)
-            except model_client.RateLimitError as e:  # session-wide — stop, leave queued for resume
-                if not cancelled.is_set():
-                    print()
-                    _say(f"{_YELLOW}Rate limit reached{_RESET}{_DIM} — {e}{_RESET}")
-                    _say(f"{_DIM}Stopping; finished documents are saved. Re-run "
-                         f"{_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} once it resets to continue.{_RESET}")
-                    _request_stop(rate_limit=str(e))
-                return {"sha256": sha, "filename": "", "status": "cancelled"}
-            except asyncio.CancelledError:           # ctrl+c mid-document — queue file stays
-                return {"sha256": sha, "filename": "", "status": "cancelled"}
-            except Exception as e:                   # one bad doc must not sink the batch
-                return _fail(vault, sha, "", f"unexpected error: {e}")
+            async with sem:
+                if cancelled.is_set():
+                    return {"sha256": sha, "filename": "", "status": "cancelled"}
+                try:
+                    return await _extract_document(vault, sha, brief, extract_model, classify_model,
+                                                   classify_pages, pinned_skill, extract_effort,
+                                                   extract_backend, classify_backend)
+                except model_client.RateLimitError as e:  # session-wide — stop, leave queued for resume
+                    if not cancelled.is_set():
+                        print()
+                        _say(f"{_YELLOW}Rate limit reached{_RESET}{_DIM} — {e}{_RESET}")
+                        _say(f"{_DIM}Stopping; finished documents are saved. Re-run "
+                             f"{_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} once it resets to continue.{_RESET}")
+                        _request_stop(rate_limit=str(e))
+                    return {"sha256": sha, "filename": "", "status": "cancelled"}
+                except asyncio.CancelledError:       # ctrl+c mid-document — queue file stays
+                    return {"sha256": sha, "filename": "", "status": "cancelled"}
+                except Exception as e:               # one bad doc must not sink the batch
+                    return _fail(vault, sha, "", f"unexpected error: {e}")
 
-    # On ctrl+c, cancel in-flight work once and shut down cleanly instead of letting
-    # KeyboardInterrupt tear through the event loop with a traceback. Finished documents
-    # are already written to the vault; unfinished ones keep their queue file for resume.
-    tasks[:] = [asyncio.ensure_future(_guarded(s)) for s in shas]
+        # On ctrl+c, cancel in-flight work once and shut down cleanly instead of letting
+        # KeyboardInterrupt tear through the event loop with a traceback. Finished documents
+        # are already written to the vault; unfinished ones keep their queue file for resume.
+        tasks[:] = [asyncio.ensure_future(_guarded(s)) for s in shas]
 
-    def _on_interrupt() -> None:
-        if cancelled.is_set():
-            return
-        print()
-        _say(f"{_YELLOW}Interrupted{_RESET}{_DIM} — finishing current writes, then stopping…{_RESET}")
-        _request_stop()
+        def _on_interrupt() -> None:
+            if cancelled.is_set():
+                return
+            print()
+            _say(f"{_YELLOW}Interrupted{_RESET}{_DIM} — finishing current writes, then stopping…{_RESET}")
+            _request_stop()
 
-    loop = asyncio.get_running_loop()
-    handler_set = False
-    try:
-        loop.add_signal_handler(signal.SIGINT, _on_interrupt)
-        handler_set = True
-    except (NotImplementedError, RuntimeError):       # e.g. non-main thread / unsupported platform
-        pass
-    try:
-        await asyncio.gather(*tasks, return_exceptions=True)
-    finally:
-        if handler_set:
-            loop.remove_signal_handler(signal.SIGINT)
-        # Close the live region: extraction is done, so post-processing (sequential) and the
-        # summary print plainly. _say falls back to plain printing once _board is None.
-        _board.stop()
-        _board = None
+        loop = asyncio.get_running_loop()
+        handler_set = False
+        try:
+            loop.add_signal_handler(signal.SIGINT, _on_interrupt)
+            handler_set = True
+        except (NotImplementedError, RuntimeError):   # e.g. non-main thread / unsupported platform
+            pass
+        try:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        finally:
+            if handler_set:
+                loop.remove_signal_handler(signal.SIGINT)
+            # Close the live region: extraction is done, so post-processing (sequential) and the
+            # summary print plainly. _say falls back to plain printing once _board is None.
+            _board.stop()
+            _board = None
 
-    results = [t.result() for t in tasks if t.done() and not t.cancelled()]
+        results = [t.result() for t in tasks if t.done() and not t.cancelled()]
+        cancelled_flag = cancelled.is_set()
+        rate_limit_msg = stop_reason.get("rate_limit")
+        extra_summary = {}
+
     by_status = lambda s: sum(1 for r in results if r.get("status") == s)
     failed_dir = vault / ".watchdog" / "queue" / "_failed"
     quarantined = len(list(failed_dir.glob("*.json"))) if failed_dir.exists() else 0
     summary = {"results": results, "extracted": by_status("ok"),
                "skipped": by_status("skipped"), "failed": by_status("failed"),
-               "cancelled": cancelled.is_set(),
-               "rate_limited": bool(stop_reason.get("rate_limit")),
-               "stop_message": stop_reason.get("rate_limit"),
-               "quarantined": quarantined}
+               "cancelled": cancelled_flag,
+               "rate_limited": bool(rate_limit_msg),
+               "stop_message": rate_limit_msg,
+               "quarantined": quarantined, **extra_summary}
     if not pinned_skill:
         _nudge_skill_pin(results)
-    if summary["extracted"] and not cancelled.is_set():
+    if summary["extracted"] and not cancelled_flag:
         try:
             # Finalize over the persisted per-doc results on disk (not just this run's in-memory
             # ones) so a merged batch — a prior pending run kept via wipe_pending=False — is
@@ -878,7 +1083,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             _say(f"{_YELLOW}Post-processing incomplete{_RESET}{_DIM} — {e}{_RESET}")
             _say(f"{_DIM}Your {summary['extracted']} extracted document"
                  f"{'s are' if summary['extracted'] != 1 else ' is'} saved.{_RESET}")
-    state = "rate-limited" if summary["rate_limited"] else ("cancelled" if cancelled.is_set() else "complete")
+    state = "rate-limited" if summary["rate_limited"] else ("cancelled" if cancelled_flag else "complete")
     _log(vault, f"INGEST {state} — {summary['extracted']} extracted, "
                 f"{summary['skipped']} skipped, {summary['failed']} failed")
     summary["usage"] = _usage_totals(_usage) if _usage else None

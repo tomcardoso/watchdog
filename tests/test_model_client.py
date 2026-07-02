@@ -289,6 +289,35 @@ def test_api_cost_uses_pricing_table():
     assert mc._api_cost("claude-sonnet-4-6", U()) == pytest.approx(3.0)   # $3 / 1M input
 
 
+def test_batch_cost_is_half_the_api_cost():
+    class U:
+        input_tokens = 1_000_000
+        output_tokens = 1_000_000
+        cache_creation_input_tokens = 0
+        cache_read_input_tokens = 0
+    api = mc._api_cost("claude-sonnet-4-6", U())
+    assert mc._batch_cost("claude-sonnet-4-6", U()) == pytest.approx(api * 0.5)
+
+
+def test_batch_cost_none_for_unknown_model():
+    assert mc._batch_cost("not-a-real-model", object()) is None
+
+
+@pytest.mark.parametrize("tier, expected", [
+    ("haiku", "claude-haiku-4-5"), ("sonnet", "claude-sonnet-4-6"),
+    ("opus", "claude-opus-4-8"), ("claude-sonnet-4-6", "claude-sonnet-4-6"),
+])
+def test_resolve_model_id(tier, expected):
+    assert mc.resolve_model_id(tier) == expected
+
+
+def test_claude_batch_rejected_as_a_single_call_backend(api_key_auth):
+    """claude-batch is submit/poll/collect only (#214) — routing a normal single-call task to
+    it must fail clearly, not silently misbehave or read as 'unknown backend'."""
+    with pytest.raises(mc.ModelError, match="batch-mode-only"):
+        mc.complete_json(task="classify", prompt="p", schema=SCHEMA, backend="claude-batch")
+
+
 def test_looks_like_rate_limit_detects_429_and_text():
     assert mc._looks_like_rate_limit(429)                                  # HTTP 429
     assert mc._looks_like_rate_limit(None, "You've hit your session limit")

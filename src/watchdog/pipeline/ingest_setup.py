@@ -31,11 +31,16 @@ def _iso_now() -> str:
 
 
 def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "sonnet",
-        wipe_pending: bool = True) -> dict:
+        wipe_pending: bool = True, force_lock: bool = False) -> dict:
     """Acquire lock, scan queue, write state file. Returns the state dict.
 
     ``wipe_pending=False`` keeps a prior run's un-finalized post-ingest inputs so this
     ingest *merges* into that batch (both finalize together) instead of discarding it.
+
+    ``force_lock=True`` acquires the lock even with an empty queue (#214) — a pending
+    claude-batch extraction still needs mutual exclusion (so two concurrent `watchdog
+    ingest` invocations can't both try to collect the same batch) even when there's
+    nothing new to chew.
     """
     lock_file = vault / ".watchdog" / "Registry" / ".ingest-lock"
     state_file = vault / ".watchdog" / "ingest-state.json"
@@ -74,7 +79,7 @@ def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "so
 
     total = len(queue_files)
 
-    if total == 0:
+    if total == 0 and not force_lock:
         state_file.unlink(missing_ok=True)
         return {"total": 0, "lock_acquired": False, "queue_files": []}
 

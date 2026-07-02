@@ -50,15 +50,21 @@ def _known_types_block(known_document_types: list) -> str:
             f"if none match):\n{listed}")
 
 
-def _cache_block(text: str) -> dict:
+def _cache_block(text: str, *, ttl: str = "5m") -> dict:
     """A content block marking the end of the cacheable prefix (A1) — Anthropic's Messages
-    API caches everything up to and including the block carrying `cache_control`."""
-    return {"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}
+    API caches everything up to and including the block carrying `cache_control`. `ttl`
+    defaults to the standard 5-minute window (the bare `{"type": "ephemeral"}` form, unchanged
+    from #213); batch submissions (#214) pass `"1h"` explicitly since a batch routinely outlives
+    5 minutes before its requests are even picked up."""
+    cache_control = {"type": "ephemeral"}
+    if ttl != "5m":
+        cache_control["ttl"] = ttl
+    return {"type": "text", "text": text, "cache_control": cache_control}
 
 
 def build_extract_prompt(*, pages_text: str, existing_entities: list, skill_text: str,
                          sidecar: str | None, brief: str | None,
-                         known_document_types: list) -> list[dict]:
+                         known_document_types: list, cache_ttl: str = "5m") -> list[dict]:
     # Document identity (sha256/filename/original_path/page_count) and provenance
     # (source/obtained) are stamped onto the result by Python — see
     # orchestrate._stamp_document — so they are deliberately not asked of the model here.
@@ -67,7 +73,8 @@ def build_extract_prompt(*, pages_text: str, existing_entities: list, skill_text
     # constant for the whole run; block 2 (the domain skill) is constant per document type and
     # carries the cache breakpoint, so blocks 1+2 together are the cacheable prefix — every
     # extraction call sharing a skill within a run re-pays only the 0.1x cache-read rate for it.
-    # Block 3 is per-document volatile data and is never cached.
+    # Block 3 is per-document volatile data and is never cached. `cache_ttl` is "1h" for batch
+    # submissions (#214) — see _cache_block.
     stable = [_text("extract_instructions")]
     if brief:
         stable.append(f"\nINVESTIGATION BRIEF (orient extraction toward this):\n{brief}")
@@ -81,7 +88,8 @@ def build_extract_prompt(*, pages_text: str, existing_entities: list, skill_text
 
     return [
         {"type": "text", "text": "\n".join(stable)},
-        _cache_block(f"\nDOMAIN SKILL ({'matched' if skill_text else 'none'}):\n{skill_text or '(none)'}"),
+        _cache_block(f"\nDOMAIN SKILL ({'matched' if skill_text else 'none'}):\n{skill_text or '(none)'}",
+                    ttl=cache_ttl),
         {"type": "text", "text": "\n".join(volatile)},
     ]
 

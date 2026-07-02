@@ -259,20 +259,42 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
             wipe_pending = False
             print(f"  {_DIM}Merging the pending batch into this ingest.{_RESET}")
 
-    result = is_run(vault, wipe_pending=wipe_pending)
+    from watchdog.pipeline import batch_extract
+    # A pending batch (#214) must still be checked even with nothing newly queued — mirrors the
+    # has_pending_finalization precedent above ("resolve the pending thing first"). force_lock
+    # so two concurrent `watchdog ingest` invocations can't both try to collect the same batch —
+    # is_run normally only acquires the lock when the queue is non-empty.
+    batch_pending = extract_backend == "claude-batch" and batch_extract.read_state(vault) is not None
+
+    result = is_run(vault, wipe_pending=wipe_pending, force_lock=batch_pending)
     if "error" in result:
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} {result['error']}\n")
-    if result["total"] == 0:
+    if result["total"] == 0 and not batch_pending:
         print(f"\n  {_DIM}Queue is empty — nothing to ingest.{_RESET}")
         print(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in _INCOMING/ first.{_RESET}\n")
         return
 
     q = len(result["queue_files"])
-    print(f"\n  {_BOLD}{q} document{'s' if q != 1 else ''}{_RESET} ready for extraction")
+    if q:
+        print(f"\n  {_BOLD}{q} document{'s' if q != 1 else ''}{_RESET} ready for extraction")
+    elif batch_pending:
+        print(f"\n  {_DIM}Checking on a pending batch extraction…{_RESET}")
 
     pinned_skill = _resolve_pinned_skill(args, config)
     if pinned_skill:
         print(f"  {_DIM}Skill pinned:{_RESET} {_CYAN}{Path(pinned_skill).stem}{_RESET}{_DIM} — classification skipped.{_RESET}")
+
+    if classify_backend == "claude-batch" or post_backend == "claude-batch":
+        sys.exit(f"\n  {_YELLOW}Error:{_RESET} claude-batch is only valid for extractor_model, "
+                 f"not classifier_model/finalizer_model.\n")
+    if extract_backend == "claude-batch":
+        if not pinned_skill:
+            sys.exit(f"\n  {_YELLOW}Error:{_RESET} claude-batch requires a pinned skill — "
+                     f"classification isn't batchable.\n  Use {_CYAN}--skill{_RESET} or set "
+                     f"{_CYAN}default_skill{_RESET} via {_CYAN}watchdog configure{_RESET}.\n")
+        if a["mode"] != "api-key":
+            sys.exit(f"\n  {_YELLOW}Error:{_RESET} claude-batch requires api-key auth mode "
+                     f"(it needs a metered key) — run {_CYAN}watchdog auth use api-key{_RESET}.\n")
 
     def _release_lock() -> None:
         (vault / ".watchdog" / "Registry" / ".ingest-lock").unlink(missing_ok=True)
@@ -298,11 +320,15 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
     log_path = vault / "log.md"
     if not log_path.exists():
         log_path.write_text(_render_template("log.md"))
-    print(f"\n  {_DIM}Extracting (≤{concurrency} parallel) — the model is called only for reasoning; "
-          f"the pipeline runs in Python.{_RESET}")
-    print(f"  {_YELLOW}Large documents can take several minutes each{_RESET}{_DIM} — a long pause on a "
-          f"row is normal, not a stall.{_RESET}")
-    print(f"  {_DIM}Press {_RESET}{_CYAN}Ctrl+C{_RESET}{_DIM} to stop; finished documents are kept.{_RESET}\n")
+    if extract_backend == "claude-batch":
+        print(f"\n  {_DIM}claude-batch: sectioned documents (if any) extract via claude-api now; "
+              f"the rest submit as one batch and finish later.{_RESET}")
+    else:
+        print(f"\n  {_DIM}Extracting (≤{concurrency} parallel) — the model is called only for reasoning; "
+              f"the pipeline runs in Python.{_RESET}")
+        print(f"  {_YELLOW}Large documents can take several minutes each{_RESET}{_DIM} — a long pause on a "
+              f"row is normal, not a stall.{_RESET}")
+        print(f"  {_DIM}Press {_RESET}{_CYAN}Ctrl+C{_RESET}{_DIM} to stop; finished documents are kept.{_RESET}\n")
     try:
         summary = asyncio.run(orchestrate.run(
             vault, concurrency=concurrency, extract_model=extract_model, post_model=post_model,
@@ -326,11 +352,16 @@ def _print_ingest_summary(summary: dict) -> None:
     ext, skip, fail = summary["extracted"], summary["skipped"], summary["failed"]
     cancelled = summary.get("cancelled")
     rate_limited = summary.get("rate_limited")
+    batch_pending = summary.get("batch_pending")
     n_cancelled = sum(1 for r in summary["results"] if r.get("status") == "cancelled")
     if rate_limited:
         headline = f"{_YELLOW}Ingest paused — rate limit{_RESET}"
     elif cancelled:
         headline = f"{_YELLOW}Ingest stopped{_RESET}"
+    elif batch_pending and not summary["results"]:
+        # Pure submit-and-exit or still-processing (#214) — nothing extracted *this run*, so
+        # "Ingest complete 0 extracted" would read as if nothing happened.
+        headline = f"{_YELLOW}Batch extraction pending{_RESET}"
     else:
         headline = f"{_GREEN}Ingest complete{_RESET}"
     print(f"\n  {headline}  {_BOLD}{ext}{_RESET} extracted"
@@ -363,7 +394,10 @@ def _print_ingest_summary(summary: dict) -> None:
         cost = f" · ~${usage['cost_usd']:.4f}" if usage.get("cost_usd") else ""
         print(f"  {_DIM}{ext} doc{'s' if ext != 1 else ''} · "
               f"{usage['input_tokens']:,} in / {usage['output_tokens']:,} out tokens{cost}{_RESET}")
-    if cancelled:
+    if batch_pending:
+        print(f"\n  {_DIM}A batch extraction is in flight — re-run {_RESET}{_CYAN}watchdog ingest{_RESET}"
+              f"{_DIM} later to check on it and collect results.{_RESET}\n")
+    elif cancelled:
         print(f"\n  {_DIM}Re-run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} to process the remaining documents.{_RESET}\n")
     else:
         print(f"\n  {_DIM}Open a fresh Claude Code session to ask investigation questions.{_RESET}\n")

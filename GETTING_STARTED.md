@@ -180,12 +180,13 @@ watchdog ingest --finalizer-model opus              # stronger synthesis + brief
 watchdog ingest --classifier-model sonnet           # stronger document classification
 watchdog ingest --extractor-effort medium           # fewer thinking tokens — the main cost lever
 watchdog ingest --extractor-model deepseek:deepseek-chat  # route extraction to another provider
+watchdog ingest --extractor-model claude-batch:sonnet --skill corporate-filings  # bulk, half-price, on a metered key
 watchdog ingest --concurrency 2                     # fewer docs in parallel (if you hit rate limits)
 watchdog ingest --classify-pages 10                 # show the classifier more pages of each document
 watchdog ingest --skill corporate-filings           # pin one record skill, skip classification
 ```
 
-A model knob also accepts a `backend:model` form to run a stage on another provider (`openai:gpt-5-mini`, `deepseek:deepseek-chat`) — store the key first with `watchdog auth set openai|deepseek`. A plain tier keeps the stage on Claude. See [Model backends](README.md#model-backends).
+A model knob also accepts a `backend:model` form to run a stage on another provider (`openai:gpt-5-mini`, `deepseek:deepseek-chat`) — store the key first with `watchdog auth set openai|deepseek`. A plain tier keeps the stage on Claude. `claude-batch` is a special case: it submits extraction as one Anthropic Message Batch (50% off, requires a pinned skill and API-key auth) and **exits rather than waiting** — batches can take up to a day, so `watchdog ingest` submits and re-running it later collects the results. See [Model backends](README.md#model-backends) for the constraints and the full cost-saving recipe.
 
 `--skill` with no value lists the available record skills and lets you pick one interactively; `--skill path/to/skill.md` pins an ad-hoc skill file. Run `watchdog show-skills` to see what the built-in skills cover (it also opens the skills folder on GitHub), and add your own in `~/.watchdog/skills/records/`. For a vault that's always one document type, set it once:
 
