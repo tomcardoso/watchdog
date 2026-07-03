@@ -244,7 +244,7 @@ def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
     # A third entity's own Relationships section renders its roles list, so a role that
     # got remapped onto keep_id needs that entity's note regenerated too — every other
     # section (Analysis/Contradictions/Notes/Summary) is read back untouched.
-    other_notes: dict[str, str] = {}
+    other_notes: dict[str, tuple[str, str]] = {}
     for eid in stats["touched_entities"]:
         entry = entities_reg[eid]
         note_file = vault_path / f"{entry['note_path']}.md"
@@ -258,7 +258,7 @@ def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
         )
         note_file.parent.mkdir(parents=True, exist_ok=True)
         note_file.write_text(content, encoding="utf-8")
-        other_notes[entry["note_path"]] = content
+        other_notes[entry["note_path"]] = (entry["name"], content)
 
     entities_path.write_text(
         json.dumps(entities_reg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
@@ -275,11 +275,18 @@ def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
         json.dumps(existing_registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
 
-    all_notes = {keep_note_path: note_content, merge_note_path: stub_content, **other_notes}
-    for note_path, content in all_notes.items():
+    all_notes = {keep_note_path: (keep["name"], note_content),
+                 merge_note_path: (merge_name, stub_content),
+                 **other_notes}
+    for note_path, (name, content) in all_notes.items():
         try:
             from watchdog.pipeline.embed import add_note
             add_note(vault_path, note_path, content)
+        except Exception:
+            pass
+        try:
+            from watchdog.pipeline.fulltext import add_note as fts_add_note
+            fts_add_note(vault_path, note_path, "entity", name, content)
         except Exception:
             pass
 

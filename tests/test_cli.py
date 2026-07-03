@@ -1936,7 +1936,9 @@ def test_build_search_json_shape():
 
 def test_build_search_json_empty():
     from watchdog.cmd.vault import _build_search_json
-    assert _build_search_json("nothing", [], []) == {"query": "nothing", "passages": [], "notes": []}
+    assert _build_search_json("nothing", [], []) == {
+        "query": "nothing", "passages": [], "notes": [], "exact": [],
+    }
 
 
 # ── Wayback credential gate (#201) ─────────────────────────────────────────────
@@ -2183,3 +2185,176 @@ def test_search_json_output_has_no_ansi_and_full_text(configured, monkeypatch, c
     payload = json.loads(out)
     assert payload["passages"][0]["text"] == "shell company filed"
     assert "\x1b[" not in out
+
+
+# ── cmd_search: exact-match (FTS) section (#109) ───────────────────────────────
+
+def _stub_fts(hits=None):
+    return lambda vault, query, **kw: (hits or [])
+
+
+def test_search_shows_exact_matches_section(configured, monkeypatch, capsys):
+    _register_search_project(configured)
+    monkeypatch.setattr("watchdog.pipeline.embed.index_stats", lambda vault: {"total": 1})
+    monkeypatch.setattr("watchdog.pipeline.embed.search", _stub_search())
+    monkeypatch.setattr("watchdog.pipeline.fulltext.search", _stub_fts([
+        {"kind": "corpus", "key": "sha1", "title": "doc.pdf", "path": "morgue/doc.pdf",
+         "page": 4, "text": "the shell company filed papers"},
+    ]))
+
+    cli.cmd_search(args(project="test-proj", query="shell company", top_n=5,
+                         threshold=None, no_rerank=False, json=False, full=False))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Exact matches" in out
+    assert "doc.pdf" in out
+    assert "morgue/doc.pdf#page=4" in out
+
+
+def test_search_exact_note_hit_shows_kind_label_not_path_for_corpus(configured, monkeypatch, capsys):
+    _register_search_project(configured)
+    monkeypatch.setattr("watchdog.pipeline.embed.index_stats", lambda vault: {"total": 1})
+    monkeypatch.setattr("watchdog.pipeline.embed.search", _stub_search())
+    monkeypatch.setattr("watchdog.pipeline.fulltext.search", _stub_fts([
+        {"kind": "entity", "key": "entities/alice", "title": "Alice Smith",
+         "path": "entities/alice", "page": None, "text": "Alice Smith is a director"},
+    ]))
+
+    cli.cmd_search(args(project="test-proj", query="director", top_n=5,
+                         threshold=None, no_rerank=False, json=False, full=False))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "entities/alice" in out
+    assert "Entity note" in out
+
+
+def test_search_json_includes_exact_lane(configured, monkeypatch, capsys):
+    _register_search_project(configured)
+    monkeypatch.setattr("watchdog.pipeline.embed.index_stats", lambda vault: {"total": 1})
+    monkeypatch.setattr("watchdog.pipeline.embed.search", _stub_search())
+    monkeypatch.setattr("watchdog.pipeline.fulltext.search", _stub_fts([
+        {"kind": "entity", "key": "entities/alice", "title": "Alice Smith",
+         "path": "entities/alice", "page": None, "text": "Alice Smith is a director"},
+    ]))
+
+    cli.cmd_search(args(project="test-proj", query="director", top_n=5,
+                         threshold=None, no_rerank=False, json=True, full=False))
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["exact"][0]["title"] == "Alice Smith"
+    assert payload["exact"][0]["kind"] == "entity"
+
+
+def test_search_no_results_across_all_three_lanes_says_no_results(configured, monkeypatch, capsys):
+    _register_search_project(configured)
+    monkeypatch.setattr("watchdog.pipeline.embed.index_stats", lambda vault: {"total": 1})
+    monkeypatch.setattr("watchdog.pipeline.embed.search", _stub_search())
+    monkeypatch.setattr("watchdog.pipeline.fulltext.search", _stub_fts([]))
+
+    cli.cmd_search(args(project="test-proj", query="nothing", top_n=5,
+                         threshold=None, no_rerank=False, json=False, full=False))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "No results" in out
+
+
+def test_search_exact_lane_failure_does_not_crash_search(configured, monkeypatch, capsys):
+    _register_search_project(configured)
+    monkeypatch.setattr("watchdog.pipeline.embed.index_stats", lambda vault: {"total": 1})
+    monkeypatch.setattr("watchdog.pipeline.embed.search", _stub_search(
+        passage={"filename": "doc.pdf", "page": 1, "text": "shell company filed", "score": 0.5}))
+
+    def _boom(vault, query, **kw):
+        raise RuntimeError("no FTS5 support")
+    monkeypatch.setattr("watchdog.pipeline.fulltext.search", _boom)
+
+    cli.cmd_search(args(project="test-proj", query="shell", top_n=5,
+                         threshold=None, no_rerank=False, json=False, full=False))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Source passages" in out
+
+
+# ── cmd_search --batch (#110) ───────────────────────────────────────────────────
+
+def _write_manifest(vault, manifest):
+    reg_dir = vault / ".watchdog" / "Registry"
+    reg_dir.mkdir(parents=True, exist_ok=True)
+    (reg_dir / "manifest.json").write_text(json.dumps(manifest))
+
+
+def test_manifest_matches_by_name_substring():
+    manifest = {"alice-smith": {"name": "Alice Smith", "type": "Person",
+                                "aliases": [], "note_path": "entities/person/alice-smith"}}
+    hits = _vault._manifest_matches(manifest, "alice")
+    assert len(hits) == 1
+    assert hits[0]["note_path"] == "entities/person/alice-smith"
+
+
+def test_manifest_matches_by_alias():
+    manifest = {"alice-smith": {"name": "Alice Smith", "type": "Person",
+                                "aliases": ["A. Smith"], "note_path": "entities/person/alice-smith"}}
+    assert len(_vault._manifest_matches(manifest, "A. Smith")) == 1
+
+
+def test_manifest_matches_case_insensitive_no_match_returns_empty():
+    manifest = {"alice-smith": {"name": "Alice Smith", "type": "Person",
+                                "aliases": [], "note_path": "entities/person/alice-smith"}}
+    assert _vault._manifest_matches(manifest, "Bob Jones") == []
+
+
+def test_read_batch_terms_skips_blank_lines_and_comments(tmp_path):
+    f = tmp_path / "names.txt"
+    f.write_text("Alice Smith\n\n# a comment\nBob Jones\n  \n")
+    assert _vault._read_batch_terms(f) == ["Alice Smith", "Bob Jones"]
+
+
+def test_read_batch_terms_missing_file_exits(tmp_path):
+    with pytest.raises(SystemExit):
+        _vault._read_batch_terms(tmp_path / "missing.txt")
+
+
+def test_search_batch_reports_hits_and_no_hits(configured, monkeypatch, tmp_path, capsys):
+    vault = _register_search_project(configured)
+    _write_manifest(vault, {"alice-smith": {"name": "Alice Smith", "type": "Person",
+                                            "aliases": [], "note_path": "entities/person/alice-smith"}})
+    monkeypatch.setattr("watchdog.pipeline.fulltext.search", lambda vault, query, **kw: (
+        [{"kind": "corpus", "key": "sha1", "title": "doc.pdf", "path": "morgue/doc.pdf",
+          "page": 2, "text": "..."}] if query == "Bob Jones" else []
+    ))
+    batch_file = tmp_path / "names.txt"
+    batch_file.write_text("Alice Smith\nBob Jones\nNo One\n")
+
+    cli.cmd_search(args(project="test-proj", query=None, batch=str(batch_file), top_n=5, json=False))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Alice Smith" in out
+    assert "entities/person/alice-smith" in out
+    assert "Bob Jones" in out
+    assert "doc.pdf" in out
+    assert "No One" in out
+    assert "no hits" in out
+
+
+def test_search_batch_json_output(configured, monkeypatch, tmp_path, capsys):
+    vault = _register_search_project(configured)
+    _write_manifest(vault, {})
+    monkeypatch.setattr("watchdog.pipeline.fulltext.search", lambda vault, query, **kw: [])
+    batch_file = tmp_path / "names.txt"
+    batch_file.write_text("Ghost\n")
+
+    cli.cmd_search(args(project="test-proj", query=None, batch=str(batch_file), top_n=5, json=True))
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["terms"][0]["term"] == "Ghost"
+    assert payload["terms"][0]["entities"] == []
+    assert payload["terms"][0]["hits"] == []
+
+
+def test_search_batch_rejects_query_argument(configured, tmp_path):
+    _register_search_project(configured)
+    batch_file = tmp_path / "names.txt"
+    batch_file.write_text("Alice\n")
+    with pytest.raises(SystemExit):
+        cli.cmd_search(args(project="test-proj", query="alice", batch=str(batch_file), top_n=5, json=False))
+
+
+def test_search_batch_empty_file_exits(configured, tmp_path):
+    _register_search_project(configured)
+    batch_file = tmp_path / "names.txt"
+    batch_file.write_text("\n\n")
+    with pytest.raises(SystemExit):
+        cli.cmd_search(args(project="test-proj", query=None, batch=str(batch_file), top_n=5, json=False))

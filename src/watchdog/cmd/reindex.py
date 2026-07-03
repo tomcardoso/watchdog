@@ -1,5 +1,5 @@
-"""`watchdog reindex` — rebuild `.embeddings/` from on-disk vault state, with zero model
-calls (#218).
+"""`watchdog reindex` — rebuild `.embeddings/` and `.fulltext/` from on-disk vault state,
+with zero model calls (#218, #109).
 
 D38's tradeoff note: "changing `embed_model` requires a full re-chew" — true when embedding
 ran at chew time, before D43 moved it into `write_vault` (which needs extraction's title/
@@ -7,7 +7,8 @@ type/entities for the contextual prefix). For an already-ingested vault those ou
 already live in `documents.json`/`entities.json`, and the full per-page text lives in the
 morgue `<stem>.md` sibling files (D26) — so a full re-embed needs no OCR re-run and no model
 tokens, just local `embed.py` calls. This also unlocks retroactively upgrading an older vault
-to the hybrid (BM25 + rerank) corpus path (D43) without re-ingesting.
+to the hybrid (BM25 + rerank) corpus path (D43) without re-ingesting. The same on-disk state
+rebuilds the full-text (exact-term) index (`fulltext.py`) alongside it.
 """
 
 import json
@@ -57,9 +58,40 @@ def _note_paths(vault: Path) -> list[Path]:
     return paths
 
 
+def _title_from_note(text: str) -> str:
+    """First `# Heading` in the note, falling back to the frontmatter `name:` line."""
+    for line in text.splitlines():
+        if line.startswith("# "):
+            return line[2:].strip()
+    for line in text.splitlines():
+        if line.startswith("name:"):
+            return line.split(":", 1)[1].strip()
+    return ""
+
+
+def _fixed_note_specs(vault: Path) -> list[tuple[Path, str, str]]:
+    """(path, kind, title) for generated notes outside entities/ and documents/ — timeline,
+    briefings, hot cache, run log, and the human-authored investigation context (#109: the
+    full-text index covers everything a journalist might grep for, not just entity/document
+    notes)."""
+    specs: list[tuple[Path, str, str]] = []
+    if (vault / "timeline.md").exists():
+        specs.append((vault / "timeline.md", "timeline", "Timeline"))
+    if (vault / "hot.md").exists():
+        specs.append((vault / "hot.md", "hot", "Hot cache"))
+    if (vault / "log.md").exists():
+        specs.append((vault / "log.md", "log", "Run log"))
+    if (vault / "context.md").exists():
+        specs.append((vault / "context.md", "context", "Context"))
+    if (vault / "briefings").is_dir():
+        for md_path in sorted((vault / "briefings").glob("*.md")):
+            specs.append((md_path, "briefing", f"Briefing {md_path.stem}"))
+    return specs
+
+
 def cmd_reindex(args) -> None:
     _, info, vault = _resolve_vault(getattr(args, "project", None))
-    from watchdog.pipeline import embed
+    from watchdog.pipeline import embed, fulltext
 
     reg_dir = vault / ".watchdog" / "Registry"
     documents_reg = {}
@@ -88,6 +120,7 @@ def cmd_reindex(args) -> None:
     # A full rebuild replaces the index outright, so a note/passage for a document or entity
     # that no longer exists (e.g. after a future merge-entities) doesn't survive alongside it.
     shutil.rmtree(vault / ".embeddings", ignore_errors=True)
+    shutil.rmtree(vault / ".fulltext", ignore_errors=True)
 
     n_docs = n_passages = n_skipped = 0
     for sha, doc in documents_reg.items():
@@ -104,6 +137,7 @@ def cmd_reindex(args) -> None:
             continue
         context = _doc_context(sha, doc, entities_reg)
         count = embed.add_document(vault, filename, pages, context=context)
+        fulltext.add_document(vault, filename, sha, pages, morgue_path=morgue_path or "")
         n_docs += 1
         n_passages += count
         print(f"  {_GREEN}✓{_RESET}  {filename}  {_DIM}{count} passages{_RESET}")
@@ -111,8 +145,15 @@ def cmd_reindex(args) -> None:
     n_notes = 0
     for md_path in _note_paths(vault):
         note_path = str(md_path.relative_to(vault).with_suffix(""))
-        embed.add_note(vault, note_path, md_path.read_text(encoding="utf-8"))
+        text = md_path.read_text(encoding="utf-8")
+        embed.add_note(vault, note_path, text)
+        kind = "document" if note_path.startswith("documents/") else "entity"
+        fulltext.add_note(vault, note_path, kind, _title_from_note(text), text)
         n_notes += 1
+
+    for md_path, kind, title in _fixed_note_specs(vault):
+        note_path = str(md_path.relative_to(vault).with_suffix(""))
+        fulltext.add_note(vault, note_path, kind, title, md_path.read_text(encoding="utf-8"))
 
     print()
     skipped_note = f"  {_DIM}({n_skipped} skipped — no morgue text){_RESET}" if n_skipped else ""

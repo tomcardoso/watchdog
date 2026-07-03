@@ -10,7 +10,7 @@ import pytest
 
 from watchdog import model_client
 from watchdog.cmd.reindex import _pages_from_morgue_text, cmd_reindex
-from watchdog.pipeline import embed as embed_mod, orchestrate
+from watchdog.pipeline import embed as embed_mod, fulltext as fts_mod, orchestrate
 
 from tests.test_orchestrate import _extraction, _queue_doc
 from tests.test_write_vault import make_vault
@@ -148,3 +148,66 @@ def test_reindex_errors_when_nothing_ingested(tmp_path, monkeypatch):
     monkeypatch.chdir(vault)
     with pytest.raises(SystemExit, match="nothing to reindex"):
         cmd_reindex(_args())
+
+
+# ── cmd_reindex: full-text (FTS) index (#109) ──────────────────────────────────
+
+def test_reindex_rebuilds_fulltext_index_matching_the_original_ingest(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _ingest_one_doc(vault, monkeypatch)
+
+    before = fts_mod.index_stats(vault)
+    assert before["corpus"] > 0
+    assert before["notes"] > 0
+
+    monkeypatch.chdir(vault)
+    cmd_reindex(_args())
+
+    after = fts_mod.index_stats(vault)
+    assert after == before
+
+
+def test_reindex_fulltext_search_finds_corpus_terms_after_rebuild(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _ingest_one_doc(vault, monkeypatch)
+
+    monkeypatch.chdir(vault)
+    cmd_reindex(_args())
+
+    hits = fts_mod.search(vault, "Acme Corp")
+    assert any(h["kind"] == "corpus" for h in hits)
+
+
+def test_reindex_fulltext_skips_documents_with_no_morgue_text_but_still_rebuilds_notes(
+        tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _ingest_one_doc(vault, monkeypatch)
+    for md in (vault / "morgue").rglob("*.md"):
+        md.unlink()
+
+    monkeypatch.chdir(vault)
+    cmd_reindex(_args())
+
+    stats = fts_mod.index_stats(vault)
+    assert stats["corpus"] == 0
+    assert stats["notes"] > 0
+
+
+def test_reindex_fulltext_includes_timeline_and_briefings(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _ingest_one_doc(vault, monkeypatch)
+    assert (vault / "timeline.md").exists()
+    assert list((vault / "briefings").glob("*.md"))
+
+    monkeypatch.chdir(vault)
+    cmd_reindex(_args())
+
+    # timeline.md and at least one briefing must have been indexed under their own kinds
+    with_kinds = {"timeline", "briefing", "hot", "log", "entity", "document", "corpus"}
+    import sqlite3
+    conn = sqlite3.connect(fts_mod._db_path(vault))
+    kinds_present = {row[0] for row in conn.execute("SELECT DISTINCT kind FROM fulltext")}
+    conn.close()
+    assert "timeline" in kinds_present
+    assert "briefing" in kinds_present
+    assert kinds_present <= with_kinds

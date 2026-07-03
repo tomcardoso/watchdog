@@ -39,8 +39,10 @@ def _read_ndjson_lines(path: Path) -> list[str]:
 
 
 def _stage_dedup_key(date: str, event: str) -> str:
-    """Match write_vault's within-document dedup convention: date + event prefix."""
-    return f"{date}|{event[:80].lower()}"
+    """Match write_vault's dedup convention: date + full event text (not a prefix — a
+    truncated key can collide on a long fact's shared opening while its divergent, material
+    part lands past the cutoff)."""
+    return f"{date}|{event.lower()}"
 
 
 def stage_timeline_events(vault: Path, extraction: dict) -> int:
@@ -141,18 +143,24 @@ _TIMELINE_HEADER = (
 )
 
 
+def _write_timeline_md(vault: Path, content: str) -> None:
+    (vault / "timeline.md").write_text(content, encoding="utf-8")
+    try:
+        from watchdog.pipeline.fulltext import add_note as fts_add_note
+        fts_add_note(vault, "timeline", "timeline", "Timeline", content)
+    except Exception as e:
+        print(f"  Warning: full-text index update failed for timeline: {e}", file=sys.stderr)
+
+
 def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
     """Read all canonical {date}.ndjson files and render timeline.md.
 
     Returns (date_count, event_count) so callers can report progress.
     """
     td = _timeline_dir(vault)
-    timeline_md = vault / "timeline.md"
 
     if not td.exists() or not any(td.glob("*.ndjson")):
-        timeline_md.write_text(
-            _TIMELINE_HEADER + "*No events yet.*\n", encoding="utf-8"
-        )
+        _write_timeline_md(vault, _TIMELINE_HEADER + "*No events yet.*\n")
         if not quiet:
             print("timeline.md written — no events yet")
         return (0, 0)
@@ -163,9 +171,7 @@ def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
     )
 
     if not canonical_files:
-        timeline_md.write_text(
-            _TIMELINE_HEADER + "*No events yet.*\n", encoding="utf-8"
-        )
+        _write_timeline_md(vault, _TIMELINE_HEADER + "*No events yet.*\n")
         if not quiet:
             print("timeline.md written — no canonical files yet")
         return (0, 0)
@@ -193,7 +199,7 @@ def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
         sections.append("\n".join(lines))
 
     content = _TIMELINE_HEADER + "\n\n".join(sections) + "\n"
-    timeline_md.write_text(content, encoding="utf-8")
+    _write_timeline_md(vault, content)
     if not quiet:
         print(f"timeline.md rebuilt — {len(canonical_files)} date(s), {total_events} event(s)")
     return (len(canonical_files), total_events)

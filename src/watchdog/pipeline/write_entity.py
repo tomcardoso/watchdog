@@ -84,6 +84,11 @@ def run(extraction_path: Path, vault_path: Path) -> None:
         add_note(vault_path, entry["note_path"], note_content)
     except Exception as e:
         print(f"  Warning: embed index update failed for {entry['note_path']}: {e}", file=sys.stderr)
+    try:
+        from watchdog.pipeline.fulltext import add_note as fts_add_note
+        fts_add_note(vault_path, entry["note_path"], "entity", entry["name"], note_content)
+    except Exception as e:
+        print(f"  Warning: full-text index update failed for {entry['note_path']}: {e}", file=sys.stderr)
 
     entities_path.write_text(
         json.dumps(entities_reg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
