@@ -729,6 +729,61 @@ def test_timeline_events_deduplicated(tmp_path):
     assert len(matching) == 1
 
 
+def test_timeline_dedup_keeps_events_with_long_shared_opening(tmp_path):
+    """Regression guard: dedup keys on the full event text today, not a truncated prefix. A
+    prefix-based key (what this function used before, and what a future edit could reintroduce)
+    would treat these two events as one and silently drop the second — the opening clause is
+    identical, but who the property went to (the material fact) differs after the shared part."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+
+    shared_opening = ("On March 3, 2019, Acme Holdings Ltd. transferred beneficial ownership of the "
+                       "Cayman Islands shell company, via an intermediary numbered offshore company, to ")
+    # Not tied to any specific number in the source — just long enough that any prefix-based
+    # dedup key, past or future, would wrongly treat these two events as the same one.
+    assert len(shared_opening) > 150
+    existing_entities = {
+        "alice-smith": {
+            "id": "alice-smith",
+            "name": "Alice Smith",
+            "type": "Person",
+            "aliases": [],
+            "appears_in": ["prior-sha"],
+            "note_path": "entities/person/alice-smith",
+            "roles": [],
+            "timeline_events": [
+                {"date": "2019-03-03", "event": shared_opening + "shell company to John Smith.",
+                 "page": 2, "basis": "stated", "source_sha256": "prior-sha"},
+            ],
+            "date_first_seen": "2019-03-03",
+            "date_last_updated": "2019-03-03",
+        }
+    }
+    (vault / ".watchdog" / "Registry" / "entities.json").write_text(
+        json.dumps(existing_entities)
+    )
+
+    run(make_extraction(tmp_path, {"entities": [
+        {"id": "alice-smith", "name": "Alice Smith", "type": "Person", "aliases": [],
+         "summary": "A director.", "roles": [], "timeline_events": [
+            {"date": "2019-03-03", "event": shared_opening + "shell company to Jane Doe's family trust.",
+             "page": 5, "basis": "stated"},
+        ]},
+        {"id": "acme-corp", "name": "Acme Corp", "type": "Company", "aliases": [],
+         "summary": "The company.", "timeline_events": [], "roles": []},
+    ]}), vault)
+
+    entities = json.loads(
+        (vault / ".watchdog" / "Registry" / "entities.json").read_text()
+    )
+    matching = [
+        e for e in entities["alice-smith"]["timeline_events"]
+        if e["date"] == "2019-03-03"
+    ]
+    assert len(matching) == 2
+    assert any(e["event"].endswith("John Smith.") for e in matching)
+    assert any(e["event"].endswith("family trust.") for e in matching)
+
 
 def test_global_timeline_contains_event(tmp_path):
     vault = make_vault(tmp_path)
