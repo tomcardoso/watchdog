@@ -355,8 +355,8 @@ def test_run_returns_report_dict(tmp_path):
 
 # ── cmd_merge_entities — CLI wrapper ──────────────────────────────────────────
 
-def _args(keep_id, merge_id):
-    return argparse.Namespace(keep_id=keep_id, merge_id=merge_id)
+def _args(keep_id, merge_id, force=True):
+    return argparse.Namespace(keep_id=keep_id, merge_id=merge_id, force=force)
 
 
 def test_cli_requires_running_inside_a_vault(tmp_path, monkeypatch):
@@ -376,7 +376,7 @@ def test_cli_reports_unknown_id(tmp_path, monkeypatch, capsys):
 def test_cli_prints_merge_summary(tmp_path, monkeypatch, capsys):
     vault = make_vault(tmp_path)
     monkeypatch.chdir(vault)
-    cmd_merge_entities(_args("alice-smith", "a-smith-duplicate"))
+    cmd_merge_entities(_args("alice-smith", "a-smith-duplicate"))   # force=True: no prompt
 
     out = _strip_ansi(capsys.readouterr().out)
     assert "Merged:" in out
@@ -385,3 +385,48 @@ def test_cli_prints_merge_summary(tmp_path, monkeypatch, capsys):
 
     entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
     assert "a-smith-duplicate" not in entities
+
+
+def test_cli_shows_preview_and_asks_for_confirmation(tmp_path, monkeypatch, capsys):
+    """Without --force, both entities are shown before anything happens, and declining
+    (the default on a bare Enter) leaves the registry untouched."""
+    vault = make_vault(tmp_path)
+    monkeypatch.chdir(vault)
+    prompts = []
+    monkeypatch.setattr("builtins.input", lambda p="": prompts.append(p) or "")  # bare Enter → default No
+
+    cmd_merge_entities(_args("alice-smith", "a-smith-duplicate", force=False))
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Alice Smith" in out and "A. Smith" in out   # preview shown
+    assert "cannot be undone" in _strip_ansi(prompts[0])   # real input() prints the prompt too
+    assert "Cancelled" in out
+    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    assert "a-smith-duplicate" in entities   # nothing merged
+
+
+def test_cli_proceeds_on_explicit_yes(tmp_path, monkeypatch, capsys):
+    vault = make_vault(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr("builtins.input", lambda *_: "y")
+
+    cmd_merge_entities(_args("alice-smith", "a-smith-duplicate", force=False))
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Merged:" in out
+    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    assert "a-smith-duplicate" not in entities
+
+
+def test_cli_warns_on_mismatched_types(tmp_path, monkeypatch, capsys):
+    vault = make_vault(tmp_path)
+    monkeypatch.chdir(vault)
+    reg_path = vault / ".watchdog" / "Registry" / "entities.json"
+    entities = json.loads(reg_path.read_text())
+    entities["a-smith-duplicate"]["type"] = "Company"   # was Person — force a mismatch
+    reg_path.write_text(json.dumps(entities))
+
+    cmd_merge_entities(_args("alice-smith", "a-smith-duplicate"))   # force=True
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "different entity types" in out.lower()
