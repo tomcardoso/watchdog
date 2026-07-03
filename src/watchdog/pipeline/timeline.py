@@ -49,10 +49,10 @@ def stage_timeline_events(vault: Path, extraction: dict) -> int:
     """Write raw per-date NDJSON timeline files from an extraction blob.
 
     Reads the dated facts on ``document.key_facts`` (#140): every key_fact carrying a ``date`` is a
-    timeline event, with its ``entities`` tags supplying the contributing entity ids. Attaches the
-    document sha, deduplicates within the document by (date, event text) while unioning entity ids,
-    groups by date, and writes one raw ``.watchdog/timeline/{date}_{sha[:7]}.ndjson`` file per date.
-    The existing ``timeline-collisions`` / ``rebuild-timeline`` flow consumes these unchanged.
+    timeline event. Attaches the document sha, deduplicates within the document by (date, event
+    text), groups by date, and writes one raw ``.watchdog/timeline/{date}_{sha[:7]}.ndjson`` file
+    per date. The existing ``timeline-collisions`` / ``rebuild-timeline`` flow consumes these
+    unchanged.
 
     Returns the number of dates written.
     """
@@ -68,19 +68,13 @@ def stage_timeline_events(vault: Path, extraction: dict) -> int:
         event_text = (fact.get("fact") or "").strip()
         if not date or not event_text:
             continue
-        tags = [e for e in (fact.get("entities") or []) if e]
         key = _stage_dedup_key(date, event_text)
         bucket = by_date.setdefault(date, {})
-        if key in bucket:
-            for eid in tags:
-                if eid not in bucket[key]["entity_ids"]:
-                    bucket[key]["entity_ids"].append(eid)
-        else:
+        if key not in bucket:
             bucket[key] = {
                 "date": date,
                 "event": event_text,
                 "source_sha256": sha,
-                "entity_ids": list(tags),
                 "basis": fact.get("basis", "stated"),
             }
 
