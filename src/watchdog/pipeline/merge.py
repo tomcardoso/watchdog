@@ -36,11 +36,13 @@ def _merge_into(acc: list, incoming: list, key_fn) -> None:
 
 
 def _dedup_key_facts(facts: list) -> list:
-    """Dedup by fact text; union entity tags and keep a date if any duplicate carries one."""
+    """Dedup by full fact text (not a prefix — a truncated key can conflate two distinct facts
+    that merely share a long opening clause); union entity tags and keep a date if any
+    duplicate carries one."""
     out: list = []
     by_key: dict[str, dict] = {}
     for f in facts:
-        k = (f.get("fact") or "")[:120].lower()
+        k = (f.get("fact") or "").lower()
         if not k:
             continue
         if k not in by_key:

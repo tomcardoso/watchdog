@@ -39,8 +39,10 @@ def _read_ndjson_lines(path: Path) -> list[str]:
 
 
 def _stage_dedup_key(date: str, event: str) -> str:
-    """Match write_vault's within-document dedup convention: date + event prefix."""
-    return f"{date}|{event[:80].lower()}"
+    """Match write_vault's dedup convention: date + full event text (not a prefix — a
+    truncated key can collide on a long fact's shared opening while its divergent, material
+    part lands past the cutoff)."""
+    return f"{date}|{event.lower()}"
 
 
 def stage_timeline_events(vault: Path, extraction: dict) -> int:

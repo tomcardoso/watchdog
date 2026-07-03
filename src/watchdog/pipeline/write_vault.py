@@ -245,7 +245,10 @@ def _render_date(date_str: str) -> str:
 
 
 def _timeline_dedup_key(event: dict) -> str:
-    return f"{event.get('date', '')}|{event.get('event', '')[:80].lower()}"
+    # Full text, not a prefix — a truncated key can collide on a long fact's shared opening
+    # clause (e.g. "On March 3, 2019, Acme Corp transferred...") while the divergent, material
+    # part of the sentence lands past the cutoff, silently losing the second event.
+    return f"{event.get('date', '')}|{event.get('event', '').lower()}"
 
 
 def _merge_timeline_events(existing: list[dict], incoming: list[dict], doc_sha256: str) -> list[dict]:
