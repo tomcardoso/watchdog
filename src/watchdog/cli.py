@@ -88,6 +88,7 @@ from watchdog.cmd.setup import (
 )
 from watchdog.cmd.auth import cmd_auth
 from watchdog.cmd.export import cmd_export
+from watchdog.cmd.merge_entities import cmd_merge_entities
 from watchdog.cmd.leads import cmd_leads
 from watchdog.cmd.reindex import cmd_reindex
 from watchdog.cmd.research import cmd_fetch, cmd_research, cmd_research_fetch, cmd_research_seen
@@ -238,6 +239,13 @@ def main() -> None:
     p_export.add_argument("--format", choices=["csv", "cypher"], default="csv",
                           help="Output format (default: csv)")
     p_export.set_defaults(func=cmd_export)
+
+    p_merge_entities = sub.add_parser("merge-entities", help="Merge a duplicate entity into another, deterministically")
+    p_merge_entities.add_argument("keep_id", help="Entity id to keep (the survivor)")
+    p_merge_entities.add_argument("merge_id", help="Entity id to merge away (folded into keep_id)")
+    p_merge_entities.add_argument("--force", action="store_true",
+                                  help="Skip the confirmation prompt")
+    p_merge_entities.set_defaults(func=cmd_merge_entities)
 
     p_leads = sub.add_parser("leads", help="Surface investigative leads from the entity graph (deterministic)")
     p_leads.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer

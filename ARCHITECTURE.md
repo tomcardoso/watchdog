@@ -476,6 +476,25 @@ ingest-state.json           handoff from `watchdog ingest` to the skill
 lookup (names/aliases → id/note_path) for candidate matching; reading the full
 registry for every document would be wasteful. The manifest is the cheap index.
 
+**Merging duplicate entities (`watchdog merge-entities <keep-id> <merge-id>`, D54).**
+Code: `pipeline/merge_entities.py`, `cmd/merge_entities.py`. Ingest-time reconciliation
+(`_reconcile_entity_ids`, above) only catches slug drift *coined within one batch*; the
+same real-world entity extracted under two ids across separate ingests — the gap D39's
+Neo4j-export tradeoff note and the dashboard's "Possible duplicates"/"Single-source
+entities to review" views could only ever flag, never fix — needs a manual, deterministic
+merge. `merge()` unions `aliases`/`appears_in`/`roles`/`timeline_events` onto the
+surviving id and remaps every `role.target_id` **across the whole registry** that named
+the losing id (not just the two entities involved), dropping any role that would end up
+self-referential; `run()` additionally concatenates the losing note's `## Analysis` into
+the survivor's with dated provenance, redirects the losing note to a short stub linking
+to the survivor, regenerates any third-party entity note whose own Relationships section
+just changed, rebuilds the manifest and global timeline, and does a best-effort reindex
+of every note it touched. Must be run from inside the vault it mutates (no model calls,
+no project-name lookup needed). The merged-away entity's stale corpus/notes search-index
+entries are cleaned up by a subsequent `watchdog reindex` (D53), not by this command
+itself — a full rebuild is the existing, already-documented way to drop vectors for
+anything no longer in the registry.
+
 ---
 
 ## 13. Models & skills
