@@ -221,9 +221,9 @@ def main() -> None:
     p_about = sub.add_parser("about", help="Show version and project links")
     p_about.set_defaults(func=cmd_about)
 
-    p_search = sub.add_parser("search", help="Semantic search across ingested documents")
+    p_search = sub.add_parser("search", help="Search ingested documents (semantic + exact-match)")
     p_search.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
-    p_search.add_argument("query", nargs="?", help="Search query (supports +/- phrases)")
+    p_search.add_argument("query", nargs="?", help="Search query (supports +/- phrases and \"quoted phrases\")")
     p_search.add_argument("--top", dest="top_n", type=int, default=5, metavar="N",
                           help="Number of results to return per section (default: 5)")
     p_search.add_argument("--threshold", type=float, default=None, metavar="S",
@@ -232,6 +232,9 @@ def main() -> None:
                           help="Skip the cross-encoder rerank of corpus results (faster; lower quality)")
     p_search.add_argument("--full", action="store_true",
                           help="Print the complete passage/note text instead of a truncated snippet")
+    p_search.add_argument("--batch", metavar="FILE",
+                          help="Read search terms from FILE (one per line) and report hits per term, "
+                               "instead of ranking a single query")
     p_search.add_argument("--json", action="store_true",
                           help="Emit results as JSON (for skills/scripts) instead of the formatted listing")
     p_search.set_defaults(func=cmd_search)

@@ -1104,10 +1104,19 @@ def _windowed_snippet(text: str, terms: list[str], width: int) -> str:
     return f"{prefix}{text[start:end]}{suffix}"
 
 
-def _build_search_json(query: str, passages: list[dict], notes: list[dict]) -> dict:
+_EXACT_KIND_LABELS = {
+    "corpus": "Source document", "entity": "Entity note", "document": "Document note",
+    "timeline": "Timeline", "briefing": "Briefing", "hot": "Hot cache",
+    "log": "Run log", "context": "Context",
+}
+
+
+def _build_search_json(query: str, passages: list[dict], notes: list[dict],
+                        exact: list[dict] | None = None) -> dict:
     """Shape `watchdog search` results for `--json` consumers (the watchdog-query semantic
     lane, scripts). Each passage carries the citable span (`text`) + its page; `score` is the
-    cosine similarity (ordering already reflects fusion + rerank)."""
+    cosine similarity (ordering already reflects fusion + rerank). ``exact`` is the full-text
+    (FTS5) lane (#109) — every hit for the exact term/phrase, no relevance score."""
     return {
         "query": query,
         "passages": [
@@ -1120,10 +1129,116 @@ def _build_search_json(query: str, passages: list[dict], notes: list[dict]) -> d
              "score": round(float(r["score"]), 4)}
             for r in notes
         ],
+        "exact": [
+            {"kind": r.get("kind"), "title": r.get("title"), "path": r.get("path"),
+             "page": r.get("page"), "text": r.get("text")}
+            for r in (exact or [])
+        ],
     }
 
 
+def _read_batch_terms(path: Path) -> list[str]:
+    if not path.exists():
+        sys.exit(f"Error: batch file not found: {path}")
+    terms = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            terms.append(line)
+    return terms
+
+
+def _manifest_matches(manifest: dict, term: str) -> list[dict]:
+    """Entities whose name or any alias contains `term` (case-insensitive substring)."""
+    t = term.lower()
+    hits = []
+    for eid, entry in manifest.items():
+        names = [entry.get("name", ""), *entry.get("aliases", [])]
+        if any(t in n.lower() for n in names if n):
+            hits.append({"id": eid, "name": entry.get("name"), "type": entry.get("type"),
+                        "note_path": entry.get("note_path")})
+    return hits
+
+
+def cmd_search_batch(args, vault: Path, batch_file: str) -> None:
+    """`watchdog search --batch <file>`: one report per term (#110) — every N names in a
+    leaked roster, sanctions list, or donor list against manifest entities (structured
+    name/alias matches) and the full-text index (#109, every literal occurrence in the
+    corpus and every note). Deliberately skips the semantic/embedding lane: a batch is
+    routinely hundreds of terms, and embedding + rerank per term doesn't scale the way an
+    in-process SQLite query does — manifest + FTS is the fast, exhaustive combination the
+    issue calls a "clear no-hits for misses" for.
+    """
+    from watchdog.pipeline import fulltext
+    terms = _read_batch_terms(Path(batch_file))
+    if not terms:
+        sys.exit(f"Error: no terms found in {batch_file}")
+
+    manifest_path = vault / ".watchdog" / "Registry" / "manifest.json"
+    manifest = {}
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            pass
+
+    as_json = getattr(args, "json", False)
+    limit = args.top_n
+    report = []
+    for term in terms:
+        entities = _manifest_matches(manifest, term)
+        try:
+            hits = fulltext.search(vault, term, limit=limit)
+        except Exception:
+            hits = []
+        report.append({"term": term, "entities": entities, "hits": hits})
+
+    if as_json:
+        print(json.dumps({
+            "terms": [
+                {"term": r["term"],
+                 "entities": r["entities"],
+                 "hits": [{"kind": h["kind"], "title": h["title"], "path": h["path"], "page": h["page"]}
+                          for h in r["hits"]]}
+                for r in report
+            ]
+        }, ensure_ascii=False))
+        return
+
+    print()
+    for r in report:
+        print(f"  {_BOLD}{r['term']}{_RESET}")
+        if not r["entities"] and not r["hits"]:
+            print(f"    {_DIM}no hits{_RESET}")
+            print()
+            continue
+        for e in r["entities"]:
+            print(f"    {_DIM}entity{_RESET}  {e['note_path']}  {_DIM}({e['type']}){_RESET}")
+        for h in r["hits"]:
+            label = _EXACT_KIND_LABELS.get(h["kind"], h["kind"]).lower()
+            loc = f"p.{h['page']}" if h.get("page") else (h.get("path") or "")
+            print(f"    {_DIM}{label}{_RESET}  {h.get('title') or h.get('path')}  {_DIM}{loc}{_RESET}")
+        print()
+
+
 def cmd_search(args) -> None:
+    batch_file = getattr(args, "batch", None)
+    if batch_file:
+        project_arg = args.project
+        if args.query:
+            sys.exit("Error: --batch reads terms from a file; drop the search query argument.")
+        if project_arg:
+            _, info = _find_project(project_arg)
+        else:
+            projects = load_projects()
+            cwd = Path(".").resolve()
+            match = next(((s, v) for s, v in projects.items() if Path(v["path"]).resolve() == cwd), None)
+            if match is None:
+                sys.exit("Error: not inside a Watchdog project — pass a project name.")
+            _, info = match
+        cmd_search_batch(args, Path(info["path"]), batch_file)
+        return
+
     project_arg = args.project
     query_arg   = args.query
 
@@ -1165,18 +1280,44 @@ def cmd_search(args) -> None:
     passages = search(vault, args.query, top_n=args.top_n, min_score=min_score, scope="corpus", rerank=rerank)
     notes    = search(vault, args.query, top_n=args.top_n, min_score=min_score, scope="notes")
 
+    from watchdog.pipeline import fulltext
+    try:
+        exact = fulltext.search(vault, args.query, limit=args.top_n)
+    except Exception as e:
+        exact = []
+        if not as_json:
+            print(f"  {_YELLOW}Warning: exact-match search unavailable: {e}{_RESET}", file=sys.stderr)
+
     if as_json:
-        print(json.dumps(_build_search_json(args.query, passages, notes), ensure_ascii=False))
+        print(json.dumps(_build_search_json(args.query, passages, notes, exact), ensure_ascii=False))
         return
 
     print()
-    if not passages and not notes:
+    if not passages and not notes and not exact:
         hint = f" above {args.threshold:.2f}" if args.threshold is not None else ""
         print(f"  {_DIM}No results{hint}.{_RESET}\n")
         return
 
     full  = getattr(args, "full", False)
     terms = _search_query_terms(args.query)
+
+    if exact:
+        print(f"  {_BOLD}Exact matches{_RESET}\n")
+        for r in exact:
+            snippet = (r.get("text") or "").replace("\n", " ").strip()
+            if not full:
+                snippet = _windowed_snippet(snippet, terms, 240)
+            snippet = _highlight_snippet(snippet, terms)
+            if r["kind"] == "corpus":
+                where = f"p.{r.get('page')}"
+                if r.get("path"):
+                    where += f"  {_DIM}{r['path']}#page={r.get('page')}{_RESET}"
+                print(f"  {_BOLD}{r.get('title') or '?'}{_RESET}  {_DIM}{where}{_RESET}")
+            else:
+                label = _EXACT_KIND_LABELS.get(r["kind"], r["kind"])
+                print(f"  {_BOLD}{r.get('path')}{_RESET}  {_DIM}{label}{_RESET}")
+            print(f"  {_DIM}{snippet}{_RESET}")
+            print()
 
     if passages:
         print(f"  {_BOLD}Source passages{_RESET}\n")

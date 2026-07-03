@@ -433,6 +433,35 @@ nothing about it is persisted, so a change takes effect on the next `watchdog se
 pre-D26 document with no morgue text on disk is skipped (its note still reindexes) rather
 than failing the whole run.
 
+**Full-text (exact-term) lane, complementary to the above (D56, issue #109).** Code:
+`pipeline/fulltext.py`. **Files:** `<vault>/.fulltext/index.db`. A local SQLite FTS5 index
+(`unicode61` tokenizer, no stemming) over the same raw source text (morgue pages) plus every
+generated note the pipeline writes — entity, document, timeline, briefing, hot cache, and
+run log. Where the embedding index above answers "what's most relevant," this answers
+"every place this exact term or phrase appears" — the recall lane for a name, case number,
+or other token that never got promoted into a synthesized note. Query syntax is
+deliberately not raw FTS5 MATCH grammar: a quoted substring is a phrase match, bare words
+are ANDed, and every token is escaped (`build_match`) so punctuation in a name (O'Brien,
+AT&T) can't be misread as query syntax. One row per corpus page (carrying its page number
+and morgue path, so a hit links straight to `morgue_path#page=N`) and one row per note
+(keyed by note path), each replaced — not duplicated — on re-indexing via delete-then-insert.
+`watchdog search` runs this as a third, unscored "Exact matches" section alongside the
+existing corpus/notes sections, reusing the same snippet-windowing and term-highlighting the
+semantic sections already use rather than FTS5's own `snippet()`. Built at ingest (the same
+call sites that call `embed.add_document`/`add_note` also call the `fulltext` equivalents,
+best-effort — a failure warns but never fails the ingest run) and rebuilt in full by
+`watchdog reindex` alongside `.embeddings/`.
+
+**Batch search (D56, issue #110): `watchdog search --batch <file>`.** Reads one term per
+line (blank lines and `#`-comments skipped) and reports hits per term instead of ranking a
+single query — the "does any of these N names from a leaked roster/sanctions list/donor
+list appear anywhere" workflow. Combines two lanes per term: manifest name/alias substring
+matches (the existing `manifest.json` lookup) and full-text hits (`fulltext.search`).
+Deliberately skips the semantic/embedding lane — a batch is routinely hundreds of terms, and
+embedding + cross-encoder rerank per term doesn't scale the way an in-process SQLite query
+does. A flag on `search`, not a new command: one command a journalist needs to remember,
+with `--batch` switching it from ranking a query to reporting per-term hits.
+
 ---
 
 ## 12. Vault & registry layout
@@ -448,7 +477,8 @@ timeline.md                 rendered global timeline
 briefings/<date>.md         per-ingest briefings
 context.md / hot.md / log.md investigation context, hot cache, run log
 index.md / dashboard.base    landing page + native Obsidian Bases dashboard (D42)
-.embeddings/                search index
+.embeddings/                semantic search index
+.fulltext/index.db          full-text (exact-term) search index (D56)
 .obsidian/graph.json        graph colours per entity type
 .watchdog/                  pipeline state (below)
 ```

@@ -719,6 +719,15 @@ def _lines(items: list) -> str:
     return "\n".join(f"- {x}" for x in items) if items else "_None._"
 
 
+def _fts_add_note_safe(vault: Path, note_path: str, kind: str, title: str, text: str) -> None:
+    """Best-effort full-text index update (#109) — never fails the ingest run over it."""
+    try:
+        from watchdog.pipeline.fulltext import add_note
+        add_note(vault, note_path, kind, title, text)
+    except Exception as e:
+        print(f"  Warning: full-text index update failed for {note_path}: {e}", file=sys.stderr)
+
+
 def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
                     contradiction_flags: list) -> str:
     now = datetime.datetime.now()
@@ -741,15 +750,18 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
             for a in neardup_alerts) + "\n"
     (vault / "briefings").mkdir(exist_ok=True)
     (vault / "briefings" / f"{slug}.md").write_text(body, encoding="utf-8")
+    _fts_add_note_safe(vault, f"briefings/{slug}", "briefing", f"Briefing {slug}", body)
 
-    (vault / "hot.md").write_text(
+    hot_content = (
         f"# Hot cache\n\n*Last updated: {now.strftime('%Y-%m-%d')} — "
         f"[[briefings/{slug}|Briefing {slug}]]*\n\n"
         f"## Investigation status\n\n{b.get('investigation_status', '')}\n\n"
         f"## Recent additions\n\n{_lines(b.get('new_entities', []))}\n\n"
         f"## Emerging patterns\n\n{_lines(b.get('emerging_patterns', []))}\n\n"
-        f"## Open questions\n\n{_lines(b.get('open_questions', []))}\n",
-        encoding="utf-8")
+        f"## Open questions\n\n{_lines(b.get('open_questions', []))}\n"
+    )
+    (vault / "hot.md").write_text(hot_content, encoding="utf-8")
+    _fts_add_note_safe(vault, "hot", "hot", "Hot cache", hot_content)
 
     entry = (f"\n## {now.strftime('%Y-%m-%d %H:%M')} — Ingest\n\n"
              f"- **Files:** {len(results)} processed\n- **New entities:** {n_new}\n"
@@ -761,8 +773,10 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
         cost = f" · ~${totals['cost_usd']:.4f}" if totals.get("cost_usd") else ""
         entry += (f"- **Usage:** {totals['input_tokens']:,} in / "
                  f"{totals['output_tokens']:,} out tokens{cost}\n")
-    with open(vault / "log.md", "a", encoding="utf-8") as f:
+    log_path = vault / "log.md"
+    with open(log_path, "a", encoding="utf-8") as f:
         f.write(entry)
+    _fts_add_note_safe(vault, "log", "log", "Run log", log_path.read_text(encoding="utf-8"))
     return f"briefings/{slug}.md"
 
 

@@ -370,19 +370,21 @@ def _rebuild_global_timeline(vault_path: Path, entities_reg: dict, docs_reg: dic
     timeline_path = vault_path / "timeline.md"
 
     if not all_events:
-        timeline_path.write_text(
-            "# Timeline\n\n*No timeline events yet — events are extracted during document ingest.*\n",
-            encoding="utf-8",
+        content = "# Timeline\n\n*No timeline events yet — events are extracted during document ingest.*\n"
+    else:
+        content = "# Timeline\n\n" + _build_timeline_section(
+            all_events, docs_reg,
+            entity_name=None,
+            year_heading="##",
+            include_section_header=False,
         )
-        return
-
-    body = "# Timeline\n\n" + _build_timeline_section(
-        all_events, docs_reg,
-        entity_name=None,
-        year_heading="##",
-        include_section_header=False,
-    )
-    timeline_path.write_text(body.rstrip() + "\n", encoding="utf-8")
+        content = content.rstrip() + "\n"
+    timeline_path.write_text(content, encoding="utf-8")
+    try:
+        from watchdog.pipeline.fulltext import add_note as fts_add_note
+        fts_add_note(vault_path, "timeline", "timeline", "Timeline", content)
+    except Exception as e:
+        print(f"  Warning: full-text index update failed for timeline: {e}", file=sys.stderr)
 
 
 # ── Relationship helpers ──────────────────────────────────────────────────────
@@ -541,12 +543,15 @@ def _write_morgue_markdown(vault_path: Path, sha256: str, morgue_dir: Path, stem
         pass
 
 
-def _index_corpus_passages(vault_path: Path, doc: dict, entity_entries: list[dict]) -> None:
-    """Embed this document's source passages into the search index, with a contextual
+def _index_corpus_passages(vault_path: Path, doc: dict, entity_entries: list[dict],
+                            morgue_path: str = "") -> None:
+    """Embed this document's source passages into the semantic index, with a contextual
     prefix built from what extraction produced — the document's title, type, and the
     entities it names. The prefix anchors a passage that lacks the document's who/what,
-    improving retrieval (Anthropic contextual-retrieval). Best-effort: the page text lives
-    in the chew-time queue descriptor, gone on a finalize re-run from disk; skip if absent.
+    improving retrieval (Anthropic contextual-retrieval). Also indexes the same raw pages
+    into the full-text (exact-term) index (#109) — the two lanes are built from the same
+    page text but serve different recall needs. Best-effort: the page text lives in the
+    chew-time queue descriptor, gone on a finalize re-run from disk; skip if absent.
     """
     sha256 = doc["sha256"]
     queue_file = vault_path / ".watchdog" / "queue" / f"{sha256}.json"
@@ -563,6 +568,8 @@ def _index_corpus_passages(vault_path: Path, doc: dict, entity_entries: list[dic
         context += " Mentions: " + ", ".join(names) + "."
     from watchdog.pipeline.embed import add_document
     add_document(vault_path, doc["filename"], pages, context=context)
+    from watchdog.pipeline.fulltext import add_document as fts_add_document
+    fts_add_document(vault_path, doc["filename"], sha256, pages, morgue_path=morgue_path)
 
 
 def _render_evidence_fragments(fragments: list, morgue_path: str = "") -> str:
@@ -870,6 +877,11 @@ def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False, ne
                 add_note(vault_path, entry["note_path"], note_content)
             except Exception as e:
                 print(f"  Warning: embed index update failed for {entry['note_path']}: {e}", file=sys.stderr)
+            try:
+                from watchdog.pipeline.fulltext import add_note as fts_add_note
+                fts_add_note(vault_path, entry["note_path"], "entity", entry["name"], note_content)
+            except Exception as e:
+                print(f"  Warning: full-text index update failed for {entry['note_path']}: {e}", file=sys.stderr)
 
             # Record a per-entity fragment for the post-ingest finalizer — only for
             # entities actually extracted from this document, not reverse-role touches.
@@ -888,11 +900,16 @@ def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False, ne
             add_note(vault_path, f"documents/{slug}", doc_note_content)
         except Exception as e:
             print(f"  Warning: embed index update failed for documents/{slug}: {e}", file=sys.stderr)
+        try:
+            from watchdog.pipeline.fulltext import add_note as fts_add_note
+            fts_add_note(vault_path, f"documents/{slug}", "document", doc_title, doc_note_content)
+        except Exception as e:
+            print(f"  Warning: full-text index update failed for documents/{slug}: {e}", file=sys.stderr)
 
         # Index the source passages (corpus stream) with a contextual prefix — now that
         # extraction has supplied the title, type, and entities the prefix needs (D43).
         try:
-            _index_corpus_passages(vault_path, doc, entity_entries_for_note)
+            _index_corpus_passages(vault_path, doc, entity_entries_for_note, morgue_path=morgue_relative)
         except Exception as e:
             print(f"  Warning: corpus index update failed for {doc['filename']}: {e}", file=sys.stderr)
 
