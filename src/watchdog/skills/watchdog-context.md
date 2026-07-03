@@ -126,18 +126,35 @@ if the reporter provided them. This section prevents re-investigating things alr
 already investigated and dismissed.}
 ```
 
+Also propose a short **watchlist candidates** list — names, companies, addresses, or distinctive
+phrases worth watching for in future documents, drawn from the same synthesized material and
+interview answers above (the "Entities I already know are relevant" section and the reporter's
+2–3 most important entities are the obvious source, but a distinctive address or case number
+counts too). 3–8 candidates is typical. Show it as a plain list, separate from the `context.md`
+draft:
+
+```
+Watchlist candidates (added to watchlist.md on confirmation):
+- {Name, company, address, or phrase} — {one-line reason}
+- ...
+```
+
+Skip this list entirely — don't show it — if nothing in the material or interview is specific
+enough to be a useful watch term (see the Guidelines note on this below).
+
 ---
 
 ## 5. Show draft and confirm
 
-Print the full draft and ask:
+Print the full draft — `context.md`, and the watchlist candidates if you found any — and ask:
 
-> Here's the draft `context.md`. Does this look right?
-> - Type **yes** to write it
-> - Type any corrections and I'll revise before writing
-> - Type **skip** to discard without writing
+> Here's the draft `context.md`{ and N watchlist candidates, if any}. Does this look right?
+> - Type **yes** to write everything
+> - Type any corrections — to the draft, the watchlist candidates, or both — and I'll revise before writing
+> - If you only want some of the watchlist candidates, say which ones and I'll drop the rest
+> - Type **skip** to discard without writing anything
 
-If the reporter provides corrections, revise the draft and show it again. Repeat until they confirm or skip. Do not write the file until you have explicit approval.
+If the reporter provides corrections, revise and show again. Repeat until they confirm or skip. Do not write anything until you have explicit approval.
 
 ---
 
@@ -145,10 +162,22 @@ If the reporter provides corrections, revise the draft and show it again. Repeat
 
 Write the approved draft to `context.md` at the vault root. This overwrites any existing `context.md`.
 
+If any watchlist candidates were approved (in full or in part), add them:
+
+```bash
+watchdog watchlist-add "<term one>" "<term two>" ...
+```
+
+This appends to `watchlist.md` deterministically — skipping any term already there
+(case-insensitive) and leaving existing terms and comments untouched. The command prints
+`{"added": [...], "skipped": N}`; use it to report what actually landed. Skip this step
+entirely if there were no candidates, or the reporter approved none of them.
+
 Print:
 ```
-context.md written. Run /watchdog-ingest to begin processing records.
+context.md written. N watchlist term(s) added. Run /watchdog-ingest to begin processing records.
 ```
+(Omit the watchlist clause if none were added.)
 
 If the reporter skipped, print:
 ```
@@ -163,3 +192,5 @@ Skipped — context.md not written.
 - **Don't cite `_CONTEXT/` files as sources** — they are the reporter's prior knowledge, not the vault's evidence base.
 - **Questions must be specific** — generic questions produce generic answers. Generate questions from what you actually read.
 - **Respect skipped questions** — if the reporter doesn't answer, make a reasonable inference or leave a placeholder. Don't repeat the question.
+- **Watchlist candidates must be specific, not generic** — a proper name, a company, a street address, a case or filing number. Skip roles, categories, or anything broad enough to false-positive constantly (e.g. "the mayor's office," "the bank") — a bad watchlist term is worse than none, since every future ingest will flag it. When in doubt, leave it out rather than pad the list to hit a target count.
+- **Prefer the shortest distinctive form of a name over its full legal form** — matching is literal (word-boundary or regex; see `pipeline/watchlist.py`), not fuzzy, so a term only catches documents that render the name exactly that way. Legal suffixes and full registered forms ("Ltd.", "Inc.", "Partners", "LLC", "Holdings") vary across documents even when the underlying entity doesn't. For "Furniture Direct Partners Ltd.," propose "Furniture Direct" rather than the full name — unless the shorter form is itself generic enough to false-positive (weigh this against the bullet above).

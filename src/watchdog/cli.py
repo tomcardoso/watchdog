@@ -92,7 +92,7 @@ from watchdog.cmd.merge_entities import cmd_merge_entities
 from watchdog.cmd.leads import cmd_leads
 from watchdog.cmd.reindex import cmd_reindex
 from watchdog.cmd.research import cmd_fetch, cmd_research, cmd_research_fetch, cmd_research_seen
-from watchdog.cmd.watchlist import cmd_watchlist
+from watchdog.cmd.watchlist import cmd_watchlist, cmd_watchlist_add
 
 
 def _cmd_rebuild_timeline(args) -> None:
@@ -138,7 +138,7 @@ def main() -> None:
     _INTERNAL_CMDS = {
         "entity-index", "queue-status", "validate-extraction",
         "is-duplicate",  "pre-flight",  "post-flight",
-        "timeline-collisions", "research-fetch", "research-seen",
+        "timeline-collisions", "research-fetch", "research-seen", "watchlist-add",
     }
     if len(sys.argv) >= 2 and sys.argv[1] in _INTERNAL_CMDS:
         cmd = sys.argv[1]
@@ -172,6 +172,9 @@ def main() -> None:
         elif cmd == "research-seen":
             _p.add_argument("project", nargs="?")
             cmd_research_seen(_p.parse_args(sys.argv[2:]))
+        elif cmd == "watchlist-add":
+            _p.add_argument("terms", nargs="+")
+            cmd_watchlist_add(_p.parse_args(sys.argv[2:]))
         return
 
     parser = argparse.ArgumentParser(
