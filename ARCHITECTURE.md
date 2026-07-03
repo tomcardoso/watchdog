@@ -339,11 +339,12 @@ prose stays in place.
 **Files:** `.watchdog/timeline/`, `briefings/`, `hot.md`, `log.md`.
 
 Each document's extraction stages its events to **raw** per-document files
-`{date}_{sha7}.ndjson` (`timeline.stage_timeline_events`, called from post-flight) —
-the events being the document's **dated** `key_facts`, with each fact's `entities` tags
-supplying the contributing entity ids (D26) — write-only and lock-free, since each filename
-is unique. All merge/dedup and the briefing
-then run in `_post_ingest` (model: `post_model`) after extraction:
+`{date}_{sha7}.ndjson` (`timeline.stage_timeline_events`, called from post-flight) — the events
+being the document's **dated** `key_facts` (D26) — write-only and lock-free, since each filename
+is unique. This global timeline is entirely separate from an entity's own `## Timeline` section
+(§7): the NDJSON record carries no entity tags (D57) — the entity registry's `timeline_events`
+is populated independently, straight off the same `key_facts`, by post-flight (§7). All
+merge/dedup and the briefing then run in `_post_ingest` (model: `post_model`) after extraction:
 
 - `timeline.collisions(vault)` promotes dates with no prior canonical to **canonical**
   `{date}.ndjson` and returns the collisions where a canonical already existed; the

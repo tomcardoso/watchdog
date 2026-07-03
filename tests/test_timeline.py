@@ -44,12 +44,14 @@ def test_stage_writes_one_file_per_date(tmp_path):
         "date": "2020-03-15",
         "event": "Appointed director",
         "source_sha256": "abcdef1234567",
-        "entity_ids": ["alice"],
         "basis": "stated",
     }
 
 
-def test_stage_dedups_same_event_across_entities(tmp_path):
+def test_stage_dedups_same_event_regardless_of_entity_tags(tmp_path):
+    """Same (date, event text) collapses to one record even when the two source facts are
+    tagged to different entities — entity_ids was dropped as dead weight (#231): nothing reads
+    it, and entity-level dedup/rendering works off the registry's own timeline_events instead."""
     vault = _vault(tmp_path)
     stage_timeline_events(vault, _extraction([
         {"fact": "Acme filed for bankruptcy", "date": "2020-03-15", "entities": ["alice"]},
@@ -58,7 +60,7 @@ def test_stage_dedups_same_event_across_entities(tmp_path):
 
     recs = _read_ndjson(vault / ".watchdog" / "timeline" / "2020-03-15_sha1234.ndjson")
     assert len(recs) == 1
-    assert sorted(recs[0]["entity_ids"]) == ["acme", "alice"]
+    assert "entity_ids" not in recs[0]
 
 
 def test_stage_keeps_distinct_events_on_same_date(tmp_path):
@@ -102,7 +104,6 @@ def test_stage_keeps_untagged_dated_fact(tmp_path):
 
     recs = _read_ndjson(vault / ".watchdog" / "timeline" / "2020-03-15_untag00.ndjson")
     assert recs[0]["event"] == "The hearing was held by Zoom"
-    assert recs[0]["entity_ids"] == []
 
 
 def test_stage_skips_facts_without_date_or_text(tmp_path):
@@ -157,7 +158,7 @@ def test_stage_collision_reported_when_canonical_exists(tmp_path, capsys):
     td.mkdir(parents=True)
     (td / "2020-03-15.ndjson").write_text(
         json.dumps({"date": "2020-03-15", "event": "Existing", "source_sha256": "old",
-                    "entity_ids": [], "basis": "stated"}) + "\n",
+                    "basis": "stated"}) + "\n",
         encoding="utf-8",
     )
 
@@ -219,4 +220,4 @@ def test_postflight_stages_timeline_files(tmp_path):
 
     raw = vault / ".watchdog" / "timeline" / "2020-03-15_post123.ndjson"
     assert raw.exists()
-    assert _read_ndjson(raw)[0]["entity_ids"] == ["alice"]
+    assert _read_ndjson(raw)[0]["event"] == "Appointed"
