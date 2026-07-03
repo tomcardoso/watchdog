@@ -1,9 +1,9 @@
-"""`watchdog leads` — print the deterministic whole-vault lead sweep (#155).
+"""`watchdog leads` — print the deterministic whole-vault lead sweep (#155, #221).
 
 Read-only, no model, no lock: runs `pipeline.leads.scan` over the vault's entity registry and
-prints the named-but-unprofiled / isolated / unresolved-contradiction digest. The same sweep
-runs automatically at the end of `watchdog ingest` (writing `briefings/leads-<date>.md`); this
-command is for re-running it on demand between ingests."""
+prints the named-but-unprofiled / isolated / unresolved-contradiction / inferred-facts digest.
+The same sweep runs automatically at the end of `watchdog ingest` (writing
+`briefings/leads-<date>.md`); this command is for re-running it on demand between ingests."""
 
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _RESET, _YELLOW, _resolve_vault
 from watchdog.pipeline import leads as _leads
@@ -48,4 +48,13 @@ def cmd_leads(args) -> None:
             note = f"  {_CYAN}{c['note_path']}.md{_RESET}" if c["note_path"] else ""
             print(f"    {_BOLD}{c['name']}{_RESET}  {_DIM}{n} flagged "
                   f"conflict{'s' if n != 1 else ''}{_RESET}{note}")
+        print()
+
+    if data["inferred"]:
+        _section("Inferred facts to verify", len(data["inferred"]))
+        for i in data["inferred"]:
+            note = f"  {_CYAN}{i['note_path']}.md{_RESET}" if i["note_path"] else ""
+            print(f"    {_BOLD}{i['name']}{_RESET}{note}")
+            for claim in i["claims"]:
+                print(f"      {_DIM}{claim}{_RESET}")
         print()
