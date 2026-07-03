@@ -1,7 +1,7 @@
-"""Deterministic lead sweep (#155, slice 1).
+"""Deterministic lead sweep (#155, slice 1; #221 added the fourth signal).
 
 A whole-vault, registry-only pass that surfaces investigative leads without a model call —
-the cheap, on-brand complement to the model-driven `/watchdog-surface`. Three signals, all
+the cheap, on-brand complement to the model-driven `/watchdog-surface`. Four signals, all
 read straight from `.watchdog/Registry/entities.json`:
 
   * **Named but never profiled** — a relationship `target_id` that no entity record exists
@@ -12,8 +12,12 @@ read straight from `.watchdog/Registry/entities.json`:
     name keep recurring in isolation?
   * **Unresolved contradictions** — an entity carrying contradiction flags recorded at ingest,
     listed so they don't sit unreviewed.
+  * **Inferred facts to verify** — an entity carrying a `roles`/`timeline_events` entry with
+    `basis: inferred` (D34: "a lead to verify, not a finding"). Surfaces the pipeline's own
+    verify-me markers so they reach the report a journalist actually reads instead of sitting
+    unread in a note body.
 
-`scan` loads the registry and returns the three lists; `write_leads` snapshots them to
+`scan` loads the registry and returns the four lists; `write_leads` snapshots them to
 `briefings/leads-<date>.md` (overwrite, not append — it is current-state, not an event log).
 The model-driven whole-vault pieces (cross-document contradiction re-check, stale/superseded
 claims) are deliberately out of scope here — see DECISIONS D40 and #155.
@@ -33,11 +37,25 @@ def _load_json(path: Path) -> dict:
         return {}
 
 
+def _inferred_claims(ent: dict) -> list[str]:
+    """Text for every basis:inferred role/timeline_event on an entity, in registry order."""
+    claims = []
+    for role in ent.get("roles", []):
+        if role.get("basis") == "inferred":
+            target = role.get("target_name") or role.get("target_id") or "?"
+            claims.append(f"{role.get('relationship', '?')} → {target}")
+    for ev in ent.get("timeline_events", []):
+        if ev.get("basis") == "inferred":
+            claims.append(f"{ev.get('date', '?')}: {ev.get('event', '?')}")
+    return claims
+
+
 def find_leads(entities_reg: dict) -> dict:
-    """Pure: derive the three lead lists from an entity-registry dict."""
+    """Pure: derive the four lead lists from an entity-registry dict."""
     unprofiled: dict[str, dict] = {}
     isolated: list[dict] = []
     contradictions: list[dict] = []
+    inferred: list[dict] = []
 
     for eid, ent in entities_reg.items():
         roles = ent.get("roles", [])
@@ -62,6 +80,11 @@ def find_leads(entities_reg: dict) -> dict:
                                    "note_path": ent.get("note_path", ""),
                                    "count": len(ent["contradictions"])})
 
+        claims = _inferred_claims(ent)
+        if claims:
+            inferred.append({"id": eid, "name": ent.get("name") or eid,
+                             "note_path": ent.get("note_path", ""), "claims": claims})
+
     unprofiled_list = [
         {"id": v["id"], "name": v["name"],
          "mentioned_by": sorted(v["mentioned_by"]), "doc_count": len(v["docs"])}
@@ -70,8 +93,10 @@ def find_leads(entities_reg: dict) -> dict:
     unprofiled_list.sort(key=lambda x: (-x["doc_count"], x["name"].lower()))
     isolated.sort(key=lambda x: (-x["doc_count"], x["name"].lower()))
     contradictions.sort(key=lambda x: (-x["count"], x["name"].lower()))
+    inferred.sort(key=lambda x: (-len(x["claims"]), x["name"].lower()))
 
-    return {"unprofiled": unprofiled_list, "isolated": isolated, "contradictions": contradictions}
+    return {"unprofiled": unprofiled_list, "isolated": isolated,
+            "contradictions": contradictions, "inferred": inferred}
 
 
 def total(leads: dict) -> int:
@@ -109,6 +134,16 @@ def _format(leads: dict, now: datetime.datetime) -> str:
             link = f"[[{c['note_path']}|{c['name']}]]" if c["note_path"] else f"**{c['name']}**"
             n = c["count"]
             lines.append(f"- {link} — {n} flagged conflict{'s' if n != 1 else ''}")
+
+    if leads["inferred"]:
+        lines.append("\n## Inferred facts to verify\n")
+        lines.append("Roles and timeline events the extractor flagged `basis: inferred` — "
+                     "a lead to verify, not a finding.\n")
+        for i in leads["inferred"]:
+            link = f"[[{i['note_path']}|{i['name']}]]" if i["note_path"] else f"**{i['name']}**"
+            lines.append(f"- {link}")
+            for claim in i["claims"]:
+                lines.append(f"  - {claim}")
 
     return "\n".join(lines) + "\n"
 

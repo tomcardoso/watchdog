@@ -15,7 +15,8 @@ def _strip_ansi(s: str) -> str:
 
 def _registry():
     """Alice -> Director of unprofiled 'Shell Co'; Bob also names Shell Co; an isolated
-    frequent entity; and an entity carrying a contradiction flag."""
+    frequent entity; an entity carrying a contradiction flag; and an entity carrying
+    inferred (basis: inferred) roles/timeline events."""
     return {
         "alice": {
             "id": "alice", "name": "Alice Smith", "type": "person", "appears_in": ["d1", "d2"],
@@ -42,6 +43,22 @@ def _registry():
             "id": "acme", "name": "Acme Ltd", "type": "company", "appears_in": ["d1"],
             "note_path": "entities/company/acme", "roles": [],
             "contradictions": ["address differs from d3", "director count differs"],
+        },
+        "carol": {
+            "id": "carol", "name": "Carol White", "type": "person", "appears_in": ["d5"],
+            "note_path": "entities/person/carol",
+            "roles": [
+                {"relationship": "Advisor", "target_id": "alice", "target_name": "Alice Smith",
+                 "source_sha256": "d5", "is_reverse": False, "basis": "inferred"},
+                {"relationship": "Knows", "target_id": "acme", "target_name": "Acme Ltd",
+                 "source_sha256": "d5", "is_reverse": False, "basis": "stated"},
+            ],
+            "timeline_events": [
+                {"date": "2020-01-01", "event": "Joined the board", "basis": "inferred",
+                 "source_sha256": "d5"},
+                {"date": "2021-01-01", "event": "Resigned", "basis": "stated",
+                 "source_sha256": "d5"},
+            ],
         },
     }
 
@@ -80,8 +97,25 @@ def test_contradictions_listed():
     assert c["note_path"] == "entities/company/acme"
 
 
+def test_inferred_listed():
+    data = leads.find_leads(_registry())
+    assert len(data["inferred"]) == 1
+    i = data["inferred"][0]
+    assert i["name"] == "Carol White"
+    assert i["note_path"] == "entities/person/carol"
+    assert i["claims"] == ["Advisor → Alice Smith", "2020-01-01: Joined the board"]
+
+
+def test_inferred_excludes_stated_only_entities():
+    # bob and acme carry only basis:"stated" (or unset) roles/events -> never a lead
+    data = leads.find_leads(_registry())
+    ids = {i["id"] for i in data["inferred"]}
+    assert "bob" not in ids
+    assert "acme" not in ids
+
+
 def test_total_and_empty():
-    assert leads.total(leads.find_leads(_registry())) == 3
+    assert leads.total(leads.find_leads(_registry())) == 4
     assert leads.total(leads.find_leads({})) == 0
 
 
@@ -105,6 +139,9 @@ def test_write_leads_snapshot(tmp_path):
     assert "Mentioned often but unconnected" in body
     assert "Unresolved contradictions" in body
     assert "[[entities/company/acme|Acme Ltd]]" in body
+    assert "Inferred facts to verify" in body
+    assert "[[entities/person/carol|Carol White]]" in body
+    assert "Advisor → Alice Smith" in body
 
 
 def test_write_leads_empty_writes_nothing(tmp_path):
@@ -135,7 +172,7 @@ def _args(**kw):
 
 def test_scan_reads_registry(tmp_path):
     vault = _vault(tmp_path, _registry())
-    assert leads.total(leads.scan(vault)) == 3
+    assert leads.total(leads.scan(vault)) == 4
 
 
 def test_cmd_leads_prints_sections(tmp_path, monkeypatch, capsys):
@@ -147,6 +184,9 @@ def test_cmd_leads_prints_sections(tmp_path, monkeypatch, capsys):
     assert "Shell Co" in out
     assert "Mentioned often but unconnected  (1)" in out
     assert "Unresolved contradictions  (1)" in out
+    assert "Inferred facts to verify  (1)" in out
+    assert "Carol White" in out
+    assert "Advisor → Alice Smith" in out
 
 
 def test_cmd_leads_empty(tmp_path, monkeypatch, capsys):
