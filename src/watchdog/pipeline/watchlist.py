@@ -49,6 +49,34 @@ def load_terms(vault: Path) -> list[dict]:
     return terms
 
 
+def add_terms(vault: Path, terms: list[str]) -> list[str]:
+    """Append new terms to ``watchlist.md``, skipping any already present — case-insensitively,
+    against the same parsed term text ``load_terms`` matches on (so a candidate already covered
+    by an existing ``/regex/`` line's literal text is still caught as a duplicate). Creates the
+    file if it doesn't exist yet (normally already created by ``watchdog new``). Existing lines,
+    including ``#`` comments, are untouched — this only ever appends.
+
+    Returns the terms actually added, in order (#229 — `/watchdog-context` proposing seed terms).
+    """
+    existing_lower = {t["term"].lower() for t in load_terms(vault)}
+    to_add: list[str] = []
+    for term in terms:
+        term = term.strip()
+        if not term or term.lower() in existing_lower:
+            continue
+        to_add.append(term)
+        existing_lower.add(term.lower())
+    if not to_add:
+        return []
+
+    path = vault / "watchlist.md"
+    prefix = path.read_text(encoding="utf-8") if path.exists() else ""
+    if prefix and not prefix.endswith("\n"):
+        prefix += "\n"
+    path.write_text(prefix + "\n".join(to_add) + "\n", encoding="utf-8")
+    return to_add
+
+
 def _load_json(path: Path) -> dict:
     try:
         return json.loads(path.read_text(encoding="utf-8"))

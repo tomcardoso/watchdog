@@ -72,6 +72,9 @@ _VAULT_PERMISSIONS = [
     "Bash(watchdog write-entity --entity-id *)",
     "Bash(watchdog unlock*)",
     "Bash(watchdog timeline)",
+    # /watchdog-context proposes watchlist seed terms (#229); the deterministic append+dedup
+    # lives in this command, not the skill hand-editing watchlist.md.
+    "Bash(watchdog watchlist-add *)",
     # WebSearch / WebFetch are deliberately NOT here — they make outbound requests, so they are
     # pre-approved only by the watchdog-research skill's own `allowed-tools` frontmatter, scoped to
     # when /watchdog-research is active. Archival downloads run as a deterministic post-flight of

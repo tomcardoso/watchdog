@@ -64,7 +64,7 @@ Before dropping in records, it helps to give Watchdog context about what you're 
 watchdog context
 ```
 
-Claude will read the material and ask you a series of questions — who the key people and companies are, what you're looking for, what documents you're expecting. It then writes `context.md`, which persists across every future session and tells Claude what you already know.
+Claude will read the material and ask you a series of questions — who the key people and companies are, what you're looking for, what documents you're expecting. Alongside the `context.md` draft, it also proposes a short list of watchlist candidates — names, companies, addresses drawn from that same material — for you to accept, edit, or skip; anything approved is appended to `watchlist.md` right away, so you don't have to remember to seed it separately. It then writes `context.md`, which persists across every future session and tells Claude what you already know.
 
 This step is optional, but it significantly improves the quality of extracted summaries and the usefulness of connection-finding. An investigative brief in `context.md` means Claude enters every session already oriented to your investigation rather than starting cold.
 
