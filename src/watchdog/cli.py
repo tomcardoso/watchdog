@@ -92,6 +92,7 @@ from watchdog.cmd.merge_entities import cmd_merge_entities
 from watchdog.cmd.leads import cmd_leads
 from watchdog.cmd.reindex import cmd_reindex
 from watchdog.cmd.research import cmd_fetch, cmd_research, cmd_research_fetch, cmd_research_seen
+from watchdog.cmd.watchlist import cmd_watchlist
 
 
 def _cmd_rebuild_timeline(args) -> None:
@@ -257,6 +258,10 @@ def main() -> None:
     p_research.add_argument("--question", "-q", help="Research question to seed (omit to be prompted)")
     p_research.add_argument("--model", help="Model to use (sonnet/opus/haiku, default: sonnet)")
     p_research.set_defaults(func=cmd_research)
+
+    p_watchlist = sub.add_parser("watchlist", help="Sweep the whole vault against watchlist.md (deterministic, no model)")
+    p_watchlist.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
+    p_watchlist.set_defaults(func=cmd_watchlist)
 
     p_fetch = sub.add_parser("fetch", help="Download a batch of URLs (or a links file) into _INCOMING/")
     p_fetch.add_argument("targets", nargs="+", metavar="URL|FILE",

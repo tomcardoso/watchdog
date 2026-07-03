@@ -273,6 +273,20 @@ _CMD_HELP: dict[str, dict] = {
             "`watchdog ingest` to fold the sources into the vault.",
         ],
     },
+    "watchlist": {
+        "desc": "Sweep the whole vault against watchlist.md (deterministic, no model)",
+        "args": [("project", "Investigation name or slug (omit when inside the project folder)", True)],
+        "notes": [
+            "Reads every document already in documents.json — not just the current run's — and",
+            "scans each one's morgue text against watchlist.md, exactly like the per-ingest scan",
+            "(D35). For when a term is added to the watchlist after documents were already",
+            "ingested and you want the whole vault swept, not just what's ingested from now on.",
+            "",
+            "Writes to the same briefings/alerts-<date>.md as the per-run scan (appending if the",
+            "file already exists). Since it has no memory of prior scans, a full sweep re-reports",
+            "every past hit each time it runs — expected, not a bug.",
+        ],
+    },
     "fetch": {
         "desc": "Download a batch of URLs (or a links file) into _INCOMING/",
         "args": [("URL|FILE", "One or more URLs, or the path to a links file (one URL per line, or the "
@@ -587,6 +601,7 @@ def _print_banner() -> None:
             ("search",     "Semantic search across ingested documents"),
             ("leads",      "Surface investigative leads from the entity graph"),
             ("merge-entities", "Merge a duplicate entity into another, deterministically"),
+            ("watchlist", "Sweep the whole vault against watchlist.md"),
             ("research",   "Research open questions on the web (downloads into _INCOMING/)"),
             ("export",     "Export the knowledge graph (Neo4j / Gephi / Cypher)"),
             ("doctor",     "Check for missing or broken vaults"),
