@@ -63,6 +63,31 @@ def test_merge_dedups_key_facts():
     assert len(merged["document"]["key_facts"]) == 2
 
 
+def test_merge_keeps_distinct_key_facts_with_long_shared_opening():
+    """Regression guard: dedup keys on the full fact text today, not a truncated prefix. A
+    prefix-based key (what this function used before) would treat these two facts, extracted
+    from different sections of the same document, as one and silently drop the second — the
+    opening clause is identical, but who the property went to (the material fact) differs
+    after the shared part."""
+    shared_opening = ("On March 3, 2019, Acme Holdings Ltd. transferred beneficial ownership of "
+                       "the Cayman Islands shell company, via an intermediary numbered offshore "
+                       "company incorporated for this purpose, to ")
+    assert len(shared_opening) > 150   # not tied to any number in the source; just long enough
+
+    sections = [
+        {"document": {"sha256": "x", "key_facts": [
+            {"fact": shared_opening + "John Smith.", "page": 14, "entities": ["a"]},
+        ]}, "entities": [{"id": "a", "name": "A", "type": "Person", "aliases": [], "roles": []}]},
+        {"document": {"key_facts": [
+            {"fact": shared_opening + "Jane Doe's family trust.", "page": 136, "entities": ["a"]},
+        ]}, "entities": [{"id": "a", "name": "A", "type": "Person", "aliases": [], "roles": []}]},
+    ]
+    facts = merge_extractions(sections)["document"]["key_facts"]
+    assert len(facts) == 2
+    assert any(f["fact"].endswith("John Smith.") for f in facts)
+    assert any(f["fact"].endswith("family trust.") for f in facts)
+
+
 def test_merge_entity_has_no_fact_or_timeline_fields():
     """The merged entity is graph-only; facts/timeline live on document.key_facts (#140)."""
     merged = merge_extractions([

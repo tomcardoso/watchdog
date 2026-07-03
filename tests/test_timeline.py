@@ -72,6 +72,28 @@ def test_stage_keeps_distinct_events_on_same_date(tmp_path):
     assert {r["event"] for r in recs} == {"Event A", "Event B"}
 
 
+def test_stage_keeps_distinct_events_with_long_shared_opening(tmp_path):
+    """Regression guard: dedup keys on the full fact text today, not a truncated prefix. A
+    prefix-based key (what this function used before) would treat these two facts as one and
+    silently drop the second — the opening clause is identical, but who the property went to
+    (the material fact) differs after the shared part."""
+    vault = _vault(tmp_path)
+    shared_opening = ("On March 3, 2019, Acme Holdings Ltd. transferred beneficial ownership of "
+                       "the Cayman Islands shell company, via an intermediary numbered offshore "
+                       "company incorporated for this purpose, to ")
+    assert len(shared_opening) > 150   # not tied to any number in the source; just long enough
+
+    stage_timeline_events(vault, _extraction([
+        {"fact": shared_opening + "John Smith.", "date": "2019-03-03", "entities": ["alice"]},
+        {"fact": shared_opening + "Jane Doe's family trust.", "date": "2019-03-03", "entities": ["alice"]},
+    ], sha="longopen0000"))
+
+    recs = _read_ndjson(vault / ".watchdog" / "timeline" / "2019-03-03_longope.ndjson")
+    assert len(recs) == 2
+    assert any(r["event"].endswith("John Smith.") for r in recs)
+    assert any(r["event"].endswith("family trust.") for r in recs)
+
+
 def test_stage_keeps_untagged_dated_fact(tmp_path):
     vault = _vault(tmp_path)
     stage_timeline_events(vault, _extraction([
