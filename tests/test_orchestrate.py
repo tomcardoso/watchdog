@@ -53,7 +53,7 @@ def _mock(monkeypatch, *, extraction):
             "classify": {"skill": "general-records.md"},
             "extract": extraction,
             "entity-synthesis": {"entity_syntheses": []},
-            "timeline-dedup": {"keep": []},
+            "timeline-dedup": {"groups": []},
             "briefing": {"investigation_status": "Early days.",
                          "what_was_ingested": ["test-doc.pdf — Annual Report"],
                          "new_entities": ["Acme Corp"]},
@@ -123,25 +123,47 @@ def test_compact_result_carries_key_facts_for_the_briefing():
                               {"fact": "Merger closed", "date": "2024-03-01"}]
 
 
-def test_select_kept_maps_indices_to_original_objects():
-    """timeline-dedup returns indices; Python re-selects the authoritative originals (which
-    carry source_sha256/page/basis) — deduped and order-preserving."""
+def test_select_kept_keeps_survivors_in_original_order():
+    """timeline-dedup returns `groups`; Python re-selects the authoritative originals (which carry
+    source_sha256/page/basis), order-preserving, dropping each group's folded duplicates."""
     events = [
         {"event": "A", "source_sha256": "sha-a", "page": 1},
         {"event": "B", "source_sha256": "sha-b", "page": 2},
         {"event": "C", "source_sha256": "sha-c", "page": 3},
     ]
-    kept = orchestrate._select_kept(events, [0, 2])
-    assert kept == [events[0], events[2]]            # full original objects, not re-typed
-    assert orchestrate._select_kept(events, [2, 2, 0]) == [events[2], events[0]]   # deduped
+    kept = orchestrate._select_kept(
+        events, [{"keep": 0, "duplicates": [1]}, {"keep": 2, "duplicates": []}])
+    assert [e["event"] for e in kept] == ["A", "C"]
+    assert kept[0]["source_sha256"] == "sha-a"   # authoritative original carried through
+
+
+def test_select_kept_unions_entity_tags_of_dropped_duplicates():
+    """A collapsed group's survivor carries the union of its own and its dropped duplicates'
+    entity_ids (#237) — attribution survives regardless of which restatement the model kept.
+    The originals are left unmutated."""
+    events = [
+        {"event": "Acme filed", "entity_ids": ["acme"]},
+        {"event": "Acme filed for bankruptcy", "entity_ids": ["acme", "alice"]},
+    ]
+    kept = orchestrate._select_kept(events, [{"keep": 0, "duplicates": [1]}])
+    assert len(kept) == 1
+    assert kept[0]["entity_ids"] == ["acme", "alice"]   # unioned, order-preserving, deduped
+    assert events[0]["entity_ids"] == ["acme"]          # original untouched
+
+
+def test_select_kept_preserves_events_the_model_never_placed():
+    """Dedup must never lose events: an index the model omits from every group stays kept."""
+    events = [{"event": "A"}, {"event": "B"}, {"event": "C"}]
+    kept = orchestrate._select_kept(events, [{"keep": 0, "duplicates": []}])
+    assert [e["event"] for e in kept] == ["A", "B", "C"]
 
 
 def test_select_kept_falls_back_to_all_on_bad_input():
     events = [{"event": "A"}, {"event": "B"}]
-    assert orchestrate._select_kept(events, None) == events          # missing/non-list
-    assert orchestrate._select_kept(events, []) == events            # empty → keep all
-    assert orchestrate._select_kept(events, [9, -1, "x"]) == events  # all invalid → keep all
-    assert orchestrate._select_kept(events, [1]) == [events[1]]      # partial valid honored
+    assert orchestrate._select_kept(events, None) == events   # missing/non-list → keep all
+    assert orchestrate._select_kept(events, []) == events     # no groups → nothing placed, keep all
+    # an out-of-range keep skips the whole group, so its members stay unplaced and are kept
+    assert orchestrate._select_kept(events, [{"keep": 9, "duplicates": [0]}]) == events
 
 
 def test_stamp_document_overwrites_model_identity(tmp_path):
@@ -267,7 +289,7 @@ def test_orchestrator_threads_configured_models(tmp_path, monkeypatch):
             "classify": {"skill": "general-records.md"},
             "extract": _extraction(),
             "entity-synthesis": {"entity_syntheses": []},
-            "timeline-dedup": {"keep": []},
+            "timeline-dedup": {"groups": []},
             "briefing": {"investigation_status": "x", "what_was_ingested": []},
         }.get(task, _extraction())
         return model_client.ModelResult(parsed=parsed, text="", model=model or "?",
@@ -293,7 +315,7 @@ def test_orchestrator_threads_configured_efforts(tmp_path, monkeypatch):
             "classify": {"skill": "general-records.md"},
             "extract": _extraction(),
             "entity-synthesis": {"entity_syntheses": []},
-            "timeline-dedup": {"keep": []},
+            "timeline-dedup": {"groups": []},
             "briefing": {"investigation_status": "x", "what_was_ingested": []},
         }.get(task, _extraction())
         return model_client.ModelResult(parsed=parsed, text="", model=model or "?",
@@ -319,7 +341,7 @@ def test_orchestrator_threads_configured_backends(tmp_path, monkeypatch):
             "classify": {"skill": "general-records.md"},
             "extract": _extraction(),
             "entity-synthesis": {"entity_syntheses": []},
-            "timeline-dedup": {"keep": []},
+            "timeline-dedup": {"groups": []},
             "briefing": {"investigation_status": "x", "what_was_ingested": []},
         }.get(task, _extraction())
         return model_client.ModelResult(parsed=parsed, text="", model=model or "?",
@@ -532,7 +554,7 @@ def test_skill_pin_nudge_silent_when_run_was_pinned(tmp_path, monkeypatch, capsy
         parsed = {
             "extract": _extraction(sha="aaa", filename="a.pdf"),
             "entity-synthesis": {"entity_syntheses": []},
-            "timeline-dedup": {"keep": []},
+            "timeline-dedup": {"groups": []},
             "briefing": {"investigation_status": "x", "what_was_ingested": []},
         }.get(task, {})
         return model_client.ModelResult(parsed=parsed, text="", model="m",
@@ -556,7 +578,7 @@ def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
             "classify": {"skill": "general-records.md"},
             "extract": _extraction(),
             "briefing": {"investigation_status": "x", "what_was_ingested": []},
-        }.get(task, {"entity_syntheses": []} if task == "entity-synthesis" else {"keep": []})
+        }.get(task, {"entity_syntheses": []} if task == "entity-synthesis" else {"groups": []})
         return model_client.ModelResult(
             parsed=parsed, text="", model="claude-sonnet-4-6", backend="claude-api",
             auth_mode="api-key", cost_usd=0.01, usage={"input_tokens": 100, "output_tokens": 20})
@@ -590,7 +612,7 @@ def test_log_md_ingest_entry_includes_usage_line(tmp_path, monkeypatch):
             "classify": {"skill": "general-records.md"},
             "extract": _extraction(),
             "briefing": {"investigation_status": "x", "what_was_ingested": []},
-        }.get(task, {"entity_syntheses": []} if task == "entity-synthesis" else {"keep": []})
+        }.get(task, {"entity_syntheses": []} if task == "entity-synthesis" else {"groups": []})
         return model_client.ModelResult(
             parsed=parsed, text="", model="claude-sonnet-4-6", backend="claude-api",
             auth_mode="api-key", cost_usd=0.01, usage={"input_tokens": 100, "output_tokens": 20})
@@ -766,7 +788,7 @@ def test_finalize_completes_an_interrupted_run(tmp_path, monkeypatch):
                 raise model_client.RateLimitError("You've hit your session limit · resets 7pm")
             return res({"entity_syntheses": [{"entity_id": "acme-corp", "summary": "Synthesized prose.", "analysis": ""}]})
         if task == "timeline-dedup":
-            return res({"keep": []})
+            return res({"groups": []})
         return res({"investigation_status": "x", "what_was_ingested": ["a.pdf", "b.pdf"]})
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 

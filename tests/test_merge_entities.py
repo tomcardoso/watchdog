@@ -333,13 +333,46 @@ def test_run_regenerates_third_party_note_with_remapped_link(tmp_path):
     assert "entities/person/a-smith-duplicate" not in bob_note
 
 
-def test_run_rebuilds_global_timeline(tmp_path):
+def _seed_canonical(vault: Path, date: str, rec: dict) -> None:
+    td = vault / ".watchdog" / "timeline"
+    td.mkdir(parents=True, exist_ok=True)
+    (td / f"{date}.ndjson").write_text(json.dumps(rec) + "\n", encoding="utf-8")
+
+
+def test_run_rebuilds_global_timeline_from_canonical_ndjson(tmp_path):
     vault = make_vault(tmp_path)
+    _seed_canonical(vault, "2020-03-15", {
+        "date": "2020-03-15", "event": "Appointed director of Acme Corp",
+        "source_sha256": "sha-a", "page": 2, "entity_ids": ["alice-smith"], "basis": "stated"})
+    _seed_canonical(vault, "2021-05-01", {
+        "date": "2021-05-01", "event": "Signed contract as officer",
+        "source_sha256": "sha-b", "page": 5, "entity_ids": ["a-smith-duplicate"], "basis": "stated"})
+
     run(vault, "alice-smith", "a-smith-duplicate")
 
     timeline = (vault / "timeline.md").read_text()
     assert "Appointed director of Acme Corp" in timeline
     assert "Signed contract as officer" in timeline
+
+
+def test_run_remaps_losing_entity_id_in_timeline_ndjson(tmp_path):
+    """The merge remaps the losing id → survivor inside the timeline NDJSON records too (#237),
+    so the unified timeline's entity links follow the merge instead of pointing at the deleted
+    stub. Deterministic, parallel to the registry surgery — no model call."""
+    vault = make_vault(tmp_path)
+    _seed_canonical(vault, "2021-05-01", {
+        "date": "2021-05-01", "event": "Signed contract as officer",
+        "source_sha256": "sha-b", "page": 5, "entity_ids": ["a-smith-duplicate"], "basis": "stated"})
+
+    report = run(vault, "alice-smith", "a-smith-duplicate")
+
+    rec = json.loads((vault / ".watchdog" / "timeline" / "2021-05-01.ndjson").read_text().strip())
+    assert rec["entity_ids"] == ["alice-smith"]
+    assert report["timeline_records_remapped"] == 1
+
+    timeline = (vault / "timeline.md").read_text()
+    assert "[[entities/person/alice-smith|Alice Smith]]" in timeline
+    assert "a-smith-duplicate" not in timeline
 
 
 def test_run_returns_report_dict(tmp_path):

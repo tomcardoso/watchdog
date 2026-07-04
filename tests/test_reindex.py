@@ -52,7 +52,7 @@ def _ingest_one_doc(vault, monkeypatch):
             "classify": {"skill": "general-records.md"},
             "extract": _extraction(),
             "briefing": {"investigation_status": "x", "what_was_ingested": []},
-        }.get(task, {"entity_syntheses": []} if task == "entity-synthesis" else {"keep": []})
+        }.get(task, {"entity_syntheses": []} if task == "entity-synthesis" else {"groups": []})
         return model_client.ModelResult(parsed=parsed, text="", model="m", backend="b",
                                         auth_mode="subscription", cost_usd=0.0)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)

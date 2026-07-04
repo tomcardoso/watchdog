@@ -44,14 +44,16 @@ def test_stage_writes_one_file_per_date(tmp_path):
         "date": "2020-03-15",
         "event": "Appointed director",
         "source_sha256": "abcdef1234567",
+        "page": 2,
+        "entity_ids": ["alice"],
         "basis": "stated",
     }
 
 
-def test_stage_dedups_same_event_regardless_of_entity_tags(tmp_path):
-    """Same (date, event text) collapses to one record even when the two source facts are
-    tagged to different entities — entity_ids was dropped as dead weight (#231): nothing reads
-    it, and entity-level dedup/rendering works off the registry's own timeline_events instead."""
+def test_stage_unions_entity_tags_on_same_event(tmp_path):
+    """Same (date, event text) collapses to one record, unioning the two source facts' entity
+    tags (#237) — that union is what lets the deduped global timeline attribute an event to every
+    entity it concerns, not just the one the surviving restatement happened to carry."""
     vault = _vault(tmp_path)
     stage_timeline_events(vault, _extraction([
         {"fact": "Acme filed for bankruptcy", "date": "2020-03-15", "entities": ["alice"]},
@@ -60,7 +62,7 @@ def test_stage_dedups_same_event_regardless_of_entity_tags(tmp_path):
 
     recs = _read_ndjson(vault / ".watchdog" / "timeline" / "2020-03-15_sha1234.ndjson")
     assert len(recs) == 1
-    assert "entity_ids" not in recs[0]
+    assert recs[0]["entity_ids"] == ["alice", "acme"]
 
 
 def test_stage_keeps_distinct_events_on_same_date(tmp_path):
@@ -139,9 +141,95 @@ def test_stage_then_collisions_promotes_and_rebuild_renders(tmp_path, capsys):
 
     cmd_rebuild_timeline(vault)
     timeline_md = (vault / "timeline.md").read_text(encoding="utf-8")
-    assert "2020-03-15" in timeline_md
+    assert "## 2020" in timeline_md                # year-grouped heading
+    assert "15 Mar 2020" in timeline_md            # human-rendered date
     assert "Appointed director" in timeline_md
     assert "Do not edit by hand" in timeline_md   # auto-generated warning header
+
+
+def _seed_registries(vault: Path, docs: dict, manifest: dict) -> None:
+    reg = vault / ".watchdog" / "Registry"
+    reg.mkdir(parents=True, exist_ok=True)
+    (reg / "documents.json").write_text(json.dumps(docs), encoding="utf-8")
+    (reg / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def _seed_canonical(vault: Path, date: str, records: list[dict]) -> None:
+    td = vault / ".watchdog" / "timeline"
+    td.mkdir(parents=True, exist_ok=True)
+    (td / f"{date}.ndjson").write_text(
+        "\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
+
+
+def test_rebuild_attributes_document_and_entities(tmp_path):
+    """The unified renderer resolves each record's source_sha256 → document link (+ page) and
+    each entity_id → entity link, year-grouped (#237)."""
+    vault = _vault(tmp_path)
+    _seed_registries(
+        vault,
+        docs={"sha-a": {"document_note": "documents/doc-a", "title": "Doc A",
+                        "morgue_path": "morgue/x/doc-a.pdf"}},
+        manifest={"alice": {"name": "Alice Smith", "type": "Person",
+                            "note_path": "entities/person/alice-smith"}},
+    )
+    _seed_canonical(vault, "2020-03-15", [
+        {"date": "2020-03-15", "event": "Appointed director", "source_sha256": "sha-a",
+         "page": 2, "entity_ids": ["alice"], "basis": "stated"},
+    ])
+
+    cmd_rebuild_timeline(vault)
+    md = (vault / "timeline.md").read_text(encoding="utf-8")
+    assert "## 2020" in md
+    assert "[[entities/person/alice-smith|Alice Smith]]" in md
+    assert "*[[documents/doc-a|Doc A]], [[morgue/x/doc-a.pdf#page=2|p. 2]]*" in md
+    assert "Appointed director" in md
+
+
+def test_rebuild_renders_multiple_entity_links(tmp_path):
+    """A cross-document-deduped event carrying more than one entity tag links all of them."""
+    vault = _vault(tmp_path)
+    _seed_registries(
+        vault,
+        docs={"sha-a": {"document_note": "documents/doc-a", "title": "Doc A"}},
+        manifest={
+            "alice": {"name": "Alice", "type": "Person", "note_path": "entities/person/alice"},
+            "acme": {"name": "Acme Corp", "type": "Company", "note_path": "entities/company/acme"},
+        },
+    )
+    _seed_canonical(vault, "2020-03-15", [
+        {"date": "2020-03-15", "event": "Acme filed for bankruptcy", "source_sha256": "sha-a",
+         "entity_ids": ["alice", "acme"], "basis": "stated"},
+    ])
+
+    cmd_rebuild_timeline(vault)
+    md = (vault / "timeline.md").read_text(encoding="utf-8")
+    assert "[[entities/person/alice|Alice]], [[entities/company/acme|Acme Corp]]" in md
+
+
+def test_rebuild_falls_back_to_bare_id_when_entity_missing(tmp_path):
+    """An entity_id absent from the manifest (e.g. a stale record) renders as bare text rather
+    than a broken link — and never crashes the render."""
+    vault = _vault(tmp_path)
+    _seed_registries(vault, docs={}, manifest={})
+    _seed_canonical(vault, "2020-03-15", [
+        {"date": "2020-03-15", "event": "Something happened", "source_sha256": "sha-x",
+         "entity_ids": ["ghost"], "basis": "stated"},
+    ])
+
+    cmd_rebuild_timeline(vault)
+    md = (vault / "timeline.md").read_text(encoding="utf-8")
+    assert "— ghost —" in md
+    assert "Something happened" in md
+
+
+def test_rebuild_marks_inferred_events(tmp_path):
+    vault = _vault(tmp_path)
+    _seed_registries(vault, docs={}, manifest={})
+    _seed_canonical(vault, "2021", [
+        {"date": "2021", "event": "Likely resigned", "source_sha256": "s", "basis": "inferred"},
+    ])
+    cmd_rebuild_timeline(vault)
+    assert "*(inferred)*" in (vault / "timeline.md").read_text(encoding="utf-8")
 
 
 def test_rebuild_empty_carries_generated_warning(tmp_path):
