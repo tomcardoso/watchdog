@@ -441,6 +441,13 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     page_count = pf.get("page_count") or len(pages)
     pg = f"{page_count}p"
 
+    # Digest-size telemetry (#216): how much prior-entity context this extraction carries. Watch it
+    # on a mature vault to decide whether per-candidate caps are worth adding, and at what sizes.
+    _n_cand = pf.get("existing_entities_count", 0)
+    _say(f"{_DIM}   {filename} · prior-entity digest "
+         f"{pf.get('existing_entities_bytes', 0) / 1024:.1f} KB · "
+         f"{_n_cand} candidate{'s' if _n_cand != 1 else ''}{_RESET}")
+
     def _step(tty: str, plain: str) -> None:
         """Mutate this document's single in-flight live row (TTY); append the plain transition
         line when there's no live region (non-TTY) — keeping logged output unchanged."""

@@ -201,6 +201,8 @@ watchdog configure default_skill corporate-filings
 
 Run `watchdog configure default_skill` with no value to pick from the catalog interactively (arrow keys to choose a skill, an "unset" row to turn pinning off, or "Type my own…" for a name or file path).
 
+As a vault matures, extraction also carries forward every known entity a document mentions (so the extractor can dedup and catch contradictions) — and short entity *aliases* (initials, abbreviations) can false-match common words and quietly inflate the prompt. `preflight_alias_min_length` (default 3) sets the shortest alias allowed to match; the canonical name always matches at any length, so short real names like `BP` are unaffected. During ingest, watchdog prints each document's carried-forward digest size, so you can see whether this is worth tuning on your vault.
+
 Not sure which knob you need? Run `watchdog configure` with no arguments: it prints every setting and its current value, then offers a wizard — an arrow-key menu of all the settings, so you can browse, read each one's help, and change values without memorizing key names.
 
 For each document, the pipeline:
