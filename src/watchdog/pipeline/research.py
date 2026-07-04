@@ -113,7 +113,25 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-_opener = urllib.request.build_opener(_NoRedirect)
+def _ssl_context() -> ssl.SSLContext:
+    """Default TLS verification minus `VERIFY_X509_STRICT` (on by default since Python 3.13).
+
+    Corporate TLS-inspecting proxies — common on newsroom-managed machines — re-sign every
+    connection with a CA that is often not RFC 5280-strict (e.g. missing the keyUsage extension),
+    which strict mode rejects even though browsers, curl, and pip all accept it. Clearing the
+    strict bit restores the pre-3.13 posture: full chain validation and hostname checking stay
+    on; only the extension-conformance check that mainstream clients don't enforce is dropped.
+    Without this, every intercepted HTTPS fetch fails and research/fetch is unusable on such
+    machines (#243)."""
+    ctx = ssl.create_default_context()
+    ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
+    return ctx
+
+
+_opener = urllib.request.build_opener(_NoRedirect, urllib.request.HTTPSHandler(context=_ssl_context()))
+# Wayback submissions (below) share the relaxed context but keep default redirect handling —
+# archive.org may bounce the SPN2 endpoint, and those hops need no SSRF re-validation.
+_wayback_opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=_ssl_context()))
 
 
 def fetch(url: str, *, max_bytes: int = _MAX_BYTES_DEFAULT, timeout: int = _TIMEOUT,
@@ -212,7 +230,7 @@ _WAYBACK_TIMEOUT = 30
 
 
 def save_to_wayback(url: str, access_key: str, secret_key: str, *,
-                    timeout: int = _WAYBACK_TIMEOUT, opener=urllib.request.urlopen) -> str | None:
+                    timeout: int = _WAYBACK_TIMEOUT, opener=_wayback_opener.open) -> str | None:
     """Submit `url` to the Wayback Machine's Save Page Now (SPN2) API and return a citable snapshot
     URL, or None if the submission didn't succeed. Best-effort: catches every error and returns None
     rather than raising, so archiving never sinks a deposit. Fires the save and records the

@@ -85,6 +85,25 @@ def test_extension_for_rejects_unsupported():
         research.extension_for("application/zip", "http://e.com/archive")
 
 
+# ── TLS context (#243) ────────────────────────────────────────────────────────
+
+def test_ssl_context_relaxes_strict_verification_only():
+    import ssl
+    ctx = research._ssl_context()
+    assert not (ctx.verify_flags & ssl.VERIFY_X509_STRICT)  # tolerate non-conformant proxy CAs
+    assert ctx.verify_mode == ssl.CERT_REQUIRED             # chain validation still on
+    assert ctx.check_hostname                               # hostname checking still on
+
+
+def test_fetch_and_wayback_openers_use_relaxed_context():
+    import ssl
+    import urllib.request
+    for opener in (research._opener, research._wayback_opener):
+        https = [h for h in opener.handlers if isinstance(h, urllib.request.HTTPSHandler)]
+        assert any(h._context is not None
+                   and not (h._context.verify_flags & ssl.VERIFY_X509_STRICT) for h in https)
+
+
 # ── Sanitization ──────────────────────────────────────────────────────────────
 
 def test_sanitize_html_strips_script_and_iframe():
