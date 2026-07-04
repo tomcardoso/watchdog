@@ -8,7 +8,9 @@ never reach the vault as a direct note. Two properties make this safe and durabl
 - **Fetching happens here, in Python, so URL validation runs *before* the network call** — the
   real SSRF guard (reject non-http(s) schemes and hosts that resolve to private/loopback/
   link-local space, re-checked on every redirect hop). The fetched body is sanitized before it
-  becomes vault content, since fetched web text is an injection surface.
+  becomes vault content, since fetched web text is an injection surface: HTML gets a rendered,
+  script-stripped Chromium capture when Playwright is available (`pipeline/capture.py`, #200), or
+  else an nh3-cleaned plain fetch.
 - **Each deposit is written synchronously the instant it is captured**, so a long research
   session that runs out of tokens never loses what it already pulled; `deposit_many` re-pulls a
   durable worklist idempotently (deposit filenames are a stable hash of the URL).
@@ -23,7 +25,6 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import json
-import re
 import socket
 import ssl
 import urllib.error
@@ -34,6 +35,7 @@ from datetime import date
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
+import nh3
 import yaml
 
 from watchdog.pipeline.preprocess import DIRECT_TEXT_SUFFIXES, DOCLING_SUFFIXES
@@ -155,19 +157,13 @@ def extension_for(content_type: str, url: str) -> str:
 
 # ── Sanitization ──────────────────────────────────────────────────────────────
 
-_SCRIPT_RE = re.compile(r"<script\b[^>]*>.*?</script\s*>", re.IGNORECASE | re.DOTALL)
-_IFRAME_RE = re.compile(r"<iframe\b[^>]*>.*?</iframe\s*>", re.IGNORECASE | re.DOTALL)
-_SCRIPT_TAG_RE = re.compile(r"</?script\b[^>]*/?>", re.IGNORECASE)
-_IFRAME_TAG_RE = re.compile(r"</?iframe\b[^>]*/?>", re.IGNORECASE)
-
-
 def sanitize_html(text: str) -> str:
-    """Strip <script>/<iframe> blocks (and any stray, unclosed tags) from fetched HTML."""
-    text = _SCRIPT_RE.sub("", text)
-    text = _IFRAME_RE.sub("", text)
-    text = _SCRIPT_TAG_RE.sub("", text)
-    text = _IFRAME_TAG_RE.sub("", text)
-    return text
+    """Strip scripts, iframes, event handlers, and other active/exfil surface from fetched HTML
+    with nh3 (a Rust `ammonia` binding), while keeping document structure — headings, tables,
+    links — intact for Docling. This is the fallback path's sanitizer (#200); a rendered capture
+    (`pipeline/capture.py`) is already script-stripped and asset-inlined by the DOM rewrite that
+    produces it, so it never reaches this function."""
+    return nh3.clean(text)
 
 
 def neutralize(value: str) -> str:
@@ -181,11 +177,14 @@ def neutralize(value: str) -> str:
 
 
 def build_sidecar(*, source: str, title: str, source_type: str, relevance: str,
-                  obtained: str, archived: str = "", retrieved_by: str = "research-mode") -> str:
+                  obtained: str, archived: str = "", capture: str = "",
+                  retrieved_by: str = "research-mode") -> str:
     """Render the provenance `.yml` sidecar. `source`/`obtained` are stamped deterministically at
     ingest; `retrieved_by`/`source_type`/`title`/`relevance` reach the extractor as notes.
     `retrieved_by` records how the source was acquired (`research-mode` vs `fetch`). When the source
-    was saved to the Wayback Machine (#201), `archived` carries the snapshot URL."""
+    was saved to the Wayback Machine (#201), `archived` carries the snapshot URL. `capture` (#200)
+    records how an HTML body was obtained — `rendered` (Playwright/Chromium snapshot) or `plain`
+    (nh3-sanitized fetch fallback); omitted for non-HTML deposits."""
     data = {
         "source": source,
         "obtained": obtained,
@@ -196,6 +195,8 @@ def build_sidecar(*, source: str, title: str, source_type: str, relevance: str,
     }
     if archived:
         data["archived"] = archived
+    if capture:
+        data["capture"] = capture
     return yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
 
 
@@ -259,15 +260,27 @@ def deposit_one(vault: Path, url: str, *, title: str = "", source_type: str = ""
                 wayback: tuple[str, str] | None = None,
                 retrieved_by: str = "research-mode") -> Path:
     """Validate, fetch, sanitize, and write a source document + its `.yml` sidecar to
-    `_INCOMING/`. Returns the deposited document path; raises ResearchError on rejection. When
-    `wayback` (access_key, secret_key) is given, best-effort-archives the source to the Wayback
-    Machine and records the snapshot URL in the sidecar (#201). `retrieved_by` records the
-    acquisition path in the sidecar (`research-mode` vs `fetch`)."""
+    `_INCOMING/`. Returns the deposited document path; raises ResearchError on rejection. HTML
+    deposits first try a rendered Chromium capture (`pipeline/capture.py`, #200) — script-stripped,
+    assets inlined as data URIs; when Playwright isn't installed or the render fails for any reason,
+    falls back to the plain, nh3-sanitized fetch body. Either way the sidecar's `capture` field
+    records which path was taken (`rendered` / `plain`). When `wayback` (access_key, secret_key) is
+    given, best-effort-archives the source to the Wayback Machine and records the snapshot URL in
+    the sidecar (#201). `retrieved_by` records the acquisition path in the sidecar (`research-mode`
+    vs `fetch`)."""
     obtained = obtained or date.today().isoformat()
     body, content_type, final_url = fetcher(url, max_bytes=max_bytes)
     ext = extension_for(content_type, final_url)
+    capture_mode = ""
     if ext in _HTML_EXTS:
-        body = sanitize_html(body.decode("utf-8", "replace")).encode("utf-8")
+        from watchdog.pipeline import capture
+        rendered = capture.try_render(final_url, max_bytes=max_bytes)
+        if rendered is not None:
+            body = rendered
+            capture_mode = "rendered"
+        else:
+            body = sanitize_html(body.decode("utf-8", "replace")).encode("utf-8")
+            capture_mode = "plain"
 
     archived = save_to_wayback(final_url, wayback[0], wayback[1]) or "" if wayback else ""
 
@@ -279,7 +292,7 @@ def deposit_one(vault: Path, url: str, *, title: str = "", source_type: str = ""
     (incoming / f"{name}{ext}.yml").write_text(
         build_sidecar(source=final_url, title=title, source_type=source_type,
                       relevance=relevance, obtained=obtained, archived=archived,
-                      retrieved_by=retrieved_by),
+                      capture=capture_mode, retrieved_by=retrieved_by),
         encoding="utf-8",
     )
     return doc_path
