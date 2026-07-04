@@ -168,3 +168,17 @@ TIMELINE_DEDUP = _obj(
     )}},
     ["groups"],
 )
+
+# Cross-precision timeline reconciliation for one month (#239). The model matches each
+# month-precision (YYYY-MM) event to the day-precision (YYYY-MM-DD) event it restates, if any:
+# `matches` is `{coarse, precise}` index pairs. Python drops the matched coarse event and unions
+# its entity tags onto the precise survivor; unmatched coarse events are left untouched. Only
+# coarse→precise matches are expressible, so a precise event can never be dropped and two precise
+# events can never collapse into each other.
+TIMELINE_PRECISION_MATCH = _obj(
+    {"matches": {"type": "array", "items": _obj(
+        {"coarse": {"type": "integer"}, "precise": {"type": "integer"}},
+        ["coarse", "precise"],
+    )}},
+    ["matches"],
+)

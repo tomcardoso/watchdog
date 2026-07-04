@@ -364,6 +364,15 @@ the briefing then run in `_post_ingest` (model: `post_model`) after extraction:
   `timeline.cmd_rebuild_timeline` to render `timeline.md`. If the dedup call fails it falls back
   to the union rather than losing events;
 
+- **Cross-precision reconciliation (D63).** Date-keyed buckets never compare a month-precision
+  event (`2026-03`) against the specific day it restates (`2026-03-12`). After the exact-date dedup,
+  `timeline.month_precision_groups` finds each month holding **both** precisions and one
+  `timeline-precision` model call per such month matches each coarse event to the day it restates;
+  `timeline.apply_precision_matches` drops the matched coarse event, keeps the precise date, and
+  unions its `entity_ids` onto the survivor. Gated on a month mixing precisions, so most ingests make
+  zero extra calls. The pass can only remove a coarse restatement — never a precise event — so it
+  cannot collapse two distinct days; bare-year (`YYYY`) events are left unreconciled by design;
+
 **One renderer (D59).** `timeline.cmd_rebuild_timeline` is the *single* code path that writes
 `timeline.md` — reading the cross-document-deduped canonical NDJSON and resolving `source_sha256`
 → document link (+ `page`) and `entity_ids` → entity links, year-grouped. Every command that

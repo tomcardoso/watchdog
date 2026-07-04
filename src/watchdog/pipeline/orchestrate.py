@@ -878,6 +878,20 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             kept = events   # fall back to the union rather than losing events
         canonical.write_text(
             "\n".join(json.dumps(e, ensure_ascii=False) for e in kept) + "\n", encoding="utf-8")
+
+    # 2b. Cross-precision reconciliation (#239, D63): date-keyed buckets never compare a
+    # month-precision event against the specific day it restates. For each month holding both, one
+    # focused model call folds coarse restatements into their day, unioning entity attribution.
+    # Gated on a month carrying both precisions, so most ingests make zero extra calls.
+    for grp in timeline.month_precision_groups(vault):
+        try:
+            r = await _call_model(
+                task="timeline-precision", model=post_model, backend=post_backend,
+                schema=schemas.TIMELINE_PRECISION_MATCH, effort=post_effort,
+                prompt=prompts.build_timeline_precision_prompt(grp["month"], grp["coarse"], grp["precise"]))
+        except (model_client.ModelError, model_client.RateLimitError):
+            continue   # leave the month untouched rather than risk a bad fold
+        timeline.apply_precision_matches(vault, grp, r.parsed.get("matches") or [])
     n_dates, n_events = timeline.cmd_rebuild_timeline(vault, quiet=True)
     _say(f"{_DIM}   timeline.md · {n_dates} date{'s' if n_dates != 1 else ''}, "
          f"{n_events} event{'s' if n_events != 1 else ''}{_RESET}")
