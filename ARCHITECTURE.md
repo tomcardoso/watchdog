@@ -143,8 +143,15 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
 `asyncio.Semaphore(extract_concurrency)`. Per document (`_extract_document`):
 
 1. **Pre-flight** (`preflight.run`, a function call) — packages the page text and the
-   candidate existing entities matched by substring against the manifest (no ML), each
-   carrying its current note summary + timeline/roles/contradictions digest (§8).
+   candidate existing entities matched against the manifest (no ML), each carrying its current
+   note summary + timeline/roles/contradictions digest (§8). Matching is **whole-token**, not raw
+   substring: a name must sit on word boundaries (so `Lee` no longer matches `asleep`), with a
+   plain-substring fallback for non-ASCII-edged names that regex boundaries can't segment (CJK
+   etc.), so non-Latin names never match less than before. Aliases below `preflight_alias_min_length`
+   (default 3) are ignored — that's where short, noisy strings (initials, abbreviations) accumulate
+   over merges and drag whole digests into the prompt on false hits; the **canonical name always
+   matches at any length**, so `BP`/`GE`/`3M` stay findable (D60). Pre-flight reports the digest's
+   byte size and candidate count per document, surfaced during ingest, to size caps from real data.
 2. **Classify** — one cheap model call (`model_client.acomplete_json`, `classifier_model`,
    default haiku) over the document's first `classify_pages` pages + the generated
    in-memory skill index, returning the closest domain-skill filename (§6). Python reads that

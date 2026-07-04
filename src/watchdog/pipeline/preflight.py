@@ -7,10 +7,45 @@ does extraction reasoning, writes the extraction JSON, then calls post-flight.
 """
 
 import json
+import re
 import sys
 from pathlib import Path
 
 from watchdog.pipeline.write_vault import _extract_summary, _extract_contradictions
+
+# Aliases shorter than this are ignored during candidate matching. Aliases are where short, noisy
+# strings accumulate (initials, abbreviations), and each is an independent substring surface that
+# drags a whole digest into the extraction prompt on a false hit (#216). The floor applies to
+# aliases ONLY — a canonical name matches at any length, so "BP"/"GE"/"3M" stay findable.
+DEFAULT_ALIAS_MIN_LENGTH = 3
+
+_ASCII_WORD = re.compile(r"[a-z0-9]")   # doc text and names are lowercased before matching
+
+
+def _config_get(key: str, default):
+    """Read a single key from ~/.watchdog/config.json (best-effort). Local copy of the pipeline's
+    config-read convention, to avoid importing the cmd layer (cf. embed.py, section.py)."""
+    try:
+        cfg = json.loads((Path.home() / ".watchdog" / "config.json").read_text())
+    except Exception:
+        cfg = {}
+    return cfg.get(key, default)
+
+
+def _name_matches(needle: str, text_lower: str) -> bool:
+    """Whole-token containment: `needle` must appear in `text_lower` on token boundaries, not
+    buried inside a longer word — so "Lee" no longer matches "asleep" (#216). Boundaries are
+    asserted only on edges that are ASCII word chars; a non-ASCII edge (CJK and other unspaced
+    scripts, which `\\b`/`\\w` can't segment) falls back to plain substring, so the matcher never
+    matches *less* than the old behavior for non-Latin names. `needle`/`text_lower` are lowercased."""
+    needle = needle.strip().lower()
+    if not needle or needle not in text_lower:   # fast substring reject (also the non-Latin path)
+        return False
+    left = r"(?<![a-z0-9])" if _ASCII_WORD.match(needle[0]) else ""
+    right = r"(?![a-z0-9])" if _ASCII_WORD.match(needle[-1]) else ""
+    if not left and not right:
+        return True   # non-ASCII edges: substring hit already confirmed above
+    return re.search(left + re.escape(needle) + right, text_lower) is not None
 
 
 def _digest_events(events: list[dict]) -> list[dict]:
@@ -57,10 +92,15 @@ def _existing_analysis(vault: Path, note_path: str) -> str:
     return body.strip()
 
 
-def run(vault: Path, sha256: str) -> dict:
+def run(vault: Path, sha256: str, *, alias_min_length: int | None = None) -> dict:
     queue_file = vault / ".watchdog" / "queue" / f"{sha256}.json"
     if not queue_file.exists():
         return {"error": f"queue file not found for sha256 {sha256}"}
+
+    alias_floor = (
+        alias_min_length if alias_min_length is not None
+        else _config_get("preflight_alias_min_length", DEFAULT_ALIAS_MIN_LENGTH)
+    )
 
     queue = json.loads(queue_file.read_text(encoding="utf-8"))
 
@@ -85,8 +125,12 @@ def run(vault: Path, sha256: str) -> dict:
     if manifest_file.exists():
         manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
         for eid, entry in manifest.items():
-            names = [entry.get("name", "")] + entry.get("aliases", [])
-            if any(n and n.lower() in text_lower for n in names):
+            name = entry.get("name", "")
+            aliases = entry.get("aliases", [])
+            # Canonical name matches at any length; aliases must clear the floor first (#216).
+            if _name_matches(name, text_lower) or any(
+                len(a.strip()) >= alias_floor and _name_matches(a, text_lower) for a in aliases
+            ):
                 note_path = entry.get("note_path", "")
                 reg = entities_reg.get(eid, {})
                 candidates.append({
@@ -120,6 +164,11 @@ def run(vault: Path, sha256: str) -> dict:
 
     near_dup = queue.get("near_dup", {})
 
+    # Digest-size telemetry (#216): how many bytes of prior-entity context this document's
+    # extraction prompt is carrying, and across how many candidates. Surfaced per-doc during ingest
+    # so cap sizes can be chosen from real data on a mature vault rather than guessed.
+    existing_entities_bytes = len(json.dumps(candidates, ensure_ascii=False))
+
     return {
         "sha256":             queue.get("sha256", sha256),
         "filename":           queue.get("filename", ""),
@@ -132,6 +181,8 @@ def run(vault: Path, sha256: str) -> dict:
             "top_similarity":  near_dup.get("top_similarity", 0.0),
         },
         "existing_entities":  candidates,
+        "existing_entities_bytes": existing_entities_bytes,
+        "existing_entities_count": len(candidates),
         "known_document_types": known_document_types,
     }
 

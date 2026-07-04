@@ -1,4 +1,5 @@
 import json
+import tempfile
 from pathlib import Path
 
 from watchdog.pipeline import preflight
@@ -125,3 +126,100 @@ def test_known_document_types_empty_on_fresh_vault(tmp_path):
     _write_queue(vault, "sha-new", "First doc.")
     pf = preflight.run(vault, "sha-new")
     assert pf["known_document_types"] == []
+
+
+# ── Candidate matching: word boundaries + alias floor (#216) ─────────────────────
+
+def _manifest_vault(tmp_path: Path, manifest: dict, text: str, sha: str = "d") -> Path:
+    # Fresh vault per call so a test can build several without colliding on the Registry dir.
+    root = tempfile.mkdtemp(dir=tmp_path)
+    vault = Path(root) / "vault"
+    reg = vault / ".watchdog" / "Registry"
+    reg.mkdir(parents=True)
+    (vault / ".watchdog" / "queue").mkdir()
+    (reg / "manifest.json").write_text(json.dumps(manifest))
+    (reg / "entities.json").write_text("{}")
+    (reg / "documents.json").write_text("{}")
+    _write_queue(vault, sha, text)
+    return vault
+
+
+def _ids(pf: dict) -> set:
+    return {e["id"] for e in pf["existing_entities"]}
+
+
+def test_name_matches_only_on_word_boundary(tmp_path):
+    """A short canonical name must match as a whole token, not buried inside a longer word —
+    'Lee' appears in 'asleep' as a substring but is not a mention (#216)."""
+    manifest = {"lee": {"name": "Lee", "type": "Person", "aliases": [], "note_path": ""}}
+    assert _ids(preflight.run(_manifest_vault(tmp_path, manifest, "The guard was asleep."), "d")) == set()
+    assert _ids(preflight.run(_manifest_vault(tmp_path, manifest, "Then Lee arrived."), "d")) == {"lee"}
+
+
+def test_short_canonical_name_still_matches(tmp_path):
+    """The floor is aliases-only: a real short *name* (BP, GE, 3M) matches at any length, on a
+    boundary — 'BP' matches 'BP plc' but not 'subprime' or 'BPD'."""
+    manifest = {"bp": {"name": "BP", "type": "Company", "aliases": [], "note_path": ""}}
+    assert _ids(preflight.run(_manifest_vault(tmp_path, manifest, "Filed by BP plc today."), "d")) == {"bp"}
+    assert _ids(preflight.run(_manifest_vault(tmp_path, manifest, "A subprime BPD matter."), "d")) == set()
+
+
+def test_short_alias_below_floor_is_ignored(tmp_path):
+    """A 2-char alias ('AG', initials for the entity) is below the default floor of 3 and never
+    matches — even as a whole token — so it stops dragging the digest in on noisy hits."""
+    manifest = {"ag": {"name": "Andrew Gordon", "type": "Person",
+                       "aliases": ["AG"], "note_path": ""}}
+    # 'AG' present as a whole token, canonical name absent → no candidate (alias below floor)
+    assert _ids(preflight.run(_manifest_vault(tmp_path, manifest, "Signed by AG on Tuesday."), "d")) == set()
+    # canonical name present → matches regardless of the alias floor
+    assert _ids(preflight.run(_manifest_vault(tmp_path, manifest, "Andrew Gordon signed."), "d")) == {"ag"}
+
+
+def test_alias_at_floor_matches_only_on_boundary(tmp_path):
+    """An alias at/above the floor still has to clear the word-boundary test: 'Ana' matches
+    'Ana Silva' but not 'banana'."""
+    manifest = {"ana": {"name": "Ana Silva", "type": "Person",
+                        "aliases": ["Ana"], "note_path": ""}}
+    assert _ids(preflight.run(_manifest_vault(tmp_path, manifest, "We ate a banana."), "d")) == set()
+    assert _ids(preflight.run(_manifest_vault(tmp_path, manifest, "Ana testified."), "d")) == {"ana"}
+
+
+def test_alias_floor_override_via_param(tmp_path):
+    """alias_min_length lets a caller (or config) lower the floor; at 1 a 2-char alias matches."""
+    manifest = {"ag": {"name": "Andrew Gordon", "type": "Person",
+                       "aliases": ["AG"], "note_path": ""}}
+    vault = _manifest_vault(tmp_path, manifest, "Signed by AG on Tuesday.")
+    assert _ids(preflight.run(vault, "d", alias_min_length=1)) == {"ag"}
+    assert _ids(preflight.run(vault, "d", alias_min_length=3)) == set()
+
+
+def test_non_latin_name_falls_back_to_substring(tmp_path):
+    """Regex word boundaries can't segment unspaced scripts, so a non-ASCII-edged name falls back
+    to plain substring — it must not match *less* than the old behavior for e.g. a CJK name in
+    continuous text."""
+    manifest = {"xi": {"name": "习近平", "type": "Person", "aliases": [], "note_path": ""}}
+    vault = _manifest_vault(tmp_path, manifest, "国家主席习近平出席了会议。")
+    assert _ids(preflight.run(vault, "d")) == {"xi"}
+
+
+def test_digest_size_telemetry_reported(tmp_path):
+    """preflight surfaces the prior-entity digest byte size and candidate count so cap sizes can
+    be chosen from real data on a mature vault (#216)."""
+    vault = _vault(tmp_path)
+    _write_registry(vault)
+    _write_queue(vault, "doc1", "Alice Smith is a director of Acme Corp.")
+
+    pf = preflight.run(vault, "doc1")
+    assert pf["existing_entities_count"] == len(pf["existing_entities"]) == 1
+    assert pf["existing_entities_bytes"] == len(json.dumps(pf["existing_entities"], ensure_ascii=False))
+    assert pf["existing_entities_bytes"] > 0
+
+
+def test_digest_size_telemetry_zero_when_no_candidates(tmp_path):
+    vault = _vault(tmp_path)
+    _write_registry(vault)
+    _write_queue(vault, "doc1", "A document mentioning nobody in the registry.")
+
+    pf = preflight.run(vault, "doc1")
+    assert pf["existing_entities_count"] == 0
+    assert pf["existing_entities_bytes"] == len(json.dumps([]))

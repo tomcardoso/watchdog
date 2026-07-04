@@ -117,6 +117,20 @@ _CONFIGURE_KEYS = {
         "type": "string",
         "default": None,
     },
+    "preflight_alias_min_length": {
+        "short": "Shortest entity alias that can match document text during extraction (default: 3)",
+        "help": (
+            "When preparing a document for extraction, Watchdog carries forward every known entity\n"
+            "  whose name or alias appears in the text, so the extractor can dedup and check\n"
+            "  contradictions. Aliases shorter than this are ignored — short aliases (initials,\n"
+            "  abbreviations) false-match common words and drag whole entity digests into the prompt,\n"
+            "  inflating cost. The canonical name always matches at any length, so short real names\n"
+            "  (BP, GE, 3M) are unaffected. Lower it to 1 to match all aliases. Default: 3."
+        ),
+        "type": "int",
+        "default": 3,
+        "min": 1,
+    },
     "chunk_size": {
         "short": "Pages per chunk when splitting large PDFs for parallel processing (default: 40)",
         "help": (
@@ -420,7 +434,7 @@ _CONFIGURE_SECTIONS = [
     ("Chew", "Local preprocessing — parallelism and large-PDF handling.",
      ["chew_workers", "chunk_size", "chunk_workers", "chunk_timeout", "table_structure", "embed_images"]),
     ("Ingest", "Extraction run — parallelism, classification, skill pinning, sectioning.",
-     ["extract_concurrency", "classify_pages", "default_skill",
+     ["extract_concurrency", "classify_pages", "default_skill", "preflight_alias_min_length",
       "section_token_threshold", "section_token_budget", "section_overlap_tokens"]),
     ("Models", "Which Claude model runs each step, and how hard it thinks.",
      ["classifier_model", "extractor_model", "finalizer_model",
