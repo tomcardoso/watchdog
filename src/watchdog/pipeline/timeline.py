@@ -49,10 +49,12 @@ def stage_timeline_events(vault: Path, extraction: dict) -> int:
     """Write raw per-date NDJSON timeline files from an extraction blob.
 
     Reads the dated facts on ``document.key_facts`` (#140): every key_fact carrying a ``date`` is a
-    timeline event. Attaches the document sha, deduplicates within the document by (date, event
-    text), groups by date, and writes one raw ``.watchdog/timeline/{date}_{sha[:7]}.ndjson`` file
-    per date. The existing ``timeline-collisions`` / ``rebuild-timeline`` flow consumes these
-    unchanged.
+    timeline event, with its ``entities`` tags supplying the contributing entity ids and its
+    ``page`` the source page. Attaches the document sha, deduplicates within the document by (date,
+    event text) while unioning entity ids, groups by date, and writes one raw
+    ``.watchdog/timeline/{date}_{sha[:7]}.ndjson`` file per date. The ``timeline-collisions`` /
+    ``rebuild-timeline`` flow consumes these; the unified renderer resolves ``source_sha256`` /
+    ``page`` / ``entity_ids`` into document and entity attribution (#237).
 
     Returns the number of dates written.
     """
@@ -68,13 +70,20 @@ def stage_timeline_events(vault: Path, extraction: dict) -> int:
         event_text = (fact.get("fact") or "").strip()
         if not date or not event_text:
             continue
+        tags = [e for e in (fact.get("entities") or []) if e]
         key = _stage_dedup_key(date, event_text)
         bucket = by_date.setdefault(date, {})
-        if key not in bucket:
+        if key in bucket:
+            for eid in tags:
+                if eid not in bucket[key]["entity_ids"]:
+                    bucket[key]["entity_ids"].append(eid)
+        else:
             bucket[key] = {
                 "date": date,
                 "event": event_text,
                 "source_sha256": sha,
+                "page": fact.get("page"),
+                "entity_ids": list(tags),
                 "basis": fact.get("basis", "stated"),
             }
 
@@ -146,57 +155,96 @@ def _write_timeline_md(vault: Path, content: str) -> None:
         print(f"  Warning: full-text index update failed for timeline: {e}", file=sys.stderr)
 
 
+def _load_registry(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _render_event_line(ev: dict, docs_reg: dict, manifest: dict) -> str:
+    """Render one canonical NDJSON record as a timeline bullet with entity and
+    document attribution — the same shape write_vault's entity-note timeline uses,
+    extended to link *every* entity a cross-document-deduped event concerns (#237)."""
+    from watchdog.pipeline.write_vault import _render_date, _page_link
+
+    rendered_date = _render_date(ev.get("date", ""))
+    basis_note = " *(inferred)*" if ev.get("basis") == "inferred" else ""
+
+    # Entity links: resolve each tagged id against the manifest (id → name, note_path).
+    # An id missing from the manifest (e.g. a stale record) falls back to bare text.
+    links: list[str] = []
+    for eid in ev.get("entity_ids", []):
+        entry = manifest.get(eid)
+        if entry and entry.get("note_path") and entry.get("name"):
+            links.append(f"[[{entry['note_path']}|{entry['name']}]]")
+        elif eid:
+            links.append(eid)
+    entity_part = f" — {', '.join(links)}" if links else ""
+
+    doc_entry = docs_reg.get(ev.get("source_sha256", ""), {})
+    doc_note = doc_entry.get("document_note", "")
+    doc_title = doc_entry.get("title") or doc_entry.get("filename", "")
+    if doc_note and doc_title:
+        pg = _page_link(doc_entry.get("morgue_path", ""), ev.get("page"))
+        page_part = f", {pg}" if pg else ""
+        source_part = f" — *[[{doc_note}|{doc_title}]]{page_part}*"
+    else:
+        source_part = ""
+
+    return f"- **{rendered_date}**{entity_part} — {ev.get('event', '')}{source_part}{basis_note}"
+
+
 def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
     """Read all canonical {date}.ndjson files and render timeline.md.
 
+    The single global-timeline renderer (#237): reads the cross-document-deduped canonical
+    NDJSON and resolves each record's ``source_sha256`` / ``page`` / ``entity_ids`` into
+    document links and entity links, grouped by year. Every command that touches the vault
+    (``ingest``, ``merge-entities``, ``write-entity``, standalone ``watchdog timeline``)
+    renders through here, so ``timeline.md``'s shape no longer depends on which ran last.
+
     Returns (date_count, event_count) so callers can report progress.
     """
-    td = _timeline_dir(vault)
+    from watchdog.pipeline.write_vault import _date_sort_key
 
-    if not td.exists() or not any(td.glob("*.ndjson")):
-        _write_timeline_md(vault, _TIMELINE_HEADER + "*No events yet.*\n")
-        if not quiet:
-            print("timeline.md written — no events yet")
-        return (0, 0)
+    td = _timeline_dir(vault)
+    registry_dir = vault / ".watchdog" / "Registry"
+    docs_reg = _load_registry(registry_dir / "documents.json")
+    manifest = _load_registry(registry_dir / "manifest.json")
 
     # Canonical files only: no underscore in stem
     canonical_files = sorted(
         f for f in td.glob("*.ndjson") if "_" not in f.stem
-    )
+    ) if td.exists() else []
 
-    if not canonical_files:
-        _write_timeline_md(vault, _TIMELINE_HEADER + "*No events yet.*\n")
-        if not quiet:
-            print("timeline.md written — no canonical files yet")
-        return (0, 0)
-
-    sections: list[str] = []
-    total_events = 0
-
+    events: list[dict] = []
     for cf in canonical_files:
-        date = cf.stem
-        events: list[dict] = []
         for line in _read_ndjson_lines(cf):
             try:
                 events.append(json.loads(line))
             except json.JSONDecodeError:
                 continue
 
-        if not events:
-            continue
+    if not events:
+        _write_timeline_md(vault, _TIMELINE_HEADER + "*No events yet.*\n")
+        if not quiet:
+            print("timeline.md written — no events yet")
+        return (0, 0)
 
-        total_events += len(events)
-        lines = [f"### {date}", ""]
-        for ev in events:
-            basis_note = " *(inferred)*" if ev.get("basis") == "inferred" else ""
-            lines.append(f"- {ev['event']}{basis_note}")
-        sections.append("\n".join(lines))
+    events.sort(key=lambda e: _date_sort_key(e.get("date", "")))
+    lines_by_year: dict[str, list[str]] = {}
+    for ev in events:
+        date_str = ev.get("date", "")
+        year = date_str[:4] if date_str else "Unknown"
+        lines_by_year.setdefault(year, []).append(_render_event_line(ev, docs_reg, manifest))
 
+    sections = [f"## {year}\n" + "\n".join(lines_by_year[year]) for year in sorted(lines_by_year)]
     content = _TIMELINE_HEADER + "\n\n".join(sections) + "\n"
     _write_timeline_md(vault, content)
     if not quiet:
-        print(f"timeline.md rebuilt — {len(canonical_files)} date(s), {total_events} event(s)")
-    return (len(canonical_files), total_events)
+        print(f"timeline.md rebuilt — {len(canonical_files)} date(s), {len(events)} event(s)")
+    return (len(canonical_files), len(events))
 
 
 def main_collisions() -> None:

@@ -35,12 +35,12 @@ from watchdog.pipeline.write_vault import (
     _extract_notes_section,
     _extract_analysis,
     _extract_contradictions,
-    _rebuild_global_timeline,
     _update_manifest,
     build_entity_note,
     _today,
     _now_iso,
 )
+from watchdog.pipeline.timeline import cmd_rebuild_timeline
 
 
 def run(extraction_path: Path, vault_path: Path) -> None:
@@ -95,7 +95,7 @@ def run(extraction_path: Path, vault_path: Path) -> None:
     )
 
     _update_manifest(vault_path, entities_reg)
-    _rebuild_global_timeline(vault_path, entities_reg, documents_reg)
+    cmd_rebuild_timeline(vault_path, quiet=True)
 
     print(f"OK  {entity_id}  timeline_events={len(new_events)}")
 

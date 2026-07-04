@@ -263,21 +263,10 @@ def _merge_timeline_events(existing: list[dict], incoming: list[dict], doc_sha25
     return result
 
 
-def _build_timeline_section(
-    events: list[dict],
-    docs_reg: dict,
-    entity_name: str | None = None,
-    year_heading: str = "###",
-    include_section_header: bool = True,
-) -> str:
-    """
-    Render a timeline section from a list of timeline event dicts.
-
-    entity_name=None → global mode: each line includes an entity link.
-    year_heading controls the markdown heading level for year groups.
-    include_section_header=False → omit the leading '## Timeline' line
-    (used when the caller writes its own top-level heading).
-    """
+def _build_timeline_section(events: list[dict], docs_reg: dict) -> str:
+    """Render an entity note's ``## Timeline`` section from its dated tagged facts, year-grouped
+    and attributed to each event's source document. The *global* timeline is rendered separately
+    from the cross-document-deduped NDJSON (`timeline.cmd_rebuild_timeline`, #237)."""
     if not events:
         return ""
 
@@ -290,8 +279,7 @@ def _build_timeline_section(
         rendered_date = _render_date(date_str)
         basis_note = " *(inferred)*" if ev.get("basis") == "inferred" else ""
 
-        source_sha = ev.get("source_sha256", "")
-        doc_entry = docs_reg.get(source_sha, {})
+        doc_entry = docs_reg.get(ev.get("source_sha256", ""), {})
         doc_note = doc_entry.get("document_note", "")
         doc_title = doc_entry.get("title") or doc_entry.get("filename", "")
         if doc_note and doc_title:
@@ -301,26 +289,11 @@ def _build_timeline_section(
         else:
             source_part = ""
 
-        if entity_name is not None:
-            line = f"- **{rendered_date}** — {ev['event']}{source_part}{basis_note}"
-        else:
-            etype = _type_dir(ev.get("entity_type", ""))
-            eid = ev.get("entity_id", "")
-            ename = ev.get("entity_name", "")
-            entity_link = f"[[entities/{etype}/{eid}|{ename}]]" if etype and eid and ename else ename
-            line = f"- **{rendered_date}** — {entity_link} — {ev['event']}{source_part}{basis_note}"
-
+        line = f"- **{rendered_date}** — {ev['event']}{source_part}{basis_note}"
         lines_by_year.setdefault(year, []).append(line)
 
-    sections = []
-    for year in sorted(lines_by_year):
-        block = "\n".join(lines_by_year[year])
-        sections.append(f"{year_heading} {year}\n{block}")
-
-    body = "\n\n".join(sections) + "\n"
-    if include_section_header:
-        return "\n## Timeline\n\n" + body
-    return body
+    sections = [f"### {year}\n" + "\n".join(lines_by_year[year]) for year in sorted(lines_by_year)]
+    return "\n## Timeline\n\n" + "\n\n".join(sections) + "\n"
 
 
 @contextmanager
@@ -353,38 +326,6 @@ def _update_manifest(vault_path: Path, entities_reg: dict) -> None:
         json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
-
-
-def _rebuild_global_timeline(vault_path: Path, entities_reg: dict, docs_reg: dict) -> None:
-    """Collect all timeline events from all entities and write timeline.md."""
-    all_events: list[dict] = []
-    for entry in entities_reg.values():
-        for ev in entry.get("timeline_events", []):
-            all_events.append({
-                **ev,
-                "entity_id":   entry["id"],
-                "entity_name": entry["name"],
-                "entity_type": entry["type"],
-            })
-
-    timeline_path = vault_path / "timeline.md"
-
-    if not all_events:
-        content = "# Timeline\n\n*No timeline events yet — events are extracted during document ingest.*\n"
-    else:
-        content = "# Timeline\n\n" + _build_timeline_section(
-            all_events, docs_reg,
-            entity_name=None,
-            year_heading="##",
-            include_section_header=False,
-        )
-        content = content.rstrip() + "\n"
-    timeline_path.write_text(content, encoding="utf-8")
-    try:
-        from watchdog.pipeline.fulltext import add_note as fts_add_note
-        fts_add_note(vault_path, "timeline", "timeline", "Timeline", content)
-    except Exception as e:
-        print(f"  Warning: full-text index update failed for timeline: {e}", file=sys.stderr)
 
 
 # ── Relationship helpers ──────────────────────────────────────────────────────
@@ -632,9 +573,7 @@ def build_entity_note(
     if contradictions:
         body += f"\n## Contradictions\n\n{contradictions}\n"
 
-    timeline_section = _build_timeline_section(
-        entry.get("timeline_events", []), docs_reg, entity_name=entry["name"]
-    )
+    timeline_section = _build_timeline_section(entry.get("timeline_events", []), docs_reg)
     if timeline_section:
         body += timeline_section
 
@@ -740,7 +679,7 @@ def _record_entity_fragment(
 
 # ── Main operation ────────────────────────────────────────────────────────────
 
-def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False, neardup_file: Path | None = None, neardup_data: dict | None = None, quiet: bool = False) -> None:
+def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = None, neardup_data: dict | None = None, quiet: bool = False) -> None:
     extraction = json.loads(extraction_path.read_text(encoding="utf-8"))
     doc = extraction.get("document")
     if not doc:
@@ -944,12 +883,12 @@ def run(extraction_path: Path, vault_path: Path, skip_timeline: bool = False, ne
                 f"type={doc.get('document_type', 'unknown')}\n"
             )
 
-        # ── 6. Rebuild global timeline ────────────────────────────────────────
+    # The global timeline is no longer rebuilt per document (#237): it is rendered
+    # exclusively from the cross-document-deduped canonical NDJSON, which only exists after
+    # `_post_ingest` runs the dedup pass at the end of a batch. A standalone write-vault
+    # therefore leaves timeline.md to the next `watchdog ingest` or explicit `watchdog timeline`.
 
-        if not skip_timeline:
-            _rebuild_global_timeline(vault_path, entities_reg, documents_reg)
-
-    # ── 7. Move source file to morgue ─────────────────────────────────────────
+    # ── 6. Move source file to morgue ─────────────────────────────────────────
 
     morgue_dir = vault_path / Path(morgue_relative).parent
     morgue_dir.mkdir(parents=True, exist_ok=True)
@@ -987,8 +926,6 @@ def main() -> None:
     )
     parser.add_argument("--extraction", required=True, help="Path to extraction JSON")
     parser.add_argument("--vault", default=".", help="Vault root directory (default: .)")
-    parser.add_argument("--skip-timeline", action="store_true",
-                        help="Skip rebuilding timeline.md (use for mid-batch writes; rebuild after last document)")
     parser.add_argument("--neardup-file", metavar="PATH",
                         help="Path to near-dup JSON output — shingles are read from here instead of the extraction JSON")
     args = parser.parse_args()
@@ -1009,7 +946,7 @@ def main() -> None:
     if not extraction_path.exists():
         sys.exit(f"Error: {extraction_path} not found")
 
-    run(extraction_path, vault_path, skip_timeline=args.skip_timeline, neardup_file=neardup_file)
+    run(extraction_path, vault_path, neardup_file=neardup_file)
 
 
 if __name__ == "__main__":

@@ -155,10 +155,16 @@ BRIEFING = _obj(
     ["investigation_status", "what_was_ingested"],
 )
 
-# Semantic dedup of one date's colliding timeline events. The model returns `keep` — the
-# indices of the events to keep — and Python re-selects from the original objects (which
-# already carry page/basis/source_sha256), rather than echoing full events back.
+# Semantic dedup of one date's colliding timeline events. The model returns `groups` — one
+# cluster per surviving event, each `{keep, duplicates}` naming the index to keep and the
+# indices of the pure restatements that fold into it. Python re-selects from the original
+# objects (which already carry page/basis/source_sha256) and unions each group's entity tags
+# onto the survivor (#237), rather than echoing full events back.
 TIMELINE_DEDUP = _obj(
-    {"keep": {"type": "array", "items": {"type": "integer"}}},
-    ["keep"],
+    {"groups": {"type": "array", "items": _obj(
+        {"keep": {"type": "integer"},
+         "duplicates": {"type": "array", "items": {"type": "integer"}}},
+        ["keep", "duplicates"],
+    )}},
+    ["groups"],
 )
