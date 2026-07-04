@@ -27,7 +27,7 @@ jobs:
           cache: pip
 
       - name: Install package and dev dependencies
-        run: pip install --no-deps -e . && pip install pyyaml pypdf argcomplete numpy pytest pytest-timeout jsonschema httpx
+        run: pip install --no-deps -e . && pip install pyyaml pypdf argcomplete numpy pytest pytest-timeout jsonschema httpx nh3
 
       - name: Run tests
         run: pytest --timeout=60
