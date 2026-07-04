@@ -348,17 +348,31 @@ prose stays in place.
 Each document's extraction stages its events to **raw** per-document files
 `{date}_{sha7}.ndjson` (`timeline.stage_timeline_events`, called from post-flight) — the events
 being the document's **dated** `key_facts` (D26) — write-only and lock-free, since each filename
-is unique. This global timeline is entirely separate from an entity's own `## Timeline` section
-(§7): the NDJSON record carries no entity tags (D57) — the entity registry's `timeline_events`
-is populated independently, straight off the same `key_facts`, by post-flight (§7). All
-merge/dedup and the briefing then run in `_post_ingest` (model: `post_model`) after extraction:
+is unique. Each record carries `source_sha256`, `page`, and the fact's `entity_ids`, so the
+rendered timeline can attribute every event to its source document and the entities it concerns (D59). This global timeline is still separate from an entity's own `## Timeline` section (§7):
+the entity registry's `timeline_events` is populated independently, straight off the same
+`key_facts`, by post-flight, and its per-entity dedup stays mechanical (D58). All merge/dedup and
+the briefing then run in `_post_ingest` (model: `post_model`) after extraction:
 
 - `timeline.collisions(vault)` promotes dates with no prior canonical to **canonical**
   `{date}.ndjson` and returns the collisions where a canonical already existed; the
-  orchestrator sends each collision's events to one model call (`timeline-dedup`,
-  preserving full event objects), writes the deduped set back, then calls
-  `timeline.cmd_rebuild_timeline` to render `timeline.md`. If the dedup call fails it
-  falls back to the union rather than losing events;
+  orchestrator sends each collision's events to one model call (`timeline-dedup`), which returns
+  `groups` (each survivor + the pure-restatement indices that fold into it). `_select_kept`
+  applies the decision — keeping the authoritative originals and **unioning each group's
+  `entity_ids`** onto the survivor, so an event's entity attribution survives a cross-document
+  collapse regardless of which restatement won (D59). It writes the deduped set back, then calls
+  `timeline.cmd_rebuild_timeline` to render `timeline.md`. If the dedup call fails it falls back
+  to the union rather than losing events;
+
+**One renderer (D59).** `timeline.cmd_rebuild_timeline` is the *single* code path that writes
+`timeline.md` — reading the cross-document-deduped canonical NDJSON and resolving `source_sha256`
+→ document link (+ `page`) and `entity_ids` → entity links, year-grouped. Every command that
+touches the vault routes through it: `_post_ingest` (batch ingest), `watchdog merge-entities`,
+`write_entity`, and the standalone `watchdog timeline`. `write_vault` no longer renders the global
+timeline (it has no deduped data mid-batch), so the file's shape no longer depends on which
+command last ran. `merge-entities` additionally remaps the losing entity id → survivor inside the
+NDJSON records (`_remap_timeline_ndjson`), keeping the timeline's entity links correct after a
+merge — deterministic, no model call, parallel to its registry surgery (§I1);
 - builds a briefing prompt from the compact per-doc results — which now carry each
   document's `key_facts` (projected to fact + date, the briefing's source for figures and
   chronology) alongside near-dup alerts and contradiction flags — plus the per-document

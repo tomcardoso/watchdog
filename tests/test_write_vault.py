@@ -785,30 +785,11 @@ def test_timeline_dedup_keeps_events_with_long_shared_opening(tmp_path):
     assert any(e["event"].endswith("family trust.") for e in matching)
 
 
-def test_global_timeline_contains_event(tmp_path):
-    vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
-    run(make_extraction(tmp_path), vault)
-
-    content = (vault / "timeline.md").read_text()
-    assert "Appointed director of Acme Corp" in content
-    assert "Alice Smith" in content
-
-
-def test_global_timeline_no_events_creates_placeholder(tmp_path):
-    vault = make_vault(tmp_path)
-    # Extraction with no timeline events
-    extraction = make_extraction(tmp_path, overrides={
-        "entities": [
-            {"id": "alice-smith", "name": "Alice Smith", "type": "Person",
-             "aliases": [], "summary": None, "analysis": None,
-             "timeline_events": [], "roles": []},
-        ]
-    })
-    run(extraction, vault)
-
-    content = (vault / "timeline.md").read_text()
-    assert "No timeline events yet" in content
+# The global timeline is no longer a write_vault product (#237) — write_vault.run() does not
+# touch timeline.md; it is rendered from the cross-document-deduped NDJSON by
+# timeline.cmd_rebuild_timeline. See test_timeline.py for the global timeline's attribution,
+# entity-link, and page-link coverage. write_vault still owns the per-entity `## Timeline`
+# section (tested by test_entity_note_has_timeline_section / test_entity_timeline_has_page_link).
 
 
 # ── Direct file links ──────────────────────────────────────────────────────────
@@ -895,15 +876,6 @@ def test_entity_role_has_page_link(tmp_path):
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
     # Role on page 2 should link directly to that page
-    assert "[[morgue/acme-corp/annual-report/test-doc.pdf#page=2|p. 2]]" in content
-
-
-def test_global_timeline_has_page_link(tmp_path):
-    vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
-    run(make_extraction(tmp_path), vault)
-
-    content = (vault / "timeline.md").read_text()
     assert "[[morgue/acme-corp/annual-report/test-doc.pdf#page=2|p. 2]]" in content
 
 

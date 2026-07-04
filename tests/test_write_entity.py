@@ -133,22 +133,35 @@ def test_analysis_preserved(tmp_path):
 
 # ── Global timeline rebuild ───────────────────────────────────────────────────
 
-def test_global_timeline_rebuilt(tmp_path):
+def _seed_canonical(vault: Path, date: str, rec: dict) -> None:
+    td = vault / ".watchdog" / "timeline"
+    td.mkdir(parents=True, exist_ok=True)
+    (td / f"{date}.ndjson").write_text(json.dumps(rec) + "\n", encoding="utf-8")
+
+
+def test_global_timeline_rebuilt_from_canonical_ndjson(tmp_path):
+    """write_entity rebuilds the global timeline through the unified renderer, which reads the
+    cross-document-deduped canonical NDJSON — not the entity registry's own events (#237)."""
     vault = make_vault(tmp_path)
+    _seed_canonical(vault, "2019-01-15", {
+        "date": "2019-01-15", "event": "Listed as director in annual report",
+        "source_sha256": "sha-doc2", "page": 4, "entity_ids": ["alice-smith"], "basis": "stated"})
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "timeline.md").read_text()
-    assert "Transferred shares with no equity received" in content
     assert "Listed as director in annual report" in content
 
 
-def test_global_timeline_uses_pretty_links(tmp_path):
+def test_global_timeline_resolves_entity_and_document_links(tmp_path):
     vault = make_vault(tmp_path)
+    _seed_canonical(vault, "2019-01-15", {
+        "date": "2019-01-15", "event": "Listed as director in annual report",
+        "source_sha256": "sha-doc2", "page": 4, "entity_ids": ["alice-smith"], "basis": "stated"})
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "timeline.md").read_text()
     assert "[[entities/person/alice-smith|Alice Smith]]" in content
-    assert "[[documents/form-79|Form 79]]" in content
+    assert "[[documents/annual-report|Annual Report 2019]]" in content
 
 
 # ── Error cases ───────────────────────────────────────────────────────────────

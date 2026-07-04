@@ -161,7 +161,6 @@ def run(vault: Path, extraction_path: Path, quiet: bool = False) -> dict:
             extraction_path=extraction_path,
             vault_path=vault,
             neardup_data=neardup_data,
-            skip_timeline=True,
             quiet=quiet,
         )
     except SystemExit as e:

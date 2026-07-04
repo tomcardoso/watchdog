@@ -787,20 +787,45 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
     return f"briefings/{slug}.md"
 
 
-def _select_kept(events: list[dict], keep) -> list[dict]:
-    """Map the timeline-dedup model's kept-indices back to the original event objects (deduped,
-    in order). Falls back to all events when the model returns nothing usable — dedup must never
-    lose events. The originals carry the authoritative page/basis/source_sha256."""
-    if not isinstance(keep, list):
+def _valid_index(i, n: int) -> bool:
+    return isinstance(i, int) and not isinstance(i, bool) and 0 <= i < n
+
+
+def _select_kept(events: list[dict], groups) -> list[dict]:
+    """Map the timeline-dedup model's `groups` back to the original event objects (deduped, in
+    original order). Each surviving event carries the union of its own and its dropped duplicates'
+    `entity_ids` (#237) — so entity attribution survives a cross-document collapse regardless of
+    which restatement the model kept. An index the model never placed in any group is preserved
+    as-is; falls back to all events when the output is unusable — dedup must never lose events. The
+    originals carry the authoritative page/basis/source_sha256."""
+    if not isinstance(groups, list):
         return events
-    seen: set[int] = set()
-    kept: list[dict] = []
-    for i in keep:
-        if isinstance(i, bool):
+    n = len(events)
+    survivors: dict[int, list[int]] = {}   # keep index -> its duplicate indices
+    for g in groups:
+        if not isinstance(g, dict):
             continue
-        if isinstance(i, int) and 0 <= i < len(events) and i not in seen:
-            seen.add(i)
-            kept.append(events[i])
+        ki = g.get("keep")
+        if not _valid_index(ki, n) or ki in survivors:
+            continue
+        dups = g.get("duplicates")
+        survivors[ki] = [di for di in dups if _valid_index(di, n) and di != ki] if isinstance(dups, list) else []
+    dropped = {di for dups in survivors.values() for di in dups}
+
+    kept: list[dict] = []
+    for i, ev in enumerate(events):
+        if i in survivors:
+            merged = dict(ev)
+            entity_ids = list(merged.get("entity_ids", []))
+            for di in survivors[i]:
+                for eid in events[di].get("entity_ids", []):
+                    if eid not in entity_ids:
+                        entity_ids.append(eid)
+            if "entity_ids" in merged or entity_ids:
+                merged["entity_ids"] = entity_ids
+            kept.append(merged)
+        elif i not in dropped:
+            kept.append(ev)   # model never placed it — keep rather than lose it
     return kept or events
 
 
@@ -848,7 +873,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             r = await _call_model(
                 task="timeline-dedup", model=post_model, backend=post_backend, schema=schemas.TIMELINE_DEDUP,
                 prompt=prompts.build_timeline_dedup_prompt(col["date"], events), effort=post_effort)
-            kept = _select_kept(events, r.parsed.get("keep"))
+            kept = _select_kept(events, r.parsed.get("groups"))
         except (model_client.ModelError, model_client.RateLimitError):
             kept = events   # fall back to the union rather than losing events
         canonical.write_text(

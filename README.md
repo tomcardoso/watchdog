@@ -85,12 +85,13 @@ watchdog ingest  (terminal — a Python orchestrator)
         ↓
 post-flight  (Python, per document)
   validates extraction · writes entity notes and document notes ·
-  updates global timeline and registries · file-locked for parallel safety
+  stages timeline events and updates registries · file-locked for parallel safety
   → originals moved to morgue/
         ↓
 post-ingest  (Python)
   entity synthesis (multi-mention entities) · timeline collision
-  resolution · briefing — new entities, connections, leads, anomalies
+  resolution → renders the global timeline · briefing — new entities,
+  connections, leads, anomalies
 ```
 
 The model is called **only for the reasoning steps** (classify, extract, synthesize, dedup the timeline, write the briefing); everything mechanical — OCR/Docling, dispatch, pre/post-flight, registry writes — is deterministic Python. `watchdog ingest` runs the whole thing in your terminal; you keep the Obsidian vault and every original file.

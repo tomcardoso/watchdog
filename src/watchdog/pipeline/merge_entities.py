@@ -21,13 +21,13 @@ from watchdog.pipeline.write_vault import (
     _extract_section,
     _extract_summary,
     _now_iso,
-    _rebuild_global_timeline,
     _timeline_dedup_key,
     _today,
     _update_manifest,
     build_entity_note,
     _frontmatter,
 )
+from watchdog.pipeline.timeline import cmd_rebuild_timeline
 
 _DEFAULT_NOTES_MARKER = "<!-- Journalist annotations — never overwritten by ingestion. -->"
 
@@ -148,10 +148,47 @@ def merge(entities_reg: dict, keep_id: str, merge_id: str) -> dict:
 
 # ── Vault-level operation ──────────────────────────────────────────────────────
 
+def _remap_timeline_ndjson(vault_path: Path, keep_id: str, merge_id: str) -> int:
+    """Rewrite `merge_id` → `keep_id` in the `entity_ids` of every timeline NDJSON record
+    (canonical and raw), so the unified timeline's entity links follow the merge instead of
+    pointing at the merged-away stub (#237). Parallel to the registry surgery in `merge()` —
+    deterministic, no model call. Returns the number of records changed."""
+    td = vault_path / ".watchdog" / "timeline"
+    if not td.exists():
+        return 0
+    changed = 0
+    for f in sorted(td.glob("*.ndjson")):
+        out_lines: list[str] = []
+        touched = False
+        for line in f.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                out_lines.append(line)   # leave a malformed line untouched rather than drop it
+                continue
+            eids = rec.get("entity_ids")
+            if isinstance(eids, list) and merge_id in eids:
+                remapped: list[str] = []
+                for eid in eids:
+                    eid = keep_id if eid == merge_id else eid
+                    if eid not in remapped:
+                        remapped.append(eid)
+                rec["entity_ids"] = remapped
+                touched = True
+                changed += 1
+            out_lines.append(json.dumps(rec, ensure_ascii=False))
+        if touched:
+            f.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
+    return changed
+
+
 def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
     """Perform the full `watchdog merge-entities` operation on a vault on disk:
-    registry surgery (`merge`), note concatenation/redirect, manifest + timeline
-    rebuild, and a best-effort search-index refresh of the two touched notes.
+    registry surgery (`merge`), note concatenation/redirect, timeline NDJSON entity-tag
+    remap, manifest + timeline rebuild, and a best-effort search-index refresh of the two
+    touched notes.
 
     Returns a report dict for the CLI to print. Raises `ValueError` on bad input —
     the caller is expected to turn that into a clean `sys.exit`.
@@ -264,7 +301,8 @@ def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
         json.dumps(entities_reg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
     _update_manifest(vault_path, entities_reg)
-    _rebuild_global_timeline(vault_path, entities_reg, documents_reg)
+    stats["timeline_records_remapped"] = _remap_timeline_ndjson(vault_path, keep_id, merge_id)
+    cmd_rebuild_timeline(vault_path, quiet=True)
 
     try:
         existing_registry = json.loads(registry_path.read_text()) if registry_path.exists() else {}
