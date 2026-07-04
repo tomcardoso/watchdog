@@ -8,7 +8,7 @@ from watchdog.pipeline import prompts
 _flat = model_client._flatten_prompt   # extract/section prompts are content-block lists (A1)
 
 _TEMPLATES = ["classify", "extract_instructions", "section_intro",
-              "synthesis", "briefing", "timeline_dedup"]
+              "synthesis", "briefing", "timeline_dedup", "timeline_precision"]
 
 
 @pytest.mark.parametrize("name", _TEMPLATES)
@@ -33,6 +33,16 @@ def test_timeline_dedup_prompt_enumerates_events_not_full_objects():
     assert "keep" in p
     # the 64-char hashes are not echoed into the prompt — that's the whole point
     assert "sha-xyz" not in p and "sha-abc" not in p
+
+
+def test_timeline_precision_prompt_separates_and_labels_precisions():
+    coarse = [{"event": "Acme filed in March", "page": 3}]
+    precise = [{"date": "2020-03-15", "event": "Acme filed on the 15th", "page": 9}]
+    p = prompts.build_timeline_precision_prompt("2020-03", coarse, precise)
+    assert "2020-03" in p
+    assert "[0] Acme filed in March  (p.3)" in p                     # coarse: no date shown
+    assert "[0] (2020-03-15) Acme filed on the 15th  (p.9)" in p     # precise: day shown
+    assert "coarse" in p and "precise" in p                          # instructs the pairing shape
 
 
 def test_render_leaves_single_braces_untouched():

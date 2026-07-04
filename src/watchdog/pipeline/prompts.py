@@ -157,3 +157,18 @@ def build_timeline_dedup_prompt(date: str, events: list[dict]) -> str:
         f"[{i}] {e.get('event', '')}" + (f"  (p.{e['page']})" if e.get("page") else "")
         for i, e in enumerate(events))
     return f"{_render('timeline_dedup', date=date)}\n\nEvents:\n{listed}"
+
+
+def build_timeline_precision_prompt(month: str, coarse: list[dict], precise: list[dict]) -> str:
+    # Cross-precision reconciliation (#239): coarse events carry only the month; precise events name
+    # a specific day, shown so the model can judge which day (if any) a coarse restatement refines.
+    # It returns {coarse, precise} index pairs; page/entity_ids stay in Python.
+    coarse_listed = "\n".join(
+        f"[{i}] {e.get('event', '')}" + (f"  (p.{e['page']})" if e.get("page") else "")
+        for i, e in enumerate(coarse))
+    precise_listed = "\n".join(
+        f"[{i}] ({e.get('date', '')}) {e.get('event', '')}" + (f"  (p.{e['page']})" if e.get("page") else "")
+        for i, e in enumerate(precise))
+    return (f"{_render('timeline_precision', month=month)}\n\n"
+            f"MONTH-DATED events (dated only to {month}):\n{coarse_listed}\n\n"
+            f"DAY-DATED events (specific days in {month}):\n{precise_listed}")

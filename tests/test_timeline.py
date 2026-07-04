@@ -5,6 +5,8 @@ from watchdog.pipeline.timeline import (
     stage_timeline_events,
     cmd_timeline_collisions,
     cmd_rebuild_timeline,
+    month_precision_groups,
+    apply_precision_matches,
 )
 
 
@@ -258,6 +260,123 @@ def test_stage_collision_reported_when_canonical_exists(tmp_path, capsys):
     collisions = json.loads(capsys.readouterr().out)
     assert len(collisions) == 1
     assert collisions[0]["date"] == "2020-03-15"
+
+
+# ── cross-precision reconciliation (#239) ───────────────────────────────────
+
+def _ev(date, event, entity_ids=None, page=None):
+    r = {"date": date, "event": event, "source_sha256": "s", "entity_ids": entity_ids or [],
+         "basis": "stated"}
+    if page is not None:
+        r["page"] = page
+    return r
+
+
+def test_precision_groups_only_when_month_has_both_precisions(tmp_path):
+    vault = _vault(tmp_path)
+    _seed_canonical(vault, "2020-03", [_ev("2020-03", "Filed in March")])
+    _seed_canonical(vault, "2020-03-15", [_ev("2020-03-15", "Filed on the 15th")])
+    _seed_canonical(vault, "2020-06", [_ev("2020-06", "Lone month event")])        # no day sibling
+    _seed_canonical(vault, "2020-07-01", [_ev("2020-07-01", "Lone day event")])    # no month sibling
+
+    groups = month_precision_groups(vault)
+    assert [g["month"] for g in groups] == ["2020-03"]
+    g = groups[0]
+    assert [e["event"] for e in g["coarse"]] == ["Filed in March"]
+    assert [e["event"] for e in g["precise"]] == ["Filed on the 15th"]
+
+
+def test_precision_groups_excludes_bare_year(tmp_path):
+    """A YYYY event alongside precise dates is deliberately left out — a bare year spans too many
+    days to match a specific occurrence safely (scoped to month↔day)."""
+    vault = _vault(tmp_path)
+    _seed_canonical(vault, "2020", [_ev("2020", "Something in 2020")])
+    _seed_canonical(vault, "2020-03-15", [_ev("2020-03-15", "Filed on the 15th")])
+    assert month_precision_groups(vault) == []
+
+
+def test_precision_groups_ignores_raw_files(tmp_path):
+    """Only canonical (no-underscore) files feed reconciliation, mirroring the renderer."""
+    vault = _vault(tmp_path)
+    td = vault / ".watchdog" / "timeline"
+    td.mkdir(parents=True, exist_ok=True)
+    (td / "2020-03_abc1234.ndjson").write_text(json.dumps(_ev("2020-03", "raw")) + "\n")
+    _seed_canonical(vault, "2020-03-15", [_ev("2020-03-15", "Filed on the 15th")])
+    assert month_precision_groups(vault) == []   # the month event is only raw, not canonical
+
+
+def test_apply_matches_folds_coarse_into_day_and_unions_entities(tmp_path):
+    vault = _vault(tmp_path)
+    _seed_canonical(vault, "2020-03", [_ev("2020-03", "Acme filed", entity_ids=["acme"])])
+    _seed_canonical(vault, "2020-03-15", [_ev("2020-03-15", "Acme filed on the 15th", entity_ids=["alice"])])
+    group = month_precision_groups(vault)[0]
+
+    folded = apply_precision_matches(vault, group, [{"coarse": 0, "precise": 0}])
+
+    assert folded == 1
+    td = vault / ".watchdog" / "timeline"
+    assert not (td / "2020-03.ndjson").exists()          # month file emptied → deleted
+    day = _read_ndjson(td / "2020-03-15.ndjson")
+    assert len(day) == 1
+    assert day[0]["date"] == "2020-03-15"                # precise date wins
+    assert day[0]["entity_ids"] == ["alice", "acme"]     # attribution unioned
+
+
+def test_apply_matches_union_does_not_duplicate_shared_entity(tmp_path):
+    """When the coarse and precise records already share an entity, the union adds it once."""
+    vault = _vault(tmp_path)
+    _seed_canonical(vault, "2020-03", [_ev("2020-03", "Acme filed", entity_ids=["acme", "bob"])])
+    _seed_canonical(vault, "2020-03-15",
+                    [_ev("2020-03-15", "Acme filed on the 15th", entity_ids=["acme"])])
+    group = month_precision_groups(vault)[0]
+
+    apply_precision_matches(vault, group, [{"coarse": 0, "precise": 0}])
+
+    day = _read_ndjson(vault / ".watchdog" / "timeline" / "2020-03-15.ndjson")
+    assert day[0]["entity_ids"] == ["acme", "bob"]   # acme not duplicated
+
+
+def test_apply_matches_keeps_unmatched_coarse(tmp_path):
+    vault = _vault(tmp_path)
+    _seed_canonical(vault, "2020-03", [
+        _ev("2020-03", "Acme filed"),           # index 0 — matched
+        _ev("2020-03", "Board reshuffled"),     # index 1 — distinct, unmatched
+    ])
+    _seed_canonical(vault, "2020-03-15", [_ev("2020-03-15", "Acme filed on the 15th")])
+    group = month_precision_groups(vault)[0]
+
+    apply_precision_matches(vault, group, [{"coarse": 0, "precise": 0}])
+
+    survivors = _read_ndjson(vault / ".watchdog" / "timeline" / "2020-03.ndjson")
+    assert [r["event"] for r in survivors] == ["Board reshuffled"]
+
+
+def test_apply_matches_ignores_bad_and_repeat_indices(tmp_path):
+    vault = _vault(tmp_path)
+    _seed_canonical(vault, "2020-03", [_ev("2020-03", "Acme filed", entity_ids=["acme"])])
+    _seed_canonical(vault, "2020-03-15", [_ev("2020-03-15", "Filed on the 15th")])
+    group = month_precision_groups(vault)[0]
+
+    folded = apply_precision_matches(vault, group, [
+        {"coarse": 9, "precise": 0},        # out-of-range coarse
+        {"coarse": 0, "precise": 5},        # out-of-range precise
+        {"coarse": 0, "precise": 0},        # valid
+        {"coarse": 0, "precise": 0},        # repeat of an already-folded coarse
+        "not a dict",
+    ])
+    assert folded == 1
+    day = _read_ndjson(vault / ".watchdog" / "timeline" / "2020-03-15.ndjson")
+    assert day[0]["entity_ids"] == ["acme"]   # unioned exactly once
+
+
+def test_apply_matches_no_matches_is_noop(tmp_path):
+    vault = _vault(tmp_path)
+    _seed_canonical(vault, "2020-03", [_ev("2020-03", "Acme filed")])
+    _seed_canonical(vault, "2020-03-15", [_ev("2020-03-15", "Filed on the 15th")])
+    group = month_precision_groups(vault)[0]
+
+    assert apply_precision_matches(vault, group, []) == 0
+    assert (vault / ".watchdog" / "timeline" / "2020-03.ndjson").exists()   # untouched
 
 
 # ── post-flight wiring ──────────────────────────────────────────────────────

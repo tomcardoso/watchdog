@@ -137,6 +137,90 @@ def cmd_timeline_collisions(vault: Path) -> None:
     print(json.dumps(collisions(vault), ensure_ascii=False))
 
 
+def _valid_index(i, n: int) -> bool:
+    return isinstance(i, int) and not isinstance(i, bool) and 0 <= i < n
+
+
+def month_precision_groups(vault: Path) -> list[dict]:
+    """Find months holding both a month-precision (``YYYY-MM``) event and day-precision
+    (``YYYY-MM-DD``) events — the only shape where a coarse date could restate a precise one
+    (#239, D63). Date-keyed bucketing never hands these two precisions to the same dedup call, so a
+    coarse restatement and the specific day it refines survive as separate lines with un-unioned
+    attribution. Returns one group per such month: ``{"month", "coarse": [...], "precise": [...]}``,
+    events read from the canonical NDJSON only. Year-precision (``YYYY``) events are deliberately
+    excluded — a bare year spans too many days to match a specific occurrence safely."""
+    td = _timeline_dir(vault)
+    if not td.exists():
+        return []
+    by_month: dict[str, dict[str, list]] = {}
+    for cf in sorted(f for f in td.glob("*.ndjson") if "_" not in f.stem):
+        date = cf.stem
+        if len(date) == 7:      # YYYY-MM
+            bucket, month = "coarse", date
+        elif len(date) == 10:   # YYYY-MM-DD
+            bucket, month = "precise", date[:7]
+        else:
+            continue            # YYYY or unparseable — no month-level reconciliation
+        recs = []
+        for line in _read_ndjson_lines(cf):
+            try:
+                recs.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+        by_month.setdefault(month, {"coarse": [], "precise": []})[bucket].extend(recs)
+    return [
+        {"month": m, "coarse": g["coarse"], "precise": g["precise"]}
+        for m, g in sorted(by_month.items())
+        if g["coarse"] and g["precise"]
+    ]
+
+
+def apply_precision_matches(vault: Path, group: dict, matches: list[dict]) -> int:
+    """Fold a month's matched coarse events into the specific day each one restates (#239, D63).
+
+    Each ``{"coarse": i, "precise": j}`` unions ``coarse[i]``'s ``entity_ids`` onto ``precise[j]``
+    and drops ``coarse[i]``. Rewrites the affected canonical NDJSON — the month file with its
+    survivors (deleted when it empties), each touched day file with the grown attribution. Ignores
+    out-of-range or repeat coarse indices (each coarse event folds at most once). A precise event is
+    never dropped and two precise events never collapse into each other — the pass can only ever
+    remove a coarse restatement. Returns the number of coarse events folded."""
+    coarse, precise = group["coarse"], group["precise"]
+    nc, npr = len(coarse), len(precise)
+    folded: set[int] = set()
+    for m in matches:
+        if not isinstance(m, dict):
+            continue
+        ci, pj = m.get("coarse"), m.get("precise")
+        if not (_valid_index(ci, nc) and _valid_index(pj, npr)) or ci in folded:
+            continue
+        eids = precise[pj].get("entity_ids") or []
+        for eid in coarse[ci].get("entity_ids", []):
+            if eid not in eids:
+                eids.append(eid)
+        precise[pj]["entity_ids"] = eids
+        folded.add(ci)
+
+    if not folded:
+        return 0
+
+    td = _timeline_dir(vault)
+    coarse_path = td / f"{group['month']}.ndjson"
+    survivors = [c for i, c in enumerate(coarse) if i not in folded]
+    if survivors:
+        coarse_path.write_text(
+            "\n".join(json.dumps(c, ensure_ascii=False) for c in survivors) + "\n", encoding="utf-8")
+    else:
+        coarse_path.unlink(missing_ok=True)
+
+    by_day: dict[str, list[dict]] = {}
+    for p in precise:
+        by_day.setdefault(p.get("date", ""), []).append(p)
+    for day, recs in by_day.items():
+        (td / f"{day}.ndjson").write_text(
+            "\n".join(json.dumps(r, ensure_ascii=False) for r in recs) + "\n", encoding="utf-8")
+    return len(folded)
+
+
 # Prepended to every rendered timeline.md. The file is fully regenerated from the canonical
 # .watchdog/timeline/ NDJSON on each rebuild, so hand edits are silently lost — say so up top.
 _TIMELINE_HEADER = (
