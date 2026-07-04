@@ -641,6 +641,21 @@ source_type ⇥ relevance`). When the session ends, `watchdog research` download
   capture. Provenance rides the existing `.yml` sidecar (§5, §12): `source`/`obtained` are stamped
   deterministically at ingest, and `retrieved_by: research-mode`, a `source_type` reliability tag,
   and per-doc `relevance` reach the extractor as notes and travel to the morgue.
+- **Two-tier HTML capture (#200).** After the urllib fetch above (kept for type-detection and
+  provenance), an HTML deposit gets a second, richer capture: `pipeline/capture.py` renders the
+  page in headless Chromium — so static styling/images *and* client-rendered SPAs are captured as
+  they actually appear, not as the empty shell a `<script>`-stripped fetch would save. The SSRF
+  guard is re-applied to **every subresource request** the rendered page makes (`context.route`
+  interception, not just the top-level URL; service workers are blocked and WebSockets mocked,
+  since neither passes through the route handler), and the saved snapshot is a single self-contained
+  `.html`: every `script`/`iframe`/event-handler/`javascript:` surface is stripped from the live
+  DOM, images/fonts/stylesheets are inlined as data URIs (or neutered to `data:,` when uncaptured),
+  and a `default-src 'none'` CSP meta tag is pinned as the first `<head>` child so the file can't
+  phone home even if opened directly. Playwright is an **optional dependency**
+  (`watchdog-intel[web]`, plus a one-time `playwright install chromium`): when it isn't installed or
+  a render fails for any reason, `deposit_one` falls back to the plain fetch, sanitized by `nh3`
+  (replacing the old two-tag regex). The sidecar's `capture: rendered|plain` field records which
+  path a deposit took.
 - **Per-doc rationale → sidecar; batch rationale → memo.** The connective tissue of a research round
   (what gap it targeted, what was pulled, what's still open) is written to a
   `briefings/research-<date>.md` memo as forward-looking leads — **never** `context.md`, which is the
@@ -680,7 +695,7 @@ source_type ⇥ relevance`). When the session ends, `watchdog research` download
   Archival downloading is a terminal post-flight, never granted to the skill — so a vault of sensitive
   source material carries no standing outbound-fetch permission.
 
-See D45, D46, D47, D48.
+See D45, D46, D47, D48, D61.
 
 ---
 

@@ -14,8 +14,16 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from watchdog.pipeline import research
+from watchdog.pipeline import capture, research
 from watchdog.pipeline.research import ResearchError
+
+
+@pytest.fixture(autouse=True)
+def _no_render(monkeypatch):
+    """Keep these pre-#200 deposit tests network-free and deterministic: default every HTML deposit
+    to the plain-fetch fallback. Rendered-capture behavior is exercised separately in
+    tests/test_capture.py, which monkeypatches `capture.try_render` per test as needed."""
+    monkeypatch.setattr(capture, "try_render", lambda *a, **k: None)
 
 
 # ── URL validation (SSRF guard) ───────────────────────────────────────────────
@@ -81,13 +89,26 @@ def test_extension_for_rejects_unsupported():
 
 def test_sanitize_html_strips_script_and_iframe():
     out = research.sanitize_html("a<script>steal()</script>b<iframe src=evil></iframe>c")
-    assert out == "abc"
-    assert "script" not in out.lower() and "iframe" not in out.lower()
+    assert "<script" not in out.lower() and "<iframe" not in out.lower()
+    assert "steal()" not in out
 
 
 def test_sanitize_html_strips_unclosed_tags():
     out = research.sanitize_html("ok<script src=x.js>trailing")
-    assert "script" not in out.lower()
+    assert "<script" not in out.lower()
+
+
+def test_sanitize_html_strips_event_handler_attributes():
+    out = research.sanitize_html('<a href="http://e.com" onclick="steal()">link</a>')
+    assert "onclick" not in out.lower()
+
+
+def test_sanitize_html_preserves_structure():
+    out = research.sanitize_html(
+        "<h1>Title</h1><table><tr><td>cell</td></tr></table>"
+        '<a href="http://e.com/x">a link</a>')
+    assert "<table" in out and "<td" in out
+    assert "<a href=\"http://e.com/x\"" in out
 
 
 def test_neutralize_defangs_wikilinks_and_collapses_newlines():

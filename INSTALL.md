@@ -230,7 +230,7 @@ Type `/watchdog-surface` to run a full connection analysis across your entire va
 
 ## Researching on the web
 
-When your documents raise a question they can't answer, run `watchdog research` (from inside the vault, or `watchdog research <name>`). Seeded by what's already in your vault, Claude conducts bounded web research and **queues the sources it finds**; when you exit the session, watchdog downloads them into `_INCOMING/` (validated and sanitized, with provenance and a reliability tag) — so the findings flow through the same `chew → ingest` pipeline as documents you obtained yourself. It never writes vault notes directly, and skips sources the vault already has. After the download, run `watchdog chew` then `watchdog ingest` to fold the sources in. If a session is interrupted before the download runs, the queued sources are held safely and `watchdog`, `watchdog chew`, and `watchdog status` warn you they're still pending. Optionally, set `wayback_save` (with archive.org S3 keys via `watchdog configure`) to also archive each source to the Wayback Machine for a citable permanent copy. See [GETTING_STARTED.md](GETTING_STARTED.md#researching-open-questions-on-the-web) for the full walkthrough.
+When your documents raise a question they can't answer, run `watchdog research` (from inside the vault, or `watchdog research <name>`). Seeded by what's already in your vault, Claude conducts bounded web research and **queues the sources it finds**; when you exit the session, watchdog downloads them into `_INCOMING/` (validated, with provenance and a reliability tag) — so the findings flow through the same `chew → ingest` pipeline as documents you obtained yourself. HTML pages are captured as a full rendered snapshot (images, styles, client-rendered content) when the optional capture browser is installed — see [Full page snapshots](#full-page-snapshots-optional) below — falling back to a sanitized plain fetch otherwise. It never writes vault notes directly, and skips sources the vault already has. After the download, run `watchdog chew` then `watchdog ingest` to fold the sources in. If a session is interrupted before the download runs, the queued sources are held safely and `watchdog`, `watchdog chew`, and `watchdog status` warn you they're still pending. Optionally, set `wayback_save` (with archive.org S3 keys via `watchdog configure`) to also archive each source to the Wayback Machine for a citable permanent copy. See [GETTING_STARTED.md](GETTING_STARTED.md#researching-open-questions-on-the-web) for the full walkthrough.
 
 ---
 
@@ -240,7 +240,7 @@ When your documents raise a question they can't answer, run `watchdog research` 
 Install the [Obsidian Web Clipper](https://obsidian.md/clipper) browser extension. Point it at your investigation vault and set the destination folder to `_INCOMING`. You can then clip any web page — news articles, company profiles, government announcements — directly into the ingest pipeline with one click, without downloading anything manually.
 
 **Pulling in a list of links:**
-If you already have a batch of URLs, run `watchdog fetch <url…>` or `watchdog fetch links.txt` (one URL per line) to download them into `_INCOMING/` — validated, sanitized, and stamped with provenance — then `watchdog chew` and `watchdog ingest` as usual.
+If you already have a batch of URLs, run `watchdog fetch <url…>` or `watchdog fetch links.txt` (one URL per line) to download them into `_INCOMING/` — validated and stamped with provenance — then `watchdog chew` and `watchdog ingest` as usual. See [Full page snapshots](#full-page-snapshots-optional) below to capture HTML pages faithfully (images, styles, client-rendered content).
 
 **Rename files before dropping them in:**
 Watchdog uses the filename to help organize and label documents. A filename like `shell-co-annual-report-2023.pdf` is much more useful than `scan0042.pdf`. Rename files before dropping them into `_INCOMING` when possible.
@@ -349,6 +349,19 @@ Then reinstall Watchdog with transcription support:
 ```
 pipx install "watchdog-intel[asr]" --force
 ```
+
+---
+
+## Full page snapshots (optional)
+
+By default, `watchdog research` and `watchdog fetch` save HTML pages with a plain, sanitized fetch — no JavaScript runs, so client-rendered pages (single-page apps) can deposit as an empty shell, and images/styling aren't captured. Installing the optional capture browser renders every HTML page in headless Chromium instead and saves a faithful, self-contained snapshot (images, fonts, and stylesheets inlined; all scripts stripped) — worth it if the sources you're pulling in are often JavaScript-heavy or you want the visual layout preserved.
+
+```
+pipx inject watchdog-intel playwright
+~/.local/pipx/venvs/watchdog-intel/bin/playwright install chromium
+```
+
+This adds about 150 MB (the Chromium binary). If it isn't installed, `watchdog research` and `watchdog fetch` fall back to the plain sanitized fetch automatically — nothing breaks either way.
 
 ---
 

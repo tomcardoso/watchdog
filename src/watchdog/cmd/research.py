@@ -27,7 +27,7 @@ from watchdog.cmd.base import (
     _resolve_vault,
     load_projects,
 )
-from watchdog.pipeline import research
+from watchdog.pipeline import capture, research
 
 
 def _wayback_creds() -> tuple[str, str] | None:
@@ -67,6 +67,11 @@ def _report_deposits(results: list, *, wayback, requeued_failures: bool) -> int:
         print(f"  {_DIM}Archived each to the Wayback Machine — snapshot URL in every source's sidecar.{_RESET}")
     for r in deposited:
         print(f"    {_CYAN}{r.path.name}{_RESET}  {_DIM}{r.url}{_RESET}")
+    if any(r.path.suffix in (".html", ".xhtml") for r in deposited) and not capture.render_available():
+        print(f"\n  {_DIM}Tip: for full page snapshots (images, styles, client-rendered pages) "
+              f"install the capture browser:{_RESET}")
+        print(f"    {_CYAN}pipx inject watchdog-intel playwright{_RESET}")
+        print(f"    {_CYAN}~/.local/pipx/venvs/watchdog-intel/bin/playwright install chromium{_RESET}")
     if failed:
         note = (f" {_DIM}(left queued — retry with {_RESET}{_CYAN}watchdog research-fetch{_RESET}{_DIM}){_RESET}"
                 if requeued_failures else "")

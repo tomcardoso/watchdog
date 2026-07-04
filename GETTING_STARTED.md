@@ -158,7 +158,7 @@ watchdog fetch https://example.gov/filing https://news.example/article
 watchdog fetch links.txt        # one URL per line (or the tab-separated form)
 ```
 
-Each URL is validated, size-capped, sanitized, and saved with a provenance sidecar — the same hygiene as web-research sources — then you `chew` and `ingest` as normal. (This is the "give me the URL, you fetch it faithfully" companion to the Obsidian Web Clipper, which clips already-rendered pages.)
+Each URL is validated, size-capped, and saved with a provenance sidecar — the same hygiene as web-research sources — then you `chew` and `ingest` as normal. HTML pages get a full rendered snapshot (images, styles, client-rendered content) if you've installed the optional capture browser (see [INSTALL.md](INSTALL.md)); otherwise they fall back to a sanitized plain fetch. (This is the "give me the URL, you fetch it faithfully" companion to the Obsidian Web Clipper, which clips already-rendered pages.)
 
 ---
 
@@ -353,7 +353,7 @@ watchdog research shell-company-investigation
 watchdog research shell-company-investigation -q "Who controls Acme Holdings?"
 ```
 
-This opens Claude Code on the research skill. Seeded by your vault's entities, leads, and gaps, it proposes a research mission, confirms how wide to cast the net (quick / standard / deep), then researches in rounds — checking in with you between each. Crucially, it **doesn't write vault notes**: it *queues* every source it keeps (URL, a reliability tag, and why it matters) in a links file. When you exit the session, `watchdog research` downloads the queued sources into `_INCOMING/` — validating and sanitizing each one — so findings flow through the same `chew → ingest` pipeline as documents you obtained yourself: deduped, entity-extracted, and cited. A scraped blog post is never confused with a primary document.
+This opens Claude Code on the research skill. Seeded by your vault's entities, leads, and gaps, it proposes a research mission, confirms how wide to cast the net (quick / standard / deep), then researches in rounds — checking in with you between each. Crucially, it **doesn't write vault notes**: it *queues* every source it keeps (URL, a reliability tag, and why it matters) in a links file. When you exit the session, `watchdog research` downloads the queued sources into `_INCOMING/` — validating each one, and capturing HTML pages as a full rendered snapshot (images, styles, client-rendered content) when the optional capture browser is installed, or a sanitized plain fetch otherwise (see [INSTALL.md](INSTALL.md)) — so findings flow through the same `chew → ingest` pipeline as documents you obtained yourself: deduped, entity-extracted, and cited. A scraped blog post is never confused with a primary document.
 
 It writes a research memo to `briefings/`, then offers to download. Confirm, then fold the findings in the normal way:
 
