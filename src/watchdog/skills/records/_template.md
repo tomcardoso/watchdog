@@ -20,9 +20,9 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 ---
 
-## Always-present fields to extract
+## Fields to extract
 
-These fields appear in virtually every document of this type. Extract them even when not prominently displayed.
+Fields expected in most documents of this type, or fields that are high-value whenever present. Extract them even when not prominently displayed. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|
