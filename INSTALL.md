@@ -205,6 +205,8 @@ Watchdog works through the chewed files in parallel, showing one live status row
 
 If you've added terms to the vault's `watchlist.md` (one per line), Watchdog scans each new document for them and writes any matches — with document, page, and context — to `briefings/alerts-<date>.md`, flagging them in the terminal too. Added a term after documents were already ingested? Run `watchdog watchlist` to sweep the whole vault instead of just new documents.
 
+Once you've followed up on a lead, a watch-word alert, or a contradiction, mark it done so it stops re-appearing on the next sweep: run `watchdog resolve <id>` with the id printed next to the item, or tick its checkbox in the briefing file and run `watchdog resolve --sync`. `watchdog unresolve <id>` undoes it.
+
 ---
 
 ## Asking questions

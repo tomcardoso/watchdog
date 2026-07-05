@@ -410,6 +410,19 @@ merge — deterministic, no model call, parallel to its registry surgery (§I1);
 `watchdog ingest` prints the per-document summary; the briefing/hot/log files are the
 durable record a fresh session reads.
 
+**Deterministic sweeps + resolution overlay (D68).** Two model-free, whole-vault passes run
+alongside the briefing and are also available on demand: the lead sweep (`pipeline/leads.py`,
+`watchdog leads`) reads the entity registry for named-but-unprofiled / isolated / contradiction /
+inferred signals, and the watch-word scan (`pipeline/watchlist.py`, `watchdog watchlist`) greps
+the morgue full text for `watchlist.md` terms. Both write dated `briefings/` files. Because they
+regenerate from scratch every run they used to re-surface handled items; `pipeline/resolutions.py`
+is the shared acknowledgment overlay that fixes that. Its `.watchdog/Registry/resolutions.json`
+keys acknowledged items on stable ids (`lead:<signal>:<id>`, `contradiction:<callout-hash>`,
+`alert:<sha7>:<term-hash>`); the report generators (and the entity-note writer, for contradiction
+callouts) drop resolved ids from the active list. The store is populated by `watchdog resolve`,
+by `- [x]` checkbox sync from the briefing files (`<!--wid:<id>-->` markers), and undone by
+`watchdog unresolve`; `merge-entities` remaps lead ids onto the survivor (§I1, D54).
+
 ---
 
 ## 10. Near-duplicate detection
@@ -544,6 +557,7 @@ Registry/
   documents.json            per-document metadata + MinHash signatures
   registry.json             counts + last-updated
   manifest.json             lightweight id→{name,type,aliases,note_path} lookup
+  resolutions.json          acknowledged leads/alerts/contradictions overlay (D68)
   ingest.log                append-only ingest log
   usage-<ts>.json           per-run model-call token/cost telemetry (D50)
   batch-pending.json        pending claude-batch extraction state (D52)

@@ -772,6 +772,12 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
         entities_reg  = json.loads(entities_path.read_text())  if entities_path.exists()  else {}
         documents_reg = json.loads(documents_path.read_text()) if documents_path.exists() else {}
 
+        # Resolved-contradiction overlay (#266): callouts the journalist has acknowledged are
+        # dropped from the rendered note body. The registry keeps the full list, so unresolving
+        # restores them on the next write.
+        from watchdog.pipeline import resolutions
+        resolved_ids = resolutions.resolved_ids(vault_path)
+
         morgue_relative = (
             f"morgue/{extraction.get('morgue_entity_id', 'unknown')}"
             f"/{extraction.get('morgue_document_type', 'document')}"
@@ -878,6 +884,7 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
             contradictions = _accumulate_contradictions(
                 _extract_contradictions(note_path), incoming.get("contradictions") or []
             )
+            contradictions = resolutions.filter_callouts(contradictions, resolved_ids)
 
             note_content = build_entity_note(
                 entry, notes_section, documents_reg, new_summary, accumulated, contradictions

@@ -313,6 +313,12 @@ def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
         json.dumps(existing_registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
 
+    # Acknowledgments follow the merge (#266 / D54): a lead resolved under the merged-away id
+    # is rewritten onto the survivor. Contradiction/alert resolutions are keyed on content, not
+    # entity id, so they need no remap.
+    from watchdog.pipeline import resolutions
+    stats["resolutions_remapped"] = resolutions.remap_entity(vault_path, merge_id, keep_id)
+
     all_notes = {keep_note_path: (keep["name"], note_content),
                  merge_note_path: (merge_name, stub_content),
                  **other_notes}
