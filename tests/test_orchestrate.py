@@ -594,6 +594,14 @@ def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
     assert "classify" in tasks and "extract" in tasks and "briefing" in tasks
     assert all(c["input_tokens"] == 100 for c in data["calls"])
 
+    # #247: extraction/classification calls carry the document filename (and, for extraction,
+    # a page-range detail) so a usage file can attribute cost to a specific document.
+    by_task = {c["task"]: c for c in data["calls"]}
+    assert by_task["classify"]["filename"] == "test-doc.pdf"
+    assert by_task["extract"]["filename"] == "test-doc.pdf"
+    assert by_task["extract"]["detail"] == "pages 1–1"
+    assert by_task["briefing"]["filename"] is None   # corpus-wide call, nothing to attribute
+
     n_calls = len(data["calls"])
     assert data["totals"]["input_tokens"] == 100 * n_calls
     assert data["totals"]["output_tokens"] == 20 * n_calls
@@ -1124,6 +1132,33 @@ def test_finish_batch_item_fails_when_result_missing(tmp_path):
     result = asyncio.run(orchestrate._finish_batch_item(
         vault, "sha1", None, "SKILL", "s", None, "sk-x"))
     assert result["status"] == "failed"
+
+
+def test_finish_batch_item_records_usage_for_the_batch_call_itself(tmp_path):
+    """D64: a batch-collected item that already passed validation never calls `_call_model` —
+    without recording it directly in `_finish_batch_item`, its real token spend would silently
+    never reach `usage-<ts>.json`, unlike every synchronous extraction path."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+
+    item = {"ok": True, "parsed": _extraction(sha="sha1", filename="a.pdf"),
+           "usage": {"input_tokens": 500, "output_tokens": 80}, "cost_usd": 0.015, "error": None}
+
+    orchestrate._usage = []
+    try:
+        result = asyncio.run(orchestrate._finish_batch_item(
+            vault, "sha1", item, "SKILL BODY", "annual-report", None, "sk-x",
+            model="claude-sonnet-4-6"))
+        assert result["status"] == "ok"
+        calls = [c for c in orchestrate._usage if c["task"] == "extract"]
+        assert len(calls) == 1
+        assert calls[0] == {
+            "task": "extract", "model": "claude-sonnet-4-6", "backend": "claude-batch",
+            "input_tokens": 500, "output_tokens": 80, "cache_read_tokens": 0, "cache_write_tokens": 0,
+            "cost_usd": 0.015, "attempts": 1, "filename": "a.pdf", "detail": "pages 1–1",
+        }
+    finally:
+        orchestrate._usage = None
 
 
 def test_run_dispatches_to_batch_and_merges_batch_pending_into_summary(tmp_path, monkeypatch):

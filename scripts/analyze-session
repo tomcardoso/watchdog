@@ -1,133 +1,36 @@
 #!/usr/bin/env python3
 """
-analyze-session — token usage and subagent breakdown for a Claude Code session.
+analyze-session — per-call token/cost breakdown for a watchdog ingest run.
+
+Reads `.watchdog/Registry/usage-<ts>.json` (D50/#207) — the Python orchestrator's own per-call
+telemetry, written after every `watchdog ingest`/`watchdog finalize` run — and groups calls by
+stage (classifier / extractor / finalizer, matching the CLI's own `--classifier-model` /
+`--extractor-model` / `--finalizer-model` vocabulary). Extractor rows show the filename and page
+range (or section) each call covered. Cost is read directly from each record — there is no local
+pricing table to keep in sync, since `model_client` already computed `cost_usd` authoritatively
+at call time.
 
 Usage:
-  analyze-session <session.jsonl>
-  analyze-session <path/to/session-uuid>   (directory, no .jsonl extension)
-  analyze-session <project-folder>         (directory of .jsonl files — analyzes all)
+  analyze-session <vault>                      analyze the latest run in <vault>
+  analyze-session <vault> --all                compare every run recorded in <vault>
+  analyze-session <path/to/usage-<ts>.json>     analyze exactly that run file
 """
 
 import json
-import re
 import sys
 from pathlib import Path
 
-
-# Pricing per million tokens — keep in sync with model_client._PRICING (the source of truth).
-_COSTS = {
-    "claude-sonnet-4-6":          {"input": 3.00, "cache_write": 3.75, "cache_read": 0.30, "output": 15.00},
-    "claude-opus-4-8":            {"input": 5.00, "cache_write": 6.25, "cache_read": 0.50, "output": 25.00},
-    "claude-haiku-4-5-20251001":  {"input": 1.00, "cache_write": 1.25, "cache_read": 0.10, "output": 5.00},
+# task name -> stage bucket, matching --classifier-model/--extractor-model/--finalizer-model.
+_STAGE = {
+    "classify": "classifier",
+    "extract": "extractor", "extract-section": "extractor",
+    "entity-synthesis": "finalizer", "timeline-dedup": "finalizer",
+    "timeline-precision": "finalizer", "briefing": "finalizer",
 }
-_DEFAULT_COSTS = _COSTS["claude-sonnet-4-6"]
+_STAGE_ORDER = ("classifier", "extractor", "finalizer")
 
-
-def _model_costs(model: str | None) -> dict:
-    if model and model in _COSTS:
-        return _COSTS[model]
-    # Fuzzy match: haiku, sonnet, opus in the model string
-    if model:
-        for key in _COSTS:
-            if key.split("-")[1] in model.lower():
-                return _COSTS[key]
-    return _DEFAULT_COSTS
-
-
-def _extract_page_count(content: str) -> int | None:
-    """Find page_count in a tool result string, including persisted-output redirects."""
-    if content.startswith("<persisted-output>"):
-        m = re.search(r"Full output saved to: (.+)", content)
-        if m:
-            try:
-                content = Path(m.group(1).strip()).read_text(encoding="utf-8")
-            except OSError:
-                return None
-    m = re.search(r'"page_count":\s*(\d+)', content)
-    return int(m.group(1)) if m else None
-
-
-def _parse_log(path: Path) -> dict:
-    turns = tool_calls = inp = cache_write = cache_read = out = 0
-    model = None
-    page_count = None
-    cwd = None
-    seen_ids: set[str] = set()   # the SDK logs each assistant message twice (same message.id)
-
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            r = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-
-        if cwd is None:
-            cwd = r.get("cwd")
-
-        msg = r.get("message", {})
-        if not isinstance(msg, dict):
-            continue
-
-        if msg.get("role") == "user" and page_count is None:
-            for block in msg.get("content", []):
-                if isinstance(block, dict) and block.get("type") == "tool_result":
-                    raw = block.get("content", "")
-                    if isinstance(raw, str):
-                        pc = _extract_page_count(raw)
-                        if pc is not None:
-                            page_count = pc
-                            break
-
-        if msg.get("role") != "assistant":
-            continue
-
-        # Skip duplicate records of the same response so tokens/tool calls aren't counted twice.
-        mid = msg.get("id")
-        if mid is not None:
-            if mid in seen_ids:
-                continue
-            seen_ids.add(mid)
-
-        u = msg.get("usage", {})
-        if u:
-            turns       += 1
-            inp         += u.get("input_tokens", 0)
-            cache_write += u.get("cache_creation_input_tokens", 0)
-            cache_read  += u.get("cache_read_input_tokens", 0)
-            out         += u.get("output_tokens", 0)
-
-        if model is None:
-            model = msg.get("model")
-
-        for block in msg.get("content", []):
-            if isinstance(block, dict) and block.get("type") == "tool_use":
-                tool_calls += 1
-
-    return {
-        "turns": turns, "tool_calls": tool_calls,
-        "input": inp, "cache_write": cache_write, "cache_read": cache_read, "output": out,
-        "model": model, "page_count": page_count, "cwd": cwd,
-    }
-
-
-def _cost(s: dict) -> float:
-    c = _model_costs(s.get("model"))
-    return (
-        s["input"]       * c["input"]       / 1_000_000 +
-        s["cache_write"] * c["cache_write"]  / 1_000_000 +
-        s["cache_read"]  * c["cache_read"]   / 1_000_000 +
-        s["output"]      * c["output"]       / 1_000_000
-    )
-
-
-def _add(a: dict, b: dict) -> dict:
-    keys = ("turns", "tool_calls", "input", "cache_write", "cache_read", "output")
-    return {k: a[k] + b[k] for k in keys} | {"model": a.get("model") or b.get("model")}
-
-
-_ZERO = {"turns": 0, "tool_calls": 0, "input": 0, "cache_write": 0, "cache_read": 0, "output": 0, "model": None, "page_count": None, "cwd": None}
+_ZERO_TOTALS = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
+                "cache_write_tokens": 0, "cost_usd": 0.0}
 
 
 def _fmt(n: int) -> str:
@@ -135,39 +38,17 @@ def _fmt(n: int) -> str:
 
 
 def _short_model(m: str | None) -> str:
+    """e.g. 'claude-sonnet-4-6' -> 'sonnet', 'claude-haiku-4-5' -> 'haiku'."""
     if not m:
         return "?"
-    # e.g. "claude-sonnet-4-6" → "sonnet", "claude-haiku-4-5-20251001" → "haiku"
     parts = m.split("-")
     return parts[1] if len(parts) > 1 else m
 
 
-def _collect_session(orch_log: Path) -> dict:
-    """Orchestrator + its subagents combined into one totals dict for the session."""
-    orch = _parse_log(orch_log)
-    total = dict(orch)
-    subagents_dir = orch_log.with_suffix("") / "subagents"
-    n_sub = 0
-    if subagents_dir.exists():
-        for mf in sorted(subagents_dir.glob("*.meta.json")):
-            agent_id = mf.stem.replace(".meta", "")
-            log_file = subagents_dir / f"{agent_id}.jsonl"
-            if not log_file.exists():
-                continue
-            total = _add(total, _parse_log(log_file))
-            n_sub += 1
-    return total | {"subagents": n_sub, "page_count": orch.get("page_count"), "cwd": orch.get("cwd")}
-
-
-def _corpus_pages(cwd: str | None) -> tuple[int, int] | None:
-    """(total_pages, document_count) from the vault registry at `cwd`, or None if unavailable.
-
-    The sessions run inside the investigation vault; its document registry records the
-    page_count of every ingested document, which is the right denominator for cost/page.
-    """
-    if not cwd:
-        return None
-    reg = Path(cwd) / ".watchdog" / "Registry" / "documents.json"
+def _corpus_pages(vault: Path) -> tuple[int, int] | None:
+    """(total_pages, document_count) from the vault's document registry, or None if unavailable —
+    the right denominator for cost/page, since it covers every ingested document, not just this run."""
+    reg = vault / ".watchdog" / "Registry" / "documents.json"
     if not reg.exists():
         return None
     try:
@@ -178,63 +59,180 @@ def _corpus_pages(cwd: str | None) -> tuple[int, int] | None:
     return (pages, len(docs))
 
 
-def analyze_folder(folder: Path):
-    """Compact per-session table + grand total for every .jsonl directly in a folder."""
-    logs = sorted(folder.glob("*.jsonl"))
-    if not logs:
-        sys.exit(f"Error: no .jsonl files found in {folder}")
+def _load(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        sys.exit(f"Error: could not read {path}: {e}")
 
-    W = 96
-    print()
-    print("━" * W)
-    print(f"  Project  {folder.name}  ({len(logs)} session{'s' if len(logs) != 1 else ''})")
-    print("━" * W)
 
-    rows = [(lg.stem, _collect_session(lg)) for lg in logs]
-    name_w = min(20, max(len(n) for n, _ in rows))
-    model_w = max(len(_short_model(s.get("model"))) for _, s in rows)
+def _registry_dir(arg: Path) -> Path:
+    reg = arg / ".watchdog" / "Registry"
+    if reg.is_dir():
+        return reg
+    if arg.is_dir() and any(arg.glob("usage-*.json")):
+        return arg   # arg is already a Registry dir
+    sys.exit(f"Error: no .watchdog/Registry under {arg}, and it has no usage-*.json files itself")
 
-    hdr = (f"  {'Session':<{name_w}}  {'Model':<{model_w}}  {'Sub':>3}  {'Turns':>5}  {'Tools':>5}  "
-           f"{'Input':>9}  {'C.read':>10}  {'Output':>8}  {'Cost':>8}")
-    print()
-    print(hdr)
-    print(f"  {'─' * (len(hdr) - 2)}")
 
-    grand = dict(_ZERO)
-    n_sub_total = 0
-    for name, s in sorted(rows, key=lambda x: -_cost(x[1])):
-        trunc = (name[:name_w - 1] + "…") if len(name) > name_w else name
-        print(
-            f"  {trunc:<{name_w}}  {_short_model(s.get('model')):<{model_w}}  "
-            f"{s['subagents']:>3}  {s['turns']:>5}  {s['tool_calls']:>5}  "
-            f"{_fmt(s['input']):>9}  {_fmt(s['cache_read']):>10}  "
-            f"{_fmt(s['output']):>8}  ${_cost(s):>7.4f}"
-        )
-        grand = _add(grand, s)
-        n_sub_total += s["subagents"]
+def _vault_for(registry_dir: Path) -> Path:
+    if registry_dir.parent.name == ".watchdog":
+        return registry_dir.parent.parent
+    return registry_dir   # best-effort fallback — cost/page just won't be available
 
-    print(f"  {'─' * (len(hdr) - 2)}")
-    label = f"TOTAL  ({len(logs)} sessions, {n_sub_total} subagent{'s' if n_sub_total != 1 else ''})"
-    total_cost = _cost(grand)
-    print(
-        f"  {label:<{name_w + model_w + 7}}  {grand['turns']:>5}  {grand['tool_calls']:>5}  "
-        f"{_fmt(grand['input']):>9}  {_fmt(grand['cache_read']):>10}  "
-        f"{_fmt(grand['output']):>8}  ${total_cost:>7.4f}"
-    )
 
-    # ── Cost per page ───────────────────────────────────────────────────────────
-    cwd = next((s["cwd"] for _, s in rows if s.get("cwd")), None)
-    corpus = _corpus_pages(cwd)
+def _accumulate(totals: dict, add: dict) -> None:
+    for k in _ZERO_TOTALS:
+        totals[k] += add[k]
+
+
+def _print_cost_per_page(vault: Path, total_cost: float) -> None:
+    corpus = _corpus_pages(vault)
     print()
     if corpus and corpus[0] > 0:
         pages, n_docs = corpus
         print(f"  {'Corpus':<14} {_fmt(pages)} pages across {n_docs} document{'s' if n_docs != 1 else ''}")
         print(f"  {'Cost / page':<14} ${total_cost / pages:.4f}  (${total_cost:.4f} / {_fmt(pages)} pages)")
-    elif cwd:
-        print(f"  {'Cost / page':<14} unavailable — no document registry at {cwd}")
     else:
-        print(f"  {'Cost / page':<14} unavailable — could not determine the investigation vault")
+        print(f"  {'Cost / page':<14} unavailable — no document registry at {vault}")
     print()
+
+
+def _print_stage(calls: list[dict]) -> dict:
+    """Print one row per call (highest cost first), a subtotal row, and return the subtotal."""
+    name_w = max(min(28, max(len(c.get("filename") or c["task"]) for c in calls)), len("Filename"))
+    detail_w = max(min(24, max(len(c.get("detail") or "—") for c in calls)), len("Detail"))
+    model_w = max(max(len(_short_model(c.get("model"))) for c in calls), len("Model"))
+
+    hdr = (f"  {'Filename':<{name_w}}  {'Detail':<{detail_w}}  {'Model':<{model_w}}  "
+           f"{'Input':>8}  {'C.read':>8}  {'Output':>7}  {'Cost':>8}")
+    print(hdr)
+    print(f"  {'─' * (len(hdr) - 2)}")
+
+    totals = dict(_ZERO_TOTALS)
+    for c in sorted(calls, key=lambda c: -(c.get("cost_usd") or 0.0)):
+        name = c.get("filename") or c["task"]
+        detail = c.get("detail") or "—"
+        cost = c.get("cost_usd") or 0.0
+        trunc_name = (name[:name_w - 1] + "…") if len(name) > name_w else name
+        trunc_detail = (detail[:detail_w - 1] + "…") if len(detail) > detail_w else detail
+        print(
+            f"  {trunc_name:<{name_w}}  {trunc_detail:<{detail_w}}  {_short_model(c.get('model')):<{model_w}}  "
+            f"{_fmt(c['input_tokens']):>8}  {_fmt(c['cache_read_tokens']):>8}  {_fmt(c['output_tokens']):>7}  "
+            f"${cost:>6.4f}"
+        )
+        totals["input_tokens"] += c["input_tokens"]
+        totals["output_tokens"] += c["output_tokens"]
+        totals["cache_read_tokens"] += c["cache_read_tokens"]
+        totals["cache_write_tokens"] += c["cache_write_tokens"]
+        totals["cost_usd"] += cost
+
+    print(
+        f"  {'Subtotal':<{name_w}}  {'':<{detail_w}}  {'':<{model_w}}  "
+        f"{_fmt(totals['input_tokens']):>8}  {_fmt(totals['cache_read_tokens']):>8}  "
+        f"{_fmt(totals['output_tokens']):>7}  ${totals['cost_usd']:>7.4f}"
+    )
+    return totals
+
+
+def analyze_run(usage_file: Path, vault: Path) -> None:
+    """Detailed breakdown of a single run: one section per stage, filenames/detail for each call."""
+    data = _load(usage_file)
+    calls = data.get("calls", [])
+
+    W = 88
+    print()
+    print("━" * W)
+    print(f"  Run  {usage_file.stem}" + (f"   vault: {vault.name}" if vault else ""))
+    print("━" * W)
+
+    if not calls:
+        print("\n  (no model calls recorded for this run)\n")
+        return
+
+    by_stage: dict[str, list[dict]] = {}
+    for c in calls:
+        by_stage.setdefault(_STAGE.get(c["task"], c["task"]), []).append(c)
+
+    grand = dict(_ZERO_TOTALS)
+    n_calls = 0
+    ordered = [s for s in _STAGE_ORDER if s in by_stage] + \
+              [s for s in by_stage if s not in _STAGE_ORDER]
+    for stage in ordered:
+        stage_calls = by_stage[stage]
+        print(f"\n  {stage.upper()}  ({len(stage_calls)} call{'s' if len(stage_calls) != 1 else ''})")
+        totals = _print_stage(stage_calls)
+        _accumulate(grand, totals)
+        n_calls += len(stage_calls)
+
+    print(f"\n  {'━' * (W - 2)}")
+    print(
+        f"  TOTAL  ({n_calls} call{'s' if n_calls != 1 else ''})     "
+        f"{_fmt(grand['input_tokens'])} in  ·  {_fmt(grand['cache_read_tokens'])} cache-read  ·  "
+        f"{_fmt(grand['output_tokens'])} out  ·  ${grand['cost_usd']:.4f}"
+    )
+    _print_cost_per_page(vault, grand["cost_usd"])
+
+
+def _run_totals(calls: list[dict]) -> dict:
+    t = dict(_ZERO_TOTALS, classifier_cost=0.0, extractor_cost=0.0, finalizer_cost=0.0)
+    for c in calls:
+        cost = c.get("cost_usd") or 0.0
+        t["input_tokens"] += c["input_tokens"]
+        t["output_tokens"] += c["output_tokens"]
+        t["cache_read_tokens"] += c["cache_read_tokens"]
+        t["cache_write_tokens"] += c["cache_write_tokens"]
+        t["cost_usd"] += cost
+        stage_key = f"{_STAGE.get(c['task'], c['task'])}_cost"
+        if stage_key in t:
+            t[stage_key] += cost
+    return t
+
+
+def analyze_all(registry_dir: Path, vault: Path) -> None:
+    """Compact per-run comparison table (every usage-*.json in the vault) + a grand total."""
+    files = sorted(registry_dir.glob("usage-*.json"))
+    if not files:
+        sys.exit(f"Error: no usage-*.json files found in {registry_dir}")
+
+    print()
+    print("━" * 100)
+    print(f"  Vault  {vault.name}  ({len(files)} run{'s' if len(files) != 1 else ''})")
+    print("━" * 100)
+
+    rows = []
+    for f in files:
+        calls = _load(f).get("calls", [])
+        rows.append((f.stem, _run_totals(calls), len(calls)))
+    name_w = min(28, max(len(name) for name, _, _ in rows))
+
+    hdr = (f"  {'Run':<{name_w}}  {'Calls':>5}  {'Classifier':>10}  {'Extractor':>10}  {'Finalizer':>10}  "
+           f"{'Input':>9}  {'C.read':>9}  {'Output':>8}  {'Cost':>8}")
+    print()
+    print(hdr)
+    print(f"  {'─' * (len(hdr) - 2)}")
+
+    grand = dict(_ZERO_TOTALS, classifier_cost=0.0, extractor_cost=0.0, finalizer_cost=0.0)
+    n_calls_total = 0
+    for name, t, n_calls in sorted(rows, key=lambda r: -r[1]["cost_usd"]):
+        trunc = (name[:name_w - 1] + "…") if len(name) > name_w else name
+        print(
+            f"  {trunc:<{name_w}}  {n_calls:>5}  ${t['classifier_cost']:>9.4f}  ${t['extractor_cost']:>9.4f}  "
+            f"${t['finalizer_cost']:>9.4f}  {_fmt(t['input_tokens']):>9}  {_fmt(t['cache_read_tokens']):>9}  "
+            f"{_fmt(t['output_tokens']):>8}  ${t['cost_usd']:>7.4f}"
+        )
+        for k in grand:
+            grand[k] += t[k]
+        n_calls_total += n_calls
+
+    print(f"  {'─' * (len(hdr) - 2)}")
+    print(
+        f"  {'TOTAL':<{name_w}}  {n_calls_total:>5}  ${grand['classifier_cost']:>9.4f}  "
+        f"${grand['extractor_cost']:>9.4f}  ${grand['finalizer_cost']:>9.4f}  "
+        f"{_fmt(grand['input_tokens']):>9}  {_fmt(grand['cache_read_tokens']):>9}  "
+        f"{_fmt(grand['output_tokens']):>8}  ${grand['cost_usd']:>7.4f}"
+    )
+    _print_cost_per_page(vault, grand["cost_usd"])
 
 
 def main():
@@ -242,98 +240,33 @@ def main():
         print(__doc__)
         sys.exit(1)
 
-    arg = Path(sys.argv[1])
+    args = sys.argv[1:]
+    show_all = "--all" in args
+    args = [a for a in args if a != "--all"]
+    if not args:
+        print(__doc__)
+        sys.exit(1)
 
-    # Folder of sessions: a directory containing .jsonl files directly (a session-uuid
-    # directory holds its logs under subagents/, so it falls through to single-session mode).
-    if arg.is_dir() and any(arg.glob("*.jsonl")):
-        analyze_folder(arg)
+    arg = Path(args[0])
+    if not arg.exists():
+        sys.exit(f"Error: {arg} not found")
+
+    if arg.is_file():
+        vault = arg.parent.parent.parent   # <vault>/.watchdog/Registry/usage-<ts>.json
+        analyze_run(arg, vault)
         return
 
-    orch_log = arg if arg.suffix == ".jsonl" else arg.with_suffix(".jsonl")
-    session_dir = orch_log.with_suffix("")
+    registry_dir = _registry_dir(arg)
+    vault = _vault_for(registry_dir)
 
-    if not orch_log.exists():
-        sys.exit(f"Error: {orch_log} not found")
+    if show_all:
+        analyze_all(registry_dir, vault)
+        return
 
-    W = 72
-    SEP = "─" * W
-
-    print()
-    print("━" * W)
-    print(f"  Session  {orch_log.stem}")
-    print("━" * W)
-
-    # ── Orchestrator ──────────────────────────────────────────────────────────
-    orch = _parse_log(orch_log)
-    model_str = f"  [{orch['model']}]" if orch.get("model") else ""
-    print(f"\n  ORCHESTRATOR{model_str}")
-    print(f"  {SEP}")
-    print(f"  {'Turns':<14} {_fmt(orch['turns'])}")
-    print(f"  {'Tool calls':<14} {_fmt(orch['tool_calls'])}")
-    print(f"  {'Input':<14} {_fmt(orch['input'])} tok")
-    print(f"  {'Cache write':<14} {_fmt(orch['cache_write'])} tok")
-    print(f"  {'Cache read':<14} {_fmt(orch['cache_read'])} tok")
-    print(f"  {'Output':<14} {_fmt(orch['output'])} tok")
-    print(f"  {'Est. cost':<14} ${_cost(orch):.4f}")
-
-    # ── Subagents ─────────────────────────────────────────────────────────────
-    subagents_dir = session_dir / "subagents"
-    rows = []
-    total_sub = dict(_ZERO)
-
-    if subagents_dir.exists():
-        for mf in sorted(subagents_dir.glob("*.meta.json")):
-            agent_id = mf.stem.replace(".meta", "")
-            log_file = subagents_dir / f"{agent_id}.jsonl"
-            if not log_file.exists():
-                continue
-            meta = json.loads(mf.read_text(encoding="utf-8"))
-            desc = meta.get("description", agent_id)
-            s = _parse_log(log_file)
-            rows.append((desc, s))
-            total_sub = _add(total_sub, s)
-
-    if rows:
-        print(f"\n  SUBAGENTS  ({len(rows)} total)")
-        print(f"  {SEP}")
-
-        model_w = max(len(_short_model(s.get("model"))) for _, s in rows)
-        desc_w = min(48, max(len(r[0]) for r in rows))
-        hdr = f"  {'Description':<{desc_w}}  {'Model':<{model_w}}  {'Pg':>4}  {'Turns':>5}  {'Tools':>5}  {'Input':>8}  {'C.read':>9}  {'Output':>7}  {'Cost':>7}  {'$/pg':>6}"
-        print(hdr)
-        print(f"  {'─' * (len(hdr) - 2)}")
-
-        for desc, s in sorted(rows, key=lambda x: -x[1]["tool_calls"]):
-            trunc = (desc[:desc_w - 1] + "…") if len(desc) > desc_w else desc
-            m = _short_model(s.get("model"))
-            pc = s.get("page_count")
-            pg = str(pc) if pc is not None else "?"
-            c = _cost(s)
-            cpp = f"${c / pc:.4f}" if pc else "—"
-            print(
-                f"  {trunc:<{desc_w}}  {m:<{model_w}}  "
-                f"{pg:>4}  {s['turns']:>5}  {s['tool_calls']:>5}  "
-                f"{_fmt(s['input']):>8}  {_fmt(s['cache_read']):>9}  "
-                f"{_fmt(s['output']):>7}  ${c:>6.4f}  {cpp:>6}"
-            )
-
-    # ── Totals ────────────────────────────────────────────────────────────────
-    totals = _add(orch, total_sub)
-    sub_label = f"{len(rows)} subagent{'s' if len(rows) != 1 else ''}"
-    print(f"\n  TOTALS  (orchestrator + {sub_label})")
-    print(f"  {SEP}")
-    print(f"  {'Turns':<14} {_fmt(totals['turns'])}")
-    print(f"  {'Tool calls':<14} {_fmt(totals['tool_calls'])}")
-    print(f"  {'Input':<14} {_fmt(totals['input'])} tok")
-    print(f"  {'Cache write':<14} {_fmt(totals['cache_write'])} tok")
-    print(f"  {'Cache read':<14} {_fmt(totals['cache_read'])} tok")
-    print(f"  {'Output':<14} {_fmt(totals['output'])} tok")
-    orch_cost = _cost(orch)
-    sub_cost  = _cost(total_sub)
-    tot_cost  = orch_cost + sub_cost
-    print(f"  {'Est. cost':<14} ${tot_cost:.4f}  (orch ${orch_cost:.4f} + agents ${sub_cost:.4f})")
-    print()
+    files = sorted(registry_dir.glob("usage-*.json"))
+    if not files:
+        sys.exit(f"Error: no usage-*.json files found in {registry_dir}")
+    analyze_run(files[-1], vault)   # filenames sort chronologically
 
 
 if __name__ == "__main__":
