@@ -5,6 +5,7 @@ from watchdog.pipeline.timeline import (
     stage_timeline_events,
     cmd_timeline_collisions,
     cmd_rebuild_timeline,
+    collisions,
     month_precision_groups,
     apply_precision_matches,
 )
@@ -147,6 +148,52 @@ def test_stage_then_collisions_promotes_and_rebuild_renders(tmp_path, capsys):
     assert "15 Mar 2020" in timeline_md            # human-rendered date
     assert "Appointed director" in timeline_md
     assert "Do not edit by hand" in timeline_md   # auto-generated warning header
+
+
+def test_collisions_consumes_raw_on_promotion(tmp_path):
+    """After a raw-only date is promoted to canonical, the raw file is deleted and a second
+    collisions() run reports nothing — otherwise every later ingest re-litigates the date as a
+    phantom collision (canonical vs. its own already-promoted raws) and, on a failed dedup call,
+    bakes in duplicate rows (#250)."""
+    vault = _vault(tmp_path)
+    stage_timeline_events(vault, _extraction([
+        {"fact": "Appointed director", "date": "2020-03-15", "entities": ["alice"]},
+    ], sha="doc1xxxxxxx"))
+    td = vault / ".watchdog" / "timeline"
+    raw = td / "2020-03-15_doc1xxx.ndjson"
+    assert raw.exists()
+
+    first = collisions(vault)
+    assert first == []                          # promotion, not a collision
+    assert (td / "2020-03-15.ndjson").exists()  # canonical created
+    assert not raw.exists()                     # raw consumed
+
+    # A second sweep with nothing new must be a no-op — the canonical stands alone.
+    assert collisions(vault) == []
+    assert _read_ndjson(td / "2020-03-15.ndjson") == [
+        {"date": "2020-03-15", "event": "Appointed director", "source_sha256": "doc1xxxxxxx",
+         "page": None, "entity_ids": ["alice"], "basis": "stated"},
+    ]
+
+
+def test_collisions_leaves_raws_when_canonical_exists(tmp_path):
+    """When a canonical already exists, collisions() reports the date and leaves the raws in
+    place — the caller (post-ingest) deletes them only after a *successful* dedup write, so a
+    failed dedup call loses nothing (#250)."""
+    vault = _vault(tmp_path)
+    td = vault / ".watchdog" / "timeline"
+    td.mkdir(parents=True)
+    (td / "2020-03-15.ndjson").write_text(
+        json.dumps({"date": "2020-03-15", "event": "Existing", "source_sha256": "old",
+                    "basis": "stated"}) + "\n", encoding="utf-8")
+    stage_timeline_events(vault, _extraction([
+        {"fact": "New event", "date": "2020-03-15", "entities": ["bob"]},
+    ], sha="newdoc12345"))
+    raw = td / "2020-03-15_newdoc1.ndjson"
+
+    cols = collisions(vault)
+    assert len(cols) == 1 and cols[0]["date"] == "2020-03-15"
+    assert raw.exists()   # left for the caller to consume after dedup succeeds
 
 
 def _seed_registries(vault: Path, docs: dict, manifest: dict) -> None:
