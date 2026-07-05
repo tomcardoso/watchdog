@@ -166,6 +166,20 @@ def test_select_kept_falls_back_to_all_on_bad_input():
     assert orchestrate._select_kept(events, [{"keep": 9, "duplicates": [0]}]) == events
 
 
+def test_select_kept_never_empties_a_date_on_all_invalid_groups(tmp_path):
+    """A dedup response whose groups are entirely unusable (out-of-range keeps, garbage members)
+    must leave every event standing — never an empty `kept` that the collision loop would write
+    back as an emptied canonical, silently wiping the date (#250, G2)."""
+    events = [{"event": "A"}, {"event": "B"}, {"event": "C"}]
+    kept = orchestrate._select_kept(events, [
+        {"keep": 42, "duplicates": [0, 1]},   # out-of-range keep → group skipped
+        {"keep": -1, "duplicates": [2]},      # negative keep → group skipped
+        {"keep": "x", "duplicates": None},    # non-int keep → group skipped
+        "not-a-dict",                          # ignored
+    ])
+    assert kept == events   # nothing placed → nothing dropped → all survive
+
+
 def test_stamp_document_overwrites_model_identity(tmp_path):
     """Identity fields are stamped from Python, overriding whatever the model emitted."""
     vault = make_vault(tmp_path)

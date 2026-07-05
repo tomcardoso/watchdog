@@ -888,8 +888,9 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     out["timeline_collisions"] = len(cols)
     for col in cols:
         canonical = vault / col["canonical"]
+        raw_paths = [vault / r for r in col["raw"]]
         events: list[dict] = []
-        for p in [canonical, *(vault / r for r in col["raw"])]:
+        for p in [canonical, *raw_paths]:
             for line in timeline._read_ndjson_lines(p):
                 try:
                     events.append(json.loads(line))
@@ -904,9 +905,15 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                 detail=col["date"])
             kept = _select_kept(events, r.parsed.get("groups"))
         except (model_client.ModelError, model_client.RateLimitError):
-            kept = events   # fall back to the union rather than losing events
+            # Dedup failed (e.g. rate limit): leave the canonical AND its raws untouched so the
+            # next ingest retries this collision cleanly. Writing the canonical+raw union back
+            # here would bake in duplicate rows that compound on every later run (#250).
+            continue
         canonical.write_text(
             "\n".join(json.dumps(e, ensure_ascii=False) for e in kept) + "\n", encoding="utf-8")
+        # The raws are now merged into the canonical — consume them so they aren't re-collided.
+        for rp in raw_paths:
+            rp.unlink(missing_ok=True)
 
     # 2b. Cross-precision reconciliation (#239, D63): date-keyed buckets never compare a
     # month-precision event against the specific day it restates. For each month holding both, one

@@ -355,14 +355,17 @@ the entity registry's `timeline_events` is populated independently, straight off
 the briefing then run in `_post_ingest` (model: `post_model`) after extraction:
 
 - `timeline.collisions(vault)` promotes dates with no prior canonical to **canonical**
-  `{date}.ndjson` and returns the collisions where a canonical already existed; the
-  orchestrator sends each collision's events to one model call (`timeline-dedup`), which returns
-  `groups` (each survivor + the pure-restatement indices that fold into it). `_select_kept`
-  applies the decision — keeping the authoritative originals and **unioning each group's
-  `entity_ids`** onto the survivor, so an event's entity attribution survives a cross-document
-  collapse regardless of which restatement won (D59). It writes the deduped set back, then calls
-  `timeline.cmd_rebuild_timeline` to render `timeline.md`. If the dedup call fails it falls back
-  to the union rather than losing events;
+  `{date}.ndjson` (deleting the raws it just merged) and returns the collisions where a canonical
+  already existed; the orchestrator sends each collision's events to one model call
+  (`timeline-dedup`), which returns `groups` (each survivor + the pure-restatement indices that
+  fold into it). `_select_kept` applies the decision — keeping the authoritative originals and
+  **unioning each group's `entity_ids`** onto the survivor, so an event's entity attribution
+  survives a cross-document collapse regardless of which restatement won (D59). On a **successful**
+  dedup it writes the deduped set back to the canonical and consumes the collision's raws; on a
+  **failed** dedup call it leaves the canonical and its raws untouched so the next ingest retries
+  cleanly — never writing the canonical+raw union back, which would bake in duplicate rows that
+  compound on every later run (D65). It then calls `timeline.cmd_rebuild_timeline` to render
+  `timeline.md`;
 
 - **Cross-precision reconciliation (D63).** Date-keyed buckets never compare a month-precision
   event (`2026-03`) against the specific day it restates (`2026-03-12`). After the exact-date dedup,
