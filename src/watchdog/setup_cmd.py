@@ -64,6 +64,49 @@ def install_skills(commands_dir: Path) -> None:
             (commands_dir / item.name).write_bytes(item.read_bytes())
 
 
+def _check_playwright() -> None:
+    """Check for Playwright + Chromium (the optional, higher-fidelity capture path `watchdog
+    research`/`fetch` use — see #200/D61) and offer to install both if missing. Everything else
+    works without it; a missing/declined install just means plain-fetch captures instead of
+    full-fidelity ones."""
+    from watchdog.pipeline import capture
+
+    print()
+    print("  Checking web-capture support...")
+    if capture.render_available():
+        _ok("Playwright + Chromium — faithful web captures ready")
+        return
+
+    print(f"  {_DIM}Used by `watchdog research`/`watchdog fetch` to save full-fidelity page\n"
+          f"  snapshots (images, styles, client-rendered pages) instead of a plain fetch.\n"
+          f"  Optional — everything else works without it. Adds ~150 MB (Chromium browser).{_RESET}")
+    answer = input("  Install web-capture support now? [y/N] ").strip().lower()
+    if answer not in ("y", "yes"):
+        print(f"  {_DIM}Skipped. Install later with:{_RESET}")
+        print(f"    {_CYAN}pipx inject watchdog-intel playwright{_RESET}")
+        print(f"    {_CYAN}~/.local/pipx/venvs/watchdog-intel/bin/playwright install chromium{_RESET}")
+        return
+
+    print(f"\n  {_DIM}Installing playwright...{_RESET}")
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "playwright"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        _warn(f"could not install playwright: {result.stderr.strip()[:300]}")
+        return
+
+    print(f"  {_DIM}Downloading Chromium (one-time, ~150 MB)...{_RESET}")
+    result = subprocess.run(
+        [sys.executable, "-m", "playwright", "install", "chromium"],
+        capture_output=True, text=True,
+    )
+    if result.returncode == 0:
+        _ok("Playwright + Chromium installed")
+    else:
+        _warn(f"Chromium download failed: {result.stderr.strip()[:300]}")
+
+
 def _ask_projects_dir() -> Path:
     default = Path.home() / "Investigations"
     default_exists = default.exists()
@@ -211,7 +254,10 @@ def run(force: bool = False) -> None:
             _warn("tesserocr not importable — OCR will fall back to EasyOCR"
                   " (install Tesseract system package first, then: pip install tesserocr)")
 
-    # 6. Download ML models
+    # 6. Web capture (Playwright/Chromium)
+    _check_playwright()
+
+    # 7. Download ML models
     # Pin fastembed cache to ~/.cache/fastembed so it survives reboots.
     # Fastembed 0.8+ defaults to tempfile.gettempdir()/fastembed_cache which is ephemeral.
     _FASTEMBED_MODEL = "BAAI/bge-small-en-v1.5"
@@ -255,7 +301,7 @@ def run(force: bool = False) -> None:
         except Exception as e:
             _warn(f"Docling model download failed: {e}")
 
-    # 7. Write config
+    # 8. Write config
     WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
     CONFIG_FILE.write_text(
         json.dumps(
@@ -264,11 +310,11 @@ def run(force: bool = False) -> None:
         ) + "\n"
     )
 
-    # 8. Authentication
+    # 9. Authentication
     from watchdog.cmd.auth import setup_auth_interactive
     setup_auth_interactive()
 
-    # 9. Done
+    # 10. Done
     reload_hint = f"{_CYAN}source {profile}{_RESET}" if profile else "reload your shell"
     print()
     print(f"{_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{_RESET}")

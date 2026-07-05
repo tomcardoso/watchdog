@@ -1284,6 +1284,7 @@ def test_setup_writes_auto_for_worker_keys(tmp_path, monkeypatch):
     monkeypatch.setattr(sc, "_check_deps",       lambda: [])
     monkeypatch.setattr(sc, "_ask_projects_dir", lambda: investigations)
     monkeypatch.setattr(sc, "_detect_shell",     lambda: (None, None))
+    monkeypatch.setattr(sc, "_check_playwright", lambda: None)
 
     sc.run()
 

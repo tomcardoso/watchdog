@@ -142,7 +142,7 @@ pipx install watchdog-intel
 watchdog setup
 ```
 
-`watchdog setup` verifies system dependencies (qpdf, Ghostscript, Tesseract on Linux), configures your projects directory, and downloads the ML models used for document conversion and semantic search (one-time). Expect the model download step to take a few minutes on a slow connection.
+`watchdog setup` verifies system dependencies (qpdf, Ghostscript, Tesseract on Linux), configures your projects directory, offers to install the optional Playwright/Chromium capture browser (~150 MB — declines by default), and downloads the ML models used for document conversion and semantic search (one-time). Expect the model download step to take a few minutes on a slow connection.
 
 Shell tab completion is enabled automatically by `watchdog setup` — it writes the activation line to your shell profile (`~/.zshrc`, `~/.bashrc`, or equivalent) and prompts you to reload.
 
