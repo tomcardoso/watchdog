@@ -107,9 +107,10 @@ This will:
 - Verify that qpdf and Ghostscript are installed
 - Ask where you want to store your investigation projects
 - Enable tab completion in your shell automatically
+- Offer to install the optional capture browser for full page snapshots (see [Full page snapshots](#full-page-snapshots-optional) below)
 - Download the ML models for document conversion and semantic search (one-time, may take a few minutes on a slow connection)
 
-It will ask one question: where to store your projects. Press Return to accept the default (`~/Investigations`), or type a different path.
+It will ask two questions: where to store your projects, and whether to install the optional capture browser. Press Return to accept the projects default (`~/Investigations`), or type a different path; the capture browser defaults to no (type `y` to install it, an extra ~150 MB).
 
 When setup finishes, reload your shell so the tab completion takes effect:
 
@@ -355,6 +356,8 @@ pipx install "watchdog-intel[asr]" --force
 ## Full page snapshots (optional)
 
 By default, `watchdog research` and `watchdog fetch` save HTML pages with a plain, sanitized fetch — no JavaScript runs, so client-rendered pages (single-page apps) can deposit as an empty shell, and images/styling aren't captured. Installing the optional capture browser renders every HTML page in headless Chromium instead and saves a faithful, self-contained snapshot (images, fonts, and stylesheets inlined; all scripts stripped) — worth it if the sources you're pulling in are often JavaScript-heavy or you want the visual layout preserved.
+
+`watchdog setup` asks whether to install it (see [Step 6](#step-6-run-setup) above). To install it later, or if you said no the first time:
 
 ```
 pipx inject watchdog-intel playwright
