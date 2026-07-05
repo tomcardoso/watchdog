@@ -8,7 +8,7 @@ import pytest
 
 from watchdog import model_client
 from watchdog.cmd import auth as auth_module
-from watchdog.pipeline import batch_extract, orchestrate
+from watchdog.pipeline import batch_extract, orchestrate, timeline
 
 from tests.test_write_vault import make_vault
 
@@ -786,6 +786,86 @@ def test_post_ingest_unexpected_crash_is_contained(tmp_path, monkeypatch):
 
     assert summary["extracted"] == 1
     assert "post_ingest_error" in summary
+
+
+# ── _post_ingest timeline-collision loop (#250) ──────────────────────────────
+
+def _seed_collision(vault, date="2020-03-15"):
+    """Pre-seed the timeline dir with a canonical {date}.ndjson and one raw {date}_<sha7>.ndjson
+    for the same date, so `timeline.collisions()` reports one real collision for `_post_ingest`
+    to resolve. The two events share (date, event) so a dedup can fold them into one. Returns
+    (canonical_path, raw_path)."""
+    td = vault / ".watchdog" / "timeline"
+    td.mkdir(parents=True, exist_ok=True)
+    canonical = td / f"{date}.ndjson"
+    canonical.write_text(json.dumps({
+        "date": date, "event": "Appointed director", "source_sha256": "oldoldold0000",
+        "page": 1, "entity_ids": ["alice"], "basis": "stated"}) + "\n", encoding="utf-8")
+    raw = td / f"{date}_newdoc1.ndjson"
+    raw.write_text(json.dumps({
+        "date": date, "event": "Appointed director", "source_sha256": "newnewnew1111",
+        "page": 4, "entity_ids": ["bob"], "basis": "stated"}) + "\n", encoding="utf-8")
+    return canonical, raw
+
+
+def _mock_post_ingest(monkeypatch, *, timeline_dedup):
+    """Drive `_post_ingest` with only the timeline-dedup call under test controlled.
+    `timeline_dedup` is a zero-arg callable invoked for the timeline-dedup task — it may return a
+    parsed dict (success) or raise (failure). Briefing is deliberately failed (its error is caught)
+    so the run completes without needing a full briefing fixture."""
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "timeline-dedup":
+            parsed = timeline_dedup()   # may raise
+        elif task == "briefing":
+            raise model_client.RateLimitError("briefing skipped for this test")
+        else:
+            parsed = {}
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="claude-agent-sdk", auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+
+def test_post_ingest_leaves_collision_untouched_when_dedup_fails(tmp_path, monkeypatch):
+    """A rate limit during timeline dedup must leave BOTH the canonical and its raw untouched, so
+    the next ingest retries the collision cleanly. The pre-#250 bug wrote the canonical+raw union
+    back and deleted the raw, baking in a duplicate row that compounded on every later run."""
+    vault = make_vault(tmp_path)
+    canonical, raw = _seed_collision(vault)
+    canonical_before = canonical.read_text(encoding="utf-8")
+
+    def boom():
+        raise model_client.RateLimitError("You've hit your session limit")
+    _mock_post_ingest(monkeypatch, timeline_dedup=boom)
+
+    out = asyncio.run(orchestrate._post_ingest(vault, [], None, "haiku"))   # must not raise
+
+    assert out["timeline_collisions"] == 1
+    assert canonical.read_text(encoding="utf-8") == canonical_before   # not rewritten as a union
+    assert raw.exists()                                                # raw retained for retry
+    assert len(timeline.collisions(vault)) == 1                        # still a live collision
+
+
+def test_post_ingest_consumes_raws_after_successful_dedup(tmp_path, monkeypatch):
+    """A successful dedup writes the merged canonical and deletes the consumed raw, so a second
+    run finds no collision and makes zero timeline-dedup calls (#250). The two seeded events share
+    (date, event), so the model folds them into one surviving row with unioned attribution."""
+    vault = make_vault(tmp_path)
+    canonical, raw = _seed_collision(vault)
+
+    calls = {"timeline-dedup": 0}
+    def dedup():
+        calls["timeline-dedup"] += 1
+        return {"groups": [{"keep": 0, "duplicates": [1]}]}   # fold the raw restatement into the canonical
+    _mock_post_ingest(monkeypatch, timeline_dedup=dedup)
+
+    asyncio.run(orchestrate._post_ingest(vault, [], None, "haiku"))
+
+    assert calls["timeline-dedup"] == 1
+    assert not raw.exists()                                   # raw consumed
+    recs = [json.loads(l) for l in canonical.read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert len(recs) == 1                                     # folded to a single row
+    assert recs[0]["entity_ids"] == ["alice", "bob"]          # attribution unioned across the merge
+    assert timeline.collisions(vault) == []                   # no re-collision → future runs are silent
 
 
 def test_finalize_completes_an_interrupted_run(tmp_path, monkeypatch):
