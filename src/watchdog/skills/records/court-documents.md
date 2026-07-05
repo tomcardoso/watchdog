@@ -21,7 +21,7 @@ Loaded by `/ingest` when the document type is a statement of claim, affidavit, j
 
 ---
 
-## Always-present fields to extract
+## Fields to extract
 
 | Field | What to look for |
 |-------|-----------------|

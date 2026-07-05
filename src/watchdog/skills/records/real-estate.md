@@ -25,7 +25,7 @@ This skill covers market transactions (who bought what, for how much, under what
 
 ---
 
-## Always-present fields to extract
+## Fields to extract
 
 | Field | What to look for |
 |-------|-----------------|

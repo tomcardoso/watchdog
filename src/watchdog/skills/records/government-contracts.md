@@ -21,7 +21,7 @@ Loaded by `/ingest` when the document type is a procurement record, tender docum
 
 ---
 
-## Always-present fields to extract
+## Fields to extract
 
 | Field | What to look for |
 |-------|-----------------|

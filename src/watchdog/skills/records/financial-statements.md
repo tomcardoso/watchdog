@@ -21,7 +21,7 @@ Loaded by `/ingest` when the document type is a balance sheet, income statement,
 
 ---
 
-## Always-present fields to extract
+## Fields to extract
 
 | Field | What to look for |
 |-------|-----------------|

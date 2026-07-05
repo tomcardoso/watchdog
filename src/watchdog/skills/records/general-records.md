@@ -20,9 +20,9 @@ Before pulling fields, answer four questions about the document:
 
 ---
 
-## Always-present fields to extract
+## Fields to extract
 
-These fields appear in virtually every official or semi-official document. Extract them even when not prominently displayed.
+Fields expected in most official or semi-official documents, or fields that are high-value whenever present. Extract them even when not prominently displayed. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|
