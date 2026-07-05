@@ -1,15 +1,23 @@
 """
 watchdog ingest-abort <sha256> — clean up after a runaway or failed extraction.
 
-When a subagent gives up (its runaway guard fires) or returns an unparseable
+When an extraction gives up (its runaway guard fires) or returns an unparseable
 result, the document must be left in a clean state so it can be re-ingested
 later. A clean bail happens *before* the vault write, so the only state to undo
 is the per-document staging in `.watchdog/tmp/` (and any raw timeline files), plus
 moving the queue file out of the active queue into a holding area.
 
-This never touches the vault registry, entity/document notes, or the morgue: if
-post-flight had run, the extraction succeeded and this command would not be
-called. The source file stays in `_INCOMING/` (post-flight never moved it).
+This never touches the vault registry or the morgue: the registries are the atomic
+commit point for a document (write_vault persists them last, temp-then-rename), so a
+document that failed before that point never entered them, and one that reached it
+succeeded and would not be aborted. What this command does *not* undo is a partial
+write_vault crash *before* the commit: entity/document notes are written ahead of the
+registry persist (#259), so an abort may leave rewritten notes and search-index rows
+whose registry entry was rolled back. Those are self-healing — re-ingesting the same
+document replaces its note and fragment contribution idempotently (keyed by doc-note /
+sha), and `watchdog reindex` rebuilds the indexes from the registry — so this command
+leaves them in place rather than half-deleting a note a journalist may have annotated.
+The source file stays in `_INCOMING/` (post-flight never moved it).
 
 Re-ingest later: move the queue file back —
   mv .watchdog/queue/_failed/<sha>.json .watchdog/queue/

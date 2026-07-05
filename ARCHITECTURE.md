@@ -184,7 +184,13 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
 near-duplicate slugs coined by concurrent workers via the shared `entity_norm`
 name+type normalization), writes entity and document notes, updates the registry files,
 stages timeline events, and moves the source file to the morgue — all inside the write
-lock.
+lock. The **registry persist is the commit point**: the registries are written last, atomically
+(temp-then-rename), and every rebuilt-from-source artifact — the embed/FTS indexes and the
+per-entity finalizer fragments — is (re)written *after* that commit and keyed for idempotent
+replay (indexes upsert by note_path; fragment blocks replace-by-sha), so a repair retry after a
+mid-write crash converges instead of doubling claims (D67). Registry merges are themselves
+idempotent (sha-guarded), and the entity note's `## Analysis` block is keyed by the source
+document and replaced, not appended.
 
 **Large documents — sectioned extraction.** Code: `pipeline/section.py`,
 `pipeline/merge.py`. A document over `section_token_threshold` is split by `section.run`
@@ -325,10 +331,12 @@ investigation**, otherwise it stays a deterministic stub.
 - **No recency bias.** The synthesis prompt instructs the model to weight the full body of
   evidence: an entity established across many documents is *not* redefined by a new passing
   mention — a minor new reference is folded in without reshaping a settled account.
-- **Gated synthesis mechanics.** As `write_vault` writes each entity, it appends a per-entity
+- **Gated synthesis mechanics.** As `write_vault` writes each entity, it records a per-entity
   **fragment** (the entity's slice of the exploded extraction — its tagged-fact claims with any
-  quotes, roles — plus document attribution) to `.watchdog/tmp/entity-fragments/<id>.md`.
-  This is a *free byproduct* of data the extractor already produced. In `_post_ingest`,
+  quotes, roles — plus document attribution) in `.watchdog/tmp/entity-fragments/<id>.md`.
+  This is a *free byproduct* of data the extractor already produced. The fragment block is keyed
+  by the source document's sha and written *after* the registry commit, so a repair retry replaces
+  the block rather than appending a second copy (D67). In `_post_ingest`,
   `build_bundle` selects the recurring entities and packs each one's fragments + current prose
   into one compact bundle; a single model call synthesizes them all; `synthesis_bundle.apply_bundle`
   bulk-writes the Summary/Analysis via the shared writer in `pipeline/finalize_entity.py`.

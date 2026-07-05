@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import watchdog.pipeline.write_vault as wv
 from watchdog.pipeline.write_vault import run, _doc_slug
 from watchdog.pipeline.entity_norm import normalize_entity_name
 
@@ -1178,3 +1179,135 @@ def test_reconcile_does_not_merge_across_types(tmp_path):
 
     entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
     assert "morgan-person" in entities and "morgan-company" in entities  # type-scoped, not merged
+
+
+# ── Transactionality / idempotent re-run (#259) ───────────────────────────────
+
+# A realistic 64-hex sha so the fragment block's `(sha <7hex>)` key is exercised by the
+# replace-not-append logic (short fixture shas like "abc123" never re-run, so they don't).
+_REAL_SHA = "a1b2c3d4" * 8
+
+
+def _frag_queue(vault: Path) -> dict:
+    return json.loads(
+        (vault / ".watchdog" / "tmp" / "entity-fragments" / "_queue.json").read_text()
+    )
+
+
+def _real_sha_extraction(tmp_path: Path) -> Path:
+    return make_extraction(tmp_path, {"document": {"sha256": _REAL_SHA}})
+
+
+def test_reingest_same_document_is_idempotent(tmp_path):
+    """Running write_vault twice for the same document must replace its contribution, not
+    double it — the ## Analysis block, the fragment block, and the queue count all stay singular."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    run(_real_sha_extraction(tmp_path), vault)
+    # Second run re-reads the same extraction (the source has moved to the morgue, but the
+    # note/fragment writes must still converge on the already-present contribution).
+    run(_real_sha_extraction(tmp_path), vault)
+
+    note = (vault / "entities" / "person" / "alice-smith.md").read_text()
+    # The claim lives only in ## Analysis; a doubled entry would count it twice.
+    assert wv._extract_section(note, "Analysis").count("via [[documents/test-doc") == 1
+    assert note.count("Smith is listed as director") == 1
+
+    frag = (vault / ".watchdog" / "tmp" / "entity-fragments" / "alice-smith.md").read_text()
+    assert frag.count(f"(sha {_REAL_SHA[:7]})") == 1
+    assert _frag_queue(vault)["alice-smith"]["count"] == 1
+
+
+def test_repair_retry_converges_after_crash_before_registry_persist(tmp_path, monkeypatch):
+    """Crash between the note writes and the registry persist: the registries stay untouched
+    (the commit never landed), and a repair retry converges instead of doubling claims (#259)."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    ex = _real_sha_extraction(tmp_path)
+
+    real_rename = Path.rename
+    crashed = {"done": False}
+
+    def flaky_rename(self, target):
+        # Fail the first atomic registry write (entities.json) — i.e. after the notes are
+        # written but before any registry file is persisted.
+        if not crashed["done"] and str(target).endswith("entities.json"):
+            crashed["done"] = True
+            raise OSError("simulated crash before registry persist")
+        return real_rename(self, target)
+
+    monkeypatch.setattr(Path, "rename", flaky_rename)
+    with pytest.raises(OSError):
+        run(ex, vault)
+
+    # Commit never landed: registries empty, but the entity note was written (partial write).
+    assert json.loads((vault / ".watchdog/Registry/entities.json").read_text()) == {}
+    assert (vault / "entities" / "person" / "alice-smith.md").exists()
+
+    # Repair retry (crash cleared) must converge.
+    monkeypatch.setattr(Path, "rename", real_rename)
+    run(_real_sha_extraction(tmp_path), vault)
+
+    entities = json.loads((vault / ".watchdog/Registry/entities.json").read_text())
+    assert _REAL_SHA in entities["alice-smith"]["appears_in"]
+    note = (vault / "entities" / "person" / "alice-smith.md").read_text()
+    assert wv._extract_section(note, "Analysis").count("via [[documents/test-doc") == 1
+    frag = (vault / ".watchdog" / "tmp" / "entity-fragments" / "alice-smith.md").read_text()
+    assert frag.count(f"(sha {_REAL_SHA[:7]})") == 1
+    assert _frag_queue(vault)["alice-smith"]["count"] == 1
+
+
+def test_repair_retry_converges_after_crash_during_derived_writes(tmp_path, monkeypatch):
+    """Crash *after* the registries persist, midway through the derived fragment writes: the
+    retry re-runs write_vault with the registries already committed, and the replace-by-sha
+    fragment logic keeps each document's block singular (#259)."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    ex = _real_sha_extraction(tmp_path)
+
+    real_frag = wv._record_entity_fragment
+    calls = {"n": 0}
+
+    def flaky_frag(*args, **kwargs):
+        real_frag(*args, **kwargs)          # the block is actually written…
+        calls["n"] += 1
+        if calls["n"] == 1:                 # …then crash right after the first entity
+            raise RuntimeError("simulated crash mid derived-writes")
+
+    monkeypatch.setattr(wv, "_record_entity_fragment", flaky_frag)
+    with pytest.raises(RuntimeError):
+        run(ex, vault)
+
+    # The registries committed before the crash.
+    entities = json.loads((vault / ".watchdog/Registry/entities.json").read_text())
+    assert _REAL_SHA in entities["alice-smith"]["appears_in"]
+
+    # Repair retry with fragments healthy again must converge — no doubled blocks.
+    monkeypatch.setattr(wv, "_record_entity_fragment", real_frag)
+    run(_real_sha_extraction(tmp_path), vault)
+
+    frag_dir = vault / ".watchdog" / "tmp" / "entity-fragments"
+    for eid in ("alice-smith", "acme-corp"):
+        frag = (frag_dir / f"{eid}.md").read_text()
+        assert frag.count(f"(sha {_REAL_SHA[:7]})") == 1, f"{eid} block doubled"
+        assert _frag_queue(vault)[eid]["count"] == 1
+
+
+def test_drop_analysis_entry_replaces_only_matching_document():
+    analysis = (
+        "*3 May 2026, via [[documents/doc-a|Doc A]]:*\n- Claim A\n\n"
+        "*3 May 2026, via [[documents/doc-b|Doc B]]:*\n- Claim B"
+    )
+    kept = wv._drop_analysis_entry(analysis, "documents/doc-a")
+    assert "Claim A" not in kept
+    assert "Claim B" in kept
+
+
+def test_drop_fragment_block_replaces_only_matching_sha():
+    text = (
+        "\n### Doc A — filing, 2020 (sha aaaaaaa)\nClaim A\n"
+        "\n### Doc B — filing, 2021 (sha bbbbbbb)\nClaim B\n"
+    )
+    kept = wv._drop_fragment_block(text, "aaaaaaa" + "0" * 57)
+    assert "Claim A" not in kept
+    assert "(sha bbbbbbb)" in kept and "Claim B" in kept
