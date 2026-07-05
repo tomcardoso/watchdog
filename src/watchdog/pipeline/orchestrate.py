@@ -64,32 +64,42 @@ def _settle(sha: str, line: str) -> None:
         print(line, flush=True)
 
 
-def _record_usage(task: str, r: "model_client.ModelResult") -> None:
+def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
+                  cost_usd: float | None, attempts: int = 1,
+                  filename: str | None = None, detail: str | None = None) -> None:
     """Append one call's usage to the run-scoped `_usage` accumulator, if one is active.
     Tolerates both Anthropic-style (`input_tokens`/`output_tokens`) and OpenAI-compatible
     (`prompt_tokens`/`completion_tokens`) usage dicts (D37) — the latter's cache-token fields
-    aren't modelled yet (matches `model_client._openai_cost`'s own v1 simplification)."""
+    aren't modelled yet (matches `model_client._openai_cost`'s own v1 simplification).
+
+    Takes explicit fields rather than a `model_client.ModelResult` so a batch-collected item
+    (D52, no live model call at this point) can feed it too, not just `_call_model` (D64).
+    `filename`/`detail` (e.g. a page range or section label) let a per-run usage file attribute
+    each call to a document, not just a task name (#247)."""
     if _usage is None:
         return
-    u = r.usage or {}
+    u = usage or {}
     _usage.append({
-        "task": task, "model": r.model, "backend": r.backend,
+        "task": task, "model": model, "backend": backend,
         "input_tokens": u.get("input_tokens", u.get("prompt_tokens", 0)) or 0,
         "output_tokens": u.get("output_tokens", u.get("completion_tokens", 0)) or 0,
         "cache_read_tokens": u.get("cache_read_input_tokens", 0) or 0,
         "cache_write_tokens": u.get("cache_creation_input_tokens", 0) or 0,
-        "cost_usd": r.cost_usd, "attempts": r.attempts,
+        "cost_usd": cost_usd, "attempts": attempts,
+        "filename": filename, "detail": detail,
     })
 
 
 async def _call_model(*, task, prompt, schema, model=None, backend=None,
-                      max_retries=1, effort=None) -> "model_client.ModelResult":
+                      max_retries=1, effort=None, filename=None, detail=None) -> "model_client.ModelResult":
     """Thin wrapper around `model_client.acomplete_json` that also records this call's usage
     (A2) — every reasoning call in the orchestrator goes through here instead of the client
-    directly, so telemetry can't silently miss a call site."""
+    directly, so telemetry can't silently miss a call site. `filename`/`detail` are passed
+    through to `_record_usage` unchanged (#247)."""
     r = await model_client.acomplete_json(task=task, prompt=prompt, schema=schema, model=model,
                                           backend=backend, max_retries=max_retries, effort=effort)
-    _record_usage(task, r)
+    _record_usage(task, model=r.model, backend=r.backend, usage=r.usage, cost_usd=r.cost_usd,
+                 attempts=r.attempts, filename=filename, detail=detail)
     return r
 
 
@@ -236,10 +246,12 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str, v
     extraction["morgue_document_type"] = slugify(doc.get("document_type") or "") or "document"
 
 
-async def _classify(doc_excerpt: str, model: str, backend: str | None = None) -> str:
+async def _classify(doc_excerpt: str, model: str, backend: str | None = None,
+                    filename: str | None = None) -> str:
     r = await _call_model(
         task="classify", model=model, backend=backend, schema=schemas.CLASSIFY,
         prompt=prompts.build_classify_prompt(doc_excerpt, skills_catalog.build_index()),
+        filename=filename,
     )
     return r.parsed.get("skill") or "general-records.md"
 
@@ -329,12 +341,15 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
         skill_text=skill_text, sidecar=_read_sidecar(vault, pf["filename"]), brief=brief,
         known_document_types=pf.get("known_document_types", []),
     )
+    page_count = pf.get("page_count") or len(pf["pages"])
     cost, errors, extraction, scratchpad = 0.0, [], {}, ""
     for _ in range(2):
         p = base if not errors else _append_repair_note(base, errors)
+        detail = f"pages 1–{page_count}" + (" (repair)" if errors else "")
         try:
             r = await _call_model(task="extract", model=model, backend=backend,
-                                  prompt=p, schema=schemas.EXTRACTION, effort=effort)
+                                  prompt=p, schema=schemas.EXTRACTION, effort=effort,
+                                  filename=pf["filename"], detail=detail)
         except model_client.ModelError as e:
             # No valid JSON after the client's own retries — often output truncated on a
             # dense doc. Report failure so the caller can fall back to sectioning.
@@ -384,7 +399,8 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
             known_document_types=pf.get("known_document_types", []),
         )
         r = await _call_model(task="extract-section", model=model, backend=backend,
-                              prompt=prompt, schema=schemas.SECTION, effort=effort)
+                              prompt=prompt, schema=schemas.SECTION, effort=effort,
+                              filename=pf["filename"], detail=sec["label"])
         cost += r.cost_usd or 0.0
         parts.append(r.parsed)
         for e in r.parsed.get("entities") or []:
@@ -465,7 +481,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
               f"{_DIM}→  {filename}  classifying ({page_count} page{'s' if page_count != 1 else ''})…{_RESET}")
         # Classify on the first N pages (page-aware, not a mid-page char cut); the char cap is a guard.
         excerpt = _pages_text(pages[:max(1, classify_pages)])[:_CLASSIFY_EXCERPT_CHARS]
-        skill = await _classify(excerpt, classify_model, classify_backend)
+        skill = await _classify(excerpt, classify_model, classify_backend, filename=filename)
         skill_text = skills_catalog.read_skill(skill)
         skill_label = skill.removesuffix(".md")
         _step(f"{_DIM}→  {filename}  {pg} · {skill_label}{_RESET}",
@@ -543,12 +559,18 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
 # skill: classification is inherently one-document-at-a-time and not batchable.
 
 async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_text: str,
-                             skill_label: str, brief: str | None, api_key: str) -> dict:
+                             skill_label: str, brief: str | None, api_key: str,
+                             model: str | None = None) -> dict:
     """Turn one collected batch result into a finished document. `item` is `batch_extract.collect`'s
     per-sha entry (or None if the batch has no result for this sha at all). A batch response that
     didn't pass schema validation gets exactly one synchronous claude-api repair attempt — not a
     whole new batch submission for a single document — mirroring `_simple_extract`'s own
-    single-repair-attempt semantics."""
+    single-repair-attempt semantics.
+
+    `model` (the batch's resolved model id) is only used to attribute the batch-collected item's
+    own usage (D64) — unlike every other extraction path, this one never calls `_call_model`
+    itself when the batch result is already valid, so without this the batch's real token spend
+    would silently never reach `usage-<ts>.json`."""
     pf = preflight.run(vault, sha)
     if pf.get("error"):
         return _fail(vault, sha, "", pf["error"])
@@ -563,6 +585,10 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
         return _fail(vault, sha, filename, "batch result missing for this document")
 
     extraction, cost = item["parsed"], item.get("cost_usd") or 0.0
+    if item.get("usage") is not None:
+        _record_usage("extract", model=model, backend="claude-batch", usage=item["usage"],
+                      cost_usd=item.get("cost_usd"), filename=filename,
+                      detail=f"pages 1–{page_count}")
     if not item["ok"]:
         prompt = prompts.build_extract_prompt(
             pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
@@ -572,7 +598,8 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
             prompt = _append_repair_note(prompt, [item["error"]])
         try:
             r = await _call_model(task="extract", model=None, backend="claude-api",
-                                  prompt=prompt, schema=schemas.EXTRACTION)
+                                  prompt=prompt, schema=schemas.EXTRACTION,
+                                  filename=filename, detail=f"pages 1–{page_count} (repair)")
         except model_client.ModelError as e:
             return _fail(vault, sha, filename, f"batch result invalid and repair failed: {e}")
         extraction = r.parsed
@@ -609,7 +636,8 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str, brief: str 
     try:
         for sha in state["shas"]:
             results.append(await _finish_batch_item(vault, sha, collected.get(sha), skill_text,
-                                                     skill_label, brief, api_key))
+                                                     skill_label, brief, api_key,
+                                                     model=state["model"]))
     except model_client.RateLimitError as e:
         # A repair-retry call (claude-api) hit a rate limit partway through collection. Leave
         # the batch state in place — already-written documents are safe (preflight's
@@ -872,7 +900,8 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         try:
             r = await _call_model(
                 task="timeline-dedup", model=post_model, backend=post_backend, schema=schemas.TIMELINE_DEDUP,
-                prompt=prompts.build_timeline_dedup_prompt(col["date"], events), effort=post_effort)
+                prompt=prompts.build_timeline_dedup_prompt(col["date"], events), effort=post_effort,
+                detail=col["date"])
             kept = _select_kept(events, r.parsed.get("groups"))
         except (model_client.ModelError, model_client.RateLimitError):
             kept = events   # fall back to the union rather than losing events
@@ -888,7 +917,8 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             r = await _call_model(
                 task="timeline-precision", model=post_model, backend=post_backend,
                 schema=schemas.TIMELINE_PRECISION_MATCH, effort=post_effort,
-                prompt=prompts.build_timeline_precision_prompt(grp["month"], grp["coarse"], grp["precise"]))
+                prompt=prompts.build_timeline_precision_prompt(grp["month"], grp["coarse"], grp["precise"]),
+                detail=grp["month"])
         except (model_client.ModelError, model_client.RateLimitError):
             continue   # leave the month untouched rather than risk a bad fold
         timeline.apply_precision_matches(vault, grp, r.parsed.get("matches") or [])
