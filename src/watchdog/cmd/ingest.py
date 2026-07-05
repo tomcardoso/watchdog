@@ -442,12 +442,16 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
                   post_backend: str | None = None) -> dict:
     """Acquire the ingest lock, run post-ingest over the pending batch, print the outcome."""
     from watchdog.pipeline import orchestrate
+    from watchdog.pipeline.locks import acquire_or_take_stale, lock_started_at
+    from watchdog.pipeline.ingest_setup import STALE_SECONDS, _iso_now
     lock = vault / ".watchdog" / "Registry" / ".ingest-lock"
-    if lock.exists():
-        sys.exit(f"\n  {_YELLOW}Error:{_RESET} an ingest or finalize is already running (lock present).\n"
+    # Atomic acquisition (#257): the shared .ingest-lock means a running ingest or a second
+    # finalize is excluded without a check-then-write race; a >30-min stale lock is taken over.
+    if not acquire_or_take_stale(lock, f"pid: cli-finalize\nstarted_at: {_iso_now()}\n", STALE_SECONDS):
+        ts = lock_started_at(lock)
+        when = f" (lock acquired {ts})" if ts else ""
+        sys.exit(f"\n  {_YELLOW}Error:{_RESET} an ingest or finalize is already running{when}.\n"
                  f"  If stale, run {_CYAN}watchdog unlock{_RESET}.\n")
-    lock.parent.mkdir(parents=True, exist_ok=True)
-    lock.write_text("pid: cli-finalize\n", encoding="utf-8")
     print(f"\n  {_DIM}Finalizing — synthesis + timeline + briefing (model: {_RESET}"
           f"{_BOLD}{post_model}{_RESET}{_DIM}).{_RESET}")
     try:

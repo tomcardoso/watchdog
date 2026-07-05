@@ -127,6 +127,13 @@ releases the lock in a `finally`. Models, concurrency, and classification come f
 `extractor_effort`, `finalizer_effort`, `extract_concurrency`, `classify_pages`,
 `default_skill`) or per-run flags.
 
+**Lock acquisition is atomic** (`pipeline/locks.py`, D66). All three run locks — the ingest
+lock, the shared finalize lock, and chew's `.watchdog/.chew-lock` — are taken with
+`os.open(O_CREAT|O_EXCL)`, so two concurrent invocations can't both win (the old
+check-then-write left a race window). A lock provably older than 30 minutes is taken over; one
+whose `started_at` is missing or unparseable is left in place for `watchdog unlock` rather than
+deleted regardless of age.
+
 A second, finer lock (`.watchdog/Registry/.write-lock`, `flock`) serializes the actual
 registry/note writes so the concurrent document workers write safely.
 

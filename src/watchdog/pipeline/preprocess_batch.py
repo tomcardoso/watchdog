@@ -306,12 +306,20 @@ def run_ingest(
     queue.mkdir(parents=True, exist_ok=True)
     staging.mkdir(parents=True, exist_ok=True)
 
-    # Write chew lock file
+    # Acquire the chew lock atomically (#257). Previously the lock was written unconditionally,
+    # so two chews (e.g. `watchdog watch` plus a manual `watchdog chew`) could run concurrently
+    # on one vault and race the staging renames/near-dup computes. O_CREAT|O_EXCL admits exactly
+    # one; a >30-min stale lock (from a crashed chew) is taken over, recoverable via `unlock`.
+    from watchdog.pipeline.locks import acquire_or_take_stale
+    from watchdog.pipeline.ingest_setup import STALE_SECONDS
     lock_dir = vault / ".watchdog"
     lock_dir.mkdir(parents=True, exist_ok=True)
     lock_file = lock_dir / ".chew-lock"
     started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    lock_file.write_text(f"started_at: {started_at}\npid: {os.getpid()}\n")
+    if not acquire_or_take_stale(lock_file, f"started_at: {started_at}\npid: {os.getpid()}\n",
+                                 STALE_SECONDS):
+        sys.exit("\n  Error: a chew is already in progress on this vault. "
+                 "Wait for it to finish, or run: watchdog unlock\n")
 
     try:
         _run_ingest_inner(vault, incoming, queue, staging, workers, chunk_workers, files,
