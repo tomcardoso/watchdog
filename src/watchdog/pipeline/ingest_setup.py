@@ -18,6 +18,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from watchdog.pipeline.locks import acquire_or_take_stale, lock_age_seconds, lock_started_at
 from watchdog.pipeline.section import (
     section_token_threshold as _section_token_threshold,
     est_tokens_from_pages as _est_tokens_from_pages,
@@ -45,20 +46,6 @@ def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "so
     lock_file = vault / ".watchdog" / "Registry" / ".ingest-lock"
     state_file = vault / ".watchdog" / "ingest-state.json"
 
-    if lock_file.exists():
-        try:
-            for line in lock_file.read_text(encoding="utf-8").splitlines():
-                if line.startswith("started_at:"):
-                    ts = line.split(":", 1)[1].strip()
-                    lock_dt = datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-                    age = (datetime.now(timezone.utc) - lock_dt).total_seconds()
-                    if age < STALE_SECONDS:
-                        return {"error": f"ingest already running (lock acquired {ts}); if stale, run: watchdog unlock"}
-                    break
-        except Exception:
-            pass
-        lock_file.unlink(missing_ok=True)
-
     queue_dir = vault / ".watchdog" / "queue"
     queue_files: list[dict] = []
 
@@ -79,9 +66,38 @@ def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "so
 
     total = len(queue_files)
 
+    def _live_lock_error() -> dict | None:
+        """If a non-stale (or unknown-age) lock is held, return the 'already running' error;
+        None if the lock is absent or provably stale (safe to take over / ignore)."""
+        if not lock_file.exists():
+            return None
+        age = lock_age_seconds(lock_file)   # None ⇒ unparseable ⇒ treat as live (see #257)
+        if age is None or age < STALE_SECONDS:
+            ts = lock_started_at(lock_file)
+            when = f" (lock acquired {ts})" if ts else ""
+            return {"error": f"ingest already running{when}; if stale, run: watchdog unlock"}
+        return None
+
     if total == 0 and not force_lock:
+        # Nothing new to ingest. Don't acquire a lock — but if a live ingest holds one, say so
+        # rather than silently clearing its ingest-state.json.
+        err = _live_lock_error()
+        if err is not None:
+            return err
+        lock_file.unlink(missing_ok=True)   # only reached when the lock is absent or stale
         state_file.unlink(missing_ok=True)
         return {"total": 0, "lock_acquired": False, "queue_files": []}
+
+    # Atomically acquire the lock *before* any mutation. O_CREAT|O_EXCL means two racing
+    # `watchdog ingest` invocations can't both pass an existence check and both proceed (#257);
+    # a provably-stale lock (>30 min, from a crashed run) is taken over, an unparseable one is
+    # left for `watchdog unlock` rather than blindly deleted.
+    started_at = _iso_now()
+    batch_start = int(time.time())
+    if not acquire_or_take_stale(lock_file, f"pid: cli\nstarted_at: {started_at}\n", STALE_SECONDS):
+        err = _live_lock_error()
+        return err if err is not None else {
+            "error": "ingest already running; if stale, run: watchdog unlock"}
 
     # Fresh run — clear the post-ingest inputs (entity fragments, per-doc results, and
     # scratchpads) left by a prior ingest so the finalizer gate + briefing see only this run's
@@ -92,11 +108,6 @@ def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "so
         shutil.rmtree(tmp / "entity-fragments", ignore_errors=True)
         for p in list(tmp.glob("result_*.json")) + list(tmp.glob("notes_*.md")):
             p.unlink(missing_ok=True)
-
-    started_at = _iso_now()
-    batch_start = int(time.time())
-    lock_file.parent.mkdir(parents=True, exist_ok=True)
-    lock_file.write_text(f"pid: cli\nstarted_at: {started_at}\n", encoding="utf-8")
 
     state = {
         "lock_acquired": True,

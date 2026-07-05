@@ -17,6 +17,7 @@ from watchdog.pipeline.preprocess_batch import (
     _adaptive_workers,
     _resolve_workers,
     _run_ingest_inner,
+    run_ingest,
     _page_label,
     _prune_empty_dirs,
 )
@@ -336,6 +337,26 @@ def test_resolve_workers_caps_pre_to_file_count(tmp_path, monkeypatch):
 
     pre, *_ = _resolve_workers(files, explicit_pre=None)
     assert pre == 1  # capped to len(files)
+
+
+# ── chew mutual exclusion (#257) ──────────────────────────────────────────────
+
+def test_chew_refuses_when_a_fresh_chew_lock_exists(tmp_path):
+    """Two chews on one vault (e.g. `watchdog watch` + a manual `watchdog chew`) previously both
+    ran, racing staging renames. A fresh .chew-lock now makes the second refuse."""
+    import time
+    vault = tmp_path / "vault"
+    (vault / ".watchdog").mkdir(parents=True)
+    (vault / "_INCOMING").mkdir()
+    lock = vault / ".watchdog" / ".chew-lock"
+    fresh = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    lock.write_text(f"started_at: {fresh}\npid: 999\n")
+
+    with pytest.raises(SystemExit) as exc:
+        run_ingest(vault)
+    assert "already in progress" in str(exc.value)
+    assert lock.read_text().startswith(f"started_at: {fresh}")   # incumbent untouched
+
 
 
 def test_resolve_workers_returns_page_counts_when_adaptive(tmp_path, monkeypatch):
