@@ -386,6 +386,23 @@ def test_run_returns_report_dict(tmp_path):
     assert result["remapped_roles"] >= 1
 
 
+def test_run_remaps_resolutions_onto_survivor(tmp_path):
+    from watchdog.pipeline import resolutions
+    vault = make_vault(tmp_path)
+    resolutions.resolve(vault, [
+        resolutions.lead_id("isolated", "a-smith-duplicate"),
+        resolutions.contradiction_id("> [!contradiction] shared callout"),
+    ])
+    result = run(vault, "alice-smith", "a-smith-duplicate")
+
+    assert result["resolutions_remapped"] == 1
+    ids = resolutions.resolved_ids(vault)
+    assert resolutions.lead_id("isolated", "alice-smith") in ids
+    assert resolutions.lead_id("isolated", "a-smith-duplicate") not in ids
+    # A content-keyed contradiction resolution is untouched by the merge.
+    assert resolutions.contradiction_id("> [!contradiction] shared callout") in ids
+
+
 # ── cmd_merge_entities — CLI wrapper ──────────────────────────────────────────
 
 def _args(keep_id, merge_id, force=True):

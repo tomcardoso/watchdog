@@ -238,6 +238,25 @@ def test_relationship_line_uses_pretty_link(tmp_path):
     assert "[[entities/company/acme-corp|Acme Corp]]" in content
 
 
+def test_resolved_contradiction_dropped_from_note_body(tmp_path):
+    from watchdog.pipeline import resolutions
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    callout = "> [!contradiction] Address differs from d3"
+    overrides = {"entities": [{"id": "alice-smith", "name": "Alice Smith", "type": "Person",
+                               "contradictions": [callout]}]}
+
+    run(make_extraction(tmp_path, overrides), vault)
+    note = vault / "entities" / "person" / "alice-smith.md"
+    assert "## Contradictions" in note.read_text()
+    assert "Address differs" in note.read_text()
+
+    # Acknowledge the callout, then re-ingest the same document — it drops from the note.
+    resolutions.resolve(vault, [resolutions.contradiction_id(callout)])
+    run(make_extraction(tmp_path, overrides), vault)
+    assert "Address differs" not in note.read_text()
+
+
 def test_relationship_line_includes_source_doc_link(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")

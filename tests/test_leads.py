@@ -195,3 +195,60 @@ def test_cmd_leads_empty(tmp_path, monkeypatch, capsys):
     cmd_leads(_args())
     out = _strip_ansi(capsys.readouterr().out)
     assert "No leads" in out
+
+
+# ── resolution filtering (#266) ─────────────────────────────────────────────────
+
+def test_resolved_leads_drop_out_of_active_list():
+    reg = _registry()
+    resolved = frozenset({leads.resolutions.lead_id("isolated", "john"),
+                          leads.resolutions.lead_id("inferred", "carol"),
+                          leads.resolutions.lead_id("unprofiled", "shell-co")})
+    data = leads.find_leads(reg, resolved)
+    assert data["isolated"] == []
+    assert data["inferred"] == []
+    assert data["unprofiled"] == []
+    # The contradiction entity is untouched (its callouts weren't resolved).
+    assert len(data["contradictions"]) == 1
+
+
+def test_resolving_one_contradiction_callout_leaves_the_other():
+    reg = _registry()
+    resolved = frozenset({leads.resolutions.contradiction_id("address differs from d3")})
+    data = leads.find_leads(reg, resolved)
+    c = data["contradictions"][0]
+    assert c["count"] == 1
+    assert [x["summary"] for x in c["callouts"]] == ["director count differs"]
+
+
+def test_resolving_all_callouts_drops_the_entity():
+    reg = _registry()
+    resolved = frozenset({
+        leads.resolutions.contradiction_id("address differs from d3"),
+        leads.resolutions.contradiction_id("director count differs"),
+    })
+    assert leads.find_leads(reg, resolved)["contradictions"] == []
+
+
+def test_every_active_item_carries_a_rid():
+    data = leads.find_leads(_registry())
+    assert all("rid" in u for u in data["unprofiled"])
+    assert all("rid" in i for i in data["isolated"])
+    assert all("rid" in i for i in data["inferred"])
+    assert all("rid" in x for c in data["contradictions"] for x in c["callouts"])
+
+
+def test_format_renders_checkboxes_with_wid_markers():
+    import datetime
+    body = leads._format(leads.find_leads(_registry()), datetime.datetime(2025, 1, 1))
+    assert "- [ ] **John Roe**" in body
+    assert "<!--wid:lead:isolated:john-->" in body
+    assert "<!--wid:lead:unprofiled:shell-co-->" in body
+    assert "<!--wid:contradiction:" in body
+
+
+def test_scan_honors_resolutions_json(tmp_path):
+    vault = _vault(tmp_path, _registry())
+    from watchdog.pipeline import resolutions
+    resolutions.resolve(vault, [resolutions.lead_id("isolated", "john")])
+    assert not any(i["id"] == "john" for i in leads.scan(vault)["isolated"])

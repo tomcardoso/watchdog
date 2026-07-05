@@ -183,6 +183,33 @@ def test_scan_missing_morgue_md_no_crash(tmp_path):
     assert watchlist.scan(vault, _results()) == []
 
 
+# ── resolution filtering (#266) ───────────────────────────────────────────────
+
+def test_scan_hit_carries_alert_rid(tmp_path):
+    from watchdog.pipeline import resolutions
+    vault = _build_vault(tmp_path, watchlist_text="Acme\n", pages=[(1, "Acme here.")])
+    hit = watchlist.scan(vault, _results())[0]
+    assert hit["rid"] == resolutions.alert_id("abc123", "Acme")
+
+
+def test_resolved_term_drops_from_scan(tmp_path):
+    from watchdog.pipeline import resolutions
+    vault = _build_vault(tmp_path, watchlist_text="Acme\nBeta\n",
+                         pages=[(1, "Acme and Beta appear here.")])
+    resolutions.resolve(vault, [resolutions.alert_id("abc123", "Acme")])
+    hits = watchlist.scan(vault, _results())
+    assert {h["term"] for h in hits} == {"Beta"}
+
+
+def test_format_run_renders_checkbox_with_wid(tmp_path):
+    import datetime
+    vault = _build_vault(tmp_path, watchlist_text="Acme\n", pages=[(1, "Acme here.")])
+    hits = watchlist.scan(vault, _results())
+    run = watchlist._format_run(hits, datetime.datetime(2025, 1, 1))
+    assert "- [ ] **" in run
+    assert "<!--wid:alert:abc123:" in run
+
+
 # ── write_alerts ─────────────────────────────────────────────────────────────
 
 def test_write_alerts_creates_dated_file(tmp_path):
