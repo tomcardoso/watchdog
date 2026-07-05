@@ -70,14 +70,13 @@ Fields expected in most official or semi-official documents, or fields that are 
 
 ## Terminology
 
-When you encounter an unfamiliar term in an unknown document type:
+Extraction runs as a single completion with no tool access — there is no glossary to browse and no web to check mid-document. When you encounter an unfamiliar term in an unknown document type, work only from the document itself and what you already know:
 
 | Situation | Approach |
 |-----------|---------|
-| **Regulatory or legal term** | Look for the issuing authority's official glossary or enabling legislation — most regulatory bodies publish plain-language guides to their forms |
-| **Jurisdiction-specific term** | Note the jurisdiction and flag the term for research; terminology tables in specific record skills (corporate-filings, land-registries, court-documents, etc.) may cover it |
-| **Accounting or financial term** | IFRS and GAAP standards bodies publish free plain-language summaries |
-| **Term defined within the document** | Many official documents include a definitions section — check the beginning and end of the document |
+| **Term defined within the document** | Many official documents include a definitions section — check the beginning and end of the document first |
+| **Regulatory, legal, or accounting term you recognize** | Define it inline from your own knowledge so the extraction stays self-contained |
+| **Jurisdiction-specific or unfamiliar term** | Don't guess. Record the term verbatim and its jurisdiction in `observations` as an open question — specific record skills (corporate-filings, land-registries, court-documents, etc.) may already cover it; otherwise it's a lead for a later `/watchdog-research` session or human review |
 
 ---
 
