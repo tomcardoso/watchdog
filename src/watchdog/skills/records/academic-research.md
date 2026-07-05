@@ -3,7 +3,7 @@ description: a grant application, research ethics board decision, conflict-of-in
 ---
 # Domain knowledge — Academic and research documents
 
-This skill is loaded by `/ingest` when the document type is a grant application, research ethics board decision, conflict-of-interest disclosure, retraction notice, research agreement, or similar academic or scientific accountability document.
+This skill is loaded by Watchdog when the document type is a grant application, research ethics board decision, research proposal, study, dissertation, conflict-of-interest disclosure, retraction notice, research agreement, or similar academic or scientific accountability document.
 
 Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
 
@@ -13,6 +13,8 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 - Grant applications and funding decisions (national research councils, foundations, industry sponsors)
 - Research ethics board (REB/IRB/HREC) approvals and decisions
+- Research proposal
+- Dissertation, study or academic journal article
 - Conflict-of-interest disclosure forms
 - Industry-sponsored research agreements
 - Technology transfer agreements and licensing deals
@@ -29,6 +31,8 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ---
 
 ## Fields to extract
+
+Fields expected in most academic records, or fields that are high-value whenever present. Extract them even when the document doesn't highlight them prominently. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|

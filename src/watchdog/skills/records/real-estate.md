@@ -3,7 +3,7 @@ description: a title transfer, deed, mortgage instrument, lien, property assessm
 ---
 # Domain knowledge — Real estate records
 
-Loaded by `/ingest` when the document type is a title transfer, deed, mortgage instrument, lien, property assessment, or similar real property market transaction record.
+Loaded by Watchdog when the document type is a title transfer, deed, mortgage instrument, lien, property assessment, or similar real property market transaction record.
 
 This skill covers market transactions (who bought what, for how much, under what financing). For the registry/title system itself — how property rights are recorded, document types across common law and civil law systems — see the `land-registries` skill.
 
@@ -26,6 +26,8 @@ This skill covers market transactions (who bought what, for how much, under what
 ---
 
 ## Fields to extract
+
+Fields expected in most real estate records, or fields that are high-value whenever present. Extract them even when the document doesn't highlight them prominently. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|

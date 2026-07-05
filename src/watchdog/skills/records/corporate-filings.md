@@ -3,7 +3,7 @@ description: an annual report, corporate registration, director filing, or simil
 ---
 # Domain knowledge — Corporate filings
 
-This skill is loaded by `/ingest` when the document type is an annual report, corporate registration, director filing, or similar corporate record.
+This skill is loaded by Watchdog when the document type is an annual report, corporate registration, director filing, or similar corporate record.
 
 Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
 

@@ -3,7 +3,7 @@ description: a campaign finance disclosure, donor list, third-party advertising 
 ---
 # Domain knowledge — Election filings
 
-This skill is loaded by `/ingest` when the document type is a campaign finance disclosure, donor list, third-party advertising return, or similar electoral record.
+This skill is loaded by Watchdog when the document type is a campaign finance disclosure, donor list, third-party advertising return, or similar electoral record.
 
 Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
 
@@ -24,6 +24,8 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ---
 
 ## Fields to extract
+
+Fields expected in most election filings, or fields that are high-value whenever present. Extract them even when the document doesn't highlight them prominently. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|

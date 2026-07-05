@@ -3,7 +3,7 @@ description: a discipline decision, conduct review, fitness-to-practise order, l
 ---
 # Domain knowledge — Professional licensing and discipline records
 
-This skill is loaded by `/ingest` when the document type is a discipline decision, conduct review, fitness-to-practise order, licence revocation or suspension, or similar regulatory action from a professional licensing body for non-healthcare professions. For healthcare professions (medicine, nursing, pharmacy, dentistry), use `healthcare-licensing` instead.
+This skill is loaded by Watchdog when the document type is a discipline decision, conduct review, fitness-to-practise order, licence revocation or suspension, or similar regulatory action from a professional licensing body for non-healthcare professions. For healthcare professions (medicine, nursing, pharmacy, dentistry), use `healthcare-licensing` instead.
 
 Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
 
@@ -29,6 +29,8 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ---
 
 ## Fields to extract
+
+Fields expected in most professional licensing records, or fields that are high-value whenever present. Extract them even when the document doesn't highlight them prominently. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|

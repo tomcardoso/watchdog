@@ -3,7 +3,9 @@ description: a bankruptcy filing, proposal, creditor list, trustee report, recei
 ---
 # Domain knowledge — Bankruptcy and insolvency records
 
-Loaded by `/ingest` when the document type is a bankruptcy filing, proposal, creditor list, trustee report, receiving order, or similar insolvency record.
+Loaded by Watchdog when the document type is a bankruptcy filing, proposal, creditor list, trustee report, receiving order, or similar insolvency record.
+
+Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
 
 ---
 
@@ -26,6 +28,8 @@ Loaded by `/ingest` when the document type is a bankruptcy filing, proposal, cre
 ---
 
 ## Fields to extract
+
+Fields expected in most bankruptcy records, or fields that are high-value whenever present. Extract them even when the document doesn't highlight them prominently. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|

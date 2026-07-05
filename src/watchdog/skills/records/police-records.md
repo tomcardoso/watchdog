@@ -3,7 +3,7 @@ description: a police occurrence report, use-of-force report, disciplinary decis
 ---
 # Domain knowledge — Police records
 
-This skill is loaded by `/ingest` when the document type is a police occurrence report, use-of-force report, disciplinary decision, public complaint decision, coroner's inquest, or similar law enforcement document. For parole board decisions, probation records, prison inspection reports, and corrections oversight documents, use `corrections-records` instead.
+This skill is loaded by Watchdog when the document type is a police occurrence report, use-of-force report, disciplinary decision, public complaint decision, coroner's inquest, or similar law enforcement document. For parole board decisions, probation records, prison inspection reports, and corrections oversight documents, use `corrections-records` instead.
 
 Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
 
@@ -30,6 +30,8 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ---
 
 ## Fields to extract
+
+Fields expected in most police records, or fields that are high-value whenever present. Extract them even when the document doesn't highlight them prominently. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|

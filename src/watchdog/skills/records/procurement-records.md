@@ -3,7 +3,7 @@ description: a standing offer, task authorization, supply arrangement, vendor pe
 ---
 # Domain knowledge — Procurement and contract records
 
-This skill is loaded by `/ingest` when the document type is a standing offer, task authorization, supply arrangement, vendor performance report, contract amendment, or similar post-award procurement document.
+This skill is loaded by Watchdog when the document type is a standing offer, task authorization, supply arrangement, vendor performance report, contract amendment, or similar post-award procurement document.
 
 This skill complements the `government-contracts` skill, which covers the pre-award phase (RFPs, sole-source justifications, proactive disclosure). This skill covers what happens after the contract is awarded.
 
@@ -29,6 +29,9 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ---
 
 ## Fields to extract
+
+Fields expected in most procurement records, or fields that are high-value whenever present. Extract them even when the document doesn't highlight them prominently. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
+
 
 | Field | What to look for |
 |-------|-----------------|
