@@ -19,7 +19,6 @@ Commands:
         and empty summaries are skipped, never written.
 """
 
-import argparse
 import json
 import sys
 from pathlib import Path
@@ -117,58 +116,3 @@ def apply_bundle(result_path: Path, vault_path: Path) -> dict:
         _update_manifest(vault_path, entities_reg)
 
     return {"applied": applied, "skipped": skipped}
-
-
-def _main_build() -> None:
-    parser = argparse.ArgumentParser(
-        description="Build the entity-synthesis bundle for the post-ingest pass"
-    )
-    parser.add_argument("--vault", default=".", help="Vault root directory (default: .)")
-    parser.add_argument(
-        "--out",
-        default=".watchdog/tmp/synthesis-bundle.json",
-        help="Bundle output path, relative to the vault (default: .watchdog/tmp/synthesis-bundle.json)",
-    )
-    args = parser.parse_args()
-
-    vault_path = Path(args.vault).resolve()
-    if not (vault_path / ".watchdog").is_dir():
-        sys.exit(f"Error: {vault_path} is not a Watchdog vault directory")
-
-    bundle = build_bundle(vault_path)
-    out_path = vault_path / args.out
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(bundle, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"OK  {len(bundle['entities'])} entities for synthesis  ({args.out})")
-
-
-def _main_apply() -> None:
-    parser = argparse.ArgumentParser(
-        description="Bulk-apply synthesized Summary + Analysis from a post-ingest result"
-    )
-    parser.add_argument("--bundle", required=True, help="Path to the synthesis result JSON")
-    parser.add_argument("--vault", default=".", help="Vault root directory (default: .)")
-    args = parser.parse_args()
-
-    vault_path = Path(args.vault).resolve()
-    if not (vault_path / ".watchdog").is_dir():
-        sys.exit(f"Error: {vault_path} is not a Watchdog vault directory")
-    result_path = Path(args.bundle).resolve()
-    if not str(result_path).startswith(str(vault_path) + "/"):
-        sys.exit(f"Error: --bundle path must be inside the vault directory ({vault_path})")
-    if not result_path.exists():
-        sys.exit(f"Error: {result_path} not found")
-
-    outcome = apply_bundle(result_path, vault_path)
-    print(f"OK  {len(outcome['applied'])} synthesized, {len(outcome['skipped'])} skipped")
-
-
-def main() -> None:
-    if Path(sys.argv[0]).name.endswith("apply-syntheses"):
-        _main_apply()
-    else:
-        _main_build()
-
-
-if __name__ == "__main__":
-    main()

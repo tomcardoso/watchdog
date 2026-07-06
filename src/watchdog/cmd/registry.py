@@ -76,11 +76,6 @@ def cmd_validate_extraction(args) -> None:
             for field in ("id", "name", "type"):
                 if not ent.get(field):
                     errors.append(f"entities[{i}].{field} is missing or empty")
-            for j, ev in enumerate(ent.get("timeline_events", [])):
-                if not isinstance(ev, dict):
-                    errors.append(f"entities[{i}].timeline_events[{j}] is not an object")
-                elif ev.get("basis") and ev["basis"] not in _VALID_BASIS:
-                    errors.append(f"entities[{i}].timeline_events[{j}] basis '{ev['basis']}' is not valid")
             for j, role in enumerate(ent.get("roles", [])):
                 if not isinstance(role, dict):
                     errors.append(f"entities[{i}].roles[{j}] is not an object")

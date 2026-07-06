@@ -80,7 +80,11 @@ def _check_playwright() -> None:
     print(f"  {_DIM}Used by `watchdog research`/`watchdog fetch` to save full-fidelity page\n"
           f"  snapshots (images, styles, client-rendered pages) instead of a plain fetch.\n"
           f"  Optional — everything else works without it. Adds ~150 MB (Chromium browser).{_RESET}")
-    answer = input("  Install web-capture support now? [y/N] ").strip().lower()
+    try:
+        answer = input("  Install web-capture support now? [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        answer = "n"
     if answer not in ("y", "yes"):
         print(f"  {_DIM}Skipped. Install later with:{_RESET}")
         print(f"    {_CYAN}pipx inject watchdog-intel playwright{_RESET}")
@@ -121,12 +125,22 @@ def _ask_projects_dir() -> Path:
     print()
 
     while True:
-        choice = input("  Choice [1]: ").strip() or "1"
+        try:
+            choice = input("  Choice [1]: ").strip() or "1"
+        except (EOFError, KeyboardInterrupt):
+            print()
+            chosen = default
+            break
         if choice == "1":
             chosen = default
             break
         elif choice == "2":
-            raw = input("  Path: ").strip()
+            try:
+                raw = input("  Path: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                chosen = default
+                break
             if raw:
                 chosen = Path(raw).expanduser().resolve()
                 break

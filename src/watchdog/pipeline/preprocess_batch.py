@@ -204,14 +204,11 @@ def find_files(paths: list[Path]) -> list[Path]:
 
 def preprocess_one(
     path: Path,
-    vault_path: str | None = None,
     timeout: int = DEFAULT_FILE_TIMEOUT,
     chunk_workers: int | None = None,
 ) -> dict:
     t0 = time.time()
     cmd = [sys.executable, "-m", "watchdog.pipeline.preprocess", str(path)]
-    if vault_path:
-        cmd += ["--vault-path", vault_path]
     if chunk_workers is not None:
         cmd += ["--chunk-workers", str(chunk_workers)]
     try:
@@ -393,7 +390,7 @@ def _run_ingest_inner(
         # row appears while OCR spins up. Gated to TTYs to keep non-TTY output to finished lines only.
         if live.enabled:
             live.update(str(path), f"  {_DIM}→  {_rel(path)}  chewing…{_RESET}")
-        return preprocess_one(path, str(vault), DEFAULT_FILE_TIMEOUT, chunk_workers)
+        return preprocess_one(path, timeout=DEFAULT_FILE_TIMEOUT, chunk_workers=chunk_workers)
 
     results: dict[str, dict] = {}
     _cancel_event.clear()
