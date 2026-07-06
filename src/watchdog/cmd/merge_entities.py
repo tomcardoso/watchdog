@@ -95,6 +95,12 @@ def cmd_merge_entities(args) -> None:
         f"  {_YELLOW}Run{_RESET} {_CYAN}watchdog reindex{_RESET} "
         f"{_YELLOW}to drop the merged entity's stale search-index entries.{_RESET}"
     )
+    if result.get("summary_dropped"):
+        print(
+            f"  {_YELLOW}Summary now reflects only the kept entity — run{_RESET} "
+            f"{_CYAN}/watchdog-entity {args.keep_id}{_RESET} "
+            f"{_YELLOW}in a Claude Code session to re-synthesize it from all sources.{_RESET}"
+        )
     if result["backup_dir"]:
         rel = result["backup_dir"].relative_to(vault)
         print(f"  {_DIM}backup: {_CYAN}{rel}{_RESET}{_DIM} — copy files back to undo{_RESET}")

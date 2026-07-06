@@ -635,7 +635,11 @@ the survivor's with dated provenance, redirects the losing note to a short stub 
 to the survivor, regenerates any third-party entity note whose own Relationships section
 just changed, rebuilds the manifest and global timeline, and does a best-effort reindex
 of every note it touched. Must be run from inside the vault it mutates (no model calls,
-no project-name lookup needed). The merged-away entity's stale corpus/notes search-index
+no project-name lookup needed). The merge keeps only one prose `## Summary` (the survivor's
+if it has one, else the loser's), so when both entities carried one the losing account is
+dropped; `run()` returns a `summary_dropped` flag and the CLI nudges a `/watchdog-entity
+<keep-id>` refresh to re-synthesize the Summary from all merged sources (#313). The
+merged-away entity's stale corpus/notes search-index
 entries are cleaned up by a subsequent `watchdog reindex` (D53), not by this command
 itself — a full rebuild is the existing, already-documented way to drop vectors for
 anything no longer in the registry.
