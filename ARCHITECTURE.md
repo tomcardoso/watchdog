@@ -134,8 +134,10 @@ check-then-write left a race window). A lock provably older than 30 minutes is t
 whose `started_at` is missing or unparseable is left in place for `watchdog unlock` rather than
 deleted regardless of age.
 
-A second, finer lock (`.watchdog/Registry/.write-lock`, `flock`) serializes the actual
-registry/note writes so the concurrent document workers write safely.
+A second, finer lock (`.watchdog/Registry/.write-lock`) serializes the actual registry/note
+writes so the concurrent document workers write safely. Uses `flock` on macOS/Linux
+(blocks indefinitely) and `msvcrt.locking` on Windows (bounded retries, ~10s, then raises)
+— see D69.
 
 ---
 

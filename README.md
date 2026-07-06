@@ -142,9 +142,9 @@ pipx install watchdog-intel
 watchdog setup
 ```
 
-`watchdog setup` verifies system dependencies (qpdf, Ghostscript, Tesseract on Linux), configures your projects directory, offers to install the optional Playwright/Chromium capture browser (~150 MB — declines by default), and downloads the ML models used for document conversion and semantic search (one-time). Expect the model download step to take a few minutes on a slow connection.
+`watchdog setup` verifies system dependencies (qpdf, Ghostscript, Tesseract on Linux/Windows), configures your projects directory, offers to install the optional Playwright/Chromium capture browser (~150 MB — declines by default), and downloads the ML models used for document conversion and semantic search (one-time). Expect the model download step to take a few minutes on a slow connection.
 
-Shell tab completion is enabled automatically by `watchdog setup` — it writes the activation line to your shell profile (`~/.zshrc`, `~/.bashrc`, or equivalent) and prompts you to reload.
+Shell tab completion is enabled automatically by `watchdog setup` — it writes the activation line to your shell profile (`~/.zshrc`, `~/.bashrc`, or equivalent) and prompts you to reload. This relies on detecting `$SHELL`, so it's a no-op on Windows unless you're in a Unix-like shell (e.g. Git Bash, WSL) — native Command Prompt/PowerShell users don't get tab completion.
 
 For step-by-step instructions written for journalists who have never used a terminal, see [INSTALL.md](INSTALL.md).
 
@@ -641,7 +641,7 @@ Please open an issue before starting significant work so we can discuss approach
 - **OCR engine:** Apple Vision on macOS (fast, hardware-accelerated); Tesseract on Linux/Windows (requires system install). Configurable via `watchdog configure ocr_engine`.
 - **Near-duplicate detection** uses MinHash (128 hash functions) to approximate Jaccard similarity on word 3-gram shingles — no ML dependencies, runs locally.
 - **Registries** (`.watchdog/Registry/documents.json`, `entities.json`, `manifest.json`) are the source of truth. Obsidian notes are generated outputs — deleting a note doesn't lose data. `manifest.json` is a lightweight id/name/type/aliases index used for entity lookup without loading full registry data.
-- **Vault writes are file-locked** — `write_vault` acquires an exclusive lock on `.watchdog/Registry/.write-lock` before reading and writing registry files, so the concurrent document workers serialize safely without corruption.
+- **Vault writes are file-locked** — `write_vault` acquires an exclusive lock on `.watchdog/Registry/.write-lock` before reading and writing registry files, so the concurrent document workers serialize safely without corruption. On macOS/Linux this blocks indefinitely (`flock`); on Windows it uses `msvcrt.locking`, which retries for ~10 seconds under contention and then raises rather than waiting indefinitely.
 - **Ingest is a Python orchestrator** — `watchdog ingest` runs the pipeline in your terminal and calls the model only for reasoning (classify, extract, synthesize, dedup the timeline, brief). Documents are extracted in parallel (bounded by `extract_concurrency`); the slow mechanical work and all bookkeeping stay in Python.
 - **Record skills are global** — domain-knowledge skill files ship with the package and are read directly by the ingest pipeline (`watchdog.skills_catalog`); nothing is copied per vault, so they're always current. Users add custom skills in `~/.watchdog/skills/records/`. (Claude Code *command* skills like `/watchdog-query` are still installed per vault by `watchdog new` / `refresh-skills`.)
 - **Single CLI entry point** — `watchdog` is the only command installed on your PATH. All pipeline utilities are subcommands.

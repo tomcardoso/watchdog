@@ -1159,7 +1159,11 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         try:
             loop.add_signal_handler(signal.SIGINT, _on_interrupt)
             handler_set = True
-        except (NotImplementedError, RuntimeError):   # e.g. non-main thread / unsupported platform
+        except (NotImplementedError, RuntimeError):
+            # e.g. non-main thread, or Windows' Proactor event loop, which never supports
+            # add_signal_handler. There, every Ctrl+C falls through to cmd_ingest's plain
+            # `except KeyboardInterrupt` instead of this module's graceful
+            # finish-current-writes path — see that handler's comment for what differs.
             pass
         try:
             await asyncio.gather(*tasks, return_exceptions=True)

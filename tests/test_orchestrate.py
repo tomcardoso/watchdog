@@ -698,6 +698,26 @@ def test_orchestrator_cancels_gracefully_on_sigint(tmp_path, monkeypatch):
     assert (vault / ".watchdog" / "queue" / "bbb222.json").exists()
 
 
+def test_orchestrator_survives_unavailable_signal_handler(tmp_path, monkeypatch):
+    """On platforms where asyncio can't install a SIGINT handler at all — e.g. Windows'
+    Proactor event loop, whose add_signal_handler always raises NotImplementedError — the
+    batch must still run to completion instead of crashing. The graceful finish-current-writes
+    path (the other sigint test above) simply isn't available there; a bare Ctrl+C falls
+    through to cmd_ingest's plain `except KeyboardInterrupt` instead (issue #258)."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    _mock(monkeypatch, extraction=_extraction())
+
+    def _unsupported(self, *a, **kw):
+        raise NotImplementedError("add_signal_handler is not supported on this platform")
+    monkeypatch.setattr(asyncio.unix_events._UnixSelectorEventLoop, "add_signal_handler", _unsupported)
+
+    summary = asyncio.run(orchestrate.run(vault))
+
+    assert summary["cancelled"] is False
+    assert summary["extracted"] == 1 and summary["failed"] == 0
+
+
 def test_rate_limit_stops_batch_keeps_queue(tmp_path, monkeypatch):
     """A provider rate limit stops the batch cleanly: the summary carries the reason,
     nothing is quarantined, and every queue file is kept for resume."""

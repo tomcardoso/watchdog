@@ -1293,6 +1293,46 @@ def test_repair_retry_converges_after_crash_during_derived_writes(tmp_path, monk
         assert _frag_queue(vault)[eid]["count"] == 1
 
 
+class _FakeMsvcrt:
+    """Stand-in for the `msvcrt` stdlib module (Windows-only, unimportable in CI), so the
+    Windows locking branch can be exercised on macOS/Linux test runners (issue #258)."""
+    LK_LOCK = 1
+    LK_UNLCK = 0
+
+    def __init__(self):
+        self.calls: list[tuple[int, int]] = []
+
+    def locking(self, fd, mode, nbytes):
+        self.calls.append((mode, nbytes))
+
+
+def test_registry_lock_uses_msvcrt_on_windows(tmp_path, monkeypatch):
+    """Without fcntl (Windows), `_registry_lock` must actually serialize via msvcrt.locking
+    rather than silently no-op'ing — the bug fixed for issue #258."""
+    vault = make_vault(tmp_path)
+    fake = _FakeMsvcrt()
+    monkeypatch.setattr(wv, "_HAS_FLOCK", False)
+    monkeypatch.setattr(wv, "_msvcrt", fake)
+
+    with wv._registry_lock(vault / ".watchdog" / "Registry"):
+        pass
+
+    assert fake.calls == [(fake.LK_LOCK, 1), (fake.LK_UNLCK, 1)]
+
+
+def test_registry_lock_is_noop_when_neither_locking_mechanism_available(tmp_path, monkeypatch):
+    """If neither fcntl nor msvcrt is importable, the lock degrades to a no-op (callers rely
+    on in-process serialization only, D18) instead of raising."""
+    vault = make_vault(tmp_path)
+    monkeypatch.setattr(wv, "_HAS_FLOCK", False)
+    monkeypatch.setattr(wv, "_msvcrt", None)
+
+    with wv._registry_lock(vault / ".watchdog" / "Registry"):
+        pass  # must not raise
+
+    assert (vault / ".watchdog" / "Registry" / ".write-lock").exists()
+
+
 def test_drop_analysis_entry_replaces_only_matching_document():
     analysis = (
         "*3 May 2026, via [[documents/doc-a|Doc A]]:*\n- Claim A\n\n"
