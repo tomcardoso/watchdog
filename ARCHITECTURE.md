@@ -562,7 +562,7 @@ Registry/
   usage-<ts>.json           per-run model-call token/cost telemetry (D50)
   batch-pending.json        pending claude-batch extraction state (D52)
   .ingest-lock / .write-lock  run lock / write serialization
-ingest-state.json           handoff from `watchdog ingest` to the skill
+ingest-state.json           present while a run is in progress; stale ⇒ interrupted ingest, resume with `watchdog ingest`
 ```
 
 **Why a manifest separate from `entities.json`.** Pre-flight needs only a small

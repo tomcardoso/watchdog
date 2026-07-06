@@ -1,6 +1,6 @@
 # {name} — Watchdog
 
-At the start of every session: (1) read `hot.md` for a summary of recent activity and open questions; (2) read `context.md` to understand what this investigation is about; (3) check `.watchdog/ingest-state.json` — if it exists, files are queued and ready to extract; run `/watchdog-ingest` before doing anything else.
+At the start of every session: (1) read `hot.md` for a summary of recent activity and open questions; (2) read `context.md` to understand what this investigation is about; (3) check `.watchdog/ingest-state.json` — if it exists, an ingest is running or was interrupted; tell the user to run `watchdog ingest` in their terminal to resume it before doing anything else.
 
 
 ## Vault layout
@@ -65,8 +65,6 @@ The following are auto-allowed in `.claude/settings.json` — never ask for conf
 | Command | Action |
 |---------|--------|
 | `/watchdog-context` | Seed context.md from background files in `_CONTEXT/` |
-| `/watchdog-ingest` | Extract all preprocessed files in `.watchdog/queue/` |
-| `/watchdog-ingest [file]` | Preprocess and extract a specific file |
 | `/watchdog-query [question]` | Answer a question from the vault; file substantive answers to `queries/` |
 | `/watchdog-surface` | Find connections and anomalies across the vault |
 | `/watchdog-wiki` | Create or update investigation thread pages |
