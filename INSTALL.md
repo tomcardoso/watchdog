@@ -154,7 +154,7 @@ For a complete walkthrough of a first investigation from start to finish, see [G
 
 ## How to ingest documents
 
-Ingestion happens in two steps: chewing in your terminal, then extraction in Claude Code.
+Ingestion happens in two steps, both run from your terminal: chewing, then extraction.
 
 **Step 1 — Drop files and chew**
 

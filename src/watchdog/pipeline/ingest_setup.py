@@ -1,19 +1,19 @@
 """
-watchdog ingest — human-facing setup step for the /watchdog-ingest skill.
+watchdog ingest — setup step for the Python ingest orchestrator (`pipeline/orchestrate.py`).
 
-Run from the vault root before opening Claude Code. Handles:
+Called from `cmd/ingest.py` before extraction runs. Handles:
   1. Stale lock detection (>30 min) and re-acquisition
   2. Queue directory scan
-  3. Writes .watchdog/ingest-state.json for the skill to read
+  3. Writes .watchdog/ingest-state.json (present for the run's duration; a stale one
+     signals an interrupted ingest to resume with `watchdog ingest`)
 
 Human workflow:
-  watchdog chew    →  watchdog ingest    →  open Claude Code  →  /watchdog-ingest
-  (OCR/docling)       (lock + queue)        (skill reads state file)
+  watchdog chew    →  watchdog ingest
+  (OCR/docling)       (lock + queue + extract, all in-terminal)
 """
 
 import json
 import shutil
-import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -121,23 +121,3 @@ def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "so
     }
     state_file.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
     return state
-
-
-def main() -> None:
-    vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
-        sys.exit("Error: must be run from inside a Watchdog vault directory")
-    result = run(vault)
-    if "error" in result:
-        sys.exit(f"Error: {result['error']}")
-    if result["total"] == 0:
-        print("\n  Queue is empty — nothing to ingest.")
-        print("  Run watchdog chew to process documents in _INCOMING/ first.\n")
-        return
-    q = len(result["queue_files"])
-    print(f"\n  {q} document{'s' if q != 1 else ''} ready for extraction")
-    print("\n  Open Claude Code and run:  /watchdog-ingest\n")
-
-
-if __name__ == "__main__":
-    main()

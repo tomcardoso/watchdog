@@ -597,7 +597,7 @@ def _print_banner() -> None:
         ("Document processing", [
             ("fetch",            "Download a batch of URLs into _INCOMING/"),
             ("chew",             "Process documents in _INCOMING/"),
-            ("ingest",           "Set up extraction session and open in Claude Code"),
+            ("ingest",           "Extract queued documents into the vault"),
             ("context",          "Seed investigation context from _CONTEXT/"),
             ("watch",            "Watch _INCOMING/ and chew files automatically"),
             ("log",              "Show ingest history"),

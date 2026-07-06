@@ -377,7 +377,7 @@ After the first ingest, the typical workflow is:
 
 1. **Drop new documents** into `_INCOMING/`
 2. **`watchdog chew`** from the vault directory (or `watchdog watch <name>` to chew automatically as files arrive)
-3. **`watchdog ingest`** — opens Claude Code with extraction pre-loaded; Claude starts immediately
+3. **`watchdog ingest`** — extracts the queued documents in your terminal
 4. **Read the briefing** — pay particular attention to connections with entities already in the vault
 5. **`/watchdog-surface`** if the new batch was substantial
 
