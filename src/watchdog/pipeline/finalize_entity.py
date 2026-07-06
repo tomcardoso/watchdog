@@ -2,19 +2,21 @@
 """
 Write a finalizer's synthesized prose into an entity note.
 
-Used by the post-ingest subagent after it reconciles an entity's per-document
-fragments. The shared ``apply_one`` writer replaces *only* the prose sections —
-## Summary and ## Analysis — leaving the append-only ## Contradictions log, the
+Used by post-ingest after it reconciles an entity's per-document fragments. The
+shared ``apply_one`` writer replaces *only* the prose sections — ## Summary and
+## Analysis — leaving the append-only ## Contradictions log, the
 deterministically-merged ## Timeline, ## Relationships, and the journalist
-## Notes untouched. It backs both the single-entity ``write-entity-synthesis``
-command (here) and the bulk ``apply-syntheses`` path (``synthesis_bundle.py``).
+## Notes untouched. It backs the bulk synthesis path (``synthesis_bundle.py``'s
+``apply_bundle``, called from `orchestrate.py`); this module's own ``main()``
+below is a standalone single-entity entry point (not wired into the `watchdog`
+CLI), runnable as ``python -m watchdog.pipeline.finalize_entity``.
 
 Unlike watchdog-write-entity (the /watchdog-entity full refresh, which also
 re-synthesizes the Timeline), this is a narrow prose-only write — it never reads
 or rewrites structured sections.
 
 Usage:
-    watchdog write-entity-synthesis --entity-id alice-smith --extraction .watchdog/tmp/wdg_synth-alice-smith.json [--vault .]
+    python -m watchdog.pipeline.finalize_entity --entity-id alice-smith --extraction .watchdog/tmp/wdg_synth-alice-smith.json [--vault .]
 
 Extraction JSON schema:
 {
@@ -54,8 +56,8 @@ def apply_one(
     registry once after applying every entity. Returns False if the entity is
     unknown (caller decides whether that is an error or a skip).
 
-    Shared by the single-entity write-entity-synthesis command and the bulk
-    apply-syntheses path.
+    Shared by this module's standalone single-entity entry point and the bulk
+    synthesis_bundle.apply_bundle path.
     """
     if entity_id not in entities_reg:
         return False

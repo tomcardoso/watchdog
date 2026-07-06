@@ -194,8 +194,8 @@ def run(vault: Path, extraction_path: Path, quiet: bool = False) -> dict:
     except Exception as e:
         return {"errors": [str(e)]}
 
-    # Stage raw timeline NDJSON files (replaces the subagent's manual per-date
-    # writes). The vault is already written at this point, so a staging failure
+    # Stage raw timeline NDJSON files (replaces the pre-D18 subagent's manual
+    # per-date writes). The vault is already written at this point, so a staging failure
     # is reported as a warning rather than failing the whole extraction —
     # erroring here would trigger a retry and double-write the vault.
     try:
