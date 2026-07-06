@@ -170,7 +170,7 @@ From inside the vault directory, run:
 watchdog ingest
 ```
 
-This runs the extraction pipeline **in your terminal** — there's no Claude Code session to open. Watchdog scans the queue, confirms, and processes documents in parallel. The model is called only for the reasoning steps; everything mechanical runs in Python. (Authentication is set during `watchdog setup` — your Claude subscription or an API key; see INSTALL.)
+This runs the extraction pipeline **in your terminal** — there's no Claude Code session to open. Watchdog scans the queue, shows a token estimate (and, on a metered key with prior runs, a rough dollar range based on this vault's own usage history), confirms, and processes documents in parallel. The model is called only for the reasoning steps; everything mechanical runs in Python. (Authentication is set during `watchdog setup` — your Claude subscription or an API key; see INSTALL.) Run `watchdog ingest --estimate` any time to see that same estimate without starting extraction — useful for deciding whether to split a large batch.
 
 By default Watchdog uses Sonnet for extraction, and Haiku for the post-ingest step (synthesis + timeline + briefing) and the quick document classification. Set persistent defaults with `watchdog configure`, or override per run:
 

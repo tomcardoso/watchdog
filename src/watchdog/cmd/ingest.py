@@ -57,6 +57,38 @@ def _resolve_stage(flag_val, config_val, default="sonnet") -> tuple[str | None, 
     return backend, model
 
 
+def _fmt_tokens(n: int) -> str:
+    """Compact token count for the pre-flight estimate line — 2.1M / 410K / 950."""
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.0f}K"
+    return str(n)
+
+
+def _format_cost_estimate(est: dict) -> str:
+    """Render `ingest_setup.cost_estimate`'s result as the pre-flight estimate line (#269),
+    e.g. '18 documents · ~410 pages · est. ~2.1M tokens in (~$9-12 based on your last 3 runs)'."""
+    n, pages = est["documents"], est["pages"]
+    line = (f"  {_BOLD}{n}{_RESET} document{'s' if n != 1 else ''} · "
+            f"~{pages} page{'s' if pages != 1 else ''} · "
+            f"est. ~{_fmt_tokens(est['est_tokens'])} tokens in")
+    if est["cost_low"] is not None:
+        low, high = round(est["cost_low"]), round(est["cost_high"])
+        cost = f"${low}" if low == high else f"${low}-{high}"
+        runs = est["runs_used"]
+        run_label = "last run" if runs == 1 else f"last {runs} runs"
+        line += f" {_DIM}(~{cost} based on your {run_label}){_RESET}"
+    return line
+
+
+def _effective_extract_backend(extract_backend: str | None, auth_mode: str) -> str:
+    """The backend that will actually serve extraction calls when `extract_backend` is unset
+    (plain sonnet/opus/haiku) — mirrors `model_client`'s own subscription/api-key routing, so the
+    cost estimate knows whether a dollar figure means anything (#269)."""
+    return extract_backend or ("claude-agent-sdk" if auth_mode == "subscription" else "claude-api")
+
+
 def _pick_skill_interactive() -> str | None:
     """Numbered picker for `watchdog ingest --skill` (no value), drawn from the global
     skill catalog. Returns the chosen skill's file path; Enter → classify per doc."""
@@ -201,6 +233,18 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
 
     extract_backend, extract_model = _resolve_stage(
         getattr(args, "extractor_model", None), config.get("extractor_model"))
+
+    if getattr(args, "estimate", False):
+        from watchdog.pipeline.ingest_setup import scan_queue, cost_estimate
+        queue_files = scan_queue(vault)
+        if not queue_files:
+            print(f"\n  {_DIM}Queue is empty — nothing to estimate.{_RESET}")
+            print(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in _INCOMING/ first.{_RESET}\n")
+            return
+        est = cost_estimate(vault, queue_files, _effective_extract_backend(extract_backend, a["mode"]))
+        print(f"\n{_format_cost_estimate(est)}\n")
+        return
+
     post_backend, post_model = _resolve_stage(
         getattr(args, "finalizer_model", None), config.get("finalizer_model"), default="haiku")
     classify_backend, classify_model = _resolve_stage(
@@ -276,7 +320,9 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
 
     q = len(result["queue_files"])
     if q:
-        print(f"\n  {_BOLD}{q} document{'s' if q != 1 else ''}{_RESET} ready for extraction")
+        from watchdog.pipeline.ingest_setup import cost_estimate
+        est = cost_estimate(vault, result["queue_files"], _effective_extract_backend(extract_backend, a["mode"]))
+        print(f"\n{_format_cost_estimate(est)}")
     elif batch_pending:
         print(f"\n  {_DIM}Checking on a pending batch extraction…{_RESET}")
 

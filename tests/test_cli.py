@@ -1849,6 +1849,75 @@ def test_cmd_ingest_and_cmd_finalize_agree_on_finalizer_default(wdg_home, tmp_pa
     assert finalizer_defaults["ingest"] == finalizer_defaults["finalize"] == "haiku"
 
 
+# ── ingest --estimate (#269) ────────────────────────────────────────────────────
+
+def test_cmd_ingest_estimate_prints_and_exits_without_lock(wdg_home, tmp_path, monkeypatch, capsys):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+
+    cmd_ingest(args(estimate=True), confirm=False)
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "1 document" in out
+    assert "tokens in" in out
+    assert not (vault / ".watchdog" / "Registry" / ".ingest-lock").exists()
+    assert not (vault / ".watchdog" / "ingest-state.json").exists()
+
+
+def test_cmd_ingest_estimate_empty_queue(wdg_home, tmp_path, monkeypatch, capsys):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    from tests.test_write_vault import make_vault
+    vault = make_vault(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+
+    cmd_ingest(args(estimate=True), confirm=False)
+
+    assert "nothing to estimate" in capsys.readouterr().out
+
+
+def test_cmd_ingest_estimate_subscription_mode_shows_no_dollar_figure(wdg_home, tmp_path, monkeypatch, capsys):
+    """Subscription auth never gets a dollar figure (#269) — there's no real billing to
+    project, even if this vault happens to have usage history on disk."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "subscription"})
+    (vault / ".watchdog" / "Registry" / "usage-20260101T000000Z.json").write_text(json.dumps({
+        "calls": [], "totals": {"input_tokens": 1000, "output_tokens": 0,
+                                 "cache_read_tokens": 0, "cache_write_tokens": 0, "cost_usd": 5.0},
+    }))
+
+    cmd_ingest(args(estimate=True), confirm=False)
+
+    out = capsys.readouterr().out
+    assert "$" not in out
+    assert "tokens in" in out
+
+
+def test_cmd_ingest_estimate_api_key_with_usage_history_shows_dollar_range(wdg_home, tmp_path, monkeypatch, capsys):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    (vault / ".watchdog" / "Registry" / "usage-20260101T000000Z.json").write_text(json.dumps({
+        "calls": [], "totals": {"input_tokens": 1000, "output_tokens": 0,
+                                 "cache_read_tokens": 0, "cache_write_tokens": 0, "cost_usd": 5.0},
+    }))
+
+    cmd_ingest(args(estimate=True), confirm=False)
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "$" in out
+    assert "based on your last run" in out
+
+
 # ── configure sections + default_skill ────────────────────────────────────────
 
 def test_configure_sections_cover_every_key_exactly_once():
