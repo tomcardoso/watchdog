@@ -8,3 +8,6 @@ dev/batch_results.json
 dist/
 build/
 .venv/
+
+# Personal, gitignored reference copies (not part of the repo)
+.local-docs/
