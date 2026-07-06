@@ -1027,6 +1027,13 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
             except OSError:
                 break
 
+        staging_dir = vault_path / ".watchdog" / "staging"
+        if parent.parent == staging_dir:
+            try:
+                parent.rmdir()
+            except OSError:
+                pass
+
     if not quiet:
         print(
             f"OK  {doc['filename']}  "

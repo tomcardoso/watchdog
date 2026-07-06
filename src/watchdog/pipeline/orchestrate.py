@@ -469,6 +469,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         return _fail(vault, sha, "", pf["error"])
     if pf.get("already_extracted"):
         _say(f"{_DIM}–  {pf.get('filename')}  already extracted — skipping{_RESET}")
+        (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
         return {"sha256": sha, "filename": pf.get("filename"), "status": "skipped"}
 
     filename = pf["filename"]
@@ -597,6 +598,7 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
     if pf.get("already_extracted"):     # a retried collection pass after a partial rate limit
         filename = pf.get("filename")
         _say(f"{_DIM}–  {filename}  already extracted — skipping{_RESET}")
+        (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
         return {"sha256": sha, "filename": filename, "status": "skipped"}
 
     filename = pf["filename"]
@@ -693,6 +695,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
             continue
         if pf.get("already_extracted"):
             _say(f"{_DIM}–  {pf.get('filename')}  already extracted — skipping{_RESET}")
+            (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
             results.append({"sha256": sha, "filename": pf.get("filename"), "status": "skipped"})
             continue
         if section.run(vault, sha).get("sectioned"):

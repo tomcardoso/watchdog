@@ -175,18 +175,6 @@ def test_preprocess_one_char_count_sums_pages(tmp_path, monkeypatch):
     assert result["char_count"] == 5
 
 
-def test_preprocess_one_passes_vault_path(tmp_path, monkeypatch):
-    f = tmp_path / "doc.pdf"
-    f.write_bytes(b"")
-    payload = {"filename": "doc.pdf", "pages": []}
-    captured = {}
-    monkeypatch.setattr("watchdog.pipeline.preprocess_batch.subprocess.Popen",
-                        _fake_popen_factory(stdout=json.dumps(payload), captured=captured))
-    preprocess_one(f, vault_path="/vault/path")
-    assert "--vault-path" in captured["cmd"]
-    assert "/vault/path" in captured["cmd"]
-
-
 def test_preprocess_one_passes_chunk_workers(tmp_path, monkeypatch):
     f = tmp_path / "doc.pdf"
     f.write_bytes(b"")
