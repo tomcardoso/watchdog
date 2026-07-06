@@ -1391,6 +1391,32 @@ def test_cmd_delete_purge_removes_files(configured, monkeypatch, capsys):
     assert "Deleted" in capsys.readouterr().out
 
 
+def test_cmd_delete_purge_prints_backup_hint_when_registry_existed(configured, monkeypatch, capsys):
+    """#270: --purge is a one-way delete, but the registry files are snapshotted first
+    (a hedge against a partial failure, not a way to undo — the snapshot lives inside
+    the vault being deleted, so a completed purge removes it too). cmd_new already
+    seeds entities.json/documents.json/registry.json, so any real vault hits this path."""
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    cli.cmd_delete(args(name="Shell Co", purge=True))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Deleted" in out
+    assert "snapshot" in out.lower()
+    assert not vault.exists()   # the purge (and its backup dir) is fully gone
+
+
+def test_cmd_delete_purge_no_backup_hint_when_registry_missing(configured, monkeypatch, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    for name in ("entities.json", "documents.json", "registry.json", "manifest.json", "resolutions.json"):
+        (vault / ".watchdog" / "Registry" / name).unlink(missing_ok=True)
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    cli.cmd_delete(args(name="Shell Co", purge=True))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "snapshot" not in out.lower()
+
+
 def test_cmd_delete_cancelled(configured, monkeypatch, capsys):
     cli.cmd_new(args(name="Shell Co", dir=str(configured)))
     monkeypatch.setattr("builtins.input", lambda _: "n")
@@ -1802,6 +1828,40 @@ def test_cmd_ingest_rejects_claude_batch_for_classifier_or_finalizer(wdg_home, t
 
     with pytest.raises(SystemExit, match="only valid for extractor_model"):
         cmd_ingest(args(), confirm=False)
+
+
+def test_cmd_ingest_prints_backup_hint_when_discard_snapshotted(wdg_home, tmp_path, monkeypatch, capsys):
+    """#270: when ingest_setup.run() reports a backup_dir (the discard choice actually threw
+    something away), cmd_ingest must print a restore hint."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+
+    backup_dir = vault / ".watchdog" / "backups" / "20260101T000000Z-ingest-discard"
+    backup_dir.mkdir(parents=True)
+    monkeypatch.setattr("watchdog.pipeline.ingest_setup.run", lambda *a, **k: {
+        "lock_acquired": True, "total": 1,
+        "queue_files": [{"path": "q", "sha256": "sha1", "filename": "a.pdf",
+                          "document_type": None, "page_count": 1, "est_tokens": 10}],
+        "backup_dir": str(backup_dir),
+    })
+
+    class _Stop(Exception):
+        pass
+
+    monkeypatch.setattr(ing, "_resolve_pinned_skill", lambda *a, **k: (_ for _ in ()).throw(_Stop()))
+    with pytest.raises(_Stop):
+        ing.cmd_ingest(args(), confirm=False)
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "backup:" in out
+    assert "ingest-discard" in out
+    assert "undo" in out
 
 
 def test_cmd_ingest_and_cmd_finalize_agree_on_finalizer_default(wdg_home, tmp_path, monkeypatch):

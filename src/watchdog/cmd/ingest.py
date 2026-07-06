@@ -280,6 +280,10 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
     elif batch_pending:
         print(f"\n  {_DIM}Checking on a pending batch extraction…{_RESET}")
 
+    if result.get("backup_dir"):
+        rel = Path(result["backup_dir"]).relative_to(vault)
+        print(f"  {_DIM}backup: {_CYAN}{rel}{_RESET}{_DIM} — copy files back to undo the discard{_RESET}")
+
     pinned_skill = _resolve_pinned_skill(args, config)
     if pinned_skill:
         print(f"  {_DIM}Skill pinned:{_RESET} {_CYAN}{Path(pinned_skill).stem}{_RESET}{_DIM} — classification skipped.{_RESET}")

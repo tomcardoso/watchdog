@@ -32,6 +32,7 @@ from watchdog.cmd.base import (
     save_projects,
     slugify,
 )
+from watchdog.pipeline.backup import snapshot as _snapshot
 
 
 _WATCHLIST_TEMPLATE = """\
@@ -659,9 +660,19 @@ def cmd_delete(args) -> None:
     del projects[slug]
     save_projects(projects)
 
+    purge_backed_up = False
     if args.purge and vault.exists():
         if not (vault / ".watchdog").exists():
             sys.exit(f"Error: {vault} does not look like a watchdog vault — aborting purge.")
+        reg_dir = vault / ".watchdog" / "Registry"
+        # Backing up the whole vault would defeat the purpose of --purge, so this is
+        # registry data only — and it lives inside the vault being deleted, so it's a
+        # hedge against a partial failure, not a way to undo the purge (#270).
+        purge_backed_up = _snapshot(vault, "delete-purge", [
+            reg_dir / "entities.json", reg_dir / "documents.json",
+            reg_dir / "registry.json", reg_dir / "manifest.json",
+            reg_dir / "resolutions.json",
+        ]) is not None
         shutil.rmtree(vault)
 
     # Remove from Obsidian registry
@@ -678,7 +689,12 @@ def cmd_delete(args) -> None:
             pass
 
     label = "Deleted" if args.purge else "Removed"
-    print(f"\n  {_GREEN}{label}:{_RESET} {_BOLD}{info['name']}{_RESET}\n")
+    print(f"\n  {_GREEN}{label}:{_RESET} {_BOLD}{info['name']}{_RESET}")
+    if purge_backed_up:
+        print(f"  {_DIM}A registry snapshot was taken before deletion, but it lived inside "
+              f"the vault — a completed purge removes it too, so it's only a hedge against "
+              f"a delete that fails partway, not a way to undo this.{_RESET}")
+    print()
 
 
 def cmd_move(args) -> None:
