@@ -125,24 +125,6 @@ def test_compact_result_carries_key_facts_for_the_briefing():
                               {"fact": "Merger closed", "date": "2024-03-01"}]
 
 
-def test_capped_briefing_results_truncates_facts_per_doc():
-    """The briefing's degraded-input retry (#296) caps each doc's facts to the retry budget,
-    leaving every other field (and other docs) untouched."""
-    results = [
-        {"filename": "a.pdf", "key_facts": [{"fact": f"f{i}"} for i in range(20)]},
-        {"filename": "b.pdf", "key_facts": [{"fact": "only one"}]},
-    ]
-    capped = orchestrate._capped_briefing_results(results, 8)
-    assert [len(r["key_facts"]) for r in capped] == [8, 1]
-    assert capped[0]["filename"] == "a.pdf"                     # other fields untouched
-    assert capped[0]["key_facts"] == [{"fact": f"f{i}"} for i in range(8)]
-    assert results[0]["key_facts"] and len(results[0]["key_facts"]) == 20   # original untouched
-
-
-def test_capped_briefing_results_handles_missing_key_facts():
-    assert orchestrate._capped_briefing_results([{"filename": "a.pdf"}], 8) == [{"filename": "a.pdf"}]
-
-
 def test_select_kept_keeps_survivors_in_original_order():
     """timeline-dedup returns `groups`; Python re-selects the authoritative originals (which carry
     source_sha256/page/basis), order-preserving, dropping each group's folded duplicates."""
@@ -978,26 +960,22 @@ def _mock_post_ingest(monkeypatch, *, timeline_dedup):
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
 
-def test_post_ingest_retries_briefing_with_degraded_input_after_model_error(tmp_path, monkeypatch):
-    """A truncated/invalid briefing response (ModelError, e.g. an output-cap truncation on a
-    large batch) retries once with a smaller prompt — scratchpads dropped, facts capped per
-    doc — instead of an identical, doomed second attempt (#296)."""
+def test_post_ingest_fails_loudly_on_briefing_model_error_without_retrying(tmp_path, monkeypatch):
+    """A briefing ModelError (e.g. an output-cap truncation on a large batch) is recorded as a
+    briefing_error and NOT retried — an identical re-run would fail the same deterministic way
+    (#296). The remedy is a smaller batch, surfaced to the user; the briefing is simply absent."""
     vault = make_vault(tmp_path)
-    (vault / ".watchdog" / "tmp").mkdir(parents=True, exist_ok=True)
-    (vault / ".watchdog" / "tmp" / "notes_abc.md").write_text("# scratch\n- a lead", encoding="utf-8")
     results = [orchestrate._compact_result(
         "sha1", "doc.pdf",
         {"document": {"key_facts": [{"fact": f"fact {i}"} for i in range(20)]}, "entities": []},
         {}, 0.01)]
 
-    briefing_prompts = []
+    briefing_calls = []
 
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
         if task == "briefing":
-            briefing_prompts.append(prompt)
-            if len(briefing_prompts) == 1:
-                raise model_client.ModelError("response was not valid JSON")
-            parsed = {"investigation_status": "ok", "what_was_ingested": []}
+            briefing_calls.append(prompt)
+            raise model_client.ModelError("response was not valid JSON")
         elif task == "timeline-dedup":
             parsed = {"groups": []}
         else:
@@ -1008,14 +986,9 @@ def test_post_ingest_retries_briefing_with_degraded_input_after_model_error(tmp_
 
     out = asyncio.run(orchestrate._post_ingest(vault, results, None, "haiku"))
 
-    assert len(briefing_prompts) == 2                 # the retry fired, not just a single failure
-    assert out.get("briefing") is not None            # the retry succeeded
-    assert "briefing_error" not in out
-    assert '"fact 19"' in briefing_prompts[0]          # first attempt: full richness
-    assert '"fact 19"' not in briefing_prompts[1]      # retry: capped to fewer facts per doc
-    assert '"fact 7"' in briefing_prompts[1]           # …but keeps the first few
-    assert "a lead" in briefing_prompts[0]             # first attempt includes the scratchpad
-    assert "a lead" not in briefing_prompts[1]         # retry drops scratchpads
+    assert len(briefing_calls) == 1                   # called once, no doomed retry
+    assert out.get("briefing") is None                # no briefing written
+    assert out.get("briefing_error")                  # failure recorded so the caller can surface it
 
 
 def test_post_ingest_leaves_collision_untouched_when_dedup_fails(tmp_path, monkeypatch):
