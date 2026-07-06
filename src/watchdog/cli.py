@@ -236,6 +236,10 @@ def main() -> None:
     p_search.add_argument("--batch", metavar="FILE",
                           help="Read search terms from FILE (one per line) and report hits per term, "
                                "instead of ranking a single query")
+    p_search.add_argument("--everywhere", action="store_true",
+                          help="Search every registered, non-archived investigation instead of one project "
+                               "(manifest + exact-match lanes only, grouped by investigation; combine with "
+                               "--batch to check a list of terms across all vaults)")
     p_search.add_argument("--json", action="store_true",
                           help="Emit results as JSON (for skills/scripts) instead of the formatted listing")
     p_search.set_defaults(func=cmd_search)

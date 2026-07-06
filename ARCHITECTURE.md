@@ -505,7 +505,7 @@ nothing about it is persisted, so a change takes effect on the next `watchdog se
 pre-D26 document with no morgue text on disk is skipped (its note still reindexes) rather
 than failing the whole run.
 
-**Full-text (exact-term) lane, complementary to the above (D56, issue #109).** Code:
+**Full-text (exact-term) lane, complementary to the above (D57, issue #109).** Code:
 `pipeline/fulltext.py`. **Files:** `<vault>/.fulltext/index.db`. A local SQLite FTS5 index
 (`unicode61` tokenizer, no stemming) over the same raw source text (morgue pages) plus every
 generated note the pipeline writes — entity, document, timeline, briefing, hot cache, and
@@ -524,7 +524,7 @@ call sites that call `embed.add_document`/`add_note` also call the `fulltext` eq
 best-effort — a failure warns but never fails the ingest run) and rebuilt in full by
 `watchdog reindex` alongside `.embeddings/`.
 
-**Batch search (D56, issue #110): `watchdog search --batch <file>`.** Reads one term per
+**Batch search (D57, issue #110): `watchdog search --batch <file>`.** Reads one term per
 line (blank lines and `#`-comments skipped) and reports hits per term instead of ranking a
 single query — the "does any of these N names from a leaked roster/sanctions list/donor
 list appear anywhere" workflow. Combines two lanes per term: manifest name/alias substring
@@ -533,6 +533,18 @@ Deliberately skips the semantic/embedding lane — a batch is routinely hundreds
 embedding + cross-encoder rerank per term doesn't scale the way an in-process SQLite query
 does. A flag on `search`, not a new command: one command a journalist needs to remember,
 with `--batch` switching it from ranking a query to reporting per-term hits.
+
+**Cross-vault search (D72, issue #272): `watchdog search --everywhere`.** A deliberately
+small stepping stone toward a global entity registry (#67) — "have I seen this name in
+*any* of my vaults?" answered today over existing per-vault indexes, with no shared
+registry and no cross-vault entity resolution. Drops the single-project scope and instead
+iterates every registered, non-archived project in `projects.json`, running the same
+manifest-substring and full-text lanes as `--batch` (semantic/rerank skipped for the same
+scaling reason: N vaults × embedding + rerank doesn't scale the way in-process SQLite
+queries do) per vault, then reports hits grouped by investigation name. Composes with
+`--batch` (a term list checked across every vault, not just one). A vault whose registered
+path is missing or not a Watchdog vault (`_check_project_health`) is skipped rather than
+failing the whole scan — the same tolerance `watchdog doctor` already applies.
 
 ---
 
@@ -550,7 +562,7 @@ briefings/<date>.md         per-ingest briefings
 context.md / hot.md / log.md investigation context, hot cache, run log
 index.md / dashboard.base    landing page + native Obsidian Bases dashboard (D42)
 .embeddings/                semantic search index
-.fulltext/index.db          full-text (exact-term) search index (D56)
+.fulltext/index.db          full-text (exact-term) search index (D57)
 .obsidian/graph.json        graph colours per entity type
 .watchdog/                  pipeline state (below)
 ```
