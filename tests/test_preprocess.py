@@ -117,8 +117,8 @@ def test_process_large_pdf_all_chunks_fail_returns_error(tmp_path, monkeypatch):
     assert "failed" in result["error"].lower()
 
 
-def test_process_large_pdf_partial_failure_still_returns_pages(tmp_path, monkeypatch):
-    """When only some chunks fail, return the pages from successful chunks."""
+def test_process_large_pdf_partial_failure_returns_error(tmp_path, monkeypatch):
+    """A single failed chunk must fail the whole document, not queue it with a silent page gap (#251)."""
     from pathlib import Path as _Path
     import watchdog.pipeline.preprocess as preprocess_mod
 
@@ -138,9 +138,8 @@ def test_process_large_pdf_partial_failure_still_returns_pages(tmp_path, monkeyp
     monkeypatch.setattr(preprocess_mod, "sha256_file", lambda p: "abc123")
 
     result = process_large_pdf(_Path("/fake/doc.pdf"), force_ocr=False, total_pages=80)
-    assert "error" not in result
-    assert result["pages"]
-    assert result["metadata"]["failed_chunks"]
+    assert "error" in result
+    assert "chunk 1 failed" in result["error"]
 
 
 # ── process_with_docling large-PDF fallback ───────────────────────────────────
