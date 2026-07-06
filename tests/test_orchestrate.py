@@ -1262,8 +1262,21 @@ def test_submit_batch_splits_sectioned_and_whole_doc(tmp_path, monkeypatch):
     assert submitted["docs"][0]["prompt"][1]["cache_control"]["ttl"] == "1h"
 
 
+def test_extract_document_skips_already_extracted_and_unlinks_queue_file(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+    monkeypatch.setattr(orchestrate.preflight, "run",
+                        lambda v, s: {"already_extracted": True, "filename": "a.pdf"})
+
+    result = asyncio.run(orchestrate._extract_document(vault, "sha1", None, "sonnet", "haiku"))
+
+    assert result["status"] == "skipped"
+    assert not (vault / ".watchdog" / "queue" / "sha1.json").exists()
+
+
 def test_submit_batch_skips_already_extracted_and_preflight_errors(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="done", filename="done.pdf")
     monkeypatch.setattr(orchestrate.preflight, "run", lambda v, s: (
         {"error": "not found"} if s == "gone" else
         {"already_extracted": True, "filename": "done.pdf"}))
@@ -1277,6 +1290,9 @@ def test_submit_batch_skips_already_extracted_and_preflight_errors(tmp_path, mon
     statuses = {r["sha256"]: r["status"] for r in out["results"]}
     assert statuses == {"gone": "failed", "done": "skipped"}
     assert out["batch_pending"] is False   # nothing left to submit
+    # A queue file for an already-extracted doc is a leftover from a crash in the narrow
+    # pre-unlink window — clean it up so it doesn't phantom-report "skipping" forever (#265).
+    assert not (vault / ".watchdog" / "queue" / "done.json").exists()
 
 
 def test_resume_batch_reports_progress_when_not_ended(tmp_path, monkeypatch, capsys):
@@ -1345,6 +1361,19 @@ def test_finish_batch_item_fails_when_result_missing(tmp_path):
     result = asyncio.run(orchestrate._finish_batch_item(
         vault, "sha1", None, "SKILL", "s", None, "sk-x"))
     assert result["status"] == "failed"
+
+
+def test_finish_batch_item_skips_already_extracted_and_unlinks_queue_file(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+    monkeypatch.setattr(orchestrate.preflight, "run",
+                        lambda v, s: {"already_extracted": True, "filename": "a.pdf"})
+
+    result = asyncio.run(orchestrate._finish_batch_item(
+        vault, "sha1", None, "SKILL", "s", None, "sk-x"))
+
+    assert result["status"] == "skipped"
+    assert not (vault / ".watchdog" / "queue" / "sha1.json").exists()
 
 
 def test_finish_batch_item_records_usage_for_the_batch_call_itself(tmp_path):

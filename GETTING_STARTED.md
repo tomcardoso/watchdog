@@ -170,7 +170,7 @@ From inside the vault directory, run:
 watchdog ingest
 ```
 
-This runs the extraction pipeline **in your terminal** — there's no Claude Code session to open. Watchdog scans the queue, confirms, and processes documents in parallel. The model is called only for the reasoning steps; everything mechanical runs in Python. (Authentication is set during `watchdog setup` — your Claude subscription or an API key; see INSTALL.)
+This runs the extraction pipeline **in your terminal** — there's no Claude Code session to open. Watchdog scans the queue, shows a token estimate (and, on a metered key with prior runs, a rough dollar range based on this vault's own usage history), confirms, and processes documents in parallel. The model is called only for the reasoning steps; everything mechanical runs in Python. (Authentication is set during `watchdog setup` — your Claude subscription or an API key; see INSTALL.) Run `watchdog ingest --estimate` any time to see that same estimate without starting extraction — useful for deciding whether to split a large batch.
 
 By default Watchdog uses Sonnet for extraction, and Haiku for the post-ingest step (synthesis + timeline + briefing) and the quick document classification. Set persistent defaults with `watchdog configure`, or override per run:
 
@@ -326,6 +326,15 @@ Checking a whole list of names or terms against the vault — a leaked board ros
 ```bash
 watchdog search shell-company-investigation --batch names-to-check.txt
 ```
+
+If you work across several investigations, `--everywhere` answers "have I seen this name in *any* of my vaults?" — it drops the project name and instead iterates every registered, non-archived investigation, running the manifest and exact-match lanes (semantic search is skipped; it doesn't scale across N vaults the way an in-process SQLite query does) and reporting hits grouped by investigation:
+
+```bash
+watchdog search --everywhere "acme holdings"
+watchdog search --everywhere --batch names-to-check.txt
+```
+
+A name variant with no manifest alias and no literal occurrence won't surface — the same tradeoff as `--batch`. Investigations with a broken or missing vault path are skipped rather than failing the whole scan.
 
 ---
 
