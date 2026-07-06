@@ -5,8 +5,6 @@ description: a parole board decision, probation order, correctional investigator
 
 This skill is loaded by Watchdog when the document type is a parole board decision, probation order, correctional investigator report, prison inspection report, institutional grievance decision, conditional release record, or similar document originating from correctional services, parole boards, or corrections oversight bodies. For police-generated documents (use-of-force reports, occurrence reports, misconduct decisions), use `police-records` instead.
 
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
-
 ---
 
 ## Document types covered
@@ -31,8 +29,6 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ---
 
 ## Fields to extract
-
-Fields expected in most correctional records, or fields that are high-value whenever present. Extract them even when the document doesn't highlight them prominently. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|

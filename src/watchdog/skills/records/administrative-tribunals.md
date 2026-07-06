@@ -5,8 +5,6 @@ description: a decision, order, or ruling from a quasi-judicial administrative t
 
 This skill is loaded by Watchdog when the document type is a decision, order, or ruling from a quasi-judicial administrative tribunal that is not a court of law, not a labour or employment arbitration (covered by `labour-arbitration`), not an immigration body (covered by `immigration-refugee`), and not a professional licensing panel (covered by `professional-licensing` or `healthcare-licensing`). Administrative tribunals are government-created bodies with statutory powers to hear disputes and make binding decisions.
 
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
-
 ---
 
 ## Document types covered
@@ -29,8 +27,6 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ---
 
 ## Fields to extract
-
-Fields expected in most tribunal records, or fields that are high-value whenever present. Extract them even when the document doesn't highlight them prominently. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|

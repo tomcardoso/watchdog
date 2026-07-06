@@ -5,8 +5,6 @@ description: "This skill is loaded when the document type does not match any spe
 
 This skill is loaded by Watchdog when the document type does not match any specific record skill. It provides a universal framework for reading an unfamiliar document: how to orient yourself, what to extract regardless of type, and what patterns are worth flagging in any record.
 
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
-
 ---
 
 ## Before extracting: orient yourself
@@ -21,8 +19,6 @@ Before pulling fields, answer four questions about the document:
 ---
 
 ## Fields to extract
-
-Fields expected in most official or semi-official documents, or fields that are high-value whenever present. Extract them even when not prominently displayed. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|

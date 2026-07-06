@@ -27,8 +27,6 @@ This skill covers market transactions (who bought what, for how much, under what
 
 ## Fields to extract
 
-Fields expected in most real estate records, or fields that are high-value whenever present. Extract them even when the document doesn't highlight them prominently. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
-
 | Field | What to look for |
 |-------|-----------------|
 | **Property identifier** | The unique registry identifier (PIN in Ontario; lot number in Quebec; APN in the US; title number in UK/Australia) |

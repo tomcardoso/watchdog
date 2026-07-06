@@ -5,8 +5,6 @@ description: a charity information return, nonprofit tax filing, trust return, o
 
 This skill is loaded by Watchdog when the document type is a charity information return, nonprofit tax filing, trust return, or similar tax filing by a nonprofit, charity, or trust.
 
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
-
 ---
 
 ## Document types covered
@@ -24,8 +22,6 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ---
 
 ## Fields to extract
-
-Fields expected in most tax-related records, or fields that are high-value whenever present. Extract them even when the document doesn't highlight them prominently. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|

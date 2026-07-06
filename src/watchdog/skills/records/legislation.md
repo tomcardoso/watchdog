@@ -5,8 +5,6 @@ description: a statute, regulation, order-in-council, government policy directiv
 
 This skill is loaded by Watchdog when the document type is a statute, regulation, order-in-council, government policy directive, government white paper, consultation paper, or similar primary or secondary legislation. This skill covers the documents through which governments create legal obligations and policy frameworks — not the decisions applying them (see `court-documents`, `administrative-tribunals`, and others for adjudicative records).
 
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
-
 ---
 
 ## Document types covered
@@ -27,8 +25,6 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ---
 
 ## Fields to extract
-
-Fields expected in most legislative, regulatory or policy documents, or fields that are high-value whenever present. Extract them even when the document doesn't highlight them prominently. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|

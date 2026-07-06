@@ -7,8 +7,6 @@ This skill is loaded by Watchdog when the document type is a criminal court docu
 
 This skill covers criminal proceedings specifically. For non-criminal court documents (civil claims, injunctions, administrative tribunal decisions), see the `court-documents` skill. For police occurrence reports and disciplinary records, see the `police-records` skill.
 
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
-
 ---
 
 ## Document types covered
@@ -31,8 +29,6 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ---
 
 ## Fields to extract
-
-Fields expected in most criminal files, or fields that are high-value whenever present. Extract them even when the document doesn't highlight them prominently. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|

@@ -7,8 +7,6 @@ This skill is loaded by Watchdog when the document type is a securities disclosu
 
 For the financial statements themselves (balance sheet, income statement, auditor's report), see `financial-statements`; for corporate registry records, see `corporate-filings`.
 
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
-
 ---
 
 ## Document types covered
@@ -30,8 +28,6 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ---
 
 ## Fields to extract
-
-Fields expected in most regulatory filings, or fields that are high-value whenever present. Extract them even when the document doesn't highlight them prominently. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|

@@ -5,9 +5,7 @@ description: [one line naming the document types this skill covers — shown in 
 
 This skill is loaded by Watchdog when the document type is a [list the trigger document types]. [One sentence on what the skill helps extract or identify.]
 
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
-
-[Authoring note — delete before saving: extraction runs as a single completion with no tool or network access, and the extraction prompt tells the model to convert any "check / search / cross-reference X" guidance into a recorded lead. Phrase red flags as things to observe and record in the document itself, not as verification steps to perform against outside sources.]
+[Authoring note — delete before saving: extraction runs as a single completion with no tool or network access, and the extraction prompt tells the model to convert any "check / search / cross-reference X" guidance into a recorded lead. Phrase red flags as things to observe and record in the document itself, not as verification steps to perform against outside sources. The prompt also already tells the model the field table is a floor, not a ceiling — don't add per-skill sentences about extraction behaviour; a skill carries only its scope sentence and domain content.]
 
 ---
 
@@ -23,8 +21,6 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ---
 
 ## Fields to extract
-
-Fields expected in most documents of this type, or fields that are high-value whenever present. Extract them even when not prominently displayed. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|

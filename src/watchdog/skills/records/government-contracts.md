@@ -5,8 +5,6 @@ description: a procurement record, tender document, contract award, sole-source 
 
 Loaded by Watchdog when the document type is a procurement record, tender document, contract award, sole-source justification, standing offer, task authorization, contract amendment, vendor performance report, or similar government contracting record — pre-award or post-award.
 
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
-
 ---
 
 ## Document types covered
@@ -30,8 +28,6 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ---
 
 ## Fields to extract
-
-Fields expected in most government contracting records, or fields that are high-value whenever present. Extract them even when the document doesn't highlight them prominently. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|

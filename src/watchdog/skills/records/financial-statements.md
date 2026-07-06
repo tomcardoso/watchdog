@@ -7,8 +7,6 @@ Loaded by Watchdog when the document type is a balance sheet, income statement, 
 
 For corporate registry records (registrations, director filings, shareholder registers), see `corporate-filings`; for securities-regulator disclosure documents around the statements (material change reports, insider trading reports, prospectuses), see `regulatory-filings`.
 
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
-
 ---
 
 ## Document types covered
@@ -26,8 +24,6 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ---
 
 ## Fields to extract
-
-Fields expected in most financial statements, or fields that are high-value whenever present. Extract them even when the document doesn't highlight them prominently. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|
