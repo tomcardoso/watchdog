@@ -158,6 +158,26 @@ def test_merge_unions_timeline_events():
     assert dates == {"2020-01-01", "2021-06-01"}
 
 
+def test_merge_unions_contradictions():
+    # #288: merge() dropped the losing entity's registry contradictions wholesale.
+    reg = _bare_entities()
+    reg["keep"]["contradictions"] = ["> [!contradiction] Keep-side callout"]
+    reg["loser"]["contradictions"] = ["> [!contradiction] Loser-side callout"]
+    merge(reg, "keep", "loser")
+    assert reg["keep"]["contradictions"] == [
+        "> [!contradiction] Keep-side callout",
+        "> [!contradiction] Loser-side callout",
+    ]
+
+
+def test_merge_dedupes_contradictions_by_normalized_text():
+    reg = _bare_entities()
+    reg["keep"]["contradictions"] = ["> [!contradiction]   Shared callout"]
+    reg["loser"]["contradictions"] = ["> [!contradiction] Shared callout"]
+    merge(reg, "keep", "loser")
+    assert reg["keep"]["contradictions"] == ["> [!contradiction]   Shared callout"]
+
+
 def test_merge_deletes_losing_entity():
     reg = _bare_entities()
     merge(reg, "keep", "loser")
@@ -405,6 +425,39 @@ def test_run_snapshots_entities_and_notes_before_mutation(tmp_path):
     assert (backup_dir / "entities" / "person" / "alice-smith.md").exists()
     assert (backup_dir / "entities" / "person" / "a-smith-duplicate.md").exists()
     assert (backup_dir / "entities" / "person" / "bob-jones.md").read_text() == original_bob_note
+
+
+def test_run_merge_carries_registry_contradiction_to_survivor(tmp_path):
+    """#288: the losing entity's registry-only contradiction (never written to its note
+    body) must survive the merge, not just whatever text happens to be in the notes."""
+    vault = make_vault(tmp_path)
+    entities_path = vault / ".watchdog" / "Registry" / "entities.json"
+    entities = json.loads(entities_path.read_text())
+    entities["a-smith-duplicate"]["contradictions"] = ["> [!contradiction] Loser-side callout"]
+    entities_path.write_text(json.dumps(entities))
+
+    run(vault, "alice-smith", "a-smith-duplicate")
+
+    entities = json.loads(entities_path.read_text())
+    assert entities["alice-smith"]["contradictions"] == ["> [!contradiction] Loser-side callout"]
+    content = (vault / "entities" / "person" / "alice-smith.md").read_text()
+    assert "Loser-side callout" in content
+
+
+def test_run_backfills_note_only_contradiction_into_registry(tmp_path):
+    """#288: a callout that only ever lived in a note body (pre-#282 vault) must be
+    folded into the registry entry by the merge, not silently dropped."""
+    vault = make_vault(tmp_path)
+    note = vault / "entities" / "person" / "alice-smith.md"
+    note.write_text(note.read_text().replace(
+        "## Notes",
+        "## Contradictions\n\n> [!contradiction] Note-only callout\n\n## Notes",
+    ))
+
+    run(vault, "alice-smith", "a-smith-duplicate")
+
+    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    assert entities["alice-smith"]["contradictions"] == ["> [!contradiction] Note-only callout"]
 
 
 def test_run_remaps_resolutions_onto_survivor(tmp_path):
