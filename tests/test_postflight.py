@@ -151,6 +151,22 @@ def test_sanitize_entity_ids_disambiguates_collision():
     assert ids == ["acme-corp", "acme-corp-2"]
     assert len(set(ids)) == 2
 
+def test_sanitize_entity_ids_identical_duplicate_keeps_references_on_first():
+    # Two entities emitted with a literally identical id: the second is disambiguated to
+    # "acme-corp-2", but references to "acme-corp" must stay on the surviving first entity —
+    # not be misrouted to the renamed duplicate.
+    extraction = {
+        "document": {"key_facts": [{"fact": "x", "entities": ["acme-corp"]}]},
+        "entities": [
+            {"id": "acme-corp", "name": "Acme Corp", "type": "Company"},
+            {"id": "acme-corp", "name": "Acme Corp", "type": "Company",
+             "roles": [{"relationship": "Owns", "target_id": "acme-corp"}]},
+        ],
+    }
+    _sanitize_entity_ids(extraction)
+    assert [e["id"] for e in extraction["entities"]] == ["acme-corp", "acme-corp-2"]
+    assert extraction["document"]["key_facts"][0]["entities"] == ["acme-corp"]
+    assert extraction["entities"][1]["roles"][0]["target_id"] == "acme-corp"
 
 # ── end-to-end through postflight ───────────────────────────────────────────
 

@@ -96,7 +96,7 @@ def _sanitize_entity_ids(extraction: dict) -> list[str]:
     from watchdog.pipeline.write_vault import slugify
 
     entities = extraction.get("entities", [])
-    remap: dict[str, str] = {}
+    changes: list[tuple[str, str]] = []   # (old_id, new_id) for every id actually rewritten
     seen: set[str] = set()
     warnings: list[str] = []
 
@@ -111,9 +111,14 @@ def _sanitize_entity_ids(extraction: dict) -> list[str]:
         if new_id != old_id:
             warnings.append(f"entities[{i}].id {old_id!r} sanitized to {new_id!r}")
             if old_id:
-                remap[old_id] = new_id
+                changes.append((old_id, new_id))
             entity["id"] = new_id
 
+    # Only remap references for an old id that no longer names any surviving entity. If a
+    # duplicate id was disambiguated (two "acme-corp" entities → the second becomes
+    # "acme-corp-2"), the original id still belongs to the first entity, so references to it
+    # must stay put rather than being misrouted to the renamed duplicate.
+    remap = {old: new for old, new in changes if old not in seen}
     if remap:
         for fact in extraction.get("document", {}).get("key_facts", []):
             tags = fact.get("entities")

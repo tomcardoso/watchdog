@@ -402,7 +402,11 @@ def _role_line(role: dict, docs_reg: dict) -> str:
     date_part = f" — {role['date_range']}" if role.get("date_range") else ""
     basis_part = " *(inferred)*" if role.get("basis") == "inferred" else ""
 
-    target_link = f"[[entities/{_type_dir(role['target_type'])}/{role['target_id']}|{_defang(role['target_name'])}]]"
+    # target_id sits in the wikilink *target* position. It's postflight-slugified for a profiled
+    # target, but a role can point at an unprofiled entity (leads.py: "named but never profiled"),
+    # whose target_id never passed through that pass — slugify here so a hostile dangling id can't
+    # close the wikilink early and forge a second one (#305, target side).
+    target_link = f"[[entities/{_type_dir(role['target_type'])}/{slugify(role['target_id'])}|{_defang(role['target_name'])}]]"
 
     source_sha = role.get("source_sha256", "")
     doc_entry = docs_reg.get(source_sha, {})

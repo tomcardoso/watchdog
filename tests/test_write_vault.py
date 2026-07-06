@@ -1138,6 +1138,23 @@ def test_document_note_entity_mention_name_defanged(tmp_path):
     assert "]] [[" not in content
 
 
+def test_role_target_id_bracket_injection_slugified_in_wikilink_target():
+    # A role can point at an unprofiled entity (leads.py: "named but never profiled"), whose
+    # target_id never passes through postflight's slugify pass. It lands in the wikilink *target*
+    # position, so a hostile value must be slugified here or it forges a second wikilink.
+    from watchdog.pipeline.write_vault import _role_line
+    role = {
+        "relationship": "Director of",
+        "target_id": "acme]] [[entities/company/cleared",
+        "target_type": "Company",
+        "target_name": "Acme Corp",
+    }
+    line = _role_line(role, {})
+    assert "]] [[" not in line
+    assert line.count("[[") == 1 and line.count("]]") == 1
+    assert "[[entities/company/acme-entitiescompanycleared|Acme Corp]]" in line
+
+
 def test_entity_timeline_has_page_link(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
