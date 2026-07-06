@@ -1000,6 +1000,32 @@ def test_key_fact_without_quote_has_no_blockquote(tmp_path):
     assert "  > " not in content
 
 
+def test_document_note_flags_unverified_quote(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    run(make_extraction(tmp_path, {"document": {
+        "key_facts": [{"fact": "Revenue was $1M.", "page": 3, "basis": "stated",
+                       "quote": "Total revenue for the year was $1,000,000.",
+                       "quote_verified": False}],
+    }}), vault)
+
+    content = (vault / "documents" / "test-doc.md").read_text()
+    assert "  > Total revenue for the year was $1,000,000. *(quote not found on cited page — verify against source)*" in content
+
+
+def test_document_note_notes_quote_found_on_different_page(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    run(make_extraction(tmp_path, {"document": {
+        "key_facts": [{"fact": "Revenue was $1M.", "page": 3, "basis": "stated",
+                       "quote": "Total revenue for the year was $1,000,000.",
+                       "quote_found_page": 4}],
+    }}), vault)
+
+    content = (vault / "documents" / "test-doc.md").read_text()
+    assert "  > Total revenue for the year was $1,000,000. *(found on p. 4, not the cited page)*" in content
+
+
 def test_entity_analysis_renders_claim_reason_and_quote(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")

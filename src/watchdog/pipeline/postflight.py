@@ -164,17 +164,29 @@ def run(vault: Path, extraction_path: Path, quiet: bool = False) -> dict:
     # write_vault and timeline staging consume (#140).
     explode_key_facts(extraction)
 
-    # Get near-dup minhash from queue file (computed at chew time)
+    # Get near-dup minhash and page text from the queue file (both computed/captured at chew time)
     sha256 = extraction.get("document", {}).get("sha256", "")
     neardup_data: dict = {}
+    page_texts: dict[int, str] = {}
     if sha256:
         queue_file = vault / ".watchdog" / "queue" / f"{sha256}.json"
         if queue_file.exists():
             try:
                 q = json.loads(queue_file.read_text(encoding="utf-8"))
                 neardup_data = q.get("near_dup", {})
+                page_texts = {
+                    p["page"]: p.get("markdown", "")
+                    for p in q.get("pages", []) if p.get("page") is not None
+                }
             except Exception:
                 pass
+
+    # Deterministic quote verification against the morgue text (#267): flags any
+    # key_facts.quote that can't be matched on (or near) its cited page — annotation only,
+    # never blocks the document.
+    from watchdog.pipeline.quote_verify import verify_quotes
+    for warning in verify_quotes(extraction, page_texts):
+        print(f"Warning: {warning}", file=sys.stderr)
 
     # Write the validated (and match_id-resolved) extraction back so write_vault reads it
     extraction_path.write_text(

@@ -192,3 +192,49 @@ def test_postflight_writes_morgue_markdown(tmp_path):
     text = md_files[0].read_text(encoding="utf-8")
     assert "<!-- PAGE 1 -->" in text and "<!-- PAGE 2 -->" in text
     assert "# Heading one" in text and "Second page body." in text
+
+
+# ── Quote verification against the morgue text (#267) ───────────────────────
+
+def test_postflight_flags_unverified_quote_and_warns(tmp_path, capsys):
+    vault = _full_vault(tmp_path)
+    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
+        "pages": [{"page": 2, "markdown": "Nothing about ratios here."},
+                  {"page": 3, "markdown": "Also nothing relevant."}],
+    }))
+    ext = _extraction()
+    ext["document"]["key_facts"][0]["quote"] = "Transfer ratio set at 65.8%."
+    ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
+    ext_path.write_text(json.dumps(ext), encoding="utf-8")
+
+    result = postflight_run(vault, ext_path)
+    assert result.get("ok"), result
+
+    lu_note = (vault / "entities" / "company" / "lu.md").read_text(encoding="utf-8")
+    assert "*(quote not found on cited page — verify against source)*" in lu_note
+
+    err = capsys.readouterr().err
+    assert "Warning" in err and "not found on page" in err
+
+
+def test_postflight_verifies_exact_quote_without_warning(tmp_path, capsys):
+    vault = _full_vault(tmp_path)
+    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
+        "pages": [{"page": 2, "markdown": "The transfer ratio set at 65.8%. was confirmed."},
+                  {"page": 3, "markdown": "Unrelated page text."}],
+    }))
+    ext = _extraction()
+    ext["document"]["key_facts"][0]["quote"] = "Transfer ratio set at 65.8%."
+    ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
+    ext_path.write_text(json.dumps(ext), encoding="utf-8")
+
+    result = postflight_run(vault, ext_path)
+    assert result.get("ok"), result
+
+    lu_note = (vault / "entities" / "company" / "lu.md").read_text(encoding="utf-8")
+    assert "quote not found" not in lu_note
+
+    err = capsys.readouterr().err
+    assert "not found on page" not in err
