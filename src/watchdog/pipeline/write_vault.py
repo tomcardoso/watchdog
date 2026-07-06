@@ -109,11 +109,11 @@ def _reconcile_entity_ids(incoming_entities: list[dict], entities_reg: dict) -> 
     """
     Remap incoming entities that name an existing entity under a different slug.
 
-    Subagents extract in parallel from a pre-flight snapshot taken at launch, so two
+    Documents extract in parallel from a pre-flight snapshot taken at launch, so two
     documents referencing the same real-world entity can coin different ids (e.g.
     'ernst-and-young-inc' vs 'ernst-young-inc'). write_vault runs inside the registry
     lock with a fresh read of entities_reg — the one place that sees entities written
-    by sibling subagents earlier in the batch — so we reconcile here: any incoming
+    by concurrent extraction tasks earlier in the batch — so we reconcile here: any incoming
     *new* entity whose normalized (name, type) matches an existing one is remapped to
     that existing id, routing it through the merge path instead of creating a duplicate.
     """
@@ -822,7 +822,7 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
 
         # ── 1. Update entity registry ─────────────────────────────────────────
 
-        # Reconcile near-duplicate slugs coined by parallel subagents before merging.
+        # Reconcile near-duplicate slugs coined by concurrent extraction tasks before merging.
         _reconcile_entity_ids(incoming_entities, entities_reg)
         # Roles arrive as target_id only; re-inflate target_name/target_type deterministically.
         _resolve_role_targets(incoming_entities, entities_reg)

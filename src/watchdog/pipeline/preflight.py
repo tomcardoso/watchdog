@@ -1,9 +1,10 @@
 """
-Watchdog pre-flight — packages everything a subagent needs to extract a document.
+Watchdog pre-flight — packages everything the model needs to extract a document.
 
 Reads the queue file, runs entity candidate lookup against the manifest (substring
-match — no ML), and returns a single JSON blob. The subagent reads this output,
-does extraction reasoning, writes the extraction JSON, then calls post-flight.
+match — no ML), and returns a single JSON blob. The orchestrator sends this output
+to the model, which does extraction reasoning and returns the extraction JSON; the
+orchestrator then calls post-flight.
 """
 
 import json
@@ -73,7 +74,7 @@ def _digest_roles(roles: list[dict]) -> list[dict]:
 def _existing_analysis(vault: Path, note_path: str) -> str:
     """Return the existing '## Analysis' section of an entity note.
 
-    Supplied alongside the entity's prior contradictions so the subagent can run
+    Supplied alongside the entity's prior contradictions so the model can run
     the contradiction check without reading note files. Returns '' if the note or
     the section is absent.
     """
@@ -110,7 +111,7 @@ def run(vault: Path, sha256: str, *, alias_min_length: int | None = None) -> dic
     ).lower()
 
     # Full registry, read once — supplies each candidate's timeline/roles digest so
-    # the subagent can run the contradiction check without reading note files.
+    # the model can run the contradiction check without reading note files.
     entities_reg: dict = {}
     entities_file = vault / ".watchdog" / "Registry" / "entities.json"
     if entities_file.exists():
@@ -139,7 +140,7 @@ def run(vault: Path, sha256: str, *, alias_min_length: int | None = None) -> dic
                     "type": entry.get("type", ""),
                     "aliases": entry.get("aliases", []),
                     "note_path": note_path,
-                    # Carried forward so the subagent revises rather than clobbers.
+                    # Carried forward so the model revises rather than clobbers.
                     "summary": _extract_summary(vault / f"{note_path}.md") if note_path else None,
                     "timeline_events": _digest_events(reg.get("timeline_events", [])),
                     "roles": _digest_roles(reg.get("roles", [])),

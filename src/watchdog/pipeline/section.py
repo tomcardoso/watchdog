@@ -2,7 +2,7 @@
 Watchdog section planner — split a large queued document into sections for
 sectioned (sequential) extraction.
 
-Large documents don't fit comfortably in one extraction subagent's context, and
+Large documents don't fit comfortably in one extraction call's context, and
 the cost of a single huge context grows with its size. This splits a document
 into overlapping sections of roughly `section_token_budget` estimated tokens
 each. The orchestrator extracts the sections in reading order, carrying a

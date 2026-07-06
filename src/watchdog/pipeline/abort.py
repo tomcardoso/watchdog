@@ -17,7 +17,7 @@ whose registry entry was rolled back. Those are self-healing — re-ingesting th
 document replaces its note and fragment contribution idempotently (keyed by doc-note /
 sha), and `watchdog reindex` rebuilds the indexes from the registry — so this command
 leaves them in place rather than half-deleting a note a journalist may have annotated.
-The source file stays in `_INCOMING/` (post-flight never moved it).
+The source file stays wherever `watchdog chew` already put it, in `.watchdog/staging/<sha256>/` — this command never touches it.
 
 Re-ingest later: move the queue file back —
   mv .watchdog/queue/_failed/<sha>.json .watchdog/queue/

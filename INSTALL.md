@@ -110,8 +110,9 @@ This will:
 - Enable tab completion in your shell automatically
 - Offer to install the optional capture browser for full page snapshots (see [Full page snapshots](#full-page-snapshots-optional) below)
 - Download the ML models for document conversion and semantic search (one-time, may take a few minutes on a slow connection)
+- Ask how you want to authenticate with Claude
 
-It will ask two questions: where to store your projects, and whether to install the optional capture browser. Press Return to accept the projects default (`~/Investigations`), or type a different path; the capture browser defaults to no (type `y` to install it, an extra ~150 MB).
+It will ask three questions: where to store your projects, whether to install the optional capture browser, and how to authenticate with Claude. Press Return to accept the projects default (`~/Investigations`), or type a different path; the capture browser defaults to no (type `y` to install it, an extra ~150 MB); for authentication, choose your existing Claude Code subscription login (press Return) or a metered Claude API key.
 
 When setup finishes, reload your shell so the tab completion takes effect:
 

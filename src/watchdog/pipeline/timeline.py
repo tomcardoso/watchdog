@@ -6,7 +6,7 @@ rebuild-timeline     Read all canonical {date}.ndjson files; render timeline.md.
 
 File naming convention in .watchdog/timeline/:
   {date}.ndjson             — canonical (orchestrator-maintained, deduplicated)
-  {date}_{sha256[:7]}.ndjson — raw subagent output; always written by subagents
+  {date}_{sha256[:7]}.ndjson — raw per-document output; always written by the extraction task
 
 Canonical files have no underscore in the stem (dates use hyphens only).
 """

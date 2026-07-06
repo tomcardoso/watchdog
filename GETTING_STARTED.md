@@ -100,7 +100,7 @@ notes: Check the director change on page 12.
 
 This context is merged into the document record and preserved through ingest.
 
-**Near-duplicate detection is automatic.** Watchdog fingerprints every document using a hash of its content. If you drop in a document that's already been ingested — even renamed — it will be flagged as a duplicate and skipped.
+**Exact-duplicate detection is automatic.** Watchdog fingerprints every document using a hash of its content. If you drop in a document that's byte-identical to one already ingested — even renamed — it's set aside in `_INCOMING/_SKIPPED/` rather than processed again. A separate near-duplicate check (fuzzy content similarity, for documents that are similar but not byte-identical — a redlined revision, say) only flags a match for your review; it never skips the file.
 
 ---
 

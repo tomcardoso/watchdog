@@ -2,21 +2,14 @@
 """
 Build the entity-synthesis bundle and bulk-apply synthesized prose.
 
-Phase-1 cost reduction (issue #87/#80 follow-up): instead of launching one
-subagent per multi-mention entity — each re-reading its fragment file and note,
-paying startup + preamble cache-write overhead — Python gathers every
-``count >= 2`` entity's fragments and current prose into a single bundle for one
-post-ingest model call, then bulk-applies the returned prose deterministically.
-
-Commands:
-    watchdog build-synthesis-bundle [--vault .] [--out PATH]
-        Reads .watchdog/tmp/entity-fragments/_queue.json and writes one bundle
-        JSON describing the entities to synthesize. Prints the entity count.
-
-    watchdog apply-syntheses --bundle PATH [--vault .]
-        Reads the model's synthesis result JSON and writes ## Summary / ## Analysis
-        for each entity, leaving all other sections untouched. Unknown entity ids
-        and empty summaries are skipped, never written.
+Phase-1 cost reduction (issue #87/#80 follow-up, superseded by #140/D26's
+recurrence-gated synthesis): instead of one model call per multi-mention entity —
+each re-reading its fragment file and note, paying startup + preamble cache-write
+overhead — Python gathers every entity that recurs project-wide (``appears_in``
+count in the registry meets ``min_docs``, not this batch's mention count) into a
+single bundle for one post-ingest model call, then bulk-applies the returned prose
+deterministically. Called from `orchestrate.py` as library functions
+(`build_bundle` / `apply_bundle`); there is no standalone `watchdog` subcommand.
 """
 
 import json
