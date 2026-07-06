@@ -30,20 +30,34 @@ from watchdog.cmd.base import (
 from watchdog.pipeline import capture, research
 
 
+def _load_config() -> dict:
+    if not CONFIG_FILE.exists():
+        return {}
+    try:
+        return json.loads(CONFIG_FILE.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
 def _wayback_creds() -> tuple[str, str] | None:
     """Return the archive.org (access_key, secret_key) when Wayback archiving is enabled and both
     keys are configured; else None (the off-by-default case, #201)."""
-    if not CONFIG_FILE.exists():
-        return None
-    try:
-        config = json.loads(CONFIG_FILE.read_text())
-    except (OSError, json.JSONDecodeError):
-        return None
+    config = _load_config()
     if not config.get("wayback_save"):
         return None
     access = (config.get("wayback_access_key") or "").strip()
     secret = (config.get("wayback_secret_key") or "").strip()
     return (access, secret) if access and secret else None
+
+
+def _wayback_keys_missing() -> bool:
+    """True unless both archive.org S3 keys are configured, regardless of wayback_save — used to
+    nudge un-configured users toward archiving (#201 follow-up), since without both keys
+    wayback_save is a no-op anyway."""
+    config = _load_config()
+    access = (config.get("wayback_access_key") or "").strip()
+    secret = (config.get("wayback_secret_key") or "").strip()
+    return not (access and secret)
 
 
 def _queue_path(vault: Path) -> Path:
@@ -144,6 +158,12 @@ def cmd_research(args) -> None:
     print(f"    {_DIM}3.{_RESET} research in rounds, checking in with you between each")
     print(f"    {_DIM}4.{_RESET} queue each source it keeps, with a reliability tag and why it matters")
     print(f"    {_DIM}5.{_RESET} write a research memo to {_CYAN}briefings/{_RESET}\n")
+
+    if _wayback_keys_missing():
+        print(f"  {_DIM}Tip: set up free Wayback Machine keys so sources you find get archived "
+              f"automatically —{_RESET}")
+        print(f"  {_DIM}see {_RESET}{_CYAN}https://archive.org/account/s3.php{_RESET}{_DIM}, then "
+              f"run {_RESET}{_CYAN}watchdog configure wayback_access_key{_RESET}\n")
 
     question = (getattr(args, "question", None) or "").strip()
     if not question:
