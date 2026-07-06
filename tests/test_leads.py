@@ -119,6 +119,34 @@ def test_total_and_empty():
     assert leads.total(leads.find_leads({})) == 0
 
 
+# ── writer -> sweep contract (#252) ──────────────────────────────────────────
+#
+# The tests above fabricate a registry entry with a hand-built "contradictions" key.
+# That masked a real bug: nothing in write_vault ever persisted that key, so the signal
+# could never fire against a real vault. This test drives the actual writer instead, to
+# prove entities.json really ends up in the shape find_leads expects.
+
+def test_write_vault_persists_contradictions_findable_by_leads(tmp_path):
+    from watchdog.pipeline import write_vault
+    from tests.test_write_vault import make_vault, make_extraction
+
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    callout = "> [!contradiction] Address differs from prior filing"
+    overrides = {"entities": [{"id": "alice-smith", "name": "Alice Smith", "type": "Person",
+                               "contradictions": [callout]}]}
+
+    write_vault.run(make_extraction(tmp_path, overrides), vault)
+
+    entities_reg = json.loads(
+        (vault / ".watchdog" / "Registry" / "entities.json").read_text()
+    )
+    data = leads.find_leads(entities_reg)
+    assert len(data["contradictions"]) == 1
+    assert data["contradictions"][0]["id"] == "alice-smith"
+    assert data["contradictions"][0]["count"] == 1
+
+
 def test_dangling_without_target_name_falls_back_to_id():
     reg = {"x": {"id": "x", "name": "X", "type": "person", "appears_in": ["d1"],
                  "roles": [{"relationship": "Linked", "target_id": "ghost-123",

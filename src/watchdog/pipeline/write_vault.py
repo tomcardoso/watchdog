@@ -430,6 +430,7 @@ def _new_entity(entity: dict, doc_sha256: str) -> dict:
         "note_path":        f"entities/{_type_dir(entity['type'])}/{entity['id']}",
         "roles":            roles,
         "timeline_events":  events,
+        "contradictions":   [c.strip() for c in entity.get("contradictions") or [] if c.strip()],
         "date_first_seen":  _today(),
         "date_last_updated": _today(),
     }
@@ -463,6 +464,12 @@ def _merge_entity(existing: dict, incoming: dict, doc_sha256: str) -> None:
         incoming.get("timeline_events", []),
         doc_sha256,
     )
+
+    existing_contradictions = existing.setdefault("contradictions", [])
+    for callout in incoming.get("contradictions") or []:
+        callout = callout.strip()
+        if callout and callout not in existing_contradictions:
+            existing_contradictions.append(callout)
 
     existing["date_last_updated"] = _today()
 

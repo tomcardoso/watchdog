@@ -480,6 +480,57 @@ def test_merge_deduplicates_roles(tmp_path):
     assert len(director_roles) == 1
 
 
+def test_new_entity_persists_contradictions_to_registry(tmp_path):
+    # #252: the registry entry must carry the contradiction callouts so leads.find_leads
+    # (which reads them straight from entities.json) isn't a structurally dead signal.
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    callout = "> [!contradiction] Address differs from prior filing"
+    overrides = {"entities": [{"id": "alice-smith", "name": "Alice Smith", "type": "Person",
+                               "contradictions": [callout]}]}
+
+    run(make_extraction(tmp_path, overrides), vault)
+
+    entities = json.loads(
+        (vault / ".watchdog" / "Registry" / "entities.json").read_text()
+    )
+    assert entities["alice-smith"]["contradictions"] == [callout]
+
+
+def test_merge_deduplicates_contradictions(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+
+    callout = "> [!contradiction] Address differs from prior filing"
+    existing_entities = {
+        "alice-smith": {
+            "id": "alice-smith",
+            "name": "Alice Smith",
+            "type": "Person",
+            "aliases": [],
+            "appears_in": ["prior-sha"],
+            "note_path": "entities/person/alice-smith",
+            "roles": [],
+            "contradictions": [callout],
+            "date_first_seen": "2024-01-01",
+            "date_last_updated": "2024-01-01",
+        }
+    }
+    (vault / ".watchdog" / "Registry" / "entities.json").write_text(
+        json.dumps(existing_entities)
+    )
+
+    new_callout = "> [!contradiction] Director count differs from prior filing"
+    overrides = {"entities": [{"id": "alice-smith", "name": "Alice Smith", "type": "Person",
+                               "contradictions": [callout, new_callout]}]}
+    run(make_extraction(tmp_path, overrides), vault)
+
+    entities = json.loads(
+        (vault / ".watchdog" / "Registry" / "entities.json").read_text()
+    )
+    assert entities["alice-smith"]["contradictions"] == [callout, new_callout]
+
+
 # ── Reverse relationship ──────────────────────────────────────────────────────
 
 def test_reverse_relationship_written_to_target(tmp_path):
