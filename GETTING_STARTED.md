@@ -327,6 +327,15 @@ Checking a whole list of names or terms against the vault — a leaked board ros
 watchdog search shell-company-investigation --batch names-to-check.txt
 ```
 
+If you work across several investigations, `--everywhere` answers "have I seen this name in *any* of my vaults?" — it drops the project name and instead iterates every registered, non-archived investigation, running the manifest and exact-match lanes (semantic search is skipped; it doesn't scale across N vaults the way an in-process SQLite query does) and reporting hits grouped by investigation:
+
+```bash
+watchdog search --everywhere "acme holdings"
+watchdog search --everywhere --batch names-to-check.txt
+```
+
+A name variant with no manifest alias and no literal occurrence won't surface — the same tradeoff as `--batch`. Investigations with a broken or missing vault path are skipped rather than failing the whole scan.
+
 ---
 
 ## Finding connections

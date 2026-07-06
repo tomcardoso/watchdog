@@ -526,6 +526,18 @@ embedding + cross-encoder rerank per term doesn't scale the way an in-process SQ
 does. A flag on `search`, not a new command: one command a journalist needs to remember,
 with `--batch` switching it from ranking a query to reporting per-term hits.
 
+**Cross-vault search (D71, issue #272): `watchdog search --everywhere`.** A deliberately
+small stepping stone toward a global entity registry (#67) — "have I seen this name in
+*any* of my vaults?" answered today over existing per-vault indexes, with no shared
+registry and no cross-vault entity resolution. Drops the single-project scope and instead
+iterates every registered, non-archived project in `projects.json`, running the same
+manifest-substring and full-text lanes as `--batch` (semantic/rerank skipped for the same
+scaling reason: N vaults × embedding + rerank doesn't scale the way in-process SQLite
+queries do) per vault, then reports hits grouped by investigation name. Composes with
+`--batch` (a term list checked across every vault, not just one). A vault whose registered
+path is missing or not a Watchdog vault (`_check_project_health`) is skipped rather than
+failing the whole scan — the same tolerance `watchdog doctor` already applies.
+
 ---
 
 ## 12. Vault & registry layout

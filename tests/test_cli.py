@@ -2471,3 +2471,139 @@ def test_search_batch_empty_file_exits(configured, tmp_path):
     batch_file.write_text("\n\n")
     with pytest.raises(SystemExit):
         cli.cmd_search(args(project="test-proj", query=None, batch=str(batch_file), top_n=5, json=False))
+
+
+# ── cmd_search --everywhere (#272) ──────────────────────────────────────────────
+
+def _register_projects(configured, entries):
+    """entries: list of (slug, name, extra) dicts. extra may set archived=True or
+    missing_path=True (vault dir is never created). Registers all at once and
+    returns {slug: vault_path}."""
+    projects = {}
+    vaults = {}
+    for slug, name, extra in entries:
+        extra = extra or {}
+        vault = configured / slug
+        if not extra.get("missing_path"):
+            vault.mkdir(parents=True, exist_ok=True)
+        info = {"name": name, "path": str(vault), "created": "2026-01-01"}
+        if extra.get("archived"):
+            info["archived"] = True
+        projects[slug] = info
+        vaults[slug] = vault
+    cli.save_projects(projects)
+    return vaults
+
+
+def test_search_everywhere_groups_by_investigation(configured, monkeypatch, capsys):
+    vaults = _register_projects(configured, [
+        ("shell-co", "Shell Co", None),
+        ("muni-contracts", "Muni Contracts", None),
+    ])
+    _write_manifest(vaults["shell-co"], {
+        f"e{i}": {"name": f"Acme Holding {i}", "type": "Company", "aliases": [], "note_path": f"entities/e{i}"}
+        for i in range(3)
+    })
+    _write_manifest(vaults["muni-contracts"], {})
+
+    def fake_fts(vault, query, **kw):
+        if vault == vaults["shell-co"]:
+            return [{"kind": "corpus", "key": f"sha{i}", "title": "doc.pdf", "path": "morgue/doc.pdf",
+                     "page": 1, "text": "acme"} for i in range(14)]
+        return [{"kind": "corpus", "key": "sha1", "title": "contract-award-2023.pdf",
+                 "path": "morgue/contract-award-2023.pdf", "page": 12, "text": "acme"}]
+    monkeypatch.setattr("watchdog.pipeline.fulltext.search", fake_fts)
+
+    cli.cmd_search(args(project=None, query="acme", everywhere=True, top_n=5, json=False))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Shell Co" in out and "shell-co" in out
+    assert "3 entities · 14 exact matches" in out
+    assert "Muni Contracts" in out and "muni-contracts" in out
+    assert "1 exact match (p. 12, contract-award-2023.pdf)" in out
+
+
+def test_search_everywhere_skips_archived_projects(configured, monkeypatch, capsys):
+    vaults = _register_projects(configured, [
+        ("active-proj", "Active Proj", None),
+        ("old-proj", "Old Proj", {"archived": True}),
+    ])
+    for v in vaults.values():
+        _write_manifest(v, {})
+    monkeypatch.setattr("watchdog.pipeline.fulltext.search", lambda vault, query, **kw: (
+        [{"kind": "corpus", "key": "sha1", "title": "doc.pdf", "path": "morgue/doc.pdf",
+          "page": 1, "text": "x"}] if vault == vaults["old-proj"] else []
+    ))
+
+    cli.cmd_search(args(project=None, query="x", everywhere=True, top_n=5, json=False))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Old Proj" not in out
+    assert "No matches across 1 investigation." in out
+
+
+def test_search_everywhere_skips_missing_vault_path(configured, monkeypatch, capsys):
+    vaults = _register_projects(configured, [
+        ("healthy-proj", "Healthy Proj", None),
+        ("gone-proj", "Gone Proj", {"missing_path": True}),
+    ])
+    _write_manifest(vaults["healthy-proj"], {})
+    monkeypatch.setattr("watchdog.pipeline.fulltext.search", lambda vault, query, **kw: [])
+
+    cli.cmd_search(args(project=None, query="x", everywhere=True, top_n=5, json=False))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Skipped 1 investigation with a broken vault path." in out
+
+
+def test_search_everywhere_no_registered_investigations(configured, capsys):
+    cli.cmd_search(args(project=None, query="x", everywhere=True, top_n=5, json=False))
+    out = capsys.readouterr().out
+    assert "No registered investigations." in out
+
+
+def test_search_everywhere_batch_aggregates_terms_and_dedupes_entities(configured, monkeypatch, tmp_path, capsys):
+    vault = _register_projects(configured, [("shell-co", "Shell Co", None)])["shell-co"]
+    _write_manifest(vault, {"alice-smith": {"name": "Alice Smith", "type": "Person",
+                                            "aliases": ["Smith"], "note_path": "entities/alice-smith"}})
+    monkeypatch.setattr("watchdog.pipeline.fulltext.search", lambda vault, query, **kw: (
+        [{"kind": "corpus", "key": f"sha-{query}", "title": "doc.pdf", "path": "morgue/doc.pdf",
+          "page": 1, "text": query}]
+    ))
+    batch_file = tmp_path / "names.txt"
+    batch_file.write_text("Alice\nSmith\n")
+
+    cli.cmd_search(args(project=None, query=None, everywhere=True, batch=str(batch_file), top_n=5, json=False))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "1 entity · 2 exact matches" in out
+
+
+def test_search_everywhere_json_output(configured, monkeypatch, capsys):
+    vault = _register_projects(configured, [("shell-co", "Shell Co", None)])["shell-co"]
+    _write_manifest(vault, {})
+    monkeypatch.setattr("watchdog.pipeline.fulltext.search", lambda vault, query, **kw: [
+        {"kind": "corpus", "key": "sha1", "title": "doc.pdf", "path": "morgue/doc.pdf", "page": 1, "text": "x"},
+    ])
+
+    cli.cmd_search(args(project=None, query="x", everywhere=True, top_n=5, json=True))
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["terms"] == ["x"]
+    assert payload["investigations"][0]["slug"] == "shell-co"
+    assert payload["investigations"][0]["hits"][0]["title"] == "doc.pdf"
+
+
+def test_search_everywhere_rejects_project_and_query_together(configured):
+    _register_projects(configured, [("shell-co", "Shell Co", None)])
+    with pytest.raises(SystemExit):
+        cli.cmd_search(args(project="shell-co", query="x", everywhere=True, top_n=5, json=False))
+
+
+def test_search_everywhere_batch_rejects_project_argument(configured, tmp_path):
+    _register_projects(configured, [("shell-co", "Shell Co", None)])
+    batch_file = tmp_path / "names.txt"
+    batch_file.write_text("Alice\n")
+    with pytest.raises(SystemExit):
+        cli.cmd_search(args(project="shell-co", query=None, everywhere=True, batch=str(batch_file), top_n=5, json=False))
+
+
+def test_search_everywhere_requires_query(configured):
+    _register_projects(configured, [("shell-co", "Shell Co", None)])
+    with pytest.raises(SystemExit):
+        cli.cmd_search(args(project=None, query=None, everywhere=True, top_n=5, json=False))
