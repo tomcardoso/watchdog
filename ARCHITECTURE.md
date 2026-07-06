@@ -127,6 +127,14 @@ releases the lock in a `finally`. Models, concurrency, and classification come f
 `extractor_effort`, `finalizer_effort`, `extract_concurrency`, `classify_pages`,
 `default_skill`) or per-run flags.
 
+**Pre-flight cost estimate (D71).** Before the confirm prompt, `ingest_setup.cost_estimate`
+multiplies the queue's own `est_tokens` (already computed per file by `scan_queue` for the
+sectioning threshold) by this vault's $/token ratio from its last 3 `usage-<ts>.json` runs (D50),
+presented as a range (min/max across those runs) rather than one averaged figure. Subscription
+auth (`claude-agent-sdk`) never gets a dollar figure — there's no real billing to project, only a
+session-limit fraction token counts can't estimate honestly. `watchdog ingest --estimate` prints
+the same estimate and exits before the lock is touched.
+
 **Lock acquisition is atomic** (`pipeline/locks.py`, D66). All three run locks — the ingest
 lock, the shared finalize lock, and chew's `.watchdog/.chew-lock` — are taken with
 `os.open(O_CREAT|O_EXCL)`, so two concurrent invocations can't both win (the old

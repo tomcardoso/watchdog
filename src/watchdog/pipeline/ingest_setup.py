@@ -31,6 +31,70 @@ def _iso_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def scan_queue(vault: Path) -> list[dict]:
+    """Read every queued file's metadata (filename, type, page count, est_tokens) without
+    touching the lock — shared by `run` (which then acquires the lock) and `cost_estimate`'s
+    `--estimate` path (#269), which must stay lock-free and read-only."""
+    queue_dir = vault / ".watchdog" / "queue"
+    queue_files: list[dict] = []
+    if queue_dir.exists():
+        for qf in sorted(queue_dir.glob("*.json")):
+            try:
+                data = json.loads(qf.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            queue_files.append({
+                "path": str(qf.relative_to(vault)),
+                "sha256": qf.stem,
+                "filename": data.get("filename", qf.stem),
+                "document_type": data.get("document_type"),
+                "page_count": data.get("page_count") or len(data.get("pages", [])),
+                "est_tokens": _est_tokens_from_pages(data.get("pages", [])),
+            })
+    return queue_files
+
+
+def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
+                   max_runs: int = 3) -> dict:
+    """Pre-flight token/cost estimate for a queue (#269): the queue's own `est_tokens` (already
+    computed by `scan_queue`) times this vault's own $/token history, so a batch's rough cost is
+    visible at the confirm prompt instead of discovered mid-run. The $/token ratio is read fresh
+    from each of the last `max_runs` usage-*.json files (not averaged into one number) so the
+    result can be presented as a range — extraction output varies with document density, and a
+    single false-precise figure would undercut the trust this is meant to build.
+
+    Subscription auth (``claude-agent-sdk``) never gets a dollar figure: there's no real billing
+    to project, only a session-limit fraction this can't estimate honestly from token counts
+    alone. With no usage history yet (first run), the token estimate alone is returned — no
+    invented dollar figure.
+    """
+    documents = len(queue_files)
+    pages = sum(f.get("page_count") or 0 for f in queue_files)
+    est_tokens = sum(f.get("est_tokens") or 0 for f in queue_files)
+    result = {"documents": documents, "pages": pages, "est_tokens": est_tokens,
+              "cost_low": None, "cost_high": None, "runs_used": 0}
+    if backend == "claude-agent-sdk" or not documents:
+        return result
+
+    reg_dir = vault / ".watchdog" / "Registry"
+    usage_files = sorted(reg_dir.glob("usage-*.json")) if reg_dir.exists() else []
+    ratios = []
+    for uf in usage_files[-max_runs:]:
+        try:
+            totals = json.loads(uf.read_text(encoding="utf-8")).get("totals", {})
+        except (OSError, json.JSONDecodeError):
+            continue
+        input_tokens, cost_usd = totals.get("input_tokens") or 0, totals.get("cost_usd")
+        if input_tokens > 0 and cost_usd:
+            ratios.append(cost_usd / input_tokens)
+
+    if ratios:
+        result["cost_low"] = est_tokens * min(ratios)
+        result["cost_high"] = est_tokens * max(ratios)
+        result["runs_used"] = len(ratios)
+    return result
+
+
 def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "sonnet",
         wipe_pending: bool = True, force_lock: bool = False) -> dict:
     """Acquire lock, scan queue, write state file. Returns the state dict.
@@ -46,24 +110,7 @@ def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "so
     lock_file = vault / ".watchdog" / "Registry" / ".ingest-lock"
     state_file = vault / ".watchdog" / "ingest-state.json"
 
-    queue_dir = vault / ".watchdog" / "queue"
-    queue_files: list[dict] = []
-
-    if queue_dir.exists():
-        for qf in sorted(queue_dir.glob("*.json")):
-            try:
-                data = json.loads(qf.read_text(encoding="utf-8"))
-            except Exception:
-                continue
-            queue_files.append({
-                "path": str(qf.relative_to(vault)),
-                "sha256": qf.stem,
-                "filename": data.get("filename", qf.stem),
-                "document_type": data.get("document_type"),
-                "page_count": data.get("page_count") or len(data.get("pages", [])),
-                "est_tokens": _est_tokens_from_pages(data.get("pages", [])),
-            })
-
+    queue_files = scan_queue(vault)
     total = len(queue_files)
 
     def _live_lock_error() -> dict | None:
