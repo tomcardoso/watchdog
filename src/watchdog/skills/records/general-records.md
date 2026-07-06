@@ -1,11 +1,11 @@
 ---
-description: This skill is loaded by `/ingest` when the document type does not match any specific record skill. It provides a universal framework for reading an unfamiliar document: how to orient yourself, what to extract regardless of type, and what patterns are worth flagging in any record
+description: "This skill is loaded when the document type does not match any specific record skill. It provides a universal framework for reading an unfamiliar document: how to orient yourself, what to extract regardless of type, and what patterns are worth flagging in any record"
 ---
 # Domain knowledge — General records
 
-This skill is loaded by `/ingest` when the document type does not match any specific record skill. It provides a universal framework for reading an unfamiliar document: how to orient yourself, what to extract regardless of type, and what patterns are worth flagging in any record.
+This skill is loaded by Watchdog when the document type does not match any specific record skill. It provides a universal framework for reading an unfamiliar document: how to orient yourself, what to extract regardless of type, and what patterns are worth flagging in any record.
 
-Apply this knowledge in addition to the standard extraction process. If you can identify the document type during extraction and a more specific skill exists, use that skill's guidance instead — it will be more precise.
+Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
 
 ---
 

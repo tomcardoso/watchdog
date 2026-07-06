@@ -3,7 +3,7 @@ description: a WHOIS registration record, DNS zone file excerpt, domain registra
 ---
 # Domain knowledge — DNS and WHOIS records
 
-This skill is loaded by `/ingest` when the document type is a WHOIS registration record, DNS zone file excerpt, domain registration history, IP address allocation, or related internet infrastructure record.
+This skill is loaded by Watchdog when the document type is a WHOIS registration record, DNS zone file excerpt, domain registration history, IP address allocation, or related internet infrastructure record.
 
 Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
 
@@ -25,6 +25,8 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ---
 
 ## Fields to extract
+
+Fields expected in most DNS/WHOIS records, or fields that are high-value whenever present. Extract them even when the document doesn't highlight them prominently. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|

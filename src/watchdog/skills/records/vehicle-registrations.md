@@ -3,7 +3,7 @@ description: a motor vehicle registration, certificate of title, vehicle lien re
 ---
 # Domain knowledge — Vehicle and vessel registration records
 
-This skill is loaded by `/ingest` when the document type is a motor vehicle registration, certificate of title, vehicle lien record, vessel registration, or related transport registration document. For aircraft, use `aircraft-logs` instead, which covers aircraft registration, airworthiness, and flight tracking.
+This skill is loaded by Watchdog when the document type is a motor vehicle registration, certificate of title, vehicle lien record, vessel registration, or related transport registration document. For aircraft, use `aircraft-logs` instead, which covers aircraft registration, airworthiness, and flight tracking.
 
 Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
 
@@ -29,6 +29,8 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ---
 
 ## Fields to extract
+
+Fields expected in most vehicle registration records, or fields that are high-value whenever present. Extract them even when the document doesn't highlight them prominently. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|

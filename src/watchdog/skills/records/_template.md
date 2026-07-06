@@ -3,7 +3,7 @@ description: [one line naming the document types this skill covers — shown in 
 ---
 # Domain knowledge — [Document type name]
 
-This skill is loaded by `/ingest` when the document type is a [list the trigger document types]. [One sentence on what the skill helps extract or identify.]
+This skill is loaded by Watchdog when the document type is a [list the trigger document types]. [One sentence on what the skill helps extract or identify.]
 
 Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
 

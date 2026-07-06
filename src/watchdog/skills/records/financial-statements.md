@@ -3,7 +3,9 @@ description: a balance sheet, income statement, auditor's report, management dis
 ---
 # Domain knowledge — Financial statements
 
-Loaded by `/ingest` when the document type is a balance sheet, income statement, auditor's report, management discussion and analysis (MD&A), or similar financial disclosure.
+Loaded by Watchdog when the document type is a balance sheet, income statement, auditor's report, management discussion and analysis (MD&A), or similar financial disclosure.
+
+Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
 
 ---
 
@@ -22,6 +24,8 @@ Loaded by `/ingest` when the document type is a balance sheet, income statement,
 ---
 
 ## Fields to extract
+
+Fields expected in most financial statements, or fields that are high-value whenever present. Extract them even when the document doesn't highlight them prominently. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|

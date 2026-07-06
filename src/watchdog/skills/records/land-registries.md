@@ -3,7 +3,7 @@ description: a land registry extract, title search, cadastral record, RDPRM regi
 ---
 # Domain knowledge — Land registries and title systems
 
-This skill is loaded by `/ingest` when the document type is a land registry extract, title search, cadastral record, RDPRM registration, or similar document from a property rights registration system.
+This skill is loaded by Watchdog when the document type is a land registry extract, title search, cadastral record, RDPRM registration, or similar document from a property rights registration system.
 
 This skill covers the registry/title system itself — how property rights are recorded, document types, and what anomalies mean. For market transaction analysis (who paid what, mortgage patterns, assessment values), see the `real-estate` skill. For Quebec-specific corporate registry records, see the `corporate-filings` skill.
 
@@ -40,6 +40,8 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ---
 
 ## Fields to extract
+
+Fields expected in most land and title records, or fields that are high-value whenever present. Extract them even when the document doesn't highlight them prominently. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|

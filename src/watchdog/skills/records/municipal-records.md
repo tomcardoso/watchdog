@@ -3,7 +3,7 @@ description: a council agenda or minutes, development permit, variance applicati
 ---
 # Domain knowledge — Municipal records
 
-This skill is loaded by `/ingest` when the document type is a council agenda or minutes, development permit, variance application, zoning amendment, conflict-of-interest disclosure, or other municipal government record.
+This skill is loaded by Watchdog when the document type is a council agenda or minutes, development permit, variance application, zoning amendment, conflict-of-interest disclosure, or other municipal government record.
 
 Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
 
@@ -33,6 +33,8 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ---
 
 ## Fields to extract
+
+Fields expected in most municipal records, or fields that are high-value whenever present. Extract them even when the document doesn't highlight them prominently. This list isn't exhaustive — also extract other fields or details you judge important, even if they aren't listed here.
 
 | Field | What to look for |
 |-------|-----------------|
