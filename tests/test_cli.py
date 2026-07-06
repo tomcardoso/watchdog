@@ -875,6 +875,27 @@ def test_configure_set_projects_dir(wdg_home, tmp_path, capsys):
     assert new_dir.exists()
 
 
+def test_configure_persists_config_file_as_0600(wdg_home):
+    """config.json holds secrets (wayback_access_key/wayback_secret_key) in plaintext, so every
+    persist must chmod it 0600, matching auth._save_state (#304)."""
+    cli.cmd_configure(args(key="projects_dir", value=str(wdg_home)))
+    mode = (wdg_home / "config.json").stat().st_mode & 0o777
+    assert mode == 0o600
+
+
+def test_configure_corrects_preexisting_loose_permissions(wdg_home):
+    """A pre-existing config.json written before this fix (e.g. 0644) is tightened to 0600 on
+    the very next persist, not just newly created files."""
+    config_path = wdg_home / "config.json"
+    config_path.write_text("{}\n")
+    config_path.chmod(0o644)
+
+    cli.cmd_configure(args(key="projects_dir", value=str(wdg_home)))
+
+    mode = config_path.stat().st_mode & 0o777
+    assert mode == 0o600
+
+
 def test_configure_key_only_shows_value(wdg_home, capsys):
     cli.cmd_configure(args(key="ocr_languages", value="en-US,fr-FR"))
     capsys.readouterr()

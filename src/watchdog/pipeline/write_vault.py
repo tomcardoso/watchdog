@@ -88,10 +88,6 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _type_dir(entity_type: str) -> str:
-    return entity_type.lower()
-
-
 def slugify(text: str) -> str:
     """Convert arbitrary text to a URL-safe kebab-case slug."""
     s = text.lower().strip()
@@ -101,8 +97,35 @@ def slugify(text: str) -> str:
     return s.strip("-")
 
 
+def _type_dir(entity_type: str) -> str:
+    """Directory name for an entity type. Entity ``id`` is slugified upstream in postflight
+    (#303), but ``type`` is not — it stays a display value (e.g. "Person"), so this is the
+    one place it becomes a path segment; route it through the full ``slugify`` (not just
+    ``.lower()``) so a hostile value (e.g. containing ``../``) can't traverse out of the
+    entities directory."""
+    return slugify(entity_type) or "entity"
+
+
 def _doc_slug(filename: str) -> str:
     return slugify(Path(filename).stem) or "document"
+
+
+def _defang(text: str) -> str:
+    """Defang ``[[``/``]]`` in model-supplied name/title text before it is interpolated into
+    wikilink display text or a heading (#305) — otherwise a hostile value can close a wikilink
+    early and forge a second one pointing elsewhere in the vault."""
+    from watchdog.pipeline.research import neutralize
+    return neutralize(text or "")
+
+
+def _assert_in_vault(path: Path, vault_path: Path, label: str) -> Path:
+    """Refuse to write outside the vault (#303) — the resolve-based backstop behind entity
+    id/type slugification, in case a malicious value slips past it. Matches the existing
+    ``--extraction``/``--neardup-file`` containment guards in ``main()``, below."""
+    resolved = path.resolve()
+    if not resolved.is_relative_to(vault_path.resolve()):
+        sys.exit(f"Error: refusing to write outside the vault ({label}): {resolved}")
+    return path
 
 
 def _reconcile_entity_ids(incoming_entities: list[dict], entities_reg: dict) -> None:
@@ -305,7 +328,7 @@ def _build_timeline_section(events: list[dict], docs_reg: dict) -> str:
         if doc_note and doc_title:
             pg = _page_link(doc_entry.get("morgue_path", ""), ev.get("page"))
             page_part = f", {pg}" if pg else ""
-            source_part = f" — *[[{doc_note}|{doc_title}]]{page_part}*"
+            source_part = f" — *[[{doc_note}|{_defang(doc_title)}]]{page_part}*"
         else:
             source_part = ""
 
@@ -379,7 +402,7 @@ def _role_line(role: dict, docs_reg: dict) -> str:
     date_part = f" — {role['date_range']}" if role.get("date_range") else ""
     basis_part = " *(inferred)*" if role.get("basis") == "inferred" else ""
 
-    target_link = f"[[entities/{_type_dir(role['target_type'])}/{role['target_id']}|{role['target_name']}]]"
+    target_link = f"[[entities/{_type_dir(role['target_type'])}/{role['target_id']}|{_defang(role['target_name'])}]]"
 
     source_sha = role.get("source_sha256", "")
     doc_entry = docs_reg.get(source_sha, {})
@@ -389,7 +412,7 @@ def _role_line(role: dict, docs_reg: dict) -> str:
     if doc_note and doc_title:
         pg = _page_link(doc_entry.get("morgue_path", ""), role.get("page"))
         page_part = f", {pg}" if pg else ""
-        source_part = f" — via [[{doc_note}|{doc_title}]]{page_part}"
+        source_part = f" — via [[{doc_note}|{_defang(doc_title)}]]{page_part}"
     else:
         pg = _page_link("", role.get("page"))
         source_part = f" — {pg}" if pg else ""
@@ -608,7 +631,7 @@ def build_entity_note(
         doc_entry = docs_reg.get(sha, {})
         note = doc_entry.get("document_note")
         title = doc_entry.get("title") or doc_entry.get("filename", "")
-        appears_in_links.append(f"[[{note}|{title}]]" if note and title else sha[:16] + "…")
+        appears_in_links.append(f"[[{note}|{_defang(title)}]]" if note and title else sha[:16] + "…")
 
     fm = _frontmatter({
         "id":               entry["id"],
@@ -620,7 +643,7 @@ def build_entity_note(
         "date_last_updated": entry.get("date_last_updated", _today()),
     })
 
-    body = f"\n# {entry['name']}\n"
+    body = f"\n# {_defang(entry['name'])}\n"
 
     if summary:
         body += f"\n## Summary\n\n{summary}\n"
@@ -654,7 +677,7 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
         "source":           doc.get("source"),
         "obtained":         doc.get("obtained"),
         "entities_mentioned": [
-            f"[[entities/{_type_dir(e['type'])}/{e['id']}|{e['name']}]]"
+            f"[[entities/{_type_dir(e['type'])}/{e['id']}|{_defang(e['name'])}]]"
             for e in entity_entries
         ],
         "page_count":       doc.get("page_count"),
@@ -688,7 +711,7 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
     if entity_entries:
         body += "\n## Entities mentioned\n\n"
         for e in entity_entries:
-            body += f"- [[entities/{_type_dir(e['type'])}/{e['id']}|{e['name']}]]\n"
+            body += f"- [[entities/{_type_dir(e['type'])}/{e['id']}|{_defang(e['name'])}]]\n"
 
     body += "\n## Notes\n\n<!-- Reserved for journalist annotations — never overwritten by ingestion. -->\n"
 
@@ -740,7 +763,7 @@ def _record_entity_fragment(
 
     dtype = doc.get("document_type") or "document"
     ddate = doc.get("date_of_document") or "undated"
-    parts = [f"\n### {doc_title} — {dtype}, {ddate} (sha {sha256[:7]})\n"]
+    parts = [f"\n### {_defang(doc_title)} — {dtype}, {ddate} (sha {sha256[:7]})\n"]
     if incoming.get("summary"):
         parts.append(incoming["summary"].strip() + "\n")
     fragments = incoming.get("evidence_fragments") or []
@@ -892,7 +915,9 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
 
         for eid in modified:
             entry = entities_reg[eid]
-            note_path = vault_path / f"{entry['note_path']}.md"
+            note_path = _assert_in_vault(
+                vault_path / f"{entry['note_path']}.md", vault_path, "entity note_path"
+            )
             note_path.parent.mkdir(parents=True, exist_ok=True)
 
             notes_section = _extract_notes_section(note_path)
@@ -913,7 +938,7 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
                 documents_reg[doc_sha256]["morgue_path"],
             )
             if new_analysis_text:
-                entry_line = f"*{_today()}, via [[{doc_note}|{doc_title}]]:*\n{new_analysis_text}"
+                entry_line = f"*{_today()}, via [[{doc_note}|{_defang(doc_title)}]]:*\n{new_analysis_text}"
                 accumulated = (
                     existing_analysis.rstrip() + "\n\n" + entry_line
                 ).lstrip() if existing_analysis else entry_line
@@ -943,7 +968,9 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
 
         # ── 4. Write document note ────────────────────────────────────────────
 
-        doc_note_path = vault_path / "documents" / f"{slug}.md"
+        doc_note_path = _assert_in_vault(
+            vault_path / "documents" / f"{slug}.md", vault_path, "document note_path"
+        )
         doc_note_path.parent.mkdir(parents=True, exist_ok=True)
         entity_entries_for_note = [entities_reg[e["id"]] for e in incoming_entities if e["id"] in entities_reg]
         doc_note_content = _build_document_note(doc, entity_entries_for_note, morgue_relative)
@@ -1016,7 +1043,9 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
 
     # ── 7. Move source file to morgue ─────────────────────────────────────────
 
-    morgue_dir = vault_path / Path(morgue_relative).parent
+    morgue_dir = _assert_in_vault(
+        vault_path / Path(morgue_relative).parent, vault_path, "morgue path"
+    )
     morgue_dir.mkdir(parents=True, exist_ok=True)
 
     source = vault_path / doc.get("original_path", f"_INCOMING/{doc['filename']}")

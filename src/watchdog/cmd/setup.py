@@ -2,6 +2,7 @@
 
 import json
 import os
+import stat
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -743,6 +744,9 @@ class _ConfigError(Exception):
 def _persist(config: dict) -> None:
     WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
     CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")
+    os.chmod(CONFIG_FILE, stat.S_IRUSR | stat.S_IWUSR)  # 0600 — mirrors auth._save_state (#304);
+    # config.json holds the archive.org S3 wayback_secret_key in plaintext, so this is
+    # unconditional on every persist to correct an existing loose-permission file too.
 
 
 def _display_value(k, v):

@@ -1051,6 +1051,93 @@ def test_fragment_digest_carries_claim_and_quote(tmp_path):
     assert "Ms. Smith holds 4,200,000 common shares" in frag
 
 
+# ── Security: path-traversal / vault-escape guard (#303) ──────────────────────
+#
+# postflight._sanitize_entity_ids slugifies entity id/type before write_vault ever runs; these
+# tests call write_vault.run() directly (bypassing postflight) to exercise the layer-2
+# defense-in-depth backstop on its own — a malicious id/type must not escape the vault even if
+# upstream sanitization were somehow skipped.
+
+def test_path_traversal_entity_id_rejected(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    extraction = make_extraction(tmp_path, {"entities": [
+        {"id": "../../../ESCAPED", "name": "Evil Corp", "type": "Person", "aliases": [],
+         "timeline_events": [], "roles": []},
+        {"id": "acme-corp", "name": "Acme Corp", "type": "Company", "aliases": [],
+         "timeline_events": [], "roles": []},
+    ]})
+
+    with pytest.raises(SystemExit):
+        run(extraction, vault)
+
+    assert not (tmp_path / "ESCAPED.md").exists()
+
+
+def test_path_traversal_entity_type_rejected(tmp_path):
+    """type is not slugified upstream (it stays a display value), so _type_dir itself must
+    strip traversal characters rather than just lowercasing them."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    extraction = make_extraction(tmp_path, {"entities": [
+        {"id": "alice-smith", "name": "Alice Smith", "type": "../../../person", "aliases": [],
+         "timeline_events": [], "roles": []},
+        {"id": "acme-corp", "name": "Acme Corp", "type": "Company", "aliases": [],
+         "timeline_events": [], "roles": []},
+    ]})
+
+    run(extraction, vault)   # traversal chars are stripped, not merely lowercased — no escape
+
+    assert (vault / "entities" / "person" / "alice-smith.md").exists()
+    assert not (tmp_path / "person.md").exists()
+
+
+# ── Security: wikilink display-text defanging (#305) ───────────────────────────
+
+def test_entity_name_bracket_injection_defanged_in_heading(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    hostile_name = "Acme]] [[entities/company/acme-corp|cleared"
+    run(make_extraction(tmp_path, {"entities": [
+        {"id": "alice-smith", "name": hostile_name, "type": "Person", "aliases": [],
+         "timeline_events": [], "roles": []},
+        {"id": "acme-corp", "name": "Acme Corp", "type": "Company", "aliases": [],
+         "timeline_events": [], "roles": []},
+    ]}), vault)
+
+    content = (vault / "entities" / "person" / "alice-smith.md").read_text()
+    # Frontmatter keeps the raw name (safe — yaml.dump already escapes it); only the H1 heading,
+    # which is interpolated as literal Markdown, needs the wikilink defang.
+    heading = content.split("---\n", 2)[-1]
+    assert "]] [[" not in heading
+    assert "# Acme] ] [ [entities/company/acme-corp|cleared" in heading
+
+
+def test_document_title_bracket_injection_defanged_in_role_line(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    hostile_title = "Report]] [[entities/company/acme-corp|Cleared"
+    run(make_extraction(tmp_path, {"document": {"title": hostile_title}}), vault)
+
+    content = (vault / "entities" / "person" / "alice-smith.md").read_text()
+    assert "]] [[" not in content
+
+
+def test_document_note_entity_mention_name_defanged(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    hostile_name = "Acme]] [[entities/company/rival|Rival Corp"
+    run(make_extraction(tmp_path, {"entities": [
+        {"id": "alice-smith", "name": "Alice Smith", "type": "Person", "aliases": [],
+         "timeline_events": [], "roles": []},
+        {"id": "acme-corp", "name": hostile_name, "type": "Company", "aliases": [],
+         "timeline_events": [], "roles": []},
+    ]}), vault)
+
+    content = (vault / "documents" / "test-doc.md").read_text()
+    assert "]] [[" not in content
+
+
 def test_entity_timeline_has_page_link(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
