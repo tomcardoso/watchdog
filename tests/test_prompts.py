@@ -8,7 +8,7 @@ from watchdog.pipeline import prompts
 _flat = model_client._flatten_prompt   # extract/section prompts are content-block lists (A1)
 
 _TEMPLATES = ["classify", "extract_instructions", "section_intro",
-              "synthesis", "briefing", "timeline_dedup", "timeline_precision"]
+              "synthesis", "briefing", "timeline_dedup", "timeline_precision", "digest"]
 
 
 @pytest.mark.parametrize("name", _TEMPLATES)
@@ -59,16 +59,17 @@ def test_section_prompt_renders_label():
 
 
 def test_later_section_prompt_does_not_ask_for_summary():
-    # Only section 1's document.summary survives merge.merge_extractions (merge.py:69), so
-    # explicitly asking later sections for one pays for model output that's thrown away (#260).
-    # The shared instructions block still documents the field generically (also used by the
-    # first-section/whole-doc path) — what must be gone is the later-section instruction
-    # explicitly telling the model to supply one for that section.
+    # No section ever emits document.summary any more (#279): the whole-document digest is
+    # composed after merge — inline for a non-sectioned doc, via one post-merge model call for
+    # a sectioned one. The shared instructions block still documents the field generically
+    # (also used by the whole-doc path); what must be gone from the later-section note is any
+    # reference to "only section 1's summary is kept" (the pre-#279 contract).
     p = prompts.build_section_prompt(
         pages_text="x", existing_entities=[], skill_text="", carry_forward="",
         section_label="pp.11-20", is_first=False, known_document_types=[])
     text = _flat(p)
-    assert "document.summary for this section only" not in text
+    assert "only section 1's summary is kept" not in text
+    assert "composed after the merge" in text
     assert "LATER section" in text
 
 
@@ -78,6 +79,25 @@ def test_first_section_prompt_still_fills_metadata():
         section_label="pp.1-10", is_first=True, known_document_types=[])
     text = _flat(p)
     assert "morgue_entity_id" in text
+    # Section 1 no longer emits document.summary either — that's now composed post-merge (#279).
+    assert "Omit document.summary" in text
+    assert "composed after all sections are merged" in text
+
+
+def test_build_digest_prompt_renders_title_type_pages_and_facts():
+    facts = [{"fact": "Filed in 2024", "date": "2024-01-15"}, {"fact": "Revenue grew"}]
+    p = prompts.build_digest_prompt(title="Acme AR", document_type="Annual Report",
+                                    page_count=42, key_facts=facts)
+    assert "Acme AR" in p
+    assert "Annual Report" in p
+    assert "42" in p
+    assert "Filed in 2024" in p and "Revenue grew" in p
+
+
+def test_build_digest_prompt_falls_back_when_fields_missing():
+    p = prompts.build_digest_prompt(title="", document_type="", page_count=None, key_facts=[])
+    assert "(untitled)" in p
+    assert "(unknown)" in p
 
 
 def test_extract_prompt_includes_instructions_and_data():

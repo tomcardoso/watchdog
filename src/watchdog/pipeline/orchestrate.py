@@ -401,8 +401,43 @@ def _carry_text(entities_seen: dict, observations: str) -> str:
     return "\n".join(lines) + "\n" if lines else ""
 
 
+def _stitch_digest(doc: dict, page_count: int | None) -> str:
+    """Deterministic fallback when the digest call fails or returns empty: an orientation line
+    from title/type/page_count, then the first few facts as plain sentences. Degraded but
+    valid — never worth a retry loop (#279)."""
+    head = doc.get("title") or "Untitled document"
+    dtype = doc.get("document_type") or ""
+    line = f"{head} — {dtype}" if dtype else head
+    if page_count:
+        line += f", {page_count} pages"
+    facts = [f.get("fact", "").rstrip(".") + "." for f in doc.get("key_facts", [])[:8]]
+    return (line + ". " + " ".join(facts)).strip() if facts else line + "."
+
+
+async def _compose_digest(doc: dict, page_count: int | None, model: str, backend: str | None,
+                          filename: str) -> tuple[str, float]:
+    """One small model call composing the whole-document digest from the merged key_facts
+    (#279) — no section call ever sees the whole document, so this runs once after merge, on
+    the finalizer tier. Falls back to the deterministic stitch on any model failure or an
+    empty response; returns (summary, cost)."""
+    prompt = prompts.build_digest_prompt(
+        title=doc.get("title", ""), document_type=doc.get("document_type", ""),
+        page_count=page_count, key_facts=_briefing_facts(doc))
+    try:
+        r = await _call_model(task="digest", model=model, backend=backend,
+                              prompt=prompt, schema=schemas.DIGEST,
+                              filename=filename, detail="digest")
+        summary = (r.parsed.get("summary") or "").strip()
+        if summary:
+            return summary, r.cost_usd or 0.0
+        return _stitch_digest(doc, page_count), r.cost_usd or 0.0
+    except model_client.ModelError:
+        return _stitch_digest(doc, page_count), 0.0
+
+
 async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_label,
-                             effort=None, backend=None, brief=None):
+                             effort=None, backend=None, brief=None,
+                             digest_model: str = "haiku", digest_backend: str | None = None):
     """Sequential per-section extraction with carry-forward, then deterministic merge."""
     parts, cost = [], 0.0
     entities_seen: dict[str, dict] = {}
@@ -428,6 +463,11 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
 
     extraction = merge.merge_extractions(parts)
     scratchpad = "\n".join(p["observations"] for p in parts if p.get("observations"))
+    doc = extraction.setdefault("document", {})
+    page_count = pf.get("page_count") or len(pf.get("pages", []))
+    doc["summary"], digest_cost = await _compose_digest(
+        doc, page_count, digest_model, digest_backend, pf["filename"])
+    cost += digest_cost
     _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault,
                     skill_text=skill_text, extract_model=model, extract_effort=effort)
     ok, errors = _write_postflight(vault, sha, extraction)
@@ -463,7 +503,9 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
                             pinned_skill: str | None = None,
                             extract_effort: str | None = None,
                             extract_backend: str | None = None,
-                            classify_backend: str | None = None) -> dict:
+                            classify_backend: str | None = None,
+                            digest_model: str = "haiku",
+                            digest_backend: str | None = None) -> dict:
     pf = preflight.run(vault, sha)
     if pf.get("error"):
         return _fail(vault, sha, "", pf["error"])
@@ -515,7 +557,8 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         _step(f"{_DIM}→  {filename}  {flow} · extracting · {n_sections} sections…{_RESET}",
               f"{_DIM}→  {filename}  extracting · {n_sections} sections…{_RESET}")
         extraction, scratchpad, cost, ok, errors = await _extract_sectioned(
-            vault, sha, pf, skill_text, plan, extract_model, skill_label, extract_effort, extract_backend, brief)
+            vault, sha, pf, skill_text, plan, extract_model, skill_label, extract_effort, extract_backend, brief,
+            digest_model, digest_backend)
     else:
         _step(f"{_DIM}→  {filename}  {flow} · extracting…{_RESET}",
               f"{_DIM}→  {filename}  extracting…{_RESET}")
@@ -533,7 +576,8 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
                       f"re-extracting in {n_sections} sections…{_RESET}")
                 whole_cost = cost
                 extraction, scratchpad, cost, ok, errors = await _extract_sectioned(
-                    vault, sha, pf, skill_text, fb, extract_model, skill_label, extract_effort, extract_backend, brief)
+                    vault, sha, pf, skill_text, fb, extract_model, skill_label, extract_effort, extract_backend, brief,
+                    digest_model, digest_backend)
                 cost += whole_cost   # account for the failed whole-doc attempt
 
     if not ok:
@@ -677,7 +721,8 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str, brief: str 
 async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract_model: str,
                         pinned_skill: str, extract_effort: str | None, concurrency: int,
                         classify_model: str, classify_pages: int, classify_backend: str | None,
-                        api_key: str) -> dict:
+                        api_key: str, post_model: str = "sonnet",
+                        post_backend: str | None = None) -> dict:
     """Split the queue into sectioned (→ synchronous claude-api, via the normal
     `_extract_document`) and whole-document (→ one batch submission) shas, run the former, then
     submit the latter and return — submit-and-exit, not blocking-poll (a batch can take up to
@@ -718,7 +763,8 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
                 return await _extract_document(vault, sha, brief, extract_model, classify_model,
                                                classify_pages, pinned_skill, extract_effort,
                                                extract_backend="claude-api",
-                                               classify_backend=classify_backend)
+                                               classify_backend=classify_backend,
+                                               digest_model=post_model, digest_backend=post_backend)
         results.extend(await asyncio.gather(*[_sectioned(s) for s in sectioned_shas]))
 
     if not batch_docs:
@@ -738,7 +784,8 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
 async def _run_batch(vault: Path, shas: list[str], brief: str | None, extract_model: str,
                      pinned_skill: str | None, extract_effort: str | None, concurrency: int,
                      classify_model: str, classify_pages: int,
-                     classify_backend: str | None) -> dict:
+                     classify_backend: str | None, post_model: str = "sonnet",
+                     post_backend: str | None = None) -> dict:
     """Entry point for `run` when `extract_backend == "claude-batch"`. Defense-in-depth guards
     beyond `cmd_ingest`'s own checks — a programmatic caller that skips CLI validation still
     gets a clear error rather than a confusing downstream failure."""
@@ -757,7 +804,7 @@ async def _run_batch(vault: Path, shas: list[str], brief: str | None, extract_mo
         return await _resume_batch(vault, state, pinned_skill, brief, api_key)
     return await _submit_batch(vault, shas, brief, extract_model, pinned_skill, extract_effort,
                                concurrency, classify_model, classify_pages, classify_backend,
-                               api_key)
+                               api_key, post_model, post_backend)
 
 
 def _nudge_skill_pin(results: list) -> None:
@@ -1115,7 +1162,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         brief = _read_brief(vault)
         batch_out = await _run_batch(vault, shas, brief, extract_model, pinned_skill,
                                      extract_effort, concurrency, classify_model, classify_pages,
-                                     classify_backend)
+                                     classify_backend, post_model, post_backend)
         results = batch_out["results"]
         cancelled_flag = False
         rate_limit_msg = None
@@ -1156,7 +1203,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                 try:
                     return await _extract_document(vault, sha, brief, extract_model, classify_model,
                                                    classify_pages, pinned_skill, extract_effort,
-                                                   extract_backend, classify_backend)
+                                                   extract_backend, classify_backend,
+                                                   digest_model=post_model, digest_backend=post_backend)
                 except model_client.RateLimitError as e:  # session-wide — stop, leave queued for resume
                     if not cancelled.is_set():
                         print()
