@@ -1087,7 +1087,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
               pinned_skill: str | None = None,
               extract_effort: str | None = None, post_effort: str | None = None,
               extract_backend: str | None = None, post_backend: str | None = None,
-              classify_backend: str | None = None) -> dict:
+              classify_backend: str | None = None, wait: bool = False) -> dict:
     """Extract every queued document (bounded by `concurrency`), then post-ingest.
 
     `extract_model` drives extraction (whole-doc + section); `post_model` drives
@@ -1098,6 +1098,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     extraction and post-ingest stages respectively (D36); classify has no effort knob.
     `*_backend` selects a non-default backend per stage (None → route by auth mode); a
     non-Claude backend's `*_model` is that provider's raw model id (D37).
+    `wait` only changes the rate-limit notice text — the caller (`cmd_ingest`) owns the
+    actual sleep-and-resume loop; this function always stops cleanly on a rate limit.
     """
     queue_dir = vault / ".watchdog" / "queue"
     shas = [f.stem for f in sorted(queue_dir.glob("*.json"))] if queue_dir.exists() else []
@@ -1117,6 +1119,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         results = batch_out["results"]
         cancelled_flag = False
         rate_limit_msg = None
+        rate_limit_resets_at = None
         extra_summary = {"batch_pending": batch_out.get("batch_pending", False)}
     else:
         if not shas:
@@ -1133,13 +1136,14 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         stop_reason: dict = {}      # {"rate_limit": "<notice>"} when a limit stopped the batch
         tasks: list = []
 
-        def _request_stop(rate_limit: str | None = None) -> None:
+        def _request_stop(rate_limit: str | None = None, resets_at: int | None = None) -> None:
             """Stop the batch once: flag it, record why, cancel in-flight work. Idempotent."""
             if cancelled.is_set():
                 return
             cancelled.set()
             if rate_limit:
                 stop_reason["rate_limit"] = rate_limit
+                stop_reason["resets_at"] = resets_at
             for t in tasks:
                 t.cancel()
 
@@ -1157,9 +1161,13 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                     if not cancelled.is_set():
                         print()
                         _say(f"{_YELLOW}Rate limit reached{_RESET}{_DIM} — {e}{_RESET}")
-                        _say(f"{_DIM}Stopping; finished documents are saved. Re-run "
-                             f"{_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} once it resets to continue.{_RESET}")
-                        _request_stop(rate_limit=str(e))
+                        if wait:
+                            _say(f"{_DIM}Stopping; finished documents are saved. "
+                                 f"Waiting to resume automatically once it resets.{_RESET}")
+                        else:
+                            _say(f"{_DIM}Stopping; finished documents are saved. Re-run "
+                                 f"{_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} once it resets to continue.{_RESET}")
+                        _request_stop(rate_limit=str(e), resets_at=e.resets_at)
                     return {"sha256": sha, "filename": "", "status": "cancelled"}
                 except asyncio.CancelledError:       # ctrl+c mid-document — queue file stays
                     return {"sha256": sha, "filename": "", "status": "cancelled"}
@@ -1202,6 +1210,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         results = [t.result() for t in tasks if t.done() and not t.cancelled()]
         cancelled_flag = cancelled.is_set()
         rate_limit_msg = stop_reason.get("rate_limit")
+        rate_limit_resets_at = stop_reason.get("resets_at")
         extra_summary = {}
 
     by_status = lambda s: sum(1 for r in results if r.get("status") == s)
@@ -1212,6 +1221,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                "cancelled": cancelled_flag,
                "rate_limited": bool(rate_limit_msg),
                "stop_message": rate_limit_msg,
+               "rate_limit_resets_at": rate_limit_resets_at,
                "quarantined": quarantined, **extra_summary}
     if not pinned_skill:
         _nudge_skill_pin(results)

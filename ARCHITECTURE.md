@@ -147,6 +147,18 @@ writes so the concurrent document workers write safely. Uses `flock` on macOS/Li
 (blocks indefinitely) and `msvcrt.locking` on Windows (bounded retries, ~10s, then raises)
 — see D69.
 
+**Rate-limit stop-and-resume, and `--wait` (D71).** A `model_client.RateLimitError` (session-wide,
+not a per-document failure — see §5) stops the batch cleanly: in-flight documents finish or are
+cancelled, their queue files are left in place, and `orchestrate.run` returns without raising.
+Re-running `watchdog ingest` picks up exactly where it left off (the queue re-scan plus the
+`already_extracted` registry check are enough — no extra resume state is needed). `--wait` makes
+that re-run automatic: `cmd_ingest` loops on `orchestrate.run`, and on a rate-limited summary
+sleeps until `RateLimitError.resets_at` (plus a buffer; a fixed fallback when the backend didn't
+report one — only `claude-agent-sdk` does) before looping again, until the queue drains and
+finalize completes. The sleep is chunked under the 30-minute staleness window, refreshing the held
+lock's `started_at` after each chunk, so a wait that outlasts it doesn't make a live run look
+abandoned. Opt-in only — without the flag, a rate limit stops the batch exactly as before.
+
 ---
 
 ## 5. Ingest (extraction)

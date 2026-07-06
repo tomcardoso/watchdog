@@ -52,6 +52,18 @@ def test_acquire_or_take_stale_refuses_unparseable(tmp_path):
     assert lock.read_text() == "started_at: not-a-timestamp\n"
 
 
+def test_refresh_lock_resets_age(tmp_path):
+    """refresh_lock (#271, for `watchdog ingest --wait`) rewrites started_at to now, so a lock
+    held through a long sleep never crosses the staleness threshold."""
+    lock = tmp_path / ".lock"
+    old = _iso(datetime.now(timezone.utc) - timedelta(seconds=3600))
+    lock.write_text(f"pid: cli\nstarted_at: {old}\n")
+    locks.refresh_lock(lock)
+    age = locks.lock_age_seconds(lock)
+    assert age is not None and age < 5
+    assert "pid: cli" in lock.read_text()
+
+
 def _racer(arg):
     lock_path, contents = arg
     return locks.acquire_lock(Path(lock_path), contents)

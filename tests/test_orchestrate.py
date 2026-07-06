@@ -803,6 +803,61 @@ def test_rate_limit_stops_batch_keeps_queue(tmp_path, monkeypatch):
     assert {p.name for p in (vault / ".watchdog" / "queue").glob("*.json")} == {"aaa111.json", "bbb222.json"}
 
 
+def test_rate_limit_resets_at_reaches_summary(tmp_path, monkeypatch):
+    """`RateLimitError.resets_at` (only populated on the claude-agent-sdk backend) must reach
+    the summary so `watchdog ingest --wait` (#271) knows when to resume."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="aaa111", filename="one.pdf")
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "classify":
+            return model_client.ModelResult(parsed={"skill": "general-records.md"}, text="",
+                                            model="m", backend="claude-agent-sdk", auth_mode="subscription")
+        raise model_client.RateLimitError("session limit", resets_at=1_700_000_000)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault, concurrency=1))
+
+    assert summary["rate_limit_resets_at"] == 1_700_000_000
+
+
+def test_rate_limit_resets_at_is_none_when_backend_omits_it(tmp_path, monkeypatch):
+    """The claude-api / OpenAI-compatible backends raise RateLimitError with no resets_at —
+    the summary must carry None rather than error, so --wait falls back to its fixed interval."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="aaa111", filename="one.pdf")
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "classify":
+            return model_client.ModelResult(parsed={"skill": "general-records.md"}, text="",
+                                            model="m", backend="claude-agent-sdk", auth_mode="subscription")
+        raise model_client.RateLimitError("session limit")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault, concurrency=1))
+
+    assert summary["rate_limit_resets_at"] is None
+
+
+def test_rate_limit_message_reflects_wait_flag(tmp_path, monkeypatch, capsys):
+    """The in-run notice text differs between plain and --wait mode: the former tells the user
+    to re-run ingest manually, the latter says it'll resume on its own (#271)."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="aaa111", filename="one.pdf")
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "classify":
+            return model_client.ModelResult(parsed={"skill": "general-records.md"}, text="",
+                                            model="m", backend="claude-agent-sdk", auth_mode="subscription")
+        raise model_client.RateLimitError("session limit")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate.run(vault, concurrency=1, wait=True))
+    out = capsys.readouterr().out
+    assert "Waiting to resume automatically" in out
+    assert "Re-run" not in out
+
+
 def test_failed_doc_is_named_and_quarantine_surfaced(tmp_path, monkeypatch):
     """A genuine (non-rate-limit) error names the file rather than a bare sha, quarantines
     it to _failed/, and the summary reports the quarantined count."""

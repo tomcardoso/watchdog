@@ -317,7 +317,7 @@ The document couldn't be processed. Common reasons:
 To retry: move the file from `_INCOMING/_FAILED/` back to `_INCOMING/`, then run `watchdog chew` again.
 
 **Ingesting a large batch (hundreds of documents)**
-`watchdog ingest` extracts the whole queue, processing `extract_concurrency` documents in parallel (default 5). If you hit model rate limits, lower it (`watchdog configure extract_concurrency 2` or `watchdog ingest --concurrency 2`) or chew and ingest in groups. Each document is moved to `morgue/` as soon as it's processed, so re-running `watchdog ingest` only picks up what's still queued.
+`watchdog ingest` extracts the whole queue, processing `extract_concurrency` documents in parallel (default 5). If you hit model rate limits, lower it (`watchdog configure extract_concurrency 2` or `watchdog ingest --concurrency 2`) or chew and ingest in groups. Each document is moved to `morgue/` as soon as it's processed, so re-running `watchdog ingest` only picks up what's still queued. Running unattended (e.g. overnight)? Add `--wait`: instead of stopping on a rate limit and waiting for you to re-run it, it sleeps until the limit resets and resumes automatically, repeating until the whole queue is done.
 
 **A document failed during ingest**
 A document whose extraction fails is logged to `.watchdog/Registry/ingest.log` and moved to `.watchdog/queue/_failed/`; the rest of the batch still completes. To retry it, move its queue file back: `mv .watchdog/queue/_failed/<sha>.json .watchdog/queue/` and run `watchdog ingest` again.

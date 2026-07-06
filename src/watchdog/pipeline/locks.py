@@ -29,6 +29,17 @@ def acquire_lock(lock_file: Path, contents: str) -> bool:
     return True
 
 
+def refresh_lock(lock_file: Path) -> None:
+    """Rewrite an already-held lock's ``started_at`` to now.
+
+    For a long-lived holder (e.g. `watchdog ingest --wait` sleeping through a rate limit) so
+    the staleness heuristic never mistakes a live-but-sleeping run for an abandoned one.
+    """
+    lock_file.write_text(
+        f"pid: cli\nstarted_at: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}\n",
+        encoding="utf-8")
+
+
 def lock_started_at(lock_file: Path) -> str | None:
     """Return the ISO timestamp on the lock's ``started_at:`` line, or ``None`` if absent."""
     try:
