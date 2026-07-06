@@ -64,17 +64,37 @@ def alert_id(sha256: str, term: str) -> str:
     return f"alert:{sha256[:7]}:{_short(term, 8)}"
 
 
-def filter_callouts(contradictions: str, resolved: frozenset[str]) -> str:
-    """Drop resolved callout blocks from an accumulated ``## Contradictions`` body (#266).
+def split_callouts(contradictions: str) -> list[str]:
+    """Split an accumulated ``## Contradictions`` body into individual callout blocks
+    (blocks are separated by blank lines, the join `dedup_callouts`/note-render uses)."""
+    if not contradictions.strip():
+        return []
+    return [b for b in re.split(r"\n\s*\n", contradictions.strip()) if b.strip()]
 
-    Blocks are separated by blank lines (the join ``_accumulate_contradictions`` uses). A block
-    whose ``contradiction_id`` is resolved is removed; the rest keep their order and spacing.
+
+def dedup_callouts(callouts: list[str]) -> list[str]:
+    """Dedup callout blocks by normalized text (#288), keeping first-seen original wording."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for callout in callouts:
+        callout = callout.strip()
+        if not callout:
+            continue
+        key = _callout_text(callout)
+        if key not in seen:
+            seen.add(key)
+            result.append(callout)
+    return result
+
+
+def filter_callouts(callouts: list[str], resolved: frozenset[str]) -> list[str]:
+    """Drop resolved callouts from a list (#266 / #288).
+
+    A callout whose ``contradiction_id`` is resolved is removed; the rest keep their order.
     Registry state is untouched — this is a render-time overlay, so unresolving restores it."""
-    if not contradictions.strip() or not resolved:
-        return contradictions
-    blocks = [b for b in re.split(r"\n\s*\n", contradictions.strip()) if b.strip()]
-    kept = [b for b in blocks if contradiction_id(b) not in resolved]
-    return "\n\n".join(kept)
+    if not resolved:
+        return callouts
+    return [c for c in callouts if contradiction_id(c) not in resolved]
 
 
 # ── Store I/O ───────────────────────────────────────────────────────────────────

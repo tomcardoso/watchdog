@@ -258,6 +258,84 @@ def test_resolved_contradiction_dropped_from_note_body(tmp_path):
     assert "Address differs" not in note.read_text()
 
 
+def test_unresolve_restores_contradiction_to_note(tmp_path):
+    # #288: "unresolving restores it" was false for entity notes — the resolved-contradiction
+    # overlay only ever applied to the note render, and the callout was dropped for good once
+    # a post-resolve ingest touch rewrote the note. The registry is the ledger, so unresolving
+    # must bring it back on the next touch.
+    from watchdog.pipeline import resolutions
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    callout = "> [!contradiction] Address differs from d3"
+    overrides = {"entities": [{"id": "alice-smith", "name": "Alice Smith", "type": "Person",
+                               "contradictions": [callout]}]}
+    rid = resolutions.contradiction_id(callout)
+    note = vault / "entities" / "person" / "alice-smith.md"
+
+    run(make_extraction(tmp_path, overrides), vault)
+    resolutions.resolve(vault, [rid])
+    run(make_extraction(tmp_path, overrides), vault)
+    assert "Address differs" not in note.read_text()
+
+    resolutions.unresolve(vault, [rid])
+    run(make_extraction(tmp_path, overrides), vault)
+    assert "Address differs" in note.read_text()
+
+
+def test_multiblock_callout_fully_resolved_not_left_in_fragments(tmp_path):
+    # #288 finding 3: a callout with an internal blank line used to get re-split by the
+    # note-body regex on every render, so resolving it could leave part of the block
+    # behind. Registry items are never re-split, so resolving must drop it whole.
+    from watchdog.pipeline import resolutions
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    callout = (
+        "> [!contradiction] Address differs\n>\n"
+        "> Filed as 123 Main St in 2022, 456 Oak Ave in 2024."
+    )
+    overrides = {"entities": [{"id": "alice-smith", "name": "Alice Smith", "type": "Person",
+                               "contradictions": [callout]}]}
+    note = vault / "entities" / "person" / "alice-smith.md"
+
+    run(make_extraction(tmp_path, overrides), vault)
+    assert callout in note.read_text()
+
+    resolutions.resolve(vault, [resolutions.contradiction_id(callout)])
+    run(make_extraction(tmp_path, overrides), vault)
+    content = note.read_text()
+    assert "Address differs" not in content
+    assert "Filed as 123 Main St" not in content
+
+
+def test_note_only_contradiction_backfilled_into_registry(tmp_path):
+    # #288: a callout that only ever lived in the note body (pre-#282 vault) must be folded
+    # into the registry entry the first time the entity is touched by an ingest, not left
+    # stranded where the lead sweep and unresolve can never see it.
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    note = vault / "entities" / "person" / "alice-smith.md"
+    note.parent.mkdir(parents=True, exist_ok=True)
+    note.write_text(
+        "---\nid: alice-smith\n---\n\n"
+        "## Contradictions\n\n> [!contradiction] Note-only callout\n\n"
+        "## Notes\n\n<!-- Journalist annotations — never overwritten by ingestion. -->\n"
+    )
+    existing_entities = {
+        "alice-smith": {
+            "id": "alice-smith", "name": "Alice Smith", "type": "Person",
+            "aliases": [], "appears_in": ["prior-sha"],
+            "note_path": "entities/person/alice-smith",
+            "roles": [], "date_first_seen": "2024-01-01", "date_last_updated": "2024-01-01",
+        }
+    }
+    (vault / ".watchdog" / "Registry" / "entities.json").write_text(json.dumps(existing_entities))
+
+    run(make_extraction(tmp_path), vault)
+
+    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    assert entities["alice-smith"]["contradictions"] == ["> [!contradiction] Note-only callout"]
+
+
 def test_relationship_line_includes_source_doc_link(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")

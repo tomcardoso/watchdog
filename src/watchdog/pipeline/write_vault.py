@@ -215,16 +215,6 @@ def _extract_contradictions(note_path: Path) -> str:
     return _extract_section(note_path.read_text(encoding="utf-8"), "Contradictions")
 
 
-def _accumulate_contradictions(existing: str, incoming: list[str]) -> str:
-    """Append new contradiction callout blocks, skipping ones already present."""
-    result = existing.strip()
-    for callout in incoming:
-        callout = callout.strip()
-        if callout and callout not in result:
-            result = (result + "\n\n" + callout).strip() if result else callout
-    return result
-
-
 # Header a document contributes to an entity note's ## Analysis section, e.g.
 # ``*3 May 2026, via [[documents/acme-annual-report|Acme Annual Report]]:*``. The doc-note
 # link is stable per document (1:1 with its sha via the slug), so it keys the block for
@@ -914,10 +904,15 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
             else:
                 accumulated = existing_analysis
 
-            contradictions = _accumulate_contradictions(
-                _extract_contradictions(note_path), incoming.get("contradictions") or []
+            # The registry entry is the contradiction ledger (#282); the note body is a
+            # filtered render of it. Fold in any note-only callouts too (self-healing
+            # backfill for pre-#282 vaults, or a stray hand-edit) before filtering (#288).
+            all_callouts = resolutions.dedup_callouts(
+                list(entry.get("contradictions") or [])
+                + resolutions.split_callouts(_extract_contradictions(note_path))
             )
-            contradictions = resolutions.filter_callouts(contradictions, resolved_ids)
+            entry["contradictions"] = all_callouts
+            contradictions = "\n\n".join(resolutions.filter_callouts(all_callouts, resolved_ids))
 
             note_content = build_entity_note(
                 entry, notes_section, documents_reg, new_summary, accumulated, contradictions

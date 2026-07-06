@@ -15,7 +15,6 @@ from pathlib import Path
 
 from watchdog.pipeline.backup import snapshot as _snapshot
 from watchdog.pipeline.write_vault import (
-    _accumulate_contradictions,
     _extract_analysis,
     _extract_contradictions,
     _extract_notes_section,
@@ -28,6 +27,7 @@ from watchdog.pipeline.write_vault import (
     build_entity_note,
     _frontmatter,
 )
+from watchdog.pipeline import resolutions
 from watchdog.pipeline.timeline import cmd_rebuild_timeline
 
 _DEFAULT_NOTES_MARKER = "<!-- Journalist annotations — never overwritten by ingestion. -->"
@@ -53,6 +53,12 @@ def _union_appears_in(keep: dict, merge_entry: dict) -> list[str]:
             result.append(sha)
             seen.add(sha)
     return result
+
+
+def _union_contradictions(keep: dict, merge_entry: dict) -> list[str]:
+    return resolutions.dedup_callouts(
+        list(keep.get("contradictions") or []) + list(merge_entry.get("contradictions") or [])
+    )
 
 
 def _union_timeline_events(keep: dict, merge_entry: dict) -> list[dict]:
@@ -94,11 +100,12 @@ def _clean_roles(
 def merge(entities_reg: dict, keep_id: str, merge_id: str) -> dict:
     """Mutate `entities_reg` in place: fold `merge_id` into `keep_id`.
 
-    Unions aliases, `appears_in`, roles, and timeline events; remaps every
-    `role.target_id` across the *whole* registry that points at the losing id
-    (not just the two entities being merged — a third entity naming the
-    losing id as a relationship target must follow it too); then deletes the
-    losing entry. Raises `ValueError` on a bad pair of ids.
+    Unions aliases, `appears_in`, roles, timeline events, and contradictions (#288 —
+    the registry list is the contradiction ledger, so a merge must union it same as
+    every other list field); remaps every `role.target_id` across the *whole* registry
+    that points at the losing id (not just the two entities being merged — a third
+    entity naming the losing id as a relationship target must follow it too); then
+    deletes the losing entry. Raises `ValueError` on a bad pair of ids.
     """
     if keep_id == merge_id:
         raise ValueError("keep-id and merge-id must be different entities")
@@ -113,6 +120,7 @@ def merge(entities_reg: dict, keep_id: str, merge_id: str) -> dict:
     keep["aliases"] = _union_aliases(keep, merge_entry)
     keep["appears_in"] = _union_appears_in(keep, merge_entry)
     keep["timeline_events"] = _union_timeline_events(keep, merge_entry)
+    keep["contradictions"] = _union_contradictions(keep, merge_entry)
     keep["roles"] = list(keep.get("roles", [])) + list(merge_entry.get("roles", []))
     keep["date_first_seen"] = min(
         keep.get("date_first_seen") or _today(), merge_entry.get("date_first_seen") or _today()
@@ -144,6 +152,7 @@ def merge(entities_reg: dict, keep_id: str, merge_id: str) -> dict:
         "appears_in": len(keep["appears_in"]),
         "roles": len(keep["roles"]),
         "timeline_events": len(keep["timeline_events"]),
+        "contradictions": len(keep["contradictions"]),
     }
 
 
@@ -224,8 +233,10 @@ def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
     # note is overwritten with its redirect stub.
     keep_analysis = _extract_analysis(keep_note_file)
     merge_analysis = _extract_analysis(merge_note_file)
-    keep_contradictions = _extract_contradictions(keep_note_file)
-    merge_contradictions = _extract_contradictions(merge_note_file)
+    # Registry note-body backfill (#288): fold in any callouts that only ever lived in a
+    # note body (pre-#282 vaults, or a stray hand-edit) before rendering from the registry.
+    keep_note_callouts = resolutions.split_callouts(_extract_contradictions(keep_note_file))
+    merge_note_callouts = resolutions.split_callouts(_extract_contradictions(merge_note_file))
     keep_summary = _extract_summary(keep_note_file)
     merge_summary = _extract_summary(merge_note_file)
     notes_section = _extract_notes_section(keep_note_file)
@@ -254,8 +265,15 @@ def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
     else:
         combined_analysis = keep_analysis
 
-    combined_contradictions = _accumulate_contradictions(
-        keep_contradictions, [merge_contradictions] if merge_contradictions else []
+    # The registry list is the contradiction ledger (#282); render the note from it
+    # rather than concatenating note bodies, so merges and ingests can't disagree (#288).
+    keep["contradictions"] = resolutions.dedup_callouts(
+        keep["contradictions"] + keep_note_callouts + merge_note_callouts
+    )
+    stats["contradictions"] = len(keep["contradictions"])
+    resolved = resolutions.resolved_ids(vault_path)
+    combined_contradictions = "\n\n".join(
+        resolutions.filter_callouts(keep["contradictions"], resolved)
     )
 
     combined_summary = keep_summary or merge_summary
@@ -327,7 +345,6 @@ def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
     # Acknowledgments follow the merge (#266 / D54): a lead resolved under the merged-away id
     # is rewritten onto the survivor. Contradiction/alert resolutions are keyed on content, not
     # entity id, so they need no remap.
-    from watchdog.pipeline import resolutions
     stats["resolutions_remapped"] = resolutions.remap_entity(vault_path, merge_id, keep_id)
 
     all_notes = {keep_note_path: (keep["name"], note_content),

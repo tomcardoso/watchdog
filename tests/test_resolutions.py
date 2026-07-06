@@ -103,12 +103,31 @@ def test_sync_with_no_briefings_dir_is_noop(tmp_path):
 def test_filter_callouts_drops_only_resolved_blocks():
     a = "> [!contradiction] Address differs"
     b = "> [!contradiction] Director count differs"
-    body = f"{a}\n\n{b}"
     resolved = frozenset({resolutions.contradiction_id(a)})
-    out = resolutions.filter_callouts(body, resolved)
-    assert b in out and a not in out
+    out = resolutions.filter_callouts([a, b], resolved)
+    assert out == [b]
 
 
 def test_filter_callouts_empty_resolved_is_passthrough():
-    body = "> [!contradiction] Something"
-    assert resolutions.filter_callouts(body, frozenset()) == body
+    callouts = ["> [!contradiction] Something"]
+    assert resolutions.filter_callouts(callouts, frozenset()) == callouts
+
+
+def test_split_callouts_splits_on_blank_lines():
+    body = "> [!contradiction] First\n\n> [!contradiction] Second"
+    assert resolutions.split_callouts(body) == [
+        "> [!contradiction] First",
+        "> [!contradiction] Second",
+    ]
+
+
+def test_split_callouts_empty_is_empty_list():
+    assert resolutions.split_callouts("") == []
+    assert resolutions.split_callouts("   \n\n  ") == []
+
+
+def test_dedup_callouts_keeps_first_seen_wording():
+    a = "> [!contradiction]   Address differs"
+    b = "> [!contradiction] Address differs"
+    c = "> [!contradiction] Director count differs"
+    assert resolutions.dedup_callouts([a, b, c]) == [a, c]
