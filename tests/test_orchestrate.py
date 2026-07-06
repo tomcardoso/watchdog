@@ -4,6 +4,7 @@ the REAL preflight/postflight/write_vault with the model mocked."""
 import asyncio
 import hashlib
 import json
+from pathlib import Path
 
 import pytest
 
@@ -1038,6 +1039,45 @@ def test_ingest_setup_wipe_pending_controls_cleanup(tmp_path):
     ingest_setup.run(vault, wipe_pending=True)
     assert not (frag / "_queue.json").exists()
     assert not (tmp / "result_old.json").exists() and not (tmp / "notes_old.md").exists()
+
+
+def test_ingest_setup_discard_snapshots_before_wiping(tmp_path):
+    """#270: the discard choice (wipe_pending=True with leftover residue from a prior
+    unfinalized batch) is irreversible — back up entity-fragments/, result_*.json, and
+    notes_*.md before deleting them."""
+    from watchdog.pipeline import ingest_setup
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="new1", filename="new.pdf")
+    tmp = vault / ".watchdog" / "tmp"
+    frag = tmp / "entity-fragments"
+    frag.mkdir(parents=True, exist_ok=True)
+    (frag / "_queue.json").write_text('{"acme-corp": {"count": 2}}')
+    (tmp / "result_old.json").write_text('{"old": true}')
+    (tmp / "notes_old.md").write_text("scratchpad notes")
+
+    state = ingest_setup.run(vault, wipe_pending=True)
+
+    assert state["backup_dir"] is not None
+    backup_dir = Path(state["backup_dir"])
+    assert (backup_dir / ".watchdog" / "tmp" / "entity-fragments" / "_queue.json").read_text() \
+        == '{"acme-corp": {"count": 2}}'
+    assert (backup_dir / ".watchdog" / "tmp" / "result_old.json").read_text() == '{"old": true}'
+    assert (backup_dir / ".watchdog" / "tmp" / "notes_old.md").read_text() == "scratchpad notes"
+    # And the originals are still gone — the backup doesn't block the wipe.
+    assert not (frag / "_queue.json").exists()
+
+
+def test_ingest_setup_ordinary_run_leaves_no_backup(tmp_path):
+    """A routine ingest with nothing left over from a prior unfinalized batch is a
+    no-op for the wipe step, so it must not leave an empty backup directory behind."""
+    from watchdog.pipeline import ingest_setup
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="new1", filename="new.pdf")
+
+    state = ingest_setup.run(vault, wipe_pending=True)
+
+    assert state["backup_dir"] is None
+    assert not (vault / ".watchdog" / "backups").exists()
 
 
 def test_requeue_moves_failed_back(tmp_path, monkeypatch):

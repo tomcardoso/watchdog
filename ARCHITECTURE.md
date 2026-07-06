@@ -584,6 +584,7 @@ Registry/
   usage-<ts>.json           per-run model-call token/cost telemetry (D50)
   batch-pending.json        pending claude-batch extraction state (D52)
   .ingest-lock / .write-lock  run lock / write serialization
+backups/<ts>-<operation>/   pre-mutation snapshots for irreversible operations (D71)
 ingest-state.json           present while a run is in progress; stale ⇒ interrupted ingest, resume with `watchdog ingest`
 ```
 
@@ -609,6 +610,22 @@ no project-name lookup needed). The merged-away entity's stale corpus/notes sear
 entries are cleaned up by a subsequent `watchdog reindex` (D53), not by this command
 itself — a full rebuild is the existing, already-documented way to drop vectors for
 anything no longer in the registry.
+
+**Pre-mutation snapshots (`pipeline/backup.py`, D71).** `merge-entities`, ingest's
+`discard` choice (§4), and `delete --purge` all mutate or delete the registry with no
+undo. `snapshot(vault, operation, paths)` copies whichever of `paths` currently exist
+into `.watchdog/backups/<ts>-<operation>/`, preserving each path's position relative to
+the vault, before the caller's own writes/deletes happen — a no-op (no directory
+created) when nothing in `paths` exists yet, so an ordinary run that never touches the
+irreversible branch leaves nothing behind. Backups are pruned to the 5 most recent
+(name-sorted, since the timestamp prefix makes lexical order chronological). Each
+call site backs up only what it's about to destroy: `merge-entities` snapshots
+`entities.json`, `manifest.json`, both entity notes, and any third-party note about to
+be regenerated; ingest's discard snapshots `entity-fragments/`, `result_*.json`, and
+`notes_*.md`; `delete --purge` snapshots the registry files only (backing up the whole
+vault would defeat the purpose of purge) — and since that snapshot lives inside the
+vault being deleted, it is a hedge against a partial failure, not a way to undo a
+completed purge, and the CLI hint says so.
 
 ---
 

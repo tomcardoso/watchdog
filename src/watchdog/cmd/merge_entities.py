@@ -95,4 +95,7 @@ def cmd_merge_entities(args) -> None:
         f"  {_YELLOW}Run{_RESET} {_CYAN}watchdog reindex{_RESET} "
         f"{_YELLOW}to drop the merged entity's stale search-index entries.{_RESET}"
     )
+    if result["backup_dir"]:
+        rel = result["backup_dir"].relative_to(vault)
+        print(f"  {_DIM}backup: {_CYAN}{rel}{_RESET}{_DIM} — copy files back to undo{_RESET}")
     print()

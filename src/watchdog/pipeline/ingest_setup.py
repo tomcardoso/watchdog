@@ -18,6 +18,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from watchdog.pipeline.backup import snapshot as _snapshot
 from watchdog.pipeline.locks import acquire_or_take_stale, lock_age_seconds, lock_started_at
 from watchdog.pipeline.section import (
     section_token_threshold as _section_token_threshold,
@@ -150,8 +151,13 @@ def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "so
     # scratchpads) left by a prior ingest so the finalizer gate + briefing see only this run's
     # documents. Skipped when merging into a pending batch (wipe_pending=False), so this run's
     # documents accumulate onto it and they finalize together.
+    backup_dir = None
     if wipe_pending:
         tmp = vault / ".watchdog" / "tmp"
+        about_to_wipe = [tmp / "entity-fragments", *tmp.glob("result_*.json"), *tmp.glob("notes_*.md")]
+        # A no-op on an ordinary ingest (nothing left over from a prior run to wipe) — this
+        # only produces a backup when the discard choice is actually throwing something away.
+        backup_dir = _snapshot(vault, "ingest-discard", about_to_wipe)
         shutil.rmtree(tmp / "entity-fragments", ignore_errors=True)
         for p in list(tmp.glob("result_*.json")) + list(tmp.glob("notes_*.md")):
             p.unlink(missing_ok=True)
@@ -165,6 +171,7 @@ def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "so
         "extractor_model": extractor_model,
         "finalizer_model": finalizer_model,
         "section_token_threshold": _section_token_threshold(),
+        "backup_dir": str(backup_dir) if backup_dir else None,
     }
     state_file.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
     return state
