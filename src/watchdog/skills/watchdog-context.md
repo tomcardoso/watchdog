@@ -1,3 +1,7 @@
+---
+description: Seed context.md from _CONTEXT/ background material and a structured interview; proposes watchlist candidates
+---
+
 # /watchdog-context — Seed context.md from prior stories and reporter notes
 
 Read background material in `_CONTEXT/`, conduct a short structured interview, and write a polished `context.md` that tells every other Watchdog skill what this investigation is about.
@@ -175,7 +179,7 @@ entirely if there were no candidates, or the reporter approved none of them.
 
 Print:
 ```
-context.md written. N watchlist term(s) added. Run /watchdog-ingest to begin processing records.
+context.md written. N watchlist term(s) added. Drop records into _INCOMING/, then run `watchdog chew` and `watchdog ingest` to begin processing.
 ```
 (Omit the watchlist clause if none were added.)
 

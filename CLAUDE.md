@@ -91,17 +91,15 @@ If the new skill would overlap significantly with an existing one, consider exte
 
 ## Ingest workflow
 
-`/watchdog-ingest` is fire-and-forget. Once it finishes, **close the session** — do not continue asking investigation questions in the same Claude Code window. Every entity note, document, and scratchpad written during ingest is now in the vault; a fresh session reads all of it from disk with no ingest-time context baggage.
+Ingest runs entirely in the terminal — the Python orchestrator (`pipeline/orchestrate.py`) drives extraction, synthesis, and the briefing via direct model calls. No Claude Code session is involved (the orchestrator replaced the old `/watchdog-ingest` skill).
 
 **Intended workflow:**
 
-1. `watchdog chew` — OCR/Docling (terminal)
-2. `watchdog ingest` — lock + queue (terminal)
-3. Open Claude Code → `/watchdog-ingest` — let it run to completion
-4. Close the session
-5. Open a new Claude Code session → ask investigation questions; the session reads `hot.md`, `briefings/`, and the registry fresh
+1. `watchdog chew` — OCR/Docling (terminal, local, no API tokens)
+2. `watchdog ingest` — lock + queue + extraction + synthesis + briefing (terminal)
+3. Open a Claude Code session in the vault → ask investigation questions; the session reads `hot.md`, `briefings/`, and the registry fresh, with no ingest-time context baggage
 
-Mixing ingest and investigation in one session inflates context proportionally to the number of documents ingested, crowding out the headroom needed for Q&A.
+Investigation sessions stay separate from ingest by construction, so a session's context is spent only on Q&A.
 
 ---
 

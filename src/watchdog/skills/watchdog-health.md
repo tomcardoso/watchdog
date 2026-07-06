@@ -1,3 +1,7 @@
+---
+description: Audit vault integrity — registry/note consistency, dead links, stale locks, unresolved contradictions, unreviewed near-duplicates
+---
+
 # /watchdog-health — Check vault integrity
 
 Audit the vault for structural problems: orphaned notes, broken links, registry mismatches, and missing required fields.
@@ -67,7 +71,7 @@ ls .watchdog/tmp/watchdog-extraction-*.json 2>/dev/null
 For each file found, report:
 `ORPHANED TEMP: .watchdog/tmp/watchdog-extraction-<sha256>.json — safe to delete`
 
-These are left behind when Claude wrote the extraction JSON but never called `watchdog write-vault`. They are safe to delete; if you want to recover the extraction, open the file to inspect it first. To clean up all of them:
+These are legacy leftovers from the pre-orchestrator ingest flow (when a Claude Code session wrote the extraction JSON and could crash before calling `watchdog write-vault`); the Python pipeline no longer produces them, but old vaults may still hold some. They are safe to delete; if you want to recover the extraction, open the file to inspect it first. To clean up all of them:
 ```bash
 rm .watchdog/tmp/watchdog-extraction-*.json
 ```
@@ -101,9 +105,9 @@ Read `.watchdog/Registry/registry.json`. Compare `document_count` and `entity_co
 `COUNT MISMATCH: registry.json says <n> documents but documents.json has <m>`
 
 Also check that the following files exist at the vault root. Report any that are missing:
-- `timeline.md` — `MISSING FILE: timeline.md (rebuild by running /watchdog-entity on any entity)`
-- `hot.md` — `MISSING FILE: hot.md (created automatically by /watchdog-ingest; create manually if needed)`
-- `log.md` — `MISSING FILE: log.md (created automatically by /watchdog-ingest; create manually if needed)`
+- `timeline.md` — `MISSING FILE: timeline.md (rebuild with: watchdog timeline)`
+- `hot.md` — `MISSING FILE: hot.md (created automatically by watchdog ingest; create manually if needed)`
+- `log.md` — `MISSING FILE: log.md (created automatically by watchdog ingest; create manually if needed)`
 
 ---
 

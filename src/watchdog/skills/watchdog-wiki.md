@@ -1,3 +1,8 @@
+---
+description: Create or update investigation thread pages in wiki/ — narrative syntheses of specific investigative angles that deepen over time
+argument-hint: "[angle or entity]"
+---
+
 # /watchdog-wiki — Investigation thread pages
 
 Create or update investigation thread pages in `wiki/`. Each thread is a narrative synthesis of what the evidence shows about a specific investigative angle — a place for the journalist's working theory to accumulate as documents arrive.
@@ -20,7 +25,7 @@ Read the lightweight index files first — these are small and give you a comple
 # Entity index: id, name, type, aliases, note_path
 cat .watchdog/Registry/manifest.json
 
-# Document index: sha256 → title, document_type, date, entities_mentioned, page_count, document_note
+# Document index: sha256 → title, document_type, entities_extracted, page_count, document_note
 cat .watchdog/Registry/documents.json
 ```
 

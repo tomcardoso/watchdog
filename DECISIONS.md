@@ -521,3 +521,9 @@ Fixed in two layers, matching the security review's proposal: (1) `postflight._s
 `_persist` now chmods the file 0600 after every write, mirroring `auth._save_state`, so an existing loose-permission file from before this fix is corrected on the very next `watchdog configure` rather than requiring a one-time migration.
 
 **Tradeoff:** none — `config.json` also holds non-secret settings, but 0600 on the whole per-user file is harmless.
+
+### D80 — Session skills report; only the pipeline writes pipeline-owned notes (prompt review)
+
+`/watchdog-surface` used to instruct the session to write new `[!contradiction]` callouts directly into entity notes. Pipeline callouts are verified at extraction time and tracked by the resolutions layer (`watchdog resolve`/`unresolve`); hand-inserted ones bypass both, so a session-written callout was never verified and could never be resolved away. Surface now reports cross-document discrepancies as labelled candidates in its `briefings/surface-*.md` report only — extending the I1/I5 single-writer principle to investigation sessions: a session writes its own artifact classes (`queries/`, `wiki/`, briefings, the research links file), never pipeline-owned notes. Riding along: untrusted-content guards added to the two model prompts that consume document-derived text without one (`briefing`, `synthesis`) and to the two session skills that read raw untrusted text (`watchdog-query`'s search passages, `watchdog-research`'s fetched pages), matching the guard `extract_instructions` and `digest` already carry; stale `/watchdog-ingest` references and drifted registry field names corrected across the skills.
+
+**Tradeoff:** newly detected contradictions no longer land in the entity note automatically — the journalist must act on the surface report; accepted because an unverified, unresolvable callout in a pipeline-owned note is worse than a labelled candidate in a report.
