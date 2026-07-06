@@ -319,7 +319,8 @@ def process_large_pdf(path: Path, force_ocr: bool, total_pages: int) -> dict:
             start, result = future.result()
             chunk_results[start] = result
 
-    # Merge in page order; skip failed chunks but note them
+    # Merge in page order; any failed chunk fails the whole document — a silent
+    # page gap is worse than a failed file, since a failed file gets retried (#251).
     all_pages = []
     failed_chunks = []
     garbled_detected = False
@@ -337,7 +338,10 @@ def process_large_pdf(path: Path, force_ocr: bool, total_pages: int) -> dict:
         if r.get("metadata", {}).get("ocr_used"):
             ocr_used = True
 
-    result = {
+    if failed_chunks:
+        return {"error": f"Chunk(s) failed: {'; '.join(failed_chunks)}"}
+
+    return {
         "filename": path.name,
         "sha256": sha256_file(path),
         "page_count": total_pages,
@@ -350,14 +354,6 @@ def process_large_pdf(path: Path, force_ocr: bool, total_pages: int) -> dict:
             "chunk_count": len(chunks),
         },
     }
-
-    if failed_chunks:
-        result["metadata"]["failed_chunks"] = failed_chunks
-
-    if not all_pages:
-        return {"error": f"All chunks failed: {'; '.join(failed_chunks)}"}
-
-    return result
 
 
 _PAGE_BREAK = "\n\n<!-- page-break -->\n\n"
