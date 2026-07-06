@@ -2,6 +2,7 @@
 the REAL preflight/postflight/write_vault with the model mocked."""
 
 import asyncio
+import hashlib
 import json
 
 import pytest
@@ -231,6 +232,33 @@ def test_stamp_document_slugifies_morgue_entity_id_with_embedded_slash(tmp_path)
     ext = {"document": {}, "morgue_entity_id": "acme/subsidiary"}
     orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault)
     assert "/" not in ext["morgue_entity_id"]
+
+
+def test_stamp_document_records_extraction_provenance(tmp_path):
+    """record_skill_hash/extract_model/extract_effort (#268) are stamped alongside record_skill
+    so a vault can later tell which skill content/model/effort produced a given extraction."""
+    vault = make_vault(tmp_path)
+    pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}]}
+    ext = {"document": {}}
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault,
+                                skill_text="SKILL BODY", extract_model="sonnet", extract_effort="low")
+    d = ext["document"]
+    assert d["extract_model"] == "claude-sonnet-4-6"   # resolved from the tier name
+    assert d["extract_effort"] == "low"
+    assert d["record_skill_hash"] == hashlib.sha256(b"SKILL BODY").hexdigest()[:12]
+
+
+def test_stamp_document_provenance_defaults_to_none_when_not_supplied(tmp_path):
+    """The three new params are optional, so existing call sites/tests that omit them keep
+    working — the fields are simply stamped null rather than left off the document."""
+    vault = make_vault(tmp_path)
+    pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}]}
+    ext = {"document": {}}
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault)
+    d = ext["document"]
+    assert d["record_skill_hash"] is None
+    assert d["extract_model"] is None
+    assert d["extract_effort"] is None
 
 
 def test_sidecar_provenance_parsed_in_python(tmp_path):
@@ -544,12 +572,23 @@ def test_record_skill_provenance_is_persisted(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault)
     _mock(monkeypatch, extraction=_extraction())     # classify mock returns general-records.md
-    asyncio.run(orchestrate.run(vault))
+    asyncio.run(orchestrate.run(vault))              # extract_model defaults to "sonnet"
+
+    from watchdog import skills_catalog
+    expected_hash = hashlib.sha256(
+        skills_catalog.read_skill("general-records.md").encode("utf-8")).hexdigest()[:12]
 
     docs = json.loads((vault / ".watchdog" / "Registry" / "documents.json").read_text())
-    assert next(iter(docs.values()))["record_skill"] == "general-records"
+    entry = next(iter(docs.values()))
+    assert entry["record_skill"] == "general-records"
+    assert entry["record_skill_hash"] == expected_hash
+    assert entry["extract_model"] == "claude-sonnet-4-6"
+    assert entry["extract_effort"] is None
+
     note = next((vault / "documents").glob("*.md")).read_text(encoding="utf-8")
     assert "record_skill: general-records" in note
+    assert f"record_skill_hash: {expected_hash}" in note
+    assert "extract_model: claude-sonnet-4-6" in note
 
 
 def test_nudge_skill_pin_fires_when_batch_is_homogeneous(capsys):
@@ -1293,6 +1332,27 @@ def test_finish_batch_item_records_usage_for_the_batch_call_itself(tmp_path):
         }
     finally:
         orchestrate._usage = None
+
+
+def test_finish_batch_item_stamps_extraction_provenance(tmp_path):
+    """The claude-batch path (#214) has its own extraction call sequence — separate from
+    _simple_extract/_extract_sectioned — so it needs its own coverage that record_skill_hash/
+    extract_model/extract_effort (#268) reach documents.json from here too."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+
+    item = {"ok": True, "parsed": _extraction(sha="sha1", filename="a.pdf"),
+           "usage": None, "cost_usd": 0.015, "error": None}
+    result = asyncio.run(orchestrate._finish_batch_item(
+        vault, "sha1", item, "SKILL BODY", "annual-report", None, "sk-x",
+        model="claude-sonnet-4-6", effort="medium"))
+
+    assert result["status"] == "ok"
+    docs = json.loads((vault / ".watchdog" / "Registry" / "documents.json").read_text())
+    entry = docs["sha1"]
+    assert entry["record_skill_hash"] == hashlib.sha256(b"SKILL BODY").hexdigest()[:12]
+    assert entry["extract_model"] == "claude-sonnet-4-6"
+    assert entry["extract_effort"] == "medium"
 
 
 def test_run_dispatches_to_batch_and_merges_batch_pending_into_summary(tmp_path, monkeypatch):
