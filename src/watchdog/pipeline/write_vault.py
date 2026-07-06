@@ -654,6 +654,9 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
         "page_count":       doc.get("page_count"),
         "near_duplicate_of": doc.get("near_duplicate_of"),
         "record_skill":     doc.get("record_skill"),
+        "record_skill_hash": doc.get("record_skill_hash"),
+        "extract_model":    doc.get("extract_model"),
+        "extract_effort":   doc.get("extract_effort"),
     })
 
     body = ""
@@ -856,6 +859,9 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
             "page_count":       doc.get("page_count"),
             "document_type":    doc.get("document_type"),
             "record_skill":     doc.get("record_skill"),
+            "record_skill_hash": doc.get("record_skill_hash"),
+            "extract_model":    doc.get("extract_model"),
+            "extract_effort":   doc.get("extract_effort"),
             "entities_extracted": [e["id"] for e in incoming_entities],
             "near_duplicate_of": doc.get("near_duplicate_of"),
             "minhash":          sig,

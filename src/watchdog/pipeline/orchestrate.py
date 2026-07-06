@@ -12,6 +12,7 @@ serializes the vault writes and `_reconcile_entity_ids` handles the parallel new
 
 import asyncio
 import datetime
+import hashlib
 import json
 import shutil
 import signal
@@ -226,16 +227,28 @@ def _sidecar_provenance(vault: Path, filename: str) -> dict:
     return {k: str(data[k]) for k in ("source", "obtained") if data.get(k) is not None}
 
 
-def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str, vault: Path) -> None:
+def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str, vault: Path,
+                    skill_text: str | None = None, extract_model: str | None = None,
+                    extract_effort: str | None = None) -> None:
     """Stamp the deterministic, Python-owned document fields onto the extraction, before
     post-flight consumes it. Identity (sha256/filename/original_path/page_count) and provenance
     (source/obtained) are values the pipeline already holds — the model is no longer asked to
     echo them, so we set the authoritative values here. Stamping the sha in particular removes a
     latent failure mode: write_vault keys the vault write on `document.sha256`, so a model
-    mis-transcription of the 64-char hash would desync the write from the queue/registry."""
+    mis-transcription of the 64-char hash would desync the write from the queue/registry.
+
+    `record_skill_hash`/`extract_model`/`extract_effort` (#268) are extraction provenance
+    alongside `record_skill`: the skill's *content* can change (#68) without its filename
+    changing, and per-run usage (D50) records model/effort per call but not per document — so
+    without these, a vault can't answer "what produced this extraction" once skills or model
+    config move on."""
     from watchdog.pipeline.write_vault import slugify
     doc = extraction.setdefault("document", {})
     doc["record_skill"] = skill_label
+    doc["record_skill_hash"] = (
+        hashlib.sha256(skill_text.encode("utf-8")).hexdigest()[:12] if skill_text else None)
+    doc["extract_model"] = model_client.resolve_model_id(extract_model) if extract_model else None
+    doc["extract_effort"] = extract_effort
     doc["sha256"] = sha
     doc["filename"] = pf["filename"]
     doc["original_path"] = pf.get("original_path")
@@ -361,7 +374,8 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
         cost += r.cost_usd or 0.0
         extraction = r.parsed
         scratchpad = extraction.pop("scratchpad", "")
-        _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault)
+        _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault,
+                        skill_text=skill_text, extract_model=model, extract_effort=effort)
         ok, errors = _write_postflight(vault, sha, extraction)
         if ok:
             return extraction, scratchpad, cost, True, []
@@ -414,7 +428,8 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
 
     extraction = merge.merge_extractions(parts)
     scratchpad = "\n".join(p["observations"] for p in parts if p.get("observations"))
-    _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault)
+    _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault,
+                    skill_text=skill_text, extract_model=model, extract_effort=effort)
     ok, errors = _write_postflight(vault, sha, extraction)
     return extraction, scratchpad, cost, ok, errors
 
@@ -564,17 +579,18 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
 
 async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_text: str,
                              skill_label: str, brief: str | None, api_key: str,
-                             model: str | None = None) -> dict:
+                             model: str | None = None, effort: str | None = None) -> dict:
     """Turn one collected batch result into a finished document. `item` is `batch_extract.collect`'s
     per-sha entry (or None if the batch has no result for this sha at all). A batch response that
     didn't pass schema validation gets exactly one synchronous claude-api repair attempt — not a
     whole new batch submission for a single document — mirroring `_simple_extract`'s own
     single-repair-attempt semantics.
 
-    `model` (the batch's resolved model id) is only used to attribute the batch-collected item's
+    `model` (the batch's resolved model id) is used both to attribute the batch-collected item's
     own usage (D64) — unlike every other extraction path, this one never calls `_call_model`
     itself when the batch result is already valid, so without this the batch's real token spend
-    would silently never reach `usage-<ts>.json`."""
+    would silently never reach `usage-<ts>.json` — and, with `effort`, to stamp this document's
+    extraction provenance (#268)."""
     pf = preflight.run(vault, sha)
     if pf.get("error"):
         return _fail(vault, sha, "", pf["error"])
@@ -610,7 +626,8 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
         cost += r.cost_usd or 0.0
 
     scratchpad = extraction.pop("scratchpad", "") if isinstance(extraction, dict) else ""
-    _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault)
+    _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault,
+                    skill_text=skill_text, extract_model=model, extract_effort=effort)
     ok, errors = _write_postflight(vault, sha, extraction)
     if not ok:
         return _fail(vault, sha, filename, "post-flight rejected: " + "; ".join(errors[:3]))
@@ -641,7 +658,7 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str, brief: str 
         for sha in state["shas"]:
             results.append(await _finish_batch_item(vault, sha, collected.get(sha), skill_text,
                                                      skill_label, brief, api_key,
-                                                     model=state["model"]))
+                                                     model=state["model"], effort=state.get("effort")))
     except model_client.RateLimitError as e:
         # A repair-retry call (claude-api) hit a rate limit partway through collection. Leave
         # the batch state in place — already-written documents are safe (preflight's
