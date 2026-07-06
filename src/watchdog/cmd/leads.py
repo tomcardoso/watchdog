@@ -32,6 +32,7 @@ def cmd_leads(args) -> None:
             docs = f"{u['doc_count']} document{'s' if u['doc_count'] != 1 else ''}"
             print(f"    {_BOLD}{u['name']}{_RESET}  {_DIM}named by {', '.join(u['mentioned_by'])} "
                   f"· {docs}{_RESET}")
+            print(f"      {_DIM}resolve: {u['rid']}{_RESET}")
         print()
 
     if data["isolated"]:
@@ -39,6 +40,7 @@ def cmd_leads(args) -> None:
         for i in data["isolated"]:
             print(f"    {_BOLD}{i['name']}{_RESET}  {_DIM}appears in {i['doc_count']} documents "
                   f"· no relationships{_RESET}")
+            print(f"      {_DIM}resolve: {i['rid']}{_RESET}")
         print()
 
     if data["contradictions"]:
@@ -48,6 +50,9 @@ def cmd_leads(args) -> None:
             note = f"  {_CYAN}{c['note_path']}.md{_RESET}" if c["note_path"] else ""
             print(f"    {_BOLD}{c['name']}{_RESET}  {_DIM}{n} flagged "
                   f"conflict{'s' if n != 1 else ''}{_RESET}{note}")
+            for callout in c["callouts"]:
+                print(f"      {_DIM}{callout['summary']}{_RESET}")
+                print(f"      {_DIM}resolve: {callout['rid']}{_RESET}")
         print()
 
     if data["inferred"]:
@@ -57,4 +62,5 @@ def cmd_leads(args) -> None:
             print(f"    {_BOLD}{i['name']}{_RESET}{note}")
             for claim in i["claims"]:
                 print(f"      {_DIM}{claim}{_RESET}")
+            print(f"      {_DIM}resolve: {i['rid']}{_RESET}")
         print()

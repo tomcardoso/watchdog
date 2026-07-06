@@ -109,11 +109,13 @@ def build_section_prompt(*, pages_text: str, existing_entities: list, skill_text
     volatile = [_render("section_intro", section_label=section_label)]
     if is_first:
         volatile.append("This is SECTION 1: fill document metadata (title, document_type, "
-                        "date_of_document) and the morgue_entity_id field.")
+                        "date_of_document) and the morgue_entity_id field. Omit document.summary "
+                        "— the whole-document summary is composed after all sections are merged.")
         volatile.append(_known_types_block(known_document_types))
     else:
-        volatile.append("This is a LATER section: omit document metadata and morgue fields; supply "
-                        "entities + document.key_facts + document.summary for this section only.")
+        volatile.append("This is a LATER section: omit document metadata, morgue fields, and "
+                        "document.summary (the whole-document summary is composed after the "
+                        "merge); supply entities + document.key_facts for this section only.")
     volatile.append("Put only forward-looking reporting notes for the briefing in `observations` — "
                     "leads to chase, open questions, missing documents, threads to other sections or "
                     "documents. Do NOT restate figures, dates, chronology, or contradictions (those "
@@ -129,6 +131,17 @@ def build_section_prompt(*, pages_text: str, existing_entities: list, skill_text
         _cache_block(f"\nDOMAIN SKILL:\n{skill_text or '(none)'}"),
         {"type": "text", "text": "\n".join(volatile)},
     ]
+
+
+def build_digest_prompt(*, filename: str, title: str, document_type: str, page_count: int | None,
+                        skill_text: str | None, brief: str | None, sidecar: str | None,
+                        key_facts: list[dict]) -> str:
+    return _render("digest", filename=filename or "(unknown)", title=title or "(untitled)",
+                   document_type=document_type or "(unknown)",
+                   page_count=page_count or "(unknown)",
+                   brief=brief or "(none)", skill_text=skill_text or "(none)",
+                   sidecar=sidecar or "(none)",
+                   key_facts=json.dumps(key_facts, ensure_ascii=False))
 
 
 def build_synthesis_prompt(bundle: dict) -> str:

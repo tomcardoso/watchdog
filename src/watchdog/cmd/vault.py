@@ -32,6 +32,7 @@ from watchdog.cmd.base import (
     save_projects,
     slugify,
 )
+from watchdog.pipeline.backup import snapshot as _snapshot
 
 
 _WATCHLIST_TEMPLATE = """\
@@ -372,7 +373,7 @@ def cmd_new(args) -> None:
                                         "from pathlib import Path; "
                                         "p = list(Path('.watchdog/queue').glob('*.json')) "
                                         "if Path('.watchdog/queue').exists() else []; "
-                                        "print('WATCHDOG: ' + str(len(p)) + ' file(s) ready for extraction — run /watchdog-ingest') if p else None"
+                                        "print('WATCHDOG: ' + str(len(p)) + ' file(s) ready for extraction — run watchdog ingest in your terminal') if p else None"
                                         "\""
                                     ),
                                 }
@@ -412,7 +413,7 @@ def cmd_new(args) -> None:
     print(f"    1. {_DIM}(optional){_RESET} Drop background material into {_CYAN}{vault}/_CONTEXT/{_RESET} and run {_CYAN}watchdog context{_RESET}")
     print(f"    2. Drop documents into {_CYAN}{vault}/_INCOMING/{_RESET}")
     print(f"    3. Run {_CYAN}watchdog chew{_RESET} to process documents")
-    print(f"    4. Run {_CYAN}watchdog ingest{_RESET} to set up extraction and open Claude Code")
+    print(f"    4. Run {_CYAN}watchdog ingest{_RESET} to extract the queued documents")
     print(f"    5. Run {_CYAN}watchdog obsidian {slug}{_RESET} to open the vault in Obsidian")
     print()
 
@@ -659,9 +660,19 @@ def cmd_delete(args) -> None:
     del projects[slug]
     save_projects(projects)
 
+    purge_backed_up = False
     if args.purge and vault.exists():
         if not (vault / ".watchdog").exists():
             sys.exit(f"Error: {vault} does not look like a watchdog vault — aborting purge.")
+        reg_dir = vault / ".watchdog" / "Registry"
+        # Backing up the whole vault would defeat the purpose of --purge, so this is
+        # registry data only — and it lives inside the vault being deleted, so it's a
+        # hedge against a partial failure, not a way to undo the purge (#270).
+        purge_backed_up = _snapshot(vault, "delete-purge", [
+            reg_dir / "entities.json", reg_dir / "documents.json",
+            reg_dir / "registry.json", reg_dir / "manifest.json",
+            reg_dir / "resolutions.json",
+        ]) is not None
         shutil.rmtree(vault)
 
     # Remove from Obsidian registry
@@ -678,7 +689,12 @@ def cmd_delete(args) -> None:
             pass
 
     label = "Deleted" if args.purge else "Removed"
-    print(f"\n  {_GREEN}{label}:{_RESET} {_BOLD}{info['name']}{_RESET}\n")
+    print(f"\n  {_GREEN}{label}:{_RESET} {_BOLD}{info['name']}{_RESET}")
+    if purge_backed_up:
+        print(f"  {_DIM}A registry snapshot was taken before deletion, but it lived inside "
+              f"the vault — a completed purge removes it too, so it's only a hedge against "
+              f"a delete that fails partway, not a way to undo this.{_RESET}")
+    print()
 
 
 def cmd_move(args) -> None:
@@ -784,6 +800,25 @@ def cmd_log(args) -> None:
     print()
 
 
+def _poll_stable_files(candidates: set, pending_sizes: dict) -> tuple:
+    """Split newly-seen files into size-stable (safe to chew) vs. still-growing.
+
+    A file mid-copy (Finder, a network share) must not be chewed until its size holds
+    steady across two polls — otherwise chew hashes/OCRs truncated bytes (#261).
+    """
+    ready, new_pending = [], {}
+    for f in candidates:
+        try:
+            size = f.stat().st_size
+        except OSError:
+            continue
+        if pending_sizes.get(f) == size:
+            ready.append(f)          # unchanged since the last poll — copy finished
+        else:
+            new_pending[f] = size    # still growing (or first sighting) — wait
+    return ready, new_pending
+
+
 def cmd_watch(args) -> None:
     if not args.name:
         cwd = Path(".").resolve()
@@ -807,27 +842,28 @@ def cmd_watch(args) -> None:
     print(f"\n  {_BOLD}{info['name']}{_RESET}  watching {_CYAN}_INCOMING/{_RESET} — press Ctrl+C to stop.\n")
 
     known: set = set(find_files([incoming]))
+    pending_sizes: dict = {}   # file -> size at the previous poll, until it stops growing (#261)
 
     try:
         while True:
             _time.sleep(3)
             current: set = set(find_files([incoming]))
-            new_files = current - known
-            if new_files:
-                n = len(new_files)
+            ready, pending_sizes = _poll_stable_files(current - known, pending_sizes)
+            if ready:
+                n = len(ready)
                 label = f"{n} file{'s' if n != 1 else ''}"
                 print(f"  {_BOLD}{label}{_RESET} detected — chewing...\n")
                 queued_before = _count_queued(vault)
-                run_ingest(vault)
+                run_ingest(vault, files=ready)
                 new_queued = _count_queued(vault) - queued_before
                 if new_queued > 0:
                     _notify(
                         f"Watchdog — {info['name']}",
-                        f"Chewed {label}. {new_queued} file{'s' if new_queued != 1 else ''} ready for /watchdog-ingest.",
+                        f"Chewed {label}. {new_queued} file{'s' if new_queued != 1 else ''} ready — run watchdog ingest.",
                     )
                 known = set()
             else:
-                known = current
+                known = current - set(pending_sizes)
     except KeyboardInterrupt:
         print(f"\n  {_DIM}Stopped watching.{_RESET}\n")
 
@@ -940,7 +976,7 @@ def cmd_status(args) -> None:
         if info.get("description"):
             print(f"  {_DIM}{info['description']}{_RESET}")
         print(f"  {_DIM}Created {_fmt_date(info.get('created_at', ''))}{_RESET}")
-        print(f"\n  {_DIM}No registry found — open this vault in Claude Code to begin ingesting.{_RESET}\n")
+        print(f"\n  {_DIM}No registry found — run {_RESET}{_CYAN}watchdog chew{_RESET}{_DIM} then {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} to begin.{_RESET}\n")
         return
 
     docs_file = vault / ".watchdog" / "Registry" / "documents.json"
@@ -981,7 +1017,7 @@ def cmd_status(args) -> None:
     if incoming_n:
         print(f"  {_YELLOW}{incoming_n} file{'s' if incoming_n != 1 else ''}{_RESET} in {_CYAN}_INCOMING/{_RESET} {_DIM}— run{_RESET} {_CYAN}watchdog chew{_RESET}")
     if queued_n:
-        print(f"  {_YELLOW}{queued_n} file{'s' if queued_n != 1 else ''}{_RESET} chewed and waiting for {_CYAN}/watchdog-ingest{_RESET}")
+        print(f"  {_YELLOW}{queued_n} file{'s' if queued_n != 1 else ''}{_RESET} chewed and waiting for {_CYAN}watchdog ingest{_RESET}")
     _warn_pending_research(vault)
 
     if orchestrate.has_pending_finalization(vault):
@@ -1221,7 +1257,118 @@ def cmd_search_batch(args, vault: Path, batch_file: str) -> None:
         print()
 
 
+def cmd_search_everywhere(args) -> None:
+    """`watchdog search --everywhere <query>` (and `--everywhere --batch <file>`, #272): the
+    cheap first slice of #67 (global entity registry) — "have I seen this name in *any* of
+    my vaults?" answered today by iterating every registered, non-archived investigation's
+    existing manifest + full-text (FTS5) indexes and grouping hits by investigation. Follows
+    D57's batch-mode precedent by skipping the semantic/rerank lane: N vaults x embedding +
+    rerank doesn't scale the way in-process SQLite queries do. Vaults with a broken/missing
+    path are skipped, same tolerance as `watchdog doctor`.
+    """
+    from watchdog.pipeline import fulltext
+
+    batch_file = getattr(args, "batch", None)
+    if batch_file:
+        if args.project or args.query:
+            sys.exit("Error: --everywhere searches every investigation; drop the project name argument.")
+        terms = _read_batch_terms(Path(batch_file))
+        if not terms:
+            sys.exit(f"Error: no terms found in {batch_file}")
+    else:
+        if args.project and args.query:
+            sys.exit("Error: --everywhere searches every investigation — quote a multi-word "
+                      "query instead of passing a project name.")
+        query = args.query or args.project
+        if not query:
+            sys.exit("Error: please provide a search query.")
+        terms = [query]
+
+    all_projects = load_projects()
+    if not all_projects:
+        print("\n  No registered investigations.\n")
+        return
+    active = {k: v for k, v in all_projects.items() if not v.get("archived")}
+
+    as_json = getattr(args, "json", False)
+    limit = args.top_n
+
+    results = []
+    n_skipped = 0
+    for slug, info in sorted(active.items(), key=lambda x: x[1]["name"]):
+        if _check_project_health(info):
+            n_skipped += 1
+            continue
+        vault = Path(info["path"])
+
+        manifest_path = vault / ".watchdog" / "Registry" / "manifest.json"
+        manifest = {}
+        if manifest_path.exists():
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                pass
+
+        entities_by_id = {}
+        hits = []
+        for term in terms:
+            for e in _manifest_matches(manifest, term):
+                entities_by_id[e["id"]] = e
+            try:
+                hits.extend(fulltext.search(vault, term, limit=limit))
+            except Exception:
+                pass
+
+        results.append({"slug": slug, "name": info["name"],
+                        "entities": list(entities_by_id.values()), "hits": hits})
+
+    if as_json:
+        print(json.dumps({
+            "terms": terms,
+            "investigations": [
+                {"slug": r["slug"], "name": r["name"], "entities": r["entities"],
+                 "hits": [{"kind": h["kind"], "title": h["title"], "path": h["path"], "page": h["page"]}
+                          for h in r["hits"]]}
+                for r in results
+            ],
+        }, ensure_ascii=False))
+        return
+
+    print()
+    hit_results = [r for r in results if r["entities"] or r["hits"]]
+    if not hit_results:
+        noun = "investigation" if len(results) == 1 else "investigations"
+        print(f"  {_DIM}No matches across {len(results)} {noun}.{_RESET}\n")
+    else:
+        for r in hit_results:
+            n_ent, n_hit = len(r["entities"]), len(r["hits"])
+            parts = []
+            if n_ent:
+                parts.append(f"{n_ent} {'entity' if n_ent == 1 else 'entities'}")
+            if n_hit:
+                hit_part = f"{n_hit} exact match{'es' if n_hit != 1 else ''}"
+                if n_hit == 1:
+                    h = r["hits"][0]
+                    if h["kind"] == "corpus":
+                        loc = f"p. {h.get('page')}, {h.get('title') or h.get('path')}"
+                    else:
+                        loc = f"{_EXACT_KIND_LABELS.get(h['kind'], h['kind'])}: {h.get('title') or h.get('path')}"
+                    hit_part += f" ({loc})"
+                parts.append(hit_part)
+            print(f"  {_BOLD}{r['name']}{_RESET}  {_DIM}{r['slug']}{_RESET}")
+            print(f"    {_DIM}{' · '.join(parts)}{_RESET}")
+        print()
+
+    if n_skipped:
+        noun = "investigation" if n_skipped == 1 else "investigations"
+        print(f"  {_DIM}Skipped {n_skipped} {noun} with a broken vault path.{_RESET}\n")
+
+
 def cmd_search(args) -> None:
+    if getattr(args, "everywhere", False):
+        cmd_search_everywhere(args)
+        return
+
     batch_file = getattr(args, "batch", None)
     if batch_file:
         project_arg = args.project

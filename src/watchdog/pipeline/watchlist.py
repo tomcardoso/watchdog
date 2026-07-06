@@ -16,6 +16,8 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
+from watchdog.pipeline import resolutions
+
 _CONTEXT_CHARS = 80          # context shown on each side of a match in the snippet
 _MAX_HITS_PER_DOC = 50       # bound a pathological term (e.g. a too-broad regex) per document
 _SNIPPETS_PER_DOC = 3        # distinct-page snippets shown per term per document in the alert
@@ -129,12 +131,14 @@ def scan(vault: Path, results: list[dict]) -> list[dict]:
         return []
     docs_reg = _load_json(vault / ".watchdog" / "Registry" / "documents.json")
     entity_index = _entity_index(vault)
+    resolved = resolutions.resolved_ids(vault)
 
     hits: list[dict] = []
     for r in results:
         if r.get("status") != "ok":
             continue
-        doc = docs_reg.get(r.get("sha256"), {})
+        sha256 = r.get("sha256")
+        doc = docs_reg.get(sha256, {})
         morgue_path = doc.get("morgue_path")
         if not morgue_path:
             continue
@@ -144,6 +148,9 @@ def scan(vault: Path, results: list[dict]) -> list[dict]:
         text = md.read_text(encoding="utf-8", errors="replace")
         markers = [(m.start(), int(m.group(1))) for m in _PAGE_RE.finditer(text)]
         for t in terms:
+            rid = resolutions.alert_id(sha256 or "", t["term"])
+            if rid in resolved:
+                continue   # this term was acknowledged for this document (#266)
             for n, m in enumerate(t["regex"].finditer(text)):
                 if n >= _MAX_HITS_PER_DOC:
                     break
@@ -154,6 +161,7 @@ def scan(vault: Path, results: list[dict]) -> list[dict]:
                     "page": _page_for(markers, m.start()),
                     "snippet": _snippet(text, m.start(), m.end()),
                     "entity": entity_index.get(m.group(0).lower()),
+                    "rid": rid,
                 })
     return hits
 
@@ -184,7 +192,9 @@ def _format_run(hits: list[dict], now: datetime.datetime) -> str:
             ent = next((h["entity"] for h in dhits if h.get("entity")), None)
             ent_txt = f" · known entity [[{ent['note_path']}|{ent['name']}]]" if ent else ""
             count = f" ({len(dhits)} matches)" if len(dhits) > 1 else ""
-            lines.append(f"- **{link}**{ent_txt}{count}")
+            rid = dhits[0].get("rid")
+            wid = f" <!--wid:{rid}-->" if rid else ""
+            lines.append(f"- [ ] **{link}**{ent_txt}{count}{wid}")
             shown: list[int | None] = []
             for h in dhits:
                 if h["page"] in shown:
@@ -217,6 +227,8 @@ def write_alerts(vault: Path, hits: list[dict]) -> tuple[str, int, int] | None:
     else:
         path.write_text(
             f"# Watch-word alerts — {now:%Y-%m-%d}\n\n"
-            f"*Deterministic scan of newly-ingested documents against `watchlist.md`.*\n" + run,
+            f"*Deterministic scan of newly-ingested documents against `watchlist.md`.*\n"
+            f"*Tick a box and run `watchdog resolve --sync` to stop re-reporting a term "
+            f"for a document.*\n" + run,
             encoding="utf-8")
     return relpath, len({h["term"] for h in hits}), len({h["filename"] for h in hits})

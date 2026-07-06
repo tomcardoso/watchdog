@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import watchdog.pipeline.write_vault as wv
 from watchdog.pipeline.write_vault import run, _doc_slug
 from watchdog.pipeline.entity_norm import normalize_entity_name
 
@@ -238,6 +239,103 @@ def test_relationship_line_uses_pretty_link(tmp_path):
     assert "[[entities/company/acme-corp|Acme Corp]]" in content
 
 
+def test_resolved_contradiction_dropped_from_note_body(tmp_path):
+    from watchdog.pipeline import resolutions
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    callout = "> [!contradiction] Address differs from d3"
+    overrides = {"entities": [{"id": "alice-smith", "name": "Alice Smith", "type": "Person",
+                               "contradictions": [callout]}]}
+
+    run(make_extraction(tmp_path, overrides), vault)
+    note = vault / "entities" / "person" / "alice-smith.md"
+    assert "## Contradictions" in note.read_text()
+    assert "Address differs" in note.read_text()
+
+    # Acknowledge the callout, then re-ingest the same document — it drops from the note.
+    resolutions.resolve(vault, [resolutions.contradiction_id(callout)])
+    run(make_extraction(tmp_path, overrides), vault)
+    assert "Address differs" not in note.read_text()
+
+
+def test_unresolve_restores_contradiction_to_note(tmp_path):
+    # #288: "unresolving restores it" was false for entity notes — the resolved-contradiction
+    # overlay only ever applied to the note render, and the callout was dropped for good once
+    # a post-resolve ingest touch rewrote the note. The registry is the ledger, so unresolving
+    # must bring it back on the next touch.
+    from watchdog.pipeline import resolutions
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    callout = "> [!contradiction] Address differs from d3"
+    overrides = {"entities": [{"id": "alice-smith", "name": "Alice Smith", "type": "Person",
+                               "contradictions": [callout]}]}
+    rid = resolutions.contradiction_id(callout)
+    note = vault / "entities" / "person" / "alice-smith.md"
+
+    run(make_extraction(tmp_path, overrides), vault)
+    resolutions.resolve(vault, [rid])
+    run(make_extraction(tmp_path, overrides), vault)
+    assert "Address differs" not in note.read_text()
+
+    resolutions.unresolve(vault, [rid])
+    run(make_extraction(tmp_path, overrides), vault)
+    assert "Address differs" in note.read_text()
+
+
+def test_multiblock_callout_fully_resolved_not_left_in_fragments(tmp_path):
+    # #288 finding 3: a callout with an internal blank line used to get re-split by the
+    # note-body regex on every render, so resolving it could leave part of the block
+    # behind. Registry items are never re-split, so resolving must drop it whole.
+    from watchdog.pipeline import resolutions
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    callout = (
+        "> [!contradiction] Address differs\n>\n"
+        "> Filed as 123 Main St in 2022, 456 Oak Ave in 2024."
+    )
+    overrides = {"entities": [{"id": "alice-smith", "name": "Alice Smith", "type": "Person",
+                               "contradictions": [callout]}]}
+    note = vault / "entities" / "person" / "alice-smith.md"
+
+    run(make_extraction(tmp_path, overrides), vault)
+    assert callout in note.read_text()
+
+    resolutions.resolve(vault, [resolutions.contradiction_id(callout)])
+    run(make_extraction(tmp_path, overrides), vault)
+    content = note.read_text()
+    assert "Address differs" not in content
+    assert "Filed as 123 Main St" not in content
+
+
+def test_note_only_contradiction_backfilled_into_registry(tmp_path):
+    # #288: a callout that only ever lived in the note body (pre-#282 vault) must be folded
+    # into the registry entry the first time the entity is touched by an ingest, not left
+    # stranded where the lead sweep and unresolve can never see it.
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    note = vault / "entities" / "person" / "alice-smith.md"
+    note.parent.mkdir(parents=True, exist_ok=True)
+    note.write_text(
+        "---\nid: alice-smith\n---\n\n"
+        "## Contradictions\n\n> [!contradiction] Note-only callout\n\n"
+        "## Notes\n\n<!-- Journalist annotations — never overwritten by ingestion. -->\n"
+    )
+    existing_entities = {
+        "alice-smith": {
+            "id": "alice-smith", "name": "Alice Smith", "type": "Person",
+            "aliases": [], "appears_in": ["prior-sha"],
+            "note_path": "entities/person/alice-smith",
+            "roles": [], "date_first_seen": "2024-01-01", "date_last_updated": "2024-01-01",
+        }
+    }
+    (vault / ".watchdog" / "Registry" / "entities.json").write_text(json.dumps(existing_entities))
+
+    run(make_extraction(tmp_path), vault)
+
+    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    assert entities["alice-smith"]["contradictions"] == ["> [!contradiction] Note-only callout"]
+
+
 def test_relationship_line_includes_source_doc_link(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
@@ -460,6 +558,57 @@ def test_merge_deduplicates_roles(tmp_path):
     assert len(director_roles) == 1
 
 
+def test_new_entity_persists_contradictions_to_registry(tmp_path):
+    # #252: the registry entry must carry the contradiction callouts so leads.find_leads
+    # (which reads them straight from entities.json) isn't a structurally dead signal.
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    callout = "> [!contradiction] Address differs from prior filing"
+    overrides = {"entities": [{"id": "alice-smith", "name": "Alice Smith", "type": "Person",
+                               "contradictions": [callout]}]}
+
+    run(make_extraction(tmp_path, overrides), vault)
+
+    entities = json.loads(
+        (vault / ".watchdog" / "Registry" / "entities.json").read_text()
+    )
+    assert entities["alice-smith"]["contradictions"] == [callout]
+
+
+def test_merge_deduplicates_contradictions(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+
+    callout = "> [!contradiction] Address differs from prior filing"
+    existing_entities = {
+        "alice-smith": {
+            "id": "alice-smith",
+            "name": "Alice Smith",
+            "type": "Person",
+            "aliases": [],
+            "appears_in": ["prior-sha"],
+            "note_path": "entities/person/alice-smith",
+            "roles": [],
+            "contradictions": [callout],
+            "date_first_seen": "2024-01-01",
+            "date_last_updated": "2024-01-01",
+        }
+    }
+    (vault / ".watchdog" / "Registry" / "entities.json").write_text(
+        json.dumps(existing_entities)
+    )
+
+    new_callout = "> [!contradiction] Director count differs from prior filing"
+    overrides = {"entities": [{"id": "alice-smith", "name": "Alice Smith", "type": "Person",
+                               "contradictions": [callout, new_callout]}]}
+    run(make_extraction(tmp_path, overrides), vault)
+
+    entities = json.loads(
+        (vault / ".watchdog" / "Registry" / "entities.json").read_text()
+    )
+    assert entities["alice-smith"]["contradictions"] == [callout, new_callout]
+
+
 # ── Reverse relationship ──────────────────────────────────────────────────────
 
 def test_reverse_relationship_written_to_target(tmp_path):
@@ -610,6 +759,23 @@ def test_source_file_moved_to_morgue(tmp_path):
 
     assert not source.exists()
     assert (vault / "morgue" / "acme-corp" / "annual-report" / "test-doc.pdf").exists()
+
+
+def test_staging_dir_pruned_after_move_to_morgue(tmp_path):
+    """Documents preprocessed via preprocess_batch.py land in .watchdog/staging/<sha>/ rather
+    than _INCOMING/ — that now-empty per-doc dir must be pruned too, or it accumulates forever,
+    one per ingested document (#265)."""
+    vault = make_vault(tmp_path)
+    staging_dir = vault / ".watchdog" / "staging" / "abc123"
+    staging_dir.mkdir(parents=True)
+    (staging_dir / "test-doc.pdf").write_text("dummy")
+
+    run(make_extraction(tmp_path, {"document": {
+        "original_path": ".watchdog/staging/abc123/test-doc.pdf",
+    }}), vault)
+
+    assert (vault / "morgue" / "acme-corp" / "annual-report" / "test-doc.pdf").exists()
+    assert not staging_dir.exists()
 
 
 def test_sidecar_moved_with_source(tmp_path):
@@ -834,6 +1000,32 @@ def test_key_fact_without_quote_has_no_blockquote(tmp_path):
     assert "  > " not in content
 
 
+def test_document_note_flags_unverified_quote(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    run(make_extraction(tmp_path, {"document": {
+        "key_facts": [{"fact": "Revenue was $1M.", "page": 3, "basis": "stated",
+                       "quote": "Total revenue for the year was $1,000,000.",
+                       "quote_verified": False}],
+    }}), vault)
+
+    content = (vault / "documents" / "test-doc.md").read_text()
+    assert "  > Total revenue for the year was $1,000,000. *(quote not found on cited page — verify against source)*" in content
+
+
+def test_document_note_notes_quote_found_on_different_page(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    run(make_extraction(tmp_path, {"document": {
+        "key_facts": [{"fact": "Revenue was $1M.", "page": 3, "basis": "stated",
+                       "quote": "Total revenue for the year was $1,000,000.",
+                       "quote_found_page": 4}],
+    }}), vault)
+
+    content = (vault / "documents" / "test-doc.md").read_text()
+    assert "  > Total revenue for the year was $1,000,000. *(found on p. 4, not the cited page)*" in content
+
+
 def test_entity_analysis_renders_claim_reason_and_quote(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
@@ -857,6 +1049,110 @@ def test_fragment_digest_carries_claim_and_quote(tmp_path):
     assert "Claims:" in frag
     assert "Smith is listed as director" in frag
     assert "Ms. Smith holds 4,200,000 common shares" in frag
+
+
+# ── Security: path-traversal / vault-escape guard (#303) ──────────────────────
+#
+# postflight._sanitize_entity_ids slugifies entity id/type before write_vault ever runs; these
+# tests call write_vault.run() directly (bypassing postflight) to exercise the layer-2
+# defense-in-depth backstop on its own — a malicious id/type must not escape the vault even if
+# upstream sanitization were somehow skipped.
+
+def test_path_traversal_entity_id_rejected(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    extraction = make_extraction(tmp_path, {"entities": [
+        {"id": "../../../ESCAPED", "name": "Evil Corp", "type": "Person", "aliases": [],
+         "timeline_events": [], "roles": []},
+        {"id": "acme-corp", "name": "Acme Corp", "type": "Company", "aliases": [],
+         "timeline_events": [], "roles": []},
+    ]})
+
+    with pytest.raises(SystemExit):
+        run(extraction, vault)
+
+    assert not (tmp_path / "ESCAPED.md").exists()
+
+
+def test_path_traversal_entity_type_rejected(tmp_path):
+    """type is not slugified upstream (it stays a display value), so _type_dir itself must
+    strip traversal characters rather than just lowercasing them."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    extraction = make_extraction(tmp_path, {"entities": [
+        {"id": "alice-smith", "name": "Alice Smith", "type": "../../../person", "aliases": [],
+         "timeline_events": [], "roles": []},
+        {"id": "acme-corp", "name": "Acme Corp", "type": "Company", "aliases": [],
+         "timeline_events": [], "roles": []},
+    ]})
+
+    run(extraction, vault)   # traversal chars are stripped, not merely lowercased — no escape
+
+    assert (vault / "entities" / "person" / "alice-smith.md").exists()
+    assert not (tmp_path / "person.md").exists()
+
+
+# ── Security: wikilink display-text defanging (#305) ───────────────────────────
+
+def test_entity_name_bracket_injection_defanged_in_heading(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    hostile_name = "Acme]] [[entities/company/acme-corp|cleared"
+    run(make_extraction(tmp_path, {"entities": [
+        {"id": "alice-smith", "name": hostile_name, "type": "Person", "aliases": [],
+         "timeline_events": [], "roles": []},
+        {"id": "acme-corp", "name": "Acme Corp", "type": "Company", "aliases": [],
+         "timeline_events": [], "roles": []},
+    ]}), vault)
+
+    content = (vault / "entities" / "person" / "alice-smith.md").read_text()
+    # Frontmatter keeps the raw name (safe — yaml.dump already escapes it); only the H1 heading,
+    # which is interpolated as literal Markdown, needs the wikilink defang.
+    heading = content.split("---\n", 2)[-1]
+    assert "]] [[" not in heading
+    assert "# Acme] ] [ [entities/company/acme-corp|cleared" in heading
+
+
+def test_document_title_bracket_injection_defanged_in_role_line(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    hostile_title = "Report]] [[entities/company/acme-corp|Cleared"
+    run(make_extraction(tmp_path, {"document": {"title": hostile_title}}), vault)
+
+    content = (vault / "entities" / "person" / "alice-smith.md").read_text()
+    assert "]] [[" not in content
+
+
+def test_document_note_entity_mention_name_defanged(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    hostile_name = "Acme]] [[entities/company/rival|Rival Corp"
+    run(make_extraction(tmp_path, {"entities": [
+        {"id": "alice-smith", "name": "Alice Smith", "type": "Person", "aliases": [],
+         "timeline_events": [], "roles": []},
+        {"id": "acme-corp", "name": hostile_name, "type": "Company", "aliases": [],
+         "timeline_events": [], "roles": []},
+    ]}), vault)
+
+    content = (vault / "documents" / "test-doc.md").read_text()
+    assert "]] [[" not in content
+
+
+def test_role_target_id_bracket_injection_slugified_in_wikilink_target():
+    # A role can point at an unprofiled entity (leads.py: "named but never profiled"), whose
+    # target_id never passes through postflight's slugify pass. It lands in the wikilink *target*
+    # position, so a hostile value must be slugified here or it forges a second wikilink.
+    from watchdog.pipeline.write_vault import _role_line
+    role = {
+        "relationship": "Director of",
+        "target_id": "acme]] [[entities/company/cleared",
+        "target_type": "Company",
+        "target_name": "Acme Corp",
+    }
+    line = _role_line(role, {})
+    assert "]] [[" not in line
+    assert line.count("[[") == 1 and line.count("]]") == 1
+    assert "[[entities/company/acme-entitiescompanycleared|Acme Corp]]" in line
 
 
 def test_entity_timeline_has_page_link(tmp_path):
@@ -1159,3 +1455,175 @@ def test_reconcile_does_not_merge_across_types(tmp_path):
 
     entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
     assert "morgan-person" in entities and "morgan-company" in entities  # type-scoped, not merged
+
+
+# ── Transactionality / idempotent re-run (#259) ───────────────────────────────
+
+# A realistic 64-hex sha so the fragment block's `(sha <7hex>)` key is exercised by the
+# replace-not-append logic (short fixture shas like "abc123" never re-run, so they don't).
+_REAL_SHA = "a1b2c3d4" * 8
+
+
+def _frag_queue(vault: Path) -> dict:
+    return json.loads(
+        (vault / ".watchdog" / "tmp" / "entity-fragments" / "_queue.json").read_text()
+    )
+
+
+def _real_sha_extraction(tmp_path: Path) -> Path:
+    return make_extraction(tmp_path, {"document": {"sha256": _REAL_SHA}})
+
+
+def test_reingest_same_document_is_idempotent(tmp_path):
+    """Running write_vault twice for the same document must replace its contribution, not
+    double it — the ## Analysis block, the fragment block, and the queue count all stay singular."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    run(_real_sha_extraction(tmp_path), vault)
+    # Second run re-reads the same extraction (the source has moved to the morgue, but the
+    # note/fragment writes must still converge on the already-present contribution).
+    run(_real_sha_extraction(tmp_path), vault)
+
+    note = (vault / "entities" / "person" / "alice-smith.md").read_text()
+    # The claim lives only in ## Analysis; a doubled entry would count it twice.
+    assert wv._extract_section(note, "Analysis").count("via [[documents/test-doc") == 1
+    assert note.count("Smith is listed as director") == 1
+
+    frag = (vault / ".watchdog" / "tmp" / "entity-fragments" / "alice-smith.md").read_text()
+    assert frag.count(f"(sha {_REAL_SHA[:7]})") == 1
+    assert _frag_queue(vault)["alice-smith"]["count"] == 1
+
+
+def test_repair_retry_converges_after_crash_before_registry_persist(tmp_path, monkeypatch):
+    """Crash between the note writes and the registry persist: the registries stay untouched
+    (the commit never landed), and a repair retry converges instead of doubling claims (#259)."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    ex = _real_sha_extraction(tmp_path)
+
+    real_rename = Path.rename
+    crashed = {"done": False}
+
+    def flaky_rename(self, target):
+        # Fail the first atomic registry write (entities.json) — i.e. after the notes are
+        # written but before any registry file is persisted.
+        if not crashed["done"] and str(target).endswith("entities.json"):
+            crashed["done"] = True
+            raise OSError("simulated crash before registry persist")
+        return real_rename(self, target)
+
+    monkeypatch.setattr(Path, "rename", flaky_rename)
+    with pytest.raises(OSError):
+        run(ex, vault)
+
+    # Commit never landed: registries empty, but the entity note was written (partial write).
+    assert json.loads((vault / ".watchdog/Registry/entities.json").read_text()) == {}
+    assert (vault / "entities" / "person" / "alice-smith.md").exists()
+
+    # Repair retry (crash cleared) must converge.
+    monkeypatch.setattr(Path, "rename", real_rename)
+    run(_real_sha_extraction(tmp_path), vault)
+
+    entities = json.loads((vault / ".watchdog/Registry/entities.json").read_text())
+    assert _REAL_SHA in entities["alice-smith"]["appears_in"]
+    note = (vault / "entities" / "person" / "alice-smith.md").read_text()
+    assert wv._extract_section(note, "Analysis").count("via [[documents/test-doc") == 1
+    frag = (vault / ".watchdog" / "tmp" / "entity-fragments" / "alice-smith.md").read_text()
+    assert frag.count(f"(sha {_REAL_SHA[:7]})") == 1
+    assert _frag_queue(vault)["alice-smith"]["count"] == 1
+
+
+def test_repair_retry_converges_after_crash_during_derived_writes(tmp_path, monkeypatch):
+    """Crash *after* the registries persist, midway through the derived fragment writes: the
+    retry re-runs write_vault with the registries already committed, and the replace-by-sha
+    fragment logic keeps each document's block singular (#259)."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    ex = _real_sha_extraction(tmp_path)
+
+    real_frag = wv._record_entity_fragment
+    calls = {"n": 0}
+
+    def flaky_frag(*args, **kwargs):
+        real_frag(*args, **kwargs)          # the block is actually written…
+        calls["n"] += 1
+        if calls["n"] == 1:                 # …then crash right after the first entity
+            raise RuntimeError("simulated crash mid derived-writes")
+
+    monkeypatch.setattr(wv, "_record_entity_fragment", flaky_frag)
+    with pytest.raises(RuntimeError):
+        run(ex, vault)
+
+    # The registries committed before the crash.
+    entities = json.loads((vault / ".watchdog/Registry/entities.json").read_text())
+    assert _REAL_SHA in entities["alice-smith"]["appears_in"]
+
+    # Repair retry with fragments healthy again must converge — no doubled blocks.
+    monkeypatch.setattr(wv, "_record_entity_fragment", real_frag)
+    run(_real_sha_extraction(tmp_path), vault)
+
+    frag_dir = vault / ".watchdog" / "tmp" / "entity-fragments"
+    for eid in ("alice-smith", "acme-corp"):
+        frag = (frag_dir / f"{eid}.md").read_text()
+        assert frag.count(f"(sha {_REAL_SHA[:7]})") == 1, f"{eid} block doubled"
+        assert _frag_queue(vault)[eid]["count"] == 1
+
+
+class _FakeMsvcrt:
+    """Stand-in for the `msvcrt` stdlib module (Windows-only, unimportable in CI), so the
+    Windows locking branch can be exercised on macOS/Linux test runners (issue #258)."""
+    LK_LOCK = 1
+    LK_UNLCK = 0
+
+    def __init__(self):
+        self.calls: list[tuple[int, int]] = []
+
+    def locking(self, fd, mode, nbytes):
+        self.calls.append((mode, nbytes))
+
+
+def test_registry_lock_uses_msvcrt_on_windows(tmp_path, monkeypatch):
+    """Without fcntl (Windows), `_registry_lock` must actually serialize via msvcrt.locking
+    rather than silently no-op'ing — the bug fixed for issue #258."""
+    vault = make_vault(tmp_path)
+    fake = _FakeMsvcrt()
+    monkeypatch.setattr(wv, "_HAS_FLOCK", False)
+    monkeypatch.setattr(wv, "_msvcrt", fake)
+
+    with wv._registry_lock(vault / ".watchdog" / "Registry"):
+        pass
+
+    assert fake.calls == [(fake.LK_LOCK, 1), (fake.LK_UNLCK, 1)]
+
+
+def test_registry_lock_is_noop_when_neither_locking_mechanism_available(tmp_path, monkeypatch):
+    """If neither fcntl nor msvcrt is importable, the lock degrades to a no-op (callers rely
+    on in-process serialization only, D18) instead of raising."""
+    vault = make_vault(tmp_path)
+    monkeypatch.setattr(wv, "_HAS_FLOCK", False)
+    monkeypatch.setattr(wv, "_msvcrt", None)
+
+    with wv._registry_lock(vault / ".watchdog" / "Registry"):
+        pass  # must not raise
+
+    assert (vault / ".watchdog" / "Registry" / ".write-lock").exists()
+
+
+def test_drop_analysis_entry_replaces_only_matching_document():
+    analysis = (
+        "*3 May 2026, via [[documents/doc-a|Doc A]]:*\n- Claim A\n\n"
+        "*3 May 2026, via [[documents/doc-b|Doc B]]:*\n- Claim B"
+    )
+    kept = wv._drop_analysis_entry(analysis, "documents/doc-a")
+    assert "Claim A" not in kept
+    assert "Claim B" in kept
+
+
+def test_drop_fragment_block_replaces_only_matching_sha():
+    text = (
+        "\n### Doc A — filing, 2020 (sha aaaaaaa)\nClaim A\n"
+        "\n### Doc B — filing, 2021 (sha bbbbbbb)\nClaim B\n"
+    )
+    kept = wv._drop_fragment_block(text, "aaaaaaa" + "0" * 57)
+    assert "Claim A" not in kept
+    assert "(sha bbbbbbb)" in kept and "Claim B" in kept

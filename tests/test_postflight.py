@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from watchdog.pipeline.postflight import _apply_match_ids, explode_key_facts
+from watchdog.pipeline.postflight import _apply_match_ids, _sanitize_dates, _sanitize_entity_ids, explode_key_facts
 from watchdog.pipeline.postflight import run as postflight_run
 
 
@@ -55,6 +55,39 @@ def test_explode_ignores_unknown_tags():
     assert "evidence_fragments" not in extraction["entities"][0]
 
 
+# ── _sanitize_dates (#262: non-ISO dates must not reach timeline.py's filenames) ────────────
+
+def test_sanitize_dates_drops_non_iso_date_and_warns():
+    extraction = {"document": {"key_facts": [
+        {"fact": "x", "date": "2024/03", "entities": ["a"]},
+    ]}}
+    warnings = _sanitize_dates(extraction)
+    assert extraction["document"]["key_facts"][0]["date"] == ""
+    assert len(warnings) == 1
+    assert "2024/03" in warnings[0]
+
+
+def test_sanitize_dates_drops_free_text_date():
+    extraction = {"document": {"key_facts": [
+        {"fact": "x", "date": "sometime last year", "entities": ["a"]},
+    ]}}
+    warnings = _sanitize_dates(extraction)
+    assert extraction["document"]["key_facts"][0]["date"] == ""
+    assert len(warnings) == 1
+
+
+def test_sanitize_dates_keeps_valid_iso_shapes():
+    extraction = {"document": {"key_facts": [
+        {"fact": "a", "date": "2021", "entities": []},
+        {"fact": "b", "date": "2021-03", "entities": []},
+        {"fact": "c", "date": "2021-03-30", "entities": []},
+        {"fact": "d", "entities": []},   # no date at all — untouched
+    ]}}
+    assert _sanitize_dates(extraction) == []
+    dates = [f.get("date") for f in extraction["document"]["key_facts"]]
+    assert dates == ["2021", "2021-03", "2021-03-30", None]
+
+
 def test_apply_match_ids_remaps_key_fact_tags():
     extraction = {
         "document": {"key_facts": [{"fact": "x", "entities": ["new-slug", "other"]}]},
@@ -64,6 +97,76 @@ def test_apply_match_ids_remaps_key_fact_tags():
     assert extraction["entities"][0]["id"] == "canonical"
     assert extraction["document"]["key_facts"][0]["entities"] == ["canonical", "other"]
 
+
+# ── _sanitize_entity_ids (#303: path-traversal / vault-escape via unslugified entity id) ────
+
+def test_sanitize_entity_ids_leaves_wellformed_ids_untouched():
+    extraction = {"entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company"}]}
+    assert _sanitize_entity_ids(extraction) == []
+    assert extraction["entities"][0]["id"] == "acme-corp"
+
+
+def test_sanitize_entity_ids_slugifies_path_traversal_id():
+    extraction = {"entities": [{"id": "../../../ESCAPED", "name": "Evil Corp", "type": "Person"}]}
+    warnings = _sanitize_entity_ids(extraction)
+    assert len(warnings) == 1
+    assert extraction["entities"][0]["id"] == "escaped"
+
+
+def test_sanitize_entity_ids_remaps_key_fact_tags_and_role_targets():
+    extraction = {
+        "document": {"key_facts": [{"fact": "x", "entities": ["../evil"]}]},
+        "entities": [
+            {"id": "../evil", "name": "Evil Corp", "type": "Company"},
+            {"id": "alice", "name": "Alice", "type": "Person",
+             "roles": [{"relationship": "Director of", "target_id": "../evil"}]},
+        ],
+    }
+    _sanitize_entity_ids(extraction)
+    new_id = extraction["entities"][0]["id"]
+    assert new_id == "evil"
+    assert extraction["document"]["key_facts"][0]["entities"] == [new_id]
+    assert extraction["entities"][1]["roles"][0]["target_id"] == new_id
+
+
+def test_sanitize_entity_ids_falls_back_to_name_when_id_slugifies_empty():
+    extraction = {"entities": [{"id": "../../..", "name": "Evil Corp", "type": "Person"}]}
+    _sanitize_entity_ids(extraction)
+    assert extraction["entities"][0]["id"] == "evil-corp"
+
+
+def test_sanitize_entity_ids_falls_back_to_placeholder_when_name_also_empty():
+    extraction = {"entities": [{"id": "../../..", "name": "!!!", "type": "Person"}]}
+    _sanitize_entity_ids(extraction)
+    assert extraction["entities"][0]["id"] == "entity-1"
+
+
+def test_sanitize_entity_ids_disambiguates_collision():
+    extraction = {"entities": [
+        {"id": "acme-corp", "name": "Acme Corp", "type": "Company"},
+        {"id": "Acme Corp!!", "name": "Acme Corp", "type": "Company"},
+    ]}
+    _sanitize_entity_ids(extraction)
+    ids = [e["id"] for e in extraction["entities"]]
+    assert ids == ["acme-corp", "acme-corp-2"]
+    assert len(set(ids)) == 2
+
+def test_sanitize_entity_ids_identical_duplicate_keeps_references_on_first():
+    # Two entities emitted with a literally identical id: the second is disambiguated to
+    # "acme-corp-2", but references to "acme-corp" must stay on the surviving first entity —
+    # not be misrouted to the renamed duplicate.
+    extraction = {
+        "document": {"key_facts": [{"fact": "x", "entities": ["acme-corp"]}]},
+        "entities": [
+            {"id": "acme-corp", "name": "Acme Corp", "type": "Company"},
+            {"id": "acme-corp", "name": "Acme Corp", "type": "Company",
+             "roles": [{"relationship": "Owns", "target_id": "acme-corp"}]},
+        ],
+    }
+    _sanitize_entity_ids(extraction)
+    assert [e["id"] for e in extraction["entities"]] == ["acme-corp", "acme-corp-2"]
+    assert extraction["document"]["key_facts"][0]["entities"] == ["acme-corp"]
+    assert extraction["entities"][1]["roles"][0]["target_id"] == "acme-corp"
 
 # ── end-to-end through postflight ───────────────────────────────────────────
 
@@ -121,6 +224,27 @@ def test_postflight_builds_entity_analysis_from_tagged_facts(tmp_path):
     assert "Transfer ratio set at 65.8%." not in pbgf_note  # not tagged to pbgf
 
 
+def test_postflight_run_drops_malformed_date_before_timeline_write(tmp_path, capsys):
+    """A non-ISO-shaped key_facts.date (#262) must not reach timeline.py's
+    {date}_{sha7}.ndjson filename construction — it's dropped with a visible warning instead."""
+    vault = _full_vault(tmp_path)
+    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    ext = _extraction()
+    ext["document"]["key_facts"][1]["date"] = "2024/03"   # bad shape: contains a slash
+    ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
+    ext_path.write_text(json.dumps(ext), encoding="utf-8")
+
+    result = postflight_run(vault, ext_path)
+    assert result.get("ok"), result   # doesn't crash the whole extraction
+
+    timeline_dir = vault / ".watchdog" / "timeline"
+    ndjson_files = list(timeline_dir.glob("*.ndjson")) if timeline_dir.exists() else []
+    assert not any("2024" in f.name for f in ndjson_files)   # no file written for the bad date
+
+    err = capsys.readouterr().err
+    assert "Warning" in err and "2024/03" in err
+
+
 def test_postflight_writes_morgue_markdown(tmp_path):
     vault = _full_vault(tmp_path)
     (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
@@ -138,3 +262,49 @@ def test_postflight_writes_morgue_markdown(tmp_path):
     text = md_files[0].read_text(encoding="utf-8")
     assert "<!-- PAGE 1 -->" in text and "<!-- PAGE 2 -->" in text
     assert "# Heading one" in text and "Second page body." in text
+
+
+# ── Quote verification against the morgue text (#267) ───────────────────────
+
+def test_postflight_flags_unverified_quote_and_warns(tmp_path, capsys):
+    vault = _full_vault(tmp_path)
+    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
+        "pages": [{"page": 2, "markdown": "Nothing about ratios here."},
+                  {"page": 3, "markdown": "Also nothing relevant."}],
+    }))
+    ext = _extraction()
+    ext["document"]["key_facts"][0]["quote"] = "Transfer ratio set at 65.8%."
+    ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
+    ext_path.write_text(json.dumps(ext), encoding="utf-8")
+
+    result = postflight_run(vault, ext_path)
+    assert result.get("ok"), result
+
+    lu_note = (vault / "entities" / "company" / "lu.md").read_text(encoding="utf-8")
+    assert "*(quote not found on cited page — verify against source)*" in lu_note
+
+    err = capsys.readouterr().err
+    assert "Warning" in err and "not found on page" in err
+
+
+def test_postflight_verifies_exact_quote_without_warning(tmp_path, capsys):
+    vault = _full_vault(tmp_path)
+    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
+        "pages": [{"page": 2, "markdown": "The transfer ratio set at 65.8%. was confirmed."},
+                  {"page": 3, "markdown": "Unrelated page text."}],
+    }))
+    ext = _extraction()
+    ext["document"]["key_facts"][0]["quote"] = "Transfer ratio set at 65.8%."
+    ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
+    ext_path.write_text(json.dumps(ext), encoding="utf-8")
+
+    result = postflight_run(vault, ext_path)
+    assert result.get("ok"), result
+
+    lu_note = (vault / "entities" / "company" / "lu.md").read_text(encoding="utf-8")
+    assert "quote not found" not in lu_note
+
+    err = capsys.readouterr().err
+    assert "not found on page" not in err

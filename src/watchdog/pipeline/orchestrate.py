@@ -12,6 +12,7 @@ serializes the vault writes and `_reconcile_entity_ids` handles the parallel new
 
 import asyncio
 import datetime
+import hashlib
 import json
 import shutil
 import signal
@@ -64,32 +65,42 @@ def _settle(sha: str, line: str) -> None:
         print(line, flush=True)
 
 
-def _record_usage(task: str, r: "model_client.ModelResult") -> None:
+def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
+                  cost_usd: float | None, attempts: int = 1,
+                  filename: str | None = None, detail: str | None = None) -> None:
     """Append one call's usage to the run-scoped `_usage` accumulator, if one is active.
     Tolerates both Anthropic-style (`input_tokens`/`output_tokens`) and OpenAI-compatible
     (`prompt_tokens`/`completion_tokens`) usage dicts (D37) — the latter's cache-token fields
-    aren't modelled yet (matches `model_client._openai_cost`'s own v1 simplification)."""
+    aren't modelled yet (matches `model_client._openai_cost`'s own v1 simplification).
+
+    Takes explicit fields rather than a `model_client.ModelResult` so a batch-collected item
+    (D52, no live model call at this point) can feed it too, not just `_call_model` (D64).
+    `filename`/`detail` (e.g. a page range or section label) let a per-run usage file attribute
+    each call to a document, not just a task name (#247)."""
     if _usage is None:
         return
-    u = r.usage or {}
+    u = usage or {}
     _usage.append({
-        "task": task, "model": r.model, "backend": r.backend,
+        "task": task, "model": model, "backend": backend,
         "input_tokens": u.get("input_tokens", u.get("prompt_tokens", 0)) or 0,
         "output_tokens": u.get("output_tokens", u.get("completion_tokens", 0)) or 0,
         "cache_read_tokens": u.get("cache_read_input_tokens", 0) or 0,
         "cache_write_tokens": u.get("cache_creation_input_tokens", 0) or 0,
-        "cost_usd": r.cost_usd, "attempts": r.attempts,
+        "cost_usd": cost_usd, "attempts": attempts,
+        "filename": filename, "detail": detail,
     })
 
 
 async def _call_model(*, task, prompt, schema, model=None, backend=None,
-                      max_retries=1, effort=None) -> "model_client.ModelResult":
+                      max_retries=1, effort=None, filename=None, detail=None) -> "model_client.ModelResult":
     """Thin wrapper around `model_client.acomplete_json` that also records this call's usage
     (A2) — every reasoning call in the orchestrator goes through here instead of the client
-    directly, so telemetry can't silently miss a call site."""
+    directly, so telemetry can't silently miss a call site. `filename`/`detail` are passed
+    through to `_record_usage` unchanged (#247)."""
     r = await model_client.acomplete_json(task=task, prompt=prompt, schema=schema, model=model,
                                           backend=backend, max_retries=max_retries, effort=effort)
-    _record_usage(task, r)
+    _record_usage(task, model=r.model, backend=r.backend, usage=r.usage, cost_usd=r.cost_usd,
+                 attempts=r.attempts, filename=filename, detail=detail)
     return r
 
 
@@ -216,16 +227,28 @@ def _sidecar_provenance(vault: Path, filename: str) -> dict:
     return {k: str(data[k]) for k in ("source", "obtained") if data.get(k) is not None}
 
 
-def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str, vault: Path) -> None:
+def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str, vault: Path,
+                    skill_text: str | None = None, extract_model: str | None = None,
+                    extract_effort: str | None = None) -> None:
     """Stamp the deterministic, Python-owned document fields onto the extraction, before
     post-flight consumes it. Identity (sha256/filename/original_path/page_count) and provenance
     (source/obtained) are values the pipeline already holds — the model is no longer asked to
     echo them, so we set the authoritative values here. Stamping the sha in particular removes a
     latent failure mode: write_vault keys the vault write on `document.sha256`, so a model
-    mis-transcription of the 64-char hash would desync the write from the queue/registry."""
+    mis-transcription of the 64-char hash would desync the write from the queue/registry.
+
+    `record_skill_hash`/`extract_model`/`extract_effort` (#268) are extraction provenance
+    alongside `record_skill`: the skill's *content* can change (#68) without its filename
+    changing, and per-run usage (D50) records model/effort per call but not per document — so
+    without these, a vault can't answer "what produced this extraction" once skills or model
+    config move on."""
     from watchdog.pipeline.write_vault import slugify
     doc = extraction.setdefault("document", {})
     doc["record_skill"] = skill_label
+    doc["record_skill_hash"] = (
+        hashlib.sha256(skill_text.encode("utf-8")).hexdigest()[:12] if skill_text else None)
+    doc["extract_model"] = model_client.resolve_model_id(extract_model) if extract_model else None
+    doc["extract_effort"] = extract_effort
     doc["sha256"] = sha
     doc["filename"] = pf["filename"]
     doc["original_path"] = pf.get("original_path")
@@ -234,12 +257,18 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str, v
     # morgue_document_type is just the slug form of document_type — derive it deterministically
     # rather than asking the model for the same fact twice (it names the morgue folder).
     extraction["morgue_document_type"] = slugify(doc.get("document_type") or "") or "document"
+    # morgue_entity_id is used raw as a morgue path segment (write_vault) — slugify the model's
+    # value here too, so a value with spaces or an embedded path separator (e.g. "Acme Corp" or
+    # "acme/subsidiary") can't produce a broken morgue directory layout or wikilinks.
+    extraction["morgue_entity_id"] = slugify(extraction.get("morgue_entity_id") or "")
 
 
-async def _classify(doc_excerpt: str, model: str, backend: str | None = None) -> str:
+async def _classify(doc_excerpt: str, model: str, backend: str | None = None,
+                    filename: str | None = None) -> str:
     r = await _call_model(
         task="classify", model=model, backend=backend, schema=schemas.CLASSIFY,
         prompt=prompts.build_classify_prompt(doc_excerpt, skills_catalog.build_index()),
+        filename=filename,
     )
     return r.parsed.get("skill") or "general-records.md"
 
@@ -329,12 +358,15 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
         skill_text=skill_text, sidecar=_read_sidecar(vault, pf["filename"]), brief=brief,
         known_document_types=pf.get("known_document_types", []),
     )
+    page_count = pf.get("page_count") or len(pf["pages"])
     cost, errors, extraction, scratchpad = 0.0, [], {}, ""
     for _ in range(2):
         p = base if not errors else _append_repair_note(base, errors)
+        detail = f"pages 1–{page_count}" + (" (repair)" if errors else "")
         try:
             r = await _call_model(task="extract", model=model, backend=backend,
-                                  prompt=p, schema=schemas.EXTRACTION, effort=effort)
+                                  prompt=p, schema=schemas.EXTRACTION, effort=effort,
+                                  filename=pf["filename"], detail=detail)
         except model_client.ModelError as e:
             # No valid JSON after the client's own retries — often output truncated on a
             # dense doc. Report failure so the caller can fall back to sectioning.
@@ -342,7 +374,8 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
         cost += r.cost_usd or 0.0
         extraction = r.parsed
         scratchpad = extraction.pop("scratchpad", "")
-        _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault)
+        _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault,
+                        skill_text=skill_text, extract_model=model, extract_effort=effort)
         ok, errors = _write_postflight(vault, sha, extraction)
         if ok:
             return extraction, scratchpad, cost, True, []
@@ -368,6 +401,46 @@ def _carry_text(entities_seen: dict, observations: str) -> str:
     return "\n".join(lines) + "\n" if lines else ""
 
 
+def _stitch_digest(doc: dict, page_count: int | None) -> str:
+    """Deterministic fallback when the digest call fails or returns empty: an orientation line
+    from title/type/page_count, then the first few facts as plain sentences. Degraded but
+    valid — never worth a retry loop (#279)."""
+    head = doc.get("title") or "Untitled document"
+    dtype = doc.get("document_type") or ""
+    line = f"{head} — {dtype}" if dtype else head
+    if page_count:
+        line += f", {page_count} pages"
+    facts = [t.rstrip(".") + "." for f in doc.get("key_facts", [])[:8]
+             if (t := (f.get("fact") or "").strip())]
+    return (line + ". " + " ".join(facts)).strip() if facts else line + "."
+
+
+async def _compose_digest(doc: dict, page_count: int | None, model: str, backend: str | None,
+                          filename: str, skill_text: str | None, brief: str | None,
+                          sidecar: str | None) -> tuple[str, float]:
+    """One small model call composing the whole-document digest from the merged key_facts
+    (#279) — no section call ever sees the whole document, so this runs once after merge, on the
+    extractor tier (the same model that read the sections), so both digest paths — inline for a
+    whole-doc extraction, post-merge here — use one model. It is handed the same context a
+    whole-document extractor gets short of the raw text (filename, domain skill, brief, sidecar),
+    with the merged key_facts standing in for the text. Falls back to the deterministic stitch
+    on any model failure or an empty response; returns (summary, cost)."""
+    prompt = prompts.build_digest_prompt(
+        filename=filename, title=doc.get("title", ""), document_type=doc.get("document_type", ""),
+        page_count=page_count, skill_text=skill_text, brief=brief, sidecar=sidecar,
+        key_facts=_briefing_facts(doc))
+    try:
+        r = await _call_model(task="digest", model=model, backend=backend,
+                              prompt=prompt, schema=schemas.DIGEST,
+                              filename=filename, detail="digest")
+        summary = (r.parsed.get("summary") or "").strip()
+        if summary:
+            return summary, r.cost_usd or 0.0
+        return _stitch_digest(doc, page_count), r.cost_usd or 0.0
+    except model_client.ModelError:
+        return _stitch_digest(doc, page_count), 0.0
+
+
 async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_label,
                              effort=None, backend=None, brief=None):
     """Sequential per-section extraction with carry-forward, then deterministic merge."""
@@ -384,7 +457,8 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
             known_document_types=pf.get("known_document_types", []),
         )
         r = await _call_model(task="extract-section", model=model, backend=backend,
-                              prompt=prompt, schema=schemas.SECTION, effort=effort)
+                              prompt=prompt, schema=schemas.SECTION, effort=effort,
+                              filename=pf["filename"], detail=sec["label"])
         cost += r.cost_usd or 0.0
         parts.append(r.parsed)
         for e in r.parsed.get("entities") or []:
@@ -394,7 +468,14 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
 
     extraction = merge.merge_extractions(parts)
     scratchpad = "\n".join(p["observations"] for p in parts if p.get("observations"))
-    _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault)
+    doc = extraction.setdefault("document", {})
+    page_count = pf.get("page_count") or len(pf.get("pages", []))
+    doc["summary"], digest_cost = await _compose_digest(
+        doc, page_count, model, backend, pf["filename"],
+        skill_text, brief, _read_sidecar(vault, pf["filename"]))
+    cost += digest_cost
+    _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault,
+                    skill_text=skill_text, extract_model=model, extract_effort=effort)
     ok, errors = _write_postflight(vault, sha, extraction)
     return extraction, scratchpad, cost, ok, errors
 
@@ -434,6 +515,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         return _fail(vault, sha, "", pf["error"])
     if pf.get("already_extracted"):
         _say(f"{_DIM}–  {pf.get('filename')}  already extracted — skipping{_RESET}")
+        (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
         return {"sha256": sha, "filename": pf.get("filename"), "status": "skipped"}
 
     filename = pf["filename"]
@@ -465,7 +547,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
               f"{_DIM}→  {filename}  classifying ({page_count} page{'s' if page_count != 1 else ''})…{_RESET}")
         # Classify on the first N pages (page-aware, not a mid-page char cut); the char cap is a guard.
         excerpt = _pages_text(pages[:max(1, classify_pages)])[:_CLASSIFY_EXCERPT_CHARS]
-        skill = await _classify(excerpt, classify_model, classify_backend)
+        skill = await _classify(excerpt, classify_model, classify_backend, filename=filename)
         skill_text = skills_catalog.read_skill(skill)
         skill_label = skill.removesuffix(".md")
         _step(f"{_DIM}→  {filename}  {pg} · {skill_label}{_RESET}",
@@ -543,18 +625,26 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
 # skill: classification is inherently one-document-at-a-time and not batchable.
 
 async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_text: str,
-                             skill_label: str, brief: str | None, api_key: str) -> dict:
+                             skill_label: str, brief: str | None, api_key: str,
+                             model: str | None = None, effort: str | None = None) -> dict:
     """Turn one collected batch result into a finished document. `item` is `batch_extract.collect`'s
     per-sha entry (or None if the batch has no result for this sha at all). A batch response that
     didn't pass schema validation gets exactly one synchronous claude-api repair attempt — not a
     whole new batch submission for a single document — mirroring `_simple_extract`'s own
-    single-repair-attempt semantics."""
+    single-repair-attempt semantics.
+
+    `model` (the batch's resolved model id) is used both to attribute the batch-collected item's
+    own usage (D64) — unlike every other extraction path, this one never calls `_call_model`
+    itself when the batch result is already valid, so without this the batch's real token spend
+    would silently never reach `usage-<ts>.json` — and, with `effort`, to stamp this document's
+    extraction provenance (#268)."""
     pf = preflight.run(vault, sha)
     if pf.get("error"):
         return _fail(vault, sha, "", pf["error"])
     if pf.get("already_extracted"):     # a retried collection pass after a partial rate limit
         filename = pf.get("filename")
         _say(f"{_DIM}–  {filename}  already extracted — skipping{_RESET}")
+        (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
         return {"sha256": sha, "filename": filename, "status": "skipped"}
 
     filename = pf["filename"]
@@ -563,6 +653,10 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
         return _fail(vault, sha, filename, "batch result missing for this document")
 
     extraction, cost = item["parsed"], item.get("cost_usd") or 0.0
+    if item.get("usage") is not None:
+        _record_usage("extract", model=model, backend="claude-batch", usage=item["usage"],
+                      cost_usd=item.get("cost_usd"), filename=filename,
+                      detail=f"pages 1–{page_count}")
     if not item["ok"]:
         prompt = prompts.build_extract_prompt(
             pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
@@ -572,14 +666,16 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
             prompt = _append_repair_note(prompt, [item["error"]])
         try:
             r = await _call_model(task="extract", model=None, backend="claude-api",
-                                  prompt=prompt, schema=schemas.EXTRACTION)
+                                  prompt=prompt, schema=schemas.EXTRACTION,
+                                  filename=filename, detail=f"pages 1–{page_count} (repair)")
         except model_client.ModelError as e:
             return _fail(vault, sha, filename, f"batch result invalid and repair failed: {e}")
         extraction = r.parsed
         cost += r.cost_usd or 0.0
 
     scratchpad = extraction.pop("scratchpad", "") if isinstance(extraction, dict) else ""
-    _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault)
+    _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault,
+                    skill_text=skill_text, extract_model=model, extract_effort=effort)
     ok, errors = _write_postflight(vault, sha, extraction)
     if not ok:
         return _fail(vault, sha, filename, "post-flight rejected: " + "; ".join(errors[:3]))
@@ -609,7 +705,8 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str, brief: str 
     try:
         for sha in state["shas"]:
             results.append(await _finish_batch_item(vault, sha, collected.get(sha), skill_text,
-                                                     skill_label, brief, api_key))
+                                                     skill_label, brief, api_key,
+                                                     model=state["model"], effort=state.get("effort")))
     except model_client.RateLimitError as e:
         # A repair-retry call (claude-api) hit a rate limit partway through collection. Leave
         # the batch state in place — already-written documents are safe (preflight's
@@ -644,6 +741,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
             continue
         if pf.get("already_extracted"):
             _say(f"{_DIM}–  {pf.get('filename')}  already extracted — skipping{_RESET}")
+            (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
             results.append({"sha256": sha, "filename": pf.get("filename"), "status": "skipped"})
             continue
         if section.run(vault, sha).get("sectioned"):
@@ -860,8 +958,9 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     out["timeline_collisions"] = len(cols)
     for col in cols:
         canonical = vault / col["canonical"]
+        raw_paths = [vault / r for r in col["raw"]]
         events: list[dict] = []
-        for p in [canonical, *(vault / r for r in col["raw"])]:
+        for p in [canonical, *raw_paths]:
             for line in timeline._read_ndjson_lines(p):
                 try:
                     events.append(json.loads(line))
@@ -872,12 +971,19 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         try:
             r = await _call_model(
                 task="timeline-dedup", model=post_model, backend=post_backend, schema=schemas.TIMELINE_DEDUP,
-                prompt=prompts.build_timeline_dedup_prompt(col["date"], events), effort=post_effort)
+                prompt=prompts.build_timeline_dedup_prompt(col["date"], events), effort=post_effort,
+                detail=col["date"])
             kept = _select_kept(events, r.parsed.get("groups"))
         except (model_client.ModelError, model_client.RateLimitError):
-            kept = events   # fall back to the union rather than losing events
+            # Dedup failed (e.g. rate limit): leave the canonical AND its raws untouched so the
+            # next ingest retries this collision cleanly. Writing the canonical+raw union back
+            # here would bake in duplicate rows that compound on every later run (#250).
+            continue
         canonical.write_text(
             "\n".join(json.dumps(e, ensure_ascii=False) for e in kept) + "\n", encoding="utf-8")
+        # The raws are now merged into the canonical — consume them so they aren't re-collided.
+        for rp in raw_paths:
+            rp.unlink(missing_ok=True)
 
     # 2b. Cross-precision reconciliation (#239, D63): date-keyed buckets never compare a
     # month-precision event against the specific day it restates. For each month holding both, one
@@ -888,7 +994,8 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             r = await _call_model(
                 task="timeline-precision", model=post_model, backend=post_backend,
                 schema=schemas.TIMELINE_PRECISION_MATCH, effort=post_effort,
-                prompt=prompts.build_timeline_precision_prompt(grp["month"], grp["coarse"], grp["precise"]))
+                prompt=prompts.build_timeline_precision_prompt(grp["month"], grp["coarse"], grp["precise"]),
+                detail=grp["month"])
         except (model_client.ModelError, model_client.RateLimitError):
             continue   # leave the month untouched rather than risk a bad fold
         timeline.apply_precision_matches(vault, grp, r.parsed.get("matches") or [])
@@ -1026,10 +1133,10 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
               pinned_skill: str | None = None,
               extract_effort: str | None = None, post_effort: str | None = None,
               extract_backend: str | None = None, post_backend: str | None = None,
-              classify_backend: str | None = None) -> dict:
+              classify_backend: str | None = None, wait: bool = False) -> dict:
     """Extract every queued document (bounded by `concurrency`), then post-ingest.
 
-    `extract_model` drives extraction (whole-doc + section); `post_model` drives
+    `extract_model` drives extraction (whole-doc + section, and the sectioned-doc digest); `post_model` drives
     synthesis/timeline/briefing; `classify_model` the cheap document classifier,
     which sees the first `classify_pages` pages of each document. `pinned_skill`
     (a path to a skill file) skips classification and uses that skill for every document.
@@ -1037,6 +1144,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     extraction and post-ingest stages respectively (D36); classify has no effort knob.
     `*_backend` selects a non-default backend per stage (None → route by auth mode); a
     non-Claude backend's `*_model` is that provider's raw model id (D37).
+    `wait` only changes the rate-limit notice text — the caller (`cmd_ingest`) owns the
+    actual sleep-and-resume loop; this function always stops cleanly on a rate limit.
     """
     queue_dir = vault / ".watchdog" / "queue"
     shas = [f.stem for f in sorted(queue_dir.glob("*.json"))] if queue_dir.exists() else []
@@ -1056,6 +1165,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         results = batch_out["results"]
         cancelled_flag = False
         rate_limit_msg = None
+        rate_limit_resets_at = None
         extra_summary = {"batch_pending": batch_out.get("batch_pending", False)}
     else:
         if not shas:
@@ -1072,13 +1182,14 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         stop_reason: dict = {}      # {"rate_limit": "<notice>"} when a limit stopped the batch
         tasks: list = []
 
-        def _request_stop(rate_limit: str | None = None) -> None:
+        def _request_stop(rate_limit: str | None = None, resets_at: int | None = None) -> None:
             """Stop the batch once: flag it, record why, cancel in-flight work. Idempotent."""
             if cancelled.is_set():
                 return
             cancelled.set()
             if rate_limit:
                 stop_reason["rate_limit"] = rate_limit
+                stop_reason["resets_at"] = resets_at
             for t in tasks:
                 t.cancel()
 
@@ -1096,9 +1207,13 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                     if not cancelled.is_set():
                         print()
                         _say(f"{_YELLOW}Rate limit reached{_RESET}{_DIM} — {e}{_RESET}")
-                        _say(f"{_DIM}Stopping; finished documents are saved. Re-run "
-                             f"{_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} once it resets to continue.{_RESET}")
-                        _request_stop(rate_limit=str(e))
+                        if wait:
+                            _say(f"{_DIM}Stopping; finished documents are saved. "
+                                 f"Waiting to resume automatically once it resets.{_RESET}")
+                        else:
+                            _say(f"{_DIM}Stopping; finished documents are saved. Re-run "
+                                 f"{_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} once it resets to continue.{_RESET}")
+                        _request_stop(rate_limit=str(e), resets_at=e.resets_at)
                     return {"sha256": sha, "filename": "", "status": "cancelled"}
                 except asyncio.CancelledError:       # ctrl+c mid-document — queue file stays
                     return {"sha256": sha, "filename": "", "status": "cancelled"}
@@ -1122,7 +1237,11 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         try:
             loop.add_signal_handler(signal.SIGINT, _on_interrupt)
             handler_set = True
-        except (NotImplementedError, RuntimeError):   # e.g. non-main thread / unsupported platform
+        except (NotImplementedError, RuntimeError):
+            # e.g. non-main thread, or Windows' Proactor event loop, which never supports
+            # add_signal_handler. There, every Ctrl+C falls through to cmd_ingest's plain
+            # `except KeyboardInterrupt` instead of this module's graceful
+            # finish-current-writes path — see that handler's comment for what differs.
             pass
         try:
             await asyncio.gather(*tasks, return_exceptions=True)
@@ -1137,6 +1256,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         results = [t.result() for t in tasks if t.done() and not t.cancelled()]
         cancelled_flag = cancelled.is_set()
         rate_limit_msg = stop_reason.get("rate_limit")
+        rate_limit_resets_at = stop_reason.get("resets_at")
         extra_summary = {}
 
     by_status = lambda s: sum(1 for r in results if r.get("status") == s)
@@ -1147,6 +1267,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                "cancelled": cancelled_flag,
                "rate_limited": bool(rate_limit_msg),
                "stop_message": rate_limit_msg,
+               "rate_limit_resets_at": rate_limit_resets_at,
                "quarantined": quarantined, **extra_summary}
     if not pinned_skill:
         _nudge_skill_pin(results)

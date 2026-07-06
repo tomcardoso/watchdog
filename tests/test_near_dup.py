@@ -72,12 +72,11 @@ def test_jaccard_one_empty():
 
 def test_shingles_from_text_returns_set():
     result = shingles_from_text("the quick brown fox")
-    assert isinstance(result, set)
-    assert len(result) > 0
+    assert result == {"the quick brown", "quick brown fox"}
 
 def test_shingles_from_text_empty():
     result = shingles_from_text("")
-    assert isinstance(result, set)
+    assert result == {""}
 
 
 # ── minhash ───────────────────────────────────────────────────────────────────

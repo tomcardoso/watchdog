@@ -90,6 +90,7 @@ from watchdog.cmd.auth import cmd_auth
 from watchdog.cmd.export import cmd_export
 from watchdog.cmd.merge_entities import cmd_merge_entities
 from watchdog.cmd.leads import cmd_leads
+from watchdog.cmd.resolve import cmd_resolve, cmd_unresolve
 from watchdog.cmd.reindex import cmd_reindex
 from watchdog.cmd.research import cmd_fetch, cmd_research, cmd_research_fetch, cmd_research_seen
 from watchdog.cmd.watchlist import cmd_watchlist, cmd_watchlist_add
@@ -235,6 +236,10 @@ def main() -> None:
     p_search.add_argument("--batch", metavar="FILE",
                           help="Read search terms from FILE (one per line) and report hits per term, "
                                "instead of ranking a single query")
+    p_search.add_argument("--everywhere", action="store_true",
+                          help="Search every registered, non-archived investigation instead of one project "
+                               "(manifest + exact-match lanes only, grouped by investigation; combine with "
+                               "--batch to check a list of terms across all vaults)")
     p_search.add_argument("--json", action="store_true",
                           help="Emit results as JSON (for skills/scripts) instead of the formatted listing")
     p_search.set_defaults(func=cmd_search)
@@ -256,6 +261,16 @@ def main() -> None:
     p_leads = sub.add_parser("leads", help="Surface investigative leads from the entity graph (deterministic)")
     p_leads.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
     p_leads.set_defaults(func=cmd_leads)
+
+    p_resolve = sub.add_parser("resolve", help="Acknowledge leads/alerts/contradictions so they stop re-surfacing")
+    p_resolve.add_argument("ids", nargs="*", metavar="ID", help="Resolution ids printed next to each report item")
+    p_resolve.add_argument("--sync", action="store_true", help="Import `- [x]` checkboxes ticked in briefings/")
+    p_resolve.add_argument("--list", action="store_true", help="List what is currently acknowledged")
+    p_resolve.set_defaults(func=cmd_resolve)
+
+    p_unresolve = sub.add_parser("unresolve", help="Bring resolved leads/alerts/contradictions back into the active list")
+    p_unresolve.add_argument("ids", nargs="+", metavar="ID", help="Resolution ids to reopen")
+    p_unresolve.set_defaults(func=cmd_unresolve)
 
     p_reindex = sub.add_parser("reindex", help="Rebuild the search index from disk — no OCR re-run, no model calls")
     p_reindex.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
@@ -381,6 +396,12 @@ def main() -> None:
                           metavar="NAME",
                           help="Pin a record skill for every document, skipping classification. "
                                "Pass a skill name, or use --skill with no value to pick interactively.")
+    p_ingest.add_argument("--wait", action="store_true", default=False,
+                          help="On a rate limit, sleep until it resets and resume automatically "
+                               "instead of stopping for you to re-run ingest. Not with a "
+                               "claude-batch extractor model.")
+    p_ingest.add_argument("--estimate", action="store_true",
+                          help="Print a token/cost estimate for the queue and exit — no lock, no confirm, no extraction")
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_finalize = sub.add_parser("finalize", help="Complete post-ingest (synthesis + timeline + briefing) for an already-extracted batch — e.g. after a rate limit stopped it")

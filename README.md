@@ -142,9 +142,9 @@ pipx install watchdog-intel
 watchdog setup
 ```
 
-`watchdog setup` verifies system dependencies (qpdf, Ghostscript, Tesseract on Linux), configures your projects directory, and downloads the ML models used for document conversion and semantic search (one-time). Expect the model download step to take a few minutes on a slow connection.
+`watchdog setup` verifies system dependencies (qpdf, Ghostscript, Tesseract on Linux/Windows), configures your projects directory, offers to install the optional Playwright/Chromium capture browser (~150 MB — declines by default), and downloads the ML models used for document conversion and semantic search (one-time). Expect the model download step to take a few minutes on a slow connection.
 
-Shell tab completion is enabled automatically by `watchdog setup` — it writes the activation line to your shell profile (`~/.zshrc`, `~/.bashrc`, or equivalent) and prompts you to reload.
+Shell tab completion is enabled automatically by `watchdog setup` — it writes the activation line to your shell profile (`~/.zshrc`, `~/.bashrc`, or equivalent) and prompts you to reload. This relies on detecting `$SHELL`, so it's a no-op on Windows unless you're in a Unix-like shell (e.g. Git Bash, WSL) — native Command Prompt/PowerShell users don't get tab completion.
 
 For step-by-step instructions written for journalists who have never used a terminal, see [INSTALL.md](INSTALL.md).
 
@@ -196,6 +196,7 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog archive <name>` | Mark an investigation complete — hidden from `watchdog list` |
 | `watchdog unarchive <name>` | Restore an archived investigation |
 | `watchdog rename <name> <new-name>` | Rename an investigation — updates the folder, registry, and Obsidian entry |
+| `watchdog describe <name> ["text"]` | Set or update an investigation's description; omit text to be prompted |
 | `watchdog move <name> <path>` | Move vault to a new path and update the registry; if files are already at the new path, just updates the registry |
 | `watchdog delete <name>` | Remove from registry (vault files are left on disk); `--purge` also permanently deletes all vault files |
 | `watchdog register [path]` | Register an existing vault with watchdog; omit path when inside the vault directory |
@@ -219,6 +220,8 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog ingest --concurrency N` | Documents extracted in parallel for this run (default from `watchdog configure`: 5) |
 | `watchdog ingest --classify-pages N` | Pages shown to the document classifier for this run (default from `watchdog configure`: 5) |
 | `watchdog ingest --skill [NAME\|PATH]` | Pin a record skill (a name or a path to a skill file) for every document, skipping classification. `--skill` with no value picks from the list |
+| `watchdog ingest --wait` | On a rate limit, sleep until it resets and resume automatically instead of stopping for you to re-run ingest — for an unattended overnight batch. Not with a `claude-batch` extractor model |
+| `watchdog ingest --estimate` | Print a token/cost estimate for the queue and exit — no lock, no confirm, no extraction. Cost is projected from this vault's own usage history (last 3 runs); on subscription auth, or before any run has completed, only the token estimate is shown |
 | `watchdog finalize` | Complete post-ingest (entity synthesis + timeline + briefing) for an already-extracted batch — run it if a rate limit or interrupt stopped post-processing before it finished. `--finalizer-model M` / `--finalizer-effort E` override the model and effort |
 | `watchdog requeue` | Move documents quarantined in `queue/_failed/` back into the active queue, then re-run `watchdog ingest` to retry them |
 | `watchdog` | With no arguments inside a vault: walk the pipeline — offer to seed context, chew `_INCOMING/`, then ingest — skipping any stage with no pending work |
@@ -228,7 +231,7 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 
 `watchdog chew` sends a desktop notification when files finish processing (macOS only). Press **Ctrl+C** to cancel a chew in progress — the lock is cleaned up automatically and any partially-processed files remain in `_INCOMING/` for the next run.
 
-`watchdog ingest` is resumable: pressing **Ctrl+C**, or hitting a Claude subscription rate limit, stops the batch cleanly — finished documents are saved and unfinished ones stay queued, so re-running `watchdog ingest` (after the limit resets) picks up where it left off. A document that genuinely fails extraction is set aside in `queue/_failed/`; the run reports how many, and `watchdog requeue` moves them back to retry.
+`watchdog ingest` is resumable: pressing **Ctrl+C**, or hitting a Claude subscription rate limit, stops the batch cleanly — finished documents are saved and unfinished ones stay queued, so re-running `watchdog ingest` (after the limit resets) picks up where it left off. A document that genuinely fails extraction is set aside in `queue/_failed/`; the run reports how many, and `watchdog requeue` moves them back to retry. For a large batch run unattended, `--wait` does that re-run for you: it sleeps until the rate limit resets (using the reset time the provider reports, or a fixed fallback interval when it doesn't) and resumes automatically, repeating until the queue drains — Ctrl+C during the wait stops it exactly as it would mid-extraction.
 
 Every ingest finalizes automatically at the end (entity synthesis + timeline + briefing). If that **post-processing** step is interrupted — e.g. the rate limit is hit *after* the documents extract — the batch is left finalizable. `watchdog status` flags it, and `watchdog finalize` completes synthesis and the briefing without re-extracting. If you start another `watchdog ingest` while a batch is pending, it asks what to do: **merge** the pending batch into the new run (finalize everything together), **finalize** it first then ingest, or **discard** it.
 
@@ -236,12 +239,15 @@ Every ingest finalizes automatically at the end (entity synthesis + timeline + b
 
 | Command | What it does |
 |---------|-------------|
-| `watchdog search <name> "<query>"` | Hybrid search across ingested documents, in three sections: **exact matches** (a local full-text index — every literal occurrence of the term/phrase, with a page link back to the source), **source passages** (ranked by meaning via embeddings **and** exact terms via BM25, then reranked by a local cross-encoder), and **notes** (what the investigation concluded). Matches concepts *and* exact tokens like case numbers, dollar amounts, and names. Matched query terms are bolded in the printed snippet, and the snippet window is centred on the first match rather than always showing the start of the passage. Supports `+`/`-` phrases to steer toward/away from a concept (`"shell company -real estate"`) and `"quoted phrases"` for an exact-match phrase; `--threshold S` to hide weak semantic matches, `--no-rerank` to skip the reranker, `--full` to print the complete passage/note instead of a snippet, `--json` for machine-readable output, and `--batch <file>` to check a whole list of names/terms (one per line) against the vault at once, reporting hits per term instead of ranking a single query. |
-| `watchdog leads [name]` | Surface investigative leads from the entity graph — fully deterministic, no model call. Reports entities named as a relationship target but never profiled ("named by 3 people across 4 documents, no profile"), entities recurring across documents with no relationships, entities carrying unresolved contradiction flags, and entities carrying facts or roles flagged `basis: inferred` (a lead to verify, not a finding). The same sweep runs automatically at the end of every `watchdog ingest` (writing `briefings/leads-<date>.md`) and is nudged by a bare `watchdog` when nothing is pending; this command re-runs it on demand. Omit the name when inside the project folder |
+| `watchdog search <name> "<query>"` | Hybrid search across ingested documents, in three sections: **exact matches** (a local full-text index — every literal occurrence of the term/phrase, with a page link back to the source), **source passages** (ranked by meaning via embeddings **and** exact terms via BM25, then reranked by a local cross-encoder), and **notes** (what the investigation concluded). Matches concepts *and* exact tokens like case numbers, dollar amounts, and names. Matched query terms are bolded in the printed snippet, and the snippet window is centred on the first match rather than always showing the start of the passage. Supports `+`/`-` phrases to steer toward/away from a concept (`"shell company -real estate"`) and `"quoted phrases"` for an exact-match phrase; `--threshold S` to hide weak semantic matches, `--no-rerank` to skip the reranker, `--full` to print the complete passage/note instead of a snippet, `--json` for machine-readable output, and `--batch <file>` to check a whole list of names/terms (one per line) against the vault at once, reporting hits per term instead of ranking a single query. `watchdog search --everywhere "<query>"` (no project name) instead searches every registered, non-archived investigation's manifest + exact-match lanes (semantic/rerank skipped — doesn't scale per-vault) and reports hits grouped by investigation; combine with `--batch <file>` to check a term list across every vault. Vaults with a broken path are skipped |
+| `watchdog leads [name]` | Surface investigative leads from the entity graph — fully deterministic, no model call. Reports entities named as a relationship target but never profiled ("named by 3 people across 4 documents, no profile"), entities recurring across documents with no relationships, entities carrying unresolved contradiction flags, and entities carrying facts or roles flagged `basis: inferred` (a lead to verify, not a finding). The same sweep runs automatically at the end of every `watchdog ingest` (writing `briefings/leads-<date>.md`) and is nudged by a bare `watchdog` when nothing is pending; this command re-runs it on demand. Items you've acknowledged with `watchdog resolve` (or by ticking their checkbox in the briefing) drop out of the list, giving it a workable-queue property. Omit the name when inside the project folder |
+| `watchdog resolve <id…>` | Acknowledge one or more leads, watch-word alerts, or contradiction callouts so the deterministic reports stop re-surfacing them. Run from inside the vault. Each report prints a copyable resolution id next to every item (e.g. `lead:isolated:acme`, `alert:ab12c34:…`, `contradiction:…`); pass those ids here. `--sync` instead imports any `- [x]` checkboxes you've ticked in the `briefings/` files; `--list` shows what's currently acknowledged. Pure Python, no model call — the acknowledgments live in `.watchdog/Registry/resolutions.json` and follow an entity through `watchdog merge-entities` |
+| `watchdog unresolve <id…>` | Bring acknowledged items back into the active list — the inverse of `watchdog resolve`. Run from inside the vault |
 | `watchdog merge-entities <keep-id> <merge-id>` | Fold a duplicate entity into another — fully deterministic, no model call. Run from inside the vault. Unions aliases, `appears_in`, roles, and timeline events onto `keep-id`; remaps every relationship anywhere in the registry that targeted `merge-id` (not just the two entities involved); concatenates the losing entity's `## Analysis` into the survivor's with provenance intact; and redirects the losing note to a short stub linking to the survivor. Prints both entities (name, type, document/relationship counts) and asks for confirmation before doing anything, since this is irreversible — anything other than `y`/`yes` cancels with no changes made; pass `--force` to skip the prompt. This is the fix for what the dashboard's "Possible duplicates" view and `/watchdog-health`'s near-duplicate check can only ever flag — run `watchdog reindex` afterward to drop the merged entity's stale search-index entries |
+| `watchdog timeline [name]` | Rebuild `timeline.md` from the canonical `.watchdog/timeline/` event files — fully deterministic, no model call. Omit the name when inside the project folder |
 | `watchdog reindex [name]` | Rebuild `.embeddings/` **and** `.fulltext/` from disk — no OCR re-run, no model calls. Reads the document/entity registries and the morgue's page-marked full text to rebuild every corpus passage/note vector and every full-text index row from scratch. Run it after changing `embed_model` in `watchdog configure`, instead of re-ingesting — the previous model's vectors aren't comparable to the new one's. (`rerank_model` needs no reindex: reranking runs fresh at query time and nothing about it is persisted, so a change takes effect on the next `watchdog search`.) Documents ingested before D26 (no morgue text on disk) are skipped and reported; their notes still reindex. Omit the name when inside the project folder |
 | `watchdog research [name]` | Open Claude Code to research the vault's open questions on the web. Seeded by the vault's entities, leads, and gaps, Claude conducts bounded web research and **queues the sources it finds**; when the session ends, watchdog downloads them into `_INCOMING/` (with egress hygiene — full rendered snapshots for HTML when Playwright is installed, sanitized plain fetch otherwise), so findings flow through the normal `chew → ingest` pipeline. Claude never writes vault notes directly, and skips sources the vault already has. `--question "<q>"` (or `-q`) seeds a question (omit to be prompted); `--model M` overrides the model. After download, run `watchdog chew` then `watchdog ingest`. If a session is interrupted before the download runs, the queued URLs are held durably and `watchdog`, `watchdog chew`, and `watchdog status` warn that they're still pending. Omit the name when inside the project folder |
-| `watchdog watchlist [name]` | Sweep **every already-ingested document** in the vault against the current `watchlist.md` — fully deterministic, no model call. The scan that runs automatically at the end of `watchdog ingest` only ever sees that run's documents, so a term added to the watchlist afterward never gets checked against the existing corpus; this command builds the same scan over the whole vault instead. Writes to the same `briefings/alerts-<date>.md` as the per-run scan (appending a new dated section if one exists). Since it has no memory of earlier scans, it re-reports every past hit each time it runs — expected, not a bug. Omit the name when inside the project folder |
+| `watchdog watchlist [name]` | Sweep **every already-ingested document** in the vault against the current `watchlist.md` — fully deterministic, no model call. The scan that runs automatically at the end of `watchdog ingest` only ever sees that run's documents, so a term added to the watchlist afterward never gets checked against the existing corpus; this command builds the same scan over the whole vault instead. Writes to the same `briefings/alerts-<date>.md` as the per-run scan (appending a new dated section if one exists). A term you've acknowledged for a document with `watchdog resolve` no longer re-reports on later scans. Omit the name when inside the project folder |
 | `watchdog export [name]` | Export the investigation's entity/relationship graph as Neo4j-import CSV (`nodes.csv` + `relationships.csv`, also loadable in Gephi); `--format cypher` writes a single `graph.cypher` of `MERGE` statements instead; `--output DIR` sets the destination (default `<slug>-export/`). Fully deterministic — reads the registry, no model calls. Only stated-direction relationships are exported (auto-generated reverse edges are skipped) and edges to never-profiled entities are dropped so the import stays valid. Graph quality is bounded by ingest-time entity deduplication |
 | `watchdog doctor` | Check all registered investigations for missing or broken vaults; suggests `watchdog move` or `watchdog delete` for each issue |
 | `watchdog configure` | View or change configuration |
@@ -290,20 +296,25 @@ Each investigation is an independent Obsidian vault:
 ```
 my-investigation/
 ├── _INCOMING/              ← Drop public records here
-│   └── _FAILED/           ← Files that could not be processed
+│   ├── _FAILED/           ← Files that could not be processed
+│   └── _SKIPPED/          ← Exact duplicates and empty-text files, set aside
 ├── _CONTEXT/               ← Background material (prior stories, notes)
 ├── morgue/                 ← Original files after successful ingest, each beside
 │   └── <entity>/             a <name>.md of its full extracted text (greppable)
 │       └── <doc-type>/
 ├── .watchdog/
 │   ├── queue/             ← Extracted data awaiting ingest (.json per file)
+│   │   └── _failed/       ← Documents that failed extraction, held for `watchdog requeue`
 │   ├── staging/           ← Originals held during processing
+│   ├── research/          ← Queued web-research sources awaiting download into _INCOMING/
 │   └── Registry/          ← Internal state — do not edit manually
 │       ├── entities.json
 │       ├── documents.json
 │       ├── manifest.json  ← Lightweight entity lookup index
 │       ├── registry.json
-│       └── ingest.log
+│       ├── ingest.log
+│       ├── usage-<ts>.json    ← Per-run token/cost telemetry, kept for the last few runs
+│       └── batch-pending.json ← State for a batch left unfinalized by an interrupted ingest
 ├── entities/
 │   ├── person/            ← One note per person
 │   ├── company/           ← One note per company
@@ -312,8 +323,10 @@ my-investigation/
 ├── briefings/             ← Post-ingest briefing notes + watch-word alerts (alerts-<date>.md)
 ├── wiki/                  ← Investigation thread pages (matured angles)
 ├── queries/               ← Saved answers to questions you've asked (filed by /watchdog-query)
+├── .fulltext/             ← Full-text search index (index.db) — rebuild with `watchdog reindex`
 ├── hot.md                 ← Current session state — rewritten after every ingest
 ├── log.md                 ← Append-only human-readable ingest history
+├── timeline.md            ← Chronological event log, rebuilt from canonical timeline files
 ├── context.md             ← Your investigation intent and key questions
 ├── watchlist.md           ← Terms to watch for in new documents (one per line)
 ├── index.md               ← Landing page linking to the dashboard
@@ -332,7 +345,7 @@ my-investigation/
 | Image | `.jpg`, `.jpeg`, `.png`, `.tiff`, `.tif` | OCR applied automatically |
 | Web page | `.html`, `.htm` | |
 | Plain text | `.txt`, `.md` | |
-| Audio / video | `.mp3`, `.mp4`, `.m4a`, `.wav`, `.webm` | Requires optional transcription install — see [INSTALL.md](INSTALL.md) |
+| Audio / video | `.mp3`, `.mp4`, `.m4a`, `.wav` | Requires optional transcription install — see [INSTALL.md](INSTALL.md) |
 
 Sidecar files (`.yml`) are not ingested as documents — they are metadata attached to the adjacent file. See [GETTING_STARTED.md](GETTING_STARTED.md) for details.
 
@@ -639,7 +652,7 @@ Please open an issue before starting significant work so we can discuss approach
 - **OCR engine:** Apple Vision on macOS (fast, hardware-accelerated); Tesseract on Linux/Windows (requires system install). Configurable via `watchdog configure ocr_engine`.
 - **Near-duplicate detection** uses MinHash (128 hash functions) to approximate Jaccard similarity on word 3-gram shingles — no ML dependencies, runs locally.
 - **Registries** (`.watchdog/Registry/documents.json`, `entities.json`, `manifest.json`) are the source of truth. Obsidian notes are generated outputs — deleting a note doesn't lose data. `manifest.json` is a lightweight id/name/type/aliases index used for entity lookup without loading full registry data.
-- **Vault writes are file-locked** — `write_vault` acquires an exclusive lock on `.watchdog/Registry/.write-lock` before reading and writing registry files, so the concurrent document workers serialize safely without corruption.
+- **Vault writes are file-locked** — `write_vault` acquires an exclusive lock on `.watchdog/Registry/.write-lock` before reading and writing registry files, so the concurrent document workers serialize safely without corruption. On macOS/Linux this blocks indefinitely (`flock`); on Windows it uses `msvcrt.locking`, which retries for ~10 seconds under contention and then raises rather than waiting indefinitely.
 - **Ingest is a Python orchestrator** — `watchdog ingest` runs the pipeline in your terminal and calls the model only for reasoning (classify, extract, synthesize, dedup the timeline, brief). Documents are extracted in parallel (bounded by `extract_concurrency`); the slow mechanical work and all bookkeeping stay in Python.
 - **Record skills are global** — domain-knowledge skill files ship with the package and are read directly by the ingest pipeline (`watchdog.skills_catalog`); nothing is copied per vault, so they're always current. Users add custom skills in `~/.watchdog/skills/records/`. (Claude Code *command* skills like `/watchdog-query` are still installed per vault by `watchdog new` / `refresh-skills`.)
 - **Single CLI entry point** — `watchdog` is the only command installed on your PATH. All pipeline utilities are subcommands.

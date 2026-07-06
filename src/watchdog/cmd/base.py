@@ -133,6 +133,7 @@ _CMD_HELP: dict[str, dict] = {
             ("--concurrency N",      "Documents extracted in parallel for this run (default from watchdog configure: 5)"),
             ("--classify-pages N",   "Pages shown to the document classifier for this run (default from watchdog configure: 5)"),
             ("--skill [NAME|PATH]",  "Pin a record skill (name or file path) for every document, skipping classification (no value = pick from the list)"),
+            ("--wait",               "On a rate limit, sleep until it resets and resume automatically instead of stopping for you to re-run ingest. Not with a claude-batch extractor model"),
         ],
     },
     "context": {
@@ -450,7 +451,7 @@ def _count_incoming(vault: Path) -> int:
     count = 0
     for root, dirs, files in os.walk(incoming):
         rel_parts = Path(root).relative_to(incoming).parts
-        if any(p in ("_FAILED", "_failed") for p in rel_parts):
+        if any(p in ("_FAILED", "_failed", "_SKIPPED", "_skipped") for p in rel_parts):
             dirs.clear()
             continue
         count += sum(1 for f in files if not f.startswith(".") and not f.endswith(".yml"))
@@ -597,7 +598,7 @@ def _print_banner() -> None:
         ("Document processing", [
             ("fetch",            "Download a batch of URLs into _INCOMING/"),
             ("chew",             "Process documents in _INCOMING/"),
-            ("ingest",           "Set up extraction session and open in Claude Code"),
+            ("ingest",           "Extract queued documents into the vault"),
             ("context",          "Seed investigation context from _CONTEXT/"),
             ("watch",            "Watch _INCOMING/ and chew files automatically"),
             ("log",              "Show ingest history"),

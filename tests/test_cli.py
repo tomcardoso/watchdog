@@ -124,6 +124,34 @@ def test_count_incoming_not_fooled_by_failed_in_vault_path(tmp_path):
     assert cli._count_incoming(vault) == 1
 
 
+def test_count_incoming_excludes_skipped(tmp_path):
+    # A duplicate chew moves files to _SKIPPED/ — status must not count them as pending,
+    # or the user is sent in a status -> chew -> status loop chasing files chew already
+    # decided to skip (#255).
+    incoming = tmp_path / "_INCOMING"
+    skipped = incoming / "_SKIPPED"
+    skipped.mkdir(parents=True)
+    (incoming / "pending.pdf").write_text("")
+    (skipped / "duplicate.pdf").write_text("")
+    assert cli._count_incoming(tmp_path) == 1
+
+
+def test_count_incoming_matches_find_files_exclusions(tmp_path):
+    # _count_incoming (status) and find_files (chew) must exclude the same directories,
+    # or a file can be simultaneously "pending" per status and invisible to chew (#255).
+    from watchdog.pipeline.preprocess_batch import find_files, SKIP_DIRS
+
+    incoming = tmp_path / "_INCOMING"
+    for d in SKIP_DIRS:
+        skip_dir = incoming / d
+        skip_dir.mkdir(parents=True, exist_ok=True)  # case-insensitive filesystems collide _FAILED/_failed
+        (skip_dir / "file.pdf").write_text("")
+    (incoming / "pending.pdf").write_text("")
+
+    assert cli._count_incoming(tmp_path) == 1
+    assert len(find_files([incoming])) == 1
+
+
 # ── _load_registry ────────────────────────────────────────────────────────────
 
 def test_load_registry_missing(tmp_path):
@@ -847,6 +875,27 @@ def test_configure_set_projects_dir(wdg_home, tmp_path, capsys):
     assert new_dir.exists()
 
 
+def test_configure_persists_config_file_as_0600(wdg_home):
+    """config.json holds secrets (wayback_access_key/wayback_secret_key) in plaintext, so every
+    persist must chmod it 0600, matching auth._save_state (#304)."""
+    cli.cmd_configure(args(key="projects_dir", value=str(wdg_home)))
+    mode = (wdg_home / "config.json").stat().st_mode & 0o777
+    assert mode == 0o600
+
+
+def test_configure_corrects_preexisting_loose_permissions(wdg_home):
+    """A pre-existing config.json written before this fix (e.g. 0644) is tightened to 0600 on
+    the very next persist, not just newly created files."""
+    config_path = wdg_home / "config.json"
+    config_path.write_text("{}\n")
+    config_path.chmod(0o644)
+
+    cli.cmd_configure(args(key="projects_dir", value=str(wdg_home)))
+
+    mode = config_path.stat().st_mode & 0o777
+    assert mode == 0o600
+
+
 def test_configure_key_only_shows_value(wdg_home, capsys):
     cli.cmd_configure(args(key="ocr_languages", value="en-US,fr-FR"))
     capsys.readouterr()
@@ -1284,6 +1333,7 @@ def test_setup_writes_auto_for_worker_keys(tmp_path, monkeypatch):
     monkeypatch.setattr(sc, "_check_deps",       lambda: [])
     monkeypatch.setattr(sc, "_ask_projects_dir", lambda: investigations)
     monkeypatch.setattr(sc, "_detect_shell",     lambda: (None, None))
+    monkeypatch.setattr(sc, "_check_playwright", lambda: None)
 
     sc.run()
 
@@ -1360,6 +1410,32 @@ def test_cmd_delete_purge_removes_files(configured, monkeypatch, capsys):
     cli.cmd_delete(args(name="Shell Co", purge=True))
     assert not vault.exists()
     assert "Deleted" in capsys.readouterr().out
+
+
+def test_cmd_delete_purge_prints_backup_hint_when_registry_existed(configured, monkeypatch, capsys):
+    """#270: --purge is a one-way delete, but the registry files are snapshotted first
+    (a hedge against a partial failure, not a way to undo — the snapshot lives inside
+    the vault being deleted, so a completed purge removes it too). cmd_new already
+    seeds entities.json/documents.json/registry.json, so any real vault hits this path."""
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    cli.cmd_delete(args(name="Shell Co", purge=True))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Deleted" in out
+    assert "snapshot" in out.lower()
+    assert not vault.exists()   # the purge (and its backup dir) is fully gone
+
+
+def test_cmd_delete_purge_no_backup_hint_when_registry_missing(configured, monkeypatch, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    for name in ("entities.json", "documents.json", "registry.json", "manifest.json", "resolutions.json"):
+        (vault / ".watchdog" / "Registry" / name).unlink(missing_ok=True)
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    cli.cmd_delete(args(name="Shell Co", purge=True))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "snapshot" not in out.lower()
 
 
 def test_cmd_delete_cancelled(configured, monkeypatch, capsys):
@@ -1773,6 +1849,316 @@ def test_cmd_ingest_rejects_claude_batch_for_classifier_or_finalizer(wdg_home, t
 
     with pytest.raises(SystemExit, match="only valid for extractor_model"):
         cmd_ingest(args(), confirm=False)
+
+
+# ── cmd_ingest --wait (#271) ────────────────────────────────────────────────
+
+def test_wait_seconds_uses_resets_at_plus_buffer(monkeypatch):
+    from watchdog.cmd.ingest import _wait_seconds, _WAIT_BUFFER_SECONDS
+    now = 1_000_000
+    monkeypatch.setattr("time.time", lambda: now)
+    seconds, exact = _wait_seconds(now + 100)
+    assert exact is True
+    assert seconds == 100 + _WAIT_BUFFER_SECONDS
+
+
+def test_wait_seconds_falls_back_when_resets_at_missing():
+    from watchdog.cmd.ingest import _wait_seconds, _WAIT_FALLBACK_SECONDS
+    seconds, exact = _wait_seconds(None)
+    assert exact is False
+    assert seconds == _WAIT_FALLBACK_SECONDS
+
+
+def test_wait_for_rate_limit_refreshes_lock_in_chunks(tmp_path, monkeypatch):
+    """A wait longer than one refresh chunk sleeps in pieces, refreshing the held lock after
+    each — so a wait that outlasts the 30-min staleness window never looks abandoned."""
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import locks
+
+    lock_file = tmp_path / ".ingest-lock"
+    lock_file.write_text("pid: cli\nstarted_at: 2000-01-01T00:00:00Z\n")
+
+    slept = []
+    monkeypatch.setattr(ing.time, "sleep", lambda s: slept.append(s))
+    refreshed = []
+    monkeypatch.setattr(locks, "refresh_lock", lambda lf: refreshed.append(lf))
+    monkeypatch.setattr(ing, "_WAIT_REFRESH_SECONDS", 100)
+    monkeypatch.setattr(ing, "_WAIT_FALLBACK_SECONDS", 250)
+
+    ing._wait_for_rate_limit(lock_file, None)   # no resets_at -> fallback sleep
+
+    assert slept == [100, 100, 50]
+    assert refreshed == [lock_file, lock_file, lock_file]
+
+
+def test_merge_summary_accumulates_across_cycles():
+    from watchdog.cmd.ingest import _merge_summary
+    first = {"results": [{"sha256": "a", "status": "cancelled"}, {"sha256": "b", "status": "ok"}],
+             "extracted": 1, "skipped": 0, "failed": 0,
+             "usage": {"input_tokens": 100, "output_tokens": 50, "cost_usd": 0.01}}
+    second = {"results": [{"sha256": "a", "status": "ok"}],
+              "extracted": 1, "skipped": 0, "failed": 0, "rate_limited": False,
+              "usage": {"input_tokens": 10, "output_tokens": 5, "cost_usd": 0.002}}
+    merged = _merge_summary(first, second)
+    assert merged["extracted"] == 2
+    assert len(merged["results"]) == 2
+    assert merged["usage"]["input_tokens"] == 110
+    assert merged["usage"]["cost_usd"] == pytest.approx(0.012)
+    assert merged["rate_limited"] is False   # non-accumulated fields reflect only the latest cycle
+
+
+def test_merge_summary_dedupes_a_doc_retried_after_being_cancelled():
+    """A doc cancelled by one cycle's rate limit keeps its queue file and is retried by the
+    next cycle — its stale "cancelled" stub must not survive alongside its real outcome, or
+    the final summary double-counts it (e.g. reporting a fully-extracted doc as also
+    "not started")."""
+    from watchdog.cmd.ingest import _merge_summary
+    first = {"results": [{"sha256": "a", "status": "cancelled"}],
+             "extracted": 0, "skipped": 0, "failed": 0}
+    second = {"results": [{"sha256": "a", "status": "ok"}],
+              "extracted": 1, "skipped": 0, "failed": 0}
+    merged = _merge_summary(first, second)
+    assert merged["results"] == [{"sha256": "a", "status": "ok"}]
+
+
+def test_merge_summary_first_call_returns_new_unchanged():
+    from watchdog.cmd.ingest import _merge_summary
+    new = {"results": [], "extracted": 0, "skipped": 0, "failed": 0}
+    assert _merge_summary(None, new) is new
+
+
+def test_cmd_ingest_wait_rejects_claude_batch(wdg_home, tmp_path, monkeypatch):
+    """--wait is submit-and-poll's opposite (block until done) — claude-batch already runs
+    in the background, so the two don't compose (#271)."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    (wdg_home / "config.json").write_text(json.dumps({"extractor_model": "claude-batch:sonnet"}))
+    skill_file = tmp_path / "pinned.md"
+    skill_file.write_text("SKILL")
+
+    with pytest.raises(SystemExit, match="isn't supported with claude-batch"):
+        cmd_ingest(args(skill=str(skill_file), wait=True), confirm=False)
+
+def test_cmd_ingest_wait_loops_until_rate_limit_clears(wdg_home, tmp_path, monkeypatch, capsys):
+    """--wait resumes automatically after a rate limit: orchestrate.run is re-invoked once the
+    (stubbed) wait completes, the lock is released at the end, and the printed summary reflects
+    the total across both cycles, not just the last one."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+    summaries = [
+        {"results": [{"sha256": "sha1", "filename": "a.pdf", "status": "cancelled"}],
+         "extracted": 0, "skipped": 0, "failed": 0, "cancelled": True,
+         "rate_limited": True, "stop_message": "limit", "rate_limit_resets_at": None,
+         "quarantined": 0},
+        {"results": [{"sha256": "sha1", "filename": "a.pdf", "status": "ok", "entity_count": 2}],
+         "extracted": 1, "skipped": 0, "failed": 0, "cancelled": False,
+         "rate_limited": False, "stop_message": None, "rate_limit_resets_at": None,
+         "quarantined": 0},
+    ]
+    calls = []
+
+    async def fake_run(*a, **k):
+        calls.append(k)
+        return summaries[len(calls) - 1]
+    monkeypatch.setattr(orch_module, "run", fake_run)
+
+    waited = []
+    monkeypatch.setattr(ing, "_wait_for_rate_limit",
+                        lambda lock_file, resets_at: waited.append(resets_at))
+
+    ing.cmd_ingest(args(wait=True), confirm=False)
+
+    assert len(calls) == 2
+    assert all(k.get("wait") is True for k in calls)
+    assert waited == [None]
+    assert not (vault / ".watchdog" / "Registry" / ".ingest-lock").exists()
+    out = capsys.readouterr().out
+    assert "1" in out and "extracted" in out   # merged total, not the first cycle's 0
+    assert "not started" not in out            # sha1's cycle-1 "cancelled" stub must not survive
+                                                # alongside its cycle-2 "ok" outcome
+
+
+def test_cmd_ingest_no_wait_stops_on_rate_limit_without_looping(wdg_home, tmp_path, monkeypatch):
+    """Without --wait (the default), a rate-limited summary is reported once and orchestrate.run
+    is not re-invoked — the opt-in flag must not change today's behavior (I4 spirit)."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+
+    calls = []
+
+    async def fake_run(*a, **k):
+        calls.append(k)
+        return {"results": [], "extracted": 0, "skipped": 0, "failed": 0, "cancelled": True,
+                "rate_limited": True, "stop_message": "limit", "rate_limit_resets_at": None,
+                "quarantined": 0}
+    monkeypatch.setattr(orch_module, "run", fake_run)
+    monkeypatch.setattr(ing, "_wait_for_rate_limit",
+                        lambda *a, **k: pytest.fail("must not wait when --wait is absent"))
+
+    ing.cmd_ingest(args(), confirm=False)
+
+    assert len(calls) == 1
+    assert calls[0].get("wait") is False
+
+def test_cmd_ingest_prints_backup_hint_when_discard_snapshotted(wdg_home, tmp_path, monkeypatch, capsys):
+    """#270: when ingest_setup.run() reports a backup_dir (the discard choice actually threw
+    something away), cmd_ingest must print a restore hint."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+    backup_dir = vault / ".watchdog" / "backups" / "20260101T000000Z-ingest-discard"
+    backup_dir.mkdir(parents=True)
+    monkeypatch.setattr("watchdog.pipeline.ingest_setup.run", lambda *a, **k: {
+        "lock_acquired": True, "total": 1,
+        "queue_files": [{"path": "q", "sha256": "sha1", "filename": "a.pdf",
+                          "document_type": None, "page_count": 1, "est_tokens": 10}],
+        "backup_dir": str(backup_dir),
+    })
+
+    class _Stop(Exception):
+        pass
+
+    monkeypatch.setattr(ing, "_resolve_pinned_skill", lambda *a, **k: (_ for _ in ()).throw(_Stop()))
+    with pytest.raises(_Stop):
+        ing.cmd_ingest(args(), confirm=False)
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "backup:" in out
+    assert "ingest-discard" in out
+    assert "undo" in out
+
+
+def test_cmd_ingest_and_cmd_finalize_agree_on_finalizer_default(wdg_home, tmp_path, monkeypatch):
+    """An unconfigured vault must finalize on the same model whether ingest finishes the
+    batch itself or a separate `watchdog finalize` completes it (#253)."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+
+    finalizer_defaults = {}
+    orig_resolve = ing._resolve_stage
+
+    class _Stop(Exception):
+        pass
+
+    def _boom(*a, **k):
+        raise _Stop()
+
+    # cmd_ingest: skip past the pending-finalization prompt, stop right after model
+    # resolution (before the heavy ingest_setup/orchestrate pipeline runs).
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+    calls = []
+    monkeypatch.setattr(ing, "_resolve_stage",
+                         lambda *a, **k: (calls.append((a, k)), orig_resolve(*a, **k))[1])
+    monkeypatch.setattr("watchdog.pipeline.ingest_setup.run", _boom)
+    with pytest.raises(_Stop):
+        ing.cmd_ingest(args(), confirm=False)
+    # Call order in cmd_ingest is extractor, finalizer, classifier.
+    _, finalizer_kwargs = calls[1]
+    finalizer_defaults["ingest"] = finalizer_kwargs.get("default")
+
+    # cmd_finalize: needs a pending finalization to proceed past its early-return guard.
+    calls.clear()
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: True)
+    monkeypatch.setattr(ing, "_run_finalize", _boom)
+    with pytest.raises(_Stop):
+        ing.cmd_finalize(args())
+    _, finalizer_kwargs = calls[0]
+    finalizer_defaults["finalize"] = finalizer_kwargs.get("default")
+
+    assert finalizer_defaults["ingest"] == finalizer_defaults["finalize"] == "haiku"
+
+
+# ── ingest --estimate (#269) ────────────────────────────────────────────────────
+
+def test_cmd_ingest_estimate_prints_and_exits_without_lock(wdg_home, tmp_path, monkeypatch, capsys):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+
+    cmd_ingest(args(estimate=True), confirm=False)
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "1 document" in out
+    assert "tokens in" in out
+    assert not (vault / ".watchdog" / "Registry" / ".ingest-lock").exists()
+    assert not (vault / ".watchdog" / "ingest-state.json").exists()
+
+
+def test_cmd_ingest_estimate_empty_queue(wdg_home, tmp_path, monkeypatch, capsys):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    from tests.test_write_vault import make_vault
+    vault = make_vault(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+
+    cmd_ingest(args(estimate=True), confirm=False)
+
+    assert "nothing to estimate" in capsys.readouterr().out
+
+
+def test_cmd_ingest_estimate_subscription_mode_shows_no_dollar_figure(wdg_home, tmp_path, monkeypatch, capsys):
+    """Subscription auth never gets a dollar figure (#269) — there's no real billing to
+    project, even if this vault happens to have usage history on disk."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "subscription"})
+    (vault / ".watchdog" / "Registry" / "usage-20260101T000000Z.json").write_text(json.dumps({
+        "calls": [], "totals": {"input_tokens": 1000, "output_tokens": 0,
+                                 "cache_read_tokens": 0, "cache_write_tokens": 0, "cost_usd": 5.0},
+    }))
+
+    cmd_ingest(args(estimate=True), confirm=False)
+
+    out = capsys.readouterr().out
+    assert "$" not in out
+    assert "tokens in" in out
+
+
+def test_cmd_ingest_estimate_api_key_with_usage_history_shows_dollar_range(wdg_home, tmp_path, monkeypatch, capsys):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    (vault / ".watchdog" / "Registry" / "usage-20260101T000000Z.json").write_text(json.dumps({
+        "calls": [], "totals": {"input_tokens": 1000, "output_tokens": 0,
+                                 "cache_read_tokens": 0, "cache_write_tokens": 0, "cost_usd": 5.0},
+    }))
+
+    cmd_ingest(args(estimate=True), confirm=False)
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "$" in out
+    assert "based on your last run" in out
 
 
 # ── configure sections + default_skill ────────────────────────────────────────
@@ -2309,6 +2695,45 @@ def test_read_batch_terms_missing_file_exits(tmp_path):
         _vault._read_batch_terms(tmp_path / "missing.txt")
 
 
+# ── _poll_stable_files (watchdog watch mid-copy guard, #261) ───────────────────
+
+def test_poll_stable_files_holds_growing_file(tmp_path):
+    f = tmp_path / "big.pdf"
+    f.write_bytes(b"a" * 10)
+    ready, pending = _vault._poll_stable_files({f}, {})
+    assert ready == []
+    assert pending == {f: 10}
+
+
+def test_poll_stable_files_releases_file_once_size_holds(tmp_path):
+    f = tmp_path / "big.pdf"
+    f.write_bytes(b"a" * 10)
+    # First poll: no prior size recorded — held.
+    ready, pending = _vault._poll_stable_files({f}, {})
+    assert ready == []
+    # Second poll: same size as last time — copy finished.
+    ready, pending = _vault._poll_stable_files({f}, pending)
+    assert ready == [f]
+    assert pending == {}
+
+
+def test_poll_stable_files_keeps_holding_a_still_growing_file(tmp_path):
+    f = tmp_path / "big.pdf"
+    f.write_bytes(b"a" * 10)
+    ready, pending = _vault._poll_stable_files({f}, {})
+    f.write_bytes(b"a" * 20)   # more bytes copied in between polls
+    ready, pending = _vault._poll_stable_files({f}, pending)
+    assert ready == []
+    assert pending == {f: 20}
+
+
+def test_poll_stable_files_skips_file_removed_before_stat(tmp_path):
+    f = tmp_path / "gone.pdf"   # never created — simulates a race with deletion
+    ready, pending = _vault._poll_stable_files({f}, {})
+    assert ready == []
+    assert pending == {}
+
+
 def test_search_batch_reports_hits_and_no_hits(configured, monkeypatch, tmp_path, capsys):
     vault = _register_search_project(configured)
     _write_manifest(vault, {"alice-smith": {"name": "Alice Smith", "type": "Person",
@@ -2358,3 +2783,139 @@ def test_search_batch_empty_file_exits(configured, tmp_path):
     batch_file.write_text("\n\n")
     with pytest.raises(SystemExit):
         cli.cmd_search(args(project="test-proj", query=None, batch=str(batch_file), top_n=5, json=False))
+
+
+# ── cmd_search --everywhere (#272) ──────────────────────────────────────────────
+
+def _register_projects(configured, entries):
+    """entries: list of (slug, name, extra) dicts. extra may set archived=True or
+    missing_path=True (vault dir is never created). Registers all at once and
+    returns {slug: vault_path}."""
+    projects = {}
+    vaults = {}
+    for slug, name, extra in entries:
+        extra = extra or {}
+        vault = configured / slug
+        if not extra.get("missing_path"):
+            vault.mkdir(parents=True, exist_ok=True)
+        info = {"name": name, "path": str(vault), "created": "2026-01-01"}
+        if extra.get("archived"):
+            info["archived"] = True
+        projects[slug] = info
+        vaults[slug] = vault
+    cli.save_projects(projects)
+    return vaults
+
+
+def test_search_everywhere_groups_by_investigation(configured, monkeypatch, capsys):
+    vaults = _register_projects(configured, [
+        ("shell-co", "Shell Co", None),
+        ("muni-contracts", "Muni Contracts", None),
+    ])
+    _write_manifest(vaults["shell-co"], {
+        f"e{i}": {"name": f"Acme Holding {i}", "type": "Company", "aliases": [], "note_path": f"entities/e{i}"}
+        for i in range(3)
+    })
+    _write_manifest(vaults["muni-contracts"], {})
+
+    def fake_fts(vault, query, **kw):
+        if vault == vaults["shell-co"]:
+            return [{"kind": "corpus", "key": f"sha{i}", "title": "doc.pdf", "path": "morgue/doc.pdf",
+                     "page": 1, "text": "acme"} for i in range(14)]
+        return [{"kind": "corpus", "key": "sha1", "title": "contract-award-2023.pdf",
+                 "path": "morgue/contract-award-2023.pdf", "page": 12, "text": "acme"}]
+    monkeypatch.setattr("watchdog.pipeline.fulltext.search", fake_fts)
+
+    cli.cmd_search(args(project=None, query="acme", everywhere=True, top_n=5, json=False))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Shell Co" in out and "shell-co" in out
+    assert "3 entities · 14 exact matches" in out
+    assert "Muni Contracts" in out and "muni-contracts" in out
+    assert "1 exact match (p. 12, contract-award-2023.pdf)" in out
+
+
+def test_search_everywhere_skips_archived_projects(configured, monkeypatch, capsys):
+    vaults = _register_projects(configured, [
+        ("active-proj", "Active Proj", None),
+        ("old-proj", "Old Proj", {"archived": True}),
+    ])
+    for v in vaults.values():
+        _write_manifest(v, {})
+    monkeypatch.setattr("watchdog.pipeline.fulltext.search", lambda vault, query, **kw: (
+        [{"kind": "corpus", "key": "sha1", "title": "doc.pdf", "path": "morgue/doc.pdf",
+          "page": 1, "text": "x"}] if vault == vaults["old-proj"] else []
+    ))
+
+    cli.cmd_search(args(project=None, query="x", everywhere=True, top_n=5, json=False))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Old Proj" not in out
+    assert "No matches across 1 investigation." in out
+
+
+def test_search_everywhere_skips_missing_vault_path(configured, monkeypatch, capsys):
+    vaults = _register_projects(configured, [
+        ("healthy-proj", "Healthy Proj", None),
+        ("gone-proj", "Gone Proj", {"missing_path": True}),
+    ])
+    _write_manifest(vaults["healthy-proj"], {})
+    monkeypatch.setattr("watchdog.pipeline.fulltext.search", lambda vault, query, **kw: [])
+
+    cli.cmd_search(args(project=None, query="x", everywhere=True, top_n=5, json=False))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Skipped 1 investigation with a broken vault path." in out
+
+
+def test_search_everywhere_no_registered_investigations(configured, capsys):
+    cli.cmd_search(args(project=None, query="x", everywhere=True, top_n=5, json=False))
+    out = capsys.readouterr().out
+    assert "No registered investigations." in out
+
+
+def test_search_everywhere_batch_aggregates_terms_and_dedupes_entities(configured, monkeypatch, tmp_path, capsys):
+    vault = _register_projects(configured, [("shell-co", "Shell Co", None)])["shell-co"]
+    _write_manifest(vault, {"alice-smith": {"name": "Alice Smith", "type": "Person",
+                                            "aliases": ["Smith"], "note_path": "entities/alice-smith"}})
+    monkeypatch.setattr("watchdog.pipeline.fulltext.search", lambda vault, query, **kw: (
+        [{"kind": "corpus", "key": f"sha-{query}", "title": "doc.pdf", "path": "morgue/doc.pdf",
+          "page": 1, "text": query}]
+    ))
+    batch_file = tmp_path / "names.txt"
+    batch_file.write_text("Alice\nSmith\n")
+
+    cli.cmd_search(args(project=None, query=None, everywhere=True, batch=str(batch_file), top_n=5, json=False))
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "1 entity · 2 exact matches" in out
+
+
+def test_search_everywhere_json_output(configured, monkeypatch, capsys):
+    vault = _register_projects(configured, [("shell-co", "Shell Co", None)])["shell-co"]
+    _write_manifest(vault, {})
+    monkeypatch.setattr("watchdog.pipeline.fulltext.search", lambda vault, query, **kw: [
+        {"kind": "corpus", "key": "sha1", "title": "doc.pdf", "path": "morgue/doc.pdf", "page": 1, "text": "x"},
+    ])
+
+    cli.cmd_search(args(project=None, query="x", everywhere=True, top_n=5, json=True))
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["terms"] == ["x"]
+    assert payload["investigations"][0]["slug"] == "shell-co"
+    assert payload["investigations"][0]["hits"][0]["title"] == "doc.pdf"
+
+
+def test_search_everywhere_rejects_project_and_query_together(configured):
+    _register_projects(configured, [("shell-co", "Shell Co", None)])
+    with pytest.raises(SystemExit):
+        cli.cmd_search(args(project="shell-co", query="x", everywhere=True, top_n=5, json=False))
+
+
+def test_search_everywhere_batch_rejects_project_argument(configured, tmp_path):
+    _register_projects(configured, [("shell-co", "Shell Co", None)])
+    batch_file = tmp_path / "names.txt"
+    batch_file.write_text("Alice\n")
+    with pytest.raises(SystemExit):
+        cli.cmd_search(args(project="shell-co", query=None, everywhere=True, batch=str(batch_file), top_n=5, json=False))
+
+
+def test_search_everywhere_requires_query(configured):
+    _register_projects(configured, [("shell-co", "Shell Co", None)])
+    with pytest.raises(SystemExit):
+        cli.cmd_search(args(project=None, query=None, everywhere=True, top_n=5, json=False))

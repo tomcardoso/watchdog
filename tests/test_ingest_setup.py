@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from watchdog.pipeline.ingest_setup import STALE_SECONDS, run
+from watchdog.pipeline.ingest_setup import STALE_SECONDS, cost_estimate, run, scan_queue
 
 
 def _make_vault(tmp_path: Path) -> Path:
@@ -19,6 +19,16 @@ def _make_vault(tmp_path: Path) -> Path:
 def _write_queue_file(vault: Path, sha256: str, source_type: str = "docling", filename: str = "") -> None:
     qf = vault / ".watchdog" / "queue" / f"{sha256}.json"
     qf.write_text(json.dumps({"filename": filename or f"{sha256}.pdf", "metadata": {"source_type": source_type}, "pages": []}))
+
+
+def _write_usage_file(vault: Path, ts: str, input_tokens: int, cost_usd) -> None:
+    reg = vault / ".watchdog" / "Registry"
+    reg.mkdir(parents=True, exist_ok=True)
+    (reg / f"usage-{ts}.json").write_text(json.dumps({
+        "calls": [],
+        "totals": {"input_tokens": input_tokens, "output_tokens": 0,
+                   "cache_read_tokens": 0, "cache_write_tokens": 0, "cost_usd": cost_usd},
+    }))
 
 
 def test_empty_queue_returns_total_zero(tmp_path):
@@ -152,6 +162,21 @@ def test_stale_lock_is_replaced(tmp_path):
     assert "pid: cli" in lock_file.read_text()
 
 
+def test_malformed_lock_is_refused_not_deleted(tmp_path):
+    """A lock with no parseable started_at is of unknown age. The old check-then-unlink deleted
+    it regardless and proceeded; now ingest refuses and leaves it for `watchdog unlock` (#257)."""
+    vault = _make_vault(tmp_path)
+    _write_queue_file(vault, "abc123")
+    lock_file = vault / ".watchdog" / "Registry" / ".ingest-lock"
+    lock_file.write_text("pid: mystery\n")   # no started_at line
+
+    result = run(vault)
+
+    assert "error" in result
+    assert "already running" in result["error"]
+    assert lock_file.read_text() == "pid: mystery\n"   # preserved, not clobbered
+
+
 def test_extractor_model_written_to_state(tmp_path):
     vault = _make_vault(tmp_path)
     _write_queue_file(vault, "abc123")
@@ -249,3 +274,102 @@ def test_empty_queue_cleans_up_stale_state_file(tmp_path):
 
     assert result["total"] == 0
     assert not state_file.exists()
+
+
+def test_scan_queue_empty_returns_empty_list(tmp_path):
+    vault = _make_vault(tmp_path)
+    assert scan_queue(vault) == []
+
+
+def test_scan_queue_missing_dir_returns_empty_list(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    assert scan_queue(vault) == []
+
+
+def test_cost_estimate_empty_queue(tmp_path):
+    vault = _make_vault(tmp_path)
+    est = cost_estimate(vault, scan_queue(vault), backend="claude-api")
+    assert est == {"documents": 0, "pages": 0, "est_tokens": 0,
+                    "cost_low": None, "cost_high": None, "runs_used": 0}
+
+
+def test_cost_estimate_no_usage_history_omits_cost(tmp_path):
+    """First run (#269): no usage-*.json yet, so the estimate is tokens only — no invented
+    dollar figure."""
+    vault = _make_vault(tmp_path)
+    qf = vault / ".watchdog" / "queue" / "abc123.json"
+    qf.write_text(json.dumps({
+        "filename": "x.pdf", "page_count": 3,
+        "pages": [{"page": 1, "markdown": "a" * 400}],
+    }))
+
+    est = cost_estimate(vault, scan_queue(vault), backend="claude-api")
+
+    assert est["documents"] == 1
+    assert est["pages"] == 3
+    assert est["est_tokens"] == 100
+    assert est["cost_low"] is None
+    assert est["cost_high"] is None
+    assert est["runs_used"] == 0
+
+
+def test_cost_estimate_subscription_backend_never_shows_cost(tmp_path):
+    """Subscription auth (claude-agent-sdk) gets no dollar figure even with usage history —
+    there's no real billing to project, only a session-limit fraction (#269)."""
+    vault = _make_vault(tmp_path)
+    qf = vault / ".watchdog" / "queue" / "abc123.json"
+    qf.write_text(json.dumps({"filename": "x.pdf", "pages": [{"page": 1, "markdown": "a" * 400}]}))
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=1000, cost_usd=1.0)
+
+    est = cost_estimate(vault, scan_queue(vault), backend="claude-agent-sdk")
+
+    assert est["cost_low"] is None
+    assert est["cost_high"] is None
+    assert est["runs_used"] == 0
+
+
+def test_cost_estimate_derives_range_from_usage_history(tmp_path):
+    vault = _make_vault(tmp_path)
+    qf = vault / ".watchdog" / "queue" / "abc123.json"
+    qf.write_text(json.dumps({"filename": "x.pdf", "pages": [{"page": 1, "markdown": "a" * 4000}]}))
+    # est_tokens = 1000. Two historical runs at $0.001/token and $0.002/token.
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=1000, cost_usd=1.0)
+    _write_usage_file(vault, "20260102T000000Z", input_tokens=1000, cost_usd=2.0)
+
+    est = cost_estimate(vault, scan_queue(vault), backend="claude-api")
+
+    assert est["est_tokens"] == 1000
+    assert est["cost_low"] == 1.0
+    assert est["cost_high"] == 2.0
+    assert est["runs_used"] == 2
+
+
+def test_cost_estimate_only_uses_last_n_runs(tmp_path):
+    vault = _make_vault(tmp_path)
+    qf = vault / ".watchdog" / "queue" / "abc123.json"
+    qf.write_text(json.dumps({"filename": "x.pdf", "pages": [{"page": 1, "markdown": "a" * 4000}]}))
+    # Oldest run has a wildly different ratio and should be dropped once more than max_runs exist.
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=1000, cost_usd=100.0)
+    _write_usage_file(vault, "20260102T000000Z", input_tokens=1000, cost_usd=1.0)
+    _write_usage_file(vault, "20260103T000000Z", input_tokens=1000, cost_usd=1.0)
+    _write_usage_file(vault, "20260104T000000Z", input_tokens=1000, cost_usd=1.0)
+
+    est = cost_estimate(vault, scan_queue(vault), backend="claude-api", max_runs=3)
+
+    assert est["runs_used"] == 3
+    assert est["cost_low"] == est["cost_high"] == 1.0  # the $100 outlier was dropped
+
+
+def test_cost_estimate_skips_usage_files_with_no_cost(tmp_path):
+    """Subscription-mode usage files (no real cost_usd) shouldn't poison a metered-key ratio."""
+    vault = _make_vault(tmp_path)
+    qf = vault / ".watchdog" / "queue" / "abc123.json"
+    qf.write_text(json.dumps({"filename": "x.pdf", "pages": [{"page": 1, "markdown": "a" * 4000}]}))
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=1000, cost_usd=None)
+    _write_usage_file(vault, "20260102T000000Z", input_tokens=1000, cost_usd=1.0)
+
+    est = cost_estimate(vault, scan_queue(vault), backend="claude-api")
+
+    assert est["runs_used"] == 1
+    assert est["cost_low"] == est["cost_high"] == 1.0

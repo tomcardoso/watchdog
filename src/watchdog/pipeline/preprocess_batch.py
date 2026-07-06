@@ -204,14 +204,11 @@ def find_files(paths: list[Path]) -> list[Path]:
 
 def preprocess_one(
     path: Path,
-    vault_path: str | None = None,
     timeout: int = DEFAULT_FILE_TIMEOUT,
     chunk_workers: int | None = None,
 ) -> dict:
     t0 = time.time()
     cmd = [sys.executable, "-m", "watchdog.pipeline.preprocess", str(path)]
-    if vault_path:
-        cmd += ["--vault-path", vault_path]
     if chunk_workers is not None:
         cmd += ["--chunk-workers", str(chunk_workers)]
     try:
@@ -306,12 +303,20 @@ def run_ingest(
     queue.mkdir(parents=True, exist_ok=True)
     staging.mkdir(parents=True, exist_ok=True)
 
-    # Write chew lock file
+    # Acquire the chew lock atomically (#257). Previously the lock was written unconditionally,
+    # so two chews (e.g. `watchdog watch` plus a manual `watchdog chew`) could run concurrently
+    # on one vault and race the staging renames/near-dup computes. O_CREAT|O_EXCL admits exactly
+    # one; a >30-min stale lock (from a crashed chew) is taken over, recoverable via `unlock`.
+    from watchdog.pipeline.locks import acquire_or_take_stale
+    from watchdog.pipeline.ingest_setup import STALE_SECONDS
     lock_dir = vault / ".watchdog"
     lock_dir.mkdir(parents=True, exist_ok=True)
     lock_file = lock_dir / ".chew-lock"
     started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    lock_file.write_text(f"started_at: {started_at}\npid: {os.getpid()}\n")
+    if not acquire_or_take_stale(lock_file, f"started_at: {started_at}\npid: {os.getpid()}\n",
+                                 STALE_SECONDS):
+        sys.exit("\n  Error: a chew is already in progress on this vault. "
+                 "Wait for it to finish, or run: watchdog unlock\n")
 
     try:
         _run_ingest_inner(vault, incoming, queue, staging, workers, chunk_workers, files,
@@ -385,7 +390,7 @@ def _run_ingest_inner(
         # row appears while OCR spins up. Gated to TTYs to keep non-TTY output to finished lines only.
         if live.enabled:
             live.update(str(path), f"  {_DIM}→  {_rel(path)}  chewing…{_RESET}")
-        return preprocess_one(path, str(vault), DEFAULT_FILE_TIMEOUT, chunk_workers)
+        return preprocess_one(path, timeout=DEFAULT_FILE_TIMEOUT, chunk_workers=chunk_workers)
 
     results: dict[str, dict] = {}
     _cancel_event.clear()

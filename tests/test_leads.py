@@ -119,6 +119,34 @@ def test_total_and_empty():
     assert leads.total(leads.find_leads({})) == 0
 
 
+# ── writer -> sweep contract (#252) ──────────────────────────────────────────
+#
+# The tests above fabricate a registry entry with a hand-built "contradictions" key.
+# That masked a real bug: nothing in write_vault ever persisted that key, so the signal
+# could never fire against a real vault. This test drives the actual writer instead, to
+# prove entities.json really ends up in the shape find_leads expects.
+
+def test_write_vault_persists_contradictions_findable_by_leads(tmp_path):
+    from watchdog.pipeline import write_vault
+    from tests.test_write_vault import make_vault, make_extraction
+
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    callout = "> [!contradiction] Address differs from prior filing"
+    overrides = {"entities": [{"id": "alice-smith", "name": "Alice Smith", "type": "Person",
+                               "contradictions": [callout]}]}
+
+    write_vault.run(make_extraction(tmp_path, overrides), vault)
+
+    entities_reg = json.loads(
+        (vault / ".watchdog" / "Registry" / "entities.json").read_text()
+    )
+    data = leads.find_leads(entities_reg)
+    assert len(data["contradictions"]) == 1
+    assert data["contradictions"][0]["id"] == "alice-smith"
+    assert data["contradictions"][0]["count"] == 1
+
+
 def test_dangling_without_target_name_falls_back_to_id():
     reg = {"x": {"id": "x", "name": "X", "type": "person", "appears_in": ["d1"],
                  "roles": [{"relationship": "Linked", "target_id": "ghost-123",
@@ -195,3 +223,60 @@ def test_cmd_leads_empty(tmp_path, monkeypatch, capsys):
     cmd_leads(_args())
     out = _strip_ansi(capsys.readouterr().out)
     assert "No leads" in out
+
+
+# ── resolution filtering (#266) ─────────────────────────────────────────────────
+
+def test_resolved_leads_drop_out_of_active_list():
+    reg = _registry()
+    resolved = frozenset({leads.resolutions.lead_id("isolated", "john"),
+                          leads.resolutions.lead_id("inferred", "carol"),
+                          leads.resolutions.lead_id("unprofiled", "shell-co")})
+    data = leads.find_leads(reg, resolved)
+    assert data["isolated"] == []
+    assert data["inferred"] == []
+    assert data["unprofiled"] == []
+    # The contradiction entity is untouched (its callouts weren't resolved).
+    assert len(data["contradictions"]) == 1
+
+
+def test_resolving_one_contradiction_callout_leaves_the_other():
+    reg = _registry()
+    resolved = frozenset({leads.resolutions.contradiction_id("address differs from d3")})
+    data = leads.find_leads(reg, resolved)
+    c = data["contradictions"][0]
+    assert c["count"] == 1
+    assert [x["summary"] for x in c["callouts"]] == ["director count differs"]
+
+
+def test_resolving_all_callouts_drops_the_entity():
+    reg = _registry()
+    resolved = frozenset({
+        leads.resolutions.contradiction_id("address differs from d3"),
+        leads.resolutions.contradiction_id("director count differs"),
+    })
+    assert leads.find_leads(reg, resolved)["contradictions"] == []
+
+
+def test_every_active_item_carries_a_rid():
+    data = leads.find_leads(_registry())
+    assert all("rid" in u for u in data["unprofiled"])
+    assert all("rid" in i for i in data["isolated"])
+    assert all("rid" in i for i in data["inferred"])
+    assert all("rid" in x for c in data["contradictions"] for x in c["callouts"])
+
+
+def test_format_renders_checkboxes_with_wid_markers():
+    import datetime
+    body = leads._format(leads.find_leads(_registry()), datetime.datetime(2025, 1, 1))
+    assert "- [ ] **John Roe**" in body
+    assert "<!--wid:lead:isolated:john-->" in body
+    assert "<!--wid:lead:unprofiled:shell-co-->" in body
+    assert "<!--wid:contradiction:" in body
+
+
+def test_scan_honors_resolutions_json(tmp_path):
+    vault = _vault(tmp_path, _registry())
+    from watchdog.pipeline import resolutions
+    resolutions.resolve(vault, [resolutions.lead_id("isolated", "john")])
+    assert not any(i["id"] == "john" for i in leads.scan(vault)["isolated"])

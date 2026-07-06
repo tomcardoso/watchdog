@@ -2,13 +2,15 @@
 the REAL preflight/postflight/write_vault with the model mocked."""
 
 import asyncio
+import hashlib
 import json
+from pathlib import Path
 
 import pytest
 
 from watchdog import model_client
 from watchdog.cmd import auth as auth_module
-from watchdog.pipeline import batch_extract, orchestrate
+from watchdog.pipeline import batch_extract, orchestrate, schemas, timeline
 
 from tests.test_write_vault import make_vault
 
@@ -166,6 +168,20 @@ def test_select_kept_falls_back_to_all_on_bad_input():
     assert orchestrate._select_kept(events, [{"keep": 9, "duplicates": [0]}]) == events
 
 
+def test_select_kept_never_empties_a_date_on_all_invalid_groups(tmp_path):
+    """A dedup response whose groups are entirely unusable (out-of-range keeps, garbage members)
+    must leave every event standing — never an empty `kept` that the collision loop would write
+    back as an emptied canonical, silently wiping the date (#250, G2)."""
+    events = [{"event": "A"}, {"event": "B"}, {"event": "C"}]
+    kept = orchestrate._select_kept(events, [
+        {"keep": 42, "duplicates": [0, 1]},   # out-of-range keep → group skipped
+        {"keep": -1, "duplicates": [2]},      # negative keep → group skipped
+        {"keep": "x", "duplicates": None},    # non-int keep → group skipped
+        "not-a-dict",                          # ignored
+    ])
+    assert kept == events   # nothing placed → nothing dropped → all survive
+
+
 def test_stamp_document_overwrites_model_identity(tmp_path):
     """Identity fields are stamped from Python, overriding whatever the model emitted."""
     vault = make_vault(tmp_path)
@@ -197,6 +213,53 @@ def test_stamp_document_morgue_type_falls_back_when_no_type(tmp_path):
     ext = {"document": {}}
     orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault)
     assert ext["morgue_document_type"] == "document"
+
+
+def test_stamp_document_slugifies_morgue_entity_id_with_spaces(tmp_path):
+    """morgue_entity_id is used raw as a morgue path segment (write_vault) — a model value with
+    spaces must be slugified so it doesn't produce a broken morgue directory (#262)."""
+    vault = make_vault(tmp_path)
+    pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}]}
+    ext = {"document": {}, "morgue_entity_id": "Acme Corp"}
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault)
+    assert ext["morgue_entity_id"] == "acme-corp"
+
+
+def test_stamp_document_slugifies_morgue_entity_id_with_embedded_slash(tmp_path):
+    """An embedded path separator (e.g. from the model nesting a subsidiary name) must not
+    survive into the morgue path segment (#262)."""
+    vault = make_vault(tmp_path)
+    pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}]}
+    ext = {"document": {}, "morgue_entity_id": "acme/subsidiary"}
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault)
+    assert "/" not in ext["morgue_entity_id"]
+
+
+def test_stamp_document_records_extraction_provenance(tmp_path):
+    """record_skill_hash/extract_model/extract_effort (#268) are stamped alongside record_skill
+    so a vault can later tell which skill content/model/effort produced a given extraction."""
+    vault = make_vault(tmp_path)
+    pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}]}
+    ext = {"document": {}}
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault,
+                                skill_text="SKILL BODY", extract_model="sonnet", extract_effort="low")
+    d = ext["document"]
+    assert d["extract_model"] == "claude-sonnet-4-6"   # resolved from the tier name
+    assert d["extract_effort"] == "low"
+    assert d["record_skill_hash"] == hashlib.sha256(b"SKILL BODY").hexdigest()[:12]
+
+
+def test_stamp_document_provenance_defaults_to_none_when_not_supplied(tmp_path):
+    """The three new params are optional, so existing call sites/tests that omit them keep
+    working — the fields are simply stamped null rather than left off the document."""
+    vault = make_vault(tmp_path)
+    pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}]}
+    ext = {"document": {}}
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault)
+    d = ext["document"]
+    assert d["record_skill_hash"] is None
+    assert d["extract_model"] is None
+    assert d["extract_effort"] is None
 
 
 def test_sidecar_provenance_parsed_in_python(tmp_path):
@@ -510,12 +573,23 @@ def test_record_skill_provenance_is_persisted(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault)
     _mock(monkeypatch, extraction=_extraction())     # classify mock returns general-records.md
-    asyncio.run(orchestrate.run(vault))
+    asyncio.run(orchestrate.run(vault))              # extract_model defaults to "sonnet"
+
+    from watchdog import skills_catalog
+    expected_hash = hashlib.sha256(
+        skills_catalog.read_skill("general-records.md").encode("utf-8")).hexdigest()[:12]
 
     docs = json.loads((vault / ".watchdog" / "Registry" / "documents.json").read_text())
-    assert next(iter(docs.values()))["record_skill"] == "general-records"
+    entry = next(iter(docs.values()))
+    assert entry["record_skill"] == "general-records"
+    assert entry["record_skill_hash"] == expected_hash
+    assert entry["extract_model"] == "claude-sonnet-4-6"
+    assert entry["extract_effort"] is None
+
     note = next((vault / "documents").glob("*.md")).read_text(encoding="utf-8")
     assert "record_skill: general-records" in note
+    assert f"record_skill_hash: {expected_hash}" in note
+    assert "extract_model: claude-sonnet-4-6" in note
 
 
 def test_nudge_skill_pin_fires_when_batch_is_homogeneous(capsys):
@@ -593,6 +667,14 @@ def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
     tasks = [c["task"] for c in data["calls"]]
     assert "classify" in tasks and "extract" in tasks and "briefing" in tasks
     assert all(c["input_tokens"] == 100 for c in data["calls"])
+
+    # #247: extraction/classification calls carry the document filename (and, for extraction,
+    # a page-range detail) so a usage file can attribute cost to a specific document.
+    by_task = {c["task"]: c for c in data["calls"]}
+    assert by_task["classify"]["filename"] == "test-doc.pdf"
+    assert by_task["extract"]["filename"] == "test-doc.pdf"
+    assert by_task["extract"]["detail"] == "pages 1–1"
+    assert by_task["briefing"]["filename"] is None   # corpus-wide call, nothing to attribute
 
     n_calls = len(data["calls"])
     assert data["totals"]["input_tokens"] == 100 * n_calls
@@ -676,6 +758,26 @@ def test_orchestrator_cancels_gracefully_on_sigint(tmp_path, monkeypatch):
     assert (vault / ".watchdog" / "queue" / "bbb222.json").exists()
 
 
+def test_orchestrator_survives_unavailable_signal_handler(tmp_path, monkeypatch):
+    """On platforms where asyncio can't install a SIGINT handler at all — e.g. Windows'
+    Proactor event loop, whose add_signal_handler always raises NotImplementedError — the
+    batch must still run to completion instead of crashing. The graceful finish-current-writes
+    path (the other sigint test above) simply isn't available there; a bare Ctrl+C falls
+    through to cmd_ingest's plain `except KeyboardInterrupt` instead (issue #258)."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    _mock(monkeypatch, extraction=_extraction())
+
+    def _unsupported(self, *a, **kw):
+        raise NotImplementedError("add_signal_handler is not supported on this platform")
+    monkeypatch.setattr(asyncio.unix_events._UnixSelectorEventLoop, "add_signal_handler", _unsupported)
+
+    summary = asyncio.run(orchestrate.run(vault))
+
+    assert summary["cancelled"] is False
+    assert summary["extracted"] == 1 and summary["failed"] == 0
+
+
 def test_rate_limit_stops_batch_keeps_queue(tmp_path, monkeypatch):
     """A provider rate limit stops the batch cleanly: the summary carries the reason,
     nothing is quarantined, and every queue file is kept for resume."""
@@ -699,6 +801,61 @@ def test_rate_limit_stops_batch_keeps_queue(tmp_path, monkeypatch):
     assert "post_ingest" not in summary                      # skipped when the batch stops
     # neither doc is quarantined; both stay queued for a clean resume
     assert {p.name for p in (vault / ".watchdog" / "queue").glob("*.json")} == {"aaa111.json", "bbb222.json"}
+
+
+def test_rate_limit_resets_at_reaches_summary(tmp_path, monkeypatch):
+    """`RateLimitError.resets_at` (only populated on the claude-agent-sdk backend) must reach
+    the summary so `watchdog ingest --wait` (#271) knows when to resume."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="aaa111", filename="one.pdf")
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "classify":
+            return model_client.ModelResult(parsed={"skill": "general-records.md"}, text="",
+                                            model="m", backend="claude-agent-sdk", auth_mode="subscription")
+        raise model_client.RateLimitError("session limit", resets_at=1_700_000_000)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault, concurrency=1))
+
+    assert summary["rate_limit_resets_at"] == 1_700_000_000
+
+
+def test_rate_limit_resets_at_is_none_when_backend_omits_it(tmp_path, monkeypatch):
+    """The claude-api / OpenAI-compatible backends raise RateLimitError with no resets_at —
+    the summary must carry None rather than error, so --wait falls back to its fixed interval."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="aaa111", filename="one.pdf")
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "classify":
+            return model_client.ModelResult(parsed={"skill": "general-records.md"}, text="",
+                                            model="m", backend="claude-agent-sdk", auth_mode="subscription")
+        raise model_client.RateLimitError("session limit")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault, concurrency=1))
+
+    assert summary["rate_limit_resets_at"] is None
+
+
+def test_rate_limit_message_reflects_wait_flag(tmp_path, monkeypatch, capsys):
+    """The in-run notice text differs between plain and --wait mode: the former tells the user
+    to re-run ingest manually, the latter says it'll resume on its own (#271)."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="aaa111", filename="one.pdf")
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "classify":
+            return model_client.ModelResult(parsed={"skill": "general-records.md"}, text="",
+                                            model="m", backend="claude-agent-sdk", auth_mode="subscription")
+        raise model_client.RateLimitError("session limit")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate.run(vault, concurrency=1, wait=True))
+    out = capsys.readouterr().out
+    assert "Waiting to resume automatically" in out
+    assert "Re-run" not in out
 
 
 def test_failed_doc_is_named_and_quarantine_surfaced(tmp_path, monkeypatch):
@@ -764,6 +921,86 @@ def test_post_ingest_unexpected_crash_is_contained(tmp_path, monkeypatch):
 
     assert summary["extracted"] == 1
     assert "post_ingest_error" in summary
+
+
+# ── _post_ingest timeline-collision loop (#250) ──────────────────────────────
+
+def _seed_collision(vault, date="2020-03-15"):
+    """Pre-seed the timeline dir with a canonical {date}.ndjson and one raw {date}_<sha7>.ndjson
+    for the same date, so `timeline.collisions()` reports one real collision for `_post_ingest`
+    to resolve. The two events share (date, event) so a dedup can fold them into one. Returns
+    (canonical_path, raw_path)."""
+    td = vault / ".watchdog" / "timeline"
+    td.mkdir(parents=True, exist_ok=True)
+    canonical = td / f"{date}.ndjson"
+    canonical.write_text(json.dumps({
+        "date": date, "event": "Appointed director", "source_sha256": "oldoldold0000",
+        "page": 1, "entity_ids": ["alice"], "basis": "stated"}) + "\n", encoding="utf-8")
+    raw = td / f"{date}_newdoc1.ndjson"
+    raw.write_text(json.dumps({
+        "date": date, "event": "Appointed director", "source_sha256": "newnewnew1111",
+        "page": 4, "entity_ids": ["bob"], "basis": "stated"}) + "\n", encoding="utf-8")
+    return canonical, raw
+
+
+def _mock_post_ingest(monkeypatch, *, timeline_dedup):
+    """Drive `_post_ingest` with only the timeline-dedup call under test controlled.
+    `timeline_dedup` is a zero-arg callable invoked for the timeline-dedup task — it may return a
+    parsed dict (success) or raise (failure). Briefing is deliberately failed (its error is caught)
+    so the run completes without needing a full briefing fixture."""
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "timeline-dedup":
+            parsed = timeline_dedup()   # may raise
+        elif task == "briefing":
+            raise model_client.RateLimitError("briefing skipped for this test")
+        else:
+            parsed = {}
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="claude-agent-sdk", auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+
+def test_post_ingest_leaves_collision_untouched_when_dedup_fails(tmp_path, monkeypatch):
+    """A rate limit during timeline dedup must leave BOTH the canonical and its raw untouched, so
+    the next ingest retries the collision cleanly. The pre-#250 bug wrote the canonical+raw union
+    back and deleted the raw, baking in a duplicate row that compounded on every later run."""
+    vault = make_vault(tmp_path)
+    canonical, raw = _seed_collision(vault)
+    canonical_before = canonical.read_text(encoding="utf-8")
+
+    def boom():
+        raise model_client.RateLimitError("You've hit your session limit")
+    _mock_post_ingest(monkeypatch, timeline_dedup=boom)
+
+    out = asyncio.run(orchestrate._post_ingest(vault, [], None, "haiku"))   # must not raise
+
+    assert out["timeline_collisions"] == 1
+    assert canonical.read_text(encoding="utf-8") == canonical_before   # not rewritten as a union
+    assert raw.exists()                                                # raw retained for retry
+    assert len(timeline.collisions(vault)) == 1                        # still a live collision
+
+
+def test_post_ingest_consumes_raws_after_successful_dedup(tmp_path, monkeypatch):
+    """A successful dedup writes the merged canonical and deletes the consumed raw, so a second
+    run finds no collision and makes zero timeline-dedup calls (#250). The two seeded events share
+    (date, event), so the model folds them into one surviving row with unioned attribution."""
+    vault = make_vault(tmp_path)
+    canonical, raw = _seed_collision(vault)
+
+    calls = {"timeline-dedup": 0}
+    def dedup():
+        calls["timeline-dedup"] += 1
+        return {"groups": [{"keep": 0, "duplicates": [1]}]}   # fold the raw restatement into the canonical
+    _mock_post_ingest(monkeypatch, timeline_dedup=dedup)
+
+    asyncio.run(orchestrate._post_ingest(vault, [], None, "haiku"))
+
+    assert calls["timeline-dedup"] == 1
+    assert not raw.exists()                                   # raw consumed
+    recs = [json.loads(l) for l in canonical.read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert len(recs) == 1                                     # folded to a single row
+    assert recs[0]["entity_ids"] == ["alice", "bob"]          # attribution unioned across the merge
+    assert timeline.collisions(vault) == []                   # no re-collision → future runs are silent
 
 
 def test_finalize_completes_an_interrupted_run(tmp_path, monkeypatch):
@@ -857,6 +1094,45 @@ def test_ingest_setup_wipe_pending_controls_cleanup(tmp_path):
     ingest_setup.run(vault, wipe_pending=True)
     assert not (frag / "_queue.json").exists()
     assert not (tmp / "result_old.json").exists() and not (tmp / "notes_old.md").exists()
+
+
+def test_ingest_setup_discard_snapshots_before_wiping(tmp_path):
+    """#270: the discard choice (wipe_pending=True with leftover residue from a prior
+    unfinalized batch) is irreversible — back up entity-fragments/, result_*.json, and
+    notes_*.md before deleting them."""
+    from watchdog.pipeline import ingest_setup
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="new1", filename="new.pdf")
+    tmp = vault / ".watchdog" / "tmp"
+    frag = tmp / "entity-fragments"
+    frag.mkdir(parents=True, exist_ok=True)
+    (frag / "_queue.json").write_text('{"acme-corp": {"count": 2}}')
+    (tmp / "result_old.json").write_text('{"old": true}')
+    (tmp / "notes_old.md").write_text("scratchpad notes")
+
+    state = ingest_setup.run(vault, wipe_pending=True)
+
+    assert state["backup_dir"] is not None
+    backup_dir = Path(state["backup_dir"])
+    assert (backup_dir / ".watchdog" / "tmp" / "entity-fragments" / "_queue.json").read_text() \
+        == '{"acme-corp": {"count": 2}}'
+    assert (backup_dir / ".watchdog" / "tmp" / "result_old.json").read_text() == '{"old": true}'
+    assert (backup_dir / ".watchdog" / "tmp" / "notes_old.md").read_text() == "scratchpad notes"
+    # And the originals are still gone — the backup doesn't block the wipe.
+    assert not (frag / "_queue.json").exists()
+
+
+def test_ingest_setup_ordinary_run_leaves_no_backup(tmp_path):
+    """A routine ingest with nothing left over from a prior unfinalized batch is a
+    no-op for the wipe step, so it must not leave an empty backup directory behind."""
+    from watchdog.pipeline import ingest_setup
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="new1", filename="new.pdf")
+
+    state = ingest_setup.run(vault, wipe_pending=True)
+
+    assert state["backup_dir"] is None
+    assert not (vault / ".watchdog" / "backups").exists()
 
 
 def test_requeue_moves_failed_back(tmp_path, monkeypatch):
@@ -953,12 +1229,13 @@ def test_sectioned_carry_forward_dedupes_entities_and_caps_observations(tmp_path
                    "timeline_events": [], "roles": []}
     sections_out = [
         {"document": {"sha256": "abc123", "filename": "test-doc.pdf", "title": "Acme AR",
-                      "document_type": "Annual Report", "summary": "s",
+                      "document_type": "Annual Report",
                       "key_facts": [{"fact": "x", "basis": "stated"}]},
          "entities": [acme_entity], "morgue_entity_id": "acme-corp",
          "morgue_document_type": "annual-report", "observations": "section 1 obs"},
         {"entities": [acme_entity], "observations": "section 2 obs"},
         {"entities": [acme_entity], "observations": "section 3 obs"},
+        {"summary": "digest text"},   # the post-merge digest call (#279)
     ]
     seen_prompts = []
 
@@ -972,8 +1249,8 @@ def test_sectioned_carry_forward_dedupes_entities_and_caps_observations(tmp_path
         vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report",
         brief="INVESTIGATE THE FRAUD"))
 
-    assert len(seen_prompts) == 3
-    flat_prompts = [_flat(p) for p in seen_prompts]
+    assert len(seen_prompts) == 4   # 3 section calls + 1 post-merge digest call
+    flat_prompts = [_flat(p) for p in seen_prompts[:3]]
     # section 2's prompt carries section 1's single entity line, once (not duplicated)
     assert flat_prompts[1].count("acme-corp | Acme Corp | Company") == 1
     assert "section 1 obs" in flat_prompts[1]
@@ -985,6 +1262,166 @@ def test_sectioned_carry_forward_dedupes_entities_and_caps_observations(tmp_path
     # A6: the investigation brief reaches every section's prompt
     for p in flat_prompts:
         assert "INVESTIGATE THE FRAUD" in p
+
+
+# ── whole-document digest for sectioned extraction (#279) ───────────────────────
+
+def _sectioned_plan_and_pf(vault, sha="abc123", filename="test-doc.pdf"):
+    tmpd = vault / ".watchdog" / "tmp"
+    tmpd.mkdir(parents=True, exist_ok=True)
+    (tmpd / f"section_{sha}_01.md").write_text("<!-- PAGE 1 -->\n\npart 1")
+    plan = {"sectioned": True, "page_count": 1, "sections": [
+        {"index": 1, "label": "pages 1", "paginated": True,
+         "pages_path": f".watchdog/tmp/section_{sha}_01.md"},
+    ]}
+    pf = {"filename": filename, "existing_entities": [], "known_document_types": [],
+          "page_count": 1, "original_path": f"_INCOMING/{filename}"}
+    return plan, pf
+
+
+_SEC1 = {
+    "document": {"sha256": "abc123", "filename": "test-doc.pdf", "title": "Acme AR",
+                 "document_type": "Annual Report",
+                 "key_facts": [{"fact": "Filed in 2024", "basis": "stated"}]},
+    "entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company", "roles": []}],
+    "morgue_entity_id": "acme-corp", "morgue_document_type": "annual-report",
+    "observations": "",
+}
+
+
+def test_extract_sectioned_composes_digest_after_merge(tmp_path, monkeypatch):
+    """Exactly one additional _call_model runs after the section calls, with task="digest" and
+    schema=schemas.DIGEST; it runs on the extractor model/backend (the same that read the
+    sections, #279), its summary lands in document.summary and its cost is added."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, text="a very long document ...")
+    plan, pf = _sectioned_plan_and_pf(vault)
+    calls = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        calls.append({"task": task, "model": model, "backend": backend, "schema": schema,
+                      "prompt": prompt})
+        parsed = _SEC1 if task == "extract-section" else {"summary": "Composed digest text."}
+        return model_client.ModelResult(parsed=parsed, text="", model=model or "m",
+                                        backend=backend or "b", auth_mode="subscription",
+                                        cost_usd=0.01)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    extraction, scratchpad, cost, ok, errors = asyncio.run(orchestrate._extract_sectioned(
+        vault, "abc123", pf, "SKILL TEXT", plan, "sonnet", "annual-report", backend="claude-api",
+        brief="CHASE THE FRAUD"))
+
+    digest_calls = [c for c in calls if c["task"] == "digest"]
+    assert len(digest_calls) == 1
+    assert digest_calls[0]["schema"] is schemas.DIGEST
+    assert digest_calls[0]["model"] == "sonnet"        # extractor tier, not finalizer
+    assert digest_calls[0]["backend"] == "claude-api"  # same backend the sections used
+    # Extractor-tier context parity (#279): the digest prompt carries the skill + brief.
+    assert "SKILL TEXT" in digest_calls[0]["prompt"]
+    assert "CHASE THE FRAUD" in digest_calls[0]["prompt"]
+    assert "test-doc.pdf" in digest_calls[0]["prompt"]
+    assert extraction["document"]["summary"] == "Composed digest text."
+    assert ok, errors
+    assert cost == pytest.approx(0.02)   # one section call + one digest call
+
+
+def test_digest_model_error_falls_back_to_deterministic_stitch(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, text="a very long document ...")
+    plan, pf = _sectioned_plan_and_pf(vault)
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "extract-section":
+            return model_client.ModelResult(parsed=_SEC1, text="", model="m", backend="b",
+                                            auth_mode="subscription", cost_usd=0.01)
+        raise model_client.ModelError("boom")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    extraction, scratchpad, cost, ok, errors = asyncio.run(orchestrate._extract_sectioned(
+        vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
+
+    summary = extraction["document"]["summary"]
+    assert "Acme AR" in summary and "Filed in 2024" in summary
+    assert ok, errors
+
+
+def test_digest_empty_response_falls_back_to_deterministic_stitch(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, text="a very long document ...")
+    plan, pf = _sectioned_plan_and_pf(vault)
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        parsed = _SEC1 if task == "extract-section" else {"summary": ""}
+        return model_client.ModelResult(parsed=parsed, text="", model="m", backend="b",
+                                        auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    extraction, scratchpad, cost, ok, errors = asyncio.run(orchestrate._extract_sectioned(
+        vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
+
+    summary = extraction["document"]["summary"]
+    assert "Acme AR" in summary and "Filed in 2024" in summary
+    assert ok, errors
+
+
+def test_run_sectioned_path_composes_digest_on_extractor_tier(tmp_path, monkeypatch):
+    """run()'s sectioned path composes the digest on the extractor model/backend (#279) — the
+    digest is extraction output, not a finalizer task, so it rides extract_model, not post_model."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, text="a very long document ...")
+    plan, _ = _sectioned_plan_and_pf(vault)
+    monkeypatch.setattr(orchestrate.section, "run", lambda v, s: plan)
+    seen = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        seen.append((task, model, backend))
+        parsed = {
+            "classify": {"skill": "general-records.md"},
+            "extract-section": _SEC1,
+            "digest": {"summary": "digest text"},
+            "entity-synthesis": {"entity_syntheses": []},
+            "timeline-dedup": {"groups": []},
+            "briefing": {"investigation_status": "x", "what_was_ingested": []},
+        }.get(task, {})
+        return model_client.ModelResult(parsed=parsed, text="", model=model or "m",
+                                        backend=backend or "b", auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate.run(vault, extract_model="sonnet", extract_backend="claude-api",
+                                post_model="haiku", post_backend="claude-api"))
+
+    digest_calls = [c for c in seen if c[0] == "digest"]
+    assert digest_calls == [("digest", "sonnet", "claude-api")]   # extractor tier, not post_model
+
+
+def test_stitch_digest_with_title_type_pages_and_facts():
+    doc = {"title": "Acme AR", "document_type": "Annual Report",
+           "key_facts": [{"fact": "Filed in 2024."}, {"fact": "Revenue grew"}]}
+    s = orchestrate._stitch_digest(doc, 12)
+    assert s.startswith("Acme AR — Annual Report, 12 pages.")
+    assert "Filed in 2024." in s
+    assert "Revenue grew." in s
+
+
+def test_stitch_digest_without_title_or_type_or_pages():
+    assert orchestrate._stitch_digest({}, None) == "Untitled document."
+
+
+def test_stitch_digest_empty_facts_yields_orientation_line_alone():
+    doc = {"title": "Acme AR", "document_type": "Annual Report"}
+    assert orchestrate._stitch_digest(doc, 5) == "Acme AR — Annual Report, 5 pages."
+
+
+def test_stitch_digest_caps_at_eight_facts():
+    facts = [{"fact": f"Fact {i}"} for i in range(12)]
+    s = orchestrate._stitch_digest({"title": "T", "key_facts": facts}, None)
+    assert s.count("Fact ") == 8
+
+
+def test_stitch_digest_skips_blank_facts():
+    """Empty/whitespace-only or missing fact text is dropped, not rendered as a bare '.'."""
+    doc = {"title": "T", "key_facts": [{"fact": "Real fact"}, {"fact": "  "}, {}, {"fact": ""}]}
+    assert orchestrate._stitch_digest(doc, None) == "T. Real fact."
 
 
 # ── claude-batch (#214) ─────────────────────────────────────────────────────────
@@ -1041,8 +1478,21 @@ def test_submit_batch_splits_sectioned_and_whole_doc(tmp_path, monkeypatch):
     assert submitted["docs"][0]["prompt"][1]["cache_control"]["ttl"] == "1h"
 
 
+def test_extract_document_skips_already_extracted_and_unlinks_queue_file(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+    monkeypatch.setattr(orchestrate.preflight, "run",
+                        lambda v, s: {"already_extracted": True, "filename": "a.pdf"})
+
+    result = asyncio.run(orchestrate._extract_document(vault, "sha1", None, "sonnet", "haiku"))
+
+    assert result["status"] == "skipped"
+    assert not (vault / ".watchdog" / "queue" / "sha1.json").exists()
+
+
 def test_submit_batch_skips_already_extracted_and_preflight_errors(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="done", filename="done.pdf")
     monkeypatch.setattr(orchestrate.preflight, "run", lambda v, s: (
         {"error": "not found"} if s == "gone" else
         {"already_extracted": True, "filename": "done.pdf"}))
@@ -1056,6 +1506,9 @@ def test_submit_batch_skips_already_extracted_and_preflight_errors(tmp_path, mon
     statuses = {r["sha256"]: r["status"] for r in out["results"]}
     assert statuses == {"gone": "failed", "done": "skipped"}
     assert out["batch_pending"] is False   # nothing left to submit
+    # A queue file for an already-extracted doc is a leftover from a crash in the narrow
+    # pre-unlink window — clean it up so it doesn't phantom-report "skipping" forever (#265).
+    assert not (vault / ".watchdog" / "queue" / "done.json").exists()
 
 
 def test_resume_batch_reports_progress_when_not_ended(tmp_path, monkeypatch, capsys):
@@ -1124,6 +1577,67 @@ def test_finish_batch_item_fails_when_result_missing(tmp_path):
     result = asyncio.run(orchestrate._finish_batch_item(
         vault, "sha1", None, "SKILL", "s", None, "sk-x"))
     assert result["status"] == "failed"
+
+
+def test_finish_batch_item_skips_already_extracted_and_unlinks_queue_file(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+    monkeypatch.setattr(orchestrate.preflight, "run",
+                        lambda v, s: {"already_extracted": True, "filename": "a.pdf"})
+
+    result = asyncio.run(orchestrate._finish_batch_item(
+        vault, "sha1", None, "SKILL", "s", None, "sk-x"))
+
+    assert result["status"] == "skipped"
+    assert not (vault / ".watchdog" / "queue" / "sha1.json").exists()
+
+
+def test_finish_batch_item_records_usage_for_the_batch_call_itself(tmp_path):
+    """D64: a batch-collected item that already passed validation never calls `_call_model` —
+    without recording it directly in `_finish_batch_item`, its real token spend would silently
+    never reach `usage-<ts>.json`, unlike every synchronous extraction path."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+
+    item = {"ok": True, "parsed": _extraction(sha="sha1", filename="a.pdf"),
+           "usage": {"input_tokens": 500, "output_tokens": 80}, "cost_usd": 0.015, "error": None}
+
+    orchestrate._usage = []
+    try:
+        result = asyncio.run(orchestrate._finish_batch_item(
+            vault, "sha1", item, "SKILL BODY", "annual-report", None, "sk-x",
+            model="claude-sonnet-4-6"))
+        assert result["status"] == "ok"
+        calls = [c for c in orchestrate._usage if c["task"] == "extract"]
+        assert len(calls) == 1
+        assert calls[0] == {
+            "task": "extract", "model": "claude-sonnet-4-6", "backend": "claude-batch",
+            "input_tokens": 500, "output_tokens": 80, "cache_read_tokens": 0, "cache_write_tokens": 0,
+            "cost_usd": 0.015, "attempts": 1, "filename": "a.pdf", "detail": "pages 1–1",
+        }
+    finally:
+        orchestrate._usage = None
+
+
+def test_finish_batch_item_stamps_extraction_provenance(tmp_path):
+    """The claude-batch path (#214) has its own extraction call sequence — separate from
+    _simple_extract/_extract_sectioned — so it needs its own coverage that record_skill_hash/
+    extract_model/extract_effort (#268) reach documents.json from here too."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+
+    item = {"ok": True, "parsed": _extraction(sha="sha1", filename="a.pdf"),
+           "usage": None, "cost_usd": 0.015, "error": None}
+    result = asyncio.run(orchestrate._finish_batch_item(
+        vault, "sha1", item, "SKILL BODY", "annual-report", None, "sk-x",
+        model="claude-sonnet-4-6", effort="medium"))
+
+    assert result["status"] == "ok"
+    docs = json.loads((vault / ".watchdog" / "Registry" / "documents.json").read_text())
+    entry = docs["sha1"]
+    assert entry["record_skill_hash"] == hashlib.sha256(b"SKILL BODY").hexdigest()[:12]
+    assert entry["extract_model"] == "claude-sonnet-4-6"
+    assert entry["extract_effort"] == "medium"
 
 
 def test_run_dispatches_to_batch_and_merges_batch_pending_into_summary(tmp_path, monkeypatch):

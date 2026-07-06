@@ -125,6 +125,11 @@ CLASSIFY = _obj(
     ["skill"],
 )
 
+# Whole-document digest for sectioned extraction (#279): no single section call ever sees the
+# whole document, so the digest is composed once from the merged key_facts.
+DIGEST = _obj({"summary": {"type": "string"}}, ["summary"])
+
+
 # Entity synthesis: prose for the multi-mention entities in the bundle.
 SYNTHESIS = _obj(
     {

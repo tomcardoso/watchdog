@@ -3,7 +3,7 @@ Canonical entity-name normalization.
 
 Shared by both duplicate-reconciliation paths so they collapse the same spelling
 variants to the same comparison key:
-  * write_vault — reconciling near-duplicate slugs coined by parallel subagents
+  * write_vault — reconciling near-duplicate slugs coined by concurrent extraction tasks
   * merge      — folding id drift across sections of one large document
 """
 

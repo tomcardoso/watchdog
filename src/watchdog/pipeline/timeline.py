@@ -6,7 +6,7 @@ rebuild-timeline     Read all canonical {date}.ndjson files; render timeline.md.
 
 File naming convention in .watchdog/timeline/:
   {date}.ndjson             — canonical (orchestrator-maintained, deduplicated)
-  {date}_{sha256[:7]}.ndjson — raw subagent output; always written by subagents
+  {date}_{sha256[:7]}.ndjson — raw per-document output; always written by the extraction task
 
 Canonical files have no underscore in the stem (dates use hyphens only).
 """
@@ -104,8 +104,11 @@ def stage_timeline_events(vault: Path, extraction: dict) -> int:
 def collisions(vault: Path) -> list[dict]:
     """Promote no-canonical dates to canonical; return the remaining collisions.
 
-    For dates with only raw files: merge → write canonical. For dates that already
-    had a canonical: return ``{date, canonical, raw}`` for semantic dedup by the caller.
+    For dates with only raw files: merge → write canonical, then delete the raws (they are
+    consumed, not retained — otherwise the next ingest re-reports the date as a collision
+    against its own already-promoted raws). For dates that already had a canonical: return
+    ``{date, canonical, raw}`` for semantic dedup by the caller, which deletes those raws only
+    after a *successful* dedup write.
     """
     td = _timeline_dir(vault)
     if not td.exists():
@@ -123,6 +126,10 @@ def collisions(vault: Path) -> list[dict]:
             for rf in raw_files:
                 lines.extend(_read_ndjson_lines(rf))
             (td / f"{date}.ndjson").write_text("\n".join(lines) + "\n", encoding="utf-8")
+            # Consume the raws once merged so a later ingest doesn't re-litigate this date
+            # as a phantom collision (canonical vs. its own already-promoted raws).
+            for rf in raw_files:
+                rf.unlink()
         else:
             result.append({
                 "date": date,

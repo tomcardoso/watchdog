@@ -100,7 +100,7 @@ notes: Check the director change on page 12.
 
 This context is merged into the document record and preserved through ingest.
 
-**Near-duplicate detection is automatic.** Watchdog fingerprints every document using a hash of its content. If you drop in a document that's already been ingested — even renamed — it will be flagged as a duplicate and skipped.
+**Exact-duplicate detection is automatic.** Watchdog fingerprints every document using a hash of its content. If you drop in a document that's byte-identical to one already ingested — even renamed — it's set aside in `_INCOMING/_SKIPPED/` rather than processed again. A separate near-duplicate check (fuzzy content similarity, for documents that are similar but not byte-identical — a redlined revision, say) only flags a match for your review; it never skips the file.
 
 ---
 
@@ -170,9 +170,9 @@ From inside the vault directory, run:
 watchdog ingest
 ```
 
-This runs the extraction pipeline **in your terminal** — there's no Claude Code session to open. Watchdog scans the queue, confirms, and processes documents in parallel. The model is called only for the reasoning steps; everything mechanical runs in Python. (Authentication is set during `watchdog setup` — your Claude subscription or an API key; see INSTALL.)
+This runs the extraction pipeline **in your terminal** — there's no Claude Code session to open. Watchdog scans the queue, shows a token estimate (and, on a metered key with prior runs, a rough dollar range based on this vault's own usage history), confirms, and processes documents in parallel. The model is called only for the reasoning steps; everything mechanical runs in Python. (Authentication is set during `watchdog setup` — your Claude subscription or an API key; see INSTALL.) Run `watchdog ingest --estimate` any time to see that same estimate without starting extraction — useful for deciding whether to split a large batch.
 
-By default Watchdog uses Sonnet for extraction and for the post-ingest step (synthesis + timeline + briefing), and Haiku for the quick document classification. Set persistent defaults with `watchdog configure`, or override per run:
+By default Watchdog uses Sonnet for extraction, and Haiku for the post-ingest step (synthesis + timeline + briefing) and the quick document classification. Set persistent defaults with `watchdog configure`, or override per run:
 
 ```bash
 watchdog ingest --extractor-model haiku             # faster, cheaper extraction
@@ -184,9 +184,12 @@ watchdog ingest --extractor-model claude-batch:sonnet --skill corporate-filings 
 watchdog ingest --concurrency 2                     # fewer docs in parallel (if you hit rate limits)
 watchdog ingest --classify-pages 10                 # show the classifier more pages of each document
 watchdog ingest --skill corporate-filings           # pin one record skill, skip classification
+watchdog ingest --wait                              # unattended: sleep through rate limits and auto-resume
 ```
 
 A model knob also accepts a `backend:model` form to run a stage on another provider (`openai:gpt-5-mini`, `deepseek:deepseek-chat`) — store the key first with `watchdog auth set openai|deepseek`. A plain tier keeps the stage on Claude. `claude-batch` is a special case: it submits extraction as one Anthropic Message Batch (50% off, requires a pinned skill and API-key auth) and **exits rather than waiting** — batches can take up to a day, so `watchdog ingest` submits and re-running it later collects the results. See [Model backends](README.md#model-backends) for the constraints and the full cost-saving recipe.
+
+For a large dump you want to run overnight, `--wait` turns the normal stop-on-rate-limit into sleep-and-resume: instead of stopping and asking you to re-run `watchdog ingest` once the limit clears, it sleeps until then (using the reset time the provider reports when available, a fixed interval otherwise) and keeps going until the whole queue is extracted. It's opt-in — without the flag, `watchdog ingest` still stops cleanly on a rate limit exactly as before — and isn't compatible with `claude-batch`, which already submits and exits rather than waiting.
 
 `--skill` with no value lists the available record skills and lets you pick one interactively; `--skill path/to/skill.md` pins an ad-hoc skill file. Run `watchdog show-skills` to see what the built-in skills cover (it also opens the skills folder on GitHub), and add your own in `~/.watchdog/skills/records/`. For a vault that's always one document type, set it once:
 
@@ -228,6 +231,9 @@ If you've listed any terms in the vault's `watchlist.md` (one per line — a nam
 Since this scan only ever looks at the run's own new documents, adding a term to `watchlist.md` after documents are already in the vault won't retroactively check them. Run `watchdog watchlist` to sweep every already-ingested document against the current `watchlist.md` — it writes to the same `briefings/alerts-<date>.md`.
 
 Watchdog also runs a deterministic **lead sweep** over the whole entity graph at the end of each ingest, printing a one-line count and writing `briefings/leads-<date>.md`. It flags four things, all without a model call: entities named as a relationship target but never profiled (a company you should go find records on), entities that recur across several documents with no relationships at all, entities carrying unresolved contradiction flags, and entities carrying facts or roles the extractor flagged as inferred rather than stated outright — a lead to verify, not a finding. Re-run it any time with `watchdog leads`; a bare `watchdog` with nothing pending nudges you when leads are open.
+
+Once you've dealt with a lead, a watch-word alert, or a specific contradiction, you can mark it done so it stops re-appearing. Every item in the leads and alerts files carries a short resolution id; run `watchdog resolve <id>` (the ids are printed next to each item), or just tick its `- [x]` checkbox in the briefing and run `watchdog resolve --sync`. Resolved items drop out of the next sweep, so `watchdog leads` and `watchdog watchlist` become a shrinking to-do list rather than an ever-growing wall. `watchdog resolve --list` shows what you've acknowledged; `watchdog unresolve <id>` brings an item back. Acknowledgments follow an entity through `watchdog merge-entities`.
+
 
 If the same real-world person or company ends up extracted under two different entity ids — a name spelled differently across documents, most often — `watchdog merge-entities <keep-id> <merge-id>` folds the duplicate into the survivor: aliases, documents, relationships, and timeline events all combine onto one id, and every relationship elsewhere in the vault that named the losing id follows the merge. Run `watchdog reindex` afterward to drop the merged entity's stale search-index entries.
 
@@ -324,6 +330,15 @@ Checking a whole list of names or terms against the vault — a leaked board ros
 watchdog search shell-company-investigation --batch names-to-check.txt
 ```
 
+If you work across several investigations, `--everywhere` answers "have I seen this name in *any* of my vaults?" — it drops the project name and instead iterates every registered, non-archived investigation, running the manifest and exact-match lanes (semantic search is skipped; it doesn't scale across N vaults the way an in-process SQLite query does) and reporting hits grouped by investigation:
+
+```bash
+watchdog search --everywhere "acme holdings"
+watchdog search --everywhere --batch names-to-check.txt
+```
+
+A name variant with no manifest alias and no literal occurrence won't surface — the same tradeoff as `--batch`. Investigations with a broken or missing vault path are skipped rather than failing the whole scan.
+
 ---
 
 ## Finding connections
@@ -374,7 +389,7 @@ After the first ingest, the typical workflow is:
 
 1. **Drop new documents** into `_INCOMING/`
 2. **`watchdog chew`** from the vault directory (or `watchdog watch <name>` to chew automatically as files arrive)
-3. **`watchdog ingest`** — opens Claude Code with extraction pre-loaded; Claude starts immediately
+3. **`watchdog ingest`** — extracts the queued documents in your terminal
 4. **Read the briefing** — pay particular attention to connections with entities already in the vault
 5. **`/watchdog-surface`** if the new batch was substantial
 

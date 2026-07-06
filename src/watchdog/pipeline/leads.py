@@ -25,7 +25,10 @@ claims) are deliberately out of scope here — see DECISIONS D40 and #155.
 
 import datetime
 import json
+import re
 from pathlib import Path
+
+from watchdog.pipeline import resolutions
 
 _ISOLATED_MIN_DOCS = 3   # appears-in count below which an unconnected entity is just long-tail noise
 
@@ -35,6 +38,16 @@ def _load_json(path: Path) -> dict:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
+
+
+def _callout_summary(callout: str) -> str:
+    """A one-line human summary of a `> [!contradiction]` callout for the report."""
+    lines = [re.sub(r"^\s*>\s?", "", ln).strip() for ln in callout.splitlines()]
+    lines = [ln for ln in lines if ln]
+    if not lines:
+        return "contradiction"
+    first = re.sub(r"^\[!contradiction\]\s*", "", lines[0]).strip()
+    return first or (lines[1] if len(lines) > 1 else "contradiction")
 
 
 def _inferred_claims(ent: dict) -> list[str]:
@@ -50,8 +63,12 @@ def _inferred_claims(ent: dict) -> list[str]:
     return claims
 
 
-def find_leads(entities_reg: dict) -> dict:
-    """Pure: derive the four lead lists from an entity-registry dict."""
+def find_leads(entities_reg: dict, resolved: frozenset[str] = frozenset()) -> dict:
+    """Pure: derive the four lead lists from an entity-registry dict.
+
+    ``resolved`` is the set of acknowledged resolution ids (#266); any lead — or individual
+    contradiction callout — whose id is in it drops out of the active list. Every returned item
+    carries its own ``rid`` so the report can print a copyable/checkbox-able marker."""
     unprofiled: dict[str, dict] = {}
     isolated: list[dict] = []
     contradictions: list[dict] = []
@@ -72,24 +89,37 @@ def find_leads(entities_reg: dict) -> dict:
                 rec["docs"].add(role["source_sha256"])
 
         if not roles and len(ent.get("appears_in", [])) >= _ISOLATED_MIN_DOCS:
-            isolated.append({"id": eid, "name": ent.get("name") or eid,
-                             "doc_count": len(ent["appears_in"])})
+            rid = resolutions.lead_id("isolated", eid)
+            if rid not in resolved:
+                isolated.append({"id": eid, "name": ent.get("name") or eid,
+                                 "doc_count": len(ent["appears_in"]), "rid": rid})
 
         if ent.get("contradictions"):
-            contradictions.append({"id": eid, "name": ent.get("name") or eid,
-                                   "note_path": ent.get("note_path", ""),
-                                   "count": len(ent["contradictions"])})
+            callouts = [
+                {"summary": _callout_summary(c), "rid": resolutions.contradiction_id(c)}
+                for c in ent["contradictions"]
+            ]
+            callouts = [c for c in callouts if c["rid"] not in resolved]
+            if callouts:
+                contradictions.append({"id": eid, "name": ent.get("name") or eid,
+                                       "note_path": ent.get("note_path", ""),
+                                       "callouts": callouts, "count": len(callouts)})
 
         claims = _inferred_claims(ent)
         if claims:
-            inferred.append({"id": eid, "name": ent.get("name") or eid,
-                             "note_path": ent.get("note_path", ""), "claims": claims})
+            rid = resolutions.lead_id("inferred", eid)
+            if rid not in resolved:
+                inferred.append({"id": eid, "name": ent.get("name") or eid,
+                                 "note_path": ent.get("note_path", ""), "claims": claims,
+                                 "rid": rid})
 
     unprofiled_list = [
         {"id": v["id"], "name": v["name"],
-         "mentioned_by": sorted(v["mentioned_by"]), "doc_count": len(v["docs"])}
+         "mentioned_by": sorted(v["mentioned_by"]), "doc_count": len(v["docs"]),
+         "rid": resolutions.lead_id("unprofiled", v["id"])}
         for v in unprofiled.values()
     ]
+    unprofiled_list = [u for u in unprofiled_list if u["rid"] not in resolved]
     unprofiled_list.sort(key=lambda x: (-x["doc_count"], x["name"].lower()))
     isolated.sort(key=lambda x: (-x["doc_count"], x["name"].lower()))
     contradictions.sort(key=lambda x: (-x["count"], x["name"].lower()))
@@ -104,14 +134,17 @@ def total(leads: dict) -> int:
 
 
 def scan(vault: Path) -> dict:
-    """Run the sweep over a vault's entity registry."""
-    return find_leads(_load_json(vault / ".watchdog" / "Registry" / "entities.json"))
+    """Run the sweep over a vault's entity registry, minus anything already resolved (#266)."""
+    return find_leads(_load_json(vault / ".watchdog" / "Registry" / "entities.json"),
+                      resolutions.resolved_ids(vault))
 
 
 def _format(leads: dict, now: datetime.datetime) -> str:
     lines = [f"# Investigative leads — {now:%Y-%m-%d}\n",
              "*Deterministic whole-vault sweep of the entity registry — no model, "
-             "regenerated on each ingest.*\n"]
+             "regenerated on each ingest.*\n",
+             "*Tick a box and run `watchdog resolve --sync` (or `watchdog resolve <id>`) to "
+             "drop an item from future sweeps.*\n"]
 
     if leads["unprofiled"]:
         lines.append("\n## Named but never profiled\n")
@@ -119,13 +152,14 @@ def _format(leads: dict, now: datetime.datetime) -> str:
         for u in leads["unprofiled"]:
             by = ", ".join(u["mentioned_by"])
             docs = f"{u['doc_count']} document{'s' if u['doc_count'] != 1 else ''}"
-            lines.append(f"- **{u['name']}** — named by {by} · {docs}")
+            lines.append(f"- [ ] **{u['name']}** — named by {by} · {docs} <!--wid:{u['rid']}-->")
 
     if leads["isolated"]:
         lines.append("\n## Mentioned often but unconnected\n")
         lines.append("Entities recurring across documents with no extracted relationships.\n")
         for i in leads["isolated"]:
-            lines.append(f"- **{i['name']}** — appears in {i['doc_count']} documents · no relationships")
+            lines.append(f"- [ ] **{i['name']}** — appears in {i['doc_count']} documents · "
+                         f"no relationships <!--wid:{i['rid']}-->")
 
     if leads["contradictions"]:
         lines.append("\n## Unresolved contradictions\n")
@@ -134,6 +168,8 @@ def _format(leads: dict, now: datetime.datetime) -> str:
             link = f"[[{c['note_path']}|{c['name']}]]" if c["note_path"] else f"**{c['name']}**"
             n = c["count"]
             lines.append(f"- {link} — {n} flagged conflict{'s' if n != 1 else ''}")
+            for callout in c["callouts"]:
+                lines.append(f"  - [ ] {callout['summary']} <!--wid:{callout['rid']}-->")
 
     if leads["inferred"]:
         lines.append("\n## Inferred facts to verify\n")
@@ -141,7 +177,7 @@ def _format(leads: dict, now: datetime.datetime) -> str:
                      "a lead to verify, not a finding.\n")
         for i in leads["inferred"]:
             link = f"[[{i['note_path']}|{i['name']}]]" if i["note_path"] else f"**{i['name']}**"
-            lines.append(f"- {link}")
+            lines.append(f"- [ ] {link} <!--wid:{i['rid']}-->")
             for claim in i["claims"]:
                 lines.append(f"  - {claim}")
 

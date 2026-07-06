@@ -83,6 +83,7 @@ sudo dnf install qpdf ghostscript pipx tesseract tesseract-devel
 **Windows:**
 - qpdf: [github.com/qpdf/qpdf/releases](https://github.com/qpdf/qpdf/releases) — download the installer
 - Ghostscript: [ghostscript.com/releases/gsdnld.html](https://ghostscript.com/releases/gsdnld.html) — download the installer
+- Tesseract: [github.com/UB-Mannheim/tesseract/wiki](https://github.com/UB-Mannheim/tesseract/wiki) — download the installer (required for OCR on Windows; `watchdog setup` will refuse to continue without it)
 - pipx: open Terminal and run `python -m pip install pipx`, then `pipx ensurepath`
 
 ---
@@ -107,9 +108,11 @@ This will:
 - Verify that qpdf and Ghostscript are installed
 - Ask where you want to store your investigation projects
 - Enable tab completion in your shell automatically
+- Offer to install the optional capture browser for full page snapshots (see [Full page snapshots](#full-page-snapshots-optional) below)
 - Download the ML models for document conversion and semantic search (one-time, may take a few minutes on a slow connection)
+- Ask how you want to authenticate with Claude
 
-It will ask one question: where to store your projects. Press Return to accept the default (`~/Investigations`), or type a different path.
+It will ask three questions: where to store your projects, whether to install the optional capture browser, and how to authenticate with Claude. Press Return to accept the projects default (`~/Investigations`), or type a different path; the capture browser defaults to no (type `y` to install it, an extra ~150 MB); for authentication, choose your existing Claude Code subscription login (press Return) or a metered Claude API key.
 
 When setup finishes, reload your shell so the tab completion takes effect:
 
@@ -152,7 +155,7 @@ For a complete walkthrough of a first investigation from start to finish, see [G
 
 ## How to ingest documents
 
-Ingestion happens in two steps: chewing in your terminal, then extraction in Claude Code.
+Ingestion happens in two steps, both run from your terminal: chewing, then extraction.
 
 **Step 1 — Drop files and chew**
 
@@ -190,7 +193,7 @@ From inside the vault directory, run:
 watchdog ingest
 ```
 
-Watchdog scans the queue, confirms, and runs the extraction pipeline in your terminal — there's no Claude Code session to open.
+Watchdog scans the queue, shows a token estimate (plus a rough dollar range on a metered key once this vault has prior runs to base it on), confirms, and runs the extraction pipeline in your terminal — there's no Claude Code session to open. `watchdog ingest --estimate` prints that same estimate and exits without touching the lock or the queue, for checking cost before committing.
 
 By default, Watchdog uses Sonnet for extraction, and Haiku for classification and post-ingest. Configure persistent defaults with `watchdog configure` (e.g. `watchdog configure extractor_model haiku`), or override per run with `--extractor-model`, `--finalizer-model`, and `--concurrency`. If you'd rather not remember key names, run `watchdog configure` with no arguments: it lists every setting and then offers an arrow-key wizard to browse and change them. To trim cost, `extractor_effort` / `finalizer_effort` (`low`/`medium`/`high`, default `high`) tune how many thinking tokens each stage spends — thinking bills as output, so a lower effort is the main per-run cost lever (e.g. `watchdog configure extractor_effort medium` or `watchdog ingest --extractor-effort medium`). See the [Commands](README.md#processing) and [Configuration](README.md#configuration) sections of the README for details.
 
@@ -203,6 +206,8 @@ Watchdog works through the chewed files in parallel, showing one live status row
 - Anything that looks unusual
 
 If you've added terms to the vault's `watchlist.md` (one per line), Watchdog scans each new document for them and writes any matches — with document, page, and context — to `briefings/alerts-<date>.md`, flagging them in the terminal too. Added a term after documents were already ingested? Run `watchdog watchlist` to sweep the whole vault instead of just new documents.
+
+Once you've followed up on a lead, a watch-word alert, or a contradiction, mark it done so it stops re-appearing on the next sweep: run `watchdog resolve <id>` with the id printed next to the item, or tick its checkbox in the briefing file and run `watchdog resolve --sync`. `watchdog unresolve <id>` undoes it.
 
 ---
 
@@ -313,7 +318,7 @@ The document couldn't be processed. Common reasons:
 To retry: move the file from `_INCOMING/_FAILED/` back to `_INCOMING/`, then run `watchdog chew` again.
 
 **Ingesting a large batch (hundreds of documents)**
-`watchdog ingest` extracts the whole queue, processing `extract_concurrency` documents in parallel (default 5). If you hit model rate limits, lower it (`watchdog configure extract_concurrency 2` or `watchdog ingest --concurrency 2`) or chew and ingest in groups. Each document is moved to `morgue/` as soon as it's processed, so re-running `watchdog ingest` only picks up what's still queued.
+`watchdog ingest` extracts the whole queue, processing `extract_concurrency` documents in parallel (default 5). If you hit model rate limits, lower it (`watchdog configure extract_concurrency 2` or `watchdog ingest --concurrency 2`) or chew and ingest in groups. Each document is moved to `morgue/` as soon as it's processed, so re-running `watchdog ingest` only picks up what's still queued. Running unattended (e.g. overnight)? Add `--wait`: instead of stopping on a rate limit and waiting for you to re-run it, it sleeps until the limit resets and resumes automatically, repeating until the whole queue is done.
 
 **A document failed during ingest**
 A document whose extraction fails is logged to `.watchdog/Registry/ingest.log` and moved to `.watchdog/queue/_failed/`; the rest of the batch still completes. To retry it, move its queue file back: `mv .watchdog/queue/_failed/<sha>.json .watchdog/queue/` and run `watchdog ingest` again.
@@ -355,6 +360,8 @@ pipx install "watchdog-intel[asr]" --force
 ## Full page snapshots (optional)
 
 By default, `watchdog research` and `watchdog fetch` save HTML pages with a plain, sanitized fetch — no JavaScript runs, so client-rendered pages (single-page apps) can deposit as an empty shell, and images/styling aren't captured. Installing the optional capture browser renders every HTML page in headless Chromium instead and saves a faithful, self-contained snapshot (images, fonts, and stylesheets inlined; all scripts stripped) — worth it if the sources you're pulling in are often JavaScript-heavy or you want the visual layout preserved.
+
+`watchdog setup` asks whether to install it (see [Step 6](#step-6-run-setup) above). To install it later, or if you said no the first time:
 
 ```
 pipx inject watchdog-intel playwright
