@@ -184,9 +184,12 @@ watchdog ingest --extractor-model claude-batch:sonnet --skill corporate-filings 
 watchdog ingest --concurrency 2                     # fewer docs in parallel (if you hit rate limits)
 watchdog ingest --classify-pages 10                 # show the classifier more pages of each document
 watchdog ingest --skill corporate-filings           # pin one record skill, skip classification
+watchdog ingest --wait                              # unattended: sleep through rate limits and auto-resume
 ```
 
 A model knob also accepts a `backend:model` form to run a stage on another provider (`openai:gpt-5-mini`, `deepseek:deepseek-chat`) — store the key first with `watchdog auth set openai|deepseek`. A plain tier keeps the stage on Claude. `claude-batch` is a special case: it submits extraction as one Anthropic Message Batch (50% off, requires a pinned skill and API-key auth) and **exits rather than waiting** — batches can take up to a day, so `watchdog ingest` submits and re-running it later collects the results. See [Model backends](README.md#model-backends) for the constraints and the full cost-saving recipe.
+
+For a large dump you want to run overnight, `--wait` turns the normal stop-on-rate-limit into sleep-and-resume: instead of stopping and asking you to re-run `watchdog ingest` once the limit clears, it sleeps until then (using the reset time the provider reports when available, a fixed interval otherwise) and keeps going until the whole queue is extracted. It's opt-in — without the flag, `watchdog ingest` still stops cleanly on a rate limit exactly as before — and isn't compatible with `claude-batch`, which already submits and exits rather than waiting.
 
 `--skill` with no value lists the available record skills and lets you pick one interactively; `--skill path/to/skill.md` pins an ad-hoc skill file. Run `watchdog show-skills` to see what the built-in skills cover (it also opens the skills folder on GitHub), and add your own in `~/.watchdog/skills/records/`. For a vault that's always one document type, set it once:
 

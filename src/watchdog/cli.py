@@ -392,6 +392,10 @@ def main() -> None:
                           metavar="NAME",
                           help="Pin a record skill for every document, skipping classification. "
                                "Pass a skill name, or use --skill with no value to pick interactively.")
+    p_ingest.add_argument("--wait", action="store_true", default=False,
+                          help="On a rate limit, sleep until it resets and resume automatically "
+                               "instead of stopping for you to re-run ingest. Not with a "
+                               "claude-batch extractor model.")
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_finalize = sub.add_parser("finalize", help="Complete post-ingest (synthesis + timeline + briefing) for an already-extracted batch — e.g. after a rate limit stopped it")

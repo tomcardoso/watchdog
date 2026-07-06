@@ -2,6 +2,8 @@
 
 import json
 import sys
+import time
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from watchdog.cmd.base import (
@@ -22,6 +24,16 @@ _PICK_SKILL = "\x00pick"
 # Reasoning-effort levels for the per-stage effort knobs (D36). `high` is the model
 # default, so an unset knob behaves as before (the orchestrator sends no effort param).
 _EFFORT_LEVELS = ("low", "medium", "high")
+
+# --wait (#271): cushion past the provider's reported reset time, since a resume attempted
+# right at the boundary can still land inside the window.
+_WAIT_BUFFER_SECONDS = 30
+# Fallback sleep when RateLimitError carried no `resets_at` — true for the claude-api and
+# OpenAI-compatible backends, which don't report a reset timestamp (only claude-agent-sdk does).
+_WAIT_FALLBACK_SECONDS = 15 * 60
+# Sleep in chunks under ingest_setup.STALE_SECONDS (30 min), refreshing the lock after each —
+# otherwise a wait longer than the staleness window would make a live --wait run look abandoned.
+_WAIT_REFRESH_SECONDS = 20 * 60
 
 
 def _effort(flag_val, config_val):
@@ -179,6 +191,61 @@ def _offer_ingest(args, vault: Path) -> None:
         print(f"\n  Run:  {_CYAN}watchdog ingest{_RESET}\n")
 
 
+def _wait_seconds(resets_at: int | None) -> tuple[int, bool]:
+    """Seconds to sleep before resuming after a rate limit, and whether that's an exact reset
+    time (vs. the fallback used when the error carried no `resets_at`)."""
+    if resets_at:
+        return max(1, int(resets_at - time.time()) + _WAIT_BUFFER_SECONDS), True
+    return _WAIT_FALLBACK_SECONDS, False
+
+
+def _wait_for_rate_limit(lock_file: Path, resets_at: int | None) -> None:
+    """Sleep through a rate limit, refreshing the held ingest lock so it doesn't go stale."""
+    from watchdog.pipeline.locks import refresh_lock
+    sleep_s, exact = _wait_seconds(resets_at)
+    wake_at = datetime.now().astimezone() + timedelta(seconds=sleep_s)
+    note = "" if exact else f"{_DIM} (estimated — the provider didn't report a reset time){_RESET}"
+    print(f"\n  {_YELLOW}Rate limit{_RESET}{_DIM} — resuming at{_RESET} {_BOLD}{wake_at:%H:%M}{_RESET}"
+          f"{note}{_DIM}. {_RESET}{_CYAN}Ctrl+C{_RESET}{_DIM} to stop; finished documents are saved.{_RESET}\n")
+    remaining = sleep_s
+    while remaining > 0:
+        chunk = min(remaining, _WAIT_REFRESH_SECONDS)
+        time.sleep(chunk)
+        remaining -= chunk
+        refresh_lock(lock_file)
+
+
+def _merge_summary(base: dict | None, new: dict) -> dict:
+    """Fold one --wait iteration's summary into the running total.
+
+    `results` are deduped by sha256 (a later cycle's outcome for the same doc replaces an
+    earlier cycle's "cancelled" stub); extracted/skipped/failed/usage are summed. Every other
+    field reflects only the latest iteration (rate_limited/cancelled/quarantined/post_ingest
+    are point-in-time or already vault-wide state, not per-run deltas)."""
+    if base is None:
+        return new
+    merged = dict(new)
+    # A doc cancelled by one cycle's rate limit keeps its queue file and is retried by the
+    # next cycle — key by sha256 so that cycle's real outcome replaces the stale "cancelled"
+    # stub instead of both landing in the list (which would double-count it in the printed
+    # summary, e.g. as both extracted and "not started").
+    by_sha = {r.get("sha256"): r for r in base["results"]}
+    by_sha.update({r.get("sha256"): r for r in new["results"]})
+    merged["results"] = list(by_sha.values())
+    merged["extracted"] = base["extracted"] + new["extracted"]
+    merged["skipped"] = base["skipped"] + new["skipped"]
+    merged["failed"] = base["failed"] + new["failed"]
+    b_usage, n_usage = base.get("usage"), new.get("usage")
+    if b_usage or n_usage:
+        b_usage, n_usage = b_usage or {}, n_usage or {}
+        merged["usage"] = {
+            "input_tokens": b_usage.get("input_tokens", 0) + n_usage.get("input_tokens", 0),
+            "output_tokens": b_usage.get("output_tokens", 0) + n_usage.get("output_tokens", 0),
+            "cost_usd": (b_usage.get("cost_usd") or 0) + (n_usage.get("cost_usd") or 0),
+        }
+    return merged
+
+
 def cmd_ingest(args, *, confirm: bool = True) -> None:
     vault = Path(".").resolve()
     if not (vault / ".watchdog").is_dir():
@@ -295,6 +362,11 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
         if a["mode"] != "api-key":
             sys.exit(f"\n  {_YELLOW}Error:{_RESET} claude-batch requires api-key auth mode "
                      f"(it needs a metered key) — run {_CYAN}watchdog auth use api-key{_RESET}.\n")
+    wait = getattr(args, "wait", False)
+    if wait and extract_backend == "claude-batch":
+        sys.exit(f"\n  {_YELLOW}Error:{_RESET} --wait isn't supported with claude-batch — a batch "
+                 f"already runs in the background; re-run {_CYAN}watchdog ingest{_RESET} later to "
+                 f"collect it.\n")
 
     def _release_lock() -> None:
         (vault / ".watchdog" / "Registry" / ".ingest-lock").unlink(missing_ok=True)
@@ -329,13 +401,20 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
         print(f"  {_YELLOW}Large documents can take several minutes each{_RESET}{_DIM} — a long pause on a "
               f"row is normal, not a stall.{_RESET}")
         print(f"  {_DIM}Press {_RESET}{_CYAN}Ctrl+C{_RESET}{_DIM} to stop; finished documents are kept.{_RESET}\n")
+    lock_file = vault / ".watchdog" / "Registry" / ".ingest-lock"
     try:
-        summary = asyncio.run(orchestrate.run(
-            vault, concurrency=concurrency, extract_model=extract_model, post_model=post_model,
-            classify_model=classify_model, classify_pages=classify_pages, pinned_skill=pinned_skill,
-            extract_effort=extract_effort, post_effort=post_effort,
-            extract_backend=extract_backend, post_backend=post_backend,
-            classify_backend=classify_backend))
+        summary = None
+        while True:
+            iter_summary = asyncio.run(orchestrate.run(
+                vault, concurrency=concurrency, extract_model=extract_model, post_model=post_model,
+                classify_model=classify_model, classify_pages=classify_pages, pinned_skill=pinned_skill,
+                extract_effort=extract_effort, post_effort=post_effort,
+                extract_backend=extract_backend, post_backend=post_backend,
+                classify_backend=classify_backend, wait=wait))
+            summary = _merge_summary(summary, iter_summary)
+            if not (wait and iter_summary.get("rate_limited")):
+                break
+            _wait_for_rate_limit(lock_file, iter_summary.get("rate_limit_resets_at"))
     except KeyboardInterrupt:
         # Fallback only — orchestrate.run normally traps SIGINT itself and returns a
         # cancelled summary. This catches a Ctrl+C in the brief window before/after that,

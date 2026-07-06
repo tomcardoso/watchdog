@@ -1804,6 +1804,173 @@ def test_cmd_ingest_rejects_claude_batch_for_classifier_or_finalizer(wdg_home, t
         cmd_ingest(args(), confirm=False)
 
 
+# ── cmd_ingest --wait (#271) ────────────────────────────────────────────────
+
+def test_wait_seconds_uses_resets_at_plus_buffer(monkeypatch):
+    from watchdog.cmd.ingest import _wait_seconds, _WAIT_BUFFER_SECONDS
+    now = 1_000_000
+    monkeypatch.setattr("time.time", lambda: now)
+    seconds, exact = _wait_seconds(now + 100)
+    assert exact is True
+    assert seconds == 100 + _WAIT_BUFFER_SECONDS
+
+
+def test_wait_seconds_falls_back_when_resets_at_missing():
+    from watchdog.cmd.ingest import _wait_seconds, _WAIT_FALLBACK_SECONDS
+    seconds, exact = _wait_seconds(None)
+    assert exact is False
+    assert seconds == _WAIT_FALLBACK_SECONDS
+
+
+def test_wait_for_rate_limit_refreshes_lock_in_chunks(tmp_path, monkeypatch):
+    """A wait longer than one refresh chunk sleeps in pieces, refreshing the held lock after
+    each — so a wait that outlasts the 30-min staleness window never looks abandoned."""
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import locks
+
+    lock_file = tmp_path / ".ingest-lock"
+    lock_file.write_text("pid: cli\nstarted_at: 2000-01-01T00:00:00Z\n")
+
+    slept = []
+    monkeypatch.setattr(ing.time, "sleep", lambda s: slept.append(s))
+    refreshed = []
+    monkeypatch.setattr(locks, "refresh_lock", lambda lf: refreshed.append(lf))
+    monkeypatch.setattr(ing, "_WAIT_REFRESH_SECONDS", 100)
+    monkeypatch.setattr(ing, "_WAIT_FALLBACK_SECONDS", 250)
+
+    ing._wait_for_rate_limit(lock_file, None)   # no resets_at -> fallback sleep
+
+    assert slept == [100, 100, 50]
+    assert refreshed == [lock_file, lock_file, lock_file]
+
+
+def test_merge_summary_accumulates_across_cycles():
+    from watchdog.cmd.ingest import _merge_summary
+    first = {"results": [{"sha256": "a", "status": "cancelled"}, {"sha256": "b", "status": "ok"}],
+             "extracted": 1, "skipped": 0, "failed": 0,
+             "usage": {"input_tokens": 100, "output_tokens": 50, "cost_usd": 0.01}}
+    second = {"results": [{"sha256": "a", "status": "ok"}],
+              "extracted": 1, "skipped": 0, "failed": 0, "rate_limited": False,
+              "usage": {"input_tokens": 10, "output_tokens": 5, "cost_usd": 0.002}}
+    merged = _merge_summary(first, second)
+    assert merged["extracted"] == 2
+    assert len(merged["results"]) == 2
+    assert merged["usage"]["input_tokens"] == 110
+    assert merged["usage"]["cost_usd"] == pytest.approx(0.012)
+    assert merged["rate_limited"] is False   # non-accumulated fields reflect only the latest cycle
+
+
+def test_merge_summary_dedupes_a_doc_retried_after_being_cancelled():
+    """A doc cancelled by one cycle's rate limit keeps its queue file and is retried by the
+    next cycle — its stale "cancelled" stub must not survive alongside its real outcome, or
+    the final summary double-counts it (e.g. reporting a fully-extracted doc as also
+    "not started")."""
+    from watchdog.cmd.ingest import _merge_summary
+    first = {"results": [{"sha256": "a", "status": "cancelled"}],
+             "extracted": 0, "skipped": 0, "failed": 0}
+    second = {"results": [{"sha256": "a", "status": "ok"}],
+              "extracted": 1, "skipped": 0, "failed": 0}
+    merged = _merge_summary(first, second)
+    assert merged["results"] == [{"sha256": "a", "status": "ok"}]
+
+
+def test_merge_summary_first_call_returns_new_unchanged():
+    from watchdog.cmd.ingest import _merge_summary
+    new = {"results": [], "extracted": 0, "skipped": 0, "failed": 0}
+    assert _merge_summary(None, new) is new
+
+
+def test_cmd_ingest_wait_rejects_claude_batch(wdg_home, tmp_path, monkeypatch):
+    """--wait is submit-and-poll's opposite (block until done) — claude-batch already runs
+    in the background, so the two don't compose (#271)."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    (wdg_home / "config.json").write_text(json.dumps({"extractor_model": "claude-batch:sonnet"}))
+    skill_file = tmp_path / "pinned.md"
+    skill_file.write_text("SKILL")
+
+    with pytest.raises(SystemExit, match="isn't supported with claude-batch"):
+        cmd_ingest(args(skill=str(skill_file), wait=True), confirm=False)
+
+
+def test_cmd_ingest_wait_loops_until_rate_limit_clears(wdg_home, tmp_path, monkeypatch, capsys):
+    """--wait resumes automatically after a rate limit: orchestrate.run is re-invoked once the
+    (stubbed) wait completes, the lock is released at the end, and the printed summary reflects
+    the total across both cycles, not just the last one."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+
+    summaries = [
+        {"results": [{"sha256": "sha1", "filename": "a.pdf", "status": "cancelled"}],
+         "extracted": 0, "skipped": 0, "failed": 0, "cancelled": True,
+         "rate_limited": True, "stop_message": "limit", "rate_limit_resets_at": None,
+         "quarantined": 0},
+        {"results": [{"sha256": "sha1", "filename": "a.pdf", "status": "ok", "entity_count": 2}],
+         "extracted": 1, "skipped": 0, "failed": 0, "cancelled": False,
+         "rate_limited": False, "stop_message": None, "rate_limit_resets_at": None,
+         "quarantined": 0},
+    ]
+    calls = []
+
+    async def fake_run(*a, **k):
+        calls.append(k)
+        return summaries[len(calls) - 1]
+    monkeypatch.setattr(orch_module, "run", fake_run)
+
+    waited = []
+    monkeypatch.setattr(ing, "_wait_for_rate_limit",
+                        lambda lock_file, resets_at: waited.append(resets_at))
+
+    ing.cmd_ingest(args(wait=True), confirm=False)
+
+    assert len(calls) == 2
+    assert all(k.get("wait") is True for k in calls)
+    assert waited == [None]
+    assert not (vault / ".watchdog" / "Registry" / ".ingest-lock").exists()
+    out = capsys.readouterr().out
+    assert "1" in out and "extracted" in out   # merged total, not the first cycle's 0
+    assert "not started" not in out            # sha1's cycle-1 "cancelled" stub must not survive
+                                                # alongside its cycle-2 "ok" outcome
+
+
+def test_cmd_ingest_no_wait_stops_on_rate_limit_without_looping(wdg_home, tmp_path, monkeypatch):
+    """Without --wait (the default), a rate-limited summary is reported once and orchestrate.run
+    is not re-invoked — the opt-in flag must not change today's behavior (I4 spirit)."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+
+    calls = []
+
+    async def fake_run(*a, **k):
+        calls.append(k)
+        return {"results": [], "extracted": 0, "skipped": 0, "failed": 0, "cancelled": True,
+                "rate_limited": True, "stop_message": "limit", "rate_limit_resets_at": None,
+                "quarantined": 0}
+    monkeypatch.setattr(orch_module, "run", fake_run)
+    monkeypatch.setattr(ing, "_wait_for_rate_limit",
+                        lambda *a, **k: pytest.fail("must not wait when --wait is absent"))
+
+    ing.cmd_ingest(args(), confirm=False)
+
+    assert len(calls) == 1
+    assert calls[0].get("wait") is False
+
+
 def test_cmd_ingest_and_cmd_finalize_agree_on_finalizer_default(wdg_home, tmp_path, monkeypatch):
     """An unconfigured vault must finalize on the same model whether ingest finishes the
     batch itself or a separate `watchdog finalize` completes it (#253)."""

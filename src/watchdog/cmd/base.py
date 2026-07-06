@@ -133,6 +133,7 @@ _CMD_HELP: dict[str, dict] = {
             ("--concurrency N",      "Documents extracted in parallel for this run (default from watchdog configure: 5)"),
             ("--classify-pages N",   "Pages shown to the document classifier for this run (default from watchdog configure: 5)"),
             ("--skill [NAME|PATH]",  "Pin a record skill (name or file path) for every document, skipping classification (no value = pick from the list)"),
+            ("--wait",               "On a rate limit, sleep until it resets and resume automatically instead of stopping for you to re-run ingest. Not with a claude-batch extractor model"),
         ],
     },
     "context": {
