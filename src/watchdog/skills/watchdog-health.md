@@ -57,24 +57,10 @@ Note: links use pipe-alias syntax (`[[path|Display Name]]`). Extract only the pa
 
 ---
 
-## 4. Lock file and temp file check
+## 4. Lock file check
 
-**Ingest lock** — check whether `.watchdog/Registry/.ingest-lock` exists. If it does, read its `started_at` field and compute the age. If older than 30 minutes, report:
+Check whether `.watchdog/Registry/.ingest-lock` exists. If it does, read its `started_at` field and compute the age. If older than 30 minutes, report:
 `STALE LOCK: .watchdog/Registry/.ingest-lock (created <timestamp>, <N>m ago) — run: watchdog unlock <project-slug>`
-
-**Orphaned extraction files** — check for leftover temp files from an interrupted ingest:
-
-```bash
-ls .watchdog/tmp/watchdog-extraction-*.json 2>/dev/null
-```
-
-For each file found, report:
-`ORPHANED TEMP: .watchdog/tmp/watchdog-extraction-<sha256>.json — safe to delete`
-
-These are legacy leftovers from the pre-orchestrator ingest flow (when a Claude Code session wrote the extraction JSON and could crash before calling `watchdog write-vault`); the Python pipeline no longer produces them, but old vaults may still hold some. They are safe to delete; if you want to recover the extraction, open the file to inspect it first. To clean up all of them:
-```bash
-rm .watchdog/tmp/watchdog-extraction-*.json
-```
 
 ---
 

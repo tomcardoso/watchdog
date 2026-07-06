@@ -960,6 +960,37 @@ def _mock_post_ingest(monkeypatch, *, timeline_dedup):
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
 
+def test_post_ingest_fails_loudly_on_briefing_model_error_without_retrying(tmp_path, monkeypatch):
+    """A briefing ModelError (e.g. an output-cap truncation on a large batch) is recorded as a
+    briefing_error and NOT retried — an identical re-run would fail the same deterministic way
+    (#296). The remedy is a smaller batch, surfaced to the user; the briefing is simply absent."""
+    vault = make_vault(tmp_path)
+    results = [orchestrate._compact_result(
+        "sha1", "doc.pdf",
+        {"document": {"key_facts": [{"fact": f"fact {i}"} for i in range(20)]}, "entities": []},
+        {}, 0.01)]
+
+    briefing_calls = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "briefing":
+            briefing_calls.append(prompt)
+            raise model_client.ModelError("response was not valid JSON")
+        elif task == "timeline-dedup":
+            parsed = {"groups": []}
+        else:
+            parsed = {}
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="claude-agent-sdk", auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    out = asyncio.run(orchestrate._post_ingest(vault, results, None, "haiku"))
+
+    assert len(briefing_calls) == 1                   # called once, no doomed retry
+    assert out.get("briefing") is None                # no briefing written
+    assert out.get("briefing_error")                  # failure recorded so the caller can surface it
+
+
 def test_post_ingest_leaves_collision_untouched_when_dedup_fails(tmp_path, monkeypatch):
     """A rate limit during timeline dedup must leave BOTH the canonical and its raw untouched, so
     the next ingest retries the collision cleanly. The pre-#250 bug wrote the canonical+raw union
