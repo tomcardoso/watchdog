@@ -1291,7 +1291,8 @@ _SEC1 = {
 
 def test_extract_sectioned_composes_digest_after_merge(tmp_path, monkeypatch):
     """Exactly one additional _call_model runs after the section calls, with task="digest" and
-    schema=schemas.DIGEST; its summary lands in document.summary and its cost is added."""
+    schema=schemas.DIGEST; it runs on the extractor model/backend (the same that read the
+    sections, #279), its summary lands in document.summary and its cost is added."""
     vault = make_vault(tmp_path)
     _queue_doc(vault, text="a very long document ...")
     plan, pf = _sectioned_plan_and_pf(vault)
@@ -1306,14 +1307,13 @@ def test_extract_sectioned_composes_digest_after_merge(tmp_path, monkeypatch):
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
     extraction, scratchpad, cost, ok, errors = asyncio.run(orchestrate._extract_sectioned(
-        vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report",
-        digest_model="haiku", digest_backend="claude-api"))
+        vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report", backend="claude-api"))
 
     digest_calls = [c for c in calls if c["task"] == "digest"]
     assert len(digest_calls) == 1
     assert digest_calls[0]["schema"] is schemas.DIGEST
-    assert digest_calls[0]["model"] == "haiku"
-    assert digest_calls[0]["backend"] == "claude-api"
+    assert digest_calls[0]["model"] == "sonnet"        # extractor tier, not finalizer
+    assert digest_calls[0]["backend"] == "claude-api"  # same backend the sections used
     assert extraction["document"]["summary"] == "Composed digest text."
     assert ok, errors
     assert cost == pytest.approx(0.02)   # one section call + one digest call
@@ -1358,9 +1358,9 @@ def test_digest_empty_response_falls_back_to_deterministic_stitch(tmp_path, monk
     assert ok, errors
 
 
-def test_run_sectioned_path_passes_post_model_as_digest_model(tmp_path, monkeypatch):
-    """run()'s sectioned path threads post_model/post_backend through as the digest model
-    (#279) — the digest is prose composition on the finalizer tier, like synthesis/briefing."""
+def test_run_sectioned_path_composes_digest_on_extractor_tier(tmp_path, monkeypatch):
+    """run()'s sectioned path composes the digest on the extractor model/backend (#279) — the
+    digest is extraction output, not a finalizer task, so it rides extract_model, not post_model."""
     vault = make_vault(tmp_path)
     _queue_doc(vault, text="a very long document ...")
     plan, _ = _sectioned_plan_and_pf(vault)
@@ -1381,10 +1381,11 @@ def test_run_sectioned_path_passes_post_model_as_digest_model(tmp_path, monkeypa
                                         backend=backend or "b", auth_mode="subscription", cost_usd=0.0)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    asyncio.run(orchestrate.run(vault, post_model="haiku", post_backend="claude-api"))
+    asyncio.run(orchestrate.run(vault, extract_model="sonnet", extract_backend="claude-api",
+                                post_model="haiku", post_backend="claude-api"))
 
     digest_calls = [c for c in seen if c[0] == "digest"]
-    assert digest_calls == [("digest", "haiku", "claude-api")]
+    assert digest_calls == [("digest", "sonnet", "claude-api")]   # extractor tier, not post_model
 
 
 def test_stitch_digest_with_title_type_pages_and_facts():
@@ -1446,8 +1447,7 @@ def test_submit_batch_splits_sectioned_and_whole_doc(tmp_path, monkeypatch):
     sectioned_calls = []
     async def fake_extract_document(vault, sha, brief, extract_model, classify_model,
                                     classify_pages, pinned_skill, extract_effort,
-                                    extract_backend, classify_backend,
-                                    digest_model="haiku", digest_backend=None):
+                                    extract_backend, classify_backend):
         sectioned_calls.append({"sha": sha, "extract_backend": extract_backend})
         return {"sha256": sha, "filename": f"{sha}.pdf", "status": "ok", "record_skill": "s"}
     monkeypatch.setattr(orchestrate, "_extract_document", fake_extract_document)

@@ -229,13 +229,15 @@ like whole-document extraction, it includes the investigation brief (D49).
 **Whole-document digest (`document.summary`, #279).** No section call ever sees the whole
 document, so no section emits `document.summary` any more. Immediately after
 `merge.merge_extractions` (and before `_stamp_document`), one small model call
-(`orchestrate._compose_digest`, on the finalizer tier — the same `post_model`/`post_backend`
-knobs as synthesis/timeline/briefing) composes the digest from the merged `key_facts` +
+(`orchestrate._compose_digest`, on the **extractor tier** — the same `extract_model`/backend that
+read the sections, not the finalizer tier) composes the digest from the merged `key_facts` +
 title/document_type/page_count. A failed or empty response falls back to
 `_stitch_digest`, a deterministic orientation line plus the first few facts as plain
 sentences — degraded but valid, never worth a retry loop. Non-sectioned documents compose
 the same field **inline**, in the single whole-document extraction call (rewritten field
-spec in `extract_instructions.md`) — zero extra model calls, full-text grounding.
+spec in `extract_instructions.md`) — zero extra model calls, full-text grounding. Both paths
+thus write `document.summary` at the extractor tier; they differ only in grounding — full text
+inline vs. the merged `key_facts` post-merge — because no single call can hold a sectioned doc.
 
 **Prompt caching (`claude-api` only).** `build_extract_prompt`/`build_section_prompt` return a
 list of Anthropic content blocks instead of one string: a stable block (instructions + brief,
