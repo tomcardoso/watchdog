@@ -202,7 +202,7 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
     extract_backend, extract_model = _resolve_stage(
         getattr(args, "extractor_model", None), config.get("extractor_model"))
     post_backend, post_model = _resolve_stage(
-        getattr(args, "finalizer_model", None), config.get("finalizer_model"))
+        getattr(args, "finalizer_model", None), config.get("finalizer_model"), default="haiku")
     classify_backend, classify_model = _resolve_stage(
         getattr(args, "classifier_model", None), config.get("classifier_model"), default="haiku")
     extract_effort = _effort(getattr(args, "extractor_effort", None), config.get("extractor_effort"))

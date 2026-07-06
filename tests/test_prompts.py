@@ -58,6 +58,28 @@ def test_section_prompt_renders_label():
     assert "pp.1-10" in _flat(p) and "{{" not in _flat(p)
 
 
+def test_later_section_prompt_does_not_ask_for_summary():
+    # Only section 1's document.summary survives merge.merge_extractions (merge.py:69), so
+    # explicitly asking later sections for one pays for model output that's thrown away (#260).
+    # The shared instructions block still documents the field generically (also used by the
+    # first-section/whole-doc path) — what must be gone is the later-section instruction
+    # explicitly telling the model to supply one for that section.
+    p = prompts.build_section_prompt(
+        pages_text="x", existing_entities=[], skill_text="", carry_forward="",
+        section_label="pp.11-20", is_first=False, known_document_types=[])
+    text = _flat(p)
+    assert "document.summary for this section only" not in text
+    assert "LATER section" in text
+
+
+def test_first_section_prompt_still_fills_metadata():
+    p = prompts.build_section_prompt(
+        pages_text="x", existing_entities=[], skill_text="", carry_forward="",
+        section_label="pp.1-10", is_first=True, known_document_types=[])
+    text = _flat(p)
+    assert "morgue_entity_id" in text
+
+
 def test_extract_prompt_includes_instructions_and_data():
     p = prompts.build_extract_prompt(
         pages_text="DOCBODY", existing_entities=[{"id": "x"}], skill_text="SKILL",

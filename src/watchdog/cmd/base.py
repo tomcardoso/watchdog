@@ -450,7 +450,7 @@ def _count_incoming(vault: Path) -> int:
     count = 0
     for root, dirs, files in os.walk(incoming):
         rel_parts = Path(root).relative_to(incoming).parts
-        if any(p in ("_FAILED", "_failed") for p in rel_parts):
+        if any(p in ("_FAILED", "_failed", "_SKIPPED", "_skipped") for p in rel_parts):
             dirs.clear()
             continue
         count += sum(1 for f in files if not f.startswith(".") and not f.endswith(".yml"))

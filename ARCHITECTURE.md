@@ -592,9 +592,9 @@ anything no longer in the registry.
 
 ## 13. Models & skills
 
-- **Models** (configurable via `watchdog configure`, default sonnet): `extractor_model`
-  (extraction, whole-doc + section) and `finalizer_model` (post-ingest synthesis +
-  timeline + briefing, §8–§9); classification runs on haiku. `extract_concurrency`
+- **Models** (configurable via `watchdog configure`): `extractor_model` (default sonnet;
+  extraction, whole-doc + section) and `finalizer_model` (default haiku; post-ingest
+  synthesis + timeline + briefing, §8–§9); classification runs on haiku. `extract_concurrency`
   (default 5) bounds parallel extraction. Each is overridable per run via the matching
   `watchdog ingest` flag (`--extractor-model` / `--finalizer-model` / `--concurrency`).
 - **Reasoning effort** (per-stage, default `high` ≡ the model default): `extractor_effort`

@@ -784,6 +784,25 @@ def cmd_log(args) -> None:
     print()
 
 
+def _poll_stable_files(candidates: set, pending_sizes: dict) -> tuple:
+    """Split newly-seen files into size-stable (safe to chew) vs. still-growing.
+
+    A file mid-copy (Finder, a network share) must not be chewed until its size holds
+    steady across two polls — otherwise chew hashes/OCRs truncated bytes (#261).
+    """
+    ready, new_pending = [], {}
+    for f in candidates:
+        try:
+            size = f.stat().st_size
+        except OSError:
+            continue
+        if pending_sizes.get(f) == size:
+            ready.append(f)          # unchanged since the last poll — copy finished
+        else:
+            new_pending[f] = size    # still growing (or first sighting) — wait
+    return ready, new_pending
+
+
 def cmd_watch(args) -> None:
     if not args.name:
         cwd = Path(".").resolve()
@@ -807,18 +826,19 @@ def cmd_watch(args) -> None:
     print(f"\n  {_BOLD}{info['name']}{_RESET}  watching {_CYAN}_INCOMING/{_RESET} — press Ctrl+C to stop.\n")
 
     known: set = set(find_files([incoming]))
+    pending_sizes: dict = {}   # file -> size at the previous poll, until it stops growing (#261)
 
     try:
         while True:
             _time.sleep(3)
             current: set = set(find_files([incoming]))
-            new_files = current - known
-            if new_files:
-                n = len(new_files)
+            ready, pending_sizes = _poll_stable_files(current - known, pending_sizes)
+            if ready:
+                n = len(ready)
                 label = f"{n} file{'s' if n != 1 else ''}"
                 print(f"  {_BOLD}{label}{_RESET} detected — chewing...\n")
                 queued_before = _count_queued(vault)
-                run_ingest(vault)
+                run_ingest(vault, files=ready)
                 new_queued = _count_queued(vault) - queued_before
                 if new_queued > 0:
                     _notify(
@@ -827,7 +847,7 @@ def cmd_watch(args) -> None:
                     )
                 known = set()
             else:
-                known = current
+                known = current - set(pending_sizes)
     except KeyboardInterrupt:
         print(f"\n  {_DIM}Stopped watching.{_RESET}\n")
 

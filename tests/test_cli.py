@@ -124,6 +124,34 @@ def test_count_incoming_not_fooled_by_failed_in_vault_path(tmp_path):
     assert cli._count_incoming(vault) == 1
 
 
+def test_count_incoming_excludes_skipped(tmp_path):
+    # A duplicate chew moves files to _SKIPPED/ — status must not count them as pending,
+    # or the user is sent in a status -> chew -> status loop chasing files chew already
+    # decided to skip (#255).
+    incoming = tmp_path / "_INCOMING"
+    skipped = incoming / "_SKIPPED"
+    skipped.mkdir(parents=True)
+    (incoming / "pending.pdf").write_text("")
+    (skipped / "duplicate.pdf").write_text("")
+    assert cli._count_incoming(tmp_path) == 1
+
+
+def test_count_incoming_matches_find_files_exclusions(tmp_path):
+    # _count_incoming (status) and find_files (chew) must exclude the same directories,
+    # or a file can be simultaneously "pending" per status and invisible to chew (#255).
+    from watchdog.pipeline.preprocess_batch import find_files, SKIP_DIRS
+
+    incoming = tmp_path / "_INCOMING"
+    for d in SKIP_DIRS:
+        skip_dir = incoming / d
+        skip_dir.mkdir(parents=True, exist_ok=True)  # case-insensitive filesystems collide _FAILED/_failed
+        (skip_dir / "file.pdf").write_text("")
+    (incoming / "pending.pdf").write_text("")
+
+    assert cli._count_incoming(tmp_path) == 1
+    assert len(find_files([incoming])) == 1
+
+
 # ── _load_registry ────────────────────────────────────────────────────────────
 
 def test_load_registry_missing(tmp_path):
@@ -1776,6 +1804,51 @@ def test_cmd_ingest_rejects_claude_batch_for_classifier_or_finalizer(wdg_home, t
         cmd_ingest(args(), confirm=False)
 
 
+def test_cmd_ingest_and_cmd_finalize_agree_on_finalizer_default(wdg_home, tmp_path, monkeypatch):
+    """An unconfigured vault must finalize on the same model whether ingest finishes the
+    batch itself or a separate `watchdog finalize` completes it (#253)."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+
+    finalizer_defaults = {}
+    orig_resolve = ing._resolve_stage
+
+    class _Stop(Exception):
+        pass
+
+    def _boom(*a, **k):
+        raise _Stop()
+
+    # cmd_ingest: skip past the pending-finalization prompt, stop right after model
+    # resolution (before the heavy ingest_setup/orchestrate pipeline runs).
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+    calls = []
+    monkeypatch.setattr(ing, "_resolve_stage",
+                         lambda *a, **k: (calls.append((a, k)), orig_resolve(*a, **k))[1])
+    monkeypatch.setattr("watchdog.pipeline.ingest_setup.run", _boom)
+    with pytest.raises(_Stop):
+        ing.cmd_ingest(args(), confirm=False)
+    # Call order in cmd_ingest is extractor, finalizer, classifier.
+    _, finalizer_kwargs = calls[1]
+    finalizer_defaults["ingest"] = finalizer_kwargs.get("default")
+
+    # cmd_finalize: needs a pending finalization to proceed past its early-return guard.
+    calls.clear()
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: True)
+    monkeypatch.setattr(ing, "_run_finalize", _boom)
+    with pytest.raises(_Stop):
+        ing.cmd_finalize(args())
+    _, finalizer_kwargs = calls[0]
+    finalizer_defaults["finalize"] = finalizer_kwargs.get("default")
+
+    assert finalizer_defaults["ingest"] == finalizer_defaults["finalize"] == "haiku"
+
+
 # ── configure sections + default_skill ────────────────────────────────────────
 
 def test_configure_sections_cover_every_key_exactly_once():
@@ -2308,6 +2381,45 @@ def test_read_batch_terms_skips_blank_lines_and_comments(tmp_path):
 def test_read_batch_terms_missing_file_exits(tmp_path):
     with pytest.raises(SystemExit):
         _vault._read_batch_terms(tmp_path / "missing.txt")
+
+
+# ── _poll_stable_files (watchdog watch mid-copy guard, #261) ───────────────────
+
+def test_poll_stable_files_holds_growing_file(tmp_path):
+    f = tmp_path / "big.pdf"
+    f.write_bytes(b"a" * 10)
+    ready, pending = _vault._poll_stable_files({f}, {})
+    assert ready == []
+    assert pending == {f: 10}
+
+
+def test_poll_stable_files_releases_file_once_size_holds(tmp_path):
+    f = tmp_path / "big.pdf"
+    f.write_bytes(b"a" * 10)
+    # First poll: no prior size recorded — held.
+    ready, pending = _vault._poll_stable_files({f}, {})
+    assert ready == []
+    # Second poll: same size as last time — copy finished.
+    ready, pending = _vault._poll_stable_files({f}, pending)
+    assert ready == [f]
+    assert pending == {}
+
+
+def test_poll_stable_files_keeps_holding_a_still_growing_file(tmp_path):
+    f = tmp_path / "big.pdf"
+    f.write_bytes(b"a" * 10)
+    ready, pending = _vault._poll_stable_files({f}, {})
+    f.write_bytes(b"a" * 20)   # more bytes copied in between polls
+    ready, pending = _vault._poll_stable_files({f}, pending)
+    assert ready == []
+    assert pending == {f: 20}
+
+
+def test_poll_stable_files_skips_file_removed_before_stat(tmp_path):
+    f = tmp_path / "gone.pdf"   # never created — simulates a race with deletion
+    ready, pending = _vault._poll_stable_files({f}, {})
+    assert ready == []
+    assert pending == {}
 
 
 def test_search_batch_reports_hits_and_no_hits(configured, monkeypatch, tmp_path, capsys):
