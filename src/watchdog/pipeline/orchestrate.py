@@ -410,7 +410,8 @@ def _stitch_digest(doc: dict, page_count: int | None) -> str:
     line = f"{head} — {dtype}" if dtype else head
     if page_count:
         line += f", {page_count} pages"
-    facts = [f.get("fact", "").rstrip(".") + "." for f in doc.get("key_facts", [])[:8]]
+    facts = [t.rstrip(".") + "." for f in doc.get("key_facts", [])[:8]
+             if (t := (f.get("fact") or "").strip())]
     return (line + ". " + " ".join(facts)).strip() if facts else line + "."
 
 
@@ -721,7 +722,7 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str, brief: str 
 async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract_model: str,
                         pinned_skill: str, extract_effort: str | None, concurrency: int,
                         classify_model: str, classify_pages: int, classify_backend: str | None,
-                        api_key: str, post_model: str = "sonnet",
+                        api_key: str, post_model: str = "haiku",
                         post_backend: str | None = None) -> dict:
     """Split the queue into sectioned (→ synchronous claude-api, via the normal
     `_extract_document`) and whole-document (→ one batch submission) shas, run the former, then
@@ -784,7 +785,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
 async def _run_batch(vault: Path, shas: list[str], brief: str | None, extract_model: str,
                      pinned_skill: str | None, extract_effort: str | None, concurrency: int,
                      classify_model: str, classify_pages: int,
-                     classify_backend: str | None, post_model: str = "sonnet",
+                     classify_backend: str | None, post_model: str = "haiku",
                      post_backend: str | None = None) -> dict:
     """Entry point for `run` when `extract_backend == "claude-batch"`. Defense-in-depth guards
     beyond `cmd_ingest`'s own checks — a programmatic caller that skips CLI validation still

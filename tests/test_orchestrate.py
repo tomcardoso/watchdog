@@ -1411,6 +1411,12 @@ def test_stitch_digest_caps_at_eight_facts():
     assert s.count("Fact ") == 8
 
 
+def test_stitch_digest_skips_blank_facts():
+    """Empty/whitespace-only or missing fact text is dropped, not rendered as a bare '.'."""
+    doc = {"title": "T", "key_facts": [{"fact": "Real fact"}, {"fact": "  "}, {}, {"fact": ""}]}
+    assert orchestrate._stitch_digest(doc, None) == "T. Real fact."
+
+
 # ── claude-batch (#214) ─────────────────────────────────────────────────────────
 
 def test_run_batch_requires_pinned_skill(tmp_path):
