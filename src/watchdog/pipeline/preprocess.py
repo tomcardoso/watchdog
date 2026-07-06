@@ -125,8 +125,8 @@ def pdf_extract_chunk(src: Path, start: int, end: int) -> Path:
     return tmp
 
 
-def process_direct_text(path: Path) -> dict:
-    text = path.read_text(encoding="utf-8", errors="replace")
+def process_direct_text(path: Path, encoding_errors: str = "replace") -> dict:
+    text = path.read_text(encoding="utf-8", errors=encoding_errors)
     return {
         "filename": path.name,
         "sha256": sha256_file(path),
@@ -513,7 +513,9 @@ def main() -> None:
         result = process_with_docling(path, force_ocr=args.force_ocr)
     else:
         try:
-            result = process_direct_text(path)
+            result = process_direct_text(path, encoding_errors="strict")
+            if is_garbled(result["pages"][0]["markdown"]):
+                result["metadata"]["garbled_detected"] = True
         except UnicodeDecodeError:
             result = process_with_docling(path, force_ocr=args.force_ocr)
 

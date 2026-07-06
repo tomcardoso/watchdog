@@ -334,7 +334,7 @@ my-investigation/
 | Image | `.jpg`, `.jpeg`, `.png`, `.tiff`, `.tif` | OCR applied automatically |
 | Web page | `.html`, `.htm` | |
 | Plain text | `.txt`, `.md` | |
-| Audio / video | `.mp3`, `.mp4`, `.m4a`, `.wav`, `.webm` | Requires optional transcription install — see [INSTALL.md](INSTALL.md) |
+| Audio / video | `.mp3`, `.mp4`, `.m4a`, `.wav` | Requires optional transcription install — see [INSTALL.md](INSTALL.md) |
 
 Sidecar files (`.yml`) are not ingested as documents — they are metadata attached to the adjacent file. See [GETTING_STARTED.md](GETTING_STARTED.md) for details.
 

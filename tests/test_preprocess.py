@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from watchdog.pipeline.preprocess import (
     is_garbled,
     process_direct_text,
@@ -50,6 +52,24 @@ def test_process_direct_text_has_sha256(tmp_path):
     f.write_text("content")
     result = process_direct_text(f)
     assert len(result["sha256"]) == 64  # hex SHA-256
+
+
+def test_process_direct_text_default_replaces_invalid_bytes(tmp_path):
+    """Default behaviour (used for DIRECT_TEXT_SUFFIXES) is unchanged: invalid
+    UTF-8 is substituted, not raised."""
+    f = tmp_path / "mystery.bin"
+    f.write_bytes(b"\x8c\xff\x00\x01")
+    result = process_direct_text(f)
+    assert result["pages"][0]["markdown"]  # decoded to replacement chars, no raise
+
+
+def test_process_direct_text_strict_raises_on_invalid_utf8(tmp_path):
+    """The unknown-suffix dispatch branch passes encoding_errors='strict' so
+    binary/undecodable content raises instead of silently becoming mojibake."""
+    f = tmp_path / "mystery.bin"
+    f.write_bytes(b"\x8c\xff\x00\x01")
+    with pytest.raises(UnicodeDecodeError):
+        process_direct_text(f, encoding_errors="strict")
 
 
 # ── _markdown_pages ───────────────────────────────────────────────────────────
@@ -205,6 +225,55 @@ def test_large_pdf_fallback_returns_original_error_if_preprocess_unavailable(tmp
 
     assert "error" in result
     assert "chunks" in result["error"]
+
+
+# ── main() dispatch — unknown suffix (#254) ───────────────────────────────────
+
+def test_unknown_suffix_binary_file_falls_back_to_docling_not_silent_ok(tmp_path, monkeypatch, capsys):
+    """A file with an unrecognized extension containing random binary bytes must
+    not decode as replacement-character soup and queue as a silent OK. The
+    strict decode should raise, routing to Docling instead."""
+    import sys
+    import random
+    import watchdog.pipeline.preprocess as preprocess_mod
+
+    f = tmp_path / "mystery.bin"
+    rng = random.Random(42)
+    f.write_bytes(bytes(rng.randrange(0, 256) for _ in range(2000)))
+
+    docling_called = {}
+
+    def fake_docling(path, force_ocr=False):
+        docling_called["path"] = path
+        return {"error": "Docling conversion failed: simulated"}
+
+    monkeypatch.setattr(preprocess_mod, "process_with_docling", fake_docling)
+    monkeypatch.setattr(sys, "argv", ["preprocess.py", str(f)])
+
+    with pytest.raises(SystemExit):
+        preprocess_mod.main()
+
+    assert docling_called  # fell through to Docling rather than a silent direct_text OK
+    out = json.loads(capsys.readouterr().out)
+    assert "error" in out
+
+
+def test_unknown_suffix_garbled_but_valid_text_gets_flagged(tmp_path, monkeypatch, capsys):
+    """A file with an unrecognized extension that happens to decode as valid
+    UTF-8 but is symbol-heavy must come back flagged via garbled_detected
+    rather than queueing silently as clean OK text."""
+    import sys
+    import watchdog.pipeline.preprocess as preprocess_mod
+
+    f = tmp_path / "mystery.xyz"
+    f.write_text("©®™†‡§¶•∞≠≈∂∑∏√∫", encoding="utf-8")
+
+    monkeypatch.setattr(sys, "argv", ["preprocess.py", str(f)])
+    preprocess_mod.main()  # decodes fine, no Docling fallback needed
+
+    out = json.loads(capsys.readouterr().out)
+    assert out["metadata"]["source_type"] == "direct_text"
+    assert out["metadata"]["garbled_detected"] is True
 
 
 
