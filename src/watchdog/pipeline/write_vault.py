@@ -565,6 +565,22 @@ def _index_corpus_passages(vault_path: Path, doc: dict, entity_entries: list[dic
     fts_add_document(vault_path, doc["filename"], sha256, pages, morgue_path=morgue_path)
 
 
+def _quote_verification_note(f: dict) -> str:
+    """Suffix for a rendered quote, from the deterministic post-flight check (#267).
+
+    ``quote_verified is False`` means the quote couldn't be matched on or near its cited
+    page; ``quote_found_page`` means it was only found (via a normalized match) on a
+    different page than cited. Neither key present means either verification wasn't run
+    (e.g. no page text available) or the quote matched exactly — nothing to flag.
+    """
+    if f.get("quote_verified") is False:
+        return " *(quote not found on cited page — verify against source)*"
+    found_page = f.get("quote_found_page")
+    if found_page is not None:
+        return f" *(found on p. {found_page}, not the cited page)*"
+    return ""
+
+
 def _render_evidence_fragments(fragments: list, morgue_path: str = "") -> str:
     """Render evidence-fragment claims as Markdown bullets.
 
@@ -584,7 +600,7 @@ def _render_evidence_fragments(fragments: list, morgue_path: str = "") -> str:
         line = f"- {claim}{page}{reason}{basis_note}"
         quote = (f.get("quote") or "").strip()
         if quote:
-            line += f"\n  > {quote}"
+            line += f"\n  > {quote}{_quote_verification_note(f)}"
         lines.append(line)
     return "\n".join(lines)
 
@@ -677,7 +693,7 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
             body += f"- {kf['fact']}{page}{basis_note}\n"
             quote = (kf.get("quote") or "").strip()
             if quote:
-                body += f"  > {quote}\n"
+                body += f"  > {quote}{_quote_verification_note(kf)}\n"
 
     if entity_entries:
         body += "\n## Entities mentioned\n\n"
