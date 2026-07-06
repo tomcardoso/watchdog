@@ -72,6 +72,11 @@ try:
 except ImportError:
     _HAS_FLOCK = False  # Windows
 
+try:
+    import msvcrt as _msvcrt  # Windows-only stdlib module
+except ImportError:
+    _msvcrt = None  # macOS/Linux
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -323,16 +328,31 @@ def _build_timeline_section(events: list[dict], docs_reg: dict) -> str:
 
 @contextmanager
 def _registry_lock(registry_dir: Path):
-    """Exclusive per-vault lock so concurrent write-vault calls serialize safely."""
+    """Exclusive per-vault lock so concurrent write-vault calls serialize safely.
+
+    Uses `fcntl.flock` on macOS/Linux (blocks indefinitely until acquired) and
+    `msvcrt.locking` on Windows (locks a 1-byte region; blocks in ~1s retries, raising
+    OSError after ~10s of contention rather than waiting indefinitely — a real
+    behavioural difference from flock, not just a different API). If neither is
+    available, this is a no-op and callers rely on in-process serialization only
+    (D18) — cross-process writers are not locked out."""
     lock_path = registry_dir / ".write-lock"
     with open(lock_path, "w") as fh:
         if _HAS_FLOCK:
             _flock(fh, _LOCK_EX)
+        elif _msvcrt is not None:
+            fh.write(" ")
+            fh.flush()
+            fh.seek(0)
+            _msvcrt.locking(fh.fileno(), _msvcrt.LK_LOCK, 1)
         try:
             yield
         finally:
             if _HAS_FLOCK:
                 _flock(fh, _LOCK_UN)
+            elif _msvcrt is not None:
+                fh.seek(0)
+                _msvcrt.locking(fh.fileno(), _msvcrt.LK_UNLCK, 1)
 
 
 def _update_manifest(vault_path: Path, entities_reg: dict) -> None:

@@ -338,10 +338,14 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
             classify_backend=classify_backend))
     except KeyboardInterrupt:
         # Fallback only — orchestrate.run normally traps SIGINT itself and returns a
-        # cancelled summary. This catches a Ctrl+C in the brief window before/after that.
+        # cancelled summary. This catches a Ctrl+C in the brief window before/after that,
+        # or on platforms where asyncio can't install a SIGINT handler at all (e.g. Windows'
+        # Proactor event loop) — there, every interrupt takes this rougher path, and can
+        # land mid-write rather than after a document finishes cleanly.
         _release_lock()
-        print(f"\n  {_YELLOW}Ingest cancelled.{_RESET}{_DIM} Finished documents are saved; "
-              f"re-run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} to resume the rest.{_RESET}\n")
+        print(f"\n  {_YELLOW}Ingest cancelled.{_RESET}{_DIM} Documents that finished before the "
+              f"interrupt are saved; the one in progress may be incomplete. Re-run "
+              f"{_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} to resume.{_RESET}\n")
         sys.exit(130)
     finally:
         _release_lock()

@@ -83,6 +83,7 @@ sudo dnf install qpdf ghostscript pipx tesseract tesseract-devel
 **Windows:**
 - qpdf: [github.com/qpdf/qpdf/releases](https://github.com/qpdf/qpdf/releases) — download the installer
 - Ghostscript: [ghostscript.com/releases/gsdnld.html](https://ghostscript.com/releases/gsdnld.html) — download the installer
+- Tesseract: [github.com/UB-Mannheim/tesseract/wiki](https://github.com/UB-Mannheim/tesseract/wiki) — download the installer (required for OCR on Windows; `watchdog setup` will refuse to continue without it)
 - pipx: open Terminal and run `python -m pip install pipx`, then `pipx ensurepath`
 
 ---
