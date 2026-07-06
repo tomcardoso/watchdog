@@ -683,6 +683,23 @@ def test_source_file_moved_to_morgue(tmp_path):
     assert (vault / "morgue" / "acme-corp" / "annual-report" / "test-doc.pdf").exists()
 
 
+def test_staging_dir_pruned_after_move_to_morgue(tmp_path):
+    """Documents preprocessed via preprocess_batch.py land in .watchdog/staging/<sha>/ rather
+    than _INCOMING/ — that now-empty per-doc dir must be pruned too, or it accumulates forever,
+    one per ingested document (#265)."""
+    vault = make_vault(tmp_path)
+    staging_dir = vault / ".watchdog" / "staging" / "abc123"
+    staging_dir.mkdir(parents=True)
+    (staging_dir / "test-doc.pdf").write_text("dummy")
+
+    run(make_extraction(tmp_path, {"document": {
+        "original_path": ".watchdog/staging/abc123/test-doc.pdf",
+    }}), vault)
+
+    assert (vault / "morgue" / "acme-corp" / "annual-report" / "test-doc.pdf").exists()
+    assert not staging_dir.exists()
+
+
 def test_sidecar_moved_with_source(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")

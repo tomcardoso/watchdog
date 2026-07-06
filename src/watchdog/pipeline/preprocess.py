@@ -485,8 +485,6 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Watchdog document preprocessor")
     parser.add_argument("file", help="Path to the document")
     parser.add_argument("--force-ocr", action="store_true", help="Force full-page OCR")
-    parser.add_argument("--vault-path", metavar="PATH",
-                        help="Vault directory — when set, pages are added to the embedding index")
     parser.add_argument("--chunk-workers", type=int, metavar="N",
                         help="Override chunk_workers config for this run")
     args = parser.parse_args()

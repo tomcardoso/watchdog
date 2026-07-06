@@ -4,6 +4,7 @@ the REAL preflight/postflight/write_vault with the model mocked."""
 import asyncio
 import hashlib
 import json
+from pathlib import Path
 
 import pytest
 
@@ -1095,6 +1096,45 @@ def test_ingest_setup_wipe_pending_controls_cleanup(tmp_path):
     assert not (tmp / "result_old.json").exists() and not (tmp / "notes_old.md").exists()
 
 
+def test_ingest_setup_discard_snapshots_before_wiping(tmp_path):
+    """#270: the discard choice (wipe_pending=True with leftover residue from a prior
+    unfinalized batch) is irreversible — back up entity-fragments/, result_*.json, and
+    notes_*.md before deleting them."""
+    from watchdog.pipeline import ingest_setup
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="new1", filename="new.pdf")
+    tmp = vault / ".watchdog" / "tmp"
+    frag = tmp / "entity-fragments"
+    frag.mkdir(parents=True, exist_ok=True)
+    (frag / "_queue.json").write_text('{"acme-corp": {"count": 2}}')
+    (tmp / "result_old.json").write_text('{"old": true}')
+    (tmp / "notes_old.md").write_text("scratchpad notes")
+
+    state = ingest_setup.run(vault, wipe_pending=True)
+
+    assert state["backup_dir"] is not None
+    backup_dir = Path(state["backup_dir"])
+    assert (backup_dir / ".watchdog" / "tmp" / "entity-fragments" / "_queue.json").read_text() \
+        == '{"acme-corp": {"count": 2}}'
+    assert (backup_dir / ".watchdog" / "tmp" / "result_old.json").read_text() == '{"old": true}'
+    assert (backup_dir / ".watchdog" / "tmp" / "notes_old.md").read_text() == "scratchpad notes"
+    # And the originals are still gone — the backup doesn't block the wipe.
+    assert not (frag / "_queue.json").exists()
+
+
+def test_ingest_setup_ordinary_run_leaves_no_backup(tmp_path):
+    """A routine ingest with nothing left over from a prior unfinalized batch is a
+    no-op for the wipe step, so it must not leave an empty backup directory behind."""
+    from watchdog.pipeline import ingest_setup
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="new1", filename="new.pdf")
+
+    state = ingest_setup.run(vault, wipe_pending=True)
+
+    assert state["backup_dir"] is None
+    assert not (vault / ".watchdog" / "backups").exists()
+
+
 def test_requeue_moves_failed_back(tmp_path, monkeypatch):
     """watchdog requeue moves quarantined queue files back into the active queue."""
     from watchdog.cmd.ingest import cmd_requeue
@@ -1277,8 +1317,21 @@ def test_submit_batch_splits_sectioned_and_whole_doc(tmp_path, monkeypatch):
     assert submitted["docs"][0]["prompt"][1]["cache_control"]["ttl"] == "1h"
 
 
+def test_extract_document_skips_already_extracted_and_unlinks_queue_file(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+    monkeypatch.setattr(orchestrate.preflight, "run",
+                        lambda v, s: {"already_extracted": True, "filename": "a.pdf"})
+
+    result = asyncio.run(orchestrate._extract_document(vault, "sha1", None, "sonnet", "haiku"))
+
+    assert result["status"] == "skipped"
+    assert not (vault / ".watchdog" / "queue" / "sha1.json").exists()
+
+
 def test_submit_batch_skips_already_extracted_and_preflight_errors(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="done", filename="done.pdf")
     monkeypatch.setattr(orchestrate.preflight, "run", lambda v, s: (
         {"error": "not found"} if s == "gone" else
         {"already_extracted": True, "filename": "done.pdf"}))
@@ -1292,6 +1345,9 @@ def test_submit_batch_skips_already_extracted_and_preflight_errors(tmp_path, mon
     statuses = {r["sha256"]: r["status"] for r in out["results"]}
     assert statuses == {"gone": "failed", "done": "skipped"}
     assert out["batch_pending"] is False   # nothing left to submit
+    # A queue file for an already-extracted doc is a leftover from a crash in the narrow
+    # pre-unlink window — clean it up so it doesn't phantom-report "skipping" forever (#265).
+    assert not (vault / ".watchdog" / "queue" / "done.json").exists()
 
 
 def test_resume_batch_reports_progress_when_not_ended(tmp_path, monkeypatch, capsys):
@@ -1360,6 +1416,19 @@ def test_finish_batch_item_fails_when_result_missing(tmp_path):
     result = asyncio.run(orchestrate._finish_batch_item(
         vault, "sha1", None, "SKILL", "s", None, "sk-x"))
     assert result["status"] == "failed"
+
+
+def test_finish_batch_item_skips_already_extracted_and_unlinks_queue_file(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+    monkeypatch.setattr(orchestrate.preflight, "run",
+                        lambda v, s: {"already_extracted": True, "filename": "a.pdf"})
+
+    result = asyncio.run(orchestrate._finish_batch_item(
+        vault, "sha1", None, "SKILL", "s", None, "sk-x"))
+
+    assert result["status"] == "skipped"
+    assert not (vault / ".watchdog" / "queue" / "sha1.json").exists()
 
 
 def test_finish_batch_item_records_usage_for_the_batch_call_itself(tmp_path):

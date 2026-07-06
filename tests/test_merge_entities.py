@@ -386,6 +386,27 @@ def test_run_returns_report_dict(tmp_path):
     assert result["remapped_roles"] >= 1
 
 
+def test_run_snapshots_entities_and_notes_before_mutation(tmp_path):
+    """#270: merge-entities is irreversible, so run() must back up entities.json,
+    manifest.json, both entity notes, and any third-party note about to be
+    regenerated (bob-jones, whose role targets the losing id) before writing."""
+    vault = make_vault(tmp_path)
+    manifest_path = vault / ".watchdog" / "Registry" / "manifest.json"
+    manifest_path.write_text('{"pre-existing": true}')
+    original_entities = (vault / ".watchdog" / "Registry" / "entities.json").read_text()
+    original_bob_note = (vault / "entities" / "person" / "bob-jones.md").read_text()
+
+    result = run(vault, "alice-smith", "a-smith-duplicate")
+
+    backup_dir = result["backup_dir"]
+    assert backup_dir is not None
+    assert (backup_dir / ".watchdog" / "Registry" / "entities.json").read_text() == original_entities
+    assert (backup_dir / ".watchdog" / "Registry" / "manifest.json").read_text() == '{"pre-existing": true}'
+    assert (backup_dir / "entities" / "person" / "alice-smith.md").exists()
+    assert (backup_dir / "entities" / "person" / "a-smith-duplicate.md").exists()
+    assert (backup_dir / "entities" / "person" / "bob-jones.md").read_text() == original_bob_note
+
+
 def test_run_remaps_resolutions_onto_survivor(tmp_path):
     from watchdog.pipeline import resolutions
     vault = make_vault(tmp_path)
@@ -432,6 +453,7 @@ def test_cli_prints_merge_summary(tmp_path, monkeypatch, capsys):
     assert "Merged:" in out
     assert "A. Smith" in out and "Alice Smith" in out
     assert "watchdog reindex" in out
+    assert "backup:" in out and ".watchdog/backups/" in out and "undo" in out
 
     entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
     assert "a-smith-duplicate" not in entities

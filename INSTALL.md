@@ -192,7 +192,7 @@ From inside the vault directory, run:
 watchdog ingest
 ```
 
-Watchdog scans the queue, confirms, and runs the extraction pipeline in your terminal — there's no Claude Code session to open.
+Watchdog scans the queue, shows a token estimate (plus a rough dollar range on a metered key once this vault has prior runs to base it on), confirms, and runs the extraction pipeline in your terminal — there's no Claude Code session to open. `watchdog ingest --estimate` prints that same estimate and exits without touching the lock or the queue, for checking cost before committing.
 
 By default, Watchdog uses Sonnet for extraction, and Haiku for classification and post-ingest. Configure persistent defaults with `watchdog configure` (e.g. `watchdog configure extractor_model haiku`), or override per run with `--extractor-model`, `--finalizer-model`, and `--concurrency`. If you'd rather not remember key names, run `watchdog configure` with no arguments: it lists every setting and then offers an arrow-key wizard to browse and change them. To trim cost, `extractor_effort` / `finalizer_effort` (`low`/`medium`/`high`, default `high`) tune how many thinking tokens each stage spends — thinking bills as output, so a lower effort is the main per-run cost lever (e.g. `watchdog configure extractor_effort medium` or `watchdog ingest --extractor-effort medium`). See the [Commands](README.md#processing) and [Configuration](README.md#configuration) sections of the README for details.
 

@@ -236,6 +236,10 @@ def main() -> None:
     p_search.add_argument("--batch", metavar="FILE",
                           help="Read search terms from FILE (one per line) and report hits per term, "
                                "instead of ranking a single query")
+    p_search.add_argument("--everywhere", action="store_true",
+                          help="Search every registered, non-archived investigation instead of one project "
+                               "(manifest + exact-match lanes only, grouped by investigation; combine with "
+                               "--batch to check a list of terms across all vaults)")
     p_search.add_argument("--json", action="store_true",
                           help="Emit results as JSON (for skills/scripts) instead of the formatted listing")
     p_search.set_defaults(func=cmd_search)
@@ -396,6 +400,8 @@ def main() -> None:
                           help="On a rate limit, sleep until it resets and resume automatically "
                                "instead of stopping for you to re-run ingest. Not with a "
                                "claude-batch extractor model.")
+    p_ingest.add_argument("--estimate", action="store_true",
+                          help="Print a token/cost estimate for the queue and exit — no lock, no confirm, no extraction")
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_finalize = sub.add_parser("finalize", help="Complete post-ingest (synthesis + timeline + briefing) for an already-extracted batch — e.g. after a rate limit stopped it")

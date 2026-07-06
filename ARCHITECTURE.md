@@ -127,6 +127,14 @@ releases the lock in a `finally`. Models, concurrency, and classification come f
 `extractor_effort`, `finalizer_effort`, `extract_concurrency`, `classify_pages`,
 `default_skill`) or per-run flags.
 
+**Pre-flight cost estimate (D71).** Before the confirm prompt, `ingest_setup.cost_estimate`
+multiplies the queue's own `est_tokens` (already computed per file by `scan_queue` for the
+sectioning threshold) by this vault's $/token ratio from its last 3 `usage-<ts>.json` runs (D50),
+presented as a range (min/max across those runs) rather than one averaged figure. Subscription
+auth (`claude-agent-sdk`) never gets a dollar figure — there's no real billing to project, only a
+session-limit fraction token counts can't estimate honestly. `watchdog ingest --estimate` prints
+the same estimate and exits before the lock is touched.
+
 **Lock acquisition is atomic** (`pipeline/locks.py`, D66). All three run locks — the ingest
 lock, the shared finalize lock, and chew's `.watchdog/.chew-lock` — are taken with
 `os.open(O_CREAT|O_EXCL)`, so two concurrent invocations can't both win (the old
@@ -509,7 +517,7 @@ nothing about it is persisted, so a change takes effect on the next `watchdog se
 pre-D26 document with no morgue text on disk is skipped (its note still reindexes) rather
 than failing the whole run.
 
-**Full-text (exact-term) lane, complementary to the above (D56, issue #109).** Code:
+**Full-text (exact-term) lane, complementary to the above (D57, issue #109).** Code:
 `pipeline/fulltext.py`. **Files:** `<vault>/.fulltext/index.db`. A local SQLite FTS5 index
 (`unicode61` tokenizer, no stemming) over the same raw source text (morgue pages) plus every
 generated note the pipeline writes — entity, document, timeline, briefing, hot cache, and
@@ -528,7 +536,7 @@ call sites that call `embed.add_document`/`add_note` also call the `fulltext` eq
 best-effort — a failure warns but never fails the ingest run) and rebuilt in full by
 `watchdog reindex` alongside `.embeddings/`.
 
-**Batch search (D56, issue #110): `watchdog search --batch <file>`.** Reads one term per
+**Batch search (D57, issue #110): `watchdog search --batch <file>`.** Reads one term per
 line (blank lines and `#`-comments skipped) and reports hits per term instead of ranking a
 single query — the "does any of these N names from a leaked roster/sanctions list/donor
 list appear anywhere" workflow. Combines two lanes per term: manifest name/alias substring
@@ -537,6 +545,18 @@ Deliberately skips the semantic/embedding lane — a batch is routinely hundreds
 embedding + cross-encoder rerank per term doesn't scale the way an in-process SQLite query
 does. A flag on `search`, not a new command: one command a journalist needs to remember,
 with `--batch` switching it from ranking a query to reporting per-term hits.
+
+**Cross-vault search (D72, issue #272): `watchdog search --everywhere`.** A deliberately
+small stepping stone toward a global entity registry (#67) — "have I seen this name in
+*any* of my vaults?" answered today over existing per-vault indexes, with no shared
+registry and no cross-vault entity resolution. Drops the single-project scope and instead
+iterates every registered, non-archived project in `projects.json`, running the same
+manifest-substring and full-text lanes as `--batch` (semantic/rerank skipped for the same
+scaling reason: N vaults × embedding + rerank doesn't scale the way in-process SQLite
+queries do) per vault, then reports hits grouped by investigation name. Composes with
+`--batch` (a term list checked across every vault, not just one). A vault whose registered
+path is missing or not a Watchdog vault (`_check_project_health`) is skipped rather than
+failing the whole scan — the same tolerance `watchdog doctor` already applies.
 
 ---
 
@@ -554,7 +574,7 @@ briefings/<date>.md         per-ingest briefings
 context.md / hot.md / log.md investigation context, hot cache, run log
 index.md / dashboard.base    landing page + native Obsidian Bases dashboard (D42)
 .embeddings/                semantic search index
-.fulltext/index.db          full-text (exact-term) search index (D56)
+.fulltext/index.db          full-text (exact-term) search index (D57)
 .obsidian/graph.json        graph colours per entity type
 .watchdog/                  pipeline state (below)
 ```
@@ -576,6 +596,7 @@ Registry/
   usage-<ts>.json           per-run model-call token/cost telemetry (D50)
   batch-pending.json        pending claude-batch extraction state (D52)
   .ingest-lock / .write-lock  run lock / write serialization
+backups/<ts>-<operation>/   pre-mutation snapshots for irreversible operations (D71)
 ingest-state.json           present while a run is in progress; stale ⇒ interrupted ingest, resume with `watchdog ingest`
 ```
 
@@ -601,6 +622,22 @@ no project-name lookup needed). The merged-away entity's stale corpus/notes sear
 entries are cleaned up by a subsequent `watchdog reindex` (D53), not by this command
 itself — a full rebuild is the existing, already-documented way to drop vectors for
 anything no longer in the registry.
+
+**Pre-mutation snapshots (`pipeline/backup.py`, D71).** `merge-entities`, ingest's
+`discard` choice (§4), and `delete --purge` all mutate or delete the registry with no
+undo. `snapshot(vault, operation, paths)` copies whichever of `paths` currently exist
+into `.watchdog/backups/<ts>-<operation>/`, preserving each path's position relative to
+the vault, before the caller's own writes/deletes happen — a no-op (no directory
+created) when nothing in `paths` exists yet, so an ordinary run that never touches the
+irreversible branch leaves nothing behind. Backups are pruned to the 5 most recent
+(name-sorted, since the timestamp prefix makes lexical order chronological). Each
+call site backs up only what it's about to destroy: `merge-entities` snapshots
+`entities.json`, `manifest.json`, both entity notes, and any third-party note about to
+be regenerated; ingest's discard snapshots `entity-fragments/`, `result_*.json`, and
+`notes_*.md`; `delete --purge` snapshots the registry files only (backing up the whole
+vault would defeat the purpose of purge) — and since that snapshot lives inside the
+vault being deleted, it is a hedge against a partial failure, not a way to undo a
+completed purge, and the CLI hint says so.
 
 ---
 

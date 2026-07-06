@@ -13,6 +13,7 @@ caller supplies.
 import json
 from pathlib import Path
 
+from watchdog.pipeline.backup import snapshot as _snapshot
 from watchdog.pipeline.write_vault import (
     _accumulate_contradictions,
     _extract_analysis,
@@ -234,6 +235,16 @@ def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
     stats = merge(entities_reg, keep_id, merge_id)
     keep = entities_reg[keep_id]
 
+    # Snapshot everything this operation is about to overwrite or delete, while it's
+    # still pristine on disk — entities_reg above is mutated in memory only so far,
+    # and stats["touched_entities"] tells us which third-party notes are about to be
+    # regenerated too (#270).
+    backup_paths = [entities_path, registry_dir / "manifest.json", keep_note_file, merge_note_file]
+    backup_paths += [
+        vault_path / f"{entities_reg[eid]['note_path']}.md" for eid in stats["touched_entities"]
+    ]
+    backup_dir = _snapshot(vault_path, "merge-entities", backup_paths)
+
     # Concatenate Analysis with provenance intact — a labelled block, not a blind splice.
     if merge_analysis:
         provenance = f"*Merged from [[{merge_note_path}|{merge_name}]] on {_today()}:*"
@@ -340,4 +351,5 @@ def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
         "keep_name":      keep["name"],
         "merge_name":     merge_name,
         "keep_note_path": keep_note_path,
+        "backup_dir":     backup_dir,
     }
