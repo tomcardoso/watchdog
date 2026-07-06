@@ -1020,8 +1020,23 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                 neardup_alerts=neardup_alerts, contradiction_flags=contradiction_flags),
             effort=post_effort)
         out["briefing"] = _write_briefing(vault, r.parsed, ok, neardup_alerts, contradiction_flags)
-    except (model_client.ModelError, model_client.RateLimitError) as e:
+    except model_client.RateLimitError as e:
         out["briefing_error"] = str(e)
+        _say(f"{_YELLOW}briefing skipped{_RESET}{_DIM} — {e}{_RESET}")
+    except model_client.ModelError as e:
+        # Extraction has already run through this same backend, so a briefing ModelError is
+        # almost always an output-cap truncation: the briefing's arrays (what_was_ingested/
+        # connections/leads/…) scale with batch size, so a big/dense batch can overrun even the
+        # 16k-token ceiling and truncate the JSON. That's deterministic — a plain re-run feeds
+        # the identical input into the identical ceiling and fails the same way (#296) — so we
+        # fail loudly with the real remedy (a smaller batch) rather than retrying or silently
+        # shipping a degraded briefing. Everything else (per-doc facts, entity notes, timeline)
+        # is already on disk; only the synthesized briefing is lost, and the pending batch can be
+        # discarded on the next ingest to unstick. Streaming (an unbounded ceiling) is future work.
+        out["briefing_error"] = str(e)
+        _say(f"{_YELLOW}briefing not written{_RESET}{_DIM} — the model's output limit was exceeded "
+             f"(this batch is too large to summarize in one pass). Re-ingest it in smaller "
+             f"batches; everything else was written.{_RESET}")
 
     # 4. Watch-word scan (deterministic, no model; #165). Scans this run's documents against
     # the vault-root watchlist.md and writes briefings/alerts-<date>.md. No-op if the list is empty.
