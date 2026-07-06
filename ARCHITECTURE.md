@@ -200,7 +200,9 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
 4. **Post-flight** (`postflight.run`, a function call) — validates the JSON, applies
    `match_id` merges (remapping `key_facts.entities` tags onto canonical ids), **explodes** the
    unified key_facts into the per-entity `evidence_fragments` + `timeline_events` that the
-   writers consume (`explode_key_facts`, D26), then calls `write_vault.run()`.
+   writers consume (`explode_key_facts`, D26), **verifies** each `key_facts[].quote` against
+   the cited page's text from the chew-time queue descriptor (`quote_verify.verify_quotes`,
+   D75), then calls `write_vault.run()`.
 
 `write_vault` is the single deterministic writer: it merges entities (reconciling
 near-duplicate slugs coined by concurrent workers via the shared `entity_norm`
@@ -795,7 +797,7 @@ See D45, D46, D47, D48, D61.
 
 These are the **governing rules of the pipeline** — the canonical statement of each principle. They are always true; violating one needs a *new, numbered decision* that supersedes the invariant, not just a code change. Read them first. The dated history of how each was established and refined lives in [DECISIONS.md](DECISIONS.md); where a decision operates within an invariant, *this* section is the authority on the principle and the decision entry records the specific change, rationale, and tradeoff.
 
-- **I1 — Deterministic code writes; the model only reasons.** Anything derivable in Python (document identity, provenance, slugs, role targets, timeline fan-out) is stamped in code, never paid for in model output — and the model is not asked to restate as prose what it already emitted structurally. *History: D2, D18, D24–D26, D29–D31, D33, D34.*
+- **I1 — Deterministic code writes; the model only reasons.** Anything derivable in Python (document identity, provenance, slugs, role targets, timeline fan-out) is stamped in code, never paid for in model output — and the model is not asked to restate as prose what it already emitted structurally. *History: D2, D18, D24–D26, D29–D31, D33, D34, D75.*
 - **I2 — Local-first preprocessing.** The *source documents you were given* never leave the machine, and chew costs no API tokens. This is a boundary on **source-doc egress**, not a vow of web abstinence — the investigation layer runs as agentic Claude Code sessions and web research (§14, I5) is allowed, since anything on the open web is already public. *History: D1, D45.*
 - **I3 — Skills and prompt templates are global package resources** — read directly, never copied per-vault — and prompt templates live in their own directory so they never leak into the classifier index. *History: D21, D28.*
 - **I4 — Configured model and effort only; no automatic escalation.** Each stage's model *and* its reasoning effort are explicit knobs with stable defaults; a failed call retries on the *same* model at the *same* effort — the pipeline never silently bumps either to recover. *History: D20, D36.*
