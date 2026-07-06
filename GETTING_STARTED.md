@@ -172,7 +172,7 @@ watchdog ingest
 
 This runs the extraction pipeline **in your terminal** — there's no Claude Code session to open. Watchdog scans the queue, confirms, and processes documents in parallel. The model is called only for the reasoning steps; everything mechanical runs in Python. (Authentication is set during `watchdog setup` — your Claude subscription or an API key; see INSTALL.)
 
-By default Watchdog uses Sonnet for extraction and for the post-ingest step (synthesis + timeline + briefing), and Haiku for the quick document classification. Set persistent defaults with `watchdog configure`, or override per run:
+By default Watchdog uses Sonnet for extraction, and Haiku for the post-ingest step (synthesis + timeline + briefing) and the quick document classification. Set persistent defaults with `watchdog configure`, or override per run:
 
 ```bash
 watchdog ingest --extractor-model haiku             # faster, cheaper extraction

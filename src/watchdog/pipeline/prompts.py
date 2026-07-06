@@ -112,8 +112,9 @@ def build_section_prompt(*, pages_text: str, existing_entities: list, skill_text
                         "date_of_document) and the morgue_entity_id field.")
         volatile.append(_known_types_block(known_document_types))
     else:
-        volatile.append("This is a LATER section: omit document metadata and morgue fields; supply "
-                        "entities + document.key_facts + document.summary for this section only.")
+        volatile.append("This is a LATER section: omit document metadata, morgue fields, and "
+                        "document.summary (only section 1's summary is kept); supply entities + "
+                        "document.key_facts for this section only.")
     volatile.append("Put only forward-looking reporting notes for the briefing in `observations` — "
                     "leads to chase, open questions, missing documents, threads to other sections or "
                     "documents. Do NOT restate figures, dates, chronology, or contradictions (those "
