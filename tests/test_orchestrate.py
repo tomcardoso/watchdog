@@ -213,6 +213,26 @@ def test_stamp_document_morgue_type_falls_back_when_no_type(tmp_path):
     assert ext["morgue_document_type"] == "document"
 
 
+def test_stamp_document_slugifies_morgue_entity_id_with_spaces(tmp_path):
+    """morgue_entity_id is used raw as a morgue path segment (write_vault) — a model value with
+    spaces must be slugified so it doesn't produce a broken morgue directory (#262)."""
+    vault = make_vault(tmp_path)
+    pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}]}
+    ext = {"document": {}, "morgue_entity_id": "Acme Corp"}
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault)
+    assert ext["morgue_entity_id"] == "acme-corp"
+
+
+def test_stamp_document_slugifies_morgue_entity_id_with_embedded_slash(tmp_path):
+    """An embedded path separator (e.g. from the model nesting a subsidiary name) must not
+    survive into the morgue path segment (#262)."""
+    vault = make_vault(tmp_path)
+    pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}]}
+    ext = {"document": {}, "morgue_entity_id": "acme/subsidiary"}
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault)
+    assert "/" not in ext["morgue_entity_id"]
+
+
 def test_sidecar_provenance_parsed_in_python(tmp_path):
     """source/obtained come from the .yml sidecar (parsed in Python), not the model — and an
     unquoted ISO date is coerced back to a string rather than a date object."""

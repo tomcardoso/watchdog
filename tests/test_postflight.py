@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from watchdog.pipeline.postflight import _apply_match_ids, explode_key_facts
+from watchdog.pipeline.postflight import _apply_match_ids, _sanitize_dates, explode_key_facts
 from watchdog.pipeline.postflight import run as postflight_run
 
 
@@ -53,6 +53,39 @@ def test_explode_ignores_unknown_tags():
                   "entities": [{"id": "real", "name": "R", "type": "Person"}]}
     explode_key_facts(extraction)
     assert "evidence_fragments" not in extraction["entities"][0]
+
+
+# ── _sanitize_dates (#262: non-ISO dates must not reach timeline.py's filenames) ────────────
+
+def test_sanitize_dates_drops_non_iso_date_and_warns():
+    extraction = {"document": {"key_facts": [
+        {"fact": "x", "date": "2024/03", "entities": ["a"]},
+    ]}}
+    warnings = _sanitize_dates(extraction)
+    assert extraction["document"]["key_facts"][0]["date"] == ""
+    assert len(warnings) == 1
+    assert "2024/03" in warnings[0]
+
+
+def test_sanitize_dates_drops_free_text_date():
+    extraction = {"document": {"key_facts": [
+        {"fact": "x", "date": "sometime last year", "entities": ["a"]},
+    ]}}
+    warnings = _sanitize_dates(extraction)
+    assert extraction["document"]["key_facts"][0]["date"] == ""
+    assert len(warnings) == 1
+
+
+def test_sanitize_dates_keeps_valid_iso_shapes():
+    extraction = {"document": {"key_facts": [
+        {"fact": "a", "date": "2021", "entities": []},
+        {"fact": "b", "date": "2021-03", "entities": []},
+        {"fact": "c", "date": "2021-03-30", "entities": []},
+        {"fact": "d", "entities": []},   # no date at all — untouched
+    ]}}
+    assert _sanitize_dates(extraction) == []
+    dates = [f.get("date") for f in extraction["document"]["key_facts"]]
+    assert dates == ["2021", "2021-03", "2021-03-30", None]
 
 
 def test_apply_match_ids_remaps_key_fact_tags():
@@ -119,6 +152,27 @@ def test_postflight_builds_entity_analysis_from_tagged_facts(tmp_path):
     pbgf_note = (vault / "entities" / "fund" / "pbgf.md").read_text(encoding="utf-8")
     assert "Stayed a $842,018.34 payment." in pbgf_note
     assert "Transfer ratio set at 65.8%." not in pbgf_note  # not tagged to pbgf
+
+
+def test_postflight_run_drops_malformed_date_before_timeline_write(tmp_path, capsys):
+    """A non-ISO-shaped key_facts.date (#262) must not reach timeline.py's
+    {date}_{sha7}.ndjson filename construction — it's dropped with a visible warning instead."""
+    vault = _full_vault(tmp_path)
+    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    ext = _extraction()
+    ext["document"]["key_facts"][1]["date"] = "2024/03"   # bad shape: contains a slash
+    ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
+    ext_path.write_text(json.dumps(ext), encoding="utf-8")
+
+    result = postflight_run(vault, ext_path)
+    assert result.get("ok"), result   # doesn't crash the whole extraction
+
+    timeline_dir = vault / ".watchdog" / "timeline"
+    ndjson_files = list(timeline_dir.glob("*.ndjson")) if timeline_dir.exists() else []
+    assert not any("2024" in f.name for f in ndjson_files)   # no file written for the bad date
+
+    err = capsys.readouterr().err
+    assert "Warning" in err and "2024/03" in err
 
 
 def test_postflight_writes_morgue_markdown(tmp_path):

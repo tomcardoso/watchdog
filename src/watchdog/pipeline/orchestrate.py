@@ -244,6 +244,10 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str, v
     # morgue_document_type is just the slug form of document_type — derive it deterministically
     # rather than asking the model for the same fact twice (it names the morgue folder).
     extraction["morgue_document_type"] = slugify(doc.get("document_type") or "") or "document"
+    # morgue_entity_id is used raw as a morgue path segment (write_vault) — slugify the model's
+    # value here too, so a value with spaces or an embedded path separator (e.g. "Acme Corp" or
+    # "acme/subsidiary") can't produce a broken morgue directory layout or wikilinks.
+    extraction["morgue_entity_id"] = slugify(extraction.get("morgue_entity_id") or "")
 
 
 async def _classify(doc_excerpt: str, model: str, backend: str | None = None,
