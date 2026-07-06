@@ -5,6 +5,8 @@ description: an annual report, corporate registration, director filing, or simil
 
 This skill is loaded by Watchdog when the document type is an annual report, corporate registration, director filing, or similar corporate record.
 
+For standalone financial statements or MD&A, see `financial-statements`; for securities-regulator disclosure documents (material change reports, insider trading reports, prospectuses), see `regulatory-filings`.
+
 Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
 
 ---

@@ -106,7 +106,7 @@ Fields expected in most DNS/WHOIS records, or fields that are high-value wheneve
 
 ## What investigators typically miss
 
-1. **Historical WHOIS data** — current WHOIS records are often privacy-protected, but databases like DomainTools, SecurityTrails, and Spyse retain historical records from before privacy protection was applied. These often contain real registrant details.
+1. **Historical WHOIS data** — current WHOIS records are often privacy-protected, but databases like DomainTools and SecurityTrails retain historical records from before privacy protection was applied. These often contain real registrant details.
 2. **Certificate transparency as a discovery tool** — crt.sh logs every SSL certificate issued. Searching for a company name or domain in CT logs reveals all domains they have secured SSL certificates for, including subdomains and related domains not otherwise public.
 3. **Name server as a pivot** — when registrant details are hidden, the name server is often the best pivot. Domains sharing a custom name server (e.g. ns1.companysecretproject.com) are almost certainly controlled by the same entity.
 4. **Subdomain enumeration** — the main domain is often just the surface. Subdomains (admin.example.com, api.example.com) may expose infrastructure, internal tools, or related properties. Certificate transparency logs are the best source for subdomain discovery.
@@ -126,11 +126,8 @@ Fields expected in most DNS/WHOIS records, or fields that are high-value wheneve
 ### Practitioner and public interest
 
 - [DomainTools](https://www.domaintools.com) — Commercial platform with over two decades of historical WHOIS and passive DNS data; the primary tool for pivoting on shared registrant emails, name servers, and IP history
+- [SecurityTrails](https://securitytrails.com) — Historical DNS, WHOIS, and subdomain data; a common alternative to DomainTools for infrastructure history and domain clustering
+- [crt.sh — Certificate Transparency search](https://crt.sh) — Free search interface over certificate transparency logs; the primary tool for discovering subdomains and related domains through issued SSL/TLS certificates
 - [Shodan](https://www.shodan.io) — Search engine for internet-connected devices; use to identify what services and infrastructure are exposed on a given IP address or network range
-
-### Journalism resources
-
-- [Bellingcat — Advanced Guide on Verifying Video Content](https://www.bellingcat.com/resources/how-tos/2017/06/30/advanced-guide-verifying-video-content/) — Covers reverse image and infrastructure pivoting techniques used in open-source investigations; applicable to domain and IP clustering work
-- [Bellingcat — A Beginner's Guide to Social Media Verification](https://www.bellingcat.com/resources/2021/11/01/a-beginners-guide-to-social-media-verification/) — Foundational OSINT verification methods including source, provenance, and infrastructure checks
 
 **Notes on unsourced claims:** The red flag on "bulletproof hosting providers" relies on practitioner knowledge and OSINT community databases (Shodan, abuse.ch) rather than a single citable source. The claim that bulletproof providers tolerate abuse is well-documented in cybersecurity literature but no single authoritative public reference was identified.

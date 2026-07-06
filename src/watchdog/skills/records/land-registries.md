@@ -15,13 +15,13 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 **Common law systems (Ontario, BC, UK, Australia, most US states):**
 - Land title certificates and parcel register extracts
-- Transfer instruments (deeds, grants)
-- Mortgage / charge instruments
-- Discharge instruments
+- Title searches and abstracts of title
 - Caveats and cautions (notices of interest)
 - Certificates of pending litigation / lis pendens
 - Easements and rights of way
 - Covenants and restrictions
+
+(The transfer, mortgage/charge, and discharge instruments themselves — the market transactions — are covered by `real-estate`.)
 
 **Civil law systems (Quebec, France, Louisiana, and others):**
 - Land register (registre foncier) extracts

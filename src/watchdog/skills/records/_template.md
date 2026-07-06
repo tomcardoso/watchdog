@@ -7,6 +7,8 @@ This skill is loaded by Watchdog when the document type is a [list the trigger d
 
 Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
 
+[Authoring note — delete before saving: extraction runs as a single completion with no tool or network access, and the extraction prompt tells the model to convert any "check / search / cross-reference X" guidance into a recorded lead. Phrase red flags as things to observe and record in the document itself, not as verification steps to perform against outside sources.]
+
 ---
 
 ## Document types covered

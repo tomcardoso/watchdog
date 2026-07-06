@@ -18,8 +18,8 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 - Notices of motion and motion records
 - Certificates of pending litigation
 - Writs of execution
-- Bankruptcy orders and receiving orders
-- Regulatory tribunal decisions
+
+(Bankruptcy orders and receiving orders are covered by `bankruptcy`; tribunal decisions by `administrative-tribunals`.)
 
 ---
 

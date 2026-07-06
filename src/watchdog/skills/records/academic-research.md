@@ -66,7 +66,7 @@ Fields expected in most academic records, or fields that are high-value whenever
 
 - **Retraction notices** — a retracted paper is not just a scientific error; it may indicate fabrication, falsification, or plagiarism. Note the reason given for retraction (which is often vague) and whether the authors agreed.
 - **Corrigendum (correction)** — a correction to a published paper. Multiple corrections to the same paper, or corrections involving data or conclusions, are more significant than typographical corrections.
-- **Duplicated data or image manipulation** — reported by watchdog sites like Retraction Watch or Pubpeer. Cross-reference any retraction with these sources.
+- **Duplicated data or image manipulation** — reported by watchdog sites like Retraction Watch or PubPeer. Record any retraction as a lead to check against these sources in later research.
 - **Authorship disputes** — a researcher named as an author who disputes authorship, or a researcher who should have been named but was not, may indicate attribution manipulation.
 - **Prior misconduct findings not disclosed** — a researcher with a prior misconduct finding at another institution who did not disclose it when applying for a grant or position at a new institution.
 

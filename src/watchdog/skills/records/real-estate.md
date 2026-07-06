@@ -16,10 +16,10 @@ This skill covers market transactions (who bought what, for how much, under what
 - Discharge of mortgage / charge
 - Lien registrations (construction liens, tax liens, judgment liens)
 - Property assessment notices
-- Land registry abstracts of title
 - Subdivision and severance documents
-- Easements and rights of way
-- In Canada (Ontario): Parcel registers; Transfers; Charges (mortgages); CPLs (certificates of pending litigation on title)
+
+(Registry-system records — parcel register extracts, title searches and abstracts, caveats, easements and covenants — are covered by `land-registries`.)
+- In Canada (Ontario): Transfers; Charges (mortgages); discharges of charge
 - In Canada (Quebec): Actes de vente; actes d'hypothèque — see also `land-registries` skill
 - In the US: Grant deeds, warranty deeds, quitclaim deeds; deeds of trust; mechanic's liens; lis pendens
 

@@ -85,7 +85,7 @@ Fields expected in most immigration or refugee records, or fields that are high-
 | **BIA** | US | Board of Immigration Appeals — the US appellate body for immigration decisions |
 | **USCIS** | US | US Citizenship and Immigration Services — handles asylum applications affirmatively |
 | **First-tier Tribunal** | UK | The initial immigration and asylum tribunal in England and Wales |
-| **Section 3 ECHR** | UK / Europe | Article 3 of the European Convention on Human Rights — prohibition on torture and inhuman treatment; the principal ground for preventing removal to a dangerous country |
+| **Article 3 ECHR** | UK / Europe | Article 3 of the European Convention on Human Rights — prohibition on torture and inhuman treatment; the principal ground for preventing removal to a dangerous country |
 | **National Documentation Package (NDP)** | Canada | Standardized country condition documents compiled by the IRB for each country |
 
 ---

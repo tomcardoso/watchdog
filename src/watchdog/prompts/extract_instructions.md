@@ -13,6 +13,8 @@ KEY FACTS — `document.key_facts` is the heart of the extraction. Capture the i
 
 How many facts: as many as the document has material facts, and no more — a dense order may have fifteen, a routine form two. Do NOT pad to a quota. Let MATERIALITY decide: omit boilerplate, procedural recitation, jurisdictional/standard-form language, and reasoning or analysis that does not establish a fact (e.g. recited case-law or argument). The loaded DOMAIN SKILL tells you what matters most for this document type — lean on it. When in doubt, err toward capturing a hard fact (a name, date, figure, address) rather than dropping it; err toward dropping prose and reasoning.
 
+You run as a single completion with no tool or network access. Where the DOMAIN SKILL says to check, search, verify, or cross-reference an external source — a registry, database, watchdog site, or the web — do not attempt it and never present it as done: record the item as a lead in your forward-looking reporting notes (`scratchpad`, or `observations` in sectioned runs) naming what to check and why, and extract only what the document itself supports.
+
 ENTITIES — the graph. Use EXISTING_ENTITIES for deduplication — match on name or any alias (OCR errors are common; be generous). For each entity:
 - `id`: the existing id from EXISTING_ENTITIES if matched, otherwise a new kebab-case slug.
 - `match_id`: set to the matched entity's id if this matches an existing entity; OMIT entirely for new entities (do not set null or "").

@@ -49,7 +49,7 @@ Fields expected in most lobbying records, or fields that are high-value whenever
 
 ### Revolving door
 
-- **Former cabinet minister or senior official lobbying their former department** — most jurisdictions impose a cooling-off period for former ministers and senior officials. In Canada: two years for former ministers (five years for designated public office holders). In the US: two years for members of Congress, one year for senior executive branch officials. A registration filed shortly after leaving office warrants scrutiny.
+- **Former cabinet minister or senior official lobbying their former department** — most jurisdictions impose post-employment restrictions, often under more than one statute. In Canada, former ministers and other designated public office holders face a five-year ban on lobbying under the Lobbying Act; ministers are additionally subject to a two-year cooling-off period on other post-employment activity under the Conflict of Interest Act. In the US: two years for members of Congress, one year for senior executive branch officials. A registration filed shortly after leaving office warrants scrutiny.
 - **Former political staff lobbying on behalf of a client in the same policy area they worked on** — cooling-off periods for ministerial or political staff vary; in Canada it is one year at the federal level.
 - **Lobbyist who was previously a senior official in the department they are now lobbying** — even if legally compliant, the relationship is worth examining.
 - **Public office holder who met with a lobbyist later joins the lobbyist's firm or client** — the inverse of the revolving door: the official who was lobbied ends up working for the lobbying interest.

@@ -5,6 +5,8 @@ description: a balance sheet, income statement, auditor's report, management dis
 
 Loaded by Watchdog when the document type is a balance sheet, income statement, auditor's report, management discussion and analysis (MD&A), or similar financial disclosure.
 
+For corporate registry records (registrations, director filings, shareholder registers), see `corporate-filings`; for securities-regulator disclosure documents around the statements (material change reports, insider trading reports, prospectuses), see `regulatory-filings`.
+
 Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
 
 ---

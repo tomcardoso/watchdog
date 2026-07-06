@@ -397,8 +397,7 @@ Skills are jurisdiction-agnostic by default: universal principles come first, wi
 
 | Skill | Covers |
 |-------|--------|
-| [`records/government-contracts`](src/watchdog/skills/records/government-contracts.md) | RFPs, sole-source justifications, contract award notices |
-| [`records/procurement-records`](src/watchdog/skills/records/procurement-records.md) | Post-award contracts, amendments, vendor performance, standing offer call-ups |
+| [`records/government-contracts`](src/watchdog/skills/records/government-contracts.md) | RFPs, sole-source justifications, contract awards, amendments, vendor performance, standing offer call-ups |
 | [`records/audit-reports`](src/watchdog/skills/records/audit-reports.md) | Auditor general reports, performance audits, inspector general reports |
 | [`records/government-reports`](src/watchdog/skills/records/government-reports.md) | Royal commissions, public inquiries, parliamentary committee reports |
 | [`records/foi-responses`](src/watchdog/skills/records/foi-responses.md) | FOI/ATI response packages, exemption indexes, redaction logs |

@@ -82,7 +82,7 @@ Fields expected in most election filings, or fields that are high-value whenever
 | **Official agent** | The person legally responsible for a candidate's election expenses |
 | **Third party** | Any individual, group, or organization other than a candidate or party that spends money to influence an election |
 | **Election expenses limit** | The maximum a candidate or party can spend during the election period |
-| **Contribution limit** | In Canada: $1,725/year per person per registered party (indexed annually); varies by province |
+| **Contribution limit** | The maximum an individual may give per year to a registered party — the federal figure is indexed annually and varies by province, so verify the current limit with Elections Canada or the provincial authority |
 | **Reimbursement** | Parties and candidates meeting vote thresholds receive public reimbursement of a portion of expenses |
 | **Blackout period** | Period near election day when third-party advertising is restricted |
 

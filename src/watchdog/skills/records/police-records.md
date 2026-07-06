@@ -18,14 +18,9 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 - Officer conduct hearings and tribunal decisions
 - Coroner's inquest recommendations
 - Independent special investigations unit reports (civilian oversight of serious incidents)
-- Parole or conditional release board decisions
-- Corrections department documents
-- Institutional disciplinary decisions
-- Segregation and solitary confinement records
-- Use-of-force in corrections (incident reports)
-- In Canada: OIPRD, SIU, ASIRT, SIRT, OPCC decisions; Police Services Act charges; Parole Board of Canada decisions; Correctional Service of Canada documents
-- In the US: Internal affairs investigation summaries; Civilian Complaint Review Board (CCRB) decisions; state parole board decisions
-- In the UK: Independent Office for Police Conduct (IOPC) decisions; police misconduct hearing records; Parole Board decisions
+- In Canada: LECA (formerly OIPRD), SIU, ASIRT, SIRT, OPCC decisions; Police Services Act charges
+- In the US: Internal affairs investigation summaries; Civilian Complaint Review Board (CCRB) decisions
+- In the UK: Independent Office for Police Conduct (IOPC) decisions; police misconduct hearing records
 
 ---
 
@@ -67,14 +62,6 @@ Fields expected in most police records, or fields that are high-value whenever p
 - **Recommendations not implemented** — coroner's inquest recommendations and oversight body recommendations that were not implemented by the police service. Note whether the same recommendation appears across multiple inquests.
 - **Delay between complaint and decision** — a complaint filed years before a decision may indicate a backlog or deliberate delay.
 
-### Parole and corrections
-
-- **Denial based primarily on risk assessment tool scores** — parole boards often rely on actuarial risk assessment tools. A denial based primarily on a tool score rather than an individualized assessment is worth examining, particularly where the tool has known limitations with certain populations.
-- **Prolonged administrative segregation** — solitary confinement is subject to legal limits in many jurisdictions. Records showing confinement beyond those limits are significant.
-- **Suspension and revocation without timely hearing** — a parole suspension without a timely revocation hearing may violate the offender's rights.
-- **Parole conditions that amount to indefinite supervision** — conditions that make compliance practically impossible (e.g., abstaining from alcohol for an alcoholic without treatment access) may not be lawfully imposed.
-- **Death in custody** — any death in a correctional facility triggers mandatory reporting. Cross-reference the manner of death (suicide, natural, overdose, homicide) with any institutional discipline or grievance records for the same individual.
-
 ### Race and systemic factors
 
 - **Subject demographics** — where disclosed, note the race, age, gender, and mental health status of subjects involved in use-of-force incidents. Patterns across multiple records in a jurisdiction are newsworthy.
@@ -87,7 +74,7 @@ Fields expected in most police records, or fields that are high-value whenever p
 
 | Term | Jurisdiction | Meaning |
 |------|-------------|---------|
-| **OIPRD** | Canada (Ontario) | Office of the Independent Police Review Director — receives and investigates public complaints against police |
+| **LECA** | Canada (Ontario) | Law Enforcement Complaints Agency (formerly OIPRD) — receives and investigates public complaints against police |
 | **SIU** | Canada (Ontario) | Special Investigations Unit — investigates incidents involving death, serious injury, or sexual assault by police |
 | **ASIRT** | Canada (Alberta) | Alberta Serious Incident Response Team |
 | **SIRT** | Canada (Atlantic) | Serious Incident Response Team — exists in Nova Scotia, New Brunswick, and other provinces |
@@ -98,22 +85,17 @@ Fields expected in most police records, or fields that are high-value whenever p
 | **CCRB** | US (New York) | Civilian Complaint Review Board — reviews NYPD misconduct complaints |
 | **GOR** | Canada | General Occurrence Report — a standardized incident report |
 | **SB/OR form** | Canada | Subject Behaviour / Officer Response form — a structured use-of-force reporting document |
-| **Parole Board of Canada (PBC)** | Canada | Makes conditional release decisions for federal offenders (sentences of 2+ years) |
-| **CSC** | Canada | Correctional Service of Canada — manages federal offenders |
-| **Parole Board** | UK | The UK body that assesses whether prisoners can be safely released |
-| **Structured Intervention Unit (SIU)** | Canada | Replaced administrative segregation in federal facilities under Bill C-83 |
 | **Section 810 recognizance** | Canada | A peace bond issued under the Criminal Code — imposes conditions on someone not convicted of an offence |
 
 ---
 
-## Relationships to extract from police and corrections records
+## Relationships to extract from police records
 
 1. **Person → Officer**: Subject/complainant relationship with the officer involved
 2. **Officer → Unit/Service**: Officer's posting and supervisory chain
 3. **Person → Decision-maker**: Who investigated or adjudicated a complaint
 4. **Officer → Prior complaints**: Pattern of prior complaints (note: may require multiple documents)
-5. **Person → Institution**: Where an offender is or was incarcerated
-6. **Decision → Recommendation**: Formal recommendations and the body that made them
+5. **Decision → Recommendation**: Formal recommendations and the body that made them
 
 ---
 
@@ -123,8 +105,7 @@ Fields expected in most police records, or fields that are high-value whenever p
 2. **Witness accounts vs. officer narratives** — occurrence reports reflect the officer's account. Where civilian witnesses or video evidence exists, discrepancies between the officer narrative and other accounts are the story.
 3. **The duty roster and radio logs** — a use-of-force incident involves multiple officers; the duty roster shows who was on shift and the radio logs show dispatch communications. These are obtainable by freedom of information and often contradict or complement the occurrence report.
 4. **Complaint withdrawal** — many complaints are withdrawn after informal resolution. A pattern of withdrawals in cases involving a particular officer may indicate complainants are being pressured or discouraged.
-5. **Correctional grievance records** — offenders can typically file grievances through an internal process; the grievance record for an individual who later died in custody or was seriously harmed may foreshadow the institution's failure to respond.
-6. **Coroner's inquest jury recommendations** — juries at coroner's inquests make recommendations but have no power to compel action. Tracking whether those recommendations were implemented is an important accountability beat.
+5. **Coroner's inquest jury recommendations** — juries at coroner's inquests make recommendations but have no power to compel action. Tracking whether those recommendations were implemented is an important accountability beat.
 
 ---
 

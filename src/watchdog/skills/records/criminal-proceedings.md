@@ -24,7 +24,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 - Search warrant applications and wiretap authorizations (where unsealed)
 - Mutual legal assistance treaty (MLAT) records
 - Proceeds of crime restraint and forfeiture orders
-- In Canada: informations, indictments, CCAA s.11(b) applications, Gladue reports, dangerous offender designations
+- In Canada: informations, indictments, Charter s. 11(b) delay applications, Gladue reports, dangerous offender designations
 - In the US: indictments, plea agreements, federal sentencing guidelines calculations
 - In the UK: charge sheets, Crown Court indictments, Newton hearings
 

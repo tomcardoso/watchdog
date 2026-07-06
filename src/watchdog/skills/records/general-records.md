@@ -86,7 +86,7 @@ For any document type, look for these universal relationship types:
 
 1. **Person → Organization**: Named role (director, officer, employee, member, signatory, counsel, agent)
 2. **Person / Organization → Address**: All addresses stated in the document, with date context where available
-3**Organization → Organization**: Parent, subsidiary, related party, contracting party, regulator/regulated
+3. **Organization → Organization**: Parent, subsidiary, related party, contracting party, regulator/regulated
 4. **Person / Organization → Document**: Issued by, filed by, named in, subject of, signatory of
 5. **Person / Organization → Amount**: Owes, paid, awarded, claimed — with date and counterparty
 6. **Document → Document**: Amended by, superseded by, referenced in, attached to

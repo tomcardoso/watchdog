@@ -521,3 +521,9 @@ Fixed in two layers, matching the security review's proposal: (1) `postflight._s
 `_persist` now chmods the file 0600 after every write, mirroring `auth._save_state`, so an existing loose-permission file from before this fix is corrected on the very next `watchdog configure` rather than requiring a one-time migration.
 
 **Tradeoff:** none — `config.json` also holds non-secret settings, but 0600 on the whole per-user file is harmless.
+
+### D80 — `procurement-records` merged into `government-contracts`; skills may not instruct external lookups (issue #68)
+
+Two routing/authoring rules from the domain-skill review. (1) The pre-award (`government-contracts`) / post-award (`procurement-records`) split was a distinction the documents themselves don't respect — both files claimed standing offers, amendments, and sole-source justifications, so the classifier coin-flipped on exactly the ambiguous cases. One `government-contracts` skill now covers the full procurement lifecycle; a future re-split should cut along a boundary documents actually present (e.g. by jurisdictionally distinct instrument types), not by procurement phase. (2) Extraction runs as a single completion with no tool or network access, but several skills said "cross-reference X" as if the extractor could. The rule now lives once in `extract_instructions.md`: any check/search/verify guidance in a skill means *record a lead in scratchpad/observations*, never attempt or claim the lookup. Skill authors keep writing natural investigator guidance; the prompt reinterprets it.
+
+**Tradeoff:** the merged skill is ~30% longer than either half, paid on every contracting document; accepted because the halves shared most of their content anyway. Doc-type lists in sibling skills (court-documents/bankruptcy, land-registries/real-estate, the three finance skills) were deduped with cross-references instead of merges — those splits reflect real document boundaries.

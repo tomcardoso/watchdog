@@ -52,7 +52,7 @@ Fields expected in most aircraft records, or fields that are high-value whenever
 
 ### Ownership and registration
 
-- **Aircraft registered to a numbered company or trust** — obfuscates the beneficial owner. Cross-reference the registered company in the corporate registry.
+- **Aircraft registered to a numbered company or trust** — obfuscates the beneficial owner. Record the registered company as a lead for a corporate registry search.
 - **Registration address that doesn't match the operator** — an aircraft registered at a law firm or accountant's address, or a PO box.
 - **Lien on aircraft title** — an aircraft with an unregistered or unpaid lien may be operating under financial stress.
 - **Registration lapsed or suspended** — an aircraft being flown without a valid registration is operating illegally.

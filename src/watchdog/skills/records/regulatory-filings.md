@@ -5,6 +5,8 @@ description: a securities disclosure, insider trading report, continuous disclos
 
 This skill is loaded by Watchdog when the document type is a securities disclosure, insider trading report, continuous disclosure document, prospectus, or similar filing with a securities regulator.
 
+For the financial statements themselves (balance sheet, income statement, auditor's report), see `financial-statements`; for corporate registry records, see `corporate-filings`.
+
 Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
 
 ---

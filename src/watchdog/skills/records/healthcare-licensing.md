@@ -53,7 +53,7 @@ Fields expected in most healthcare regulatory records, or fields that are high-v
 ### Discipline patterns
 
 - **Sexual abuse or boundary violation findings** — sexual misconduct by a health professional is treated with particular seriousness in most jurisdictions, often triggering mandatory revocation. Note whether the finding is for the most severe category of conduct.
-- **Prior discipline not disclosed** — a member who has been disciplined previously in another jurisdiction or who moved after discipline without disclosure. Cross-check registration status across jurisdictions using national or international databases.
+- **Prior discipline not disclosed** — a member who has been disciplined previously in another jurisdiction or who moved after discipline without disclosure. Record the member's other-jurisdiction registration status as a lead — national and international databases (FSMB DocInfo and equivalents) cover this.
 - **Practice conditions not complied with** — a member who was placed under conditions (mandatory supervision, restricted scope) and continued to practise outside those conditions.
 - **Repeated complaints with minor findings** — a member with a pattern of minor discipline committee findings may indicate a systemic problem that each individual case understates.
 - **Agreed statement of facts and penalty** — many regulatory cases are resolved by consent. An agreed statement of facts is not a full hearing; the agreed facts are less adversarially tested than a full hearing finding.

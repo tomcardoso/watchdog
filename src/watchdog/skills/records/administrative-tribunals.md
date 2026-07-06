@@ -1,5 +1,5 @@
 ---
-description: a decision, order, or ruling from a quasi-judicial administrative tribunal that is not a court of law, not a labour or employment arbitration (covered by `labour-arbitration`), not an immigration body (covered by `immigration-refugee`), and not a professional licensing panel (covered by `professional-licensing` or `healthcare-licensing`). Administrative tribunals are government-created bodies with statutory powers to hear disputes and make binding decisions
+description: a decision, order, or ruling from a quasi-judicial administrative tribunal (human rights, competition, privacy, energy, utility, and similar government-created bodies) that is not a court, a labour arbitration, an immigration body, or a professional licensing panel
 ---
 # Domain knowledge — Administrative tribunal records
 
@@ -16,7 +16,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 - Competition tribunal decisions and consent agreements
 - Expropriation boards and compensation decisions
 - Privacy commissioner investigation reports and orders
-- Information commissioner orders (access to information appeals)
+- Information commissioner orders (access to information appeals — for the response package to a specific access request, see `foi-responses`)
 - Liquor, cannabis, and gaming authority decisions
 - Financial services regulatory tribunal decisions (securities, banking, insurance regulators sitting quasi-judicially)
 - Agricultural review boards and supply management tribunal decisions
