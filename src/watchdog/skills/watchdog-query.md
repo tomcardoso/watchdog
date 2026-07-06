@@ -15,8 +15,20 @@ Identify:
 - What time period, if any?
 - What kind of relationship or fact is being asked about?
 - Is this a lookup ("who is the director of X?"), a comparison ("which companies share address Y?"), a timeline ("when did Z first appear?"), or an analysis ("what's unusual about this transaction?")?
+- Does it name a **facet** to filter by: an entity type ("companies", "people"), a document type ("court filings", "annual reports"), or a date range ("in 2021")? See step 2 for how to apply these.
 
 ### 2. Gather evidence
+
+**Facets — narrow before you read.** If the question names a filter — an entity type ("which companies…"), a document type ("court filings", "annual reports"), or a date range ("in 2021", "between 2019 and 2022") — apply it before opening individual notes, using metadata already captured at ingest. No new lookups are needed, and facets combine (e.g. "companies named in court filings from 2021" narrows on all three):
+
+- **Entity type** — `Registry/manifest.json`'s `type` field (`Person`, `Company`, `Fund`, `Address`, …). Keep only matching entries before matching on name/alias in the manifest step below.
+- **Document type** — each document note's `document_type` frontmatter field. Grep across notes rather than opening each one:
+  ```bash
+  grep -l "^document_type: <type>" documents/*.md
+  ```
+- **Date range** — `timeline.md` is grouped under `## <year>` headings and already sorted chronologically; jump straight to the years in range instead of scanning the whole file. For a *document's* own date (as opposed to when the events in it took place), grep `date_of_document:` in document note frontmatter — the value is a quoted ISO date (e.g. `date_of_document: '2021-06-15'`) — and keep the notes whose date falls in the range.
+
+A facet narrows which notes you read, not what you conclude from them — read the narrowed set in full, and if you reach for the semantic lane below, restrict attention to hits whose `filename`/note falls in that narrowed set rather than re-filtering by hand.
 
 Read the relevant vault files. Prioritise in this order:
 

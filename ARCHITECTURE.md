@@ -674,7 +674,10 @@ completed purge, and the CLI hint says so.
   `watchdog-wiki`, `watchdog-health`, `watchdog-research` (§14). Ingest is the Python
   orchestrator (§5); it uses no Claude Code skill. `watchdog-query` reads the manifest/notes
   first but can shell out to `watchdog search --json` as a **semantic lane** for
-  conceptual/passage-level questions (§11, D44).
+  conceptual/passage-level questions (§11, D44). It also narrows by **facet** (entity type,
+  document type, date range) before reading notes, driven entirely off metadata already
+  captured at ingest — manifest `type`, document-note `document_type`/`date_of_document`
+  frontmatter, and `timeline.md`'s year grouping — no new index (#111).
 - **`claude-batch` — bulk extraction via the Message Batches API** (`pipeline/batch_extract.py`,
   D52): a fundamentally different flow from the other backends — submit-many/poll/collect over
   minutes-to-24h rather than one call per document — so it isn't in `model_client._ABACKENDS`
