@@ -1,3 +1,7 @@
+---
+description: Audit vault integrity — registry/note consistency, dead links, stale locks, unresolved contradictions, unreviewed near-duplicates
+---
+
 # /watchdog-health — Check vault integrity
 
 Audit the vault for structural problems: orphaned notes, broken links, registry mismatches, and missing required fields.
@@ -53,24 +57,10 @@ Note: links use pipe-alias syntax (`[[path|Display Name]]`). Extract only the pa
 
 ---
 
-## 4. Lock file and temp file check
+## 4. Lock file check
 
-**Ingest lock** — check whether `.watchdog/Registry/.ingest-lock` exists. If it does, read its `started_at` field and compute the age. If older than 30 minutes, report:
+Check whether `.watchdog/Registry/.ingest-lock` exists. If it does, read its `started_at` field and compute the age. If older than 30 minutes, report:
 `STALE LOCK: .watchdog/Registry/.ingest-lock (created <timestamp>, <N>m ago) — run: watchdog unlock <project-slug>`
-
-**Orphaned extraction files** — check for leftover temp files from an interrupted ingest:
-
-```bash
-ls .watchdog/tmp/watchdog-extraction-*.json 2>/dev/null
-```
-
-For each file found, report:
-`ORPHANED TEMP: .watchdog/tmp/watchdog-extraction-<sha256>.json — safe to delete`
-
-These are left behind when Claude wrote the extraction JSON but never called `watchdog write-vault`. They are safe to delete; if you want to recover the extraction, open the file to inspect it first. To clean up all of them:
-```bash
-rm .watchdog/tmp/watchdog-extraction-*.json
-```
 
 ---
 
@@ -101,9 +91,9 @@ Read `.watchdog/Registry/registry.json`. Compare `document_count` and `entity_co
 `COUNT MISMATCH: registry.json says <n> documents but documents.json has <m>`
 
 Also check that the following files exist at the vault root. Report any that are missing:
-- `timeline.md` — `MISSING FILE: timeline.md (rebuild by running /watchdog-entity on any entity)`
-- `hot.md` — `MISSING FILE: hot.md (created automatically by /watchdog-ingest; create manually if needed)`
-- `log.md` — `MISSING FILE: log.md (created automatically by /watchdog-ingest; create manually if needed)`
+- `timeline.md` — `MISSING FILE: timeline.md (rebuild with: watchdog timeline)`
+- `hot.md` — `MISSING FILE: hot.md (created automatically by watchdog ingest; create manually if needed)`
+- `log.md` — `MISSING FILE: log.md (created automatically by watchdog ingest; create manually if needed)`
 
 ---
 
