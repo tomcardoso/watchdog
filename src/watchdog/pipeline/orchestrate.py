@@ -401,6 +401,46 @@ def _carry_text(entities_seen: dict, observations: str) -> str:
     return "\n".join(lines) + "\n" if lines else ""
 
 
+def _stitch_digest(doc: dict, page_count: int | None) -> str:
+    """Deterministic fallback when the digest call fails or returns empty: an orientation line
+    from title/type/page_count, then the first few facts as plain sentences. Degraded but
+    valid — never worth a retry loop (#279)."""
+    head = doc.get("title") or "Untitled document"
+    dtype = doc.get("document_type") or ""
+    line = f"{head} — {dtype}" if dtype else head
+    if page_count:
+        line += f", {page_count} pages"
+    facts = [t.rstrip(".") + "." for f in doc.get("key_facts", [])[:8]
+             if (t := (f.get("fact") or "").strip())]
+    return (line + ". " + " ".join(facts)).strip() if facts else line + "."
+
+
+async def _compose_digest(doc: dict, page_count: int | None, model: str, backend: str | None,
+                          filename: str, skill_text: str | None, brief: str | None,
+                          sidecar: str | None) -> tuple[str, float]:
+    """One small model call composing the whole-document digest from the merged key_facts
+    (#279) — no section call ever sees the whole document, so this runs once after merge, on the
+    extractor tier (the same model that read the sections), so both digest paths — inline for a
+    whole-doc extraction, post-merge here — use one model. It is handed the same context a
+    whole-document extractor gets short of the raw text (filename, domain skill, brief, sidecar),
+    with the merged key_facts standing in for the text. Falls back to the deterministic stitch
+    on any model failure or an empty response; returns (summary, cost)."""
+    prompt = prompts.build_digest_prompt(
+        filename=filename, title=doc.get("title", ""), document_type=doc.get("document_type", ""),
+        page_count=page_count, skill_text=skill_text, brief=brief, sidecar=sidecar,
+        key_facts=_briefing_facts(doc))
+    try:
+        r = await _call_model(task="digest", model=model, backend=backend,
+                              prompt=prompt, schema=schemas.DIGEST,
+                              filename=filename, detail="digest")
+        summary = (r.parsed.get("summary") or "").strip()
+        if summary:
+            return summary, r.cost_usd or 0.0
+        return _stitch_digest(doc, page_count), r.cost_usd or 0.0
+    except model_client.ModelError:
+        return _stitch_digest(doc, page_count), 0.0
+
+
 async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_label,
                              effort=None, backend=None, brief=None):
     """Sequential per-section extraction with carry-forward, then deterministic merge."""
@@ -428,6 +468,12 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
 
     extraction = merge.merge_extractions(parts)
     scratchpad = "\n".join(p["observations"] for p in parts if p.get("observations"))
+    doc = extraction.setdefault("document", {})
+    page_count = pf.get("page_count") or len(pf.get("pages", []))
+    doc["summary"], digest_cost = await _compose_digest(
+        doc, page_count, model, backend, pf["filename"],
+        skill_text, brief, _read_sidecar(vault, pf["filename"]))
+    cost += digest_cost
     _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault,
                     skill_text=skill_text, extract_model=model, extract_effort=effort)
     ok, errors = _write_postflight(vault, sha, extraction)
@@ -1090,7 +1136,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
               classify_backend: str | None = None, wait: bool = False) -> dict:
     """Extract every queued document (bounded by `concurrency`), then post-ingest.
 
-    `extract_model` drives extraction (whole-doc + section); `post_model` drives
+    `extract_model` drives extraction (whole-doc + section, and the sectioned-doc digest); `post_model` drives
     synthesis/timeline/briefing; `classify_model` the cheap document classifier,
     which sees the first `classify_pages` pages of each document. `pinned_skill`
     (a path to a skill file) skips classification and uses that skill for every document.
