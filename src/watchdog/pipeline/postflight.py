@@ -81,6 +81,58 @@ def _apply_match_ids(extraction: dict) -> dict:
     return extraction
 
 
+def _sanitize_entity_ids(extraction: dict) -> list[str]:
+    """Slugify every entity ``id`` before it can reach write_vault, which uses it verbatim as a
+    filesystem path segment (#303) — an unslugified id like ``"../../../ESCAPED"`` is a
+    path-traversal / vault-escape write primitive. Ids are already meant to be kebab-case slugs
+    (see extract_instructions.md), so this is a no-op warning-free pass for a well-formed
+    extraction; it only changes anything for a malformed or hostile value.
+
+    Falls back to a slug of the entity's ``name``, then a generic placeholder, if the id
+    slugifies to empty, and disambiguates any collision this creates between two entities in the
+    same extraction (so they don't silently merge). Remaps ``key_facts.entities`` tags and
+    ``roles.target_id`` so referential integrity holds after the rewrite. Mutates ``extraction``
+    in place; returns a warning per changed id."""
+    from watchdog.pipeline.write_vault import slugify
+
+    entities = extraction.get("entities", [])
+    changes: list[tuple[str, str]] = []   # (old_id, new_id) for every id actually rewritten
+    seen: set[str] = set()
+    warnings: list[str] = []
+
+    for i, entity in enumerate(entities):
+        old_id = entity.get("id", "")
+        new_id = slugify(old_id) or slugify(entity.get("name", "")) or f"entity-{i + 1}"
+        base_id, suffix = new_id, 2
+        while new_id in seen:
+            new_id = f"{base_id}-{suffix}"
+            suffix += 1
+        seen.add(new_id)
+        if new_id != old_id:
+            warnings.append(f"entities[{i}].id {old_id!r} sanitized to {new_id!r}")
+            if old_id:
+                changes.append((old_id, new_id))
+            entity["id"] = new_id
+
+    # Only remap references for an old id that no longer names any surviving entity. If a
+    # duplicate id was disambiguated (two "acme-corp" entities → the second becomes
+    # "acme-corp-2"), the original id still belongs to the first entity, so references to it
+    # must stay put rather than being misrouted to the renamed duplicate.
+    remap = {old: new for old, new in changes if old not in seen}
+    if remap:
+        for fact in extraction.get("document", {}).get("key_facts", []):
+            tags = fact.get("entities")
+            if tags:
+                fact["entities"] = [remap.get(t, t) for t in tags]
+        for entity in entities:
+            for role in entity.get("roles", []):
+                tid = role.get("target_id")
+                if tid in remap:
+                    role["target_id"] = remap[tid]
+
+    return warnings
+
+
 def _sanitize_dates(extraction: dict) -> list[str]:
     """Drop ``key_facts.date`` values that aren't ISO-shaped (``YYYY``, ``YYYY-MM``, or
     ``YYYY-MM-DD``) before they can reach timeline.py's ``{date}_{sha7}.ndjson`` filename
@@ -153,6 +205,11 @@ def run(vault: Path, extraction_path: Path, quiet: bool = False) -> dict:
         return {"errors": errors}
 
     extraction = _apply_match_ids(extraction)
+
+    # Slugify entity ids before anything downstream uses them as a path segment (#303) —
+    # a warning per id actually changed, so a malicious/malformed value is visible, not silent.
+    for warning in _sanitize_entity_ids(extraction):
+        print(f"Warning: {warning}", file=sys.stderr)
 
     # Drop non-ISO-shaped key_facts dates before they can reach explode_key_facts or
     # timeline.py's filename construction — a malformed date is a visible warning, not a

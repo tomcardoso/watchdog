@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from watchdog.pipeline.postflight import _apply_match_ids, _sanitize_dates, explode_key_facts
+from watchdog.pipeline.postflight import _apply_match_ids, _sanitize_dates, _sanitize_entity_ids, explode_key_facts
 from watchdog.pipeline.postflight import run as postflight_run
 
 
@@ -97,6 +97,76 @@ def test_apply_match_ids_remaps_key_fact_tags():
     assert extraction["entities"][0]["id"] == "canonical"
     assert extraction["document"]["key_facts"][0]["entities"] == ["canonical", "other"]
 
+
+# ── _sanitize_entity_ids (#303: path-traversal / vault-escape via unslugified entity id) ────
+
+def test_sanitize_entity_ids_leaves_wellformed_ids_untouched():
+    extraction = {"entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company"}]}
+    assert _sanitize_entity_ids(extraction) == []
+    assert extraction["entities"][0]["id"] == "acme-corp"
+
+
+def test_sanitize_entity_ids_slugifies_path_traversal_id():
+    extraction = {"entities": [{"id": "../../../ESCAPED", "name": "Evil Corp", "type": "Person"}]}
+    warnings = _sanitize_entity_ids(extraction)
+    assert len(warnings) == 1
+    assert extraction["entities"][0]["id"] == "escaped"
+
+
+def test_sanitize_entity_ids_remaps_key_fact_tags_and_role_targets():
+    extraction = {
+        "document": {"key_facts": [{"fact": "x", "entities": ["../evil"]}]},
+        "entities": [
+            {"id": "../evil", "name": "Evil Corp", "type": "Company"},
+            {"id": "alice", "name": "Alice", "type": "Person",
+             "roles": [{"relationship": "Director of", "target_id": "../evil"}]},
+        ],
+    }
+    _sanitize_entity_ids(extraction)
+    new_id = extraction["entities"][0]["id"]
+    assert new_id == "evil"
+    assert extraction["document"]["key_facts"][0]["entities"] == [new_id]
+    assert extraction["entities"][1]["roles"][0]["target_id"] == new_id
+
+
+def test_sanitize_entity_ids_falls_back_to_name_when_id_slugifies_empty():
+    extraction = {"entities": [{"id": "../../..", "name": "Evil Corp", "type": "Person"}]}
+    _sanitize_entity_ids(extraction)
+    assert extraction["entities"][0]["id"] == "evil-corp"
+
+
+def test_sanitize_entity_ids_falls_back_to_placeholder_when_name_also_empty():
+    extraction = {"entities": [{"id": "../../..", "name": "!!!", "type": "Person"}]}
+    _sanitize_entity_ids(extraction)
+    assert extraction["entities"][0]["id"] == "entity-1"
+
+
+def test_sanitize_entity_ids_disambiguates_collision():
+    extraction = {"entities": [
+        {"id": "acme-corp", "name": "Acme Corp", "type": "Company"},
+        {"id": "Acme Corp!!", "name": "Acme Corp", "type": "Company"},
+    ]}
+    _sanitize_entity_ids(extraction)
+    ids = [e["id"] for e in extraction["entities"]]
+    assert ids == ["acme-corp", "acme-corp-2"]
+    assert len(set(ids)) == 2
+
+def test_sanitize_entity_ids_identical_duplicate_keeps_references_on_first():
+    # Two entities emitted with a literally identical id: the second is disambiguated to
+    # "acme-corp-2", but references to "acme-corp" must stay on the surviving first entity —
+    # not be misrouted to the renamed duplicate.
+    extraction = {
+        "document": {"key_facts": [{"fact": "x", "entities": ["acme-corp"]}]},
+        "entities": [
+            {"id": "acme-corp", "name": "Acme Corp", "type": "Company"},
+            {"id": "acme-corp", "name": "Acme Corp", "type": "Company",
+             "roles": [{"relationship": "Owns", "target_id": "acme-corp"}]},
+        ],
+    }
+    _sanitize_entity_ids(extraction)
+    assert [e["id"] for e in extraction["entities"]] == ["acme-corp", "acme-corp-2"]
+    assert extraction["document"]["key_facts"][0]["entities"] == ["acme-corp"]
+    assert extraction["entities"][1]["roles"][0]["target_id"] == "acme-corp"
 
 # ── end-to-end through postflight ───────────────────────────────────────────
 
