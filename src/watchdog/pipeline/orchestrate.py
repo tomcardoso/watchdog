@@ -154,6 +154,9 @@ _FALLBACK_SECTION_TOKENS = 15_000
 # Safety cap on classifier input: bounds a pathological single huge page; the page
 # count (classify_pages) is the primary limiter, so keep this generous.
 _CLASSIFY_EXCERPT_CHARS = 24000
+# Per-doc fact cap used only on the briefing's degraded-input retry (#296), after the
+# full-richness attempt has already failed — not a proactive limit on the normal path.
+_BRIEFING_RETRY_FACT_CAP = 8
 # 24-bit RGB ints for Obsidian graph entity-type colour groups.
 _GRAPH_PALETTE = [0x4C9A2A, 0xC0392B, 0x2980B9, 0x8E44AD, 0xD35400,
                   0x16A085, 0xF39C12, 0x7F8C8D, 0x2C3E50, 0xC2185B]
@@ -329,6 +332,12 @@ def _compact_result(sha: str, filename: str, extraction: dict, near_dup: dict, c
         "near_dup_similarity": near_dup.get("top_similarity", 0.0),
         "cost_usd": cost,
     }
+
+
+def _capped_briefing_results(results: list, cap: int) -> list:
+    """`results` with each doc's key_facts truncated to `cap` items — the briefing's
+    degraded-input retry (#296) after a full-richness attempt has overrun the output ceiling."""
+    return [{**r, "key_facts": r["key_facts"][:cap]} if "key_facts" in r else r for r in results]
 
 
 def _write_postflight(vault: Path, sha: str, extraction: dict) -> tuple[bool, list[str]]:
@@ -1013,12 +1022,26 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     contradiction_flags = [{"filename": r["filename"], "entities": r["contradictions"]}
                            for r in ok if r.get("contradictions")]
     try:
-        r = await _call_model(
-            task="briefing", model=post_model, backend=post_backend, schema=schemas.BRIEFING,
-            prompt=prompts.build_briefing_prompt(
-                brief=brief, results=ok, scratchpads=scratchpads,
-                neardup_alerts=neardup_alerts, contradiction_flags=contradiction_flags),
-            effort=post_effort)
+        try:
+            r = await _call_model(
+                task="briefing", model=post_model, backend=post_backend, schema=schemas.BRIEFING,
+                prompt=prompts.build_briefing_prompt(
+                    brief=brief, results=ok, scratchpads=scratchpads,
+                    neardup_alerts=neardup_alerts, contradiction_flags=contradiction_flags),
+                effort=post_effort)
+        except model_client.ModelError:
+            # The briefing's output arrays scale with batch size, so a large/dense batch can
+            # overrun the output ceiling — a truncated JSON parse failure, not a partial result.
+            # An identical retry would fail the same way (#296), so retry once with a strictly
+            # smaller prompt (scratchpads dropped, facts capped per doc) instead of losing the
+            # briefing outright.
+            r = await _call_model(
+                task="briefing", model=post_model, backend=post_backend, schema=schemas.BRIEFING,
+                prompt=prompts.build_briefing_prompt(
+                    brief=brief, results=_capped_briefing_results(ok, _BRIEFING_RETRY_FACT_CAP),
+                    scratchpads=[],
+                    neardup_alerts=neardup_alerts, contradiction_flags=contradiction_flags),
+                effort=post_effort)
         out["briefing"] = _write_briefing(vault, r.parsed, ok, neardup_alerts, contradiction_flags)
     except (model_client.ModelError, model_client.RateLimitError) as e:
         out["briefing_error"] = str(e)

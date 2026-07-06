@@ -521,3 +521,12 @@ Fixed in two layers, matching the security review's proposal: (1) `postflight._s
 `_persist` now chmods the file 0600 after every write, mirroring `auth._save_state`, so an existing loose-permission file from before this fix is corrected on the very next `watchdog configure` rather than requiring a one-time migration.
 
 **Tradeoff:** none — `config.json` also holds non-secret settings, but 0600 on the whole per-user file is harmless.
+
+### D80 — Briefing gets extraction's output ceiling, plus a degraded-input retry instead of an identical second failure (issue #296)
+
+The post-ingest briefing call ran at the generic 8000-token output ceiling while its schema's arrays (`what_was_ingested`/`connections`/`leads`/`anomalies`/`emerging_patterns`/`open_questions`) scale with batch size — a large or dense batch could truncate the JSON mid-object, and a bare re-run via `watchdog finalize` hit the identical ceiling deterministically (no partial degradation, a guaranteed second failure re-spending the full input).
+
+Two changes, both cheap and without inventing a proactive content cap this repo's own telemetry can't yet justify (contrast #241/#263, which explicitly wait on real per-call data before sizing a cap): (1) `briefing` gets the same 16000-token ceiling as `extract`/`extract-section` — a value already proven safe non-streaming on this SDK, so no new streaming plumbing. (2) `_post_ingest` now retries a `ModelError`d briefing call exactly once with a strictly smaller prompt — scratchpads dropped, each doc's facts capped to 8 — mirroring the existing extraction-output-overrun fallback (whole-doc → sectioned re-extraction). The retry is purely reactive (only fires after an observed failure), so it needs no upfront guess about typical batch size; if the retry still fails, the briefing is skipped as before (`out["briefing_error"]`) rather than looping.
+
+**Tradeoff:** a batch large enough to overrun even the 16000-token ceiling gets a leaner briefing (fewer facts, no scratchpad-derived leads) rather than none — a deliberate richness-for-reliability trade on the rare huge batch. Full streaming support (an unbounded ceiling) remains future work if 16000 proves insufficient in practice; not built here since there's no telemetry yet showing it's needed.
+

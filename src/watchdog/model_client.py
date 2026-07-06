@@ -58,8 +58,11 @@ _PRICING = {
 
 DEFAULT_TIER = "sonnet"
 _API_MAX_TOKENS = 8000
-# Extraction output is large; give it more room. Other tasks use the default.
-_TASK_MAX_TOKENS = {"extract": 16000, "extract-section": 16000}
+# Extraction output is large; give it more room. Other tasks use the default. The briefing's
+# arrays (what_was_ingested/connections/leads/anomalies/emerging_patterns/open_questions) scale
+# with batch size, so it gets the same higher ceiling as extraction — a truncated briefing is a
+# JSON parse failure, not a partial result (#296).
+_TASK_MAX_TOKENS = {"extract": 16000, "extract-section": 16000, "briefing": 16000}
 
 _SYSTEM_PROMPT = (
     "You are a precise extraction engine for an investigative-records pipeline. "
