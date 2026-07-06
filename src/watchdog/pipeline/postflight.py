@@ -11,10 +11,12 @@ Handles everything after Claude produces the extraction JSON:
 """
 
 import json
+import re
 import sys
 from pathlib import Path
 
 _VALID_BASIS = {"stated", "inferred"}
+_DATE_RE = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
 
 
 def _validate(data: dict) -> list[str]:
@@ -79,6 +81,24 @@ def _apply_match_ids(extraction: dict) -> dict:
     return extraction
 
 
+def _sanitize_dates(extraction: dict) -> list[str]:
+    """Drop ``key_facts.date`` values that aren't ISO-shaped (``YYYY``, ``YYYY-MM``, or
+    ``YYYY-MM-DD``) before they can reach timeline.py's ``{date}_{sha7}.ndjson`` filename
+    construction — a value like ``"2024/03"`` or free text would otherwise produce a broken or
+    nested file write. Mutates ``key_facts`` in place; returns a warning per dropped date so the
+    loss is visible rather than silent."""
+    warnings: list[str] = []
+    for i, fact in enumerate(extraction.get("document", {}).get("key_facts", [])):
+        date = fact.get("date")
+        if date and not _DATE_RE.match(date):
+            warnings.append(
+                f"document.key_facts[{i}].date '{date}' is not ISO-shaped (YYYY, YYYY-MM, or "
+                "YYYY-MM-DD) — dropped from timeline placement"
+            )
+            fact["date"] = ""
+    return warnings
+
+
 def explode_key_facts(extraction: dict) -> None:
     """Reconstruct the per-entity views from the unified `key_facts` primitive (#140).
 
@@ -133,6 +153,12 @@ def run(vault: Path, extraction_path: Path, quiet: bool = False) -> dict:
         return {"errors": errors}
 
     extraction = _apply_match_ids(extraction)
+
+    # Drop non-ISO-shaped key_facts dates before they can reach explode_key_facts or
+    # timeline.py's filename construction — a malformed date is a visible warning, not a
+    # silent event loss.
+    for warning in _sanitize_dates(extraction):
+        print(f"Warning: {warning}", file=sys.stderr)
 
     # Fan the unified key_facts out into the per-entity evidence_fragments / timeline_events that
     # write_vault and timeline staging consume (#140).
