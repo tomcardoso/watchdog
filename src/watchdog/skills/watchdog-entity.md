@@ -1,3 +1,8 @@
+---
+description: Deep refresh of an entity's Summary and Timeline, re-synthesized from every document it appears in (writes via watchdog write-entity)
+argument-hint: <entity-id> [entity-id ...]
+---
+
 # /watchdog-entity — Entity note refresh
 
 Refresh the Summary and Timeline for one or more entities by re-synthesizing from all documents they appear in.

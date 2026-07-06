@@ -1,3 +1,7 @@
+---
+description: Full connection and anomaly analysis across the vault — shared addresses, director overlaps, clusters, contradictions — reported to briefings/
+---
+
 # /watchdog-surface — Find connections and anomalies across the vault
 
 Perform a full connection and anomaly analysis across every entity and document in the vault. Surface things the journalist may have missed.
@@ -17,12 +21,12 @@ Read `context.md` if it exists. This tells you what the journalist is pursuing a
 Read these files to build your working index:
 
 1. **`.watchdog/Registry/manifest.json`** — every entity's `id`, `name`, `type`, `aliases`, `note_path`. This is your entity directory. Do not read individual entity notes yet.
-2. **`.watchdog/Registry/documents.json`** — every document's `sha256`, `filename`, `title`, `document_type`, `entities_extracted`, `appears_in`, `page_count`.
+2. **`.watchdog/Registry/documents.json`** — every document's `sha256`, `filename`, `title`, `document_type`, `entities_extracted`, `page_count`, `document_note`.
 3. **`timeline.md`** — global chronological view of all events across all entities.
 
 Build a working index in memory:
 - Entity ID → type, name, aliases, note_path (from manifest)
-- Document slug → type, date, entities_mentioned (from documents.json)
+- Document → document_type, entities_extracted, document_note (from documents.json; a document's own date is the `date_of_document` frontmatter field in its note)
 
 **Read individual entity notes on demand** — only when a specific analysis step requires the full `## Summary`, `## Timeline`, `## Analysis`, or `## Relationships` content. Do not read all notes upfront.
 
@@ -45,9 +49,9 @@ Find every Person entity with a `Director` or `Officer` role. Find all companies
 - Appears as director of 3 or more companies
 - Appears in a role inconsistent with their prior appearances (e.g. previously only as a plaintiff, now as a director)
 
-### Recurring names without explicit relationships
+### Deterministic leads
 
-Find entities in `entities.json` that appear in 3 or more documents but have an empty `roles` list. These are entities the vault knows about but haven't been mapped into the relationship graph.
+Run `watchdog leads` and fold its output into the report — it already computes entities named but never profiled, entities recurring but unconnected, and unresolved contradictions from the entity graph. Do not re-derive these by hand; spend the analysis effort on the connection patterns above and below, which code cannot judge.
 
 ### Company clusters
 
@@ -80,9 +84,9 @@ For each entity that appears in 3 or more documents, compare the following field
 
 Flag any case where the same fact is stated differently in two documents — both values directly stated (not `inferred`) — and that discrepancy is not already captured in a `[!contradiction]` callout.
 
-Add new `[!contradiction]` callouts to the relevant entity notes for any newly found discrepancies.
+**Do not write `[!contradiction]` callouts into entity notes.** Entity notes are pipeline-owned: callouts are verified at extraction time and tracked by the resolutions layer (`watchdog resolve` / `unresolve`), and hand-inserted ones bypass both. Report newly found discrepancies in the surface report only, labelled as **candidate contradictions** so the journalist can verify them against the sources.
 
-Include all contradictions (pre-existing and newly found) in the surface report under a dedicated section.
+Include all contradictions (pre-existing callouts and new candidates, labelled as such) in the surface report under a dedicated section.
 
 ---
 
@@ -122,7 +126,7 @@ document_count: <n>
 
 ## Contradictions
 
-<For each contradiction found — pre-existing callouts and newly flagged:>
+<For each contradiction — pre-existing callouts, and new candidates found by this scan labelled **(candidate — verify against sources)**:>
 
 ### <Entity name> — <disputed fact>
 - **[[entities/<type>/<id>|Entity Name]]**
