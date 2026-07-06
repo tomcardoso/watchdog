@@ -396,6 +396,8 @@ def main() -> None:
                           metavar="NAME",
                           help="Pin a record skill for every document, skipping classification. "
                                "Pass a skill name, or use --skill with no value to pick interactively.")
+    p_ingest.add_argument("--estimate", action="store_true",
+                          help="Print a token/cost estimate for the queue and exit — no lock, no confirm, no extraction")
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_finalize = sub.add_parser("finalize", help="Complete post-ingest (synthesis + timeline + briefing) for an already-extracted batch — e.g. after a rate limit stopped it")

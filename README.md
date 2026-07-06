@@ -219,6 +219,7 @@ For a full end-to-end walkthrough of a first investigation, see [GETTING_STARTED
 | `watchdog ingest --concurrency N` | Documents extracted in parallel for this run (default from `watchdog configure`: 5) |
 | `watchdog ingest --classify-pages N` | Pages shown to the document classifier for this run (default from `watchdog configure`: 5) |
 | `watchdog ingest --skill [NAME\|PATH]` | Pin a record skill (a name or a path to a skill file) for every document, skipping classification. `--skill` with no value picks from the list |
+| `watchdog ingest --estimate` | Print a token/cost estimate for the queue and exit — no lock, no confirm, no extraction. Cost is projected from this vault's own usage history (last 3 runs); on subscription auth, or before any run has completed, only the token estimate is shown |
 | `watchdog finalize` | Complete post-ingest (entity synthesis + timeline + briefing) for an already-extracted batch — run it if a rate limit or interrupt stopped post-processing before it finished. `--finalizer-model M` / `--finalizer-effort E` override the model and effort |
 | `watchdog requeue` | Move documents quarantined in `queue/_failed/` back into the active queue, then re-run `watchdog ingest` to retry them |
 | `watchdog` | With no arguments inside a vault: walk the pipeline — offer to seed context, chew `_INCOMING/`, then ingest — skipping any stage with no pending work |
