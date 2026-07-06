@@ -230,8 +230,10 @@ like whole-document extraction, it includes the investigation brief (D49).
 document, so no section emits `document.summary` any more. Immediately after
 `merge.merge_extractions` (and before `_stamp_document`), one small model call
 (`orchestrate._compose_digest`, on the **extractor tier** — the same `extract_model`/backend that
-read the sections, not the finalizer tier) composes the digest from the merged `key_facts` +
-title/document_type/page_count. A failed or empty response falls back to
+read the sections, not the finalizer tier) composes the digest from the merged `key_facts` plus
+the same context a whole-document extractor is handed short of the raw text itself — filename,
+title, document_type, page_count, the domain skill, the investigation brief, and the sidecar
+(the merged `key_facts` stand in for the text). A failed or empty response falls back to
 `_stitch_digest`, a deterministic orientation line plus the first few facts as plain
 sentences — degraded but valid, never worth a retry loop. Non-sectioned documents compose
 the same field **inline**, in the single whole-document extraction call (rewritten field

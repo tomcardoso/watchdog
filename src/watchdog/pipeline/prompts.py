@@ -133,11 +133,14 @@ def build_section_prompt(*, pages_text: str, existing_entities: list, skill_text
     ]
 
 
-def build_digest_prompt(*, title: str, document_type: str, page_count: int | None,
+def build_digest_prompt(*, filename: str, title: str, document_type: str, page_count: int | None,
+                        skill_text: str | None, brief: str | None, sidecar: str | None,
                         key_facts: list[dict]) -> str:
-    return _render("digest", title=title or "(untitled)",
+    return _render("digest", filename=filename or "(unknown)", title=title or "(untitled)",
                    document_type=document_type or "(unknown)",
                    page_count=page_count or "(unknown)",
+                   brief=brief or "(none)", skill_text=skill_text or "(none)",
+                   sidecar=sidecar or "(none)",
                    key_facts=json.dumps(key_facts, ensure_ascii=False))
 
 

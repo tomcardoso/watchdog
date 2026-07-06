@@ -416,15 +416,19 @@ def _stitch_digest(doc: dict, page_count: int | None) -> str:
 
 
 async def _compose_digest(doc: dict, page_count: int | None, model: str, backend: str | None,
-                          filename: str) -> tuple[str, float]:
+                          filename: str, skill_text: str | None, brief: str | None,
+                          sidecar: str | None) -> tuple[str, float]:
     """One small model call composing the whole-document digest from the merged key_facts
     (#279) — no section call ever sees the whole document, so this runs once after merge, on the
     extractor tier (the same model that read the sections), so both digest paths — inline for a
-    whole-doc extraction, post-merge here — use one model. Falls back to the deterministic stitch
+    whole-doc extraction, post-merge here — use one model. It is handed the same context a
+    whole-document extractor gets short of the raw text (filename, domain skill, brief, sidecar),
+    with the merged key_facts standing in for the text. Falls back to the deterministic stitch
     on any model failure or an empty response; returns (summary, cost)."""
     prompt = prompts.build_digest_prompt(
-        title=doc.get("title", ""), document_type=doc.get("document_type", ""),
-        page_count=page_count, key_facts=_briefing_facts(doc))
+        filename=filename, title=doc.get("title", ""), document_type=doc.get("document_type", ""),
+        page_count=page_count, skill_text=skill_text, brief=brief, sidecar=sidecar,
+        key_facts=_briefing_facts(doc))
     try:
         r = await _call_model(task="digest", model=model, backend=backend,
                               prompt=prompt, schema=schemas.DIGEST,
@@ -467,7 +471,8 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
     doc = extraction.setdefault("document", {})
     page_count = pf.get("page_count") or len(pf.get("pages", []))
     doc["summary"], digest_cost = await _compose_digest(
-        doc, page_count, model, backend, pf["filename"])
+        doc, page_count, model, backend, pf["filename"],
+        skill_text, brief, _read_sidecar(vault, pf["filename"]))
     cost += digest_cost
     _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault,
                     skill_text=skill_text, extract_model=model, extract_effort=effort)

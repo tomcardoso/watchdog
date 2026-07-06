@@ -1299,7 +1299,8 @@ def test_extract_sectioned_composes_digest_after_merge(tmp_path, monkeypatch):
     calls = []
 
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
-        calls.append({"task": task, "model": model, "backend": backend, "schema": schema})
+        calls.append({"task": task, "model": model, "backend": backend, "schema": schema,
+                      "prompt": prompt})
         parsed = _SEC1 if task == "extract-section" else {"summary": "Composed digest text."}
         return model_client.ModelResult(parsed=parsed, text="", model=model or "m",
                                         backend=backend or "b", auth_mode="subscription",
@@ -1307,13 +1308,18 @@ def test_extract_sectioned_composes_digest_after_merge(tmp_path, monkeypatch):
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
     extraction, scratchpad, cost, ok, errors = asyncio.run(orchestrate._extract_sectioned(
-        vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report", backend="claude-api"))
+        vault, "abc123", pf, "SKILL TEXT", plan, "sonnet", "annual-report", backend="claude-api",
+        brief="CHASE THE FRAUD"))
 
     digest_calls = [c for c in calls if c["task"] == "digest"]
     assert len(digest_calls) == 1
     assert digest_calls[0]["schema"] is schemas.DIGEST
     assert digest_calls[0]["model"] == "sonnet"        # extractor tier, not finalizer
     assert digest_calls[0]["backend"] == "claude-api"  # same backend the sections used
+    # Extractor-tier context parity (#279): the digest prompt carries the skill + brief.
+    assert "SKILL TEXT" in digest_calls[0]["prompt"]
+    assert "CHASE THE FRAUD" in digest_calls[0]["prompt"]
+    assert "test-doc.pdf" in digest_calls[0]["prompt"]
     assert extraction["document"]["summary"] == "Composed digest text."
     assert ok, errors
     assert cost == pytest.approx(0.02)   # one section call + one digest call

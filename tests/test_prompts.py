@@ -86,18 +86,26 @@ def test_first_section_prompt_still_fills_metadata():
 
 def test_build_digest_prompt_renders_title_type_pages_and_facts():
     facts = [{"fact": "Filed in 2024", "date": "2024-01-15"}, {"fact": "Revenue grew"}]
-    p = prompts.build_digest_prompt(title="Acme AR", document_type="Annual Report",
-                                    page_count=42, key_facts=facts)
+    p = prompts.build_digest_prompt(filename="acme-ar.pdf", title="Acme AR",
+                                    document_type="Annual Report", page_count=42,
+                                    skill_text="THE DOMAIN SKILL", brief="CHASE THE FRAUD",
+                                    sidecar="SIDECAR NOTES", key_facts=facts)
+    assert "acme-ar.pdf" in p
     assert "Acme AR" in p
     assert "Annual Report" in p
     assert "42" in p
+    assert "THE DOMAIN SKILL" in p        # extractor-tier context parity (#279)
+    assert "CHASE THE FRAUD" in p
+    assert "SIDECAR NOTES" in p
     assert "Filed in 2024" in p and "Revenue grew" in p
 
 
 def test_build_digest_prompt_falls_back_when_fields_missing():
-    p = prompts.build_digest_prompt(title="", document_type="", page_count=None, key_facts=[])
+    p = prompts.build_digest_prompt(filename="", title="", document_type="", page_count=None,
+                                    skill_text=None, brief=None, sidecar=None, key_facts=[])
     assert "(untitled)" in p
     assert "(unknown)" in p
+    assert "(none)" in p
 
 
 def test_extract_prompt_includes_instructions_and_data():
