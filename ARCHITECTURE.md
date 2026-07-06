@@ -226,6 +226,21 @@ section seen so far (rebuilt fresh each section, one line per entity, not a runn
 concatenation) plus only the immediately preceding section's `observations` text; and,
 like whole-document extraction, it includes the investigation brief (D49).
 
+**Whole-document digest (`document.summary`, #279).** No section call ever sees the whole
+document, so no section emits `document.summary` any more. Immediately after
+`merge.merge_extractions` (and before `_stamp_document`), one small model call
+(`orchestrate._compose_digest`, on the **extractor tier** — the same `extract_model`/backend that
+read the sections, not the finalizer tier) composes the digest from the merged `key_facts` plus
+the same context a whole-document extractor is handed short of the raw text itself — filename,
+title, document_type, page_count, the domain skill, the investigation brief, and the sidecar
+(the merged `key_facts` stand in for the text). A failed or empty response falls back to
+`_stitch_digest`, a deterministic orientation line plus the first few facts as plain
+sentences — degraded but valid, never worth a retry loop. Non-sectioned documents compose
+the same field **inline**, in the single whole-document extraction call (rewritten field
+spec in `extract_instructions.md`) — zero extra model calls, full-text grounding. Both paths
+thus write `document.summary` at the extractor tier; they differ only in grounding — full text
+inline vs. the merged `key_facts` post-merge — because no single call can hold a sectioned doc.
+
 **Prompt caching (`claude-api` only).** `build_extract_prompt`/`build_section_prompt` return a
 list of Anthropic content blocks instead of one string: a stable block (instructions + brief,
 constant for the whole run), a skill block (constant per document type, carrying the
@@ -800,7 +815,7 @@ See D45, D46, D47, D48, D61.
 
 These are the **governing rules of the pipeline** — the canonical statement of each principle. They are always true; violating one needs a *new, numbered decision* that supersedes the invariant, not just a code change. Read them first. The dated history of how each was established and refined lives in [DECISIONS.md](DECISIONS.md); where a decision operates within an invariant, *this* section is the authority on the principle and the decision entry records the specific change, rationale, and tradeoff.
 
-- **I1 — Deterministic code writes; the model only reasons.** Anything derivable in Python (document identity, provenance, slugs, role targets, timeline fan-out) is stamped in code, never paid for in model output — and the model is not asked to restate as prose what it already emitted structurally. *History: D2, D18, D24–D26, D29–D31, D33, D34, D75, D77.*
+- **I1 — Deterministic code writes; the model only reasons.** Anything derivable in Python (document identity, provenance, slugs, role targets, timeline fan-out) is stamped in code, never paid for in model output — and the model is not asked to restate as prose what it already emitted structurally. Carve-out: `document.summary` (#279) is a bounded, deliberate exception — a whole-document digest synthesized from `key_facts`, capped at three paragraphs and grounded (every claim in it must also exist in `key_facts`). That grounding is a **prompt instruction, not a verified postcondition** — unlike quote verification, no code checks the digest against `key_facts`, so a hallucinated claim would not be caught. *History: D2, D18, D24–D26, D29–D31, D33, D34, D75, D77, D78.*
 - **I2 — Local-first preprocessing.** The *source documents you were given* never leave the machine, and chew costs no API tokens. This is a boundary on **source-doc egress**, not a vow of web abstinence — the investigation layer runs as agentic Claude Code sessions and web research (§14, I5) is allowed, since anything on the open web is already public. *History: D1, D45.*
 - **I3 — Skills and prompt templates are global package resources** — read directly, never copied per-vault — and prompt templates live in their own directory so they never leak into the classifier index. *History: D21, D28.*
 - **I4 — Configured model and effort only; no automatic escalation.** Each stage's model *and* its reasoning effort are explicit knobs with stable defaults; a failed call retries on the *same* model at the *same* effort — the pipeline never silently bumps either to recover. *History: D20, D36.*

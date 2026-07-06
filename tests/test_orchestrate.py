@@ -10,7 +10,7 @@ import pytest
 
 from watchdog import model_client
 from watchdog.cmd import auth as auth_module
-from watchdog.pipeline import batch_extract, orchestrate, timeline
+from watchdog.pipeline import batch_extract, orchestrate, schemas, timeline
 
 from tests.test_write_vault import make_vault
 
@@ -1229,12 +1229,13 @@ def test_sectioned_carry_forward_dedupes_entities_and_caps_observations(tmp_path
                    "timeline_events": [], "roles": []}
     sections_out = [
         {"document": {"sha256": "abc123", "filename": "test-doc.pdf", "title": "Acme AR",
-                      "document_type": "Annual Report", "summary": "s",
+                      "document_type": "Annual Report",
                       "key_facts": [{"fact": "x", "basis": "stated"}]},
          "entities": [acme_entity], "morgue_entity_id": "acme-corp",
          "morgue_document_type": "annual-report", "observations": "section 1 obs"},
         {"entities": [acme_entity], "observations": "section 2 obs"},
         {"entities": [acme_entity], "observations": "section 3 obs"},
+        {"summary": "digest text"},   # the post-merge digest call (#279)
     ]
     seen_prompts = []
 
@@ -1248,8 +1249,8 @@ def test_sectioned_carry_forward_dedupes_entities_and_caps_observations(tmp_path
         vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report",
         brief="INVESTIGATE THE FRAUD"))
 
-    assert len(seen_prompts) == 3
-    flat_prompts = [_flat(p) for p in seen_prompts]
+    assert len(seen_prompts) == 4   # 3 section calls + 1 post-merge digest call
+    flat_prompts = [_flat(p) for p in seen_prompts[:3]]
     # section 2's prompt carries section 1's single entity line, once (not duplicated)
     assert flat_prompts[1].count("acme-corp | Acme Corp | Company") == 1
     assert "section 1 obs" in flat_prompts[1]
@@ -1261,6 +1262,166 @@ def test_sectioned_carry_forward_dedupes_entities_and_caps_observations(tmp_path
     # A6: the investigation brief reaches every section's prompt
     for p in flat_prompts:
         assert "INVESTIGATE THE FRAUD" in p
+
+
+# ── whole-document digest for sectioned extraction (#279) ───────────────────────
+
+def _sectioned_plan_and_pf(vault, sha="abc123", filename="test-doc.pdf"):
+    tmpd = vault / ".watchdog" / "tmp"
+    tmpd.mkdir(parents=True, exist_ok=True)
+    (tmpd / f"section_{sha}_01.md").write_text("<!-- PAGE 1 -->\n\npart 1")
+    plan = {"sectioned": True, "page_count": 1, "sections": [
+        {"index": 1, "label": "pages 1", "paginated": True,
+         "pages_path": f".watchdog/tmp/section_{sha}_01.md"},
+    ]}
+    pf = {"filename": filename, "existing_entities": [], "known_document_types": [],
+          "page_count": 1, "original_path": f"_INCOMING/{filename}"}
+    return plan, pf
+
+
+_SEC1 = {
+    "document": {"sha256": "abc123", "filename": "test-doc.pdf", "title": "Acme AR",
+                 "document_type": "Annual Report",
+                 "key_facts": [{"fact": "Filed in 2024", "basis": "stated"}]},
+    "entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company", "roles": []}],
+    "morgue_entity_id": "acme-corp", "morgue_document_type": "annual-report",
+    "observations": "",
+}
+
+
+def test_extract_sectioned_composes_digest_after_merge(tmp_path, monkeypatch):
+    """Exactly one additional _call_model runs after the section calls, with task="digest" and
+    schema=schemas.DIGEST; it runs on the extractor model/backend (the same that read the
+    sections, #279), its summary lands in document.summary and its cost is added."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, text="a very long document ...")
+    plan, pf = _sectioned_plan_and_pf(vault)
+    calls = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        calls.append({"task": task, "model": model, "backend": backend, "schema": schema,
+                      "prompt": prompt})
+        parsed = _SEC1 if task == "extract-section" else {"summary": "Composed digest text."}
+        return model_client.ModelResult(parsed=parsed, text="", model=model or "m",
+                                        backend=backend or "b", auth_mode="subscription",
+                                        cost_usd=0.01)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    extraction, scratchpad, cost, ok, errors = asyncio.run(orchestrate._extract_sectioned(
+        vault, "abc123", pf, "SKILL TEXT", plan, "sonnet", "annual-report", backend="claude-api",
+        brief="CHASE THE FRAUD"))
+
+    digest_calls = [c for c in calls if c["task"] == "digest"]
+    assert len(digest_calls) == 1
+    assert digest_calls[0]["schema"] is schemas.DIGEST
+    assert digest_calls[0]["model"] == "sonnet"        # extractor tier, not finalizer
+    assert digest_calls[0]["backend"] == "claude-api"  # same backend the sections used
+    # Extractor-tier context parity (#279): the digest prompt carries the skill + brief.
+    assert "SKILL TEXT" in digest_calls[0]["prompt"]
+    assert "CHASE THE FRAUD" in digest_calls[0]["prompt"]
+    assert "test-doc.pdf" in digest_calls[0]["prompt"]
+    assert extraction["document"]["summary"] == "Composed digest text."
+    assert ok, errors
+    assert cost == pytest.approx(0.02)   # one section call + one digest call
+
+
+def test_digest_model_error_falls_back_to_deterministic_stitch(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, text="a very long document ...")
+    plan, pf = _sectioned_plan_and_pf(vault)
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "extract-section":
+            return model_client.ModelResult(parsed=_SEC1, text="", model="m", backend="b",
+                                            auth_mode="subscription", cost_usd=0.01)
+        raise model_client.ModelError("boom")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    extraction, scratchpad, cost, ok, errors = asyncio.run(orchestrate._extract_sectioned(
+        vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
+
+    summary = extraction["document"]["summary"]
+    assert "Acme AR" in summary and "Filed in 2024" in summary
+    assert ok, errors
+
+
+def test_digest_empty_response_falls_back_to_deterministic_stitch(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, text="a very long document ...")
+    plan, pf = _sectioned_plan_and_pf(vault)
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        parsed = _SEC1 if task == "extract-section" else {"summary": ""}
+        return model_client.ModelResult(parsed=parsed, text="", model="m", backend="b",
+                                        auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    extraction, scratchpad, cost, ok, errors = asyncio.run(orchestrate._extract_sectioned(
+        vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
+
+    summary = extraction["document"]["summary"]
+    assert "Acme AR" in summary and "Filed in 2024" in summary
+    assert ok, errors
+
+
+def test_run_sectioned_path_composes_digest_on_extractor_tier(tmp_path, monkeypatch):
+    """run()'s sectioned path composes the digest on the extractor model/backend (#279) — the
+    digest is extraction output, not a finalizer task, so it rides extract_model, not post_model."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, text="a very long document ...")
+    plan, _ = _sectioned_plan_and_pf(vault)
+    monkeypatch.setattr(orchestrate.section, "run", lambda v, s: plan)
+    seen = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        seen.append((task, model, backend))
+        parsed = {
+            "classify": {"skill": "general-records.md"},
+            "extract-section": _SEC1,
+            "digest": {"summary": "digest text"},
+            "entity-synthesis": {"entity_syntheses": []},
+            "timeline-dedup": {"groups": []},
+            "briefing": {"investigation_status": "x", "what_was_ingested": []},
+        }.get(task, {})
+        return model_client.ModelResult(parsed=parsed, text="", model=model or "m",
+                                        backend=backend or "b", auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate.run(vault, extract_model="sonnet", extract_backend="claude-api",
+                                post_model="haiku", post_backend="claude-api"))
+
+    digest_calls = [c for c in seen if c[0] == "digest"]
+    assert digest_calls == [("digest", "sonnet", "claude-api")]   # extractor tier, not post_model
+
+
+def test_stitch_digest_with_title_type_pages_and_facts():
+    doc = {"title": "Acme AR", "document_type": "Annual Report",
+           "key_facts": [{"fact": "Filed in 2024."}, {"fact": "Revenue grew"}]}
+    s = orchestrate._stitch_digest(doc, 12)
+    assert s.startswith("Acme AR — Annual Report, 12 pages.")
+    assert "Filed in 2024." in s
+    assert "Revenue grew." in s
+
+
+def test_stitch_digest_without_title_or_type_or_pages():
+    assert orchestrate._stitch_digest({}, None) == "Untitled document."
+
+
+def test_stitch_digest_empty_facts_yields_orientation_line_alone():
+    doc = {"title": "Acme AR", "document_type": "Annual Report"}
+    assert orchestrate._stitch_digest(doc, 5) == "Acme AR — Annual Report, 5 pages."
+
+
+def test_stitch_digest_caps_at_eight_facts():
+    facts = [{"fact": f"Fact {i}"} for i in range(12)]
+    s = orchestrate._stitch_digest({"title": "T", "key_facts": facts}, None)
+    assert s.count("Fact ") == 8
+
+
+def test_stitch_digest_skips_blank_facts():
+    """Empty/whitespace-only or missing fact text is dropped, not rendered as a bare '.'."""
+    doc = {"title": "T", "key_facts": [{"fact": "Real fact"}, {"fact": "  "}, {}, {"fact": ""}]}
+    assert orchestrate._stitch_digest(doc, None) == "T. Real fact."
 
 
 # ── claude-batch (#214) ─────────────────────────────────────────────────────────

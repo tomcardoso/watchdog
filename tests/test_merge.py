@@ -101,6 +101,22 @@ def test_merge_entity_has_no_fact_or_timeline_fields():
     assert set(ent) >= {"id", "name", "type", "aliases", "roles"}
 
 
+def test_merge_document_has_no_summary_when_no_section_emits_one():
+    """No section emits document.summary any more (#279) — the digest is composed post-merge.
+    A merge of sections that don't supply the field must still produce a clean document dict,
+    not a stale/empty summary key."""
+    sections = [
+        {"document": {"sha256": "x", "filename": "f",
+                      "key_facts": [{"fact": "Filed in 2024", "entities": ["a"]}]},
+         "entities": [{"id": "a", "name": "A", "type": "Person", "aliases": [], "roles": []}],
+         "morgue_entity_id": "a", "morgue_document_type": "annual-report"},
+        {"document": {"key_facts": [{"fact": "Revenue grew", "entities": ["a"]}]},
+         "entities": [{"id": "a", "name": "A", "type": "Person", "aliases": [], "roles": []}]},
+    ]
+    merged = merge_extractions(sections)
+    assert "summary" not in merged["document"]
+
+
 def test_merge_unions_key_fact_entity_tags_across_sections():
     """The same fact tagged with different entities in two sections folds, unioning the tags."""
     sections = [
