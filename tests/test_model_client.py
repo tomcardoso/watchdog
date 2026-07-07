@@ -176,6 +176,24 @@ def test_resolve_effort(provider, model_id, effort, expected):
     assert mc._resolve_effort(provider, model_id, effort) == expected
 
 
+# ── context windows (provider-aware sectioning, #321) ─────────────────────────
+
+@pytest.mark.parametrize("model, window", [
+    ("sonnet", 200_000),                        # tier → claude
+    ("opus", 200_000),
+    (None, 200_000),                            # default tier (sonnet)
+    ("deepseek-v4-flash", 1_000_000),
+    ("deepseek-v4-flash-thinking", 1_000_000),  # -thinking marker still matches deepseek-v4
+    ("deepseek-v4-pro", 1_000_000),
+    ("deepseek-chat", 128_000),                 # legacy id → deepseek fallback, not v4
+    ("gpt-5-mini", 400_000),
+    ("gpt-4o", 128_000),
+    ("some-unknown-model", 128_000),            # conservative default for anything unlisted
+])
+def test_context_window(model, window):
+    assert mc.context_window(model) == window
+
+
 # ── OpenAI-compatible backends (#125) ──────────────────────────────────────────
 
 @pytest.fixture

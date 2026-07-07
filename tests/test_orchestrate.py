@@ -1274,7 +1274,7 @@ def test_orchestrator_sectioned_path(tmp_path, monkeypatch):
     (tmpd / "section_abc123_01.md").write_text("<!-- PAGE 1 -->\n\nAcme part 1")
     (tmpd / "section_abc123_02.md").write_text("<!-- PAGE 2 -->\n\nAcme part 2")
 
-    monkeypatch.setattr(orchestrate.section, "run", lambda v, s: {
+    monkeypatch.setattr(orchestrate.section, "run", lambda v, s, **kw: {
         "sectioned": True, "page_count": 2, "sections": [
             {"index": 1, "label": "pages 1–1", "paginated": True, "pages_path": ".watchdog/tmp/section_abc123_01.md"},
             {"index": 2, "label": "pages 2–2", "paginated": True, "pages_path": ".watchdog/tmp/section_abc123_02.md"},
@@ -1485,7 +1485,7 @@ def test_run_sectioned_path_composes_digest_on_extractor_tier(tmp_path, monkeypa
     vault = make_vault(tmp_path)
     _queue_doc(vault, text="a very long document ...")
     plan, _ = _sectioned_plan_and_pf(vault)
-    monkeypatch.setattr(orchestrate.section, "run", lambda v, s: plan)
+    monkeypatch.setattr(orchestrate.section, "run", lambda v, s, **kw: plan)
     seen = []
 
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):

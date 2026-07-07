@@ -120,6 +120,39 @@ def _resolve_effort(provider: str, model_id: str, effort: str | None) -> str | N
     return policy(model_id, effort) if policy else None
 
 
+# Model context windows in tokens, for provider-aware sectioning (#321): the larger a model's
+# window, the more of a document it can read in one extraction call before sectioning pays off.
+# Keyed by a substring of the resolved model id, **most specific first** (dict order is honoured),
+# so `deepseek-v4` wins over the legacy `deepseek` fallback. Anything unmatched gets a
+# conservative default. These are the vendors' published windows, not Watchdog's per-call budget —
+# the sectioning policy reserves headroom from them (see `pipeline/section.py`).
+_CONTEXT_WINDOWS = {
+    "deepseek-v4": 1_000_000,   # DeepSeek V4 flash/pro
+    "deepseek":      128_000,   # legacy deepseek-chat/reasoner
+    "gpt-5":         400_000,
+    "gpt-4":         128_000,
+    "o1":            200_000,
+    "o3":            200_000,
+    "o4":            200_000,
+    "claude":        200_000,   # Sonnet/Opus/Haiku 4.x
+}
+_DEFAULT_CONTEXT_WINDOW = 128_000
+
+
+def context_window(model: str | None) -> int:
+    """Token context window for a stage's model, for provider-aware sectioning (#321).
+
+    `model` may be a tier name (haiku/sonnet/opus), a raw provider id (`deepseek-v4-flash`,
+    `gpt-5-mini`), or None for the default tier — resolved first, then matched against the
+    substring table. Unlisted ids fall back to a conservative default rather than raising, so a
+    new or misspelled id degrades to safe (small-chunk) sectioning instead of an overrun."""
+    model_id = resolve_model_id(model or DEFAULT_TIER).lower()
+    for marker, window in _CONTEXT_WINDOWS.items():
+        if marker in model_id:
+            return window
+    return _DEFAULT_CONTEXT_WINDOW
+
+
 class ModelError(RuntimeError):
     """The model could not return schema-valid JSON, or the chosen backend can't run."""
 

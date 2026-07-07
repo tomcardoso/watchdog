@@ -194,27 +194,30 @@ _CONFIGURE_KEYS = {
         "default": False,
     },
     "section_token_threshold": {
-        "short": "Estimated tokens above which a document is split for sectioned extraction (default: 120000)",
+        "short": "Estimated tokens above which a document is split for sectioned extraction (default: model-aware)",
         "help": (
             "Documents whose estimated token count is at or under this value are extracted\n"
             "  whole; larger ones are split into overlapping sections and extracted sequentially\n"
             "  with a carried-forward entity list. Token count is estimated as chars/4.\n"
-            "  Lower it if whole-document extraction is overrunning the model's output ceiling on\n"
-            "  dense documents. Default: 120000."
+            "  By default this is derived from the extraction model's context window (about 60%\n"
+            "  of it) — so a 1M-window model like DeepSeek V4 reads far more of a document in one\n"
+            "  call than a 200K Claude window (120000). Set this to pin a fixed value as an\n"
+            "  advanced override — e.g. lower it if whole-document extraction is overrunning the\n"
+            "  model's output ceiling on dense documents."
         ),
         "type": "int",
-        "default": 120_000,
+        "default": None,
         "min": 1,
     },
     "section_token_budget": {
-        "short": "Target estimated tokens per section when sectioning a large document (default: 60000)",
+        "short": "Target estimated tokens per section when sectioning a large document (default: model-aware)",
         "help": (
             "When a document is sectioned (see section_token_threshold), pages are grouped into\n"
-            "  sections targeting roughly this many estimated tokens each.\n"
-            "  Default: 60000."
+            "  sections targeting roughly this many estimated tokens each. Defaults to half the\n"
+            "  threshold (model-aware); set it to pin a fixed value as an advanced override."
         ),
         "type": "int",
-        "default": 60_000,
+        "default": None,
         "min": 1,
     },
     "section_overlap_tokens": {
