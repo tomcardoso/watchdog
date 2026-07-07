@@ -22,6 +22,6 @@ pipx upgrade watchdog-intel
 
 ## Resources
 
-- [Getting started](https://github.com/tomcardoso/watchdog/blob/main/GETTING_STARTED.md)
-- [Install guide](https://github.com/tomcardoso/watchdog/blob/main/INSTALL.md)
+- [Getting started](https://github.com/tomcardoso/watchdog/blob/main/docs/getting-started.md)
+- [Install guide](https://github.com/tomcardoso/watchdog/blob/main/docs/install.md)
 - [Report an issue](https://github.com/tomcardoso/watchdog/issues)

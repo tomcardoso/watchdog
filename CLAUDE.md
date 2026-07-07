@@ -8,7 +8,17 @@ Two files, split by how often they're read. **[ARCHITECTURE.md](ARCHITECTURE.md)
 
 ## Documentation
 
-**When a change adds, removes, or modifies anything user-facing — CLI flags, `watchdog configure` keys, CLI commands, default values, or ingest workflow steps — update `README.md`, `GETTING_STARTED.md`, and `INSTALL.md` in the same change.** The configuration table in README, the processing section in GETTING_STARTED, and the ingest walkthrough in INSTALL are the three most likely to need updating. Treat doc updates as part of the definition of done, like tests.
+**When a change adds, removes, or modifies anything user-facing — CLI flags, `watchdog configure` keys, CLI commands, default values, or workflow steps — update the affected pages under `docs/` in the same change.** Every topic has exactly one canonical page; update that page and let the others keep linking to it, rather than re-explaining the topic in several places:
+
+- `docs/commands.md` — CLI commands, flags, and slash commands (the reference)
+- `docs/configuration.md` — `watchdog configure` keys, defaults, model backends, cost
+- `docs/install.md` — install steps, prerequisites, optional installs
+- `docs/getting-started.md` / `docs/investigating.md` — workflow walkthroughs
+- `docs/vault.md` — vault layout, entity-note structure, supported file types
+- `docs/skills.md` — the record-skill catalog (update when adding a skill)
+- `docs/troubleshooting.md` — failure modes and fixes
+
+`README.md` is a deliberately slim front door (~120 lines) — it names capabilities but documents nothing in detail; it only changes when the pitch, requirements, install two-liner, or quick start change. Do not add command tables, configuration keys, or workflow detail back into it. The docs are written for working journalists who may never have used a terminal: serious, precise, conversational — no exclamation marks, no hype, short paragraphs, jargon defined at first use, Canadian English. Treat doc updates as part of the definition of done, like tests.
 
 ## Testing
 

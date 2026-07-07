@@ -338,8 +338,8 @@ _CONFIGURE_KEYS = {
             "    BAAI/bge-base-en-v1.5  (768-dim, 210 MB — same family, easy step up)\n"
             "    snowflake/snowflake-arctic-embed-s  (384-dim, 130 MB — same size class)\n"
             "  Must be a model fastembed can load (see `TextEmbedding.list_supported_models()`).\n"
-            "  Changing this requires re-ingesting documents — vectors from two models aren't\n"
-            "  comparable, so the old index can't be mixed with the new one.\n"
+            "  After changing this, run `watchdog reindex` — vectors from two models aren't\n"
+            "  comparable, so the index is rebuilt from disk (no re-ingest needed).\n"
             "  Default: BAAI/bge-small-en-v1.5."
         ),
         "type": "str",
@@ -516,7 +516,7 @@ def cmd_about(_args) -> None:
     print()
     print(f"  {_DIM}GitHub   {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog{_RESET}")
     print(f"  {_DIM}Issues   {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog/issues{_RESET}")
-    print(f"  {_DIM}Install  {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog/blob/main/INSTALL.md{_RESET}")
+    print(f"  {_DIM}Install  {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog/blob/main/docs/install.md{_RESET}")
     print()
     print(f"  {_DIM}ASCII art: dog in 'watchdog new' by Felix Lee; dog in 'watchdog about' by Sarah Kearsley{_RESET}")
     print()
