@@ -363,6 +363,46 @@ def test_openai_backend_no_thinking_param(monkeypatch):
     assert "thinking" not in captured["body"]
 
 
+@pytest.mark.parametrize("model_id, reasoning", [
+    ("gpt-5", True), ("gpt-5-mini", True), ("gpt-5.4", True), ("gpt-5.5-pro", True),
+    ("o1", True), ("o3-mini", True), ("o4-mini", True),
+    ("gpt-4o", False), ("gpt-4.1", False), ("chatgpt-4o-latest", False),
+    ("some-new-model", False),   # unlisted → chat, the safe default (never sends an unsupported param)
+])
+def test_openai_is_reasoning(model_id, reasoning):
+    assert mc._openai_is_reasoning(model_id) is reasoning
+
+
+def test_openai_reasoning_model_uses_max_completion_tokens(monkeypatch):
+    # OpenAI reasoning models reject max_tokens → send max_completion_tokens instead.
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async("p", "gpt-5-mini", SCHEMA, "sk-o", 8000,
+                                          base_url="https://api.openai.com/v1"))
+    assert captured["body"]["max_completion_tokens"] == 8000
+    assert "max_tokens" not in captured["body"]
+
+
+def test_openai_chat_model_uses_max_tokens(monkeypatch):
+    # A chat model takes the classic max_tokens field.
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async("p", "gpt-4o", SCHEMA, "sk-o", 8000,
+                                          base_url="https://api.openai.com/v1"))
+    assert captured["body"]["max_tokens"] == 8000
+    assert "max_completion_tokens" not in captured["body"]
+
+
+def test_deepseek_uses_max_tokens(monkeypatch):
+    # DeepSeek speaks the classic wire format regardless of thinking mode → max_tokens.
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+                                          base_url="https://api.deepseek.com"))
+    assert captured["body"]["max_tokens"] == 8000
+    assert "max_completion_tokens" not in captured["body"]
+
+
 # ── JSON extraction ───────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("text,expected", [
