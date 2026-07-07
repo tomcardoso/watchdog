@@ -169,8 +169,8 @@ def test_effort_omitted_when_unset(api_key_auth, monkeypatch):
     ("openai", "gpt-5-mini", "low", "low"),              # OpenAI reasoning model → pass through
     ("openai", "gpt-5", "high", "high"),                 # OpenAI: high is NOT a no-op default
     ("openai", "gpt-4o", "low", None),                   # OpenAI chat model → dropped
-    ("deepseek", "deepseek-reasoner", "high", None),     # DeepSeek: no portable knob
-    ("deepseek", "deepseek-chat", "low", None),
+    ("deepseek", "deepseek-v4-pro", "high", None),     # DeepSeek: no portable knob
+    ("deepseek", "deepseek-v4-flash", "low", None),
 ])
 def test_resolve_effort(provider, model_id, effort, expected):
     assert mc._resolve_effort(provider, model_id, effort) == expected
@@ -224,10 +224,10 @@ def test_deepseek_drops_effort(monkeypatch):
 
 
 def test_openai_cost():
-    assert mc._openai_cost("deepseek-chat",
-                           {"prompt_tokens": 1_000_000, "completion_tokens": 0}) == pytest.approx(0.27)
+    assert mc._openai_cost("deepseek-v4-flash",
+                           {"prompt_tokens": 1_000_000, "completion_tokens": 0}) == pytest.approx(0.14)
     assert mc._openai_cost("unknown-model", {"prompt_tokens": 100}) is None
-    assert mc._openai_cost("deepseek-chat", None) is None
+    assert mc._openai_cost("deepseek-v4-flash", None) is None
 
 
 def test_openai_backend_request_shape(monkeypatch):
@@ -250,7 +250,7 @@ def test_openai_backend_request_shape(monkeypatch):
             return FakeResp()
 
     monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
-    out = asyncio.run(mc._openai_complete_async("prompt", "deepseek-reasoner", SCHEMA,
+    out = asyncio.run(mc._openai_complete_async("prompt", "deepseek-v4-flash", SCHEMA,
                                                 "sk-ds", 8000, "high",
                                                 base_url="https://api.deepseek.com"))
     assert out["text"] == '{"name": "Acme"}'
@@ -259,7 +259,66 @@ def test_openai_backend_request_shape(monkeypatch):
     assert captured["body"]["reasoning_effort"] == "high"
     assert captured["body"]["response_format"] == {"type": "json_object"}
     assert "JSON" in captured["body"]["messages"][1]["content"]   # required for json_object mode
-    assert out["cost_usd"] == pytest.approx(10 * 0.55e-6 + 5 * 2.19e-6)
+    assert out["cost_usd"] == pytest.approx(10 * 0.14e-6 + 5 * 0.28e-6)
+
+
+def test_split_deepseek_thinking():
+    assert mc._split_deepseek_thinking("deepseek-v4-flash") == ("deepseek-v4-flash", False)
+    assert mc._split_deepseek_thinking("deepseek-v4-flash-thinking") == ("deepseek-v4-flash", True)
+    assert mc._split_deepseek_thinking("deepseek-v4-pro-thinking") == ("deepseek-v4-pro", True)
+
+
+def _fake_httpx(monkeypatch, captured):
+    """Patch httpx.AsyncClient to capture the request body and return a canned OK response."""
+    import httpx
+
+    class FakeResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self):
+            return {"choices": [{"message": {"content": '{"name": "Acme"}'}}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+
+    class FakeClient:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, headers=None, json=None):
+            captured.update(url=url, headers=headers, body=json)
+            return FakeResp()
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+
+
+def test_deepseek_thinking_toggle(monkeypatch):
+    # Bare id → thinking explicitly disabled (the non-thinking default), sent even though the
+    # provider default is enabled, so the mode is pinned.
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    out = asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+                                                base_url="https://api.deepseek.com"))
+    assert captured["body"]["thinking"] == {"type": "disabled"}
+    assert captured["body"]["model"] == "deepseek-v4-flash"        # marker not present
+    assert out["cost_usd"] == pytest.approx(10 * 0.14e-6 + 5 * 0.28e-6)
+
+    # `-thinking` marker → thinking enabled; the bare id is used for the request + cost lookup.
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    out = asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash-thinking", SCHEMA,
+                                                "sk-ds", 8000, base_url="https://api.deepseek.com"))
+    assert captured["body"]["thinking"] == {"type": "enabled"}
+    assert captured["body"]["model"] == "deepseek-v4-flash"        # stripped before the request
+    assert out["cost_usd"] == pytest.approx(10 * 0.14e-6 + 5 * 0.28e-6)   # priced on the bare id
+
+
+def test_openai_backend_no_thinking_param(monkeypatch):
+    # Non-DeepSeek OpenAI-compatible providers never get a thinking toggle, and the marker is
+    # left untouched (it is a DeepSeek-only convention).
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async("p", "gpt-5-mini", SCHEMA, "sk-o", 8000,
+                                          base_url="https://api.openai.com/v1"))
+    assert "thinking" not in captured["body"]
 
 
 # ── JSON extraction ───────────────────────────────────────────────────────────

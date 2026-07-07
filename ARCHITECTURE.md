@@ -704,7 +704,8 @@ completed purge, and the CLI hint says so.
   the JSON, retries on the same model on failure, and reports cost/latency. **Provider
   abstraction:** the abstract `effort` intent is mapped to each provider's native control by
   a per-provider policy (`_EFFORT_POLICY`: Claude `output_config.effort`, OpenAI
-  `reasoning_effort` on reasoning models only, DeepSeek none), and `_resolve_backend_auth`
+  `reasoning_effort` on reasoning models only, DeepSeek none — its thinking mode is a separate
+  on/off carried in the model id via a `-thinking` suffix, default off, D88), and `_resolve_backend_auth`
   resolves the key per backend — Claude backends via the subscription/api-key mode, others
   via their own stored key (`watchdog auth set openai|deepseek`) independent of the Claude
   mode. Auth is resolved by `cmd/auth.py` (see #119, D37).

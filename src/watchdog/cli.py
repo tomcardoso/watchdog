@@ -397,7 +397,7 @@ def main() -> None:
     _model_choices = ["sonnet", "opus", "haiku"]
     _effort_choices = ["low", "medium", "high"]
     _model_help = ("a Claude tier (sonnet/opus/haiku) or a backend:model form "
-                   "(claude-api:opus, openai:gpt-5-mini, deepseek:deepseek-chat)")
+                   "(claude-api:opus, openai:gpt-5-mini, deepseek:deepseek-v4-flash)")
     p_ingest = sub.add_parser("ingest", help="Extract queued documents (runs the Python pipeline)")
     p_ingest.add_argument("--extractor-model", default=None, dest="extractor_model", metavar="MODEL",
                           help=f"Model for extraction — {_model_help}; overrides watchdog configure (default: sonnet)")
