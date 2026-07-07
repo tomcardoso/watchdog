@@ -182,10 +182,11 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    matches at any length**, so `BP`/`GE`/`3M` stay findable (D60). Pre-flight reports the digest's
    byte size and candidate count per document, surfaced during ingest, to size caps from real data.
 2. **Classify** — one cheap model call (`model_client.acomplete_json`, `classifier_model`,
-   default haiku) over the document's first `classify_pages` pages + the generated
-   in-memory skill index, returning the closest domain-skill filename (§6). Python reads that
-   one skill and injects it into the extraction prompt. **Skipped entirely when a skill is
-   pinned** for the run (`--skill` / `default_skill`) — that one skill is used for every
+   default haiku) over the document's first `classify_pages` pages, the document's `.yml`
+   provenance sidecar when present, and the generated in-memory skill index, returning the
+   closest domain-skill filename (§6). Python reads that one skill and injects it into the
+   extraction prompt. **Skipped entirely when a skill is pinned** for the run (`--skill` /
+   `default_skill`) — that one skill is used for every
    document, saving a model call per doc on known-homogeneous batches.
 3. **Extract** — one model call against the `EXTRACTION` schema. The model emits two layers
    (D26): a **fact layer** — `document.key_facts`, each a single material fact written once,
@@ -290,6 +291,12 @@ longer folded into the extractor.
   extraction call (the #87 tax); a separate haiku call is cheaper.
 - **Pinning.** `--skill` / `default_skill` skips this call entirely and uses one skill
   for the whole run (see §5, D21).
+- **Provenance-aware.** The classifier also sees the document's `.yml` sidecar (source +
+  collection note) when present, so a document whose type is ambiguous from its text alone —
+  a bare form, a scanned table — can be routed by where it came from, not text alone. The
+  sidecar is context, not a command: the classify prompt marks it as data and the constrained
+  schema (a skill filename) bounds the blast radius; the document text governs on disagreement.
+  See D84.
 - **Tradeoff.** `document_type` is `null` in the queue between chew and ingest; it is
   populated at ingest. Accepted — nothing downstream needs it earlier.
 - **Sections.** A sectioned document (§5) is classified once, on its full-text excerpt,

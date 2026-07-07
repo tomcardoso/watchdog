@@ -58,6 +58,16 @@ def test_section_prompt_renders_label():
     assert "pp.1-10" in _flat(p) and "{{" not in _flat(p)
 
 
+def test_classify_prompt_includes_sidecar_only_when_present():
+    without = prompts.build_classify_prompt("doc excerpt", "index line")
+    assert "excerpt" in without and "Provenance sidecar" not in without
+
+    with_sc = prompts.build_classify_prompt("doc excerpt", "index line",
+                                            "source: https://example.gov\nnotes: hint")
+    assert "Provenance sidecar" in with_sc
+    assert "hint" in with_sc and "example.gov" in with_sc
+
+
 def test_later_section_prompt_does_not_ask_for_summary():
     # No section ever emits document.summary any more (#279): the whole-document digest is
     # composed after merge — inline for a non-sectioned doc, via one post-merge model call for
