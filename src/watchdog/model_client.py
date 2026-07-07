@@ -126,6 +126,13 @@ def _resolve_effort(provider: str, model_id: str, effort: str | None) -> str | N
 # so `deepseek-v4` wins over the legacy `deepseek` fallback. Anything unmatched gets a
 # conservative default. These are the vendors' published windows, not Watchdog's per-call budget —
 # the sectioning policy reserves headroom from them (see `pipeline/section.py`).
+#
+# Windows are per-model, so add a more specific row above a broader one whenever a model diverges.
+# The `claude` row is a shared fallback only because every Claude tier Watchdog resolves today
+# (Haiku 4.5, Sonnet 4.6, Opus 4.8) has the same 200K *usable* window — Sonnet's 1M is beta-gated
+# behind a request header `_api_complete_async` does not send, so 200K is the correct figure, not
+# just a conservative one. A future tier whose standard window differs (e.g. a Sonnet that ships
+# 1M by default) gets its own `claude-sonnet-N` row above this fallback.
 _CONTEXT_WINDOWS = {
     "deepseek-v4": 1_000_000,   # DeepSeek V4 flash/pro
     "deepseek":      128_000,   # legacy deepseek-chat/reasoner
@@ -134,7 +141,7 @@ _CONTEXT_WINDOWS = {
     "o1":            200_000,
     "o3":            200_000,
     "o4":            200_000,
-    "claude":        200_000,   # Sonnet/Opus/Haiku 4.x
+    "claude":        200_000,   # shared fallback: Haiku 4.5 / Sonnet 4.6 / Opus 4.8 usable window
 }
 _DEFAULT_CONTEXT_WINDOW = 128_000
 

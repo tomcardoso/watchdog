@@ -181,6 +181,7 @@ def test_resolve_effort(provider, model_id, effort, expected):
 @pytest.mark.parametrize("model, window", [
     ("sonnet", 200_000),                        # tier → claude
     ("opus", 200_000),
+    ("haiku", 200_000),
     (None, 200_000),                            # default tier (sonnet)
     ("deepseek-v4-flash", 1_000_000),
     ("deepseek-v4-flash-thinking", 1_000_000),  # -thinking marker still matches deepseek-v4
