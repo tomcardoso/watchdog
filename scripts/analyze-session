@@ -30,11 +30,16 @@ _STAGE = {
 _STAGE_ORDER = ("classifier", "extractor", "finalizer")
 
 _ZERO_TOTALS = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
-                "cache_write_tokens": 0, "cost_usd": 0.0}
+                "cache_write_tokens": 0, "cost_usd": 0.0, "latency_s": 0.0}
 
 
 def _fmt(n: int) -> str:
     return f"{n:,}"
+
+
+def _fmt_secs(s: float) -> str:
+    """e.g. 8.2 -> '8.2s', 125.0 -> '2.1m' — per-call latency (#317)."""
+    return f"{s:.1f}s" if s < 60 else f"{s / 60:.1f}m"
 
 
 def _short_model(m: str | None) -> str:
@@ -105,7 +110,7 @@ def _print_stage(calls: list[dict]) -> dict:
     model_w = max(max(len(_short_model(c.get("model"))) for c in calls), len("Model"))
 
     hdr = (f"  {'Filename':<{name_w}}  {'Detail':<{detail_w}}  {'Model':<{model_w}}  "
-           f"{'Input':>8}  {'C.read':>8}  {'Output':>7}  {'Cost':>8}")
+           f"{'Input':>8}  {'C.read':>8}  {'Output':>7}  {'Cost':>8}  {'Latency':>8}")
     print(hdr)
     print(f"  {'─' * (len(hdr) - 2)}")
 
@@ -114,23 +119,25 @@ def _print_stage(calls: list[dict]) -> dict:
         name = c.get("filename") or c["task"]
         detail = c.get("detail") or "—"
         cost = c.get("cost_usd") or 0.0
+        latency = c.get("latency_s") or 0.0
         trunc_name = (name[:name_w - 1] + "…") if len(name) > name_w else name
         trunc_detail = (detail[:detail_w - 1] + "…") if len(detail) > detail_w else detail
         print(
             f"  {trunc_name:<{name_w}}  {trunc_detail:<{detail_w}}  {_short_model(c.get('model')):<{model_w}}  "
             f"{_fmt(c['input_tokens']):>8}  {_fmt(c['cache_read_tokens']):>8}  {_fmt(c['output_tokens']):>7}  "
-            f"${cost:>6.4f}"
+            f"${cost:>6.4f}  {_fmt_secs(latency):>8}"
         )
         totals["input_tokens"] += c["input_tokens"]
         totals["output_tokens"] += c["output_tokens"]
         totals["cache_read_tokens"] += c["cache_read_tokens"]
         totals["cache_write_tokens"] += c["cache_write_tokens"]
         totals["cost_usd"] += cost
+        totals["latency_s"] += latency
 
     print(
         f"  {'Subtotal':<{name_w}}  {'':<{detail_w}}  {'':<{model_w}}  "
         f"{_fmt(totals['input_tokens']):>8}  {_fmt(totals['cache_read_tokens']):>8}  "
-        f"{_fmt(totals['output_tokens']):>7}  ${totals['cost_usd']:>7.4f}"
+        f"{_fmt(totals['output_tokens']):>7}  ${totals['cost_usd']:>7.4f}  {_fmt_secs(totals['latency_s']):>8}"
     )
     return totals
 
@@ -169,7 +176,8 @@ def analyze_run(usage_file: Path, vault: Path) -> None:
     print(
         f"  TOTAL  ({n_calls} call{'s' if n_calls != 1 else ''})     "
         f"{_fmt(grand['input_tokens'])} in  ·  {_fmt(grand['cache_read_tokens'])} cache-read  ·  "
-        f"{_fmt(grand['output_tokens'])} out  ·  ${grand['cost_usd']:.4f}"
+        f"{_fmt(grand['output_tokens'])} out  ·  ${grand['cost_usd']:.4f}  ·  "
+        f"{_fmt_secs(grand['latency_s'])} total call time"
     )
     _print_cost_per_page(vault, grand["cost_usd"])
 
@@ -183,6 +191,7 @@ def _run_totals(calls: list[dict]) -> dict:
         t["cache_read_tokens"] += c["cache_read_tokens"]
         t["cache_write_tokens"] += c["cache_write_tokens"]
         t["cost_usd"] += cost
+        t["latency_s"] += c.get("latency_s") or 0.0
         stage_key = f"{_STAGE.get(c['task'], c['task'])}_cost"
         if stage_key in t:
             t[stage_key] += cost
@@ -207,7 +216,7 @@ def analyze_all(registry_dir: Path, vault: Path) -> None:
     name_w = min(28, max(len(name) for name, _, _ in rows))
 
     hdr = (f"  {'Run':<{name_w}}  {'Calls':>5}  {'Classifier':>10}  {'Extractor':>10}  {'Finalizer':>10}  "
-           f"{'Input':>9}  {'C.read':>9}  {'Output':>8}  {'Cost':>8}")
+           f"{'Input':>9}  {'C.read':>9}  {'Output':>8}  {'Cost':>8}  {'Time':>7}")
     print()
     print(hdr)
     print(f"  {'─' * (len(hdr) - 2)}")
@@ -219,7 +228,7 @@ def analyze_all(registry_dir: Path, vault: Path) -> None:
         print(
             f"  {trunc:<{name_w}}  {n_calls:>5}  ${t['classifier_cost']:>9.4f}  ${t['extractor_cost']:>9.4f}  "
             f"${t['finalizer_cost']:>9.4f}  {_fmt(t['input_tokens']):>9}  {_fmt(t['cache_read_tokens']):>9}  "
-            f"{_fmt(t['output_tokens']):>8}  ${t['cost_usd']:>7.4f}"
+            f"{_fmt(t['output_tokens']):>8}  ${t['cost_usd']:>7.4f}  {_fmt_secs(t['latency_s']):>7}"
         )
         for k in grand:
             grand[k] += t[k]
@@ -230,7 +239,7 @@ def analyze_all(registry_dir: Path, vault: Path) -> None:
         f"  {'TOTAL':<{name_w}}  {n_calls_total:>5}  ${grand['classifier_cost']:>9.4f}  "
         f"${grand['extractor_cost']:>9.4f}  ${grand['finalizer_cost']:>9.4f}  "
         f"{_fmt(grand['input_tokens']):>9}  {_fmt(grand['cache_read_tokens']):>9}  "
-        f"{_fmt(grand['output_tokens']):>8}  ${grand['cost_usd']:>7.4f}"
+        f"{_fmt(grand['output_tokens']):>8}  ${grand['cost_usd']:>7.4f}  {_fmt_secs(grand['latency_s']):>7}"
     )
     _print_cost_per_page(vault, grand["cost_usd"])
 

@@ -319,6 +319,18 @@ def test_orchestrator_extracts_and_writes_vault(tmp_path, monkeypatch):
     assert (vault / "timeline.md").exists()
 
 
+def test_prior_entity_digest_line_hidden_when_no_candidates(tmp_path, monkeypatch, capsys):
+    """#317: a fresh vault has no manifest entries to match, so the per-doc "prior-entity
+    digest" telemetry line (#216) is noise (always "0.0 KB · 0 candidates") — suppress it."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    _mock(monkeypatch, extraction=_extraction())
+
+    asyncio.run(orchestrate.run(vault))
+
+    assert "prior-entity digest" not in capsys.readouterr().out
+
+
 def test_orchestrator_reports_failed_on_postflight_rejection(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault)
@@ -688,7 +700,8 @@ def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
         }.get(task, {"entity_syntheses": []} if task == "entity-synthesis" else {"groups": []})
         return model_client.ModelResult(
             parsed=parsed, text="", model="claude-sonnet-4-6", backend="claude-api",
-            auth_mode="api-key", cost_usd=0.01, usage={"input_tokens": 100, "output_tokens": 20})
+            auth_mode="api-key", cost_usd=0.01, usage={"input_tokens": 100, "output_tokens": 20},
+            latency_s=2.5)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
     summary = asyncio.run(orchestrate.run(vault))
@@ -701,6 +714,12 @@ def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
     assert "classify" in tasks and "extract" in tasks and "briefing" in tasks
     assert all(c["input_tokens"] == 100 for c in data["calls"])
 
+    # #317: every call's wall-clock duration is recorded alongside its token/cost usage.
+    n_calls = len(data["calls"])
+    assert all(c["latency_s"] == 2.5 for c in data["calls"])
+    assert round(data["totals"]["latency_s"], 3) == round(2.5 * n_calls, 3)
+    assert round(summary["usage"]["latency_s"], 3) == round(2.5 * n_calls, 3)
+
     # #247: extraction/classification calls carry the document filename (and, for extraction,
     # a page-range detail) so a usage file can attribute cost to a specific document.
     by_task = {c["task"]: c for c in data["calls"]}
@@ -709,7 +728,6 @@ def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
     assert by_task["extract"]["detail"] == "pages 1–1"
     assert by_task["briefing"]["filename"] is None   # corpus-wide call, nothing to attribute
 
-    n_calls = len(data["calls"])
     assert data["totals"]["input_tokens"] == 100 * n_calls
     assert data["totals"]["output_tokens"] == 20 * n_calls
     assert summary["usage"]["input_tokens"] == 100 * n_calls
@@ -1677,7 +1695,7 @@ def test_finish_batch_item_records_usage_for_the_batch_call_itself(tmp_path):
         assert calls[0] == {
             "task": "extract", "model": "claude-sonnet-4-6", "backend": "claude-batch",
             "input_tokens": 500, "output_tokens": 80, "cache_read_tokens": 0, "cache_write_tokens": 0,
-            "cost_usd": 0.015, "attempts": 1, "filename": "a.pdf", "detail": "pages 1–1",
+            "cost_usd": 0.015, "attempts": 1, "latency_s": 0.0, "filename": "a.pdf", "detail": "pages 1–1",
         }
     finally:
         orchestrate._usage = None
