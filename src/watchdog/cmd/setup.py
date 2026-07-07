@@ -194,30 +194,36 @@ _CONFIGURE_KEYS = {
         "default": False,
     },
     "section_token_threshold": {
-        "short": "Estimated tokens above which a document is split for sectioned extraction (default: model-aware)",
+        "short": "Estimated tokens above which a document is split for sectioned extraction ('auto' or a fixed number)",
         "help": (
             "Documents whose estimated token count is at or under this value are extracted\n"
             "  whole; larger ones are split into overlapping sections and extracted sequentially\n"
             "  with a carried-forward entity list. Token count is estimated as chars/4.\n"
-            "  By default this is derived from the extraction model's context window (about 60%\n"
-            "  of it) — so a 1M-window model like DeepSeek V4 reads far more of a document in one\n"
-            "  call than a 200K Claude window (120000). Set this to pin a fixed value as an\n"
-            "  advanced override — e.g. lower it if whole-document extraction is overrunning the\n"
-            "  model's output ceiling on dense documents."
+            "  'auto' (default): derived from the extraction model's context window (about 60% of\n"
+            "  it) — so a 1M-window model like DeepSeek V4 reads far more of a document in one call\n"
+            "  than a 200K Claude window (which resolves to 120000). Set a fixed number to pin it as\n"
+            "  an advanced override — e.g. lower it if whole-document extraction is overrunning the\n"
+            "  model's output ceiling on dense documents.\n"
+            "  Note: a fixed number does NOT rescale when you change extractor_model — pin it back to\n"
+            "  'auto' (or re-check the value) if you switch to a model with a different context window."
         ),
-        "type": "int",
-        "default": None,
+        "type": "int_or_auto",
+        "default": "auto",
         "min": 1,
     },
     "section_token_budget": {
-        "short": "Target estimated tokens per section when sectioning a large document (default: model-aware)",
+        "short": "Target estimated tokens per section when sectioning a large document ('auto' or a fixed number)",
         "help": (
             "When a document is sectioned (see section_token_threshold), pages are grouped into\n"
-            "  sections targeting roughly this many estimated tokens each. Defaults to half the\n"
-            "  threshold (model-aware); set it to pin a fixed value as an advanced override."
+            "  sections targeting roughly this many estimated tokens each.\n"
+            "  'auto' (default): half the threshold (model-aware), so a document just over the\n"
+            "  threshold splits into two sections. Set a fixed number to pin it as an advanced\n"
+            "  override.\n"
+            "  Note: a fixed number does NOT rescale when you change extractor_model — pin it back to\n"
+            "  'auto' (or re-check the value) if you switch to a model with a different context window."
         ),
-        "type": "int",
-        "default": None,
+        "type": "int_or_auto",
+        "default": "auto",
         "min": 1,
     },
     "section_overlap_tokens": {
@@ -753,8 +759,23 @@ def _persist(config: dict) -> None:
     # unconditional on every persist to correct an existing loose-permission file too.
 
 
-def _display_value(k, v):
+def _auto_resolved_hint(key: str, config: dict) -> str:
+    """Render 'auto' for a model-aware section budget along with the concrete value it currently
+    resolves to for the configured extractor model, e.g. 'auto (120000 — sonnet)'."""
+    from watchdog.pipeline import section
+    model = config.get("extractor_model")   # None ⇒ default tier
+    threshold, budget = section.model_defaults(model)
+    resolved = threshold if key == "section_token_threshold" else budget
+    tier = model or "sonnet"
+    return f"{_CYAN}auto{_RESET} {_DIM}({resolved} — {tier}){_RESET}"
+
+
+def _display_value(k, v, config=None):
     meta = _CONFIGURE_KEYS.get(k, {})
+    # Model-aware section budgets: 'auto' (or an unset key) resolves to a value derived from the
+    # extraction model's context window — show that resolved value when we have the config.
+    if k in ("section_token_threshold", "section_token_budget") and (v is None or v == "auto"):
+        return _auto_resolved_hint(k, config) if config is not None else f"{_CYAN}auto{_RESET}"
     if v is None:
         if k == "ocr_languages":
             return f"{_DIM}auto-detect (default){_RESET}"
@@ -851,7 +872,7 @@ def _edit_key_interactive(config: dict, key: str) -> None:
     for line in meta["help"].split("\n"):
         print(f"  {_DIM}{line.strip()}{_RESET}")
     print()
-    print(f"  Current value:  {_display_value(key, config.get(key))}")
+    print(f"  Current value:  {_display_value(key, config.get(key), config)}")
     if key in ("chunk_workers", "chew_workers"):
         print(f"  Machine cores:  {os.cpu_count() or 1}")
 
@@ -911,7 +932,7 @@ def _wizard_menu(config: dict, initial_sel: int = 0):
     shown = set()
 
     def _label(k):
-        return f"{k:<22} {_display_value(k, config.get(k))}"
+        return f"{k:<22} {_display_value(k, config.get(k), config)}"
 
     for title, _blurb, keys in _CONFIGURE_SECTIONS:
         present = [k for k in keys if k in _CONFIGURE_KEYS]
@@ -1033,7 +1054,7 @@ def cmd_configure(args) -> None:
 
         def _print_key(k):
             meta = _CONFIGURE_KEYS[k]
-            print(f"  {_DIM}{k:<26}{_RESET} {_display_value(k, config.get(k))}")
+            print(f"  {_DIM}{k:<26}{_RESET} {_display_value(k, config.get(k), config)}")
             print(f"  {' ' * 26} {_DIM}{meta['short']}{_RESET}")
             print()
 
@@ -1072,7 +1093,7 @@ def cmd_configure(args) -> None:
         if sys.stdin.isatty():
             _edit_key_interactive(config, key)
         else:
-            print(f"\n  {_BOLD}{key}{_RESET} = {_display_value(key, config.get(key))}\n")
+            print(f"\n  {_BOLD}{key}{_RESET} = {_display_value(key, config.get(key), config)}\n")
         return
 
     try:

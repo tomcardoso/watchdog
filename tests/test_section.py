@@ -153,6 +153,14 @@ def test_section_token_threshold_config_override_wins(monkeypatch):
     assert section.section_token_threshold("deepseek-v4-flash") == 42
 
 
+def test_section_token_threshold_auto_uses_model_default(monkeypatch):
+    # The 'auto' sentinel (or an unset key) falls back to the model-aware default.
+    monkeypatch.setattr(section, "_config_get",
+                        lambda k, d: "auto" if k == "section_token_threshold" else d)
+    assert section.section_token_threshold("sonnet") == 120_000
+    assert section.section_token_threshold("deepseek-v4-flash") == 600_000
+
+
 def test_run_threshold_follows_model_window(tmp_path, monkeypatch):
     # With no config override, the same document sections under a small-window model but is
     # extracted whole under a large-window one — proving the model flows into the threshold.

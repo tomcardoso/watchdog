@@ -1170,6 +1170,21 @@ def test_configure_chew_workers_accepts_auto(wdg_home):
     assert config["chew_workers"] == "auto"
 
 
+def test_configure_section_threshold_accepts_auto(wdg_home):
+    cli.cmd_configure(args(key="section_token_threshold", value="auto"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["section_token_threshold"] == "auto"
+
+
+def test_display_value_section_auto_shows_resolved_number():
+    # 'auto' (or unset) renders the concrete value it resolves to for the configured model.
+    out = _setup._display_value("section_token_threshold", "auto", {"extractor_model": "sonnet"})
+    assert "auto" in out and "120000" in out and "sonnet" in out
+    # Unset (None) behaves the same as explicit 'auto'.
+    out_unset = _setup._display_value("section_token_threshold", None, {})
+    assert "auto" in out_unset and "120000" in out_unset
+
+
 # ── configure — bool keys ─────────────────────────────────────────────────────
 
 def test_configure_set_table_structure_false(wdg_home):

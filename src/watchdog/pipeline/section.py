@@ -52,6 +52,15 @@ def _config_get(key: str, default):
     return cfg.get(key, default)
 
 
+def _resolve_override(key: str, model_default: int) -> int:
+    """Config value for `key`, falling back to `model_default` when it is unset or the literal
+    `"auto"` sentinel (#321). Only a positive int pins a fixed value; "auto", None, or a missing
+    key all mean "use the model-aware default". An absolute override does NOT rescale when the
+    extraction model changes — that is the tradeoff a user accepts by pinning a number."""
+    val = _config_get(key, None)
+    return val if isinstance(val, int) and not isinstance(val, bool) else model_default
+
+
 def model_defaults(model: str | None) -> tuple[int, int]:
     """(threshold, budget) est-token sectioning defaults derived from `model`'s context window
     (#321). `model` is the extraction stage's tier name or raw id (None ⇒ default tier)."""
@@ -64,9 +73,10 @@ def section_token_threshold(model: str | None = None) -> int:
     """Estimated-token count at/under which a document is not sectioned.
 
     Model-aware by default: derived from the extraction model's context window (#321). An
-    explicit `section_token_threshold` in config overrides it, as an advanced escape hatch."""
+    explicit integer `section_token_threshold` in config overrides it, as an advanced escape
+    hatch; the `"auto"` sentinel (or an unset key) keeps the model-aware default."""
     default_threshold, _ = model_defaults(model)
-    return _config_get("section_token_threshold", default_threshold)
+    return _resolve_override("section_token_threshold", default_threshold)
 
 
 def est_tokens(text: str) -> int:
@@ -139,8 +149,8 @@ def run(vault: Path, sha256: str, *, force_budget: int | None = None,
     total_tokens = est_tokens_from_pages(pages)
 
     default_threshold, default_budget = model_defaults(model)
-    threshold = _config_get("section_token_threshold", default_threshold)
-    budget = _config_get("section_token_budget", default_budget)
+    threshold = _resolve_override("section_token_threshold", default_threshold)
+    budget = _resolve_override("section_token_budget", default_budget)
     overlap_tokens = _config_get("section_overlap_tokens", DEFAULT_OVERLAP_TOKENS)
 
     if force_budget is not None:
