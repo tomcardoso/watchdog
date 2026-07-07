@@ -364,10 +364,11 @@ def _markdown_pages(doc) -> list[dict]:
     try:
         from docling_core.types.doc.document import ContentLayer, ImageRefMode
         layers     = {ContentLayer.BODY, ContentLayer.FURNITURE}
-        image_mode = (
-            ImageRefMode.EMBEDDED if _config_get("embed_images", False)
-            else ImageRefMode.PLACEHOLDER
-        )
+        # Images become a "[image]" placeholder, never embedded base64: the extraction prompt is
+        # a text field, so an embedded data URI would reach the model as text, not vision — pure
+        # token cost with no visual gain. Image-as-evidence is handled by an on-demand page
+        # render to a vision model instead (#183).
+        image_mode = ImageRefMode.PLACEHOLDER
     except ImportError:
         layers     = None
         image_mode = None

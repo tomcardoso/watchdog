@@ -33,7 +33,6 @@ Or run `watchdog configure <key>` with no value to see that one key's help and c
 | `chunk_workers` | `auto` | Parallel subprocesses for large-PDF chunks. |
 | `chunk_timeout` | `300` | Seconds before a chunk subprocess is killed. |
 | `table_structure` | `true` | Whether the table-detection model runs on PDFs; turn off to speed up text-only documents. |
-| `embed_images` | `false` | Embed figures as images in the extracted text so the model can read charts; significantly increases token usage. |
 | `extract_concurrency` | `5` | Documents extracted in parallel during `watchdog ingest`. |
 | `classify_pages` | `5` | Leading pages of each document shown to the classifier. |
 | `default_skill` | *(unset)* | Pin one record skill for every ingested document, skipping classification. |
@@ -62,7 +61,7 @@ Or run `watchdog configure <key>` with no value to see that one key's help and c
 
 ### Chewing and large documents
 
-`chew_workers` and `chunk_workers` both default to `auto`: Watchdog scans the batch before starting and picks values based on how large the documents are. They multiply — a batch of large PDFs runs roughly `chew_workers × chunk_workers` subprocesses — so pin them to small numbers on a modest machine. `embed_images` is only worth turning on when documents contain charts, image-based tables, or diagrams that carry investigative value; it raises token usage significantly.
+`chew_workers` and `chunk_workers` both default to `auto`: Watchdog scans the batch before starting and picks values based on how large the documents are. They multiply — a batch of large PDFs runs roughly `chew_workers × chunk_workers` subprocesses — so pin them to small numbers on a modest machine.
 
 The `section_*` family governs very large documents at ingest. A document estimated under `section_token_threshold` tokens is extracted whole; anything larger is split into sections of roughly `section_token_budget` tokens, extracted sequentially, with `section_overlap_tokens` of overlap so entities and events spanning a boundary aren't lost. The threshold and budget default to `auto`: rather than a fixed number, `auto` resolves to a fraction of the extraction model's context window, so a large-window model (DeepSeek V4's 1M) reads far more of a document in one call before sectioning than a 200K Claude window does — fewer calls, less orchestration overhead. Set either key to a fixed number to override the model-aware default (an advanced escape hatch); lower the threshold if extraction of dense documents is overrunning the model's output ceiling. A fixed number does not rescale when you change `extractor_model`, so set it back to `auto` (or re-check the value) if you switch to a model with a different context window.
 

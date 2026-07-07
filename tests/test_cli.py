@@ -1275,7 +1275,7 @@ def test_configure_show_all_includes_new_keys(wdg_home, capsys):
     out = _strip_ansi(capsys.readouterr().out)
     for key in ("garbled_threshold", "chunk_size", "chunk_workers",
                 "chunk_timeout", "dup_threshold", "shingle_size",
-                "table_structure", "embed_images", "ocr_engine"):
+                "table_structure", "ocr_engine"):
         assert key in out, f"'{key}' missing from configure output"
 
 
