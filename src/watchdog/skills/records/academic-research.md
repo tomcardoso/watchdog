@@ -3,7 +3,7 @@ description: a grant application, research ethics board decision, conflict-of-in
 ---
 # Domain knowledge — Academic and research documents
 
-This skill is loaded by Watchdog when the document type is a grant application, research ethics board decision, research proposal, study, dissertation, conflict-of-interest disclosure, retraction notice, research agreement, or similar academic or scientific accountability document.
+This skill is loaded by Watchdog when the document type is a grant application, research ethics board decision, research proposal, study, dissertation, conflict-of-interest disclosure, retraction notice, research agreement, or similar academic or scientific document.
 
 ---
 
@@ -63,14 +63,15 @@ This skill is loaded by Watchdog when the document type is a grant application, 
 - **Retraction notices** — a retracted paper is not just a scientific error; it may indicate fabrication, falsification, or plagiarism. Note the reason given for retraction (which is often vague) and whether the authors agreed.
 - **Corrigendum (correction)** — a correction to a published paper. Multiple corrections to the same paper, or corrections involving data or conclusions, are more significant than typographical corrections.
 - **Duplicated data or image manipulation** — reported by watchdog sites like Retraction Watch or PubPeer. Record any retraction as a lead to check against these sources in later research.
-- **Authorship disputes** — a researcher named as an author who disputes authorship, or a researcher who should have been named but was not, may indicate attribution manipulation.
+- **Authorship changes in the record** — authorship disputes rarely play out publicly, but they leave documentary traces: a corrigendum that adds or removes an author, a retraction an author declined to sign, or a formal *letter of disassociation* (a separate document in which a researcher publicly disowns a paper bearing their name). Record the change and who initiated it; the bare fact that a paper carried a contested author is usually resolved before publication and rarely documented — the change to the record is the reportable event.
 - **Prior misconduct findings not disclosed** — a researcher with a prior misconduct finding at another institution who did not disclose it when applying for a grant or position at a new institution.
+- **Undisclosed deviation from the approved protocol** — research, social science especially, seldom unfolds exactly as the grant application or ethics protocol described, and ordinary drift is not itself a story. What matters is *undisclosed* divergence: a published paper whose methods, sample, or outcomes depart from the approved ethics protocol or pre-registered plan without the authors acknowledging it. Papers sometimes reveal this themselves — a methods or limitations section describing a procedure the approved protocol did not cover, or outcomes changed from those pre-registered. Flag the acknowledged-vs-silent distinction, not the deviation alone.
 
 ### Grant accountability
 
 - **Progress reports not filed** — agencies typically require annual progress reports. Missing reports may indicate the project stalled or the PI avoided accountability.
 - **Grant funds used for purposes other than stated** — a use-of-funds report showing expenditures inconsistent with the approved budget and research plan.
-- **Transfer of grant to a company** — a researcher transferring grant-funded IP or activities to a startup they control without proper disclosure or technology transfer agreement.
+- **Grant-funded IP moving to a company the researcher controls** — you will rarely see the improper transfer itself; look for the documentary signals inside these records instead. A COI disclosure naming a startup the PI founded or holds equity in; a progress or accountability report describing commercialization of grant-funded work; or a technology-transfer or licensing agreement whose terms move publicly funded IP to a private company on soft terms. The story is the tension between the grant's public-interest purpose and the private benefit, visible where these documents overlap.
 
 ---
 
@@ -128,3 +129,4 @@ This skill is loaded by Watchdog when the document type is a grant application, 
 - [COPE — Committee on Publication Ethics](https://publicationethics.org) — Global membership body for journal editors and publishers; sets standards for handling misconduct, authorship disputes, and editorial conflicts of interest
 - [Retraction Watch](https://retractionwatch.com) — Independent publication that tracks scientific retractions and research misconduct findings; searchable database of retracted papers
 - [ORCID](https://orcid.org) — Persistent identifier system for researchers; use to find a researcher's publication history, institutional affiliations, and funding across institutions and name variants
+- [AllTrials](https://www.alltrials.net) — Campaign for the registration and full reporting of clinical trials; background on outcome-switching and selective outcome reporting
