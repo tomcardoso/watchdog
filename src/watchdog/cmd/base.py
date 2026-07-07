@@ -75,6 +75,10 @@ _VAULT_PERMISSIONS = [
     # /watchdog-context proposes watchlist seed terms (#229); the deterministic append+dedup
     # lives in this command, not the skill hand-editing watchlist.md.
     "Bash(watchdog watchlist-add *)",
+    # /watchdog-surface promotes a journalist-confirmed contradiction candidate into the note
+    # via this internal command (#312, D82/D83) — pre-approved so the confirmed promotion runs
+    # without a second permission prompt; the journalist's explicit confirmation is the gate.
+    "Bash(watchdog contradiction-add *)",
     # WebSearch / WebFetch are deliberately NOT here — they make outbound requests, so they are
     # pre-approved only by the watchdog-research skill's own `allowed-tools` frontmatter, scoped to
     # when /watchdog-research is active. Archival downloads run as a deterministic post-flight of
@@ -265,6 +269,32 @@ _CMD_HELP: dict[str, dict] = {
             "This is the fix for what the dashboard's \"Possible duplicates\" view and",
             "`/watchdog-health`'s near-duplicate check can only ever flag. Run `watchdog reindex`",
             "afterward to drop the merged entity's stale search-index entries.",
+        ],
+    },
+    "contradiction-add": {
+        "desc": "Promote a verified surface-found contradiction into an entity note",
+        "args": [("entity-id", "Entity id the contradiction belongs to")],
+        "opts": [
+            ("--label TEXT",  "Short label for the disputed fact"),
+            ("--a VALUE",     "First (existing) value"),
+            ("--a-doc SLUG",  "Document slug the first value comes from"),
+            ("--a-page N",    "Page number for the first value (optional)"),
+            ("--b VALUE",     "Second (conflicting) value"),
+            ("--b-doc SLUG",  "Document slug the second value comes from"),
+            ("--b-page N",    "Page number for the second value (optional)"),
+        ],
+        "notes": [
+            "Must be run from inside the vault. `/watchdog-surface` reports cross-document",
+            "contradictions as labelled candidates rather than writing callouts into entity",
+            "notes, which are pipeline-owned (D81). Once you have verified a candidate against",
+            "the sources, this writes it into the entity's ## Contradictions section through the",
+            "pipeline's own note builder, in the exact format extraction emits — so the callout",
+            "is tracked by the resolutions layer and `watchdog resolve` / `unresolve` work on it",
+            "like any pipeline-emitted one. No model calls.",
+            "",
+            "Validates that the entity id and both document slugs exist before writing; a callout",
+            "already present is a no-op. `/watchdog-surface` can run this after explicit",
+            "journalist confirmation when promoting a candidate.",
         ],
     },
     "research": {
@@ -604,14 +634,16 @@ def _print_banner() -> None:
             ("log",              "Show ingest history"),
             ("timeline",         "Rebuild timeline.md from canonical timeline files"),
         ]),
+        ("Investigate", [
+            ("search",     "Semantic search across ingested documents"),
+            ("leads",      "Surface investigative leads from the entity graph"),
+            ("merge-entities", "Merge a duplicate entity into another"),
+            ("watchlist",  "Sweep the whole vault against watchlist.md"),
+            ("research",   "Research open questions on the web (downloads into _INCOMING/)"),
+        ]),
         ("Info", [
             ("list",       "List all investigations"),
             ("status",     "Show detailed status"),
-            ("search",     "Semantic search across ingested documents"),
-            ("leads",      "Surface investigative leads from the entity graph"),
-            ("merge-entities", "Merge a duplicate entity into another, deterministically"),
-            ("watchlist", "Sweep the whole vault against watchlist.md"),
-            ("research",   "Research open questions on the web (downloads into _INCOMING/)"),
             ("export",     "Export the knowledge graph (Neo4j / Gephi / Cypher)"),
             ("doctor",     "Check for missing or broken vaults"),
         ]),
