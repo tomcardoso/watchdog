@@ -129,8 +129,8 @@ releases the lock in a `finally`. Models, concurrency, and classification come f
 
 **Pre-flight cost estimate (D71).** Before the confirm prompt, `ingest_setup.cost_estimate`
 multiplies the queue's own `est_tokens` (already computed per file by `scan_queue` for the
-sectioning threshold) by this vault's $/token ratio from its last 3 `usage-<ts>.json` runs (D50),
-presented as a range (min/max across those runs) rather than one averaged figure. Subscription
+sectioning threshold) by this vault's $/token ratio from its last 3 `usage-<ts>.json` runs (D50,
+D86), presented as a range (min/max across those runs) rather than one averaged figure. Subscription
 auth (`claude-agent-sdk`) never gets a dollar figure — there's no real billing to project, only a
 session-limit fraction token counts can't estimate honestly. `watchdog ingest --estimate` prints
 the same estimate and exits before the lock is touched.
@@ -630,7 +630,7 @@ Registry/
   manifest.json             lightweight id→{name,type,aliases,note_path} lookup
   resolutions.json          acknowledged leads/alerts/contradictions overlay (D68)
   ingest.log                append-only ingest log
-  usage-<ts>.json           per-run model-call token/cost telemetry (D50)
+  usage/usage-<ts>.json     per-run model-call token/cost telemetry (D50, D86)
   batch-pending.json        pending claude-batch extraction state (D52)
   .ingest-lock / .write-lock  run lock / write serialization
 backups/<ts>-<operation>/   pre-mutation snapshots for irreversible operations (D71)

@@ -94,6 +94,7 @@ from watchdog.cmd.leads import cmd_leads
 from watchdog.cmd.resolve import cmd_resolve, cmd_unresolve
 from watchdog.cmd.reindex import cmd_reindex
 from watchdog.cmd.research import cmd_fetch, cmd_research, cmd_research_fetch, cmd_research_seen
+from watchdog.cmd.usage import cmd_usage
 from watchdog.cmd.watchlist import cmd_watchlist, cmd_watchlist_add
 
 
@@ -251,6 +252,12 @@ def main() -> None:
     p_export.add_argument("--format", choices=["csv", "cypher"], default="csv",
                           help="Output format (default: csv)")
     p_export.set_defaults(func=cmd_export)
+
+    p_usage = sub.add_parser("usage", help="Per-call token/cost/latency breakdown for ingest runs (deterministic, no model)")
+    p_usage.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
+    p_usage.add_argument("--all", action="store_true", help="Compare every run recorded in the vault")
+    p_usage.add_argument("--run", metavar="TIMESTAMP", help="Analyze one specific past run instead of the latest")
+    p_usage.set_defaults(func=cmd_usage)
 
     p_merge_entities = sub.add_parser("merge-entities", help="Merge a duplicate entity into another")
     p_merge_entities.add_argument("keep_id", help="Entity id to keep (the survivor)")
