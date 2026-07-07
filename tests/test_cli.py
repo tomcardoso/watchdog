@@ -1770,7 +1770,7 @@ def test_resolve_stage_claude_batch_backend():
 
 def test_resolve_stage_non_claude_backend_keeps_raw_model():
     from watchdog.cmd.ingest import _resolve_stage
-    assert _resolve_stage("deepseek:deepseek-chat", None) == ("deepseek", "deepseek-chat")
+    assert _resolve_stage("deepseek:deepseek-v4-flash", None) == ("deepseek", "deepseek-v4-flash")
     assert _resolve_stage("openai:gpt-5-mini", None) == ("openai", "gpt-5-mini")
 
 

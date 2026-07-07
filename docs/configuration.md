@@ -122,17 +122,18 @@ Within ingest, Watchdog is designed around Claude and uses it by default, but ea
 | `sonnet` | Claude, via your auth mode (subscription or API key). |
 | `claude-api:opus` / `claude-agent-sdk:sonnet` | Claude, forcing a specific backend. |
 | `openai:gpt-5-mini` | OpenAI. |
-| `deepseek:deepseek-chat` | DeepSeek. |
+| `deepseek:deepseek-v4-flash` | DeepSeek V4 Flash — non-thinking (append `-thinking` to enable thinking mode). |
+| `deepseek:deepseek-v4-pro` | DeepSeek V4 Pro — non-thinking (append `-thinking` to enable thinking mode). |
 
 Store the provider's key first, then point a stage at it — persistently or per run:
 
 ```bash
 watchdog auth set deepseek                              # store the key (or set DEEPSEEK_API_KEY)
-watchdog configure extractor_model deepseek:deepseek-chat
+watchdog configure extractor_model deepseek:deepseek-v4-flash
 watchdog ingest --extractor-model openai:gpt-5-mini     # one-off override
 ```
 
-Each stage is independent — you can keep extraction on Claude Sonnet while routing the cheaper classification or post-ingest steps to another provider. One honest caveat: non-Claude backends are unproven on dense legal and financial extraction, so the defaults stay on Claude and nothing routes elsewhere unless you ask. The effort knobs apply where the provider supports them and are ignored where it doesn't.
+Each stage is independent — you can keep extraction on Claude Sonnet while routing the cheaper classification or post-ingest steps to another provider. One honest caveat: non-Claude backends are unproven on dense legal and financial extraction, so the defaults stay on Claude and nothing routes elsewhere unless you ask. The effort knobs apply where the provider supports them and are ignored where it doesn't. DeepSeek thinking mode is off by default and enabled by appending `-thinking` to the model id (e.g. `deepseek:deepseek-v4-flash-thinking`); extraction is schema-bound structured output, so non-thinking is the cheaper, more predictable default, with thinking available for the judgment-heavy cases.
 
 ### claude-batch: bulk extraction at half price
 

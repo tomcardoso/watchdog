@@ -130,7 +130,7 @@ _CMD_HELP: dict[str, dict] = {
     "ingest": {
         "desc": "Extract queued documents (runs the Python pipeline)",
         "opts": [
-            ("--extractor-model M",  "Override the extraction model for this run — a tier (sonnet/opus/haiku) or backend:model (e.g. deepseek:deepseek-chat); default from watchdog configure"),
+            ("--extractor-model M",  "Override the extraction model for this run — a tier (sonnet/opus/haiku) or backend:model (e.g. deepseek:deepseek-v4-flash); default from watchdog configure"),
             ("--finalizer-model M",  "Override the synthesis + timeline + briefing model for this run — tier or backend:model; default from watchdog configure"),
             ("--classifier-model M", "Override the document-classification model for this run — tier or backend:model; default from watchdog configure"),
             ("--extractor-effort E", "Reasoning effort for extraction (low/medium/high) — lower spends fewer tokens; default from watchdog configure"),

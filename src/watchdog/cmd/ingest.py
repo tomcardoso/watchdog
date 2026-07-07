@@ -51,7 +51,7 @@ def _resolve_stage(flag_val, config_val, default="sonnet") -> tuple[str | None, 
 
     Plain `sonnet`/`opus`/`haiku` → (None, tier): Claude, routed by auth mode (unchanged). A
     `backend:model` form selects a backend explicitly — `claude-api:opus` (a Claude tier), or
-    `openai:gpt-5-mini` / `deepseek:deepseek-chat` (a raw provider model id). Carrying both in
+    `openai:gpt-5-mini` / `deepseek:deepseek-v4-flash` (a raw provider model id). Carrying both in
     one value means a stage can never be half-configured."""
     from watchdog.model_client import BACKENDS, CLAUDE_BACKENDS
     raw = flag_val or config_val or default
@@ -62,9 +62,9 @@ def _resolve_stage(flag_val, config_val, default="sonnet") -> tuple[str | None, 
     if backend is None or backend in CLAUDE_BACKENDS:
         if model not in _MODEL_IDS:
             sys.exit(f"Error: unknown model '{model}' — choose sonnet, opus, or haiku, "
-                     f"or a backend:model form like deepseek:deepseek-chat")
+                     f"or a backend:model form like deepseek:deepseek-v4-flash")
     elif not model:
-        sample = "deepseek-chat" if backend == "deepseek" else "gpt-5-mini"
+        sample = "deepseek-v4-flash" if backend == "deepseek" else "gpt-5-mini"
         sys.exit(f"Error: backend '{backend}' needs a model id, e.g. {backend}:{sample}")
     return backend, model
 

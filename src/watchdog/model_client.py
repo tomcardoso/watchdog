@@ -331,11 +331,12 @@ async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: d
 
 
 # OpenAI-compatible (Chat Completions) pricing: model id → (input $/tok, output $/tok).
-# Approximate and output-dominant; verify against the provider before relying on cost figures.
-# Cache-hit input discounts (DeepSeek) are not modelled yet — a v1 simplification.
+# DeepSeek figures are the cache-miss input rate; cache-hit input discounts are not modelled yet
+# (a v1 simplification), so cost is a slight over-estimate when prompts hit cache. Verify against
+# the provider before relying on absolute figures: https://api-docs.deepseek.com/quick_start/pricing
 _OPENAI_PRICING = {
-    "deepseek-chat":     (0.27e-6, 1.10e-6),
-    "deepseek-reasoner": (0.55e-6, 2.19e-6),
+    "deepseek-v4-flash": (0.14e-6,  0.28e-6),
+    "deepseek-v4-pro":   (0.435e-6, 0.87e-6),
 }
 
 
@@ -346,6 +347,25 @@ def _openai_cost(model_id: str, usage: dict | None) -> float | None:
     inp, outp = rates
     return ((usage.get("prompt_tokens", 0) or 0) * inp
             + (usage.get("completion_tokens", 0) or 0) * outp)
+
+
+# DeepSeek V4 collapsed thinking/non-thinking into a single model id switched by a request param
+# (the old deepseek-chat/deepseek-reasoner split is deprecated). Watchdog keeps the choice inside
+# the model token — `deepseek-v4-flash` (non-thinking) vs `deepseek-v4-flash-thinking` — so it rides
+# the existing `[backend:]model` grammar with no extra provider-specific knob. The backend strips
+# this marker, uses the bare id for the request + cost lookup, and sends DeepSeek's explicit toggle.
+# The provider default is thinking-ENABLED, so we always send the toggle to pin the intended mode.
+# Toggle shape (OpenAI format): {"thinking": {"type": "enabled"|"disabled"}}. Docs:
+# https://api-docs.deepseek.com/guides/thinking_mode  (D88)
+_DEEPSEEK_THINKING_SUFFIX = "-thinking"
+
+
+def _split_deepseek_thinking(model_id: str) -> tuple[str, bool]:
+    """(bare model id, thinking?) from a DeepSeek model token — strips a `-thinking` marker.
+    Non-thinking is the default (bare id), so extraction stays cheap unless thinking is opted in."""
+    if model_id.endswith(_DEEPSEEK_THINKING_SUFFIX):
+        return model_id[: -len(_DEEPSEEK_THINKING_SUFFIX)], True
+    return model_id, False
 
 
 async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema: dict,
@@ -359,8 +379,16 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     full `json_schema` mode is not universal. `effort` arrives already resolved to the
     provider's native value (or None) and is sent as `reasoning_effort` (#125). No provider-
     agnostic cache_control equivalent is wired here (A1 is Claude-only), so a content-block
-    prompt is flattened to plain text."""
+    prompt is flattened to plain text.
+
+    DeepSeek carries an optional `-thinking` marker on the model id; it is stripped here and
+    translated into DeepSeek's explicit thinking toggle (default off — see #320)."""
     import httpx
+
+    is_deepseek = "deepseek" in base_url
+    thinking: bool | None = None
+    if is_deepseek:
+        model_id, thinking = _split_deepseek_thinking(model_id)
 
     body = {
         "model": model_id,
@@ -374,6 +402,8 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     }
     if effort:
         body["reasoning_effort"] = effort
+    if thinking is not None:   # DeepSeek: pin the mode explicitly (provider defaults to enabled)
+        body["thinking"] = {"type": "enabled" if thinking else "disabled"}
     url = base_url.rstrip("/") + "/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     async with httpx.AsyncClient(timeout=600) as client:
