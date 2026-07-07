@@ -11,13 +11,14 @@ from watchdog.cmd.usage import cmd_usage
 
 
 def _call(task="extract", filename="doc.pdf", detail="pages 1–1", model="claude-sonnet-4-6",
-          cost_usd=0.01, input_tokens=100, output_tokens=20, latency_s=1.5):
+          cost_usd=0.01, input_tokens=100, output_tokens=20, latency_s=1.5,
+          effort=None, auth_mode="api-key", attempts=1):
     return {
         "task": task, "model": model, "backend": "claude-api",
         "input_tokens": input_tokens, "output_tokens": output_tokens,
         "cache_read_tokens": 0, "cache_write_tokens": 0,
-        "cost_usd": cost_usd, "attempts": 1, "latency_s": latency_s,
-        "filename": filename, "detail": detail,
+        "cost_usd": cost_usd, "attempts": attempts, "latency_s": latency_s, "effort": effort,
+        "auth_mode": auth_mode, "filename": filename, "detail": detail,
     }
 
 
@@ -61,6 +62,25 @@ def test_cmd_usage_defaults_to_latest_run(tmp_path, monkeypatch, capsys):
     assert "doc.pdf" in out and "pages 1–1" in out
     assert "3.0s" in out   # latency surfaced
     assert "$0.0200" in out
+
+
+def test_cmd_usage_shows_auth_mode_and_retry_marker(tmp_path, monkeypatch, capsys):
+    """#319: auth_mode (which billing lane paid for a call) and a retry marker for any call
+    that needed more than one attempt are both surfaced per call."""
+    vault = _build_vault(tmp_path, runs={
+        "usage-2026-01-01T00-00-00": [
+            _call(filename="sub.pdf", auth_mode="subscription", attempts=1, cost_usd=0.01),
+            _call(filename="key.pdf", auth_mode="api-key", attempts=3, cost_usd=0.02),
+        ],
+    })
+    monkeypatch.chdir(vault)
+
+    cmd_usage(_args())
+
+    out = capsys.readouterr().out
+    assert "Auth" in out
+    assert "sub" in out and "key" in out
+    assert "×3" in out   # the retried call is flagged inline
 
 
 def test_cmd_usage_all_compares_every_run(tmp_path, monkeypatch, capsys):

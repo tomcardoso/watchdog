@@ -709,6 +709,7 @@ def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
 
     usage_path = summary["usage_path"]
     assert usage_path and (vault / usage_path).exists()
+    assert usage_path.startswith(".watchdog/Registry/usage/usage-")   # #319: moved out of the flat Registry dir
     data = json.loads((vault / usage_path).read_text())
     tasks = [c["task"] for c in data["calls"]]
     assert "classify" in tasks and "extract" in tasks and "briefing" in tasks
@@ -771,6 +772,38 @@ def test_latest_usage_returns_the_most_recent_run(tmp_path):
                                             "cache_read_tokens": 0, "cache_write_tokens": 0,
                                             "cost_usd": 0.001}}))
     (reg / "usage-20260102T000000Z.json").write_text(
+        json.dumps({"calls": [], "totals": {"input_tokens": 999, "output_tokens": 999,
+                                            "cache_read_tokens": 0, "cache_write_tokens": 0,
+                                            "cost_usd": 0.05}}))
+    totals = orchestrate.latest_usage(vault)
+    assert totals["input_tokens"] == 999
+
+
+def test_usage_files_merges_new_subfolder_with_legacy_flat_location(tmp_path):
+    """#319: usage-<ts>.json moved from the flat Registry dir into a `usage/` subfolder, but a
+    vault ingested before that move still has real history sitting in the old flat location —
+    `usage_files` (and everything built on it) must keep seeing both, in chronological order."""
+    vault = make_vault(tmp_path)
+    reg = vault / ".watchdog" / "Registry"
+    (reg / "usage-20260101T000000Z.json").write_text("{}")   # legacy (pre-move) location
+    usage_dir = reg / "usage"
+    usage_dir.mkdir(parents=True)
+    (usage_dir / "usage-20260102T000000Z.json").write_text("{}")   # current (post-move) location
+
+    files = orchestrate.usage_files(vault)
+    assert [f.name for f in files] == ["usage-20260101T000000Z.json", "usage-20260102T000000Z.json"]
+
+
+def test_latest_usage_prefers_new_subfolder_over_legacy_when_newer(tmp_path):
+    vault = make_vault(tmp_path)
+    reg = vault / ".watchdog" / "Registry"
+    (reg / "usage-20260101T000000Z.json").write_text(
+        json.dumps({"calls": [], "totals": {"input_tokens": 1, "output_tokens": 1,
+                                            "cache_read_tokens": 0, "cache_write_tokens": 0,
+                                            "cost_usd": 0.001}}))
+    usage_dir = reg / "usage"
+    usage_dir.mkdir(parents=True)
+    (usage_dir / "usage-20260102T000000Z.json").write_text(
         json.dumps({"calls": [], "totals": {"input_tokens": 999, "output_tokens": 999,
                                             "cache_read_tokens": 0, "cache_write_tokens": 0,
                                             "cost_usd": 0.05}}))
@@ -1695,7 +1728,8 @@ def test_finish_batch_item_records_usage_for_the_batch_call_itself(tmp_path):
         assert calls[0] == {
             "task": "extract", "model": "claude-sonnet-4-6", "backend": "claude-batch",
             "input_tokens": 500, "output_tokens": 80, "cache_read_tokens": 0, "cache_write_tokens": 0,
-            "cost_usd": 0.015, "attempts": 1, "latency_s": 0.0, "filename": "a.pdf", "detail": "pages 1–1",
+            "cost_usd": 0.015, "attempts": 1, "latency_s": 0.0, "effort": None, "auth_mode": "api-key",
+            "filename": "a.pdf", "detail": "pages 1–1",
         }
     finally:
         orchestrate._usage = None

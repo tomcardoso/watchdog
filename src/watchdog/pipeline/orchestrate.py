@@ -67,6 +67,7 @@ def _settle(sha: str, line: str) -> None:
 
 def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
                   cost_usd: float | None, attempts: int = 1, latency_s: float = 0.0,
+                  effort: str | None = None, auth_mode: str | None = None,
                   filename: str | None = None, detail: str | None = None) -> None:
     """Append one call's usage to the run-scoped `_usage` accumulator, if one is active.
     Tolerates both Anthropic-style (`input_tokens`/`output_tokens`) and OpenAI-compatible
@@ -77,7 +78,10 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
     (D52, no live model call at this point) can feed it too, not just `_call_model` (D64).
     `filename`/`detail` (e.g. a page range or section label) let a per-run usage file attribute
     each call to a document, not just a task name (#247). `latency_s` is per-call wall-clock
-    time; batch-collected items have no live call to time, so they keep the 0.0 default (#317)."""
+    time; batch-collected items have no live call to time, so they keep the 0.0 default (#317).
+    `effort` records the reasoning-effort tier the call was made with (or None if the model/task
+    doesn't take one), and `auth_mode` ("subscription"/"api-key") which billing lane paid for it
+    — both surfaced per call by `watchdog usage` (#319)."""
     if _usage is None:
         return
     u = usage or {}
@@ -87,8 +91,8 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         "output_tokens": u.get("output_tokens", u.get("completion_tokens", 0)) or 0,
         "cache_read_tokens": u.get("cache_read_input_tokens", 0) or 0,
         "cache_write_tokens": u.get("cache_creation_input_tokens", 0) or 0,
-        "cost_usd": cost_usd, "attempts": attempts, "latency_s": latency_s,
-        "filename": filename, "detail": detail,
+        "cost_usd": cost_usd, "attempts": attempts, "latency_s": latency_s, "effort": effort,
+        "auth_mode": auth_mode, "filename": filename, "detail": detail,
     })
 
 
@@ -101,7 +105,8 @@ async def _call_model(*, task, prompt, schema, model=None, backend=None,
     r = await model_client.acomplete_json(task=task, prompt=prompt, schema=schema, model=model,
                                           backend=backend, max_retries=max_retries, effort=effort)
     _record_usage(task, model=r.model, backend=r.backend, usage=r.usage, cost_usd=r.cost_usd,
-                 attempts=r.attempts, latency_s=r.latency_s, filename=filename, detail=detail)
+                 attempts=r.attempts, latency_s=r.latency_s, effort=effort, auth_mode=r.auth_mode,
+                 filename=filename, detail=detail)
     return r
 
 
@@ -116,16 +121,31 @@ def _usage_totals(records: list[dict]) -> dict:
     }
 
 
+def usage_files(vault: Path) -> list[Path]:
+    """Every persisted `usage-<ts>.json` for this vault, oldest first (#319). Checks both the
+    current location (`.watchdog/Registry/usage/`) and the pre-move flat location
+    (`.watchdog/Registry/`) directly, so a vault ingested before that reorganization doesn't
+    lose its older history — filenames sort chronologically regardless of which directory
+    they're in, so the two sets merge correctly once combined."""
+    reg_dir = vault / ".watchdog" / "Registry"
+    usage_dir = reg_dir / "usage"
+    files = list(usage_dir.glob("usage-*.json")) if usage_dir.exists() else []
+    files += list(reg_dir.glob("usage-*.json")) if reg_dir.exists() else []   # legacy location
+    return sorted(files, key=lambda p: p.name)
+
+
 def _write_usage(vault: Path, records: list[dict]) -> str | None:
-    """Persist this run's per-call token/cost telemetry to `.watchdog/Registry/usage-<ts>.json`
-    (A2). Returns the vault-relative path, or None if the run made no model calls (e.g. an
-    all-skipped batch)."""
+    """Persist this run's per-call token/cost telemetry to
+    `.watchdog/Registry/usage/usage-<ts>.json` (A2, relocated out of the flat Registry dir
+    in #319 since this one accumulates a new file every run, unlike the fixed-size registries
+    it used to sit alongside). Returns the vault-relative path, or None if the run made no
+    model calls (e.g. an all-skipped batch)."""
     if not records:
         return None
-    reg_dir = vault / ".watchdog" / "Registry"
-    reg_dir.mkdir(parents=True, exist_ok=True)
+    usage_dir = vault / ".watchdog" / "Registry" / "usage"
+    usage_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    relpath = f".watchdog/Registry/usage-{ts}.json"
+    relpath = f".watchdog/Registry/usage/usage-{ts}.json"
     (vault / relpath).write_text(
         json.dumps({"calls": records, "totals": _usage_totals(records)}, ensure_ascii=False, indent=2),
         encoding="utf-8")
@@ -135,10 +155,8 @@ def _write_usage(vault: Path, records: list[dict]) -> str | None:
 def latest_usage(vault: Path) -> dict | None:
     """The most recent ingest run's token/cost totals (F5, #222), or None if none exist yet —
     `watchdog status` surfaces this so a subscription user can see what a dump cost before
-    deciding whether to kick off another one. Filenames sort chronologically (the timestamp
-    format is lexicographically ordered), so the last one is the most recent."""
-    reg_dir = vault / ".watchdog" / "Registry"
-    files = sorted(reg_dir.glob("usage-*.json")) if reg_dir.exists() else []
+    deciding whether to kick off another one."""
+    files = usage_files(vault)
     if not files:
         return None
     try:
@@ -660,9 +678,11 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
 
     extraction, cost = item["parsed"], item.get("cost_usd") or 0.0
     if item.get("usage") is not None:
+        # The Batches API requires api-key auth (D52) — never subscription — so this is the
+        # one _record_usage call site where auth_mode is a known constant, not a live result field.
         _record_usage("extract", model=model, backend="claude-batch", usage=item["usage"],
-                      cost_usd=item.get("cost_usd"), filename=filename,
-                      detail=f"pages 1–{page_count}")
+                      cost_usd=item.get("cost_usd"), effort=effort, auth_mode="api-key",
+                      filename=filename, detail=f"pages 1–{page_count}")
     if not item["ok"]:
         prompt = prompts.build_extract_prompt(
             pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
