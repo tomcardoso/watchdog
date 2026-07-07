@@ -180,19 +180,6 @@ _CONFIGURE_KEYS = {
         "type": "bool",
         "default": True,
     },
-    "embed_images": {
-        "short": "Embed images as base64 in markdown output so Claude can see figures (default: false)",
-        "help": (
-            "When enabled, images and figures in documents are embedded as base64 data\n"
-            "  in the markdown output, allowing Claude to read charts, graphs, and other\n"
-            "  visual content directly. Significantly increases token usage and processing\n"
-            "  time per document. Only useful when documents contain charts, image-based\n"
-            "  tables, or diagrams that carry investigative value.\n"
-            "  Default: false."
-        ),
-        "type": "bool",
-        "default": False,
-    },
     "section_token_threshold": {
         "short": "Estimated tokens above which a document is split for sectioned extraction ('auto' or a fixed number)",
         "help": (
@@ -443,7 +430,7 @@ _CONFIGURE_SECTIONS = [
     ("OCR", "Text recognition for scanned documents.",
      ["ocr_engine", "ocr_languages", "garbled_threshold"]),
     ("Chew", "Local preprocessing — parallelism and large-PDF handling.",
-     ["chew_workers", "chunk_size", "chunk_workers", "chunk_timeout", "table_structure", "embed_images"]),
+     ["chew_workers", "chunk_size", "chunk_workers", "chunk_timeout", "table_structure"]),
     ("Ingest", "Extraction run — parallelism, classification, skill pinning, sectioning.",
      ["extract_concurrency", "classify_pages", "default_skill", "preflight_alias_min_length",
       "section_token_threshold", "section_token_budget", "section_overlap_tokens"]),
