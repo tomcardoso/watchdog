@@ -76,9 +76,34 @@ _SYSTEM_PROMPT = (
 _EFFORT_LEVELS = ("low", "medium", "high")
 # Claude models that reject `output_config.effort` with a 400 (Haiku-tier).
 _EFFORT_UNSUPPORTED = {"claude-haiku-4-5"}
-# OpenAI-compatible models that accept `reasoning_effort` (substring match on the id). A chat
-# model 400s on it, so the knob is dropped for anything not matching.
-_OPENAI_REASONING_MARKERS = ("reasoner", "gpt-5", "o1", "o3", "o4")
+# OpenAI-provider model capabilities (#170). A *reasoning* model accepts `reasoning_effort` and
+# requires the newer `max_completion_tokens` field — it 400s on `max_tokens`; a *chat* model is the
+# exact reverse. Both decisions flow from this one table so they can't drift apart. Keyed by model-id
+# prefix, most specific first: declare a family once (`gpt-5`, `o3`) and put any chat exception above
+# its family. An id matching nothing is treated as a chat model — the correctness-safe default that
+# never sends an unsupported param; a genuinely new reasoning model is added here to earn effort,
+# rather than being guessed at from a substring. (DeepSeek is not consulted here: its thinking is a
+# separate per-request toggle, and it uses the classic `max_tokens` field — see `_openai_complete_async`.)
+_OPENAI_MODEL_CAPS: tuple[tuple[str, bool], ...] = (
+    ("gpt-4",   False),   # gpt-4o / gpt-4.1 / gpt-4-turbo — chat
+    ("chatgpt", False),   # chat-latest — chat
+    ("gpt-5",   True),    # entire GPT-5 family reasons
+    ("o1",      True),
+    ("o3",      True),
+    ("o4",      True),
+)
+
+
+def _openai_is_reasoning(model_id: str) -> bool:
+    """Whether an OpenAI model is a reasoning model — accepts `reasoning_effort` and needs
+    `max_completion_tokens` (rejecting `max_tokens`). Chat models are the reverse. Resolved from the
+    explicit `_OPENAI_MODEL_CAPS` table (most-specific prefix first); an unlisted id is treated as a
+    chat model, the safe default that never sends an unsupported param."""
+    mid = model_id.lower()
+    for prefix, reasoning in _OPENAI_MODEL_CAPS:
+        if mid.startswith(prefix):
+            return reasoning
+    return False
 
 
 def _claude_effort(model_id: str, effort: str) -> str | None:
@@ -91,8 +116,7 @@ def _claude_effort(model_id: str, effort: str) -> str | None:
 def _openai_effort(model_id: str, effort: str) -> str | None:
     """OpenAI-compatible: `reasoning_effort` is accepted only by reasoning models — drop it
     elsewhere. Unlike Claude, `high` is not the default, so it is passed through."""
-    mid = model_id.lower()
-    return effort if any(m in mid for m in _OPENAI_REASONING_MARKERS) else None
+    return effort if _openai_is_reasoning(model_id) else None
 
 
 def _no_effort(model_id: str, effort: str) -> str | None:
@@ -460,7 +484,6 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
 
     body = {
         "model": model_id,
-        "max_tokens": max_tokens,
         "response_format": {"type": "json_object"},   # "JSON" must appear in the prompt below
         "messages": [
             {"role": "system", "content": _SYSTEM_PROMPT},
@@ -468,6 +491,12 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
              "content": f"{_flatten_prompt(prompt)}\n\nReturn JSON matching this schema:\n{json.dumps(schema)}"},
         ],
     }
+    # OpenAI reasoning models reject `max_tokens` and require `max_completion_tokens`; chat models
+    # and DeepSeek (classic wire format) take `max_tokens`. Driven by the one capability table.
+    if not is_deepseek and _openai_is_reasoning(model_id):
+        body["max_completion_tokens"] = max_tokens
+    else:
+        body["max_tokens"] = max_tokens
     if effort:
         body["reasoning_effort"] = effort
     if thinking is not None:   # DeepSeek: pin the mode explicitly (provider defaults to enabled)

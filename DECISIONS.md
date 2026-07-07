@@ -610,3 +610,11 @@ Removed the key, its Docling toggle (export is now always `PLACEHOLDER` → `[im
 Widened the table entries from `(input, output)` to `(input, output, cached_input)` and added the GPT-5 family standard rates alongside DeepSeek V4. `_openai_cost` now splits `prompt_tokens` into cached vs uncached from the provider's usage fields — OpenAI nests the count under `prompt_tokens_details.cached_tokens`, DeepSeek reports `prompt_cache_hit_tokens` (with `prompt_tokens` = hit + miss) — and prices each portion at its own rate. A model with no published cache rate repeats its input rate (no discount), so the split is always safe to apply.
 
 **Tradeoff:** the hard-coded rate tables now cover two vendors' fast-moving model lineups and will drift as prices change — accepted as a small, centrally-commented table with source links, matching the existing Claude `_PRICING` approach; an unlisted id still degrades to `None` cost rather than raising, so drift is a stale figure, never a crash.
+
+### D92 — OpenAI request-shape: explicit capability table replaces the substring reasoning heuristic (issue #170)
+
+Reasoning-model detection was a substring tuple (`gpt-5`/`o1`/`o3`/`o4`/`reasoner`) consulted only to decide whether to send `reasoning_effort`. It was fragile (a coincidental substring, not an intent) and, worse, it did not govern the token field: the client always sent `max_tokens`, which OpenAI *reasoning* models reject — they require `max_completion_tokens`.
+
+Replaced it with a single explicit `_OPENAI_MODEL_CAPS` prefix table (`gpt-5`/`o1`/`o3`/`o4` reason; `gpt-4`/`chatgpt` chat) behind `_openai_is_reasoning`, and routed **both** decisions through it: reasoning models get `reasoning_effort` **and** `max_completion_tokens`; chat models and DeepSeek (classic wire format) get `max_tokens`. The two can no longer drift apart. An id matching nothing is treated as a chat model.
+
+**Tradeoff:** an unlisted id defaults to chat, so a brand-new OpenAI reasoning model is silently denied effort until it is added to the table. Chosen over the reverse (guess reasoning) because the failure modes are asymmetric: a denied effort is a quality/perf miss, while sending `reasoning_effort`/`max_completion_tokens` to a chat model — or `max_tokens` to a reasoning model — is a hard 400. Correctness-safe by default; effort is opt-in per known family.
