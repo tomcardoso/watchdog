@@ -462,16 +462,18 @@ callouts) drop resolved ids from the active list. The store is populated by `wat
 by `- [x]` checkbox sync from the briefing files (`<!--wid:<id>-->` markers), and undone by
 `watchdog unresolve`; `merge-entities` remaps lead ids onto the survivor (§I1, D54).
 
-**Promoting a surface-found contradiction (`watchdog contradiction-add`, D82).** `/watchdog-surface`
-reports cross-document contradictions as labelled *candidates* rather than writing callouts into
-pipeline-owned entity notes (D81). Once the journalist has verified a candidate against the
-sources, this deterministic command (`cmd/contradiction.py` → `pipeline/contradiction.py`) writes
-the callout — in the exact `[!contradiction]` shape extraction emits — into the entity's
-`## Contradictions` ledger and re-renders the note through `build_entity_note`, applying the same
-resolved-contradiction overlay the ingest writer does. So the promoted callout is content-keyed
-like any pipeline-emitted one and `watchdog resolve`/`unresolve` act on it unchanged. It validates
-the entity id and both document slugs, is a no-op if the callout is already present, and makes no
-model call — the journalist is the gate (they run it), the pipeline stays the sole writer (§I1, §I5).
+**Promoting a surface-found contradiction (`watchdog contradiction-add`, D82, D83).**
+`/watchdog-surface` reports cross-document contradictions as labelled *candidates* rather than
+writing callouts into pipeline-owned entity notes (D81). When the journalist explicitly confirms
+promotion, `/watchdog-surface` invokes the deterministic command (`cmd/contradiction.py` →
+`pipeline/contradiction.py`) which writes the callout — in the exact `[!contradiction]` shape
+extraction emits — into the entity's `## Contradictions` ledger and re-renders the note through
+`build_entity_note`, applying the same resolved-contradiction overlay the ingest writer does. So
+the promoted callout is content-keyed like any pipeline-emitted one and `watchdog`
+`resolve`/`unresolve` act on it unchanged. It validates the entity id and both document slugs, is
+a no-op if the callout is already present, and makes no model call — the journalist stays the gate
+(explicit confirmation), the pipeline stays the sole writer (§I1, §I5). The command is internal
+and hidden from top-level `watchdog -h`.
 
 ---
 

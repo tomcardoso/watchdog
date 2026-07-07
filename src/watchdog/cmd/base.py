@@ -75,6 +75,10 @@ _VAULT_PERMISSIONS = [
     # /watchdog-context proposes watchlist seed terms (#229); the deterministic append+dedup
     # lives in this command, not the skill hand-editing watchlist.md.
     "Bash(watchdog watchlist-add *)",
+    # /watchdog-surface promotes a journalist-confirmed contradiction candidate into the note
+    # via this internal command (#312, D82/D83) — pre-approved so the confirmed promotion runs
+    # without a second permission prompt; the journalist's explicit confirmation is the gate.
+    "Bash(watchdog contradiction-add *)",
     # WebSearch / WebFetch are deliberately NOT here — they make outbound requests, so they are
     # pre-approved only by the watchdog-research skill's own `allowed-tools` frontmatter, scoped to
     # when /watchdog-research is active. Archival downloads run as a deterministic post-flight of
@@ -289,8 +293,8 @@ _CMD_HELP: dict[str, dict] = {
             "like any pipeline-emitted one. No model calls.",
             "",
             "Validates that the entity id and both document slugs exist before writing; a callout",
-            "already present is a no-op. The surface report prints a ready-to-run command line",
-            "for each candidate, so promoting a verified one is a copy-paste.",
+            "already present is a no-op. `/watchdog-surface` can run this after explicit",
+            "journalist confirmation when promoting a candidate.",
         ],
     },
     "research": {
@@ -630,15 +634,16 @@ def _print_banner() -> None:
             ("log",              "Show ingest history"),
             ("timeline",         "Rebuild timeline.md from canonical timeline files"),
         ]),
+        ("Investigate", [
+            ("search",     "Semantic search across ingested documents"),
+            ("leads",      "Surface investigative leads from the entity graph"),
+            ("merge-entities", "Merge a duplicate entity into another"),
+            ("watchlist",  "Sweep the whole vault against watchlist.md"),
+            ("research",   "Research open questions on the web (downloads into _INCOMING/)"),
+        ]),
         ("Info", [
             ("list",       "List all investigations"),
             ("status",     "Show detailed status"),
-            ("search",     "Semantic search across ingested documents"),
-            ("leads",      "Surface investigative leads from the entity graph"),
-            ("merge-entities", "Merge a duplicate entity into another, deterministically"),
-            ("contradiction-add", "Promote a verified surface-found contradiction into a note"),
-            ("watchlist", "Sweep the whole vault against watchlist.md"),
-            ("research",   "Research open questions on the web (downloads into _INCOMING/)"),
             ("export",     "Export the knowledge graph (Neo4j / Gephi / Cypher)"),
             ("doctor",     "Check for missing or broken vaults"),
         ]),

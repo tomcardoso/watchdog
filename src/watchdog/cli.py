@@ -252,15 +252,14 @@ def main() -> None:
                           help="Output format (default: csv)")
     p_export.set_defaults(func=cmd_export)
 
-    p_merge_entities = sub.add_parser("merge-entities", help="Merge a duplicate entity into another, deterministically")
+    p_merge_entities = sub.add_parser("merge-entities", help="Merge a duplicate entity into another")
     p_merge_entities.add_argument("keep_id", help="Entity id to keep (the survivor)")
     p_merge_entities.add_argument("merge_id", help="Entity id to merge away (folded into keep_id)")
     p_merge_entities.add_argument("--force", action="store_true",
                                   help="Skip the confirmation prompt")
     p_merge_entities.set_defaults(func=cmd_merge_entities)
 
-    p_contradiction = sub.add_parser("contradiction-add",
-                                     help="Promote a verified surface-found contradiction into an entity note")
+    p_contradiction = sub.add_parser("contradiction-add", help=argparse.SUPPRESS)
     p_contradiction.add_argument("entity_id", help="Entity id the contradiction belongs to")
     p_contradiction.add_argument("--label", required=True, metavar="TEXT",
                                  help="Short label for the disputed fact")
