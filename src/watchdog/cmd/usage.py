@@ -1,8 +1,6 @@
-#!/usr/bin/env python3
-"""
-analyze-session — per-call token/cost breakdown for a watchdog ingest run.
+"""`watchdog usage` — per-call token/cost/latency breakdown for ingest runs (#207, #317, #319).
 
-Reads `.watchdog/Registry/usage-<ts>.json` (D50/#207) — the Python orchestrator's own per-call
+Reads `.watchdog/Registry/usage-<ts>.json` (D50) — the Python orchestrator's own per-call
 telemetry, written after every `watchdog ingest`/`watchdog finalize` run — and groups calls by
 stage (classifier / extractor / finalizer, matching the CLI's own `--classifier-model` /
 `--extractor-model` / `--finalizer-model` vocabulary). Extractor rows show the filename and page
@@ -10,15 +8,14 @@ range (or section) each call covered. Cost is read directly from each record —
 pricing table to keep in sync, since `model_client` already computed `cost_usd` authoritatively
 at call time.
 
-Usage:
-  analyze-session <vault>                      analyze the latest run in <vault>
-  analyze-session <vault> --all                compare every run recorded in <vault>
-  analyze-session <path/to/usage-<ts>.json>     analyze exactly that run file
-"""
+Formerly the standalone `scripts/analyze-session` dev tool; folded into the CLI (#319) so it's
+usable without a repo checkout."""
 
 import json
 import sys
 from pathlib import Path
+
+from watchdog.cmd.base import _resolve_vault
 
 # task name -> stage bucket, matching --classifier-model/--extractor-model/--finalizer-model.
 _STAGE = {
@@ -38,7 +35,6 @@ def _fmt(n: int) -> str:
 
 
 def _fmt_secs(s: float) -> str:
-    """e.g. 8.2 -> '8.2s', 125.0 -> '2.1m' — per-call latency (#317)."""
     return f"{s:.1f}s" if s < 60 else f"{s / 60:.1f}m"
 
 
@@ -71,21 +67,6 @@ def _load(path: Path) -> dict:
         sys.exit(f"Error: could not read {path}: {e}")
 
 
-def _registry_dir(arg: Path) -> Path:
-    reg = arg / ".watchdog" / "Registry"
-    if reg.is_dir():
-        return reg
-    if arg.is_dir() and any(arg.glob("usage-*.json")):
-        return arg   # arg is already a Registry dir
-    sys.exit(f"Error: no .watchdog/Registry under {arg}, and it has no usage-*.json files itself")
-
-
-def _vault_for(registry_dir: Path) -> Path:
-    if registry_dir.parent.name == ".watchdog":
-        return registry_dir.parent.parent
-    return registry_dir   # best-effort fallback — cost/page just won't be available
-
-
 def _accumulate(totals: dict, add: dict) -> None:
     for k in _ZERO_TOTALS:
         totals[k] += add[k]
@@ -110,7 +91,7 @@ def _print_stage(calls: list[dict]) -> dict:
     model_w = max(max(len(_short_model(c.get("model"))) for c in calls), len("Model"))
 
     hdr = (f"  {'Filename':<{name_w}}  {'Detail':<{detail_w}}  {'Model':<{model_w}}  "
-           f"{'Input':>8}  {'C.read':>8}  {'Output':>7}  {'Cost':>8}  {'Latency':>8}")
+           f"{'Input':>8}  {'C.read':>8}  {'Output':>7}  {'Latency':>8}  {'Cost':>8}")
     print(hdr)
     print(f"  {'─' * (len(hdr) - 2)}")
 
@@ -125,7 +106,7 @@ def _print_stage(calls: list[dict]) -> dict:
         print(
             f"  {trunc_name:<{name_w}}  {trunc_detail:<{detail_w}}  {_short_model(c.get('model')):<{model_w}}  "
             f"{_fmt(c['input_tokens']):>8}  {_fmt(c['cache_read_tokens']):>8}  {_fmt(c['output_tokens']):>7}  "
-            f"${cost:>6.4f}  {_fmt_secs(latency):>8}"
+            f"{_fmt_secs(latency):>8}  ${cost:>6.4f}"
         )
         totals["input_tokens"] += c["input_tokens"]
         totals["output_tokens"] += c["output_tokens"]
@@ -137,17 +118,17 @@ def _print_stage(calls: list[dict]) -> dict:
     print(
         f"  {'Subtotal':<{name_w}}  {'':<{detail_w}}  {'':<{model_w}}  "
         f"{_fmt(totals['input_tokens']):>8}  {_fmt(totals['cache_read_tokens']):>8}  "
-        f"{_fmt(totals['output_tokens']):>7}  ${totals['cost_usd']:>7.4f}  {_fmt_secs(totals['latency_s']):>8}"
+        f"{_fmt(totals['output_tokens']):>7}  {_fmt_secs(totals['latency_s']):>8}  ${totals['cost_usd']:>7.4f}"
     )
     return totals
 
 
-def analyze_run(usage_file: Path, vault: Path) -> None:
+def _analyze_run(usage_file: Path, vault: Path) -> None:
     """Detailed breakdown of a single run: one section per stage, filenames/detail for each call."""
     data = _load(usage_file)
     calls = data.get("calls", [])
 
-    W = 88
+    W = 96
     print()
     print("━" * W)
     print(f"  Run  {usage_file.stem}" + (f"   vault: {vault.name}" if vault else ""))
@@ -198,16 +179,14 @@ def _run_totals(calls: list[dict]) -> dict:
     return t
 
 
-def analyze_all(registry_dir: Path, vault: Path) -> None:
+def _analyze_all(registry_dir: Path, vault: Path) -> None:
     """Compact per-run comparison table (every usage-*.json in the vault) + a grand total."""
     files = sorted(registry_dir.glob("usage-*.json"))
-    if not files:
-        sys.exit(f"Error: no usage-*.json files found in {registry_dir}")
 
     print()
-    print("━" * 100)
+    print("━" * 108)
     print(f"  Vault  {vault.name}  ({len(files)} run{'s' if len(files) != 1 else ''})")
-    print("━" * 100)
+    print("━" * 108)
 
     rows = []
     for f in files:
@@ -216,7 +195,7 @@ def analyze_all(registry_dir: Path, vault: Path) -> None:
     name_w = min(28, max(len(name) for name, _, _ in rows))
 
     hdr = (f"  {'Run':<{name_w}}  {'Calls':>5}  {'Classifier':>10}  {'Extractor':>10}  {'Finalizer':>10}  "
-           f"{'Input':>9}  {'C.read':>9}  {'Output':>8}  {'Cost':>8}  {'Time':>7}")
+           f"{'Input':>9}  {'C.read':>9}  {'Output':>8}  {'Time':>7}  {'Cost':>8}")
     print()
     print(hdr)
     print(f"  {'─' * (len(hdr) - 2)}")
@@ -228,7 +207,7 @@ def analyze_all(registry_dir: Path, vault: Path) -> None:
         print(
             f"  {trunc:<{name_w}}  {n_calls:>5}  ${t['classifier_cost']:>9.4f}  ${t['extractor_cost']:>9.4f}  "
             f"${t['finalizer_cost']:>9.4f}  {_fmt(t['input_tokens']):>9}  {_fmt(t['cache_read_tokens']):>9}  "
-            f"{_fmt(t['output_tokens']):>8}  ${t['cost_usd']:>7.4f}  {_fmt_secs(t['latency_s']):>7}"
+            f"{_fmt(t['output_tokens']):>8}  {_fmt_secs(t['latency_s']):>7}  ${t['cost_usd']:>7.4f}"
         )
         for k in grand:
             grand[k] += t[k]
@@ -239,44 +218,29 @@ def analyze_all(registry_dir: Path, vault: Path) -> None:
         f"  {'TOTAL':<{name_w}}  {n_calls_total:>5}  ${grand['classifier_cost']:>9.4f}  "
         f"${grand['extractor_cost']:>9.4f}  ${grand['finalizer_cost']:>9.4f}  "
         f"{_fmt(grand['input_tokens']):>9}  {_fmt(grand['cache_read_tokens']):>9}  "
-        f"{_fmt(grand['output_tokens']):>8}  ${grand['cost_usd']:>7.4f}  {_fmt_secs(grand['latency_s']):>7}"
+        f"{_fmt(grand['output_tokens']):>8}  {_fmt_secs(grand['latency_s']):>7}  ${grand['cost_usd']:>7.4f}"
     )
     _print_cost_per_page(vault, grand["cost_usd"])
 
 
-def main():
-    if len(sys.argv) < 2:
-        print(__doc__)
-        sys.exit(1)
-
-    args = sys.argv[1:]
-    show_all = "--all" in args
-    args = [a for a in args if a != "--all"]
-    if not args:
-        print(__doc__)
-        sys.exit(1)
-
-    arg = Path(args[0])
-    if not arg.exists():
-        sys.exit(f"Error: {arg} not found")
-
-    if arg.is_file():
-        vault = arg.parent.parent.parent   # <vault>/.watchdog/Registry/usage-<ts>.json
-        analyze_run(arg, vault)
-        return
-
-    registry_dir = _registry_dir(arg)
-    vault = _vault_for(registry_dir)
-
-    if show_all:
-        analyze_all(registry_dir, vault)
-        return
-
+def cmd_usage(args) -> None:
+    _, info, vault = _resolve_vault(args.project)
+    registry_dir = vault / ".watchdog" / "Registry"
     files = sorted(registry_dir.glob("usage-*.json"))
     if not files:
-        sys.exit(f"Error: no usage-*.json files found in {registry_dir}")
-    analyze_run(files[-1], vault)   # filenames sort chronologically
+        sys.exit(f"Error: no ingest runs recorded yet for {info['name']} — run `watchdog ingest` first.")
 
+    if args.all:
+        _analyze_all(registry_dir, vault)
+        return
 
-if __name__ == "__main__":
-    main()
+    if args.run:
+        matches = [f for f in files if args.run in f.stem]
+        if not matches:
+            sys.exit(f"Error: no run matching '{args.run}' found in {registry_dir}")
+        if len(matches) > 1:
+            sys.exit(f"Ambiguous run — matches: {', '.join(f.stem for f in matches)}")
+        _analyze_run(matches[0], vault)
+        return
+
+    _analyze_run(files[-1], vault)   # filenames sort chronologically
