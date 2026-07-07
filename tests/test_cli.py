@@ -1085,6 +1085,7 @@ def test_version_flags_invoke_about(capsys, monkeypatch, flag):
     ("remove",    "delete"),
     ("rm",        "delete"),
     ("mv",        "move"),
+    ("telemetry", "usage"),
 ])
 def test_aliases_remap_argv(alias, canonical, monkeypatch):
     import sys

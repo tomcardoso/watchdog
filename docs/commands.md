@@ -103,6 +103,7 @@ HTML pages get a full rendered snapshot — images, styles, client-rendered cont
 | `watchdog reindex [name]` | Rebuild the search indexes from disk — see [below](#watchdog-reindex). |
 | `watchdog research [name]` | Open Claude Code to research the vault's open questions on the web — see [below](#watchdog-research). |
 | `watchdog watchlist [name]` | Sweep every already-ingested document against the current `watchlist.md` — see [below](#watchdog-watchlist). |
+| `watchdog usage [name]` | Per-call token/cost/latency breakdown for ingest runs — see [below](#watchdog-usage). |
 | `watchdog export [name]` | Export the entity and relationship graph for network-analysis tools — see [below](#watchdog-export). |
 | `watchdog doctor` | Check all registered investigations for missing or broken vaults, suggesting `watchdog move` or `watchdog delete` for each issue. |
 | `watchdog auth` | Show or change how Watchdog authenticates to model providers — see [below](#watchdog-auth). |
@@ -166,6 +167,10 @@ Opens Claude Code to research the vault's open questions on the web. Claude queu
 ### watchdog watchlist
 
 Sweeps every already-ingested document against the current `watchlist.md` — deterministic, no model call. The scan that runs automatically at the end of each ingest only sees that run's documents, so a term added afterward is never checked against the existing corpus; this command covers the whole vault instead, writing to the same `briefings/alerts-<date>.md`. Terms already acknowledged with `watchdog resolve` don't re-report. The watchlist format and workflow live in [Investigating](investigating.md).
+
+### watchdog usage
+
+Prints a per-call token, cost, and latency breakdown for ingest runs, reading `.watchdog/Registry/usage/usage-<ts>.json` — no model call. Calls are grouped by stage (classifier/extractor/finalizer), and extraction rows show the filename and the page range or section each call covered, plus cost per page across the vault's whole document registry. Shows the latest run by default; `--all` compares every recorded run, and `--run TIMESTAMP` inspects one specific past run. Also available as `watchdog telemetry`.
 
 ### watchdog export
 
