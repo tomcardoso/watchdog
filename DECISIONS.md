@@ -602,3 +602,11 @@ Resolved by deriving both defaults from the extraction model context window inst
 Removed the key, its Docling toggle (export is now always `PLACEHOLDER` → `[image]`), the guided-setup membership, the docs row/prose, and the test reference. Image-as-evidence is handled properly by #183's on-demand page rasterization to a vision model, which sends a real image block — the approach that embedding-everything-as-text could never be.
 
 **Tradeoff:** a user who had turned `embed_images` on loses a setting, but it was delivering no vision to begin with, so there is no capability regression — only a smaller, honest config surface and lower token cost. The one real image-as-evidence path is deferred to #183.
+
+### D91 — Non-Claude pricing fidelity: OpenAI rates populated and cache-hit input modelled (issue #170)
+
+`_OPENAI_PRICING` was output-approximate: it held only DeepSeek's cache-*miss* input rate (so a cache hit was over-charged) and no OpenAI rates at all (so cost reported `None` for every OpenAI run). Both are needed before a non-Claude backend can be defaulted to with honest cost reporting.
+
+Widened the table entries from `(input, output)` to `(input, output, cached_input)` and added the GPT-5 family standard rates alongside DeepSeek V4. `_openai_cost` now splits `prompt_tokens` into cached vs uncached from the provider's usage fields — OpenAI nests the count under `prompt_tokens_details.cached_tokens`, DeepSeek reports `prompt_cache_hit_tokens` (with `prompt_tokens` = hit + miss) — and prices each portion at its own rate. A model with no published cache rate repeats its input rate (no discount), so the split is always safe to apply.
+
+**Tradeoff:** the hard-coded rate tables now cover two vendors' fast-moving model lineups and will drift as prices change — accepted as a small, centrally-commented table with source links, matching the existing Claude `_PRICING` approach; an unlisted id still degrades to `None` cost rather than raising, so drift is a stale figure, never a crash.

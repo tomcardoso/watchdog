@@ -370,22 +370,50 @@ async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: d
     return {"text": text, "usage": usage_dict, "cost_usd": _api_cost(model_id, usage)}
 
 
-# OpenAI-compatible (Chat Completions) pricing: model id → (input $/tok, output $/tok).
-# DeepSeek figures are the cache-miss input rate; cache-hit input discounts are not modelled yet
-# (a v1 simplification), so cost is a slight over-estimate when prompts hit cache. Verify against
-# the provider before relying on absolute figures: https://api-docs.deepseek.com/quick_start/pricing
+# OpenAI-compatible (Chat Completions) pricing: model id → (input, output, cached_input) $/tok.
+# `input` is the cache-MISS input rate; `cached_input` is the discounted rate applied to the part
+# of the prompt served from the provider's context cache. `_openai_cost` splits prompt tokens into
+# cached vs uncached from the provider's usage fields (OpenAI nests the count under
+# `prompt_tokens_details.cached_tokens`; DeepSeek reports `prompt_cache_hit_tokens`), so a cache hit
+# is priced at the lower rate rather than over-charged. Models with no published cache rate repeat
+# the input rate (no discount). Verify against the providers before relying on absolute figures:
+#   OpenAI:   https://developers.openai.com/api/docs/pricing
+#   DeepSeek: https://api-docs.deepseek.com/quick_start/pricing
 _OPENAI_PRICING = {
-    "deepseek-v4-flash": (0.14e-6,  0.28e-6),
-    "deepseek-v4-pro":   (0.435e-6, 0.87e-6),
+    # DeepSeek V4 (1M-token window; cache-hit input is a ~50x discount on the miss rate)
+    "deepseek-v4-flash": (0.14e-6,  0.28e-6,  0.0028e-6),
+    "deepseek-v4-pro":   (0.435e-6, 0.87e-6,  0.003625e-6),
+    # OpenAI GPT-5 family, standard tier (the -pro models publish no cache rate → no discount)
+    "gpt-5.5":           (5e-6,     30e-6,    0.50e-6),
+    "gpt-5.5-pro":       (30e-6,    180e-6,   30e-6),
+    "gpt-5.4":           (2.5e-6,   15e-6,    0.25e-6),
+    "gpt-5.4-mini":      (0.75e-6,  4.5e-6,   0.075e-6),
+    "gpt-5.4-nano":      (0.20e-6,  1.25e-6,  0.02e-6),
+    "gpt-5.4-pro":       (30e-6,    180e-6,   30e-6),
 }
+
+
+def _cached_input_tokens(usage: dict) -> int:
+    """Prompt tokens served from the provider's context cache, normalised across usage shapes.
+    OpenAI nests the count under `prompt_tokens_details.cached_tokens`; DeepSeek reports it as
+    `prompt_cache_hit_tokens` (with `prompt_tokens` = hit + miss). Absent either field, treat it
+    as no cache hit."""
+    details = usage.get("prompt_tokens_details") or {}
+    cached = details.get("cached_tokens")
+    if cached is None:
+        cached = usage.get("prompt_cache_hit_tokens")
+    return cached or 0
 
 
 def _openai_cost(model_id: str, usage: dict | None) -> float | None:
     rates = _OPENAI_PRICING.get(model_id)
     if not rates or not usage:
         return None
-    inp, outp = rates
-    return ((usage.get("prompt_tokens", 0) or 0) * inp
+    inp, outp, cached_rate = rates
+    prompt = usage.get("prompt_tokens", 0) or 0
+    cached = min(_cached_input_tokens(usage), prompt)   # cache hits are a subset of prompt tokens
+    return ((prompt - cached) * inp
+            + cached * cached_rate
             + (usage.get("completion_tokens", 0) or 0) * outp)
 
 

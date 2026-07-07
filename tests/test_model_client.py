@@ -249,6 +249,29 @@ def test_openai_cost():
     assert mc._openai_cost("deepseek-v4-flash", None) is None
 
 
+def test_openai_cost_prices_openai_models():
+    # gpt-5.4 standard: $2.50/1M input, $15/1M output.
+    assert mc._openai_cost("gpt-5.4",
+                           {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
+        == pytest.approx(2.5 + 15)
+
+
+def test_openai_cost_deepseek_cache_hit():
+    # DeepSeek reports prompt_tokens = hit + miss; the hit portion is priced at the cheap rate.
+    cost = mc._openai_cost("deepseek-v4-flash",
+                           {"prompt_tokens": 1_000_000, "completion_tokens": 0,
+                            "prompt_cache_hit_tokens": 900_000, "prompt_cache_miss_tokens": 100_000})
+    assert cost == pytest.approx(100_000 * 0.14e-6 + 900_000 * 0.0028e-6)
+
+
+def test_openai_cost_openai_cache_hit():
+    # OpenAI nests the cached count under prompt_tokens_details; it is a subset of prompt_tokens.
+    cost = mc._openai_cost("gpt-5.4",
+                           {"prompt_tokens": 1_000_000, "completion_tokens": 0,
+                            "prompt_tokens_details": {"cached_tokens": 400_000}})
+    assert cost == pytest.approx(600_000 * 2.5e-6 + 400_000 * 0.25e-6)
+
+
 def test_openai_backend_request_shape(monkeypatch):
     import httpx
     captured = {}
