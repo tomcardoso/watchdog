@@ -264,10 +264,10 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str, v
 
 
 async def _classify(doc_excerpt: str, model: str, backend: str | None = None,
-                    filename: str | None = None) -> str:
+                    filename: str | None = None, sidecar: str | None = None) -> str:
     r = await _call_model(
         task="classify", model=model, backend=backend, schema=schemas.CLASSIFY,
-        prompt=prompts.build_classify_prompt(doc_excerpt, skills_catalog.build_index()),
+        prompt=prompts.build_classify_prompt(doc_excerpt, skills_catalog.build_index(), sidecar),
         filename=filename,
     )
     return r.parsed.get("skill") or "general-records.md"
@@ -547,7 +547,8 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
               f"{_DIM}→  {filename}  classifying ({page_count} page{'s' if page_count != 1 else ''})…{_RESET}")
         # Classify on the first N pages (page-aware, not a mid-page char cut); the char cap is a guard.
         excerpt = _pages_text(pages[:max(1, classify_pages)])[:_CLASSIFY_EXCERPT_CHARS]
-        skill = await _classify(excerpt, classify_model, classify_backend, filename=filename)
+        skill = await _classify(excerpt, classify_model, classify_backend, filename=filename,
+                                sidecar=_read_sidecar(vault, filename))
         skill_text = skills_catalog.read_skill(skill)
         skill_label = skill.removesuffix(".md")
         _step(f"{_DIM}→  {filename}  {pg} · {skill_label}{_RESET}",

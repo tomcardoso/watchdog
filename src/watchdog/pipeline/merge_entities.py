@@ -277,6 +277,10 @@ def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
     )
 
     combined_summary = keep_summary or merge_summary
+    # The merge keeps only one prose Summary; when both entities had one, the losing
+    # entity's account is dropped and the survivor's Summary now describes only half
+    # the merged record until someone re-synthesizes it (#313). Signal that to the CLI.
+    summary_dropped = bool(keep_summary and merge_summary)
 
     # Carry over the losing note's journalist annotations too, if the writer left any
     # beyond the boilerplate placeholder — those are the one thing nothing else recovers.
@@ -368,5 +372,6 @@ def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
         "keep_name":      keep["name"],
         "merge_name":     merge_name,
         "keep_note_path": keep_note_path,
+        "summary_dropped": summary_dropped,
         "backup_dir":     backup_dir,
     }

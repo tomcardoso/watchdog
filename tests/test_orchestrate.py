@@ -465,6 +465,39 @@ def test_classifier_sees_only_first_n_pages(tmp_path, monkeypatch):
     assert "distinctword3" not in seen["prompt"]   # page 3 excluded
 
 
+def test_classifier_sees_the_sidecar(tmp_path, monkeypatch):
+    """The document's `.yml` provenance sidecar is passed to the classify call."""
+    vault = make_vault(tmp_path)
+    qdir = vault / ".watchdog" / "queue"
+    qdir.mkdir(parents=True, exist_ok=True)
+    (qdir / "abc123.json").write_text(json.dumps({
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "page_count": 1, "pages": [{"page": 1, "markdown": "opaque table"}],
+        "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
+    }))
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "_INCOMING" / "test-doc.pdf.yml").write_text(
+        "source: https://example.gov/lobby-registry\nnotes: sidecarhint\n")
+
+    seen = {}
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "classify":
+            seen["prompt"] = prompt
+        parsed = {
+            "classify": {"skill": "general-records.md"},
+            "extract": _extraction(),
+            "entity-synthesis": {"entity_syntheses": []},
+            "briefing": {"investigation_status": "x", "what_was_ingested": []},
+        }.get(task, {"events": []})
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate.run(vault))
+    assert "sidecarhint" in seen["prompt"]
+    assert "lobby-registry" in seen["prompt"]
+
+
 def test_whole_doc_failure_falls_back_to_sectioning(tmp_path, monkeypatch):
     """A multi-page doc whose whole-doc extraction is rejected is re-extracted in sections."""
     vault = make_vault(tmp_path)

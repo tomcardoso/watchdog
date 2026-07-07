@@ -86,7 +86,7 @@ Flag any case where the same fact is stated differently in two documents — bot
 
 **Do not write `[!contradiction]` callouts into entity notes.** Entity notes are pipeline-owned: callouts are verified at extraction time and tracked by the resolutions layer (`watchdog resolve` / `unresolve`), and hand-inserted ones bypass both. Report newly found discrepancies in the surface report only, labelled as **candidate contradictions** so the journalist can verify them against the sources.
 
-Include all contradictions (pre-existing callouts and new candidates, labelled as such) in the surface report under a dedicated section.
+Include all contradictions (pre-existing callouts and new candidates, labelled as such) in the surface report under a dedicated section. For each **candidate**, ask the journalist whether to promote it now. If they explicitly confirm, run `watchdog contradiction-add` yourself from the terminal with that candidate's values and report success/failure in the session output. If they do not confirm, leave it as a candidate in the report only.
 
 ---
 
@@ -133,6 +133,7 @@ document_count: <n>
 - <Value A> — [[documents/<slug>|Document Title]], p. <n>
 - <Value B> — [[documents/<slug>|Document Title]], p. <n>
 - **Suggested follow-up:** <what would resolve this discrepancy>
+- **Promotion status (candidates only):** <left as candidate | promoted via watchdog contradiction-add>
 
 <If no contradictions found: "No contradictions found.">
 

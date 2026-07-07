@@ -555,3 +555,46 @@ def test_cli_warns_on_mismatched_types(tmp_path, monkeypatch, capsys):
 
     out = _strip_ansi(capsys.readouterr().out)
     assert "different entity types" in out.lower()
+
+
+# ── #313: nudge a /watchdog-entity refresh when the merge drops a prose Summary ──
+
+def _give_loser_a_summary(vault: Path) -> None:
+    """The default fixture's losing note has no Summary; add one so the merge has a
+    second prose account to drop."""
+    note = vault / "entities" / "person" / "a-smith-duplicate.md"
+    note.write_text(note.read_text().replace(
+        "# A. Smith\n\n",
+        "# A. Smith\n\n## Summary\n\nA. Smith signed as an officer of Acme Corp.\n\n",
+    ))
+
+
+def test_run_flags_summary_dropped_when_both_entities_had_one(tmp_path):
+    vault = make_vault(tmp_path)
+    _give_loser_a_summary(vault)
+    assert run(vault, "alice-smith", "a-smith-duplicate")["summary_dropped"] is True
+
+
+def test_run_summary_not_dropped_when_loser_had_no_summary(tmp_path):
+    vault = make_vault(tmp_path)   # loser note carries no Summary section
+    assert run(vault, "alice-smith", "a-smith-duplicate")["summary_dropped"] is False
+
+
+def test_cli_nudges_watchdog_entity_refresh_when_summary_dropped(tmp_path, monkeypatch, capsys):
+    vault = make_vault(tmp_path)
+    _give_loser_a_summary(vault)
+    monkeypatch.chdir(vault)
+    cmd_merge_entities(_args("alice-smith", "a-smith-duplicate"))   # force=True
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "/watchdog-entity alice-smith" in out
+    assert "re-synthesize" in out
+
+
+def test_cli_suppresses_nudge_when_loser_had_no_summary(tmp_path, monkeypatch, capsys):
+    vault = make_vault(tmp_path)   # loser note carries no Summary section
+    monkeypatch.chdir(vault)
+    cmd_merge_entities(_args("alice-smith", "a-smith-duplicate"))   # force=True
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "/watchdog-entity" not in out

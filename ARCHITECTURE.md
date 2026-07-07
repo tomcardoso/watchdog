@@ -182,10 +182,11 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    matches at any length**, so `BP`/`GE`/`3M` stay findable (D60). Pre-flight reports the digest's
    byte size and candidate count per document, surfaced during ingest, to size caps from real data.
 2. **Classify** — one cheap model call (`model_client.acomplete_json`, `classifier_model`,
-   default haiku) over the document's first `classify_pages` pages + the generated
-   in-memory skill index, returning the closest domain-skill filename (§6). Python reads that
-   one skill and injects it into the extraction prompt. **Skipped entirely when a skill is
-   pinned** for the run (`--skill` / `default_skill`) — that one skill is used for every
+   default haiku) over the document's first `classify_pages` pages, the document's `.yml`
+   provenance sidecar when present, and the generated in-memory skill index, returning the
+   closest domain-skill filename (§6). Python reads that one skill and injects it into the
+   extraction prompt. **Skipped entirely when a skill is pinned** for the run (`--skill` /
+   `default_skill`) — that one skill is used for every
    document, saving a model call per doc on known-homogeneous batches.
 3. **Extract** — one model call against the `EXTRACTION` schema. The model emits two layers
    (D26): a **fact layer** — `document.key_facts`, each a single material fact written once,
@@ -290,7 +291,13 @@ longer folded into the extractor.
   extraction call (the #87 tax); a separate haiku call is cheaper.
 - **Pinning.** `--skill` / `default_skill` skips this call entirely and uses one skill
   for the whole run (see §5, D21).
-- **Universal red flags live in `extract_instructions.md`, not the matched skill (D83).**
+- **Provenance-aware.** The classifier also sees the document's `.yml` sidecar (source +
+  collection note) when present, so a document whose type is ambiguous from its text alone —
+  a bare form, a scanned table — can be routed by where it came from, not text alone. The
+  sidecar is context, not a command: the classify prompt marks it as data and the constrained
+  schema (a skill filename) bounds the blast radius; the document text governs on disagreement.
+  See D84.
+- **Universal red flags live in `extract_instructions.md`, not the matched skill (D86).**
   Type-agnostic patterns — document integrity, what's missing, backdating/timeline
   anomalies, self-reported-vs-verified — apply to every record, so they sit in the
   always-loaded extraction instructions rather than being restated per skill or reachable
@@ -469,6 +476,19 @@ callouts) drop resolved ids from the active list. The store is populated by `wat
 by `- [x]` checkbox sync from the briefing files (`<!--wid:<id>-->` markers), and undone by
 `watchdog unresolve`; `merge-entities` remaps lead ids onto the survivor (§I1, D54).
 
+**Promoting a surface-found contradiction (`watchdog contradiction-add`, D82, D83).**
+`/watchdog-surface` reports cross-document contradictions as labelled *candidates* rather than
+writing callouts into pipeline-owned entity notes (D81). When the journalist explicitly confirms
+promotion, `/watchdog-surface` invokes the deterministic command (`cmd/contradiction.py` →
+`pipeline/contradiction.py`) which writes the callout — in the exact `[!contradiction]` shape
+extraction emits — into the entity's `## Contradictions` ledger and re-renders the note through
+`build_entity_note`, applying the same resolved-contradiction overlay the ingest writer does. So
+the promoted callout is content-keyed like any pipeline-emitted one and `watchdog`
+`resolve`/`unresolve` act on it unchanged. It validates the entity id and both document slugs, is
+a no-op if the callout is already present, and makes no model call — the journalist stays the gate
+(explicit confirmation), the pipeline stays the sole writer (§I1, §I5). The command is internal
+and hidden from top-level `watchdog -h`.
+
 ---
 
 ## 10. Near-duplicate detection
@@ -642,7 +662,11 @@ the survivor's with dated provenance, redirects the losing note to a short stub 
 to the survivor, regenerates any third-party entity note whose own Relationships section
 just changed, rebuilds the manifest and global timeline, and does a best-effort reindex
 of every note it touched. Must be run from inside the vault it mutates (no model calls,
-no project-name lookup needed). The merged-away entity's stale corpus/notes search-index
+no project-name lookup needed). The merge keeps only one prose `## Summary` (the survivor's
+if it has one, else the loser's), so when both entities carried one the losing account is
+dropped; `run()` returns a `summary_dropped` flag and the CLI nudges a `/watchdog-entity
+<keep-id>` refresh to re-synthesize the Summary from all merged sources (#313). The
+merged-away entity's stale corpus/notes search-index
 entries are cleaned up by a subsequent `watchdog reindex` (D53), not by this command
 itself — a full rebuild is the existing, already-documented way to drop vectors for
 anything no longer in the registry.
