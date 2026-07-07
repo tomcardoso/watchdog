@@ -31,6 +31,14 @@ This skill is loaded by Watchdog when the document type is a [list the trigger d
 
 ## Red flags — what to look for
 
+The only reader of this section is the extractor: one model pass over a single document, plus a digest of the entities already in the vault — no web, no databases, no prior knowledge of who anyone is. Write every red flag so it reduces to one of three moves:
+
+- **Capture a stated pattern** the model can see in this document — a structure, a sequence, a value, a role.
+- **Compare against the entity digest**, but only where both sides are stated: this document says one thing, the digest says another. A contradiction needs two explicit claims; it cannot fire on silence.
+- **Log a lead** — something worth a human checking later, when the flag depends on knowledge the model doesn't have.
+
+A flag that requires knowing who someone is, proving an absence ("undisclosed", "not filed", "failed to"), or looking something up is not a red flag the extractor can act on — move that insight to *What investigators typically miss*.
+
 ### [Red flag category]
 
 - **[Red flag label]** — [One or two sentences: what to look for and why it matters. Write for pattern recognition, not just field extraction. Be specific — "transferred three or more times in 12 months" is useful; "unusual transaction" is not.]

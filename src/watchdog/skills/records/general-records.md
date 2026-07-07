@@ -37,30 +37,7 @@ Before pulling fields, answer four questions about the document:
 
 ## Red flags — what to look for
 
-### Document integrity
-
-- **Missing pages or unexplained gaps** — a document numbered pages 1–4 and 7–12 is missing pages 5 and 6. This may be a redaction, a copying error, or deliberate concealment. Note it explicitly.
-- **Document that doesn't match its claimed type** — wrong letterhead, inconsistent formatting, different fonts mid-document, dates that don't match the issuing authority's known practices. These can indicate alteration or fabrication.
-- **Version discrepancies** — "amended," "revised," or "restated" versions without a clear explanation of what changed. Always try to obtain the original to compare.
-- **Signature anomalies** — a document signed by someone not identified in the body; a signature block left blank; a date of signature earlier than the date of the events it describes.
-
-### What's missing
-
-- **Redactions** — what is hidden is often more informative than what is shown. Note every redaction: its approximate size, its location in the document, and any surrounding context that suggests what it covers.
-- **Absent parties** — if a document describes a transaction, relationship, or event that would normally involve a named party, and that party is not named, ask why. Absence is a signal.
-- **Attachments listed but not provided** — a document may reference schedules, annexes, or exhibits that were not included in what you received. List them; they may be obtainable separately.
-- **Expected fields left blank** — a form with a mandatory field left empty is as significant as a completed one. Note blank fields that appear required.
-
-### Dates and timelines
-
-- **Backdating** — a document signed or filed after the events it describes, where the date implies it was contemporaneous. Common in fraud.
-- **Implausible timelines** — an approval granted before the application was submitted; a contract executed after the work was completed; a meeting that occurred on a weekend or holiday for an organisation that wouldn't normally operate then.
-- **Date of document vs. date of events** — always distinguish between when something was written and when the events described occurred.
-
-### Self-reporting vs. independent verification
-
-- **Self-reported figures without audit** — financial information, headcounts, or statistics provided by the subject without independent verification should be treated as claims, not facts.
-- **Conflict of interest in the issuing authority** — a document produced by or for the party it describes (a company's own environmental audit, a police force's own use-of-force review) has lower evidentiary weight than one produced by an independent regulator or court.
+The universal red flags — document integrity, what's missing, date and timeline anomalies, and self-reported-versus-verified information — apply to every document and are carried in the standing extraction instructions, so they are not restated here. For an unfamiliar record they *are* the core of what to watch for: read this document against them and treat anything they surface as a fact or a lead, exactly as those instructions describe.
 
 ---
 

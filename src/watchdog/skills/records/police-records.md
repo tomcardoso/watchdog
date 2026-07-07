@@ -48,7 +48,7 @@ This skill is loaded by Watchdog when the document type is a police occurrence r
 - **Multiple officers involved in a use-of-force incident** — note whether each officer's actions are individually documented, or whether accounts are consolidated in a way that obscures individual accountability.
 - **Injuries not documented as force-related** — injuries to a subject that appear in medical records but are not recorded in the use-of-force report suggest an incomplete or inaccurate account.
 - **Inconsistency between the narrative and the structured report form** — structured force-reporting forms and free-text narratives often exist for the same incident. Discrepancies between them suggest the narrative may have been crafted after the fact.
-- **Officer failure to report use of force** — in many jurisdictions, officers are required to file a use-of-force report whenever force above a certain threshold is used. Absence of a report for an incident with documented injuries is a procedural violation.
+- **Documented injuries with no accompanying use-of-force report** — officers must file a use-of-force report whenever force above a threshold is used. If an occurrence report documents injuries or a struggle but no use-of-force report accompanies it, record that gap as a lead to confirm against the force's reporting record — the extractor can't see a report that isn't there.
 
 ### Disciplinary and complaint records
 

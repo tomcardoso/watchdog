@@ -55,7 +55,7 @@ This skill is loaded by Watchdog when the document type is a motor vehicle regis
 
 ### Liens and financial claims
 
-- **Undisclosed liens** — a lien registered against a vehicle that the buyer was not aware of; in most jurisdictions, a lien against the vehicle survives a sale unless discharged. Purchasing a vehicle without checking the lien registry is a common fraud vector.
+- **Undischarged lien surviving a sale** — in most jurisdictions a lien registered against a vehicle survives the sale unless discharged. Record any registered lien and its holder as stated; an undischarged lien around a transfer is the fraud vector, but whether the buyer knew is not something the registry shows — note it as a lead.
 - **Lien holder is an unusual entity** — a private company or individual (rather than a bank or finance company) holding a lien against a vehicle may indicate a private loan arrangement worth examining.
 - **Liens registered shortly before or after a transfer** — a lien registered just before a sale, or a lien that appears to have been paid off and re-registered, may indicate financial manipulation.
 

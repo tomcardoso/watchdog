@@ -65,7 +65,7 @@ This skill is loaded by Watchdog when the document type is a charity information
 ### Political activity
 
 - **Political activity reporting** — most jurisdictions limit or prohibit partisan political activity by registered charities; non-partisan advocacy is typically capped. A charity that reports significant political expenditure or whose programs appear primarily advocacy-driven is at risk of losing charitable status.
-- **Undisclosed political activity** — a charity that publicly engages in political advocacy but reports zero or near-zero political activity on its annual return.
+- **Return reporting little or no political activity** — a charity's annual return reporting zero or near-zero political activity is only half the picture; the flag is a mismatch with what the organisation actually does. Record the reported figure as stated. If the digest or the document set shows the charity running advocacy campaigns, that mismatch is a lead — don't assert concealment from the return alone.
 - **501(c)(3) vs. 501(c)(4) status** — in the US, 501(c)(3) organizations are prohibited from partisan political activity; 501(c)(4) social welfare organizations may engage in more political activity. Organizations that straddle this line are worth examining.
 
 ### US-specific patterns (990)

@@ -49,7 +49,7 @@ Loaded by Watchdog when the document type is a bankruptcy filing, proposal, cred
 
 - **Transactions at undervalue** — assets transferred for less than fair market value before bankruptcy. If within certain look-back periods, the trustee can reverse these.
 - **Fraudulent preferences** — paying certain creditors before others, or transferring assets to related parties, shortly before bankruptcy. Most insolvency statutes set look-back periods for these transactions.
-- **Concealed assets** — assets not disclosed in the statement of affairs or bankruptcy schedules. A bankrupt's sworn statement omitting assets is perjury in virtually every jurisdiction.
+- **Assets missing from the sworn schedules** — the statement of affairs and bankruptcy schedules are a sworn inventory, and omitting an asset is perjury in virtually every jurisdiction. The schedule alone can't tell you what's absent — but if the entity digest or another document places property, a company holding, or a recent transfer in the bankrupt's hands that the schedules don't list, record that gap as a lead.
 - **Related party creditors near the top of the list** — a director's company claiming a large unsecured debt before other creditors.
 - **Multiple bankruptcies** — the same individual filing insolvency proceedings more than once. Successive bankruptcies typically result in stricter conditions for discharge.
 

@@ -290,6 +290,13 @@ longer folded into the extractor.
   extraction call (the #87 tax); a separate haiku call is cheaper.
 - **Pinning.** `--skill` / `default_skill` skips this call entirely and uses one skill
   for the whole run (see §5, D21).
+- **Universal red flags live in `extract_instructions.md`, not the matched skill (D83).**
+  Type-agnostic patterns — document integrity, what's missing, backdating/timeline
+  anomalies, self-reported-vs-verified — apply to every record, so they sit in the
+  always-loaded extraction instructions rather than being restated per skill or reachable
+  only through the `general-records` fallback. A matched skill adds its type-specific flags
+  *on top of* that standing set; `general-records` keeps only its orient-yourself framing
+  for genuinely unknown documents and points to the standing list rather than duplicating it.
 - **Tradeoff.** `document_type` is `null` in the queue between chew and ingest; it is
   populated at ingest. Accepted — nothing downstream needs it earlier.
 - **Sections.** A sectioned document (§5) is classified once, on its full-text excerpt,

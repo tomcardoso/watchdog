@@ -59,7 +59,7 @@ This skill is loaded by Watchdog when the document type is a discipline decision
 - **Pattern of client complaints** — a practitioner with multiple complaints dismissed individually may still represent a systemic problem. Regulatory decisions rarely reference the full complaint history in detail; FOI or registry requests can fill the gap.
 - **Failure to communicate** — in law and financial advising, failure to keep clients informed is a standalone finding. It often accompanies more serious misconduct as a process failure.
 - **Practising while suspended** — continuing to practise after a licence suspension is a criminal matter in many jurisdictions, not just a regulatory one.
-- **Undisclosed conflicts of interest** — acting for parties on both sides of a transaction, or recommending investments in which the adviser has an undisclosed financial interest.
+- **Self-dealing or dual representation** — acting for parties on both sides of a transaction, or recommending an investment the adviser has a financial stake in. The conflict is visible in the arrangement itself; capture the dual role or the stake as stated, and treat whether it was disclosed to the client as a separate question for follow-up.
 
 ### Supervision failures
 

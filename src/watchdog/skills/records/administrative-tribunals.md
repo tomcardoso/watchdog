@@ -63,7 +63,7 @@ This skill is loaded by Watchdog when the document type is a decision, order, or
 
 - **Systemic findings** — a human rights decision finding systemic discrimination (affecting a class of people, not just the individual complainant) carries far more significance than an individual finding. The named complainant may be one of hundreds.
 - **Comparator selection** — human rights complaints require identifying a comparator group. Who was chosen and who was not is analytically significant and often contested.
-- **Remedies not enforced** — a human rights order that the respondent failed to comply with, and whether the complainant had the resources to pursue enforcement.
+- **Order with a remedy that depends on enforcement** — a human rights order imposing compensation, reinstatement, or a policy change is only as strong as its enforcement, and tribunals rarely monitor compliance. Record the remedy and any deadline as stated; whether the respondent complied is a lead to check later, not something the order itself shows.
 
 ### Privacy and information
 

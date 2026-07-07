@@ -79,7 +79,7 @@ Loaded by Watchdog when the document type is a procurement record, tender docume
 
 - **Satisfactory rating despite documented issues** — a vendor performance report that notes delivery failures or quality problems but rates the vendor "satisfactory" overall may reflect reluctance to formally record a poor rating (which would affect future competitions).
 - **Corrective action plans not followed up** — a corrective action plan was required but the file contains no record of whether it was implemented or the performance improved.
-- **No vendor performance reports filed** — for contracts above the relevant threshold, performance reports are required. Absence of reports may indicate the department is not monitoring the contract.
+- **Contract above the performance-reporting threshold** — for contracts above the relevant threshold, performance reports are required. Record the contract value and note that reports are expected; whether they were filed is an absence a single document can't show, so flag it as a lead to check against the department's records — missing reports may mean the contract went unmonitored.
 
 ### Value anomalies
 
