@@ -170,7 +170,7 @@ def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "so
         "queue_files": queue_files,
         "extractor_model": extractor_model,
         "finalizer_model": finalizer_model,
-        "section_token_threshold": _section_token_threshold(),
+        "section_token_threshold": _section_token_threshold(extractor_model),
         "backup_dir": str(backup_dir) if backup_dir else None,
     }
     state_file.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -128,3 +128,49 @@ def test_run_missing_queue_file_errors(tmp_path):
     vault = tmp_path / "vault"
     (vault / ".watchdog").mkdir(parents=True)
     assert "error" in section.run(vault, "nope")
+
+
+# ── provider-aware thresholds (#321) ─────────────────────────────────────────
+
+def test_model_defaults_scale_with_context_window():
+    # 0.6 / 0.3 of the model's context window; Claude 200K reproduces the historical 120K/60K.
+    assert section.model_defaults("sonnet") == (120_000, 60_000)
+    assert section.model_defaults(None) == (120_000, 60_000)              # default tier
+    assert section.model_defaults("deepseek-v4-flash") == (600_000, 300_000)   # 1M window
+    assert section.model_defaults("gpt-5-mini") == (240_000, 120_000)          # 400K window
+
+
+def test_section_token_threshold_model_aware(monkeypatch):
+    monkeypatch.setattr(section, "_config_get", lambda k, d: d)   # no config override
+    assert section.section_token_threshold("sonnet") == 120_000
+    assert section.section_token_threshold("deepseek-v4-flash") == 600_000
+
+
+def test_section_token_threshold_config_override_wins(monkeypatch):
+    # An explicit config value overrides the model-aware default regardless of the model.
+    monkeypatch.setattr(section, "_config_get",
+                        lambda k, d: 42 if k == "section_token_threshold" else d)
+    assert section.section_token_threshold("deepseek-v4-flash") == 42
+
+
+def test_section_token_threshold_auto_uses_model_default(monkeypatch):
+    # The 'auto' sentinel (or an unset key) falls back to the model-aware default.
+    monkeypatch.setattr(section, "_config_get",
+                        lambda k, d: "auto" if k == "section_token_threshold" else d)
+    assert section.section_token_threshold("sonnet") == 120_000
+    assert section.section_token_threshold("deepseek-v4-flash") == 600_000
+
+
+def test_run_threshold_follows_model_window(tmp_path, monkeypatch):
+    # With no config override, the same document sections under a small-window model but is
+    # extracted whole under a large-window one — proving the model flows into the threshold.
+    import watchdog.model_client as mc
+    monkeypatch.setattr(section, "_config_get", lambda k, d: d)
+    monkeypatch.setattr(mc, "context_window",
+                        lambda model: 500 if model == "small" else 100_000)
+    vault = _vault(tmp_path)
+    pages = [{"page": n, "markdown": "x" * 400} for n in range(1, 11)]   # 1000 est tokens
+    _write_queue(vault, "doc1", pages, 10)
+    assert section.run(vault, "doc1", model="small")["sectioned"] is True     # 500*0.6=300 < 1000
+    assert section.run(vault, "doc1", model="big")["sectioned"] is False      # 100000*0.6 ≫ 1000
+

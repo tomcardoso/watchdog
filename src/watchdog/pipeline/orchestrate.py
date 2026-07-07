@@ -579,7 +579,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
 
     flow = f"{pg} · {skill_label}"        # the accumulated in-flight prefix for this document's row
 
-    plan = section.run(vault, sha)
+    plan = section.run(vault, sha, model=extract_model)
     if plan.get("sectioned"):
         n_sections = len(plan.get("sections", []))
         _step(f"{_DIM}→  {filename}  {flow} · extracting · {n_sections} sections…{_RESET}",
@@ -770,7 +770,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
             (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
             results.append({"sha256": sha, "filename": pf.get("filename"), "status": "skipped"})
             continue
-        if section.run(vault, sha).get("sectioned"):
+        if section.run(vault, sha, model=extract_model).get("sectioned"):
             sectioned_shas.append(sha)
         else:
             prompt = prompts.build_extract_prompt(

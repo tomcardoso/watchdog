@@ -30,10 +30,18 @@ import json
 import sys
 from pathlib import Path
 
-DEFAULT_TOKEN_THRESHOLD = 120_000   # est tokens; at/under this, no sectioning
-DEFAULT_TOKEN_BUDGET = 60_000       # target est tokens per section
 DEFAULT_OVERLAP_TOKENS = 4_000      # est-token overlap between consecutive sections
 _CHARS_PER_TOKEN = 4                # cheap heuristic
+
+# Provider-aware sectioning defaults (#321): the threshold and per-section budget are fractions
+# of the extraction model's context window rather than fixed numbers, so a 1M-window model
+# (DeepSeek V4) reads far more of a document in one call than a 200K Claude window would. The
+# threshold reserves ~40% of the window for the schema, domain skill, carried-forward entities,
+# scratchpad, and the extraction *output*; the budget is half the threshold so a document just
+# over it splits into two sections. The fractions are chosen so a 200K Claude window reproduces
+# the historical 120K/60K defaults exactly — no behaviour change on the default (Claude) path.
+_THRESHOLD_FRACTION = 0.6
+_BUDGET_FRACTION = 0.3
 
 
 def _config_get(key: str, default):
@@ -44,9 +52,31 @@ def _config_get(key: str, default):
     return cfg.get(key, default)
 
 
-def section_token_threshold() -> int:
-    """Estimated-token count at/under which a document is not sectioned."""
-    return _config_get("section_token_threshold", DEFAULT_TOKEN_THRESHOLD)
+def _resolve_override(key: str, model_default: int) -> int:
+    """Config value for `key`, falling back to `model_default` when it is unset or the literal
+    `"auto"` sentinel (#321). Only a positive int pins a fixed value; "auto", None, or a missing
+    key all mean "use the model-aware default". An absolute override does NOT rescale when the
+    extraction model changes — that is the tradeoff a user accepts by pinning a number."""
+    val = _config_get(key, None)
+    return val if isinstance(val, int) and not isinstance(val, bool) else model_default
+
+
+def model_defaults(model: str | None) -> tuple[int, int]:
+    """(threshold, budget) est-token sectioning defaults derived from `model`'s context window
+    (#321). `model` is the extraction stage's tier name or raw id (None ⇒ default tier)."""
+    from watchdog import model_client
+    window = model_client.context_window(model)
+    return int(window * _THRESHOLD_FRACTION), int(window * _BUDGET_FRACTION)
+
+
+def section_token_threshold(model: str | None = None) -> int:
+    """Estimated-token count at/under which a document is not sectioned.
+
+    Model-aware by default: derived from the extraction model's context window (#321). An
+    explicit integer `section_token_threshold` in config overrides it, as an advanced escape
+    hatch; the `"auto"` sentinel (or an unset key) keeps the model-aware default."""
+    default_threshold, _ = model_defaults(model)
+    return _resolve_override("section_token_threshold", default_threshold)
 
 
 def est_tokens(text: str) -> int:
@@ -96,13 +126,18 @@ def char_windows(total: int, size: int, overlap: int) -> list[tuple[int, int]]:
     return windows
 
 
-def run(vault: Path, sha256: str, *, force_budget: int | None = None) -> dict:
+def run(vault: Path, sha256: str, *, force_budget: int | None = None,
+        model: str | None = None) -> dict:
     """Plan sections for a document.
 
     Normally threshold-gated: documents at/under `section_token_threshold` are not
     sectioned. Pass `force_budget` to always section (used as a fallback when
     whole-document extraction overruns the model's output ceiling) — the per-section
     budget is capped at half the document so a splittable document yields ≥2 sections.
+
+    `model` is the extraction stage's model (tier name or raw id), used to derive the
+    context-window-aware threshold and budget (#321); config values override the derived
+    defaults. It is irrelevant on the `force_budget` path, which sets its own small budget.
     """
     queue_file = vault / ".watchdog" / "queue" / f"{sha256}.json"
     if not queue_file.exists():
@@ -113,8 +148,9 @@ def run(vault: Path, sha256: str, *, force_budget: int | None = None) -> dict:
     page_count = queue.get("page_count") or len(pages)
     total_tokens = est_tokens_from_pages(pages)
 
-    threshold = section_token_threshold()
-    budget = _config_get("section_token_budget", DEFAULT_TOKEN_BUDGET)
+    default_threshold, default_budget = model_defaults(model)
+    threshold = _resolve_override("section_token_threshold", default_threshold)
+    budget = _resolve_override("section_token_budget", default_budget)
     overlap_tokens = _config_get("section_overlap_tokens", DEFAULT_OVERLAP_TOKENS)
 
     if force_budget is not None:

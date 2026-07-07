@@ -222,6 +222,13 @@ document and replaced, not appended.
 into overlapping page-range sections, extracted **one at a time in reading order** with a
 carry-forward block in each section's prompt, then combined by `merge.merge_extractions`
 into a single extraction JSON that goes through the same post-flight / `write_vault` path.
+The threshold and per-section budget are **provider-aware** (D89, #321): rather than fixed
+numbers they default to fractions (0.6 / 0.3) of the extraction model's context window
+(`model_client.context_window` — Claude 200K, DeepSeek V4 1M, etc.), so a large-window model
+reads far more of a document per call before sectioning. A 200K Claude window reproduces the
+historical 120K/60K defaults exactly; the two config keys default to the `auto` sentinel and
+accept an explicit `section_token_threshold`/`section_token_budget` integer as an advanced
+escape hatch (a pinned integer does not rescale when the extraction model changes).
 The carry-forward is a deduplicated entity-id → name/type map accumulated across every
 section seen so far (rebuilt fresh each section, one line per entity, not a running
 concatenation) plus only the immediately preceding section's `observations` text; and,

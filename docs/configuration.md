@@ -38,8 +38,8 @@ Or run `watchdog configure <key>` with no value to see that one key's help and c
 | `classify_pages` | `5` | Leading pages of each document shown to the classifier. |
 | `default_skill` | *(unset)* | Pin one record skill for every ingested document, skipping classification. |
 | `preflight_alias_min_length` | `3` | Shortest entity alias that can match a document during extraction. |
-| `section_token_threshold` | `120000` | Estimated tokens above which a document is split into sections for extraction. |
-| `section_token_budget` | `60000` | Target estimated tokens per section when a document is sectioned. |
+| `section_token_threshold` | `auto` | Estimated tokens above which a document is split into sections for extraction. `auto` derives it from ~60% of the extraction model's context window; set a number to override. |
+| `section_token_budget` | `auto` | Target estimated tokens per section when a document is sectioned. `auto` is half the threshold; set a number to override. |
 | `section_overlap_tokens` | `4000` | Estimated-token overlap between consecutive sections. |
 | `classifier_model` | `haiku` | Model that reads a document's first pages and picks its record skill. |
 | `extractor_model` | `sonnet` | Model that extracts each document. |
@@ -64,7 +64,7 @@ Or run `watchdog configure <key>` with no value to see that one key's help and c
 
 `chew_workers` and `chunk_workers` both default to `auto`: Watchdog scans the batch before starting and picks values based on how large the documents are. They multiply — a batch of large PDFs runs roughly `chew_workers × chunk_workers` subprocesses — so pin them to small numbers on a modest machine. `embed_images` is only worth turning on when documents contain charts, image-based tables, or diagrams that carry investigative value; it raises token usage significantly.
 
-The `section_*` family governs very large documents at ingest. A document estimated under `section_token_threshold` tokens is extracted whole; anything larger is split into sections of roughly `section_token_budget` tokens, extracted sequentially, with `section_overlap_tokens` of overlap so entities and events spanning a boundary aren't lost. Lower the threshold if extraction of dense documents is overrunning the model's output ceiling.
+The `section_*` family governs very large documents at ingest. A document estimated under `section_token_threshold` tokens is extracted whole; anything larger is split into sections of roughly `section_token_budget` tokens, extracted sequentially, with `section_overlap_tokens` of overlap so entities and events spanning a boundary aren't lost. The threshold and budget default to `auto`: rather than a fixed number, `auto` resolves to a fraction of the extraction model's context window, so a large-window model (DeepSeek V4's 1M) reads far more of a document in one call before sectioning than a 200K Claude window does — fewer calls, less orchestration overhead. Set either key to a fixed number to override the model-aware default (an advanced escape hatch); lower the threshold if extraction of dense documents is overrunning the model's output ceiling. A fixed number does not rescale when you change `extractor_model`, so set it back to `auto` (or re-check the value) if you switch to a model with a different context window.
 
 `shingle_size` controls near-duplicate fingerprinting; changing it invalidates existing fingerprints, so documents already ingested would need re-ingesting to rebuild them.
 
