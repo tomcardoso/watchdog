@@ -708,7 +708,11 @@ completed purge, and the CLI hint says so.
   only backend that works on a subscription), `claude-api` (raw Messages + structured
   outputs), or the OpenAI-compatible `openai`/`deepseek`/`gemini` backends (Chat Completions over
   httpx, one provider each via base URL; D37, D94) — by auth mode and per-task policy, validates
-  the JSON, retries on the same model on failure, and reports cost/latency. **Provider
+  the JSON, retries on the same model on failure, and reports cost/latency. Structured-output
+  enforcement differs by provider on the OpenAI-compatible path: Gemini gets a real `json_schema`
+  response format (its schema engine tolerates the same omit-optional-fields `schemas.py` design
+  unmodified), while OpenAI and DeepSeek stay on portable `json_object` + schema-in-prompt (D98).
+  **Provider
   abstraction:** the abstract `effort` intent is mapped to each provider's native control by
   a per-provider policy (`_EFFORT_POLICY`: Claude `output_config.effort`, OpenAI
   `reasoning_effort` on reasoning models only, Gemini `reasoning_effort` unconditionally (every
