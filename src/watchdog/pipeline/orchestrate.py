@@ -351,21 +351,18 @@ def _compact_result(sha: str, filename: str, extraction: dict, near_dup: dict, c
     }
 
 
-def _write_postflight(vault: Path, sha: str, extraction: dict) -> tuple[bool, list[str]]:
+def _write_postflight(vault: Path, sha: str, extraction: dict) -> tuple[bool, list[str], list[str]]:
+    """Returns (ok, errors, warnings). Warnings are collected rather than printed here — the
+    caller only knows once the document has actually finished (not discarded for a repair
+    retry) whether they're worth surfacing, and where in the live region's output they belong
+    (tucked under this document's own OK line, not wherever a concurrent document happens to
+    be at the moment post-flight ran, #333 follow-up)."""
     tmp = vault / ".watchdog" / "tmp" / f"wdg_ex_{sha}.json"
     tmp.parent.mkdir(parents=True, exist_ok=True)
     tmp.write_text(json.dumps(extraction, ensure_ascii=False, indent=2), encoding="utf-8")
-    filename = extraction.get("document", {}).get("filename", "")
-
-    def _warn(msg: str) -> None:
-        # Routed through _say/_log (not a raw stderr print) so it survives the live region's
-        # redraw — a print outside that machinery can be erased by the next cursor-up/erase,
-        # and it never reached ingest.log.
-        _say(f"   {_YELLOW}⚠{_RESET}  {filename}  {_DIM}{msg}{_RESET}")
-        _log(vault, f"WARN {filename}: {msg}")
-
-    outcome = postflight.run(vault, tmp, quiet=True, warn=_warn)
-    return ("errors" not in outcome), outcome.get("errors", [])
+    warnings: list[str] = []
+    outcome = postflight.run(vault, tmp, quiet=True, warn=warnings.append)
+    return ("errors" not in outcome), outcome.get("errors", []), warnings
 
 
 def _append_repair_note(base, errors: list[str]):
@@ -399,16 +396,16 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
         except model_client.ModelError as e:
             # No valid JSON after the client's own retries — often output truncated on a
             # dense doc. Report failure so the caller can fall back to sectioning.
-            return extraction, scratchpad, cost, False, [f"extraction returned no valid JSON ({e})"]
+            return extraction, scratchpad, cost, False, [f"extraction returned no valid JSON ({e})"], []
         cost += r.cost_usd or 0.0
         extraction = r.parsed
         scratchpad = extraction.pop("scratchpad", "")
         _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault,
                         skill_text=skill_text, extract_model=model, extract_effort=effort)
-        ok, errors = _write_postflight(vault, sha, extraction)
+        ok, errors, warnings = _write_postflight(vault, sha, extraction)
         if ok:
-            return extraction, scratchpad, cost, True, []
-    return extraction, scratchpad, cost, False, errors
+            return extraction, scratchpad, cost, True, [], warnings
+    return extraction, scratchpad, cost, False, errors, []
 
 
 # Cap on the observations text carried into the next section's prompt (A5) — only the most
@@ -505,8 +502,8 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
     cost += digest_cost
     _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault,
                     skill_text=skill_text, extract_model=model, extract_effort=effort)
-    ok, errors = _write_postflight(vault, sha, extraction)
-    return extraction, scratchpad, cost, ok, errors
+    ok, errors, warnings = _write_postflight(vault, sha, extraction)
+    return extraction, scratchpad, cost, ok, errors, warnings
 
 
 def _queued_filename(vault: Path, sha: str) -> str | None:
@@ -593,12 +590,12 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         n_sections = len(plan.get("sections", []))
         _step(f"{_DIM}→  {filename}  {flow} · extracting · {n_sections} sections…{_RESET}",
               f"{_DIM}→  {filename}  extracting · {n_sections} sections…{_RESET}")
-        extraction, scratchpad, cost, ok, errors = await _extract_sectioned(
+        extraction, scratchpad, cost, ok, errors, warnings = await _extract_sectioned(
             vault, sha, pf, skill_text, plan, extract_model, skill_label, extract_effort, extract_backend, brief)
     else:
         _step(f"{_DIM}→  {filename}  {flow} · extracting…{_RESET}",
               f"{_DIM}→  {filename}  extracting…{_RESET}")
-        extraction, scratchpad, cost, ok, errors = await _simple_extract(
+        extraction, scratchpad, cost, ok, errors, warnings = await _simple_extract(
             vault, sha, pf, skill_text, brief, extract_model, skill_label, extract_effort, extract_backend)
         # Whole-document extraction can overrun the model's output ceiling on entity-dense
         # docs (the agent-SDK backend can't cap output) — the JSON truncates and is rejected.
@@ -611,21 +608,28 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
                       f"{_DIM}↻  {filename}  whole-doc extraction rejected — "
                       f"re-extracting in {n_sections} sections…{_RESET}")
                 whole_cost = cost
-                extraction, scratchpad, cost, ok, errors = await _extract_sectioned(
+                extraction, scratchpad, cost, ok, errors, warnings = await _extract_sectioned(
                     vault, sha, pf, skill_text, fb, extract_model, skill_label, extract_effort, extract_backend, brief)
                 cost += whole_cost   # account for the failed whole-doc attempt
 
     if not ok:
         return _fail(vault, sha, filename, "post-flight rejected: " + "; ".join(errors[:3]))
-    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, page_count)
+    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, page_count, warnings)
+
 
 
 def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, scratchpad: str,
-                       cost: float, pf: dict, page_count: int | None) -> dict:
-    """Shared tail once an extraction has passed post-flight: settle-print, coverage warning,
-    log, persist `result_<sha>.json`. Used by both the synchronous per-document path
+                       cost: float, pf: dict, page_count: int | None,
+                       warnings: list[str] | None = None) -> dict:
+    """Shared tail once an extraction has passed post-flight: settle-print, warnings, coverage
+    warning, log, persist `result_<sha>.json`. Used by both the synchronous per-document path
     (`_extract_document`) and the batch-collect path (`_finish_batch_item`, #214) so a
-    batch-extracted document produces an identical result shape to a synchronous one."""
+    batch-extracted document produces an identical result shape to a synchronous one.
+
+    `warnings` (post-flight's quote-verify/sanitization messages, if any) are printed here —
+    after the OK line, not when post-flight ran — so they're tucked visually under this
+    document's own row instead of landing wherever a concurrently-extracting document
+    happened to be at the time (#333 follow-up)."""
     if scratchpad:
         (vault / ".watchdog" / "tmp" / f"notes_{sha}.md").write_text(scratchpad, encoding="utf-8")
     for stale in (vault / ".watchdog" / "tmp").glob(f"section_{sha}_*.md"):
@@ -636,6 +640,9 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
             f"{_DIM}{n_entities} entit{'ies' if n_entities != 1 else 'y'}{_RESET}  "
             f"{_CYAN}documents/{_doc_slug(filename)}{_RESET}")
     _log(vault, f"OK {filename}: {n_entities} entities")
+    for msg in (warnings or []):
+        _say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{msg}{_RESET}")
+        _log(vault, f"WARN {filename}: {msg}")
     warn = _coverage_warning(extraction, page_count)
     if warn:
         _say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{warn}{_RESET}")
@@ -711,10 +718,11 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
     scratchpad = extraction.pop("scratchpad", "") if isinstance(extraction, dict) else ""
     _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault,
                     skill_text=skill_text, extract_model=model, extract_effort=effort)
-    ok, errors = _write_postflight(vault, sha, extraction)
+    ok, errors, warnings = _write_postflight(vault, sha, extraction)
     if not ok:
         return _fail(vault, sha, filename, "post-flight rejected: " + "; ".join(errors[:3]))
-    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, page_count)
+    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, page_count, warnings)
+
 
 
 async def _resume_batch(vault: Path, state: dict, pinned_skill: str, brief: str | None,

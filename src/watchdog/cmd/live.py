@@ -72,19 +72,29 @@ class LiveRegion:
         self.enabled = self.stream.isatty() if enabled is None else enabled
         self._rows: dict[str, str] = {}
         self._order: list[str] = []
+        self._pinned: set[str] = set()   # keys always rendered last, e.g. chew's summary
+                                          # progress bar (#158) — anchored at the bottom instead
+                                          # of wherever it happened to be inserted, so it doesn't
+                                          # appear sandwiched between finished and in-flight rows
         self._rendered = 0          # live rows currently drawn (== physical lines, post-truncation)
         self._lock = threading.Lock()
 
     # ── public API ────────────────────────────────────────────────────────────
 
-    def update(self, key: str, tty_line: str, plain_line: str | None = None) -> None:
-        """Add or mutate the in-flight row for `key`. Non-TTY prints `plain_line` (or `tty_line`)."""
+    def update(self, key: str, tty_line: str, plain_line: str | None = None, *,
+              pin: bool = False) -> None:
+        """Add or mutate the in-flight row for `key`. Non-TTY prints `plain_line` (or `tty_line`).
+        `pin=True` keeps this row rendered last among live rows regardless of insertion order —
+        for a persistent summary row that should stay anchored at the bottom while individual
+        in-flight rows come and go above it."""
         with self._lock:
             if not self.enabled:
                 self._print(plain_line if plain_line is not None else tty_line)
                 return
             if key not in self._rows:
                 self._order.append(key)
+            if pin:
+                self._pinned.add(key)
             self._rows[key] = tty_line
             self._render()
 
@@ -98,6 +108,7 @@ class LiveRegion:
             if key in self._rows:
                 self._order.remove(key)
                 del self._rows[key]
+            self._pinned.discard(key)
             self._render()
 
     def note(self, line: str) -> None:
@@ -130,7 +141,9 @@ class LiveRegion:
     def _render(self) -> None:
         self._clear()
         width = _terminal_width(self.stream)
-        for key in self._order:
+        ordered = [k for k in self._order if k not in self._pinned] + \
+                  [k for k in self._order if k in self._pinned]
+        for key in ordered:
             self.stream.write(_truncate(self._rows[key], width) + "\n")
         self._rendered = len(self._order)
         self.stream.flush()
