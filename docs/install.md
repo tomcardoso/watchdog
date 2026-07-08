@@ -95,7 +95,7 @@ Along the way it asks three questions:
 2. **Whether to install the optional capture browser** for full page snapshots (an extra ~150 MB). The default is no; see [Full page snapshots](#optional-full-page-snapshots) below.
 3. **How to authenticate with Claude.** Press Return to use your existing Claude Code subscription login, or choose the metered API key option and paste your key.
 
-It may also offer to store keys for other model providers (OpenAI, DeepSeek). You can skip these — Watchdog runs on Claude by default.
+It may also offer to store keys for other model providers (OpenAI, DeepSeek, Gemini). You can skip these — Watchdog runs on Claude by default.
 
 When setup finishes, reload your shell so tab completion takes effect:
 

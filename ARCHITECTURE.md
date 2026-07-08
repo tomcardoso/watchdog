@@ -42,8 +42,8 @@ These run through every decision below.
 - **Two runtimes, one boundary — Claude Code is required.** Watchdog runs in two places, and
   the line between them is a governing constraint. The **document pipeline** (`watchdog chew` /
   `ingest`) is a terminal program whose bounded reasoning calls go through a provider-agnostic
-  `model_client`: Claude by default, but offloadable to OpenAI/DeepSeek per stage (D37) because
-  a single-shot, schema-bound extraction call tolerates a cheaper model. The **investigation**
+  `model_client`: Claude by default, but offloadable to OpenAI/DeepSeek/Gemini per stage (D37,
+  D94) because a single-shot, schema-bound extraction call tolerates a cheaper model. The **investigation**
   (`/watchdog-query`, `-surface`, `-wiki`, `-context`, `-health`, `-research`) runs *inside Claude
   Code* as agentic, multi-turn, user-in-the-loop sessions — and is deliberately **not** offloadable:
   Claude Code is a hard requirement, and these stay on Claude. The split tracks capability, not
@@ -224,7 +224,7 @@ carry-forward block in each section's prompt, then combined by `merge.merge_extr
 into a single extraction JSON that goes through the same post-flight / `write_vault` path.
 The threshold and per-section budget are **provider-aware** (D89, #321): rather than fixed
 numbers they default to fractions (0.6 / 0.3) of the extraction model's context window
-(`model_client.context_window` — Claude 200K, DeepSeek V4 1M, etc.), so a large-window model
+(`model_client.context_window` — Claude 200K, DeepSeek V4 1M, Gemini 2.5 1M, etc.), so a large-window model
 reads far more of a document per call before sectioning. A 200K Claude window reproduces the
 historical 120K/60K defaults exactly; the two config keys default to the `auto` sentinel and
 accept an explicit `section_token_threshold`/`section_token_budget` integer as an advanced
@@ -706,12 +706,13 @@ completed purge, and the CLI hint says so.
 - **Model client** (`model_client.py`): the orchestrator's single entry to the model.
   Routes each task to a backend — `claude-agent-sdk` (subscription login or API key — the
   only backend that works on a subscription), `claude-api` (raw Messages + structured
-  outputs), or the OpenAI-compatible `openai`/`deepseek` backends (Chat Completions over
-  httpx, one provider each via base URL; D37) — by auth mode and per-task policy, validates
+  outputs), or the OpenAI-compatible `openai`/`deepseek`/`gemini` backends (Chat Completions over
+  httpx, one provider each via base URL; D37, D94) — by auth mode and per-task policy, validates
   the JSON, retries on the same model on failure, and reports cost/latency. **Provider
   abstraction:** the abstract `effort` intent is mapped to each provider's native control by
   a per-provider policy (`_EFFORT_POLICY`: Claude `output_config.effort`, OpenAI
-  `reasoning_effort` on reasoning models only, DeepSeek none — its thinking mode is a separate
+  `reasoning_effort` on reasoning models only, Gemini `reasoning_effort` unconditionally (every
+  current model accepts it, D94), DeepSeek none — its thinking mode is a separate
   on/off carried in the model id via a `-thinking` suffix, default off, D88), and `_resolve_backend_auth`
   resolves the key per backend — Claude backends via the subscription/api-key mode, others
   via their own stored key (set interactively via `watchdog auth`) independent of the Claude

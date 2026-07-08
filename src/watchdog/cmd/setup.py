@@ -232,7 +232,8 @@ _CONFIGURE_KEYS = {
             "  and picks the matching record skill. Haiku is plenty for this; raise it only if\n"
             "  classification is going wrong on ambiguous documents.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash). Default: haiku.\n"
+            "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-2.5-flash).\n"
+            "  Default: haiku.\n"
             "  Override for a single run with: watchdog ingest --classifier-model M"
         ),
         "type": "string",
@@ -245,7 +246,8 @@ _CONFIGURE_KEYS = {
             "  Haiku is cheaper and faster for large batches of straightforward documents;\n"
             "  Sonnet handles complex or ambiguous documents better.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash). Default: sonnet.\n"
+            "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-2.5-flash).\n"
+            "  Default: sonnet.\n"
             "  DeepSeek thinking mode is off by default; append -thinking (deepseek:deepseek-v4-flash-thinking)\n"
             "  to enable it. Override for a single run with: watchdog ingest --extractor-model M"
         ),
@@ -260,7 +262,8 @@ _CONFIGURE_KEYS = {
             "  This step composes prose from compact digests rather than reading raw documents,\n"
             "  so the cheaper Haiku tier is the default; raise it if synthesized prose feels thin.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash). Default: haiku.\n"
+            "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-2.5-flash).\n"
+            "  Default: haiku.\n"
             "  Override for a single run with: watchdog ingest --finalizer-model M"
         ),
         "type": "string",

@@ -48,6 +48,11 @@ _PROVIDERS: dict[str, dict] = {
         "env":    "DEEPSEEK_API_KEY",
         "prefix": "sk-",
     },
+    "gemini": {
+        "label":  "Google Gemini — Chat Completions",
+        "env":    "GEMINI_API_KEY",
+        "prefix": "AIza",
+    },
 }
 
 
@@ -234,8 +239,8 @@ def setup_auth_interactive(interactive: bool | None = None) -> None:
     """Interactive auth setup for `watchdog setup`.
 
     Watchdog runs on Claude by default, so this sets up Claude access first (subscription or
-    API key), then optionally stores keys for other model providers (OpenAI, DeepSeek) that
-    individual stages can be routed to later. Persists the choice; skips cleanly off a
+    API key), then optionally stores keys for other model providers (OpenAI, DeepSeek, Gemini)
+    that individual stages can be routed to later. Persists the choice; skips cleanly off a
     terminal. `interactive` is overridable for testing.
     """
     if interactive is None:

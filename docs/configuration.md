@@ -123,6 +123,8 @@ Within ingest, Watchdog is designed around Claude and uses it by default, but ea
 | `openai:gpt-5-mini` | OpenAI. |
 | `deepseek:deepseek-v4-flash` | DeepSeek V4 Flash — non-thinking (append `-thinking` to enable thinking mode). |
 | `deepseek:deepseek-v4-pro` | DeepSeek V4 Pro — non-thinking (append `-thinking` to enable thinking mode). |
+| `gemini:gemini-2.5-flash` | Gemini 2.5 Flash — 1M-token context window. |
+| `gemini:gemini-2.5-pro` | Gemini 2.5 Pro — 1M-token context window. |
 
 Store the provider's key first, then point a stage at it — persistently or per run:
 
@@ -132,7 +134,7 @@ watchdog configure extractor_model deepseek:deepseek-v4-flash
 watchdog ingest --extractor-model openai:gpt-5-mini     # one-off override
 ```
 
-Each stage is independent — you can keep extraction on Claude Sonnet while routing the cheaper classification or post-ingest steps to another provider. One honest caveat: non-Claude backends are unproven on dense legal and financial extraction, so the defaults stay on Claude and nothing routes elsewhere unless you ask. The effort knobs apply where the provider supports them and are ignored where it doesn't. DeepSeek thinking mode is off by default and enabled by appending `-thinking` to the model id (e.g. `deepseek:deepseek-v4-flash-thinking`); extraction is schema-bound structured output, so non-thinking is the cheaper, more predictable default, with thinking available for the judgment-heavy cases.
+Each stage is independent — you can keep extraction on Claude Sonnet while routing the cheaper classification or post-ingest steps to another provider. One honest caveat: non-Claude backends are unproven on dense legal and financial extraction, so the defaults stay on Claude and nothing routes elsewhere unless you ask. The effort knobs apply where the provider supports them and are ignored where it doesn't. DeepSeek thinking mode is off by default and enabled by appending `-thinking` to the model id (e.g. `deepseek:deepseek-v4-flash-thinking`); extraction is schema-bound structured output, so non-thinking is the cheaper, more predictable default, with thinking available for the judgment-heavy cases. Gemini has no equivalent thinking toggle — its `reasoning_effort` is driven entirely by the effort knobs.
 
 ### claude-batch: bulk extraction at half price
 
