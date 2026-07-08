@@ -94,6 +94,24 @@ def test_coverage_warning_handles_missing_page_count():
     assert orchestrate._coverage_warning(_ext_with_fact_pages([1, 2]), None) is None
 
 
+def test_postflight_quote_warning_prints_after_this_documents_ok_line(tmp_path, monkeypatch, capsys):
+    """A post-flight warning (quote-verify, entity-id/date sanitization) must land *after* its
+    own document's OK line, not whenever post-flight happened to run — otherwise it reads as
+    belonging to whichever document is concurrently in flight at that moment (#333 follow-up)."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, text="Acme Corp filed an annual report.")
+    ext = _extraction()
+    ext["document"]["key_facts"][0]["quote"] = "this exact sentence never appears in the document"
+    _mock(monkeypatch, extraction=ext)
+
+    asyncio.run(orchestrate.run(vault))
+
+    out = capsys.readouterr().out
+    ok_index = out.index("OK")
+    warn_index = out.index("quote not found")
+    assert ok_index < warn_index
+
+
 def test_briefing_facts_projects_fact_and_date_only():
     """The briefing projection (#150) keeps the fact text and a date when present, and drops
     page/basis/entities/quote — narrative noise the briefing doesn't need."""
@@ -1422,7 +1440,7 @@ def test_extract_sectioned_composes_digest_after_merge(tmp_path, monkeypatch):
                                         cost_usd=0.01)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    extraction, scratchpad, cost, ok, errors = asyncio.run(orchestrate._extract_sectioned(
+    extraction, scratchpad, cost, ok, errors, warnings = asyncio.run(orchestrate._extract_sectioned(
         vault, "abc123", pf, "SKILL TEXT", plan, "sonnet", "annual-report", backend="claude-api",
         brief="CHASE THE FRAUD"))
 
@@ -1452,7 +1470,7 @@ def test_digest_model_error_falls_back_to_deterministic_stitch(tmp_path, monkeyp
         raise model_client.ModelError("boom")
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    extraction, scratchpad, cost, ok, errors = asyncio.run(orchestrate._extract_sectioned(
+    extraction, scratchpad, cost, ok, errors, warnings = asyncio.run(orchestrate._extract_sectioned(
         vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
 
     summary = extraction["document"]["summary"]
@@ -1471,7 +1489,7 @@ def test_digest_empty_response_falls_back_to_deterministic_stitch(tmp_path, monk
                                         auth_mode="subscription", cost_usd=0.0)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    extraction, scratchpad, cost, ok, errors = asyncio.run(orchestrate._extract_sectioned(
+    extraction, scratchpad, cost, ok, errors, warnings = asyncio.run(orchestrate._extract_sectioned(
         vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
 
     summary = extraction["document"]["summary"]

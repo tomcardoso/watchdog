@@ -671,3 +671,27 @@ Added `_openai_response_format(base_url, schema)`: returns `{"type": "json_schem
 
 **Tradeoff:** OpenAI and DeepSeek extraction keeps the weaker prompt-only enforcement for now; a real fix for OpenAI would need a parallel all-fields-required schema variant, scoped out here as a separate, larger piece of work. Gemini's remaining entity-count gap versus Claude (if any, after this change) has not been re-measured yet — this addresses one contributing cause, not necessarily the whole gap.
 
+### D99 — Arrow-key picker's "↑/↓ move · Enter select · q cancel" hint is erased, not left in scrollback
+
+A user testing a live `watchdog ingest` run noted the picker's control-hint line stayed on screen after a selection was made — outliving its usefulness, since it's only relevant while a choice is actually being made. Root cause: `interactive.py`'s `pick()` render loop writes the hint without a trailing newline (so the cursor sits at the end of that row for in-place redraws), and its `finally` block only restored terminal (`termios`) settings and printed one blank line — never erasing the hint text itself, so it was permanently committed to scrollback.
+
+Changed the `finally` block to write `\r\x1b[K\n` instead of a bare `print()`: `\r` returns to column 0 of the hint's own row, `\x1b[K` erases it, and `\n` advances — preserving the pre-existing one-blank-line spacing before whatever the caller prints next, but without leaving the hint text behind.
+
+**Tradeoff:** none identified — the erased text was never meant to be a persistent record of the interaction (the picker's own selection outcome is what the caller prints afterward).
+
+### D100 — Post-flight warnings print after their own document's OK line, not whenever post-flight happened to run
+
+Building on D97 (which got warnings into the live region and `ingest.log` at all), a user still reported a warning visually appearing to belong to the wrong document during a concurrent multi-document ingest. Root cause: `_write_postflight()` printed its warnings immediately, at post-flight-validation time — which always happens strictly *before* `_finish_extraction()`'s own "OK" line for that same document. Under async concurrency, another document's OK line can print in the gap between the two, so the warning reads as attached to whichever document happens to be finishing at that moment rather than the one it actually describes.
+
+`_write_postflight()` now collects warnings into a list and returns them instead of printing, threading them through `_simple_extract`/`_extract_sectioned`/`_extract_document`/`_finish_batch_item` into `_finish_extraction()`, which prints them immediately after its own `_settle()` OK line — in the same style/indentation as the pre-existing coverage-warning block, so they visually tuck under the correct document's own block regardless of what else is concurrently in flight.
+
+**Tradeoff:** none identified — this only changes *when* an already-collected warning prints, not whether it prints or what it says.
+
+### D101 — Chew's progress/ETA row is pinned to always render last in the live region, not wherever it was first inserted
+
+A user reported the chew-phase progress bar not staying "put" during a real run — it appeared sandwiched between finished-file lines above and in-flight rows below, rather than staying fixed at the bottom. Root cause: `LiveRegion` renders rows in the order their keys were first inserted into `self._order`, and `preprocess_batch.py` seeded the progress row (`_refresh_progress(0)`) *before* submitting any files to the `ThreadPoolExecutor` — so the progress key was always first in insertion order, with file rows added after it as worker threads picked up work.
+
+Gave `LiveRegion.update()` an optional `pin: bool` parameter: a pinned key is tracked in a new `self._pinned` set and `_render()` now draws non-pinned keys first, pinned keys last, regardless of `self._order`'s actual insertion sequence. `preprocess_batch.py`'s `_refresh_progress` passes `pin=True` for `_PROGRESS_KEY`, so the bar now always renders below every in-flight file row no matter when it was seeded relative to them.
+
+**Tradeoff:** none identified — `pin` is opt-in and unused by every other `LiveRegion` caller (ingest's per-document rows), so existing insertion-order rendering is unchanged for them.
+

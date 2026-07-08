@@ -1,9 +1,12 @@
 """LiveRegion: in-place TTY status rows with append-only non-TTY fallback (#151)."""
 
 import io
+import re
 import threading
 
 from watchdog.cmd.live import LiveRegion, _truncate
+
+_CURSOR_RE = re.compile(r"\x1b\[[0-9;]*[A-Z]")   # cursor-move/erase escapes, not SGR colour codes
 
 
 class _Stream(io.StringIO):
@@ -112,6 +115,32 @@ def test_tty_truncates_rows_to_terminal_width(monkeypatch):
     out = s.getvalue()
     assert "…\x1b[0m" in out                    # row was clipped to width
     assert "ABCDEF" not in out
+
+
+def test_pinned_row_renders_last_even_when_inserted_first():
+    """A summary/progress row (chew's #158 bar) inserted before any file rows must still
+    render below them, not sandwiched between finished lines and in-flight rows (#333
+    follow-up)."""
+    s = _Stream(tty=True)
+    r = LiveRegion(s, enabled=True)
+    r.update("progress", "row-PROGRESS", pin=True)   # seeded first, like _refresh_progress(0)
+    r.update("file-a", "row-A")
+    r.update("file-b", "row-B")
+    out = _CURSOR_RE.sub("", s.getvalue())
+    tail = out.rstrip("\n").split("\n")[-3:]
+    assert tail == ["row-A", "row-B", "row-PROGRESS"]
+
+
+def test_pinned_row_stays_last_after_a_file_row_finishes():
+    s = _Stream(tty=True)
+    r = LiveRegion(s, enabled=True)
+    r.update("progress", "row-PROGRESS", pin=True)
+    r.update("file-a", "row-A")
+    r.update("file-b", "row-B")
+    r.finish("file-a", "OK A")
+    out = _CURSOR_RE.sub("", s.getvalue())
+    tail = out.rstrip("\n").split("\n")[-2:]
+    assert tail == ["row-B", "row-PROGRESS"]
 
 
 # ── thread-safety (#158) ─────────────────────────────────────────────────────────

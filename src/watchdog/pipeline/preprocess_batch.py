@@ -20,7 +20,9 @@ from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
 
 DEFAULT_FILE_TIMEOUT = 600
 
-# Key for the persistent progress/ETA row that sits above the in-flight file rows (#158).
+# Key for the persistent progress/ETA row, pinned (LiveRegion `pin=True`) so it always
+# renders last, below the in-flight file rows (#158, #333 follow-up — previously just the
+# first key inserted, so it visually jumped between finished/in-flight rows as files completed).
 _PROGRESS_KEY = "__progress__"
 
 
@@ -383,7 +385,7 @@ def _run_ingest_inner(
             tail = f"  {_DIM}{round(elapsed_wall)}s total{_RESET}"
         else:
             tail = ""
-        live.update(_PROGRESS_KEY, f"  {bar} {_BOLD}{done}/{total}{_RESET}{tail}")
+        live.update(_PROGRESS_KEY, f"  {bar} {_BOLD}{done}/{total}{_RESET}{tail}", pin=True)
 
     def _chew(path: Path) -> dict:
         # Runs in a worker thread: mark the file in-flight the moment a worker picks it up, so the
@@ -395,7 +397,7 @@ def _run_ingest_inner(
     results: dict[str, dict] = {}
     _cancel_event.clear()
 
-    _refresh_progress(0)            # seed the progress row above any file rows
+    _refresh_progress(0)            # seed the pinned progress row; it renders last regardless
     pool = ThreadPoolExecutor(max_workers=pre_workers)
     futures = {pool.submit(_chew, f): f for f in files}
     done = 0
