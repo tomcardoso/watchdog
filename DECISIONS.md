@@ -645,4 +645,20 @@ That bug was a symptom of a wider mismatch: setup and the `watchdog auth` status
 
 **Tradeoff:** the setup wizard is longer for a subscription user who accepts the metered offer (provider pick → key → three model picks) — accepted because it replaces what would otherwise be three separate manual `watchdog configure` edits plus a `watchdog auth` key add, and it is fully skippable (declining leaves subscription-for-everything, the prior default). The api-key branch's original "other providers?" offer is unchanged, since that path was never the source of confusion.
 
+### D96 — `LiveRegion` queries the terminal width straight from the OS, not `shutil.get_terminal_size()`
+
+A user reported the live progress region leaving stale duplicate "extracting…" rows on screen during a real ingest run. Root cause: `_render()` sized live rows with `shutil.get_terminal_size((80, 24)).columns`, which checks the `COLUMNS`/`LINES` env vars *before* asking the OS — in a terminal where those vars are stale or absent-but-cached, it can report a width wider than the real screen. A live row that then wraps onto a second physical line isn't accounted for by `LiveRegion`'s own rendered-line count, so the next redraw's cursor-up-N/erase undercounts and leaves the previous frame's text behind. Confirmed with a `pyte` VT100-emulator reproduction: an intentionally-wrong reported width reproduced the exact stale-duplicate-row symptom; the same scenario with a correct width stayed clean even with long lines that wrap.
+
+Fixed with a small `_terminal_width(stream)` helper that calls `os.get_terminal_size(stream.fileno())` first (a direct OS ioctl query, immune to stale env vars) and only falls back to `shutil.get_terminal_size((80, 24))` on `OSError`/`ValueError`/`AttributeError` (non-tty stream, no real fd — the case `shutil`'s own fallback exists for).
+
+**Tradeoff:** none identified — this is a strict correctness fix over the same fallback behavior `shutil.get_terminal_size()` already provided for non-tty streams.
+
+### D97 — Post-flight validation warnings (quote-verify, entity-id/date sanitization) route through the live region and the ingest log instead of a raw stderr print
+
+The same user-reported screenshot showed a quote-verification warning ("`document.key_facts[3].quote not found...`") appear once in the terminal and then vanish, and it was absent from `ingest.log` entirely. Root cause: `postflight.run()` printed these three warning classes directly with `print(f"Warning: {msg}", file=sys.stderr)`, bypassing `orchestrate.py`'s `_say`/`_log`/`LiveRegion` machinery completely. A raw print like this sits outside the live region's own line-count bookkeeping, so it can be erased by the next redraw's cursor-up/erase (D96's mechanism, but here the trigger is a second, uncoordinated writer rather than a wrong width) — and since it never went through `_log()`, it also never reached `ingest.log`, silently dropping a real signal a journalist would want on record.
+
+Gave `postflight.run()` an optional `warn` callback parameter: when provided, each warning is handed to it instead of the raw print; when omitted, the exact original stderr behavior is preserved (needed by `watchdog postflight`'s standalone CLI path, `cmd/ingest.py`'s `cmd_postflight`, which has no live region to route through). `orchestrate.py`'s `_write_postflight` now passes a `warn` callback that prints through `_say()` (so `LiveRegion` knows about the line and won't erase it) and writes the same message to `ingest.log` via `_log()`.
+
+**Tradeoff:** none identified — the default (no `warn` given) behavior is byte-for-byte the same as before, so only the orchestrator's own call site changes behavior.
+
 

@@ -102,6 +102,50 @@ def _effective_extract_backend(extract_backend: str | None, auth_mode: str) -> s
     return extract_backend or ("claude-agent-sdk" if auth_mode == "subscription" else "claude-api")
 
 
+def _format_models_line(classify_backend, classify_model, extract_backend, extract_model,
+                        post_backend, post_model) -> str:
+    """Which model runs each ingest stage — printed alongside the cost estimate before an
+    ingest starts, so a run under a non-default provider (#325) is obvious up front instead of
+    the older generic 'Using the configured provider(s).' notice."""
+    def label(backend, model):
+        return f"{backend}:{model}" if backend else model
+    stages = (("classifier", classify_backend, classify_model),
+              ("extractor", extract_backend, extract_model),
+              ("finalizer", post_backend, post_model))
+    bits = " · ".join(f"{_DIM}{name}{_RESET} {_CYAN}{label(b, m)}{_RESET}" for name, b, m in stages)
+    return f"  {bits}"
+
+
+def _preview_ingest(vault: Path, args) -> tuple[str, str] | None:
+    """Read-only preview of what an ingest run would do — the doc/page/token cost estimate and
+    which models would run each stage — shown before any ingest confirm prompt, mirroring
+    `--estimate`'s lock-free scan (#269, #325). None when the queue is empty."""
+    from watchdog.pipeline.ingest_setup import scan_queue, cost_estimate
+    from watchdog.cmd.auth import resolve_auth
+    from watchdog.cmd.base import CONFIG_FILE
+    queue_files = scan_queue(vault)
+    if not queue_files:
+        return None
+    config: dict = {}
+    if CONFIG_FILE.exists():
+        try:
+            config = json.loads(CONFIG_FILE.read_text())
+        except Exception:
+            pass
+    extract_backend, extract_model = _resolve_stage(
+        getattr(args, "extractor_model", None), config.get("extractor_model"))
+    post_backend, post_model = _resolve_stage(
+        getattr(args, "finalizer_model", None), config.get("finalizer_model"), default="haiku")
+    classify_backend, classify_model = _resolve_stage(
+        getattr(args, "classifier_model", None), config.get("classifier_model"), default="haiku")
+
+    auth_mode = resolve_auth()["mode"] if extract_backend is None else None
+    est = cost_estimate(vault, queue_files, _effective_extract_backend(extract_backend, auth_mode))
+    models_line = _format_models_line(classify_backend, classify_model,
+                                      extract_backend, extract_model, post_backend, post_model)
+    return _format_cost_estimate(est), models_line
+
+
 def _pick_skill_interactive() -> str | None:
     """Numbered picker for `watchdog ingest --skill` (no value), drawn from the global
     skill catalog. Returns the chosen skill's file path; Enter → classify per doc."""
@@ -206,10 +250,13 @@ def cmd_chew(args) -> None:
 
 def _offer_ingest(args, vault: Path) -> None:
     """After chew, offer to run ingest right away; print the command hint if declined."""
-    total = _count_queued(vault)
-    label = f"{total} document{'s' if total != 1 else ''}"
-    if interactive.confirm(f"\n  {_BOLD}{label}{_RESET} ready. Ingest now?", default=True):
-        cmd_ingest(args, confirm=False)
+    preview = _preview_ingest(vault, args)
+    if preview:
+        estimate_line, models_line = preview
+        print(f"\n{estimate_line}")
+        print(models_line)
+    if interactive.pick(["Ingest now", "Not now"], 0, title="Ingest now?") == 0:
+        cmd_ingest(args, confirm=False, skip_preview=True)
     else:
         print(f"\n  Run:  {_CYAN}watchdog ingest{_RESET}\n")
 
@@ -269,7 +316,7 @@ def _merge_summary(base: dict | None, new: dict) -> dict:
     return merged
 
 
-def cmd_ingest(args, *, confirm: bool = True) -> None:
+def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> None:
     vault = Path(".").resolve()
     if not (vault / ".watchdog").is_dir():
         sys.exit("Error: must be run from inside a Watchdog vault directory")
@@ -392,10 +439,12 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
         return
 
     q = len(result["queue_files"])
-    if q:
+    if q and not skip_preview:
         from watchdog.pipeline.ingest_setup import cost_estimate
         est = cost_estimate(vault, result["queue_files"], _effective_extract_backend(extract_backend, a["mode"]))
         print(f"\n{_format_cost_estimate(est)}")
+        print(_format_models_line(classify_backend, classify_model, extract_backend, extract_model,
+                                  post_backend, post_model))
     elif batch_pending:
         print(f"\n  {_DIM}Checking on a pending batch extraction…{_RESET}")
 
@@ -428,14 +477,11 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
         (vault / ".watchdog" / "Registry" / ".ingest-lock").unlink(missing_ok=True)
         (vault / ".watchdog" / "ingest-state.json").unlink(missing_ok=True)
 
-    auth_note = f"your {_BOLD}{a['mode']}{_RESET} auth" if a["mode"] else "the configured provider(s)"
     if confirm:
-        if not interactive.confirm(f"\n  Ingest now with {auth_note}?", default=True):
+        if interactive.pick(["Ingest now", "Not now"], 0, title="Ingest now?") != 0:
             _release_lock()
             print(f"\n  When ready, run:  {_CYAN}watchdog ingest{_RESET}\n")
             return
-    else:
-        print(f"\n  {_DIM}Using {auth_note}{_DIM}.{_RESET}")
 
     import asyncio
     from watchdog.pipeline import orchestrate

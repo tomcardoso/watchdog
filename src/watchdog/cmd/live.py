@@ -13,6 +13,7 @@ pass fully-formatted lines (including the 2-space indent and colour codes); the 
 truncates live rows to the terminal width so the redraw math stays one physical line per row.
 """
 
+import os
 import re
 import shutil
 import sys
@@ -20,6 +21,18 @@ import threading
 
 _ANSI = re.compile(r"\033\[[0-9;]*m")
 _RESET = "\033[0m"
+
+
+def _terminal_width(stream) -> int:
+    """Physical column count for `stream`'s real fd, queried straight from the OS. Deliberately
+    NOT `shutil.get_terminal_size()`, which checks the `COLUMNS` env var first — that can go
+    stale (e.g. after a resize) and silently disagree with the real terminal, which corrupts the
+    live region's redraw math: a row that wraps onto an extra physical line the region didn't
+    account for leaves stale duplicate text on screen after the next redraw."""
+    try:
+        return os.get_terminal_size(stream.fileno()).columns
+    except (OSError, ValueError, AttributeError):
+        return shutil.get_terminal_size((80, 24)).columns
 
 
 def _truncate(line: str, width: int) -> str:
@@ -116,7 +129,7 @@ class LiveRegion:
 
     def _render(self) -> None:
         self._clear()
-        width = shutil.get_terminal_size((80, 24)).columns
+        width = _terminal_width(self.stream)
         for key in self._order:
             self.stream.write(_truncate(self._rows[key], width) + "\n")
         self._rendered = len(self._order)
