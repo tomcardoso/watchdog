@@ -113,6 +113,25 @@ def test_cmd_usage_run_flag_picks_specific_run(tmp_path, monkeypatch, capsys):
     assert "feb.pdf" not in out
 
 
+def test_cmd_usage_shows_full_model_name_next_to_stage(tmp_path, monkeypatch, capsys):
+    """The model column used to abbreviate by splitting on '-' and taking the second segment,
+    which worked for 'claude-sonnet-4-6' -> 'sonnet' but mangled non-Claude ids like
+    'gemini-3.1-flash-lite' into '3.1'. The full model name is now printed once next to the
+    stage header instead, and there's no more per-row Model column."""
+    vault = _build_vault(tmp_path, runs={
+        "usage-2026-01-01T00-00-00": [
+            _call(task="classify", model="gemini-3.1-flash-lite", cost_usd=0.001),
+        ],
+    })
+    monkeypatch.chdir(vault)
+
+    cmd_usage(_args())
+
+    out = capsys.readouterr().out
+    assert "CLASSIFIER" in out and "model: gemini-3.1-flash-lite" in out
+    assert "  Model  " not in out   # no more per-row Model column
+
+
 def test_cmd_usage_run_flag_no_match(tmp_path, monkeypatch):
     vault = _build_vault(tmp_path, runs={"usage-2026-01-01T00-00-00": [_call()]})
     monkeypatch.chdir(vault)
