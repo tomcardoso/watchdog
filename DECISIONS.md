@@ -695,7 +695,6 @@ Gave `LiveRegion.update()` an optional `pin: bool` parameter: a pinned key is tr
 
 **Tradeoff:** none identified — `pin` is opt-in and unused by every other `LiveRegion` caller (ingest's per-document rows), so existing insertion-order rendering is unchanged for them.
 
-
 ### D102 — ingest.log gets a per-document START line, and usage records a per-call end_ts for wall-clock elapsed
 
 Following a diagnostic thread about why `ingest.log` reads as if documents extract sequentially: the log only ever recorded completion (`OK`/`FAILED`) and the vault-commit `INGEST` line, both written after a document's multi-minute extraction finishes. Because extraction is concurrent (an `asyncio.gather` over a `Semaphore`) but the log is completion-ordered, a reader can't see that all documents started together — the staggered `OK` lines look like one-after-another work.
@@ -707,3 +706,11 @@ Two additions, both purely observational:
 2. `_record_usage` now stamps each call with `end_ts` (epoch seconds at record time). Paired with the existing `latency_s`, this gives every call a `[end_ts − latency_s, end_ts]` interval, so `watchdog usage` can report **wall-clock elapsed** per stage — `max(end) − min(start)` — alongside the summed per-call latency it already showed. For a concurrent stage the summed figure overstates the real wait (three 4-minute calls that overlapped took ~7 minutes of wall time, not 12); the elapsed line makes that explicit, and is shown only when the calls actually overlapped. Old `usage-<ts>.json` files without `end_ts` fall back to the summed figure alone.
 
 **Tradeoff:** the usage schema gains a field, but it's additive and back-compatible — `_wall_span` returns `None` when no call carries `end_ts`, so pre-existing usage files (and the `watchdog status`/estimate paths that read only the `totals` block) are unaffected.
+
+### D103 — DeepSeek thinking-mode extraction/briefing get a higher `max_tokens` ceiling than non-thinking calls
+
+A comparative ingest of the same 3 documents on DeepSeek-v4-pro with thinking enabled extracted 25-58% fewer key facts per document than the same run on Claude Sonnet, and elided the middle of one verbatim quote with "…". Root cause: DeepSeek's reasoning-model API caps chain-of-thought + final answer under one combined `max_tokens` (default 32K, max 64K — https://api-docs.deepseek.com/guides/reasoning_model), but `acomplete_json` applied the same flat, thinking-agnostic ceiling from `_TASK_MAX_TOKENS` (16000 for extract/extract-section/briefing) regardless of whether thinking was on. With thinking enabled, the CoT ate into that budget before the model wrote any of the actual JSON, starving the structured output (#337).
+
+Added `_DEEPSEEK_THINKING_MAX_TOKENS = 48000`, applied in `acomplete_json` only when the resolved backend is `deepseek`, the model id carries the `-thinking` suffix, and the task is one of the large-output tasks already in `_TASK_MAX_TOKENS`. Every other backend/task keeps its existing ceiling — Claude's extended thinking uses a separate `budget_tokens`, not a shared pool with the final answer, so it doesn't have this failure mode.
+
+**Tradeoff:** a DeepSeek-thinking extraction/briefing call now costs more per call (more output tokens available, and DeepSeek bills the CoT tokens as output) — acceptable since thinking mode is opt-in via the `-thinking` suffix, not the default.

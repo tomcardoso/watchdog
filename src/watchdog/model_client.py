@@ -475,6 +475,13 @@ def _openai_cost(model_id: str, usage: dict | None) -> float | None:
 # https://api-docs.deepseek.com/guides/thinking_mode  (D88)
 _DEEPSEEK_THINKING_SUFFIX = "-thinking"
 
+# DeepSeek's reasoning mode caps chain-of-thought + final answer under one combined `max_tokens`
+# (default 32K, max 64K: https://api-docs.deepseek.com/guides/reasoning_model). The flat per-task
+# ceilings in `_TASK_MAX_TOKENS` starve the JSON output once the CoT eats into that same budget —
+# fewer key facts, elided quotes (#337). Applied only to deepseek + `-thinking` + the large-output
+# tasks; every other backend/task keeps its normal ceiling.
+_DEEPSEEK_THINKING_MAX_TOKENS = 48000
+
 
 def _split_deepseek_thinking(model_id: str) -> tuple[str, bool]:
     """(bare model id, thinking?) from a DeepSeek model token — strips a `-thinking` marker.
@@ -658,11 +665,15 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
     """
     chosen, provider, api_key, auth_mode = _resolve_backend_auth(backend)
     backend_fn = _ABACKENDS[chosen]
-    max_tokens = _TASK_MAX_TOKENS.get(task, _API_MAX_TOKENS)
 
     requested = model or DEFAULT_TIER
     model_id = resolve_model_id(requested)
     effort_arg = _resolve_effort(provider, model_id, effort)   # provider-native value or None
+
+    max_tokens = _TASK_MAX_TOKENS.get(task, _API_MAX_TOKENS)
+    if (chosen == "deepseek" and task in _TASK_MAX_TOKENS
+            and model_id.endswith(_DEEPSEEK_THINKING_SUFFIX)):
+        max_tokens = _DEEPSEEK_THINKING_MAX_TOKENS
 
     start = time.monotonic()
     total_cost = 0.0
