@@ -11,7 +11,7 @@ Backends:
 
   - **openai / deepseek** — OpenAI-compatible Chat Completions backends (any service
     speaking that wire format, selected by base URL). Each uses its own provider API key
-    (`watchdog auth set openai|deepseek`), independent of the Claude auth mode (#125).
+    (stored via `watchdog auth`), independent of the Claude auth mode (#125).
 
 Routing: subscription auth can only use claude-agent-sdk; api-key auth defaults to
 claude-api (cheaper) and may use either. A per-task policy or an explicit `backend=`
@@ -577,12 +577,12 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
         if chosen == "claude-api" and not api_key:
             raise ModelError(
                 "the claude-api backend needs an API key, but auth mode is "
-                f"'{auth_mode}' — use `watchdog auth use api-key`, or the claude-agent-sdk backend")
+                f"'{auth_mode}' — run `watchdog auth` to switch to api-key mode, or use the claude-agent-sdk backend")
         return chosen, provider, api_key, auth_mode
 
     api_key = auth.get_api_key(provider)
     if not api_key:
-        raise ModelError(f"the {chosen} backend needs an API key — run `watchdog auth set {provider}`")
+        raise ModelError(f"the {chosen} backend needs an API key — run `watchdog auth` to add one")
     return chosen, provider, api_key, "api-key"
 
 

@@ -714,8 +714,8 @@ completed purge, and the CLI hint says so.
   `reasoning_effort` on reasoning models only, DeepSeek none — its thinking mode is a separate
   on/off carried in the model id via a `-thinking` suffix, default off, D88), and `_resolve_backend_auth`
   resolves the key per backend — Claude backends via the subscription/api-key mode, others
-  via their own stored key (`watchdog auth set openai|deepseek`) independent of the Claude
-  mode. Auth is resolved by `cmd/auth.py` (see #119, D37).
+  via their own stored key (set interactively via `watchdog auth`) independent of the Claude
+  mode. Auth is resolved by `cmd/auth.py` (see #119, D37, D93).
 - **Claude Code skills** (in-vault, run interactively — *not* part of ingest):
   `watchdog-context`, `watchdog-entity`, `watchdog-query`, `watchdog-surface`,
   `watchdog-wiki`, `watchdog-health`, `watchdog-research` (§14). Ingest is the Python

@@ -106,7 +106,7 @@ HTML pages get a full rendered snapshot — images, styles, client-rendered cont
 | `watchdog usage [name]` | Per-call token/cost/latency breakdown for ingest runs — see [below](#watchdog-usage). |
 | `watchdog export [name]` | Export the entity and relationship graph for network-analysis tools — see [below](#watchdog-export). |
 | `watchdog doctor` | Check all registered investigations for missing or broken vaults, suggesting `watchdog move` or `watchdog delete` for each issue. |
-| `watchdog auth` | Show or change how Watchdog authenticates to model providers — see [below](#watchdog-auth). |
+| `watchdog auth` | Show or change how Watchdog authenticates to model providers, interactively — see [below](#watchdog-auth). |
 | `watchdog unlock [name]` | Release a stale chew or ingest lock; `--force` removes it even if recent. |
 | `watchdog setup` | Set up Watchdog after installation; `--force` re-runs it. |
 | `watchdog refresh-skills [name]` | Update a vault's Claude Code command skills after a Watchdog upgrade. |
@@ -178,15 +178,14 @@ Exports the investigation's entity and relationship graph for network-analysis t
 
 ### watchdog auth
 
-Manages how Watchdog authenticates to model providers.
+Shows how Watchdog currently authenticates to model providers, then, on a terminal, offers to change it.
 
-- `watchdog auth` — show the current auth mode and the status of stored API keys (masked).
-- `watchdog auth use <mode>` — switch between `subscription` (your Claude Code login, not metered) and `api-key` (a metered key). Normally chosen during `watchdog setup`.
-- `watchdog auth set [provider]` — store an API key, prompted with hidden input; the provider is `anthropic` (default), `openai`, or `deepseek`.
-- `watchdog auth get [provider]` — show one provider's key status and where it comes from (environment variable or stored).
-- `watchdog auth remove [provider]` — delete a stored key.
+- `watchdog auth` — prints the current Claude mode (`subscription`/`api-key`), Claude Code login detection, and the status of any stored provider keys (masked). Off a terminal, or if you answer no, it stops there.
+- Answering **yes** to "Change something?" opens a short wizard: pick a service (Anthropic, OpenAI, or DeepSeek), then:
+  - For **Anthropic**, choose between your Claude Code subscription (not metered) and a metered API key.
+  - For **OpenAI** or **DeepSeek**, store a new key, replace an existing one, or delete it.
 
-Keys can also come from the standard environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`). Routing a pipeline stage to another provider is covered in [Model backends](configuration.md#model-backends).
+There is no separate `set`/`get`/`use`/`remove` subcommand — this one interactive flow covers all of it. Keys can also come from the standard environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`), which always take precedence over a stored key. Routing a pipeline stage to another provider is covered in [Model backends](configuration.md#model-backends).
 
 ### watchdog unlock
 
