@@ -25,6 +25,10 @@ DEFAULT_FILE_TIMEOUT = 600
 # first key inserted, so it visually jumped between finished/in-flight rows as files completed).
 _PROGRESS_KEY = "__progress__"
 
+# A blank pinned row rendered just above the progress bar so the bar always keeps one line of
+# clearance from the finished/in-flight rows above it instead of butting directly against them.
+_SPACER_KEY = "__progress_spacer__"
+
 
 def _compute_near_dup(result: dict, vault: Path) -> dict:
     """Compute near-duplicate check for a freshly chewed document. Never raises."""
@@ -391,12 +395,16 @@ def _run_ingest_inner(
         # Runs in a worker thread: mark the file in-flight the moment a worker picks it up, so the
         # row appears while OCR spins up. Gated to TTYs to keep non-TTY output to finished lines only.
         if live.enabled:
-            live.update(str(path), f"  {_DIM}→  {_rel(path)}  chewing…{_RESET}")
+            # Pad the arrow marker to the same width as the settled status codes ("OK "/"ERR"/
+            # "SKP") so filenames start at the same column whether a row is in-flight or done.
+            live.update(str(path), f"  {_DIM}→  {_RESET}  {_DIM}{_rel(path)}  chewing…{_RESET}")
         return preprocess_one(path, timeout=DEFAULT_FILE_TIMEOUT, chunk_workers=chunk_workers)
 
     results: dict[str, dict] = {}
     _cancel_event.clear()
 
+    if live.enabled:
+        live.update(_SPACER_KEY, "", pin=True)   # blank clearance line above the progress bar
     _refresh_progress(0)            # seed the pinned progress row; it renders last regardless
     pool = ThreadPoolExecutor(max_workers=pre_workers)
     futures = {pool.submit(_chew, f): f for f in files}
