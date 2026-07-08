@@ -474,6 +474,39 @@ def test_gemini_backend_request_shape(monkeypatch):
     assert out["cost_usd"] == pytest.approx(10 * 0.30e-6 + 5 * 2.50e-6)
 
 
+# ── response_format: real json_schema on Gemini, json_object elsewhere (D98) ───────────────────
+
+def test_gemini_uses_real_json_schema_mode(monkeypatch):
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async("prompt", "gemini-2.5-flash", SCHEMA, "AIza-x", 8000,
+                                          base_url="https://generativelanguage.googleapis.com/v1beta/openai"))
+    assert captured["body"]["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {"name": "watchdog_response", "schema": SCHEMA},
+    }
+    # The schema is enforced at the wire level, so it isn't also duplicated into the prompt text.
+    assert "Return JSON matching this schema" not in captured["body"]["messages"][1]["content"]
+
+
+def test_openai_stays_on_json_object_mode(monkeypatch):
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async("prompt", "gpt-4o", SCHEMA, "sk-o", 8000,
+                                          base_url="https://api.openai.com/v1"))
+    assert captured["body"]["response_format"] == {"type": "json_object"}
+    assert "Return JSON matching this schema" in captured["body"]["messages"][1]["content"]
+
+
+def test_deepseek_stays_on_json_object_mode(monkeypatch):
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async("prompt", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+                                          base_url="https://api.deepseek.com"))
+    assert captured["body"]["response_format"] == {"type": "json_object"}
+    assert "Return JSON matching this schema" in captured["body"]["messages"][1]["content"]
+
+
 # ── JSON extraction ───────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("text,expected", [
