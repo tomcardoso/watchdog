@@ -636,8 +636,8 @@ Registry/
   registry.json             counts + last-updated
   manifest.json             lightweight id→{name,type,aliases,note_path} lookup
   resolutions.json          acknowledged leads/alerts/contradictions overlay (D68)
-  ingest.log                append-only ingest log
-  usage/usage-<ts>.json     per-run model-call token/cost telemetry (D50, D86)
+  ingest.log                append-only ingest log (START/OK/WARN/FAILED per doc, D102)
+  usage/usage-<ts>.json     per-run model-call token/cost/latency telemetry (D50, D86, D102)
   batch-pending.json        pending claude-batch extraction state (D52)
   .ingest-lock / .write-lock  run lock / write serialization
 backups/<ts>-<operation>/   pre-mutation snapshots for irreversible operations (D71)
