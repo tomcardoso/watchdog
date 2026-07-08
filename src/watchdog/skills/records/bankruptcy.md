@@ -1,9 +1,9 @@
 ---
-description: a bankruptcy filing, proposal, creditor list, trustee report, receiving order, or similar insolvency record
+description: a bankruptcy filing, proposal, creditor list, trustee's or monitor's report, receivership order, CCAA or other court-supervised restructuring proceeding, or similar insolvency record
 ---
 # Domain knowledge — Bankruptcy and insolvency records
 
-Loaded by Watchdog when the document type is a bankruptcy filing, proposal, creditor list, trustee report, receiving order, or similar insolvency record.
+Loaded by Watchdog when the document type is a bankruptcy filing, proposal, creditor list, trustee's or monitor's report, receivership order, CCAA or other court-supervised restructuring proceeding, or similar insolvency record.
 
 ---
 
