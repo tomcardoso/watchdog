@@ -171,6 +171,8 @@ def test_effort_omitted_when_unset(api_key_auth, monkeypatch):
     ("openai", "gpt-4o", "low", None),                   # OpenAI chat model → dropped
     ("deepseek", "deepseek-v4-pro", "high", None),     # DeepSeek: no portable knob
     ("deepseek", "deepseek-v4-flash", "low", None),
+    ("gemini", "gemini-2.5-flash", "low", "low"),     # Gemini: every model passes through
+    ("gemini", "gemini-2.5-pro", "high", "high"),
 ])
 def test_resolve_effort(provider, model_id, effort, expected):
     assert mc._resolve_effort(provider, model_id, effort) == expected
@@ -187,6 +189,9 @@ def test_resolve_effort(provider, model_id, effort, expected):
     ("deepseek-v4-flash-thinking", 1_000_000),  # -thinking marker still matches deepseek-v4
     ("deepseek-v4-pro", 1_000_000),
     ("deepseek-chat", 128_000),                 # legacy id → deepseek fallback, not v4
+    ("gemini-2.5-flash", 1_000_000),
+    ("gemini-2.5-flash-lite", 1_000_000),
+    ("gemini-2.5-pro", 1_000_000),
     ("gpt-5-mini", 400_000),
     ("gpt-4o", 128_000),
     ("some-unknown-model", 128_000),            # conservative default for anything unlisted
@@ -242,6 +247,34 @@ def test_deepseek_drops_effort(monkeypatch):
     assert be.calls[0]["effort"] is None               # no portable knob on DeepSeek
 
 
+@pytest.fixture
+def gemini_key(monkeypatch):
+    monkeypatch.setattr(mc.auth, "get_api_key",
+                        lambda provider="anthropic": "AIza-x" if provider == "gemini" else None)
+
+
+def test_gemini_backend_routes_with_stored_key(gemini_key, monkeypatch):
+    be = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "gemini", be)
+    r = mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="gemini", model="gemini-2.5-flash")
+    assert r.backend == "gemini"
+    assert be.calls[0]["api_key"] == "AIza-x"          # uses the provider key, not Claude auth
+
+
+def test_gemini_backend_without_key_errors(monkeypatch):
+    monkeypatch.setattr(mc.auth, "get_api_key", lambda provider="anthropic": None)
+    with pytest.raises(mc.ModelError, match="watchdog auth"):
+        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="gemini")
+
+
+def test_gemini_effort_passed_through(gemini_key, monkeypatch):
+    # Unlike OpenAI, every Gemini model accepts reasoning_effort — no capability gate.
+    be = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "gemini", be)
+    mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="gemini", model="gemini-2.5-pro", effort="medium")
+    assert be.calls[0]["effort"] == "medium"
+
+
 def test_openai_cost():
     assert mc._openai_cost("deepseek-v4-flash",
                            {"prompt_tokens": 1_000_000, "completion_tokens": 0}) == pytest.approx(0.14)
@@ -270,6 +303,13 @@ def test_openai_cost_openai_cache_hit():
                            {"prompt_tokens": 1_000_000, "completion_tokens": 0,
                             "prompt_tokens_details": {"cached_tokens": 400_000}})
     assert cost == pytest.approx(600_000 * 2.5e-6 + 400_000 * 0.25e-6)
+
+
+def test_openai_cost_prices_gemini_models():
+    # gemini-2.5-flash: $0.30/1M input, $2.50/1M output.
+    assert mc._openai_cost("gemini-2.5-flash",
+                           {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
+        == pytest.approx(0.30 + 2.50)
 
 
 def test_openai_backend_request_shape(monkeypatch):
@@ -401,6 +441,30 @@ def test_deepseek_uses_max_tokens(monkeypatch):
                                           base_url="https://api.deepseek.com"))
     assert captured["body"]["max_tokens"] == 8000
     assert "max_completion_tokens" not in captured["body"]
+
+
+def test_gemini_uses_max_tokens(monkeypatch):
+    # Gemini isn't in the OpenAI reasoning-model capability table, so it takes the classic field.
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async("p", "gemini-2.5-flash", SCHEMA, "AIza-x", 8000,
+                                          base_url="https://generativelanguage.googleapis.com/v1beta/openai"))
+    assert captured["body"]["max_tokens"] == 8000
+    assert "max_completion_tokens" not in captured["body"]
+
+
+def test_gemini_backend_request_shape(monkeypatch):
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    out = asyncio.run(mc._openai_complete_async("prompt", "gemini-2.5-flash", SCHEMA, "AIza-x", 8000,
+                                                "low",
+                                                base_url="https://generativelanguage.googleapis.com/v1beta/openai"))
+    assert captured["url"] == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer AIza-x"
+    assert captured["body"]["model"] == "gemini-2.5-flash"        # no marker-stripping (DeepSeek-only)
+    assert captured["body"]["reasoning_effort"] == "low"
+    assert "thinking" not in captured["body"]                      # DeepSeek-only toggle
+    assert out["cost_usd"] == pytest.approx(10 * 0.30e-6 + 5 * 2.50e-6)
 
 
 # ── JSON extraction ───────────────────────────────────────────────────────────

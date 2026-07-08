@@ -9,7 +9,7 @@ Backends:
     but the only backend that can use the **subscription** login, and the one to use
     when a step genuinely needs tools.
 
-  - **openai / deepseek** — OpenAI-compatible Chat Completions backends (any service
+  - **openai / deepseek / gemini** — OpenAI-compatible Chat Completions backends (any service
     speaking that wire format, selected by base URL). Each uses its own provider API key
     (stored via `watchdog auth`), independent of the Claude auth mode (#125).
 
@@ -125,11 +125,21 @@ def _no_effort(model_id: str, effort: str) -> str | None:
     return None
 
 
+def _gemini_effort(model_id: str, effort: str) -> str | None:
+    """Gemini: `reasoning_effort` is accepted by every current model via the OpenAI-compatible
+    endpoint and mapped internally to that model's own thinking level/budget — low/medium/high
+    all have a direct mapping there — so the abstract intent passes through unconditionally
+    (unlike OpenAI, no model-capability gate is needed). See
+    https://ai.google.dev/gemini-api/docs/openai#thinking"""
+    return effort
+
+
 # provider → the function mapping the abstract effort intent to that provider's native value.
 _EFFORT_POLICY = {
     "anthropic": _claude_effort,
     "openai":    _openai_effort,
     "deepseek":  _no_effort,
+    "gemini":    _gemini_effort,
 }
 
 
@@ -160,6 +170,7 @@ def _resolve_effort(provider: str, model_id: str, effort: str | None) -> str | N
 _CONTEXT_WINDOWS = {
     "deepseek-v4": 1_000_000,   # DeepSeek V4 flash/pro
     "deepseek":      128_000,   # legacy deepseek-chat/reasoner
+    "gemini-2.5":  1_000_000,   # Gemini 2.5 Pro/Flash/Flash-Lite share a 1M-token window
     "gpt-5":         400_000,
     "gpt-4":         128_000,
     "o1":            200_000,
@@ -403,6 +414,7 @@ async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: d
 # the input rate (no discount). Verify against the providers before relying on absolute figures:
 #   OpenAI:   https://developers.openai.com/api/docs/pricing
 #   DeepSeek: https://api-docs.deepseek.com/quick_start/pricing
+#   Gemini:   https://ai.google.dev/gemini-api/docs/pricing
 _OPENAI_PRICING = {
     # DeepSeek V4 (1M-token window; cache-hit input is a ~50x discount on the miss rate)
     "deepseek-v4-flash": (0.14e-6,  0.28e-6,  0.0028e-6),
@@ -414,6 +426,11 @@ _OPENAI_PRICING = {
     "gpt-5.4-mini":      (0.75e-6,  4.5e-6,   0.075e-6),
     "gpt-5.4-nano":      (0.20e-6,  1.25e-6,  0.02e-6),
     "gpt-5.4-pro":       (30e-6,    180e-6,   30e-6),
+    # Gemini 2.5, standard tier at the <=200k-token rate (Pro's >200k rate is double — not
+    # modeled here, same simplification as elsewhere in this table).
+    "gemini-2.5-flash":      (0.30e-6, 2.50e-6, 0.03e-6),
+    "gemini-2.5-flash-lite": (0.10e-6, 0.40e-6, 0.01e-6),
+    "gemini-2.5-pro":        (1.25e-6, 10.0e-6, 0.125e-6),
 }
 
 
@@ -463,8 +480,9 @@ def _split_deepseek_thinking(model_id: str) -> tuple[str, bool]:
 async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema: dict,
                                  api_key: str | None, max_tokens: int,
                                  effort: str | None = None, *, base_url: str) -> dict:
-    """OpenAI-compatible Chat Completions backend — OpenAI, DeepSeek, and any service that
-    speaks the same wire format (selected by `base_url`).
+    """OpenAI-compatible Chat Completions backend — OpenAI, DeepSeek, Gemini (via its
+    OpenAI-compatibility endpoint, https://ai.google.dev/gemini-api/docs/openai), and any
+    other service that speaks the same wire format (selected by `base_url`).
 
     Structured output is requested via JSON mode plus the schema appended to the prompt, then
     validated by the shared `acomplete_json` shell — the portable path across providers, since
@@ -519,6 +537,7 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
 _OPENAI_BASE = {
     "openai":   "https://api.openai.com/v1",
     "deepseek": "https://api.deepseek.com",
+    "gemini":   "https://generativelanguage.googleapis.com/v1beta/openai",
 }
 
 _ABACKENDS = {
@@ -526,6 +545,7 @@ _ABACKENDS = {
     "claude-agent-sdk": _agent_complete_async,
     "openai":   partial(_openai_complete_async, base_url=_OPENAI_BASE["openai"]),
     "deepseek": partial(_openai_complete_async, base_url=_OPENAI_BASE["deepseek"]),
+    "gemini":   partial(_openai_complete_async, base_url=_OPENAI_BASE["gemini"]),
 }
 
 # backend name → the auth provider whose key it uses (and whose effort policy applies).
@@ -535,6 +555,7 @@ _BACKEND_PROVIDER = {
     "claude-batch":     "anthropic",
     "openai":           "openai",
     "deepseek":         "deepseek",
+    "gemini":           "gemini",
 }
 
 # Selectable backend names (public — the CLI validates a stage's `backend:model` against this).

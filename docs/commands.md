@@ -181,11 +181,11 @@ Exports the investigation's entity and relationship graph for network-analysis t
 Shows how Watchdog currently authenticates to model providers, then, on a terminal, offers to change it.
 
 - `watchdog auth` — prints the current Claude mode (`subscription`/`api-key`), Claude Code login detection, and the status of any stored provider keys (masked). Off a terminal, or if you answer no, it stops there.
-- Answering **yes** to "Change something?" opens a short wizard: pick a service (Anthropic, OpenAI, or DeepSeek), then:
+- Answering **yes** to "Change something?" opens a short wizard: pick a service (Anthropic, OpenAI, DeepSeek, or Gemini), then:
   - For **Anthropic**, choose between your Claude Code subscription (not metered) and a metered API key.
-  - For **OpenAI** or **DeepSeek**, store a new key, replace an existing one, or delete it.
+  - For **OpenAI**, **DeepSeek**, or **Gemini**, store a new key, replace an existing one, or delete it.
 
-There is no separate `set`/`get`/`use`/`remove` subcommand — this one interactive flow covers all of it. Keys can also come from the standard environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`), which always take precedence over a stored key. Routing a pipeline stage to another provider is covered in [Model backends](configuration.md#model-backends).
+There is no separate `set`/`get`/`use`/`remove` subcommand — this one interactive flow covers all of it. Keys can also come from the standard environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`), which always take precedence over a stored key. Routing a pipeline stage to another provider is covered in [Model backends](configuration.md#model-backends).
 
 ### watchdog unlock
 

@@ -49,6 +49,11 @@ def test_deepseek_is_a_known_provider(home):
     assert auth._PROVIDERS["deepseek"]["env"] == "DEEPSEEK_API_KEY"
 
 
+def test_gemini_is_a_known_provider(home):
+    assert "gemini" in auth._PROVIDERS
+    assert auth._PROVIDERS["gemini"]["env"] == "GEMINI_API_KEY"
+
+
 def test_credentials_file_is_0600(home):
     auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-test-1234567890"}})
     assert stat.S_IMODE(os.stat(auth._credentials_path()).st_mode) == 0o600
@@ -137,8 +142,8 @@ def test_setup_noninteractive_leaves_unconfigured(home):
 
 
 def test_setup_offers_extra_provider_keys(home, monkeypatch):
-    # mode=subscription (1), then add an OpenAI key (y), skip DeepSeek (n).
-    _answers(monkeypatch, "1", "y", "n")
+    # mode=subscription (1), then add an OpenAI key (y), skip DeepSeek (n), skip Gemini (n).
+    _answers(monkeypatch, "1", "y", "n", "n")
     monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-openai-setup-123456")
     auth.setup_auth_interactive(interactive=True)
     state = auth._load_state()
