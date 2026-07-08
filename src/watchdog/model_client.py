@@ -171,6 +171,7 @@ _CONTEXT_WINDOWS = {
     "deepseek-v4": 1_000_000,   # DeepSeek V4 flash/pro
     "deepseek":      128_000,   # legacy deepseek-chat/reasoner
     "gemini-2.5":  1_000_000,   # Gemini 2.5 Pro/Flash/Flash-Lite share a 1M-token window
+    "gemini-3":    1_000_000,   # Gemini 3.5 Flash / 3.1 Flash-Lite / 3.1 Pro Preview, same window
     "gpt-5":         400_000,
     "gpt-4":         128_000,
     "o1":            200_000,
@@ -431,6 +432,12 @@ _OPENAI_PRICING = {
     "gemini-2.5-flash":      (0.30e-6, 2.50e-6, 0.03e-6),
     "gemini-2.5-flash-lite": (0.10e-6, 0.40e-6, 0.01e-6),
     "gemini-2.5-pro":        (1.25e-6, 10.0e-6, 0.125e-6),
+    # Gemini 3.x, standard tier. 3.5 Flash and 3.1 Flash-Lite are stable; 3.1 Pro Preview is a
+    # preview release (Google may deprecate it with as little as two weeks' notice) and its
+    # >200k-token rate is double — not modeled here, same simplification as 2.5 Pro above.
+    "gemini-3.5-flash":      (1.50e-6, 9.00e-6,  0.15e-6),
+    "gemini-3.1-flash-lite": (0.25e-6, 1.50e-6,  0.025e-6),
+    "gemini-3.1-pro-preview": (2.00e-6, 12.0e-6, 0.20e-6),
 }
 
 
