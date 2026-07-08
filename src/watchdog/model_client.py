@@ -484,6 +484,26 @@ def _split_deepseek_thinking(model_id: str) -> tuple[str, bool]:
     return model_id, False
 
 
+def _openai_response_format(base_url: str, schema: dict) -> dict:
+    """The `response_format` for an OpenAI-compatible request — real `json_schema` structured
+    output where it's safe, portable `json_object` mode elsewhere (D98).
+
+    Gemini's OpenAI-compat endpoint honours `json_schema` with genuine wire-level enforcement,
+    and its own schema engine treats `required` as an optional list rather than demanding every
+    property (ai.google.dev/gemini-api/docs/structured-output) — matching schemas.py's
+    omit-optional-fields design (e.g. `_KEY_FACT`'s `required` is just `["fact"]`) with no
+    rewrite needed. OpenAI's own Structured Outputs mode is real too, but only in `strict`
+    form, which demands every property be listed in `required` (nullable unions standing in
+    for "optional") — directly conflicting with that same design — and it has no non-strict
+    schema-hint mode, so a `json_schema` request would need a parallel, all-fields-required
+    schema variant to use safely. DeepSeek's JSON Output docs (api-docs.deepseek.com/guides/
+    json_mode) document only `json_object` — no schema field at all. So only Gemini gets the
+    upgrade; OpenAI and DeepSeek keep the schema-in-prompt path."""
+    if "generativelanguage.googleapis.com" in base_url:
+        return {"type": "json_schema", "json_schema": {"name": "watchdog_response", "schema": schema}}
+    return {"type": "json_object"}
+
+
 async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema: dict,
                                  api_key: str | None, max_tokens: int,
                                  effort: str | None = None, *, base_url: str) -> dict:
@@ -491,12 +511,13 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     OpenAI-compatibility endpoint, https://ai.google.dev/gemini-api/docs/openai), and any
     other service that speaks the same wire format (selected by `base_url`).
 
-    Structured output is requested via JSON mode plus the schema appended to the prompt, then
-    validated by the shared `acomplete_json` shell — the portable path across providers, since
-    full `json_schema` mode is not universal. `effort` arrives already resolved to the
-    provider's native value (or None) and is sent as `reasoning_effort` (#125). No provider-
-    agnostic cache_control equivalent is wired here (A1 is Claude-only), so a content-block
-    prompt is flattened to plain text.
+    Structured output is requested via `_openai_response_format` (real `json_schema` enforcement
+    on Gemini; portable JSON-object mode + schema-in-prompt elsewhere, D98), then validated by
+    the shared `acomplete_json` shell either way — that local validation is a safety net, not the
+    only guard, once the provider itself enforces the schema. `effort` arrives already resolved
+    to the provider's native value (or None) and is sent as `reasoning_effort` (#125). No
+    provider-agnostic cache_control equivalent is wired here (A1 is Claude-only), so a
+    content-block prompt is flattened to plain text.
 
     DeepSeek carries an optional `-thinking` marker on the model id; it is stripped here and
     translated into DeepSeek's explicit thinking toggle (default off — see #320)."""
@@ -507,13 +528,17 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     if is_deepseek:
         model_id, thinking = _split_deepseek_thinking(model_id)
 
+    response_format = _openai_response_format(base_url, schema)
+    user_content = _flatten_prompt(prompt)
+    if response_format["type"] != "json_schema":   # schema not enforced by the API — spell it out
+        user_content += f"\n\nReturn JSON matching this schema:\n{json.dumps(schema)}"
+
     body = {
         "model": model_id,
-        "response_format": {"type": "json_object"},   # "JSON" must appear in the prompt below
+        "response_format": response_format,
         "messages": [
             {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user",
-             "content": f"{_flatten_prompt(prompt)}\n\nReturn JSON matching this schema:\n{json.dumps(schema)}"},
+            {"role": "user", "content": user_content},
         ],
     }
     # OpenAI reasoning models reject `max_tokens` and require `max_completion_tokens`; chat models
