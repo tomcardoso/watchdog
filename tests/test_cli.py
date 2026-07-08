@@ -1757,17 +1757,19 @@ def _vault_with_queue(configured):
 def test_offer_ingest_yes_runs_ingest_without_reconfirming(configured, monkeypatch):
     from watchdog.cmd import ingest as ing
     vault = _vault_with_queue(configured)
-    monkeypatch.setattr("builtins.input", lambda *a: "y")
+    monkeypatch.setattr("builtins.input", lambda *a: "1")   # pick(): "Ingest now"
     seen = {}
-    monkeypatch.setattr(ing, "cmd_ingest", lambda a, *, confirm=True: seen.update(confirm=confirm))
+    monkeypatch.setattr(ing, "cmd_ingest",
+                        lambda a, *, confirm=True, skip_preview=False: seen.update(
+                            confirm=confirm, skip_preview=skip_preview))
     ing._offer_ingest(args(), vault)
-    assert seen == {"confirm": False}   # chew's prompt is the only confirmation
+    assert seen == {"confirm": False, "skip_preview": True}   # chew's prompt is the only confirmation
 
 
 def test_offer_ingest_no_prints_hint_and_skips(configured, monkeypatch, capsys):
     from watchdog.cmd import ingest as ing
     vault = _vault_with_queue(configured)
-    monkeypatch.setattr("builtins.input", lambda *a: "n")
+    monkeypatch.setattr("builtins.input", lambda *a: "2")   # pick(): "Not now"
     def _boom(*a, **k):
         raise AssertionError("ingest must not run when declined")
     monkeypatch.setattr(ing, "cmd_ingest", _boom)

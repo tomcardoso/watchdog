@@ -191,7 +191,17 @@ def explode_key_facts(extraction: dict) -> None:
                 ent.setdefault("timeline_events", []).append(event)
 
 
-def run(vault: Path, extraction_path: Path, quiet: bool = False) -> dict:
+def run(vault: Path, extraction_path: Path, quiet: bool = False, warn=None) -> dict:
+    """`warn`, when given, receives each warning message instead of the default raw
+    ``print(..., file=sys.stderr)`` — the caller can route it through a live-region-aware
+    printer and the ingest log (a raw stderr print during a LiveRegion redraw can be erased by
+    the next redraw's cursor-up/erase, and it never reaches ingest.log)."""
+    def _warn(msg: str) -> None:
+        if warn is not None:
+            warn(msg)
+        else:
+            print(f"Warning: {msg}", file=sys.stderr)
+
     if not extraction_path.exists():
         return {"errors": [f"extraction file not found: {extraction_path}"]}
 
@@ -209,13 +219,13 @@ def run(vault: Path, extraction_path: Path, quiet: bool = False) -> dict:
     # Slugify entity ids before anything downstream uses them as a path segment (#303) —
     # a warning per id actually changed, so a malicious/malformed value is visible, not silent.
     for warning in _sanitize_entity_ids(extraction):
-        print(f"Warning: {warning}", file=sys.stderr)
+        _warn(warning)
 
     # Drop non-ISO-shaped key_facts dates before they can reach explode_key_facts or
     # timeline.py's filename construction — a malformed date is a visible warning, not a
     # silent event loss.
     for warning in _sanitize_dates(extraction):
-        print(f"Warning: {warning}", file=sys.stderr)
+        _warn(warning)
 
     # Fan the unified key_facts out into the per-entity evidence_fragments / timeline_events that
     # write_vault and timeline staging consume (#140).
@@ -243,7 +253,7 @@ def run(vault: Path, extraction_path: Path, quiet: bool = False) -> dict:
     # never blocks the document.
     from watchdog.pipeline.quote_verify import verify_quotes
     for warning in verify_quotes(extraction, page_texts):
-        print(f"Warning: {warning}", file=sys.stderr)
+        _warn(warning)
 
     # Write the validated (and match_id-resolved) extraction back so write_vault reads it
     extraction_path.write_text(

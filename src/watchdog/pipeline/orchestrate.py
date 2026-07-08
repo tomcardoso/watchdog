@@ -355,7 +355,16 @@ def _write_postflight(vault: Path, sha: str, extraction: dict) -> tuple[bool, li
     tmp = vault / ".watchdog" / "tmp" / f"wdg_ex_{sha}.json"
     tmp.parent.mkdir(parents=True, exist_ok=True)
     tmp.write_text(json.dumps(extraction, ensure_ascii=False, indent=2), encoding="utf-8")
-    outcome = postflight.run(vault, tmp, quiet=True)
+    filename = extraction.get("document", {}).get("filename", "")
+
+    def _warn(msg: str) -> None:
+        # Routed through _say/_log (not a raw stderr print) so it survives the live region's
+        # redraw — a print outside that machinery can be erased by the next cursor-up/erase,
+        # and it never reached ingest.log.
+        _say(f"   {_YELLOW}⚠{_RESET}  {filename}  {_DIM}{msg}{_RESET}")
+        _log(vault, f"WARN {filename}: {msg}")
+
+    outcome = postflight.run(vault, tmp, quiet=True, warn=_warn)
     return ("errors" not in outcome), outcome.get("errors", [])
 
 
@@ -629,7 +638,7 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
     _log(vault, f"OK {filename}: {n_entities} entities")
     warn = _coverage_warning(extraction, page_count)
     if warn:
-        _say(f"{_YELLOW}⚠{_RESET}  {filename}  {_DIM}{warn}{_RESET}")
+        _say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{warn}{_RESET}")
         _log(vault, f"WARN {filename}: {warn}")
     result = _compact_result(sha, filename, extraction, pf.get("near_dup", {}), round(cost, 6))
     # Persist the compact result so `watchdog finalize` can run post-ingest from disk alone.
