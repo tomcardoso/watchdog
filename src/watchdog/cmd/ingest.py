@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from watchdog import interactive
 from watchdog.cmd.base import (
     _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW,
     _count_queued,
@@ -171,12 +172,7 @@ def _run_preprocess(
             return
         n = len(files)
         label = f"{n} file{'s' if n != 1 else ''}"
-        try:
-            answer = input(f"\n  Found {_BOLD}{label}{_RESET} in _INCOMING/. Chew now? [Y/n] ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            return
-        if answer not in ("", "y", "yes"):
+        if not interactive.confirm(f"\n  Found {_BOLD}{label}{_RESET} in _INCOMING/. Chew now?", default=True):
             return
     run_ingest(vault, workers=workers, chunk_workers=chunk_workers, show_ingest_hint=show_ingest_hint)
 
@@ -212,12 +208,7 @@ def _offer_ingest(args, vault: Path) -> None:
     """After chew, offer to run ingest right away; print the command hint if declined."""
     total = _count_queued(vault)
     label = f"{total} document{'s' if total != 1 else ''}"
-    try:
-        answer = input(f"\n  {_BOLD}{label}{_RESET} ready. Ingest now? [Y/n] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        print(f"\n\n  Run:  {_CYAN}watchdog ingest{_RESET}\n")
-        return
-    if answer in ("", "y", "yes"):
+    if interactive.confirm(f"\n  {_BOLD}{label}{_RESET} ready. Ingest now?", default=True):
         cmd_ingest(args, confirm=False)
     else:
         print(f"\n  Run:  {_CYAN}watchdog ingest{_RESET}\n")
@@ -283,12 +274,6 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
     if not (vault / ".watchdog").is_dir():
         sys.exit("Error: must be run from inside a Watchdog vault directory")
 
-    from watchdog.cmd.auth import resolve_auth
-    a = resolve_auth()
-    if a["mode"] == "none":
-        sys.exit(f"\n  {_YELLOW}Error:{_RESET} {a.get('reason', 'auth not configured')}\n"
-                 f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
-
     from watchdog.cmd.base import CONFIG_FILE
     config: dict = {}
     if CONFIG_FILE.exists():
@@ -301,6 +286,9 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
     extract_backend, extract_model = _resolve_stage(
         getattr(args, "extractor_model", None), config.get("extractor_model"))
 
+    from watchdog.cmd.auth import resolve_auth
+    from watchdog.model_client import CLAUDE_BACKENDS
+
     if getattr(args, "estimate", False):
         from watchdog.pipeline.ingest_setup import scan_queue, cost_estimate
         queue_files = scan_queue(vault)
@@ -308,7 +296,11 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
             print(f"\n  {_DIM}Queue is empty — nothing to estimate.{_RESET}")
             print(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in _INCOMING/ first.{_RESET}\n")
             return
-        est = cost_estimate(vault, queue_files, _effective_extract_backend(extract_backend, a["mode"]))
+        # Claude's auth mode only matters for the estimate when the extractor is actually
+        # routed to Claude (it picks subscription vs api-key pricing) — a stage pinned to
+        # another provider needs no Claude auth at all (#325).
+        auth_mode = resolve_auth()["mode"] if extract_backend is None else None
+        est = cost_estimate(vault, queue_files, _effective_extract_backend(extract_backend, auth_mode))
         print(f"\n{_format_cost_estimate(est)}\n")
         return
 
@@ -316,6 +308,20 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
         getattr(args, "finalizer_model", None), config.get("finalizer_model"), default="haiku")
     classify_backend, classify_model = _resolve_stage(
         getattr(args, "classifier_model", None), config.get("classifier_model"), default="haiku")
+
+    # Claude auth is only required when at least one stage is actually routed to it — a vault
+    # configured entirely on another provider (e.g. all three stages set to gemini:...) must be
+    # able to ingest without Claude being configured at all (#325).
+    needs_claude_auth = any(b is None or b in CLAUDE_BACKENDS
+                             for b in (extract_backend, post_backend, classify_backend))
+    if needs_claude_auth:
+        a = resolve_auth()
+        if a["mode"] == "none":
+            sys.exit(f"\n  {_YELLOW}Error:{_RESET} {a.get('reason', 'auth not configured')}\n"
+                     f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
+    else:
+        a = {"mode": None}
+
     extract_effort = _effort(getattr(args, "extractor_effort", None), config.get("extractor_effort"))
     post_effort    = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
     try:
@@ -422,20 +428,14 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
         (vault / ".watchdog" / "Registry" / ".ingest-lock").unlink(missing_ok=True)
         (vault / ".watchdog" / "ingest-state.json").unlink(missing_ok=True)
 
+    auth_note = f"your {_BOLD}{a['mode']}{_RESET} auth" if a["mode"] else "the configured provider(s)"
     if confirm:
-        try:
-            answer = input(f"\n  Ingest now with your {_BOLD}{a['mode']}{_RESET} auth? [Y/n] ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            _release_lock()
-            print(f"\n  When ready, run:  {_CYAN}watchdog ingest{_RESET}\n")
-            return
-        if answer not in ("", "y", "yes"):
+        if not interactive.confirm(f"\n  Ingest now with {auth_note}?", default=True):
             _release_lock()
             print(f"\n  When ready, run:  {_CYAN}watchdog ingest{_RESET}\n")
             return
     else:
-        print(f"\n  {_DIM}Using your {_BOLD}{a['mode']}{_RESET}{_DIM} auth.{_RESET}")
+        print(f"\n  {_DIM}Using {auth_note}{_DIM}.{_RESET}")
 
     import asyncio
     from watchdog.pipeline import orchestrate
@@ -550,12 +550,6 @@ def cmd_finalize(args) -> None:
         print(f"\n  {_DIM}Nothing to finalize — run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} first.{_RESET}\n")
         return
 
-    from watchdog.cmd.auth import resolve_auth
-    a = resolve_auth()
-    if a["mode"] == "none":
-        sys.exit(f"\n  {_YELLOW}Error:{_RESET} {a.get('reason', 'auth not configured')}\n"
-                 f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
-
     from watchdog.cmd.base import CONFIG_FILE
     config: dict = {}
     if CONFIG_FILE.exists():
@@ -567,6 +561,17 @@ def cmd_finalize(args) -> None:
     post_backend, post_model = _resolve_stage(
         getattr(args, "finalizer_model", None), config.get("finalizer_model"), default="haiku")
     post_effort = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
+
+    # Claude auth is only required when the finalizer is actually routed to it — a stage pinned
+    # to another provider must be able to finalize without Claude being configured at all (#325).
+    from watchdog.model_client import CLAUDE_BACKENDS
+    if post_backend is None or post_backend in CLAUDE_BACKENDS:
+        from watchdog.cmd.auth import resolve_auth
+        a = resolve_auth()
+        if a["mode"] == "none":
+            sys.exit(f"\n  {_YELLOW}Error:{_RESET} {a.get('reason', 'auth not configured')}\n"
+                     f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
+
 
     _run_finalize(vault, post_model, post_effort, post_backend)
 
@@ -654,13 +659,7 @@ def cmd_context(args) -> None:
     if context_exists:
         print(f"  {_DIM}existing context.md will be updated{_RESET}")
 
-    try:
-        answer = input(f"\n  Open in Claude Code to seed context? [Y/n] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        print(f"\n  When ready, open Claude Code and run:  {_CYAN}/watchdog-context{_RESET}\n")
-        return
-    if answer in ("", "y", "yes"):
+    if interactive.confirm("\n  Open in Claude Code to seed context?", default=True):
         context_path = vault / "context.md"
         if not context_path.exists():
             description = info["description"] if info and info.get("description") else "<!-- One paragraph. What is the story? What pattern, question, or wrongdoing are you pursuing? -->"

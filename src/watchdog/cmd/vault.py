@@ -10,6 +10,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from watchdog import interactive
 from watchdog.cmd.base import (
     CONFIG_FILE,
     VAULT_SCHEMA_VERSION,
@@ -640,19 +641,11 @@ def cmd_delete(args) -> None:
         print(f"  {_YELLOW}Warning: --purge will permanently delete all vault files from disk.{_RESET}")
         print(f"  {_YELLOW}This cannot be undone.{_RESET}")
         print()
-        try:
-            answer = input(f"  Delete all files and remove from registry? [y/N] ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            return
+        answer = interactive.confirm("  Delete all files and remove from registry?", default=False)
     else:
-        try:
-            answer = input(f"  Remove from registry? [y/N] ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            return
+        answer = interactive.confirm("  Remove from registry?", default=False)
 
-    if answer not in ("y", "yes"):
+    if not answer:
         print(f"\n  {_DIM}Cancelled.{_RESET}\n")
         return
 

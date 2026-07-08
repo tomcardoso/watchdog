@@ -13,6 +13,7 @@ import json
 import sys
 from pathlib import Path
 
+from watchdog import interactive
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _YELLOW, _RESET
 from watchdog.pipeline import merge_entities as _merge_entities
 
@@ -58,14 +59,12 @@ def cmd_merge_entities(args) -> None:
               f"make sure this is really the same entity.")
 
     if not getattr(args, "force", False):
-        try:
-            answer = input(f"\n  Merge {_BOLD}{merge_entry['name']}{_RESET} into "
-                           f"{_BOLD}{keep_entry['name']}{_RESET}? This cannot be undone. "
-                           f"[y/N] ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            sys.exit(0)
-        if answer not in ("y", "yes"):
+        answer = interactive.confirm(
+            f"\n  Merge {_BOLD}{merge_entry['name']}{_RESET} into "
+            f"{_BOLD}{keep_entry['name']}{_RESET}? This cannot be undone.",
+            default=False,
+        )
+        if not answer:
             print(f"  {_DIM}Cancelled — nothing changed.{_RESET}\n")
             return
 

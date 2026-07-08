@@ -716,7 +716,15 @@ completed purge, and the CLI hint says so.
   on/off carried in the model id via a `-thinking` suffix, default off, D88), and `_resolve_backend_auth`
   resolves the key per backend — Claude backends via the subscription/api-key mode, others
   via their own stored key (set interactively via `watchdog auth`) independent of the Claude
-  mode. Auth is resolved by `cmd/auth.py` (see #119, D37, D93).
+  mode. Auth is resolved by `cmd/auth.py` (see #119, D37, D93). **Setup philosophy (D95):**
+  Claude Code is required — it runs the interactive investigation skills below and is the
+  ingestion default — but ingestion specifically can be routed to a cheaper metered provider
+  instead, since it is the token-heavy stage. `watchdog setup`'s auth step surfaces this
+  choice directly (offering to walk through picking a provider and a model for each of the
+  three ingest stages when the user is on a subscription), and `watchdog auth`'s status
+  display is split into a "Claude Code" section and an "Ingestion" section (showing, per
+  stage, which provider it resolves to and whether that provider is ready) rather than
+  favouring Claude's own settings.
 - **Claude Code skills** (in-vault, run interactively — *not* part of ingest):
   `watchdog-context`, `watchdog-entity`, `watchdog-query`, `watchdog-surface`,
   `watchdog-wiki`, `watchdog-health`, `watchdog-research` (§14). Ingest is the Python

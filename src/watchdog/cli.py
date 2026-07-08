@@ -4,6 +4,7 @@ import argparse
 import subprocess  # noqa — kept for test monkeypatching via watchdog.cli.subprocess
 import sys         # noqa — kept for test monkeypatching via watchdog.cli.sys
 
+from watchdog import interactive
 from watchdog.cmd.base import (
     CONFIG_FILE,
     WATCHDOG_HOME,
@@ -461,12 +462,7 @@ def main() -> None:
     if args.command is None:
         if not CONFIG_FILE.exists():
             print(f"\n  {_BOLD}Watchdog isn't set up yet.{_RESET}\n")
-            try:
-                answer = input("  Run setup now? [Y/n] ").strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                print()
-                return
-            if answer in ("", "y", "yes"):
+            if interactive.confirm("  Run setup now?", default=True):
                 from watchdog.setup_cmd import run as run_setup
                 run_setup()
             return

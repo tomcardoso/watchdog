@@ -137,6 +137,8 @@ watchdog configure extractor_model deepseek:deepseek-v4-flash
 watchdog ingest --extractor-model openai:gpt-5-mini     # one-off override
 ```
 
+`watchdog setup` offers a shortcut for this: if you're on a Claude Code subscription, it asks whether to route ingestion to a metered provider instead, then walks through picking that provider and a model for each of the three ingest stages in one go — the same picker also appears if you edit `classifier_model`/`extractor_model`/`finalizer_model` interactively from `watchdog configure`. `watchdog auth`'s status view shows, per stage, which provider it currently resolves to and whether that provider is ready (a key is stored or its env var is set).
+
 Each stage is independent — you can keep extraction on Claude Sonnet while routing the cheaper classification or post-ingest steps to another provider. One honest caveat: non-Claude backends are unproven on dense legal and financial extraction, so the defaults stay on Claude and nothing routes elsewhere unless you ask. The effort knobs apply where the provider supports them and are ignored where it doesn't. DeepSeek thinking mode is off by default and enabled by appending `-thinking` to the model id (e.g. `deepseek:deepseek-v4-flash-thinking`); extraction is schema-bound structured output, so non-thinking is the cheaper, more predictable default, with thinking available for the judgment-heavy cases. Gemini has no equivalent thinking toggle — its `reasoning_effort` is driven entirely by the effort knobs.
 
 ### claude-batch: bulk extraction at half price

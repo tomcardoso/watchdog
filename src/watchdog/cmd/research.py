@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from watchdog import interactive
 from watchdog.cmd.base import (
     _BOLD,
     _CYAN,
@@ -111,11 +112,7 @@ def _run_download(vault: Path, source_file: Path | None = None) -> int:
 
 
 def _confirm(prompt: str) -> bool:
-    try:
-        return input(prompt).strip().lower() in ("", "y", "yes")
-    except (EOFError, KeyboardInterrupt):
-        print()
-        return False
+    return interactive.confirm(prompt, default=True)
 
 
 def cmd_research(args) -> None:
@@ -145,7 +142,7 @@ def cmd_research(args) -> None:
         them = "them" if stale != 1 else "it"
         print(f"\n  {_YELLOW}{stale} source{s} from a previous research session "
               f"{'are' if stale != 1 else 'is'} queued and not downloaded.{_RESET}")
-        if _confirm(f"  Download {them} into _INCOMING/ now? [Y/n] "):
+        if _confirm(f"  Download {them} into _INCOMING/ now?"):
             _run_download(vault)
 
     print(f"\n  {_BOLD}Web research — {name}{_RESET}\n")
@@ -193,7 +190,7 @@ def cmd_research(args) -> None:
     s = "s" if found != 1 else ""
     them = "them" if found != 1 else "it"
     print(f"\n  {_BOLD}{found}{_RESET} source{s} queued for download.")
-    if _confirm(f"  Download {them} into _INCOMING/ now? [Y/n] "):
+    if _confirm(f"  Download {them} into _INCOMING/ now?"):
         count = _run_download(vault)
         if count:
             print(f"\n  Next: {_CYAN}watchdog chew{_RESET} then {_CYAN}watchdog ingest{_RESET} "
