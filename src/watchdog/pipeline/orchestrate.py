@@ -17,6 +17,7 @@ import json
 import shutil
 import signal
 import sys
+import time
 from pathlib import Path
 
 import yaml
@@ -81,7 +82,10 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
     time; batch-collected items have no live call to time, so they keep the 0.0 default (#317).
     `effort` records the reasoning-effort tier the call was made with (or None if the model/task
     doesn't take one), and `auth_mode` ("subscription"/"api-key") which billing lane paid for it
-    — both surfaced per call by `watchdog usage` (#319)."""
+    — both surfaced per call by `watchdog usage` (#319). `end_ts` is the call's completion time
+    (epoch seconds); paired with `latency_s` it gives each call a [start, end] interval, so
+    `watchdog usage` can report wall-clock elapsed per stage — the real time a concurrently-run
+    stage took — alongside the summed per-call time (#317 follow-up)."""
     if _usage is None:
         return
     u = usage or {}
@@ -92,7 +96,7 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         "cache_read_tokens": u.get("cache_read_input_tokens", 0) or 0,
         "cache_write_tokens": u.get("cache_creation_input_tokens", 0) or 0,
         "cost_usd": cost_usd, "attempts": attempts, "latency_s": latency_s, "effort": effort,
-        "auth_mode": auth_mode, "filename": filename, "detail": detail,
+        "auth_mode": auth_mode, "filename": filename, "detail": detail, "end_ts": time.time(),
     })
 
 
@@ -548,6 +552,11 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     pages = pf.get("pages", [])
     page_count = pf.get("page_count") or len(pages)
     pg = f"{page_count}p"
+    # Log the moment extraction begins (#317 follow-up). Documents extract concurrently, so a
+    # START line per document makes the staggered starts visible — the later OK/FAILED line
+    # marks completion, and the gap between them is that document's own extraction time (the
+    # log is otherwise completion-ordered, which reads misleadingly like sequential work).
+    _log(vault, f"START {filename}")
 
     # Digest-size telemetry (#216): how much prior-entity context this extraction carries. Watch it
     # on a mature vault to decide whether per-candidate caps are worth adding, and at what sizes.

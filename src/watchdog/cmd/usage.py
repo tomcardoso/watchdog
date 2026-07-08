@@ -39,6 +39,19 @@ def _fmt_secs(s: float) -> str:
     return f"{s:.1f}s" if s < 60 else f"{s / 60:.1f}m"
 
 
+def _wall_span(calls: list[dict]) -> float | None:
+    """Wall-clock elapsed across `calls` — max(end) − min(start), where each call's start is
+    `end_ts − latency_s`. This is the real time the calls took together, which for a stage that
+    ran concurrently is shorter than the summed per-call latency. Returns None when no call
+    carries an `end_ts` (usage files written before #317's follow-up), so callers fall back to
+    the summed call time alone."""
+    ends = [c["end_ts"] for c in calls if c.get("end_ts")]
+    if not ends:
+        return None
+    starts = [c["end_ts"] - (c.get("latency_s") or 0.0) for c in calls if c.get("end_ts")]
+    return max(ends) - min(starts)
+
+
 def _stage_models(calls: list[dict]) -> str:
     """Distinct full model names used across `calls`, in first-seen order — printed once next
     to the stage header rather than truncated into a per-row column (a per-row abbreviation like
@@ -148,6 +161,13 @@ def _print_stage(calls: list[dict]) -> dict:
         f"{_fmt(totals['cache_write_tokens']):>8}  {_fmt(totals['output_tokens']):>7}  "
         f"{_fmt_secs(totals['latency_s']):>8}  ${totals['cost_usd']:>7.4f}"
     )
+    # When the stage's calls overlapped in time, the summed Latency column overstates how long
+    # the stage actually took — show the wall-clock span so a concurrent stage's real duration
+    # is visible (#317 follow-up). Skipped when calls ran back-to-back (span ≈ sum) or the usage
+    # file predates end_ts.
+    span = _wall_span(calls)
+    if span is not None and len(calls) > 1 and totals["latency_s"] - span > 0.1:
+        print(f"  ↳ {_fmt_secs(span)} elapsed (wall-clock; {len(calls)} calls ran concurrently)")
     return totals
 
 
@@ -183,11 +203,14 @@ def _analyze_run(usage_file: Path, vault: Path) -> None:
         n_calls += len(stage_calls)
 
     print(f"\n  {'━' * (W - 2)}")
+    total_span = _wall_span(calls)
+    call_time = f"{_fmt_secs(grand['latency_s'])} call time"
+    elapsed = f"  ·  {_fmt_secs(total_span)} elapsed" if total_span is not None else ""
     print(
         f"  TOTAL  ({n_calls} call{'s' if n_calls != 1 else ''})     "
         f"{_fmt(grand['input_tokens'])} in  ·  {_fmt(grand['cache_read_tokens'])} cache-read  ·  "
         f"{_fmt(grand['cache_write_tokens'])} cache-write  ·  {_fmt(grand['output_tokens'])} out  ·  "
-        f"${grand['cost_usd']:.4f}  ·  {_fmt_secs(grand['latency_s'])} total call time"
+        f"${grand['cost_usd']:.4f}  ·  {call_time}{elapsed}"
     )
     _print_cost_per_page(vault, grand["cost_usd"])
 

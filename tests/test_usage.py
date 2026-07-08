@@ -12,13 +12,13 @@ from watchdog.cmd.usage import cmd_usage
 
 def _call(task="extract", filename="doc.pdf", detail="pages 1–1", model="claude-sonnet-4-6",
           cost_usd=0.01, input_tokens=100, output_tokens=20, latency_s=1.5,
-          effort=None, auth_mode="api-key", attempts=1):
+          effort=None, auth_mode="api-key", attempts=1, end_ts=None):
     return {
         "task": task, "model": model, "backend": "claude-api",
         "input_tokens": input_tokens, "output_tokens": output_tokens,
         "cache_read_tokens": 0, "cache_write_tokens": 0,
         "cost_usd": cost_usd, "attempts": attempts, "latency_s": latency_s, "effort": effort,
-        "auth_mode": auth_mode, "filename": filename, "detail": detail,
+        "auth_mode": auth_mode, "filename": filename, "detail": detail, "end_ts": end_ts,
     }
 
 
@@ -81,6 +81,46 @@ def test_cmd_usage_shows_auth_mode_and_retry_marker(tmp_path, monkeypatch, capsy
     assert "Auth" in out
     assert "sub" in out and "key" in out
     assert "×3" in out   # the retried call is flagged inline
+
+
+def test_cmd_usage_shows_wall_clock_elapsed_for_concurrent_stage(tmp_path, monkeypatch, capsys):
+    """When a stage's calls overlapped in time, the summed Latency column overstates the stage's
+    real duration — the wall-clock span (max end − min start) is shown alongside it (#317
+    follow-up). Three 3s calls finishing at t=100/101/102 span only 5s of wall time, not 9s."""
+    vault = _build_vault(tmp_path, runs={
+        "usage-2026-01-01T00-00-00": [
+            _call(filename="a.pdf", latency_s=3.0, end_ts=100.0),
+            _call(filename="b.pdf", latency_s=3.0, end_ts=101.0),
+            _call(filename="c.pdf", latency_s=3.0, end_ts=102.0),
+        ],
+    })
+    monkeypatch.chdir(vault)
+
+    cmd_usage(_args())
+
+    out = capsys.readouterr().out
+    assert "9.0s" in out                       # summed call time (subtotal)
+    assert "5.0s elapsed" in out               # wall-clock span, per stage
+    assert "concurrently" in out
+    assert "5.0s elapsed" in out.split("TOTAL")[1]   # and on the TOTAL line
+
+
+def test_cmd_usage_omits_wall_clock_when_no_end_ts(tmp_path, monkeypatch, capsys):
+    """Usage files written before end_ts was recorded have no wall-clock data — the elapsed
+    line is omitted rather than guessed, and the summed call time still prints."""
+    vault = _build_vault(tmp_path, runs={
+        "usage-2026-01-01T00-00-00": [
+            _call(filename="a.pdf", latency_s=3.0),
+            _call(filename="b.pdf", latency_s=3.0),
+        ],
+    })
+    monkeypatch.chdir(vault)
+
+    cmd_usage(_args())
+
+    out = capsys.readouterr().out
+    assert "elapsed" not in out
+    assert "call time" in out
 
 
 def test_cmd_usage_all_compares_every_run(tmp_path, monkeypatch, capsys):

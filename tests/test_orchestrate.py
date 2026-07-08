@@ -112,6 +112,21 @@ def test_postflight_quote_warning_prints_after_this_documents_ok_line(tmp_path, 
     assert ok_index < warn_index
 
 
+def test_ingest_log_records_start_before_ok(tmp_path, monkeypatch):
+    """A per-document START line is logged when extraction begins, ahead of its OK line —
+    with concurrent extraction the completion-ordered log otherwise hides the staggered
+    starts (#317 follow-up)."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    _mock(monkeypatch, extraction=_extraction())
+
+    asyncio.run(orchestrate.run(vault))
+
+    log = (vault / ".watchdog" / "Registry" / "ingest.log").read_text(encoding="utf-8")
+    assert "START test-doc.pdf" in log
+    assert log.index("START test-doc.pdf") < log.index("OK test-doc.pdf")
+
+
 def test_briefing_facts_projects_fact_and_date_only():
     """The briefing projection (#150) keeps the fact text and a date when present, and drops
     page/basis/entities/quote — narrative noise the briefing doesn't need."""
@@ -1743,6 +1758,7 @@ def test_finish_batch_item_records_usage_for_the_batch_call_itself(tmp_path):
         assert result["status"] == "ok"
         calls = [c for c in orchestrate._usage if c["task"] == "extract"]
         assert len(calls) == 1
+        assert calls[0].pop("end_ts") > 0   # completion timestamp stamped at record time
         assert calls[0] == {
             "task": "extract", "model": "claude-sonnet-4-6", "backend": "claude-batch",
             "input_tokens": 500, "output_tokens": 80, "cache_read_tokens": 0, "cache_write_tokens": 0,
