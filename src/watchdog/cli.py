@@ -445,12 +445,7 @@ def main() -> None:
                            help="Model to use (default: sonnet)")
     p_context.set_defaults(func=cmd_context)
 
-    p_auth = sub.add_parser("auth", help="Choose auth mode and manage API keys for model backends")
-    p_auth.add_argument("action", nargs="?", choices=["status", "use", "set", "get", "remove"],
-                        help="status (default) | use <mode> | set/get/remove [provider]")
-    p_auth.add_argument("target", nargs="?",
-                        help="mode for `use` (subscription/api-key); provider for set/get/remove "
-                             "(anthropic [default], openai, deepseek)")
+    p_auth = sub.add_parser("auth", help="Show and interactively change how Watchdog authenticates to model providers")
     p_auth.set_defaults(func=cmd_auth)
 
     try:

@@ -213,7 +213,7 @@ def test_openai_backend_routes_with_stored_key(openai_key, monkeypatch):
 
 def test_openai_backend_without_key_errors(monkeypatch):
     monkeypatch.setattr(mc.auth, "get_api_key", lambda provider="anthropic": None)
-    with pytest.raises(mc.ModelError, match="watchdog auth set openai"):
+    with pytest.raises(mc.ModelError, match="watchdog auth"):
         mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai")
 
 

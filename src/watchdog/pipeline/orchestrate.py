@@ -822,7 +822,7 @@ async def _run_batch(vault: Path, shas: list[str], brief: str | None, extract_mo
     api_key = auth.resolve_auth().get("key")
     if not api_key:
         raise model_client.ModelError(
-            "claude-batch requires api-key auth mode — run `watchdog auth use api-key`")
+            "claude-batch requires api-key auth mode — switch to it with `watchdog auth`")
 
     state = batch_extract.read_state(vault)
     if state is not None:

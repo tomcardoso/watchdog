@@ -1038,6 +1038,8 @@ def cmd_configure(args) -> None:
     if key is None:
         print()
         print(f"  {_BOLD}Configuration{_RESET}  {_DIM}{CONFIG_FILE}{_RESET}")
+        print(f"  {_DIM}Model authentication (Claude subscription/API key, other provider keys) is"
+              f" managed separately — see{_RESET} {_CYAN}watchdog auth{_RESET}{_DIM}.{_RESET}")
 
         def _print_key(k):
             meta = _CONFIGURE_KEYS[k]

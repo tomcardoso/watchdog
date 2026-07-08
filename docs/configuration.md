@@ -127,7 +127,7 @@ Within ingest, Watchdog is designed around Claude and uses it by default, but ea
 Store the provider's key first, then point a stage at it — persistently or per run:
 
 ```bash
-watchdog auth set deepseek                              # store the key (or set DEEPSEEK_API_KEY)
+watchdog auth                                           # interactive: pick DeepSeek, paste the key (or set DEEPSEEK_API_KEY)
 watchdog configure extractor_model deepseek:deepseek-v4-flash
 watchdog ingest --extractor-model openai:gpt-5-mini     # one-off override
 ```
@@ -141,14 +141,14 @@ If you run on a metered API key (not a subscription) and are ingesting a large, 
 Four constraints, each enforced with a clear error:
 
 1. It requires a pinned skill (`--skill` or `default_skill`) — classification is one-document-at-a-time and can't be batched.
-2. It requires `api-key` auth mode (`watchdog auth use api-key`) — batching is not available on a subscription.
+2. It requires `api-key` auth mode (switch to it with `watchdog auth`) — batching is not available on a subscription.
 3. It is valid only as `extractor_model`, not `classifier_model` or `finalizer_model`.
 4. A document large enough to need sectioned extraction can't go through the batch, so those extract via the regular API instead, automatically — announced in the run's output, not silent.
 
 This is also the recipe for keeping a Claude subscription's session limits for interactive work only, spending zero subscription tokens on bulk ingest:
 
 ```bash
-watchdog auth use api-key                                 # a metered key, not your subscription
+watchdog auth                                             # interactive: switch Claude to api-key mode
 watchdog configure classifier_model claude-api:haiku
 watchdog configure extractor_model claude-batch:sonnet
 watchdog configure finalizer_model claude-api:haiku

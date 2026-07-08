@@ -411,7 +411,7 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
                      f"{_CYAN}default_skill{_RESET} via {_CYAN}watchdog configure{_RESET}.\n")
         if a["mode"] != "api-key":
             sys.exit(f"\n  {_YELLOW}Error:{_RESET} claude-batch requires api-key auth mode "
-                     f"(it needs a metered key) — run {_CYAN}watchdog auth use api-key{_RESET}.\n")
+                     f"(it needs a metered key) — switch to it with {_CYAN}watchdog auth{_RESET}.\n")
     wait = getattr(args, "wait", False)
     if wait and extract_backend == "claude-batch":
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} --wait isn't supported with claude-batch — a batch "
