@@ -125,6 +125,9 @@ Within ingest, Watchdog is designed around Claude and uses it by default, but ea
 | `deepseek:deepseek-v4-pro` | DeepSeek V4 Pro — non-thinking (append `-thinking` to enable thinking mode). |
 | `gemini:gemini-2.5-flash` | Gemini 2.5 Flash — 1M-token context window. |
 | `gemini:gemini-2.5-pro` | Gemini 2.5 Pro — 1M-token context window. |
+| `gemini:gemini-3.5-flash` | Gemini 3.5 Flash — stable, 1M-token context window. |
+| `gemini:gemini-3.1-flash-lite` | Gemini 3.1 Flash-Lite — stable, cheapest Gemini tier. |
+| `gemini:gemini-3.1-pro-preview` | Gemini 3.1 Pro — preview release; Google may deprecate preview model ids on short notice. |
 
 Store the provider's key first, then point a stage at it — persistently or per run:
 

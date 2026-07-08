@@ -192,6 +192,9 @@ def test_resolve_effort(provider, model_id, effort, expected):
     ("gemini-2.5-flash", 1_000_000),
     ("gemini-2.5-flash-lite", 1_000_000),
     ("gemini-2.5-pro", 1_000_000),
+    ("gemini-3.5-flash", 1_000_000),
+    ("gemini-3.1-flash-lite", 1_000_000),
+    ("gemini-3.1-pro-preview", 1_000_000),
     ("gpt-5-mini", 400_000),
     ("gpt-4o", 128_000),
     ("some-unknown-model", 128_000),            # conservative default for anything unlisted
@@ -310,6 +313,10 @@ def test_openai_cost_prices_gemini_models():
     assert mc._openai_cost("gemini-2.5-flash",
                            {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
         == pytest.approx(0.30 + 2.50)
+    # gemini-3.5-flash: $1.50/1M input, $9.00/1M output.
+    assert mc._openai_cost("gemini-3.5-flash",
+                           {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
+        == pytest.approx(1.50 + 9.00)
 
 
 def test_openai_backend_request_shape(monkeypatch):
