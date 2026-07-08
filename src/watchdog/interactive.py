@@ -61,7 +61,7 @@ def pick(items, current=0, *, title=None, hint="↑/↓ move · Enter select · 
 
     fd, old = _raw_stdin()
     try:
-        fits = os.get_terminal_size().lines >= len(items) + 3
+        fits = os.get_terminal_size().lines >= len(items) + 4
     except OSError:
         fits = True
 
@@ -73,7 +73,7 @@ def pick(items, current=0, *, title=None, hint="↑/↓ move · Enter select · 
 
     def render(first: bool) -> None:
         if not first:
-            sys.stdout.write(f"\x1b[{1 + len(items)}A\r")
+            sys.stdout.write(f"\x1b[{2 + len(items)}A\r")
         sys.stdout.write((f"  {_BOLD}{title}{_RESET}" if title else "") + "\x1b[K\n")
         for i, it in enumerate(items):
             if isinstance(it, Header):
@@ -82,6 +82,7 @@ def pick(items, current=0, *, title=None, hint="↑/↓ move · Enter select · 
                 sys.stdout.write(f"  {_CYAN}❯ {it}{_RESET}\x1b[K\n")
             else:
                 sys.stdout.write(f"    {it}\x1b[K\n")
+        sys.stdout.write("\x1b[K\n")                    # blank line between the menu and the hint
         sys.stdout.write(f"  {_DIM}{hint}{_RESET}\x1b[K")
         sys.stdout.flush()
 
@@ -108,10 +109,10 @@ def pick(items, current=0, *, title=None, hint="↑/↓ move · Enter select · 
                 sel = (sel + 1) % len(selectable); render(False)
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
-        # The move/select/cancel hint is only useful while a choice is being made — clear it
-        # (cursor is already sitting at the end of that row) instead of leaving it behind in
-        # the scrollback once the interaction is over.
-        sys.stdout.write("\r\x1b[K\n")
+        # The blank spacer + move/select/cancel hint are only useful while a choice is being
+        # made — erase both (the cursor sits at the end of the hint row, one row below the
+        # spacer) instead of leaving them behind in the scrollback once the interaction is over.
+        sys.stdout.write("\r\x1b[K\x1b[1A\x1b[K\n")
         sys.stdout.flush()
 
     return result

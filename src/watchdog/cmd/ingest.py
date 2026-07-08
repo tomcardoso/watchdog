@@ -112,8 +112,7 @@ def _format_models_line(classify_backend, classify_model, extract_backend, extra
     stages = (("classifier", classify_backend, classify_model),
               ("extractor", extract_backend, extract_model),
               ("finalizer", post_backend, post_model))
-    bits = " · ".join(f"{_DIM}{name}{_RESET} {_CYAN}{label(b, m)}{_RESET}" for name, b, m in stages)
-    return f"  {bits}"
+    return "\n".join(f"  {_DIM}{name}{_RESET} {_CYAN}{label(b, m)}{_RESET}" for name, b, m in stages)
 
 
 def _preview_ingest(vault: Path, args) -> tuple[str, str] | None:
@@ -253,7 +252,7 @@ def _offer_ingest(args, vault: Path) -> None:
     preview = _preview_ingest(vault, args)
     if preview:
         estimate_line, models_line = preview
-        print(f"\n{estimate_line}")
+        print(estimate_line)
         print(models_line)
     if interactive.pick(["Ingest now", "Not now"], 0, title="Ingest now?") == 0:
         cmd_ingest(args, confirm=False, skip_preview=True)
