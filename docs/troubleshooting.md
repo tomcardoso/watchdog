@@ -139,6 +139,18 @@ If a vault folder exists on disk but Watchdog doesn't know about it at all, regi
 watchdog register /path/to/the/vault-folder
 ```
 
+## Obsidian says "Vault not found"
+
+You ran `watchdog obsidian <name>` and Obsidian popped up a "Vault not found" error. This happens because Obsidian only reads its list of vaults when it starts up, so a vault created while Obsidian was already running is invisible to it until you restart.
+
+Quit Obsidian completely (not just close the window — use **Quit** so no Obsidian process is left running), then run the command again:
+
+```bash
+watchdog obsidian <name>
+```
+
+Newer versions of Watchdog detect this situation and tell you to restart Obsidian instead of showing the confusing error.
+
 ## Getting help
 
 If something isn't working, open an issue at [github.com/tomcardoso/watchdog/issues](https://github.com/tomcardoso/watchdog/issues). Include:
