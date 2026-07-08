@@ -39,12 +39,19 @@ def _fmt_secs(s: float) -> str:
     return f"{s:.1f}s" if s < 60 else f"{s / 60:.1f}m"
 
 
-def _short_model(m: str | None) -> str:
-    """e.g. 'claude-sonnet-4-6' -> 'sonnet', 'claude-haiku-4-5' -> 'haiku'."""
-    if not m:
-        return "?"
-    parts = m.split("-")
-    return parts[1] if len(parts) > 1 else m
+def _stage_models(calls: list[dict]) -> str:
+    """Distinct full model names used across `calls`, in first-seen order — printed once next
+    to the stage header rather than truncated into a per-row column (a per-row abbreviation like
+    `_short_model`'s old 'claude-sonnet-4-6' -> 'sonnet' silently mangled non-Claude ids, e.g.
+    'gemini-3.1-flash-lite' -> '3.1'). Calls within one stage share a model in the overwhelming
+    majority of runs (one `--classifier-model`/etc. per invocation), but joining distinct values
+    keeps this correct if that ever changes mid-run."""
+    seen = []
+    for c in calls:
+        m = c.get("model") or "?"
+        if m not in seen:
+            seen.append(m)
+    return ", ".join(seen)
 
 
 def _short_auth(mode: str | None) -> str:
@@ -101,11 +108,10 @@ def _print_stage(calls: list[dict]) -> dict:
     rather than leaving an inflated cost/latency unexplained."""
     name_w = max(min(28, max(len(c.get("filename") or c["task"]) for c in calls)), len("Filename"))
     detail_w = max(min(24, max(len(c.get("detail") or "—") for c in calls)), len("Detail"))
-    model_w = max(max(len(_short_model(c.get("model"))) for c in calls), len("Model"))
     effort_w = max(max(len(c.get("effort") or "—") for c in calls), len("Effort"))
     auth_w = max(max(len(_short_auth(c.get("auth_mode"))) for c in calls), len("Auth"))
 
-    hdr = (f"  {'Filename':<{name_w}}  {'Detail':<{detail_w}}  {'Model':<{model_w}}  {'Effort':<{effort_w}}  "
+    hdr = (f"  {'Filename':<{name_w}}  {'Detail':<{detail_w}}  {'Effort':<{effort_w}}  "
            f"{'Auth':<{auth_w}}  "
            f"{'Input':>8}  {'C.read':>8}  {'C.write':>8}  {'Output':>7}  {'Latency':>8}  {'Cost':>8}")
     print(hdr)
@@ -124,7 +130,7 @@ def _print_stage(calls: list[dict]) -> dict:
         trunc_detail = (detail[:detail_w - 1] + "…") if len(detail) > detail_w else detail
         retry_note = f"  ×{attempts}" if attempts > 1 else ""
         print(
-            f"  {trunc_name:<{name_w}}  {trunc_detail:<{detail_w}}  {_short_model(c.get('model')):<{model_w}}  "
+            f"  {trunc_name:<{name_w}}  {trunc_detail:<{detail_w}}  "
             f"{effort:<{effort_w}}  {auth:<{auth_w}}  "
             f"{_fmt(c['input_tokens']):>8}  {_fmt(c['cache_read_tokens']):>8}  {_fmt(c['cache_write_tokens']):>8}  "
             f"{_fmt(c['output_tokens']):>7}  {_fmt_secs(latency):>8}  ${cost:>6.4f}{retry_note}"
@@ -137,7 +143,7 @@ def _print_stage(calls: list[dict]) -> dict:
         totals["latency_s"] += latency
 
     print(
-        f"  {'Subtotal':<{name_w}}  {'':<{detail_w}}  {'':<{model_w}}  {'':<{effort_w}}  {'':<{auth_w}}  "
+        f"  {'Subtotal':<{name_w}}  {'':<{detail_w}}  {'':<{effort_w}}  {'':<{auth_w}}  "
         f"{_fmt(totals['input_tokens']):>8}  {_fmt(totals['cache_read_tokens']):>8}  "
         f"{_fmt(totals['cache_write_tokens']):>8}  {_fmt(totals['output_tokens']):>7}  "
         f"{_fmt_secs(totals['latency_s']):>8}  ${totals['cost_usd']:>7.4f}"
@@ -170,7 +176,8 @@ def _analyze_run(usage_file: Path, vault: Path) -> None:
               [s for s in by_stage if s not in _STAGE_ORDER]
     for stage in ordered:
         stage_calls = by_stage[stage]
-        print(f"\n  {stage.upper()}  ({len(stage_calls)} call{'s' if len(stage_calls) != 1 else ''})")
+        print(f"\n  {stage.upper()}  ({len(stage_calls)} call{'s' if len(stage_calls) != 1 else ''})"
+              f"  ·  model: {_stage_models(stage_calls)}")
         totals = _print_stage(stage_calls)
         _accumulate(grand, totals)
         n_calls += len(stage_calls)
