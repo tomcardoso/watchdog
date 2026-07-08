@@ -603,6 +603,51 @@ def test_single_page_failure_does_not_section(tmp_path, monkeypatch):
     assert summary["failed"] == 1 and summary["extracted"] == 0
 
 
+def test_large_single_page_failure_falls_back_to_char_sectioning(tmp_path, monkeypatch):
+    """A big single-page doc (e.g. a long text file) whose whole-doc extraction is rejected — for
+    an openai/gemini backend this is where a truncated response lands (#343) — is re-extracted by
+    splitting its text into character windows, not just given up on."""
+    vault = make_vault(tmp_path)
+    monkeypatch.setattr(orchestrate.section, "_config_get", lambda k, d: d)   # deterministic defaults
+    # One page long enough that _FALLBACK_SECTION_TOKENS splits it into ≥2 character windows.
+    long_text = "Acme Corp disclosures. " * 6000                             # ~138K chars
+    _queue_doc(vault, text=long_text)
+
+    calls = {"extract": 0, "section": 0}
+    sec_first = {
+        "document": {"sha256": "abc123", "filename": "test-doc.pdf", "title": "Acme AR",
+                     "document_type": "Annual Report", "summary": "Acme report.",
+                     "key_facts": [{"fact": "x", "basis": "stated"}]},
+        "entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
+                      "timeline_events": [], "roles": []}],
+        "morgue_entity_id": "acme-corp", "morgue_document_type": "annual-report",
+        "observations": "sec1",
+    }
+    sec_later = {"entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
+                              "timeline_events": [], "roles": []}], "observations": "sec2"}
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "classify":
+            parsed = {"skill": "general-records.md"}
+        elif task == "extract":
+            calls["extract"] += 1
+            parsed = _extraction(valid=False)                 # whole-doc → postflight rejects
+        elif task == "extract-section":
+            calls["section"] += 1
+            parsed = sec_first if "This is SECTION 1" in _flat(prompt) else sec_later
+        elif task == "briefing":
+            parsed = {"investigation_status": "x", "what_was_ingested": []}
+        else:
+            parsed = {"entity_syntheses": []} if task == "entity-synthesis" else {"events": []}
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.01)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault))
+    assert calls["extract"] >= 1 and calls["section"] >= 2     # whole-doc tried, then sectioned
+    assert summary["extracted"] == 1 and summary["failed"] == 0
+
+
 def test_pinned_skill_skips_classification(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault)

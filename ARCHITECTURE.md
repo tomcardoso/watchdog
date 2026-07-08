@@ -229,6 +229,13 @@ reads far more of a document per call before sectioning. A 200K Claude window re
 historical 120K/60K defaults exactly; the two config keys default to the `auto` sentinel and
 accept an explicit `section_token_threshold`/`section_token_budget` integer as an advanced
 escape hatch (a pinned integer does not rescale when the extraction model changes).
+The input-window default is **additionally capped by the output ceiling** for a backend that
+enforces a fixed `max_tokens` and can't paginate past it (openai, gemini — D104, #343): the
+safe output budget is converted back to an input-token cap
+(`model_client.output_ceiling_for_sectioning` × a density ratio) so a whole-document call's
+expected *output* stays under the ceiling. Backends that paginate their output (claude-api,
+deepseek) or have no ceiling (claude-agent-sdk) return `None` and keep the pure input-window
+default.
 The carry-forward is a deduplicated entity-id → name/type map accumulated across every
 section seen so far (rebuilt fresh each section, one line per entity, not a running
 concatenation) plus only the immediately preceding section's `observations` text; and,
@@ -259,13 +266,26 @@ backend) understands blocks; `claude-agent-sdk` and the OpenAI-compatible backen
 them to plain text (`model_client._flatten_prompt`) since neither exposes a cache knob to us
 (D51). `cache_read_input_tokens` is surfaced in the usage telemetry (§12) to verify hits.
 
-**Output-overrun fallback.** Sectioning is gated on *input* size, but a moderate-input,
-entity-dense document can overrun the model's *output* ceiling — the agent-SDK backend
-can't cap output tokens, so the JSON truncates and post-flight rejects it. When
-whole-document extraction fails on a **multi-page** document, the orchestrator
-force-sections it (`section.run(force_budget=…)`, capped at half the doc so it yields ≥2
-sections) and retries on the sectioned path — which bounds per-call output — before giving
-up. See D19.
+**Output truncation — never accept a partial extraction (#343).** Sectioning is gated on
+*input* size, but a moderate-input, entity-dense document can overrun the model's *output*
+`max_tokens` ceiling and truncate the JSON mid-object. Three layers guarantee no truncated
+extraction is ever accepted. **(1) Detection (universal).** `acomplete_json` reads the
+backend's `finish_reason`/`stop_reason` authoritatively — a max-token cut (`length`,
+`max_tokens`) is never inferred from a parse failure — so a truncated-but-parseable response
+is rejected rather than silently stored. **(2) Pagination (recovery).** For backends that can
+continue a partial response by prefilling it as the assistant turn — claude-api (assistant
+prefill) and deepseek (chat-prefix-completion beta) — `_complete_with_pagination` re-issues the
+call with the partial output prefilled and concatenates the halves until a natural stop (guarded
+by `_MAX_CONTINUATIONS`). Continuation is **not** escalation (I4): same model, same effort, just
+finishing one response; the closing brace makes completeness true by construction. **(3)
+Proactive sizing.** openai and gemini return a *new* message rather than continuing, so they
+can't paginate — instead the output-ceiling-aware sectioning threshold (above) sizes the first
+call to fit, and the agent-SDK backend has no client-enforced cap at all. **Reactive backstop.**
+If any whole-document extraction is still rejected (truncation or otherwise), the orchestrator
+force-sections the document (`section.run(force_budget=…)`, capped at half so it yields ≥2
+sections) and retries on the bounded-output sectioned path — now for single-page documents too
+(their text splits into character windows), not just multi-page ones. Worst case is a loud
+quarantine, never silent data loss. See D104, D19.
 
 **Failure handling.** The model adapter raises if it can't get schema-valid JSON; a doc
 whose extraction or post-flight fails (after the output-overrun fallback, for multi-page
@@ -863,7 +883,7 @@ These are the **governing rules of the pipeline** — the canonical statement of
 - **I1 — Deterministic code writes; the model only reasons.** Anything derivable in Python (document identity, provenance, slugs, role targets, timeline fan-out) is stamped in code, never paid for in model output — and the model is not asked to restate as prose what it already emitted structurally. Carve-out: `document.summary` (#279) is a bounded, deliberate exception — a whole-document digest synthesized from `key_facts`, capped at three paragraphs and grounded (every claim in it must also exist in `key_facts`). That grounding is a **prompt instruction, not a verified postcondition** — unlike quote verification, no code checks the digest against `key_facts`, so a hallucinated claim would not be caught. *History: D2, D18, D24–D26, D29–D31, D33, D34, D75, D77, D78.*
 - **I2 — Local-first preprocessing.** The *source documents you were given* never leave the machine, and chew costs no API tokens. This is a boundary on **source-doc egress**, not a vow of web abstinence — the investigation layer runs as agentic Claude Code sessions and web research (§14, I5) is allowed, since anything on the open web is already public. *History: D1, D45.*
 - **I3 — Skills and prompt templates are global package resources** — read directly, never copied per-vault — and prompt templates live in their own directory so they never leak into the classifier index. *History: D21, D28.*
-- **I4 — Configured model and effort only; no automatic escalation.** Each stage's model *and* its reasoning effort are explicit knobs with stable defaults; a failed call retries on the *same* model at the *same* effort — the pipeline never silently bumps either to recover. *History: D20, D36.*
+- **I4 — Configured model and effort only; no automatic escalation.** Each stage's model *and* its reasoning effort are explicit knobs with stable defaults; a failed call retries on the *same* model at the *same* effort — the pipeline never silently bumps either to recover. Response pagination (D104) is not an exception: continuing a truncated response prefills the same model's partial output at the same effort to finish one reply, changing neither knob. *History: D20, D36, D104.*
 - **I5 — Research output re-enters through `_INCOMING/`, never as a direct vault write.** Web research deposits findings as documents that flow through `chew → ingest`, keeping the deterministic pipeline the single writer (dedup, provenance, registry bookkeeping). Per-doc rationale rides the `.yml` sidecar; batch rationale goes to a `briefings/research-<date>.md` memo — never `context.md`. *History: D45, D46.*
 
 ### Decision log

@@ -575,3 +575,137 @@ def test_rate_limit_error_is_not_a_model_error():
     # Must NOT subclass ModelError, or extraction's retry + sectioning fallback would
     # swallow it instead of letting the orchestrator stop the batch.
     assert not issubclass(mc.RateLimitError, mc.ModelError)
+
+
+# ── response pagination / truncation guard (#343) ──────────────────────────────
+
+class PagingBackend:
+    """Backend fake that supports prefill continuation. Returns queued (text, finish_reason)
+    rounds in order and records the `prefix` each call received, so a test can assert both the
+    assembled output and that continuation actually happened (or didn't)."""
+    def __init__(self, *rounds, cost=0.01):
+        self.rounds = list(rounds)      # each: (text, finish_reason)
+        self.cost = cost
+        self.calls = []
+
+    async def __call__(self, prompt, model_id, schema, api_key, max_tokens, effort=None, prefix=None):
+        self.calls.append({"prefix": prefix, "max_tokens": max_tokens})
+        text, finish = self.rounds.pop(0)
+        return {"text": text, "usage": {"output_tokens": 5}, "cost_usd": self.cost,
+                "finish_reason": finish}
+
+
+@pytest.fixture
+def deepseek_key(monkeypatch):
+    monkeypatch.setattr(mc.auth, "get_api_key",
+                        lambda provider="anthropic": "sk-ds" if provider == "deepseek" else None)
+
+
+@pytest.mark.parametrize("finish, truncated", [
+    ("length", True), ("max_tokens", True), ("MAX_TOKENS", True),
+    ("stop", False), ("end_turn", False), (None, False), ("", False),
+])
+def test_is_truncated(finish, truncated):
+    assert mc._is_truncated(finish) is truncated
+
+
+def test_truncated_response_continues_until_complete(api_key_auth, monkeypatch):
+    # claude-api can prefill: a max-token cut is continued from the partial and concatenated.
+    be = PagingBackend(('{"name": "Ac', "max_tokens"), ('me"}', "end_turn"))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", be)
+    r = mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="claude-api")
+    assert r.parsed == {"name": "Acme"}
+    assert be.calls[0]["prefix"] is None
+    assert be.calls[1]["prefix"] == '{"name": "Ac'      # partial prefilled to continue
+    assert r.cost_usd == pytest.approx(0.02)            # cost summed across both rounds
+
+
+def test_deepseek_paginates(deepseek_key, monkeypatch):
+    # DeepSeek's prefix-completion beta is also a continuation backend.
+    be = PagingBackend(('{"na', "length"), ('me": "Acme"}', "stop"))
+    monkeypatch.setitem(mc._ABACKENDS, "deepseek", be)
+    r = mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="deepseek",
+                         model="deepseek-v4-flash")
+    assert r.parsed == {"name": "Acme"}
+    assert be.calls[1]["prefix"] == '{"na'
+
+
+def test_truncated_result_rejected_even_when_parseable(openai_key, monkeypatch):
+    # openai returns a *new* message, not a continuation, so it can't paginate. A truncated result
+    # must never be accepted even though this partial happens to be valid JSON — it errors so the
+    # orchestrator falls back to bounded-output sectioning. (Two rounds: default max_retries=1.)
+    be = PagingBackend(('{"name": "Acme"}', "length"), ('{"name": "Acme"}', "length"))
+    monkeypatch.setitem(mc._ABACKENDS, "openai", be)
+    with pytest.raises(mc.ModelError, match="truncated at the model's max-token ceiling"):
+        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
+    assert all(c["prefix"] is None for c in be.calls)   # never attempted to continue
+
+
+def test_continuation_stops_at_the_guard(api_key_auth, monkeypatch):
+    # A backend that never stops naturally is capped at _MAX_CONTINUATIONS and reported truncated,
+    # so a pathological run falls back to sectioning instead of looping forever.
+    rounds = [("x", "length")] * (mc._MAX_CONTINUATIONS + 5)
+    be = PagingBackend(*rounds)
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", be)
+    with pytest.raises(mc.ModelError, match="truncated"):
+        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="claude-api",
+                         max_retries=0)
+    # first call + exactly _MAX_CONTINUATIONS continuation rounds, then it gives up
+    assert len(be.calls) == mc._MAX_CONTINUATIONS + 1
+
+
+def test_natural_stop_is_not_paginated(api_key_auth, monkeypatch):
+    be = PagingBackend(('{"name": "Acme"}', "end_turn"))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", be)
+    r = mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="claude-api")
+    assert r.parsed == {"name": "Acme"}
+    assert len(be.calls) == 1                            # no continuation for a natural stop
+
+
+def test_merge_usage_sums_numeric_counts():
+    a = {"input_tokens": 10, "output_tokens": 5, "model": "x"}
+    b = {"input_tokens": 3, "output_tokens": 7, "model": "x"}
+    assert mc._merge_usage(a, b) == {"input_tokens": 13, "output_tokens": 12, "model": "x"}
+
+
+def test_merge_usage_handles_nested_and_one_sided():
+    a = {"prompt_tokens_details": {"cached_tokens": 4}, "input_tokens": 2}
+    b = {"prompt_tokens_details": {"cached_tokens": 1}, "output_tokens": 9}
+    assert mc._merge_usage(a, b) == {
+        "prompt_tokens_details": {"cached_tokens": 5}, "input_tokens": 2, "output_tokens": 9}
+    assert mc._merge_usage(None, b) == b                 # one side missing → the other passes through
+    assert mc._merge_usage(a, None) == a
+
+
+def test_merge_usage_does_not_add_booleans():
+    # bools are ints in Python; a flag must not be arithmetically summed into a token count.
+    assert mc._merge_usage({"cache_hit": True}, {"cache_hit": True}) == {"cache_hit": True}
+
+
+@pytest.mark.parametrize("task, backend, model, expected", [
+    ("extract", "deepseek", "deepseek-v4-flash-thinking", mc._DEEPSEEK_THINKING_MAX_TOKENS),
+    ("extract", "deepseek", "deepseek-v4-flash", 16000),     # non-thinking → normal task ceiling
+    ("extract", "claude-api", "claude-sonnet-4-6", 16000),   # thinking bump is deepseek-only
+    ("classify", "claude-api", "claude-haiku-4-5", mc._API_MAX_TOKENS),  # default ceiling
+    ("briefing", "openai", "gpt-4o", 16000),
+])
+def test_task_max_tokens(task, backend, model, expected):
+    assert mc._task_max_tokens(task, backend, model) == expected
+
+
+@pytest.mark.parametrize("backend, model", [
+    ("claude-api", "sonnet"),           # continuation backend — pagination grows past the cap
+    ("claude-agent-sdk", "sonnet"),     # no enforced output ceiling
+    ("deepseek", "deepseek-v4-flash-thinking"),
+    (None, None),                       # unresolved → routes to a Claude backend
+])
+def test_output_ceiling_is_none_when_nothing_to_protect(backend, model):
+    assert mc.output_ceiling_for_sectioning("extract", backend, model) is None
+
+
+@pytest.mark.parametrize("backend, model, expected", [
+    ("openai", "gpt-4o", 16000),        # enforces max_tokens but can't continue → must be sized
+    ("gemini", "gemini-2.5-flash", 16000),
+])
+def test_output_ceiling_returned_for_non_continuation_capped_backends(backend, model, expected):
+    assert mc.output_ceiling_for_sectioning("extract", backend, model) == expected
