@@ -1,5 +1,6 @@
 """Tests for `watchdog auth` — the interactive wizard, key storage, env precedence."""
 
+import json
 import os
 import stat
 
@@ -142,14 +143,44 @@ def test_setup_noninteractive_leaves_unconfigured(home):
 
 
 def test_setup_offers_extra_provider_keys(home, monkeypatch):
-    # mode=subscription (1), then add an OpenAI key (y), skip DeepSeek (n), skip Gemini (n).
-    _answers(monkeypatch, "1", "y", "n", "n")
+    # mode=api-key (2), then add an OpenAI key (y), skip DeepSeek (n), skip Gemini (n).
+    # (Subscription mode now offers the dedicated metered-ingestion wizard instead — see
+    # test_setup_subscription_declines_metered_ingestion / test_setup_subscription_routes_
+    # ingestion_to_metered_provider below.)
+    _answers(monkeypatch, "2", "y", "n", "n")
     monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-openai-setup-123456")
     auth.setup_auth_interactive(interactive=True)
     state = auth._load_state()
-    assert state["mode"] == "subscription"
+    assert state["mode"] == "api-key"
     assert state["keys"]["openai"] == "sk-openai-setup-123456"
     assert "deepseek" not in state["keys"]       # declined
+
+
+def test_setup_subscription_declines_metered_ingestion(home, monkeypatch):
+    # mode=subscription (1), then decline routing ingestion to a metered service (n).
+    _answers(monkeypatch, "1", "n")
+    auth.setup_auth_interactive(interactive=True)
+    state = auth._load_state()
+    assert state["mode"] == "subscription"
+    assert state["keys"] == {}
+
+
+def test_setup_subscription_routes_ingestion_to_metered_provider(home, tmp_path, monkeypatch):
+    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
+    # mode=subscription (1), route to metered (y), pick Gemini (3rd provider), then pick the
+    # first listed model for each of the three ingest stages.
+    _answers(monkeypatch, "1", "y", "3", "1", "1", "1")
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "gm-test-key-123456")
+    auth.setup_auth_interactive(interactive=True)
+
+    state = auth._load_state()
+    assert state["mode"] == "subscription"
+    assert state["keys"]["gemini"] == "gm-test-key-123456"
+
+    config = json.loads((tmp_path / "config.json").read_text())
+    assert config["classifier_model"].startswith("gemini:")
+    assert config["extractor_model"].startswith("gemini:")
+    assert config["finalizer_model"].startswith("gemini:")
 
 
 # ── `watchdog auth` (bare) — status + interactive wizard ─────────────────────

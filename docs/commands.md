@@ -180,7 +180,7 @@ Exports the investigation's entity and relationship graph for network-analysis t
 
 Shows how Watchdog currently authenticates to model providers, then, on a terminal, offers to change it.
 
-- `watchdog auth` — prints the current Claude mode (`subscription`/`api-key`), Claude Code login detection, and the status of any stored provider keys (masked). Off a terminal, or if you answer no, it stops there.
+- `watchdog auth` — prints a **Claude Code** section (subscription/api-key mode, Claude Code login detection — Claude Code is required for the interactive investigation commands and is the ingestion default) and an **Ingestion** section, showing which provider each of `classifier_model`/`extractor_model`/`finalizer_model` currently resolves to and whether that provider is ready (✓/✗), plus any other stored provider keys. Off a terminal, or if you answer no, it stops there.
 - Answering **yes** to "Change something?" opens a short wizard: pick a service (Anthropic, OpenAI, DeepSeek, or Gemini), then:
   - For **Anthropic**, choose between your Claude Code subscription (not metered) and a metered API key.
   - For **OpenAI**, **DeepSeek**, or **Gemini**, store a new key, replace an existing one, or delete it.

@@ -93,9 +93,9 @@ Along the way it asks three questions:
 
 1. **Where to store your investigation projects.** Press Return to accept the default (`~/Investigations`), or type a different path.
 2. **Whether to install the optional capture browser** for full page snapshots (an extra ~150 MB). The default is no; see [Full page snapshots](#optional-full-page-snapshots) below.
-3. **How to authenticate with Claude.** Press Return to use your existing Claude Code subscription login, or choose the metered API key option and paste your key.
+3. **How to authenticate with Claude.** Setup explains that Claude Code powers the interactive commands and is the ingestion default, and reports whether it detects an existing Claude Code login. Press Return to use your subscription, or choose the metered API key option and paste your key.
 
-It may also offer to store keys for other model providers (OpenAI, DeepSeek, Gemini). You can skip these — Watchdog runs on Claude by default.
+If you choose the subscription, setup also warns that ingesting more than a few documents at once can be token-heavy for a Pro plan's session limits, and offers to route ingestion to a cheaper metered provider (OpenAI, DeepSeek, or Gemini) instead — walking you through picking that provider, pasting its key, and choosing a model for each ingest stage. This is entirely optional; declining leaves everything on your Claude Code subscription, same as before. See [Model backends](configuration.md#model-backends) for the full picture, including changing this later with `watchdog auth` or `watchdog configure`.
 
 When setup finishes, reload your shell so tab completion takes effect:
 

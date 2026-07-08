@@ -8,6 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from watchdog import interactive
 from watchdog.cmd.base import (
     _BOLD,
     _DIM,
@@ -80,12 +81,7 @@ def _check_playwright() -> None:
     print(f"  {_DIM}Used by `watchdog research`/`watchdog fetch` to save full-fidelity page\n"
           f"  snapshots (images, styles, client-rendered pages) instead of a plain fetch.\n"
           f"  Optional — everything else works without it. Adds ~150 MB (Chromium browser).{_RESET}")
-    try:
-        answer = input("  Install web-capture support now? [y/N] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        answer = "n"
-    if answer not in ("y", "yes"):
+    if not interactive.confirm("  Install web-capture support now?", default=False):
         print(f"  {_DIM}Skipped. Install later with:{_RESET}")
         print(f"    {_CYAN}pipx inject watchdog-intel playwright{_RESET}")
         print(f"    {_CYAN}~/.local/pipx/venvs/watchdog-intel/bin/playwright install chromium{_RESET}")
@@ -117,24 +113,15 @@ def _ask_projects_dir() -> Path:
 
     print()
     print("  Where should Watchdog store your investigation projects?")
-    if default_exists:
-        print(f"    1. Use {default}")
+    items = [
+        f"{'Use' if default_exists else 'Create'} {default}",
+        "Enter a different path",
+    ]
+    result = interactive.pick(items, 0)
+    if result != 1:   # default row, or cancelled — fall back to the default path
+        chosen = default
     else:
-        print(f"    1. Create {default}")
-    print("    2. Enter a different path")
-    print()
-
-    while True:
-        try:
-            choice = input("  Choice [1]: ").strip() or "1"
-        except (EOFError, KeyboardInterrupt):
-            print()
-            chosen = default
-            break
-        if choice == "1":
-            chosen = default
-            break
-        elif choice == "2":
+        while True:
             try:
                 raw = input("  Path: ").strip()
             except (EOFError, KeyboardInterrupt):
@@ -145,8 +132,6 @@ def _ask_projects_dir() -> Path:
                 chosen = Path(raw).expanduser().resolve()
                 break
             print("  Please enter a path.")
-        else:
-            print("  Enter 1 or 2.")
 
     chosen.mkdir(parents=True, exist_ok=True)
     return chosen

@@ -973,6 +973,39 @@ def test_pick_skill_arrow_numbered_fallback_unset(monkeypatch):
     assert _setup._pick_skill_arrow(catalog, None) == ("unset", None)
 
 
+# ── model picker (classifier_model/extractor_model/finalizer_model) ──────────
+
+def test_pick_model_interactive_claude_tier(monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda *a: "2")   # Claude group: haiku, sonnet, opus
+    assert _setup._pick_model_interactive(None) == "sonnet"
+
+
+def test_pick_model_interactive_only_provider_filters_to_one_group(monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda *a: "1")
+    value = _setup._pick_model_interactive(None, only_provider="gemini")
+    assert value.startswith("gemini:")
+
+
+def test_pick_model_interactive_custom_free_text(monkeypatch):
+    answers = iter(["18", "openai:my-custom-model"])
+    monkeypatch.setattr("builtins.input", lambda *a: next(answers))
+    assert _setup._pick_model_interactive(None) == "openai:my-custom-model"
+
+
+def test_pick_model_interactive_cancel_returns_none(monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda *a: "")
+    assert _setup._pick_model_interactive(None) is None
+
+
+def test_edit_key_interactive_extractor_model_uses_picker(wdg_home, monkeypatch, capsys):
+    import sys
+    monkeypatch.setattr(sys, "stdin", _FakeTTY())
+    monkeypatch.setattr("builtins.input", lambda prompt="": "1")  # Claude group: haiku
+    config = {}
+    _setup._edit_key_interactive(config, "extractor_model")
+    assert config["extractor_model"] == "haiku"
+
+
 # ── configure wizard ──────────────────────────────────────────────────────────
 
 def test_wizard_menu_numbered_selects_first_key(wdg_home, monkeypatch):
@@ -1811,6 +1844,70 @@ def test_resolve_stage_bare_non_tier_is_treated_as_claude_and_rejected():
     # No backend prefix → interpreted as a Claude tier → invalid (use openai:gpt-5-mini instead).
     with pytest.raises(SystemExit, match="unknown model"):
         _resolve_stage("gpt-5-mini", None)
+
+
+# ── cmd_ingest / cmd_finalize: Claude auth only required when a stage needs it (#325) ──
+
+def test_cmd_ingest_does_not_require_claude_auth_when_all_stages_non_claude(wdg_home, tmp_path, monkeypatch):
+    """A vault fully configured on another provider (e.g. Gemini) for all three stages must be
+    able to ingest even when Claude itself has no auth configured at all."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth",
+                         lambda: {"mode": "none", "reason": "api-key mode is set but no key is configured"})
+    (wdg_home / "config.json").write_text(json.dumps({
+        "classifier_model": "gemini:gemini-2.5-flash",
+        "extractor_model": "gemini:gemini-2.5-flash",
+        "finalizer_model": "gemini:gemini-2.5-flash",
+    }))
+
+    class _Stop(Exception):
+        pass
+
+    monkeypatch.setattr("watchdog.pipeline.ingest_setup.run", lambda *a, **k: (_ for _ in ()).throw(_Stop()))
+
+    with pytest.raises(_Stop):
+        cmd_ingest(args(), confirm=False)
+
+
+def test_cmd_ingest_still_requires_claude_auth_when_a_stage_uses_claude(wdg_home, tmp_path, monkeypatch):
+    """The auth gate must still fire when at least one of the three stages is Claude-routed."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth",
+                         lambda: {"mode": "none", "reason": "auth not configured"})
+    (wdg_home / "config.json").write_text(json.dumps({
+        "classifier_model": "gemini:gemini-2.5-flash",
+        "extractor_model": "sonnet",
+        "finalizer_model": "gemini:gemini-2.5-flash",
+    }))
+
+    with pytest.raises(SystemExit, match="auth not configured"):
+        cmd_ingest(args(), confirm=False)
+
+
+def test_cmd_finalize_does_not_require_claude_auth_when_finalizer_non_claude(wdg_home, tmp_path, monkeypatch):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth",
+                         lambda: {"mode": "none", "reason": "api-key mode is set but no key is configured"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: True)
+    (wdg_home / "config.json").write_text(json.dumps({"finalizer_model": "gemini:gemini-2.5-flash"}))
+
+    class _Stop(Exception):
+        pass
+
+    monkeypatch.setattr(ing, "_run_finalize", lambda *a, **k: (_ for _ in ()).throw(_Stop()))
+
+    with pytest.raises(_Stop):
+        ing.cmd_finalize(args())
 
 
 # ── cmd_ingest: claude-batch validation guards (#214) ──────────────────────────
