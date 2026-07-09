@@ -332,7 +332,7 @@ def test_orchestrator_extracts_and_writes_vault(tmp_path, monkeypatch):
 
     assert summary["extracted"] == 1 and summary["failed"] == 0
     # real write_vault produced the notes
-    assert (vault / "entities" / "company" / "acme-corp.md").exists()
+    assert (vault / "entities" / "organization" / "acme-corp.md").exists()
     assert list((vault / "documents").glob("*.md"))
     # housekeeping: queue file consumed; post-ingest finalized and cleaned its per-run inputs
     # (the scratchpad is consumed by the briefing, then removed on a clean finalize)
@@ -475,7 +475,7 @@ def test_orchestrator_updates_graph_colours(tmp_path, monkeypatch):
 
     graph = json.loads((vault / ".obsidian" / "graph.json").read_text())
     queries = [g["query"] for g in graph["colorGroups"]]
-    assert "path:entities/company" in queries     # Acme Corp → entities/company/
+    assert "path:entities/organization" in queries     # Acme Corp → entities/organization/
 
 
 def test_classifier_sees_only_first_n_pages(tmp_path, monkeypatch):
@@ -591,7 +591,7 @@ def test_whole_doc_failure_falls_back_to_sectioning(tmp_path, monkeypatch):
     summary = asyncio.run(orchestrate.run(vault))
     assert calls["extract"] >= 1 and calls["section"] >= 2     # whole-doc tried, then sectioned
     assert summary["extracted"] == 1 and summary["failed"] == 0
-    assert (vault / "entities" / "company" / "acme-corp.md").exists()
+    assert (vault / "entities" / "organization" / "acme-corp.md").exists()
 
 
 def test_single_page_failure_does_not_section(tmp_path, monkeypatch):
@@ -1234,7 +1234,7 @@ def test_finalize_completes_an_interrupted_run(tmp_path, monkeypatch):
 
     assert out["synthesized"] == 1
     assert "error" not in out
-    assert "Synthesized prose." in (vault / "entities" / "company" / "acme-corp.md").read_text()
+    assert "Synthesized prose." in (vault / "entities" / "organization" / "acme-corp.md").read_text()
     # a clean finalize clears the per-run inputs, so there is nothing left pending
     assert not (vault / ".watchdog" / "tmp" / "entity-fragments").exists()
     assert not list((vault / ".watchdog" / "tmp").glob("result_*.json"))
@@ -1389,9 +1389,9 @@ def test_orchestrator_sectioned_path(tmp_path, monkeypatch):
 
     summary = asyncio.run(orchestrate.run(vault))
     assert summary["extracted"] == 1 and summary["failed"] == 0
-    assert (vault / "entities" / "company" / "acme-corp.md").exists()
+    assert (vault / "entities" / "organization" / "acme-corp.md").exists()
     # carry-forward merged the two sections into one entity
-    note = (vault / "entities" / "company" / "acme-corp.md").read_text()
+    note = (vault / "entities" / "organization" / "acme-corp.md").read_text()
     assert "Acme Corporation" in note   # merge kept the longer surface form
     # the two sections' observations were merged into the scratchpad and fed to the briefing
     assert "section 1 obs" in captured["briefing_prompt"]

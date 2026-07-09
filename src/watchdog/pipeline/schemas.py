@@ -60,7 +60,9 @@ _ENTITY = _obj(
         "id": {"type": "string"},
         "match_id": {"type": "string"},          # omit entirely for new entities
         "name": {"type": "string"},
-        "type": {"type": "string"},
+        "type": {"type": "string",
+                 "description": ("exactly one of the fixed entity classes: person, "
+                                 "organization, public-body, place, asset, proceeding")},
         "aliases": {"type": "array", "items": {"type": "string"}},
         "contradictions": {"type": "array", "items": {"type": "string"}},
         "roles": {"type": "array", "items": _ROLE},

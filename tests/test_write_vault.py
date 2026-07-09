@@ -19,7 +19,7 @@ def make_vault(tmp_path: Path) -> Path:
     reg_dir.mkdir(parents=True)
     (vault / "_INCOMING").mkdir()
     (vault / "entities" / "person").mkdir(parents=True)
-    (vault / "entities" / "company").mkdir(parents=True)
+    (vault / "entities" / "organization").mkdir(parents=True)
     (vault / "documents").mkdir()
     (reg_dir / "entities.json").write_text("{}\n")
     (reg_dir / "documents.json").write_text("{}\n")
@@ -73,7 +73,7 @@ def make_extraction(tmp_path: Path, overrides: dict | None = None) -> Path:
                     {
                         "relationship": "Director of",
                         "target_id": "acme-corp",
-                        "target_type": "Company",
+                        "target_type": "organization",
                         "target_name": "Acme Corp",
                         "page": 2,
                         "basis": "stated",
@@ -84,7 +84,7 @@ def make_extraction(tmp_path: Path, overrides: dict | None = None) -> Path:
             {
                 "id": "acme-corp",
                 "name": "Acme Corp",
-                "type": "Company",
+                "type": "organization",
                 "aliases": ["ACME"],
                 "summary": "Acme Corp is the subject of this annual report.",
                 "timeline_events": [],
@@ -158,7 +158,7 @@ def test_entity_note_analysis_omitted_when_null(tmp_path):
     run(make_extraction(tmp_path), vault)
 
     # acme-corp has no evidence_fragments
-    content = (vault / "entities" / "company" / "acme-corp.md").read_text()
+    content = (vault / "entities" / "organization" / "acme-corp.md").read_text()
     assert "## Analysis" not in content
 
 
@@ -176,7 +176,7 @@ def test_slim_role_target_resolved_from_id(tmp_path):
     ]}), vault)
 
     note = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    assert "[[entities/company/acme-corp|Acme Corp]]" in note   # name + type resolved from the id
+    assert "[[entities/organization/acme-corp|Acme Corp]]" in note   # name + type resolved from the id
 
 
 def test_omitted_basis_renders_unmarked(tmp_path):
@@ -198,7 +198,7 @@ def test_omitted_basis_renders_unmarked(tmp_path):
 
     alice = (vault / "entities" / "person" / "alice-smith.md").read_text()
     doc = (vault / "documents" / "test-doc.md").read_text()
-    assert "Director of [[entities/company/acme-corp|Acme Corp]]" in alice
+    assert "Director of [[entities/organization/acme-corp|Acme Corp]]" in alice
     assert "Appointed director" in alice and "Revenue was $1M." in doc
     assert "inferred" not in alice and "inferred" not in doc   # stated facts carry no marker
 
@@ -236,7 +236,7 @@ def test_relationship_line_uses_pretty_link(tmp_path):
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
     # Should use pipe alias, not bare path
-    assert "[[entities/company/acme-corp|Acme Corp]]" in content
+    assert "[[entities/organization/acme-corp|Acme Corp]]" in content
 
 
 def test_resolved_contradiction_dropped_from_note_body(tmp_path):
@@ -616,7 +616,7 @@ def test_reverse_relationship_written_to_target(tmp_path):
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
-    content = (vault / "entities" / "company" / "acme-corp.md").read_text()
+    content = (vault / "entities" / "organization" / "acme-corp.md").read_text()
     assert "alice-smith" in content
     assert "Director of" in content
 
@@ -643,7 +643,7 @@ def test_document_note_links_entities_with_pretty_names(tmp_path):
 
     content = (vault / "documents" / "test-doc.md").read_text()
     assert "[[entities/person/alice-smith|Alice Smith]]" in content
-    assert "[[entities/company/acme-corp|Acme Corp]]" in content
+    assert "[[entities/organization/acme-corp|Acme Corp]]" in content
 
 
 # ── Registry updates ──────────────────────────────────────────────────────────
@@ -1455,6 +1455,59 @@ def test_reconcile_does_not_merge_across_types(tmp_path):
 
     entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
     assert "morgan-person" in entities and "morgan-company" in entities  # type-scoped, not merged
+
+
+def test_drifting_type_synonyms_reconcile_to_one_entity(tmp_path):
+    """#335: the same real-world entity labelled with drifting near-synonyms across two
+    documents (``Company`` in one, ``Financial Institution`` in the next) must reconcile onto
+    a single id/folder instead of forking — both collapse to the ``organization`` bucket, so
+    the reconciliation key matches where free-text types used to miss."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
+    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    dir_a, dir_b = tmp_path / "a", tmp_path / "b"
+    dir_a.mkdir(); dir_b.mkdir()
+
+    # Doc A: the bank labelled a plain "Company".
+    run(make_extraction(dir_a, overrides={
+        "document": {"sha256": "sha-a", "filename": "doc-a.pdf", "original_path": "_INCOMING/doc-a.pdf"},
+        "entities": [{"id": "td-bank", "name": "Toronto-Dominion Bank", "type": "Company",
+                      "aliases": [], "summary": None, "analysis": None,
+                      "timeline_events": [], "roles": []}],
+        "morgue_entity_id": "td-bank", "morgue_document_type": "annual-report",
+    }), vault)
+
+    # Doc B: same bank, a different slug AND a drifting type label the old code would have forked.
+    run(make_extraction(dir_b, overrides={
+        "document": {"sha256": "sha-b", "filename": "doc-b.pdf", "original_path": "_INCOMING/doc-b.pdf"},
+        "entities": [{"id": "toronto-dominion-bank", "name": "Toronto-Dominion Bank",
+                      "type": "Financial Institution",
+                      "aliases": [], "summary": None, "analysis": None,
+                      "timeline_events": [], "roles": []}],
+        "morgue_entity_id": "toronto-dominion-bank", "morgue_document_type": "annual-report",
+    }), vault)
+
+    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    assert "td-bank" in entities
+    assert "toronto-dominion-bank" not in entities        # reconciled, not forked (#335)
+    td = entities["td-bank"]
+    assert "sha-a" in td["appears_in"] and "sha-b" in td["appears_in"]
+    assert td["type"] == "organization"                   # stored type is the canonical bucket
+
+
+def test_canonical_type_drives_entity_folder(tmp_path):
+    """A model-invented type collapses onto its bucket before it becomes the folder segment:
+    a ``Financial Institution`` is written under ``entities/organization/``, not a new folder."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "doc.pdf").write_text("dummy")
+    run(make_extraction(tmp_path, {"entities": [
+        {"id": "td-bank", "name": "Toronto-Dominion Bank", "type": "Financial Institution",
+         "aliases": [], "summary": "A bank.", "timeline_events": [], "roles": []},
+    ]}), vault)
+
+    assert (vault / "entities" / "organization" / "td-bank.md").exists()
+    assert not (vault / "entities" / "financial-institution").exists()
+    assert not (vault / "entities" / "financialinstitution").exists()
 
 
 # ── Transactionality / idempotent re-run (#259) ───────────────────────────────
