@@ -205,9 +205,12 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    the cited page's text from the chew-time queue descriptor (`quote_verify.verify_quotes`,
    D75), then calls `write_vault.run()`.
 
-`write_vault` is the single deterministic writer: it merges entities (reconciling
-near-duplicate slugs coined by concurrent workers via the shared `entity_norm`
-name+type normalization), writes entity and document notes, updates the registry files,
+`write_vault` is the single deterministic writer: it collapses each entity's model-invented
+`type` onto a closed six-value vocabulary (`entity_type.canonical_type`, D105) — so a drifting
+near-synonym (`company` vs `financialinstitution`) can't fork one real-world entity across two
+folders — then merges entities (reconciling near-duplicate slugs coined by concurrent workers
+via the shared `entity_norm` name+type normalization, the type half keyed on the canonical
+bucket), writes entity and document notes, updates the registry files,
 stages timeline events, and moves the source file to the morgue — all inside the write
 lock. The **registry persist is the commit point**: the registries are written last, atomically
 (temp-then-rename), and every rebuilt-from-source artifact — the embed/FTS indexes and the
@@ -609,7 +612,7 @@ failing the whole scan — the same tolerance `watchdog doctor` already applies.
 **Vault (the investigation folder):**
 
 ```
-entities/<type>/<id>.md     entity notes
+entities/<type>/<id>.md     entity notes (<type> ∈ the closed vocabulary, D105)
 documents/<slug>.md         document notes
 morgue/<entity>/<type>/…     original source files + a sibling <name>.md of the
                             Docling full text, filed by subject (D26)

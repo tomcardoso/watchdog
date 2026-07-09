@@ -20,9 +20,12 @@ my-investigation/
 ├── .watchdog/              ← internal state: processing queue, staging area,
 │                             registries — do not edit
 ├── entities/
-│   ├── person/             ← one note per person
-│   ├── company/            ← one note per company
-│   └── address/            ← one note per address
+│   ├── person/             ← people
+│   ├── organization/       ← companies, banks, unions, funds, non-profits
+│   ├── public-body/        ← governments, regulators, courts, agencies
+│   ├── place/              ← addresses, properties, locations
+│   ├── asset/              ← vehicles, accounts, domains, shares
+│   └── proceeding/         ← lawsuits, insolvencies, inquiries
 ├── documents/              ← one note per ingested document
 ├── briefings/              ← post-ingest briefings, leads, and watch-word alerts
 ├── wiki/                   ← investigation thread pages (matured angles)
@@ -48,7 +51,7 @@ my-investigation/
 
 **`.watchdog/`** is Watchdog's internal state: the processing queue, a staging area for files mid-pipeline, and the registries that record every entity, document, and relationship. Do not edit anything in here by hand.
 
-**`entities/`** holds one note per extracted entity, filed by type — people, companies, addresses. These are the heart of the vault; their structure is described [below](#entity-notes).
+**`entities/`** holds one note per extracted entity, filed by type. Watchdog sorts every entity into one of six fixed classes: **person** (people), **organization** (companies, banks, unions, funds, non-profits), **public-body** (governments, regulators, courts, agencies), **place** (addresses, properties, locations), **asset** (vehicles, accounts, domains, shares), and **proceeding** (lawsuits, insolvencies, inquiries). Fixing the list to these six keeps the same real-world entity from being split across near-duplicate folders when the model describes it differently in two documents. These notes are the heart of the vault; their structure is described [below](#entity-notes).
 
 **`documents/`** holds one note per ingested document: what it is, what was extracted from it, and a link to the original in the morgue.
 

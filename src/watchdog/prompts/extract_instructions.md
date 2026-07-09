@@ -17,7 +17,14 @@ ENTITIES — the graph. Use EXISTING_ENTITIES for deduplication — match on nam
 - `id`: the existing id from EXISTING_ENTITIES if matched, otherwise a new kebab-case slug.
 - `match_id`: set to the matched entity's id if this matches an existing entity; OMIT entirely for new entities (do not set null or "").
 - `name`: the canonical full name as it appears most completely.
-- `type`: Person / Company / Address / Property / CourtCase / Transaction / or a new type if apt.
+- `type`: choose exactly ONE from this fixed set — do NOT coin any other type:
+    - `person` — a named individual.
+    - `organization` — any private collective: a company, bank, insurer, union, NGO, or university, or an institutional financial vehicle such as a pension or benefit plan.
+    - `public-body` — any body exercising public authority: a government department, agency, regulator, municipality, court, or tribunal.
+    - `place` — a physical location, address, or property.
+    - `asset` — a movable or intangible owned/registered thing: a vehicle, aircraft, vessel, domain, account, or security.
+    - `proceeding` — a legal or adjudicative matter that gathers parties and filings: a lawsuit, insolvency, arbitration, inquiry, or disciplinary case. Create ONE entity per matter/docket — individual hearings or motions are timeline events, not new entities.
+  Do NOT create entities for one-off occurrences (a transaction, vote, or decision — capture those as facts, dated onto the timeline) or for documents (those live in the document store); record them in `key_facts` instead.
 - `aliases`: every other name or abbreviation used in this document.
 - `roles`: relationships to other entities, each an OBJECT with relationship/target_id/page/basis/date_range — never a plain string. Identify the target by `target_id` only; its name and type are filled in automatically, so do not emit them.
 

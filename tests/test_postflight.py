@@ -214,12 +214,12 @@ def test_postflight_builds_entity_analysis_from_tagged_facts(tmp_path):
     result = postflight_run(vault, ext_path)
     assert result.get("ok"), result
 
-    lu_note = (vault / "entities" / "company" / "lu.md").read_text(encoding="utf-8")
+    lu_note = (vault / "entities" / "organization" / "lu.md").read_text(encoding="utf-8")
     assert "Transfer ratio set at 65.8%." in lu_note       # tagged fact → analysis
     assert "Stayed a $842,018.34 payment." in lu_note
     assert "2021-03-30" in lu_note or "30 Mar 2021" in lu_note   # dated fact → entity timeline
 
-    pbgf_note = (vault / "entities" / "fund" / "pbgf.md").read_text(encoding="utf-8")
+    pbgf_note = (vault / "entities" / "organization" / "pbgf.md").read_text(encoding="utf-8")
     assert "Stayed a $842,018.34 payment." in pbgf_note
     assert "Transfer ratio set at 65.8%." not in pbgf_note  # not tagged to pbgf
 
@@ -281,7 +281,7 @@ def test_postflight_flags_unverified_quote_and_warns(tmp_path, capsys):
     result = postflight_run(vault, ext_path)
     assert result.get("ok"), result
 
-    lu_note = (vault / "entities" / "company" / "lu.md").read_text(encoding="utf-8")
+    lu_note = (vault / "entities" / "organization" / "lu.md").read_text(encoding="utf-8")
     assert "*(quote not found on cited page — verify against source)*" in lu_note
 
     err = capsys.readouterr().err
@@ -303,7 +303,7 @@ def test_postflight_verifies_exact_quote_without_warning(tmp_path, capsys):
     result = postflight_run(vault, ext_path)
     assert result.get("ok"), result
 
-    lu_note = (vault / "entities" / "company" / "lu.md").read_text(encoding="utf-8")
+    lu_note = (vault / "entities" / "organization" / "lu.md").read_text(encoding="utf-8")
     assert "quote not found" not in lu_note
 
     err = capsys.readouterr().err
