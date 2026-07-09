@@ -633,12 +633,14 @@ def test_deepseek_paginates(deepseek_key, monkeypatch):
 def test_truncated_result_rejected_even_when_parseable(openai_key, monkeypatch):
     # openai returns a *new* message, not a continuation, so it can't paginate. A truncated result
     # must never be accepted even though this partial happens to be valid JSON — it errors so the
-    # orchestrator falls back to bounded-output sectioning. (Two rounds: default max_retries=1.)
+    # orchestrator falls back to bounded-output sectioning. Truncation is deterministic in the
+    # prompt, so it short-circuits the retry loop (one call, no wasted re-run) rather than retrying.
     be = PagingBackend(('{"name": "Acme"}', "length"), ('{"name": "Acme"}', "length"))
     monkeypatch.setitem(mc._ABACKENDS, "openai", be)
     with pytest.raises(mc.ModelError, match="truncated at the model's max-token ceiling"):
         mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
-    assert all(c["prefix"] is None for c in be.calls)   # never attempted to continue
+    assert len(be.calls) == 1                            # no wasted retry of an un-continuable cut
+    assert be.calls[0]["prefix"] is None                # never attempted to continue
 
 
 def test_continuation_stops_at_the_guard(api_key_auth, monkeypatch):
@@ -678,8 +680,11 @@ def test_merge_usage_handles_nested_and_one_sided():
 
 
 def test_merge_usage_does_not_add_booleans():
-    # bools are ints in Python; a flag must not be arithmetically summed into a token count.
+    # bools are ints in Python; a flag must not be arithmetically summed into a token count —
+    # guarded on both sides, so an asymmetric (bool, int) pairing is left alone too, not coerced.
     assert mc._merge_usage({"cache_hit": True}, {"cache_hit": True}) == {"cache_hit": True}
+    assert mc._merge_usage({"cache_hit": True}, {"cache_hit": 3}) == {"cache_hit": True}
+    assert mc._merge_usage({"cache_hit": 3}, {"cache_hit": True}) == {"cache_hit": 3}
 
 
 @pytest.mark.parametrize("task, backend, model, expected", [

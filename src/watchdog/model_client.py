@@ -715,7 +715,9 @@ def _merge_usage(a: dict | None, b: dict | None) -> dict | None:
     merged = dict(a)
     for k, v in b.items():
         cur = merged.get(k)
-        if isinstance(v, (int, float)) and isinstance(cur, (int, float)) and not isinstance(v, bool):
+        # bools are ints in Python; guard both sides so a flag (e.g. cache_hit) is never summed.
+        if (isinstance(v, (int, float)) and isinstance(cur, (int, float))
+                and not isinstance(v, bool) and not isinstance(cur, bool)):
             merged[k] = cur + v
         elif isinstance(v, dict) and isinstance(cur, dict):
             merged[k] = _merge_usage(cur, v)
@@ -815,10 +817,12 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
         if out.get("truncated"):
             # Authoritatively truncated at the provider's output ceiling and not recoverable by
             # continuation (backend can't prefill, or still capped after the guard). Never accept a
-            # partial extraction even if it happens to parse (#343) — report it so the orchestrator
-            # falls back to sectioning, which bounds each call's output.
+            # partial extraction even if it happens to parse (#343). Re-running the same whole-doc
+            # call would only truncate again (truncation is deterministic in the prompt), so stop
+            # retrying and report it — the orchestrator falls back to sectioning, which bounds each
+            # call's output.
             last_err = "output truncated at the model's max-token ceiling"
-            continue
+            break
 
         parsed = _extract_json(out["text"])
         if parsed is None:
