@@ -371,7 +371,6 @@ def test_obsidian_config_path_windows(monkeypatch):
 
 def test_cmd_obsidian_opens_url(configured, monkeypatch):
     cli.cmd_new(args(name="My Story", dir=str(configured)))
-    vault = configured / "my-story"
     calls = []
     monkeypatch.setattr("watchdog.cmd.vault.subprocess.run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
     monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "darwin")
@@ -1145,8 +1144,6 @@ def test_aliases_remap_argv(alias, canonical, monkeypatch):
     # The alias remap happens before argparse; after main() mutates sys.argv,
     # argv[1] should be the canonical command name.
     recorded = []
-
-    original_main = cli.main
 
     def capturing_main():
         if len(sys.argv) >= 2 and sys.argv[1] in cli._ALIASES:

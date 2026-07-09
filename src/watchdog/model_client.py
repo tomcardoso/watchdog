@@ -366,7 +366,10 @@ def _api_cost(model_id: str, usage) -> float | None:
     if not rates:
         return None
     inp, outp, cw, cr = rates
-    g = lambda name: getattr(usage, name, 0) or 0
+
+    def g(name):
+        return getattr(usage, name, 0) or 0
+
     return (g("input_tokens") * inp + g("output_tokens") * outp
             + g("cache_creation_input_tokens") * cw + g("cache_read_input_tokens") * cr)
 

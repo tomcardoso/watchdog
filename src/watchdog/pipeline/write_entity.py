@@ -38,7 +38,6 @@ from watchdog.pipeline.write_vault import (
     _update_manifest,
     build_entity_note,
     _today,
-    _now_iso,
 )
 from watchdog.pipeline.timeline import cmd_rebuild_timeline
 

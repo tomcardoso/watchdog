@@ -5,7 +5,7 @@ prints the named-but-unprofiled / isolated / unresolved-contradiction / inferred
 The same sweep runs automatically at the end of `watchdog ingest` (writing
 `briefings/leads-<date>.md`); this command is for re-running it on demand between ingests."""
 
-from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _RESET, _YELLOW, _resolve_vault
+from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _RESET, _resolve_vault
 from watchdog.pipeline import leads as _leads
 
 

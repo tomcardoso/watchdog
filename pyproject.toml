@@ -41,7 +41,7 @@ dependencies = [
 asr = ["docling[asr]"]          # Audio/video transcription — requires ffmpeg
 tesseract = ["tesserocr"]       # Faster Tesseract OCR; requires system Tesseract headers
 web = ["playwright>=1.49"]      # Rendered web capture for `watchdog research`/`fetch` — requires `playwright install chromium`
-dev = ["pytest>=8.0", "numpy>=1.24"]
+dev = ["pytest>=8.0", "numpy>=1.24", "ruff>=0.15"]
 
 [project.scripts]
 watchdog = "watchdog.cli:main"
@@ -57,4 +57,22 @@ packages = ["src/watchdog"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+# Conservative, correctness-focused set: pyflakes (F) for real errors like unused
+# imports/vars plus the pycodestyle logical-error subsets (E4/E7/E9). Line-length
+# (E501) and import sorting (I) are intentionally not enforced — this project does
+# not adopt an autoformatter or import reordering here, only correctness lint.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# cli.py deliberately re-imports a wide surface (registry/vault/setup helpers)
+# purely so tests can reach them via `watchdog.cli.<name>` for monkeypatching —
+# the same rationale as the `# noqa` on `import sys` at the top of that file.
+# These are intentional re-exports, not dead imports, so F401 is exempt here.
+"src/watchdog/cli.py" = ["F401"]
 

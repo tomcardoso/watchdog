@@ -21,11 +21,16 @@ def test_filter_skips_ingested_queued_and_intrabatch(tmp_path):
     incoming = v / "_INCOMING"
     queue = v / ".watchdog" / "queue"
 
-    ingested = incoming / "ingested.txt"; ingested.write_text("already in the vault")
-    queued = incoming / "queued.txt"; queued.write_text("waiting in the queue")
-    fresh = incoming / "fresh.txt"; fresh.write_text("brand new content")
-    dup1 = incoming / "dup1.txt"; dup1.write_text("same bytes")
-    dup2 = incoming / "dup2.txt"; dup2.write_text("same bytes")   # identical to dup1
+    ingested = incoming / "ingested.txt"
+    ingested.write_text("already in the vault")
+    queued = incoming / "queued.txt"
+    queued.write_text("waiting in the queue")
+    fresh = incoming / "fresh.txt"
+    fresh.write_text("brand new content")
+    dup1 = incoming / "dup1.txt"
+    dup1.write_text("same bytes")
+    dup2 = incoming / "dup2.txt"
+    dup2.write_text("same bytes")   # identical to dup1
 
     (v / ".watchdog" / "Registry" / "documents.json").write_text(
         json.dumps({sha256_file(ingested): {"filename": "ingested.txt"}}))
@@ -45,8 +50,10 @@ def test_filter_keeps_everything_when_nothing_seen(tmp_path):
     v = _vault(tmp_path)
     incoming = v / "_INCOMING"
     queue = v / ".watchdog" / "queue"
-    a = incoming / "a.txt"; a.write_text("one")
-    b = incoming / "b.txt"; b.write_text("two")
+    a = incoming / "a.txt"
+    a.write_text("one")
+    b = incoming / "b.txt"
+    b.write_text("two")
 
     kept = _filter_already_seen([a, b], v, incoming, queue)
     assert {f.name for f in kept} == {"a.txt", "b.txt"}

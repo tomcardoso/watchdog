@@ -12,7 +12,6 @@ from pathlib import Path
 
 from watchdog import interactive
 from watchdog.cmd.base import (
-    CONFIG_FILE,
     VAULT_SCHEMA_VERSION,
     _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW,
     _check_project_health,
@@ -494,7 +493,7 @@ def cmd_obsidian(args) -> None:
         print(f"\n  {_YELLOW}Obsidian is already running but hasn't loaded this vault yet.{_RESET}")
         print()
         print(f"  Obsidian only reads its vault list when it starts, and {_BOLD}{info['name']}{_RESET}")
-        print(f"  was registered afterwards.")
+        print("  was registered afterwards.")
         print()
         print(f"  Quit Obsidian completely, then run {_CYAN}watchdog obsidian {info['name']}{_RESET} again.\n")
         return
@@ -551,7 +550,7 @@ def cmd_open(args) -> None:
         sys.exit("Error: watchdog open is not supported on this platform")
     result = subprocess.run(opener, capture_output=True)
     if result.returncode != 0:
-        sys.exit(f"Error: could not open file explorer")
+        sys.exit("Error: could not open file explorer")
     print(f"\n  {_GREEN}Opened:{_RESET} {_CYAN}{vault}{_RESET}\n")
 
 
@@ -1105,7 +1104,7 @@ def cmd_status(args) -> None:
 def cmd_doctor(args) -> None:
     all_projects = load_projects()
     if not all_projects:
-        print(f"\n  No registered investigations.\n")
+        print("\n  No registered investigations.\n")
         return
 
     struct_issues  = []

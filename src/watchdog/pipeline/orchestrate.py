@@ -1329,7 +1329,9 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         rate_limit_resets_at = stop_reason.get("resets_at")
         extra_summary = {}
 
-    by_status = lambda s: sum(1 for r in results if r.get("status") == s)
+    def by_status(s):
+        return sum(1 for r in results if r.get("status") == s)
+
     failed_dir = vault / ".watchdog" / "queue" / "_failed"
     quarantined = len(list(failed_dir.glob("*.json"))) if failed_dir.exists() else 0
     summary = {"results": results, "extracted": by_status("ok"),

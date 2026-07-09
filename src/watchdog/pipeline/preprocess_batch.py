@@ -410,7 +410,6 @@ def _run_ingest_inner(
     futures = {pool.submit(_chew, f): f for f in files}
     done = 0
     skipped = 0
-    cancelled = False
     try:
         for future in as_completed(futures):
             path   = futures[future]
@@ -475,7 +474,6 @@ def _run_ingest_inner(
             _refresh_progress(done)
 
     except KeyboardInterrupt:
-        cancelled = True
         _cancel_event.set()
         for fut in futures:
             fut.cancel()

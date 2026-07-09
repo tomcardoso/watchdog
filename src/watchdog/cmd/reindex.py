@@ -17,7 +17,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW, _resolve_vault
+from watchdog.cmd.base import _BOLD, _DIM, _GREEN, _RESET, _YELLOW, _resolve_vault
 
 _PAGE_MARKER = re.compile(r"<!-- PAGE (\d+) -->\n\n")
 
