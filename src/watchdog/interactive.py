@@ -100,13 +100,17 @@ def pick(items, current=0, *, title=None, hint="↑/↓ move · Enter select · 
             elif ch == "\x1b":                      # arrow-key escape sequence
                 seq = sys.stdin.read(2)
                 if seq == "[A":
-                    sel = (sel - 1) % len(selectable); render(False)
+                    sel = (sel - 1) % len(selectable)
+                    render(False)
                 elif seq == "[B":
-                    sel = (sel + 1) % len(selectable); render(False)
+                    sel = (sel + 1) % len(selectable)
+                    render(False)
             elif ch == "k":
-                sel = (sel - 1) % len(selectable); render(False)
+                sel = (sel - 1) % len(selectable)
+                render(False)
             elif ch == "j":
-                sel = (sel + 1) % len(selectable); render(False)
+                sel = (sel + 1) % len(selectable)
+                render(False)
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
         # The blank spacer + move/select/cancel hint are only useful while a choice is being

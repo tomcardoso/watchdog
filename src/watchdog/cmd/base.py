@@ -5,7 +5,6 @@ import os
 import subprocess
 import sys
 from collections import Counter  # noqa: F401 — re-exported for cmd modules
-from datetime import datetime, timezone
 from pathlib import Path
 
 from watchdog.pipeline.write_vault import slugify  # noqa: F401 — re-exported

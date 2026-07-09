@@ -1190,7 +1190,7 @@ def test_post_ingest_consumes_raws_after_successful_dedup(tmp_path, monkeypatch)
 
     assert calls["timeline-dedup"] == 1
     assert not raw.exists()                                   # raw consumed
-    recs = [json.loads(l) for l in canonical.read_text(encoding="utf-8").splitlines() if l.strip()]
+    recs = [json.loads(line) for line in canonical.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(recs) == 1                                     # folded to a single row
     assert recs[0]["entity_ids"] == ["alice", "bob"]          # attribution unioned across the merge
     assert timeline.collisions(vault) == []                   # no re-collision → future runs are silent

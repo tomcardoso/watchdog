@@ -198,7 +198,7 @@ def main() -> None:
     p_new.add_argument("name", nargs="?", help="Investigation name (e.g. 'Shell Company Investigation')")
     p_new.add_argument("--name", dest="name_flag", help="Investigation name (alternative to positional)")
     p_new.add_argument("--description", help="One-line description of the investigation")
-    p_new.add_argument("--dir", help=f"Parent directory (default: projects_dir from config)")
+    p_new.add_argument("--dir", help="Parent directory (default: projects_dir from config)")
     p_new.set_defaults(func=cmd_new)
 
     p_list = sub.add_parser("list", help="List all registered investigations")

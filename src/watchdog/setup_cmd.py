@@ -188,7 +188,7 @@ def _install_completion(shell: str, profile: Path | None, force: bool = False) -
             return None  # already correct
         if _COMPLETION_MARKER in content:
             # Stale entry (wrong path or old form) — strip and rewrite below
-            lines = [l for l in content.splitlines() if _COMPLETION_MARKER not in l]
+            lines = [line for line in content.splitlines() if _COMPLETION_MARKER not in line]
             profile.write_text("\n".join(lines).rstrip() + "\n")
 
     with open(profile, "a") as f:
@@ -326,10 +326,10 @@ def run(force: bool = False) -> None:
     print()
     print(f"  {_BOLD}Watchdog is on the scent.{_RESET}")
     print()
-    print(f"  Reload your shell:")
+    print("  Reload your shell:")
     print(f"    {_CYAN}{reload_hint}{_RESET}")
     print()
-    print(f"  Create your first investigation:")
+    print("  Create your first investigation:")
     print(f"    {_CYAN}watchdog new \"My Investigation\"{_RESET}")
     print(f"{_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{_RESET}")
     print()

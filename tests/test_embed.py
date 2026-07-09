@@ -3,7 +3,6 @@
 import hashlib
 import numpy as np
 import pytest
-from pathlib import Path
 from watchdog.pipeline import embed as embed_mod
 
 

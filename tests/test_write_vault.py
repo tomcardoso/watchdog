@@ -1,6 +1,4 @@
 import json
-import shutil
-import sys
 from pathlib import Path
 
 import pytest
@@ -1337,7 +1335,8 @@ def test_parallel_slug_variants_reconciled(tmp_path):
     (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
     (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
     dir_a, dir_b = tmp_path / "a", tmp_path / "b"
-    dir_a.mkdir(); dir_b.mkdir()
+    dir_a.mkdir()
+    dir_b.mkdir()
 
     # First subagent wins the slug; second coins a near-duplicate id + name variant.
     run(_company_extraction(dir_a, "sha-a", "doc-a.pdf",
@@ -1359,7 +1358,8 @@ def test_distinct_same_type_entities_not_merged(tmp_path):
     (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
     (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
     dir_a, dir_b = tmp_path / "a", tmp_path / "b"
-    dir_a.mkdir(); dir_b.mkdir()
+    dir_a.mkdir()
+    dir_b.mkdir()
 
     run(_company_extraction(dir_a, "sha-a", "doc-a.pdf", "acme-corp", "Acme Corp"), vault)
     run(_company_extraction(dir_b, "sha-b", "doc-b.pdf", "globex-corp", "Globex Corp"), vault)
@@ -1375,7 +1375,8 @@ def test_reconcile_remaps_role_target_in_same_document(tmp_path):
     (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
     (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
     dir_a, dir_b = tmp_path / "a", tmp_path / "b"
-    dir_a.mkdir(); dir_b.mkdir()
+    dir_a.mkdir()
+    dir_b.mkdir()
 
     # Doc A establishes the canonical company slug.
     run(_company_extraction(dir_a, "sha-a", "doc-a.pdf",
@@ -1415,7 +1416,8 @@ def test_reconcile_matches_against_existing_alias(tmp_path):
     (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
     (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
     dir_a, dir_b = tmp_path / "a", tmp_path / "b"
-    dir_a.mkdir(); dir_b.mkdir()
+    dir_a.mkdir()
+    dir_b.mkdir()
 
     # Doc A establishes the entity with an alias.
     run(make_extraction(dir_a, overrides={
@@ -1441,7 +1443,8 @@ def test_reconcile_does_not_merge_across_types(tmp_path):
     (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
     (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
     dir_a, dir_b = tmp_path / "a", tmp_path / "b"
-    dir_a.mkdir(); dir_b.mkdir()
+    dir_a.mkdir()
+    dir_b.mkdir()
 
     # A Person and a Company that normalize to the same key.
     run(make_extraction(dir_a, overrides={
@@ -1466,7 +1469,8 @@ def test_drifting_type_synonyms_reconcile_to_one_entity(tmp_path):
     (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
     (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
     dir_a, dir_b = tmp_path / "a", tmp_path / "b"
-    dir_a.mkdir(); dir_b.mkdir()
+    dir_a.mkdir()
+    dir_b.mkdir()
 
     # Doc A: the bank labelled a plain "Company".
     run(make_extraction(dir_a, overrides={

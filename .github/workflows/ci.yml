@@ -9,6 +9,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install ruff
+        run: pip install "ruff==0.15.*"
+
+      - name: Lint with ruff
+        run: ruff check src tests
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -6,10 +6,6 @@ from pathlib import Path
 
 import pytest
 
-
-def _strip_ansi(s: str) -> str:
-    return re.sub(r"\x1b\[[0-9;]*m", "", s)
-
 from watchdog.cmd.export import (
     _cypher_label,
     _forward_edges,
@@ -17,6 +13,10 @@ from watchdog.cmd.export import (
     _write_cypher,
     cmd_export,
 )
+
+
+def _strip_ansi(s: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*m", "", s)
 
 
 def _entities():
