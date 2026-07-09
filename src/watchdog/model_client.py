@@ -347,12 +347,14 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
 
 async def _agent_complete_async(prompt: str | list[dict], model_id: str, schema: dict,
                                 api_key: str | None, max_tokens: int | None = None,
-                                effort: str | None = None) -> dict:
+                                effort: str | None = None, prefix: str | None = None) -> dict:
     """Claude Agent SDK backend. Works in either auth mode (key via env, or subscription).
 
     `max_tokens` is accepted for a uniform backend signature but unused — the agent's
     output is bounded by max_turns, not a token cap. The agent SDK has no `cache_control`
-    knob (A1), so a content-block prompt is flattened to plain text here.
+    knob (A1), so a content-block prompt is flattened to plain text here. `prefix` (response
+    pagination, #343) is likewise unused — with no client-enforced output ceiling there is
+    nothing to continue past, so this backend never truncates on max_tokens.
     """
     full = f"{_flatten_prompt(prompt)}\n\nReturn JSON matching this schema:\n{json.dumps(schema)}"
     env = {"ANTHROPIC_API_KEY": api_key} if api_key else None
@@ -378,32 +380,50 @@ def _batch_cost(model_id: str, usage) -> float | None:
 
 async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: dict,
                               api_key: str | None, max_tokens: int,
-                              effort: str | None = None) -> dict:
+                              effort: str | None = None, prefix: str | None = None) -> dict:
     """Raw Claude Messages API backend with structured outputs.
 
     `prompt` may be a plain string or a list of Anthropic content blocks with a
     `cache_control` breakpoint (A1) — the Messages API's `content` field accepts either
-    shape natively, so no conversion is needed here."""
+    shape natively, so no conversion is needed here.
+
+    `prefix` (response pagination, #343): when set, the partial output of a truncated call is
+    prefilled as the assistant turn and the model continues it. Structured-output `format`
+    enforcement is dropped on a continuation (constrained decoding can't resume mid-object) —
+    the concatenation is validated by the shared shell — but `effort` is still carried so the
+    same reasoning depth applies (I4). The returned `finish_reason` mirrors `stop_reason` so the
+    shell can tell a max-token cut (`max_tokens`) from a natural stop."""
     import anthropic
 
-    # `effort` composes with the structured-output `format` inside the one output_config dict.
-    output_config = {"format": {"type": "json_schema", "schema": schema}}
-    if effort:
-        output_config["effort"] = effort
+    messages = [{"role": "user", "content": prompt}]
+    kwargs: dict = {}
+    if prefix is None:
+        # `effort` composes with the structured-output `format` inside the one output_config dict.
+        output_config = {"format": {"type": "json_schema", "schema": schema}}
+        if effort:
+            output_config["effort"] = effort
+        kwargs["output_config"] = output_config
+    else:
+        # Continuation: prefill the partial (Anthropic rejects a trailing-whitespace assistant
+        # turn, so rstrip — JSON ignores inter-token whitespace, so the concatenation is intact).
+        messages.append({"role": "assistant", "content": prefix.rstrip()})
+        if effort:
+            kwargs["output_config"] = {"effort": effort}
     try:
         resp = await anthropic.AsyncAnthropic(api_key=api_key).messages.create(
             model=model_id,
             max_tokens=max_tokens,
             system=_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt}],
-            output_config=output_config,
+            messages=messages,
+            **kwargs,
         )
     except anthropic.RateLimitError as e:   # 429 — surface as the shared typed error
         raise RateLimitError(str(e) or "Claude API rate limit reached") from e
     text = next((b.text for b in resp.content if getattr(b, "type", None) == "text"), "")
     usage = resp.usage
     usage_dict = usage.model_dump() if hasattr(usage, "model_dump") else dict(usage)
-    return {"text": text, "usage": usage_dict, "cost_usd": _api_cost(model_id, usage)}
+    return {"text": text, "usage": usage_dict, "cost_usd": _api_cost(model_id, usage),
+            "finish_reason": getattr(resp, "stop_reason", None)}
 
 
 # OpenAI-compatible (Chat Completions) pricing: model id → (input, output, cached_input) $/tok.
@@ -513,7 +533,8 @@ def _openai_response_format(base_url: str, schema: dict) -> dict:
 
 async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema: dict,
                                  api_key: str | None, max_tokens: int,
-                                 effort: str | None = None, *, base_url: str) -> dict:
+                                 effort: str | None = None, prefix: str | None = None,
+                                 *, base_url: str) -> dict:
     """OpenAI-compatible Chat Completions backend — OpenAI, DeepSeek, Gemini (via its
     OpenAI-compatibility endpoint, https://ai.google.dev/gemini-api/docs/openai), and any
     other service that speaks the same wire format (selected by `base_url`).
@@ -527,7 +548,15 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     content-block prompt is flattened to plain text.
 
     DeepSeek carries an optional `-thinking` marker on the model id; it is stripped here and
-    translated into DeepSeek's explicit thinking toggle (default off — see #320)."""
+    translated into DeepSeek's explicit thinking toggle (default off — see #320).
+
+    `prefix` (response pagination, #343): DeepSeek's chat-prefix-completion beta continues a
+    truncated response — the partial output is appended as an assistant turn with `prefix: true`
+    against the `/beta` base, and structured-output enforcement is dropped (the model is
+    completing a partial object, not generating a fresh one). OpenAI and Gemini return a *new*
+    assistant message rather than continuing the given one, so they never prefill (excluded from
+    `_CONTINUATION_BACKENDS`) and always reach this with `prefix=None`. The returned
+    `finish_reason` lets the shell distinguish a max-token cut (`length`) from a natural stop."""
     import httpx
 
     is_deepseek = "deepseek" in base_url
@@ -540,14 +569,17 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     if response_format["type"] != "json_schema":   # schema not enforced by the API — spell it out
         user_content += f"\n\nReturn JSON matching this schema:\n{json.dumps(schema)}"
 
-    body = {
-        "model": model_id,
-        "response_format": response_format,
-        "messages": [
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": user_content},
-        ],
-    }
+    messages = [
+        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "user", "content": user_content},
+    ]
+    body = {"model": model_id, "messages": messages}
+    path = "/chat/completions"
+    if prefix is not None and is_deepseek:   # continuation via DeepSeek's prefix-completion beta
+        messages.append({"role": "assistant", "content": prefix.rstrip(), "prefix": True})
+        path = "/beta/chat/completions"
+    else:
+        body["response_format"] = response_format
     # OpenAI reasoning models reject `max_tokens` and require `max_completion_tokens`; chat models
     # and DeepSeek (classic wire format) take `max_tokens`. Driven by the one capability table.
     if not is_deepseek and _openai_is_reasoning(model_id):
@@ -558,7 +590,7 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
         body["reasoning_effort"] = effort
     if thinking is not None:   # DeepSeek: pin the mode explicitly (provider defaults to enabled)
         body["thinking"] = {"type": "enabled" if thinking else "disabled"}
-    url = base_url.rstrip("/") + "/chat/completions"
+    url = base_url.rstrip("/") + path
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     async with httpx.AsyncClient(timeout=600) as client:
         resp = await client.post(url, headers=headers, json=body)
@@ -568,8 +600,10 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     data = resp.json()
     choices = data.get("choices") or []
     text = (choices[0].get("message", {}).get("content") or "") if choices else ""
+    finish = choices[0].get("finish_reason") if choices else None
     usage = data.get("usage")
-    return {"text": text, "usage": usage, "cost_usd": _openai_cost(model_id, usage)}
+    return {"text": text, "usage": usage, "cost_usd": _openai_cost(model_id, usage),
+            "finish_reason": finish}
 
 
 # OpenAI-compatible base URLs (the `/chat/completions` path is appended per request).
@@ -646,6 +680,98 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
     return chosen, provider, api_key, "api-key"
 
 
+# ── response pagination (#343) ────────────────────────────────────────────────
+# A single extract call can need more output than the provider's fixed `max_tokens` allows,
+# which would truncate the JSON mid-object. To guarantee no truncated extraction is ever
+# accepted, the shell (a) detects the provider's truncation signal authoritatively — never
+# inferring it from a parse failure, which would silently accept a truncated-but-parseable
+# response — and (b) for backends that support prefill continuation, re-issues the call with
+# the partial output prefilled and concatenates the halves until the model stops naturally.
+# Backends that can't continue (openai/gemini return a new message, not a continuation; the
+# agent SDK has no cap to hit) never paginate; a truncated result from them is rejected so the
+# orchestrator falls back to bounded-output sectioning.
+
+# Backends whose truncated output can be grown past the ceiling by prefilling the partial as the
+# start of the next call (Claude assistant prefill; DeepSeek chat-prefix-completion beta).
+_CONTINUATION_BACKENDS = ("claude-api", "deepseek")
+# Hard cap on continuation rounds so a pathological run can't loop forever; hitting it leaves the
+# result flagged truncated → the orchestrator sections instead.
+_MAX_CONTINUATIONS = 8
+# finish_reason / stop_reason values that mean "cut off at max_tokens", across providers.
+_TRUNCATION_FINISH = {"length", "max_tokens", "MAX_TOKENS"}
+
+
+def _is_truncated(finish_reason) -> bool:
+    """Whether a backend's finish_reason/stop_reason marks a max-token cut (not a natural stop)."""
+    return bool(finish_reason) and str(finish_reason) in _TRUNCATION_FINISH
+
+
+def _merge_usage(a: dict | None, b: dict | None) -> dict | None:
+    """Sum the numeric token counts of two per-call usage dicts (continuation rounds), tolerating
+    differing provider shapes and nested detail blocks — non-numeric or one-sided keys pass
+    through so telemetry still reflects the aggregate cost/usage of a paginated call."""
+    if a is None or b is None:
+        return a if b is None else b
+    merged = dict(a)
+    for k, v in b.items():
+        cur = merged.get(k)
+        # bools are ints in Python; guard both sides so a flag (e.g. cache_hit) is never summed.
+        if (isinstance(v, (int, float)) and isinstance(cur, (int, float))
+                and not isinstance(v, bool) and not isinstance(cur, bool)):
+            merged[k] = cur + v
+        elif isinstance(v, dict) and isinstance(cur, dict):
+            merged[k] = _merge_usage(cur, v)
+        elif k not in merged:
+            merged[k] = v
+    return merged
+
+
+def _task_max_tokens(task: str, backend: str, model_id: str) -> int:
+    """The output-token ceiling sent to the provider for a task/backend/model. DeepSeek's
+    reasoning models get a higher ceiling because chain-of-thought shares the same budget (#337)."""
+    if (backend == "deepseek" and task in _TASK_MAX_TOKENS
+            and model_id.endswith(_DEEPSEEK_THINKING_SUFFIX)):
+        return _DEEPSEEK_THINKING_MAX_TOKENS
+    return _TASK_MAX_TOKENS.get(task, _API_MAX_TOKENS)
+
+
+def output_ceiling_for_sectioning(task: str, backend: str | None, model: str | None) -> int | None:
+    """The per-call output-token ceiling that sectioning must keep a document under — or None
+    when there is nothing to protect (#343). None is returned for the agent SDK (no enforced
+    ceiling), for the prefill-continuation backends (claude-api, deepseek — pagination grows the
+    output past the cap), and for an unresolved backend (`None` routes to a Claude backend, both
+    of which are None-returning). Only openai and gemini return a real number: they enforce
+    max_tokens yet can't continue, so a document whose estimated output would exceed the ceiling
+    must be sectioned up front rather than truncating and relying on the reactive fallback."""
+    if backend not in ("openai", "gemini"):
+        return None
+    return _task_max_tokens(task, backend, resolve_model_id(model or DEFAULT_TIER))
+
+
+async def _complete_with_pagination(backend_fn, backend: str, prompt, model_id: str, schema: dict,
+                                    api_key: str | None, max_tokens: int, effort_arg) -> dict:
+    """Call the backend, then continue a max-token-truncated response by prefilling its partial
+    output and concatenating, until a natural stop or the continuation guard (#343). Returns the
+    assembled `{text, usage, cost_usd, truncated}`; `truncated` is True only if the output was
+    still capped after the last allowed round (or the backend can't continue), so the caller
+    never accepts a partial extraction."""
+    out = await backend_fn(prompt, model_id, schema, api_key, max_tokens, effort_arg)
+    text = out.get("text") or ""
+    usage = out.get("usage")
+    cost = out.get("cost_usd") or 0.0
+    rounds = 0
+    while (_is_truncated(out.get("finish_reason")) and backend in _CONTINUATION_BACKENDS
+           and rounds < _MAX_CONTINUATIONS):
+        rounds += 1
+        out = await backend_fn(prompt, model_id, schema, api_key, max_tokens, effort_arg,
+                               prefix=text)
+        text += out.get("text") or ""
+        usage = _merge_usage(usage, out.get("usage"))
+        cost += out.get("cost_usd") or 0.0
+    return {"text": text, "usage": usage, "cost_usd": cost,
+            "truncated": _is_truncated(out.get("finish_reason"))}
+
+
 # ── public entry point ────────────────────────────────────────────────────────
 
 async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, model: str | None = None,
@@ -670,10 +796,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
     model_id = resolve_model_id(requested)
     effort_arg = _resolve_effort(provider, model_id, effort)   # provider-native value or None
 
-    max_tokens = _TASK_MAX_TOKENS.get(task, _API_MAX_TOKENS)
-    if (chosen == "deepseek" and task in _TASK_MAX_TOKENS
-            and model_id.endswith(_DEEPSEEK_THINKING_SUFFIX)):
-        max_tokens = _DEEPSEEK_THINKING_MAX_TOKENS
+    max_tokens = _task_max_tokens(task, chosen, model_id)
 
     start = time.monotonic()
     total_cost = 0.0
@@ -682,13 +805,24 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
     for _ in range(max_retries + 1):
         attempts += 1
         try:
-            out = await backend_fn(prompt, model_id, schema, api_key, max_tokens, effort_arg)
+            out = await _complete_with_pagination(backend_fn, chosen, prompt, model_id, schema,
+                                                  api_key, max_tokens, effort_arg)
         except (RateLimitError, ModelError):
             raise
         except Exception as e:                  # any backend/transport failure → typed error
             raise ModelError(f"{chosen} backend error: {e}") from e
         if out.get("cost_usd"):
             total_cost += out["cost_usd"]
+
+        if out.get("truncated"):
+            # Authoritatively truncated at the provider's output ceiling and not recoverable by
+            # continuation (backend can't prefill, or still capped after the guard). Never accept a
+            # partial extraction even if it happens to parse (#343). Re-running the same whole-doc
+            # call would only truncate again (truncation is deterministic in the prompt), so stop
+            # retrying and report it — the orchestrator falls back to sectioning, which bounds each
+            # call's output.
+            last_err = "output truncated at the model's max-token ceiling"
+            break
 
         parsed = _extract_json(out["text"])
         if parsed is None:
