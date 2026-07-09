@@ -86,6 +86,17 @@ def test_unknown_maps_to_fallback(raw):
     assert canonical_type(raw) == FALLBACK_TYPE
 
 
+@pytest.mark.parametrize("raw", ["party", "Party", "group", "Group"])
+def test_ambiguous_generics_fall_to_fallback_not_organization(raw):
+    """Bare generics like ``party`` (a litigant is often a person) and ``group`` must NOT
+    map to `organization`: mis-bucketing a human referent there would re-create the very
+    fork the closed vocabulary prevents. They fall to `other` — a real corporate group is
+    typed ``company``/``conglomerate``, which do map to `organization`."""
+    assert canonical_type(raw) == FALLBACK_TYPE
+    assert canonical_type("Political Party") == "organization"   # the unambiguous one is kept
+    assert canonical_type("Conglomerate") == "organization"
+
+
 def test_fallback_is_not_a_canonical_type():
     """`other` is a code-only backstop — it is never offered to the model as a class."""
     assert FALLBACK_TYPE not in ENTITY_TYPES

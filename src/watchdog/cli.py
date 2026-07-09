@@ -39,7 +39,9 @@ from watchdog.cmd.base import (
 )
 from watchdog.cmd.vault import (
     _obsidian_config_path,
+    _obsidian_launch_epoch,
     _obsidian_registered,
+    _obsidian_vault_ts,
     _register_obsidian_vault,
     cmd_archive,
     cmd_delete,

@@ -186,6 +186,49 @@ def _register_obsidian_vault(vault: Path) -> None:
         pass  # non-fatal — user can register manually via watchdog obsidian
 
 
+def _obsidian_vault_ts(vault: Path):
+    """The registration timestamp (ms since epoch) for `vault` in obsidian.json, or None."""
+    cfg = _obsidian_config_path()
+    if not cfg.exists():
+        return None
+    try:
+        data = json.loads(cfg.read_text())
+        for v in data.get("vaults", {}).values():
+            if v.get("path") == str(vault):
+                return v.get("ts")
+    except Exception:
+        return None
+    return None
+
+
+def _obsidian_launch_epoch():
+    """Epoch seconds when the running Obsidian was launched, or None if it is not
+    running or the start time can't be determined.
+
+    Obsidian reads obsidian.json only at startup, so a vault registered after
+    launch is invisible to the running instance until it is restarted.
+    """
+    if sys.platform == "win32":
+        return None
+    try:
+        out = subprocess.run(["pgrep", "-x", "Obsidian"], capture_output=True, text=True)
+    except Exception:
+        return None
+    pids = [p for p in out.stdout.split() if p.strip()]
+    if not pids:
+        return None
+    starts = []
+    for pid in pids:
+        try:
+            r = subprocess.run(["ps", "-o", "lstart=", "-p", pid], capture_output=True, text=True)
+            s = r.stdout.strip()
+            if s:
+                starts.append(datetime.strptime(s, "%a %b %d %H:%M:%S %Y").timestamp())
+        except Exception:
+            continue
+    return min(starts) if starts else None
+
+
 def cmd_register(args) -> None:
     vault = Path(args.path).expanduser().resolve() if args.path else Path.cwd()
 
@@ -441,6 +484,19 @@ def cmd_obsidian(args) -> None:
         print(f"  {_CYAN}{vault}{_RESET}")
         print()
         print(f"  After opening it once, {_CYAN}watchdog obsidian {info['name']}{_RESET} will work automatically.\n")
+        return
+    launch = _obsidian_launch_epoch()
+    ts = _obsidian_vault_ts(vault)
+    if launch is not None and ts is not None and launch < ts / 1000:
+        # Obsidian is running but was launched before this vault was registered,
+        # so its in-memory vault list doesn't include it — the URI would fail
+        # with "Vault not found". Ask the user to restart Obsidian.
+        print(f"\n  {_YELLOW}Obsidian is already running but hasn't loaded this vault yet.{_RESET}")
+        print()
+        print(f"  Obsidian only reads its vault list when it starts, and {_BOLD}{info['name']}{_RESET}")
+        print(f"  was registered afterwards.")
+        print()
+        print(f"  Quit Obsidian completely, then run {_CYAN}watchdog obsidian {info['name']}{_RESET} again.\n")
         return
     from urllib.parse import quote
     url = f"obsidian://open?path={quote(str(vault))}"

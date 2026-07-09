@@ -55,15 +55,19 @@ _add("person",
 
 # organization — any private collective: firms, banks, unions, NGOs, universities, and the
 # institutional financial vehicles (a pension/benefit plan is an institution, not an instrument).
+# Deliberately omits bare generics like "party" and "group": a litigant "party" is often a
+# person, so mapping either to `organization` could mis-bucket a human and re-create the exact
+# fork this closed vocabulary prevents — they fall to `other` instead (a real corporate group
+# is typed "company"/"conglomerate", both mapped below).
 _add("organization",
      "organization", "organisation", "org", "company", "corporation", "corp", "incorporated",
      "firm", "business", "enterprise", "financialinstitution", "bank", "creditunion", "insurer",
      "insurance", "insurancecompany", "reinsurer", "lender", "creditor", "vendor", "supplier",
      "contractor", "subcontractor", "union", "labourunion", "laborunion", "tradeunion",
-     "association", "group", "society", "ngo", "nonprofit", "notforprofit", "charity",
+     "association", "society", "ngo", "nonprofit", "notforprofit", "charity",
      "foundation", "institution", "university", "college", "school", "hospital", "employer",
      "partnership", "trust", "fund", "pensionplan", "pension", "pensionfund", "benefitplan",
-     "benefitsplan", "employeebenefitplan", "healthbenefitplan", "estate", "party",
+     "benefitsplan", "employeebenefitplan", "healthbenefitplan", "estate",
      "politicalparty", "campaign", "outlet", "publisher", "broadcaster", "channel", "conglomerate")
 
 # public-body — any body exercising public/state authority (broader than "government"):

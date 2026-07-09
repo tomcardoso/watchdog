@@ -376,6 +376,7 @@ def test_cmd_obsidian_opens_url(configured, monkeypatch):
     monkeypatch.setattr("watchdog.cmd.vault.subprocess.run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
     monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "darwin")
     monkeypatch.setattr("watchdog.cmd.vault._obsidian_registered", lambda v: True)
+    monkeypatch.setattr("watchdog.cmd.vault._obsidian_launch_epoch", lambda: None)
     cli.cmd_obsidian(args(name="My Story"))
     assert len(calls) == 1
     assert calls[0][0] == "open"
@@ -396,8 +397,25 @@ def test_cmd_obsidian_exits_on_failure(configured, monkeypatch):
     monkeypatch.setattr("watchdog.cmd.vault.subprocess.run", lambda cmd, **kw: type("R", (), {"returncode": 1})())
     monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "darwin")
     monkeypatch.setattr("watchdog.cmd.vault._obsidian_registered", lambda v: True)
+    monkeypatch.setattr("watchdog.cmd.vault._obsidian_launch_epoch", lambda: None)
     with pytest.raises(SystemExit):
         cli.cmd_obsidian(args(name="My Story"))
+
+
+def test_cmd_obsidian_stale_launch_warns_to_restart(configured, monkeypatch, capsys):
+    cli.cmd_new(args(name="My Story", dir=str(configured)))
+    calls = []
+    monkeypatch.setattr("watchdog.cmd.vault.subprocess.run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
+    monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "darwin")
+    monkeypatch.setattr("watchdog.cmd.vault._obsidian_registered", lambda v: True)
+    # Obsidian launched (epoch 1000s) before the vault was registered (2000s) → stale.
+    monkeypatch.setattr("watchdog.cmd.vault._obsidian_launch_epoch", lambda: 1000.0)
+    monkeypatch.setattr("watchdog.cmd.vault._obsidian_vault_ts", lambda v: 2000_000)
+    cli.cmd_obsidian(args(name="My Story"))
+    out = capsys.readouterr().out
+    assert "hasn't loaded this vault yet" in out
+    assert "Quit Obsidian" in out
+    assert calls == []  # URI not fired — it would have shown "Vault not found"
 
 
 def test_cmd_obsidian_infers_project_from_cwd(configured, monkeypatch):
@@ -407,6 +425,7 @@ def test_cmd_obsidian_infers_project_from_cwd(configured, monkeypatch):
     monkeypatch.setattr("watchdog.cmd.vault.subprocess.run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
     monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "darwin")
     monkeypatch.setattr("watchdog.cmd.vault._obsidian_registered", lambda v: True)
+    monkeypatch.setattr("watchdog.cmd.vault._obsidian_launch_epoch", lambda: None)
     monkeypatch.chdir(vault)
     cli.cmd_obsidian(args(name=None))
     assert len(calls) == 1

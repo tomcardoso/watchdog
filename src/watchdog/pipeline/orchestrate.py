@@ -594,7 +594,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
 
     flow = f"{pg} · {skill_label}"        # the accumulated in-flight prefix for this document's row
 
-    plan = section.run(vault, sha, model=extract_model)
+    plan = section.run(vault, sha, model=extract_model, backend=extract_backend)
     if plan.get("sectioned"):
         n_sections = len(plan.get("sections", []))
         _step(f"{_DIM}→  {filename}  {flow} · extracting · {n_sections} sections…{_RESET}",
@@ -606,12 +606,15 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
               f"{_DIM}→  {filename}  extracting…{_RESET}")
         extraction, scratchpad, cost, ok, errors, warnings = await _simple_extract(
             vault, sha, pf, skill_text, brief, extract_model, skill_label, extract_effort, extract_backend)
-        # Whole-document extraction can overrun the model's output ceiling on entity-dense
-        # docs (the agent-SDK backend can't cap output) — the JSON truncates and is rejected.
-        # Fall back to the sectioned path, which bounds per-call output, before giving up.
-        if not ok and page_count > 1:
+        # Whole-document extraction can overrun the model's output ceiling on entity-dense docs and
+        # get authoritatively rejected as truncated (#343) — pagination handles the continuation-
+        # capable backends, and openai/gemini are sized to fit up front, but a dense doc can still
+        # exceed the estimate. Fall back to the sectioned path, which bounds per-call output, before
+        # giving up. Covers single-page docs too (force-sectioning splits their text into character
+        # windows); the ≥2-section guard skips a doc that can't be split (nothing to re-try).
+        if not ok:
             fb = section.run(vault, sha, force_budget=_FALLBACK_SECTION_TOKENS)
-            if fb.get("sectioned"):
+            if fb.get("sectioned") and len(fb.get("sections", [])) > 1:
                 n_sections = len(fb.get("sections", []))
                 _step(f"{_DIM}↻  {filename}  {flow} · re-extracting in {n_sections} sections…{_RESET}",
                       f"{_DIM}↻  {filename}  whole-doc extraction rejected — "
