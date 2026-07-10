@@ -102,6 +102,8 @@ Chewing:
 
 Each file produces an entry in the processing queue, and the original moves to internal staging. Nothing is written to the Obsidian vault yet.
 
+Chewing has a privacy bonus: only the extracted text moves forward from this step. The metadata that rides along inside a file — the author and creator fields in a PDF, camera and location details in a photo, revision history in an office document — is never extracted, so it never reaches an AI model in the later steps. What the model eventually sees is the text itself, the file's name, and any sidecar notes you wrote. The original file, metadata intact, stays on your machine in the vault's document morgue.
+
 Files are processed in parallel. Each shows a live status row while it is worked on, with an overall progress row beneath; finished files settle into the log above with one of three statuses: `OK` (queued for extraction), `SKP` (no text found — moved to `_INCOMING/_SKIPPED/`), or `ERR` (failed — moved to `_INCOMING/_FAILED/` with an explanation). Files with noisy OCR output show a `· garbled OCR` note alongside `OK` — they are still queued, but worth verifying after extraction. On macOS, you get a notification when the batch completes. If a file fails, see [troubleshooting](troubleshooting.md) for the common causes and fixes.
 
 Press **Ctrl+C** to cancel a chew — the lock is cleaned up automatically and unfinished files stay in `_INCOMING/` for the next run.
