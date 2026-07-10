@@ -505,6 +505,23 @@ _DEEPSEEK_THINKING_SUFFIX = "-thinking"
 # tasks; every other backend/task keeps its normal ceiling.
 _DEEPSEEK_THINKING_MAX_TOKENS = 48000
 
+# OpenAI reasoning models have the same starvation mode (#354): reasoning tokens and the visible
+# answer share the one `max_completion_tokens` budget, so at the flat 16K ceiling heavy reasoning
+# can leave the JSON truncated — the exact failure #337 fixed for DeepSeek thinking. Applied only
+# to reasoning models (per `_openai_is_reasoning`) on the large-output tasks; chat models keep the
+# normal ceiling. Note this is the *wire* ceiling only — sectioning still plans against the base
+# task budget, since the JSON itself can't count on the reasoning share (see
+# `output_ceiling_for_sectioning`).
+_OPENAI_REASONING_MAX_TOKENS = 48000
+
+# Transient-failure retry for the OpenAI-compatible backends (#354). The Anthropic SDK retries
+# 429/5xx internally (2 attempts, backoff); this httpx path had none, so a single transient
+# 502/529 from a provider failed the document outright — `acomplete_json` retries only on invalid
+# JSON, not backend exceptions. 5xx only: a 429 must keep raising RateLimitError immediately so
+# the orchestrator stops the batch cleanly instead of hammering a limited provider.
+_TRANSIENT_RETRIES = 2
+_TRANSIENT_BACKOFF_S = 2.0
+
 
 def _split_deepseek_thinking(model_id: str) -> tuple[str, bool]:
     """(bare model id, thinking?) from a DeepSeek model token — strips a `-thinking` marker.
@@ -596,7 +613,13 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     url = base_url.rstrip("/") + path
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     async with httpx.AsyncClient(timeout=600) as client:
-        resp = await client.post(url, headers=headers, json=body)
+        # Bounded retry on 5xx only (#354) — parity with the Anthropic SDK's built-in transient
+        # retry. 429 is excluded: it raises RateLimitError below on the first response.
+        for attempt in range(_TRANSIENT_RETRIES + 1):
+            resp = await client.post(url, headers=headers, json=body)
+            if resp.status_code < 500 or attempt == _TRANSIENT_RETRIES:
+                break
+            await asyncio.sleep(_TRANSIENT_BACKOFF_S * (attempt + 1))
     if resp.status_code == 429:
         raise RateLimitError(f"{base_url} rate limit reached")
     resp.raise_for_status()
@@ -730,11 +753,15 @@ def _merge_usage(a: dict | None, b: dict | None) -> dict | None:
 
 
 def _task_max_tokens(task: str, backend: str, model_id: str) -> int:
-    """The output-token ceiling sent to the provider for a task/backend/model. DeepSeek's
-    reasoning models get a higher ceiling because chain-of-thought shares the same budget (#337)."""
-    if (backend == "deepseek" and task in _TASK_MAX_TOKENS
-            and model_id.endswith(_DEEPSEEK_THINKING_SUFFIX)):
-        return _DEEPSEEK_THINKING_MAX_TOKENS
+    """The output-token ceiling sent to the provider for a task/backend/model. Models whose
+    chain-of-thought shares the output budget — DeepSeek thinking (#337), OpenAI reasoning
+    models (#354) — get a higher ceiling on the large-output tasks so reasoning can't starve
+    the JSON."""
+    if task in _TASK_MAX_TOKENS:
+        if backend == "deepseek" and model_id.endswith(_DEEPSEEK_THINKING_SUFFIX):
+            return _DEEPSEEK_THINKING_MAX_TOKENS
+        if backend == "openai" and _openai_is_reasoning(model_id):
+            return _OPENAI_REASONING_MAX_TOKENS
     return _TASK_MAX_TOKENS.get(task, _API_MAX_TOKENS)
 
 
@@ -748,7 +775,12 @@ def output_ceiling_for_sectioning(task: str, backend: str | None, model: str | N
     must be sectioned up front rather than truncating and relying on the reactive fallback."""
     if backend not in ("openai", "gemini"):
         return None
-    return _task_max_tokens(task, backend, resolve_model_id(model or DEFAULT_TIER))
+    model_id = resolve_model_id(model or DEFAULT_TIER)
+    if backend == "openai" and _openai_is_reasoning(model_id):
+        # The raised wire ceiling (#354) is shared with chain-of-thought, so the JSON itself
+        # can't count on more than the base task budget — plan sectioning against that.
+        return _TASK_MAX_TOKENS.get(task, _API_MAX_TOKENS)
+    return _task_max_tokens(task, backend, model_id)
 
 
 async def _complete_with_pagination(backend_fn, backend: str, prompt, model_id: str, schema: dict,
