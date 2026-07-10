@@ -158,6 +158,70 @@ def test_compact_result_carries_key_facts_for_the_briefing():
                               {"fact": "Merger closed", "date": "2024-03-01"}]
 
 
+def test_write_briefing_resolves_entity_ids_to_display_names(tmp_path):
+    """#342: on backends that echo the internal id rather than the display name for a new
+    entity, the briefing and hot.md must still show the display name — resolved deterministically
+    against the registry manifest for this batch, rather than trusting the model."""
+    vault = make_vault(tmp_path)
+    (vault / ".watchdog" / "Registry" / "manifest.json").write_text(json.dumps({
+        "andrew-hanrahan": {"name": "Andrew Hanrahan", "type": "person", "aliases": [],
+                            "note_path": "entities/person/andrew-hanrahan"},
+        "fsra": {"name": "Financial Services Regulatory Authority", "type": "public-body",
+                 "aliases": [], "note_path": "entities/public-body/fsra"},
+    }))
+    b = {
+        "investigation_status": "Early days.",
+        "what_was_ingested": ["doc.pdf — Annual Report"],
+        "new_entities": ["andrew-hanrahan", "fsra"],
+    }
+    slug_path = orchestrate._write_briefing(vault, b, [], [], [])
+
+    briefing_text = (vault / slug_path).read_text(encoding="utf-8")
+    hot_text = (vault / "hot.md").read_text(encoding="utf-8")
+    for text in (briefing_text, hot_text):
+        assert "Andrew Hanrahan" in text
+        assert "Financial Services Regulatory Authority" in text
+        assert "andrew-hanrahan" not in text
+        assert "fsra" not in text
+
+
+def test_write_briefing_leaves_unmatched_items_unchanged(tmp_path):
+    """Prose sentences and unknown slugs are not exact matches against the manifest, so they
+    pass through unchanged — the resolver only fires on a whole-item match (#342); it must not
+    rewrite substrings inside prose, which risks corrupting legitimate text."""
+    vault = make_vault(tmp_path)
+    (vault / ".watchdog" / "Registry" / "manifest.json").write_text(json.dumps({
+        "andrew-hanrahan": {"name": "Andrew Hanrahan", "type": "person", "aliases": [],
+                            "note_path": "entities/person/andrew-hanrahan"},
+    }))
+    b = {
+        "investigation_status": "Early days.",
+        "what_was_ingested": ["doc.pdf — Annual Report"],
+        "new_entities": ["some-unknown-slug"],
+        "connections": ["Mentions andrew-hanrahan in passing alongside a numbered company."],
+    }
+    slug_path = orchestrate._write_briefing(vault, b, [], [], [])
+
+    briefing_text = (vault / slug_path).read_text(encoding="utf-8")
+    assert "some-unknown-slug" in briefing_text                    # unknown id: untouched
+    assert "Mentions andrew-hanrahan in passing" in briefing_text  # id inside prose: untouched
+
+
+def test_write_briefing_handles_missing_manifest(tmp_path):
+    """No manifest.json yet (a vault's very first ingest) must not crash the briefing — items
+    just pass through unresolved (#342)."""
+    vault = make_vault(tmp_path)
+    assert not (vault / ".watchdog" / "Registry" / "manifest.json").exists()
+    b = {
+        "investigation_status": "Early days.",
+        "what_was_ingested": ["doc.pdf — Annual Report"],
+        "new_entities": ["acme-corp"],
+    }
+    slug_path = orchestrate._write_briefing(vault, b, [], [], [])   # must not raise
+
+    assert "acme-corp" in (vault / slug_path).read_text(encoding="utf-8")
+
+
 def test_select_kept_keeps_survivors_in_original_order():
     """timeline-dedup returns `groups`; Python re-selects the authoritative originals (which carry
     source_sha256/page/basis), order-preserving, dropping each group's folded duplicates."""
