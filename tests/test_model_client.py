@@ -690,9 +690,14 @@ def test_merge_usage_does_not_add_booleans():
 @pytest.mark.parametrize("task, backend, model, expected", [
     ("extract", "deepseek", "deepseek-v4-flash-thinking", mc._DEEPSEEK_THINKING_MAX_TOKENS),
     ("extract", "deepseek", "deepseek-v4-flash", 16000),     # non-thinking → normal task ceiling
-    ("extract", "claude-api", "claude-sonnet-4-6", 16000),   # thinking bump is deepseek-only
+    ("extract", "claude-api", "claude-sonnet-4-6", 16000),   # CoT bump never applies to Claude
     ("classify", "claude-api", "claude-haiku-4-5", mc._API_MAX_TOKENS),  # default ceiling
     ("briefing", "openai", "gpt-4o", 16000),
+    # OpenAI reasoning models share max_completion_tokens between CoT and answer (#354) —
+    # large-output tasks get the raised ceiling; chat models and small tasks don't.
+    ("extract", "openai", "gpt-5.4", mc._OPENAI_REASONING_MAX_TOKENS),
+    ("briefing", "openai", "o3", mc._OPENAI_REASONING_MAX_TOKENS),
+    ("classify", "openai", "gpt-5.4", mc._API_MAX_TOKENS),   # not a large-output task
 ])
 def test_task_max_tokens(task, backend, model, expected):
     assert mc._task_max_tokens(task, backend, model) == expected
@@ -711,6 +716,87 @@ def test_output_ceiling_is_none_when_nothing_to_protect(backend, model):
 @pytest.mark.parametrize("backend, model, expected", [
     ("openai", "gpt-4o", 16000),        # enforces max_tokens but can't continue → must be sized
     ("gemini", "gemini-2.5-flash", 16000),
+    # An OpenAI reasoning model's raised wire ceiling (#354) is shared with chain-of-thought,
+    # so sectioning still plans against the base task budget, not the raised one.
+    ("openai", "gpt-5.4", 16000),
 ])
 def test_output_ceiling_returned_for_non_continuation_capped_backends(backend, model, expected):
     assert mc.output_ceiling_for_sectioning("extract", backend, model) == expected
+
+
+def _fake_httpx_sequence(monkeypatch, status_codes):
+    """Patch httpx.AsyncClient to return canned responses with the given status codes, one per
+    post, repeating the last one if posts continue. Returns the list of recorded post calls."""
+    import httpx
+
+    codes = list(status_codes)
+    posts = []
+
+    class FakeResp:
+        def __init__(self, status_code):
+            self.status_code = status_code
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise httpx.HTTPStatusError(f"HTTP {self.status_code}", request=None,
+                                            response=None)
+
+        def json(self):
+            return {"choices": [{"message": {"content": '{"name": "Acme"}'}}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+
+    class FakeClient:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, headers=None, json=None):
+            posts.append(url)
+            return FakeResp(codes.pop(0) if len(codes) > 1 else codes[0])
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+    return posts
+
+
+def _no_sleep(monkeypatch):
+    """Stub the retry backoff so tests don't actually wait; returns the recorded delays."""
+    delays = []
+
+    async def fake_sleep(seconds):
+        delays.append(seconds)
+
+    monkeypatch.setattr(mc.asyncio, "sleep", fake_sleep)
+    return delays
+
+
+def test_openai_backend_retries_transient_5xx(monkeypatch):
+    # Two 502s then a 200 → the call succeeds after backing off twice (#354).
+    posts = _fake_httpx_sequence(monkeypatch, [502, 502, 200])
+    delays = _no_sleep(monkeypatch)
+    out = asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+                                                base_url="https://api.deepseek.com"))
+    assert out["text"] == '{"name": "Acme"}'
+    assert len(posts) == 3
+    assert delays == [mc._TRANSIENT_BACKOFF_S, mc._TRANSIENT_BACKOFF_S * 2]
+
+
+def test_openai_backend_gives_up_after_bounded_5xx_retries(monkeypatch):
+    # A persistent 5xx exhausts the retry budget and raises — it must not loop forever.
+    import httpx
+    posts = _fake_httpx_sequence(monkeypatch, [502])
+    _no_sleep(monkeypatch)
+    with pytest.raises(httpx.HTTPStatusError):
+        asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+                                              base_url="https://api.deepseek.com"))
+    assert len(posts) == mc._TRANSIENT_RETRIES + 1
+
+
+def test_openai_backend_never_retries_429(monkeypatch):
+    # 429 is a session-wide condition, not a transient blip: one post, straight to the typed
+    # RateLimitError so the orchestrator stops the batch cleanly.
+    posts = _fake_httpx_sequence(monkeypatch, [429])
+    delays = _no_sleep(monkeypatch)
+    with pytest.raises(mc.RateLimitError):
+        asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+                                              base_url="https://api.deepseek.com"))
+    assert len(posts) == 1
+    assert delays == []
