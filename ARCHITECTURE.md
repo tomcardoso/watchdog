@@ -481,7 +481,9 @@ merge — deterministic, no model call, parallel to its registry surgery (§I1);
   chronology) alongside near-dup alerts and contradiction flags — plus the per-document
   scratchpads, now slimmed to forward-looking leads only (D33); makes one model call
   (`briefing`), and `_write_briefing` writes the structured prose into `briefings/<ts>.md`,
-  `hot.md`, and a `log.md` entry.
+  `hot.md`, and a `log.md` entry — first resolving any item that's an exact match against the
+  registry manifest from an entity id to its display name, since not every backend reliably
+  avoids echoing ids in prose (D107).
 
 `watchdog ingest` prints the per-document summary; the briefing/hot/log files are the
 durable record a fresh session reads.

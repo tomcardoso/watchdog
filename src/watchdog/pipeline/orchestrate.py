@@ -879,6 +879,28 @@ def _lines(items: list) -> str:
     return "\n".join(f"- {x}" for x in items) if items else "_None._"
 
 
+def _load_entity_names(vault: Path) -> dict:
+    """id -> display name from the registry manifest. Used to resolve briefing entity
+    references back to display names deterministically (#342) — the model isn't reliable
+    across all backends about avoiding the internal kebab-case id in prose. Tolerates a
+    missing or unparseable manifest (returns {}, so callers just pass items through)."""
+    manifest_file = vault / ".watchdog" / "Registry" / "manifest.json"
+    if not manifest_file.exists():
+        return {}
+    try:
+        manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return {eid: entry.get("name", eid) for eid, entry in manifest.items() if isinstance(entry, dict)}
+
+
+def _resolve_names(items: list, names: dict) -> list:
+    """Replace any item that, stripped of whitespace, exactly matches a known entity id with
+    its display name. Everything else — prose sentences, unmatched ids — passes through
+    unchanged. Exact-item match only; no substring rewriting inside prose (#342)."""
+    return [names[x.strip()] if isinstance(x, str) and x.strip() in names else x for x in items]
+
+
 def _fts_add_note_safe(vault: Path, note_path: str, kind: str, title: str, text: str) -> None:
     """Best-effort full-text index update (#109) — never fails the ingest run over it."""
     try:
@@ -890,19 +912,30 @@ def _fts_add_note_safe(vault: Path, note_path: str, kind: str, title: str, text:
 
 def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
                     contradiction_flags: list) -> str:
+    # Resolve entity ids the model may have echoed instead of display names (#342) — deterministic
+    # backstop on top of the prompt/schema instructions, since not every backend honours those.
+    names = _load_entity_names(vault)
+    what_was_ingested = _resolve_names(b.get("what_was_ingested", []), names)
+    new_entities = _resolve_names(b.get("new_entities", []), names)
+    connections = _resolve_names(b.get("connections", []), names)
+    leads = _resolve_names(b.get("leads", []), names)
+    anomalies = _resolve_names(b.get("anomalies", []), names)
+    emerging_patterns = _resolve_names(b.get("emerging_patterns", []), names)
+    open_questions = _resolve_names(b.get("open_questions", []), names)
+
     now = datetime.datetime.now()
     slug = now.strftime("%Y-%m-%d-%H-%M")
-    n_new = len(b.get("new_entities", []))
+    n_new = len(new_entities)
 
     body = (
         f"---\ndate: {now.isoformat(timespec='seconds')}\nfiles_ingested: {len(results)}\n"
         f"new_entities: {n_new}\n---\n\n# Ingest briefing — {slug}\n\n"
-        f"## What was ingested\n\n{_lines(b.get('what_was_ingested', []))}\n\n"
-        f"## New entities\n\n{_lines(b.get('new_entities', []))}\n\n"
-        f"## Connections to existing entities\n\n{_lines(b.get('connections', []))}\n\n"
-        f"## Leads and follow-up ideas\n\n{_lines(b.get('leads', []))}\n\n"
+        f"## What was ingested\n\n{_lines(what_was_ingested)}\n\n"
+        f"## New entities\n\n{_lines(new_entities)}\n\n"
+        f"## Connections to existing entities\n\n{_lines(connections)}\n\n"
+        f"## Leads and follow-up ideas\n\n{_lines(leads)}\n\n"
         f"## Anomalies worth a closer look\n\n"
-        f"{_lines(b['anomalies']) if b.get('anomalies') else 'Nothing flagged.'}\n"
+        f"{_lines(anomalies) if anomalies else 'Nothing flagged.'}\n"
     )
     if neardup_alerts:
         body += "\n## Near-duplicate alerts\n\n" + "\n".join(
@@ -916,9 +949,9 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
         f"# Hot cache\n\n*Last updated: {now.strftime('%Y-%m-%d')} — "
         f"[[briefings/{slug}|Briefing {slug}]]*\n\n"
         f"## Investigation status\n\n{b.get('investigation_status', '')}\n\n"
-        f"## Recent additions\n\n{_lines(b.get('new_entities', []))}\n\n"
-        f"## Emerging patterns\n\n{_lines(b.get('emerging_patterns', []))}\n\n"
-        f"## Open questions\n\n{_lines(b.get('open_questions', []))}\n"
+        f"## Recent additions\n\n{_lines(new_entities)}\n\n"
+        f"## Emerging patterns\n\n{_lines(emerging_patterns)}\n\n"
+        f"## Open questions\n\n{_lines(open_questions)}\n"
     )
     (vault / "hot.md").write_text(hot_content, encoding="utf-8")
     _fts_add_note_safe(vault, "hot", "hot", "Hot cache", hot_content)

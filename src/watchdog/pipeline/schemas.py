@@ -138,8 +138,16 @@ SYNTHESIS = _obj(
         "entity_syntheses": {
             "type": "array",
             "items": _obj(
-                {"entity_id": {"type": "string"}, "summary": {"type": "string"},
-                 "analysis": {"type": "string"}},
+                {"entity_id": {"type": "string",
+                               "description": "the internal id of the entity being synthesized, "
+                                               "copied verbatim from the bundle"},
+                 "summary": {"type": "string",
+                             "description": "a rewritten, up-to-date summary of the entity across "
+                                             "all its mentions"},
+                 "analysis": {"type": "string",
+                              "description": "optional analytical notes on patterns across the "
+                                              "entity's mentions (contradictions, escalating roles, "
+                                              "recurring counterparties)"}},
                 ["entity_id", "summary"],
             ),
         }
@@ -150,14 +158,32 @@ SYNTHESIS = _obj(
 # Post-ingest briefing prose (Python writes the files from this).
 BRIEFING = _obj(
     {
-        "investigation_status": {"type": "string"},
-        "what_was_ingested": {"type": "array", "items": {"type": "string"}},
-        "new_entities": {"type": "array", "items": {"type": "string"}},
-        "connections": {"type": "array", "items": {"type": "string"}},
-        "leads": {"type": "array", "items": {"type": "string"}},
-        "anomalies": {"type": "array", "items": {"type": "string"}},
-        "emerging_patterns": {"type": "array", "items": {"type": "string"}},
-        "open_questions": {"type": "array", "items": {"type": "string"}},
+        "investigation_status": {"type": "string",
+                                  "description": "one sentence summarizing where the investigation "
+                                                  "stands after this batch"},
+        "what_was_ingested": {"type": "array", "items": {"type": "string"},
+                               "description": "one line per file describing what it is and its "
+                                               "document type"},
+        "new_entities": {"type": "array", "items": {"type": "string"},
+                          "description": "human-readable display names of entities first seen in "
+                                          "this batch — never internal ids/slugs"},
+        "connections": {"type": "array", "items": {"type": "string"},
+                         "description": "connections this batch draws to existing vault entities, "
+                                         "by display name, with what the connection is and why it "
+                                         "matters"},
+        "leads": {"type": "array", "items": {"type": "string"},
+                  "description": "actionable follow-up ideas: open questions, contacts, missing "
+                                  "documents, FOI ideas"},
+        "anomalies": {"type": "array", "items": {"type": "string"},
+                      "description": "things worth a closer look: shared addresses, unexpected "
+                                      "roles, disproportionate transactions, highly-connected "
+                                      "entities with no documented relationships"},
+        "emerging_patterns": {"type": "array", "items": {"type": "string"},
+                               "description": "patterns emerging across documents in this batch or "
+                                               "against the existing vault"},
+        "open_questions": {"type": "array", "items": {"type": "string"},
+                            "description": "unresolved questions the investigation should pursue "
+                                            "next"},
     },
     ["investigation_status", "what_was_ingested"],
 )
