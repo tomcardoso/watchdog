@@ -1,9 +1,9 @@
 ---
-description: an annual report, corporate registration, director filing, or similar corporate record
+description: a corporate registration, director filing, or similar corporate record
 ---
 # Domain knowledge — Corporate filings
 
-This skill is loaded by Watchdog when the document type is an annual report, corporate registration, director filing, or similar corporate record.
+This skill is loaded by Watchdog when the document type is a corporate registration, director filing, or similar corporate record.
 
 For standalone financial statements or MD&A, see `financial-statements`; for securities-regulator disclosure documents (material change reports, insider trading reports, prospectuses), see `regulatory-filings`.
 
@@ -11,14 +11,13 @@ For standalone financial statements or MD&A, see `financial-statements`; for sec
 
 ## Document types covered
 
-- Annual reports (public and private companies)
 - Corporate registrations and certificates of incorporation
 - Director / officer filings (appointments, resignations, changes)
 - Shareholder registers
 - Corporate search results (national and provincial/state registries)
 - Beneficial ownership declarations
 - Agent for service of process filings
-- In Canada: Ontario, BC, Alberta provincial registries; federal CBCA registry; SEDAR/SEDAR+ for public companies
+- In Canada: provincial and territorial registries; federal registry; SEDAR/SEDAR+ for public companies
 - In the US: State corporate registries (Delaware, Nevada, etc.); SEC EDGAR for public companies
 - In the UK: Companies House
 - In Australia: ASIC business name and company registers
@@ -30,6 +29,9 @@ For standalone financial statements or MD&A, see `financial-statements`; for sec
 | Field | What to look for |
 |-------|-----------------|
 | **Registered name** | Exact legal name, including punctuation (Ltd., Inc., Corp., LP, GmbH, SAS, etc.) |
+| **Former names** | Former legal names for the business, if any |
+| **Trade names** | Other names under which that business may operate, if any |
+| **Corporate structure** | Names of businesses in which the company holds shares or for which it is a subsidiary |
 | **Registration number** | The regulator's unique identifier for the company |
 | **Jurisdiction** | Where the company is legally registered, not where it operates |
 | **Registered address** | The official address on file — may differ from operational address |
@@ -39,7 +41,7 @@ For standalone financial statements or MD&A, see `financial-statements`; for sec
 | **Officers** | President, Secretary, CFO, etc. — often different from directors |
 | **Registered agent / agent for service** | The person or firm authorized to receive legal documents |
 | **Share structure** | Classes of shares, authorized and issued counts |
-| **Fiscal year end** | Usually December 31 but not always |
+| **Fiscal year end** | Often December, 31 but not always |
 
 ---
 
@@ -52,6 +54,7 @@ For standalone financial statements or MD&A, see `financial-statements`; for sec
 - **Director appointed and resigned within 12 months** — rapid turnover can indicate a company being set up and wound down quickly.
 - **Director change near a significant event** — a change right before or after a large transaction, dissolution, or court filing.
 - **Director whose address matches the company's registered address** — can indicate the director's address is fictitious.
+- **Name variations** — most corporate registries do not verify the information they receive, so (intentionally or unintentionally) misspelled or variable names are common.
 
 ### Address patterns
 
@@ -61,23 +64,21 @@ For standalone financial statements or MD&A, see `financial-statements`; for sec
 
 ### Share structure
 
-- **Bearer shares** — shares not registered to a specific owner, making it impossible to trace beneficial ownership. Prohibited in most major jurisdictions; a red flag where still permitted.
+- **Bearer shares** — shares not registered to a specific owner, making it impossible to trace beneficial ownership. Prohibited in some jurisdictions; a red flag where still permitted.
 - **Voting rights disproportionate to ownership** — a person holding 1% of shares but 51% of votes. This is a control mechanism worth noting.
 - **Shares issued to another company** — the parent company might itself be in a jurisdiction with minimal disclosure requirements.
-
-### Financial red flags (in annual reports)
-
-- **Going concern qualification** — auditor notes uncertainty about whether the company can continue operating. Look for the phrase "going concern" in the auditor's report.
-- **Revenue declining year-over-year while debt increases** — the opposite of what a healthy company looks like.
-- **Related party transactions** — transactions between the company and its directors, officers, or their family members. Required to be disclosed under most reporting standards; a red flag when large.
-- **Auditor change** — a change in auditor mid-year or in the same year as a significant financial event.
-- **"Subsequent events" disclosures** — events after the balance sheet date that materially affect the company. These are buried at the end of notes and frequently overlooked.
+- **Upstream and downstream businesses** — many businesses, especially large or international ones, have complex corporate structures that include holding companies, subsidiaries, etc. These relationships are worth noting.
+- **Beneficial ownership** — corporate registries around the world have begun to require that beneficial owners be disclosed as an anti-money laundering measure. Take note of any beneficial owners, particularly if they do not overlap with directors or officers.
 
 ### Amalgamations and continuances
 
 - **Amalgamation / merger** — two or more companies merging into one. The predecessor companies cease to exist. This can be used to obscure a company's history.
 - **Continuance / redomiciliation** — a company moving its legal domicile to a different jurisdiction. Watch for continuances into less transparent jurisdictions.
 - **Name change** — a company changing its name. Prior names are aliases and should be recorded. A series of name changes may indicate an attempt to distance from a reputation.
+
+### Other patterns
+
+- **Missing or backdated filings** — businesses will sometimes backdate an address change, director addition or removal, etc. This is always notable when it happens, particularly if the backdating stretches back months or years.
 
 ---
 
@@ -99,7 +100,6 @@ For standalone financial statements or MD&A, see `financial-statements`; for sec
 | Term | Meaning |
 |------|---------|
 | **Registered agent** | The person or company authorized to receive legal documents on the company's behalf |
-| **Annual report vs. 10-K** | Annual report is the glossy document for shareholders; 10-K is the detailed SEC filing with full financial disclosure |
 | **Articles of organization** | The founding document for an LLC (equivalent to Articles of Incorporation for a corporation) |
 | **Operating agreement** | LLC internal governance document — often not publicly filed |
 | **EIN** | Employer Identification Number — US equivalent of a Business Number |
@@ -130,12 +130,10 @@ Beyond the standard entity extraction, specifically look for and record:
 
 ## What investigators typically miss
 
-1. **The notes to financial statements** — the main financial tables are usually clean; the real information is buried in the notes. Read them fully.
-2. **Previous auditor opinions** — compare the current auditor's opinion to prior years. A shift from clean to qualified is significant.
-3. **The "related party" note** — required disclosure under most accounting standards; often contains the most useful information about who benefits from the company's operations.
-4. **The signing block** — who signed the filing and in what capacity. If a director signs an annual report but is also a named defendant in a litigation disclosed in the same report, that's notable.
-5. **Date of the annual general meeting** — companies are required to hold an AGM annually. If the AGM date is missing or the filing is very late, it may indicate the company is not being actively maintained.
-6. **The auditor's address** — a major accounting firm (Deloitte, KPMG, EY, PwC, BDO, Grant Thornton) has different implications than an unknown sole practitioner with the same address as the company.
+1. **The signing block** — who signed the filing and in what capacity. If a director signs an annual report but is also a named defendant in a litigation disclosed in the same report, that's notable.
+2. **Date of the annual general meeting** — companies are required to hold an AGM annually. If the AGM date is missing or the filing is very late, it may indicate the company is not being actively maintained.
+3. **Multiple companies registered to the same address** — one way to find other companies owned by an individual or company is to search for registrations under a particular address. Be wary of red herrings: Many businesses will register using a law firm, obfuscating the "true" address for a company. Same goes for P.O. boxes.
+4. **Related filings** — some corporate registries will include an index of all documents filed by a particular business. In some jurisdictions, that might include financial statements, one-time disclosures, etc. If you see an index of related filings, it is often worth requesting those records, too.
 
 ---
 
