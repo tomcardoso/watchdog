@@ -7,6 +7,7 @@ This page lists every Watchdog command, what it does, and every option it takes.
 | Command | What it does |
 |---|---|
 | `watchdog new [name]` | Create a new investigation vault; omit the name to be prompted, or pass `--description "text"` and `--dir <path>` to set the description and parent directory up front. |
+| `watchdog demo` | Create a scratch vault (`watchdog-demo`) seeded with a bundled sample investigation, then chew it and offer to ingest — see [below](#watchdog-demo). |
 | `watchdog obsidian [name]` | Open the vault in Obsidian; omit the name when you are inside the vault directory. |
 | `watchdog open [name]` | Open the vault folder in Finder or your file explorer; omit the name when inside the vault directory. |
 | `watchdog list` | List all active investigations; `--all` includes archived ones. |
@@ -21,6 +22,12 @@ This page lists every Watchdog command, what it does, and every option it takes.
 | `watchdog register [path]` | Register an existing vault folder with Watchdog; omit the path when inside the vault, and pass `--name` to set the name without being prompted. |
 
 Investigation names tab-complete in zsh and bash once `watchdog setup` has run.
+
+### watchdog demo
+
+Creates a scratch vault named `watchdog-demo`, the same way `watchdog new` would, and seeds it with a small bundled sample investigation — a public-domain SEC complaint excerpt and settlement release. It copies the sample documents into `_INCOMING/`, runs `watchdog chew` on them (local, no cost), then shows the ingest cost estimate and asks `Ingest now? [Y/n]`, exactly as a normal chew does. This is a good way to check that everything — OCR, document conversion, and model access — works before running Watchdog against your own documents, and it doubles as a quick end-to-end check after an upgrade.
+
+If `watchdog-demo` already exists, the command says so and points you at `watchdog status watchdog-demo` or `watchdog delete watchdog-demo` rather than overwriting it. When you are done exploring, `watchdog delete watchdog-demo` removes it.
 
 ## Processing
 

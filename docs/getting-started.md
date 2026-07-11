@@ -8,6 +8,14 @@ Two things to keep in mind before you begin.
 
 > **Verify before you publish.** AI extraction makes mistakes. Every fact Watchdog extracts links back to its source document and page, and facts the model inferred rather than read are marked `(inferred)` — those are leads, not findings. Follow the link before you publish anything.
 
+If you would rather see the whole pipeline run before pointing it at your own documents, try it on the sample investigation first:
+
+```bash
+watchdog demo
+```
+
+This creates a scratch vault, copies in a small public-domain sample corpus, and walks through chew and ingest for a few cents. See the [command reference](commands.md#watchdog-demo) for details, and `watchdog delete watchdog-demo` when you are done with it.
+
 ## Create the vault
 
 Each investigation lives in its own vault — a folder of linked notes that you read in Obsidian. Create one:
