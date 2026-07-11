@@ -5,7 +5,7 @@ description: a criminal court document — including a charging document, bail o
 
 This skill is loaded by Watchdog when the document type is a criminal court document — including a charging document, bail or remand decision, preliminary hearing transcript, trial decision, sentencing decision, or appeal in a criminal matter.
 
-This skill covers criminal proceedings specifically. For non-criminal court documents (civil claims, injunctions, administrative tribunal decisions), see the `court-documents` skill. For police occurrence reports and disciplinary records, see the `police-records` skill.
+This skill covers criminal proceedings specifically. For non-criminal court documents (civil claims, injunctions, administrative tribunal decisions), see the `court-documents` skill. For police occurrence reports and disciplinary records, see the `police-records` skill. For parole board decisions, probation records, prison inspection reports, and corrections oversight documents, use `corrections-records`.
 
 ---
 
