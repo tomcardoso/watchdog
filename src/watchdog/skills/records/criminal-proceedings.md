@@ -45,6 +45,7 @@ This skill covers criminal proceedings specifically. For non-criminal court docu
 | **Bail conditions** | Conditions imposed while awaiting trial |
 | **Co-accused** | Other persons charged in the same matter |
 | **Victims / complainants** | Identity (often protected by publication ban or non-publication order) |
+| **Police officers / investigators** | Names (and badge numbers, if applicable) of the individuals that conducted a criminal investigation |
 
 ---
 
@@ -68,7 +69,7 @@ This skill covers criminal proceedings specifically. For non-criminal court docu
 ### Trial and evidence
 
 - **Evidence excluded by a charter, constitutional, or human rights ruling** — evidence excluded because of a rights violation is often the most important evidence in the case. The exclusion ruling explains what was found and what it produced. Even if excluded from the trial, the underlying facts may be newsworthy.
-- **Credibility findings** — a trial judge's credibility assessment of witnesses, including police officers, is a matter of public record. A finding that an officer was not credible is significant.
+- **Credibility findings** — a trial judge's credibility assessment of witnesses, including police officers, is a matter of public record. A finding that an officer was not credible is significant, and could affect other cases they've investigated.
 - **Expert evidence disputes** — where competing experts testified, note the subject matter and which expert the court preferred and why.
 
 ### Sentencing
@@ -112,7 +113,8 @@ This skill covers criminal proceedings specifically. For non-criminal court docu
 4. **Person → Court**: Where and before whom the matter was heard
 5. **Person → Outcome**: Verdict and sentence (with date)
 6. **Person → Victim**: Alleged victim (note any publication ban before identifying)
-7. **Property → Forfeiture order**: Assets subject to proceeds of crime order
+7. **Person → Investigator**: Individual(s) that conducted the criminal investigation
+8. **Property → Forfeiture order**: Assets subject to proceeds of crime order
 
 ---
 
