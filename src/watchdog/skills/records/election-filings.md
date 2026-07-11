@@ -34,7 +34,7 @@ This skill is loaded by Watchdog when the document type is a campaign finance di
 | **Chief agent / treasurer** | The person legally responsible for the finances |
 | **Total contributions received** | Gross amount raised |
 | **Total expenses** | Gross amount spent |
-| **Largest contributors** | Names, amounts, and dates of top donors |
+| **Largest contributors** | Names, amounts, dates and any other information (e.g. addresses) of large donors |
 | **Third-party sponsor** | Name and address of any third party buying political advertising |
 
 ---
