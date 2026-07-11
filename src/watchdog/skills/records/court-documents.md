@@ -29,6 +29,7 @@ Loaded by Watchdog when the document type is a statement of claim, affidavit, ju
 | **Court and jurisdiction** | Which court and country/province/state |
 | **Parties** | Full legal name of every plaintiff, defendant, applicant, respondent |
 | **Counsel** | Lawyers for each party — name, firm, and which party they represent |
+| **Court staff** | Judges, justices of the peace, magistrates, clerks, bailiffs, court reporters, etc. |
 | **Date of document** | Date the document was sworn, issued, or filed |
 | **Relief sought** | What the plaintiff/applicant is asking the court to do |
 | **Monetary amounts** | All dollar figures — damages claimed, amounts in dispute, costs awarded |
@@ -45,12 +46,12 @@ Loaded by Watchdog when the document type is a statement of claim, affidavit, ju
 - **Company as defendant in multiple cases** — pattern of non-payment, breach of contract, or regulatory violation. Cross-reference case types.
 - **Director or officer named personally** — piercing the corporate veil is significant; it means a court found or a plaintiff alleges personal liability.
 - **Party described as "also known as"** — AKAs in court documents are legally significant and should be captured as aliases.
-- **Amended pleadings** — if an amended statement of claim exists, compare to the original. Additions and deletions are often where the real story develops.
+- **Amended pleadings** — if an amended statement of claim exists, compare to the original. Additions and deletions could be because of typos, but could also be significant.
 
 ### Monetary patterns
 
 - **Claim far exceeding apparent company size** — a large claim against a company with modest revenue raises questions about either the claim or the company's solvency.
-- **Costs awards** — a costs award against a party signals the court found their position frivolous or their conduct improper.
+- **Costs awards** — a costs award against a party may signal the court found their position frivolous or their conduct improper.
 - **Prejudgment interest claimed from a very early date** — indicates long-running dispute or early notice of the issue.
 
 ### Procedural red flags
@@ -104,6 +105,7 @@ Loaded by Watchdog when the document type is a statement of claim, affidavit, ju
 4. **Person / Company → Address**: All addresses in pleadings — these may be the only record of a party's address at a specific point in time
 5. **CourtCase → Property**: Any property that is the subject of the proceeding
 6. **CourtCase → Transaction**: Any transaction alleged in the claim (amounts, dates, parties)
+7. **CourtCase → Judge**: The judge or judges handling a particular case.
 
 ---
 
@@ -113,7 +115,7 @@ Loaded by Watchdog when the document type is a statement of claim, affidavit, ju
 2. **Third-party claims** — a defendant can sue a third party they claim is responsible. This is a separate claim embedded in the same file.
 3. **Counterclaims** — the defendant may be suing the plaintiff back. Always check whether a statement of defence includes a counterclaim.
 4. **The date of service vs. the date of filing** — a document filed on one date may have been served on a different date. The gap can be significant.
-5. **Lawyers switching firms mid-proceeding** — indicates something changed in the relationship between the client and the firm. Worth noting.
+5. **Clients switching representation mid-proceeding** — indicates something changed in the relationship between the client and their lawyer. Worth noting.
 6. **The litigation history of key parties** — a search for the party's name in court records may reveal a pattern across multiple proceedings.
 
 ---
