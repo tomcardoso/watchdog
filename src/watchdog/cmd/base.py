@@ -636,6 +636,7 @@ def _print_banner() -> None:
     groups = [
         ("Manage investigations", [
             ("new",        "Create a new investigation vault"),
+            ("demo",       "Try Watchdog on a bundled sample investigation"),
             ("register",   "Register an existing vault folder"),
             ("obsidian",   "Open in Obsidian"),
             ("open",       "Open vault folder in Finder / file explorer"),

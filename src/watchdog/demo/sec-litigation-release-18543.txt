@@ -1,0 +1,31 @@
+U.S. SECURITIES AND EXCHANGE COMMISSION
+Litigation Release No. 18543 / January 14, 2004
+SEC v. Andrew S. Fastow, Civil Action No. H-02-3666 (Hoyt) (S.D. Tex.)
+
+Fastow To Disgorge More Than $23 Million; Agrees To Cooperate In Ongoing Investigation
+
+The Securities and Exchange Commission ("Commission") today settled civil fraud charges filed against Andrew S. Fastow, Enron's former Chief Financial Officer.  The complaint, filed on October 2, 2002 in U.S. District Court in Houston, alleged that Fastow defrauded Enron's shareholders and enriched himself and others by, among other things, entering into undisclosed side deals, manufacturing earnings for Enron through sham transactions, and inflating the value of Enron's investments.  Without admitting or denying the allegations in the Commission's complaint, Fastow has agreed to be enjoined permanently from violating the antifraud, periodic reporting, books and records, and internal control provisions of the federal securities laws, and to be barred permanently from acting as an officer or director of a public company.  The Commission settled its action in coordination with the Justice Department's Enron Task Force, which entered into a guilty plea with Fastow on related criminal charges.  In resolving the parallel civil and criminal proceedings, Fastow has agreed to serve a ten-year sentence, disgorge more than $23 million and to cooperate with the government's continuing investigation.
+
+As alleged in the Commission's complaint, Fastow participated in a series of fraudulent transactions.  Three of the transactions - RADR, Chewco, and Southampton - were part of an alleged scheme to hide Fastow's interest in and control of certain entities in order to avoid consolidating those entities in Enron's financial statements. This was done, according to the complaint, for self-enrichment and to mislead analysts, rating agencies, and others about Enron's true financial condition.
+
+Two of the transactions - the Nigerian barges and Cuiaba - are alleged to have been sham sales best described as secret asset-parking arrangements. The Nigerian barges involve Enron's purported sale of an interest in certain Nigerian barges to Merrill Lynch & Co., Inc. ("Merrill").  Fastow is alleged to have personally promised that Merrill would be taken out of its so-called investment and later arranged for an entity he controlled, LJM2 Co-Investment, L.P. ("LJM2"), to buy the financial institution's interest at a pre-arranged rate of return on a pre-arranged time table. In Cuiaba, Enron entered into a transaction with another off-balance-sheet entity controlled by Fastow, LJM Cayman, L.P. ("LJM1"), to sell an interest in a severely troubled power plant in Cuiaba, Brazil, in order to avoid consolidation of project debt and recognize earnings. In connection with this transaction, Fastow allegedly entered into an unwritten side agreement with Enron requiring Enron to buy back the interest it just sold to Fastow at a guaranteed profit.
+
+In the last transaction, Enron and LJM2 created a complex financial structure - Raptor I - that allowed Enron to hedge against potential declines in certain of its mark-to-market investments.  LJM2's $30 million investment - representing the purported 3% outside equity required to be at risk in order for Enron to avoid consolidating the Raptor vehicle in its financial statements - however was not at risk.  Fastow allegedly entered into an undisclosed side deal in which Enron agreed that, prior to conducting any hedging activity with Raptor I, Enron would return LJM2's investment ($30 million) plus a guaranteed return ($11 million). As a result, Raptor I should have been consolidated on Enron's financial statements.  To conceal the side deal, Fastow and others allegedly devised a scheme to manufacture the $41 million payment to LJM2.  Enron and the Raptor vehicle entered into a "put," a transaction in which Enron essentially bet that its own stock price would decline.  Enron purchased that "put" option from the Raptor vehicle for $41 million.  The $41 million was then transferred from Raptor I to LJM2.  The complaint alleged that there was no true business purpose for the "put" other than to generate funds to pay LJM2 under the undisclosed side deal.  The complaint also alleged that in September 2000, Fastow and others used Raptor I to effectuate a fraudulent hedging transaction and thus avoid a decrease in the value of Enron's investment in the stock of a public company called Avici Systems Inc. Specifically, Fastow and others back-dated documents to make it appear that Enron locked in the value of its investment in Avici in early August 2000, when Avici's stock was trading at its all time high price.
+
+The Commission's investigation relating to Enron is continuing.
+
+SEC Complaint in this matter
+
+-->
+
+Return to top
+
+SEC homepage
+
+About the SEC
+
+Budget & Performance
+
+Careers
+
+Commission Votes

@@ -90,6 +90,7 @@ from watchdog.cmd.setup import (
     cmd_unlock,
 )
 from watchdog.cmd.auth import cmd_auth
+from watchdog.cmd.demo import cmd_demo
 from watchdog.cmd.export import cmd_export
 from watchdog.cmd.merge_entities import cmd_merge_entities
 from watchdog.cmd.contradiction import cmd_contradiction_add
@@ -200,6 +201,9 @@ def main() -> None:
     p_new.add_argument("--description", help="One-line description of the investigation")
     p_new.add_argument("--dir", help="Parent directory (default: projects_dir from config)")
     p_new.set_defaults(func=cmd_new)
+
+    p_demo = sub.add_parser("demo", help="Create a sample investigation vault to try Watchdog end to end")
+    p_demo.set_defaults(func=cmd_demo)
 
     p_list = sub.add_parser("list", help="List all registered investigations")
     p_list.add_argument("--all", action="store_true", help="Include archived investigations")
