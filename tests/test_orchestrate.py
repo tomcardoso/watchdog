@@ -70,14 +70,34 @@ def _ext_with_fact_pages(pages):
 
 
 def test_coverage_warning_flags_front_loaded_extraction():
-    # 36-page doc, facts only on pages 1-4 → nothing past page 4 (< 18) → warn
+    # 36-page doc, facts only on pages 1-4 → the trailing 32-page uncited run (89%) → warn
     warn = orchestrate._coverage_warning(_ext_with_fact_pages([1, 2, 3, 4]), 36)
-    assert warn and "may have stopped reading early" in warn and "of 36" in warn
-    assert "check pages 5–36" in warn        # actionable range = first uncited page → end
+    assert warn and "may have skipped" in warn and "of 36 pages" in warn
+    assert "pages 5–36" in warn              # actionable span = the uncited run
+
+
+def test_coverage_warning_flags_interior_gap():
+    # 50-page doc cited at both ends but with a 29-page hole in the middle (58%) — the old
+    # tail-only rule passed this clean; the gap rule is the point of #339.
+    warn = orchestrate._coverage_warning(
+        _ext_with_fact_pages([1, 4, 7, 10, 40, 45, 50]), 50)
+    assert warn and "pages 11–39" in warn and "29 of 50 pages" in warn
+
+
+def test_coverage_warning_flags_leading_gap():
+    # Facts only in the back half: the *leading* 44-page run is the flagged span.
+    warn = orchestrate._coverage_warning(_ext_with_fact_pages([45, 48, 50]), 50)
+    assert warn and "pages 1–44" in warn
+
+
+def test_coverage_warning_ignores_out_of_range_citations():
+    # A fabricated page 999 must not mask the real uncited tail (or create negative gaps).
+    warn = orchestrate._coverage_warning(_ext_with_fact_pages([1, 2, 999]), 40)
+    assert warn and "pages 3–40" in warn
 
 
 def test_coverage_warning_silent_when_well_covered():
-    # facts reach page 30 of 36 (>= 18) → no warning
+    # Largest uncited run is 14 pages (6–19) of 36 — under the 40% gap threshold → no warning
     assert orchestrate._coverage_warning(_ext_with_fact_pages([1, 5, 20, 30]), 36) is None
 
 
