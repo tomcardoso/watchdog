@@ -49,21 +49,21 @@ This skill is loaded by Watchdog when the document type is a decision, order, or
 
 ### Jurisdictional issues
 
-- **Challenges to jurisdiction** — a respondent arguing the tribunal has no authority to hear the case often signals they believe the underlying complaint has merit. Jurisdictional challenges that succeed can bury a meritorious complaint in delay.
+- **Challenges to jurisdiction** — a respondent arguing the tribunal has no authority to hear the case could signal they believe the underlying complaint has merit. Jurisdictional challenges that succeed can bury a meritorious complaint in delay.
 - **Statute cited vs. substance of complaint** — the enabling statute the complainant cites shapes what remedies are available. Where a complainant picks a narrower statutory vehicle than available, ask whether the more powerful route was deliberately avoided.
 - **Prior complaints dismissed for procedural reasons** — a complainant who filed the same or similar complaint and had it dismissed for timeliness or jurisdictional reasons without a hearing on the merits.
 
 ### Competition and regulatory
 
-- **Consent agreements** — when a regulator settles with a company rather than proceeding to a full hearing, the consent agreement often contains admissions of fact that would not appear in a litigated case. These are frequently underreported.
-- **Undertakings in lieu of divestiture** — in merger reviews, an undertaking (behavioural remedy) instead of a structural one (forced sale) is a weaker outcome that often signals regulatory capture or inadequate enforcement.
+- **Consent agreements** — when a regulator settles with a company rather than proceeding to a full hearing, the consent agreement often contains admissions of fact that would not appear in a litigated case. These may be underreported.
+- **Undertakings in lieu of divestiture** — in merger reviews, an undertaking (behavioural remedy) instead of a structural one (forced sale) is a weaker outcome that may signal regulatory capture or inadequate enforcement.
 - **Market definition disputes** — in competition matters, how the market is defined largely determines whether anticompetitive conduct is found. A narrow market definition that excludes obvious substitutes benefits the respondent.
 
 ### Human rights
 
 - **Systemic findings** — a human rights decision finding systemic discrimination (affecting a class of people, not just the individual complainant) carries far more significance than an individual finding. The named complainant may be one of hundreds.
 - **Comparator selection** — human rights complaints require identifying a comparator group. Who was chosen and who was not is analytically significant and often contested.
-- **Order with a remedy that depends on enforcement** — a human rights order imposing compensation, reinstatement, or a policy change is only as strong as its enforcement, and tribunals rarely monitor compliance. Record the remedy and any deadline as stated; whether the respondent complied is a lead to check later, not something the order itself shows.
+- **Order with a remedy that depends on enforcement** — a human rights order imposing compensation, reinstatement, or a policy change is only as strong as its enforcement, and tribunals often lack enforcement tools and rarely monitor compliance. Record the remedy and any deadline as stated; whether the respondent complied is a lead to check later, not something the order itself shows.
 
 ### Privacy and information
 
@@ -114,10 +114,10 @@ This skill is loaded by Watchdog when the document type is a decision, order, or
 ## What investigators typically miss
 
 1. **The minority dissent** — where a panel is split, the dissenting reasons often identify weaknesses in the majority's analysis and signal what arguments were closest to prevailing.
-2. **Consent agreements are not victories** — a consent agreement between a regulator and a company is often framed as an enforcement success, but the agreed-upon facts may represent only a fraction of what investigators found. The investigation report behind a consent agreement is a separate document and often obtainable by FOI.
+2. **Consent agreements are not victories** — a consent agreement between a regulator and a company is often framed as an enforcement success, but the agreed-upon facts may represent only a fraction of what investigators found. The investigation report behind a consent agreement is a separate document and may be obtainable via FOI.
 3. **Intervenor lists** — many tribunals allow third parties to intervene. Who intervened and on which side reveals the industry and advocacy landscape around the issue.
-4. **Costs awards against complainants** — in some tribunals, an unsuccessful complainant can be ordered to pay the respondent's costs. This has a chilling effect; a pattern of cost awards in a particular tribunal is a systemic story.
-5. **Compliance monitoring** — an order to do something does not mean it was done. Regulators often have a compliance monitoring or follow-up process; the compliance record is as important as the order itself.
+4. **Costs awards against complainants** — in some tribunals, an unsuccessful complainant can be ordered to pay the respondent's costs. This can have a chilling effect; a pattern of cost awards in a particular tribunal could be a systemic story.
+5. **Compliance monitoring** — an order to do something does not mean it was done. Some regulators have a compliance monitoring or follow-up process; the compliance record is as important as the order itself.
 6. **The complaint that triggered the proceeding** — the formal decision rarely reproduces the original complaint in full. The original filing, available separately, may contain more specific factual allegations than what appears in the decision.
 7. **Reconsideration and appeal decisions** — a significant percentage of tribunal decisions are reconsidered or appealed. The decision you have may have been overturned or modified by a subsequent proceeding.
 
