@@ -299,28 +299,39 @@ async def _classify(doc_excerpt: str, model: str, backend: str | None = None,
 
 # Page-coverage heuristic (skim detection). Advisory only — emits a warning, never a failure.
 _COVERAGE_MIN_PAGES = 8         # don't flag short documents
-_COVERAGE_TAIL_FRACTION = 0.5   # flag when nothing is cited past roughly the first half
+# Flag when the largest run of consecutive uncited pages is at least this share of the document.
+# Gap-based rather than tail-based (#339): the old "nothing cited past the halfway point" rule
+# missed interior holes — a model that cites pages 1–10 and 40–50 of a 50-pager read nothing in
+# between, which is the signature of a skim just as much as a truncated tail is.
+_COVERAGE_GAP_FRACTION = 0.4
 
 
 def _coverage_warning(extraction: dict, page_count: int | None) -> str | None:
-    """Flag a possible skim: when a multi-page document's facts are front-loaded — nothing cited
-    past roughly the first half — the model likely stopped reading. A heuristic, deterministic
-    signal for review, not a hard check: a doc whose material genuinely sits up front trips it too.
-    Facts carry an optional `page`; a doc with no page anchors at all can't be assessed."""
+    """Flag a possible skim: when a large consecutive run of a multi-page document's pages —
+    leading, interior, or trailing — is cited by no fact, the model likely skipped it (#339).
+    A heuristic, deterministic signal for review, not a hard check: a genuinely boilerplate span
+    (standard-form clauses, recitals) legitimately goes uncited and trips it too. Facts carry an
+    optional `page`; a doc with no page anchors at all can't be assessed."""
     if not page_count or page_count < _COVERAGE_MIN_PAGES:
         return None
     facts = extraction.get("document", {}).get("key_facts", [])
     cited = sorted({f["page"] for f in facts
                     if isinstance(f, dict) and isinstance(f.get("page"), int)
-                    and not isinstance(f.get("page"), bool)})
+                    and not isinstance(f.get("page"), bool)
+                    and 1 <= f["page"] <= page_count})   # ignore out-of-range citations
     if not cited:
         return None
-    max_cited = cited[-1]
-    if max_cited >= page_count * _COVERAGE_TAIL_FRACTION:
+    # Largest uncited run, including before the first cite and after the last.
+    bounds = [0, *cited, page_count + 1]
+    gap_len, gap_span = 0, (0, 0)
+    for a, b in zip(bounds, bounds[1:]):
+        if b - a - 1 > gap_len:
+            gap_len, gap_span = b - a - 1, (a + 1, b - 1)
+    if gap_len < page_count * _COVERAGE_GAP_FRACTION:
         return None
-    return (f"facts were only extracted from pages {cited[0]}–{max_cited} of {page_count} — the "
-            f"model may have stopped reading early; check pages {max_cited + 1}–{page_count} "
-            f"of the source for anything missed")
+    start, end = gap_span
+    return (f"no facts cite pages {start}–{end} ({gap_len} of {page_count} pages) — the model "
+            f"may have skipped them; check that span of the source for anything missed")
 
 
 def _briefing_facts(doc: dict) -> list[dict]:
