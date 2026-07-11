@@ -67,7 +67,7 @@ This skill is loaded by Watchdog when the document type is an auditor general re
 - **Program objectives not achieved** — the core value-for-money finding: a program spending significant public money that cannot demonstrate it achieved its stated goals.
 - **Performance measurement gaps** — the auditor found the program had no means to measure whether it was achieving results. This is both a finding in itself and a reason why accountability is impossible.
 - **Conflict between program delivery and departmental objectives** — where the audit finds the administering agency's priorities were inconsistent with the program's purpose.
-- **Outsourcing and contractor management** — audits frequently find that government departments awarded contracts to external consultants without competitive process, without clear deliverables, or without monitoring whether deliverables were met.
+- **Outsourcing and contractor management** — audits may find that government departments awarded contracts to external consultants without competitive process, without clear deliverables, or without monitoring whether deliverables were met.
 
 ---
 
