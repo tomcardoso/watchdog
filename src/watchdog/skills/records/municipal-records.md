@@ -134,3 +134,7 @@ This skill is loaded by Watchdog when the document type is a council agenda or m
 - [AMCTO — Association of Municipal Managers, Clerks and Treasurers of Ontario](https://www.amcto.com) — Professional association for Ontario municipal administrators; publishes guidance on records management, conflict-of-interest procedures, and municipal law
 - [OGP Local — Open Government Partnership](https://www.opengovpartnership.org/ogp-local/) — International initiative helping local governments apply open government principles including transparency and accountability
 - [Transparency International — Local Government Knowledge Hub](https://knowledgehub.transparency.org/topics/local-government) — Research portal covering corruption risks in local governance, with case studies and anti-corruption resources from jurisdictions worldwide
+
+### Journalism resources
+
+- [Reporters Committee for Freedom of the Press — Open Government Guide](https://www.rcfp.org/open-government-guide/) — State-by-state guide to US open meetings and public records laws, including access rules for city council, planning commission, and zoning board records

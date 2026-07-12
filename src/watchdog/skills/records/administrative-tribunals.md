@@ -1,5 +1,5 @@
 ---
-description: a decision, order, or ruling from a quasi-judicial administrative tribunal (human rights, competition, privacy, energy, utility, and similar government-created bodies) that is not a court, a labour arbitration, an immigration body, or a professional licensing panel
+description: a decision, order, or ruling from a quasi-judicial administrative tribunal (human rights, competition, privacy, energy, utility, and similar government-created bodies) that is not a court, a labour arbitration, an immigration body, or a professional licensing panel; for the FOI response package itself use `foi-responses`
 ---
 # Domain knowledge — Administrative tribunal records
 
@@ -130,6 +130,7 @@ This skill is loaded by Watchdog when the document type is a decision, order, or
 - [CanLII — Canadian Legal Information Institute](https://www.canlii.org/) — Free, searchable database of decisions from Canadian courts and federal and provincial administrative tribunals, updated within two business days of issuance. The primary public access point for tribunal decisions in Canada.
 - [Canadian Human Rights Tribunal — Decisions Search](https://www.chrt-tcdp.gc.ca/en/human-rights/search-human-rights-decisions) — Searchable database of CHRT decisions, with links to Federal Court and Supreme Court decisions that have interpreted the Canadian Human Rights Act.
 - [UK Courts and Tribunals Judiciary — Tribunals Overview](https://www.judiciary.uk/about-the-judiciary/who-are-the-judiciary/judicial-roles/tribunals/) — Official description of the UK two-tier tribunal structure (First-tier and Upper Tribunal), chamber organization, and jurisdiction.
+- [FCC — Enforcement Actions Database](https://www.fcc.gov/enforcement/orders) — Searchable archive of Federal Communications Commission adjudications, consent decrees, and enforcement orders.
 
 ### Practitioner and public interest
 

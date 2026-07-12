@@ -1,5 +1,5 @@
 ---
-description: a statement of claim, affidavit, judgment, court order, or similar legal proceeding record
+description: a statement of claim, affidavit, judgment, court order, or similar civil legal proceeding record; for bankruptcy or receivership orders use `bankruptcy`, for administrative tribunal decisions use `administrative-tribunals`
 ---
 # Domain knowledge — Court documents
 
@@ -25,7 +25,7 @@ Loaded by Watchdog when the document type is a statement of claim, affidavit, ju
 
 | Field | What to look for |
 |-------|-----------------|
-| **Court file number** | Unique identifier for the proceeding — appears at the top of every document |
+| **Court file number** | Unique identifier for the proceeding — appears at the top of every document (called a "docket number" in US federal and most state courts) |
 | **Court and jurisdiction** | Which court and country/province/state |
 | **Parties** | Full legal name of every plaintiff, defendant, applicant, respondent |
 | **Counsel** | Lawyers for each party — name, firm, and which party they represent |
@@ -60,6 +60,7 @@ Loaded by Watchdog when the document type is a statement of claim, affidavit, ju
 - **Consent order or consent judgment** — the parties agreed. Read the terms carefully: these may contain non-disclosure or non-disparagement terms that are worth noting.
 - **Proceeding struck or dismissed for delay** — plaintiff abandoned the case after starting it. Why?
 - **Case transferred between courts or jurisdictions** — may indicate forum shopping.
+- **Case removed from state to federal court (US)** — a defendant removing a case based on diversity of citizenship or a federal question is a strategic choice; note the stated basis for removal.
 - **Sealing order or publication ban** — something in this case cannot be reported. The existence of the order is itself newsworthy.
 
 ---
@@ -82,6 +83,12 @@ Loaded by Watchdog when the document type is a statement of claim, affidavit, ju
 | **Without prejudice** | Communications made in settlement discussions; generally not admissible |
 | **Costs** | Court's award of legal fees, usually against the losing party |
 | **Certificate of pending litigation (CPL)** | Registered against a property to signal a lawsuit affecting title |
+| **Docket** | US term for the court's official log of filings and proceedings in a case |
+| **Discovery** | Pre-trial exchange of evidence between parties (documents, depositions, interrogatories) |
+| **Motion to dismiss** | A request to end a case before trial, typically for failure to state a valid claim |
+| **Removal** | Moving a case from state to federal court, based on diversity of citizenship or a federal question (US) |
+| **Multidistrict litigation (MDL)** | US federal procedure consolidating similar civil cases from different districts before one judge for pre-trial proceedings |
+| **Class action** | A lawsuit brought by a representative plaintiff on behalf of a larger group with similar claims |
 
 ## Court hierarchy examples
 
@@ -90,6 +97,8 @@ Loaded by Watchdog when the document type is a statement of claim, affidavit, ju
 **Federal Court (Canada):** Federal Court → Federal Court of Appeal → Supreme Court of Canada
 
 **United States (federal):** US District Court → US Court of Appeals (Circuit) → US Supreme Court
+
+**United States (state, general pattern):** Trial court (named Circuit Court, Superior Court, District Court, or — confusingly, in New York — "Supreme Court") → intermediate appellate court (where one exists) → state court of last resort (called the Court of Appeals in New York, the Supreme Court in most other states)
 
 **United Kingdom:** Magistrates Court / County Court → High Court → Court of Appeal → UK Supreme Court
 
