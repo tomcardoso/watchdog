@@ -49,11 +49,11 @@ This skill is loaded by Watchdog when the document type is a grievance arbitrati
 
 ### Grievance arbitration
 
-- **Discipline or discharge grievances** — arbitration of discipline or termination cases often involves detailed findings about workplace misconduct. The arbitrator's factual findings are credibility-tested accounts of what occurred.
+- **Discipline or discharge grievances** — arbitration of discipline or termination cases may involve detailed findings about workplace misconduct. The arbitrator's factual findings are credibility-tested accounts of what occurred.
 - **Serial grievances by the same employee against the same employer** — a pattern of grievances filed by the same individual may indicate a targeted workplace conflict or a systemic management problem.
 - **Discipline grievances involving safety** — a worker disciplined for refusing unsafe work (a protected right under occupational health and safety legislation in most jurisdictions) is a significant matter.
 - **Settlement that reinstates a worker dismissed for cause** — a settlement where a worker dismissed for serious misconduct is reinstated may indicate the employer's case was weak or the process was flawed.
-- **Arbitration of human rights-related issues** — a grievance involving discrimination, harassment, or accommodation often contains detailed factual findings about the workplace. The human rights dimension is worth flagging even when the grievance is framed as a contract dispute.
+- **Arbitration of human rights-related issues** — a grievance involving discrimination, harassment, or accommodation often contains detailed accounts of the workplace's environment. The human rights dimension is worth flagging even when the grievance is framed as a contract dispute.
 
 ### Labour board proceedings
 
@@ -107,7 +107,7 @@ This skill is loaded by Watchdog when the document type is a grievance arbitrati
 
 ## What investigators typically miss
 
-1. **The factual findings in a discharge arbitration** — an arbitration award on a dismissal for cause contains detailed, credibility-tested findings about what happened. These findings are public and often contain significant information about workplace misconduct.
+1. **The factual findings in a discharge arbitration** — an arbitration award on a dismissal for cause contains detailed, credibility-tested findings about what happened. These findings may be public and might contain significant information about workplace misconduct.
 2. **The remedy as a signal** — an arbitrator who reinstates a worker with full back pay versus one who reinstates with a reduced remedy versus one who upholds the dismissal are sending very different signals about the employer's conduct.
 3. **Employment tribunal / EI appeal decisions** — in many jurisdictions, decisions on employment insurance or unemployment benefit claims contain detailed accounts of how claimants were treated by employers at termination, including whether departures were voluntary or involuntary.
 4. **Pattern of discipline at the same workplace** — a series of grievances all from the same workplace, involving similar discipline issues, may reveal a systemic management problem or retaliatory environment.

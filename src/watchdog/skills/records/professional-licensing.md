@@ -49,7 +49,7 @@ This skill is loaded by Watchdog when the document type is a discipline decision
 
 ### Trust account and financial misconduct
 
-- **Misappropriation of client funds** — the most serious finding in any regulated profession involving client money. In law, misappropriation of trust funds typically results in disbarment. In finance, it is securities fraud.
+- **Misappropriation of client funds** — the most serious finding in any regulated profession involving client money. In law, misappropriation of trust funds may result in disbarment. In finance, it is securities fraud.
 - **Commingling funds** — mixing client money with personal or business funds violates trust accounting rules in law, real estate, and financial advising. It may not involve theft but is a serious practice failure.
 - **Churning** — in investment advising, churning means trading excessively in a client's account to generate commissions. Look for trading frequency relative to the client's stated risk tolerance and investment objectives.
 - **Unauthorized trading** — executing trades without client consent. Often paired with churning findings.
@@ -113,7 +113,7 @@ This skill is loaded by Watchdog when the document type is a discipline decision
 4. **Parallel criminal proceedings** — serious financial misconduct in a regulated profession often also constitutes fraud or theft. Whether criminal charges were laid — or notably, were not laid — is a separate story.
 5. **The client restitution fund** — law societies, real estate councils, and some other regulatory bodies maintain client restitution funds that compensate victims of practitioner theft. Claims to these funds, which are often public, reveal the scale of client harm.
 6. **Corporate structure of the practice** — professional misconduct often involves a firm, not just an individual. Who else worked at the firm, who owned it, and whether the firm is still operating under a different name are questions the decision itself may not answer.
-7. **Reciprocal discipline** — when a practitioner is disciplined in one jurisdiction, other jurisdictions where they are licensed typically initiate their own discipline proceedings on the same facts. A practitioner disciplined in one province may remain licensed and active in another.
+7. **Reciprocal discipline** — when a practitioner is disciplined in one jurisdiction, other jurisdictions where they are licensed may initiate their own discipline proceedings on the same facts. This doesn't always happen, and a practitioner disciplined in one province may remain licensed and active in another.
 
 ---
 

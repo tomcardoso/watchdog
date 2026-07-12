@@ -54,7 +54,7 @@ Loaded by Watchdog when the document type is a procurement record, tender docume
 - **Sole source without adequate justification** — the government bypassed competition. Justifications typically include national security, only one supplier, or genuine urgency. Weak or circular justifications are red flags.
 - **Splitting contracts** — dividing one large contract into multiple smaller contracts to avoid competitive procurement thresholds. Watch for multiple contracts with the same vendor at the same time for similar work.
 - **Urgency used repeatedly** — a department that regularly invokes urgency to sole-source may be using it to direct work to preferred vendors.
-- **Advance contract award notice (ACAN) or equivalent** — some jurisdictions allow a mechanism to post-justify a sole source by publishing a brief notice. These are often posted during low-attention periods. Few competitors bother to challenge them.
+- **Advance contract award notice (ACAN) or equivalent** — some jurisdictions allow a mechanism to post-justify a sole source by publishing a brief notice. Few competitors bother to challenge them.
 
 ### Contract amendments and scope creep
 
@@ -117,14 +117,14 @@ Loaded by Watchdog when the document type is a procurement record, tender docume
 | **TED** | Tenders Electronic Daily — the EU's official database of public procurement notices and awards |
 | **Proactive / routine disclosure** | Government requirement to publish contract awards above a threshold |
 | **Amendment** | A modification to an existing contract |
-| **Fairness monitor** | An independent observer on large procurements — their reports are often obtainable via access to information |
+| **Fairness monitor** | An independent observer on large procurements — their reports may be public or obtainable via access to information |
 
 ---
 
 ## Relationships to extract
 
 1. **Company → Person**: Vendor principal, the specific public servant who signed the contract, the contracting officer
-2. **Company → Company**: Subcontractors named in the contract or proposal (often disclosed in competitive bids)
+2. **Company → Company**: Subcontractors may be named in the contract or proposal
 3. **Person → Company**: Former public servants now working for vendors — note their former department and role
 4. **Company → Transaction**: Every contract, amendment, call-up, and payment with value and date
 5. **Department → Vendor**: Contracting relationship (with contract type and period)

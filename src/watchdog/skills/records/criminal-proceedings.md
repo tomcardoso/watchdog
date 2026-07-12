@@ -44,7 +44,7 @@ This skill covers criminal proceedings specifically. For non-criminal court docu
 | **Sentence** | Imprisonment, conditional sentence, fine, probation, discharge |
 | **Bail conditions** | Conditions imposed while awaiting trial |
 | **Co-accused** | Other persons charged in the same matter |
-| **Victims / complainants** | Identity (often protected by publication ban or non-publication order) |
+| **Victims / complainants** | Identity (may be protected by publication ban or non-publication order) |
 | **Police officers / investigators** | Names (and badge numbers, if applicable) of the individuals that conducted a criminal investigation |
 
 ---
@@ -68,7 +68,7 @@ This skill covers criminal proceedings specifically. For non-criminal court docu
 
 ### Trial and evidence
 
-- **Evidence excluded by a charter, constitutional, or human rights ruling** — evidence excluded because of a rights violation is often the most important evidence in the case. The exclusion ruling explains what was found and what it produced. Even if excluded from the trial, the underlying facts may be newsworthy.
+- **Evidence excluded by a charter, constitutional, or human rights ruling** — evidence excluded because of a rights violation may be the most important evidence in the case. The exclusion ruling explains what was found and what it produced. Even if excluded from the trial, the underlying facts may be newsworthy.
 - **Credibility findings** — a trial judge's credibility assessment of witnesses, including police officers, is a matter of public record. A finding that an officer was not credible is significant, and could affect other cases they've investigated.
 - **Expert evidence disputes** — where competing experts testified, note the subject matter and which expert the court preferred and why.
 

@@ -108,11 +108,11 @@ Never treat a news story as establishing a fact for which the story itself is th
 
 ## What investigators typically miss
 
-1. **The documents underlying the story** — if a story says "according to documents obtained by [outlet]," seek those documents directly. They may be available through ATI, court records, or the original source.
+1. **The documents underlying the story** — if a story says "according to documents obtained by [outlet]," seek those documents directly. They may be available through FOI, court records, or the original source.
 2. **Prior coverage of the same subject** — a current story is rarely the first. Searching for prior coverage of the same company, individual, or issue often reveals an earlier record of problems.
 3. **The reporter as a source** — the reporter who wrote a story may have documents, sources, and context not in the published article. In an investigation, speaking to journalists who have already covered a subject is a research step.
 4. **What the story doesn't say** — a press release or corporate announcement article often omits information that would complicate the narrative. The absence of certain facts (e.g., a company's regulatory history) is a gap, not a confirmation of a clean record.
-5. **The original vs. the updated version** — online news stories are frequently updated after initial publication. The original version and the current version may differ significantly; the Internet Archive (Wayback Machine) preserves versions at specific crawl times.
+5. **The original vs. the updated version** — online news stories may be updated after initial publication. The original version and the current version may differ significantly; the Internet Archive (Wayback Machine) sometimes preserves versions at specific crawl times.
 6. **Foreign-language coverage** — a person or company that appears clean in English-language coverage may have significant coverage in their home-country press. Always search in the relevant language if there is a foreign connection.
 
 ---

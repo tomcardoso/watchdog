@@ -60,7 +60,7 @@ This skill is loaded by Watchdog when the document type is a pollutant release i
 - **Spill to a watercourse or source water area** — a spill reaching surface water, groundwater, or a municipal water supply is a higher-severity event.
 - **Spill notification delay** — facilities are required to report spills immediately (or within a defined timeframe). A spill discovered in an inspection that was not self-reported is a compliance failure.
 - **Repeat spills at the same facility** — multiple spill events suggest a systemic problem rather than a one-off incident.
-- **Volume underestimation** — initial spill reports often understate the volume released; compare early notification records to final reports.
+- **Volume underestimation** — initial spill reports may understate the volume released; compare early notification records to final reports.
 
 ### Environmental assessments
 

@@ -25,7 +25,7 @@ Before pulling fields, answer four questions about the document:
 | **Document type** | What kind of record this is — name it precisely if possible |
 | **Issuing authority** | The body, office, or individual that produced or certified the document |
 | **Jurisdiction** | The legal or regulatory jurisdiction governing this document |
-| **Date(s)** | Date of creation, date of events described, date of signatures — these are often different |
+| **Date(s)** | Date of creation, date of events described, date of signatures — these may be different |
 | **Reference / file number** | Any identifier assigned by the issuing authority |
 | **Named parties** | Every person and organization named, with their stated role or capacity |
 | **Addresses** | All addresses — residential, business, registered, mailing |

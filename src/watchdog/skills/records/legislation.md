@@ -52,7 +52,7 @@ This skill is loaded by Watchdog when the document type is a statute, regulation
 ### Retroactivity and transitional provisions
 
 - **Retroactive application** — legislation that takes effect before it was passed. This is rare but sometimes lawful; it is always newsworthy when it benefits a particular party.
-- **Grandfather clauses** — provisions exempting existing projects, contracts, or entities from new requirements. Who benefits from the grandfather clause is often the story.
+- **Grandfather clauses** — provisions exempting existing projects, contracts, or entities from new requirements. Take note of who benefits from a grandfather clause.
 - **Sunset clauses** — provisions that automatically expire on a specified date. A law with a sunset clause that the government has repeatedly extended without amendment suggests reluctance to make the provision permanent.
 - **Transitional provisions that gut the new law** — transitional rules that let regulated parties comply with the old standard for years while appearing to have adopted the new one.
 

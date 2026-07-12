@@ -59,13 +59,13 @@ This skill is loaded by Watchdog when the document type is a health regulatory b
 
 - **Departure from accepted standard** — discipline decisions often state that the member "departed from the standard of practice." Note what the standard was and how far the departure went.
 - **Delegation to unqualified persons** — a regulated professional delegating controlled or restricted acts to an unqualified assistant is a systematic safety issue, not just an individual failing.
-- **Billing irregularities connected to care quality** — overbilling (e.g., billing for procedures not performed) often co-occurs with quality-of-care problems.
+- **Billing irregularities connected to care quality** — overbilling (e.g., billing for procedures not performed) may co-occur with quality-of-care problems.
 
 ### Facility and inspection
 
 - **Repeat non-compliance in inspection reports** — a facility cited for the same deficiency across multiple inspection cycles has a systemic problem.
 - **Immediate risk to patients or residents** — inspection reports distinguish between compliance failures that pose an immediate risk to safety and those that are administrative. Flag any "immediate risk" findings.
-- **Staffing levels** — inadequate staffing is a common finding in care facility inspections and is often the root cause of other cited deficiencies.
+- **Staffing levels** — inadequate staffing is a common finding in care facility inspections and may be the root cause of other cited deficiencies.
 - **Unreported critical incidents** — facilities are required to report critical incidents (serious adverse events) to the regulator. A finding that a critical incident was not reported is significant.
 
 ---

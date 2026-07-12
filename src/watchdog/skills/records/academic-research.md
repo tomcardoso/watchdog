@@ -60,7 +60,7 @@ This skill is loaded by Watchdog when the document type is a grant application, 
 
 ### Research misconduct and integrity
 
-- **Retraction notices** — a retracted paper is not just a scientific error; it may indicate fabrication, falsification, or plagiarism. Note the reason given for retraction (which is often vague) and whether the authors agreed.
+- **Retraction notices** — a retracted paper is not just a scientific error; it may indicate fabrication, falsification, or plagiarism. Note the reason given for retraction and whether the authors agreed.
 - **Corrigendum (correction)** — a correction to a published paper. Multiple corrections to the same paper, or corrections involving data or conclusions, are more significant than typographical corrections.
 - **Duplicated data or image manipulation** — reported by watchdog sites like Retraction Watch or PubPeer. Record any retraction as a lead to check against these sources in later research.
 - **Authorship changes in the record** — authorship disputes rarely play out publicly, but they leave documentary traces: a corrigendum that adds or removes an author, a retraction an author declined to sign, or a formal *letter of disassociation* (a separate document in which a researcher publicly disowns a paper bearing their name). Record the change and who initiated it; the bare fact that a paper carried a contested author is usually resolved before publication and rarely documented — the change to the record is the reportable event.
@@ -107,7 +107,7 @@ This skill is loaded by Watchdog when the document type is a grant application, 
 
 ## What investigators typically miss
 
-1. **The acknowledgements section of published papers** — researchers are required to acknowledge all funders. The acknowledgements in peer-reviewed papers often reveal industry funding not disclosed in the grant application.
+1. **The acknowledgements section of published papers** — researchers are typically required to acknowledge all funders. The acknowledgements in peer-reviewed papers may reveal industry funding.
 2. **Partnership grant categories** — many funding agencies have grant categories that explicitly involve industry co-funding. The identity of the industry partner and the terms of the partnership are public in the grant abstracts database.
 3. **The ethics approval does not mean the research was ethical** — an ethics board approval means the board reviewed and approved the protocol. It does not guarantee that the research was conducted as described, that data was accurately reported, or that findings were not selectively published.
 4. **Technology transfer agreements** — when a university licenses research findings to a company or takes equity in a startup formed around research, the terms of those agreements may be accessible through access to information. The university's financial interest in a company affects its independence from that company.

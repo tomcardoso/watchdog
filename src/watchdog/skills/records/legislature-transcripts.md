@@ -47,13 +47,13 @@ This skill is loaded by Watchdog when the document type is a Hansard transcript,
 - **Evasive answers** — a minister who answers a question about Topic A with a prepared statement about Topic B has deflected, not answered. Note the question asked and the answer given.
 - **Shifting explanations across multiple days** — a minister who gives one explanation on Monday and a different explanation on Thursday. Parliamentary records allow precise comparison.
 - **Claims made in the chamber that contradict documents** — a minister who states that no such directive was issued, when a freedom of information release shows it was. The parliamentary statement is the accountability record.
-- **Opposition questions that telegraph a coming story** — parties often use question time to put a minister on the record before a story breaks. If you have a document, check whether it was raised in the chamber and what the minister said.
+- **Opposition questions that telegraph a coming story** — parties have sometimes used question time to put a minister on the record before a story breaks. If you have a document, check whether it was raised in the chamber and what the minister said.
 
 ### Committee testimony
 
 - **Witness testimony that contradicts departmental position** — a departmental official who testifies before a committee in a way that contradicts the minister's public statements.
 - **Redacted documents tabled in committee** — documents tabled in a committee proceeding are part of the parliamentary record even if redacted. The existence of the redaction is itself informative.
-- **Committee reports with dissenting or supplementary opinions** — like royal commission dissents, these often contain the sharpest analysis.
+- **Committee reports with dissenting or supplementary opinions** — like royal commission dissents, these may contain sharp analysis.
 - **Witnesses who refuse or are prevented from answering** — a witness who says "I'd have to get back to the committee on that" or is instructed by counsel not to answer. Track whether the promised follow-up actually arrived.
 - **In camera (private) committee sessions** — committees sometimes go in camera to discuss sensitive matters. The public record shows a gap; the reason given for going in camera is itself informative.
 
@@ -105,7 +105,7 @@ This skill is loaded by Watchdog when the document type is a Hansard transcript,
 
 1. **The official citation** — every statement in Hansard is precisely locatable by date, page, and column. Always record the full citation so that statements can be independently verified.
 2. **Committee evidence vs. main chamber debates** — committee transcripts are published separately from main chamber Hansard. Committee evidence, including witness testimony and document tabling, is often more detailed and more candid than question time exchanges.
-3. **The written question and answer process** — members can submit written questions to the government in many parliamentary systems; the answers are published in the official record and often contain more detailed statistics and admissions than oral answers. These are easy to miss because they appear at the end of a day's proceedings.
+3. **The written question and answer process** — members can submit written questions to the government in many parliamentary systems, which work almost as a super-FOI that the government must answer within a set period of time, sometimes with accompanying documentation. The answers are published in the official record and are often more detailed than oral answers. These are easy to miss, even for political reporters.
 4. **Order Paper notices** — notices of questions, motions, and bills placed on the Order Paper but not yet reached may signal what an opposition party knows or intends to raise.
 5. **Unedited vs. official transcripts** — some legislatures publish a draft or "Blues" transcript before the corrected official version. Comparing them can reveal changes made after the sitting.
 6. **Statements made during debate that conflict with later departmental action** — a minister who commits to a specific course of action during debate and then takes a different course. The parliamentary record is the proof of the original commitment.

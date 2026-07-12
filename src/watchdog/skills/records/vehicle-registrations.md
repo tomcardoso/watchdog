@@ -106,12 +106,12 @@ This skill is loaded by Watchdog when the document type is a motor vehicle regis
 ## What investigators typically miss
 
 1. **Lien registry searches** — a title search alone does not reveal all claims on a vehicle. In most jurisdictions, a separate search of the personal property security registry (PPSA in Canada, UCC in the US) is needed to find all registered security interests.
-2. **Historical registration data** — current registration records show current ownership. Historical registration data — who owned the vehicle in prior years — is often available by FOI from transport authorities and can document patterns of ownership transfer.
+2. **Historical registration data** — current registration records show current ownership. Historical registration data — who owned the vehicle in prior years — is often available publicly or via FOI from transport authorities and can document patterns of ownership transfer.
 3. **The registered address history** — where a vehicle was registered over time tracks the movements and addresses of its owners in a way that is often impossible to obtain from other sources.
 4. **Fleet size as a financial indicator** — the number of vehicles registered to a company at a point in time is a proxy for the scale of its operations. Changes in fleet size before and after regulatory action or financial distress are meaningful.
 5. **Cross-matching vehicle records with corporate registrations** — a vehicle registered to a numbered company whose directors are identifiable through corporate filings links vehicle records to beneficial ownership. This cross-match is rarely done.
 6. **Insurance write-offs and salvage titles** — a vehicle with a salvage or rebuilt title has been written off by an insurer; where it appears with a clean title subsequently, the title has been washed. Title washing is fraud and is common in vehicle trafficking.
-7. **Vessel AIS and port records** — a vessel's registration documents state where it is registered; AIS tracking data (where available) and port arrival records show where it actually goes. Discrepancies between stated itineraries and actual movements are often the story.
+7. **Vessel AIS and port records** — a vessel's registration documents state where it is registered; AIS tracking data (where available) and port arrival records show where it actually goes. Discrepancies between stated itineraries and actual movements could be an important signal.
 
 ---
 

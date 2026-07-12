@@ -99,7 +99,7 @@ This skill is loaded by Watchdog when the document type is an immigration tribun
 ## What investigators typically miss
 
 1. **Anonymization exceptions** — immigration decisions are published with names anonymized as a general rule in many jurisdictions, but decisions involving public figures or public interest matters may be published with names. If you have an un-anonymized version, note that.
-2. **The country condition package** — tribunals compile standardized country condition documents. A decision's reliance on those documents versus independent documentary evidence, and whether they were current, is often decisive on review.
+2. **The country condition package** — tribunals compile standardized country condition documents. A decision's reliance on those documents versus independent documentary evidence, and whether they were current, may be decisive on review.
 3. **The designated or appointed representative** — claimants who are minors or lack capacity must have a designated representative. Note whether one was appointed and who it was.
 4. **Credibility vs. inclusion vs. exclusion** — a decision may reject a claim on credibility grounds without reaching the question of whether the country conditions would warrant protection. The order matters: if the decision-maker finds exclusion (Article 1F) first, the claim is dead regardless of risk.
 5. **The consultant or legal representative's registration** — immigration consultants must be registered in many jurisdictions. If a claimant was represented by an unregistered consultant, that is significant and may be a ground for re-opening the claim.

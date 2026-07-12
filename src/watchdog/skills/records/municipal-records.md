@@ -113,7 +113,7 @@ This skill is loaded by Watchdog when the document type is a council agenda or m
 
 ## What investigators typically miss
 
-1. **The planning consultant and lawyer** — development applications are almost always submitted by a planning consultant or lawyer on behalf of the real applicant. The consultant may appear on dozens of applications before the same committee; their relationship with municipal staff and members is worth examining.
+1. **The planning consultant and lawyer** — development applications may be submitted by a planning consultant or lawyer on behalf of the real applicant. The consultant may appear on dozens of applications before the same committee; their relationship with municipal staff and members is worth examining.
 2. **The agent of record vs. the beneficial owner** — the applicant on a development permit may be a numbered company or a trustee. The beneficial owner — the person who will profit from the approval — may be someone else entirely.
 3. **Conditions attached to a bylaw** — a council may pass a zoning amendment "in principle" subject to conditions (a holding zone). If the conditions are later lifted without scrutiny, that is a second decision worth examining.
 4. **The recused councillor's subsequent vote** — a councillor who declares a conflict on an amendment must also declare a conflict on any subsequent vote on the same matter (e.g. an appeal). Failing to carry the recusal through to related matters is a common violation.

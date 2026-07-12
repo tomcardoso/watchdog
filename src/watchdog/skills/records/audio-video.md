@@ -55,13 +55,13 @@ This skill is loaded by Watchdog when the document type is a YouTube video trans
 
 - **Admissions against interest** — statements by a company executive, government official, or subject of an investigation that acknowledge wrongdoing, awareness of a problem, or inconsistency with public positions. These are the highest-value content in an audio/video source.
 - **Statements that contradict public positions** — an executive who says in an investor call "we have known about this risk for two years" when the company's public position was that the problem was unexpected.
-- **Date of statement relative to events** — the date the content was recorded establishes what the speaker knew and said at that time. This is often more significant than the publication date.
+- **Date of statement relative to events** — the date the content was recorded establishes what the speaker knew and said at that time.
 - **Statements made before an incident vs. after** — a podcast recorded before a company's collapse or a political scandal may contain statements the speaker would not make now.
 
 ### Earnings calls and investor presentations
 
 - **Forward-looking statements and disclaimers** — earnings calls include boilerplate "safe harbour" disclaimers protecting the company from liability for forward-looking statements. The disclaimer is standard; evaluate what was actually said on its merits.
-- **Analyst questions that reveal market concern** — analyst questions in earnings calls often surface problems the company hasn't addressed publicly. The questions themselves are newsworthy even when the answers are evasive.
+- **Analyst questions that reveal market concern** — analyst questions in earnings calls often surface problems the company hasn't addressed publicly. The questions themselves could be of journalistic interest even when the answers are evasive.
 - **Guidance revisions** — a company that revised its guidance downward, or withdrew guidance entirely, without adequate prior disclosure.
 - **CFO or CEO tone and language changes** — a significant change in how an executive discusses a specific topic (from confident to hedged, from detailed to vague) across successive calls may signal deterioration.
 
@@ -119,7 +119,7 @@ For journalism: audio and video quotes require verification against the original
 2. **The publication date vs. the recording date** — a podcast published today may have been recorded weeks ago. If the content refers to events, check whether those events had occurred by the recording date.
 3. **The full context of a clip** — a clip or excerpt may be decontextualized. Always listen to the surrounding context before treating a statement as significant.
 4. **Deleted content** — a video or episode that has been removed from YouTube or a podcast feed may be archived at archive.org, on a mirror site, or in a listener's cache. The fact of deletion is itself significant.
-5. **Earnings call transcripts via free services** — Seeking Alpha, Motley Fool, and company investor relations pages often publish earnings call transcripts. These are more reliable than auto-generated YouTube captions for investor presentations.
+5. **Earnings call transcripts via free services** — Seeking Alpha, Motley Fool, and company investor relations pages often publish earnings call transcripts.
 6. **Foreign-language content** — a YouTube channel or podcast in another language may contain significant statements not captured by English-language research. Auto-translation in YouTube can give a rough understanding; professional translation is needed for direct quotes.
 
 ---

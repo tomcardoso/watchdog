@@ -49,7 +49,7 @@ This skill is loaded by Watchdog when the document type is a WHOIS registration 
 - **Domain registered shortly before a significant event** — a domain registered days or weeks before a company's public launch, a political campaign announcement, or a disinformation campaign is worth noting. Registration date is often the clearest indicator of intent.
 - **Privacy protection masking a registrant** — privacy services (WhoisGuard, DomainsByProxy, Withheld for Privacy) hide registrant details. Their presence is not suspicious in itself, but their use by entities that claim transparency (government agencies, public companies) is inconsistent.
 - **Same registrant email or address across multiple domains** — a shared contact field is the most common way to cluster domains owned by the same person or organization. Historical WHOIS databases often retain pre-privacy-protection data.
-- **Name server clustering** — domains that share name servers are often managed by the same organization even when registrant details differ. This is a powerful linking technique.
+- **Name server clustering** — domains that share name servers may be managed by the same organization even if registrant details differ. This is a powerful linking technique.
 - **Domain squatting patterns** — a portfolio of domains that mimic legitimate organizations (governmentofcanada.com, cbc-news.ca) may be used for phishing, fraud, or impersonation.
 - **Rapid transfer of registration** — a domain transferred to a new registrant shortly before it was used in a suspicious way.
 
@@ -102,9 +102,9 @@ This skill is loaded by Watchdog when the document type is a WHOIS registration 
 
 ## What investigators typically miss
 
-1. **Historical WHOIS data** — current WHOIS records are often privacy-protected, but databases like DomainTools and SecurityTrails retain historical records from before privacy protection was applied. These often contain real registrant details.
+1. **Historical WHOIS data** — current WHOIS records are often privacy-protected, but databases like DomainTools and SecurityTrails retain historical records, which may contain real registrant details.
 2. **Certificate transparency as a discovery tool** — crt.sh logs every SSL certificate issued. Searching for a company name or domain in CT logs reveals all domains they have secured SSL certificates for, including subdomains and related domains not otherwise public.
-3. **Name server as a pivot** — when registrant details are hidden, the name server is often the best pivot. Domains sharing a custom name server (e.g. ns1.companysecretproject.com) are almost certainly controlled by the same entity.
+3. **Name server as a pivot** — when registrant details are hidden, the name server may be a useful pivot. Domains sharing a custom name server (e.g. ns1.companysecretproject.com) may be controlled by the same entity.
 4. **Subdomain enumeration** — the main domain is often just the surface. Subdomains (admin.example.com, api.example.com) may expose infrastructure, internal tools, or related properties. Certificate transparency logs are the best source for subdomain discovery.
 5. **ARIN / RIPE search for IP ownership** — an IP address can be searched in ARIN or RIPE to find who owns the netblock. A netblock allocated to a foreign state entity or an unknown private company when a legitimate business is expected is a red flag.
 6. **BGP routing history** — BGP routing data shows which ASN announced a given IP prefix and when. Hijacking of IP space (a relatively rare but documented attack) appears as a sudden change in which ASN is announcing a prefix.

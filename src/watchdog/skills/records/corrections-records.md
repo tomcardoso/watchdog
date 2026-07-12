@@ -71,7 +71,7 @@ This skill is loaded by Watchdog when the document type is a parole board decisi
 
 ### Systemic and oversight
 
-- **Recommendations from prior inspections not implemented** — correctional investigator and inspectorate reports typically list outstanding recommendations from prior reports. Tracking the implementation rate reveals systemic non-compliance.
+- **Recommendations from prior inspections not implemented** — correctional investigator and inspectorate reports may list outstanding recommendations from prior reports. Tracking the implementation rate could reveal systemic non-compliance.
 - **Overrepresentation statistics** — virtually all Western correctional systems show significant overrepresentation of Indigenous, Black, and racialized populations. When a decision document includes demographic data, extract it; when an inspection report includes population statistics, the overrepresentation figures are often buried.
 - **Legal aid access** — parole hearings are quasi-judicial proceedings where offenders have a right to assistance. Whether legal aid was available and whether the person appeared with representation affects the reliability of the outcome.
 

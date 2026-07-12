@@ -20,7 +20,7 @@ This skill is loaded by Watchdog when the document type is a decision, order, or
 - Agricultural review boards and supply management tribunal decisions
 - Transportation authority decisions (rail, road — aviation is `aircraft-logs`)
 - Utility and rate regulation board decisions
-- In Canada: Canadian Human Rights Tribunal; Canadian Radio-television and Telecommunications Commission (CRTC); National Energy Board / Canada Energy Regulator; Competition Tribunal; Office of the Privacy Commissioner orders; provincial human rights tribunals; Ontario Energy Board
+- In Canada: Canadian Human Rights Tribunal; Canadian Radio-television and Telecommunications Commission (CRTC); National Energy Board / Canada Energy Regulator; Competition Tribunal; Office of the Privacy Commissioner orders; provincial human rights tribunals; Ontario's Landlord and Tenant Board, Ontario Energy Board
 - In the US: Federal Communications Commission (FCC) adjudications; Federal Energy Regulatory Commission (FERC) orders; state public utilities commissions; state human rights agencies
 - In the UK: Competition and Markets Authority (CMA) decisions; Information Commissioner's Office (ICO) enforcement notices; First-tier Tribunal (General Regulatory Chamber); Upper Tribunal
 
@@ -55,14 +55,14 @@ This skill is loaded by Watchdog when the document type is a decision, order, or
 
 ### Competition and regulatory
 
-- **Consent agreements** — when a regulator settles with a company rather than proceeding to a full hearing, the consent agreement often contains admissions of fact that would not appear in a litigated case. These may be underreported.
+- **Consent agreements** — when a regulator settles with a company rather than proceeding to a full hearing, the consent agreement will contain useful admissions of fact.
 - **Undertakings in lieu of divestiture** — in merger reviews, an undertaking (behavioural remedy) instead of a structural one (forced sale) is a weaker outcome that may signal regulatory capture or inadequate enforcement.
 - **Market definition disputes** — in competition matters, how the market is defined largely determines whether anticompetitive conduct is found. A narrow market definition that excludes obvious substitutes benefits the respondent.
 
 ### Human rights
 
 - **Systemic findings** — a human rights decision finding systemic discrimination (affecting a class of people, not just the individual complainant) carries far more significance than an individual finding. The named complainant may be one of hundreds.
-- **Comparator selection** — human rights complaints require identifying a comparator group. Who was chosen and who was not is analytically significant and often contested.
+- **Comparator selection** — in some cases, human rights complaints may identify a comparator group.
 - **Order with a remedy that depends on enforcement** — a human rights order imposing compensation, reinstatement, or a policy change is only as strong as its enforcement, and tribunals often lack enforcement tools and rarely monitor compliance. Record the remedy and any deadline as stated; whether the respondent complied is a lead to check later, not something the order itself shows.
 
 ### Privacy and information
@@ -73,7 +73,7 @@ This skill is loaded by Watchdog when the document type is a decision, order, or
 
 ### Utility and rate regulation
 
-- **Cross-subsidization findings** — a utility regulator finding that one class of ratepayers is subsidizing another is often politically significant and affects different communities differently.
+- **Cross-subsidization findings** — a utility regulator finding that one class of ratepayers is subsidizing another may be politically significant and affect different communities differently.
 - **Deferral accounts** — utilities sometimes defer costs to later rate applications. Accumulated deferral accounts represent future rate increases that are not visible in the current rate.
 
 ---
@@ -88,7 +88,7 @@ This skill is loaded by Watchdog when the document type is a decision, order, or
 | **Complainant** | Universal | The person or organization that filed the complaint |
 | **Respondent** | Universal | The person or organization against whom the complaint is made |
 | **Mediation/conciliation** | Universal | An informal dispute resolution step before a formal hearing |
-| **Summary dismissal** | Universal | Dismissal of a complaint without a full hearing, often on procedural grounds |
+| **Summary dismissal** | Universal | Dismissal of a complaint without a full hearing |
 | **Systemic remedy** | Universal | An order requiring organization-wide change rather than just relief for the individual complainant |
 | **Consent agreement** | Universal | A negotiated settlement with the regulator, often containing admissions of fact |
 | **CRTC** | Canada | Canadian Radio-television and Telecommunications Commission |
@@ -113,7 +113,7 @@ This skill is loaded by Watchdog when the document type is a decision, order, or
 
 ## What investigators typically miss
 
-1. **The minority dissent** — where a panel is split, the dissenting reasons often identify weaknesses in the majority's analysis and signal what arguments were closest to prevailing.
+1. **The minority dissent** — where a panel is split, the dissenting reasons often identify weaknesses in the majority's analysis.
 2. **Consent agreements are not victories** — a consent agreement between a regulator and a company is often framed as an enforcement success, but the agreed-upon facts may represent only a fraction of what investigators found. The investigation report behind a consent agreement is a separate document and may be obtainable via FOI.
 3. **Intervenor lists** — many tribunals allow third parties to intervene. Who intervened and on which side reveals the industry and advocacy landscape around the issue.
 4. **Costs awards against complainants** — in some tribunals, an unsuccessful complainant can be ordered to pay the respondent's costs. This can have a chilling effect; a pattern of cost awards in a particular tribunal could be a systemic story.

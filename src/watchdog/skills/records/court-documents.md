@@ -56,8 +56,8 @@ Loaded by Watchdog when the document type is a statement of claim, affidavit, ju
 
 ### Procedural red flags
 
-- **Default judgment** — the defendant never responded. Either they couldn't be found, couldn't afford counsel, or knew they had no defence.
-- **Consent order or consent judgment** — the parties agreed. Read the terms carefully: these often contain non-disclosure or non-disparagement terms that are worth noting.
+- **Default judgment** — the defendant never responded. Either they couldn't be found, couldn't afford counsel, did not want to respond or knew they had no defence.
+- **Consent order or consent judgment** — the parties agreed. Read the terms carefully: these may contain non-disclosure or non-disparagement terms that are worth noting.
 - **Proceeding struck or dismissed for delay** — plaintiff abandoned the case after starting it. Why?
 - **Case transferred between courts or jurisdictions** — may indicate forum shopping.
 - **Sealing order or publication ban** — something in this case cannot be reported. The existence of the order is itself newsworthy.

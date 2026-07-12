@@ -110,7 +110,7 @@ This skill is loaded by Watchdog when the document type is a campaign finance di
 
 ## What investigators typically miss
 
-1. **Amendments and corrections** — the original return is often superseded by amendments filed months later. Always check for the most recent version; the differences between versions can be the story.
+1. **Amendments and corrections** — the original return may be superseded by amendments filed months later. Always check for the most recent version; the differences between versions can be useful signals.
 2. **The auditor's report** — larger campaigns and parties are required to have their returns audited. A qualified opinion or a note about incomplete records is significant.
 3. **Unpaid claims** — expenses incurred but not yet paid at the time of filing; sometimes a way to defer costs to the next reporting period.
 4. **The chief/official agent's own address** — sometimes the agent's address matches a vendor receiving large payments.
