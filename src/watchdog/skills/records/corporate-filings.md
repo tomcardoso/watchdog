@@ -1,11 +1,11 @@
 ---
-description: a corporate registration, director filing, or similar corporate record
+description: a corporate registration, director filing, shareholder register, or beneficial-ownership record from a corporate registry; for securities disclosures, annual reports, or financial statements use `regulatory-filings` or `financial-statements`
 ---
 # Domain knowledge — Corporate filings
 
-This skill is loaded by Watchdog when the document type is a corporate registration, director filing, or similar corporate record.
+This skill is loaded by Watchdog when the document type is a corporate registration, director filing, or similar corporate registry record.
 
-For standalone financial statements or MD&A, see `financial-statements`; for securities-regulator disclosure documents (material change reports, insider trading reports, prospectuses), see `regulatory-filings`.
+For standalone financial statements or MD&A, see `financial-statements`; for securities-regulator disclosure documents (annual reports, material change reports, insider trading reports, prospectuses), see `regulatory-filings`.
 
 ---
 
@@ -17,8 +17,9 @@ For standalone financial statements or MD&A, see `financial-statements`; for sec
 - Corporate search results (national and provincial/state registries)
 - Beneficial ownership declarations
 - Agent for service of process filings
-- In Canada: provincial and territorial registries; federal registry; SEDAR/SEDAR+ for public companies
-- In the US: State corporate registries (Delaware, Nevada, etc.); SEC EDGAR for public companies
+- Certificates of dissolution, amalgamation, or continuance
+- In Canada: provincial and territorial registries; federal registry (Corporations Canada); extra-provincial registration filings
+- In the US: Secretary of State filings (Delaware, Nevada, California, etc.); statements of information / biennial reports; registered-agent records; FinCEN Beneficial Ownership Information (BOI) reports
 - In the UK: Companies House
 - In Australia: ASIC business name and company registers
 
@@ -42,6 +43,7 @@ For standalone financial statements or MD&A, see `financial-statements`; for sec
 | **Registered agent / agent for service** | The person or firm authorized to receive legal documents |
 | **Share structure** | Classes of shares, authorized and issued counts |
 | **Fiscal year end** | Often December, 31 but not always |
+| **Extra-provincial / foreign qualification** | Whether the company is registered to do business outside its home jurisdiction, and where |
 
 ---
 
@@ -93,7 +95,6 @@ For standalone financial statements or MD&A, see `financial-statements`; for sec
 | **Articles of incorporation** | The founding document — sets out the company's share structure and purpose |
 | **Notice of directors** | A filed document listing current directors |
 | **Annual return** | Annual filing confirming the company is still active and updating director/address info |
-| **SEDAR / SEDAR+** | System for Electronic Document Analysis and Retrieval — Canada's equivalent of EDGAR for public companies |
 
 ### United States
 
@@ -103,6 +104,7 @@ For standalone financial statements or MD&A, see `financial-statements`; for sec
 | **Articles of organization** | The founding document for an LLC (equivalent to Articles of Incorporation for a corporation) |
 | **Operating agreement** | LLC internal governance document — often not publicly filed |
 | **EIN** | Employer Identification Number — US equivalent of a Business Number |
+| **Statement of information** | Periodic filing required by some states (e.g. California) confirming officers, directors, and registered agent are current |
 | **FinCEN BOI** | Beneficial Ownership Information — as of March 2025, the reporting requirement was removed for US domestic companies and applies only to foreign entities registered in the US |
 
 ### UK and others
@@ -121,19 +123,23 @@ For standalone financial statements or MD&A, see `financial-statements`; for sec
 
 Beyond the standard entity extraction, specifically look for and record:
 
-1. **Person → Company**: Director, Officer (with title), Shareholder (with share percentage if stated), Registered Agent, Signing Officer
-2. **Company → Address**: Registered address, Principal place of business (if different), Previous registered address (if shown)
-3. **Company → Company**: Parent/subsidiary (if shares held by another company), Amalgamation predecessor/successor
+1. **Person → Company**: Director, Officer (with title), Shareholder (with share percentage if stated), Registered Agent (where an individual), Signing Officer
+2. **Company → Company**: Registered agent (where a firm), Parent/subsidiary (if shares held by another company), Amalgamation predecessor/successor
+3. **Company → Address**: Registered address, Principal place of business (if different), Previous registered address (if shown)
 4. **Person → Address**: Director's stated address (extract even if it matches company address — that match is itself notable)
 
 ---
 
 ## What investigators typically miss
 
-1. **The signing block** — who signed the filing and in what capacity. If a director signs an annual report but is also a named defendant in a litigation disclosed in the same report, that's notable.
-2. **Date of the annual general meeting** — companies are required to hold an AGM annually. If the AGM date is missing or the filing is very late, it may indicate the company is not being actively maintained.
-3. **Multiple companies registered to the same address** — one way to find other companies owned by an individual or company is to search for registrations under a particular address. Be wary of red herrings: Many businesses will register using a law firm, obfuscating the "true" address for a company. Same goes for P.O. boxes.
-4. **Related filings** — some corporate registries will include an index of all documents filed by a particular business. In some jurisdictions, that might include financial statements, one-time disclosures, etc. If you see an index of related filings, it is often worth requesting those records, too.
+1. **The gap between the event date and the filing date** — a director resignation or address change dated months before it was actually filed with the registry. A large gap can mean the company continued operating with outdated public information, deliberately or not.
+2. **The same registered agent across unrelated companies** — a commercial registered-agent or law-firm address shared across hundreds of unrelated companies is normal; the same individual acting as registered agent for a handful of otherwise-unconnected companies is more likely to be worth a second look.
+3. **Dissolution timing relative to litigation or a regulatory action** — a company dissolved shortly after being named in a lawsuit, labour complaint, or environmental order can be an attempt to make a judgment uncollectible.
+4. **Prior names and prior addresses** — registries usually retain a history of past filings; a company's current name is not always the name under which it did the thing you are investigating.
+5. **The full filing history, not just the current-status snapshot** — many registries let you pull every document ever filed, not just the current printout. That history often has annual returns and director changes the summary page doesn't show.
+6. **Officers who are not listed as directors** — a company's real decision-maker is sometimes an officer (president, CFO) rather than a director; searching for directors alone can miss this person.
+7. **Extra-provincial or foreign qualification filings in a second jurisdiction** — a company doing sustained business outside its home jurisdiction is usually required to register there too; that second filing can reveal directors, addresses, or a registered agent not shown in the home-jurisdiction record.
+8. **The registry's own currency date** — most registries stamp results with a "current as of" date; treat that date as the freshness bound on everything in the printout, not the date of the underlying filing.
 
 ---
 
@@ -144,14 +150,13 @@ Beyond the standard entity extraction, specifically look for and record:
 - [FATF — Guidance on Beneficial Ownership of Legal Persons (2023)](https://www.fatf-gafi.org/content/dam/fatf-gafi/guidance/Guidance-Beneficial-Ownership-Legal-Persons.pdf) — current FATF standards for transparency of legal persons
 - [FATF — Concealment of Beneficial Ownership (2018)](https://www.fatf-gafi.org/en/publications/methodsandtrends/documents/concealment-beneficial-ownership.html) — Egmont Group joint report on techniques used to hide ownership
 - [FinCEN — Beneficial Ownership Information Reporting](https://www.fincen.gov/boi) — US BOI reporting rules; as of March 2025, the requirement applies only to foreign entities registered in the US, not domestic companies
-- [IAS 24 — Related Party Disclosures (IFRS)](https://www.ifrs.org/issued-standards/list-of-standards/ias-24-related-party-disclosures/) — the accounting standard requiring disclosure of related party transactions
-- [IAS 1 — Presentation of Financial Statements (IFRS)](https://www.ifrs.org/issued-standards/list-of-standards/ias-1-presentation-of-financial-statements/) — the accounting standard requiring going concern disclosure
 - [Corporations Canada — Federal Corporate Registry](https://ised-isde.canada.ca/site/corporations-canada/en/corporations-canada) — search tool for federally incorporated Canadian entities (CBCA)
-- [SEDAR+ — Canadian Public Company Filings](https://www.sedarplus.ca/home/) — securities filings for Canadian reporting issuers
+- [NASS — Business Registration](https://www.nass.org/business-services/state-business-filing-links) — the National Association of Secretaries of State's directory of links to every US state's business entity search and registered-agent filing portal
 
 ### Practitioner and public interest
 - [Open Ownership — Principles for Effective Beneficial Ownership Disclosure](https://www.openownership.org/en/principles/) — nine-principle framework for evaluating the quality of a jurisdiction's beneficial ownership regime
 - [Global Witness — Anonymous Company Owners](https://www.globalwitness.org/en/campaigns/corruption-and-money-laundering/anonymous-company-owners/) — investigations and reports on shell company abuse across multiple jurisdictions
+- [OpenCorporates](https://opencorporates.com/) — the largest open database of company registration data, aggregating from official registries across 140+ jurisdictions
 
 ### Notes on unsourced claims
 The claims that amalgamations and series of name changes are used to obscure corporate history are well-established practitioner knowledge but are not cited in a single canonical public document. Treat them as editorial observations pending a specific citation.

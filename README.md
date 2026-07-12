@@ -373,7 +373,7 @@ Skills are jurisdiction-agnostic by default: universal principles come first, wi
 
 | Skill | Covers |
 |-------|--------|
-| [`records/corporate-filings`](src/watchdog/skills/records/corporate-filings.md) | Annual reports, registrations, director filings, beneficial ownership |
+| [`records/corporate-filings`](src/watchdog/skills/records/corporate-filings.md) | Corporate registrations, director filings, shareholder registers, beneficial ownership |
 | [`records/financial-statements`](src/watchdog/skills/records/financial-statements.md) | Audited statements, MD&A, auditor opinions, related-party disclosures |
 | [`records/regulatory-filings`](src/watchdog/skills/records/regulatory-filings.md) | Securities disclosures, insider trading reports, SEDAR+/EDGAR filings |
 | [`records/bankruptcy`](src/watchdog/skills/records/bankruptcy.md) | Bankruptcy filings, creditor lists, trustee reports, restructuring proceedings |
