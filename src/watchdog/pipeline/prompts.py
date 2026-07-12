@@ -66,8 +66,8 @@ def _cache_block(text: str, *, ttl: str = "5m") -> dict:
     return {"type": "text", "text": text, "cache_control": cache_control}
 
 
-def build_extract_prompt(*, pages_text: str, existing_entities: list, skill_text: str,
-                         sidecar: str | None, brief: str | None,
+def build_extract_prompt(*, pages_text: str, existing_entities: list, existing_timeline: list,
+                         skill_text: str, sidecar: str | None, brief: str | None,
                          known_document_types: list, cache_ttl: str = "5m") -> list[dict]:
     # Document identity (sha256/filename/original_path/page_count) and provenance
     # (source/obtained) are stamped onto the result by Python — see
@@ -85,6 +85,9 @@ def build_extract_prompt(*, pages_text: str, existing_entities: list, skill_text
 
     volatile = [f"\nEXISTING_ENTITIES (for dedup + contradiction check):\n"
                f"{json.dumps(existing_entities, ensure_ascii=False)}",
+               f"\nEXISTING_TIMELINE (prior dated events of EXISTING_ENTITIES, deduplicated — "
+               f"each event's 'entities' lists the candidate ids it concerns):\n"
+               f"{json.dumps(existing_timeline, ensure_ascii=False)}",
                _known_types_block(known_document_types)]
     if sidecar:
         volatile.append(f"\nSIDECAR (provenance + notes — context for your extraction):\n{sidecar}")
@@ -98,8 +101,8 @@ def build_extract_prompt(*, pages_text: str, existing_entities: list, skill_text
     ]
 
 
-def build_section_prompt(*, pages_text: str, existing_entities: list, skill_text: str,
-                         carry_forward: str, section_label: str, is_first: bool,
+def build_section_prompt(*, pages_text: str, existing_entities: list, existing_timeline: list,
+                         skill_text: str, carry_forward: str, section_label: str, is_first: bool,
                          known_document_types: list, brief: str | None = None) -> list[dict]:
     # Same cache-block split as build_extract_prompt (A1): instructions + brief + skill lead,
     # since those are the only parts stable across every section of one run — the section
@@ -128,6 +131,9 @@ def build_section_prompt(*, pages_text: str, existing_entities: list, skill_text
         volatile.append(f"\nCARRY-FORWARD (entities/observations from earlier sections — reuse these "
                         f"ids):\n{carry_forward}")
     volatile.append(f"\nEXISTING_ENTITIES:\n{json.dumps(existing_entities, ensure_ascii=False)}")
+    volatile.append(f"\nEXISTING_TIMELINE (prior dated events of EXISTING_ENTITIES, deduplicated — "
+                    f"each event's 'entities' lists the candidate ids it concerns):\n"
+                    f"{json.dumps(existing_timeline, ensure_ascii=False)}")
     volatile.append(f"\nSECTION TEXT:\n{pages_text}")
 
     return [

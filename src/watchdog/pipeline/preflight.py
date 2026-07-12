@@ -49,12 +49,32 @@ def _name_matches(needle: str, text_lower: str) -> bool:
     return re.search(left + re.escape(needle) + right, text_lower) is not None
 
 
-def _digest_events(events: list[dict]) -> list[dict]:
-    """Comparison-relevant fields of an entity's timeline events."""
-    return [
-        {"date": e.get("date"), "event": e.get("event"), "basis": e.get("basis") or "stated"}
-        for e in events
-    ]
+def _timeline_dedup_key(date, event: str) -> tuple:
+    return (date, event.strip().lower())
+
+
+def _hoist_timeline(candidates: list[dict], entities_reg: dict) -> list[dict]:
+    """Shared, deduplicated prior timeline across all candidates (D109).
+
+    `postflight.explode_key_facts` fans one dated key_fact onto every tagged entity's
+    registry timeline, so the same event recurs verbatim across candidates that were all
+    mentioned in the same earlier document. Sending it once per candidate — as the
+    per-entity digest used to — repeats the exact text N times for a fact tagging N
+    entities. Deduplicated here by (date, event text) and tagged with the candidate ids
+    it concerns, mirroring the shape the model emits key_facts in to begin with (D26).
+    """
+    by_key: dict[tuple, dict] = {}
+    for c in candidates:
+        for e in entities_reg.get(c["id"], {}).get("timeline_events", []):
+            date, event = e.get("date"), e.get("event")
+            key = _timeline_dedup_key(date, event or "")
+            entry = by_key.get(key)
+            if entry is None:
+                by_key[key] = {"date": date, "event": event,
+                               "basis": e.get("basis") or "stated", "entities": [c["id"]]}
+            elif c["id"] not in entry["entities"]:
+                entry["entities"].append(c["id"])
+    return sorted(by_key.values(), key=lambda e: (e["date"] or "", e["event"] or ""))
 
 
 def _digest_roles(roles: list[dict]) -> list[dict]:
@@ -110,8 +130,8 @@ def run(vault: Path, sha256: str, *, alias_min_length: int | None = None) -> dic
         p.get("markdown", "") for p in queue.get("pages", [])
     ).lower()
 
-    # Full registry, read once — supplies each candidate's timeline/roles digest so
-    # the model can run the contradiction check without reading note files.
+    # Full registry, read once — supplies each candidate's roles digest and the shared
+    # timeline hoist so the model can run the contradiction check without reading note files.
     entities_reg: dict = {}
     entities_file = vault / ".watchdog" / "Registry" / "entities.json"
     if entities_file.exists():
@@ -142,7 +162,6 @@ def run(vault: Path, sha256: str, *, alias_min_length: int | None = None) -> dic
                     "note_path": note_path,
                     # Carried forward so the model revises rather than clobbers.
                     "summary": _extract_summary(vault / f"{note_path}.md") if note_path else None,
-                    "timeline_events": _digest_events(reg.get("timeline_events", [])),
                     "roles": _digest_roles(reg.get("roles", [])),
                     "analysis": _existing_analysis(vault, note_path),
                     "contradictions": _extract_contradictions(vault / f"{note_path}.md") if note_path else "",
@@ -165,10 +184,14 @@ def run(vault: Path, sha256: str, *, alias_min_length: int | None = None) -> dic
 
     near_dup = queue.get("near_dup", {})
 
+    existing_timeline = _hoist_timeline(candidates, entities_reg)
+
     # Digest-size telemetry (#216): how many bytes of prior-entity context this document's
-    # extraction prompt is carrying, and across how many candidates. Surfaced per-doc during ingest
-    # so cap sizes can be chosen from real data on a mature vault rather than guessed.
-    existing_entities_bytes = len(json.dumps(candidates, ensure_ascii=False))
+    # extraction prompt is carrying — candidates plus the shared timeline — and across how many
+    # candidates. Surfaced per-doc during ingest so cap sizes can be chosen from real data on a
+    # mature vault rather than guessed.
+    existing_entities_bytes = (len(json.dumps(candidates, ensure_ascii=False))
+                                + len(json.dumps(existing_timeline, ensure_ascii=False)))
 
     return {
         "sha256":             queue.get("sha256", sha256),
@@ -182,6 +205,7 @@ def run(vault: Path, sha256: str, *, alias_min_length: int | None = None) -> dic
             "top_similarity":  near_dup.get("top_similarity", 0.0),
         },
         "existing_entities":  candidates,
+        "existing_timeline":  existing_timeline,
         "existing_entities_bytes": existing_entities_bytes,
         "existing_entities_count": len(candidates),
         "known_document_types": known_document_types,
