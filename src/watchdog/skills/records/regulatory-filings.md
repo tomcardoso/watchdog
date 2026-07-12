@@ -1,5 +1,5 @@
 ---
-description: a securities disclosure, insider trading report, continuous disclosure document, prospectus, or similar filing with a securities regulator
+description: a securities disclosure, insider trading report, continuous disclosure document, prospectus, proxy statement, or similar filing with a securities regulator (10-K, 10-Q, 8-K, DEF 14A, AIF); for the financial statements themselves use `financial-statements`, for corporate registry records use `corporate-filings`
 ---
 # Domain knowledge — Regulatory filings
 
@@ -16,12 +16,13 @@ For the financial statements themselves (balance sheet, income statement, audito
 - Material change reports and current reports (material events)
 - Insider trading reports
 - Early warning / large shareholder disclosure filings
+- Proxy statements and management information circulars
 - Prospectuses (final and preliminary)
 - Shelf prospectuses and supplements
 - Business acquisition reports
 - Technical reports (mining and resource sector)
-- In Canada: Annual Information Forms (AIF); Material Change Reports (MCR); SEDI insider trading reports; Early Warning Reports (EWR); NI 43-101 technical reports; SEDAR+ filings generally
-- In the US: SEC Form 10-K (annual); 10-Q (quarterly); 8-K (material events); Form 4 (insider transactions); Forms 13D/G (5%+ shareholder); EDGAR filings generally
+- In Canada: Annual Information Forms (AIF); Material Change Reports (MCR); SEDI insider trading reports; Early Warning Reports (EWR); management information circulars; NI 43-101 technical reports; SEDAR+ filings generally
+- In the US: SEC Form 10-K (annual); 10-Q (quarterly); 8-K (material events); proxy statements (DEF 14A); Form 4 (insider transactions); Forms 13D/G (5%+ shareholder); EDGAR filings generally
 - In the UK: Annual reports filed with Companies House; Regulatory News Service (RNS) disclosures; FCA filings
 - In Australia: ASX continuous disclosure announcements; ASIC filings
 
@@ -109,6 +110,7 @@ For the financial statements themselves (balance sheet, income statement, audito
 | **Form 4** | Insider transaction report — must be filed within 2 business days of a trade |
 | **13D** | Filed when a person acquires more than 5% of a company with intent to influence it |
 | **13G** | Filed when a person acquires more than 5% as a passive investor |
+| **DEF 14A** | The definitive proxy statement — contains executive compensation, related-party transactions, and director elections for the annual shareholder meeting |
 | **Reg FD** | Regulation Fair Disclosure — prohibits selective disclosure of material non-public information |
 | **SOX certifications** | Sarbanes-Oxley Section 302 and 906 certifications — CEO and CFO personally certify financial statement accuracy |
 
