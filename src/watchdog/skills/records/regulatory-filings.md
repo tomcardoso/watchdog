@@ -1,5 +1,5 @@
 ---
-description: a securities disclosure, insider trading report, continuous disclosure document, prospectus, proxy statement, or similar filing with a securities regulator (10-K, 10-Q, 8-K, DEF 14A, AIF); for the financial statements themselves use `financial-statements`, for corporate registry records use `corporate-filings`
+description: a securities disclosure, annual report, insider trading report, continuous disclosure document, prospectus, proxy statement, or similar filing with a securities regulator (10-K, 10-Q, 8-K, DEF 14A, AIF); for the financial statements themselves use `financial-statements`, for corporate registry records use `corporate-filings`
 ---
 # Domain knowledge — Regulatory filings
 
