@@ -35,6 +35,10 @@ This skill is loaded by Watchdog when the document type is a campaign finance di
 | **Total contributions received** | Gross amount raised |
 | **Total expenses** | Gross amount spent |
 | **Largest contributors** | Names, amounts, dates and any other information (e.g. addresses) of large donors |
+| **Donor address** | Street address as filed — required in most disclosure regimes and useful for spotting clustering |
+| **Donor employer / occupation** | Required on US FEC filings for individual contributions; in Canada, the postal code often substitutes as the closest available geographic/occupational proxy |
+| **Contribution date** | The date of each individual contribution, not just the reporting period |
+| **Aggregate contributions to date** | The running total from a single donor across the election cycle or reporting year — required once a donor crosses a threshold |
 | **Third-party sponsor** | Name and address of any third party buying political advertising |
 
 ---
@@ -49,6 +53,9 @@ This skill is loaded by Watchdog when the document type is a campaign finance di
 - **Out-of-district donors making up a large share of a candidate's fundraising** — worth noting, especially if those donors cluster around a specific industry or employer.
 - **Late-reported contributions** — amendments filed after the original return may indicate contributions that were initially concealed or misattributed.
 - **Loans from individuals or companies** — loans to campaigns may be repaid from future fundraising, effectively laundering a contribution. Look for loan terms, lender identity, and repayment status.
+- **Multiple donors listed at the same address** — several individually maxed-out contributions from one residential or business address may indicate a straw-donor scheme, where a company or individual reimburses others to contribute in their names. Not automatically improper — could be a household or shared office — but worth flagging as a pattern.
+- **Employer clustering** — a run of donations at or near the maximum from employees of the same company, especially donors with similar or junior job titles, may suggest employer pressure or reimbursement rather than independent giving.
+- **Coordinated round-number maximums near the legal limit** — several donors each giving the exact same round figure just under the contribution limit, especially within a short window, is a pattern consistent with coordinated giving and may be worth a closer look.
 
 ### Third-party advertising
 
@@ -99,12 +106,13 @@ This skill is loaded by Watchdog when the document type is a campaign finance di
 
 ## Relationships to extract from election filings
 
-1. **Person → Campaign**: Donor (with amount and date), Official Agent, Chief Agent
-2. **Person → Party/EDA**: Donor, Officer, Director
-3. **Company → Campaign**: Vendor (with payment amount and purpose) — flag if corporate, as corporate donations are restricted in many jurisdictions
-4. **Third party → Election**: Registered third party (with registration date, sponsor, and total spend)
-5. **Campaign → Vendor**: Payment (with amount, date, and stated purpose)
-6. **Campaign → Campaign**: Transfer (inter-candidate or candidate-to-party)
+1. **Person → Campaign**: Donor (with amount, date, aggregate-to-date, address, and employer/occupation where stated), Official Agent, Chief Agent
+2. **Person → Candidate**: Donor (with the same contribution attributes) where the filing is candidate-specific rather than party-wide
+3. **Person → Party/EDA**: Donor, Officer, Director
+4. **Company → Campaign**: Vendor (with payment amount and purpose) — flag if corporate, as corporate donations are restricted in many jurisdictions
+5. **Third party → Election**: Registered third party (with registration date, sponsor, and total spend)
+6. **Campaign → Vendor**: Payment (with amount, date, and stated purpose)
+7. **Campaign → Campaign**: Transfer (inter-candidate or candidate-to-party)
 
 ---
 
@@ -126,6 +134,7 @@ This skill is loaded by Watchdog when the document type is a campaign finance di
 - [Annual Limits on Contributions — Elections Canada](https://www.elections.ca/content.aspx?section=pol&dir=lim&document=lim2025&lang=e) — Current indexed contribution limits for registered parties and candidates under the Canada Elections Act
 - [Campaign Finance Data — FEC](https://www.fec.gov/data/) — Federal Election Commission portal for US federal campaign finance disclosures; searchable by candidate, committee, donor, and expenditure
 - [Introduction to Campaign Finance and Elections — FEC](https://www.fec.gov/introduction-campaign-finance/) — Plain-language overview of US campaign finance law, who can give and how, and how to research public data
+- [Contributions in the Name of Another — FEC](https://www.fec.gov/help-candidates-and-committees/candidate-taking-receipts/contributions-name-another/) — Official FEC explainer on the straw-donor / conduit-contribution prohibition, the legal basis for scrutinizing same-address and employer-clustered donations
 
 ### Practitioner and public interest
 - [OpenSecrets](https://www.opensecrets.org/) — Nonpartisan research group aggregating FEC data; tracks donor industries, dark money, PAC spending, and bundlers for every federal race
@@ -135,4 +144,4 @@ This skill is loaded by Watchdog when the document type is a campaign finance di
 ### Journalism resources
 - [IRE Resource Center — Campaign Finance Tipsheets](https://www.ire.org/resource-center/tipsheets/?q=campaign+finance) — Tipsheets from Investigative Reporters and Editors on using FEC data, tracking dark money, and working with state campaign finance records
 
-**Notes on unsourced claims:** The red flag on contribution structuring just below disclosure thresholds is a well-documented practice in enforcement literature but the specific thresholds vary by jurisdiction and change frequently; always verify current limits directly with the relevant elections authority.
+**Notes on unsourced claims:** The red flag on contribution structuring just below disclosure thresholds is a well-documented practice in enforcement literature but the specific thresholds vary by jurisdiction and change frequently; always verify current limits directly with the relevant elections authority. The employer-clustering and coordinated round-number-maximum patterns are common investigative heuristics, not themselves proof of a violation in isolation; treat them as editorial pattern-recognition pending corroboration.
