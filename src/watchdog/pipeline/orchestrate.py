@@ -396,6 +396,7 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
     """Whole-document extraction, with one repair attempt if post-flight rejects."""
     base = prompts.build_extract_prompt(
         pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
+        existing_timeline=pf.get("existing_timeline", []),
         skill_text=skill_text, sidecar=_read_sidecar(vault, pf["filename"]), brief=brief,
         known_document_types=pf.get("known_document_types", []),
     )
@@ -493,6 +494,7 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
         sec_text = (vault / sec["pages_path"]).read_text(encoding="utf-8")
         prompt = prompts.build_section_prompt(
             pages_text=sec_text, existing_entities=pf.get("existing_entities", []),
+            existing_timeline=pf.get("existing_timeline", []),
             skill_text=skill_text, carry_forward=carry, section_label=sec["label"],
             is_first=(sec["index"] == 1), brief=brief,
             known_document_types=pf.get("known_document_types", []),
@@ -725,6 +727,7 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
     if not item["ok"]:
         prompt = prompts.build_extract_prompt(
             pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
+            existing_timeline=pf.get("existing_timeline", []),
             skill_text=skill_text, sidecar=_read_sidecar(vault, filename), brief=brief,
             known_document_types=pf.get("known_document_types", []))
         if item.get("error"):
@@ -815,6 +818,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
         else:
             prompt = prompts.build_extract_prompt(
                 pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
+                existing_timeline=pf.get("existing_timeline", []),
                 skill_text=skill_text, sidecar=_read_sidecar(vault, pf["filename"]), brief=brief,
                 known_document_types=pf.get("known_document_types", []), cache_ttl="1h")
             batch_docs.append({"sha": sha, "prompt": prompt})

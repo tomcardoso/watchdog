@@ -73,9 +73,11 @@ def test_candidate_enriched_with_digest_and_analysis(tmp_path):
     assert "bob-jones" not in by_id        # name absent from text
 
     a = by_id["alice-smith"]
-    # timeline_events trimmed to comparison fields (no page / source_sha256)
-    assert a["timeline_events"] == [
-        {"date": "2020-03-15", "event": "Appointed director", "basis": "stated"}
+    # timeline events are hoisted out of the per-candidate digest into a shared list
+    assert "timeline_events" not in a
+    assert result["existing_timeline"] == [
+        {"date": "2020-03-15", "event": "Appointed director", "basis": "stated",
+         "entities": ["alice-smith"]}
     ]
     # roles trimmed to comparison fields
     assert a["roles"] == [
@@ -101,9 +103,70 @@ def test_candidate_without_registry_entry_has_empty_digest(tmp_path):
     result = preflight.run(vault, "doc2")
     a = result["existing_entities"][0]
     assert a["id"] == "ghost"
-    assert a["timeline_events"] == []
     assert a["roles"] == []
     assert a["analysis"] == ""
+    assert result["existing_timeline"] == []
+
+
+def test_hoisted_timeline_dedups_event_shared_across_candidates(tmp_path):
+    """`postflight.explode_key_facts` fans one dated key_fact onto every tagged entity's
+    registry timeline, so a fact tagging N candidates would otherwise repeat N times in the
+    prompt. Pre-flight hoists it into one shared entry tagging every candidate id it concerns,
+    while an event unique to one entity stays its own single-id entry."""
+    vault = _vault(tmp_path)
+    reg = vault / ".watchdog" / "Registry"
+    manifest = {
+        "alice-smith": {"name": "Alice Smith", "type": "Person", "aliases": [], "note_path": ""},
+        "bob-jones": {"name": "Bob Jones", "type": "Person", "aliases": [], "note_path": ""},
+    }
+    (reg / "manifest.json").write_text(json.dumps(manifest))
+    entities = {
+        "alice-smith": {"id": "alice-smith", "timeline_events": [
+            {"date": "2020-03-15", "event": "Signed the merger agreement", "basis": "stated"},
+            {"date": "2021-01-01", "event": "Alice-only event", "basis": "stated"},
+        ]},
+        "bob-jones": {"id": "bob-jones", "timeline_events": [
+            {"date": "2020-03-15", "event": "Signed the merger agreement", "basis": "stated"},
+        ]},
+    }
+    (reg / "entities.json").write_text(json.dumps(entities))
+    (reg / "documents.json").write_text("{}")
+    _write_queue(vault, "doc1", "Alice Smith and Bob Jones signed the deal.")
+
+    result = preflight.run(vault, "doc1")
+    by_key = {(e["date"], e["event"]): e for e in result["existing_timeline"]}
+
+    shared = by_key[("2020-03-15", "Signed the merger agreement")]
+    assert sorted(shared["entities"]) == ["alice-smith", "bob-jones"]
+
+    unique = by_key[("2021-01-01", "Alice-only event")]
+    assert unique["entities"] == ["alice-smith"]
+
+    assert len(result["existing_timeline"]) == 2
+
+
+def test_hoisted_timeline_keeps_same_text_different_dates_separate(tmp_path):
+    """Dedup key is (date, event text) — the same wording on two different dates stays two
+    entries, not one."""
+    vault = _vault(tmp_path)
+    reg = vault / ".watchdog" / "Registry"
+    manifest = {
+        "alice-smith": {"name": "Alice Smith", "type": "Person", "aliases": [], "note_path": ""},
+    }
+    (reg / "manifest.json").write_text(json.dumps(manifest))
+    entities = {
+        "alice-smith": {"id": "alice-smith", "timeline_events": [
+            {"date": "2020-03-15", "event": "Filed the annual report", "basis": "stated"},
+            {"date": "2021-03-15", "event": "Filed the annual report", "basis": "stated"},
+        ]},
+    }
+    (reg / "entities.json").write_text(json.dumps(entities))
+    (reg / "documents.json").write_text("{}")
+    _write_queue(vault, "doc1", "Alice Smith filed again.")
+
+    result = preflight.run(vault, "doc1")
+    assert len(result["existing_timeline"]) == 2
+    assert {e["date"] for e in result["existing_timeline"]} == {"2020-03-15", "2021-03-15"}
 
 
 def test_known_document_types_collected_from_registry(tmp_path):
@@ -211,7 +274,9 @@ def test_digest_size_telemetry_reported(tmp_path):
 
     pf = preflight.run(vault, "doc1")
     assert pf["existing_entities_count"] == len(pf["existing_entities"]) == 1
-    assert pf["existing_entities_bytes"] == len(json.dumps(pf["existing_entities"], ensure_ascii=False))
+    expected = (len(json.dumps(pf["existing_entities"], ensure_ascii=False))
+                + len(json.dumps(pf["existing_timeline"], ensure_ascii=False)))
+    assert pf["existing_entities_bytes"] == expected
     assert pf["existing_entities_bytes"] > 0
 
 
@@ -222,4 +287,4 @@ def test_digest_size_telemetry_zero_when_no_candidates(tmp_path):
 
     pf = preflight.run(vault, "doc1")
     assert pf["existing_entities_count"] == 0
-    assert pf["existing_entities_bytes"] == len(json.dumps([]))
+    assert pf["existing_entities_bytes"] == len(json.dumps([])) + len(json.dumps([]))
