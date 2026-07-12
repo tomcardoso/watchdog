@@ -66,9 +66,31 @@ def _cache_block(text: str, *, ttl: str = "5m") -> dict:
     return {"type": "text", "text": text, "cache_control": cache_control}
 
 
+def _file_metadata_block(file_metadata: dict, processing: dict) -> str:
+    """Rendered as data, not instructions — same posture as the SIDECAR block. States the
+    trust caveat explicitly (#369): embedded file metadata is trivially forgeable and often
+    machine-generated, so it's provenance evidence to weigh, never ground truth. The OCR/scanner
+    and template-inheritance caveats are the two concrete failure modes worth naming; ocr_used/
+    source_type (from the queue's processing facts) let the model judge whether a creation date
+    plausibly describes the original or just the scan."""
+    processing = processing or {}
+    return (
+        f"\nFILE_METADATA (embedded file properties the file carries about itself — provenance "
+        f"evidence to weigh, not ground truth. This metadata is trivially forgeable and often "
+        f"machine-generated: a scanner's Producer field says nothing about who authored a "
+        f"scanned original, and an Office template's creation date is inherited by every "
+        f"document built from it. ocr_used={processing.get('ocr_used', False)}, "
+        f"source_type={processing.get('source_type', 'unknown')!r} — when the document was "
+        f"OCR'd, any creation date here likely describes the scan, not the original.):\n"
+        f"{json.dumps(file_metadata, ensure_ascii=False)}"
+    )
+
+
 def build_extract_prompt(*, pages_text: str, existing_entities: list, existing_timeline: list,
                          skill_text: str, sidecar: str | None, brief: str | None,
-                         known_document_types: list, cache_ttl: str = "5m") -> list[dict]:
+                         known_document_types: list, cache_ttl: str = "5m",
+                         file_metadata: dict | None = None,
+                         processing: dict | None = None) -> list[dict]:
     # Document identity (sha256/filename/original_path/page_count) and provenance
     # (source/obtained) are stamped onto the result by Python — see
     # orchestrate._stamp_document — so they are deliberately not asked of the model here.
@@ -91,6 +113,8 @@ def build_extract_prompt(*, pages_text: str, existing_entities: list, existing_t
                _known_types_block(known_document_types)]
     if sidecar:
         volatile.append(f"\nSIDECAR (provenance + notes — context for your extraction):\n{sidecar}")
+    if file_metadata:
+        volatile.append(_file_metadata_block(file_metadata, processing))
     volatile.append(f"\nDOCUMENT TEXT:\n{pages_text}")
 
     return [
@@ -103,7 +127,9 @@ def build_extract_prompt(*, pages_text: str, existing_entities: list, existing_t
 
 def build_section_prompt(*, pages_text: str, existing_entities: list, existing_timeline: list,
                          skill_text: str, carry_forward: str, section_label: str, is_first: bool,
-                         known_document_types: list, brief: str | None = None) -> list[dict]:
+                         known_document_types: list, brief: str | None = None,
+                         file_metadata: dict | None = None,
+                         processing: dict | None = None) -> list[dict]:
     # Same cache-block split as build_extract_prompt (A1): instructions + brief + skill lead,
     # since those are the only parts stable across every section of one run — the section
     # label/metadata-mode note, carry-forward, and section text change on every call, so they
@@ -134,6 +160,8 @@ def build_section_prompt(*, pages_text: str, existing_entities: list, existing_t
     volatile.append(f"\nEXISTING_TIMELINE (prior dated events of EXISTING_ENTITIES, deduplicated — "
                     f"each event's 'entities' lists the candidate ids it concerns):\n"
                     f"{json.dumps(existing_timeline, ensure_ascii=False)}")
+    if file_metadata:
+        volatile.append(_file_metadata_block(file_metadata, processing))
     volatile.append(f"\nSECTION TEXT:\n{pages_text}")
 
     return [

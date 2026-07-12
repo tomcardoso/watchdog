@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from watchdog.pipeline import preprocess
 from watchdog.pipeline.preprocess import (
     is_garbled,
     process_direct_text,
@@ -61,6 +62,38 @@ def test_process_direct_text_default_replaces_invalid_bytes(tmp_path):
     f.write_bytes(b"\x8c\xff\x00\x01")
     result = process_direct_text(f)
     assert result["pages"][0]["markdown"]  # decoded to replacement chars, no raise
+
+
+def test_main_attaches_file_metadata_as_sibling_of_metadata(tmp_path, monkeypatch, capsys):
+    """main() is the single convergence point for all three chew paths (#369) — it must
+    attach `file_metadata` as a top-level key, a sibling of `metadata`, not nested inside it."""
+    f = tmp_path / "doc.txt"
+    f.write_text("hello world")
+    monkeypatch.setattr("sys.argv", ["preprocess.py", str(f)])
+    preprocess.main()
+    result = json.loads(capsys.readouterr().out)
+    assert "file_metadata" in result
+    assert "file_metadata" not in result["metadata"]
+    # .txt carries no embedded metadata layer at all (DIRECT_TEXT_SUFFIXES, not in the
+    # file_metadata dispatch table) — a valid empty dict, not an error.
+    assert result["file_metadata"] == {}
+
+
+def test_main_captures_file_metadata_from_original_path_not_a_temp_file(tmp_path, monkeypatch, capsys):
+    """A stand-in reader confirms main() calls file_metadata.extract() with the resolved
+    original source path — the exact object chew must never substitute a cleaned/temp path for."""
+    f = tmp_path / "doc.txt"
+    f.write_text("hello world")
+    monkeypatch.setattr("sys.argv", ["preprocess.py", str(f)])
+    seen_paths = []
+    monkeypatch.setattr(
+        "watchdog.pipeline.file_metadata.extract",
+        lambda path: (seen_paths.append(path), {"author": "stand-in"})[1],
+    )
+    preprocess.main()
+    result = json.loads(capsys.readouterr().out)
+    assert seen_paths == [f.resolve()]
+    assert result["file_metadata"] == {"author": "stand-in"}
 
 
 def test_process_direct_text_strict_raises_on_invalid_utf8(tmp_path):

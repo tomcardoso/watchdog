@@ -235,6 +235,7 @@ def run(vault: Path, extraction_path: Path, quiet: bool = False, warn=None) -> d
     sha256 = extraction.get("document", {}).get("sha256", "")
     neardup_data: dict = {}
     page_texts: dict[int, str] = {}
+    processing: dict = {}
     if sha256:
         queue_file = vault / ".watchdog" / "queue" / f"{sha256}.json"
         if queue_file.exists():
@@ -245,6 +246,7 @@ def run(vault: Path, extraction_path: Path, quiet: bool = False, warn=None) -> d
                     p["page"]: p.get("markdown", "")
                     for p in q.get("pages", []) if p.get("page") is not None
                 }
+                processing = q.get("metadata", {})
             except Exception:
                 pass
 
@@ -253,6 +255,13 @@ def run(vault: Path, extraction_path: Path, quiet: bool = False, warn=None) -> d
     # never blocks the document.
     from watchdog.pipeline.quote_verify import verify_quotes
     for warning in verify_quotes(extraction, page_texts):
+        _warn(warning)
+
+    # Deterministic date-mismatch check (#369): flags a file whose embedded creation date
+    # postdates its claimed date_of_document by a suspicious margin — annotation only, never
+    # blocks the document, and silent for OCR'd documents (see file_metadata.check_date_mismatch).
+    from watchdog.pipeline.file_metadata import check_date_mismatch
+    for warning in check_date_mismatch(extraction, processing):
         _warn(warning)
 
     # Write the validated (and match_id-resolved) extraction back so write_vault reads it

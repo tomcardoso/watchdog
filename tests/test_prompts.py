@@ -218,6 +218,59 @@ def test_section_prompt_cache_prefix_is_stable_across_sections():
     assert p1[1]["cache_control"] == {"type": "ephemeral"} == p2[1]["cache_control"]
 
 
+# ── FILE_METADATA block (#369) ────────────────────────────────────────────────
+
+def test_extract_prompt_includes_file_metadata_block_when_present():
+    p = prompts.build_extract_prompt(
+        pages_text="x", existing_entities=[], existing_timeline=[], skill_text="", sidecar=None,
+        brief=None, known_document_types=[],
+        file_metadata={"author": "Jane Doe", "producer": "Acrobat"},
+        processing={"ocr_used": False, "source_type": "direct_text"})
+    volatile = p[-1]["text"]
+    assert "FILE_METADATA" in volatile
+    assert "Jane Doe" in volatile and "Acrobat" in volatile
+    assert "ocr_used=False" in volatile
+    assert "source_type='direct_text'" in volatile
+    # trust caveat: forgeable/weigh-don't-trust, OCR/scanner caveat, template-inheritance caveat
+    assert "forgeable" in volatile
+    assert "scanner" in volatile or "scan" in volatile
+    assert "template" in volatile
+
+
+def test_extract_prompt_omits_file_metadata_block_when_empty():
+    p = prompts.build_extract_prompt(
+        pages_text="x", existing_entities=[], existing_timeline=[], skill_text="", sidecar=None,
+        brief=None, known_document_types=[], file_metadata={}, processing={})
+    assert "FILE_METADATA" not in _flat(p)
+
+
+def test_extract_prompt_omits_file_metadata_block_when_not_supplied():
+    """The params are optional — an omitted file_metadata must not error and must not render
+    the block (existing call sites that don't pass it keep working)."""
+    p = prompts.build_extract_prompt(
+        pages_text="x", existing_entities=[], existing_timeline=[], skill_text="", sidecar=None,
+        brief=None, known_document_types=[])
+    assert "FILE_METADATA" not in _flat(p)
+
+
+def test_section_prompt_includes_file_metadata_block_when_present():
+    p = prompts.build_section_prompt(
+        pages_text="x", existing_entities=[], existing_timeline=[], skill_text="", carry_forward="",
+        section_label="pp.1-10", is_first=True, known_document_types=[],
+        file_metadata={"author": "Jane Doe"}, processing={"ocr_used": True, "source_type": "docling"})
+    volatile = p[-1]["text"]
+    assert "FILE_METADATA" in volatile
+    assert "Jane Doe" in volatile
+    assert "ocr_used=True" in volatile
+
+
+def test_section_prompt_omits_file_metadata_block_when_empty():
+    p = prompts.build_section_prompt(
+        pages_text="x", existing_entities=[], existing_timeline=[], skill_text="", carry_forward="",
+        section_label="pp.1-10", is_first=True, known_document_types=[])
+    assert "FILE_METADATA" not in _flat(p)
+
+
 def test_prompt_templates_not_in_skills_catalog():
     """The user-facing guarantee: prompt templates are invisible to the classifier."""
     catalog = set(skills_catalog.catalog())

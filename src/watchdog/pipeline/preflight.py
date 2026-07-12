@@ -209,6 +209,12 @@ def run(vault: Path, sha256: str, *, alias_min_length: int | None = None) -> dic
         "existing_entities_bytes": existing_entities_bytes,
         "existing_entities_count": len(candidates),
         "known_document_types": known_document_types,
+        # File-intrinsic embedded metadata captured at chew time (#369), and the processing
+        # facts (ocr_used/source_type/etc.) the pipeline asserted about how the file was read —
+        # both threaded through to the extraction prompt (prompts.py) and, for the former, to
+        # the stamped document (orchestrate._stamp_document).
+        "file_metadata": queue.get("file_metadata", {}),
+        "processing": queue.get("metadata", {}),
     }
 
 

@@ -379,6 +379,26 @@ def test_stamp_document_provenance_defaults_to_none_when_not_supplied(tmp_path):
     assert d["extract_effort"] is None
 
 
+def test_stamp_document_stamps_file_metadata_from_preflight(tmp_path):
+    """file_metadata (#369) is stamped from pf, the values the pipeline already holds — never
+    asked of the model — same posture as sha256/filename above it."""
+    vault = make_vault(tmp_path)
+    fm = {"author": "Jane Doe", "producer": "Acrobat Distiller"}
+    pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}],
+          "file_metadata": fm}
+    ext = {"document": {}}
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault)
+    assert ext["document"]["file_metadata"] == fm
+
+
+def test_stamp_document_defaults_file_metadata_to_empty_dict(tmp_path):
+    vault = make_vault(tmp_path)
+    pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}]}
+    ext = {"document": {}}
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault)
+    assert ext["document"]["file_metadata"] == {}
+
+
 def test_sidecar_provenance_parsed_in_python(tmp_path):
     """source/obtained come from the .yml sidecar (parsed in Python), not the model — and an
     unquoted ISO date is coerced back to a string rather than a date object."""
@@ -625,6 +645,42 @@ def test_classifier_sees_the_sidecar(tmp_path, monkeypatch):
     asyncio.run(orchestrate.run(vault))
     assert "sidecarhint" in seen["prompt"]
     assert "lobby-registry" in seen["prompt"]
+
+
+def test_extractor_sees_file_metadata_and_processing_facts(tmp_path, monkeypatch):
+    """file_metadata (#369), captured at chew time and threaded through preflight, must reach
+    the extract call's prompt — along with the ocr_used/source_type processing facts the
+    FILE_METADATA block's trust caveat depends on."""
+    vault = make_vault(tmp_path)
+    qdir = vault / ".watchdog" / "queue"
+    qdir.mkdir(parents=True, exist_ok=True)
+    (qdir / "abc123.json").write_text(json.dumps({
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "page_count": 1, "pages": [{"page": 1, "markdown": "Acme Corp filed an annual report."}],
+        "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
+        "metadata": {"ocr_used": True, "source_type": "docling"},
+        "file_metadata": {"author": "Jane Doe", "producer": "Acrobat Distiller"},
+    }))
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+
+    seen = {}
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "extract":
+            seen["prompt"] = _flat(prompt)
+        parsed = {
+            "classify": {"skill": "general-records.md"},
+            "extract": _extraction(),
+            "entity-synthesis": {"entity_syntheses": []},
+            "briefing": {"investigation_status": "x", "what_was_ingested": []},
+        }.get(task, {"events": []})
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate.run(vault))
+    assert "FILE_METADATA" in seen["prompt"]
+    assert "Jane Doe" in seen["prompt"] and "Acrobat Distiller" in seen["prompt"]
+    assert "ocr_used=True" in seen["prompt"] and "source_type='docling'" in seen["prompt"]
 
 
 def test_whole_doc_failure_falls_back_to_sectioning(tmp_path, monkeypatch):

@@ -83,10 +83,11 @@ _DOCUMENT = _obj(
         "obtained": _NULLABLE_STR,
         "summary": {"type": "string"},
         "key_facts": {"type": "array", "items": _KEY_FACT},
+        "file_metadata": {"type": "object"},
     },
-    # sha256/filename/original_path/page_count and source/obtained are stamped by Python
-    # (orchestrate._stamp_document) — deterministic values the pipeline already holds, not
-    # echoed by the model. They stay in `properties` (optional) so the stamped dict validates.
+    # sha256/filename/original_path/page_count, source/obtained, and file_metadata are stamped
+    # by Python (orchestrate._stamp_document) — deterministic values the pipeline already holds,
+    # not echoed by the model. They stay in `properties` (optional) so the stamped dict validates.
     ["title", "document_type", "summary", "key_facts"],
 )
 

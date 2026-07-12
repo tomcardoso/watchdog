@@ -905,6 +905,7 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
             "record_skill_hash": doc.get("record_skill_hash"),
             "extract_model":    doc.get("extract_model"),
             "extract_effort":   doc.get("extract_effort"),
+            "file_metadata":    doc.get("file_metadata") or {},
             "entities_extracted": [e["id"] for e in incoming_entities],
             "near_duplicate_of": doc.get("near_duplicate_of"),
             "minhash":          sig,

@@ -278,6 +278,10 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str, v
     doc["original_path"] = pf.get("original_path")
     doc["page_count"] = pf.get("page_count") or len(pf["pages"])
     doc.update(_sidecar_provenance(vault, pf["filename"]))
+    # File-intrinsic embedded metadata (#369) — captured deterministically at chew time and
+    # stamped here, same posture as sha256/filename above: a claim the file makes about itself,
+    # never asked of the model.
+    doc["file_metadata"] = pf.get("file_metadata") or {}
     # morgue_document_type is just the slug form of document_type — derive it deterministically
     # rather than asking the model for the same fact twice (it names the morgue folder).
     extraction["morgue_document_type"] = slugify(doc.get("document_type") or "") or "document"
@@ -399,6 +403,7 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
         existing_timeline=pf.get("existing_timeline", []),
         skill_text=skill_text, sidecar=_read_sidecar(vault, pf["filename"]), brief=brief,
         known_document_types=pf.get("known_document_types", []),
+        file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
     )
     page_count = pf.get("page_count") or len(pf["pages"])
     cost, errors, extraction, scratchpad = 0.0, [], {}, ""
@@ -498,6 +503,7 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
             skill_text=skill_text, carry_forward=carry, section_label=sec["label"],
             is_first=(sec["index"] == 1), brief=brief,
             known_document_types=pf.get("known_document_types", []),
+            file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
         )
         r = await _call_model(task="extract-section", model=model, backend=backend,
                               prompt=prompt, schema=schemas.SECTION, effort=effort,
@@ -729,7 +735,8 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
             pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
             existing_timeline=pf.get("existing_timeline", []),
             skill_text=skill_text, sidecar=_read_sidecar(vault, filename), brief=brief,
-            known_document_types=pf.get("known_document_types", []))
+            known_document_types=pf.get("known_document_types", []),
+            file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}))
         if item.get("error"):
             prompt = _append_repair_note(prompt, [item["error"]])
         try:
@@ -820,7 +827,8 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
                 pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
                 existing_timeline=pf.get("existing_timeline", []),
                 skill_text=skill_text, sidecar=_read_sidecar(vault, pf["filename"]), brief=brief,
-                known_document_types=pf.get("known_document_types", []), cache_ttl="1h")
+                known_document_types=pf.get("known_document_types", []), cache_ttl="1h",
+                file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}))
             batch_docs.append({"sha": sha, "prompt": prompt})
 
     if sectioned_shas:

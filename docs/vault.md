@@ -120,6 +120,14 @@ When a new document contradicts a fact already in the vault — a different addr
 | Plain text | `.txt`, `.md` | |
 | Audio / video | `.mp3`, `.mp4`, `.m4a`, `.wav` | Requires the optional transcription install — see [Installation](install.md) |
 
+### Embedded file metadata
+
+Most formats above carry metadata about themselves, separate from anything written in the document's own text: a PDF or Office file's author, creation and modification dates, and the software that produced it; an image's camera make and model and, if present, GPS coordinates; an audio or video file's duration and encoder. Watchdog reads whatever a file carries and records it in the document's `documents.json` registry entry — it does not appear in the document note itself.
+
+Treat this metadata as a lead, not a fact. It is trivially easy to forge, and often says nothing about who actually authored a document: a scanner's software name is not the scan's author, and a template's creation date is inherited by every document built from it. Watchdog does one thing with it automatically — if a document's embedded creation date falls a year or more after the date the document itself claims to be from, and the document was not OCR'd, Watchdog flags the mismatch as a warning during ingest. A "2019 agreement" whose file was created in 2023 is worth asking about.
+
+
+
 ### Sidecar files
 
 A `.yml` file with the same base name as a document is a **sidecar** — metadata attached to the file beside it, never ingested as a document itself:
