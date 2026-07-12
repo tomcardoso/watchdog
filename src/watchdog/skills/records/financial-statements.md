@@ -1,5 +1,5 @@
 ---
-description: a balance sheet, income statement, auditor's report, management discussion and analysis (MD&A), or similar financial disclosure; for corporate registry records use `corporate-filings`, for securities-regulator filings around the statements use `regulatory-filings`
+description: a balance sheet, income statement, auditor's report, management discussion and analysis (MD&A), or the annual report of a private company, charity, hospital, university, or other organization built around its financial statements; for corporate registry records use `corporate-filings`, for public-company annual reports and securities-regulator filings use `regulatory-filings`
 ---
 # Domain knowledge — Financial statements
 
@@ -12,6 +12,7 @@ For corporate registry records (registrations, director filings, shareholder reg
 ## Document types covered
 
 - Annual financial statements (audited)
+- Annual reports of private companies, charities, hospitals, and universities (narrative plus audited statements)
 - Interim / quarterly financial statements (reviewed or unaudited)
 - Auditor's reports and management letters
 - Management discussion and analysis (MD&A)
