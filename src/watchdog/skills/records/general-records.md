@@ -68,7 +68,7 @@ For any document type, look for these universal relationship types:
 
 ## What investigators typically miss
 
-1. **The issuing authority's mandate** — every regulatory body or court has a statutory mandate that defines what it can and cannot do. If a document from that body omits something its mandate requires, that omission is the story.
+1. **The issuing authority's mandate** — every regulatory body or court has a statutory mandate that defines what it can and cannot do. If a document from that body omits something its mandate requires, that omission may be significant.
 2. **The difference between "filed" and "accepted"** — a document filed with a regulator or court has not necessarily been reviewed or accepted. Check whether the filing was acknowledged, approved, or challenged.
 3. **Who is authorised to sign** — not everyone who signs an official document is authorised to bind the organisation. A signature from someone without authority can void an agreement or signal an internal breakdown.
 4. **The covering letter or transmittal memo** — documents released in response to FOI or litigation requests often come with a transmittal memo that describes what was and was not provided. This memo is itself a document worth reading.

@@ -71,7 +71,7 @@ This skill is loaded by Watchdog when the document type is a grant application, 
 
 - **Progress report showing a stalled or off-track project** — a progress or final report that acknowledges missed milestones, unspent or reallocated funds, a no-cost extension request, or objectives quietly dropped. These are stated in the report itself. (Whether required reports are missing altogether is an absence the extractor can't see — a human checks that against the agency's filing record; see *What investigators typically miss*.)
 - **Grant funds used for purposes other than stated** — a use-of-funds report showing expenditures inconsistent with the approved budget and research plan.
-- **Grant-funded IP moving to a company the researcher controls** — you will rarely see the improper transfer itself; look for the documentary signals inside these records instead. A COI disclosure naming a startup the PI founded or holds equity in; a progress or accountability report describing commercialization of grant-funded work; or a technology-transfer or licensing agreement whose terms move publicly funded IP to a private company on soft terms. The story is the tension between the grant's public-interest purpose and the private benefit, visible where these documents overlap.
+- **Grant-funded IP moving to a company the researcher controls** — you will rarely see the improper transfer itself; look for the documentary signals inside these records instead. A COI disclosure naming a startup the PI founded or holds equity in; a progress or accountability report describing commercialization of grant-funded work; or a technology-transfer or licensing agreement whose terms move publicly funded IP to a private company on soft terms. The tension between the grant's public-interest purpose and the private benefit, visible where these documents overlap, may be worth a closer look.
 
 ---
 
@@ -98,10 +98,11 @@ This skill is loaded by Watchdog when the document type is a grant application, 
 
 1. **Person → Institution**: Researcher affiliated with university or institute
 2. **Person → Grant**: PI or co-investigator on a funded grant (with amount and agency)
-3. **Person → Company**: Consulting relationship, equity holding, board membership (conflict disclosure)
-4. **Company → Grant**: Industry co-funder or in-kind contributor (with type and value of contribution)
-5. **Institution → Company**: Technology transfer, licensing, or equity arrangement
-6. **Paper → Retraction**: Retracted publication (with date, journal, and stated reason)
+3. **Person → Paper**: Author or co-author (with any subsequent authorship change noted)
+4. **Person → Company**: Consulting relationship, equity holding, board membership (conflict disclosure)
+5. **Company → Grant**: Industry co-funder or in-kind contributor (with type and value of contribution)
+6. **Institution → Company**: Technology transfer, licensing, or equity arrangement
+7. **Paper → Retraction**: Retracted publication (with date, journal, and stated reason)
 
 ---
 

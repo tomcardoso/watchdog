@@ -120,7 +120,7 @@ This skill is loaded by Watchdog when the document type is a lobbyist registrati
 ## What investigators typically miss
 
 1. **Deregistrations** — a lobbyist who stops a registration abruptly is worth checking: did a government decision go their client's way, or did they get caught lobbying without registering?
-2. **The "subject matter" field across time** — compare the stated subject matter to known government decisions during the same period. If the government awarded a contract or changed a regulation consistent with what the lobbyist was pushing, that alignment is the story.
+2. **The "subject matter" field across time** — compare the stated subject matter to known government decisions during the same period. If the government awarded a contract or changed a regulation consistent with what the lobbyist was pushing, that alignment is worth a closer look.
 3. **Lobbyists who are also political donors** — lobbying registrations and election finance records are two separate databases; cross-referencing them shows who has both financial and direct access to politicians.
 4. **Former officials who appear as references or technical contacts** — sometimes a former official doesn't register as a lobbyist but appears as a "subject matter expert" or "technical consultant" on filings.
 5. **The gap between registration and first reported meeting** — if meetings start occurring the same week as registration, the communications may have preceded the registration.
