@@ -1,5 +1,5 @@
 ---
-description: a balance sheet, income statement, auditor's report, management discussion and analysis (MD&A), or similar financial disclosure
+description: a balance sheet, income statement, auditor's report, management discussion and analysis (MD&A), or similar financial disclosure; for corporate registry records use `corporate-filings`, for securities-regulator filings around the statements use `regulatory-filings`
 ---
 # Domain knowledge — Financial statements
 

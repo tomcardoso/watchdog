@@ -1,5 +1,5 @@
 ---
-description: a government-produced report, departmental evaluation, royal commission report, public inquiry report, task force report, advisory council report, or similar policy document produced by or for a government body
+description: a government-produced report, departmental evaluation, royal commission report, public inquiry report, task force report, advisory council report, or similar policy document produced by or for a government body; for auditor general or value-for-money/performance audits, use `audit-reports`
 ---
 # Domain knowledge — Government reports
 

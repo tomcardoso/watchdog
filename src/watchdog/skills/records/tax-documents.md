@@ -1,5 +1,5 @@
 ---
-description: a charity information return, nonprofit tax filing, trust return, or similar tax filing by a nonprofit, charity, or trust
+description: a charity information return, nonprofit tax filing, trust return, or similar tax filing by a nonprofit, charity, or trust; for the nonprofit's own financial statements (balance sheet, income statement), use `financial-statements`
 ---
 # Domain knowledge — Tax documents
 

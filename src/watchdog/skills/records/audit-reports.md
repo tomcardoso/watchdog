@@ -1,5 +1,5 @@
 ---
-description: an auditor general report, value-for-money audit, performance audit, internal audit report, public accounts, inspector general report, or similar public accountability document
+description: an auditor general report, value-for-money audit, performance audit, internal audit report, public accounts, inspector general report, or similar public accountability document; for a company's own audited financial statements use `financial-statements`, for a general policy or inquiry report use `government-reports`
 ---
 # Domain knowledge — Audit reports
 

@@ -1,5 +1,5 @@
 ---
-description: a bankruptcy filing, proposal, creditor list, trustee's or monitor's report, receivership order, CCAA or other court-supervised restructuring proceeding, or similar insolvency record
+description: a bankruptcy filing, proposal, creditor list, trustee's or monitor's report, receivership order, CCAA or other court-supervised restructuring proceeding, or similar insolvency record; for a general civil claim or judgment not tied to insolvency, use `court-documents`
 ---
 # Domain knowledge — Bankruptcy and insolvency records
 
@@ -96,8 +96,8 @@ Loaded by Watchdog when the document type is a bankruptcy filing, proposal, cred
 
 ## Relationships to extract
 
-1. **Person / Company → Person** (Bankrupt): Trustee, legal counsel, principal creditors
-2. **Person / Company → Transaction** (Bankrupt): All pre-bankruptcy transactions of note
+1. **Bankrupt (Person / Company) → Person**: Trustee, legal counsel, principal creditors
+2. **Bankrupt (Person / Company) → Transaction**: All pre-bankruptcy transactions of note
 3. **Company → CourtCase**: Any restructuring or receivership order; any litigation by or against the estate
 4. **Person → Company**: Every company the bankrupt was director of — directors of an insolvent company can have personal liability for unremitted payroll deductions in many jurisdictions
 5. **Creditor → Bankrupt**: Every significant creditor with their claim amount and type (secured/preferred/unsecured)

@@ -1,5 +1,5 @@
 ---
-description: a land registry extract, title search, cadastral record, RDPRM registration, or similar document from a property rights registration system
+description: a land registry extract, title search, cadastral record, RDPRM registration, or similar document from a property rights registration system; for the market transaction itself (deed, mortgage, lien, assessment) use `real-estate`
 ---
 # Domain knowledge — Land registries and title systems
 

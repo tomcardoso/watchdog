@@ -1,5 +1,5 @@
 ---
-description: a criminal court document — including a charging document, bail or remand decision, preliminary hearing transcript, trial decision, sentencing decision, or appeal in a criminal matter
+description: a criminal court document — including a charging document, bail or remand decision, preliminary hearing transcript, trial decision, sentencing decision, or appeal in a criminal matter. For parole, probation, or prison-oversight records use `corrections-records`; for police occurrence, use-of-force, or disciplinary records use `police-records`
 ---
 # Domain knowledge — Criminal proceedings
 

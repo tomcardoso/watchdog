@@ -1,5 +1,5 @@
 ---
-description: a title transfer, deed, mortgage instrument, lien, property assessment, or similar real property market transaction record
+description: a title transfer, deed, mortgage instrument, lien, property assessment, or similar real property market transaction record; for the registry/title system itself (parcel extracts, title searches, caveats) use `land-registries`
 ---
 # Domain knowledge — Real estate records
 

@@ -1,9 +1,9 @@
 ---
-description: a parole board decision, probation order, correctional investigator report, prison inspection report, institutional grievance decision, conditional release record, or similar document originating from correctional services, parole boards, or corrections oversight bodies. For police-generated documents (use-of-force reports, occurrence reports, misconduct decisions), use `police-records` instead
+description: a parole board decision, probation order, correctional investigator report, prison inspection report, institutional grievance decision, conditional release record, or similar document originating from correctional services, parole boards, or corrections oversight bodies. For police-generated documents (use-of-force reports, occurrence reports, misconduct decisions), use `police-records`; for the criminal charge, trial, or sentencing decision itself, use `criminal-proceedings`
 ---
 # Domain knowledge — Corrections, parole, and custody records
 
-This skill is loaded by Watchdog when the document type is a parole board decision, probation order, correctional investigator report, prison inspection report, institutional grievance decision, conditional release record, or similar document originating from correctional services, parole boards, or corrections oversight bodies. For police-generated documents (use-of-force reports, occurrence reports, misconduct decisions), use `police-records` instead.
+This skill is loaded by Watchdog when the document type is a parole board decision, probation order, correctional investigator report, prison inspection report, institutional grievance decision, conditional release record, or similar document originating from correctional services, parole boards, or corrections oversight bodies. For police-generated documents (use-of-force reports, occurrence reports, misconduct decisions), use `police-records` instead. For the criminal charge, trial, or sentencing decision itself, use `criminal-proceedings`.
 
 ---
 
@@ -21,8 +21,10 @@ This skill is loaded by Watchdog when the document type is a parole board decisi
 - Administrative segregation / solitary confinement records and reviews
 - Death-in-custody reviews and reports (not SIU/police oversight — those are `police-records`)
 - Conditional sentence orders (served in community)
+- Disciplinary and classification records (institutional rule violations, security-level assignments)
+- Sentence computation records (calculation of release dates, credited time)
 - In Canada: Parole Board of Canada (PBC) decisions; Correctional Service of Canada (CSC) documents; Office of the Correctional Investigator reports; provincial parole board decisions; provincial correctional service reports
-- In the US: State parole board decisions; Bureau of Prisons inspection reports; Prison Policy Initiative and DOJ oversight reports; state department of corrections records
+- In the US: Federal Bureau of Prisons (BOP) records and inmate locator entries; state Department of Corrections (DOC) records; state parole board decisions; BOP and state DOC disciplinary/classification records; sentence computation records; Prison Policy Initiative and DOJ oversight reports
 - In the UK: Parole Board decisions; His Majesty's Inspectorate of Prisons reports; Prison and Probation Ombudsman reports
 - In Australia: State parole board decisions; Commonwealth and state prison inspection reports
 
@@ -92,6 +94,12 @@ This skill is loaded by Watchdog when the document type is a parole board decisi
 | **Structured Intervention Unit (SIU)** | Canada | Replaced administrative segregation in federal institutions under Bill C-83 (2019) |
 | **Parole Board** | UK | The independent body that assesses whether prisoners can be safely released |
 | **Probation Service** | UK/US | The agency supervising offenders in the community |
+| **BOP** | US | Federal Bureau of Prisons — operates the US federal prison system |
+| **DOC** | US | Department of Corrections — the state-level agency operating state prisons in most US states |
+| **Inmate locator** | US | A BOP or state DOC public search tool showing an incarcerated person's current facility and projected release date |
+| **Sentence computation** | US | The BOP's or a state DOC's calculation of a release date, incorporating credited time and good conduct time |
+| **Good conduct time / good time credit** | US | Time credited against a sentence for compliance with institutional rules, reducing the computed release date |
+| **Classification** | US | The security-level assessment (minimum, low, medium, high) that determines where and how a person is incarcerated |
 | **Determinate sentence** | Universal | A fixed-length sentence with a set release date |
 | **Indeterminate sentence** | Universal | A sentence with no fixed end date; release depends on board decision |
 | **Risk assessment tool** | Universal | A standardized instrument used to predict the likelihood of reoffending |
@@ -133,6 +141,7 @@ This skill is loaded by Watchdog when the document type is a parole board decisi
 - [Parole Board of Canada — Decision Registry](https://www.canada.ca/en/parole-board/services/decision-registry.html) — Public registry of conditional release decisions made by the Parole Board of Canada; any member of the public may request copies by writing to the relevant regional office.
 - [Correctional Service Canada — Reporting to Canadians](https://www.canada.ca/en/correctional-service/corporate/transparency/reporting.html) — CSC's public performance and statistical reporting, including departmental results reports and population data.
 - [Bureau of Justice Statistics — National Prisoner Statistics](https://bjs.ojp.gov/data-collection/national-prisoner-statistics-nps) — US Department of Justice program producing annual national and state-level data on prison populations, demographics, and facility capacity.
+- [Federal Bureau of Prisons — Inmate Locator](https://www.bop.gov/inmateloc/) — Public search tool for current and past federal inmates, showing facility, age, race, and projected release date.
 - [Department of Justice Canada — Overrepresentation of Indigenous People in the Canadian Criminal Justice System](https://www.justice.gc.ca/eng/rp-pr/jr/gladue/p2.html) — Federal research report documenting statistical overrepresentation of Indigenous people in Canadian corrections, including facility-level data used in Gladue analysis.
 
 ### Practitioner and public interest

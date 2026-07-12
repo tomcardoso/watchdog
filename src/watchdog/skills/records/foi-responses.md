@@ -1,5 +1,5 @@
 ---
-description: a freedom of information or access to information response package, severance log, exemption index, or related disclosure record
+description: a freedom of information or access to information response package, severance log, exemption index, or related disclosure record; for an information/privacy commissioner's order or appeal of a refusal, use `administrative-tribunals`
 ---
 # Domain knowledge — Freedom of information responses
 
