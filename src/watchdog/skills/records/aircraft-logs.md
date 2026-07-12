@@ -74,7 +74,7 @@ This skill is loaded by Watchdog when the document type is an aircraft registrat
 
 - **Safety investigation reports** — national aviation safety authorities (TSB in Canada, NTSB in the US, AAIB in the UK, ATSB in Australia, BEA in France) assign investigators to significant aviation occurrences. Final reports include factual findings, safety analysis, and safety recommendations.
 - **Probable cause findings involving maintenance or design** — a systemic cause (not just pilot error) may implicate the manufacturer, maintenance organization, or operator.
-- **Operator's prior safety record** — occurrence reporting systems are public and searchable by operator. An operator with multiple prior incidents is a pattern story.
+- **Operator's prior safety record** — occurrence reporting systems are public and searchable by operator. An operator with multiple prior incidents is a pattern.
 
 ---
 

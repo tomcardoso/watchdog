@@ -109,11 +109,11 @@ This skill is loaded by Watchdog when the document type is a statute, regulation
 
 1. **The regulations that were never made** — statutes sometimes create powers that require regulations before they take effect, and those regulations may never have been drafted. An unproclaimed section of a statute is a power that exists on paper but does nothing.
 2. **Comparison of bill as introduced vs. as passed** — legislative databases in most jurisdictions preserve every version of a bill. Tracking what was removed between first reading and royal assent reveals what the government retreated on, and often who pushed back.
-3. **The regulatory impact assessment** — most modern legislation is accompanied by a regulatory impact assessment or statement. This document contains the government's own estimates of compliance costs and intended beneficiaries. Where the actual effects differ significantly from the RIA, that divergence is a story.
+3. **The regulatory impact assessment** — most modern legislation is accompanied by a regulatory impact assessment or statement. This document contains the government's own estimates of compliance costs and intended beneficiaries. Where the actual effects differ significantly from the RIA, that divergence is worth noting.
 4. **Commencement orders that are delayed or never made** — the date of royal assent is not the date a law comes into force. Some provisions require a proclamation to bring them into force; those proclamations may be delayed indefinitely. Track which sections of a law are actually in force.
 5. **Transitional provisions** — transitional provisions at the end of legislation tell you who gets to keep doing what under the old rules, and for how long. These are frequently buried and underreported but often represent the most significant negotiated accommodations.
 6. **Consequential amendments** — most statutes amend other statutes as a consequence of their main provisions. These consequential amendments can expand or limit the scope of other laws in ways that are not obvious from the bill's title or purpose clause.
-7. **Regulations made without consultation** — compare the regulations as gazetted against any prior consultation draft or proposed regulation. Changes made between the consultation draft and the final version that benefit specific regulated parties are a common lobbying story.
+7. **Regulations made without consultation** — compare the regulations as gazetted against any prior consultation draft or proposed regulation. Changes made between the consultation draft and the final version that benefit specific regulated parties may point to lobbying influence.
 
 ---
 

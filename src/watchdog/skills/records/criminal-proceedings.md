@@ -124,7 +124,7 @@ This skill covers criminal proceedings specifically. For non-criminal court docu
 2. **The charging document** — the charging document is the most precise statement of what the prosecution alleges. It lists every count, the specific statutory section, and the date range of the alleged conduct. Always read it before reading anything else.
 3. **Wiretap or surveillance authorizations** — where a prosecution arose from a wiretap or electronic surveillance investigation, the authorization itself (and the supporting affidavit) may be unsealed after the case concludes. These documents describe the scope and targets of the surveillance.
 4. **Asset restraint orders** — in proceeds-of-crime cases, property may be restrained before conviction and forfeited after. The restraint order describes the property and the alleged connection to crime; it is public when granted.
-5. **The sentencing judge's proportionality analysis** — a sentencing decision explains why a particular sentence is proportionate to the offence and offender. A sentence that departs significantly from the range (upward or downward) is a story.
+5. **The sentencing judge's proportionality analysis** — a sentencing decision explains why a particular sentence is proportionate to the offence and offender. A sentence that departs significantly from the range (upward or downward) is worth noting.
 6. **Co-accused cooperation** — where one co-accused pleaded guilty and received a reduced sentence in exchange for cooperation, the sentencing decision for the cooperating witness often reveals the substance of their assistance and what they admitted.
 
 ---

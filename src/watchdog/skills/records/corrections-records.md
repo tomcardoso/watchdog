@@ -56,7 +56,7 @@ This skill is loaded by Watchdog when the document type is a parole board decisi
 - **Repeat denials without changed circumstances** — a series of parole denials where the stated reasons are identical and no new material is considered. Courts have found this practice unlawful in some jurisdictions.
 - **Detention beyond statutory release** — in Canada, federal offenders have a right to statutory release at two-thirds of their sentence. Detention orders (which override this) must meet a high legal threshold; examine the stated reasons carefully.
 - **Conditions that amount to set-up for failure** — conditions that require abstaining from a substance without providing treatment access, no-contact conditions that cover an offender's entire social network, or residence requirements in areas the offender has no connection to.
-- **Parole granted to people with serious institutional records, denied to those without** — inconsistency in decision-making is a systemic story. Compare the reasoning across multiple decisions.
+- **Parole granted to people with serious institutional records, denied to those without** — inconsistency in decision-making points to a systemic issue. Compare the reasoning across multiple decisions.
 
 ### Probation and community supervision
 

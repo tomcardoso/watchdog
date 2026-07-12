@@ -98,7 +98,7 @@ This skill is loaded by Watchdog when the document type is a police occurrence r
 ## What investigators typically miss
 
 1. **Rights caution and access to counsel** — in occurrence reports involving statements by a subject, note whether the officer recorded advising the subject of their rights. Absence of this note may affect the admissibility of any statement and is itself a procedural flag.
-2. **Witness accounts vs. officer narratives** — occurrence reports reflect the officer's account. Where civilian witnesses or video evidence exists, discrepancies between the officer narrative and other accounts are the story.
+2. **Witness accounts vs. officer narratives** — occurrence reports reflect the officer's account. Where civilian witnesses or video evidence exists, discrepancies between the officer narrative and other accounts are significant.
 3. **The duty roster and radio logs** — a use-of-force incident involves multiple officers; the duty roster shows who was on shift and the radio logs show dispatch communications. These may be obtainable through a freedom of information request and may contradict or complement the occurrence report.
 4. **Complaint withdrawal** — many complaints are withdrawn after informal resolution. A pattern of withdrawals in cases involving a particular officer may indicate complainants are being pressured or discouraged.
 5. **Coroner's inquest jury recommendations** — juries at coroner's inquests make recommendations but have no power to compel action. Tracking whether those recommendations were implemented is an important accountability beat.

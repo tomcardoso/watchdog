@@ -107,7 +107,7 @@ This skill is loaded by Watchdog when the document type is an auditor general re
 3. **The scope limitation note** — an auditor who was unable to obtain certain records may note a scope limitation. This tells you something was not examined that probably should have been.
 4. **Recommendation numbering across years** — recommendations are numbered by chapter and paragraph. Cross-referencing recommendation numbers across multiple years of the same chapter can track whether a specific problem was fixed.
 5. **The chapter title vs. the actual finding** — audit chapters often have bland titles ("Management of Federal Programs") that obscure significant findings. Read the findings and recommendations before concluding the chapter is routine.
-6. **The departmental action plan** — after a performance audit, departments may be required to table an action plan. This document, separate from the management response in the audit, often makes specific commitments with timelines. Following up on these commitments is an ongoing accountability story.
+6. **The departmental action plan** — after a performance audit, departments may be required to table an action plan. This document, separate from the management response in the audit, often makes specific commitments with timelines. Following up on these commitments is often worth doing.
 
 ---
 
