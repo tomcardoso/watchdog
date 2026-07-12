@@ -60,7 +60,7 @@ This is distinct from audit reports (see `audit-reports` skill), which cover aud
 - **Recommendations that repeat prior recommendations** — the same recommendation appears in a prior report (sometimes from years or decades earlier). This shows the problem was identified and not addressed.
 - **Government response that accepts recommendations "in principle"** — a response that agrees with the direction of a recommendation without committing to specific action or a timeline.
 - **Recommendations with no corresponding action** — track the implementation of specific numbered recommendations over time. A gap between what was recommended and what was done may be relevant.
-- **Recommendations directed at a body that no longer exists** — a report addressing a program or structure that was subsequently reorganized may provide cover for inaction.
+- **Recommendations directed at a body that no longer exists** — a report addressing a program or structure that was subsequently reorganized may provide useful insights.
 
 ### Findings and evidence
 
@@ -88,8 +88,6 @@ This is distinct from audit reports (see `audit-reports` skill), which cover aud
 | **Treasury Board** | Canada | The Cabinet committee responsible for government spending and program management |
 | **Departmental evaluation** | Canada | A mandatory periodic review of a program's relevance, effectiveness, and efficiency |
 | **Departmental Results Report (DRR)** | Canada | An annual public accountability document showing how a department performed against its plans |
-| **TRC** | Canada | Truth and Reconciliation Commission — the commission that examined the legacy of residential schools; its 94 calls to action remain a key accountability reference |
-| **National Inquiry into MMIWG** | Canada | The National Inquiry into Missing and Murdered Indigenous Women and Girls — its final report contains 231 calls for justice |
 | **Select committee** | UK / Australia | A parliamentary committee examining a specific issue or government department; equivalent to a standing committee |
 | **Section 21 inquiry** | UK | A statutory public inquiry under the Inquiries Act 2005 |
 
@@ -111,7 +109,7 @@ This is distinct from audit reports (see `audit-reports` skill), which cover aud
 2. **The submissions and exhibits** — royal commissions and parliamentary committees receive written submissions from governments, organizations, and individuals. These submissions are often public and contain admissions and evidence not reproduced in the final report.
 3. **The list of witnesses** — who was called to testify (and who was not) is itself informative. Notable absences may indicate the commission chose not to pursue certain lines of inquiry.
 4. **Progress tracking on prior calls to action** — civil society organizations, academics, and media organizations sometimes independently track implementation of major reports' recommendations. These trackers are authoritative reference points.
-5. **The government's tabling date vs. completion date** — governments sometimes sit on completed reports before tabling them publicly. The gap between when a report was completed and when it was released may be significant.
+5. **The government's tabling date vs. completion date** — governments sometimes sit on completed reports before tabling them publicly. The gap between when a report was completed and when it was released may be of significance.
 6. **The founding instrument** — the order in council, letters patent, or statutory instrument establishing a commission defines its mandate, composition, and powers. Any subsequent narrowing of scope (by the commission or the government) becomes apparent against the original mandate.
 
 ---
