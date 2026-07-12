@@ -76,6 +76,18 @@ For corporate registry records (registrations, director filings, shareholder reg
 - **Large differences between net income and operating cash flow** — the gap shows how much of "profit" is not backed by cash.
 - **Financing cash flows masking operating weakness** — a company that only generates cash by borrowing or selling shares is not self-sustaining.
 
+### Annual report red flags
+
+When the document is a full annual report rather than standalone statements, the narrative wrapper deserves the same scrutiny as the numbers:
+
+**Narrative-versus-numbers divergence** — an upbeat chairman's or CEO's letter paired with deteriorating statements may signal spin worth probing; note what the letter chooses not to mention (a discontinued segment, an impairment, a departed executive the numbers reveal).
+
+**Auditor changes** — a change of auditor, especially mid-year, after a qualified opinion, or from a large firm to a much smaller one, can precede restatements or disputes; the reason given (or not given) for the change is worth recording.
+
+**Risk-factor drift** — risks newly added or quietly dropped compared with the prior year's report can mark what management has started or stopped worrying about; a new, oddly specific risk factor is sometimes the first public trace of an unannounced problem.
+
+**Non-GAAP emphasis** — heavy reliance on adjusted or non-GAAP measures that diverge widening-ly from the audited figures, or a changed definition of an "adjusted" metric between years, may be managing the story the statements can't support.
+
 ### Related party transactions
 
 IFRS, US GAAP, ASPE, and virtually all other accounting standards require disclosure of transactions with related parties (directors, officers, controlling shareholders, affiliated entities). These disclosures are in the notes, often late in the document, and are frequently the most newsworthy content:
