@@ -86,7 +86,7 @@ When the document is a full annual report rather than standalone statements, the
 
 **Risk-factor drift** — risks newly added or quietly dropped compared with the prior year's report can mark what management has started or stopped worrying about; a new, oddly specific risk factor is sometimes the first public trace of an unannounced problem.
 
-**Non-GAAP emphasis** — heavy reliance on adjusted or non-GAAP measures that diverge widening-ly from the audited figures, or a changed definition of an "adjusted" metric between years, may be managing the story the statements can't support.
+**Non-GAAP emphasis** — heavy reliance on adjusted or non-GAAP measures whose gap to the audited figures widens year over year, or a changed definition of an "adjusted" metric between years, may be managing the story the statements can't support.
 
 ### Related party transactions
 
