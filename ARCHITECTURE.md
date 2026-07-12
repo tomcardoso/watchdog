@@ -793,6 +793,21 @@ completed purge, and the CLI hint says so.
   `watchdog show-skills` lists them / opens the GitHub folder; `--skill` / `default_skill`
   pin one (a catalog name or a file path).
 
+**Data sent per call.** Every ingest model call is enumerated below — what it sends to
+the cloud, what it deliberately withholds, and how often it fires. This is the concrete
+backing for I2 (local-first preprocessing): chew makes none of these calls, and
+everything below runs only during `watchdog ingest`.
+
+| Call | Runs | Sent to the model | Withheld |
+|---|---|---|---|
+| **classify** (§6) | once per document; skipped entirely if a skill is pinned | first `classify_pages` pages of extracted text, the in-memory skill-catalog index, the `.yml` provenance sidecar if present | the rest of the document; all entity/registry data |
+| **extract** — whole-doc or per-section (§5) | once per document, or once per section for a document over the sectioning threshold | the page/section text, `EXISTING_ENTITIES` candidates (each matched entity's name/aliases/type plus its note summary, roles digest, and prior contradictions), `EXISTING_TIMELINE` (those candidates' prior dated events, deduplicated across candidates and tagged with which candidate ids each concerns, D109), the matched domain skill, the investigation brief (`context.md`), the `.yml` sidecar, known document types | original-file metadata (EXIF, PDF author fields — stripped at chew, §3); any entity not textually matched against *this* document |
+| **digest** (§5) | once per sectioned document, after merge — whole-doc extraction composes its digest inline instead, with no extra call | filename, title, document_type, page_count, the merged `key_facts` (not the raw text), the domain skill, brief, sidecar | the document's raw text |
+| **entity-synthesis** (§8) | once per run, batched, only for entities appearing in 2+ documents vault-wide | per qualifying entity: its current `## Summary`/`## Analysis` prose plus every accumulated fact fragment tagged to it across all its documents | timeline, relationships, contradictions — deterministic, never seen by a model |
+| **timeline-dedup** (§9) | once per colliding date (0+ per run) | the event text and page for every event sharing that date | entities' full histories; unrelated dates |
+| **timeline-precision** (§9) | once per month mixing month- and day-precision dates | that month's coarse and precise event text + page | other months; entity histories |
+| **briefing** (§9) | once per run, over the whole batch | the investigation brief, compact per-document results (type, date, entity counts, key facts), near-dup alerts, contradiction flags, every document's scratchpad notes | raw document text; full entity notes |
+
 ---
 
 ## 14. Web research mode (investigation layer)
