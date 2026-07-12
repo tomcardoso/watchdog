@@ -16,9 +16,10 @@ This skill is loaded by Watchdog when the document type is a Hansard transcript,
 - Bill readings and debate transcripts
 - Senate or upper house debate transcripts
 - In Canada: House of Commons Hansard; Senate of Canada debates; provincial and territorial legislative assembly Hansards; Standing committee and special committee transcripts
-- In the US: Congressional Record; Congressional hearing transcripts (House and Senate committees)
+- In the US: Congressional Record; Congressional hearing transcripts (House and Senate committees); state legislature floor and committee transcripts (format and naming vary by state)
 - In the UK: UK Hansard (House of Commons and Lords); select committee transcripts
 - In Australia: Hansard (House of Representatives and Senate); Senate Estimates transcripts
+- In other Westminster-derived systems (New Zealand, India, Ireland, and others): Hansard-style verbatim records under similar names
 
 ---
 
@@ -124,3 +125,4 @@ This skill is loaded by Watchdog when the document type is a Hansard transcript,
 ### Practitioner and public interest
 - [OpenParliament.ca](https://openparliament.ca/) — Independent, non-governmental search tool for Canadian House of Commons Hansard transcripts back to 1994; provides topic summaries, MP profiles, and bill tracking in a more accessible interface than the official record
 - [GovTrack.us](https://www.govtrack.us/) — Independent tracker of US congressional activity including voting records, bill progress, and member statistics; operated without government or party affiliation since 2004
+- [Open States (Plural Policy)](https://openstates.org/) — Free tracker aggregating committee and floor activity for all 50 US state legislatures, filling the gap left by Congress-only US resources

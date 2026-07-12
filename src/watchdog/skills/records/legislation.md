@@ -18,9 +18,10 @@ This skill is loaded by Watchdog when the document type is a statute, regulation
 - Codes of conduct with statutory force
 - Proclamations and royal assent notices
 - In Canada: federal Acts; Statutory Orders and Regulations (SOR/); Governor-in-Council (GIC) orders; provincial acts and regulations; Orders in Council (OIC)
-- In the US: federal statutes (Public Laws); Code of Federal Regulations (CFR); executive orders; state statutes and administrative codes
+- In the US: federal statutes (Public Laws); Code of Federal Regulations (CFR); executive orders; state statutes and administrative codes (each state legislates and codifies independently)
 - In the UK: Acts of Parliament; Statutory Instruments (SI); Orders in Council; devolved legislation (Scottish Parliament, Senedd, Northern Ireland Assembly)
 - In Australia: Commonwealth Acts; legislative instruments; state and territory legislation
+- In other Westminster-derived systems (New Zealand, India, Ireland, and others): similarly structured Acts, statutory instruments, and gazettes under jurisdiction-specific names
 
 ---
 
@@ -82,6 +83,7 @@ This skill is loaded by Watchdog when the document type is a statute, regulation
 | **Public Law (P.L.)** | US | The citation form for US federal statutes after enactment |
 | **Code of Federal Regulations (CFR)** | US | The codification of permanent US federal regulatory rules |
 | **Executive order** | US | A directive issued by the President with the force of law, without congressional approval |
+| **Markup** | US | The committee process of amending and approving a bill before it goes to the full chamber |
 | **By-law** | Canada/UK/Australia | Secondary legislation made by a municipal authority or corporation |
 | **Enabling provision** | Universal | The section of an Act that authorizes a minister or body to make regulations |
 | **Privative clause** | Universal | A provision attempting to exclude judicial review of decisions made under the legislation |
@@ -122,8 +124,10 @@ This skill is loaded by Watchdog when the document type is a statute, regulation
 - [LEGISinfo — Parliament of Canada](https://www.parl.ca/legisinfo) — The Parliament of Canada's official bill tracking system, jointly operated by the Senate, House of Commons, and Library of Parliament; covers all bills from first reading through royal assent back to 1994
 - [Canada Gazette](https://gazette.gc.ca/accueil-home-eng.html) — The official newspaper of the Government of Canada, publishing proposed regulations (Part I) and enacted regulations and statutory instruments (Part II); essential for tracking the regulatory process
 - [Congress.gov — Library of Congress](https://www.congress.gov/) — The official US government portal for federal legislation, including bill text, committee reports, the Congressional Record, and roll call votes from the 93rd Congress onward
+- [CRS Reports — Congressional Research Service](https://crsreports.congress.gov/) — Nonpartisan analysis prepared for members of Congress explaining the background, provisions, and policy context of pending and enacted legislation
 - [UK Legislation — National Archives](https://www.legislation.gov.uk/) — The official source for UK primary and secondary legislation, including Acts of Parliament, statutory instruments, and devolved legislation from the Scottish Parliament, Senedd, and Northern Ireland Assembly
 - [EUR-Lex — European Union Law](https://eur-lex.europa.eu/homepage.html) — The official EU law database, providing free access to treaties, regulations, directives, and the Official Journal of the European Union in all 24 EU official languages
 
 ### Practitioner and public interest
 - [GovTrack.us](https://www.govtrack.us/) — Independent, non-governmental tracker of US congressional legislation, voting records, and member activity; operated by Civic Impulse LLC with no government or party affiliation, running since 2004
+- [Open States (Plural Policy)](https://openstates.org/) — Free tracker aggregating bill text, votes, and legislator information for all 50 US state legislatures, complementing the federal-only focus of Congress.gov
