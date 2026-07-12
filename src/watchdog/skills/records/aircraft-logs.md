@@ -89,7 +89,7 @@ This skill is loaded by Watchdog when the document type is an aircraft registrat
 | **AMO** | Approved Maintenance Organization — an organization certified to perform aircraft maintenance |
 | **AD** | Airworthiness Directive — a mandatory inspection or modification order issued by a regulatory authority |
 | **FBO** | Fixed Base Operator — a commercial operation at an airport providing fuel, hangars, and services; often used by private aviation |
-| **METAR / NOTAM** | Meteorological and aeronautical notices — the weather and airspace information available at the time of a flight (relevant in accident investigations) |
+| **METAR / NOTAM** | Meteorological Aerodrome Reports / Notices to Air Missions — The official localized weather observations and critical airspace alerts active at the time of a flight |
 | **VFR / IFR** | Visual Flight Rules / Instrument Flight Rules — the operating conditions under which a flight is conducted |
 | **Squawk code** | A four-digit transponder code that identifies an aircraft to ATC; 7700 signals an emergency |
 | **C-registration** | Canadian civil aircraft registration prefix — C-F and C-G |

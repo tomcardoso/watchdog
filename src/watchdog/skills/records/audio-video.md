@@ -46,14 +46,14 @@ This skill is loaded by Watchdog when the document type is a YouTube video trans
 
 ### Transcript quality
 
-- **Auto-generated transcripts** — YouTube and other platforms generate transcripts by machine. These contain errors, especially on proper nouns, technical terms, names, and numbers. Never rely on an auto-generated transcript for a direct quote without listening to the audio to verify.
+- **Auto-generated transcripts** — YouTube and other platforms generate transcripts by machine. These may contain errors, especially on proper nouns, technical terms, names, and numbers. Never rely on an auto-generated transcript for a direct quote without listening to the audio to verify.
 - **Edited or incomplete transcripts** — a manually prepared transcript may have been selectively transcribed. Note if sections are marked "[inaudible]", "[crosstalk]", or "[portion omitted]" — these gaps may be meaningful.
 - **Speaker identification errors** — in multi-speaker settings, transcription services sometimes misattribute statements. Verify attributions against any available video where speakers are visible.
 - **Translated transcripts** — a transcript translated from another language carries compounded reliability risk (transcription errors + translation errors). Note the source language.
 
 ### Content assessment
 
-- **Admissions against interest** — statements by a company executive, government official, or subject of an investigation that acknowledge wrongdoing, awareness of a problem, or inconsistency with public positions. These are the highest-value content in an audio/video source.
+- **Admissions against interest** — statements by a company executive, government official, or subject of an investigation that acknowledge wrongdoing, awareness of a problem, or inconsistency with public positions. These can be the highest-value content in an audio/video source.
 - **Statements that contradict public positions** — an executive who says in an investor call "we have known about this risk for two years" when the company's public position was that the problem was unexpected.
 - **Date of statement relative to events** — the date the content was recorded establishes what the speaker knew and said at that time.
 - **Statements made before an incident vs. after** — a podcast recorded before a company's collapse or a political scandal may contain statements the speaker would not make now.

@@ -85,8 +85,7 @@ This skill is loaded by Watchdog when the document type is a campaign finance di
 | **Official agent** | The person legally responsible for a candidate's election expenses |
 | **Third party** | Any individual, group, or organization other than a candidate or party that spends money to influence an election |
 | **Election expenses limit** | The maximum a candidate or party can spend during the election period |
-| **Contribution limit** | The maximum an individual may give per year to a registered party — the federal figure is indexed annually and varies by province, so verify the current limit with Elections Canada or the provincial authority |
-| **Reimbursement** | Parties and candidates meeting vote thresholds receive public reimbursement of a portion of expenses |
+| **Contribution limit** | The maximum an individual may give per year to a registered party — the federal figure is indexed annually and varies by province, so verify the current limit with Elections Canada or the provincial authority | **Reimbursement** | Parties and candidates meeting vote thresholds receive public reimbursement of a portion of expenses |
 | **Blackout period** | Period near election day when third-party advertising is restricted |
 
 ### United States

@@ -33,12 +33,15 @@ For corporate registry records (registrations, director filings, shareholder reg
 | **Auditor** | Name of the auditing firm and engagement partner |
 | **Audit opinion type** | Unqualified (clean), qualified, adverse, or disclaimer of opinion |
 | **Total revenue** | For income statement |
+| **EBITDA / Adjusted EBITDA** | Earnings Before Interest, Taxes, Depreciation, and Amortization (and any non-GAAP management adjustments) |
 | **Net income / (loss)** | Profit or loss for the period |
 | **Total assets** | From balance sheet |
 | **Total liabilities** | From balance sheet |
 | **Total equity** | Assets minus liabilities |
 | **Cash and equivalents** | Liquidity indicator |
+| **Deferred revenue** | Unearned revenue representing payments received before goods or services are delivered |
 | **Long-term debt** | Significant borrowings |
+| **Executive indebtedness** | Outstanding loans or credit lines extended to directors or officers |
 | **Accounting standard** | IFRS, ASPE, US GAAP, or other |
 
 ---
@@ -56,16 +59,21 @@ For corporate registry records (registrations, director filings, shareholder reg
 
 ### Income statement red flags
 
+- **Accounting-to-Tax Income Disconnect** — a widening, unexplained gap where reported accounting Earnings Before Taxes (EBT) is significantly higher than implied taxable income (derived from current tax expense).
+- **EBITDA vs. CFO Divergence** — EBITDA running away from actual Cash Flow from Operations (CFO). This occurs when management capitalizes operating-type expenses to bypass EBITDA entirely while draining real cash.
 - **Revenue declining while administrative expenses increase** — the business is shrinking but overhead isn't.
 - **Revenue concentrated in one or few customers** — disclosed in notes as a customer concentration risk. Loss of one customer could be devastating.
 - **Revenue recognition policy** — how and when does the company recognize revenue? Aggressive recognition (recognizing revenue before it's earned) is a common fraud mechanism.
 - **Non-recurring items appearing every year** — "one-time" charges that appear repeatedly are not one-time.
 - **Goodwill impairment** — the company wrote down the value of an acquisition. Often signals the acquisition failed.
+- **COGS vs. Adjusted Metric Shifting** — resource or content companies shifting core inventory costs (e.g., depletion or content rights) into capital assets, then omitting them in adjusted metrics to look artificially cheap.
 
 ### Balance sheet red flags
 
 - **Receivables growing faster than revenue** — may indicate the company is recognizing revenue before customers pay, or that customers aren't paying.
 - **Inventory growing faster than cost of goods sold** — possible overvaluation of inventory, or a business that can't sell what it makes.
+- **Deferred Revenue Drawdown** — a steadily decreasing Deferred-to-Revenue ratio, indicating the company is surviving on a declining backlog rather than fresh sales.
+- **Aggressive Asset Mix ("Soft Assets")** — capital-light or questionable assets (prepaids, deferred preproduction costs, long-term receivables, deferred marketing costs) growing to comprise a high percentage (e.g., ~40%) of total assets.
 - **Related party receivables** — amounts owed by related parties (directors, officers, affiliated companies). These may never be collected.
 - **Negative equity** — liabilities exceed assets. The company is technically insolvent.
 - **Unusual intangible assets** — large values assigned to internally generated intangibles may be inflated.
@@ -87,6 +95,10 @@ When the document is a full annual report rather than standalone statements, the
 **Risk-factor drift** — risks newly added or quietly dropped compared with the prior year's report can mark what management has started or stopped worrying about; a new, oddly specific risk factor is sometimes the first public trace of an unannounced problem.
 
 **Non-GAAP emphasis** — heavy reliance on adjusted or non-GAAP measures whose gap to the audited figures widens year over year, or a changed definition of an "adjusted" metric between years, may be an important signal of financial distress of obfuscation.
+
+**Incentives Tied to Non-GAAP Targets** — executive bonuses, options, or performance shares explicitly benchmarked against non-GAAP metrics (like Adjusted EBITDA) instead of standard GAAP Net Income.
+
+**Insider & Creative Concentration** — major shareholders concurrently serving as senior executives and creative directors, leading to opaque corporate structures, inactive subsidiaries, or unvouched relationships with limited partnerships.
 
 ### Related party transactions
 
@@ -125,8 +137,9 @@ Extract every related party transaction. Note the party, the nature of the trans
 
 1. **Company → Person**: Auditor engagement partner, CFO (who signs off), board audit committee members
 2. **Company → Company**: Auditing firm, subsidiaries and affiliates (from consolidation scope), related parties
-3. **Person / Company → Transaction**: All related party transactions with amounts
-4. **Company → Company (related party)**: Every related party entity named in the notes
+3. **Company → Intermediary / VIE**: Map connections between the primary company and third-parties, specialized distribution channels, limited partnerships, or off-balance-sheet entities (Variable Interest Entities) mentioned in the footnotes
+4. **Person / Company → Transaction**: All related party transactions with amounts
+5. **Company → Company (related party)**: Every related party entity named in the notes
 
 ---
 

@@ -15,7 +15,7 @@ This skill is loaded by Watchdog when the document type is a freedom of informat
 - Proactive or routine disclosure releases
 - Complaint and investigation decisions (information commissioner, ombudsman, or equivalent oversight body)
 - Requests-in-progress logs and disclosure summaries
-- In Canada: Federal ATI (Access to Information) response packages; provincial FOI packages; municipal MFIPPA responses (Ontario)
+- In Canada: Federal ATI (Access to Information) response packages; provincial or municipal FOI responses
 - In the US: FOIA (Freedom of Information Act) response packages; state-level public records responses
 - In the UK: Freedom of Information Act response packages
 - In Australia: FOI Act response packages (federal and state)
@@ -45,7 +45,7 @@ This skill is loaded by Watchdog when the document type is a freedom of informat
 ### Volume and timing
 
 - **High severance rate** — if more than 30–40% of pages are withheld, look at which exemptions are claimed. A blanket use of cabinet confidence, third-party information, or similar exemptions on records that appear routine is worth challenging.
-- **Time taken far beyond the statutory limit** — statutory deadlines vary (30 days federally in Canada and Australia; 20 working days in the UK; 20 business days under US federal FOIA). A response that arrives six to eighteen months late suggests either a backlog or deliberate delay on a politically sensitive file.
+- **Time taken far beyond the statutory limit** — statutory deadlines vary. A response that arrives six to eighteen months late suggests either a backlog or, in rare cases, a deliberate delay on a politically sensitive file.
 - **Response timed to a political event** — institutions sometimes release sensitive records on a Friday afternoon, during a busy news cycle, or just before a legislative recess. Check the response date against the calendar.
 - **Substantively identical requests returned with different severance levels** — if the same records were released to a different requester with less redaction, note the discrepancy.
 

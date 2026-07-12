@@ -42,7 +42,7 @@ For standalone financial statements or MD&A, see `financial-statements`; for sec
 | **Officers** | President, Secretary, CFO, etc. — often different from directors |
 | **Registered agent / agent for service** | The person or firm authorized to receive legal documents |
 | **Share structure** | Classes of shares, authorized and issued counts |
-| **Fiscal year end** | Often December, 31 but not always |
+| **Fiscal year end** | Often December 31, but not always |
 | **Extra-provincial / foreign qualification** | Whether the company is registered to do business outside its home jurisdiction, and where |
 
 ---
@@ -60,7 +60,7 @@ For standalone financial statements or MD&A, see `financial-statements`; for sec
 
 ### Address patterns
 
-- **Multiple companies at the same address** — especially if it's a residential address, a mailbox service, or a law firm. Normal for a law firm serving as registered agent; significant if the companies otherwise appear unrelated.
+- **Multiple companies at the same address** — especially if it's a residential address, a mailbox service, or a law firm. Normal for a law firm serving as registered agent; significant if the companies otherwise appear unrelated. A single individual acting as a nominee across unrelated entities is the primary target for suspicion, rather than standard commercial registered agent addresses.
 - **Registered address in a jurisdiction with no apparent business connection** — e.g. a company claiming local registration but all directors and operations are elsewhere.
 - **Registered address that doesn't exist** — a non-existent street number or a demolished building.
 
@@ -105,7 +105,7 @@ For standalone financial statements or MD&A, see `financial-statements`; for sec
 | **Operating agreement** | LLC internal governance document — often not publicly filed |
 | **EIN** | Employer Identification Number — US equivalent of a Business Number |
 | **Statement of information** | Periodic filing required by some states (e.g. California) confirming officers, directors, and registered agent are current |
-| **FinCEN BOI** | Beneficial Ownership Information — as of March 2025, the reporting requirement was removed for US domestic companies and applies only to foreign entities registered in the US |
+| **FinCEN BOI** | Beneficial Ownership Information — Under the March 2025 Interim Final Rule, all U.S. domestic reporting companies and U.S. persons are fully exempt. The rule applies strictly to foreign-formed entities registered to do business in the U.S., and even those entities do not need to report any beneficial owners who are U.S. citizens or residents
 
 ### UK and others
 

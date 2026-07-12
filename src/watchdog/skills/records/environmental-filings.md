@@ -21,7 +21,7 @@ This skill is loaded by Watchdog when the document type is a pollutant release i
 - Operating permits and environmental compliance approvals
 - In Canada: National Pollutant Release Inventory (NPRI) reports; Impact Assessment Act (IAA) decisions; provincial environmental assessment decisions; Environmental Compliance Approvals (ECAs)
 - In the US: EPA Toxic Release Inventory (TRI) reports; NEPA environmental impact statements (EIS)
-- In the EU: E-PRTR (European Pollutant Release and Transfer Register); Environmental Impact Assessment Directive decisions
+- In the EU: E-PRTR (European Pollutant Release and Transfer Register); Industrial Emissions Portal Regulation (IEPR); Environmental Impact Assessment Directive decisions
 - In Australia: National Pollutant Inventory (NPI) reports; state EPA compliance records
 
 ---
