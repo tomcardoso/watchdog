@@ -26,6 +26,12 @@ import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+# Imported at module scope, unlike every other reader's library (which are imported lazily inside
+# their reader): a missing defusedxml must fail loudly here rather than be swallowed by the
+# best-effort `except Exception` in the app.xml reader, which would silently disable the XML
+# hardening — and leave the entity-bomb test passing for the wrong reason. See I6.
+import defusedxml.ElementTree as _defused_ET
+
 # Untrusted-content mitigation (docstring above): every value is capped at this length before
 # it can reach the extraction prompt.
 _MAX_VALUE_LEN = 200
@@ -169,13 +175,12 @@ def _read_ooxml_app_properties(path: Path) -> dict:
     Parsed with `defusedxml`, never the stdlib `xml.etree`: this XML comes straight out of an
     untrusted document, and the stdlib parser expands internal entities, so a malicious `.docx`
     could hand us a billion-laughs bomb and take chew down. Any XML we ever parse from a
-    document is attacker-controlled — keep it on defusedxml."""
+    document is attacker-controlled — keep it on defusedxml (imported at module scope, so its
+    absence is an ImportError rather than a silent `{}` from the except below). See I6."""
     import zipfile
-
-    import defusedxml.ElementTree as ET
     try:
         with zipfile.ZipFile(path) as z:
-            root = ET.fromstring(z.read("docProps/app.xml"))
+            root = _defused_ET.fromstring(z.read("docProps/app.xml"))
     except Exception:
         return {}
     out = {}

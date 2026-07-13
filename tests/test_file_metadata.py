@@ -249,7 +249,7 @@ _APP_XML = (
 
 
 def test_extract_docx_reads_company_and_total_edit_minutes_from_app_xml(tmp_path):
-    import docx
+    docx = pytest.importorskip("docx")
     p = tmp_path / "resolution.docx"
     docx.Document().save(str(p))
     _set_app_xml(p, _APP_XML)
@@ -261,7 +261,7 @@ def test_extract_docx_reads_company_and_total_edit_minutes_from_app_xml(tmp_path
 
 
 def test_extract_xlsx_reads_company_from_app_xml(tmp_path):
-    import openpyxl
+    openpyxl = pytest.importorskip("openpyxl")
     p = tmp_path / "ledger.xlsx"
     openpyxl.Workbook().save(str(p))
     _set_app_xml(p, _APP_XML)
@@ -272,8 +272,13 @@ def test_extract_xlsx_reads_company_from_app_xml(tmp_path):
 def test_app_xml_billion_laughs_bomb_is_refused_not_expanded(tmp_path):
     """A hostile .docx must not be able to take chew down with an entity-expansion bomb. The
     stdlib xml.etree parser expands internal entities; file_metadata uses defusedxml, which
-    refuses — so the reader degrades to {} for app.xml rather than exploding."""
-    import docx
+    refuses — so the reader degrades to {} for app.xml rather than exploding.
+
+    Note this assertion only means something because defusedxml is imported at module scope in
+    file_metadata: were it imported lazily inside the reader, a *missing* defusedxml would be
+    swallowed by that reader's best-effort `except Exception`, app.xml would yield {}, and this
+    test would pass with no XML hardening in place at all."""
+    docx = pytest.importorskip("docx")
     bomb = (
         '<?xml version="1.0"?><!DOCTYPE Properties ['
         '<!ENTITY a "AAAAAAAAAA">'
@@ -294,7 +299,7 @@ def test_app_xml_billion_laughs_bomb_is_refused_not_expanded(tmp_path):
 
 
 def test_app_xml_missing_part_degrades_to_core_properties_only(tmp_path):
-    import docx
+    docx = pytest.importorskip("docx")
     p = tmp_path / "plain.docx"
     d = docx.Document()
     d.core_properties.author = "J. Doe"
