@@ -308,3 +308,46 @@ def test_postflight_verifies_exact_quote_without_warning(tmp_path, capsys):
 
     err = capsys.readouterr().err
     assert "not found on page" not in err
+
+
+# ── Deterministic date-mismatch check (#369) ─────────────────────────────────
+
+def test_postflight_warns_on_file_metadata_date_mismatch(tmp_path, capsys):
+    vault = _full_vault(tmp_path)
+    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
+        "pages": [], "metadata": {"ocr_used": False, "source_type": "direct_text"},
+    }))
+    ext = _extraction()
+    ext["document"]["date_of_document"] = "2019-01-01"
+    ext["document"]["file_metadata"] = {"created": "2023-06-01T00:00:00"}
+    ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
+    ext_path.write_text(json.dumps(ext), encoding="utf-8")
+
+    result = postflight_run(vault, ext_path)
+    assert result.get("ok"), result
+
+    err = capsys.readouterr().err
+    assert "Warning" in err and "postdates" in err
+
+
+def test_postflight_silent_on_date_mismatch_when_ocr_used(tmp_path, capsys):
+    """The single most important behaviour: a scanned document's embedded creation date
+    describes the scan, not the original, so the check must stay silent — otherwise every
+    scanned exhibit in the vault produces a false lead."""
+    vault = _full_vault(tmp_path)
+    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
+        "pages": [], "metadata": {"ocr_used": True, "source_type": "docling"},
+    }))
+    ext = _extraction()
+    ext["document"]["date_of_document"] = "2019-01-01"
+    ext["document"]["file_metadata"] = {"created": "2023-06-01T00:00:00"}
+    ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
+    ext_path.write_text(json.dumps(ext), encoding="utf-8")
+
+    result = postflight_run(vault, ext_path)
+    assert result.get("ok"), result
+
+    err = capsys.readouterr().err
+    assert "postdates" not in err

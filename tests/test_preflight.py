@@ -288,3 +288,36 @@ def test_digest_size_telemetry_zero_when_no_candidates(tmp_path):
     pf = preflight.run(vault, "doc1")
     assert pf["existing_entities_count"] == 0
     assert pf["existing_entities_bytes"] == len(json.dumps([])) + len(json.dumps([]))
+
+
+# ── file_metadata / processing passthrough (#369) ────────────────────────────
+
+def test_preflight_surfaces_file_metadata_from_queue(tmp_path):
+    vault = _vault(tmp_path)
+    _write_queue(vault, "doc1", "Some text.")
+    queue_path = vault / ".watchdog" / "queue" / "doc1.json"
+    queue = json.loads(queue_path.read_text())
+    queue["file_metadata"] = {"author": "Jane Doe", "producer": "Acrobat"}
+    queue_path.write_text(json.dumps(queue))
+
+    pf = preflight.run(vault, "doc1")
+    assert pf["file_metadata"] == {"author": "Jane Doe", "producer": "Acrobat"}
+
+
+def test_preflight_defaults_file_metadata_to_empty_dict(tmp_path):
+    vault = _vault(tmp_path)
+    _write_queue(vault, "doc1", "Some text.")
+    pf = preflight.run(vault, "doc1")
+    assert pf["file_metadata"] == {}
+
+
+def test_preflight_surfaces_processing_from_queue_metadata(tmp_path):
+    vault = _vault(tmp_path)
+    _write_queue(vault, "doc1", "Some text.")
+    queue_path = vault / ".watchdog" / "queue" / "doc1.json"
+    queue = json.loads(queue_path.read_text())
+    queue["metadata"] = {"ocr_used": True, "source_type": "docling"}
+    queue_path.write_text(json.dumps(queue))
+
+    pf = preflight.run(vault, "doc1")
+    assert pf["processing"] == {"ocr_used": True, "source_type": "docling"}

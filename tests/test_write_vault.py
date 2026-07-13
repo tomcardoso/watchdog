@@ -659,6 +659,31 @@ def test_documents_json_updated(tmp_path):
     assert docs["abc123"]["title"] == "Test Document"
 
 
+def test_documents_json_persists_file_metadata(tmp_path):
+    """file_metadata (#369) is persisted into the documents.json registry entry — greppable
+    provenance evidence (shared producer/author strings across documents are a cluster signal)
+    — but never rendered into the document note body."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    fm = {"author": "Jane Doe", "producer": "Acrobat Distiller", "created": "2023-01-15T12:00:00-05:00"}
+    run(make_extraction(tmp_path, {"document": {"file_metadata": fm}}), vault)
+
+    docs = json.loads((vault / ".watchdog" / "Registry" / "documents.json").read_text())
+    assert docs["abc123"]["file_metadata"] == fm
+
+    note = (vault / "documents" / "test-doc.md").read_text()
+    assert "Acrobat Distiller" not in note and "Jane Doe" not in note
+
+
+def test_documents_json_defaults_file_metadata_to_empty_dict_when_absent(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    run(make_extraction(tmp_path), vault)
+
+    docs = json.loads((vault / ".watchdog" / "Registry" / "documents.json").read_text())
+    assert docs["abc123"]["file_metadata"] == {}
+
+
 def test_entities_json_updated(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")

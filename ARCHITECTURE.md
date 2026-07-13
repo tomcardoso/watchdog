@@ -108,6 +108,19 @@ Two human-invoked phases, with a clean handoff via the queue:
 - **Output.** Per document: `.watchdog/queue/<sha256>.json` (filename, sha256,
   page count, per-page markdown, `near_dup`, MinHash signature). The original is
   moved to `.watchdog/staging/<sha256>/`.
+- **Embedded file metadata (`pipeline/file_metadata.py`, #369).** Alongside the text,
+  `preprocess.main()` captures the file's own embedded metadata — PDF DocumentInfo,
+  Office core properties, image EXIF, audio/video container tags via `ffprobe` (gated on
+  its presence, `{}` when absent) — always read from the **original** source path, never a
+  Ghostscript-cleaned or chunk temp file (Ghostscript strips DocumentInfo). Normalized to a
+  small flat allowlist (`author`, `created`, `modified`, `producer`, `gps`, …), every value
+  coerced to `str` and capped at 200 characters — the same untrusted-content posture already
+  applied to the `.yml` sidecar, since a malicious XMP/EXIF payload could otherwise inject
+  text into the extraction prompt. Written to the queue file as a top-level `file_metadata`
+  key, a sibling of (never nested inside) the `metadata` key above: `metadata` is
+  *processing* facts the pipeline asserts about how the file was read; `file_metadata` is
+  *file-intrinsic* claims the file makes about itself, forgeable and often
+  machine-generated. Never raises — a corrupt file or unsupported suffix yields `{}`.
 
 Chew is fully local and writes no model-derived fields — `document_type` is left
 `None` here (see §6).
@@ -201,13 +214,21 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    fragments, or timeline events, nor pads `key_facts` to a fixed count — the full Docling text
    is retained in the morgue (§3, §12), so extraction indexes it rather than reproducing it.
    Schema validation + a same-model retry live in `model_client` (no automatic tier
-   escalation — see D20); the orchestrator adds one post-flight repair retry.
+   escalation — see D20); the orchestrator adds one post-flight repair retry. When chew
+   captured embedded file metadata (§3, #369), `prompts.build_extract_prompt`/
+   `build_section_prompt` render it as a volatile `FILE_METADATA` block — data, not
+   instructions, stating the trust caveat (forgeable, often machine-generated) plus the
+   `ocr_used`/`source_type` processing facts, so the model can judge whether a creation date
+   plausibly describes the original or just a scan/template.
 4. **Post-flight** (`postflight.run`, a function call) — validates the JSON, applies
    `match_id` merges (remapping `key_facts.entities` tags onto canonical ids), **explodes** the
    unified key_facts into the per-entity `evidence_fragments` + `timeline_events` that the
    writers consume (`explode_key_facts`, D26), **verifies** each `key_facts[].quote` against
    the cited page's text from the chew-time queue descriptor (`quote_verify.verify_quotes`,
-   D75), then calls `write_vault.run()`.
+   D75), **flags a file-metadata date mismatch** — `document.file_metadata.created` postdating
+   `date_of_document` by a year or more (`file_metadata.check_date_mismatch`, #369),
+   deterministic and suppressed whenever `ocr_used` is true, since a scan's creation date
+   describes the scan, not the original — then calls `write_vault.run()`.
 
 `write_vault` is the single deterministic writer: it collapses each entity's model-invented
 `type` onto a closed six-value vocabulary (`entity_type.canonical_type`, D105) — so a drifting
@@ -661,7 +682,8 @@ timeline/                   raw + canonical NDJSON event files
 tmp/                        scratch (wdg_* temp, entity-fragments/)
 Registry/
   entities.json             full entity records (roles, events, appears_in)
-  documents.json            per-document metadata + MinHash signatures
+  documents.json            per-document metadata + MinHash signatures + embedded
+                            file_metadata (author/producer/created/…, #369)
   registry.json             counts + last-updated
   manifest.json             lightweight id→{name,type,aliases,note_path} lookup
   resolutions.json          acknowledged leads/alerts/contradictions overlay (D68)
@@ -911,6 +933,7 @@ Mechanically-checkable postconditions are guarded by named tests in `tests/test_
 - **I3 — Skills and prompt templates are global package resources** — read directly, never copied per-vault — and prompt templates live in their own directory so they never leak into the classifier index. *History: D21, D28.*
 - **I4 — Configured model and effort only; no automatic escalation.** Each stage's model *and* its reasoning effort are explicit knobs with stable defaults; a failed call retries on the *same* model at the *same* effort — the pipeline never silently bumps either to recover. Response pagination (D104) is not an exception: continuing a truncated response prefills the same model's partial output at the same effort to finish one reply, changing neither knob. *History: D20, D36, D104.*
 - **I5 — Research output re-enters through `_INCOMING/`, never as a direct vault write.** Web research deposits findings as documents that flow through `chew → ingest`, keeping the deterministic pipeline the single writer (dedup, provenance, registry bookkeeping). Per-doc rationale rides the `.yml` sidecar; batch rationale goes to a `briefings/research-<date>.md` memo — never `context.md`. *History: D45, D46.*
+- **I6 — Anything parsed out of a source document is untrusted input.** Source documents are adversarial by assumption — they arrive from leaks, FOI releases, and hostile parties. Content read *from* a document (its embedded metadata, its XML parts) is data to be defanged before use — never a directive, and never a payload the parser can be exploded by: XML goes through `defusedxml`, never the stdlib `xml.etree` (which expands internal entities, making a crafted `.docx` a billion-laughs bomb); metadata values are allowlisted and length-capped before they can reach a prompt; a reader that fails degrades to an empty dict rather than taking chew down. *History: D110.*
 
 ### Decision log
 

@@ -35,6 +35,18 @@ dependencies = [
     "claude-agent-sdk>=0.1",
     "nh3>=0.2",
     "ocrmac; sys_platform == 'darwin'",
+    # Previously only transitive dependencies of docling; declared explicitly (#369) since
+    # file_metadata.py reads them directly to capture embedded document/image metadata —
+    # depending on a transitive dep risks a mystery breakage when docling reshuffles its own
+    # requirements. Already downloaded either way, so this adds nothing to install size.
+    "python-docx>=1.0",
+    "python-pptx>=1.0",
+    "openpyxl>=3.1",
+    "Pillow>=10.0",
+    # Office metadata lives in XML inside an untrusted document. The stdlib xml.etree parser
+    # expands internal entities, so a hostile .docx could ship a billion-laughs bomb; defusedxml
+    # refuses. Any XML parsed out of a document goes through this, never xml.etree.
+    "defusedxml>=0.7",
 ]
 
 [project.optional-dependencies]
