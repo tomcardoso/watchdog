@@ -49,7 +49,7 @@ This skill is loaded by Watchdog when the document type is an immigration tribun
 - **Boilerplate language** — decisions that appear to use identical paragraphs across multiple cases, particularly on country conditions, may not reflect genuine case-by-case analysis.
 - **Failure to consider documentary evidence** — a decision that does not address documentary evidence submitted by the claimant is a ground of judicial review or appeal. Look for references (or the absence of references) to submitted exhibits.
 - **Country condition evidence that is outdated** — decisions should use current country condition documentation. A decision relying on evidence that predates a significant political change in the country of origin is vulnerable on review.
-- **Failure to consider risk to family members** — some claims involve risk to a claimant's family in the country of origin; failure to address this is an error.
+- **Failure to consider risk to family members** — some claims involve risk to a claimant's family in the country of origin; failure to address this may constitute an error.
 
 ### Detention reviews
 

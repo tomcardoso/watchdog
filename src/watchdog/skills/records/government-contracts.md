@@ -86,7 +86,7 @@ Loaded by Watchdog when the document type is a procurement record, tender docume
 
 ### Bid documents
 
-When the bid itself is available — leaked, shared by a losing bidder, or obtained via access to information:
+When the bid itself is available — leaked, shared by a losing bidder, or obtained via freedom of information request:
 
 - **Bait-and-switch key personnel** — impressive résumés win the technical evaluation, then the named individuals are replaced after award with cheaper or more junior staff. Record who the bid proposed so they can be compared against the people who appear in task authorizations, amendments, or invoices.
 - **Past-performance references from related parties** — the reference contracts the bidder cites trace back to companies with the same principals, or to clients with ties to the bidder.
@@ -107,7 +107,7 @@ Collusion patterns usually only become visible across several bids or award noti
 
 - **Satisfactory rating despite documented issues** — a vendor performance report that notes delivery failures or quality problems but rates the vendor "satisfactory" overall may reflect reluctance to formally record a poor rating (which would affect future competitions).
 - **Corrective action plans not followed up** — a corrective action plan was required but the file contains no record of whether it was implemented or the performance improved.
-- **Contract above the performance-reporting threshold** — for contracts above the relevant threshold, performance reports are required. Record the contract value and note that reports are expected; whether they were filed is an absence a single document can't show, so flag it as a lead to check against the department's records — missing reports may mean the contract went unmonitored.
+- **Contract above the performance-reporting threshold** — for contracts above a relevant threshold, performance reports may be required. Record the contract value and note that reports are expected; whether they were filed is an absence a single document can't show, so flag it as a lead to check against the department's records — missing reports may mean the contract went unmonitored.
 
 ### Value anomalies
 
@@ -174,13 +174,13 @@ Collusion patterns usually only become visible across several bids or award noti
 
 ## What investigators typically miss
 
-1. **The evaluation report** — in competitive procurements, an evaluation report scores the bids. This is often obtainable via access to information and shows why the winner won and by what margin.
-2. **The losing bidders** — in open competitions, unsuccessful bids may be obtainable via access to information, and so are the debriefing letters sent to losing bidders. Comparing bid prices reveals whether the winner's price was genuinely competitive.
-3. **Amendment history** — a single contract record shows the current value. The amendment history shows how the value grew over time and whether each increase was justified.
-4. **Related contracts to the same vendor** — the contract you have is one; the full picture requires checking all contracts to the same vendor across departments over the same period. Total spend is more newsworthy than any individual contract. Note that Crown corporations and state enterprises are sometimes exempt from standard procurement rules and disclosure requirements, so their contracts warrant separate research.
+1. **The evaluation report** — in competitive procurements, an evaluation report scores the bids. This is often obtainable via freedom of information request and shows why the winner won and by what margin.
+2. **The losing bidders** — in open competitions, unsuccessful bids may be obtainable via freedom of information request, along with the debriefing letters sent to losing bidders. Comparing bid prices reveals whether the winner's price was genuinely competitive.
+3. **Amendment history** — a single contract record shows the current value. The amendment history shows how the value grew over time.
+4. **Related contracts to the same vendor** — the contract you have is one; the full picture requires checking all contracts to the same vendor across departments over the same period. Total spend is often more newsworthy than any individual contract. Note that Crown corporations and state enterprises are sometimes exempt from standard procurement rules and disclosure requirements, so their contracts warrant separate research.
 5. **Conflict of interest declarations and attestations** — evaluation committee members must declare conflicts, and contractors typically attest that they have none. If a member had a relationship with the winning vendor, or a contractor conflict later emerges, those documents show it was either undisclosed or not caught.
 6. **Lobbying registry** — before a major contract award, check the relevant lobbyist registries for registrations by the winning vendor or their lobbyists targeting the awarding department.
-7. **The contract itself vs. the award notice** — the award notice is the public record; the actual contract may contain very different terms. Request the actual contract via access to information.
+7. **The contract itself vs. the award notice** — the award notice is the public record; the actual contract may contain very different terms. Request the actual contract via freedom of information request.
 8. **Subcontract flow-through** — a contract awarded to a large company that subcontracts most of the work to a small company owned by a related party. The public record shows the large company; the actual beneficiary is obscured.
 9. **Bid protest decisions** — procurement tribunals publish their decisions (the GAO in the US, the CITT in Canada). A protest over the contract at hand — or an earlier one involving the same vendor or department — dissects the procurement's conduct in detail, at no cost.
 

@@ -36,13 +36,17 @@ This skill is loaded by Watchdog when the document type is an insurance regulato
 | **Gross written premium** | Total premiums written before reinsurance |
 | **Net written premium** | Premiums retained after ceding to reinsurers |
 | **Claims incurred** | Total losses paid and reserved |
+| **Earned premium** | The portion of gross or net written premiums that applies to the expired part of the policy period. It represents the actual revenue recognized by the insurer for providing coverage during the reporting period |
 | **Loss ratio** | Claims incurred / earned premium — a core performance metric |
-| **Expense ratio** | Underwriting expenses / earned premium |
+| **Expense ratio** | Underwriting expenses / net written premium (Statutory basis) or earned premium (GAAP basis). Note the denominator used to prevent calculation mismatch |
 | **Combined ratio** | Loss ratio + expense ratio — above 100% means underwriting loss |
 | **Reinsurer names** | Who is providing reinsurance and on what terms |
 | **Capital and surplus** | The insurer's financial cushion |
 | **Capital adequacy ratio** | The regulatory capital adequacy measure |
 | **Appointed actuary** | The actuary responsible for reserving opinions |
+| **IBNR (Incurred But Not Reported)** | A reserve for claims that have happened but haven't been reported to the insurer yet |
+| **UPR (Unearned Premium Reserve)** | The portion of premiums collected that the insurer hasn't "earned" yet because the policy term hasn't expired |
+| **Loss Reserve Development (or Adverse Development)** | Changes in ultimate loss estimates for prior accident years. Note whether development is adverse/unfavorable (reserves increased) or favorable (reserves decreased) |
 
 ---
 
@@ -55,6 +59,8 @@ This skill is loaded by Watchdog when the document type is an insurance regulato
 - **Rapid premium growth without corresponding capital** — an insurer writing premiums far faster than it is building capital may be taking on risk it cannot back.
 - **High combined ratio sustained over multiple years** — an insurer consistently spending more on claims and expenses than it collects in premiums is losing money on underwriting and relying on investment income to survive.
 - **Investment portfolio concentrated in illiquid or high-risk assets** — an insurer with a large share of assets in private equity, real estate, or subordinated debt may have difficulty meeting claims in a stress scenario.
+- **Chronic Adverse Reserve Development** — if an insurer consistently has to top up its reserves for past years' claims, they are structurally underpricing their risk or deliberately suppressing initial reserve estimates to inflate current-year profits.
+- **Heavy Reliance on MGAs/MGUs** — Managing General Agents (MGAs) are third parties given authority to underwrite and bind policies on the insurer's behalf. If an insurer grows rapidly via MGAs, they bear all the financial risk while the MGA collects risk-free commissions. Poor oversight of MGAs has bankrupted many insurers.
 
 ### Reinsurance
 
@@ -62,6 +68,7 @@ This skill is loaded by Watchdog when the document type is an insurance regulato
 - **Reinsurance with affiliated entities** — ceding risk to a related company (captive reinsurer, parent company) may not genuinely transfer risk. "Finite reinsurance" arrangements that transfer very little actual risk but improve reported financial ratios are a fraud risk.
 - **Reinsurance recoverables exceeding surplus** — if the amount the insurer expects to collect from reinsurers exceeds the insurer's own capital, it is highly dependent on those collections materializing.
 - **Unrated or offshore reinsurers** — an insurer ceding risk to reinsurers that are unrated or domiciled in opaque jurisdictions (Cayman Islands, Barbados, Bermuda without equivalent regulation) may be parking risk without genuine transfer.
+- **Shadow Insurance** - specific to life insurance. This occurs when a life insurer creates a captive reinsurer in a state/country with looser reserving rules, cedes its life policies to the captive, and artificially boosts its capital.
 
 ### Market conduct
 
@@ -86,21 +93,27 @@ This skill is loaded by Watchdog when the document type is an insurance regulato
 | **PRA** | UK | Prudential Regulation Authority — regulates large insurers and banks in the UK |
 | **Solvency II** | EU | The EU regulatory framework for insurance capital and risk management |
 | **SCR** | EU | Solvency Capital Requirement — the Solvency II capital adequacy metric |
+| **MCR** | EU / UK | Minimum Capital Requirement — The absolute minimum capital threshold under Solvency II. Dropping below the MCR triggers immediate regulatory intervention or withdrawal of authorization (whereas dropping below the SCR just triggers a recovery plan) |
 | **Lloyd's syndicate** | UK / Global | A group of Lloyd's underwriters that collectively insure large or complex risks |
 | **Appointed actuary** | Universal | An actuary appointed by the insurer's board who must sign an opinion on the adequacy of reserves — a statutory role |
 | **P&C** | Universal | Property and Casualty — the line of insurance covering homes, cars, and commercial property |
 | **Captive insurance** | Universal | An insurer owned by the entity it insures — often used for self-insurance within a corporate group |
 | **Reciprocal exchange** | Canada / US | A non-corporate insurer owned by its policyholders |
+| **GAAP vs. STAT** | Universal | Generally Accepted Accounting Principles (used for public investors) vs. Statutory Accounting Principles (used by regulators; far more conservative regarding admitted assets) |
+| **MGA / MGU** | Universal | Managing General Agent / Managing General Underwriter |
+| **TPA** | Universal | Third-Party Administrator (an outsourced claims-handling firm) |
+| **Ceding Company / Cedant** | Universal | The primary insurer that is passing risk to a reinsurer |
 
 ---
 
 ## Relationships to extract from insurance filings
 
 1. **Insurer → Regulator**: Regulatory filing relationship (with institution number and line of business)
-2. **Insurer → Reinsurer**: Reinsurance cession (with type of reinsurance, ceded premium, and reinsurer name)
+2. **Insurer → Reinsurer**: Reinsurance cession (with type of reinsurance, ceded premium, reinsurer name, and reinsurer NAIC/FEIN or alien ID if available)
 3. **Insurer → Actuary**: Appointed actuary (individual and firm)
 4. **Insurer → Parent / affiliate**: Ownership structure (holding company, group relationships)
 5. **Insurer → Market conduct action**: Regulatory order or supervisory letter
+6. **Insurer → MGA/TPA**: Delegated authority relationship. (Who is actually underwriting the risk and paying the claims?)
 
 ---
 

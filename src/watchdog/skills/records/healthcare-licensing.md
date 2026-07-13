@@ -57,7 +57,7 @@ This skill is loaded by Watchdog when the document type is a health regulatory b
 
 ### Scope and standard of care
 
-- **Departure from accepted standard** — discipline decisions often state that the member "departed from the standard of practice." Note what the standard was and how far the departure went.
+- **Departure from accepted standard** — discipline decisions sometimes state that the member "departed from the standard of practice." Note what the standard was and how far the departure went.
 - **Delegation to unqualified persons** — a regulated professional delegating controlled or restricted acts to an unqualified assistant is a systematic safety issue, not just an individual failing.
 - **Billing irregularities connected to care quality** — overbilling (e.g., billing for procedures not performed) may co-occur with quality-of-care problems.
 
