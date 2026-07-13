@@ -1,15 +1,19 @@
 ---
-description: a procurement record, tender document, contract award, sole-source justification, standing offer or call-up, task authorization, contract amendment, vendor performance report, or similar government contracting record — the full procurement lifecycle, pre-award and post-award
+description: a procurement record, tender document, contract award, sole-source justification, standing offer or call-up, task authorization, contract amendment, vendor performance report, or similar government contracting record, plus bidder-side records — a bid or proposal, RFI/RFQ response, teaming agreement, debriefing letter, or bid protest — the full procurement lifecycle, pre-award and post-award
 ---
 # Domain knowledge — Government contracts and procurement records
 
-Loaded by Watchdog when the document type is a procurement record, tender document, contract award, sole-source justification, standing offer, task authorization, contract amendment, vendor performance report, or similar government contracting record — pre-award or post-award.
+Loaded by Watchdog when the document type is a procurement record, tender document, contract award, sole-source justification, standing offer, task authorization, contract amendment, vendor performance report, or similar government contracting record — pre-award or post-award, whether produced by the government or by a bidder (a bid or proposal, teaming agreement, debriefing letter, or bid protest).
 
 ---
 
 ## Document types covered
 
 - Requests for proposals (RFPs) and invitations to tender / bid
+- Bids and proposals submitted by vendors — technical and financial volumes, and responses to requests for information (RFIs) or quotations (RFQs)
+- Teaming agreements and joint-venture agreements between bidders
+- Debriefing letters to unsuccessful bidders
+- Bid protests and procurement challenges, and the tribunal or court decisions they produce
 - Standing offers, framework agreements, and supply arrangements — and the call-ups, call-offs, and task authorizations issued against them
 - Contract award notices
 - Sole-source / direct award justifications
@@ -44,6 +48,11 @@ Loaded by Watchdog when the document type is a procurement record, tender docume
 | **Commodity code** | Federal commodity classification (where applicable) |
 | **Vendor performance rating** | If a performance report exists: the rating and any corrective actions required |
 | **Security classification** | Security requirement level, where applicable |
+| **Proposed key personnel** | In a bid: the named individuals, their roles, and the qualifications claimed for them |
+| **Teaming partners / proposed subcontractors** | In a bid or teaming agreement: the companies named to deliver part of the work |
+| **Bid price** | Total bid or evaluated price, and the pricing breakdown where present |
+| **Past-performance references** | Prior contracts the bidder cites as qualifications — client, value, period |
+| **Attestations** | Certificates of independent bid determination, integrity declarations, conflict-of-interest attestations |
 
 ---
 
@@ -75,6 +84,25 @@ Loaded by Watchdog when the document type is a procurement record, tender docume
 - **Subcontracting to the original competitor** — a prime contractor who wins a competitive process and then subcontracts the work to the bidder they beat; the competition result is effectively reversed.
 - **Vendor that lost a competitive bid receiving a sole-source shortly after** — a company that failed in competition but was then awarded the work on a non-competitive basis.
 
+### Bid documents
+
+When the bid itself is available — leaked, shared by a losing bidder, or obtained via access to information:
+
+- **Bait-and-switch key personnel** — impressive résumés win the technical evaluation, then the named individuals are replaced after award with cheaper or more junior staff. Record who the bid proposed so they can be compared against the people who appear in task authorizations, amendments, or invoices.
+- **Past-performance references from related parties** — the reference contracts the bidder cites trace back to companies with the same principals, or to clients with ties to the bidder.
+- **Teaming with the incumbent** — a "new" competitor whose bid depends on the incumbent as a subcontractor; the competition is narrower than the bidder list suggests.
+- **Bid tracks unpublished requirements** — a proposal that anticipates requirements, terminology, or evaluation criteria not found in the published solicitation suggests the bidder had inside information or helped shape the requirements.
+
+### Bid rigging and collusion
+
+Collusion patterns usually only become visible across several bids or award notices, not in one document — record what this document shows and flag the comparison as a lead:
+
+- **Cover bidding** — a bid that appears designed to lose: non-compliant on a mandatory criterion, priced far above the winner, or far thinner than a genuine pursuit would justify. Its purpose is to make a pre-arranged competition look real.
+- **Common authorship across competitors** — identical wording, formatting, typos, or file metadata in bids from supposedly competing companies.
+- **Shared people or addresses across rivals** — the same personnel, address, phone number, or contact details appearing in bids from different bidders.
+- **Bid rotation** — across a series of similar competitions, the same small group of bidders takes turns winning at similar prices.
+- **Lowball then change orders** — a winning bid conspicuously below the others, followed by amendments that lift the value past what the losing bidders offered (see the amendments section above).
+
 ### Vendor performance
 
 - **Satisfactory rating despite documented issues** — a vendor performance report that notes delivery failures or quality problems but rates the vendor "satisfactory" overall may reflect reluctance to formally record a poor rating (which would affect future competitions).
@@ -99,6 +127,16 @@ Loaded by Watchdog when the document type is a procurement record, tender docume
 |------|---------|
 | **RFP** | Request for Proposals — evaluates both technical approach and price |
 | **RFT / ITB** | Request for Tenders / Invitation to Bid — awarded on price alone |
+| **RFI** | Request for Information — a market-sounding exercise before a formal procurement; responses often shape the eventual RFP |
+| **RFQ** | Request for Quotation — a price-focused solicitation for well-defined goods or services |
+| **Mandatory vs. rated criteria** | Mandatory criteria are pass/fail — a bid failing one is eliminated regardless of merit; rated criteria are scored |
+| **Compliance matrix** | A table in a bid mapping each solicitation requirement to the proposal section that addresses it |
+| **BAFO** | Best and Final Offer — a revised bid submitted after negotiations or clarifications |
+| **Teaming agreement** | A pre-bid agreement between companies to pursue a contract together, typically as prime contractor and subcontractors |
+| **Bid bond / performance bond** | Financial guarantees that a bidder will honour its bid / that the contractor will complete the work |
+| **Debriefing** | The explanation a losing bidder can request on why it lost — often produces a written letter worth obtaining |
+| **Bid protest / procurement challenge** | A formal challenge to a solicitation or award — heard by the GAO in the US, the CITT in Canada, and courts or review bodies elsewhere |
+| **Certificate of independent bid determination** | A signed attestation that a bid was prepared without coordination with competitors |
 | **Standing offer / framework agreement** | A pre-qualified arrangement allowing repeat purchases without full competition |
 | **Supply arrangement** | A pre-qualification framework; doesn't guarantee any purchases |
 | **Call-up** | An individual purchase order under a standing offer |
@@ -124,25 +162,27 @@ Loaded by Watchdog when the document type is a procurement record, tender docume
 ## Relationships to extract
 
 1. **Company → Person**: Vendor principal, the specific public servant who signed the contract, the contracting officer
-2. **Company → Company**: Subcontractors may be named in the contract or proposal
+2. **Company → Company**: Subcontractors and teaming partners may be named in the contract, bid, or teaming agreement
 3. **Person → Company**: Former public servants now working for vendors — note their former department and role
 4. **Company → Transaction**: Every contract, amendment, call-up, and payment with value and date
 5. **Department → Vendor**: Contracting relationship (with contract type and period)
 6. **Contract → Amendment**: Each amendment (number, date, change in value or scope)
 7. **Vendor → Performance report**: Performance rating and any corrective action required
+8. **Company → Person**: Key personnel proposed in a bid, with the role and qualifications claimed
 
 ---
 
 ## What investigators typically miss
 
 1. **The evaluation report** — in competitive procurements, an evaluation report scores the bids. This is often obtainable via access to information and shows why the winner won and by what margin.
-2. **The losing bidders** — in open competitions, unsuccessful bids may be obtainable via access to information. Comparing bid prices reveals whether the winner's price was genuinely competitive.
+2. **The losing bidders** — in open competitions, unsuccessful bids may be obtainable via access to information, and so are the debriefing letters sent to losing bidders. Comparing bid prices reveals whether the winner's price was genuinely competitive.
 3. **Amendment history** — a single contract record shows the current value. The amendment history shows how the value grew over time and whether each increase was justified.
 4. **Related contracts to the same vendor** — the contract you have is one; the full picture requires checking all contracts to the same vendor across departments over the same period. Total spend is more newsworthy than any individual contract. Note that Crown corporations and state enterprises are sometimes exempt from standard procurement rules and disclosure requirements, so their contracts warrant separate research.
 5. **Conflict of interest declarations and attestations** — evaluation committee members must declare conflicts, and contractors typically attest that they have none. If a member had a relationship with the winning vendor, or a contractor conflict later emerges, those documents show it was either undisclosed or not caught.
 6. **Lobbying registry** — before a major contract award, check the relevant lobbyist registries for registrations by the winning vendor or their lobbyists targeting the awarding department.
 7. **The contract itself vs. the award notice** — the award notice is the public record; the actual contract may contain very different terms. Request the actual contract via access to information.
 8. **Subcontract flow-through** — a contract awarded to a large company that subcontracts most of the work to a small company owned by a related party. The public record shows the large company; the actual beneficiary is obscured.
+9. **Bid protest decisions** — procurement tribunals publish their decisions (the GAO in the US, the CITT in Canada). A protest over the contract at hand — or an earlier one involving the same vendor or department — dissects the procurement's conduct in detail, at no cost.
 
 ---
 
@@ -155,6 +195,9 @@ Loaded by Watchdog when the document type is a procurement record, tender docume
 - [USASpending.gov](https://www.usaspending.gov/) — Official US federal spending database covering contracts, grants, and loans from fiscal year 2001 onward, including IDIQ task orders and GSA Schedule purchases; searchable by agency, vendor, and award type
 - [OECD Recommendation of the Council on Public Procurement](https://legalinstruments.oecd.org/en/instruments/OECD-LEGAL-0411) — The 2015 OECD Council recommendation setting twelve integrated principles for transparent, accountable, and integrity-focused public procurement; adopted by all OECD members
 - [OECD Principles for Integrity in Public Procurement](https://www.oecd.org/en/publications/oecd-principles-for-integrity-in-public-procurement_9789264056527-en.html) — Comprehensive framework and risk checklist covering the full procurement cycle; maps corruption risks useful to auditors and journalists alike
+- [OECD Guidelines for Fighting Bid Rigging in Public Procurement (2025 Update)](https://www.oecd.org/en/publications/2025/09/oecd-guidelines-for-fighting-bid-rigging-in-public-procurement-2025-update_127880ea.html) — Includes the Bid-Rigging Detection List, a checklist of red flags for cover bidding, bid suppression, rotation, and suspicious pricing patterns; the source for most of the collusion indicators above
+- [Bid Protests — U.S. Government Accountability Office](https://www.gao.gov/legal/bid-protests) — Searchable database of published GAO bid protest decisions and the active-case docket
+- [Canadian International Trade Tribunal](https://www.citt-tcce.gc.ca/en) — Hears procurement complaints against Canadian federal contracting; publishes its determinations and notices of inquiry
 
 ### Practitioner and public interest
 - [Open Contracting Data Standard (OCDS)](https://www.open-contracting.org/data-standard/) — The only international open standard for publishing planning, tender, award, and contract implementation data; endorsed by the G20 and G7 and implemented by 50+ governments
@@ -163,3 +206,5 @@ Loaded by Watchdog when the document type is a procurement record, tender docume
 
 ### Journalism resources
 - [GIJN — Tracking Government Contracts](https://gijn.org/resource/tracking-covid-19-contracts-a-gijn-guide-and-webinar) — Global Investigative Journalism Network guide to researching government procurement stories; covers red flags for bid-rigging, collusion, and fraud across the five phases of the contracting process, including post-award implementation
+
+**Notes on unsourced claims.** Two bid-document red flags rest on practitioner experience rather than a specific citable source: past-performance references from related parties, and teaming with the incumbent narrowing a competition. Bait-and-switch of key personnel is a recognized ground of protest in GAO case law (searchable in the GAO decisions database above); the remaining collusion indicators trace to the OECD Bid-Rigging Detection List and the GIJN guide.

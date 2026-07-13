@@ -200,5 +200,7 @@ def test_prompt_templates_not_in_skills_catalog():
     catalog = set(skills_catalog.catalog())
     assert not (catalog & set(_TEMPLATES))
     index = skills_catalog.build_index()
-    assert "extract_instructions" not in index
-    assert "briefing" not in index
+    # Index entries are "- `name.md` — desc"; match the entry form, not the bare
+    # word, which can legitimately appear inside a skill description.
+    assert "`extract_instructions.md`" not in index
+    assert "`briefing.md`" not in index
