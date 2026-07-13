@@ -62,7 +62,7 @@ Loaded by Watchdog when the document type is a procurement record, tender docume
 
 - **Sole source without adequate justification** — the government bypassed competition. Justifications typically include national security, only one supplier, or genuine urgency. Weak or circular justifications are red flags.
 - **Splitting contracts** — dividing one large contract into multiple smaller contracts to avoid competitive procurement thresholds. Watch for multiple contracts with the same vendor at the same time for similar work.
-- **Urgency used repeatedly** — a department that regularly invokes urgency to sole-source may be using it to direct work to preferred vendors.
+- **Weak urgency justification** — when a sole-source or limited-tender award cites urgency, record the stated justification; a rationale that is vague, circular, or unsupported in this document is a red flag. (A department that *repeatedly* invokes urgency is a cross-contract pattern — see "What investigators typically miss".)
 - **Advance contract award notice (ACAN) or equivalent** — some jurisdictions allow a mechanism to post-justify a sole source by publishing a brief notice. Few competitors bother to challenge them.
 
 ### Contract amendments and scope creep
@@ -76,42 +76,39 @@ Loaded by Watchdog when the document type is a procurement record, tender docume
 
 ### Vendor patterns
 
-- **Same vendor winning repeatedly in a department** — may indicate an appropriate relationship (incumbent advantage is real), but warrants scrutiny — especially a vendor holding standing offer call-ups across multiple categories or regions without competition.
-- **Vendor with a principal who is a former public servant** — revolving door concerns; check post-employment restrictions.
+- **Vendor with a principal who is a former public servant** — record the named principals; revolving-door and post-employment restrictions may apply, so log a lead to verify whether any principal previously held a relevant public-service role.
 - **Numbered companies** — contracts awarded to numbered companies with no clear principal. The corporate registry entry for the vendor is a lead worth recording.
 - **Address issues** — vendor's address is a residence, a mailbox service, or the same as another frequent contractor. May indicate a shell or pass-through entity.
-- **Vendor registered after RFP posted** — the company was incorporated specifically to pursue this contract. Not inherently improper but worth noting.
-- **Subcontracting to the original competitor** — a prime contractor who wins a competitive process and then subcontracts the work to the bidder they beat; the competition result is effectively reversed.
-- **Vendor that lost a competitive bid receiving a sole-source shortly after** — a company that failed in competition but was then awarded the work on a non-competitive basis.
+- **Vendor registered close to the RFP** — if both the vendor's registration/incorporation date and the RFP date appear in the document, note whether the company was incorporated only after the RFP was posted; if the incorporation date is not stated, log a lead to check it against the corporate registry.
+- **Subcontracting to a named competitor** — record any subcontractors named in the award or contract; log a lead to check whether any of them bid against the prime on this same competition, which would effectively reverse the result.
+- **Vendor previously lost a competitive bid for this work** — record the vendor and the non-competitive award; if the entity digest shows the same vendor lost an earlier competition for related work, flag the correlation, otherwise log it as a lead.
 
 ### Bid documents
 
 When the bid itself is available — leaked, shared by a losing bidder, or obtained via freedom of information request:
 
-- **Bait-and-switch key personnel** — impressive résumés win the technical evaluation, then the named individuals are replaced after award with cheaper or more junior staff. Record who the bid proposed so they can be compared against the people who appear in task authorizations, amendments, or invoices.
-- **Past-performance references from related parties** — the reference contracts the bidder cites trace back to companies with the same principals, or to clients with ties to the bidder.
-- **Teaming with the incumbent** — a "new" competitor whose bid depends on the incumbent as a subcontractor; the competition is narrower than the bidder list suggests.
-- **Bid tracks unpublished requirements** — a proposal that anticipates requirements, terminology, or evaluation criteria not found in the published solicitation suggests the bidder had inside information or helped shape the requirements.
+- **Bait-and-switch key personnel** — record the key personnel the bid proposes, with the roles and qualifications claimed. If the same document also shows who actually delivered the work (in task authorizations, amendments, or invoices), note any substitution of cheaper or more junior staff; otherwise log a lead to compare the proposed personnel against those later delivered.
+- **Past-performance references from related parties** — record the past-performance references the bid cites (client, contract, value); log a lead to check whether any reference traces back to companies with the same principals as the bidder or to clients otherwise tied to it.
+- **Teaming with the incumbent** — record the named teaming partners and proposed subcontractors; log a lead to identify whether any is the incumbent, which would make the competition narrower than the bidder list suggests.
+- **Bid language tracks unpublished requirements** — note where the proposal's wording, terminology, or anticipated evaluation criteria appear unusually specific; log a lead to compare them against the published solicitation, since language that mirrors requirements not in the public solicitation suggests inside information.
 
 ### Bid rigging and collusion
 
 Collusion patterns usually only become visible across several bids or award notices, not in one document — record what this document shows and flag the comparison as a lead:
 
 - **Cover bidding** — a bid that appears designed to lose: non-compliant on a mandatory criterion, priced far above the winner, or far thinner than a genuine pursuit would justify. Its purpose is to make a pre-arranged competition look real.
-- **Common authorship across competitors** — identical wording, formatting, typos, or file metadata in bids from supposedly competing companies.
-- **Shared people or addresses across rivals** — the same personnel, address, phone number, or contact details appearing in bids from different bidders.
-- **Bid rotation** — across a series of similar competitions, the same small group of bidders takes turns winning at similar prices.
-- **Lowball then change orders** — a winning bid conspicuously below the others, followed by amendments that lift the value past what the losing bidders offered (see the amendments section above).
+- **Common authorship across competitors** — when this document contains bids from more than one bidder, note identical wording, formatting, typos, or file metadata shared across them; when only one bid is present, this is a cross-document comparison (see "What investigators typically miss").
+- **Shared people or addresses across rivals** — when this document contains bids from more than one bidder, note the same personnel, address, phone number, or contact details appearing across them; with only one bid present, flag the details as a lead for cross-bid comparison.
+- **Lowball then change orders** — when both a conspicuously low winning bid and later amendments appear in the document, note amendments that lift the value past what competing bids offered; if the amendments are not present, log a lead to check the amendment history (see the amendments section above).
 
 ### Vendor performance
 
 - **Satisfactory rating despite documented issues** — a vendor performance report that notes delivery failures or quality problems but rates the vendor "satisfactory" overall may reflect reluctance to formally record a poor rating (which would affect future competitions).
-- **Corrective action plans not followed up** — a corrective action plan was required but the file contains no record of whether it was implemented or the performance improved.
-- **Contract above the performance-reporting threshold** — for contracts above a relevant threshold, performance reports may be required. Record the contract value and note that reports are expected; whether they were filed is an absence a single document can't show, so flag it as a lead to check against the department's records — missing reports may mean the contract went unmonitored.
+- **Contract above the performance-reporting threshold** — record the contract value; where it sits above a threshold that would require a performance report, log a lead to check the department's records for whether the report was actually filed, since a missing report can mean the contract went unmonitored.
 
 ### Value anomalies
 
-- **Contract values just below competitive thresholds** — most governments set thresholds above which a competitive process is required; the values vary by jurisdiction, procurement type, and applicable trade agreement, and are revised on a fixed schedule, so verify the current figures with the relevant procurement authority rather than relying on remembered numbers. The pattern to watch is a value like $24,999 or $499,999 sitting conspicuously just under a round threshold, or a cluster of awards to one vendor each just below the limit — it suggests the contracting officer knows the threshold and is deliberately staying under it.
+- **Contract values just below competitive thresholds** — most governments set thresholds above which a competitive process is required; the threshold that applies may be named in the document itself, but the values otherwise vary by jurisdiction, procurement type, and applicable trade agreement and are revised on a fixed schedule, so log a lead to verify the current figure with the relevant procurement authority rather than relying on remembered numbers. The pattern to watch is a value like $24,999 or $499,999 sitting conspicuously just under a round threshold, or a cluster of awards to one vendor each just below the limit — it suggests the contracting officer knows the threshold and is deliberately staying under it.
 - **Long contract periods with no competitive renewal** — a contract that has been "amended and extended" for years without re-competition.
 
 ### Security and access
@@ -177,12 +174,14 @@ Collusion patterns usually only become visible across several bids or award noti
 1. **The evaluation report** — in competitive procurements, an evaluation report scores the bids. This is often obtainable via freedom of information request and shows why the winner won and by what margin.
 2. **The losing bidders** — in open competitions, unsuccessful bids may be obtainable via freedom of information request, along with the debriefing letters sent to losing bidders. Comparing bid prices reveals whether the winner's price was genuinely competitive.
 3. **Amendment history** — a single contract record shows the current value. The amendment history shows how the value grew over time.
-4. **Related contracts to the same vendor** — the contract you have is one; the full picture requires checking all contracts to the same vendor across departments over the same period. Total spend is often more newsworthy than any individual contract. Note that Crown corporations and state enterprises are sometimes exempt from standard procurement rules and disclosure requirements, so their contracts warrant separate research.
+4. **Related contracts to the same vendor** — the contract you have is one; the full picture requires checking all contracts to the same vendor across departments over the same period. A vendor that wins repeatedly in one department — especially one holding standing offer call-ups across multiple categories or regions without competition — only stands out once these awards are compiled. Total spend is often more newsworthy than any individual contract. Note that Crown corporations and state enterprises are sometimes exempt from standard procurement rules and disclosure requirements, so their contracts warrant separate research.
 5. **Conflict of interest declarations and attestations** — evaluation committee members must declare conflicts, and contractors typically attest that they have none. If a member had a relationship with the winning vendor, or a contractor conflict later emerges, those documents show it was either undisclosed or not caught.
 6. **Lobbying registry** — before a major contract award, check the relevant lobbyist registries for registrations by the winning vendor or their lobbyists targeting the awarding department.
 7. **The contract itself vs. the award notice** — the award notice is the public record; the actual contract may contain very different terms. Request the actual contract via freedom of information request.
 8. **Subcontract flow-through** — a contract awarded to a large company that subcontracts most of the work to a small company owned by a related party. The public record shows the large company; the actual beneficiary is obscured.
 9. **Bid protest decisions** — procurement tribunals publish their decisions (the GAO in the US, the CITT in Canada). A protest over the contract at hand — or an earlier one involving the same vendor or department — dissects the procurement's conduct in detail, at no cost.
+10. **Patterns visible only across many procurements** — some indicators never appear in a single file: a department that *repeatedly* invokes urgency to sole-source, or bid rotation, where the same small group of bidders takes turns winning similar competitions at similar prices. Assemble the department's award history to see them.
+11. **Corrective action plan follow-through** — a vendor performance report may require a corrective action plan, but whether it was implemented and whether performance improved appears only in later reports. Pull the subsequent performance records to see if the follow-up happened.
 
 ---
 

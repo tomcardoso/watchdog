@@ -45,18 +45,16 @@ This skill is loaded by Watchdog when the document type is a lobbyist registrati
 
 ### Revolving door
 
-- **Former cabinet minister or senior official lobbying their former department** — most jurisdictions impose post-employment restrictions, often under multiple overlapping ethical and transparency statutes. In Canada, former ministers and senior officials face strict limits, including a multi-year ban on paid lobbying alongside separate cooling-off periods that restrict contracting and official government dealings. In the U.S., cooling-off restrictions vary by branch and rank, ranging from one to two years for members of Congress and executive officials, and are frequently extended by administrative ethics pledges. Because of these staggered restrictions, a lobbying registration filed shortly after an official leaves office warrants immediate scrutiny.
+- **Former cabinet minister or senior official lobbying their former department** — most jurisdictions impose post-employment restrictions, often under multiple overlapping ethical and transparency statutes, including multi-year bans on paid lobbying and separate cooling-off periods that restrict contracting and official government dealings (in Canada; in the U.S. these vary by branch and rank, typically one to two years for members of Congress and executive officials, and are frequently extended by administrative ethics pledges). Record any stated prior role, former department, and the dates the official held and left office; log a lead to verify compliance with the applicable cooling-off period.
 - **Former political staff lobbying on behalf of a client in the same policy area they worked on** — cooling-off periods for ministerial or political staff vary; in Canada it is one year at the federal level.
 - **Lobbyist who was previously a senior official in the department they are now lobbying** — even if legally compliant, the relationship is worth examining.
-- **Public office holder who met with a lobbyist later joins the lobbyist's firm or client** — the inverse of the revolving door: the official who was lobbied ends up working for the lobbying interest.
 
 ### Registration patterns
 
 - **Late registration** — lobbying must be registered within a set period of the first communication (10 days in Canada; 45 days in the US). A registration filed after a known meeting is a potential violation.
 - **Retroactive registration** — a registration with an effective date months before the filing date.
-- **Registration filed just before a government decision** — suggests the lobbying may have started before registration, or that the lobbyist knew a decision was imminent.
+- **Registration filed just before a government decision** — record the registration and effective dates; if a related decision is imminent, the lobbying may have started before registration or the lobbyist may have known a decision was coming. Log a lead to check the registration date against the date of the relevant government decision.
 - **Broad, vague subject matter descriptions** — a subject matter defined as "economic development" or "government relations" covers almost anything. Compare to the specific meetings reported.
-- **Multiple clients in the same industry with overlapping subject matter** — a lobbying firm working for several companies in the same sector on the same regulatory file may have undisclosed conflicts.
 
 ### Meeting and communication patterns
 
@@ -67,9 +65,9 @@ This skill is loaded by Watchdog when the document type is a lobbyist registrati
 
 ### Financial patterns (US LDA)
 
-- **Lobbying income just below the disclosure threshold** — amounts just below the threshold reported by multiple clients may indicate deliberate underreporting.
+- **Lobbying income just below the disclosure threshold** — note the reported income; where the disclosure threshold for the jurisdiction is stated or known, flag income sitting just below it as a possible attempt to avoid reporting. Otherwise, log a lead to check the amount against the applicable threshold.
 - **Large lobbying fees combined with no reported contacts** — money spent with no meetings recorded is unusual.
-- **Significant increase in lobbying spend around a regulatory or legislative event** — a spike in reported income aligned with a known policy decision.
+- **Significant increase in lobbying spend** — record the reported income or expenses for the period; a spike aligned with a regulatory or legislative event can signal intensified influence around a policy decision. Log a lead to check the reported amounts against the timing of the relevant event.
 
 ---
 
@@ -125,6 +123,8 @@ This skill is loaded by Watchdog when the document type is a lobbyist registrati
 4. **Former officials who appear as references or technical contacts** — sometimes a former official doesn't register as a lobbyist but appears as a "subject matter expert" or "technical consultant" on filings.
 5. **The gap between registration and first reported meeting** — if meetings start occurring the same week as registration, the communications may have preceded the registration.
 6. **Corporate structure of the client** — the "client" listed may be a subsidiary; the ultimate beneficial interest may be a foreign corporation or state-owned enterprise that would be politically sensitive.
+7. **The official who was lobbied later joining the firm** — the inverse of the revolving door: a public office holder who met with a lobbyist subsequently takes a job with the lobbyist's firm or client. Spotting it requires tracking the official's career after the meetings, not just reading the registration.
+8. **Multiple clients in the same industry** — a lobbying firm working for several companies in the same sector on the same regulatory file may have undisclosed conflicts. This becomes visible only by comparing a firm's registrations across clients, or against clients already recorded in the vault digest.
 
 ---
 

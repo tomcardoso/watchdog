@@ -46,14 +46,13 @@ This skill is loaded by Watchdog when the document type is a police occurrence r
 
 - **Force level used vs. subject behaviour** — use-of-force frameworks require proportionality. A high level of force applied to a subject described as passively resistant or non-threatening is disproportionate and worth flagging.
 - **Multiple officers involved in a use-of-force incident** — note whether each officer's actions are individually documented, or whether accounts are consolidated in a way that obscures individual accountability.
-- **Injuries not documented as force-related** — injuries to a subject that appear in medical records but are not recorded in the use-of-force report suggest an incomplete or inaccurate account.
+- **Injuries described without a force explanation** — where the report records injuries to a subject but does not attribute them to a documented use of force, record the injuries as described and log a lead to cross-reference the subject's medical records, which may show force-related injuries the report omits.
 - **Inconsistency between the narrative and the structured report form** — structured force-reporting forms and free-text narratives often exist for the same incident. Discrepancies between them suggest the narrative may have been crafted after the fact.
 - **Documented injuries with no accompanying use-of-force report** — officers must file a use-of-force report whenever force above a threshold is used. If an occurrence report documents injuries or a struggle but no use-of-force report accompanies it, record that gap as a lead to confirm against the force's reporting record — the extractor can't see a report that isn't there.
 
 ### Disciplinary and complaint records
 
 - **Serial complaints against the same officer** — a pattern of complaints, even if individually dismissed, may indicate a systemic problem. Check the complainant demographics and complaint type.
-- **Disposition rates** — the proportion of complaints that are substantiated is typically low. Compare the dismissal rate for similar complaint types to understand whether a particular decision is anomalous.
 - **Conflicts of interest in the investigation** — a complaint investigated by officers in the same unit, division, or with a supervisory relationship to the subject officer.
 - **Recommendations not implemented** — coroner's inquest recommendations and oversight body recommendations that were not implemented by the police service. Note whether the same recommendation appears across multiple inquests.
 - **Delay between complaint and decision** — a complaint filed years before a decision may indicate a backlog or deliberate delay.
@@ -61,7 +60,6 @@ This skill is loaded by Watchdog when the document type is a police occurrence r
 ### Race and systemic factors
 
 - **Subject demographics** — where disclosed, note the race, age, gender, and mental health status of subjects involved in use-of-force incidents. Patterns across multiple records in a jurisdiction are newsworthy.
-- **Location patterns** — repeated use of force or complaints concentrated in specific neighbourhoods, housing complexes, or transit facilities may indicate over-policing.
 - **Mental health crisis calls** — officers dispatched to mental health crisis calls who use force should trigger questions about whether mental health call diversion programs exist and why they were not used.
 
 ---
@@ -102,6 +100,8 @@ This skill is loaded by Watchdog when the document type is a police occurrence r
 3. **The duty roster and radio logs** — a use-of-force incident involves multiple officers; the duty roster shows who was on shift and the radio logs show dispatch communications. These may be obtainable through a freedom of information request and may contradict or complement the occurrence report.
 4. **Complaint withdrawal** — many complaints are withdrawn after informal resolution. A pattern of withdrawals in cases involving a particular officer may indicate complainants are being pressured or discouraged.
 5. **Coroner's inquest jury recommendations** — juries at coroner's inquests make recommendations but have no power to compel action. Tracking whether those recommendations were implemented is an important accountability beat.
+6. **Complaint disposition rates** — the proportion of complaints that are substantiated is typically low. Comparing the dismissal rate for similar complaint types across a body's decisions shows whether a particular decision is anomalous, but this requires assembling multiple decisions.
+7. **Location patterns** — repeated use of force or complaints concentrated in specific neighbourhoods, housing complexes, or transit facilities may indicate over-policing, but the pattern only emerges across many records in a jurisdiction.
 
 ---
 

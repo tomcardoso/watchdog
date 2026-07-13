@@ -42,8 +42,8 @@ Loaded by Watchdog when the document type is a statement of claim, affidavit, ju
 
 ### Party patterns
 
-- **Same individual appearing as plaintiff in multiple unrelated cases** — serial litigant or a person who frequently finds themselves in disputes.
-- **Company as defendant in multiple cases** — pattern of non-payment, breach of contract, or regulatory violation. Cross-reference case types.
+- **A plaintiff appearing in an unrelated case** — if a plaintiff matches an entity that is party to other, unrelated proceedings, flag the repeat appearance: a serial litigant, or a person who frequently finds themselves in disputes.
+- **A defendant company appearing again** — if a defendant company matches one named in other cases, flag it as a possible pattern of non-payment, breach of contract, or regulatory violation.
 - **Director or officer named personally** — piercing the corporate veil is significant; it means a court found or a plaintiff alleges personal liability.
 - **Party described as "also known as"** — AKAs in court documents are legally significant and should be captured as aliases.
 - **Amended pleadings** — if an amended statement of claim exists, compare to the original. Additions and deletions could be because of typos, but could also be significant.

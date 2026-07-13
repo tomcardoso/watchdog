@@ -51,7 +51,7 @@ This skill is loaded by Watchdog when the document type is a health regulatory b
 - **Sexual abuse or boundary violation findings** — sexual misconduct by a health professional is treated with particular seriousness in most jurisdictions, often triggering mandatory revocation. Note whether the finding is for the most severe category of conduct.
 - **Prior discipline not disclosed** — a member who has been disciplined previously in another jurisdiction or who moved after discipline without disclosure. Record the member's other-jurisdiction registration status as a lead — national and international databases (FSMB DocInfo and equivalents) cover this.
 - **Practice conditions not complied with** — a member who was placed under conditions (mandatory supervision, restricted scope) and continued to practise outside those conditions.
-- **Repeated complaints with minor findings** — a member with a pattern of minor discipline committee findings may indicate a systemic problem that each individual case understates.
+- **Minor finding against a practitioner** — a discipline committee finding, even a minor one, may be one of a pattern that each individual case understates. Record the finding and log a lead to check the practitioner's regulatory history for prior complaints.
 - **Agreed statement of facts and penalty** — many regulatory cases are resolved by consent. An agreed statement of facts is not a full hearing; the agreed facts are less adversarially tested than a full hearing finding.
 - **Conduct pre-dating registration** — conduct that occurred before the member was registered with the body in the jurisdiction (e.g. conduct in another country or profession) that may not be captured in the current body's records.
 
@@ -63,10 +63,10 @@ This skill is loaded by Watchdog when the document type is a health regulatory b
 
 ### Facility and inspection
 
-- **Repeat non-compliance in inspection reports** — a facility cited for the same deficiency across multiple inspection cycles has a systemic problem.
+- **Repeat non-compliance in inspection reports** — where the report itself lists prior inspection cycles or references earlier deficiencies, a facility cited for the same deficiency across those cycles has a systemic problem. Where only the current inspection is present, log a lead to compare against the facility's inspection history.
 - **Immediate risk to patients or residents** — inspection reports distinguish between compliance failures that pose an immediate risk to safety and those that are administrative. Flag any "immediate risk" findings.
 - **Staffing levels** — inadequate staffing is a common finding in care facility inspections and may be the root cause of other cited deficiencies.
-- **Unreported critical incidents** — facilities are required to report critical incidents (serious adverse events) to the regulator. A finding that a critical incident was not reported is significant.
+- **Unreported critical incidents** — facilities are required to report critical incidents (serious adverse events) to the regulator. Record any critical incidents described in the document and log a lead to check whether the mandatory reports were filed.
 
 ---
 

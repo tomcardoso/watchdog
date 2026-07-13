@@ -57,7 +57,7 @@ This skill covers criminal proceedings specifically. For non-criminal court docu
 - **Delay-based stay of proceedings** — a stay because the accused was not tried within a reasonable time. This means the case was lost because the system was too slow, not because of innocence.
 - **Charge reduction before trial** — a serious charge reduced to a lesser offence before trial may indicate the prosecution's case weakened.
 - **Multiple charges stayed while others proceed** — selective prosecution of a subset of charges may indicate the full indictment was not provable.
-- **No-charge recommendation not followed** — where investigators made a no-charge recommendation but the prosecutor proceeded anyway (or vice versa), the divergence is significant.
+- **Charging recommendation diverging from the outcome** — where the document cites a police charging recommendation (for example, a recommendation not to charge) that the prosecutor did not follow, the divergence is significant. Record this only where the recommendation is stated in the document itself.
 
 ### Bail and remand
 

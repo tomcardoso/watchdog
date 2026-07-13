@@ -59,13 +59,13 @@ This skill is loaded by Watchdog when the document type is a statute, regulation
 
 ### Regulatory capture and lobbying fingerprints
 
-- **Drafting language identical to industry submissions** — compare the legislation to submissions made to the government during consultation. Word-for-word matching is a significant finding.
-- **Regulations that have not been promulgated** — a statute may create powers that require regulations before they take effect. If those regulations have never been made, the power is dead. Tracking unimplemented statutory provisions is a distinct accountability beat.
-- **Scope narrowed between introduced and passed versions** — track changes between the bill as introduced, as amended at committee, and as passed. Amendments that benefit specific industries are often not reported.
+- **Drafting language identical to industry submissions** — note any distinctive or unusually specific drafting language; log a lead to compare it against submissions made to the government during consultation, since word-for-word matching is a significant finding.
+- **Regulations that have not been promulgated** — note sections that delegate detail to regulations (visible as phrases like "as prescribed by regulation"); a statute may create powers that require regulations before they take effect, so log a lead to check whether those regulations were ever made. Tracking unimplemented statutory provisions is a distinct accountability beat.
+- **Scope narrowed between introduced and passed versions** — note the bill's stage and version; log a lead to compare the text against the bill as introduced, as amended at committee, and as passed, since amendments that benefit specific industries are often not reported.
 
 ### Emergency and extraordinary powers
 
-- **Time-limited emergency provisions that become permanent** — powers introduced as temporary emergency measures that were subsequently made permanent, sometimes without a separate legislative debate.
+- **Time-limited emergency provisions that become permanent** — note any stated sunset or emergency provisions and their expiry dates; powers introduced as temporary emergency measures are sometimes made permanent without a separate legislative debate, so log a lead to track whether they were renewed or made permanent.
 - **Broad regulation-making powers** — enabling provisions that allow the executive to make regulations on almost any subject matter without returning to parliament. These represent a transfer of legislative power to the executive.
 - **Privative clauses** — provisions that attempt to prevent courts from reviewing decisions made under the legislation. Their scope has been significantly limited by constitutional decisions in many jurisdictions.
 

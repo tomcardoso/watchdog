@@ -46,7 +46,7 @@ This skill is loaded by Watchdog when the document type is a Hansard transcript,
 ### Question period / question time
 
 - **Evasive answers** — a minister who answers a question about Topic A with a prepared statement about Topic B has deflected, not answered. Note the question asked and the answer given.
-- **Shifting explanations across multiple days** — a minister who gives one explanation on Monday and a different explanation on Thursday. Parliamentary records allow precise comparison.
+- **Explanation that may shift across sittings** — a minister's explanation of a specific matter. Note the statement and the topic, and log a lead to track the minister's statements on this topic across sittings. If a contradicting prior statement from the same minister is already in the vault digest, flag the discrepancy as a digest comparison.
 - **Claims made in the chamber that contradict documents** — a minister who states that no such directive was issued, when a freedom of information release shows it was. The parliamentary statement is the accountability record.
 - **Opposition questions that telegraph a coming story** — parties have sometimes used question time to put a minister on the record before a story breaks. If you have a document, check whether it was raised in the chamber and what the minister said.
 

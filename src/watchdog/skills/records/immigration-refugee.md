@@ -46,9 +46,9 @@ This skill is loaded by Watchdog when the document type is an immigration tribun
 ### Decision quality and process
 
 - **Credibility findings based on demeanour** — findings that a claimant is not credible because of how they appeared when testifying (eye contact, emotional response) have been criticized by courts as unreliable and culturally biased. Note any such findings.
-- **Boilerplate language** — decisions that appear to use identical paragraphs across multiple cases, particularly on country conditions, may not reflect genuine case-by-case analysis.
+- **Boilerplate language** — decisions sometimes reuse identical paragraphs across cases, which may not reflect genuine case-by-case analysis. Note any distinctive or templated passages and log a lead to compare them against other decisions by the same decision-maker or tribunal.
 - **Failure to consider documentary evidence** — a decision that does not address documentary evidence submitted by the claimant is a ground of judicial review or appeal. Look for references (or the absence of references) to submitted exhibits.
-- **Country condition evidence that is outdated** — decisions should use current country condition documentation. A decision relying on evidence that predates a significant political change in the country of origin is vulnerable on review.
+- **Country condition evidence relied on** — decisions should use current country condition documentation. Capture the country-condition sources and their dates as cited in the decision, and log a lead to check whether significant political changes in the country of origin post-date that evidence.
 - **Failure to consider risk to family members** — some claims involve risk to a claimant's family in the country of origin; failure to address this may constitute an error.
 
 ### Detention reviews
@@ -62,7 +62,7 @@ This skill is loaded by Watchdog when the document type is an immigration tribun
 
 - **Type of removal order and re-entry consequences** — note the type of removal and any bar on re-entry; different categories carry different consequences.
 - **Stay of removal** — a stay pending judicial review or a humanitarian application halts removal. Note whether a stay was sought and whether it was granted or denied.
-- **Removal to a country under a travel advisory or with documented human rights concerns** — check whether the country of removal is subject to official travel warnings or is documented as unsafe for the claimant's profile.
+- **Removal to a country with human rights concerns** — record the country of removal and log a lead to check whether it is subject to official travel advisories or documented as unsafe for the claimant's profile.
 
 ---
 

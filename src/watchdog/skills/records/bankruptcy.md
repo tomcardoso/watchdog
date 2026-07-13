@@ -55,9 +55,9 @@ Loaded by Watchdog when the document type is a bankruptcy filing, proposal, cred
 
 ### Timing patterns
 
-- **Bankruptcy filed shortly after a judgment** — the debtor is likely using bankruptcy to escape the judgment creditor.
-- **Business bankruptcy followed closely by a new company in the same industry** — the "phoenix company" pattern: old company's debts left behind while the business continues under a new name.
-- **Assets transferred to a spouse or family member in the years before bankruptcy** — common attempt to shield assets from creditors.
+- **Bankruptcy filed shortly after a judgment** — if the filing references a judgment debt, or a judgment date appears in the record, record it and log a lead about judgment-avoidance timing.
+- **Business bankruptcy followed closely by a new company in the same industry** — the "phoenix company" pattern, where the old company's debts are left behind while the business continues under a new name. Record the business activity and its principals, and query the entity digest for a newer same-industry company sharing those principals.
+- **Assets transferred to a spouse or family member in the years before bankruptcy** — a common attempt to shield assets from creditors. If the statement of affairs or trustee's report describes such related-party transfers, record them with dates and amounts.
 
 ### Creditor list patterns
 

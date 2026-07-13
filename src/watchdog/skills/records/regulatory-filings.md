@@ -51,8 +51,8 @@ For the financial statements themselves (balance sheet, income statement, audito
 
 ### Insider trading patterns
 
-- **Large insider sales before a negative disclosure** — insiders selling significant holdings shortly before a material change report disclosing bad news is the classic insider trading pattern. Compare insider transaction dates to subsequent disclosure dates.
-- **Cluster of insider sales** — multiple insiders selling in the same short window, even in small amounts, can signal that people close to the company know something.
+- **Large insider sales before a negative disclosure** — insiders selling significant holdings shortly before a material change report disclosing bad news is the classic insider trading pattern. Record the sale, the insider, and the transaction date, and log a lead to cross-reference against the dates of subsequent disclosures.
+- **Cluster of insider sales** — when this filing is a bulk or consolidated insider report showing multiple insiders selling in the same short window, record the cluster directly; even small amounts can signal that people close to the company know something. For a single-insider report, log a lead or compare against other insider transactions in the digest.
 - **Insider purchases followed by a positive announcement** — the inverse: insiders buying before a positive announcement. While not automatically illegal (insiders may buy for many legitimate reasons), the timing is relevant.
 - **Late insider filings** — insiders must file within a set deadline after a trade (5 calendar days in Canada under NI 55-104; 2 business days in the US under Form 4). Chronically late filers may be concealing the timing of trades relative to material information.
 - **Transactions in derivatives (options, warrants)** — insider option exercises and sales are disclosed; option grants are also disclosed. Large option grants to executives shortly before positive announcements are worth examining.
@@ -62,7 +62,7 @@ For the financial statements themselves (balance sheet, income statement, audito
 - **Material change report filed without a press release** — in some jurisdictions this is permissible (confidential filing) but unusual and worth questioning.
 - **Restated financial statements** — a company that restates previously filed financials has corrected material errors. The reason for the restatement and its magnitude are important.
 - **Auditor resignation** — an auditor that resigns mid-year rather than completing an audit may have disagreed with management over accounting treatment.
-- **CEO or CFO departure shortly after a certification period** — executives certify that financial statements are accurate; a departure shortly after signing a certification, without explanation, is a potential red flag.
+- **CEO or CFO departure within about 30–90 days of a certification period** — executives certify that financial statements are accurate; a departure within roughly 30 to 90 days of signing a certification, without explanation, is a potential red flag.
 - **Going concern qualification** — see also `financial-statements` skill. In a regulatory filing context, a going concern note triggers additional scrutiny from securities regulators.
 - **Change in fiscal year** — may indicate an attempt to delay disclosure of a difficult quarter.
 

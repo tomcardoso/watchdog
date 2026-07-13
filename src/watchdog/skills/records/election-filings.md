@@ -47,7 +47,7 @@ This skill is loaded by Watchdog when the document type is a campaign finance di
 
 ### Contribution patterns
 
-- **Contributions just below reporting thresholds** — amounts just below the disclosure threshold from multiple donors may indicate deliberate structuring to avoid disclosure. Threshold levels vary by jurisdiction.
+- **Contributions just below reporting thresholds** — amounts just below the disclosure threshold from multiple donors may indicate deliberate structuring to avoid disclosure. Threshold levels vary by jurisdiction and change over time, so apply this to individual contributions disclosed in the filing that sit at or just below the limit stated or known for that jurisdiction.
 - **Multiple contributions from the same household** — spouses, adult children, and other household members contributing the maximum allowable, especially in the same period, may indicate co-ordinated giving.
 - **Contributions from prohibited sources** — most jurisdictions ban corporate donations to candidates or parties; some ban union donations; some ban foreign donations. Any prohibited-category donor in a contribution list is a red flag.
 - **Out-of-district donors making up a large share of a candidate's fundraising** — worth noting, especially if those donors cluster around a specific industry or employer.
@@ -60,7 +60,6 @@ This skill is loaded by Watchdog when the document type is a campaign finance di
 ### Third-party advertising
 
 - **Third party registered shortly before a blackout or restricted period** — groups registering just before the restricted period may be trying to front-load spending.
-- **Third party with no prior public profile** — a newly formed organization with no history spending large amounts on advertising.
 - **Third party sharing an address or director with a registered party or candidate** — co-ordination between third parties and candidates is typically illegal; this is a structural indicator.
 - **Advertising expenses that don't match declared reach** — a very large declared spend with no publicly visible advertising.
 
@@ -123,6 +122,7 @@ This skill is loaded by Watchdog when the document type is a campaign finance di
 4. **The chief/official agent's own address** — sometimes the agent's address matches a vendor receiving large payments.
 5. **Non-monetary contributions from prohibited donors** — a company providing free office space, printing, or IT services to a campaign may be making an illegal in-kind contribution in jurisdictions where corporate donations are banned. Look for in-kind contributions and check whether the donor is a prohibited category.
 6. **Candidate's personal loans to their own campaign** — allowed in many jurisdictions but subject to limits and repayment rules; large self-loans that are never repaid are a financing mechanism worth examining.
+7. **A third party with no prior public profile** — a newly formed organization spending large amounts on advertising is only suspicious once you know it has no history. That judgment requires checking the group against prior registrations or public records outside the filing itself.
 
 ---
 

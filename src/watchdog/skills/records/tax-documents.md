@@ -51,7 +51,7 @@ This skill is loaded by Watchdog when the document type is a charity information
 - **High fundraising ratio** — if fundraising costs exceed 35% of fundraising revenue, that is worth flagging. Some charities spend more on raising money than on their programs.
 - **Low program spending ratio** — a charity spending less than 60% of expenditures on charitable programs (as opposed to admin and fundraising) is below what most regulators and watchdogs consider healthy.
 - **Revenue concentrated in a single source** — a charity that receives 80%+ of its income from a single donor or government grant is highly dependent and potentially controlled by that source.
-- **Revenue declining year-over-year while executive compensation increases** — a sign that leadership is protecting its own pay while the charity shrinks.
+- **Revenue declining while executive compensation increases** — where the return shows prior-year comparative figures, a decline in revenue alongside rising executive compensation is a sign that leadership is protecting its own pay while the charity shrinks. Where only a single year is present, log a lead to compare against prior returns.
 - **Large cash or near-cash holdings** — charities are required to disburse a minimum amount annually (disbursement quota). Large accumulated reserves may indicate failure to meet the quota.
 
 ### Related-party and insider transactions
@@ -70,10 +70,8 @@ This skill is loaded by Watchdog when the document type is a charity information
 
 ### US-specific patterns (990)
 
-- **Schedule L transactions** — business transactions with interested persons (loans, grants, business relationships with directors, officers, or key employees).
-- **Schedule O** — supplemental information; often where the organization explains unusual items. Read it fully.
+- **Schedule L transactions** — record all business transactions with interested persons disclosed in Schedule L (loans, grants, and service contracts involving directors, officers, or key employees).
 - **Part VII compensation** — the 990 requires disclosure of compensation for the highest-paid employees and all current officers.
-- **Schedule B donor disclosure** — 990s filed publicly do not include Schedule B (which names significant donors), but the IRS receives it. Following the 2021 Supreme Court ruling in *Americans for Prosperity Foundation v. Bonta*, state regulators can no longer compel charities to submit unredacted Schedule B lists.
 ---
 
 ## Jurisdiction terminology
@@ -99,6 +97,8 @@ This skill is loaded by Watchdog when the document type is a charity information
 | **501(c)(4)** | US social welfare organization; may engage in more political activity than a 501(c)(3); donations not deductible |
 | **990** | Annual return filed by most tax-exempt organizations |
 | **990-PF** | Return for private foundations — more detailed disclosure requirements |
+| **Schedule O** | Supplemental information section of the Form 990; often where the organization explains unusual items — read it fully |
+| **Schedule B** | The Form 990 schedule naming significant donors; not included in publicly filed 990s but received by the IRS. Following *Americans for Prosperity Foundation v. Bonta* (2021), state regulators can no longer compel charities to submit unredacted Schedule B lists |
 | **Private foundation vs. public charity** | A private foundation is typically funded by a single donor or family; public charities receive broad public support. Private foundations have stricter rules |
 | **Excise tax (4941)** | US tax on self-dealing transactions between a private foundation and its disqualified persons |
 | **Form 4720** | Filed when a foundation or its managers engage in prohibited acts — a red flag document |

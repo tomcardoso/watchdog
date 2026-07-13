@@ -54,12 +54,12 @@ This skill is loaded by Watchdog when the document type is an insurance regulato
 
 ### Financial stability
 
-- **Capital adequacy ratio below supervisory target** — most regulators set a target ratio (e.g. OSFI's 150% MCT in Canada; 100% under Solvency II in Europe). Below the target, regulators may impose restrictions. Approaching the minimum indicates potential insolvency.
+- **Capital adequacy ratio below supervisory target** — most regulators set a target ratio (e.g. OSFI's 150% MCT in Canada; a Solvency Capital Requirement (SCR) coverage ratio of around 100% under Solvency II in Europe, distinct from the lower Minimum Capital Requirement (MCR)). Below the target, regulators may impose restrictions. Approaching the minimum indicates potential insolvency.
 - **Reserve deficiency** — the appointed actuary must opine on whether reserves (amounts set aside for future claims) are adequate. A deficiency means the insurer has underestimated future claims payments.
 - **Rapid premium growth without corresponding capital** — an insurer writing premiums far faster than it is building capital may be taking on risk it cannot back.
-- **High combined ratio sustained over multiple years** — an insurer consistently spending more on claims and expenses than it collects in premiums is losing money on underwriting and relying on investment income to survive.
+- **High combined ratio sustained over multiple years** — when the return itself reports combined ratios for several years, a figure that stays above 100% across them shows the insurer is losing money on underwriting and relying on investment income to survive. If only the current period is shown, capture the combined ratio and log a lead to check earlier years.
 - **Investment portfolio concentrated in illiquid or high-risk assets** — an insurer with a large share of assets in private equity, real estate, or subordinated debt may have difficulty meeting claims in a stress scenario.
-- **Chronic Adverse Reserve Development** — if an insurer consistently has to top up its reserves for past years' claims, they are structurally underpricing their risk or deliberately suppressing initial reserve estimates to inflate current-year profits.
+- **Chronic Adverse Reserve Development** — loss development triangles or prior-year development figures in the document may show reserves for past accident years being topped up across several periods; a consistent pattern of adverse development suggests the insurer is structurally underpricing risk or suppressing initial reserve estimates to inflate current-year profits. If only one year of development is shown, capture it and log a lead to check the trend.
 - **Heavy Reliance on MGAs/MGUs** — Managing General Agents (MGAs) are third parties given authority to underwrite and bind policies on the insurer's behalf. If an insurer grows rapidly via MGAs, they bear all the financial risk while the MGA collects risk-free commissions. Poor oversight of MGAs has bankrupted many insurers.
 
 ### Reinsurance
@@ -67,13 +67,13 @@ This skill is loaded by Watchdog when the document type is an insurance regulato
 - **Concentration of reinsurance with a single reinsurer** — heavy reliance on one reinsurer creates counterparty risk. If the reinsurer fails or disputes coverage, the insurer is exposed.
 - **Reinsurance with affiliated entities** — ceding risk to a related company (captive reinsurer, parent company) may not genuinely transfer risk. "Finite reinsurance" arrangements that transfer very little actual risk but improve reported financial ratios are a fraud risk.
 - **Reinsurance recoverables exceeding surplus** — if the amount the insurer expects to collect from reinsurers exceeds the insurer's own capital, it is highly dependent on those collections materializing.
-- **Unrated or offshore reinsurers** — an insurer ceding risk to reinsurers that are unrated or domiciled in opaque jurisdictions (Cayman Islands, Barbados, Bermuda without equivalent regulation) may be parking risk without genuine transfer.
+- **Unrated or offshore reinsurers** — record the names and domiciles of reinsurers, especially any in opaque jurisdictions (Cayman Islands, Barbados, Bermuda without equivalent regulation); log a lead to check their financial-strength ratings, since ceding to unrated reinsurers may park risk without genuine transfer.
 - **Shadow Insurance** - specific to life insurance. This occurs when a life insurer creates a captive reinsurer in a state/country with looser reserving rules, cedes its life policies to the captive, and artificially boosts its capital.
 
 ### Market conduct
 
-- **Denial rates significantly above industry average** — a high claims denial rate for a given line of business may indicate systematic underpayment of claims.
-- **Complaints above industry average** — regulators in many jurisdictions publish complaint statistics by insurer. An insurer with a complaints ratio well above the industry average warrants scrutiny.
+- **Denial rates significantly above industry average** — capture the stated claims denial rate for each line of business; log a lead to compare it against the industry average, since a high rate may indicate systematic underpayment of claims.
+- **Complaints above industry average** — capture the stated complaint count or ratio; log a lead to benchmark it against the industry average (regulators in many jurisdictions publish complaint statistics by insurer), since a rate well above average warrants scrutiny.
 - **Rate filing applications with inadequate actuarial support** — a rate increase application that lacks the actuarial data to support the requested increase.
 
 ---

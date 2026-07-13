@@ -39,6 +39,15 @@ The only reader of this section is the extractor: one model pass over a single d
 
 A flag that requires knowing who someone is, proving an absence ("undisclosed", "not filed", "failed to"), or looking something up is not a red flag the extractor can act on — move that insight to *What investigators typically miss*.
 
+Watch for these recurring non-actionable patterns — convert each rather than delete it:
+
+- **Counting or trend across documents** ("repeated", "a pattern of", "over several years") — narrow to what one document shows, make it a digest comparison, or move it to *What investigators typically miss*.
+- **Outside reputation or benchmark** ("known bad actor", "above the industry average", "low-tax jurisdiction") — capture the value and log a lead.
+- **Editorial judgement** ("less reliable", "reputable") — rewrite as an extraction action ("record the stated characterisation").
+- **Vague thresholds** ("recent", "shortly after") — give a concrete window or tie it to a date stated in the document.
+
+The usual fix is to keep the insight and end the flag with "record X; log a lead to check Y", not to drop it.
+
 ### [Red flag category]
 
 - **[Red flag label]** — [One or two sentences: what to look for and why it matters. Write for pattern recognition, not just field extraction. Be specific — "transferred three or more times in 12 months" is useful; "unusual transaction" is not.]

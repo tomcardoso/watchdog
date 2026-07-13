@@ -57,14 +57,14 @@ For corporate registry records (registrations, director filings, shareholder reg
 
 ### Income statement red flags
 
-- **Accounting-to-Tax Income Disconnect** — a widening, unexplained gap where reported accounting Earnings Before Taxes (EBT) is significantly higher than implied taxable income (derived from current tax expense).
-- **EBITDA vs. CFO Divergence** — EBITDA running away from actual Cash Flow from Operations (CFO). This occurs when management capitalizes operating-type expenses to bypass EBITDA entirely while draining real cash.
+- **Accounting-to-Tax Income Disconnect** — a large or widening gap between reported pre-tax accounting income and the income implied by current tax expense can signal aggressive book-tax differences worth a closer forensic look. The two figures do not reconcile exactly (timing differences, credits, and other adjustments break the equivalence), so treat a persistent gap as a lead to log, not a precise measure.
+- **EBITDA vs. CFO Divergence** — a widening gap between EBITDA and cash flow from operations (CFO) can arise from capitalizing operating-type costs, aggressive revenue recognition, or working-capital drains. Note the gap and whatever drivers the statements disclose.
 - **Revenue declining while administrative expenses increase** — the business is shrinking but overhead isn't.
 - **Revenue concentrated in one or few customers** — disclosed in notes as a customer concentration risk. Loss of one customer could be devastating.
 - **Revenue recognition policy** — how and when does the company recognize revenue? Aggressive recognition (recognizing revenue before it's earned) is a common fraud mechanism.
 - **Non-recurring items appearing every year** — "one-time" charges that appear repeatedly are not one-time.
 - **Goodwill impairment** — the company wrote down the value of an acquisition. Often signals the acquisition failed.
-- **COGS vs. Adjusted Metric Shifting** — resource or content companies shifting core inventory costs (e.g., depletion or content rights) into capital assets, then omitting them in adjusted metrics to look artificially cheap.
+- **COGS vs. Adjusted Metric Shifting** — compare GAAP cost of goods sold against any non-GAAP adjusted figures shown in the document; note items excluded from the adjusted measure (e.g., depletion, content rights, or other core inventory costs) and their magnitude, which can make the business look artificially cheap.
 
 ### Balance sheet red flags
 
@@ -90,7 +90,7 @@ When the document is a full annual report rather than standalone statements, the
 
 **Auditor changes** — a change of auditor, especially mid-year, after a qualified opinion, or from a large firm to a much smaller one, can precede restatements or disputes; the reason given (or not given) for the change is worth recording.
 
-**Risk-factor drift** — risks newly added or quietly dropped compared with the prior year's report can mark what management has started or stopped worrying about; a new, oddly specific risk factor is sometimes the first public trace of an unannounced problem.
+**Risk-factor drift** — when the document itself reproduces prior-year risk disclosures, compare them year over year: risks newly added or quietly dropped can mark what management has started or stopped worrying about, and a new, oddly specific risk factor is sometimes the first public trace of an unannounced problem. If only the current year's risks are present, note any oddly specific new risk and log a lead to compare against the prior year's report.
 
 **Non-GAAP emphasis** — heavy reliance on adjusted or non-GAAP measures whose gap to the audited figures widens year over year, or a changed definition of an "adjusted" metric between years, may be an important signal of financial distress of obfuscation.
 

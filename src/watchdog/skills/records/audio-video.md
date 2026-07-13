@@ -46,15 +46,15 @@ This skill is loaded by Watchdog when the document type is a YouTube video trans
 
 ### Transcript quality
 
-- **Auto-generated transcripts** — YouTube and other platforms generate transcripts by machine. These may contain errors, especially on proper nouns, technical terms, names, and numbers. Never rely on an auto-generated transcript for a direct quote without listening to the audio to verify.
+- **Auto-generated transcripts** — when the transcript is marked as, or observably appears to be, machine-generated (e.g. a YouTube auto-caption), record that fact and treat the exact wording — especially proper nouns, technical terms, names, and numbers — as unverified. Capture the quote but flag the wording as requiring confirmation against the audio.
 - **Edited or incomplete transcripts** — a manually prepared transcript may have been selectively transcribed. Note if sections are marked "[inaudible]", "[crosstalk]", or "[portion omitted]" — these gaps may be meaningful.
-- **Speaker identification errors** — in multi-speaker settings, transcription services sometimes misattribute statements. Verify attributions against any available video where speakers are visible.
+- **Speaker identification errors** — capture speaker attributions exactly as stated in the transcript. In multi-speaker settings, log a lead to verify the attributions against any available video where speakers are visible.
 - **Translated transcripts** — a transcript translated from another language carries compounded reliability risk (transcription errors + translation errors). Note the source language.
 
 ### Content assessment
 
 - **Admissions against interest** — statements by a company executive, government official, or subject of an investigation that acknowledge wrongdoing, awareness of a problem, or inconsistency with public positions. These can be the highest-value content in an audio/video source.
-- **Statements that contradict public positions** — an executive who says in an investor call "we have known about this risk for two years" when the company's public position was that the problem was unexpected.
+- **Statements that contradict public positions** — when a recorded statement contradicts a public position already recorded on an entity in the vault digest (e.g. an executive says "we have known about this risk for two years" while the digest records the company's public position that the problem was unexpected), record both sides and flag the contradiction. Where no such prior position is in the digest, capture the statement and log a lead to check it against the entity's public record.
 - **Date of statement relative to events** — the date the content was recorded establishes what the speaker knew and said at that time.
 - **Statements made before an incident vs. after** — a podcast recorded before a company's collapse or a political scandal may contain statements the speaker would not make now.
 
@@ -63,13 +63,12 @@ This skill is loaded by Watchdog when the document type is a YouTube video trans
 - **Forward-looking statements and disclaimers** — earnings calls include boilerplate "safe harbour" disclaimers protecting the company from liability for forward-looking statements. The disclaimer is standard; evaluate what was actually said on its merits.
 - **Analyst questions that reveal market concern** — analyst questions in earnings calls often surface problems the company hasn't addressed publicly. The questions themselves could be of journalistic interest even when the answers are evasive.
 - **Guidance revisions** — a company that revised its guidance downward, or withdrew guidance entirely, without adequate prior disclosure.
-- **CFO or CEO tone and language changes** — a significant change in how an executive discusses a specific topic (from confident to hedged, from detailed to vague) across successive calls may signal deterioration.
 
 ### Podcasts and YouTube
 
 - **Self-published content without editorial oversight** — a YouTube video or podcast published directly by a subject is unedited; statements are less guarded than in a press interview. This makes them more valuable for direct quotes but requires the same source assessment as any self-interested communication.
 - **Comments and community posts** — the comments section of a YouTube video and community posts by the channel may contain additional context or subsequent clarifications.
-- **Deleted or unlisted content** — content that was published and then deleted may still be in the Internet Archive, Odysee, or other mirror sites. The fact of deletion is itself significant.
+- **Previously published and removed content** — if the document or its surrounding context states that the content was previously published and later removed, record the stated date and platform and log a lead for an archive search (Internet Archive, Odysee, or other mirror sites).
 
 ---
 
@@ -121,6 +120,7 @@ For journalism: audio and video quotes require verification against the original
 4. **Deleted content** — a video or episode that has been removed from YouTube or a podcast feed may be archived at archive.org, on a mirror site, or in a listener's cache. The fact of deletion is itself significant.
 5. **Earnings call transcripts via free services** — Seeking Alpha, Motley Fool, and company investor relations pages often publish earnings call transcripts.
 6. **Foreign-language content** — a YouTube channel or podcast in another language may contain significant statements not captured by English-language research. Auto-translation in YouTube can give a rough understanding; professional translation is needed for direct quotes.
+7. **Tone and language shifts across successive calls** — a significant change in how an executive discusses a specific topic (from confident to hedged, from detailed to vague) across successive earnings calls may signal deterioration. This requires comparing the current call against prior calls; log a lead to pull earlier transcripts and compare.
 
 ---
 

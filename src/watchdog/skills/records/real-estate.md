@@ -87,7 +87,7 @@ Loaded by Watchdog when the document type is a title transfer, deed, mortgage or
 
 - **Private individual as mortgagee** — an individual (not a financial institution) holding a mortgage, especially a first mortgage, is unusual. Note their name and address.
 - **Stacked mortgages (second, third, or lower rank)** — multiple charges on the same property signal financial stress or complex financing. Note the rank, amount, and lender for each.
-- **Mortgage amount far exceeding apparent property value** — may indicate an inflated appraisal or a fraud scheme, especially in combination with other red flags.
+- **Mortgage amount that may exceed property value** — record the mortgage principal and any stated assessed or sale value in the document, and log a lead to compare the amount against assessments or comparable sales. A mortgage far exceeding the property's value may indicate an inflated appraisal or a fraud scheme, especially in combination with other red flags.
 - **Collateral or all-obligations mortgage** — a mortgage that secures all present and future debt, not a specific loan. Common for bank facilities but should be noted; the disclosed amount may understate actual exposure.
 - **Mortgage to an offshore or shell entity** — a charge held by an entity in a secrecy jurisdiction is a red flag for beneficial ownership concealment.
 - **Discharge shortly before property transfer** — the mortgage was paid off and then the property was sold; record the sequence so it can be checked.
@@ -114,7 +114,7 @@ Loaded by Watchdog when the document type is a title transfer, deed, mortgage or
 
 ### Assessment anomalies
 
-- **Assessed value significantly below comparable properties** — may indicate an error, a heritage designation, or an arrangement worth investigating.
+- **Assessed value that may be below comparables** — record the assessed value as stated, and log a lead to compare it against comparable properties. A value well below comparables may indicate an error, a heritage designation, or an arrangement worth investigating.
 - **Assessment appealed** — the owner challenged their assessment. The outcome is a lead worth recording.
 
 ---

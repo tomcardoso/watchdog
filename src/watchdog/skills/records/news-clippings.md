@@ -43,24 +43,22 @@ This skill is loaded by Watchdog when the document type is a news article, press
 
 ### Source assessment
 
-- **Anonymous sources without clear description** — a story based on an unnamed "source" with no description of their role, access, or motivation is less reliable than one with a specific characterization.
-- **Single-source claims** — major factual assertions supported by only one source (named or unnamed) are more vulnerable to error or manipulation than multi-sourced claims.
-- **Sources with an apparent interest in the outcome** — a source who benefits from the story's publication may be using the reporter. Note the relationship between the source and the claim.
-- **On-background government sources** — government officials who brief reporters on background ("a spokesperson for the minister, not authorized to speak publicly") are often providing self-serving characterizations. Weight accordingly.
+- **Anonymous sources** — record every anonymous source the article relies on, together with the exact characterization the article gives it (e.g. "a senior official", "someone familiar with the matter", "a source not authorized to speak publicly"). Where the article gives no description at all, note that the source is unnamed and uncharacterized.
+- **Single-source claims** — note major factual claims that rest on a single source, named or unnamed, and record what that one source is.
+- **On-background government sources** — record when a source is characterized as briefing on background ("a spokesperson for the minister, not authorized to speak publicly"). Capture the exact on-background characterization as stated.
 
 ### Story reliability
 
-- **Press releases quoted without attribution or scrutiny** — a story that reproduces the main claims of a press release without independent verification is essentially PR.
-- **Corrections and updates** — a story that has been corrected may have contained a significant factual error. Note the nature of the correction and whether it affects the story's central claims.
-- **Retractions** — a fully retracted story should not be used as a source of fact. Note that the story existed and was later retracted.
-- **Publication date relative to events** — a story that predates a key event provides the state of knowledge at that time; one published after may benefit from hindsight or additional sources.
-- **Outlet reputation for the subject area** — a tabloid reporting on financial crime and a financial investigative outlet reporting on the same topic have different reliability profiles. Note the outlet type.
+- **Press releases quoted without attribution or scrutiny** — note when a story reproduces the main claims of a press release without independent verification; record that the claims trace to a press release.
+- **Corrections and updates** — record any correction the story carries, the nature of the correction, and whether it affects the story's central claims.
+- **Retractions** — record when a story has been retracted. A fully retracted story should not be used as a source of fact; note that the story existed and was later retracted.
+- **Publication date relative to events** — record the publication date. A story that predates a key event captures the state of knowledge at that time; one published after may benefit from hindsight or additional sources.
 
 ### Claims and context
 
-- **Characterizations vs. facts** — distinguish between what a source said (direct quote), what a reporter characterizes (paraphrase), and what is independently established. All three appear in news stories but carry different evidentiary weight.
-- **Government/company denials** — a denial in a news story is not proof of innocence, but its terms matter. A denial that says "we have never done X" is narrower than one that says "X is completely false."
-- **Translations** — a translated foreign-language article may have introduced errors or lost nuance. Note when a story is a translation and from which language.
+- **Characterizations vs. facts** — distinguish and record separately what a source said (direct quote), what a reporter characterizes (paraphrase), and what is independently established. All three appear in news stories but carry different evidentiary weight.
+- **Government/company denials** — record the exact terms of any denial in the story. A denial that says "we have never done X" is narrower than one that says "X is completely false"; capture the wording, not just the fact of a denial.
+- **Translations** — note when a story is a translation and from which language. A translated foreign-language article may have introduced errors or lost nuance.
 
 ---
 
@@ -114,6 +112,8 @@ Never treat a news story as establishing a fact for which the story itself is th
 4. **What the story doesn't say** — a press release or corporate announcement article often omits information that would complicate the narrative. The absence of certain facts (e.g., a company's regulatory history) is a gap, not a confirmation of a clean record.
 5. **The original vs. the updated version** — online news stories may be updated after initial publication. The original version and the current version may differ significantly; the Internet Archive (Wayback Machine) sometimes preserves versions at specific crawl times.
 6. **Foreign-language coverage** — a person or company that appears clean in English-language coverage may have significant coverage in their home-country press. Always search in the relevant language if there is a foreign connection.
+7. **Sources with an interest in the outcome** — a source who benefits from the story's publication may be using the reporter. Judging this requires knowing who the source is and what they stand to gain, which the article rarely states outright; weigh the relationship between the source and the claim before treating it as disinterested.
+8. **Outlet reputation for the subject area** — a tabloid and a specialist investigative outlet reporting on the same topic carry different reliability profiles. Assessing this requires knowledge of the outlet beyond the clipping itself; factor the outlet type into how much weight the story bears.
 
 ---
 

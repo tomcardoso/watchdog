@@ -51,7 +51,7 @@ This skill is loaded by Watchdog when the document type is an auditor general re
 - **Disagreement with a recommendation** — management that disagrees with an audit finding may be a useful signal. Note the specific recommendation and the stated reason for disagreement; these often reveal institutional defensiveness.
 - **Vague implementation commitments** — a response that commits to "review the matter" or "develop a framework" without a specific action and deadline is often a non-commitment.
 - **"Partially agree" responses** — management agrees with part of a recommendation but not the most consequential part; this allows them to claim action was taken while avoiding the core issue.
-- **Repeat findings** — the most important audit signal: a finding that was made in a prior audit, was supposedly addressed, and has recurred. This shows the systemic problem was not actually fixed.
+- **Repeat findings** — the most important audit signal, and an actionable one because most audit reports explicitly list prior-year findings and recommendations: a finding the current report itself identifies as recurring from an earlier audit that was supposedly addressed. Capture the recurrence as the report states it — this shows the systemic problem was not actually fixed.
 - **Prior recommendations still outstanding** — most audit reports include a section on prior recommendations. A recommendation that was outstanding in the previous audit and still outstanding now is a significant finding, even if not highlighted as such.
 
 ### Financial integrity
@@ -124,3 +124,6 @@ This skill is loaded by Watchdog when the document type is an auditor general re
 
 ### Practitioner and public interest
 - [Canadian Audit and Accountability Foundation (CAAF)](https://www.caaf-fcar.ca/en/performance-audit/15-performance-audit) — Canada's premier research and education foundation for public sector performance audit; publishes practice guides and methodology resources for performance auditors
+
+### Journalism resources
+- [Global Investigative Journalism Network (GIJN)](https://gijn.org/) — Network of investigative journalism organizations; publishes reporting guides and tipsheets on following public money and reading government audit and accountability reports

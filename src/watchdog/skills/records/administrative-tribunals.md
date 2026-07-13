@@ -50,14 +50,14 @@ This skill is loaded by Watchdog when the document type is a decision, order, or
 ### Jurisdictional issues
 
 - **Challenges to jurisdiction** — a respondent arguing the tribunal has no authority to hear the case could signal they believe the underlying complaint has merit. Jurisdictional challenges that succeed can bury a meritorious complaint in delay.
-- **Statute cited vs. substance of complaint** — the enabling statute the complainant cites shapes what remedies are available. Where a complainant picks a narrower statutory vehicle than available, ask whether the more powerful route was deliberately avoided.
+- **Statute cited and any jurisdiction dispute** — the enabling statute the complainant cites shapes what remedies are available. Record the statute cited and any dispute the parties raise over which statute or forum governs the matter.
 - **Prior complaints dismissed for procedural reasons** — a complainant who filed the same or similar complaint and had it dismissed for timeliness or jurisdictional reasons without a hearing on the merits.
 
 ### Competition and regulatory
 
 - **Consent agreements** — when a regulator settles with a company rather than proceeding to a full hearing, the consent agreement will contain useful admissions of fact.
 - **Undertakings in lieu of divestiture** — in merger reviews, an undertaking (behavioural remedy) instead of a structural one (forced sale) is a weaker outcome that may signal regulatory capture or inadequate enforcement.
-- **Market definition disputes** — in competition matters, how the market is defined largely determines whether anticompetitive conduct is found. A narrow market definition that excludes obvious substitutes benefits the respondent.
+- **Market definition disputes** — in competition matters, how the market is defined largely determines whether anticompetitive conduct is found. Record how the market is defined and what the respondent claims falls outside that definition.
 
 ### Human rights
 
@@ -67,7 +67,7 @@ This skill is loaded by Watchdog when the document type is a decision, order, or
 
 ### Privacy and information
 
-- **Orders ignored** — privacy and access-to-information orders issued by commissioners are sometimes ignored, requiring the complainant to go to court for enforcement. A pattern of non-compliance by a particular organization is newsworthy.
+- **Orders ignored** — privacy and access-to-information orders issued by commissioners are sometimes ignored, requiring the complainant to go to court for enforcement. Note the order and any compliance deadline; if the entity digest already carries a prior order against the same respondent, record that as a pattern, otherwise log a lead to check whether earlier orders went unenforced.
 - **Findings of systemic failure** — a commissioner finding that an organization had no breach response plan, inadequate data retention policies, or systemic privacy failures.
 - **Third-party disclosure** — access-to-information decisions where a third party (usually a company) objected to the disclosure of records about its activities and lost.
 

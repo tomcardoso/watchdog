@@ -52,17 +52,17 @@ For standalone financial statements or MD&A, see `financial-statements`; for sec
 ### Director and officer patterns
 
 - **Director with no address, or a PO box as address** — may indicate a nominee director (a person who lends their name to a company but has no real involvement). Common in shell company structures.
-- **Same person as director of 3+ companies** — especially if those companies are in unrelated industries or different jurisdictions.
+- **Same person as director of multiple companies** — record each directorship and flag the count when the same person appears as director of three or more companies. Whether those companies span unrelated industries or different jurisdictions is a judgment for a human to make on the recorded list.
 - **Director appointed and resigned within 12 months** — rapid turnover can indicate a company being set up and wound down quickly.
-- **Director change near a significant event** — a change right before or after a large transaction, dissolution, or court filing.
+- **Director change near a significant event** — note director changes with their dates, and log a lead to correlate the timing with any major transaction, filing, or regulatory action, checking the entity digest where such an event is already recorded.
 - **Director whose address matches the company's registered address** — can indicate the director's address is fictitious.
 - **Name variations** — most corporate registries do not verify the information they receive, so (intentionally or unintentionally) misspelled or variable names are common.
 
 ### Address patterns
 
-- **Multiple companies at the same address** — especially if it's a residential address, a mailbox service, or a law firm. Normal for a law firm serving as registered agent; significant if the companies otherwise appear unrelated. A single individual acting as a nominee across unrelated entities is the primary target for suspicion, rather than standard commercial registered agent addresses.
+- **Multiple companies at the same address** — record the shared address and note whether it is a registered-agent or law-firm address versus a residential, mailbox, or unmarked one. A law firm serving as registered agent is normal; flag a residential or unmarked shared address for a lead, especially where a single individual appears to act as a nominee across the entities.
 - **Registered address in a jurisdiction with no apparent business connection** — e.g. a company claiming local registration but all directors and operations are elsewhere.
-- **Registered address that doesn't exist** — a non-existent street number or a demolished building.
+- **Registered address that appears implausible** — a malformed street number or an address that otherwise looks implausible on its face; log a lead to verify it exists.
 
 ### Share structure
 
