@@ -49,7 +49,7 @@ Extraction runs as a single completion with no tool access — there is no gloss
 |-----------|---------|
 | **Term defined within the document** | Many official documents include a definitions section — check the beginning and end of the document first |
 | **Regulatory, legal, or accounting term you recognize** | Define it inline from your own knowledge so the extraction stays self-contained |
-| **Jurisdiction-specific or unfamiliar term** | Don't guess. Record the term verbatim and its jurisdiction in `observations` as an open question — specific record skills (corporate-filings, land-registries, court-documents, etc.) may already cover it; otherwise it's a lead for a later `/watchdog-research` session or human review |
+| **Jurisdiction-specific or unfamiliar term** | Don't guess. Record the term verbatim and its jurisdiction in `observations` as an open question — specific record skills (corporate-filings, real-estate, court-documents, etc.) may already cover it; otherwise it's a lead for a later `/watchdog-research` session or human review |
 
 ---
 

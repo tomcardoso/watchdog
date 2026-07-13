@@ -108,12 +108,12 @@ This skill is loaded by Watchdog when the document type is a discipline decision
 ## What investigators typically miss
 
 1. **The public registry** — most regulatory bodies maintain a public registry of all licensed practitioners, including past discipline. The discipline decision you have is a single document; the registry entry shows the complete discipline history, including matters that predate the current proceeding.
-2. **The complaints process behind the decision** — discipline decisions describe the outcome, not the investigation. The original complaint, investigation report, and any charges are separate documents. Many regulatory bodies will disclose these on request.
+2. **The complaints process behind the decision** — discipline decisions describe the outcome, not the investigation. The original complaint, investigation report, and any charges are separate documents. Regulatory bodies may disclose these upon request.
 3. **Conditions on a licence** — a practitioner may have conditions imposed (e.g., cannot handle trust funds, must be supervised) that are not highlighted in the decision headline. Conditions represent ongoing risk and are the most important thing to check when assessing whether a practitioner is safe to use.
 4. **Parallel criminal proceedings** — serious financial misconduct in a regulated profession often also constitutes fraud or theft. Whether criminal charges were laid — or notably, were not laid — is a separate story.
 5. **The client restitution fund** — law societies, real estate councils, and some other regulatory bodies maintain client restitution funds that compensate victims of practitioner theft. Claims to these funds, which are often public, reveal the scale of client harm.
 6. **Corporate structure of the practice** — professional misconduct often involves a firm, not just an individual. Who else worked at the firm, who owned it, and whether the firm is still operating under a different name are questions the decision itself may not answer.
-7. **Reciprocal discipline** — when a practitioner is disciplined in one jurisdiction, other jurisdictions where they are licensed may initiate their own discipline proceedings on the same facts. This doesn't always happen, and a practitioner disciplined in one province may remain licensed and active in another.
+7. **Reciprocal discipline** — when a practitioner is disciplined in one jurisdiction, other jurisdictions where they are licensed may initiate their own discipline proceedings on the same facts. This doesn't always happen, however, and a practitioner disciplined in one province may remain licensed and active in another.
 
 ---
 

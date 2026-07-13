@@ -1,11 +1,11 @@
 ---
-description: a government-produced report, departmental evaluation, departmental or municipal annual report, royal commission report, public inquiry report, task force report, advisory council report, or similar policy document produced by or for a government body; for auditor general or value-for-money/performance audits, use `audit-reports`
+description: a government-produced report, departmental evaluation, departmental or municipal annual report, royal commission report, public inquiry report, task force report, advisory council report, white paper, green paper, consultation paper, regulatory impact assessment, or similar policy document produced by or for a government body; for auditor general or value-for-money/performance audits, use `audit-reports`; for the legal instruments themselves (statutes, regulations, bills) use `legislation`
 ---
 # Domain knowledge — Government reports
 
-This skill is loaded by Watchdog when the document type is a government-produced report, departmental evaluation, royal commission report, public inquiry report, task force report, advisory council report, or similar policy document produced by or for a government body.
+This skill is loaded by Watchdog when the document type is a government-produced report, departmental evaluation, royal commission report, public inquiry report, task force report, advisory council report, white paper, green paper, consultation paper, regulatory impact assessment, or similar policy document produced by or for a government body.
 
-This is distinct from audit reports (see `audit-reports` skill), which cover auditor general and value-for-money audits specifically.
+This is distinct from audit reports (see `audit-reports` skill), which cover auditor general and value-for-money audits specifically, and from the legal instruments themselves — statutes, regulations, bills — which are covered by `legislation`.
 
 ---
 
@@ -15,6 +15,8 @@ This is distinct from audit reports (see `audit-reports` skill), which cover aud
 - Royal commission and public inquiry reports
 - Task force and advisory council reports
 - Departmental evaluation and program review reports
+- Government white papers and green papers
+- Consultation papers and regulatory impact assessments
 - Legislative or parliamentary committee reports
 - Independent review panel reports
 - Commissioner or ombudsman reports
@@ -90,6 +92,9 @@ This is distinct from audit reports (see `audit-reports` skill), which cover aud
 | **Departmental Results Report (DRR)** | Canada | An annual public accountability document showing how a department performed against its plans |
 | **Select committee** | UK / Australia | A parliamentary committee examining a specific issue or government department; equivalent to a standing committee |
 | **Section 21 inquiry** | UK | A statutory public inquiry under the Inquiries Act 2005 |
+| **White paper** | Canada / UK / Australia | A government policy statement signalling its intention to legislate |
+| **Green paper** | Canada / UK / Australia | A government consultation document inviting public comment before policy is settled |
+| **Regulatory impact assessment (RIA)** | Universal | A government document estimating the costs and benefits of a proposed regulation |
 
 ---
 

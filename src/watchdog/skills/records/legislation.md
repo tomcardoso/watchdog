@@ -1,20 +1,19 @@
 ---
-description: a statute, regulation, order-in-council, government policy directive, government white paper, consultation paper, or similar primary or secondary legislation. This skill covers the documents through which governments create legal obligations and policy frameworks — not the decisions applying them (see `court-documents`, `administrative-tribunals`, and others for adjudicative records)
+description: a statute, regulation, order-in-council, bill, government policy directive, or similar primary or secondary legislation — the instruments through which governments create legal obligations. For policy prose (white papers, consultation papers, regulatory impact assessments) use `government-reports`; for the decisions applying the law use `court-documents`, `administrative-tribunals`, and others
 ---
-# Domain knowledge — Laws, regulations, and policy documents
+# Domain knowledge — Laws, regulations, and legislative instruments
 
-This skill is loaded by Watchdog when the document type is a statute, regulation, order-in-council, government policy directive, government white paper, consultation paper, or similar primary or secondary legislation. This skill covers the documents through which governments create legal obligations and policy frameworks — not the decisions applying them (see `court-documents`, `administrative-tribunals`, and others for adjudicative records).
+This skill is loaded by Watchdog when the document type is a statute, regulation, order-in-council, bill, government policy directive, or similar primary or secondary legislation — the instruments through which governments create legal obligations. Policy prose about legislation (white papers, green papers, consultation papers, regulatory impact assessments) is covered by `government-reports`; the decisions applying the law are covered by `court-documents`, `administrative-tribunals`, and others.
 
 ---
 
 ## Document types covered
 
 - Acts of parliament, congress, legislature, and national assembly (primary legislation)
+- Bills at any stage — as introduced, as amended in committee, as passed
 - Statutory instruments, regulations, orders-in-council, and decrees (secondary legislation)
 - By-laws and municipal ordinances
 - Policy directives, ministerial guidelines, and government directives
-- Government white papers and green papers
-- Consultation papers and regulatory impact assessments
 - Codes of conduct with statutory force
 - Proclamations and royal assent notices
 - In Canada: federal Acts; Statutory Orders and Regulations (SOR/); Governor-in-Council (GIC) orders; provincial acts and regulations; Orders in Council (OIC)
@@ -39,6 +38,7 @@ This skill is loaded by Watchdog when the document type is a statute, regulation
 | **Amendments** | Any amending acts or instruments included in the document |
 | **Defined terms** | Key terms the legislation defines, often in a "Definitions" or "Interpretation" section |
 | **Enabling power** | For regulations, the section of the parent act that authorizes them |
+| **Bill number and stage** | For bills: the bill number and the stage of the text (as introduced, as amended in committee, as passed) |
 
 ---
 
@@ -89,9 +89,6 @@ This skill is loaded by Watchdog when the document type is a statute, regulation
 | **Privative clause** | Universal | A provision attempting to exclude judicial review of decisions made under the legislation |
 | **Sunset clause** | Universal | A provision specifying that the law or a part of it expires on a particular date |
 | **Grandfather clause** | Universal | A provision exempting existing situations from a new requirement |
-| **White paper** | Canada/UK/Australia | A government policy statement signalling its intention to legislate |
-| **Green paper** | Canada/UK/Australia | A government consultation document inviting public comment before policy is settled |
-| **Regulatory impact assessment (RIA)** | Universal | A government document estimating the costs and benefits of a proposed regulation |
 
 ---
 

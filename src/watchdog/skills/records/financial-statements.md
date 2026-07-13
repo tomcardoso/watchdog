@@ -1,24 +1,22 @@
 ---
-description: a balance sheet, income statement, auditor's report, management discussion and analysis (MD&A), or the annual report of a private company, charity, hospital, university, or other organization built around its financial statements; for corporate registry records use `corporate-filings`, for public-company annual reports and securities-regulator filings use `regulatory-filings`
+description: a balance sheet, income statement, auditor's report, management discussion and analysis (MD&A), or an annual, interim, or quarterly report built around financial statements — from a private or public company (10-K, 10-Q), charity, hospital, university, or other organization; for event-driven securities filings (insider reports, material change reports, proxies, prospectuses, AIFs) use `regulatory-filings`, for corporate registry records use `corporate-filings`
 ---
 # Domain knowledge — Financial statements
 
-Loaded by Watchdog when the document type is a balance sheet, income statement, auditor's report, management discussion and analysis (MD&A), or similar financial disclosure.
+Loaded by Watchdog when the document type is a balance sheet, income statement, auditor's report, management discussion and analysis (MD&A), or an annual, interim, or quarterly report built around financial statements — whatever the organization: private or public company, charity, hospital, or university.
 
-For corporate registry records (registrations, director filings, shareholder registers), see `corporate-filings`; for securities-regulator disclosure documents around the statements (material change reports, insider trading reports, prospectuses), see `regulatory-filings`.
+For corporate registry records (registrations, director filings, shareholder registers), see `corporate-filings`; for event-driven securities filings around the statements (material change reports, insider trading reports, proxies, prospectuses, annual information forms), see `regulatory-filings`.
 
 ---
 
 ## Document types covered
 
 - Annual financial statements (audited)
-- Annual reports of private companies, charities, hospitals, and universities (narrative plus audited statements)
+- Annual reports (narrative plus audited statements) — private and public companies, charities, hospitals, universities
 - Interim / quarterly financial statements (reviewed or unaudited)
 - Auditor's reports and management letters
 - Management discussion and analysis (MD&A)
-- Annual information forms (AIF) — Canadian public companies
 - 10-K and 10-Q filings — US public companies
-- Prospectuses and offering memoranda
 - Financial statements filed in bankruptcy proceedings
 - Non-profit / charity financial statements
 
@@ -99,6 +97,8 @@ When the document is a full annual report rather than standalone statements, the
 **Incentives Tied to Non-GAAP Targets** — executive bonuses, options, or performance shares explicitly benchmarked against non-GAAP metrics (like Adjusted EBITDA) instead of standard GAAP Net Income.
 
 **Insider & Creative Concentration** — major shareholders concurrently serving as senior executives and creative directors, leading to opaque corporate structures, inactive subsidiaries, or unvouched relationships with limited partnerships.
+
+**Certified statements** — for public companies, the CEO and CFO personally certify the statements (SOX 302/906 in the US and equivalents elsewhere). Note who certified; a later restatement makes those certifications significant.
 
 ### Related party transactions
 
