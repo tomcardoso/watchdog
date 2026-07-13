@@ -302,6 +302,13 @@ def run(vault: Path, extraction_path: Path, quiet: bool = False, warn=None) -> d
     for warning in verify_quotes(extraction, page_texts):
         _warn(warning)
 
+    # Deterministic figure grounding against the morgue text (#363): flags any stated
+    # key_fact whose numeric figures can't all be found on (or near) the cited page —
+    # advisory only, never blocks the document.
+    from watchdog.pipeline.figure_verify import verify_figures
+    for warning in verify_figures(extraction, page_texts):
+        _warn(warning)
+
     # Deterministic date-mismatch check (#369): flags a file whose embedded creation date
     # postdates its claimed date_of_document by a suspicious margin — annotation only, never
     # blocks the document, and silent for OCR'd documents (see file_metadata.check_date_mismatch).
