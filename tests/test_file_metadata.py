@@ -220,3 +220,86 @@ def test_check_date_mismatch_silent_when_created_unparseable():
 def test_check_date_mismatch_silent_when_date_of_document_unparseable():
     ext = _extraction("2023-06-01T00:00:00", "sometime in 2019")
     assert file_metadata.check_date_mismatch(ext, {}) == []
+
+
+# ── OOXML extended properties (docProps/app.xml) ─────────────────────────────
+#
+# `Company` and `TotalTime` are not exposed by python-docx/python-pptx/openpyxl — they live in
+# the extended-properties part, which file_metadata reads out of the OOXML zip directly.
+
+def _set_app_xml(path, body: str) -> None:
+    """Rewrite an OOXML file's docProps/app.xml with `body`, preserving every other part."""
+    import shutil
+    import zipfile
+    src = path.with_suffix(path.suffix + ".orig")
+    shutil.move(str(path), str(src))
+    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(path, "w") as zout:
+        for item in zin.infolist():
+            if item.filename != "docProps/app.xml":
+                zout.writestr(item, zin.read(item.filename))
+        zout.writestr("docProps/app.xml", body)
+
+
+_APP_XML = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/'
+    'extended-properties"><Company>Shell Holdings Ltd</Company>'
+    "<TotalTime>3</TotalTime></Properties>"
+)
+
+
+def test_extract_docx_reads_company_and_total_edit_minutes_from_app_xml(tmp_path):
+    import docx
+    p = tmp_path / "resolution.docx"
+    docx.Document().save(str(p))
+    _set_app_xml(p, _APP_XML)
+
+    md = file_metadata.extract(p)
+    assert md["company"] == "Shell Holdings Ltd"
+    # Coerced to int by _normalize (it is in _NUMERIC_KEYS), not left as the raw XML string.
+    assert md["total_edit_minutes"] == 3
+
+
+def test_extract_xlsx_reads_company_from_app_xml(tmp_path):
+    import openpyxl
+    p = tmp_path / "ledger.xlsx"
+    openpyxl.Workbook().save(str(p))
+    _set_app_xml(p, _APP_XML)
+
+    assert file_metadata.extract(p)["company"] == "Shell Holdings Ltd"
+
+
+def test_app_xml_billion_laughs_bomb_is_refused_not_expanded(tmp_path):
+    """A hostile .docx must not be able to take chew down with an entity-expansion bomb. The
+    stdlib xml.etree parser expands internal entities; file_metadata uses defusedxml, which
+    refuses — so the reader degrades to {} for app.xml rather than exploding."""
+    import docx
+    bomb = (
+        '<?xml version="1.0"?><!DOCTYPE Properties ['
+        '<!ENTITY a "AAAAAAAAAA">'
+        '<!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">'
+        '<!ENTITY c "&b;&b;&b;&b;&b;&b;&b;&b;&b;&b;">'
+        ']><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/'
+        'extended-properties"><Company>&c;</Company></Properties>'
+    )
+    p = tmp_path / "hostile.docx"
+    d = docx.Document()
+    d.core_properties.author = "J. Doe"
+    d.save(str(p))
+    _set_app_xml(p, bomb)
+
+    md = file_metadata.extract(p)              # must not raise, must not hang
+    assert "company" not in md                 # the bomb was refused, not expanded
+    assert md["author"] == "J. Doe"            # core properties still survive the app.xml failure
+
+
+def test_app_xml_missing_part_degrades_to_core_properties_only(tmp_path):
+    import docx
+    p = tmp_path / "plain.docx"
+    d = docx.Document()
+    d.core_properties.author = "J. Doe"
+    d.save(str(p))
+
+    md = file_metadata.extract(p)
+    assert md["author"] == "J. Doe"
+    assert "company" not in md

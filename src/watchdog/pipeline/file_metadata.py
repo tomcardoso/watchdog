@@ -36,9 +36,10 @@ _FFPROBE_TIMEOUT = 10   # seconds
 _ALLOWED_KEYS = {
     "author", "created", "modified", "creator_tool", "producer", "title", "company",
     "last_modified_by", "revision", "last_printed", "camera_make", "camera_model",
-    "gps", "duration_seconds", "encoder",
+    "gps", "duration_seconds", "encoder", "total_edit_minutes",
 }
-_NUMERIC_KEYS = {"revision", "duration_seconds"}   # may stay int/float; everything else -> str
+# May stay int/float; everything else -> str.
+_NUMERIC_KEYS = {"revision", "duration_seconds", "total_edit_minutes"}
 
 _PDF_DATE_RE = re.compile(
     r"^D:(?P<year>\d{4})(?P<month>\d{2})?(?P<day>\d{2})?"
@@ -152,23 +153,61 @@ def _core_properties_dict(cp) -> dict:
     return out
 
 
+_APP_XML_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/extended-properties}"
+
+
+def _read_ooxml_app_properties(path: Path) -> dict:
+    """`Company` and `TotalTime` (total editing time, in minutes) live in OOXML's *extended*
+    properties part, `docProps/app.xml` — which none of python-docx, python-pptx, or openpyxl
+    expose. All three formats are OOXML zips, so one reader covers them.
+
+    Both are investigative signals the core properties can't give us: a shared `Company` across
+    supposedly unrelated documents means a shared template (the same cluster signal as a shared
+    registered agent), and a long report with a few minutes of total editing time was assembled,
+    not written. Best-effort — a missing part, malformed XML, or a hostile payload yields ``{}``.
+
+    Parsed with `defusedxml`, never the stdlib `xml.etree`: this XML comes straight out of an
+    untrusted document, and the stdlib parser expands internal entities, so a malicious `.docx`
+    could hand us a billion-laughs bomb and take chew down. Any XML we ever parse from a
+    document is attacker-controlled — keep it on defusedxml."""
+    import zipfile
+
+    import defusedxml.ElementTree as ET
+    try:
+        with zipfile.ZipFile(path) as z:
+            root = ET.fromstring(z.read("docProps/app.xml"))
+    except Exception:
+        return {}
+    out = {}
+    company = root.findtext(f"{_APP_XML_NS}Company")
+    if company and company.strip():
+        out["company"] = company.strip()
+    total_time = root.findtext(f"{_APP_XML_NS}TotalTime")
+    if total_time and total_time.strip():
+        out["total_edit_minutes"] = total_time.strip()   # _normalize coerces to int
+    return out
+
+
 def _read_docx(path: Path) -> dict:
     import docx
-    return _core_properties_dict(docx.Document(str(path)).core_properties)
+    return {**_core_properties_dict(docx.Document(str(path)).core_properties),
+            **_read_ooxml_app_properties(path)}
 
 
 def _read_pptx(path: Path) -> dict:
     import pptx
-    return _core_properties_dict(pptx.Presentation(str(path)).core_properties)
+    return {**_core_properties_dict(pptx.Presentation(str(path)).core_properties),
+            **_read_ooxml_app_properties(path)}
 
 
 def _read_xlsx(path: Path) -> dict:
     import openpyxl
     wb = openpyxl.load_workbook(str(path), read_only=True)
     try:
-        return _core_properties_dict(wb.properties)
+        core = _core_properties_dict(wb.properties)
     finally:
         wb.close()
+    return {**core, **_read_ooxml_app_properties(path)}
 
 
 # ── Images (EXIF) ────────────────────────────────────────────────────────────
