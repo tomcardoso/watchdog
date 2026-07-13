@@ -1,11 +1,9 @@
 ---
-description: a freedom of information or access to information response package, severance log, exemption index, or related disclosure record
+description: a freedom of information or access to information response package, severance log, exemption index, or related disclosure record; for an information/privacy commissioner's order or appeal of a refusal, use `administrative-tribunals`
 ---
 # Domain knowledge — Freedom of information responses
 
-This skill is loaded by `/ingest` when the document type is a freedom of information or access to information response package, severance log, exemption index, or related disclosure record.
-
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
+This skill is loaded by Watchdog when the document type is a freedom of information or access to information response package, severance log, exemption index, or related disclosure record.
 
 ---
 
@@ -15,16 +13,15 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 - Exemption indexes and severance (redaction) logs
 - Informal disclosure packages
 - Proactive or routine disclosure releases
-- Complaint and investigation decisions (information commissioner, ombudsman, or equivalent oversight body)
 - Requests-in-progress logs and disclosure summaries
-- In Canada: Federal ATI (Access to Information) response packages; provincial FOI packages; municipal MFIPPA responses (Ontario)
+- In Canada: Federal ATI (Access to Information) response packages; provincial or municipal FOI responses
 - In the US: FOIA (Freedom of Information Act) response packages; state-level public records responses
 - In the UK: Freedom of Information Act response packages
 - In Australia: FOI Act response packages (federal and state)
 
 ---
 
-## Always-present fields to extract
+## Fields to extract
 
 | Field | What to look for |
 |-------|-----------------|
@@ -47,14 +44,13 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ### Volume and timing
 
 - **High severance rate** — if more than 30–40% of pages are withheld, look at which exemptions are claimed. A blanket use of cabinet confidence, third-party information, or similar exemptions on records that appear routine is worth challenging.
-- **Time taken far beyond the statutory limit** — statutory deadlines vary (30 days federally in Canada and Australia; 20 working days in the UK; 20 business days under US federal FOIA). A response that arrives six to eighteen months late suggests either a backlog or deliberate delay on a politically sensitive file.
+- **Time taken far beyond the statutory limit** — statutory deadlines vary. A response that arrives six to eighteen months late suggests either a backlog or, in rare cases, a deliberate delay on a politically sensitive file.
 - **Response timed to a political event** — institutions sometimes release sensitive records on a Friday afternoon, during a busy news cycle, or just before a legislative recess. Check the response date against the calendar.
-- **Substantively identical requests returned with different severance levels** — if the same records were released to a different requester with less redaction, note the discrepancy.
 
 ### Exemptions and redactions
 
 - **Cabinet or executive privilege claimed on operational records** — absolute exemptions for cabinet deliberations are appropriate for genuine policy decisions; their use on documents that appear to be operational may indicate over-claiming. Note: in some jurisdictions, this exemption cannot be reviewed by the oversight body.
-- **Third-party / commercial confidentiality over-claimed** — often overclaimed by institutions afraid of complaints from third parties. Check whether the third party was given the opportunity to object, and whether the information is genuinely commercial.
+- **Third-party / commercial confidentiality claimed** — note where a commercial confidentiality exemption is claimed, and whether the same information appears to be publicly available elsewhere (e.g., published pricing or a public contract award). Where it needs checking against outside sources, log a lead.
 - **"Not responsive" designation** — records within the date range declared not relevant to the request. This can be legitimate or can be used to exclude inconvenient documents.
 - **Withheld by full page vs. redacted within a page** — a page withheld in full under a single exemption may be hiding less than a page with surgical redactions of specific names or figures.
 - **Consecutive page numbers with a gap** — e.g. pages 1–17, then 19–45. Page 18 was withheld or severed. Note the gap and the exemption claimed.
@@ -109,6 +105,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 5. **Proactive disclosure cross-reference** — contracts, hospitality, and travel released proactively may overlap with or contradict records released in a FOI package. Compare them.
 6. **Consultation records** — many FOI packages contain records of the institution consulting with other departments or the central government before making decisions. These show who was involved in the decision to withhold.
 7. **The online disclosure database** — many jurisdictions maintain public logs of completed requests. Comparing the database summary to the actual release can reveal inconsistencies or missing records.
+8. **Substantively identical requests severed differently** — if the same records were released to a different requester with less redaction, the discrepancy is significant. This requires comparing multiple FOI packages, so it is a cross-document check rather than something visible in a single release.
 
 ---
 

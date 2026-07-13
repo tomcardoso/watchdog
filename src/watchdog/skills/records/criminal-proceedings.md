@@ -1,13 +1,11 @@
 ---
-description: a criminal court document — including a charging document, bail or remand decision, preliminary hearing transcript, trial decision, sentencing decision, or appeal in a criminal matter
+description: a criminal court document — including a charging document, bail or remand decision, preliminary hearing transcript, trial decision, sentencing decision, or appeal in a criminal matter. For parole, probation, or prison-oversight records use `corrections-records`; for police occurrence, use-of-force, or disciplinary records use `police-records`
 ---
 # Domain knowledge — Criminal proceedings
 
-This skill is loaded by `/ingest` when the document type is a criminal court document — including a charging document, bail or remand decision, preliminary hearing transcript, trial decision, sentencing decision, or appeal in a criminal matter.
+This skill is loaded by Watchdog when the document type is a criminal court document — including a charging document, bail or remand decision, preliminary hearing transcript, trial decision, sentencing decision, or appeal in a criminal matter.
 
-This skill covers criminal proceedings specifically. For non-criminal court documents (civil claims, injunctions, administrative tribunal decisions), see the `court-documents` skill. For police occurrence reports and disciplinary records, see the `police-records` skill.
-
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
+This skill covers criminal proceedings specifically. For non-criminal court documents (civil claims, injunctions, administrative tribunal decisions), see the `court-documents` skill. For police occurrence reports and disciplinary records, see the `police-records` skill. For parole board decisions, probation records, prison inspection reports, and corrections oversight documents, use `corrections-records`.
 
 ---
 
@@ -24,13 +22,13 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 - Search warrant applications and wiretap authorizations (where unsealed)
 - Mutual legal assistance treaty (MLAT) records
 - Proceeds of crime restraint and forfeiture orders
-- In Canada: informations, indictments, CCAA s.11(b) applications, Gladue reports, dangerous offender designations
+- In Canada: informations, indictments, Charter s. 11(b) delay applications, Gladue reports, dangerous offender designations
 - In the US: indictments, plea agreements, federal sentencing guidelines calculations
 - In the UK: charge sheets, Crown Court indictments, Newton hearings
 
 ---
 
-## Always-present fields to extract
+## Fields to extract
 
 | Field | What to look for |
 |-------|-----------------|
@@ -46,7 +44,8 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 | **Sentence** | Imprisonment, conditional sentence, fine, probation, discharge |
 | **Bail conditions** | Conditions imposed while awaiting trial |
 | **Co-accused** | Other persons charged in the same matter |
-| **Victims / complainants** | Identity (often protected by publication ban or non-publication order) |
+| **Victims / complainants** | Identity (may be protected by publication ban or non-publication order) |
+| **Police officers / investigators** | Names (and badge numbers, if applicable) of the individuals that conducted a criminal investigation |
 
 ---
 
@@ -58,7 +57,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 - **Delay-based stay of proceedings** — a stay because the accused was not tried within a reasonable time. This means the case was lost because the system was too slow, not because of innocence.
 - **Charge reduction before trial** — a serious charge reduced to a lesser offence before trial may indicate the prosecution's case weakened.
 - **Multiple charges stayed while others proceed** — selective prosecution of a subset of charges may indicate the full indictment was not provable.
-- **No-charge recommendation not followed** — where investigators made a no-charge recommendation but the prosecutor proceeded anyway (or vice versa), the divergence is significant.
+- **Charging recommendation diverging from the outcome** — where the document cites a police charging recommendation (for example, a recommendation not to charge) that the prosecutor did not follow, the divergence is significant. Record this only where the recommendation is stated in the document itself.
 
 ### Bail and remand
 
@@ -69,8 +68,8 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 ### Trial and evidence
 
-- **Evidence excluded by a charter, constitutional, or human rights ruling** — evidence excluded because of a rights violation is often the most important evidence in the case. The exclusion ruling explains what was found and what it produced. Even if excluded from the trial, the underlying facts may be newsworthy.
-- **Credibility findings** — a trial judge's credibility assessment of witnesses, including police officers, is a matter of public record. A finding that an officer was not credible is significant.
+- **Evidence excluded by a charter, constitutional, or human rights ruling** — evidence excluded because of a rights violation may be the most important evidence in the case. The exclusion ruling explains what was found and what it produced. Even if excluded from the trial, the underlying facts may be newsworthy.
+- **Credibility findings** — a trial judge's credibility assessment of witnesses, including police officers, is a matter of public record. A finding that an officer was not credible is significant, and could affect other cases they've investigated.
 - **Expert evidence disputes** — where competing experts testified, note the subject matter and which expert the court preferred and why.
 
 ### Sentencing
@@ -114,7 +113,8 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **Person → Court**: Where and before whom the matter was heard
 5. **Person → Outcome**: Verdict and sentence (with date)
 6. **Person → Victim**: Alleged victim (note any publication ban before identifying)
-7. **Property → Forfeiture order**: Assets subject to proceeds of crime order
+7. **Person → Investigator**: Individual(s) that conducted the criminal investigation
+8. **Property → Forfeiture order**: Assets subject to proceeds of crime order
 
 ---
 
@@ -124,7 +124,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 2. **The charging document** — the charging document is the most precise statement of what the prosecution alleges. It lists every count, the specific statutory section, and the date range of the alleged conduct. Always read it before reading anything else.
 3. **Wiretap or surveillance authorizations** — where a prosecution arose from a wiretap or electronic surveillance investigation, the authorization itself (and the supporting affidavit) may be unsealed after the case concludes. These documents describe the scope and targets of the surveillance.
 4. **Asset restraint orders** — in proceeds-of-crime cases, property may be restrained before conviction and forfeited after. The restraint order describes the property and the alleged connection to crime; it is public when granted.
-5. **The sentencing judge's proportionality analysis** — a sentencing decision explains why a particular sentence is proportionate to the offence and offender. A sentence that departs significantly from the range (upward or downward) is a story.
+5. **The sentencing judge's proportionality analysis** — a sentencing decision explains why a particular sentence is proportionate to the offence and offender. A sentence that departs significantly from the range (upward or downward) is worth noting.
 6. **Co-accused cooperation** — where one co-accused pleaded guilty and received a reduced sentence in exchange for cooperation, the sentencing decision for the cooperating witness often reveals the substance of their assistance and what they admitted.
 
 ---

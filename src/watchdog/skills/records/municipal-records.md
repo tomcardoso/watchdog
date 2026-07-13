@@ -1,11 +1,9 @@
 ---
-description: a council agenda or minutes, development permit, variance application, zoning amendment, conflict-of-interest disclosure, or other municipal government record
+description: a council agenda or minutes, development permit, variance application, zoning amendment, conflict-of-interest disclosure, integrity commissioner decision, or similar municipal council and planning record; for municipal contract awards and procurement use `government-contracts`, for property tax assessments use `real-estate`
 ---
 # Domain knowledge — Municipal records
 
-This skill is loaded by `/ingest` when the document type is a council agenda or minutes, development permit, variance application, zoning amendment, conflict-of-interest disclosure, or other municipal government record.
-
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
+This skill is loaded by Watchdog when the document type is a council agenda or minutes, development permit, variance application, zoning amendment, conflict-of-interest disclosure, integrity commissioner decision, or similar municipal council and planning record. Municipal contract awards and procurement are covered by `government-contracts`; property tax assessments by `real-estate`.
 
 ---
 
@@ -20,19 +18,16 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 - Development permits and variances
 - Conflict-of-interest declarations (municipal councillors)
 - Integrity commissioner or ethics officer complaints and decisions
-- Municipal lobbyist registry records
-- Municipal auditor general reports
 - Council expense reports and indemnity claims
-- Property tax assessment records and appeals
-- Municipal contracts and procurement records
-- Ombudsman investigation reports
 - In Canada (Ontario): Committee of Adjustment decisions; OPA/ZBA applications; LPAT/OLT appeals; MCIA declarations; MFIPPA requests
 - In the US: City council minutes; planning commission decisions; board of zoning appeals decisions; city ethics commission records
 - In the UK: Planning committee decisions; standards committee decisions; overview and scrutiny committee reports
 
+(Adjacent municipal document types live elsewhere: contract awards and procurement in `government-contracts`; municipal auditor general reports in `audit-reports`; ombudsman reports in `government-reports`; property tax assessments and appeals in `real-estate`; municipal lobbyist registrations in `lobbying-records`; the enacted text of a by-law in `legislation`.)
+
 ---
 
-## Always-present fields to extract
+## Fields to extract
 
 | Field | What to look for |
 |-------|-----------------|
@@ -54,31 +49,21 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 ### Development approvals
 
-- **Variance applications for properties with recent ownership changes** — a property purchased, then immediately subject to a variance or upzoning application, suggests the buyer may have had advance knowledge the application would be approved.
-- **Multiple variances for the same property or developer** — variances are supposed to be exceptional; a developer who routinely receives them may be receiving systematic accommodation.
+- **Variance application soon after a change in ownership** — when both the property's purchase date and the application date appear in the document, note a variance or upzoning application filed within roughly 12 months of purchase; a buyer who applies that quickly may have had advance knowledge the application would be approved.
 - **Applications approved against staff recommendation** — staff rejection followed by council approval is unusual and worth examining, especially where the development is controversial or in a sensitive area.
-- **Conditions of approval waived or not enforced** — a development approved with specific conditions (traffic study, community benefits agreement, affordable unit percentage) where the conditions were later waived or ignored.
-- **Councillor recusal pattern** — a councillor who routinely declares conflicts on matters involving a specific developer, employer, or property may have a relationship worth documenting.
+- **Conflict of interest declared on this item** — record any councillor who declares a conflict of interest and the specific item; note the developer, employer, or property that triggered it. (Whether a councillor *routinely* recuses on a particular interest is a cross-meeting pattern — see "What investigators typically miss".)
 - **Applicant is a numbered company or shell entity** — development applications from numbered companies can obscure the real beneficial interest. Check the corporate registry for directors and officers.
 
 ### Conflicts of interest
 
-- **Failure to declare** — most jurisdictions require councillors to disclose a pecuniary or financial interest before any council vote where they have one. Failure to declare is the offence; it can result in disqualification from office.
+- **Undeclared pecuniary interest** — failure to declare a financial interest before a vote is the offence and can lead to disqualification from office (in Ontario, under the Municipal Conflict of Interest Act), but the interest itself is rarely visible in the record. Record the members who voted on each item and log a lead to check their known pecuniary interests against the matters they decided.
 - **Declared conflict but failure to leave the room** — many conflict-of-interest laws require the councillor to leave the meeting, not just abstain from voting. Remaining in the room during deliberations may itself be a violation.
-- **Indirect pecuniary interest** — an interest held through a spouse, parent, or dependent child. Councillors sometimes declare conflicts for direct interests but not indirect ones.
-- **Pattern of declarations by the same councillor** — a councillor who repeatedly declares conflicts in a particular sector (real estate, construction, waste management) may have pervasive interests in that sector.
+- **Indirect pecuniary interest** — an interest held through a spouse, parent, or dependent child; councillors sometimes declare direct interests but not indirect ones. Identifying one requires family or ownership knowledge outside the document, so log a lead to check decision-makers' relatives against the parties before council.
 
 ### Integrity commissioner complaints
 
-- **Repeat complaints against the same councillor** — a pattern of complaints, even if individually dismissed, is worth noting.
 - **Complaint dismissed on procedural grounds** — a complaint dismissed because it was filed late or outside the commissioner's jurisdiction, without a finding on the merits.
 - **Complaint settled before a report** — some complaints are resolved informally before the commissioner issues a report. The existence of an informal resolution may not be publicly disclosed.
-
-### Procurement and contracts
-
-- **Sole-source contracts awarded without competitive bidding** — municipal procurement rules typically require competitive bids above specified thresholds. Sole-source awards above those thresholds require documented justification.
-- **Contract splitting** — dividing a large contract into smaller pieces each below the tender threshold to avoid competitive bidding requirements.
-- **Vendor relationship with a council member or senior official** — a contract awarded to a company with a personal or financial relationship to a decision-maker.
 
 ---
 
@@ -109,18 +94,19 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 3. **Company → Application**: Developer applying for approval
 4. **Councillor → Conflict**: Declared conflict (direct or indirect) and the specific item
 5. **Person → Complaint**: Integrity commissioner or ethics complaint (complainant and subject)
-6. **Vendor → Contract**: Municipal contract (amount, type, procurement method)
 
 ---
 
 ## What investigators typically miss
 
-1. **The planning consultant and lawyer** — development applications are almost always submitted by a planning consultant or lawyer on behalf of the real applicant. The consultant may appear on dozens of applications before the same committee; their relationship with municipal staff and members is worth examining.
+1. **The planning consultant and lawyer** — development applications may be submitted by a planning consultant or lawyer on behalf of the real applicant. The consultant may appear on dozens of applications before the same committee; their relationship with municipal staff and members is worth examining.
 2. **The agent of record vs. the beneficial owner** — the applicant on a development permit may be a numbered company or a trustee. The beneficial owner — the person who will profit from the approval — may be someone else entirely.
-3. **Conditions attached to a bylaw** — a council may pass a zoning amendment "in principle" subject to conditions (a holding zone). If the conditions are later lifted without scrutiny, that is a second decision worth examining.
+3. **Conditions attached to a bylaw — and whether they were kept** — a council may pass a zoning amendment "in principle" subject to conditions (a holding zone), and approvals often carry conditions such as a traffic study, community benefits agreement, or affordable-unit percentage. Whether those conditions were later lifted, waived, or simply never enforced is a second decision that only surfaces across later records, so it is worth tracing beyond the approval itself.
 4. **The recused councillor's subsequent vote** — a councillor who declares a conflict on an amendment must also declare a conflict on any subsequent vote on the same matter (e.g. an appeal). Failing to carry the recusal through to related matters is a common violation.
 5. **Council meeting audio and video** — most municipalities record council meetings; the audio or video may contain discussions not reflected in the formal minutes.
 6. **Heritage designation and demolition permits** — a property under heritage designation that receives a demolition permit may require council approval. The sequence of decisions (heritage designation lifted, demolition permitted, development approved) can reveal political accommodation of a developer.
+7. **Repeat variances or permits to the same property or developer** — variances are meant to be exceptional. A single decision looks routine; a developer or property that receives them again and again, visible only once the applications are compiled, may be getting systematic accommodation.
+8. **Patterns tied to a single councillor across meetings** — a councillor who routinely declares conflicts involving a particular developer, employer, or sector (real estate, construction, waste management), or who is the repeated subject of integrity-commissioner complaints, only stands out once declarations and complaints from many meetings are assembled — even complaints individually dismissed can form a pattern.
 
 ---
 
@@ -136,3 +122,9 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 - [AMCTO — Association of Municipal Managers, Clerks and Treasurers of Ontario](https://www.amcto.com) — Professional association for Ontario municipal administrators; publishes guidance on records management, conflict-of-interest procedures, and municipal law
 - [OGP Local — Open Government Partnership](https://www.opengovpartnership.org/ogp-local/) — International initiative helping local governments apply open government principles including transparency and accountability
 - [Transparency International — Local Government Knowledge Hub](https://knowledgehub.transparency.org/topics/local-government) — Research portal covering corruption risks in local governance, with case studies and anti-corruption resources from jurisdictions worldwide
+
+### Journalism resources
+
+- [Reporters Committee for Freedom of the Press — Open Government Guide](https://www.rcfp.org/open-government-guide/) — State-by-state guide to US open meetings and public records laws, including access rules for city council, planning commission, and zoning board records
+- [Global Investigative Journalism Network (GIJN)](https://gijn.org/) — International network whose Resource Center publishes guides and tipsheets on investigating local government, procurement, and public records
+- [Investigative Reporters and Editors (IRE)](https://www.ire.org/) — Nonprofit offering tipsheets, story-based training, and reporting guides, including material on covering local government and using public records

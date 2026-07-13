@@ -3,9 +3,7 @@ description: an aircraft registration, flight log, airworthiness record, ADS-B f
 ---
 # Domain knowledge — Aircraft logs and aviation records
 
-This skill is loaded by `/ingest` when the document type is an aircraft registration, flight log, airworthiness record, ADS-B flight track, safety investigation report, or similar aviation document.
-
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
+This skill is loaded by Watchdog when the document type is an aircraft registration, flight log, airworthiness record, ADS-B flight track, safety investigation report, or similar aviation document.
 
 ---
 
@@ -26,7 +24,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 ---
 
-## Always-present fields to extract
+## Fields to extract
 
 | Field | What to look for |
 |-------|-----------------|
@@ -50,12 +48,12 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 ### Ownership and registration
 
-- **Aircraft registered to a numbered company or trust** — obfuscates the beneficial owner. Cross-reference the registered company in the corporate registry.
+- **Aircraft registered to a numbered company or trust** — obfuscates the beneficial owner. Record the registered company as a lead for a corporate registry search.
 - **Registration address that doesn't match the operator** — an aircraft registered at a law firm or accountant's address, or a PO box.
 - **Lien on aircraft title** — an aircraft with an unregistered or unpaid lien may be operating under financial stress.
 - **Registration lapsed or suspended** — an aircraft being flown without a valid registration is operating illegally.
-- **Foreign-registered aircraft used domestically** — an aircraft with another country's registration operated routinely in a given country may be doing so to avoid local oversight, or for tax purposes.
-- **Aircraft registered in tax-advantaged jurisdictions** — some aircraft are registered in Delaware, Isle of Man, Cayman Islands, or similar jurisdictions for tax reasons while operating elsewhere.
+- **Foreign-registered aircraft used domestically** — note where the registration jurisdiction differs from the aircraft's stated home base or operator location; routine domestic operation under another country's registration may be a way to avoid local oversight or for tax purposes. Log a lead to check the usage pattern.
+- **Aircraft registered in a low-disclosure jurisdiction** — note registration in a jurisdiction known for tax or ownership advantages (Delaware, Isle of Man, Cayman Islands, or similar) while the aircraft operates elsewhere; log a lead to investigate the beneficial ownership.
 
 ### Flight patterns (ADS-B tracking)
 
@@ -68,7 +66,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 ### Maintenance and airworthiness
 
-- **Outstanding airworthiness directives** — an AD that applies to the aircraft's type and has not been complied with is a safety violation.
+- **Outstanding airworthiness directives** — note any airworthiness directive the maintenance record lists as outstanding or not yet complied with; an applicable AD left uncomplied is a safety violation.
 - **Maintenance performed by an uncertified organization** — aircraft maintenance must be performed by an approved maintenance organization. Maintenance records referencing uncertified organizations are irregular.
 - **Long gap in maintenance log entries** — an aircraft with no log entries for an extended period may have had maintenance performed off-record or may have been flown without required inspections.
 
@@ -76,7 +74,6 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 - **Safety investigation reports** — national aviation safety authorities (TSB in Canada, NTSB in the US, AAIB in the UK, ATSB in Australia, BEA in France) assign investigators to significant aviation occurrences. Final reports include factual findings, safety analysis, and safety recommendations.
 - **Probable cause findings involving maintenance or design** — a systemic cause (not just pilot error) may implicate the manufacturer, maintenance organization, or operator.
-- **Operator's prior safety record** — occurrence reporting systems are public and searchable by operator. An operator with multiple prior incidents is a pattern story.
 
 ---
 
@@ -91,10 +88,10 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 | **AMO** | Approved Maintenance Organization — an organization certified to perform aircraft maintenance |
 | **AD** | Airworthiness Directive — a mandatory inspection or modification order issued by a regulatory authority |
 | **FBO** | Fixed Base Operator — a commercial operation at an airport providing fuel, hangars, and services; often used by private aviation |
-| **METAR / NOTAM** | Meteorological and aeronautical notices — the weather and airspace information available at the time of a flight (relevant in accident investigations) |
+| **METAR / NOTAM** | Meteorological Aerodrome Reports / Notices to Air Missions — The official localized weather observations and critical airspace alerts active at the time of a flight |
 | **VFR / IFR** | Visual Flight Rules / Instrument Flight Rules — the operating conditions under which a flight is conducted |
 | **Squawk code** | A four-digit transponder code that identifies an aircraft to ATC; 7700 signals an emergency |
-| **C-registration** | Canadian civil aircraft registration prefix — C-F and C-G |
+| **C-registration** | Canadian civil aircraft registration prefix — most Canadian civil aircraft are registered with C-F or C-G prefixes |
 | **N-number** | US aircraft registration prefix — all US civil aircraft have an N-number |
 | **CADORS** | Civil Aviation Daily Occurrence Reporting System — Transport Canada's public database of aviation incidents |
 | **TSB** | Transportation Safety Board of Canada — investigates aviation, rail, marine, and pipeline accidents |
@@ -125,6 +122,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **The maintenance logbook** — for an accident, the maintenance logbook is the most important document after the safety investigation report. It shows the history of the airframe and any prior issues.
 5. **Lien and registration history** — the FAA Aircraft Registry includes lien filings and historical registration data. A chain of ownership through multiple shell companies is a red flag for financial irregularity or asset concealment.
 6. **Correlation with other records** — an aircraft flight to a destination on a specific date, cross-referenced with a hotel record, calendar entry, or expense report for the same date, creates a corroborated fact. The flight track alone is evidence of opportunity.
+7. **An operator's prior safety record** — occurrence reporting systems are public and searchable by operator, but a single report won't show the pattern. An operator with multiple prior incidents becomes visible only by searching across occurrences, or by comparing against prior incidents.
 
 ---
 

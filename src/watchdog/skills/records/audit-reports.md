@@ -1,11 +1,9 @@
 ---
-description: an auditor general report, value-for-money audit, performance audit, internal audit report, public accounts, inspector general report, or similar public accountability document
+description: an auditor general report, value-for-money audit, performance audit, internal audit report, public accounts, inspector general report, or similar public accountability document; for a company's own audited financial statements use `financial-statements`, for a general policy or inquiry report use `government-reports`
 ---
 # Domain knowledge — Audit reports
 
-This skill is loaded by `/ingest` when the document type is an auditor general report, value-for-money audit, performance audit, internal audit report, public accounts, inspector general report, or similar public accountability document.
-
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
+This skill is loaded by Watchdog when the document type is an auditor general report, value-for-money audit, performance audit, internal audit report, public accounts, inspector general report, or similar public accountability document.
 
 ---
 
@@ -28,7 +26,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 ---
 
-## Always-present fields to extract
+## Fields to extract
 
 | Field | What to look for |
 |-------|-----------------|
@@ -50,10 +48,10 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 ### Finding severity and management response
 
-- **Disagreement with a recommendation** — management that disagrees with an audit finding is unusual. Note the specific recommendation and the stated reason for disagreement; these often reveal institutional defensiveness.
+- **Disagreement with a recommendation** — management that disagrees with an audit finding may be a useful signal. Note the specific recommendation and the stated reason for disagreement; these often reveal institutional defensiveness.
 - **Vague implementation commitments** — a response that commits to "review the matter" or "develop a framework" without a specific action and deadline is often a non-commitment.
 - **"Partially agree" responses** — management agrees with part of a recommendation but not the most consequential part; this allows them to claim action was taken while avoiding the core issue.
-- **Repeat findings** — the most important audit signal: a finding that was made in a prior audit, was supposedly addressed, and has recurred. This shows the systemic problem was not actually fixed.
+- **Repeat findings** — the most important audit signal, and an actionable one because most audit reports explicitly list prior-year findings and recommendations: a finding the current report itself identifies as recurring from an earlier audit that was supposedly addressed. Capture the recurrence as the report states it — this shows the systemic problem was not actually fixed.
 - **Prior recommendations still outstanding** — most audit reports include a section on prior recommendations. A recommendation that was outstanding in the previous audit and still outstanding now is a significant finding, even if not highlighted as such.
 
 ### Financial integrity
@@ -69,7 +67,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 - **Program objectives not achieved** — the core value-for-money finding: a program spending significant public money that cannot demonstrate it achieved its stated goals.
 - **Performance measurement gaps** — the auditor found the program had no means to measure whether it was achieving results. This is both a finding in itself and a reason why accountability is impossible.
 - **Conflict between program delivery and departmental objectives** — where the audit finds the administering agency's priorities were inconsistent with the program's purpose.
-- **Outsourcing and contractor management** — audits frequently find that government departments awarded contracts to external consultants without competitive process, without clear deliverables, or without monitoring whether deliverables were met.
+- **Outsourcing and contractor management** — audits may find that government departments awarded contracts to external consultants without competitive process, without clear deliverables, or without monitoring whether deliverables were met.
 
 ---
 
@@ -104,12 +102,12 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 ## What investigators typically miss
 
-1. **The prior-audit follow-up section** — audit reports typically include a section reviewing the status of prior recommendations. This section is often more newsworthy than the new findings, because it shows what governments promised and didn't do.
+1. **The prior-audit follow-up section** — audit reports sometimes include a section reviewing the status of prior recommendations. This section may be newsworthy, because it shows what governments promised and didn't do.
 2. **Management responses are negotiated** — the "management response" published alongside audit findings is the result of a formal back-and-forth between the audit office and the audited entity. The fact that it is in the report does not mean it is candid or complete.
 3. **The scope limitation note** — an auditor who was unable to obtain certain records may note a scope limitation. This tells you something was not examined that probably should have been.
 4. **Recommendation numbering across years** — recommendations are numbered by chapter and paragraph. Cross-referencing recommendation numbers across multiple years of the same chapter can track whether a specific problem was fixed.
 5. **The chapter title vs. the actual finding** — audit chapters often have bland titles ("Management of Federal Programs") that obscure significant findings. Read the findings and recommendations before concluding the chapter is routine.
-6. **The departmental action plan** — after a performance audit, departments are often required to table an action plan. This document, separate from the management response in the audit, often makes specific commitments with timelines. Following up on these commitments is an ongoing accountability story.
+6. **The departmental action plan** — after a performance audit, departments may be required to table an action plan. This document, separate from the management response in the audit, often makes specific commitments with timelines. Following up on these commitments is often worth doing.
 
 ---
 
@@ -126,3 +124,6 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 ### Practitioner and public interest
 - [Canadian Audit and Accountability Foundation (CAAF)](https://www.caaf-fcar.ca/en/performance-audit/15-performance-audit) — Canada's premier research and education foundation for public sector performance audit; publishes practice guides and methodology resources for performance auditors
+
+### Journalism resources
+- [Global Investigative Journalism Network (GIJN)](https://gijn.org/) — Network of investigative journalism organizations; publishes reporting guides and tipsheets on following public money and reading government audit and accountability reports

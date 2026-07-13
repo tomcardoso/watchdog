@@ -1,33 +1,33 @@
 ---
-description: a securities disclosure, insider trading report, continuous disclosure document, prospectus, or similar filing with a securities regulator
+description: a securities disclosure, insider trading report, material change or current report, prospectus, proxy statement, annual information form, or similar event-driven filing with a securities regulator (8-K, Form 4, 13D, DEF 14A, AIF); for annual and quarterly reports built around financial statements (10-K, 10-Q, MD&A) use `financial-statements`, for corporate registry records use `corporate-filings`
 ---
 # Domain knowledge — Regulatory filings
 
-This skill is loaded by `/ingest` when the document type is a securities disclosure, insider trading report, continuous disclosure document, prospectus, or similar filing with a securities regulator.
+This skill is loaded by Watchdog when the document type is a securities disclosure, insider trading report, material change or current report, prospectus, proxy statement, annual information form, or similar filing with a securities regulator.
 
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
+For annual and quarterly reports built around the financial statements themselves (10-K, 10-Q, statements plus MD&A), see `financial-statements`; for corporate registry records, see `corporate-filings`.
 
 ---
 
 ## Document types covered
 
-- Annual reports and annual information forms
-- Management discussion and analysis (MD&A)
+- Annual information forms (AIF)
 - Material change reports and current reports (material events)
 - Insider trading reports
 - Early warning / large shareholder disclosure filings
+- Proxy statements and management information circulars
 - Prospectuses (final and preliminary)
 - Shelf prospectuses and supplements
 - Business acquisition reports
 - Technical reports (mining and resource sector)
-- In Canada: Annual Information Forms (AIF); Material Change Reports (MCR); SEDI insider trading reports; Early Warning Reports (EWR); NI 43-101 technical reports; SEDAR+ filings generally
-- In the US: SEC Form 10-K (annual); 10-Q (quarterly); 8-K (material events); Form 4 (insider transactions); Forms 13D/G (5%+ shareholder); EDGAR filings generally
+- In Canada: Annual Information Forms (AIF); Material Change Reports (MCR); SEDI insider trading reports; Early Warning Reports (EWR); management information circulars; NI 43-101 technical reports; SEDAR+ filings generally
+- In the US: SEC Form 8-K (material events); proxy statements (DEF 14A); Form 4 (insider transactions); Forms 13D/G (5%+ shareholder); registration statements and prospectuses; EDGAR filings generally (annual and quarterly 10-K/10-Q reports are covered by `financial-statements`)
 - In the UK: Annual reports filed with Companies House; Regulatory News Service (RNS) disclosures; FCA filings
 - In Australia: ASX continuous disclosure announcements; ASIC filings
 
 ---
 
-## Always-present fields to extract
+## Fields to extract
 
 | Field | What to look for |
 |-------|-----------------|
@@ -50,8 +50,8 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 ### Insider trading patterns
 
-- **Large insider sales before a negative disclosure** — insiders selling significant holdings shortly before a material change report disclosing bad news is the classic insider trading pattern. Compare insider transaction dates to subsequent disclosure dates.
-- **Cluster of insider sales** — multiple insiders selling in the same short window, even in small amounts, can signal that people close to the company know something.
+- **Large insider sales before a negative disclosure** — insiders selling significant holdings shortly before a material change report disclosing bad news is the classic insider trading pattern. Record the sale, the insider, and the transaction date, and log a lead to cross-reference against the dates of subsequent disclosures.
+- **Cluster of insider sales** — when this filing is a bulk or consolidated insider report showing multiple insiders selling in the same short window, record the cluster directly; even small amounts can signal that people close to the company know something. For a single-insider report, log a lead or compare against other insider transactions in the digest.
 - **Insider purchases followed by a positive announcement** — the inverse: insiders buying before a positive announcement. While not automatically illegal (insiders may buy for many legitimate reasons), the timing is relevant.
 - **Late insider filings** — insiders must file within a set deadline after a trade (5 calendar days in Canada under NI 55-104; 2 business days in the US under Form 4). Chronically late filers may be concealing the timing of trades relative to material information.
 - **Transactions in derivatives (options, warrants)** — insider option exercises and sales are disclosed; option grants are also disclosed. Large option grants to executives shortly before positive announcements are worth examining.
@@ -61,7 +61,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 - **Material change report filed without a press release** — in some jurisdictions this is permissible (confidential filing) but unusual and worth questioning.
 - **Restated financial statements** — a company that restates previously filed financials has corrected material errors. The reason for the restatement and its magnitude are important.
 - **Auditor resignation** — an auditor that resigns mid-year rather than completing an audit may have disagreed with management over accounting treatment.
-- **CEO or CFO departure shortly after a certification period** — executives certify that financial statements are accurate; a departure shortly after signing a certification, without explanation, is a potential red flag.
+- **CEO or CFO departure within about 30–90 days of a certification period** — executives certify that financial statements are accurate; a departure within roughly 30 to 90 days of signing a certification, without explanation, is a potential red flag.
 - **Going concern qualification** — see also `financial-statements` skill. In a regulatory filing context, a going concern note triggers additional scrutiny from securities regulators.
 - **Change in fiscal year** — may indicate an attempt to delay disclosure of a difficult quarter.
 
@@ -109,6 +109,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 | **Form 4** | Insider transaction report — must be filed within 2 business days of a trade |
 | **13D** | Filed when a person acquires more than 5% of a company with intent to influence it |
 | **13G** | Filed when a person acquires more than 5% as a passive investor |
+| **DEF 14A** | The definitive proxy statement — contains executive compensation, related-party transactions, and director elections for the annual shareholder meeting |
 | **Reg FD** | Regulation Fair Disclosure — prohibits selective disclosure of material non-public information |
 | **SOX certifications** | Sarbanes-Oxley Section 302 and 906 certifications — CEO and CFO personally certify financial statement accuracy |
 

@@ -3,9 +3,7 @@ description: a pollutant release inventory report, environmental assessment, spi
 ---
 # Domain knowledge — Environmental filings
 
-This skill is loaded by `/ingest` when the document type is a pollutant release inventory report, environmental assessment, spill record, inspection report, compliance order, or similar environmental regulatory document.
-
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
+This skill is loaded by Watchdog when the document type is a pollutant release inventory report, environmental assessment, spill record, inspection report, compliance order, or similar environmental regulatory document.
 
 ---
 
@@ -23,12 +21,12 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 - Operating permits and environmental compliance approvals
 - In Canada: National Pollutant Release Inventory (NPRI) reports; Impact Assessment Act (IAA) decisions; provincial environmental assessment decisions; Environmental Compliance Approvals (ECAs)
 - In the US: EPA Toxic Release Inventory (TRI) reports; NEPA environmental impact statements (EIS)
-- In the EU: E-PRTR (European Pollutant Release and Transfer Register); Environmental Impact Assessment Directive decisions
+- In the EU: E-PRTR (European Pollutant Release and Transfer Register); Industrial Emissions Portal Regulation (IEPR); Environmental Impact Assessment Directive decisions
 - In Australia: National Pollutant Inventory (NPI) reports; state EPA compliance records
 
 ---
 
-## Always-present fields to extract
+## Fields to extract
 
 | Field | What to look for |
 |-------|-----------------|
@@ -53,31 +51,29 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 - **Year-over-year increase in releases** — a facility releasing significantly more of a regulated substance than in prior years warrants explanation.
 - **Releases near sensitive receptors** — a facility releasing substances to air or water near schools, hospitals, residential areas, Indigenous or marginalized communities, or source water intakes.
-- **Substances on a jurisdiction's priority substance list with no reporting** — a facility that uses a reportable substance above threshold quantities but does not appear in the national register may be non-reporting.
-- **Carcinogen or endocrine disruptor releases** — note any substances on health agency carcinogen or priority substance lists.
+- **Priority substance used but not in the release report** — if the document identifies use of a carcinogen or priority substance above threshold quantities, note whether that substance also appears in the facility's PRTR/TRI report for the same year; if it cannot be confirmed from the document, log a lead to check the national register.
+- **Carcinogen or endocrine disruptor releases** — note any substances the document itself names as carcinogens, endocrine disruptors, or priority substances; log a lead to research the health classification of the other substances released.
 - **Stack emissions vs. fugitive emissions** — stack emissions (from a defined point) are more readily captured and controlled; fugitive emissions (leaks, evaporation) are harder to measure and often underreported.
 
 ### Spills and incidents
 
 - **Spill to a watercourse or source water area** — a spill reaching surface water, groundwater, or a municipal water supply is a higher-severity event.
 - **Spill notification delay** — facilities are required to report spills immediately (or within a defined timeframe). A spill discovered in an inspection that was not self-reported is a compliance failure.
-- **Repeat spills at the same facility** — multiple spill events suggest a systemic problem rather than a one-off incident.
-- **Volume underestimation** — initial spill reports often understate the volume released; compare early notification records to final reports.
+- **Repeat spills at the same facility** — if this document (an inspection report or summary) itself lists multiple spill events at the facility, capture them as a pattern rather than a one-off incident.
+- **Volume underestimation** — initial spill reports may understate the volume released; compare early notification records to final reports.
 
 ### Environmental assessments
 
-- **Projects avoiding review through design** — a project that escapes environmental assessment by splitting into multiple sub-projects each below the threshold, or by redesigning to avoid a listed trigger, is a red flag.
+- **Project scope near an assessment threshold** — capture the stated project scope and any thresholds that trigger an environmental assessment. Note where the project appears split into sub-projects each falling below a threshold, or otherwise sized just under a listed trigger (record the observation; do not infer intent).
 - **Baseline data gaps** — an EIA that lacks baseline data on species at risk, wetlands, or groundwater before construction is a methodological weakness that may lead to missed impacts.
 - **Public participation period shortened** — a comment period significantly shorter than the standard for a given jurisdiction may limit meaningful public participation.
 - **Cumulative effects not assessed** — an EIA that considers only the direct effects of the proposed project, without assessing cumulative effects with other existing or planned projects in the same area, is incomplete under most legislative frameworks.
-- **Conditions not monitored after approval** — an EA approval typically includes conditions. A facility that was approved with conditions but has no compliance monitoring records is worth examining.
 
 ### Compliance and enforcement
 
-- **Penalty below the maximum** — environmental penalties are often well below the statutory maximum. Note the maximum penalty and the penalty actually imposed.
+- **Penalty below the maximum** — if the document states the statutory maximum penalty, capture it alongside the penalty actually imposed and note the gap; if the maximum is not stated, log a lead to check it against the governing statute.
 - **Penalty paid vs. penalty outstanding** — some penalties are appealed or go unpaid. Check whether a penalty was actually collected.
-- **Repeat offender** — a facility that has received multiple compliance orders or penalties over a period of years without achieving compliance is a systemic issue.
-- **Company with multiple facilities in non-compliance** — look across facilities owned by the same corporate parent.
+- **Company with multiple facilities in non-compliance** — if the document covers a multi-facility operator, note the compliance status at each site it names.
 
 ---
 
@@ -119,6 +115,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 4. **EA conditions and their monitoring** — an approved project comes with conditions. Whether those conditions are being monitored and enforced — and whether violations have occurred — requires a separate access request or database search.
 5. **Voluntary reduction commitments** — a facility may have made voluntary commitments to reduce emissions as part of a settlement or an EA condition. Compare stated commitments to actual PRTR data.
 6. **Corporate ownership chain** — environmental liability follows the land and the operator. A company that sold a contaminated facility to a subsidiary before declaring bankruptcy may have left the cleanup obligation with a shell. Check the ownership history.
+7. **Compliance history that spans multiple documents** — a single order or report shows one moment. A facility that has received multiple compliance orders or penalties over years without achieving compliance, a spill history that only emerges across separate notifications, or a corporate parent whose non-compliance is spread across several facilities are all patterns visible only when the individual documents are assembled and compared.
 
 ---
 

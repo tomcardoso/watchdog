@@ -1,27 +1,28 @@
 ---
-description: a balance sheet, income statement, auditor's report, management discussion and analysis (MD&A), or similar financial disclosure
+description: a balance sheet, income statement, auditor's report, management discussion and analysis (MD&A), or an annual, interim, or quarterly report built around financial statements — from a private or public company (10-K, 10-Q), charity, hospital, university, or other organization; for event-driven securities filings (insider reports, material change reports, proxies, prospectuses, AIFs) use `regulatory-filings`, for corporate registry records use `corporate-filings`
 ---
 # Domain knowledge — Financial statements
 
-Loaded by `/ingest` when the document type is a balance sheet, income statement, auditor's report, management discussion and analysis (MD&A), or similar financial disclosure.
+Loaded by Watchdog when the document type is a balance sheet, income statement, auditor's report, management discussion and analysis (MD&A), or an annual, interim, or quarterly report built around financial statements — whatever the organization: private or public company, charity, hospital, or university.
+
+For corporate registry records (registrations, director filings, shareholder registers), see `corporate-filings`; for event-driven securities filings around the statements (material change reports, insider trading reports, proxies, prospectuses, annual information forms), see `regulatory-filings`.
 
 ---
 
 ## Document types covered
 
 - Annual financial statements (audited)
+- Annual reports (narrative plus audited statements) — private and public companies, charities, hospitals, universities
 - Interim / quarterly financial statements (reviewed or unaudited)
 - Auditor's reports and management letters
 - Management discussion and analysis (MD&A)
-- Annual information forms (AIF) — Canadian public companies
 - 10-K and 10-Q filings — US public companies
-- Prospectuses and offering memoranda
 - Financial statements filed in bankruptcy proceedings
 - Non-profit / charity financial statements
 
 ---
 
-## Always-present fields to extract
+## Fields to extract
 
 | Field | What to look for |
 |-------|-----------------|
@@ -30,12 +31,15 @@ Loaded by `/ingest` when the document type is a balance sheet, income statement,
 | **Auditor** | Name of the auditing firm and engagement partner |
 | **Audit opinion type** | Unqualified (clean), qualified, adverse, or disclaimer of opinion |
 | **Total revenue** | For income statement |
+| **EBITDA / Adjusted EBITDA** | Earnings Before Interest, Taxes, Depreciation, and Amortization (and any non-GAAP management adjustments) |
 | **Net income / (loss)** | Profit or loss for the period |
 | **Total assets** | From balance sheet |
 | **Total liabilities** | From balance sheet |
 | **Total equity** | Assets minus liabilities |
 | **Cash and equivalents** | Liquidity indicator |
+| **Deferred revenue** | Unearned revenue representing payments received before goods or services are delivered |
 | **Long-term debt** | Significant borrowings |
+| **Executive indebtedness** | Outstanding loans or credit lines extended to directors or officers |
 | **Accounting standard** | IFRS, ASPE, US GAAP, or other |
 
 ---
@@ -53,16 +57,21 @@ Loaded by `/ingest` when the document type is a balance sheet, income statement,
 
 ### Income statement red flags
 
+- **Accounting-to-Tax Income Disconnect** — a large or widening gap between reported pre-tax accounting income and the income implied by current tax expense can signal aggressive book-tax differences worth a closer forensic look. The two figures do not reconcile exactly (timing differences, credits, and other adjustments break the equivalence), so treat a persistent gap as a lead to log, not a precise measure.
+- **EBITDA vs. CFO Divergence** — a widening gap between EBITDA and cash flow from operations (CFO) can arise from capitalizing operating-type costs, aggressive revenue recognition, or working-capital drains. Note the gap and whatever drivers the statements disclose.
 - **Revenue declining while administrative expenses increase** — the business is shrinking but overhead isn't.
 - **Revenue concentrated in one or few customers** — disclosed in notes as a customer concentration risk. Loss of one customer could be devastating.
 - **Revenue recognition policy** — how and when does the company recognize revenue? Aggressive recognition (recognizing revenue before it's earned) is a common fraud mechanism.
 - **Non-recurring items appearing every year** — "one-time" charges that appear repeatedly are not one-time.
 - **Goodwill impairment** — the company wrote down the value of an acquisition. Often signals the acquisition failed.
+- **COGS vs. Adjusted Metric Shifting** — compare GAAP cost of goods sold against any non-GAAP adjusted figures shown in the document; note items excluded from the adjusted measure (e.g., depletion, content rights, or other core inventory costs) and their magnitude, which can make the business look artificially cheap.
 
 ### Balance sheet red flags
 
 - **Receivables growing faster than revenue** — may indicate the company is recognizing revenue before customers pay, or that customers aren't paying.
 - **Inventory growing faster than cost of goods sold** — possible overvaluation of inventory, or a business that can't sell what it makes.
+- **Deferred Revenue Drawdown** — a steadily decreasing Deferred-to-Revenue ratio, indicating the company is surviving on a declining backlog rather than fresh sales.
+- **Aggressive Asset Mix ("Soft Assets")** — capital-light or questionable assets (prepaids, deferred preproduction costs, long-term receivables, deferred marketing costs) growing to comprise a high percentage (e.g., ~40%) of total assets.
 - **Related party receivables** — amounts owed by related parties (directors, officers, affiliated companies). These may never be collected.
 - **Negative equity** — liabilities exceed assets. The company is technically insolvent.
 - **Unusual intangible assets** — large values assigned to internally generated intangibles may be inflated.
@@ -72,6 +81,24 @@ Loaded by `/ingest` when the document type is a balance sheet, income statement,
 - **Profitable but cash-flow negative** — a company reporting profit but burning cash. Accrual accounting allows "profit" without cash.
 - **Large differences between net income and operating cash flow** — the gap shows how much of "profit" is not backed by cash.
 - **Financing cash flows masking operating weakness** — a company that only generates cash by borrowing or selling shares is not self-sustaining.
+
+### Annual report red flags
+
+When the document is a full annual report rather than standalone statements, the narrative wrapper deserves the same scrutiny as the numbers:
+
+**Narrative-versus-numbers divergence** — an upbeat chairman's or CEO's letter paired with deteriorating statements may signal spin worth probing; note what the letter chooses not to mention (a discontinued segment, an impairment, a departed executive the numbers reveal).
+
+**Auditor changes** — a change of auditor, especially mid-year, after a qualified opinion, or from a large firm to a much smaller one, can precede restatements or disputes; the reason given (or not given) for the change is worth recording.
+
+**Risk-factor drift** — when the document itself reproduces prior-year risk disclosures, compare them year over year: risks newly added or quietly dropped can mark what management has started or stopped worrying about, and a new, oddly specific risk factor is sometimes the first public trace of an unannounced problem. If only the current year's risks are present, note any oddly specific new risk and log a lead to compare against the prior year's report.
+
+**Non-GAAP emphasis** — heavy reliance on adjusted or non-GAAP measures whose gap to the audited figures widens year over year, or a changed definition of an "adjusted" metric between years, may be an important signal of financial distress of obfuscation.
+
+**Incentives Tied to Non-GAAP Targets** — executive bonuses, options, or performance shares explicitly benchmarked against non-GAAP metrics (like Adjusted EBITDA) instead of standard GAAP Net Income.
+
+**Insider & Creative Concentration** — major shareholders concurrently serving as senior executives and creative directors, leading to opaque corporate structures, inactive subsidiaries, or unvouched relationships with limited partnerships.
+
+**Certified statements** — for public companies, the CEO and CFO personally certify the statements (SOX 302/906 in the US and equivalents elsewhere). Note who certified; a later restatement makes those certifications significant.
 
 ### Related party transactions
 
@@ -110,8 +137,9 @@ Extract every related party transaction. Note the party, the nature of the trans
 
 1. **Company → Person**: Auditor engagement partner, CFO (who signs off), board audit committee members
 2. **Company → Company**: Auditing firm, subsidiaries and affiliates (from consolidation scope), related parties
-3. **Person / Company → Transaction**: All related party transactions with amounts
-4. **Company → Company (related party)**: Every related party entity named in the notes
+3. **Company → Intermediary / VIE**: Map connections between the primary company and third-parties, specialized distribution channels, limited partnerships, or off-balance-sheet entities (Variable Interest Entities) mentioned in the footnotes
+4. **Person / Company → Transaction**: All related party transactions with amounts
+5. **Company → Company (related party)**: Every related party entity named in the notes
 
 ---
 

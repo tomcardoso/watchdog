@@ -3,9 +3,7 @@ description: an immigration tribunal decision, asylum ruling, deportation order,
 ---
 # Domain knowledge — Immigration and refugee documents
 
-This skill is loaded by `/ingest` when the document type is an immigration tribunal decision, asylum ruling, deportation order, refugee protection decision, or related immigration record.
-
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
+This skill is loaded by Watchdog when the document type is an immigration tribunal decision, asylum ruling, deportation order, refugee protection decision, or related immigration record.
 
 ---
 
@@ -25,7 +23,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 ---
 
-## Always-present fields to extract
+## Fields to extract
 
 | Field | What to look for |
 |-------|-----------------|
@@ -48,10 +46,10 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ### Decision quality and process
 
 - **Credibility findings based on demeanour** — findings that a claimant is not credible because of how they appeared when testifying (eye contact, emotional response) have been criticized by courts as unreliable and culturally biased. Note any such findings.
-- **Boilerplate language** — decisions that appear to use identical paragraphs across multiple cases, particularly on country conditions, may not reflect genuine case-by-case analysis.
+- **Boilerplate language** — decisions sometimes reuse identical paragraphs across cases, which may not reflect genuine case-by-case analysis. Note any distinctive or templated passages and log a lead to compare them against other decisions by the same decision-maker or tribunal.
 - **Failure to consider documentary evidence** — a decision that does not address documentary evidence submitted by the claimant is a ground of judicial review or appeal. Look for references (or the absence of references) to submitted exhibits.
-- **Country condition evidence that is outdated** — decisions should use current country condition documentation. A decision relying on evidence that predates a significant political change in the country of origin is vulnerable on review.
-- **Failure to consider risk to family members** — some claims involve risk to a claimant's family in the country of origin; failure to address this is an error.
+- **Country condition evidence relied on** — decisions should use current country condition documentation. Capture the country-condition sources and their dates as cited in the decision, and log a lead to check whether significant political changes in the country of origin post-date that evidence.
+- **Failure to consider risk to family members** — some claims involve risk to a claimant's family in the country of origin; failure to address this may constitute an error.
 
 ### Detention reviews
 
@@ -64,7 +62,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 - **Type of removal order and re-entry consequences** — note the type of removal and any bar on re-entry; different categories carry different consequences.
 - **Stay of removal** — a stay pending judicial review or a humanitarian application halts removal. Note whether a stay was sought and whether it was granted or denied.
-- **Removal to a country under a travel advisory or with documented human rights concerns** — check whether the country of removal is subject to official travel warnings or is documented as unsafe for the claimant's profile.
+- **Removal to a country with human rights concerns** — record the country of removal and log a lead to check whether it is subject to official travel advisories or documented as unsafe for the claimant's profile.
 
 ---
 
@@ -83,7 +81,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 | **BIA** | US | Board of Immigration Appeals — the US appellate body for immigration decisions |
 | **USCIS** | US | US Citizenship and Immigration Services — handles asylum applications affirmatively |
 | **First-tier Tribunal** | UK | The initial immigration and asylum tribunal in England and Wales |
-| **Section 3 ECHR** | UK / Europe | Article 3 of the European Convention on Human Rights — prohibition on torture and inhuman treatment; the principal ground for preventing removal to a dangerous country |
+| **Article 3 ECHR** | UK / Europe | Article 3 of the European Convention on Human Rights — prohibition on torture and inhuman treatment; the principal ground for preventing removal to a dangerous country |
 | **National Documentation Package (NDP)** | Canada | Standardized country condition documents compiled by the IRB for each country |
 
 ---
@@ -101,7 +99,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ## What investigators typically miss
 
 1. **Anonymization exceptions** — immigration decisions are published with names anonymized as a general rule in many jurisdictions, but decisions involving public figures or public interest matters may be published with names. If you have an un-anonymized version, note that.
-2. **The country condition package** — tribunals compile standardized country condition documents. A decision's reliance on those documents versus independent documentary evidence, and whether they were current, is often decisive on review.
+2. **The country condition package** — tribunals compile standardized country condition documents. A decision's reliance on those documents versus independent documentary evidence, and whether they were current, may be decisive on review.
 3. **The designated or appointed representative** — claimants who are minors or lack capacity must have a designated representative. Note whether one was appointed and who it was.
 4. **Credibility vs. inclusion vs. exclusion** — a decision may reject a claim on credibility grounds without reaching the question of whether the country conditions would warrant protection. The order matters: if the decision-maker finds exclusion (Article 1F) first, the claim is dead regardless of risk.
 5. **The consultant or legal representative's registration** — immigration consultants must be registered in many jurisdictions. If a claimant was represented by an unregistered consultant, that is significant and may be a ground for re-opening the claim.

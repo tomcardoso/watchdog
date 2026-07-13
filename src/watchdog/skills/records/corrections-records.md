@@ -1,11 +1,9 @@
 ---
-description: a parole board decision, probation order, correctional investigator report, prison inspection report, institutional grievance decision, conditional release record, or similar document originating from correctional services, parole boards, or corrections oversight bodies. For police-generated documents (use-of-force reports, occurrence reports, misconduct decisions), use `police-records` instead
+description: a parole board decision, probation order, correctional investigator report, prison inspection report, institutional grievance decision, conditional release record, or similar document originating from correctional services, parole boards, or corrections oversight bodies. For police-generated documents (use-of-force reports, occurrence reports, misconduct decisions), use `police-records`; for the criminal charge, trial, or sentencing decision itself, use `criminal-proceedings`
 ---
 # Domain knowledge — Corrections, parole, and custody records
 
-This skill is loaded by `/ingest` when the document type is a parole board decision, probation order, correctional investigator report, prison inspection report, institutional grievance decision, conditional release record, or similar document originating from correctional services, parole boards, or corrections oversight bodies. For police-generated documents (use-of-force reports, occurrence reports, misconduct decisions), use `police-records` instead.
-
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
+This skill is loaded by Watchdog when the document type is a parole board decision, probation order, correctional investigator report, prison inspection report, institutional grievance decision, conditional release record, or similar document originating from correctional services, parole boards, or corrections oversight bodies. For police-generated documents (use-of-force reports, occurrence reports, misconduct decisions), use `police-records` instead. For the criminal charge, trial, or sentencing decision itself, use `criminal-proceedings`.
 
 ---
 
@@ -23,14 +21,16 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 - Administrative segregation / solitary confinement records and reviews
 - Death-in-custody reviews and reports (not SIU/police oversight — those are `police-records`)
 - Conditional sentence orders (served in community)
+- Disciplinary and classification records (institutional rule violations, security-level assignments)
+- Sentence computation records (calculation of release dates, credited time)
 - In Canada: Parole Board of Canada (PBC) decisions; Correctional Service of Canada (CSC) documents; Office of the Correctional Investigator reports; provincial parole board decisions; provincial correctional service reports
-- In the US: State parole board decisions; Bureau of Prisons inspection reports; Prison Policy Initiative and DOJ oversight reports; state department of corrections records
+- In the US: Federal Bureau of Prisons (BOP) records and inmate locator entries; state Department of Corrections (DOC) records; state parole board decisions; BOP and state DOC disciplinary/classification records; sentence computation records; Prison Policy Initiative and DOJ oversight reports
 - In the UK: Parole Board decisions; His Majesty's Inspectorate of Prisons reports; Prison and Probation Ombudsman reports
 - In Australia: State parole board decisions; Commonwealth and state prison inspection reports
 
 ---
 
-## Always-present fields to extract
+## Fields to extract
 
 | Field | What to look for |
 |-------|-----------------|
@@ -52,11 +52,9 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 ### Parole and conditional release
 
-- **Decisions based primarily on actuarial risk scores** — parole boards often rely on actuarial risk assessment tools (e.g., Static-99, LSI-R). A denial grounded primarily in a tool score rather than an individualized assessment is worth scrutiny, particularly where the tool has known limitations for specific populations (Indigenous people, women, the elderly).
-- **Repeat denials without changed circumstances** — a series of parole denials where the stated reasons are identical and no new material is considered. Courts have found this practice unlawful in some jurisdictions.
-- **Detention beyond statutory release** — in Canada, federal offenders have a right to statutory release at two-thirds of their sentence. Detention orders (which override this) must meet a high legal threshold; examine the stated reasons carefully.
+- **Decisions based primarily on actuarial risk scores** — capture the risk assessment tool named (e.g., Static-99, LSI-R) and its score or rating, and note when a decision's stated reasoning rests primarily on that score rather than an individualized assessment.
+- **Detention beyond statutory release** — *In Canada:* federal offenders have a right to statutory release at two-thirds of their sentence. Detention orders (which override this) must meet a high legal threshold; examine the stated reasons carefully.
 - **Conditions that amount to set-up for failure** — conditions that require abstaining from a substance without providing treatment access, no-contact conditions that cover an offender's entire social network, or residence requirements in areas the offender has no connection to.
-- **Parole granted to people with serious institutional records, denied to those without** — inconsistency in decision-making is a systemic story. Compare the reasoning across multiple decisions.
 
 ### Probation and community supervision
 
@@ -66,14 +64,14 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 ### Institutional conditions
 
-- **Prolonged administrative segregation** — time in segregation beyond legislative limits (in Canada, the Structured Intervention Unit framework following Bill C-83; in the US, limits vary by state and facility). Segregation records that predate court orders limiting the practice are a historical baseline.
-- **Overcrowding and its consequences** — inspection reports citing overcrowding should be cross-referenced with population statistics and capacity numbers. Overcrowding is often a precursor to violence, inadequate programming, and health crises.
-- **Mental health crisis responses** — whether the institution has a mental health diversion process, whether it was used, and whether the individual had a documented mental health history prior to an incident.
-- **Death in custody** — the mandatory reporting framework, the cause of death classification (suicide, natural, homicide, accident, undetermined), and whether a prior grievance or flagged risk was on file.
+- **Prolonged administrative segregation** — time in segregation beyond legislative limits (*in Canada,* the Structured Intervention Unit framework following Bill C-83; in the US, limits vary by state and facility). Segregation records that predate court orders limiting the practice are a historical baseline.
+- **Overcrowding and its consequences** — capture any overcrowding claim the report itself makes, along with any capacity and population figures stated in the report. Overcrowding is often a precursor to violence, inadequate programming, and health crises.
+- **Mental health crisis responses** — note whether a mental health diversion process was used or offered, and whether the document mentions a documented mental health history for the individual prior to an incident.
+- **Death in custody** — capture the cause of death classification (suicide, natural, homicide, accident, undetermined) and note any prior grievance or flagged risk mentioned in this report.
 
 ### Systemic and oversight
 
-- **Recommendations from prior inspections not implemented** — correctional investigator and inspectorate reports typically list outstanding recommendations from prior reports. Tracking the implementation rate reveals systemic non-compliance.
+- **Recommendations from prior inspections not implemented** — capture any prior recommendations listed in the current report along with their stated implementation status.
 - **Overrepresentation statistics** — virtually all Western correctional systems show significant overrepresentation of Indigenous, Black, and racialized populations. When a decision document includes demographic data, extract it; when an inspection report includes population statistics, the overrepresentation figures are often buried.
 - **Legal aid access** — parole hearings are quasi-judicial proceedings where offenders have a right to assistance. Whether legal aid was available and whether the person appeared with representation affects the reliability of the outcome.
 
@@ -94,6 +92,12 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 | **Structured Intervention Unit (SIU)** | Canada | Replaced administrative segregation in federal institutions under Bill C-83 (2019) |
 | **Parole Board** | UK | The independent body that assesses whether prisoners can be safely released |
 | **Probation Service** | UK/US | The agency supervising offenders in the community |
+| **BOP** | US | Federal Bureau of Prisons — operates the US federal prison system |
+| **DOC** | US | Department of Corrections — the state-level agency operating state prisons in most US states |
+| **Inmate locator** | US | A BOP or state DOC public search tool showing an incarcerated person's current facility and projected release date |
+| **Sentence computation** | US | The BOP's or a state DOC's calculation of a release date, incorporating credited time and good conduct time |
+| **Good conduct time / good time credit** | US | Time credited against a sentence for compliance with institutional rules, reducing the computed release date |
+| **Classification** | US | The security-level assessment (minimum, low, medium, high) that determines where and how a person is incarcerated |
 | **Determinate sentence** | Universal | A fixed-length sentence with a set release date |
 | **Indeterminate sentence** | Universal | A sentence with no fixed end date; release depends on board decision |
 | **Risk assessment tool** | Universal | A standardized instrument used to predict the likelihood of reoffending |
@@ -124,6 +128,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 5. **Overrepresentation data at the facility level** — national statistics on Indigenous and racialized overrepresentation in custody are reported but underused. The same data broken down by individual facility, region, or offence category is far more powerful and often buried in appendices.
 6. **The legal standard that was applied** — parole and detention decisions invoke a legal standard (e.g., "undue risk to public safety"). Whether the board correctly applied the legal test is a question journalists rarely examine but courts regularly overturn decisions on.
 7. **Deaths in custody that are not homicides** — suicides, overdoses, and "natural" deaths in custody are often undercounted and underinvestigated relative to their public significance. Mandatory reporting frameworks exist in most jurisdictions; tracking compliance with those frameworks is a distinct beat.
+8. **Patterns visible only across multiple parole decisions** — a single decision cannot reveal them, but comparing a series can: repeat denials that recite identical reasons without considering new material (a practice courts have found unlawful in some jurisdictions), parole granted to people with serious institutional records while denied to those without (inconsistency pointing to a systemic problem), and reliance on actuarial tools that have known limitations for specific populations (Indigenous people, women, the elderly).
 
 ---
 
@@ -135,6 +140,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 - [Parole Board of Canada — Decision Registry](https://www.canada.ca/en/parole-board/services/decision-registry.html) — Public registry of conditional release decisions made by the Parole Board of Canada; any member of the public may request copies by writing to the relevant regional office.
 - [Correctional Service Canada — Reporting to Canadians](https://www.canada.ca/en/correctional-service/corporate/transparency/reporting.html) — CSC's public performance and statistical reporting, including departmental results reports and population data.
 - [Bureau of Justice Statistics — National Prisoner Statistics](https://bjs.ojp.gov/data-collection/national-prisoner-statistics-nps) — US Department of Justice program producing annual national and state-level data on prison populations, demographics, and facility capacity.
+- [Federal Bureau of Prisons — Inmate Locator](https://www.bop.gov/inmateloc/) — Public search tool for current and past federal inmates, showing facility, age, race, and projected release date.
 - [Department of Justice Canada — Overrepresentation of Indigenous People in the Canadian Criminal Justice System](https://www.justice.gc.ca/eng/rp-pr/jr/gladue/p2.html) — Federal research report documenting statistical overrepresentation of Indigenous people in Canadian corrections, including facility-level data used in Gladue analysis.
 
 ### Practitioner and public interest

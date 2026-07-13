@@ -3,9 +3,7 @@ description: a Hansard transcript, committee transcript, parliamentary debate re
 ---
 # Domain knowledge — Legislature transcripts
 
-This skill is loaded by `/ingest` when the document type is a Hansard transcript, committee transcript, parliamentary debate record, legislative assembly record, or similar verbatim record of legislative proceedings.
-
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
+This skill is loaded by Watchdog when the document type is a Hansard transcript, committee transcript, parliamentary debate record, legislative assembly record, or similar verbatim record of legislative proceedings.
 
 ---
 
@@ -18,13 +16,14 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 - Bill readings and debate transcripts
 - Senate or upper house debate transcripts
 - In Canada: House of Commons Hansard; Senate of Canada debates; provincial and territorial legislative assembly Hansards; Standing committee and special committee transcripts
-- In the US: Congressional Record; Congressional hearing transcripts (House and Senate committees)
+- In the US: Congressional Record; Congressional hearing transcripts (House and Senate committees); state legislature floor and committee transcripts (format and naming vary by state)
 - In the UK: UK Hansard (House of Commons and Lords); select committee transcripts
 - In Australia: Hansard (House of Representatives and Senate); Senate Estimates transcripts
+- In other Westminster-derived systems (New Zealand, India, Ireland, and others): Hansard-style verbatim records under similar names
 
 ---
 
-## Always-present fields to extract
+## Fields to extract
 
 | Field | What to look for |
 |-------|-----------------|
@@ -47,15 +46,15 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ### Question period / question time
 
 - **Evasive answers** — a minister who answers a question about Topic A with a prepared statement about Topic B has deflected, not answered. Note the question asked and the answer given.
-- **Shifting explanations across multiple days** — a minister who gives one explanation on Monday and a different explanation on Thursday. Parliamentary records allow precise comparison.
+- **Explanation that may shift across sittings** — a minister's explanation of a specific matter. Note the statement and the topic, and log a lead to track the minister's statements on this topic across sittings. If a contradicting prior statement from the same minister is already in the vault digest, flag the discrepancy as a digest comparison.
 - **Claims made in the chamber that contradict documents** — a minister who states that no such directive was issued, when a freedom of information release shows it was. The parliamentary statement is the accountability record.
-- **Opposition questions that telegraph a coming story** — parties often use question time to put a minister on the record before a story breaks. If you have a document, check whether it was raised in the chamber and what the minister said.
+- **Opposition questions that telegraph a coming story** — parties have sometimes used question time to put a minister on the record before a story breaks. If you have a document, check whether it was raised in the chamber and what the minister said.
 
 ### Committee testimony
 
 - **Witness testimony that contradicts departmental position** — a departmental official who testifies before a committee in a way that contradicts the minister's public statements.
 - **Redacted documents tabled in committee** — documents tabled in a committee proceeding are part of the parliamentary record even if redacted. The existence of the redaction is itself informative.
-- **Committee reports with dissenting or supplementary opinions** — like royal commission dissents, these often contain the sharpest analysis.
+- **Committee reports with dissenting or supplementary opinions** — like royal commission dissents, these may contain sharp analysis.
 - **Witnesses who refuse or are prevented from answering** — a witness who says "I'd have to get back to the committee on that" or is instructed by counsel not to answer. Track whether the promised follow-up actually arrived.
 - **In camera (private) committee sessions** — committees sometimes go in camera to discuss sensitive matters. The public record shows a gap; the reason given for going in camera is itself informative.
 
@@ -107,7 +106,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 1. **The official citation** — every statement in Hansard is precisely locatable by date, page, and column. Always record the full citation so that statements can be independently verified.
 2. **Committee evidence vs. main chamber debates** — committee transcripts are published separately from main chamber Hansard. Committee evidence, including witness testimony and document tabling, is often more detailed and more candid than question time exchanges.
-3. **The written question and answer process** — members can submit written questions to the government in many parliamentary systems; the answers are published in the official record and often contain more detailed statistics and admissions than oral answers. These are easy to miss because they appear at the end of a day's proceedings.
+3. **The written question and answer process** — members can submit written questions to the government in many parliamentary systems, which work almost as a super-FOI that the government must answer within a set period of time, sometimes with accompanying documentation. The answers are published in the official record and are often more detailed than oral answers. These are easy to miss, even for political reporters.
 4. **Order Paper notices** — notices of questions, motions, and bills placed on the Order Paper but not yet reached may signal what an opposition party knows or intends to raise.
 5. **Unedited vs. official transcripts** — some legislatures publish a draft or "Blues" transcript before the corrected official version. Comparing them can reveal changes made after the sitting.
 6. **Statements made during debate that conflict with later departmental action** — a minister who commits to a specific course of action during debate and then takes a different course. The parliamentary record is the proof of the original commitment.
@@ -126,3 +125,4 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ### Practitioner and public interest
 - [OpenParliament.ca](https://openparliament.ca/) — Independent, non-governmental search tool for Canadian House of Commons Hansard transcripts back to 1994; provides topic summaries, MP profiles, and bill tracking in a more accessible interface than the official record
 - [GovTrack.us](https://www.govtrack.us/) — Independent tracker of US congressional activity including voting records, bill progress, and member statistics; operated without government or party affiliation since 2004
+- [Open States (Plural Policy)](https://openstates.org/) — Free tracker aggregating committee and floor activity for all 50 US state legislatures, filling the gap left by Congress-only US resources

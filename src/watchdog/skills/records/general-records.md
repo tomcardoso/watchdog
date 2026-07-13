@@ -1,11 +1,9 @@
 ---
-description: This skill is loaded by `/ingest` when the document type does not match any specific record skill. It provides a universal framework for reading an unfamiliar document: how to orient yourself, what to extract regardless of type, and what patterns are worth flagging in any record
+description: "This skill is loaded when the document type does not match any specific record skill. It provides a universal framework for reading an unfamiliar document: how to orient yourself, what to extract regardless of type, and what patterns are worth flagging in any record"
 ---
 # Domain knowledge — General records
 
-This skill is loaded by `/ingest` when the document type does not match any specific record skill. It provides a universal framework for reading an unfamiliar document: how to orient yourself, what to extract regardless of type, and what patterns are worth flagging in any record.
-
-Apply this knowledge in addition to the standard extraction process. If you can identify the document type during extraction and a more specific skill exists, use that skill's guidance instead — it will be more precise.
+This skill is loaded by Watchdog when the document type does not match any specific record skill. It provides a universal framework for reading an unfamiliar document: how to orient yourself, what to extract regardless of type, and what patterns are worth flagging in any record.
 
 ---
 
@@ -20,16 +18,14 @@ Before pulling fields, answer four questions about the document:
 
 ---
 
-## Always-present fields to extract
-
-These fields appear in virtually every official or semi-official document. Extract them even when not prominently displayed.
+## Fields to extract
 
 | Field | What to look for |
 |-------|-----------------|
 | **Document type** | What kind of record this is — name it precisely if possible |
 | **Issuing authority** | The body, office, or individual that produced or certified the document |
 | **Jurisdiction** | The legal or regulatory jurisdiction governing this document |
-| **Date(s)** | Date of creation, date of events described, date of signatures — these are often different |
+| **Date(s)** | Date of creation, date of events described, date of signatures — these may be different |
 | **Reference / file number** | Any identifier assigned by the issuing authority |
 | **Named parties** | Every person and organization named, with their stated role or capacity |
 | **Addresses** | All addresses — residential, business, registered, mailing |
@@ -41,43 +37,19 @@ These fields appear in virtually every official or semi-official document. Extra
 
 ## Red flags — what to look for
 
-### Document integrity
-
-- **Missing pages or unexplained gaps** — a document numbered pages 1–4 and 7–12 is missing pages 5 and 6. This may be a redaction, a copying error, or deliberate concealment. Note it explicitly.
-- **Document that doesn't match its claimed type** — wrong letterhead, inconsistent formatting, different fonts mid-document, dates that don't match the issuing authority's known practices. These can indicate alteration or fabrication.
-- **Version discrepancies** — "amended," "revised," or "restated" versions without a clear explanation of what changed. Always try to obtain the original to compare.
-- **Signature anomalies** — a document signed by someone not identified in the body; a signature block left blank; a date of signature earlier than the date of the events it describes.
-
-### What's missing
-
-- **Redactions** — what is hidden is often more informative than what is shown. Note every redaction: its approximate size, its location in the document, and any surrounding context that suggests what it covers.
-- **Absent parties** — if a document describes a transaction, relationship, or event that would normally involve a named party, and that party is not named, ask why. Absence is a signal.
-- **Attachments listed but not provided** — a document may reference schedules, annexes, or exhibits that were not included in what you received. List them; they may be obtainable separately.
-- **Expected fields left blank** — a form with a mandatory field left empty is as significant as a completed one. Note blank fields that appear required.
-
-### Dates and timelines
-
-- **Backdating** — a document signed or filed after the events it describes, where the date implies it was contemporaneous. Common in fraud.
-- **Implausible timelines** — an approval granted before the application was submitted; a contract executed after the work was completed; a meeting that occurred on a weekend or holiday for an organisation that wouldn't normally operate then.
-- **Date of document vs. date of events** — always distinguish between when something was written and when the events described occurred.
-
-### Self-reporting vs. independent verification
-
-- **Self-reported figures without audit** — financial information, headcounts, or statistics provided by the subject without independent verification should be treated as claims, not facts.
-- **Conflict of interest in the issuing authority** — a document produced by or for the party it describes (a company's own environmental audit, a police force's own use-of-force review) has lower evidentiary weight than one produced by an independent regulator or court.
+The universal red flags — document integrity, what's missing, date and timeline anomalies, and self-reported-versus-verified information — apply to every document and are carried in the standing extraction instructions, so they are not restated here. For an unfamiliar record they *are* the core of what to watch for: read this document against them and treat anything they surface as a fact or a lead, exactly as those instructions describe.
 
 ---
 
 ## Terminology
 
-When you encounter an unfamiliar term in an unknown document type:
+Extraction runs as a single completion with no tool access — there is no glossary to browse and no web to check mid-document. When you encounter an unfamiliar term in an unknown document type, work only from the document itself and what you already know:
 
 | Situation | Approach |
 |-----------|---------|
-| **Regulatory or legal term** | Look for the issuing authority's official glossary or enabling legislation — most regulatory bodies publish plain-language guides to their forms |
-| **Jurisdiction-specific term** | Note the jurisdiction and flag the term for research; terminology tables in specific record skills (corporate-filings, land-registries, court-documents, etc.) may cover it |
-| **Accounting or financial term** | IFRS and GAAP standards bodies publish free plain-language summaries |
-| **Term defined within the document** | Many official documents include a definitions section — check the beginning and end of the document |
+| **Term defined within the document** | Many official documents include a definitions section — check the beginning and end of the document first |
+| **Regulatory, legal, or accounting term you recognize** | Define it inline from your own knowledge so the extraction stays self-contained |
+| **Jurisdiction-specific or unfamiliar term** | Don't guess. Record the term verbatim and its jurisdiction in `observations` as an open question — specific record skills (corporate-filings, real-estate, court-documents, etc.) may already cover it; otherwise it's a lead for a later `/watchdog-research` session or human review |
 
 ---
 
@@ -87,7 +59,7 @@ For any document type, look for these universal relationship types:
 
 1. **Person → Organization**: Named role (director, officer, employee, member, signatory, counsel, agent)
 2. **Person / Organization → Address**: All addresses stated in the document, with date context where available
-3**Organization → Organization**: Parent, subsidiary, related party, contracting party, regulator/regulated
+3. **Organization → Organization**: Parent, subsidiary, related party, contracting party, regulator/regulated
 4. **Person / Organization → Document**: Issued by, filed by, named in, subject of, signatory of
 5. **Person / Organization → Amount**: Owes, paid, awarded, claimed — with date and counterparty
 6. **Document → Document**: Amended by, superseded by, referenced in, attached to
@@ -96,7 +68,7 @@ For any document type, look for these universal relationship types:
 
 ## What investigators typically miss
 
-1. **The issuing authority's mandate** — every regulatory body or court has a statutory mandate that defines what it can and cannot do. If a document from that body omits something its mandate requires, that omission is the story.
+1. **The issuing authority's mandate** — every regulatory body or court has a statutory mandate that defines what it can and cannot do. If a document from that body omits something its mandate requires, that omission may be significant.
 2. **The difference between "filed" and "accepted"** — a document filed with a regulator or court has not necessarily been reviewed or accepted. Check whether the filing was acknowledged, approved, or challenged.
 3. **Who is authorised to sign** — not everyone who signs an official document is authorised to bind the organisation. A signature from someone without authority can void an agreement or signal an internal breakdown.
 4. **The covering letter or transmittal memo** — documents released in response to FOI or litigation requests often come with a transmittal memo that describes what was and was not provided. This memo is itself a document worth reading.

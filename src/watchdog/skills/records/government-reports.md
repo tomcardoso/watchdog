@@ -1,21 +1,22 @@
 ---
-description: a government-produced report, departmental evaluation, royal commission report, public inquiry report, task force report, advisory council report, or similar policy document produced by or for a government body
+description: a government-produced report, departmental evaluation, departmental or municipal annual report, royal commission report, public inquiry report, task force report, parliamentary or legislative committee report, advisory council report, white paper, green paper, consultation paper, regulatory impact assessment, or similar policy document produced by or for a government body; for auditor general or value-for-money/performance audits, use `audit-reports`; for the legal instruments themselves (statutes, regulations, bills) use `legislation`
 ---
 # Domain knowledge — Government reports
 
-This skill is loaded by `/ingest` when the document type is a government-produced report, departmental evaluation, royal commission report, public inquiry report, task force report, advisory council report, or similar policy document produced by or for a government body.
+This skill is loaded by Watchdog when the document type is a government-produced report, departmental evaluation, royal commission report, public inquiry report, task force report, advisory council report, white paper, green paper, consultation paper, regulatory impact assessment, or similar policy document produced by or for a government body.
 
-This is distinct from audit reports (see `audit-reports` skill), which cover auditor general and value-for-money audits specifically.
-
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
+This is distinct from audit reports (see `audit-reports` skill), which cover auditor general and value-for-money audits specifically, and from the legal instruments themselves — statutes, regulations, bills — which are covered by `legislation`.
 
 ---
 
 ## Document types covered
 
+- Departmental, agency, and municipal annual reports
 - Royal commission and public inquiry reports
 - Task force and advisory council reports
 - Departmental evaluation and program review reports
+- Government white papers and green papers
+- Consultation papers and regulatory impact assessments
 - Legislative or parliamentary committee reports
 - Independent review panel reports
 - Commissioner or ombudsman reports
@@ -29,7 +30,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 ---
 
-## Always-present fields to extract
+## Fields to extract
 
 | Field | What to look for |
 |-------|-----------------|
@@ -52,23 +53,21 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ### Mandate and independence
 
 - **Narrow terms of reference** — a commission or task force whose mandate specifically excludes the most sensitive questions (e.g. "review implementation but not the decision to proceed") may have been designed to avoid accountability.
-- **Commissioner with connections to the subject matter** — a review chair or panel member with prior professional or personal ties to the department, company, or individuals being reviewed.
-- **Timeline compressed before an election** — a commission struck or a report rushed to publication before an election may be designed for political purposes rather than genuine accountability.
-- **Expert advice ignored in the final report** — compare expert testimony or submissions to final conclusions. Findings that contradict the weight of expert evidence warrant scrutiny.
+- **Commissioner with connections to the subject matter** — record the commissioner, chair, and panel members named, and log a lead to check whether any has prior professional or personal ties to the department, company, or individuals being reviewed.
+- **Timeline compressed before an election** — record the mandate date and publication date, and log a lead to check them against the relevant election date; a commission struck or a report rushed to publication just before an election may be designed for political purposes rather than genuine accountability.
+- **Expert advice ignored in the final report** — where both the expert testimony or submissions and the final findings are contained in the document, compare them and flag findings that contradict the weight of expert evidence; where only the findings are present, log a lead to obtain the underlying evidence.
 
 ### Recommendations and follow-through
 
-- **Recommendations that repeat prior recommendations** — the same recommendation appears in a prior report (sometimes from years or decades earlier). This shows the problem was identified and not addressed.
 - **Government response that accepts recommendations "in principle"** — a response that agrees with the direction of a recommendation without committing to specific action or a timeline.
-- **Recommendations with no corresponding action** — track the implementation of specific numbered recommendations over time. The gap between what was recommended and what was done is often the story.
-- **Recommendations directed at a body that no longer exists** — a report addressing a program or structure that was subsequently reorganized may provide cover for inaction.
+- **Recommendations directed at a body that no longer exists** — capture the body or program each recommendation is addressed to, and log a lead to check whether any has since been reorganized or abolished.
 
 ### Findings and evidence
 
 - **Findings that attribute systemic failures to individual error** — a report that blames one person for a problem that appears structural may be shielding the institution.
 - **Evidence heard in camera not reflected in the public report** — commissions and inquiries sometimes hear evidence in closed session; the public report may not reflect the full record.
 - **Statistics presented without methodology** — a report that cites data (e.g. recidivism rates, cost estimates) without explaining the source or methodology cannot be properly evaluated.
-- **Comparisons to peer jurisdictions** — reports often use international comparisons selectively. Check whether the comparison jurisdictions were chosen to support a predetermined conclusion.
+- **Comparisons to peer jurisdictions** — capture which comparison jurisdictions the report uses and the stated basis for selecting them, along with any methodology given for the comparison.
 
 ### Public inquiries
 
@@ -89,10 +88,11 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 | **Treasury Board** | Canada | The Cabinet committee responsible for government spending and program management |
 | **Departmental evaluation** | Canada | A mandatory periodic review of a program's relevance, effectiveness, and efficiency |
 | **Departmental Results Report (DRR)** | Canada | An annual public accountability document showing how a department performed against its plans |
-| **TRC** | Canada | Truth and Reconciliation Commission — the commission that examined the legacy of residential schools; its 94 calls to action remain a key accountability reference |
-| **National Inquiry into MMIWG** | Canada | The National Inquiry into Missing and Murdered Indigenous Women and Girls — its final report contains 231 calls for justice |
 | **Select committee** | UK / Australia | A parliamentary committee examining a specific issue or government department; equivalent to a standing committee |
 | **Section 21 inquiry** | UK | A statutory public inquiry under the Inquiries Act 2005 |
+| **White paper** | Canada / UK / Australia | A government policy statement signalling its intention to legislate |
+| **Green paper** | Canada / UK / Australia | A government consultation document inviting public comment before policy is settled |
+| **Regulatory impact assessment (RIA)** | Universal | A government document estimating the costs and benefits of a proposed regulation |
 
 ---
 
@@ -111,9 +111,10 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 1. **The minority report or dissenting opinion** — a dissenting commissioner often captures the most pointed critique of the institution or the majority's conclusions. Always read dissents in full.
 2. **The submissions and exhibits** — royal commissions and parliamentary committees receive written submissions from governments, organizations, and individuals. These submissions are often public and contain admissions and evidence not reproduced in the final report.
 3. **The list of witnesses** — who was called to testify (and who was not) is itself informative. Notable absences may indicate the commission chose not to pursue certain lines of inquiry.
-4. **Progress tracking on prior calls to action** — civil society organizations, academics, and media organizations often independently track implementation of major reports' recommendations. These trackers are authoritative reference points.
-5. **The government's tabling date vs. completion date** — governments sometimes sit on completed reports before tabling them publicly. The gap between when a report was completed and when it was released may be significant.
+4. **Progress tracking on prior calls to action** — civil society organizations, academics, and media organizations sometimes independently track implementation of major reports' recommendations. These trackers are authoritative reference points.
+5. **The government's tabling date vs. completion date** — governments sometimes sit on completed reports before tabling them publicly. The gap between when a report was completed and when it was released may be of significance.
 6. **The founding instrument** — the order in council, letters patent, or statutory instrument establishing a commission defines its mandate, composition, and powers. Any subsequent narrowing of scope (by the commission or the government) becomes apparent against the original mandate.
+7. **Recommendations that echo the past or go unheeded** — the sharpest finding is often that a recommendation is not new. Comparing a report's recommendations against those in earlier reports on the same subject (including entities already in the vault) can show a problem was identified years or decades earlier and left unaddressed; tracking whether specific numbered recommendations were ever acted on, across multiple years, exposes the gap between what was recommended and what was done.
 
 ---
 

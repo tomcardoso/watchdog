@@ -1,9 +1,9 @@
 ---
-description: a bankruptcy filing, proposal, creditor list, trustee report, receiving order, or similar insolvency record
+description: a bankruptcy filing, proposal, creditor list, trustee's or monitor's report, receivership order, CCAA or other court-supervised restructuring proceeding, or similar insolvency record; for a general civil claim or judgment not tied to insolvency, use `court-documents`
 ---
 # Domain knowledge — Bankruptcy and insolvency records
 
-Loaded by `/ingest` when the document type is a bankruptcy filing, proposal, creditor list, trustee report, receiving order, or similar insolvency record.
+Loaded by Watchdog when the document type is a bankruptcy filing, proposal, creditor list, trustee's or monitor's report, receivership order, CCAA or other court-supervised restructuring proceeding, or similar insolvency record.
 
 ---
 
@@ -25,7 +25,7 @@ Loaded by `/ingest` when the document type is a bankruptcy filing, proposal, cre
 
 ---
 
-## Always-present fields to extract
+## Fields to extract
 
 | Field | What to look for |
 |-------|-----------------|
@@ -49,15 +49,15 @@ Loaded by `/ingest` when the document type is a bankruptcy filing, proposal, cre
 
 - **Transactions at undervalue** — assets transferred for less than fair market value before bankruptcy. If within certain look-back periods, the trustee can reverse these.
 - **Fraudulent preferences** — paying certain creditors before others, or transferring assets to related parties, shortly before bankruptcy. Most insolvency statutes set look-back periods for these transactions.
-- **Concealed assets** — assets not disclosed in the statement of affairs or bankruptcy schedules. A bankrupt's sworn statement omitting assets is perjury in virtually every jurisdiction.
+- **Assets missing from the sworn schedules** — the statement of affairs and bankruptcy schedules are a sworn inventory, and omitting an asset is perjury in virtually every jurisdiction. The schedule alone can't tell you what's absent — but if the entity digest or another document places property, a company holding, or a recent transfer in the bankrupt's hands that the schedules don't list, record that gap as a lead.
 - **Related party creditors near the top of the list** — a director's company claiming a large unsecured debt before other creditors.
-- **Multiple bankruptcies** — the same individual filing insolvency proceedings more than once. Successive bankruptcies typically result in stricter conditions for discharge.
+- **Multiple bankruptcies** — the same individual filing insolvency proceedings more than once. Successive bankruptcies may result in stricter conditions for discharge.
 
 ### Timing patterns
 
-- **Bankruptcy filed shortly after a judgment** — the debtor is likely using bankruptcy to escape the judgment creditor.
-- **Business bankruptcy followed closely by a new company in the same industry** — the "phoenix company" pattern: old company's debts left behind while the business continues under a new name.
-- **Assets transferred to a spouse or family member in the years before bankruptcy** — common attempt to shield assets from creditors.
+- **Bankruptcy filed shortly after a judgment** — if the filing references a judgment debt, or a judgment date appears in the record, record it and log a lead about judgment-avoidance timing.
+- **Business bankruptcy followed closely by a new company in the same industry** — the "phoenix company" pattern, where the old company's debts are left behind while the business continues under a new name. Record the business activity and its principals, and query the entity digest for a newer same-industry company sharing those principals.
+- **Assets transferred to a spouse or family member in the years before bankruptcy** — a common attempt to shield assets from creditors. If the statement of affairs or trustee's report describes such related-party transfers, record them with dates and amounts.
 
 ### Creditor list patterns
 
@@ -96,8 +96,8 @@ Loaded by `/ingest` when the document type is a bankruptcy filing, proposal, cre
 
 ## Relationships to extract
 
-1. **Person / Company → Person** (Bankrupt): Trustee, legal counsel, principal creditors
-2. **Person / Company → Transaction** (Bankrupt): All pre-bankruptcy transactions of note
+1. **Bankrupt (Person / Company) → Person**: Trustee, legal counsel, principal creditors
+2. **Bankrupt (Person / Company) → Transaction**: All pre-bankruptcy transactions of note
 3. **Company → CourtCase**: Any restructuring or receivership order; any litigation by or against the estate
 4. **Person → Company**: Every company the bankrupt was director of — directors of an insolvent company can have personal liability for unremitted payroll deductions in many jurisdictions
 5. **Creditor → Bankrupt**: Every significant creditor with their claim amount and type (secured/preferred/unsecured)

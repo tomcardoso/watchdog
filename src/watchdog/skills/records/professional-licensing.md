@@ -3,9 +3,7 @@ description: a discipline decision, conduct review, fitness-to-practise order, l
 ---
 # Domain knowledge — Professional licensing and discipline records
 
-This skill is loaded by `/ingest` when the document type is a discipline decision, conduct review, fitness-to-practise order, licence revocation or suspension, or similar regulatory action from a professional licensing body for non-healthcare professions. For healthcare professions (medicine, nursing, pharmacy, dentistry), use `healthcare-licensing` instead.
-
-Apply this knowledge in addition to the standard extraction process. It tells you what to look for, what terminology means, and what patterns are worth flagging.
+This skill is loaded by Watchdog when the document type is a discipline decision, conduct review, fitness-to-practise order, licence revocation or suspension, or similar regulatory action from a professional licensing body for non-healthcare professions. For healthcare professions (medicine, nursing, pharmacy, dentistry), use `healthcare-licensing` instead.
 
 ---
 
@@ -28,7 +26,7 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 ---
 
-## Always-present fields to extract
+## Fields to extract
 
 | Field | What to look for |
 |-------|-----------------|
@@ -51,17 +49,17 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 
 ### Trust account and financial misconduct
 
-- **Misappropriation of client funds** — the most serious finding in any regulated profession involving client money. In law, misappropriation of trust funds typically results in disbarment. In finance, it is securities fraud.
+- **Misappropriation of client funds** — the most serious finding in any regulated profession involving client money. In law, misappropriation of trust funds may result in disbarment. In finance, it is securities fraud.
 - **Commingling funds** — mixing client money with personal or business funds violates trust accounting rules in law, real estate, and financial advising. It may not involve theft but is a serious practice failure.
 - **Churning** — in investment advising, churning means trading excessively in a client's account to generate commissions. Look for trading frequency relative to the client's stated risk tolerance and investment objectives.
 - **Unauthorized trading** — executing trades without client consent. Often paired with churning findings.
 
 ### Competence and conduct
 
-- **Pattern of client complaints** — a practitioner with multiple complaints dismissed individually may still represent a systemic problem. Regulatory decisions rarely reference the full complaint history in detail; FOI or registry requests can fill the gap.
+- **Client complaint** — record any client complaint referenced in the decision, including the nature of the harm alleged. A single complaint is a data point; the pattern across multiple complaints belongs with the registry history (see *What investigators typically miss*).
 - **Failure to communicate** — in law and financial advising, failure to keep clients informed is a standalone finding. It often accompanies more serious misconduct as a process failure.
 - **Practising while suspended** — continuing to practise after a licence suspension is a criminal matter in many jurisdictions, not just a regulatory one.
-- **Undisclosed conflicts of interest** — acting for parties on both sides of a transaction, or recommending investments in which the adviser has an undisclosed financial interest.
+- **Self-dealing or dual representation** — acting for parties on both sides of a transaction, or recommending an investment the adviser has a financial stake in. The conflict is visible in the arrangement itself; capture the dual role or the stake as stated, and treat whether it was disclosed to the client as a separate question for follow-up.
 
 ### Supervision failures
 
@@ -110,12 +108,13 @@ Apply this knowledge in addition to the standard extraction process. It tells yo
 ## What investigators typically miss
 
 1. **The public registry** — most regulatory bodies maintain a public registry of all licensed practitioners, including past discipline. The discipline decision you have is a single document; the registry entry shows the complete discipline history, including matters that predate the current proceeding.
-2. **The complaints process behind the decision** — discipline decisions describe the outcome, not the investigation. The original complaint, investigation report, and any charges are separate documents. Many regulatory bodies will disclose these on request.
+2. **The complaints process behind the decision** — discipline decisions describe the outcome, not the investigation. The original complaint, investigation report, and any charges are separate documents. Regulatory bodies may disclose these upon request.
 3. **Conditions on a licence** — a practitioner may have conditions imposed (e.g., cannot handle trust funds, must be supervised) that are not highlighted in the decision headline. Conditions represent ongoing risk and are the most important thing to check when assessing whether a practitioner is safe to use.
 4. **Parallel criminal proceedings** — serious financial misconduct in a regulated profession often also constitutes fraud or theft. Whether criminal charges were laid — or notably, were not laid — is a separate story.
-5. **The client restitution fund** — law societies, real estate councils, and some other regulatory bodies maintain client restitution funds that compensate victims of practitioner theft. Claims to these funds, which are often public, reveal the scale of client harm.
+5. **The client restitution fund** — law societies, real estate councils, and some other regulatory bodies maintain client restitution funds that compensate victims of practitioner theft. Claims to these funds, which may be public, reveal the scale of client harm.
 6. **Corporate structure of the practice** — professional misconduct often involves a firm, not just an individual. Who else worked at the firm, who owned it, and whether the firm is still operating under a different name are questions the decision itself may not answer.
-7. **Reciprocal discipline** — when a practitioner is disciplined in one jurisdiction, other jurisdictions where they are licensed typically initiate their own discipline proceedings on the same facts. A practitioner disciplined in one province may remain licensed and active in another.
+7. **Reciprocal discipline** — when a practitioner is disciplined in one jurisdiction, other jurisdictions where they are licensed may initiate their own discipline proceedings on the same facts. This doesn't always happen, however, and a practitioner disciplined in one province may remain licensed and active in another.
+8. **The pattern behind individual complaints** — a practitioner with multiple complaints dismissed individually may still represent a systemic problem. Regulatory decisions rarely reference the full complaint history in detail; the public registry, FOI, or records requests can fill the gap.
 
 ---
 
