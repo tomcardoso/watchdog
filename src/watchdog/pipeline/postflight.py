@@ -18,6 +18,51 @@ from pathlib import Path
 _VALID_BASIS = {"stated", "inferred"}
 _DATE_RE = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
 
+# Page-coverage heuristic (skim detection). Advisory only — emits a warning, never a failure.
+_COVERAGE_MIN_PAGES = 8         # don't flag short documents
+# Flag when the largest run of consecutive uncited pages is at least this share of the document.
+# Gap-based rather than tail-based (#339): the old "nothing cited past the halfway point" rule
+# missed interior holes — a model that cites pages 1–10 and 40–50 of a 50-pager read nothing in
+# between, which is the signature of a skim just as much as a truncated tail is.
+_COVERAGE_GAP_FRACTION = 0.4
+
+
+def _find_coverage_gap(extraction: dict, page_count: int | None) -> dict | None:
+    """Find a possible skim: when a large consecutive run of a multi-page document's pages —
+    leading, interior, or trailing — is cited by no fact, the model likely skipped it (#339).
+    A heuristic, deterministic signal for review, not a hard check: a genuinely boilerplate span
+    (standard-form clauses, recitals) legitimately goes uncited and trips it too. Facts carry an
+    optional `page`; a doc with no page anchors at all can't be assessed. Returns the flagged
+    span as ``{"start", "end", "pages"}``, or None when there's no qualifying gap."""
+    if not page_count or page_count < _COVERAGE_MIN_PAGES:
+        return None
+    facts = extraction.get("document", {}).get("key_facts", [])
+    cited = sorted({f["page"] for f in facts
+                    if isinstance(f, dict) and isinstance(f.get("page"), int)
+                    and not isinstance(f.get("page"), bool)
+                    and 1 <= f["page"] <= page_count})   # ignore out-of-range citations
+    if not cited:
+        return None
+    # Largest uncited run, including before the first cite and after the last.
+    bounds = [0, *cited, page_count + 1]
+    gap_len, gap_span = 0, (0, 0)
+    for a, b in zip(bounds, bounds[1:]):
+        if b - a - 1 > gap_len:
+            gap_len, gap_span = b - a - 1, (a + 1, b - 1)
+    if gap_len < page_count * _COVERAGE_GAP_FRACTION:
+        return None
+    start, end = gap_span
+    return {"start": start, "end": end, "pages": gap_len}
+
+
+def _render_coverage_warning(gap: dict, page_count: int) -> str:
+    """Render `_find_coverage_gap`'s structured result as the human-readable warning text —
+    byte-identical to the pre-#339-persistence wording, since the log format downstream depends
+    on it."""
+    return (f"no facts cite pages {gap['start']}–{gap['end']} ({gap['pages']} of {page_count} "
+            f"pages) — the model may have skipped them; check that span of the source for "
+            f"anything missed")
+
 
 def _validate(data: dict) -> list[str]:
     errors: list[str] = []
@@ -263,6 +308,17 @@ def run(vault: Path, extraction_path: Path, quiet: bool = False, warn=None) -> d
     from watchdog.pipeline.file_metadata import check_date_mismatch
     for warning in check_date_mismatch(extraction, processing):
         _warn(warning)
+
+    # Skim-detection heuristic (#339), computed after the sanitization above so it reflects the
+    # facts that actually persist. Persisted structurally on the document record — `coverage_gap`
+    # is written explicitly even when None, so a record with the key present means "assessed by
+    # the gap detector" (#339 follow-up: benchmark scoring and gap-frequency questions no longer
+    # need to scrape ingest.log).
+    page_count = extraction.get("document", {}).get("page_count")
+    gap = _find_coverage_gap(extraction, page_count)
+    extraction["document"]["coverage_gap"] = gap
+    if gap:
+        _warn(_render_coverage_warning(gap, page_count))
 
     # Write the validated (and match_id-resolved) extraction back so write_vault reads it
     extraction_path.write_text(

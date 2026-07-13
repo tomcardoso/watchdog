@@ -301,43 +301,6 @@ async def _classify(doc_excerpt: str, model: str, backend: str | None = None,
     return r.parsed.get("skill") or "general-records.md"
 
 
-# Page-coverage heuristic (skim detection). Advisory only — emits a warning, never a failure.
-_COVERAGE_MIN_PAGES = 8         # don't flag short documents
-# Flag when the largest run of consecutive uncited pages is at least this share of the document.
-# Gap-based rather than tail-based (#339): the old "nothing cited past the halfway point" rule
-# missed interior holes — a model that cites pages 1–10 and 40–50 of a 50-pager read nothing in
-# between, which is the signature of a skim just as much as a truncated tail is.
-_COVERAGE_GAP_FRACTION = 0.4
-
-
-def _coverage_warning(extraction: dict, page_count: int | None) -> str | None:
-    """Flag a possible skim: when a large consecutive run of a multi-page document's pages —
-    leading, interior, or trailing — is cited by no fact, the model likely skipped it (#339).
-    A heuristic, deterministic signal for review, not a hard check: a genuinely boilerplate span
-    (standard-form clauses, recitals) legitimately goes uncited and trips it too. Facts carry an
-    optional `page`; a doc with no page anchors at all can't be assessed."""
-    if not page_count or page_count < _COVERAGE_MIN_PAGES:
-        return None
-    facts = extraction.get("document", {}).get("key_facts", [])
-    cited = sorted({f["page"] for f in facts
-                    if isinstance(f, dict) and isinstance(f.get("page"), int)
-                    and not isinstance(f.get("page"), bool)
-                    and 1 <= f["page"] <= page_count})   # ignore out-of-range citations
-    if not cited:
-        return None
-    # Largest uncited run, including before the first cite and after the last.
-    bounds = [0, *cited, page_count + 1]
-    gap_len, gap_span = 0, (0, 0)
-    for a, b in zip(bounds, bounds[1:]):
-        if b - a - 1 > gap_len:
-            gap_len, gap_span = b - a - 1, (a + 1, b - 1)
-    if gap_len < page_count * _COVERAGE_GAP_FRACTION:
-        return None
-    start, end = gap_span
-    return (f"no facts cite pages {start}–{end} ({gap_len} of {page_count} pages) — the model "
-            f"may have skipped them; check that span of the source for anything missed")
-
-
 def _briefing_facts(doc: dict) -> list[dict]:
     """Project key_facts down to what the briefing needs — the fact text and, when the fact is a
     datable occurrence, its date (for chronology). Drops page/basis/entities/quote, which are
@@ -645,22 +608,22 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
 
     if not ok:
         return _fail(vault, sha, filename, "post-flight rejected: " + "; ".join(errors[:3]))
-    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, page_count, warnings)
+    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, warnings)
 
 
 
 def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, scratchpad: str,
-                       cost: float, pf: dict, page_count: int | None,
+                       cost: float, pf: dict,
                        warnings: list[str] | None = None) -> dict:
-    """Shared tail once an extraction has passed post-flight: settle-print, warnings, coverage
-    warning, log, persist `result_<sha>.json`. Used by both the synchronous per-document path
+    """Shared tail once an extraction has passed post-flight: settle-print, warnings, log,
+    persist `result_<sha>.json`. Used by both the synchronous per-document path
     (`_extract_document`) and the batch-collect path (`_finish_batch_item`, #214) so a
     batch-extracted document produces an identical result shape to a synchronous one.
 
-    `warnings` (post-flight's quote-verify/sanitization messages, if any) are printed here —
-    after the OK line, not when post-flight ran — so they're tucked visually under this
-    document's own row instead of landing wherever a concurrently-extracting document
-    happened to be at the time (#333 follow-up)."""
+    `warnings` (post-flight's quote-verify/sanitization/coverage-gap messages, if any) are
+    printed here — after the OK line, not when post-flight ran — so they're tucked visually
+    under this document's own row instead of landing wherever a concurrently-extracting
+    document happened to be at the time (#333 follow-up)."""
     if scratchpad:
         (vault / ".watchdog" / "tmp" / f"notes_{sha}.md").write_text(scratchpad, encoding="utf-8")
     for stale in (vault / ".watchdog" / "tmp").glob(f"section_{sha}_*.md"):
@@ -674,10 +637,6 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
     for msg in (warnings or []):
         _say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{msg}{_RESET}")
         _log(vault, f"WARN {filename}: {msg}")
-    warn = _coverage_warning(extraction, page_count)
-    if warn:
-        _say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{warn}{_RESET}")
-        _log(vault, f"WARN {filename}: {warn}")
     result = _compact_result(sha, filename, extraction, pf.get("near_dup", {}), round(cost, 6))
     # Persist the compact result so `watchdog finalize` can run post-ingest from disk alone.
     (vault / ".watchdog" / "tmp" / f"result_{sha}.json").write_text(
@@ -754,7 +713,7 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
     ok, errors, warnings = _write_postflight(vault, sha, extraction)
     if not ok:
         return _fail(vault, sha, filename, "post-flight rejected: " + "; ".join(errors[:3]))
-    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, page_count, warnings)
+    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, warnings)
 
 
 
