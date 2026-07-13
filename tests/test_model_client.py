@@ -169,11 +169,38 @@ def test_effort_omitted_when_unset(api_key_auth, monkeypatch):
     ("openai", "gpt-5-mini", "low", "low"),              # OpenAI reasoning model → pass through
     ("openai", "gpt-5", "high", "high"),                 # OpenAI: high is NOT a no-op default
     ("openai", "gpt-4o", "low", None),                   # OpenAI chat model → dropped
-    ("deepseek", "deepseek-reasoner", "high", None),     # DeepSeek: no portable knob
-    ("deepseek", "deepseek-chat", "low", None),
+    ("deepseek", "deepseek-v4-pro", "high", None),     # DeepSeek: no portable knob
+    ("deepseek", "deepseek-v4-flash", "low", None),
+    ("gemini", "gemini-2.5-flash", "low", "low"),     # Gemini: every model passes through
+    ("gemini", "gemini-2.5-pro", "high", "high"),
 ])
 def test_resolve_effort(provider, model_id, effort, expected):
     assert mc._resolve_effort(provider, model_id, effort) == expected
+
+
+# ── context windows (provider-aware sectioning, #321) ─────────────────────────
+
+@pytest.mark.parametrize("model, window", [
+    ("sonnet", 200_000),                        # tier → claude
+    ("opus", 200_000),
+    ("haiku", 200_000),
+    (None, 200_000),                            # default tier (sonnet)
+    ("deepseek-v4-flash", 1_000_000),
+    ("deepseek-v4-flash-thinking", 1_000_000),  # -thinking marker still matches deepseek-v4
+    ("deepseek-v4-pro", 1_000_000),
+    ("deepseek-chat", 128_000),                 # legacy id → deepseek fallback, not v4
+    ("gemini-2.5-flash", 1_000_000),
+    ("gemini-2.5-flash-lite", 1_000_000),
+    ("gemini-2.5-pro", 1_000_000),
+    ("gemini-3.5-flash", 1_000_000),
+    ("gemini-3.1-flash-lite", 1_000_000),
+    ("gemini-3.1-pro-preview", 1_000_000),
+    ("gpt-5-mini", 400_000),
+    ("gpt-4o", 128_000),
+    ("some-unknown-model", 128_000),            # conservative default for anything unlisted
+])
+def test_context_window(model, window):
+    assert mc.context_window(model) == window
 
 
 # ── OpenAI-compatible backends (#125) ──────────────────────────────────────────
@@ -194,7 +221,7 @@ def test_openai_backend_routes_with_stored_key(openai_key, monkeypatch):
 
 def test_openai_backend_without_key_errors(monkeypatch):
     monkeypatch.setattr(mc.auth, "get_api_key", lambda provider="anthropic": None)
-    with pytest.raises(mc.ModelError, match="watchdog auth set openai"):
+    with pytest.raises(mc.ModelError, match="watchdog auth"):
         mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai")
 
 
@@ -223,11 +250,73 @@ def test_deepseek_drops_effort(monkeypatch):
     assert be.calls[0]["effort"] is None               # no portable knob on DeepSeek
 
 
+@pytest.fixture
+def gemini_key(monkeypatch):
+    monkeypatch.setattr(mc.auth, "get_api_key",
+                        lambda provider="anthropic": "AIza-x" if provider == "gemini" else None)
+
+
+def test_gemini_backend_routes_with_stored_key(gemini_key, monkeypatch):
+    be = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "gemini", be)
+    r = mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="gemini", model="gemini-2.5-flash")
+    assert r.backend == "gemini"
+    assert be.calls[0]["api_key"] == "AIza-x"          # uses the provider key, not Claude auth
+
+
+def test_gemini_backend_without_key_errors(monkeypatch):
+    monkeypatch.setattr(mc.auth, "get_api_key", lambda provider="anthropic": None)
+    with pytest.raises(mc.ModelError, match="watchdog auth"):
+        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="gemini")
+
+
+def test_gemini_effort_passed_through(gemini_key, monkeypatch):
+    # Unlike OpenAI, every Gemini model accepts reasoning_effort — no capability gate.
+    be = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "gemini", be)
+    mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="gemini", model="gemini-2.5-pro", effort="medium")
+    assert be.calls[0]["effort"] == "medium"
+
+
 def test_openai_cost():
-    assert mc._openai_cost("deepseek-chat",
-                           {"prompt_tokens": 1_000_000, "completion_tokens": 0}) == pytest.approx(0.27)
+    assert mc._openai_cost("deepseek-v4-flash",
+                           {"prompt_tokens": 1_000_000, "completion_tokens": 0}) == pytest.approx(0.14)
     assert mc._openai_cost("unknown-model", {"prompt_tokens": 100}) is None
-    assert mc._openai_cost("deepseek-chat", None) is None
+    assert mc._openai_cost("deepseek-v4-flash", None) is None
+
+
+def test_openai_cost_prices_openai_models():
+    # gpt-5.4 standard: $2.50/1M input, $15/1M output.
+    assert mc._openai_cost("gpt-5.4",
+                           {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
+        == pytest.approx(2.5 + 15)
+
+
+def test_openai_cost_deepseek_cache_hit():
+    # DeepSeek reports prompt_tokens = hit + miss; the hit portion is priced at the cheap rate.
+    cost = mc._openai_cost("deepseek-v4-flash",
+                           {"prompt_tokens": 1_000_000, "completion_tokens": 0,
+                            "prompt_cache_hit_tokens": 900_000, "prompt_cache_miss_tokens": 100_000})
+    assert cost == pytest.approx(100_000 * 0.14e-6 + 900_000 * 0.0028e-6)
+
+
+def test_openai_cost_openai_cache_hit():
+    # OpenAI nests the cached count under prompt_tokens_details; it is a subset of prompt_tokens.
+    cost = mc._openai_cost("gpt-5.4",
+                           {"prompt_tokens": 1_000_000, "completion_tokens": 0,
+                            "prompt_tokens_details": {"cached_tokens": 400_000}})
+    assert cost == pytest.approx(600_000 * 2.5e-6 + 400_000 * 0.25e-6)
+
+
+def test_openai_cost_prices_gemini_models():
+    # gemini-2.5-flash: $0.30/1M input, $2.50/1M output.
+    assert mc._openai_cost("gemini-2.5-flash",
+                           {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
+        == pytest.approx(0.30 + 2.50)
+    # gemini-3.5-flash: $1.50/1M input, $9.00/1M output.
+    assert mc._openai_cost("gemini-3.5-flash",
+                           {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
+        == pytest.approx(1.50 + 9.00)
 
 
 def test_openai_backend_request_shape(monkeypatch):
@@ -250,7 +339,7 @@ def test_openai_backend_request_shape(monkeypatch):
             return FakeResp()
 
     monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
-    out = asyncio.run(mc._openai_complete_async("prompt", "deepseek-reasoner", SCHEMA,
+    out = asyncio.run(mc._openai_complete_async("prompt", "deepseek-v4-flash", SCHEMA,
                                                 "sk-ds", 8000, "high",
                                                 base_url="https://api.deepseek.com"))
     assert out["text"] == '{"name": "Acme"}'
@@ -259,7 +348,163 @@ def test_openai_backend_request_shape(monkeypatch):
     assert captured["body"]["reasoning_effort"] == "high"
     assert captured["body"]["response_format"] == {"type": "json_object"}
     assert "JSON" in captured["body"]["messages"][1]["content"]   # required for json_object mode
-    assert out["cost_usd"] == pytest.approx(10 * 0.55e-6 + 5 * 2.19e-6)
+    assert out["cost_usd"] == pytest.approx(10 * 0.14e-6 + 5 * 0.28e-6)
+
+
+def test_split_deepseek_thinking():
+    assert mc._split_deepseek_thinking("deepseek-v4-flash") == ("deepseek-v4-flash", False)
+    assert mc._split_deepseek_thinking("deepseek-v4-flash-thinking") == ("deepseek-v4-flash", True)
+    assert mc._split_deepseek_thinking("deepseek-v4-pro-thinking") == ("deepseek-v4-pro", True)
+
+
+def _fake_httpx(monkeypatch, captured):
+    """Patch httpx.AsyncClient to capture the request body and return a canned OK response."""
+    import httpx
+
+    class FakeResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self):
+            return {"choices": [{"message": {"content": '{"name": "Acme"}'}}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+
+    class FakeClient:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, headers=None, json=None):
+            captured.update(url=url, headers=headers, body=json)
+            return FakeResp()
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+
+
+def test_deepseek_thinking_toggle(monkeypatch):
+    # Bare id → thinking explicitly disabled (the non-thinking default), sent even though the
+    # provider default is enabled, so the mode is pinned.
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    out = asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+                                                base_url="https://api.deepseek.com"))
+    assert captured["body"]["thinking"] == {"type": "disabled"}
+    assert captured["body"]["model"] == "deepseek-v4-flash"        # marker not present
+    assert out["cost_usd"] == pytest.approx(10 * 0.14e-6 + 5 * 0.28e-6)
+
+    # `-thinking` marker → thinking enabled; the bare id is used for the request + cost lookup.
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    out = asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash-thinking", SCHEMA,
+                                                "sk-ds", 8000, base_url="https://api.deepseek.com"))
+    assert captured["body"]["thinking"] == {"type": "enabled"}
+    assert captured["body"]["model"] == "deepseek-v4-flash"        # stripped before the request
+    assert out["cost_usd"] == pytest.approx(10 * 0.14e-6 + 5 * 0.28e-6)   # priced on the bare id
+
+
+def test_openai_backend_no_thinking_param(monkeypatch):
+    # Non-DeepSeek OpenAI-compatible providers never get a thinking toggle, and the marker is
+    # left untouched (it is a DeepSeek-only convention).
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async("p", "gpt-5-mini", SCHEMA, "sk-o", 8000,
+                                          base_url="https://api.openai.com/v1"))
+    assert "thinking" not in captured["body"]
+
+
+@pytest.mark.parametrize("model_id, reasoning", [
+    ("gpt-5", True), ("gpt-5-mini", True), ("gpt-5.4", True), ("gpt-5.5-pro", True),
+    ("o1", True), ("o3-mini", True), ("o4-mini", True),
+    ("gpt-4o", False), ("gpt-4.1", False), ("chatgpt-4o-latest", False),
+    ("some-new-model", False),   # unlisted → chat, the safe default (never sends an unsupported param)
+])
+def test_openai_is_reasoning(model_id, reasoning):
+    assert mc._openai_is_reasoning(model_id) is reasoning
+
+
+def test_openai_reasoning_model_uses_max_completion_tokens(monkeypatch):
+    # OpenAI reasoning models reject max_tokens → send max_completion_tokens instead.
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async("p", "gpt-5-mini", SCHEMA, "sk-o", 8000,
+                                          base_url="https://api.openai.com/v1"))
+    assert captured["body"]["max_completion_tokens"] == 8000
+    assert "max_tokens" not in captured["body"]
+
+
+def test_openai_chat_model_uses_max_tokens(monkeypatch):
+    # A chat model takes the classic max_tokens field.
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async("p", "gpt-4o", SCHEMA, "sk-o", 8000,
+                                          base_url="https://api.openai.com/v1"))
+    assert captured["body"]["max_tokens"] == 8000
+    assert "max_completion_tokens" not in captured["body"]
+
+
+def test_deepseek_uses_max_tokens(monkeypatch):
+    # DeepSeek speaks the classic wire format regardless of thinking mode → max_tokens.
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+                                          base_url="https://api.deepseek.com"))
+    assert captured["body"]["max_tokens"] == 8000
+    assert "max_completion_tokens" not in captured["body"]
+
+
+def test_gemini_uses_max_tokens(monkeypatch):
+    # Gemini isn't in the OpenAI reasoning-model capability table, so it takes the classic field.
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async("p", "gemini-2.5-flash", SCHEMA, "AIza-x", 8000,
+                                          base_url="https://generativelanguage.googleapis.com/v1beta/openai"))
+    assert captured["body"]["max_tokens"] == 8000
+    assert "max_completion_tokens" not in captured["body"]
+
+
+def test_gemini_backend_request_shape(monkeypatch):
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    out = asyncio.run(mc._openai_complete_async("prompt", "gemini-2.5-flash", SCHEMA, "AIza-x", 8000,
+                                                "low",
+                                                base_url="https://generativelanguage.googleapis.com/v1beta/openai"))
+    assert captured["url"] == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer AIza-x"
+    assert captured["body"]["model"] == "gemini-2.5-flash"        # no marker-stripping (DeepSeek-only)
+    assert captured["body"]["reasoning_effort"] == "low"
+    assert "thinking" not in captured["body"]                      # DeepSeek-only toggle
+    assert out["cost_usd"] == pytest.approx(10 * 0.30e-6 + 5 * 2.50e-6)
+
+
+# ── response_format: real json_schema on Gemini, json_object elsewhere (D98) ───────────────────
+
+def test_gemini_uses_real_json_schema_mode(monkeypatch):
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async("prompt", "gemini-2.5-flash", SCHEMA, "AIza-x", 8000,
+                                          base_url="https://generativelanguage.googleapis.com/v1beta/openai"))
+    assert captured["body"]["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {"name": "watchdog_response", "schema": SCHEMA},
+    }
+    # The schema is enforced at the wire level, so it isn't also duplicated into the prompt text.
+    assert "Return JSON matching this schema" not in captured["body"]["messages"][1]["content"]
+
+
+def test_openai_stays_on_json_object_mode(monkeypatch):
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async("prompt", "gpt-4o", SCHEMA, "sk-o", 8000,
+                                          base_url="https://api.openai.com/v1"))
+    assert captured["body"]["response_format"] == {"type": "json_object"}
+    assert "Return JSON matching this schema" in captured["body"]["messages"][1]["content"]
+
+
+def test_deepseek_stays_on_json_object_mode(monkeypatch):
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async("prompt", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+                                          base_url="https://api.deepseek.com"))
+    assert captured["body"]["response_format"] == {"type": "json_object"}
+    assert "Return JSON matching this schema" in captured["body"]["messages"][1]["content"]
 
 
 # ── JSON extraction ───────────────────────────────────────────────────────────
@@ -330,3 +575,228 @@ def test_rate_limit_error_is_not_a_model_error():
     # Must NOT subclass ModelError, or extraction's retry + sectioning fallback would
     # swallow it instead of letting the orchestrator stop the batch.
     assert not issubclass(mc.RateLimitError, mc.ModelError)
+
+
+# ── response pagination / truncation guard (#343) ──────────────────────────────
+
+class PagingBackend:
+    """Backend fake that supports prefill continuation. Returns queued (text, finish_reason)
+    rounds in order and records the `prefix` each call received, so a test can assert both the
+    assembled output and that continuation actually happened (or didn't)."""
+    def __init__(self, *rounds, cost=0.01):
+        self.rounds = list(rounds)      # each: (text, finish_reason)
+        self.cost = cost
+        self.calls = []
+
+    async def __call__(self, prompt, model_id, schema, api_key, max_tokens, effort=None, prefix=None):
+        self.calls.append({"prefix": prefix, "max_tokens": max_tokens})
+        text, finish = self.rounds.pop(0)
+        return {"text": text, "usage": {"output_tokens": 5}, "cost_usd": self.cost,
+                "finish_reason": finish}
+
+
+@pytest.fixture
+def deepseek_key(monkeypatch):
+    monkeypatch.setattr(mc.auth, "get_api_key",
+                        lambda provider="anthropic": "sk-ds" if provider == "deepseek" else None)
+
+
+@pytest.mark.parametrize("finish, truncated", [
+    ("length", True), ("max_tokens", True), ("MAX_TOKENS", True),
+    ("stop", False), ("end_turn", False), (None, False), ("", False),
+])
+def test_is_truncated(finish, truncated):
+    assert mc._is_truncated(finish) is truncated
+
+
+def test_truncated_response_continues_until_complete(api_key_auth, monkeypatch):
+    # claude-api can prefill: a max-token cut is continued from the partial and concatenated.
+    be = PagingBackend(('{"name": "Ac', "max_tokens"), ('me"}', "end_turn"))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", be)
+    r = mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="claude-api")
+    assert r.parsed == {"name": "Acme"}
+    assert be.calls[0]["prefix"] is None
+    assert be.calls[1]["prefix"] == '{"name": "Ac'      # partial prefilled to continue
+    assert r.cost_usd == pytest.approx(0.02)            # cost summed across both rounds
+
+
+def test_deepseek_paginates(deepseek_key, monkeypatch):
+    # DeepSeek's prefix-completion beta is also a continuation backend.
+    be = PagingBackend(('{"na', "length"), ('me": "Acme"}', "stop"))
+    monkeypatch.setitem(mc._ABACKENDS, "deepseek", be)
+    r = mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="deepseek",
+                         model="deepseek-v4-flash")
+    assert r.parsed == {"name": "Acme"}
+    assert be.calls[1]["prefix"] == '{"na'
+
+
+def test_truncated_result_rejected_even_when_parseable(openai_key, monkeypatch):
+    # openai returns a *new* message, not a continuation, so it can't paginate. A truncated result
+    # must never be accepted even though this partial happens to be valid JSON — it errors so the
+    # orchestrator falls back to bounded-output sectioning. Truncation is deterministic in the
+    # prompt, so it short-circuits the retry loop (one call, no wasted re-run) rather than retrying.
+    be = PagingBackend(('{"name": "Acme"}', "length"), ('{"name": "Acme"}', "length"))
+    monkeypatch.setitem(mc._ABACKENDS, "openai", be)
+    with pytest.raises(mc.ModelError, match="truncated at the model's max-token ceiling"):
+        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
+    assert len(be.calls) == 1                            # no wasted retry of an un-continuable cut
+    assert be.calls[0]["prefix"] is None                # never attempted to continue
+
+
+def test_continuation_stops_at_the_guard(api_key_auth, monkeypatch):
+    # A backend that never stops naturally is capped at _MAX_CONTINUATIONS and reported truncated,
+    # so a pathological run falls back to sectioning instead of looping forever.
+    rounds = [("x", "length")] * (mc._MAX_CONTINUATIONS + 5)
+    be = PagingBackend(*rounds)
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", be)
+    with pytest.raises(mc.ModelError, match="truncated"):
+        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="claude-api",
+                         max_retries=0)
+    # first call + exactly _MAX_CONTINUATIONS continuation rounds, then it gives up
+    assert len(be.calls) == mc._MAX_CONTINUATIONS + 1
+
+
+def test_natural_stop_is_not_paginated(api_key_auth, monkeypatch):
+    be = PagingBackend(('{"name": "Acme"}', "end_turn"))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", be)
+    r = mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="claude-api")
+    assert r.parsed == {"name": "Acme"}
+    assert len(be.calls) == 1                            # no continuation for a natural stop
+
+
+def test_merge_usage_sums_numeric_counts():
+    a = {"input_tokens": 10, "output_tokens": 5, "model": "x"}
+    b = {"input_tokens": 3, "output_tokens": 7, "model": "x"}
+    assert mc._merge_usage(a, b) == {"input_tokens": 13, "output_tokens": 12, "model": "x"}
+
+
+def test_merge_usage_handles_nested_and_one_sided():
+    a = {"prompt_tokens_details": {"cached_tokens": 4}, "input_tokens": 2}
+    b = {"prompt_tokens_details": {"cached_tokens": 1}, "output_tokens": 9}
+    assert mc._merge_usage(a, b) == {
+        "prompt_tokens_details": {"cached_tokens": 5}, "input_tokens": 2, "output_tokens": 9}
+    assert mc._merge_usage(None, b) == b                 # one side missing → the other passes through
+    assert mc._merge_usage(a, None) == a
+
+
+def test_merge_usage_does_not_add_booleans():
+    # bools are ints in Python; a flag must not be arithmetically summed into a token count —
+    # guarded on both sides, so an asymmetric (bool, int) pairing is left alone too, not coerced.
+    assert mc._merge_usage({"cache_hit": True}, {"cache_hit": True}) == {"cache_hit": True}
+    assert mc._merge_usage({"cache_hit": True}, {"cache_hit": 3}) == {"cache_hit": True}
+    assert mc._merge_usage({"cache_hit": 3}, {"cache_hit": True}) == {"cache_hit": 3}
+
+
+@pytest.mark.parametrize("task, backend, model, expected", [
+    ("extract", "deepseek", "deepseek-v4-flash-thinking", mc._DEEPSEEK_THINKING_MAX_TOKENS),
+    ("extract", "deepseek", "deepseek-v4-flash", 16000),     # non-thinking → normal task ceiling
+    ("extract", "claude-api", "claude-sonnet-4-6", 16000),   # CoT bump never applies to Claude
+    ("classify", "claude-api", "claude-haiku-4-5", mc._API_MAX_TOKENS),  # default ceiling
+    ("briefing", "openai", "gpt-4o", 16000),
+    # OpenAI reasoning models share max_completion_tokens between CoT and answer (#354) —
+    # large-output tasks get the raised ceiling; chat models and small tasks don't.
+    ("extract", "openai", "gpt-5.4", mc._OPENAI_REASONING_MAX_TOKENS),
+    ("briefing", "openai", "o3", mc._OPENAI_REASONING_MAX_TOKENS),
+    ("classify", "openai", "gpt-5.4", mc._API_MAX_TOKENS),   # not a large-output task
+])
+def test_task_max_tokens(task, backend, model, expected):
+    assert mc._task_max_tokens(task, backend, model) == expected
+
+
+@pytest.mark.parametrize("backend, model", [
+    ("claude-api", "sonnet"),           # continuation backend — pagination grows past the cap
+    ("claude-agent-sdk", "sonnet"),     # no enforced output ceiling
+    ("deepseek", "deepseek-v4-flash-thinking"),
+    (None, None),                       # unresolved → routes to a Claude backend
+])
+def test_output_ceiling_is_none_when_nothing_to_protect(backend, model):
+    assert mc.output_ceiling_for_sectioning("extract", backend, model) is None
+
+
+@pytest.mark.parametrize("backend, model, expected", [
+    ("openai", "gpt-4o", 16000),        # enforces max_tokens but can't continue → must be sized
+    ("gemini", "gemini-2.5-flash", 16000),
+    # An OpenAI reasoning model's raised wire ceiling (#354) is shared with chain-of-thought,
+    # so sectioning still plans against the base task budget, not the raised one.
+    ("openai", "gpt-5.4", 16000),
+])
+def test_output_ceiling_returned_for_non_continuation_capped_backends(backend, model, expected):
+    assert mc.output_ceiling_for_sectioning("extract", backend, model) == expected
+
+
+def _fake_httpx_sequence(monkeypatch, status_codes):
+    """Patch httpx.AsyncClient to return canned responses with the given status codes, one per
+    post, repeating the last one if posts continue. Returns the list of recorded post calls."""
+    import httpx
+
+    codes = list(status_codes)
+    posts = []
+
+    class FakeResp:
+        def __init__(self, status_code):
+            self.status_code = status_code
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise httpx.HTTPStatusError(f"HTTP {self.status_code}", request=None,
+                                            response=None)
+
+        def json(self):
+            return {"choices": [{"message": {"content": '{"name": "Acme"}'}}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+
+    class FakeClient:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, headers=None, json=None):
+            posts.append(url)
+            return FakeResp(codes.pop(0) if len(codes) > 1 else codes[0])
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+    return posts
+
+
+def _no_sleep(monkeypatch):
+    """Stub the retry backoff so tests don't actually wait; returns the recorded delays."""
+    delays = []
+
+    async def fake_sleep(seconds):
+        delays.append(seconds)
+
+    monkeypatch.setattr(mc.asyncio, "sleep", fake_sleep)
+    return delays
+
+
+def test_openai_backend_retries_transient_5xx(monkeypatch):
+    # Two 502s then a 200 → the call succeeds after backing off twice (#354).
+    posts = _fake_httpx_sequence(monkeypatch, [502, 502, 200])
+    delays = _no_sleep(monkeypatch)
+    out = asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+                                                base_url="https://api.deepseek.com"))
+    assert out["text"] == '{"name": "Acme"}'
+    assert len(posts) == 3
+    assert delays == [mc._TRANSIENT_BACKOFF_S, mc._TRANSIENT_BACKOFF_S * 2]
+
+
+def test_openai_backend_gives_up_after_bounded_5xx_retries(monkeypatch):
+    # A persistent 5xx exhausts the retry budget and raises — it must not loop forever.
+    import httpx
+    posts = _fake_httpx_sequence(monkeypatch, [502])
+    _no_sleep(monkeypatch)
+    with pytest.raises(httpx.HTTPStatusError):
+        asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+                                              base_url="https://api.deepseek.com"))
+    assert len(posts) == mc._TRANSIENT_RETRIES + 1
+
+
+def test_openai_backend_never_retries_429(monkeypatch):
+    # 429 is a session-wide condition, not a transient blip: one post, straight to the typed
+    # RateLimitError so the orchestrator stops the batch cleanly.
+    posts = _fake_httpx_sequence(monkeypatch, [429])
+    delays = _no_sleep(monkeypatch)
+    with pytest.raises(mc.RateLimitError):
+        asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+                                              base_url="https://api.deepseek.com"))
+    assert len(posts) == 1
+    assert delays == []

@@ -371,11 +371,11 @@ def test_obsidian_config_path_windows(monkeypatch):
 
 def test_cmd_obsidian_opens_url(configured, monkeypatch):
     cli.cmd_new(args(name="My Story", dir=str(configured)))
-    vault = configured / "my-story"
     calls = []
     monkeypatch.setattr("watchdog.cmd.vault.subprocess.run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
     monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "darwin")
     monkeypatch.setattr("watchdog.cmd.vault._obsidian_registered", lambda v: True)
+    monkeypatch.setattr("watchdog.cmd.vault._obsidian_launch_epoch", lambda: None)
     cli.cmd_obsidian(args(name="My Story"))
     assert len(calls) == 1
     assert calls[0][0] == "open"
@@ -396,8 +396,25 @@ def test_cmd_obsidian_exits_on_failure(configured, monkeypatch):
     monkeypatch.setattr("watchdog.cmd.vault.subprocess.run", lambda cmd, **kw: type("R", (), {"returncode": 1})())
     monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "darwin")
     monkeypatch.setattr("watchdog.cmd.vault._obsidian_registered", lambda v: True)
+    monkeypatch.setattr("watchdog.cmd.vault._obsidian_launch_epoch", lambda: None)
     with pytest.raises(SystemExit):
         cli.cmd_obsidian(args(name="My Story"))
+
+
+def test_cmd_obsidian_stale_launch_warns_to_restart(configured, monkeypatch, capsys):
+    cli.cmd_new(args(name="My Story", dir=str(configured)))
+    calls = []
+    monkeypatch.setattr("watchdog.cmd.vault.subprocess.run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
+    monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "darwin")
+    monkeypatch.setattr("watchdog.cmd.vault._obsidian_registered", lambda v: True)
+    # Obsidian launched (epoch 1000s) before the vault was registered (2000s) → stale.
+    monkeypatch.setattr("watchdog.cmd.vault._obsidian_launch_epoch", lambda: 1000.0)
+    monkeypatch.setattr("watchdog.cmd.vault._obsidian_vault_ts", lambda v: 2000_000)
+    cli.cmd_obsidian(args(name="My Story"))
+    out = capsys.readouterr().out
+    assert "hasn't loaded this vault yet" in out
+    assert "Quit Obsidian" in out
+    assert calls == []  # URI not fired — it would have shown "Vault not found"
 
 
 def test_cmd_obsidian_infers_project_from_cwd(configured, monkeypatch):
@@ -407,6 +424,7 @@ def test_cmd_obsidian_infers_project_from_cwd(configured, monkeypatch):
     monkeypatch.setattr("watchdog.cmd.vault.subprocess.run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
     monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "darwin")
     monkeypatch.setattr("watchdog.cmd.vault._obsidian_registered", lambda v: True)
+    monkeypatch.setattr("watchdog.cmd.vault._obsidian_launch_epoch", lambda: None)
     monkeypatch.chdir(vault)
     cli.cmd_obsidian(args(name=None))
     assert len(calls) == 1
@@ -973,6 +991,39 @@ def test_pick_skill_arrow_numbered_fallback_unset(monkeypatch):
     assert _setup._pick_skill_arrow(catalog, None) == ("unset", None)
 
 
+# ── model picker (classifier_model/extractor_model/finalizer_model) ──────────
+
+def test_pick_model_interactive_claude_tier(monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda *a: "2")   # Claude group: haiku, sonnet, opus
+    assert _setup._pick_model_interactive(None) == "sonnet"
+
+
+def test_pick_model_interactive_only_provider_filters_to_one_group(monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda *a: "1")
+    value = _setup._pick_model_interactive(None, only_provider="gemini")
+    assert value.startswith("gemini:")
+
+
+def test_pick_model_interactive_custom_free_text(monkeypatch):
+    answers = iter(["18", "openai:my-custom-model"])
+    monkeypatch.setattr("builtins.input", lambda *a: next(answers))
+    assert _setup._pick_model_interactive(None) == "openai:my-custom-model"
+
+
+def test_pick_model_interactive_cancel_returns_none(monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda *a: "")
+    assert _setup._pick_model_interactive(None) is None
+
+
+def test_edit_key_interactive_extractor_model_uses_picker(wdg_home, monkeypatch, capsys):
+    import sys
+    monkeypatch.setattr(sys, "stdin", _FakeTTY())
+    monkeypatch.setattr("builtins.input", lambda prompt="": "1")  # Claude group: haiku
+    config = {}
+    _setup._edit_key_interactive(config, "extractor_model")
+    assert config["extractor_model"] == "haiku"
+
+
 # ── configure wizard ──────────────────────────────────────────────────────────
 
 def test_wizard_menu_numbered_selects_first_key(wdg_home, monkeypatch):
@@ -1085,6 +1136,7 @@ def test_version_flags_invoke_about(capsys, monkeypatch, flag):
     ("remove",    "delete"),
     ("rm",        "delete"),
     ("mv",        "move"),
+    ("telemetry", "usage"),
 ])
 def test_aliases_remap_argv(alias, canonical, monkeypatch):
     import sys
@@ -1092,8 +1144,6 @@ def test_aliases_remap_argv(alias, canonical, monkeypatch):
     # The alias remap happens before argparse; after main() mutates sys.argv,
     # argv[1] should be the canonical command name.
     recorded = []
-
-    original_main = cli.main
 
     def capturing_main():
         if len(sys.argv) >= 2 and sys.argv[1] in cli._ALIASES:
@@ -1167,6 +1217,21 @@ def test_configure_chew_workers_accepts_auto(wdg_home):
     cli.cmd_configure(args(key="chew_workers", value="auto"))
     config = json.loads((wdg_home / "config.json").read_text())
     assert config["chew_workers"] == "auto"
+
+
+def test_configure_section_threshold_accepts_auto(wdg_home):
+    cli.cmd_configure(args(key="section_token_threshold", value="auto"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["section_token_threshold"] == "auto"
+
+
+def test_display_value_section_auto_shows_resolved_number():
+    # 'auto' (or unset) renders the concrete value it resolves to for the configured model.
+    out = _setup._display_value("section_token_threshold", "auto", {"extractor_model": "sonnet"})
+    assert "auto" in out and "120000" in out and "sonnet" in out
+    # Unset (None) behaves the same as explicit 'auto'.
+    out_unset = _setup._display_value("section_token_threshold", None, {})
+    assert "auto" in out_unset and "120000" in out_unset
 
 
 # ── configure — bool keys ─────────────────────────────────────────────────────
@@ -1259,7 +1324,7 @@ def test_configure_show_all_includes_new_keys(wdg_home, capsys):
     out = _strip_ansi(capsys.readouterr().out)
     for key in ("garbled_threshold", "chunk_size", "chunk_workers",
                 "chunk_timeout", "dup_threshold", "shingle_size",
-                "table_structure", "embed_images", "ocr_engine"):
+                "table_structure", "ocr_engine"):
         assert key in out, f"'{key}' missing from configure output"
 
 
@@ -1708,17 +1773,19 @@ def _vault_with_queue(configured):
 def test_offer_ingest_yes_runs_ingest_without_reconfirming(configured, monkeypatch):
     from watchdog.cmd import ingest as ing
     vault = _vault_with_queue(configured)
-    monkeypatch.setattr("builtins.input", lambda *a: "y")
+    monkeypatch.setattr("builtins.input", lambda *a: "1")   # pick(): "Ingest now"
     seen = {}
-    monkeypatch.setattr(ing, "cmd_ingest", lambda a, *, confirm=True: seen.update(confirm=confirm))
+    monkeypatch.setattr(ing, "cmd_ingest",
+                        lambda a, *, confirm=True, skip_preview=False: seen.update(
+                            confirm=confirm, skip_preview=skip_preview))
     ing._offer_ingest(args(), vault)
-    assert seen == {"confirm": False}   # chew's prompt is the only confirmation
+    assert seen == {"confirm": False, "skip_preview": True}   # chew's prompt is the only confirmation
 
 
 def test_offer_ingest_no_prints_hint_and_skips(configured, monkeypatch, capsys):
     from watchdog.cmd import ingest as ing
     vault = _vault_with_queue(configured)
-    monkeypatch.setattr("builtins.input", lambda *a: "n")
+    monkeypatch.setattr("builtins.input", lambda *a: "2")   # pick(): "Not now"
     def _boom(*a, **k):
         raise AssertionError("ingest must not run when declined")
     monkeypatch.setattr(ing, "cmd_ingest", _boom)
@@ -1769,7 +1836,7 @@ def test_resolve_stage_claude_batch_backend():
 
 def test_resolve_stage_non_claude_backend_keeps_raw_model():
     from watchdog.cmd.ingest import _resolve_stage
-    assert _resolve_stage("deepseek:deepseek-chat", None) == ("deepseek", "deepseek-chat")
+    assert _resolve_stage("deepseek:deepseek-v4-flash", None) == ("deepseek", "deepseek-v4-flash")
     assert _resolve_stage("openai:gpt-5-mini", None) == ("openai", "gpt-5-mini")
 
 
@@ -1795,6 +1862,70 @@ def test_resolve_stage_bare_non_tier_is_treated_as_claude_and_rejected():
     # No backend prefix → interpreted as a Claude tier → invalid (use openai:gpt-5-mini instead).
     with pytest.raises(SystemExit, match="unknown model"):
         _resolve_stage("gpt-5-mini", None)
+
+
+# ── cmd_ingest / cmd_finalize: Claude auth only required when a stage needs it (#325) ──
+
+def test_cmd_ingest_does_not_require_claude_auth_when_all_stages_non_claude(wdg_home, tmp_path, monkeypatch):
+    """A vault fully configured on another provider (e.g. Gemini) for all three stages must be
+    able to ingest even when Claude itself has no auth configured at all."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth",
+                         lambda: {"mode": "none", "reason": "api-key mode is set but no key is configured"})
+    (wdg_home / "config.json").write_text(json.dumps({
+        "classifier_model": "gemini:gemini-2.5-flash",
+        "extractor_model": "gemini:gemini-2.5-flash",
+        "finalizer_model": "gemini:gemini-2.5-flash",
+    }))
+
+    class _Stop(Exception):
+        pass
+
+    monkeypatch.setattr("watchdog.pipeline.ingest_setup.run", lambda *a, **k: (_ for _ in ()).throw(_Stop()))
+
+    with pytest.raises(_Stop):
+        cmd_ingest(args(), confirm=False)
+
+
+def test_cmd_ingest_still_requires_claude_auth_when_a_stage_uses_claude(wdg_home, tmp_path, monkeypatch):
+    """The auth gate must still fire when at least one of the three stages is Claude-routed."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth",
+                         lambda: {"mode": "none", "reason": "auth not configured"})
+    (wdg_home / "config.json").write_text(json.dumps({
+        "classifier_model": "gemini:gemini-2.5-flash",
+        "extractor_model": "sonnet",
+        "finalizer_model": "gemini:gemini-2.5-flash",
+    }))
+
+    with pytest.raises(SystemExit, match="auth not configured"):
+        cmd_ingest(args(), confirm=False)
+
+
+def test_cmd_finalize_does_not_require_claude_auth_when_finalizer_non_claude(wdg_home, tmp_path, monkeypatch):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth",
+                         lambda: {"mode": "none", "reason": "api-key mode is set but no key is configured"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: True)
+    (wdg_home / "config.json").write_text(json.dumps({"finalizer_model": "gemini:gemini-2.5-flash"}))
+
+    class _Stop(Exception):
+        pass
+
+    monkeypatch.setattr(ing, "_run_finalize", lambda *a, **k: (_ for _ in ()).throw(_Stop()))
+
+    with pytest.raises(_Stop):
+        ing.cmd_finalize(args())
 
 
 # ── cmd_ingest: claude-batch validation guards (#214) ──────────────────────────

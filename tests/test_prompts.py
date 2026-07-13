@@ -53,7 +53,7 @@ def test_render_leaves_single_braces_untouched():
 
 def test_section_prompt_renders_label():
     p = prompts.build_section_prompt(
-        pages_text="x", existing_entities=[], skill_text="", carry_forward="",
+        pages_text="x", existing_entities=[], existing_timeline=[], skill_text="", carry_forward="",
         section_label="pp.1-10", is_first=True, known_document_types=[])
     assert "pp.1-10" in _flat(p) and "{{" not in _flat(p)
 
@@ -75,7 +75,7 @@ def test_later_section_prompt_does_not_ask_for_summary():
     # (also used by the whole-doc path); what must be gone from the later-section note is any
     # reference to "only section 1's summary is kept" (the pre-#279 contract).
     p = prompts.build_section_prompt(
-        pages_text="x", existing_entities=[], skill_text="", carry_forward="",
+        pages_text="x", existing_entities=[], existing_timeline=[], skill_text="", carry_forward="",
         section_label="pp.11-20", is_first=False, known_document_types=[])
     text = _flat(p)
     assert "only section 1's summary is kept" not in text
@@ -85,7 +85,7 @@ def test_later_section_prompt_does_not_ask_for_summary():
 
 def test_first_section_prompt_still_fills_metadata():
     p = prompts.build_section_prompt(
-        pages_text="x", existing_entities=[], skill_text="", carry_forward="",
+        pages_text="x", existing_entities=[], existing_timeline=[], skill_text="", carry_forward="",
         section_label="pp.1-10", is_first=True, known_document_types=[])
     text = _flat(p)
     assert "morgue_entity_id" in text
@@ -120,8 +120,8 @@ def test_build_digest_prompt_falls_back_when_fields_missing():
 
 def test_extract_prompt_includes_instructions_and_data():
     p = prompts.build_extract_prompt(
-        pages_text="DOCBODY", existing_entities=[{"id": "x"}], skill_text="SKILL",
-        sidecar=None, brief=None, known_document_types=[])
+        pages_text="DOCBODY", existing_entities=[{"id": "x"}], existing_timeline=[],
+        skill_text="SKILL", sidecar=None, brief=None, known_document_types=[])
     text = _flat(p)
     assert "key_facts" in text              # instruction prose loaded
     assert "DOCBODY" in text and "SKILL" in text   # data assembled in
@@ -131,8 +131,8 @@ def test_extract_prompt_includes_instructions_and_data():
 
 def test_extract_prompt_lists_known_document_types():
     p = prompts.build_extract_prompt(
-        pages_text="x", existing_entities=[], skill_text="", sidecar=None, brief=None,
-        known_document_types=["Annual Report", "Affidavit"])
+        pages_text="x", existing_entities=[], existing_timeline=[], skill_text="", sidecar=None,
+        brief=None, known_document_types=["Annual Report", "Affidavit"])
     text = _flat(p)
     assert "KNOWN_DOCUMENT_TYPES" in text
     assert "- Annual Report" in text and "- Affidavit" in text
@@ -141,9 +141,30 @@ def test_extract_prompt_lists_known_document_types():
 
 def test_extract_prompt_handles_no_known_types():
     p = prompts.build_extract_prompt(
-        pages_text="x", existing_entities=[], skill_text="", sidecar=None, brief=None,
-        known_document_types=[])
+        pages_text="x", existing_entities=[], existing_timeline=[], skill_text="", sidecar=None,
+        brief=None, known_document_types=[])
     assert "none yet" in _flat(p)
+
+
+def test_extract_prompt_renders_existing_timeline_after_existing_entities():
+    """EXISTING_TIMELINE lands in the volatile (final) content block, after EXISTING_ENTITIES,
+    and renders unconditionally (an empty list as `[]`, matching EXISTING_ENTITIES)."""
+    p = prompts.build_extract_prompt(
+        pages_text="x", existing_entities=[], existing_timeline=[], skill_text="", sidecar=None,
+        brief=None, known_document_types=[])
+    volatile = p[-1]["text"]
+    assert "EXISTING_TIMELINE (prior dated events" in volatile
+    assert volatile.index("EXISTING_ENTITIES (for dedup") < volatile.index("EXISTING_TIMELINE (prior dated events")
+    # only the volatile block carries the rendered label + data; the stable instructions
+    # block merely *refers* to EXISTING_TIMELINE by name (see extract_instructions.md)
+    assert "EXISTING_TIMELINE (prior dated events" not in p[0]["text"]
+    assert "EXISTING_TIMELINE (prior dated events" not in p[1]["text"]
+
+    events = [{"date": "2020-01-01", "event": "Something happened", "entities": ["a"]}]
+    p2 = prompts.build_extract_prompt(
+        pages_text="x", existing_entities=[{"id": "a"}], existing_timeline=events,
+        skill_text="", sidecar=None, brief=None, known_document_types=[])
+    assert "Something happened" in p2[-1]["text"]
 
 
 # ── prompt caching (A1): extract/section prompts are content-block lists ──────────────────
@@ -153,17 +174,19 @@ def test_extract_prompt_cache_prefix_is_stable_across_volatile_data():
     of per-document volatile data — that's the property Anthropic's prompt cache depends on."""
     kwargs = dict(skill_text="SKILL", brief="Investigate the fraud", known_document_types=[])
     p1 = prompts.build_extract_prompt(pages_text="doc one", existing_entities=[{"id": "a"}],
-                                      sidecar=None, **kwargs)
+                                      existing_timeline=[], sidecar=None, **kwargs)
     p2 = prompts.build_extract_prompt(pages_text="doc two, much longer text entirely",
                                       existing_entities=[{"id": "b"}, {"id": "c"}],
+                                      existing_timeline=[{"date": "2020-01-01", "event": "e"}],
                                       sidecar="unrelated sidecar notes", **kwargs)
     assert [b["text"] for b in p1[:2]] == [b["text"] for b in p2[:2]]
     assert p1[2]["text"] != p2[2]["text"]         # volatile block does differ
 
 
 def test_extract_prompt_cache_control_marks_the_skill_block():
-    p = prompts.build_extract_prompt(pages_text="x", existing_entities=[], skill_text="SKILL",
-                                     sidecar=None, brief=None, known_document_types=[])
+    p = prompts.build_extract_prompt(pages_text="x", existing_entities=[], existing_timeline=[],
+                                     skill_text="SKILL", sidecar=None, brief=None,
+                                     known_document_types=[])
     assert len(p) == 3
     assert "cache_control" not in p[0]
     assert p[1]["cache_control"] == {"type": "ephemeral"}
@@ -174,9 +197,9 @@ def test_extract_prompt_cache_control_marks_the_skill_block():
 def test_extract_prompt_cache_ttl_overridable_for_batch():
     """Batch submissions (#214) use the 1-hour cache TTL — a batch routinely outlives the
     default 5-minute window before its requests are even picked up."""
-    p = prompts.build_extract_prompt(pages_text="x", existing_entities=[], skill_text="SKILL",
-                                     sidecar=None, brief=None, known_document_types=[],
-                                     cache_ttl="1h")
+    p = prompts.build_extract_prompt(pages_text="x", existing_entities=[], existing_timeline=[],
+                                     skill_text="SKILL", sidecar=None, brief=None,
+                                     known_document_types=[], cache_ttl="1h")
     assert p[1]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
 
 
@@ -184,8 +207,8 @@ def test_section_prompt_cache_prefix_is_stable_across_sections():
     """The stable block (instructions+brief) and the skill block must be identical whether this
     is section 1 or a later section, with different carry-forward/section text — sequential
     sections of one document need a stable prefix to actually hit the cache."""
-    kwargs = dict(existing_entities=[], skill_text="SKILL", known_document_types=[],
-                 brief="Investigate the fraud")
+    kwargs = dict(existing_entities=[], existing_timeline=[], skill_text="SKILL",
+                 known_document_types=[], brief="Investigate the fraud")
     p1 = prompts.build_section_prompt(pages_text="section one text", carry_forward="",
                                       section_label="pages 1", is_first=True, **kwargs)
     p2 = prompts.build_section_prompt(pages_text="section two, different text", carry_forward="carried",
@@ -193,6 +216,59 @@ def test_section_prompt_cache_prefix_is_stable_across_sections():
     assert [b["text"] for b in p1[:2]] == [b["text"] for b in p2[:2]]
     assert p1[2]["text"] != p2[2]["text"]
     assert p1[1]["cache_control"] == {"type": "ephemeral"} == p2[1]["cache_control"]
+
+
+# ── FILE_METADATA block (#369) ────────────────────────────────────────────────
+
+def test_extract_prompt_includes_file_metadata_block_when_present():
+    p = prompts.build_extract_prompt(
+        pages_text="x", existing_entities=[], existing_timeline=[], skill_text="", sidecar=None,
+        brief=None, known_document_types=[],
+        file_metadata={"author": "Jane Doe", "producer": "Acrobat"},
+        processing={"ocr_used": False, "source_type": "direct_text"})
+    volatile = p[-1]["text"]
+    assert "FILE_METADATA" in volatile
+    assert "Jane Doe" in volatile and "Acrobat" in volatile
+    assert "ocr_used=False" in volatile
+    assert "source_type='direct_text'" in volatile
+    # trust caveat: forgeable/weigh-don't-trust, OCR/scanner caveat, template-inheritance caveat
+    assert "forgeable" in volatile
+    assert "scanner" in volatile or "scan" in volatile
+    assert "template" in volatile
+
+
+def test_extract_prompt_omits_file_metadata_block_when_empty():
+    p = prompts.build_extract_prompt(
+        pages_text="x", existing_entities=[], existing_timeline=[], skill_text="", sidecar=None,
+        brief=None, known_document_types=[], file_metadata={}, processing={})
+    assert "FILE_METADATA" not in _flat(p)
+
+
+def test_extract_prompt_omits_file_metadata_block_when_not_supplied():
+    """The params are optional — an omitted file_metadata must not error and must not render
+    the block (existing call sites that don't pass it keep working)."""
+    p = prompts.build_extract_prompt(
+        pages_text="x", existing_entities=[], existing_timeline=[], skill_text="", sidecar=None,
+        brief=None, known_document_types=[])
+    assert "FILE_METADATA" not in _flat(p)
+
+
+def test_section_prompt_includes_file_metadata_block_when_present():
+    p = prompts.build_section_prompt(
+        pages_text="x", existing_entities=[], existing_timeline=[], skill_text="", carry_forward="",
+        section_label="pp.1-10", is_first=True, known_document_types=[],
+        file_metadata={"author": "Jane Doe"}, processing={"ocr_used": True, "source_type": "docling"})
+    volatile = p[-1]["text"]
+    assert "FILE_METADATA" in volatile
+    assert "Jane Doe" in volatile
+    assert "ocr_used=True" in volatile
+
+
+def test_section_prompt_omits_file_metadata_block_when_empty():
+    p = prompts.build_section_prompt(
+        pages_text="x", existing_entities=[], existing_timeline=[], skill_text="", carry_forward="",
+        section_label="pp.1-10", is_first=True, known_document_types=[])
+    assert "FILE_METADATA" not in _flat(p)
 
 
 def test_prompt_templates_not_in_skills_catalog():

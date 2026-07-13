@@ -9,6 +9,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install ruff
+        run: pip install "ruff==0.15.*"
+
+      - name: Lint with ruff
+        run: ruff check src tests
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -26,8 +46,12 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
+      # `--no-deps` keeps docling's heavy tree out of CI; everything the tests actually import is
+      # listed explicitly below. python-docx/python-pptx/openpyxl/Pillow/defusedxml are here so the
+      # file_metadata tests (#369) run rather than `importorskip` themselves into a silent pass —
+      # a skipped entity-bomb test is worth nothing.
       - name: Install package and dev dependencies
-        run: pip install --no-deps -e . && pip install pyyaml pypdf argcomplete numpy pytest pytest-timeout jsonschema httpx nh3
+        run: pip install --no-deps -e . && pip install pyyaml pypdf argcomplete numpy pytest pytest-timeout jsonschema httpx nh3 python-docx python-pptx openpyxl Pillow defusedxml
 
       - name: Run tests
         run: pytest --timeout=60

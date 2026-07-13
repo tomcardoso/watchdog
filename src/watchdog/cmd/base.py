@@ -5,7 +5,6 @@ import os
 import subprocess
 import sys
 from collections import Counter  # noqa: F401 — re-exported for cmd modules
-from datetime import datetime, timezone
 from pathlib import Path
 
 from watchdog.pipeline.write_vault import slugify  # noqa: F401 — re-exported
@@ -42,6 +41,7 @@ _ALIASES = {
     "find":       "search",
     "health":     "doctor",
     "check":      "doctor",
+    "telemetry":  "usage",
     "process":    "chew",
     "preprocess": "chew",
     "prep":       "chew",
@@ -129,7 +129,7 @@ _CMD_HELP: dict[str, dict] = {
     "ingest": {
         "desc": "Extract queued documents (runs the Python pipeline)",
         "opts": [
-            ("--extractor-model M",  "Override the extraction model for this run — a tier (sonnet/opus/haiku) or backend:model (e.g. deepseek:deepseek-chat); default from watchdog configure"),
+            ("--extractor-model M",  "Override the extraction model for this run — a tier (sonnet/opus/haiku) or backend:model (e.g. deepseek:deepseek-v4-flash); default from watchdog configure"),
             ("--finalizer-model M",  "Override the synthesis + timeline + briefing model for this run — tier or backend:model; default from watchdog configure"),
             ("--classifier-model M", "Override the document-classification model for this run — tier or backend:model; default from watchdog configure"),
             ("--extractor-effort E", "Reasoning effort for extraction (low/medium/high) — lower spends fewer tokens; default from watchdog configure"),
@@ -337,6 +337,26 @@ _CMD_HELP: dict[str, dict] = {
             "URL runs through the same egress hygiene as research sources (public host only, size cap,",
             "scripts stripped) and lands as a document + provenance sidecar. Then run `watchdog chew`",
             "and `watchdog ingest`. Archives to the Wayback Machine too when wayback_save is on.",
+        ],
+    },
+    "usage": {
+        "desc": "Per-call token/cost/latency breakdown for ingest runs (deterministic, no model)",
+        "args": [("project", "Investigation name or slug (omit when inside the project folder)", True)],
+        "opts": [
+            ("--all",         "Compare every run recorded in the vault instead of showing just the latest"),
+            ("--run TIMESTAMP", "Analyze one specific past run instead of the latest"),
+        ],
+        "notes": [
+            "Reads `.watchdog/Registry/usage/usage-<ts>.json`, written after every `watchdog",
+            "ingest`/`watchdog finalize` run, and groups calls by stage (classifier/extractor/",
+            "finalizer, matching the CLI's own --classifier-model/--extractor-model/",
+            "--finalizer-model flags). Extractor rows show the filename and page range (or",
+            "section) each call covered.",
+            "",
+            "Cost is read directly from each record — model_client computes cost_usd",
+            "authoritatively at call time, so there is no local pricing table to keep in sync.",
+            "Also reports each call's wall-clock latency, and cost per page across the vault's",
+            "whole document registry (not just the run being analyzed).",
         ],
     },
     "export": {
@@ -645,12 +665,13 @@ def _print_banner() -> None:
             ("list",       "List all investigations"),
             ("status",     "Show detailed status"),
             ("export",     "Export the knowledge graph (Neo4j / Gephi / Cypher)"),
+            ("usage",      "Per-call token/cost/latency breakdown for ingest runs"),
             ("doctor",     "Check for missing or broken vaults"),
         ]),
         ("Settings", [
             ("setup",      "Set up Watchdog after installation"),
             ("configure",  "View or change configuration"),
-            ("auth",       "Manage API keys for model backends"),
+            ("auth",       "Show and change how Watchdog authenticates to model providers"),
             ("about",      "Show version and project links"),
         ]),
     ]

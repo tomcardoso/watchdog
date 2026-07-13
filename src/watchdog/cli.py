@@ -4,6 +4,7 @@ import argparse
 import subprocess  # noqa — kept for test monkeypatching via watchdog.cli.subprocess
 import sys         # noqa — kept for test monkeypatching via watchdog.cli.sys
 
+from watchdog import interactive
 from watchdog.cmd.base import (
     CONFIG_FILE,
     WATCHDOG_HOME,
@@ -38,7 +39,9 @@ from watchdog.cmd.base import (
 )
 from watchdog.cmd.vault import (
     _obsidian_config_path,
+    _obsidian_launch_epoch,
     _obsidian_registered,
+    _obsidian_vault_ts,
     _register_obsidian_vault,
     cmd_archive,
     cmd_delete,
@@ -94,6 +97,7 @@ from watchdog.cmd.leads import cmd_leads
 from watchdog.cmd.resolve import cmd_resolve, cmd_unresolve
 from watchdog.cmd.reindex import cmd_reindex
 from watchdog.cmd.research import cmd_fetch, cmd_research, cmd_research_fetch, cmd_research_seen
+from watchdog.cmd.usage import cmd_usage
 from watchdog.cmd.watchlist import cmd_watchlist, cmd_watchlist_add
 
 
@@ -194,7 +198,7 @@ def main() -> None:
     p_new.add_argument("name", nargs="?", help="Investigation name (e.g. 'Shell Company Investigation')")
     p_new.add_argument("--name", dest="name_flag", help="Investigation name (alternative to positional)")
     p_new.add_argument("--description", help="One-line description of the investigation")
-    p_new.add_argument("--dir", help=f"Parent directory (default: projects_dir from config)")
+    p_new.add_argument("--dir", help="Parent directory (default: projects_dir from config)")
     p_new.set_defaults(func=cmd_new)
 
     p_list = sub.add_parser("list", help="List all registered investigations")
@@ -251,6 +255,12 @@ def main() -> None:
     p_export.add_argument("--format", choices=["csv", "cypher"], default="csv",
                           help="Output format (default: csv)")
     p_export.set_defaults(func=cmd_export)
+
+    p_usage = sub.add_parser("usage", help="Per-call token/cost/latency breakdown for ingest runs (deterministic, no model)")
+    p_usage.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
+    p_usage.add_argument("--all", action="store_true", help="Compare every run recorded in the vault")
+    p_usage.add_argument("--run", metavar="TIMESTAMP", help="Analyze one specific past run instead of the latest")
+    p_usage.set_defaults(func=cmd_usage)
 
     p_merge_entities = sub.add_parser("merge-entities", help="Merge a duplicate entity into another")
     p_merge_entities.add_argument("keep_id", help="Entity id to keep (the survivor)")
@@ -390,7 +400,8 @@ def main() -> None:
     _model_choices = ["sonnet", "opus", "haiku"]
     _effort_choices = ["low", "medium", "high"]
     _model_help = ("a Claude tier (sonnet/opus/haiku) or a backend:model form "
-                   "(claude-api:opus, openai:gpt-5-mini, deepseek:deepseek-chat)")
+                   "(claude-api:opus, openai:gpt-5-mini, deepseek:deepseek-v4-flash, "
+                   "gemini:gemini-2.5-flash)")
     p_ingest = sub.add_parser("ingest", help="Extract queued documents (runs the Python pipeline)")
     p_ingest.add_argument("--extractor-model", default=None, dest="extractor_model", metavar="MODEL",
                           help=f"Model for extraction — {_model_help}; overrides watchdog configure (default: sonnet)")
@@ -438,12 +449,7 @@ def main() -> None:
                            help="Model to use (default: sonnet)")
     p_context.set_defaults(func=cmd_context)
 
-    p_auth = sub.add_parser("auth", help="Choose auth mode and manage API keys for model backends")
-    p_auth.add_argument("action", nargs="?", choices=["status", "use", "set", "get", "remove"],
-                        help="status (default) | use <mode> | set/get/remove [provider]")
-    p_auth.add_argument("target", nargs="?",
-                        help="mode for `use` (subscription/api-key); provider for set/get/remove "
-                             "(anthropic [default], openai, deepseek)")
+    p_auth = sub.add_parser("auth", help="Show and interactively change how Watchdog authenticates to model providers")
     p_auth.set_defaults(func=cmd_auth)
 
     try:
@@ -458,12 +464,7 @@ def main() -> None:
     if args.command is None:
         if not CONFIG_FILE.exists():
             print(f"\n  {_BOLD}Watchdog isn't set up yet.{_RESET}\n")
-            try:
-                answer = input("  Run setup now? [Y/n] ").strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                print()
-                return
-            if answer in ("", "y", "yes"):
+            if interactive.confirm("  Run setup now?", default=True):
                 from watchdog.setup_cmd import run as run_setup
                 run_setup()
             return

@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from watchdog import interactive
 from watchdog.cmd.base import (
     _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW,
     _count_queued,
@@ -51,7 +52,7 @@ def _resolve_stage(flag_val, config_val, default="sonnet") -> tuple[str | None, 
 
     Plain `sonnet`/`opus`/`haiku` → (None, tier): Claude, routed by auth mode (unchanged). A
     `backend:model` form selects a backend explicitly — `claude-api:opus` (a Claude tier), or
-    `openai:gpt-5-mini` / `deepseek:deepseek-chat` (a raw provider model id). Carrying both in
+    `openai:gpt-5-mini` / `deepseek:deepseek-v4-flash` (a raw provider model id). Carrying both in
     one value means a stage can never be half-configured."""
     from watchdog.model_client import BACKENDS, CLAUDE_BACKENDS
     raw = flag_val or config_val or default
@@ -62,9 +63,9 @@ def _resolve_stage(flag_val, config_val, default="sonnet") -> tuple[str | None, 
     if backend is None or backend in CLAUDE_BACKENDS:
         if model not in _MODEL_IDS:
             sys.exit(f"Error: unknown model '{model}' — choose sonnet, opus, or haiku, "
-                     f"or a backend:model form like deepseek:deepseek-chat")
+                     f"or a backend:model form like deepseek:deepseek-v4-flash")
     elif not model:
-        sample = "deepseek-chat" if backend == "deepseek" else "gpt-5-mini"
+        sample = "deepseek-v4-flash" if backend == "deepseek" else "gpt-5-mini"
         sys.exit(f"Error: backend '{backend}' needs a model id, e.g. {backend}:{sample}")
     return backend, model
 
@@ -99,6 +100,49 @@ def _effective_extract_backend(extract_backend: str | None, auth_mode: str) -> s
     (plain sonnet/opus/haiku) — mirrors `model_client`'s own subscription/api-key routing, so the
     cost estimate knows whether a dollar figure means anything (#269)."""
     return extract_backend or ("claude-agent-sdk" if auth_mode == "subscription" else "claude-api")
+
+
+def _format_models_line(classify_backend, classify_model, extract_backend, extract_model,
+                        post_backend, post_model) -> str:
+    """Which model runs each ingest stage — printed alongside the cost estimate before an
+    ingest starts, so a run under a non-default provider (#325) is obvious up front instead of
+    the older generic 'Using the configured provider(s).' notice."""
+    def label(backend, model):
+        return f"{backend}:{model}" if backend else model
+    stages = (("classifier", classify_backend, classify_model),
+              ("extractor", extract_backend, extract_model),
+              ("finalizer", post_backend, post_model))
+    return "\n".join(f"  {_DIM}{name}{_RESET} {_CYAN}{label(b, m)}{_RESET}" for name, b, m in stages)
+
+
+def _preview_ingest(vault: Path, args) -> tuple[str, str] | None:
+    """Read-only preview of what an ingest run would do — the doc/page/token cost estimate and
+    which models would run each stage — shown before any ingest confirm prompt, mirroring
+    `--estimate`'s lock-free scan (#269, #325). None when the queue is empty."""
+    from watchdog.pipeline.ingest_setup import scan_queue, cost_estimate
+    from watchdog.cmd.auth import resolve_auth
+    from watchdog.cmd.base import CONFIG_FILE
+    queue_files = scan_queue(vault)
+    if not queue_files:
+        return None
+    config: dict = {}
+    if CONFIG_FILE.exists():
+        try:
+            config = json.loads(CONFIG_FILE.read_text())
+        except Exception:
+            pass
+    extract_backend, extract_model = _resolve_stage(
+        getattr(args, "extractor_model", None), config.get("extractor_model"))
+    post_backend, post_model = _resolve_stage(
+        getattr(args, "finalizer_model", None), config.get("finalizer_model"), default="haiku")
+    classify_backend, classify_model = _resolve_stage(
+        getattr(args, "classifier_model", None), config.get("classifier_model"), default="haiku")
+
+    auth_mode = resolve_auth()["mode"] if extract_backend is None else None
+    est = cost_estimate(vault, queue_files, _effective_extract_backend(extract_backend, auth_mode))
+    models_line = _format_models_line(classify_backend, classify_model,
+                                      extract_backend, extract_model, post_backend, post_model)
+    return _format_cost_estimate(est), models_line
 
 
 def _pick_skill_interactive() -> str | None:
@@ -171,12 +215,7 @@ def _run_preprocess(
             return
         n = len(files)
         label = f"{n} file{'s' if n != 1 else ''}"
-        try:
-            answer = input(f"\n  Found {_BOLD}{label}{_RESET} in _INCOMING/. Chew now? [Y/n] ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            return
-        if answer not in ("", "y", "yes"):
+        if not interactive.confirm(f"\n  Found {_BOLD}{label}{_RESET} in _INCOMING/. Chew now?", default=True):
             return
     run_ingest(vault, workers=workers, chunk_workers=chunk_workers, show_ingest_hint=show_ingest_hint)
 
@@ -210,15 +249,13 @@ def cmd_chew(args) -> None:
 
 def _offer_ingest(args, vault: Path) -> None:
     """After chew, offer to run ingest right away; print the command hint if declined."""
-    total = _count_queued(vault)
-    label = f"{total} document{'s' if total != 1 else ''}"
-    try:
-        answer = input(f"\n  {_BOLD}{label}{_RESET} ready. Ingest now? [Y/n] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        print(f"\n\n  Run:  {_CYAN}watchdog ingest{_RESET}\n")
-        return
-    if answer in ("", "y", "yes"):
-        cmd_ingest(args, confirm=False)
+    preview = _preview_ingest(vault, args)
+    if preview:
+        estimate_line, models_line = preview
+        print(estimate_line)
+        print(models_line)
+    if interactive.pick(["Ingest now", "Not now"], 0, title="Ingest now?") == 0:
+        cmd_ingest(args, confirm=False, skip_preview=True)
     else:
         print(f"\n  Run:  {_CYAN}watchdog ingest{_RESET}\n")
 
@@ -278,16 +315,10 @@ def _merge_summary(base: dict | None, new: dict) -> dict:
     return merged
 
 
-def cmd_ingest(args, *, confirm: bool = True) -> None:
+def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> None:
     vault = Path(".").resolve()
     if not (vault / ".watchdog").is_dir():
         sys.exit("Error: must be run from inside a Watchdog vault directory")
-
-    from watchdog.cmd.auth import resolve_auth
-    a = resolve_auth()
-    if a["mode"] == "none":
-        sys.exit(f"\n  {_YELLOW}Error:{_RESET} {a.get('reason', 'auth not configured')}\n"
-                 f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
 
     from watchdog.cmd.base import CONFIG_FILE
     config: dict = {}
@@ -301,6 +332,9 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
     extract_backend, extract_model = _resolve_stage(
         getattr(args, "extractor_model", None), config.get("extractor_model"))
 
+    from watchdog.cmd.auth import resolve_auth
+    from watchdog.model_client import CLAUDE_BACKENDS
+
     if getattr(args, "estimate", False):
         from watchdog.pipeline.ingest_setup import scan_queue, cost_estimate
         queue_files = scan_queue(vault)
@@ -308,7 +342,11 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
             print(f"\n  {_DIM}Queue is empty — nothing to estimate.{_RESET}")
             print(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in _INCOMING/ first.{_RESET}\n")
             return
-        est = cost_estimate(vault, queue_files, _effective_extract_backend(extract_backend, a["mode"]))
+        # Claude's auth mode only matters for the estimate when the extractor is actually
+        # routed to Claude (it picks subscription vs api-key pricing) — a stage pinned to
+        # another provider needs no Claude auth at all (#325).
+        auth_mode = resolve_auth()["mode"] if extract_backend is None else None
+        est = cost_estimate(vault, queue_files, _effective_extract_backend(extract_backend, auth_mode))
         print(f"\n{_format_cost_estimate(est)}\n")
         return
 
@@ -316,6 +354,20 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
         getattr(args, "finalizer_model", None), config.get("finalizer_model"), default="haiku")
     classify_backend, classify_model = _resolve_stage(
         getattr(args, "classifier_model", None), config.get("classifier_model"), default="haiku")
+
+    # Claude auth is only required when at least one stage is actually routed to it — a vault
+    # configured entirely on another provider (e.g. all three stages set to gemini:...) must be
+    # able to ingest without Claude being configured at all (#325).
+    needs_claude_auth = any(b is None or b in CLAUDE_BACKENDS
+                             for b in (extract_backend, post_backend, classify_backend))
+    if needs_claude_auth:
+        a = resolve_auth()
+        if a["mode"] == "none":
+            sys.exit(f"\n  {_YELLOW}Error:{_RESET} {a.get('reason', 'auth not configured')}\n"
+                     f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
+    else:
+        a = {"mode": None}
+
     extract_effort = _effort(getattr(args, "extractor_effort", None), config.get("extractor_effort"))
     post_effort    = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
     try:
@@ -386,10 +438,12 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
         return
 
     q = len(result["queue_files"])
-    if q:
+    if q and not skip_preview:
         from watchdog.pipeline.ingest_setup import cost_estimate
         est = cost_estimate(vault, result["queue_files"], _effective_extract_backend(extract_backend, a["mode"]))
         print(f"\n{_format_cost_estimate(est)}")
+        print(_format_models_line(classify_backend, classify_model, extract_backend, extract_model,
+                                  post_backend, post_model))
     elif batch_pending:
         print(f"\n  {_DIM}Checking on a pending batch extraction…{_RESET}")
 
@@ -411,7 +465,7 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
                      f"{_CYAN}default_skill{_RESET} via {_CYAN}watchdog configure{_RESET}.\n")
         if a["mode"] != "api-key":
             sys.exit(f"\n  {_YELLOW}Error:{_RESET} claude-batch requires api-key auth mode "
-                     f"(it needs a metered key) — run {_CYAN}watchdog auth use api-key{_RESET}.\n")
+                     f"(it needs a metered key) — switch to it with {_CYAN}watchdog auth{_RESET}.\n")
     wait = getattr(args, "wait", False)
     if wait and extract_backend == "claude-batch":
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} --wait isn't supported with claude-batch — a batch "
@@ -423,19 +477,10 @@ def cmd_ingest(args, *, confirm: bool = True) -> None:
         (vault / ".watchdog" / "ingest-state.json").unlink(missing_ok=True)
 
     if confirm:
-        try:
-            answer = input(f"\n  Ingest now with your {_BOLD}{a['mode']}{_RESET} auth? [Y/n] ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print()
+        if interactive.pick(["Ingest now", "Not now"], 0, title="Ingest now?") != 0:
             _release_lock()
             print(f"\n  When ready, run:  {_CYAN}watchdog ingest{_RESET}\n")
             return
-        if answer not in ("", "y", "yes"):
-            _release_lock()
-            print(f"\n  When ready, run:  {_CYAN}watchdog ingest{_RESET}\n")
-            return
-    else:
-        print(f"\n  {_DIM}Using your {_BOLD}{a['mode']}{_RESET}{_DIM} auth.{_RESET}")
 
     import asyncio
     from watchdog.pipeline import orchestrate
@@ -550,12 +595,6 @@ def cmd_finalize(args) -> None:
         print(f"\n  {_DIM}Nothing to finalize — run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} first.{_RESET}\n")
         return
 
-    from watchdog.cmd.auth import resolve_auth
-    a = resolve_auth()
-    if a["mode"] == "none":
-        sys.exit(f"\n  {_YELLOW}Error:{_RESET} {a.get('reason', 'auth not configured')}\n"
-                 f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
-
     from watchdog.cmd.base import CONFIG_FILE
     config: dict = {}
     if CONFIG_FILE.exists():
@@ -567,6 +606,17 @@ def cmd_finalize(args) -> None:
     post_backend, post_model = _resolve_stage(
         getattr(args, "finalizer_model", None), config.get("finalizer_model"), default="haiku")
     post_effort = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
+
+    # Claude auth is only required when the finalizer is actually routed to it — a stage pinned
+    # to another provider must be able to finalize without Claude being configured at all (#325).
+    from watchdog.model_client import CLAUDE_BACKENDS
+    if post_backend is None or post_backend in CLAUDE_BACKENDS:
+        from watchdog.cmd.auth import resolve_auth
+        a = resolve_auth()
+        if a["mode"] == "none":
+            sys.exit(f"\n  {_YELLOW}Error:{_RESET} {a.get('reason', 'auth not configured')}\n"
+                     f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
+
 
     _run_finalize(vault, post_model, post_effort, post_backend)
 
@@ -654,13 +704,7 @@ def cmd_context(args) -> None:
     if context_exists:
         print(f"  {_DIM}existing context.md will be updated{_RESET}")
 
-    try:
-        answer = input(f"\n  Open in Claude Code to seed context? [Y/n] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        print(f"\n  When ready, open Claude Code and run:  {_CYAN}/watchdog-context{_RESET}\n")
-        return
-    if answer in ("", "y", "yes"):
+    if interactive.confirm("\n  Open in Claude Code to seed context?", default=True):
         context_path = vault / "context.md"
         if not context_path.exists():
             description = info["description"] if info and info.get("description") else "<!-- One paragraph. What is the story? What pattern, question, or wrongdoing are you pursuing? -->"

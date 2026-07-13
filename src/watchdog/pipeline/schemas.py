@@ -41,6 +41,26 @@ _KEY_FACT = _obj(
     ["fact"],   # basis omitted ⇒ stated (the overwhelming default)
 )
 
+# A concrete document a reporter could go and get — distinct from a "lead" (an open-ended
+# thread to investigate): a known-to-exist artifact with a type, a reason, and often a venue.
+# This content is *moved* out of `scratchpad` (#365), not duplicated — extract_instructions.md
+# tells the model not to also describe documents-to-request there.
+_DOCUMENT_REQUEST = _obj(
+    {
+        "type": {"type": "string",
+                  "description": "the kind of document, e.g. hearing transcript, enabling "
+                                  "regulation, criminal complaint"},
+        "what": {"type": "string",
+                 "description": "the specific artifact, identified precisely enough to ask for it"},
+        "why_it_matters": {"type": "string",
+                            "description": "what obtaining it would establish"},
+        "likely_source": {"type": "string",
+                           "description": "where it can plausibly be obtained — registry, court, "
+                                           "regulator, FOI office, published source"},
+    },
+    ["type", "what", "why_it_matters"],
+)
+
 _ROLE = _obj(
     {
         "relationship": {"type": "string"},
@@ -60,7 +80,9 @@ _ENTITY = _obj(
         "id": {"type": "string"},
         "match_id": {"type": "string"},          # omit entirely for new entities
         "name": {"type": "string"},
-        "type": {"type": "string"},
+        "type": {"type": "string",
+                 "description": ("exactly one of the fixed entity classes: person, "
+                                 "organization, public-body, place, asset, proceeding")},
         "aliases": {"type": "array", "items": {"type": "string"}},
         "contradictions": {"type": "array", "items": {"type": "string"}},
         "roles": {"type": "array", "items": _ROLE},
@@ -81,10 +103,11 @@ _DOCUMENT = _obj(
         "obtained": _NULLABLE_STR,
         "summary": {"type": "string"},
         "key_facts": {"type": "array", "items": _KEY_FACT},
+        "file_metadata": {"type": "object"},
     },
-    # sha256/filename/original_path/page_count and source/obtained are stamped by Python
-    # (orchestrate._stamp_document) — deterministic values the pipeline already holds, not
-    # echoed by the model. They stay in `properties` (optional) so the stamped dict validates.
+    # sha256/filename/original_path/page_count, source/obtained, and file_metadata are stamped
+    # by Python (orchestrate._stamp_document) — deterministic values the pipeline already holds,
+    # not echoed by the model. They stay in `properties` (optional) so the stamped dict validates.
     ["title", "document_type", "summary", "key_facts"],
 )
 
@@ -98,6 +121,9 @@ EXTRACTION = _obj(
         # (orchestrate._stamp_document) — kept optional here so the stamped dict validates.
         "morgue_document_type": {"type": "string"},
         "scratchpad": {"type": "string"},   # curated briefing notes (Step 9 of the old skill)
+        # Concrete documents this document refers to that a reporter could go and get (#365) —
+        # moved out of scratchpad, not duplicated. Optional: omit entirely when none apply.
+        "document_requests": {"type": "array", "items": _DOCUMENT_REQUEST},
     },
     ["document", "entities", "morgue_entity_id", "scratchpad"],
 )
@@ -115,6 +141,9 @@ SECTION = _obj(
         "morgue_entity_id": {"type": "string"},
         "morgue_document_type": {"type": "string"},
         "observations": {"type": "string"},   # appended to the carry-forward scratchpad
+        # Same field as EXTRACTION's, moved out of `observations` (#365) — optional, omit when
+        # this section names nothing obtainable. merge.merge_extractions unions across sections.
+        "document_requests": {"type": "array", "items": _DOCUMENT_REQUEST},
     },
     ["entities"],
 )
@@ -136,8 +165,16 @@ SYNTHESIS = _obj(
         "entity_syntheses": {
             "type": "array",
             "items": _obj(
-                {"entity_id": {"type": "string"}, "summary": {"type": "string"},
-                 "analysis": {"type": "string"}},
+                {"entity_id": {"type": "string",
+                               "description": "the internal id of the entity being synthesized, "
+                                               "copied verbatim from the bundle"},
+                 "summary": {"type": "string",
+                             "description": "a rewritten, up-to-date summary of the entity across "
+                                             "all its mentions"},
+                 "analysis": {"type": "string",
+                              "description": "optional analytical notes on patterns across the "
+                                              "entity's mentions (contradictions, escalating roles, "
+                                              "recurring counterparties)"}},
                 ["entity_id", "summary"],
             ),
         }
@@ -148,14 +185,32 @@ SYNTHESIS = _obj(
 # Post-ingest briefing prose (Python writes the files from this).
 BRIEFING = _obj(
     {
-        "investigation_status": {"type": "string"},
-        "what_was_ingested": {"type": "array", "items": {"type": "string"}},
-        "new_entities": {"type": "array", "items": {"type": "string"}},
-        "connections": {"type": "array", "items": {"type": "string"}},
-        "leads": {"type": "array", "items": {"type": "string"}},
-        "anomalies": {"type": "array", "items": {"type": "string"}},
-        "emerging_patterns": {"type": "array", "items": {"type": "string"}},
-        "open_questions": {"type": "array", "items": {"type": "string"}},
+        "investigation_status": {"type": "string",
+                                  "description": "one sentence summarizing where the investigation "
+                                                  "stands after this batch"},
+        "what_was_ingested": {"type": "array", "items": {"type": "string"},
+                               "description": "one line per file describing what it is and its "
+                                               "document type"},
+        "new_entities": {"type": "array", "items": {"type": "string"},
+                          "description": "human-readable display names of entities first seen in "
+                                          "this batch — never internal ids/slugs"},
+        "connections": {"type": "array", "items": {"type": "string"},
+                         "description": "connections this batch draws to existing vault entities, "
+                                         "by display name, with what the connection is and why it "
+                                         "matters"},
+        "leads": {"type": "array", "items": {"type": "string"},
+                  "description": "actionable follow-up ideas: open questions, contacts, missing "
+                                  "documents, FOI ideas"},
+        "anomalies": {"type": "array", "items": {"type": "string"},
+                      "description": "things worth a closer look: shared addresses, unexpected "
+                                      "roles, disproportionate transactions, highly-connected "
+                                      "entities with no documented relationships"},
+        "emerging_patterns": {"type": "array", "items": {"type": "string"},
+                               "description": "patterns emerging across documents in this batch or "
+                                               "against the existing vault"},
+        "open_questions": {"type": "array", "items": {"type": "string"},
+                            "description": "unresolved questions the investigation should pursue "
+                                            "next"},
     },
     ["investigation_status", "what_was_ingested"],
 )

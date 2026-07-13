@@ -3,7 +3,6 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pytest
 
 from watchdog.pipeline.ingest_setup import STALE_SECONDS, cost_estimate, run, scan_queue
 

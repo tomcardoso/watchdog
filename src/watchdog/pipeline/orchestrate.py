@@ -17,6 +17,7 @@ import json
 import shutil
 import signal
 import sys
+import time
 from pathlib import Path
 
 import yaml
@@ -25,8 +26,8 @@ from watchdog import model_client, skills_catalog
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 from watchdog.cmd.live import LiveRegion
 from watchdog.pipeline import (
-    abort, batch_extract, leads, merge, preflight, postflight, prompts, schemas, section,
-    synthesis_bundle, timeline, watchlist,
+    abort, batch_extract, leads, merge, preflight, postflight, prompts, requests, schemas,
+    section, synthesis_bundle, timeline, watchlist,
 )
 from watchdog.pipeline.write_vault import _doc_slug
 
@@ -66,7 +67,8 @@ def _settle(sha: str, line: str) -> None:
 
 
 def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
-                  cost_usd: float | None, attempts: int = 1,
+                  cost_usd: float | None, attempts: int = 1, latency_s: float = 0.0,
+                  effort: str | None = None, auth_mode: str | None = None,
                   filename: str | None = None, detail: str | None = None) -> None:
     """Append one call's usage to the run-scoped `_usage` accumulator, if one is active.
     Tolerates both Anthropic-style (`input_tokens`/`output_tokens`) and OpenAI-compatible
@@ -76,7 +78,14 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
     Takes explicit fields rather than a `model_client.ModelResult` so a batch-collected item
     (D52, no live model call at this point) can feed it too, not just `_call_model` (D64).
     `filename`/`detail` (e.g. a page range or section label) let a per-run usage file attribute
-    each call to a document, not just a task name (#247)."""
+    each call to a document, not just a task name (#247). `latency_s` is per-call wall-clock
+    time; batch-collected items have no live call to time, so they keep the 0.0 default (#317).
+    `effort` records the reasoning-effort tier the call was made with (or None if the model/task
+    doesn't take one), and `auth_mode` ("subscription"/"api-key") which billing lane paid for it
+    — both surfaced per call by `watchdog usage` (#319). `end_ts` is the call's completion time
+    (epoch seconds); paired with `latency_s` it gives each call a [start, end] interval, so
+    `watchdog usage` can report wall-clock elapsed per stage — the real time a concurrently-run
+    stage took — alongside the summed per-call time (#317 follow-up)."""
     if _usage is None:
         return
     u = usage or {}
@@ -86,8 +95,8 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         "output_tokens": u.get("output_tokens", u.get("completion_tokens", 0)) or 0,
         "cache_read_tokens": u.get("cache_read_input_tokens", 0) or 0,
         "cache_write_tokens": u.get("cache_creation_input_tokens", 0) or 0,
-        "cost_usd": cost_usd, "attempts": attempts,
-        "filename": filename, "detail": detail,
+        "cost_usd": cost_usd, "attempts": attempts, "latency_s": latency_s, "effort": effort,
+        "auth_mode": auth_mode, "filename": filename, "detail": detail, "end_ts": time.time(),
     })
 
 
@@ -100,7 +109,8 @@ async def _call_model(*, task, prompt, schema, model=None, backend=None,
     r = await model_client.acomplete_json(task=task, prompt=prompt, schema=schema, model=model,
                                           backend=backend, max_retries=max_retries, effort=effort)
     _record_usage(task, model=r.model, backend=r.backend, usage=r.usage, cost_usd=r.cost_usd,
-                 attempts=r.attempts, filename=filename, detail=detail)
+                 attempts=r.attempts, latency_s=r.latency_s, effort=effort, auth_mode=r.auth_mode,
+                 filename=filename, detail=detail)
     return r
 
 
@@ -111,19 +121,35 @@ def _usage_totals(records: list[dict]) -> dict:
         "cache_read_tokens": sum(r["cache_read_tokens"] for r in records),
         "cache_write_tokens": sum(r["cache_write_tokens"] for r in records),
         "cost_usd": round(sum(r["cost_usd"] or 0.0 for r in records), 6) if records else None,
+        "latency_s": round(sum(r.get("latency_s") or 0.0 for r in records), 3),
     }
 
 
+def usage_files(vault: Path) -> list[Path]:
+    """Every persisted `usage-<ts>.json` for this vault, oldest first (#319). Checks both the
+    current location (`.watchdog/Registry/usage/`) and the pre-move flat location
+    (`.watchdog/Registry/`) directly, so a vault ingested before that reorganization doesn't
+    lose its older history — filenames sort chronologically regardless of which directory
+    they're in, so the two sets merge correctly once combined."""
+    reg_dir = vault / ".watchdog" / "Registry"
+    usage_dir = reg_dir / "usage"
+    files = list(usage_dir.glob("usage-*.json")) if usage_dir.exists() else []
+    files += list(reg_dir.glob("usage-*.json")) if reg_dir.exists() else []   # legacy location
+    return sorted(files, key=lambda p: p.name)
+
+
 def _write_usage(vault: Path, records: list[dict]) -> str | None:
-    """Persist this run's per-call token/cost telemetry to `.watchdog/Registry/usage-<ts>.json`
-    (A2). Returns the vault-relative path, or None if the run made no model calls (e.g. an
-    all-skipped batch)."""
+    """Persist this run's per-call token/cost telemetry to
+    `.watchdog/Registry/usage/usage-<ts>.json` (A2, relocated out of the flat Registry dir
+    in #319 since this one accumulates a new file every run, unlike the fixed-size registries
+    it used to sit alongside). Returns the vault-relative path, or None if the run made no
+    model calls (e.g. an all-skipped batch)."""
     if not records:
         return None
-    reg_dir = vault / ".watchdog" / "Registry"
-    reg_dir.mkdir(parents=True, exist_ok=True)
+    usage_dir = vault / ".watchdog" / "Registry" / "usage"
+    usage_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    relpath = f".watchdog/Registry/usage-{ts}.json"
+    relpath = f".watchdog/Registry/usage/usage-{ts}.json"
     (vault / relpath).write_text(
         json.dumps({"calls": records, "totals": _usage_totals(records)}, ensure_ascii=False, indent=2),
         encoding="utf-8")
@@ -133,10 +159,8 @@ def _write_usage(vault: Path, records: list[dict]) -> str | None:
 def latest_usage(vault: Path) -> dict | None:
     """The most recent ingest run's token/cost totals (F5, #222), or None if none exist yet —
     `watchdog status` surfaces this so a subscription user can see what a dump cost before
-    deciding whether to kick off another one. Filenames sort chronologically (the timestamp
-    format is lexicographically ordered), so the last one is the most recent."""
-    reg_dir = vault / ".watchdog" / "Registry"
-    files = sorted(reg_dir.glob("usage-*.json")) if reg_dir.exists() else []
+    deciding whether to kick off another one."""
+    files = usage_files(vault)
     if not files:
         return None
     try:
@@ -254,6 +278,10 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str, v
     doc["original_path"] = pf.get("original_path")
     doc["page_count"] = pf.get("page_count") or len(pf["pages"])
     doc.update(_sidecar_provenance(vault, pf["filename"]))
+    # File-intrinsic embedded metadata (#369) — captured deterministically at chew time and
+    # stamped here, same posture as sha256/filename above: a claim the file makes about itself,
+    # never asked of the model.
+    doc["file_metadata"] = pf.get("file_metadata") or {}
     # morgue_document_type is just the slug form of document_type — derive it deterministically
     # rather than asking the model for the same fact twice (it names the morgue folder).
     extraction["morgue_document_type"] = slugify(doc.get("document_type") or "") or "document"
@@ -271,32 +299,6 @@ async def _classify(doc_excerpt: str, model: str, backend: str | None = None,
         filename=filename,
     )
     return r.parsed.get("skill") or "general-records.md"
-
-
-# Page-coverage heuristic (skim detection). Advisory only — emits a warning, never a failure.
-_COVERAGE_MIN_PAGES = 8         # don't flag short documents
-_COVERAGE_TAIL_FRACTION = 0.5   # flag when nothing is cited past roughly the first half
-
-
-def _coverage_warning(extraction: dict, page_count: int | None) -> str | None:
-    """Flag a possible skim: when a multi-page document's facts are front-loaded — nothing cited
-    past roughly the first half — the model likely stopped reading. A heuristic, deterministic
-    signal for review, not a hard check: a doc whose material genuinely sits up front trips it too.
-    Facts carry an optional `page`; a doc with no page anchors at all can't be assessed."""
-    if not page_count or page_count < _COVERAGE_MIN_PAGES:
-        return None
-    facts = extraction.get("document", {}).get("key_facts", [])
-    cited = sorted({f["page"] for f in facts
-                    if isinstance(f, dict) and isinstance(f.get("page"), int)
-                    and not isinstance(f.get("page"), bool)})
-    if not cited:
-        return None
-    max_cited = cited[-1]
-    if max_cited >= page_count * _COVERAGE_TAIL_FRACTION:
-        return None
-    return (f"facts were only extracted from pages {cited[0]}–{max_cited} of {page_count} — the "
-            f"model may have stopped reading early; check pages {max_cited + 1}–{page_count} "
-            f"of the source for anything missed")
 
 
 def _briefing_facts(doc: dict) -> list[dict]:
@@ -331,12 +333,18 @@ def _compact_result(sha: str, filename: str, extraction: dict, near_dup: dict, c
     }
 
 
-def _write_postflight(vault: Path, sha: str, extraction: dict) -> tuple[bool, list[str]]:
+def _write_postflight(vault: Path, sha: str, extraction: dict) -> tuple[bool, list[str], list[str]]:
+    """Returns (ok, errors, warnings). Warnings are collected rather than printed here — the
+    caller only knows once the document has actually finished (not discarded for a repair
+    retry) whether they're worth surfacing, and where in the live region's output they belong
+    (tucked under this document's own OK line, not wherever a concurrent document happens to
+    be at the moment post-flight ran, #333 follow-up)."""
     tmp = vault / ".watchdog" / "tmp" / f"wdg_ex_{sha}.json"
     tmp.parent.mkdir(parents=True, exist_ok=True)
     tmp.write_text(json.dumps(extraction, ensure_ascii=False, indent=2), encoding="utf-8")
-    outcome = postflight.run(vault, tmp, quiet=True)
-    return ("errors" not in outcome), outcome.get("errors", [])
+    warnings: list[str] = []
+    outcome = postflight.run(vault, tmp, quiet=True, warn=warnings.append)
+    return ("errors" not in outcome), outcome.get("errors", []), warnings
 
 
 def _append_repair_note(base, errors: list[str]):
@@ -355,8 +363,10 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
     """Whole-document extraction, with one repair attempt if post-flight rejects."""
     base = prompts.build_extract_prompt(
         pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
+        existing_timeline=pf.get("existing_timeline", []),
         skill_text=skill_text, sidecar=_read_sidecar(vault, pf["filename"]), brief=brief,
         known_document_types=pf.get("known_document_types", []),
+        file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
     )
     page_count = pf.get("page_count") or len(pf["pages"])
     cost, errors, extraction, scratchpad = 0.0, [], {}, ""
@@ -370,16 +380,16 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
         except model_client.ModelError as e:
             # No valid JSON after the client's own retries — often output truncated on a
             # dense doc. Report failure so the caller can fall back to sectioning.
-            return extraction, scratchpad, cost, False, [f"extraction returned no valid JSON ({e})"]
+            return extraction, scratchpad, cost, False, [f"extraction returned no valid JSON ({e})"], []
         cost += r.cost_usd or 0.0
         extraction = r.parsed
         scratchpad = extraction.pop("scratchpad", "")
         _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault,
                         skill_text=skill_text, extract_model=model, extract_effort=effort)
-        ok, errors = _write_postflight(vault, sha, extraction)
+        ok, errors, warnings = _write_postflight(vault, sha, extraction)
         if ok:
-            return extraction, scratchpad, cost, True, []
-    return extraction, scratchpad, cost, False, errors
+            return extraction, scratchpad, cost, True, [], warnings
+    return extraction, scratchpad, cost, False, errors, []
 
 
 # Cap on the observations text carried into the next section's prompt (A5) — only the most
@@ -452,9 +462,11 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
         sec_text = (vault / sec["pages_path"]).read_text(encoding="utf-8")
         prompt = prompts.build_section_prompt(
             pages_text=sec_text, existing_entities=pf.get("existing_entities", []),
+            existing_timeline=pf.get("existing_timeline", []),
             skill_text=skill_text, carry_forward=carry, section_label=sec["label"],
             is_first=(sec["index"] == 1), brief=brief,
             known_document_types=pf.get("known_document_types", []),
+            file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
         )
         r = await _call_model(task="extract-section", model=model, backend=backend,
                               prompt=prompt, schema=schemas.SECTION, effort=effort,
@@ -476,8 +488,8 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
     cost += digest_cost
     _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault,
                     skill_text=skill_text, extract_model=model, extract_effort=effort)
-    ok, errors = _write_postflight(vault, sha, extraction)
-    return extraction, scratchpad, cost, ok, errors
+    ok, errors, warnings = _write_postflight(vault, sha, extraction)
+    return extraction, scratchpad, cost, ok, errors, warnings
 
 
 def _queued_filename(vault: Path, sha: str) -> str | None:
@@ -522,13 +534,21 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     pages = pf.get("pages", [])
     page_count = pf.get("page_count") or len(pages)
     pg = f"{page_count}p"
+    # Log the moment extraction begins (#317 follow-up). Documents extract concurrently, so a
+    # START line per document makes the staggered starts visible — the later OK/FAILED line
+    # marks completion, and the gap between them is that document's own extraction time (the
+    # log is otherwise completion-ordered, which reads misleadingly like sequential work).
+    _log(vault, f"START {filename}")
 
     # Digest-size telemetry (#216): how much prior-entity context this extraction carries. Watch it
     # on a mature vault to decide whether per-candidate caps are worth adding, and at what sizes.
+    # Silent when there are no candidates (e.g. a fresh vault, or a document with no recurring
+    # entities) — "0.0 KB · 0 candidates" on every line is noise, not signal (#317).
     _n_cand = pf.get("existing_entities_count", 0)
-    _say(f"{_DIM}   {filename} · prior-entity digest "
-         f"{pf.get('existing_entities_bytes', 0) / 1024:.1f} KB · "
-         f"{_n_cand} candidate{'s' if _n_cand != 1 else ''}{_RESET}")
+    if _n_cand:
+        _say(f"{_DIM}   {filename} · prior-entity digest "
+             f"{pf.get('existing_entities_bytes', 0) / 1024:.1f} KB · "
+             f"{_n_cand} candidate{'s' if _n_cand != 1 else ''}{_RESET}")
 
     def _step(tty: str, plain: str) -> None:
         """Mutate this document's single in-flight live row (TTY); append the plain transition
@@ -556,44 +576,54 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
 
     flow = f"{pg} · {skill_label}"        # the accumulated in-flight prefix for this document's row
 
-    plan = section.run(vault, sha)
+    plan = section.run(vault, sha, model=extract_model, backend=extract_backend)
     if plan.get("sectioned"):
         n_sections = len(plan.get("sections", []))
         _step(f"{_DIM}→  {filename}  {flow} · extracting · {n_sections} sections…{_RESET}",
               f"{_DIM}→  {filename}  extracting · {n_sections} sections…{_RESET}")
-        extraction, scratchpad, cost, ok, errors = await _extract_sectioned(
+        extraction, scratchpad, cost, ok, errors, warnings = await _extract_sectioned(
             vault, sha, pf, skill_text, plan, extract_model, skill_label, extract_effort, extract_backend, brief)
     else:
         _step(f"{_DIM}→  {filename}  {flow} · extracting…{_RESET}",
               f"{_DIM}→  {filename}  extracting…{_RESET}")
-        extraction, scratchpad, cost, ok, errors = await _simple_extract(
+        extraction, scratchpad, cost, ok, errors, warnings = await _simple_extract(
             vault, sha, pf, skill_text, brief, extract_model, skill_label, extract_effort, extract_backend)
-        # Whole-document extraction can overrun the model's output ceiling on entity-dense
-        # docs (the agent-SDK backend can't cap output) — the JSON truncates and is rejected.
-        # Fall back to the sectioned path, which bounds per-call output, before giving up.
-        if not ok and page_count > 1:
+        # Whole-document extraction can overrun the model's output ceiling on entity-dense docs and
+        # get authoritatively rejected as truncated (#343) — pagination handles the continuation-
+        # capable backends, and openai/gemini are sized to fit up front, but a dense doc can still
+        # exceed the estimate. Fall back to the sectioned path, which bounds per-call output, before
+        # giving up. Covers single-page docs too (force-sectioning splits their text into character
+        # windows); the ≥2-section guard skips a doc that can't be split (nothing to re-try).
+        if not ok:
             fb = section.run(vault, sha, force_budget=_FALLBACK_SECTION_TOKENS)
-            if fb.get("sectioned"):
+            if fb.get("sectioned") and len(fb.get("sections", [])) > 1:
                 n_sections = len(fb.get("sections", []))
                 _step(f"{_DIM}↻  {filename}  {flow} · re-extracting in {n_sections} sections…{_RESET}",
                       f"{_DIM}↻  {filename}  whole-doc extraction rejected — "
                       f"re-extracting in {n_sections} sections…{_RESET}")
                 whole_cost = cost
-                extraction, scratchpad, cost, ok, errors = await _extract_sectioned(
+                extraction, scratchpad, cost, ok, errors, warnings = await _extract_sectioned(
                     vault, sha, pf, skill_text, fb, extract_model, skill_label, extract_effort, extract_backend, brief)
                 cost += whole_cost   # account for the failed whole-doc attempt
 
     if not ok:
         return _fail(vault, sha, filename, "post-flight rejected: " + "; ".join(errors[:3]))
-    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, page_count)
+    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, warnings)
+
 
 
 def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, scratchpad: str,
-                       cost: float, pf: dict, page_count: int | None) -> dict:
-    """Shared tail once an extraction has passed post-flight: settle-print, coverage warning,
-    log, persist `result_<sha>.json`. Used by both the synchronous per-document path
+                       cost: float, pf: dict,
+                       warnings: list[str] | None = None) -> dict:
+    """Shared tail once an extraction has passed post-flight: settle-print, warnings, log,
+    persist `result_<sha>.json`. Used by both the synchronous per-document path
     (`_extract_document`) and the batch-collect path (`_finish_batch_item`, #214) so a
-    batch-extracted document produces an identical result shape to a synchronous one."""
+    batch-extracted document produces an identical result shape to a synchronous one.
+
+    `warnings` (post-flight's quote-verify/sanitization/coverage-gap messages, if any) are
+    printed here — after the OK line, not when post-flight ran — so they're tucked visually
+    under this document's own row instead of landing wherever a concurrently-extracting
+    document happened to be at the time (#333 follow-up)."""
     if scratchpad:
         (vault / ".watchdog" / "tmp" / f"notes_{sha}.md").write_text(scratchpad, encoding="utf-8")
     for stale in (vault / ".watchdog" / "tmp").glob(f"section_{sha}_*.md"):
@@ -604,10 +634,9 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
             f"{_DIM}{n_entities} entit{'ies' if n_entities != 1 else 'y'}{_RESET}  "
             f"{_CYAN}documents/{_doc_slug(filename)}{_RESET}")
     _log(vault, f"OK {filename}: {n_entities} entities")
-    warn = _coverage_warning(extraction, page_count)
-    if warn:
-        _say(f"{_YELLOW}⚠{_RESET}  {filename}  {_DIM}{warn}{_RESET}")
-        _log(vault, f"WARN {filename}: {warn}")
+    for msg in (warnings or []):
+        _say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{msg}{_RESET}")
+        _log(vault, f"WARN {filename}: {msg}")
     result = _compact_result(sha, filename, extraction, pf.get("near_dup", {}), round(cost, 6))
     # Persist the compact result so `watchdog finalize` can run post-ingest from disk alone.
     (vault / ".watchdog" / "tmp" / f"result_{sha}.json").write_text(
@@ -655,14 +684,18 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
 
     extraction, cost = item["parsed"], item.get("cost_usd") or 0.0
     if item.get("usage") is not None:
+        # The Batches API requires api-key auth (D52) — never subscription — so this is the
+        # one _record_usage call site where auth_mode is a known constant, not a live result field.
         _record_usage("extract", model=model, backend="claude-batch", usage=item["usage"],
-                      cost_usd=item.get("cost_usd"), filename=filename,
-                      detail=f"pages 1–{page_count}")
+                      cost_usd=item.get("cost_usd"), effort=effort, auth_mode="api-key",
+                      filename=filename, detail=f"pages 1–{page_count}")
     if not item["ok"]:
         prompt = prompts.build_extract_prompt(
             pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
+            existing_timeline=pf.get("existing_timeline", []),
             skill_text=skill_text, sidecar=_read_sidecar(vault, filename), brief=brief,
-            known_document_types=pf.get("known_document_types", []))
+            known_document_types=pf.get("known_document_types", []),
+            file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}))
         if item.get("error"):
             prompt = _append_repair_note(prompt, [item["error"]])
         try:
@@ -677,10 +710,11 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
     scratchpad = extraction.pop("scratchpad", "") if isinstance(extraction, dict) else ""
     _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault,
                     skill_text=skill_text, extract_model=model, extract_effort=effort)
-    ok, errors = _write_postflight(vault, sha, extraction)
+    ok, errors, warnings = _write_postflight(vault, sha, extraction)
     if not ok:
         return _fail(vault, sha, filename, "post-flight rejected: " + "; ".join(errors[:3]))
-    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, page_count)
+    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, warnings)
+
 
 
 async def _resume_batch(vault: Path, state: dict, pinned_skill: str, brief: str | None,
@@ -745,13 +779,15 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
             (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
             results.append({"sha256": sha, "filename": pf.get("filename"), "status": "skipped"})
             continue
-        if section.run(vault, sha).get("sectioned"):
+        if section.run(vault, sha, model=extract_model).get("sectioned"):
             sectioned_shas.append(sha)
         else:
             prompt = prompts.build_extract_prompt(
                 pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
+                existing_timeline=pf.get("existing_timeline", []),
                 skill_text=skill_text, sidecar=_read_sidecar(vault, pf["filename"]), brief=brief,
-                known_document_types=pf.get("known_document_types", []), cache_ttl="1h")
+                known_document_types=pf.get("known_document_types", []), cache_ttl="1h",
+                file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}))
             batch_docs.append({"sha": sha, "prompt": prompt})
 
     if sectioned_shas:
@@ -797,7 +833,7 @@ async def _run_batch(vault: Path, shas: list[str], brief: str | None, extract_mo
     api_key = auth.resolve_auth().get("key")
     if not api_key:
         raise model_client.ModelError(
-            "claude-batch requires api-key auth mode — run `watchdog auth use api-key`")
+            "claude-batch requires api-key auth mode — switch to it with `watchdog auth`")
 
     state = batch_extract.read_state(vault)
     if state is not None:
@@ -825,6 +861,28 @@ def _lines(items: list) -> str:
     return "\n".join(f"- {x}" for x in items) if items else "_None._"
 
 
+def _load_entity_names(vault: Path) -> dict:
+    """id -> display name from the registry manifest. Used to resolve briefing entity
+    references back to display names deterministically (#342) — the model isn't reliable
+    across all backends about avoiding the internal kebab-case id in prose. Tolerates a
+    missing or unparseable manifest (returns {}, so callers just pass items through)."""
+    manifest_file = vault / ".watchdog" / "Registry" / "manifest.json"
+    if not manifest_file.exists():
+        return {}
+    try:
+        manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return {eid: entry.get("name", eid) for eid, entry in manifest.items() if isinstance(entry, dict)}
+
+
+def _resolve_names(items: list, names: dict) -> list:
+    """Replace any item that, stripped of whitespace, exactly matches a known entity id with
+    its display name. Everything else — prose sentences, unmatched ids — passes through
+    unchanged. Exact-item match only; no substring rewriting inside prose (#342)."""
+    return [names[x.strip()] if isinstance(x, str) and x.strip() in names else x for x in items]
+
+
 def _fts_add_note_safe(vault: Path, note_path: str, kind: str, title: str, text: str) -> None:
     """Best-effort full-text index update (#109) — never fails the ingest run over it."""
     try:
@@ -835,25 +893,40 @@ def _fts_add_note_safe(vault: Path, note_path: str, kind: str, title: str, text:
 
 
 def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
-                    contradiction_flags: list) -> str:
+                    contradiction_flags: list, n_new_requests: int = 0) -> str:
+    # Resolve entity ids the model may have echoed instead of display names (#342) — deterministic
+    # backstop on top of the prompt/schema instructions, since not every backend honours those.
+    names = _load_entity_names(vault)
+    what_was_ingested = _resolve_names(b.get("what_was_ingested", []), names)
+    new_entities = _resolve_names(b.get("new_entities", []), names)
+    connections = _resolve_names(b.get("connections", []), names)
+    leads = _resolve_names(b.get("leads", []), names)
+    anomalies = _resolve_names(b.get("anomalies", []), names)
+    emerging_patterns = _resolve_names(b.get("emerging_patterns", []), names)
+    open_questions = _resolve_names(b.get("open_questions", []), names)
+
     now = datetime.datetime.now()
     slug = now.strftime("%Y-%m-%d-%H-%M")
-    n_new = len(b.get("new_entities", []))
+    n_new = len(new_entities)
 
     body = (
         f"---\ndate: {now.isoformat(timespec='seconds')}\nfiles_ingested: {len(results)}\n"
         f"new_entities: {n_new}\n---\n\n# Ingest briefing — {slug}\n\n"
-        f"## What was ingested\n\n{_lines(b.get('what_was_ingested', []))}\n\n"
-        f"## New entities\n\n{_lines(b.get('new_entities', []))}\n\n"
-        f"## Connections to existing entities\n\n{_lines(b.get('connections', []))}\n\n"
-        f"## Leads and follow-up ideas\n\n{_lines(b.get('leads', []))}\n\n"
+        f"## What was ingested\n\n{_lines(what_was_ingested)}\n\n"
+        f"## New entities\n\n{_lines(new_entities)}\n\n"
+        f"## Connections to existing entities\n\n{_lines(connections)}\n\n"
+        f"## Leads and follow-up ideas\n\n{_lines(leads)}\n\n"
         f"## Anomalies worth a closer look\n\n"
-        f"{_lines(b['anomalies']) if b.get('anomalies') else 'Nothing flagged.'}\n"
+        f"{_lines(anomalies) if anomalies else 'Nothing flagged.'}\n"
     )
     if neardup_alerts:
         body += "\n## Near-duplicate alerts\n\n" + "\n".join(
             f"- {a['filename']}: {a['similarity']:.0%} similar to an existing document"
             for a in neardup_alerts) + "\n"
+    if n_new_requests:
+        body += (f"\n## Document requests\n\n"
+                 f"- {n_new_requests} new document request"
+                 f"{'s' if n_new_requests != 1 else ''} — see [[requests|requests.md]]\n")
     (vault / "briefings").mkdir(exist_ok=True)
     (vault / "briefings" / f"{slug}.md").write_text(body, encoding="utf-8")
     _fts_add_note_safe(vault, f"briefings/{slug}", "briefing", f"Briefing {slug}", body)
@@ -862,9 +935,9 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
         f"# Hot cache\n\n*Last updated: {now.strftime('%Y-%m-%d')} — "
         f"[[briefings/{slug}|Briefing {slug}]]*\n\n"
         f"## Investigation status\n\n{b.get('investigation_status', '')}\n\n"
-        f"## Recent additions\n\n{_lines(b.get('new_entities', []))}\n\n"
-        f"## Emerging patterns\n\n{_lines(b.get('emerging_patterns', []))}\n\n"
-        f"## Open questions\n\n{_lines(b.get('open_questions', []))}\n"
+        f"## Recent additions\n\n{_lines(new_entities)}\n\n"
+        f"## Emerging patterns\n\n{_lines(emerging_patterns)}\n\n"
+        f"## Open questions\n\n{_lines(open_questions)}\n"
     )
     (vault / "hot.md").write_text(hot_content, encoding="utf-8")
     _fts_add_note_safe(vault, "hot", "hot", "Hot cache", hot_content)
@@ -1013,6 +1086,11 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                       for r in ok if r.get("near_dup_similarity", 0) >= 0.85]
     contradiction_flags = [{"filename": r["filename"], "entities": r["contradictions"]}
                            for r in ok if r.get("contradictions")]
+    # Deterministic pointer, not a model input (D111): count this run's open document requests
+    # (recorded per-document into the ledger by write_vault, at extraction time) so the briefing
+    # can point at requests.md without the requests themselves ever entering a prompt.
+    ok_shas = {r["sha256"] for r in ok}
+    n_new_requests = len([r for r in requests.open_requests(vault) if r.get("source_sha256") in ok_shas])
     try:
         r = await _call_model(
             task="briefing", model=post_model, backend=post_backend, schema=schemas.BRIEFING,
@@ -1020,7 +1098,8 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                 brief=brief, results=ok, scratchpads=scratchpads,
                 neardup_alerts=neardup_alerts, contradiction_flags=contradiction_flags),
             effort=post_effort)
-        out["briefing"] = _write_briefing(vault, r.parsed, ok, neardup_alerts, contradiction_flags)
+        out["briefing"] = _write_briefing(vault, r.parsed, ok, neardup_alerts, contradiction_flags,
+                                          n_new_requests)
     except model_client.RateLimitError as e:
         out["briefing_error"] = str(e)
         _say(f"{_YELLOW}briefing skipped{_RESET}{_DIM} — {e}{_RESET}")
@@ -1061,6 +1140,17 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         _say(f"{_YELLOW}⚠{_RESET}  {_BOLD}{n}{_RESET} lead{'s' if n != 1 else ''} "
              f"{_DIM}(named-but-unprofiled, isolated, contradictions){_RESET} — "
              f"{_CYAN}{leads_relpath}{_RESET}")
+
+    # 6. Document requests (deterministic, no model; #365). Re-render requests.md from the
+    # ledger write_vault populated per-document at extraction time — requests are never re-fed
+    # into a model prompt.
+    requests_relpath = requests.write_requests(vault)
+    if requests_relpath:
+        n = len(requests.open_requests(vault))
+        out["requests"] = requests_relpath
+        _say(f"{_YELLOW}⚠{_RESET}  {_BOLD}{n}{_RESET} open document request"
+             f"{'s' if n != 1 else ''} {_DIM}(documents to go and get){_RESET} — "
+             f"{_CYAN}{requests_relpath}{_RESET}")
     return out
 
 
@@ -1275,7 +1365,9 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         rate_limit_resets_at = stop_reason.get("resets_at")
         extra_summary = {}
 
-    by_status = lambda s: sum(1 for r in results if r.get("status") == s)
+    def by_status(s):
+        return sum(1 for r in results if r.get("status") == s)
+
     failed_dir = vault / ".watchdog" / "queue" / "_failed"
     quarantined = len(list(failed_dir.glob("*.json"))) if failed_dir.exists() else 0
     summary = {"results": results, "extracted": by_status("ok"),

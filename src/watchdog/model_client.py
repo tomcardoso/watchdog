@@ -9,9 +9,9 @@ Backends:
     but the only backend that can use the **subscription** login, and the one to use
     when a step genuinely needs tools.
 
-  - **openai / deepseek** — OpenAI-compatible Chat Completions backends (any service
+  - **openai / deepseek / gemini** — OpenAI-compatible Chat Completions backends (any service
     speaking that wire format, selected by base URL). Each uses its own provider API key
-    (`watchdog auth set openai|deepseek`), independent of the Claude auth mode (#125).
+    (stored via `watchdog auth`), independent of the Claude auth mode (#125).
 
 Routing: subscription auth can only use claude-agent-sdk; api-key auth defaults to
 claude-api (cheaper) and may use either. A per-task policy or an explicit `backend=`
@@ -76,9 +76,34 @@ _SYSTEM_PROMPT = (
 _EFFORT_LEVELS = ("low", "medium", "high")
 # Claude models that reject `output_config.effort` with a 400 (Haiku-tier).
 _EFFORT_UNSUPPORTED = {"claude-haiku-4-5"}
-# OpenAI-compatible models that accept `reasoning_effort` (substring match on the id). A chat
-# model 400s on it, so the knob is dropped for anything not matching.
-_OPENAI_REASONING_MARKERS = ("reasoner", "gpt-5", "o1", "o3", "o4")
+# OpenAI-provider model capabilities (#170). A *reasoning* model accepts `reasoning_effort` and
+# requires the newer `max_completion_tokens` field — it 400s on `max_tokens`; a *chat* model is the
+# exact reverse. Both decisions flow from this one table so they can't drift apart. Keyed by model-id
+# prefix, most specific first: declare a family once (`gpt-5`, `o3`) and put any chat exception above
+# its family. An id matching nothing is treated as a chat model — the correctness-safe default that
+# never sends an unsupported param; a genuinely new reasoning model is added here to earn effort,
+# rather than being guessed at from a substring. (DeepSeek is not consulted here: its thinking is a
+# separate per-request toggle, and it uses the classic `max_tokens` field — see `_openai_complete_async`.)
+_OPENAI_MODEL_CAPS: tuple[tuple[str, bool], ...] = (
+    ("gpt-4",   False),   # gpt-4o / gpt-4.1 / gpt-4-turbo — chat
+    ("chatgpt", False),   # chat-latest — chat
+    ("gpt-5",   True),    # entire GPT-5 family reasons
+    ("o1",      True),
+    ("o3",      True),
+    ("o4",      True),
+)
+
+
+def _openai_is_reasoning(model_id: str) -> bool:
+    """Whether an OpenAI model is a reasoning model — accepts `reasoning_effort` and needs
+    `max_completion_tokens` (rejecting `max_tokens`). Chat models are the reverse. Resolved from the
+    explicit `_OPENAI_MODEL_CAPS` table (most-specific prefix first); an unlisted id is treated as a
+    chat model, the safe default that never sends an unsupported param."""
+    mid = model_id.lower()
+    for prefix, reasoning in _OPENAI_MODEL_CAPS:
+        if mid.startswith(prefix):
+            return reasoning
+    return False
 
 
 def _claude_effort(model_id: str, effort: str) -> str | None:
@@ -91,8 +116,7 @@ def _claude_effort(model_id: str, effort: str) -> str | None:
 def _openai_effort(model_id: str, effort: str) -> str | None:
     """OpenAI-compatible: `reasoning_effort` is accepted only by reasoning models — drop it
     elsewhere. Unlike Claude, `high` is not the default, so it is passed through."""
-    mid = model_id.lower()
-    return effort if any(m in mid for m in _OPENAI_REASONING_MARKERS) else None
+    return effort if _openai_is_reasoning(model_id) else None
 
 
 def _no_effort(model_id: str, effort: str) -> str | None:
@@ -101,11 +125,21 @@ def _no_effort(model_id: str, effort: str) -> str | None:
     return None
 
 
+def _gemini_effort(model_id: str, effort: str) -> str | None:
+    """Gemini: `reasoning_effort` is accepted by every current model via the OpenAI-compatible
+    endpoint and mapped internally to that model's own thinking level/budget — low/medium/high
+    all have a direct mapping there — so the abstract intent passes through unconditionally
+    (unlike OpenAI, no model-capability gate is needed). See
+    https://ai.google.dev/gemini-api/docs/openai#thinking"""
+    return effort
+
+
 # provider → the function mapping the abstract effort intent to that provider's native value.
 _EFFORT_POLICY = {
     "anthropic": _claude_effort,
     "openai":    _openai_effort,
     "deepseek":  _no_effort,
+    "gemini":    _gemini_effort,
 }
 
 
@@ -118,6 +152,48 @@ def _resolve_effort(provider: str, model_id: str, effort: str | None) -> str | N
         return None
     policy = _EFFORT_POLICY.get(provider)
     return policy(model_id, effort) if policy else None
+
+
+# Model context windows in tokens, for provider-aware sectioning (#321): the larger a model's
+# window, the more of a document it can read in one extraction call before sectioning pays off.
+# Keyed by a substring of the resolved model id, **most specific first** (dict order is honoured),
+# so `deepseek-v4` wins over the legacy `deepseek` fallback. Anything unmatched gets a
+# conservative default. These are the vendors' published windows, not Watchdog's per-call budget —
+# the sectioning policy reserves headroom from them (see `pipeline/section.py`).
+#
+# Windows are per-model, so add a more specific row above a broader one whenever a model diverges.
+# The `claude` row is a shared fallback only because every Claude tier Watchdog resolves today
+# (Haiku 4.5, Sonnet 4.6, Opus 4.8) has the same 200K *usable* window — Sonnet's 1M is beta-gated
+# behind a request header `_api_complete_async` does not send, so 200K is the correct figure, not
+# just a conservative one. A future tier whose standard window differs (e.g. a Sonnet that ships
+# 1M by default) gets its own `claude-sonnet-N` row above this fallback.
+_CONTEXT_WINDOWS = {
+    "deepseek-v4": 1_000_000,   # DeepSeek V4 flash/pro
+    "deepseek":      128_000,   # legacy deepseek-chat/reasoner
+    "gemini-2.5":  1_000_000,   # Gemini 2.5 Pro/Flash/Flash-Lite share a 1M-token window
+    "gemini-3":    1_000_000,   # Gemini 3.5 Flash / 3.1 Flash-Lite / 3.1 Pro Preview, same window
+    "gpt-5":         400_000,
+    "gpt-4":         128_000,
+    "o1":            200_000,
+    "o3":            200_000,
+    "o4":            200_000,
+    "claude":        200_000,   # shared fallback: Haiku 4.5 / Sonnet 4.6 / Opus 4.8 usable window
+}
+_DEFAULT_CONTEXT_WINDOW = 128_000
+
+
+def context_window(model: str | None) -> int:
+    """Token context window for a stage's model, for provider-aware sectioning (#321).
+
+    `model` may be a tier name (haiku/sonnet/opus), a raw provider id (`deepseek-v4-flash`,
+    `gpt-5-mini`), or None for the default tier — resolved first, then matched against the
+    substring table. Unlisted ids fall back to a conservative default rather than raising, so a
+    new or misspelled id degrades to safe (small-chunk) sectioning instead of an overrun."""
+    model_id = resolve_model_id(model or DEFAULT_TIER).lower()
+    for marker, window in _CONTEXT_WINDOWS.items():
+        if marker in model_id:
+            return window
+    return _DEFAULT_CONTEXT_WINDOW
 
 
 class ModelError(RuntimeError):
@@ -271,12 +347,14 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
 
 async def _agent_complete_async(prompt: str | list[dict], model_id: str, schema: dict,
                                 api_key: str | None, max_tokens: int | None = None,
-                                effort: str | None = None) -> dict:
+                                effort: str | None = None, prefix: str | None = None) -> dict:
     """Claude Agent SDK backend. Works in either auth mode (key via env, or subscription).
 
     `max_tokens` is accepted for a uniform backend signature but unused — the agent's
     output is bounded by max_turns, not a token cap. The agent SDK has no `cache_control`
-    knob (A1), so a content-block prompt is flattened to plain text here.
+    knob (A1), so a content-block prompt is flattened to plain text here. `prefix` (response
+    pagination, #343) is likewise unused — with no client-enforced output ceiling there is
+    nothing to continue past, so this backend never truncates on max_tokens.
     """
     full = f"{_flatten_prompt(prompt)}\n\nReturn JSON matching this schema:\n{json.dumps(schema)}"
     env = {"ANTHROPIC_API_KEY": api_key} if api_key else None
@@ -288,7 +366,10 @@ def _api_cost(model_id: str, usage) -> float | None:
     if not rates:
         return None
     inp, outp, cw, cr = rates
-    g = lambda name: getattr(usage, name, 0) or 0
+
+    def g(name):
+        return getattr(usage, name, 0) or 0
+
     return (g("input_tokens") * inp + g("output_tokens") * outp
             + g("cache_creation_input_tokens") * cw + g("cache_read_input_tokens") * cr)
 
@@ -302,96 +383,260 @@ def _batch_cost(model_id: str, usage) -> float | None:
 
 async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: dict,
                               api_key: str | None, max_tokens: int,
-                              effort: str | None = None) -> dict:
+                              effort: str | None = None, prefix: str | None = None) -> dict:
     """Raw Claude Messages API backend with structured outputs.
 
     `prompt` may be a plain string or a list of Anthropic content blocks with a
     `cache_control` breakpoint (A1) — the Messages API's `content` field accepts either
-    shape natively, so no conversion is needed here."""
+    shape natively, so no conversion is needed here.
+
+    `prefix` (response pagination, #343): when set, the partial output of a truncated call is
+    prefilled as the assistant turn and the model continues it. Structured-output `format`
+    enforcement is dropped on a continuation (constrained decoding can't resume mid-object) —
+    the concatenation is validated by the shared shell — but `effort` is still carried so the
+    same reasoning depth applies (I4). The returned `finish_reason` mirrors `stop_reason` so the
+    shell can tell a max-token cut (`max_tokens`) from a natural stop."""
     import anthropic
 
-    # `effort` composes with the structured-output `format` inside the one output_config dict.
-    output_config = {"format": {"type": "json_schema", "schema": schema}}
-    if effort:
-        output_config["effort"] = effort
+    messages = [{"role": "user", "content": prompt}]
+    kwargs: dict = {}
+    if prefix is None:
+        # `effort` composes with the structured-output `format` inside the one output_config dict.
+        output_config = {"format": {"type": "json_schema", "schema": schema}}
+        if effort:
+            output_config["effort"] = effort
+        kwargs["output_config"] = output_config
+    else:
+        # Continuation: prefill the partial (Anthropic rejects a trailing-whitespace assistant
+        # turn, so rstrip — JSON ignores inter-token whitespace, so the concatenation is intact).
+        messages.append({"role": "assistant", "content": prefix.rstrip()})
+        if effort:
+            kwargs["output_config"] = {"effort": effort}
     try:
         resp = await anthropic.AsyncAnthropic(api_key=api_key).messages.create(
             model=model_id,
             max_tokens=max_tokens,
             system=_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt}],
-            output_config=output_config,
+            messages=messages,
+            **kwargs,
         )
     except anthropic.RateLimitError as e:   # 429 — surface as the shared typed error
         raise RateLimitError(str(e) or "Claude API rate limit reached") from e
     text = next((b.text for b in resp.content if getattr(b, "type", None) == "text"), "")
     usage = resp.usage
     usage_dict = usage.model_dump() if hasattr(usage, "model_dump") else dict(usage)
-    return {"text": text, "usage": usage_dict, "cost_usd": _api_cost(model_id, usage)}
+    return {"text": text, "usage": usage_dict, "cost_usd": _api_cost(model_id, usage),
+            "finish_reason": getattr(resp, "stop_reason", None)}
 
 
-# OpenAI-compatible (Chat Completions) pricing: model id → (input $/tok, output $/tok).
-# Approximate and output-dominant; verify against the provider before relying on cost figures.
-# Cache-hit input discounts (DeepSeek) are not modelled yet — a v1 simplification.
+# OpenAI-compatible (Chat Completions) pricing: model id → (input, output, cached_input) $/tok.
+# `input` is the cache-MISS input rate; `cached_input` is the discounted rate applied to the part
+# of the prompt served from the provider's context cache. `_openai_cost` splits prompt tokens into
+# cached vs uncached from the provider's usage fields (OpenAI nests the count under
+# `prompt_tokens_details.cached_tokens`; DeepSeek reports `prompt_cache_hit_tokens`), so a cache hit
+# is priced at the lower rate rather than over-charged. Models with no published cache rate repeat
+# the input rate (no discount). Verify against the providers before relying on absolute figures:
+#   OpenAI:   https://developers.openai.com/api/docs/pricing
+#   DeepSeek: https://api-docs.deepseek.com/quick_start/pricing
+#   Gemini:   https://ai.google.dev/gemini-api/docs/pricing
 _OPENAI_PRICING = {
-    "deepseek-chat":     (0.27e-6, 1.10e-6),
-    "deepseek-reasoner": (0.55e-6, 2.19e-6),
+    # DeepSeek V4 (1M-token window; cache-hit input is a ~50x discount on the miss rate)
+    "deepseek-v4-flash": (0.14e-6,  0.28e-6,  0.0028e-6),
+    "deepseek-v4-pro":   (0.435e-6, 0.87e-6,  0.003625e-6),
+    # OpenAI GPT-5 family, standard tier (the -pro models publish no cache rate → no discount)
+    "gpt-5.5":           (5e-6,     30e-6,    0.50e-6),
+    "gpt-5.5-pro":       (30e-6,    180e-6,   30e-6),
+    "gpt-5.4":           (2.5e-6,   15e-6,    0.25e-6),
+    "gpt-5.4-mini":      (0.75e-6,  4.5e-6,   0.075e-6),
+    "gpt-5.4-nano":      (0.20e-6,  1.25e-6,  0.02e-6),
+    "gpt-5.4-pro":       (30e-6,    180e-6,   30e-6),
+    # Gemini 2.5, standard tier at the <=200k-token rate (Pro's >200k rate is double — not
+    # modeled here, same simplification as elsewhere in this table).
+    "gemini-2.5-flash":      (0.30e-6, 2.50e-6, 0.03e-6),
+    "gemini-2.5-flash-lite": (0.10e-6, 0.40e-6, 0.01e-6),
+    "gemini-2.5-pro":        (1.25e-6, 10.0e-6, 0.125e-6),
+    # Gemini 3.x, standard tier. 3.5 Flash and 3.1 Flash-Lite are stable; 3.1 Pro Preview is a
+    # preview release (Google may deprecate it with as little as two weeks' notice) and its
+    # >200k-token rate is double — not modeled here, same simplification as 2.5 Pro above.
+    "gemini-3.5-flash":      (1.50e-6, 9.00e-6,  0.15e-6),
+    "gemini-3.1-flash-lite": (0.25e-6, 1.50e-6,  0.025e-6),
+    "gemini-3.1-pro-preview": (2.00e-6, 12.0e-6, 0.20e-6),
 }
+
+
+def _cached_input_tokens(usage: dict) -> int:
+    """Prompt tokens served from the provider's context cache, normalised across usage shapes.
+    OpenAI nests the count under `prompt_tokens_details.cached_tokens`; DeepSeek reports it as
+    `prompt_cache_hit_tokens` (with `prompt_tokens` = hit + miss). Absent either field, treat it
+    as no cache hit."""
+    details = usage.get("prompt_tokens_details") or {}
+    cached = details.get("cached_tokens")
+    if cached is None:
+        cached = usage.get("prompt_cache_hit_tokens")
+    return cached or 0
 
 
 def _openai_cost(model_id: str, usage: dict | None) -> float | None:
     rates = _OPENAI_PRICING.get(model_id)
     if not rates or not usage:
         return None
-    inp, outp = rates
-    return ((usage.get("prompt_tokens", 0) or 0) * inp
+    inp, outp, cached_rate = rates
+    prompt = usage.get("prompt_tokens", 0) or 0
+    cached = min(_cached_input_tokens(usage), prompt)   # cache hits are a subset of prompt tokens
+    return ((prompt - cached) * inp
+            + cached * cached_rate
             + (usage.get("completion_tokens", 0) or 0) * outp)
+
+
+# DeepSeek V4 collapsed thinking/non-thinking into a single model id switched by a request param
+# (the old deepseek-chat/deepseek-reasoner split is deprecated). Watchdog keeps the choice inside
+# the model token — `deepseek-v4-flash` (non-thinking) vs `deepseek-v4-flash-thinking` — so it rides
+# the existing `[backend:]model` grammar with no extra provider-specific knob. The backend strips
+# this marker, uses the bare id for the request + cost lookup, and sends DeepSeek's explicit toggle.
+# The provider default is thinking-ENABLED, so we always send the toggle to pin the intended mode.
+# Toggle shape (OpenAI format): {"thinking": {"type": "enabled"|"disabled"}}. Docs:
+# https://api-docs.deepseek.com/guides/thinking_mode  (D88)
+_DEEPSEEK_THINKING_SUFFIX = "-thinking"
+
+# DeepSeek's reasoning mode caps chain-of-thought + final answer under one combined `max_tokens`
+# (default 32K, max 64K: https://api-docs.deepseek.com/guides/reasoning_model). The flat per-task
+# ceilings in `_TASK_MAX_TOKENS` starve the JSON output once the CoT eats into that same budget —
+# fewer key facts, elided quotes (#337). Applied only to deepseek + `-thinking` + the large-output
+# tasks; every other backend/task keeps its normal ceiling.
+_DEEPSEEK_THINKING_MAX_TOKENS = 48000
+
+# OpenAI reasoning models have the same starvation mode (#354): reasoning tokens and the visible
+# answer share the one `max_completion_tokens` budget, so at the flat 16K ceiling heavy reasoning
+# can leave the JSON truncated — the exact failure #337 fixed for DeepSeek thinking. Applied only
+# to reasoning models (per `_openai_is_reasoning`) on the large-output tasks; chat models keep the
+# normal ceiling. Note this is the *wire* ceiling only — sectioning still plans against the base
+# task budget, since the JSON itself can't count on the reasoning share (see
+# `output_ceiling_for_sectioning`).
+_OPENAI_REASONING_MAX_TOKENS = 48000
+
+# Transient-failure retry for the OpenAI-compatible backends (#354). The Anthropic SDK retries
+# 429/5xx internally (2 attempts, backoff); this httpx path had none, so a single transient
+# 502/529 from a provider failed the document outright — `acomplete_json` retries only on invalid
+# JSON, not backend exceptions. 5xx only: a 429 must keep raising RateLimitError immediately so
+# the orchestrator stops the batch cleanly instead of hammering a limited provider.
+_TRANSIENT_RETRIES = 2
+_TRANSIENT_BACKOFF_S = 2.0
+
+
+def _split_deepseek_thinking(model_id: str) -> tuple[str, bool]:
+    """(bare model id, thinking?) from a DeepSeek model token — strips a `-thinking` marker.
+    Non-thinking is the default (bare id), so extraction stays cheap unless thinking is opted in."""
+    if model_id.endswith(_DEEPSEEK_THINKING_SUFFIX):
+        return model_id[: -len(_DEEPSEEK_THINKING_SUFFIX)], True
+    return model_id, False
+
+
+def _openai_response_format(base_url: str, schema: dict) -> dict:
+    """The `response_format` for an OpenAI-compatible request — real `json_schema` structured
+    output where it's safe, portable `json_object` mode elsewhere (D98).
+
+    Gemini's OpenAI-compat endpoint honours `json_schema` with genuine wire-level enforcement,
+    and its own schema engine treats `required` as an optional list rather than demanding every
+    property (ai.google.dev/gemini-api/docs/structured-output) — matching schemas.py's
+    omit-optional-fields design (e.g. `_KEY_FACT`'s `required` is just `["fact"]`) with no
+    rewrite needed. OpenAI's own Structured Outputs mode is real too, but only in `strict`
+    form, which demands every property be listed in `required` (nullable unions standing in
+    for "optional") — directly conflicting with that same design — and it has no non-strict
+    schema-hint mode, so a `json_schema` request would need a parallel, all-fields-required
+    schema variant to use safely. DeepSeek's JSON Output docs (api-docs.deepseek.com/guides/
+    json_mode) document only `json_object` — no schema field at all. So only Gemini gets the
+    upgrade; OpenAI and DeepSeek keep the schema-in-prompt path."""
+    if "generativelanguage.googleapis.com" in base_url:
+        return {"type": "json_schema", "json_schema": {"name": "watchdog_response", "schema": schema}}
+    return {"type": "json_object"}
 
 
 async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema: dict,
                                  api_key: str | None, max_tokens: int,
-                                 effort: str | None = None, *, base_url: str) -> dict:
-    """OpenAI-compatible Chat Completions backend — OpenAI, DeepSeek, and any service that
-    speaks the same wire format (selected by `base_url`).
+                                 effort: str | None = None, prefix: str | None = None,
+                                 *, base_url: str) -> dict:
+    """OpenAI-compatible Chat Completions backend — OpenAI, DeepSeek, Gemini (via its
+    OpenAI-compatibility endpoint, https://ai.google.dev/gemini-api/docs/openai), and any
+    other service that speaks the same wire format (selected by `base_url`).
 
-    Structured output is requested via JSON mode plus the schema appended to the prompt, then
-    validated by the shared `acomplete_json` shell — the portable path across providers, since
-    full `json_schema` mode is not universal. `effort` arrives already resolved to the
-    provider's native value (or None) and is sent as `reasoning_effort` (#125). No provider-
-    agnostic cache_control equivalent is wired here (A1 is Claude-only), so a content-block
-    prompt is flattened to plain text."""
+    Structured output is requested via `_openai_response_format` (real `json_schema` enforcement
+    on Gemini; portable JSON-object mode + schema-in-prompt elsewhere, D98), then validated by
+    the shared `acomplete_json` shell either way — that local validation is a safety net, not the
+    only guard, once the provider itself enforces the schema. `effort` arrives already resolved
+    to the provider's native value (or None) and is sent as `reasoning_effort` (#125). No
+    provider-agnostic cache_control equivalent is wired here (A1 is Claude-only), so a
+    content-block prompt is flattened to plain text.
+
+    DeepSeek carries an optional `-thinking` marker on the model id; it is stripped here and
+    translated into DeepSeek's explicit thinking toggle (default off — see #320).
+
+    `prefix` (response pagination, #343): DeepSeek's chat-prefix-completion beta continues a
+    truncated response — the partial output is appended as an assistant turn with `prefix: true`
+    against the `/beta` base, and structured-output enforcement is dropped (the model is
+    completing a partial object, not generating a fresh one). OpenAI and Gemini return a *new*
+    assistant message rather than continuing the given one, so they never prefill (excluded from
+    `_CONTINUATION_BACKENDS`) and always reach this with `prefix=None`. The returned
+    `finish_reason` lets the shell distinguish a max-token cut (`length`) from a natural stop."""
     import httpx
 
-    body = {
-        "model": model_id,
-        "max_tokens": max_tokens,
-        "response_format": {"type": "json_object"},   # "JSON" must appear in the prompt below
-        "messages": [
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user",
-             "content": f"{_flatten_prompt(prompt)}\n\nReturn JSON matching this schema:\n{json.dumps(schema)}"},
-        ],
-    }
+    is_deepseek = "deepseek" in base_url
+    thinking: bool | None = None
+    if is_deepseek:
+        model_id, thinking = _split_deepseek_thinking(model_id)
+
+    response_format = _openai_response_format(base_url, schema)
+    user_content = _flatten_prompt(prompt)
+    if response_format["type"] != "json_schema":   # schema not enforced by the API — spell it out
+        user_content += f"\n\nReturn JSON matching this schema:\n{json.dumps(schema)}"
+
+    messages = [
+        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "user", "content": user_content},
+    ]
+    body = {"model": model_id, "messages": messages}
+    path = "/chat/completions"
+    if prefix is not None and is_deepseek:   # continuation via DeepSeek's prefix-completion beta
+        messages.append({"role": "assistant", "content": prefix.rstrip(), "prefix": True})
+        path = "/beta/chat/completions"
+    else:
+        body["response_format"] = response_format
+    # OpenAI reasoning models reject `max_tokens` and require `max_completion_tokens`; chat models
+    # and DeepSeek (classic wire format) take `max_tokens`. Driven by the one capability table.
+    if not is_deepseek and _openai_is_reasoning(model_id):
+        body["max_completion_tokens"] = max_tokens
+    else:
+        body["max_tokens"] = max_tokens
     if effort:
         body["reasoning_effort"] = effort
-    url = base_url.rstrip("/") + "/chat/completions"
+    if thinking is not None:   # DeepSeek: pin the mode explicitly (provider defaults to enabled)
+        body["thinking"] = {"type": "enabled" if thinking else "disabled"}
+    url = base_url.rstrip("/") + path
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     async with httpx.AsyncClient(timeout=600) as client:
-        resp = await client.post(url, headers=headers, json=body)
+        # Bounded retry on 5xx only (#354) — parity with the Anthropic SDK's built-in transient
+        # retry. 429 is excluded: it raises RateLimitError below on the first response.
+        for attempt in range(_TRANSIENT_RETRIES + 1):
+            resp = await client.post(url, headers=headers, json=body)
+            if resp.status_code < 500 or attempt == _TRANSIENT_RETRIES:
+                break
+            await asyncio.sleep(_TRANSIENT_BACKOFF_S * (attempt + 1))
     if resp.status_code == 429:
         raise RateLimitError(f"{base_url} rate limit reached")
     resp.raise_for_status()
     data = resp.json()
     choices = data.get("choices") or []
     text = (choices[0].get("message", {}).get("content") or "") if choices else ""
+    finish = choices[0].get("finish_reason") if choices else None
     usage = data.get("usage")
-    return {"text": text, "usage": usage, "cost_usd": _openai_cost(model_id, usage)}
+    return {"text": text, "usage": usage, "cost_usd": _openai_cost(model_id, usage),
+            "finish_reason": finish}
 
 
 # OpenAI-compatible base URLs (the `/chat/completions` path is appended per request).
 _OPENAI_BASE = {
     "openai":   "https://api.openai.com/v1",
     "deepseek": "https://api.deepseek.com",
+    "gemini":   "https://generativelanguage.googleapis.com/v1beta/openai",
 }
 
 _ABACKENDS = {
@@ -399,6 +644,7 @@ _ABACKENDS = {
     "claude-agent-sdk": _agent_complete_async,
     "openai":   partial(_openai_complete_async, base_url=_OPENAI_BASE["openai"]),
     "deepseek": partial(_openai_complete_async, base_url=_OPENAI_BASE["deepseek"]),
+    "gemini":   partial(_openai_complete_async, base_url=_OPENAI_BASE["gemini"]),
 }
 
 # backend name → the auth provider whose key it uses (and whose effort policy applies).
@@ -408,6 +654,7 @@ _BACKEND_PROVIDER = {
     "claude-batch":     "anthropic",
     "openai":           "openai",
     "deepseek":         "deepseek",
+    "gemini":           "gemini",
 }
 
 # Selectable backend names (public — the CLI validates a stage's `backend:model` against this).
@@ -450,13 +697,114 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
         if chosen == "claude-api" and not api_key:
             raise ModelError(
                 "the claude-api backend needs an API key, but auth mode is "
-                f"'{auth_mode}' — use `watchdog auth use api-key`, or the claude-agent-sdk backend")
+                f"'{auth_mode}' — run `watchdog auth` to switch to api-key mode, or use the claude-agent-sdk backend")
         return chosen, provider, api_key, auth_mode
 
     api_key = auth.get_api_key(provider)
     if not api_key:
-        raise ModelError(f"the {chosen} backend needs an API key — run `watchdog auth set {provider}`")
+        raise ModelError(f"the {chosen} backend needs an API key — run `watchdog auth` to add one")
     return chosen, provider, api_key, "api-key"
+
+
+# ── response pagination (#343) ────────────────────────────────────────────────
+# A single extract call can need more output than the provider's fixed `max_tokens` allows,
+# which would truncate the JSON mid-object. To guarantee no truncated extraction is ever
+# accepted, the shell (a) detects the provider's truncation signal authoritatively — never
+# inferring it from a parse failure, which would silently accept a truncated-but-parseable
+# response — and (b) for backends that support prefill continuation, re-issues the call with
+# the partial output prefilled and concatenates the halves until the model stops naturally.
+# Backends that can't continue (openai/gemini return a new message, not a continuation; the
+# agent SDK has no cap to hit) never paginate; a truncated result from them is rejected so the
+# orchestrator falls back to bounded-output sectioning.
+
+# Backends whose truncated output can be grown past the ceiling by prefilling the partial as the
+# start of the next call (Claude assistant prefill; DeepSeek chat-prefix-completion beta).
+_CONTINUATION_BACKENDS = ("claude-api", "deepseek")
+# Hard cap on continuation rounds so a pathological run can't loop forever; hitting it leaves the
+# result flagged truncated → the orchestrator sections instead.
+_MAX_CONTINUATIONS = 8
+# finish_reason / stop_reason values that mean "cut off at max_tokens", across providers.
+_TRUNCATION_FINISH = {"length", "max_tokens", "MAX_TOKENS"}
+
+
+def _is_truncated(finish_reason) -> bool:
+    """Whether a backend's finish_reason/stop_reason marks a max-token cut (not a natural stop)."""
+    return bool(finish_reason) and str(finish_reason) in _TRUNCATION_FINISH
+
+
+def _merge_usage(a: dict | None, b: dict | None) -> dict | None:
+    """Sum the numeric token counts of two per-call usage dicts (continuation rounds), tolerating
+    differing provider shapes and nested detail blocks — non-numeric or one-sided keys pass
+    through so telemetry still reflects the aggregate cost/usage of a paginated call."""
+    if a is None or b is None:
+        return a if b is None else b
+    merged = dict(a)
+    for k, v in b.items():
+        cur = merged.get(k)
+        # bools are ints in Python; guard both sides so a flag (e.g. cache_hit) is never summed.
+        if (isinstance(v, (int, float)) and isinstance(cur, (int, float))
+                and not isinstance(v, bool) and not isinstance(cur, bool)):
+            merged[k] = cur + v
+        elif isinstance(v, dict) and isinstance(cur, dict):
+            merged[k] = _merge_usage(cur, v)
+        elif k not in merged:
+            merged[k] = v
+    return merged
+
+
+def _task_max_tokens(task: str, backend: str, model_id: str) -> int:
+    """The output-token ceiling sent to the provider for a task/backend/model. Models whose
+    chain-of-thought shares the output budget — DeepSeek thinking (#337), OpenAI reasoning
+    models (#354) — get a higher ceiling on the large-output tasks so reasoning can't starve
+    the JSON."""
+    if task in _TASK_MAX_TOKENS:
+        if backend == "deepseek" and model_id.endswith(_DEEPSEEK_THINKING_SUFFIX):
+            return _DEEPSEEK_THINKING_MAX_TOKENS
+        if backend == "openai" and _openai_is_reasoning(model_id):
+            return _OPENAI_REASONING_MAX_TOKENS
+    return _TASK_MAX_TOKENS.get(task, _API_MAX_TOKENS)
+
+
+def output_ceiling_for_sectioning(task: str, backend: str | None, model: str | None) -> int | None:
+    """The per-call output-token ceiling that sectioning must keep a document under — or None
+    when there is nothing to protect (#343). None is returned for the agent SDK (no enforced
+    ceiling), for the prefill-continuation backends (claude-api, deepseek — pagination grows the
+    output past the cap), and for an unresolved backend (`None` routes to a Claude backend, both
+    of which are None-returning). Only openai and gemini return a real number: they enforce
+    max_tokens yet can't continue, so a document whose estimated output would exceed the ceiling
+    must be sectioned up front rather than truncating and relying on the reactive fallback."""
+    if backend not in ("openai", "gemini"):
+        return None
+    model_id = resolve_model_id(model or DEFAULT_TIER)
+    if backend == "openai" and _openai_is_reasoning(model_id):
+        # The raised wire ceiling (#354) is shared with chain-of-thought, so the JSON itself
+        # can't count on more than the base task budget — plan sectioning against that.
+        return _TASK_MAX_TOKENS.get(task, _API_MAX_TOKENS)
+    return _task_max_tokens(task, backend, model_id)
+
+
+async def _complete_with_pagination(backend_fn, backend: str, prompt, model_id: str, schema: dict,
+                                    api_key: str | None, max_tokens: int, effort_arg) -> dict:
+    """Call the backend, then continue a max-token-truncated response by prefilling its partial
+    output and concatenating, until a natural stop or the continuation guard (#343). Returns the
+    assembled `{text, usage, cost_usd, truncated}`; `truncated` is True only if the output was
+    still capped after the last allowed round (or the backend can't continue), so the caller
+    never accepts a partial extraction."""
+    out = await backend_fn(prompt, model_id, schema, api_key, max_tokens, effort_arg)
+    text = out.get("text") or ""
+    usage = out.get("usage")
+    cost = out.get("cost_usd") or 0.0
+    rounds = 0
+    while (_is_truncated(out.get("finish_reason")) and backend in _CONTINUATION_BACKENDS
+           and rounds < _MAX_CONTINUATIONS):
+        rounds += 1
+        out = await backend_fn(prompt, model_id, schema, api_key, max_tokens, effort_arg,
+                               prefix=text)
+        text += out.get("text") or ""
+        usage = _merge_usage(usage, out.get("usage"))
+        cost += out.get("cost_usd") or 0.0
+    return {"text": text, "usage": usage, "cost_usd": cost,
+            "truncated": _is_truncated(out.get("finish_reason"))}
 
 
 # ── public entry point ────────────────────────────────────────────────────────
@@ -478,11 +826,12 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
     """
     chosen, provider, api_key, auth_mode = _resolve_backend_auth(backend)
     backend_fn = _ABACKENDS[chosen]
-    max_tokens = _TASK_MAX_TOKENS.get(task, _API_MAX_TOKENS)
 
     requested = model or DEFAULT_TIER
     model_id = resolve_model_id(requested)
     effort_arg = _resolve_effort(provider, model_id, effort)   # provider-native value or None
+
+    max_tokens = _task_max_tokens(task, chosen, model_id)
 
     start = time.monotonic()
     total_cost = 0.0
@@ -491,13 +840,24 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
     for _ in range(max_retries + 1):
         attempts += 1
         try:
-            out = await backend_fn(prompt, model_id, schema, api_key, max_tokens, effort_arg)
+            out = await _complete_with_pagination(backend_fn, chosen, prompt, model_id, schema,
+                                                  api_key, max_tokens, effort_arg)
         except (RateLimitError, ModelError):
             raise
         except Exception as e:                  # any backend/transport failure → typed error
             raise ModelError(f"{chosen} backend error: {e}") from e
         if out.get("cost_usd"):
             total_cost += out["cost_usd"]
+
+        if out.get("truncated"):
+            # Authoritatively truncated at the provider's output ceiling and not recoverable by
+            # continuation (backend can't prefill, or still capped after the guard). Never accept a
+            # partial extraction even if it happens to parse (#343). Re-running the same whole-doc
+            # call would only truncate again (truncation is deterministic in the prompt), so stop
+            # retrying and report it — the orchestrator falls back to sectioning, which bounds each
+            # call's output.
+            last_err = "output truncated at the model's max-token ceiling"
+            break
 
         parsed = _extract_json(out["text"])
         if parsed is None:

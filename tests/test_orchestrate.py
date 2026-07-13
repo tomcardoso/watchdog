@@ -65,33 +65,37 @@ def _mock(monkeypatch, *, extraction):
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
 
-def _ext_with_fact_pages(pages):
-    return {"document": {"key_facts": [{"fact": "f", "page": p} for p in pages]}}
+def test_postflight_quote_warning_prints_after_this_documents_ok_line(tmp_path, monkeypatch, capsys):
+    """A post-flight warning (quote-verify, entity-id/date sanitization) must land *after* its
+    own document's OK line, not whenever post-flight happened to run — otherwise it reads as
+    belonging to whichever document is concurrently in flight at that moment (#333 follow-up)."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, text="Acme Corp filed an annual report.")
+    ext = _extraction()
+    ext["document"]["key_facts"][0]["quote"] = "this exact sentence never appears in the document"
+    _mock(monkeypatch, extraction=ext)
+
+    asyncio.run(orchestrate.run(vault))
+
+    out = capsys.readouterr().out
+    ok_index = out.index("OK")
+    warn_index = out.index("quote not found")
+    assert ok_index < warn_index
 
 
-def test_coverage_warning_flags_front_loaded_extraction():
-    # 36-page doc, facts only on pages 1-4 → nothing past page 4 (< 18) → warn
-    warn = orchestrate._coverage_warning(_ext_with_fact_pages([1, 2, 3, 4]), 36)
-    assert warn and "may have stopped reading early" in warn and "of 36" in warn
-    assert "check pages 5–36" in warn        # actionable range = first uncited page → end
+def test_ingest_log_records_start_before_ok(tmp_path, monkeypatch):
+    """A per-document START line is logged when extraction begins, ahead of its OK line —
+    with concurrent extraction the completion-ordered log otherwise hides the staggered
+    starts (#317 follow-up)."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    _mock(monkeypatch, extraction=_extraction())
 
+    asyncio.run(orchestrate.run(vault))
 
-def test_coverage_warning_silent_when_well_covered():
-    # facts reach page 30 of 36 (>= 18) → no warning
-    assert orchestrate._coverage_warning(_ext_with_fact_pages([1, 5, 20, 30]), 36) is None
-
-
-def test_coverage_warning_skips_short_docs():
-    assert orchestrate._coverage_warning(_ext_with_fact_pages([1]), 5) is None
-
-
-def test_coverage_warning_skips_when_no_page_anchors():
-    ext = {"document": {"key_facts": [{"fact": "f"}, {"fact": "g", "page": None}]}}
-    assert orchestrate._coverage_warning(ext, 40) is None
-
-
-def test_coverage_warning_handles_missing_page_count():
-    assert orchestrate._coverage_warning(_ext_with_fact_pages([1, 2]), None) is None
+    log = (vault / ".watchdog" / "Registry" / "ingest.log").read_text(encoding="utf-8")
+    assert "START test-doc.pdf" in log
+    assert log.index("START test-doc.pdf") < log.index("OK test-doc.pdf")
 
 
 def test_briefing_facts_projects_fact_and_date_only():
@@ -123,6 +127,70 @@ def test_compact_result_carries_key_facts_for_the_briefing():
     r = orchestrate._compact_result("sha1", "doc.pdf", extraction, {}, 0.01)
     assert r["key_facts"] == [{"fact": "Revenue was $5M"},
                               {"fact": "Merger closed", "date": "2024-03-01"}]
+
+
+def test_write_briefing_resolves_entity_ids_to_display_names(tmp_path):
+    """#342: on backends that echo the internal id rather than the display name for a new
+    entity, the briefing and hot.md must still show the display name — resolved deterministically
+    against the registry manifest for this batch, rather than trusting the model."""
+    vault = make_vault(tmp_path)
+    (vault / ".watchdog" / "Registry" / "manifest.json").write_text(json.dumps({
+        "andrew-hanrahan": {"name": "Andrew Hanrahan", "type": "person", "aliases": [],
+                            "note_path": "entities/person/andrew-hanrahan"},
+        "fsra": {"name": "Financial Services Regulatory Authority", "type": "public-body",
+                 "aliases": [], "note_path": "entities/public-body/fsra"},
+    }))
+    b = {
+        "investigation_status": "Early days.",
+        "what_was_ingested": ["doc.pdf — Annual Report"],
+        "new_entities": ["andrew-hanrahan", "fsra"],
+    }
+    slug_path = orchestrate._write_briefing(vault, b, [], [], [])
+
+    briefing_text = (vault / slug_path).read_text(encoding="utf-8")
+    hot_text = (vault / "hot.md").read_text(encoding="utf-8")
+    for text in (briefing_text, hot_text):
+        assert "Andrew Hanrahan" in text
+        assert "Financial Services Regulatory Authority" in text
+        assert "andrew-hanrahan" not in text
+        assert "fsra" not in text
+
+
+def test_write_briefing_leaves_unmatched_items_unchanged(tmp_path):
+    """Prose sentences and unknown slugs are not exact matches against the manifest, so they
+    pass through unchanged — the resolver only fires on a whole-item match (#342); it must not
+    rewrite substrings inside prose, which risks corrupting legitimate text."""
+    vault = make_vault(tmp_path)
+    (vault / ".watchdog" / "Registry" / "manifest.json").write_text(json.dumps({
+        "andrew-hanrahan": {"name": "Andrew Hanrahan", "type": "person", "aliases": [],
+                            "note_path": "entities/person/andrew-hanrahan"},
+    }))
+    b = {
+        "investigation_status": "Early days.",
+        "what_was_ingested": ["doc.pdf — Annual Report"],
+        "new_entities": ["some-unknown-slug"],
+        "connections": ["Mentions andrew-hanrahan in passing alongside a numbered company."],
+    }
+    slug_path = orchestrate._write_briefing(vault, b, [], [], [])
+
+    briefing_text = (vault / slug_path).read_text(encoding="utf-8")
+    assert "some-unknown-slug" in briefing_text                    # unknown id: untouched
+    assert "Mentions andrew-hanrahan in passing" in briefing_text  # id inside prose: untouched
+
+
+def test_write_briefing_handles_missing_manifest(tmp_path):
+    """No manifest.json yet (a vault's very first ingest) must not crash the briefing — items
+    just pass through unresolved (#342)."""
+    vault = make_vault(tmp_path)
+    assert not (vault / ".watchdog" / "Registry" / "manifest.json").exists()
+    b = {
+        "investigation_status": "Early days.",
+        "what_was_ingested": ["doc.pdf — Annual Report"],
+        "new_entities": ["acme-corp"],
+    }
+    slug_path = orchestrate._write_briefing(vault, b, [], [], [])   # must not raise
+
+    assert "acme-corp" in (vault / slug_path).read_text(encoding="utf-8")
 
 
 def test_select_kept_keeps_survivors_in_original_order():
@@ -262,6 +330,26 @@ def test_stamp_document_provenance_defaults_to_none_when_not_supplied(tmp_path):
     assert d["extract_effort"] is None
 
 
+def test_stamp_document_stamps_file_metadata_from_preflight(tmp_path):
+    """file_metadata (#369) is stamped from pf, the values the pipeline already holds — never
+    asked of the model — same posture as sha256/filename above it."""
+    vault = make_vault(tmp_path)
+    fm = {"author": "Jane Doe", "producer": "Acrobat Distiller"}
+    pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}],
+          "file_metadata": fm}
+    ext = {"document": {}}
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault)
+    assert ext["document"]["file_metadata"] == fm
+
+
+def test_stamp_document_defaults_file_metadata_to_empty_dict(tmp_path):
+    vault = make_vault(tmp_path)
+    pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}]}
+    ext = {"document": {}}
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault)
+    assert ext["document"]["file_metadata"] == {}
+
+
 def test_sidecar_provenance_parsed_in_python(tmp_path):
     """source/obtained come from the .yml sidecar (parsed in Python), not the model — and an
     unquoted ISO date is coerced back to a string rather than a date object."""
@@ -299,7 +387,7 @@ def test_orchestrator_extracts_and_writes_vault(tmp_path, monkeypatch):
 
     assert summary["extracted"] == 1 and summary["failed"] == 0
     # real write_vault produced the notes
-    assert (vault / "entities" / "company" / "acme-corp.md").exists()
+    assert (vault / "entities" / "organization" / "acme-corp.md").exists()
     assert list((vault / "documents").glob("*.md"))
     # housekeeping: queue file consumed; post-ingest finalized and cleaned its per-run inputs
     # (the scratchpad is consumed by the briefing, then removed on a clean finalize)
@@ -317,6 +405,18 @@ def test_orchestrator_extracts_and_writes_vault(tmp_path, monkeypatch):
     assert (vault / "hot.md").exists()
     assert "— Ingest" in (vault / "log.md").read_text()
     assert (vault / "timeline.md").exists()
+
+
+def test_prior_entity_digest_line_hidden_when_no_candidates(tmp_path, monkeypatch, capsys):
+    """#317: a fresh vault has no manifest entries to match, so the per-doc "prior-entity
+    digest" telemetry line (#216) is noise (always "0.0 KB · 0 candidates") — suppress it."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    _mock(monkeypatch, extraction=_extraction())
+
+    asyncio.run(orchestrate.run(vault))
+
+    assert "prior-entity digest" not in capsys.readouterr().out
 
 
 def test_orchestrator_reports_failed_on_postflight_rejection(tmp_path, monkeypatch):
@@ -430,7 +530,7 @@ def test_orchestrator_updates_graph_colours(tmp_path, monkeypatch):
 
     graph = json.loads((vault / ".obsidian" / "graph.json").read_text())
     queries = [g["query"] for g in graph["colorGroups"]]
-    assert "path:entities/company" in queries     # Acme Corp → entities/company/
+    assert "path:entities/organization" in queries     # Acme Corp → entities/organization/
 
 
 def test_classifier_sees_only_first_n_pages(tmp_path, monkeypatch):
@@ -498,6 +598,42 @@ def test_classifier_sees_the_sidecar(tmp_path, monkeypatch):
     assert "lobby-registry" in seen["prompt"]
 
 
+def test_extractor_sees_file_metadata_and_processing_facts(tmp_path, monkeypatch):
+    """file_metadata (#369), captured at chew time and threaded through preflight, must reach
+    the extract call's prompt — along with the ocr_used/source_type processing facts the
+    FILE_METADATA block's trust caveat depends on."""
+    vault = make_vault(tmp_path)
+    qdir = vault / ".watchdog" / "queue"
+    qdir.mkdir(parents=True, exist_ok=True)
+    (qdir / "abc123.json").write_text(json.dumps({
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "page_count": 1, "pages": [{"page": 1, "markdown": "Acme Corp filed an annual report."}],
+        "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
+        "metadata": {"ocr_used": True, "source_type": "docling"},
+        "file_metadata": {"author": "Jane Doe", "producer": "Acrobat Distiller"},
+    }))
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+
+    seen = {}
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "extract":
+            seen["prompt"] = _flat(prompt)
+        parsed = {
+            "classify": {"skill": "general-records.md"},
+            "extract": _extraction(),
+            "entity-synthesis": {"entity_syntheses": []},
+            "briefing": {"investigation_status": "x", "what_was_ingested": []},
+        }.get(task, {"events": []})
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate.run(vault))
+    assert "FILE_METADATA" in seen["prompt"]
+    assert "Jane Doe" in seen["prompt"] and "Acrobat Distiller" in seen["prompt"]
+    assert "ocr_used=True" in seen["prompt"] and "source_type='docling'" in seen["prompt"]
+
+
 def test_whole_doc_failure_falls_back_to_sectioning(tmp_path, monkeypatch):
     """A multi-page doc whose whole-doc extraction is rejected is re-extracted in sections."""
     vault = make_vault(tmp_path)
@@ -546,7 +682,7 @@ def test_whole_doc_failure_falls_back_to_sectioning(tmp_path, monkeypatch):
     summary = asyncio.run(orchestrate.run(vault))
     assert calls["extract"] >= 1 and calls["section"] >= 2     # whole-doc tried, then sectioned
     assert summary["extracted"] == 1 and summary["failed"] == 0
-    assert (vault / "entities" / "company" / "acme-corp.md").exists()
+    assert (vault / "entities" / "organization" / "acme-corp.md").exists()
 
 
 def test_single_page_failure_does_not_section(tmp_path, monkeypatch):
@@ -556,6 +692,51 @@ def test_single_page_failure_does_not_section(tmp_path, monkeypatch):
     _mock(monkeypatch, extraction=_extraction(valid=False))
     summary = asyncio.run(orchestrate.run(vault))
     assert summary["failed"] == 1 and summary["extracted"] == 0
+
+
+def test_large_single_page_failure_falls_back_to_char_sectioning(tmp_path, monkeypatch):
+    """A big single-page doc (e.g. a long text file) whose whole-doc extraction is rejected — for
+    an openai/gemini backend this is where a truncated response lands (#343) — is re-extracted by
+    splitting its text into character windows, not just given up on."""
+    vault = make_vault(tmp_path)
+    monkeypatch.setattr(orchestrate.section, "_config_get", lambda k, d: d)   # deterministic defaults
+    # One page long enough that _FALLBACK_SECTION_TOKENS splits it into ≥2 character windows.
+    long_text = "Acme Corp disclosures. " * 6000                             # ~138K chars
+    _queue_doc(vault, text=long_text)
+
+    calls = {"extract": 0, "section": 0}
+    sec_first = {
+        "document": {"sha256": "abc123", "filename": "test-doc.pdf", "title": "Acme AR",
+                     "document_type": "Annual Report", "summary": "Acme report.",
+                     "key_facts": [{"fact": "x", "basis": "stated"}]},
+        "entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
+                      "timeline_events": [], "roles": []}],
+        "morgue_entity_id": "acme-corp", "morgue_document_type": "annual-report",
+        "observations": "sec1",
+    }
+    sec_later = {"entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
+                              "timeline_events": [], "roles": []}], "observations": "sec2"}
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "classify":
+            parsed = {"skill": "general-records.md"}
+        elif task == "extract":
+            calls["extract"] += 1
+            parsed = _extraction(valid=False)                 # whole-doc → postflight rejects
+        elif task == "extract-section":
+            calls["section"] += 1
+            parsed = sec_first if "This is SECTION 1" in _flat(prompt) else sec_later
+        elif task == "briefing":
+            parsed = {"investigation_status": "x", "what_was_ingested": []}
+        else:
+            parsed = {"entity_syntheses": []} if task == "entity-synthesis" else {"events": []}
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.01)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault))
+    assert calls["extract"] >= 1 and calls["section"] >= 2     # whole-doc tried, then sectioned
+    assert summary["extracted"] == 1 and summary["failed"] == 0
 
 
 def test_pinned_skill_skips_classification(tmp_path, monkeypatch):
@@ -688,7 +869,8 @@ def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
         }.get(task, {"entity_syntheses": []} if task == "entity-synthesis" else {"groups": []})
         return model_client.ModelResult(
             parsed=parsed, text="", model="claude-sonnet-4-6", backend="claude-api",
-            auth_mode="api-key", cost_usd=0.01, usage={"input_tokens": 100, "output_tokens": 20})
+            auth_mode="api-key", cost_usd=0.01, usage={"input_tokens": 100, "output_tokens": 20},
+            latency_s=2.5)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
     summary = asyncio.run(orchestrate.run(vault))
@@ -696,10 +878,17 @@ def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
 
     usage_path = summary["usage_path"]
     assert usage_path and (vault / usage_path).exists()
+    assert usage_path.startswith(".watchdog/Registry/usage/usage-")   # #319: moved out of the flat Registry dir
     data = json.loads((vault / usage_path).read_text())
     tasks = [c["task"] for c in data["calls"]]
     assert "classify" in tasks and "extract" in tasks and "briefing" in tasks
     assert all(c["input_tokens"] == 100 for c in data["calls"])
+
+    # #317: every call's wall-clock duration is recorded alongside its token/cost usage.
+    n_calls = len(data["calls"])
+    assert all(c["latency_s"] == 2.5 for c in data["calls"])
+    assert round(data["totals"]["latency_s"], 3) == round(2.5 * n_calls, 3)
+    assert round(summary["usage"]["latency_s"], 3) == round(2.5 * n_calls, 3)
 
     # #247: extraction/classification calls carry the document filename (and, for extraction,
     # a page-range detail) so a usage file can attribute cost to a specific document.
@@ -709,7 +898,6 @@ def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
     assert by_task["extract"]["detail"] == "pages 1–1"
     assert by_task["briefing"]["filename"] is None   # corpus-wide call, nothing to attribute
 
-    n_calls = len(data["calls"])
     assert data["totals"]["input_tokens"] == 100 * n_calls
     assert data["totals"]["output_tokens"] == 20 * n_calls
     assert summary["usage"]["input_tokens"] == 100 * n_calls
@@ -753,6 +941,38 @@ def test_latest_usage_returns_the_most_recent_run(tmp_path):
                                             "cache_read_tokens": 0, "cache_write_tokens": 0,
                                             "cost_usd": 0.001}}))
     (reg / "usage-20260102T000000Z.json").write_text(
+        json.dumps({"calls": [], "totals": {"input_tokens": 999, "output_tokens": 999,
+                                            "cache_read_tokens": 0, "cache_write_tokens": 0,
+                                            "cost_usd": 0.05}}))
+    totals = orchestrate.latest_usage(vault)
+    assert totals["input_tokens"] == 999
+
+
+def test_usage_files_merges_new_subfolder_with_legacy_flat_location(tmp_path):
+    """#319: usage-<ts>.json moved from the flat Registry dir into a `usage/` subfolder, but a
+    vault ingested before that move still has real history sitting in the old flat location —
+    `usage_files` (and everything built on it) must keep seeing both, in chronological order."""
+    vault = make_vault(tmp_path)
+    reg = vault / ".watchdog" / "Registry"
+    (reg / "usage-20260101T000000Z.json").write_text("{}")   # legacy (pre-move) location
+    usage_dir = reg / "usage"
+    usage_dir.mkdir(parents=True)
+    (usage_dir / "usage-20260102T000000Z.json").write_text("{}")   # current (post-move) location
+
+    files = orchestrate.usage_files(vault)
+    assert [f.name for f in files] == ["usage-20260101T000000Z.json", "usage-20260102T000000Z.json"]
+
+
+def test_latest_usage_prefers_new_subfolder_over_legacy_when_newer(tmp_path):
+    vault = make_vault(tmp_path)
+    reg = vault / ".watchdog" / "Registry"
+    (reg / "usage-20260101T000000Z.json").write_text(
+        json.dumps({"calls": [], "totals": {"input_tokens": 1, "output_tokens": 1,
+                                            "cache_read_tokens": 0, "cache_write_tokens": 0,
+                                            "cost_usd": 0.001}}))
+    usage_dir = reg / "usage"
+    usage_dir.mkdir(parents=True)
+    (usage_dir / "usage-20260102T000000Z.json").write_text(
         json.dumps({"calls": [], "totals": {"input_tokens": 999, "output_tokens": 999,
                                             "cache_read_tokens": 0, "cache_write_tokens": 0,
                                             "cost_usd": 0.05}}))
@@ -1061,7 +1281,7 @@ def test_post_ingest_consumes_raws_after_successful_dedup(tmp_path, monkeypatch)
 
     assert calls["timeline-dedup"] == 1
     assert not raw.exists()                                   # raw consumed
-    recs = [json.loads(l) for l in canonical.read_text(encoding="utf-8").splitlines() if l.strip()]
+    recs = [json.loads(line) for line in canonical.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(recs) == 1                                     # folded to a single row
     assert recs[0]["entity_ids"] == ["alice", "bob"]          # attribution unioned across the merge
     assert timeline.collisions(vault) == []                   # no re-collision → future runs are silent
@@ -1105,7 +1325,7 @@ def test_finalize_completes_an_interrupted_run(tmp_path, monkeypatch):
 
     assert out["synthesized"] == 1
     assert "error" not in out
-    assert "Synthesized prose." in (vault / "entities" / "company" / "acme-corp.md").read_text()
+    assert "Synthesized prose." in (vault / "entities" / "organization" / "acme-corp.md").read_text()
     # a clean finalize clears the per-run inputs, so there is nothing left pending
     assert not (vault / ".watchdog" / "tmp" / "entity-fragments").exists()
     assert not list((vault / ".watchdog" / "tmp").glob("result_*.json"))
@@ -1223,7 +1443,7 @@ def test_orchestrator_sectioned_path(tmp_path, monkeypatch):
     (tmpd / "section_abc123_01.md").write_text("<!-- PAGE 1 -->\n\nAcme part 1")
     (tmpd / "section_abc123_02.md").write_text("<!-- PAGE 2 -->\n\nAcme part 2")
 
-    monkeypatch.setattr(orchestrate.section, "run", lambda v, s: {
+    monkeypatch.setattr(orchestrate.section, "run", lambda v, s, **kw: {
         "sectioned": True, "page_count": 2, "sections": [
             {"index": 1, "label": "pages 1–1", "paginated": True, "pages_path": ".watchdog/tmp/section_abc123_01.md"},
             {"index": 2, "label": "pages 2–2", "paginated": True, "pages_path": ".watchdog/tmp/section_abc123_02.md"},
@@ -1260,9 +1480,9 @@ def test_orchestrator_sectioned_path(tmp_path, monkeypatch):
 
     summary = asyncio.run(orchestrate.run(vault))
     assert summary["extracted"] == 1 and summary["failed"] == 0
-    assert (vault / "entities" / "company" / "acme-corp.md").exists()
+    assert (vault / "entities" / "organization" / "acme-corp.md").exists()
     # carry-forward merged the two sections into one entity
-    note = (vault / "entities" / "company" / "acme-corp.md").read_text()
+    note = (vault / "entities" / "organization" / "acme-corp.md").read_text()
     assert "Acme Corporation" in note   # merge kept the longer surface form
     # the two sections' observations were merged into the scratchpad and fed to the briefing
     assert "section 1 obs" in captured["briefing_prompt"]
@@ -1371,7 +1591,7 @@ def test_extract_sectioned_composes_digest_after_merge(tmp_path, monkeypatch):
                                         cost_usd=0.01)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    extraction, scratchpad, cost, ok, errors = asyncio.run(orchestrate._extract_sectioned(
+    extraction, scratchpad, cost, ok, errors, warnings = asyncio.run(orchestrate._extract_sectioned(
         vault, "abc123", pf, "SKILL TEXT", plan, "sonnet", "annual-report", backend="claude-api",
         brief="CHASE THE FRAUD"))
 
@@ -1401,7 +1621,7 @@ def test_digest_model_error_falls_back_to_deterministic_stitch(tmp_path, monkeyp
         raise model_client.ModelError("boom")
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    extraction, scratchpad, cost, ok, errors = asyncio.run(orchestrate._extract_sectioned(
+    extraction, scratchpad, cost, ok, errors, warnings = asyncio.run(orchestrate._extract_sectioned(
         vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
 
     summary = extraction["document"]["summary"]
@@ -1420,7 +1640,7 @@ def test_digest_empty_response_falls_back_to_deterministic_stitch(tmp_path, monk
                                         auth_mode="subscription", cost_usd=0.0)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    extraction, scratchpad, cost, ok, errors = asyncio.run(orchestrate._extract_sectioned(
+    extraction, scratchpad, cost, ok, errors, warnings = asyncio.run(orchestrate._extract_sectioned(
         vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
 
     summary = extraction["document"]["summary"]
@@ -1434,7 +1654,7 @@ def test_run_sectioned_path_composes_digest_on_extractor_tier(tmp_path, monkeypa
     vault = make_vault(tmp_path)
     _queue_doc(vault, text="a very long document ...")
     plan, _ = _sectioned_plan_and_pf(vault)
-    monkeypatch.setattr(orchestrate.section, "run", lambda v, s: plan)
+    monkeypatch.setattr(orchestrate.section, "run", lambda v, s, **kw: plan)
     seen = []
 
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
@@ -1674,10 +1894,12 @@ def test_finish_batch_item_records_usage_for_the_batch_call_itself(tmp_path):
         assert result["status"] == "ok"
         calls = [c for c in orchestrate._usage if c["task"] == "extract"]
         assert len(calls) == 1
+        assert calls[0].pop("end_ts") > 0   # completion timestamp stamped at record time
         assert calls[0] == {
             "task": "extract", "model": "claude-sonnet-4-6", "backend": "claude-batch",
             "input_tokens": 500, "output_tokens": 80, "cache_read_tokens": 0, "cache_write_tokens": 0,
-            "cost_usd": 0.015, "attempts": 1, "filename": "a.pdf", "detail": "pages 1–1",
+            "cost_usd": 0.015, "attempts": 1, "latency_s": 0.0, "effort": None, "auth_mode": "api-key",
+            "filename": "a.pdf", "detail": "pages 1–1",
         }
     finally:
         orchestrate._usage = None

@@ -16,7 +16,10 @@ Outputs a single JSON object to stdout:
     "garbled_detected": bool,
     "source_type": "direct_text" | "docling",
     "chunked": bool           # true when large PDF was split for parallel processing
-  }
+  },
+  "file_metadata": dict       # embedded file properties (PDF/Office/EXIF/AV tags) — file-intrinsic
+                              # claims the file makes about itself, a sibling of "metadata" above
+                              # (which holds pipeline-asserted processing facts), see file_metadata.py
 }
 
 Exits non-zero on unrecoverable error; writes error JSON to stdout:
@@ -364,10 +367,11 @@ def _markdown_pages(doc) -> list[dict]:
     try:
         from docling_core.types.doc.document import ContentLayer, ImageRefMode
         layers     = {ContentLayer.BODY, ContentLayer.FURNITURE}
-        image_mode = (
-            ImageRefMode.EMBEDDED if _config_get("embed_images", False)
-            else ImageRefMode.PLACEHOLDER
-        )
+        # Images become a "[image]" placeholder, never embedded base64: the extraction prompt is
+        # a text field, so an embedded data URI would reach the model as text, not vision — pure
+        # token cost with no visual gain. Image-as-evidence is handled by an on-demand page
+        # render to a vision model instead (#183).
+        image_mode = ImageRefMode.PLACEHOLDER
     except ImportError:
         layers     = None
         image_mode = None
@@ -516,6 +520,13 @@ def main() -> None:
     if "error" in result:
         print(json.dumps(result))
         sys.exit(1)
+
+    # Embedded file metadata (#369) — always read from the ORIGINAL source path, never a
+    # Ghostscript-cleaned or chunk temp file: pdf_preprocess() re-renders problem PDFs through
+    # Ghostscript, which strips DocumentInfo, so reading from a cleaned file would silently
+    # return nothing.
+    from watchdog.pipeline import file_metadata
+    result["file_metadata"] = file_metadata.extract(path)
 
     # The corpus search index is built at ingest, not chew: write_vault embeds each
     # document's passages with a contextual prefix (title, type, the entities it names),

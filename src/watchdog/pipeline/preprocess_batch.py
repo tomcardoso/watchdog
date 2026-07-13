@@ -20,8 +20,14 @@ from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
 
 DEFAULT_FILE_TIMEOUT = 600
 
-# Key for the persistent progress/ETA row that sits above the in-flight file rows (#158).
+# Key for the persistent progress/ETA row, pinned (LiveRegion `pin=True`) so it always
+# renders last, below the in-flight file rows (#158, #333 follow-up — previously just the
+# first key inserted, so it visually jumped between finished/in-flight rows as files completed).
 _PROGRESS_KEY = "__progress__"
+
+# A blank pinned row rendered just above the progress bar so the bar always keeps one line of
+# clearance from the finished/in-flight rows above it instead of butting directly against them.
+_SPACER_KEY = "__progress_spacer__"
 
 
 def _compute_near_dup(result: dict, vault: Path) -> dict:
@@ -383,24 +389,27 @@ def _run_ingest_inner(
             tail = f"  {_DIM}{round(elapsed_wall)}s total{_RESET}"
         else:
             tail = ""
-        live.update(_PROGRESS_KEY, f"  {bar} {_BOLD}{done}/{total}{_RESET}{tail}")
+        live.update(_PROGRESS_KEY, f"  {bar} {_BOLD}{done}/{total}{_RESET}{tail}", pin=True)
 
     def _chew(path: Path) -> dict:
         # Runs in a worker thread: mark the file in-flight the moment a worker picks it up, so the
         # row appears while OCR spins up. Gated to TTYs to keep non-TTY output to finished lines only.
         if live.enabled:
-            live.update(str(path), f"  {_DIM}→  {_rel(path)}  chewing…{_RESET}")
+            # Pad the arrow marker to the same width as the settled status codes ("OK "/"ERR"/
+            # "SKP") so filenames start at the same column whether a row is in-flight or done.
+            live.update(str(path), f"  {_DIM}→  {_RESET}  {_DIM}{_rel(path)}  chewing…{_RESET}")
         return preprocess_one(path, timeout=DEFAULT_FILE_TIMEOUT, chunk_workers=chunk_workers)
 
     results: dict[str, dict] = {}
     _cancel_event.clear()
 
-    _refresh_progress(0)            # seed the progress row above any file rows
+    if live.enabled:
+        live.update(_SPACER_KEY, "", pin=True)   # blank clearance line above the progress bar
+    _refresh_progress(0)            # seed the pinned progress row; it renders last regardless
     pool = ThreadPoolExecutor(max_workers=pre_workers)
     futures = {pool.submit(_chew, f): f for f in files}
     done = 0
     skipped = 0
-    cancelled = False
     try:
         for future in as_completed(futures):
             path   = futures[future]
@@ -465,7 +474,6 @@ def _run_ingest_inner(
             _refresh_progress(done)
 
     except KeyboardInterrupt:
-        cancelled = True
         _cancel_event.set()
         for fut in futures:
             fut.cancel()

@@ -65,6 +65,7 @@ from pathlib import Path
 import yaml
 
 from watchdog.pipeline.entity_norm import normalize_entity_name
+from watchdog.pipeline.entity_type import canonical_type
 
 try:
     from fcntl import flock as _flock, LOCK_EX as _LOCK_EX, LOCK_UN as _LOCK_UN
@@ -139,17 +140,21 @@ def _reconcile_entity_ids(incoming_entities: list[dict], entities_reg: dict) -> 
     by concurrent extraction tasks earlier in the batch — so we reconcile here: any incoming
     *new* entity whose normalized (name, type) matches an existing one is remapped to
     that existing id, routing it through the merge path instead of creating a duplicate.
+
+    The type half of the key is canonicalized (#335) so a real-world entity labelled with
+    drifting near-synonyms across documents (``company`` vs ``financialinstitution``) still
+    reconciles instead of forking into a second folder — see entity_type.canonical_type.
     """
     norm_index: dict[tuple[str, str], str] = {}
     for eid, entry in entities_reg.items():
         for n in [entry["name"], *entry.get("aliases", [])]:
-            norm_index.setdefault((normalize_entity_name(n), entry["type"]), eid)
+            norm_index.setdefault((normalize_entity_name(n), canonical_type(entry["type"])), eid)
 
     remap: dict[str, str] = {}
     for entity in incoming_entities:
         if entity["id"] in entities_reg:
             continue
-        key = (normalize_entity_name(entity["name"]), entity["type"])
+        key = (normalize_entity_name(entity["name"]), canonical_type(entity["type"]))
         existing_id = norm_index.get(key)
         if existing_id and existing_id != entity["id"]:
             remap[entity["id"]] = existing_id
@@ -806,6 +811,11 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
     if not doc:
         sys.exit(f"Error: extraction JSON missing required 'document' key ({extraction_path.name})")
     incoming_entities = extraction.get("entities", [])
+    # Collapse each entity's model-invented type onto the closed vocabulary (#335) before it
+    # becomes load-bearing — the stored registry type, the `entities/<type>/` folder, the note
+    # frontmatter, and the graph colour group all follow from this single canonical value.
+    for _entity in incoming_entities:
+        _entity["type"] = canonical_type(_entity.get("type", ""))
     doc_sha256 = doc["sha256"]
     slug = _doc_slug(doc["filename"])
     doc_title = doc.get("title", doc["filename"])
@@ -838,7 +848,7 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
         # Resolved-contradiction overlay (#266): callouts the journalist has acknowledged are
         # dropped from the rendered note body. The registry keeps the full list, so unresolving
         # restores them on the next write.
-        from watchdog.pipeline import resolutions
+        from watchdog.pipeline import requests, resolutions
         resolved_ids = resolutions.resolved_ids(vault_path)
 
         morgue_relative = (
@@ -895,11 +905,24 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
             "record_skill_hash": doc.get("record_skill_hash"),
             "extract_model":    doc.get("extract_model"),
             "extract_effort":   doc.get("extract_effort"),
+            "file_metadata":    doc.get("file_metadata") or {},
+            "coverage_gap":     doc.get("coverage_gap"),
             "entities_extracted": [e["id"] for e in incoming_entities],
             "near_duplicate_of": doc.get("near_duplicate_of"),
             "minhash":          sig,
             "morgue_path":      morgue_relative,
         }
+
+        # ── 2b. Record document requests ──────────────────────────────────────
+        #
+        # The model authors what/why/likely_source in the extraction; Python stamps the rid and
+        # source provenance (§I1) — the same code/model split as the registries above. `record`
+        # dedups by rid, so a repair retry of this document converges instead of duplicating.
+        requests.record(
+            vault_path, extraction.get("document_requests") or [],
+            sha256=doc_sha256, filename=doc["filename"],
+            document_note=documents_reg[doc_sha256]["document_note"],
+        )
 
         # ── 3. Write entity notes ─────────────────────────────────────────────
         #

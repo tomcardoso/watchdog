@@ -35,7 +35,7 @@ def _group_files(timeline_dir: Path) -> dict[str, dict]:
 
 
 def _read_ndjson_lines(path: Path) -> list[str]:
-    return [l for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    return [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 def _stage_dedup_key(date: str, event: str) -> str:

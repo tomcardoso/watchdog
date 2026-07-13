@@ -25,7 +25,7 @@ def _extraction(key_facts: list[dict], sha: str = "abcdef1234567") -> dict:
 
 
 def _read_ndjson(path: Path) -> list[dict]:
-    return [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 # ── stage_timeline_events ───────────────────────────────────────────────────

@@ -18,6 +18,8 @@ synced back into the store):
   * ``lead:<signal>:<entity_id>`` — ``signal`` ∈ ``unprofiled`` | ``isolated`` | ``inferred``
   * ``contradiction:<hash>``      — ``sha1[:12]`` of the normalized callout text
   * ``alert:<sha7>:<hash>``       — document ``sha256[:7]`` + ``sha1[:8]`` of the watch term
+  * ``request:<sha7>:<hash>``     — document ``sha256[:7]`` + ``sha1[:8]`` of the normalized
+    ``what`` text (#365)
 
 Three ways to acknowledge, all landing in the same JSON: ``watchdog resolve <id> …``,
 ``watchdog resolve --sync`` (import ``- [x]`` checkboxes from the briefing files), and
@@ -62,6 +64,11 @@ def contradiction_id(callout: str) -> str:
 
 def alert_id(sha256: str, term: str) -> str:
     return f"alert:{sha256[:7]}:{_short(term, 8)}"
+
+
+def request_id(sha256: str, what: str) -> str:
+    normalized = re.sub(r"\s+", " ", what).strip().lower()
+    return f"request:{sha256[:7]}:{_short(normalized, 8)}"
 
 
 def split_callouts(contradictions: str) -> list[str]:
@@ -177,18 +184,19 @@ def remap_entity(vault: Path, old_id: str, new_id: str) -> int:
 # ── Checkbox sync ────────────────────────────────────────────────────────────────
 
 def sync_from_briefings(vault: Path) -> tuple[list[str], list[str]]:
-    """Import ``- [x]`` / ``- [ ]`` checkbox state from the briefing files into the store.
+    """Import ``- [x]`` / ``- [ ]`` checkbox state from the briefing files, plus the vault-root
+    ``requests.md``, into the store.
 
-    Every rendered lead/alert line carries a ``<!--wid:<rid>-->`` marker. A ticked box adds its
-    rid to the store; an un-ticked box for a currently-resolved rid removes it (so the journalist
-    can undo a resolution by clearing the checkbox). Returns ``(added, removed)``.
+    Every rendered lead/alert/request line carries a ``<!--wid:<rid>-->`` marker. A ticked box
+    adds its rid to the store; an un-ticked box for a currently-resolved rid removes it (so the
+    journalist can undo a resolution by clearing the checkbox). Returns ``(added, removed)``.
     """
     briefings = vault / "briefings"
-    if not briefings.is_dir():
-        return [], []
     checked: set[str] = set()
     unchecked: set[str] = set()
-    for md in sorted(briefings.glob("*.md")):
+    for md in sorted(briefings.glob("*.md")) + [vault / "requests.md"]:
+        if not md.exists():
+            continue
         for line in md.read_text(encoding="utf-8", errors="replace").splitlines():
             box = _CHECKBOX_RE.match(line)
             if not box:

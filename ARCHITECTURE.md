@@ -42,8 +42,8 @@ These run through every decision below.
 - **Two runtimes, one boundary — Claude Code is required.** Watchdog runs in two places, and
   the line between them is a governing constraint. The **document pipeline** (`watchdog chew` /
   `ingest`) is a terminal program whose bounded reasoning calls go through a provider-agnostic
-  `model_client`: Claude by default, but offloadable to OpenAI/DeepSeek per stage (D37) because
-  a single-shot, schema-bound extraction call tolerates a cheaper model. The **investigation**
+  `model_client`: Claude by default, but offloadable to OpenAI/DeepSeek/Gemini per stage (D37,
+  D94) because a single-shot, schema-bound extraction call tolerates a cheaper model. The **investigation**
   (`/watchdog-query`, `-surface`, `-wiki`, `-context`, `-health`, `-research`) runs *inside Claude
   Code* as agentic, multi-turn, user-in-the-loop sessions — and is deliberately **not** offloadable:
   Claude Code is a hard requirement, and these stay on Claude. The split tracks capability, not
@@ -108,6 +108,19 @@ Two human-invoked phases, with a clean handoff via the queue:
 - **Output.** Per document: `.watchdog/queue/<sha256>.json` (filename, sha256,
   page count, per-page markdown, `near_dup`, MinHash signature). The original is
   moved to `.watchdog/staging/<sha256>/`.
+- **Embedded file metadata (`pipeline/file_metadata.py`, #369).** Alongside the text,
+  `preprocess.main()` captures the file's own embedded metadata — PDF DocumentInfo,
+  Office core properties, image EXIF, audio/video container tags via `ffprobe` (gated on
+  its presence, `{}` when absent) — always read from the **original** source path, never a
+  Ghostscript-cleaned or chunk temp file (Ghostscript strips DocumentInfo). Normalized to a
+  small flat allowlist (`author`, `created`, `modified`, `producer`, `gps`, …), every value
+  coerced to `str` and capped at 200 characters — the same untrusted-content posture already
+  applied to the `.yml` sidecar, since a malicious XMP/EXIF payload could otherwise inject
+  text into the extraction prompt. Written to the queue file as a top-level `file_metadata`
+  key, a sibling of (never nested inside) the `metadata` key above: `metadata` is
+  *processing* facts the pipeline asserts about how the file was read; `file_metadata` is
+  *file-intrinsic* claims the file makes about itself, forgeable and often
+  machine-generated. Never raises — a corrupt file or unsupported suffix yields `{}`.
 
 Chew is fully local and writes no model-derived fields — `document_type` is left
 `None` here (see §6).
@@ -129,8 +142,8 @@ releases the lock in a `finally`. Models, concurrency, and classification come f
 
 **Pre-flight cost estimate (D71).** Before the confirm prompt, `ingest_setup.cost_estimate`
 multiplies the queue's own `est_tokens` (already computed per file by `scan_queue` for the
-sectioning threshold) by this vault's $/token ratio from its last 3 `usage-<ts>.json` runs (D50),
-presented as a range (min/max across those runs) rather than one averaged figure. Subscription
+sectioning threshold) by this vault's $/token ratio from its last 3 `usage-<ts>.json` runs (D50,
+D86), presented as a range (min/max across those runs) rather than one averaged figure. Subscription
 auth (`claude-agent-sdk`) never gets a dollar figure — there's no real billing to project, only a
 session-limit fraction token counts can't estimate honestly. `watchdog ingest --estimate` prints
 the same estimate and exits before the lock is touched.
@@ -173,14 +186,18 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
 
 1. **Pre-flight** (`preflight.run`, a function call) — packages the page text and the
    candidate existing entities matched against the manifest (no ML), each carrying its current
-   note summary + timeline/roles/contradictions digest (§8). Matching is **whole-token**, not raw
-   substring: a name must sit on word boundaries (so `Lee` no longer matches `asleep`), with a
-   plain-substring fallback for non-ASCII-edged names that regex boundaries can't segment (CJK
-   etc.), so non-Latin names never match less than before. Aliases below `preflight_alias_min_length`
-   (default 3) are ignored — that's where short, noisy strings (initials, abbreviations) accumulate
-   over merges and drag whole digests into the prompt on false hits; the **canonical name always
-   matches at any length**, so `BP`/`GE`/`3M` stay findable (D60). Pre-flight reports the digest's
-   byte size and candidate count per document, surfaced during ingest, to size caps from real data.
+   note summary + roles/contradictions digest (§8). Prior dated timeline events are hoisted out
+   of the per-candidate digests into one shared `existing_timeline` list, deduplicated by
+   (date, event text) and tagged with the candidate ids each event concerns — a fact tagging
+   several recurring entities is sent once instead of once per candidate (D109). Matching is
+   **whole-token**, not raw substring: a name must sit on word boundaries (so `Lee` no longer
+   matches `asleep`), with a plain-substring fallback for non-ASCII-edged names that regex
+   boundaries can't segment (CJK etc.), so non-Latin names never match less than before. Aliases
+   below `preflight_alias_min_length` (default 3) are ignored — that's where short, noisy strings
+   (initials, abbreviations) accumulate over merges and drag whole digests into the prompt on
+   false hits; the **canonical name always matches at any length**, so `BP`/`GE`/`3M` stay
+   findable (D60). Pre-flight reports the combined candidates + shared-timeline byte size and
+   candidate count per document, surfaced during ingest, to size caps from real data.
 2. **Classify** — one cheap model call (`model_client.acomplete_json`, `classifier_model`,
    default haiku) over the document's first `classify_pages` pages, the document's `.yml`
    provenance sidecar when present, and the generated in-memory skill index, returning the
@@ -195,19 +212,34 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    layer** — entities (deduped against the pre-flight candidates) with aliases, roles, and
    contradictions. It no longer restates the document as per-entity summaries, evidence
    fragments, or timeline events, nor pads `key_facts` to a fixed count — the full Docling text
-   is retained in the morgue (§3, §12), so extraction indexes it rather than reproducing it.
+   is retained in the morgue (§3, §12), so extraction indexes it rather than reproducing it. An
+   optional `document_requests` array names concrete, obtainable artifacts the document refers
+   to (a cited transcript, an enabling regulation) — omitted when there are none; see D111.
    Schema validation + a same-model retry live in `model_client` (no automatic tier
-   escalation — see D20); the orchestrator adds one post-flight repair retry.
+   escalation — see D20); the orchestrator adds one post-flight repair retry. When chew
+   captured embedded file metadata (§3, #369), `prompts.build_extract_prompt`/
+   `build_section_prompt` render it as a volatile `FILE_METADATA` block — data, not
+   instructions, stating the trust caveat (forgeable, often machine-generated) plus the
+   `ocr_used`/`source_type` processing facts, so the model can judge whether a creation date
+   plausibly describes the original or just a scan/template.
 4. **Post-flight** (`postflight.run`, a function call) — validates the JSON, applies
    `match_id` merges (remapping `key_facts.entities` tags onto canonical ids), **explodes** the
    unified key_facts into the per-entity `evidence_fragments` + `timeline_events` that the
    writers consume (`explode_key_facts`, D26), **verifies** each `key_facts[].quote` against
    the cited page's text from the chew-time queue descriptor (`quote_verify.verify_quotes`,
-   D75), then calls `write_vault.run()`.
+   D75), **checks each stated fact's numeric figures** against the cited page's text
+   (`figure_verify.verify_figures`, D112), **flags a file-metadata date mismatch** —
+   `document.file_metadata.created` postdating `date_of_document` by a year or more
+   (`file_metadata.check_date_mismatch`, #369), deterministic and suppressed whenever
+   `ocr_used` is true, since a scan's creation date describes the scan, not the original —
+   then calls `write_vault.run()`.
 
-`write_vault` is the single deterministic writer: it merges entities (reconciling
-near-duplicate slugs coined by concurrent workers via the shared `entity_norm`
-name+type normalization), writes entity and document notes, updates the registry files,
+`write_vault` is the single deterministic writer: it collapses each entity's model-invented
+`type` onto a closed six-value vocabulary (`entity_type.canonical_type`, D105) — so a drifting
+near-synonym (`company` vs `financialinstitution`) can't fork one real-world entity across two
+folders — then merges entities (reconciling near-duplicate slugs coined by concurrent workers
+via the shared `entity_norm` name+type normalization, the type half keyed on the canonical
+bucket), writes entity and document notes, updates the registry files,
 stages timeline events, and moves the source file to the morgue — all inside the write
 lock. The **registry persist is the commit point**: the registries are written last, atomically
 (temp-then-rename), and every rebuilt-from-source artifact — the embed/FTS indexes and the
@@ -222,6 +254,20 @@ document and replaced, not appended.
 into overlapping page-range sections, extracted **one at a time in reading order** with a
 carry-forward block in each section's prompt, then combined by `merge.merge_extractions`
 into a single extraction JSON that goes through the same post-flight / `write_vault` path.
+The threshold and per-section budget are **provider-aware** (D89, #321): rather than fixed
+numbers they default to fractions (0.6 / 0.3) of the extraction model's context window
+(`model_client.context_window` — Claude 200K, DeepSeek V4 1M, Gemini 2.5 1M, etc.), so a large-window model
+reads far more of a document per call before sectioning. A 200K Claude window reproduces the
+historical 120K/60K defaults exactly; the two config keys default to the `auto` sentinel and
+accept an explicit `section_token_threshold`/`section_token_budget` integer as an advanced
+escape hatch (a pinned integer does not rescale when the extraction model changes).
+The input-window default is **additionally capped by the output ceiling** for a backend that
+enforces a fixed `max_tokens` and can't paginate past it (openai, gemini — D104, #343): the
+safe output budget is converted back to an input-token cap
+(`model_client.output_ceiling_for_sectioning` × a density ratio) so a whole-document call's
+expected *output* stays under the ceiling. Backends that paginate their output (claude-api,
+deepseek) or have no ceiling (claude-agent-sdk) return `None` and keep the pure input-window
+default.
 The carry-forward is a deduplicated entity-id → name/type map accumulated across every
 section seen so far (rebuilt fresh each section, one line per entity, not a running
 concatenation) plus only the immediately preceding section's `observations` text; and,
@@ -252,13 +298,26 @@ backend) understands blocks; `claude-agent-sdk` and the OpenAI-compatible backen
 them to plain text (`model_client._flatten_prompt`) since neither exposes a cache knob to us
 (D51). `cache_read_input_tokens` is surfaced in the usage telemetry (§12) to verify hits.
 
-**Output-overrun fallback.** Sectioning is gated on *input* size, but a moderate-input,
-entity-dense document can overrun the model's *output* ceiling — the agent-SDK backend
-can't cap output tokens, so the JSON truncates and post-flight rejects it. When
-whole-document extraction fails on a **multi-page** document, the orchestrator
-force-sections it (`section.run(force_budget=…)`, capped at half the doc so it yields ≥2
-sections) and retries on the sectioned path — which bounds per-call output — before giving
-up. See D19.
+**Output truncation — never accept a partial extraction (#343).** Sectioning is gated on
+*input* size, but a moderate-input, entity-dense document can overrun the model's *output*
+`max_tokens` ceiling and truncate the JSON mid-object. Three layers guarantee no truncated
+extraction is ever accepted. **(1) Detection (universal).** `acomplete_json` reads the
+backend's `finish_reason`/`stop_reason` authoritatively — a max-token cut (`length`,
+`max_tokens`) is never inferred from a parse failure — so a truncated-but-parseable response
+is rejected rather than silently stored. **(2) Pagination (recovery).** For backends that can
+continue a partial response by prefilling it as the assistant turn — claude-api (assistant
+prefill) and deepseek (chat-prefix-completion beta) — `_complete_with_pagination` re-issues the
+call with the partial output prefilled and concatenates the halves until a natural stop (guarded
+by `_MAX_CONTINUATIONS`). Continuation is **not** escalation (I4): same model, same effort, just
+finishing one response; the closing brace makes completeness true by construction. **(3)
+Proactive sizing.** openai and gemini return a *new* message rather than continuing, so they
+can't paginate — instead the output-ceiling-aware sectioning threshold (above) sizes the first
+call to fit, and the agent-SDK backend has no client-enforced cap at all. **Reactive backstop.**
+If any whole-document extraction is still rejected (truncation or otherwise), the orchestrator
+force-sections the document (`section.run(force_budget=…)`, capped at half so it yields ≥2
+sections) and retries on the bounded-output sectioned path — now for single-page documents too
+(their text splits into character windows), not just multi-page ones. Worst case is a loud
+quarantine, never silent data loss. See D104, D19.
 
 **Failure handling.** The model adapter raises if it can't get schema-valid JSON; a doc
 whose extraction or post-flight fails (after the output-overrun fallback, for multi-page
@@ -458,7 +517,9 @@ merge — deterministic, no model call, parallel to its registry surgery (§I1);
   chronology) alongside near-dup alerts and contradiction flags — plus the per-document
   scratchpads, now slimmed to forward-looking leads only (D33); makes one model call
   (`briefing`), and `_write_briefing` writes the structured prose into `briefings/<ts>.md`,
-  `hot.md`, and a `log.md` entry.
+  `hot.md`, and a `log.md` entry — first resolving any item that's an exact match against the
+  registry manifest from an entity id to its display name, since not every backend reliably
+  avoids echoing ids in prose (D107).
 
 `watchdog ingest` prints the per-document summary; the briefing/hot/log files are the
 durable record a fresh session reads.
@@ -475,6 +536,17 @@ keys acknowledged items on stable ids (`lead:<signal>:<id>`, `contradiction:<cal
 callouts) drop resolved ids from the active list. The store is populated by `watchdog resolve`,
 by `- [x]` checkbox sync from the briefing files (`<!--wid:<id>-->` markers), and undone by
 `watchdog unresolve`; `merge-entities` remaps lead ids onto the survivor (§I1, D54).
+
+**Document requests (`pipeline/requests.py`, D111).** A **document request** is a concrete
+artifact to acquire — a document type, the specific thing, why it matters, and often where to
+get it — distinct from a lead's open-ended thread. The model emits `document_requests` on
+`EXTRACTION`/`SECTION` (moved out of `scratchpad`/`observations`, never duplicated); Python
+stamps each into `.watchdog/Registry/requests.json` with an id (`request:<sha7>:<hash>`) and
+provenance (§I1), inside `write_vault`'s registry lock. `write_requests` renders the still-open
+entries to the vault-root `requests.md` (overwrite, current-state, same `<!--wid:...-->`
+checkbox convention as leads/alerts) and `sync_from_briefings` reads it alongside the briefing
+files. Resolution is manual only — no fuzzy auto-close — and a resolved or rendered request is
+never re-fed into any later model prompt.
 
 **Promoting a surface-found contradiction (`watchdog contradiction-add`, D82, D83).**
 `/watchdog-surface` reports cross-document contradictions as labelled *candidates* rather than
@@ -609,12 +681,13 @@ failing the whole scan — the same tolerance `watchdog doctor` already applies.
 **Vault (the investigation folder):**
 
 ```
-entities/<type>/<id>.md     entity notes
+entities/<type>/<id>.md     entity notes (<type> ∈ the closed vocabulary, D105)
 documents/<slug>.md         document notes
 morgue/<entity>/<type>/…     original source files + a sibling <name>.md of the
                             Docling full text, filed by subject (D26)
 timeline.md                 rendered global timeline
 briefings/<date>.md         per-ingest briefings
+requests.md                 open document requests — documents to go and get (D111)
 context.md / hot.md / log.md investigation context, hot cache, run log
 index.md / dashboard.base    landing page + native Obsidian Bases dashboard (D42)
 .embeddings/                semantic search index
@@ -632,12 +705,14 @@ timeline/                   raw + canonical NDJSON event files
 tmp/                        scratch (wdg_* temp, entity-fragments/)
 Registry/
   entities.json             full entity records (roles, events, appears_in)
-  documents.json            per-document metadata + MinHash signatures
+  documents.json            per-document metadata + MinHash signatures + embedded
+                            file_metadata (author/producer/created/…, #369)
   registry.json             counts + last-updated
   manifest.json             lightweight id→{name,type,aliases,note_path} lookup
-  resolutions.json          acknowledged leads/alerts/contradictions overlay (D68)
-  ingest.log                append-only ingest log
-  usage-<ts>.json           per-run model-call token/cost telemetry (D50)
+  resolutions.json          acknowledged leads/alerts/contradictions/requests overlay (D68, D111)
+  requests.json             document-request ledger — id/provenance stamped by Python (D111)
+  ingest.log                append-only ingest log (START/OK/WARN/FAILED per doc, D102)
+  usage/usage-<ts>.json     per-run model-call token/cost/latency telemetry (D50, D86, D102)
   batch-pending.json        pending claude-batch extraction state (D52)
   .ingest-lock / .write-lock  run lock / write serialization
 backups/<ts>-<operation>/   pre-mutation snapshots for irreversible operations (D71)
@@ -706,15 +781,29 @@ completed purge, and the CLI hint says so.
 - **Model client** (`model_client.py`): the orchestrator's single entry to the model.
   Routes each task to a backend — `claude-agent-sdk` (subscription login or API key — the
   only backend that works on a subscription), `claude-api` (raw Messages + structured
-  outputs), or the OpenAI-compatible `openai`/`deepseek` backends (Chat Completions over
-  httpx, one provider each via base URL; D37) — by auth mode and per-task policy, validates
-  the JSON, retries on the same model on failure, and reports cost/latency. **Provider
+  outputs), or the OpenAI-compatible `openai`/`deepseek`/`gemini` backends (Chat Completions over
+  httpx, one provider each via base URL; D37, D94) — by auth mode and per-task policy, validates
+  the JSON, retries on the same model on failure, and reports cost/latency. Structured-output
+  enforcement differs by provider on the OpenAI-compatible path: Gemini gets a real `json_schema`
+  response format (its schema engine tolerates the same omit-optional-fields `schemas.py` design
+  unmodified), while OpenAI and DeepSeek stay on portable `json_object` + schema-in-prompt (D98).
+  **Provider
   abstraction:** the abstract `effort` intent is mapped to each provider's native control by
   a per-provider policy (`_EFFORT_POLICY`: Claude `output_config.effort`, OpenAI
-  `reasoning_effort` on reasoning models only, DeepSeek none), and `_resolve_backend_auth`
+  `reasoning_effort` on reasoning models only, Gemini `reasoning_effort` unconditionally (every
+  current model accepts it, D94), DeepSeek none — its thinking mode is a separate
+  on/off carried in the model id via a `-thinking` suffix, default off, D88), and `_resolve_backend_auth`
   resolves the key per backend — Claude backends via the subscription/api-key mode, others
-  via their own stored key (`watchdog auth set openai|deepseek`) independent of the Claude
-  mode. Auth is resolved by `cmd/auth.py` (see #119, D37).
+  via their own stored key (set interactively via `watchdog auth`) independent of the Claude
+  mode. Auth is resolved by `cmd/auth.py` (see #119, D37, D93). **Setup philosophy (D95):**
+  Claude Code is required — it runs the interactive investigation skills below and is the
+  ingestion default — but ingestion specifically can be routed to a cheaper metered provider
+  instead, since it is the token-heavy stage. `watchdog setup`'s auth step surfaces this
+  choice directly (offering to walk through picking a provider and a model for each of the
+  three ingest stages when the user is on a subscription), and `watchdog auth`'s status
+  display is split into a "Claude Code" section and an "Ingestion" section (showing, per
+  stage, which provider it resolves to and whether that provider is ready) rather than
+  favouring Claude's own settings.
 - **Claude Code skills** (in-vault, run interactively — *not* part of ingest):
   `watchdog-context`, `watchdog-entity`, `watchdog-query`, `watchdog-surface`,
   `watchdog-wiki`, `watchdog-health`, `watchdog-research` (§14). Ingest is the Python
@@ -749,6 +838,21 @@ completed purge, and the CLI hint says so.
   from its `description:` frontmatter, falling back to the first intro sentence.
   `watchdog show-skills` lists them / opens the GitHub folder; `--skill` / `default_skill`
   pin one (a catalog name or a file path).
+
+**Data sent per call.** Every ingest model call is enumerated below — what it sends to
+the cloud, what it deliberately withholds, and how often it fires. This is the concrete
+backing for I2 (local-first preprocessing): chew makes none of these calls, and
+everything below runs only during `watchdog ingest`.
+
+| Call | Runs | Sent to the model | Withheld |
+|---|---|---|---|
+| **classify** (§6) | once per document; skipped entirely if a skill is pinned | first `classify_pages` pages of extracted text, the in-memory skill-catalog index, the `.yml` provenance sidecar if present | the rest of the document; all entity/registry data |
+| **extract** — whole-doc or per-section (§5) | once per document, or once per section for a document over the sectioning threshold | the page/section text, `EXISTING_ENTITIES` candidates (each matched entity's name/aliases/type plus its note summary, roles digest, and prior contradictions), `EXISTING_TIMELINE` (those candidates' prior dated events, deduplicated across candidates and tagged with which candidate ids each concerns, D109), the matched domain skill, the investigation brief (`context.md`), the `.yml` sidecar, known document types | original-file metadata (EXIF, PDF author fields — stripped at chew, §3); any entity not textually matched against *this* document |
+| **digest** (§5) | once per sectioned document, after merge — whole-doc extraction composes its digest inline instead, with no extra call | filename, title, document_type, page_count, the merged `key_facts` (not the raw text), the domain skill, brief, sidecar | the document's raw text |
+| **entity-synthesis** (§8) | once per run, batched, only for entities appearing in 2+ documents vault-wide | per qualifying entity: its current `## Summary`/`## Analysis` prose plus every accumulated fact fragment tagged to it across all its documents | timeline, relationships, contradictions — deterministic, never seen by a model |
+| **timeline-dedup** (§9) | once per colliding date (0+ per run) | the event text and page for every event sharing that date | entities' full histories; unrelated dates |
+| **timeline-precision** (§9) | once per month mixing month- and day-precision dates | that month's coarse and precise event text + page | other months; entity histories |
+| **briefing** (§9) | once per run, over the whole batch | the investigation brief, compact per-document results (type, date, entity counts, key facts), near-dup alerts, contradiction flags, every document's scratchpad notes | raw document text; full entity notes |
 
 ---
 
@@ -846,11 +950,14 @@ See D45, D46, D47, D48, D61.
 
 These are the **governing rules of the pipeline** — the canonical statement of each principle. They are always true; violating one needs a *new, numbered decision* that supersedes the invariant, not just a code change. Read them first. The dated history of how each was established and refined lives in [DECISIONS.md](DECISIONS.md); where a decision operates within an invariant, *this* section is the authority on the principle and the decision entry records the specific change, rationale, and tradeoff.
 
+Mechanically-checkable postconditions are guarded by named tests in `tests/test_invariants.py` (#349), one per invariant (or checkable part). Parts flagged below as prompt-relied — e.g. I1's summary grounding — are deliberately unguarded, since there's nothing mechanical for a test to assert.
+
 - **I1 — Deterministic code writes; the model only reasons.** Anything derivable in Python (document identity, provenance, slugs, role targets, timeline fan-out) is stamped in code, never paid for in model output — and the model is not asked to restate as prose what it already emitted structurally. Carve-out: `document.summary` (#279) is a bounded, deliberate exception — a whole-document digest synthesized from `key_facts`, capped at three paragraphs and grounded (every claim in it must also exist in `key_facts`). That grounding is a **prompt instruction, not a verified postcondition** — unlike quote verification, no code checks the digest against `key_facts`, so a hallucinated claim would not be caught. *History: D2, D18, D24–D26, D29–D31, D33, D34, D75, D77, D78.*
 - **I2 — Local-first preprocessing.** The *source documents you were given* never leave the machine, and chew costs no API tokens. This is a boundary on **source-doc egress**, not a vow of web abstinence — the investigation layer runs as agentic Claude Code sessions and web research (§14, I5) is allowed, since anything on the open web is already public. *History: D1, D45.*
 - **I3 — Skills and prompt templates are global package resources** — read directly, never copied per-vault — and prompt templates live in their own directory so they never leak into the classifier index. *History: D21, D28.*
-- **I4 — Configured model and effort only; no automatic escalation.** Each stage's model *and* its reasoning effort are explicit knobs with stable defaults; a failed call retries on the *same* model at the *same* effort — the pipeline never silently bumps either to recover. *History: D20, D36.*
+- **I4 — Configured model and effort only; no automatic escalation.** Each stage's model *and* its reasoning effort are explicit knobs with stable defaults; a failed call retries on the *same* model at the *same* effort — the pipeline never silently bumps either to recover. Response pagination (D104) is not an exception: continuing a truncated response prefills the same model's partial output at the same effort to finish one reply, changing neither knob. *History: D20, D36, D104.*
 - **I5 — Research output re-enters through `_INCOMING/`, never as a direct vault write.** Web research deposits findings as documents that flow through `chew → ingest`, keeping the deterministic pipeline the single writer (dedup, provenance, registry bookkeeping). Per-doc rationale rides the `.yml` sidecar; batch rationale goes to a `briefings/research-<date>.md` memo — never `context.md`. *History: D45, D46.*
+- **I6 — Anything parsed out of a source document is untrusted input.** Source documents are adversarial by assumption — they arrive from leaks, FOI releases, and hostile parties. Content read *from* a document (its embedded metadata, its XML parts) is data to be defanged before use — never a directive, and never a payload the parser can be exploded by: XML goes through `defusedxml`, never the stdlib `xml.etree` (which expands internal entities, making a crafted `.docx` a billion-laughs bomb); metadata values are allowlisted and length-capped before they can reach a prompt; a reader that fails degrades to an empty dict rather than taking chew down. *History: D110.*
 
 ### Decision log
 

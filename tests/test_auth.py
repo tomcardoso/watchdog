@@ -1,8 +1,8 @@
-"""Tests for `watchdog auth` — modes, setup picker, API key storage, env precedence."""
+"""Tests for `watchdog auth` — the interactive wizard, key storage, env precedence."""
 
+import json
 import os
 import stat
-import types
 
 import pytest
 
@@ -18,8 +18,13 @@ def home(tmp_path, monkeypatch):
     return tmp_path
 
 
-def _ns(action=None, target=None):
-    return types.SimpleNamespace(action=action, target=target)
+def _tty(monkeypatch, value: bool) -> None:
+    monkeypatch.setattr(auth.sys.stdin, "isatty", lambda: value)
+
+
+def _answers(monkeypatch, *values):
+    it = iter(values)
+    monkeypatch.setattr("builtins.input", lambda *a: next(it))
 
 
 # ── key storage ───────────────────────────────────────────────────────────────
@@ -28,35 +33,10 @@ def test_get_api_key_unset(home):
     assert auth.get_api_key("anthropic") is None
 
 
-def test_set_then_resolve_stored(home, monkeypatch):
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-test-1234567890")
-    auth.cmd_auth(_ns("set"))
-    assert auth.get_api_key("anthropic") == "sk-ant-test-1234567890"
-
-
-def test_credentials_file_is_0600(home, monkeypatch):
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-test-1234567890")
-    auth.cmd_auth(_ns("set"))
-    assert stat.S_IMODE(os.stat(auth._credentials_path()).st_mode) == 0o600
-
-
 def test_env_var_takes_precedence(home, monkeypatch):
     auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-stored"}})
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fromenv")
     assert auth.get_api_key("anthropic") == "sk-ant-fromenv"
-
-
-def test_empty_key_not_stored(home, monkeypatch):
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "   ")
-    auth.cmd_auth(_ns("set"))
-    assert auth.get_api_key("anthropic") is None
-
-
-def test_set_get_openai_provider(home, monkeypatch):
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-openai-abc1234567")
-    auth.cmd_auth(_ns("set", "openai"))
-    assert auth.get_api_key("openai") == "sk-openai-abc1234567"
-    assert auth.get_api_key("anthropic") is None     # stored per-provider, independent of Claude
 
 
 def test_openai_env_var_precedence(home, monkeypatch):
@@ -70,61 +50,29 @@ def test_deepseek_is_a_known_provider(home):
     assert auth._PROVIDERS["deepseek"]["env"] == "DEEPSEEK_API_KEY"
 
 
-def test_remove_deletes_stored_key(home):
-    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-stored"}})
-    auth.cmd_auth(_ns("remove"))
-    assert auth.get_api_key("anthropic") is None
+def test_gemini_is_a_known_provider(home):
+    assert "gemini" in auth._PROVIDERS
+    assert auth._PROVIDERS["gemini"]["env"] == "GEMINI_API_KEY"
 
 
-def test_remove_when_absent_is_noop(home, capsys):
-    auth.cmd_auth(_ns("remove"))
-    assert "No stored key" in capsys.readouterr().out
-
-
-def test_set_does_not_clobber_mode(home, monkeypatch):
-    auth._save_state({"mode": "subscription", "keys": {}})
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-test-1234567890")
-    auth.cmd_auth(_ns("set"))
-    assert auth._load_state()["mode"] == "subscription"
+def test_credentials_file_is_0600(home):
+    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-test-1234567890"}})
+    assert stat.S_IMODE(os.stat(auth._credentials_path()).st_mode) == 0o600
 
 
 # ── masking ───────────────────────────────────────────────────────────────────
 
-def test_get_masks_and_reports_source(home, capsys):
-    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-api03-abcdefghij1234"}})
-    auth.cmd_auth(_ns("get"))
-    out = capsys.readouterr().out
-    assert "stored credential" in out
-    assert "abcdefghij" not in out       # middle hidden
-    assert "sk-ant-api" in out and "1234" in out
+def test_mask_hides_middle():
+    masked = auth._mask("sk-ant-api03-abcdefghij1234")
+    assert "abcdefghij" not in masked
+    assert masked.startswith("sk-ant-api")
+    assert masked.endswith("1234")
 
 
-def test_unknown_provider_errors(home):
-    with pytest.raises(SystemExit):
-        auth.cmd_auth(_ns("get", target="bogus"))
-
-
-# ── modes ─────────────────────────────────────────────────────────────────────
+# ── resolve_auth ────────────────────────────────────────────────────────────────
 
 def test_default_mode_is_unconfigured(home):
     assert auth._load_state()["mode"] is None
-
-
-def test_status_unconfigured_points_to_setup(home, capsys):
-    auth.cmd_auth(_ns())
-    out = capsys.readouterr().out
-    assert "Not configured" in out
-    assert "watchdog setup" in out
-
-
-def test_use_persists_mode(home):
-    auth.cmd_auth(_ns("use", "subscription"))
-    assert auth._load_state()["mode"] == "subscription"
-
-
-def test_use_rejects_unknown_mode(home):
-    with pytest.raises(SystemExit):
-        auth.cmd_auth(_ns("use", "auto"))   # 'auto' is no longer a mode
 
 
 def test_resolve_unconfigured_is_none(home):
@@ -172,7 +120,7 @@ def test_logged_in_false_when_neither_present(tmp_path, monkeypatch):
     assert auth.claude_code_logged_in() is False
 
 
-# ── setup picker ──────────────────────────────────────────────────────────────
+# ── setup picker (`watchdog setup`) ───────────────────────────────────────────
 
 def test_setup_picks_subscription(home, monkeypatch):
     monkeypatch.setattr("builtins.input", lambda *a: "1")
@@ -195,12 +143,147 @@ def test_setup_noninteractive_leaves_unconfigured(home):
 
 
 def test_setup_offers_extra_provider_keys(home, monkeypatch):
-    # mode=subscription (1), then add an OpenAI key (y), skip DeepSeek (n).
-    answers = iter(["1", "y", "n"])
-    monkeypatch.setattr("builtins.input", lambda *a: next(answers))
+    # mode=api-key (2), then add an OpenAI key (y), skip DeepSeek (n), skip Gemini (n).
+    # (Subscription mode now offers the dedicated metered-ingestion wizard instead — see
+    # test_setup_subscription_declines_metered_ingestion / test_setup_subscription_routes_
+    # ingestion_to_metered_provider below.)
+    _answers(monkeypatch, "2", "y", "n", "n")
     monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-openai-setup-123456")
     auth.setup_auth_interactive(interactive=True)
     state = auth._load_state()
-    assert state["mode"] == "subscription"
+    assert state["mode"] == "api-key"
     assert state["keys"]["openai"] == "sk-openai-setup-123456"
     assert "deepseek" not in state["keys"]       # declined
+
+
+def test_setup_subscription_declines_metered_ingestion(home, monkeypatch):
+    # mode=subscription (1), then decline routing ingestion to a metered service (n).
+    _answers(monkeypatch, "1", "n")
+    auth.setup_auth_interactive(interactive=True)
+    state = auth._load_state()
+    assert state["mode"] == "subscription"
+    assert state["keys"] == {}
+
+
+def test_setup_subscription_routes_ingestion_to_metered_provider(home, tmp_path, monkeypatch):
+    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
+    # mode=subscription (1), route to metered (y), pick Gemini (3rd provider), then pick the
+    # first listed model for each of the three ingest stages.
+    _answers(monkeypatch, "1", "y", "3", "1", "1", "1")
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "gm-test-key-123456")
+    auth.setup_auth_interactive(interactive=True)
+
+    state = auth._load_state()
+    assert state["mode"] == "subscription"
+    assert state["keys"]["gemini"] == "gm-test-key-123456"
+
+    config = json.loads((tmp_path / "config.json").read_text())
+    assert config["classifier_model"].startswith("gemini:")
+    assert config["extractor_model"].startswith("gemini:")
+    assert config["finalizer_model"].startswith("gemini:")
+
+
+# ── `watchdog auth` (bare) — status + interactive wizard ─────────────────────
+
+def test_bare_auth_unconfigured_points_to_setup(home, monkeypatch, capsys):
+    _tty(monkeypatch, False)
+    auth.cmd_auth(object())
+    out = capsys.readouterr().out
+    assert "Not configured" in out
+    assert "watchdog setup" in out
+
+
+def test_bare_auth_noninteractive_just_prints_status(home, monkeypatch, capsys):
+    auth._save_state({"mode": "subscription", "keys": {}})
+    _tty(monkeypatch, False)
+    auth.cmd_auth(object())
+    out = capsys.readouterr().out
+    assert "subscription" in out
+    assert "Change something" not in out
+
+
+def test_bare_auth_interactive_decline_changes_nothing(home, monkeypatch):
+    auth._save_state({"mode": "subscription", "keys": {}})
+    _tty(monkeypatch, True)
+    _answers(monkeypatch, "n")
+    auth.cmd_auth(object())
+    assert auth._load_state()["mode"] == "subscription"
+
+
+def test_bare_auth_interactive_switch_to_api_key(home, monkeypatch):
+    # Change something? y -> provider 1 (anthropic) -> choice 2 (api-key) -> paste key
+    _tty(monkeypatch, True)
+    _answers(monkeypatch, "y", "1", "2")
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-wizard-123456")
+    auth.cmd_auth(object())
+    state = auth._load_state()
+    assert state["mode"] == "api-key"
+    assert state["keys"]["anthropic"] == "sk-ant-wizard-123456"
+
+
+def test_bare_auth_interactive_switch_to_subscription(home, monkeypatch):
+    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-old"}})
+    _tty(monkeypatch, True)
+    _answers(monkeypatch, "y", "1", "1")
+    auth.cmd_auth(object())
+    assert auth._load_state()["mode"] == "subscription"
+
+
+def test_bare_auth_interactive_store_openai_key(home, monkeypatch):
+    providers = list(auth._PROVIDERS)
+    openai_choice = str(providers.index("openai") + 1)
+    _tty(monkeypatch, True)
+    _answers(monkeypatch, "y", openai_choice)
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-openai-abc1234567")
+    auth.cmd_auth(object())
+    assert auth.get_api_key("openai") == "sk-openai-abc1234567"
+    assert auth.get_api_key("anthropic") is None    # untouched
+
+
+def test_bare_auth_interactive_replace_existing_key(home, monkeypatch):
+    auth._save_state({"mode": "api-key", "keys": {"openai": "sk-openai-old1234567"}})
+    providers = list(auth._PROVIDERS)
+    openai_choice = str(providers.index("openai") + 1)
+    _tty(monkeypatch, True)
+    _answers(monkeypatch, "y", openai_choice, "r")
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-openai-new1234567")
+    auth.cmd_auth(object())
+    assert auth.get_api_key("openai") == "sk-openai-new1234567"
+
+
+def test_bare_auth_interactive_delete_existing_key(home, monkeypatch):
+    auth._save_state({"mode": "api-key", "keys": {"openai": "sk-openai-old1234567"}})
+    providers = list(auth._PROVIDERS)
+    openai_choice = str(providers.index("openai") + 1)
+    _tty(monkeypatch, True)
+    _answers(monkeypatch, "y", openai_choice, "d")
+    auth.cmd_auth(object())
+    assert auth.get_api_key("openai") is None
+
+
+def test_bare_auth_interactive_cancel_leaves_existing_key(home, monkeypatch):
+    auth._save_state({"mode": "api-key", "keys": {"openai": "sk-openai-old1234567"}})
+    providers = list(auth._PROVIDERS)
+    openai_choice = str(providers.index("openai") + 1)
+    _tty(monkeypatch, True)
+    _answers(monkeypatch, "y", openai_choice, "c")
+    auth.cmd_auth(object())
+    assert auth.get_api_key("openai") == "sk-openai-old1234567"
+
+
+def test_bare_auth_invalid_provider_choice_changes_nothing(home, monkeypatch):
+    auth._save_state({"mode": "subscription", "keys": {}})
+    _tty(monkeypatch, True)
+    _answers(monkeypatch, "y", "99")
+    auth.cmd_auth(object())
+    assert auth._load_state()["mode"] == "subscription"
+
+
+def test_bare_auth_empty_key_entry_does_not_store(home, monkeypatch):
+    providers = list(auth._PROVIDERS)
+    openai_choice = str(providers.index("openai") + 1)
+    _tty(monkeypatch, True)
+    _answers(monkeypatch, "y", openai_choice)
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "   ")
+    auth.cmd_auth(object())
+    assert auth.get_api_key("openai") is None

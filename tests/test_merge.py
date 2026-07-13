@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 from watchdog.pipeline import merge
 from watchdog.pipeline.merge import merge_extractions

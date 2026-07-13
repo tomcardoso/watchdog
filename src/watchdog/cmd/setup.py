@@ -8,6 +8,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from watchdog import interactive
 from watchdog.cmd.base import (
     CONFIG_FILE,
     WATCHDOG_HOME,
@@ -180,41 +181,37 @@ _CONFIGURE_KEYS = {
         "type": "bool",
         "default": True,
     },
-    "embed_images": {
-        "short": "Embed images as base64 in markdown output so Claude can see figures (default: false)",
-        "help": (
-            "When enabled, images and figures in documents are embedded as base64 data\n"
-            "  in the markdown output, allowing Claude to read charts, graphs, and other\n"
-            "  visual content directly. Significantly increases token usage and processing\n"
-            "  time per document. Only useful when documents contain charts, image-based\n"
-            "  tables, or diagrams that carry investigative value.\n"
-            "  Default: false."
-        ),
-        "type": "bool",
-        "default": False,
-    },
     "section_token_threshold": {
-        "short": "Estimated tokens above which a document is split for sectioned extraction (default: 120000)",
+        "short": "Estimated tokens above which a document is split for sectioned extraction ('auto' or a fixed number)",
         "help": (
             "Documents whose estimated token count is at or under this value are extracted\n"
             "  whole; larger ones are split into overlapping sections and extracted sequentially\n"
             "  with a carried-forward entity list. Token count is estimated as chars/4.\n"
-            "  Lower it if whole-document extraction is overrunning the model's output ceiling on\n"
-            "  dense documents. Default: 120000."
+            "  'auto' (default): derived from the extraction model's context window (about 60% of\n"
+            "  it) — so a 1M-window model like DeepSeek V4 reads far more of a document in one call\n"
+            "  than a 200K Claude window (which resolves to 120000). Set a fixed number to pin it as\n"
+            "  an advanced override — e.g. lower it if whole-document extraction is overrunning the\n"
+            "  model's output ceiling on dense documents.\n"
+            "  Note: a fixed number does NOT rescale when you change extractor_model — pin it back to\n"
+            "  'auto' (or re-check the value) if you switch to a model with a different context window."
         ),
-        "type": "int",
-        "default": 120_000,
+        "type": "int_or_auto",
+        "default": "auto",
         "min": 1,
     },
     "section_token_budget": {
-        "short": "Target estimated tokens per section when sectioning a large document (default: 60000)",
+        "short": "Target estimated tokens per section when sectioning a large document ('auto' or a fixed number)",
         "help": (
             "When a document is sectioned (see section_token_threshold), pages are grouped into\n"
             "  sections targeting roughly this many estimated tokens each.\n"
-            "  Default: 60000."
+            "  'auto' (default): half the threshold (model-aware), so a document just over the\n"
+            "  threshold splits into two sections. Set a fixed number to pin it as an advanced\n"
+            "  override.\n"
+            "  Note: a fixed number does NOT rescale when you change extractor_model — pin it back to\n"
+            "  'auto' (or re-check the value) if you switch to a model with a different context window."
         ),
-        "type": "int",
-        "default": 60_000,
+        "type": "int_or_auto",
+        "default": "auto",
         "min": 1,
     },
     "section_overlap_tokens": {
@@ -236,7 +233,8 @@ _CONFIGURE_KEYS = {
             "  and picks the matching record skill. Haiku is plenty for this; raise it only if\n"
             "  classification is going wrong on ambiguous documents.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-5-mini, deepseek:deepseek-chat). Default: haiku.\n"
+            "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-2.5-flash).\n"
+            "  Default: haiku.\n"
             "  Override for a single run with: watchdog ingest --classifier-model M"
         ),
         "type": "string",
@@ -249,8 +247,10 @@ _CONFIGURE_KEYS = {
             "  Haiku is cheaper and faster for large batches of straightforward documents;\n"
             "  Sonnet handles complex or ambiguous documents better.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-5-mini, deepseek:deepseek-chat). Default: sonnet.\n"
-            "  Override for a single run with: watchdog ingest --extractor-model M"
+            "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-2.5-flash).\n"
+            "  Default: sonnet.\n"
+            "  DeepSeek thinking mode is off by default; append -thinking (deepseek:deepseek-v4-flash-thinking)\n"
+            "  to enable it. Override for a single run with: watchdog ingest --extractor-model M"
         ),
         "type": "string",
         "default": "sonnet",
@@ -263,7 +263,8 @@ _CONFIGURE_KEYS = {
             "  This step composes prose from compact digests rather than reading raw documents,\n"
             "  so the cheaper Haiku tier is the default; raise it if synthesized prose feels thin.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-5-mini, deepseek:deepseek-chat). Default: haiku.\n"
+            "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-2.5-flash).\n"
+            "  Default: haiku.\n"
             "  Override for a single run with: watchdog ingest --finalizer-model M"
         ),
         "type": "string",
@@ -338,8 +339,8 @@ _CONFIGURE_KEYS = {
             "    BAAI/bge-base-en-v1.5  (768-dim, 210 MB — same family, easy step up)\n"
             "    snowflake/snowflake-arctic-embed-s  (384-dim, 130 MB — same size class)\n"
             "  Must be a model fastembed can load (see `TextEmbedding.list_supported_models()`).\n"
-            "  Changing this requires re-ingesting documents — vectors from two models aren't\n"
-            "  comparable, so the old index can't be mixed with the new one.\n"
+            "  After changing this, run `watchdog reindex` — vectors from two models aren't\n"
+            "  comparable, so the index is rebuilt from disk (no re-ingest needed).\n"
             "  Default: BAAI/bge-small-en-v1.5."
         ),
         "type": "str",
@@ -433,7 +434,7 @@ _CONFIGURE_SECTIONS = [
     ("OCR", "Text recognition for scanned documents.",
      ["ocr_engine", "ocr_languages", "garbled_threshold"]),
     ("Chew", "Local preprocessing — parallelism and large-PDF handling.",
-     ["chew_workers", "chunk_size", "chunk_workers", "chunk_timeout", "table_structure", "embed_images"]),
+     ["chew_workers", "chunk_size", "chunk_workers", "chunk_timeout", "table_structure"]),
     ("Ingest", "Extraction run — parallelism, classification, skill pinning, sectioning.",
      ["extract_concurrency", "classify_pages", "default_skill", "preflight_alias_min_length",
       "section_token_threshold", "section_token_budget", "section_overlap_tokens"]),
@@ -516,7 +517,7 @@ def cmd_about(_args) -> None:
     print()
     print(f"  {_DIM}GitHub   {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog{_RESET}")
     print(f"  {_DIM}Issues   {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog/issues{_RESET}")
-    print(f"  {_DIM}Install  {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog/blob/main/INSTALL.md{_RESET}")
+    print(f"  {_DIM}Install  {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog/blob/main/docs/install.md{_RESET}")
     print()
     print(f"  {_DIM}ASCII art: dog in 'watchdog new' by Felix Lee; dog in 'watchdog about' by Sarah Kearsley{_RESET}")
     print()
@@ -609,23 +610,14 @@ def _pkg_version() -> str:
     return version("watchdog-intel")
 
 
-_PICK_UNSET  = "\x00unset"   # "(unset — classify each document)" row
-_PICK_CUSTOM = "\x00custom"  # "Type my own…" row
-
-
 def _pick_skill_arrow(catalog: dict, current) -> tuple[str, str | None]:
     """Arrow-key picker for a record skill. Returns ``(action, value)`` where action is
     ``"set"`` (value = chosen skill name or a typed name/path), ``"unset"``, or ``"cancel"``.
 
-    Uses raw-mode terminal input (↑/↓ or j/k to move, Enter to select, q to cancel). Falls
-    back to a numbered prompt when raw mode isn't available."""
-    import termios
-    import tty
-
-    names  = list(catalog)
-    items  = names + [_PICK_UNSET, _PICK_CUSTOM]
-    labels = names + ["(unset — classify each document)", "Type my own…"]
-    idx    = names.index(current) if current in names else 0
+    Built on the shared `interactive.pick()` (raw-mode with a numbered fallback)."""
+    names = list(catalog)
+    items = names + ["(unset — classify each document)", "Type my own…"]
+    idx   = names.index(current) if current in names else 0
 
     def _ask_custom() -> tuple[str, str | None]:
         try:
@@ -635,76 +627,14 @@ def _pick_skill_arrow(catalog: dict, current) -> tuple[str, str | None]:
             return ("cancel", None)
         return ("set", ans) if ans else ("cancel", None)
 
-    try:
-        fd  = sys.stdin.fileno()
-        old = termios.tcgetattr(fd)
-    except (termios.error, ValueError, OSError, AttributeError):
-        old = None
-
-    if old is None:  # no raw mode — numbered fallback
-        print(f"\n  {_BOLD}Pin a record skill{_RESET}\n")
-        for i, lab in enumerate(labels, 1):
-            print(f"    {_CYAN}{i:>2}{_RESET}  {lab}")
-        try:
-            ans = input("\n  Number, name, or path: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            return ("cancel", None)
-        if ans.isdigit() and 1 <= int(ans) <= len(items):
-            sel = items[int(ans) - 1]
-            if sel == _PICK_UNSET:
-                return ("unset", None)
-            if sel == _PICK_CUSTOM:
-                return _ask_custom()
-            return ("set", sel)
-        if ans:
-            return ("set", ans)
+    result = interactive.pick(items, idx, title="Pin a record skill")
+    if result is interactive.CANCELLED:
         return ("cancel", None)
-
-    def render(first: bool) -> None:
-        if not first:
-            sys.stdout.write(f"\x1b[{1 + len(labels)}A\r")  # back to the header line
-        sys.stdout.write(f"  {_BOLD}Pin a record skill{_RESET}{_DIM}  (use ↑/↓){_RESET}\x1b[K\n")
-        for i, lab in enumerate(labels):
-            if i == idx:
-                sys.stdout.write(f"  {_CYAN}❯ {lab}{_RESET}\x1b[K\n")
-            else:
-                sys.stdout.write(f"    {lab}\x1b[K\n")
-        sys.stdout.write(f"  {_DIM}↑/↓ move · Enter select · q cancel{_RESET}\x1b[K")
-        sys.stdout.flush()
-
-    result = None
-    print()
-    try:
-        tty.setcbreak(fd)
-        render(first=True)
-        while result is None:
-            ch = sys.stdin.read(1)
-            if ch in ("\r", "\n"):
-                result = items[idx]
-            elif ch in ("q", "\x03"):              # q or Ctrl-C
-                result = "\x00cancel"
-            elif ch == "\x1b":                     # arrow-key escape sequence
-                seq = sys.stdin.read(2)
-                if seq == "[A":
-                    idx = (idx - 1) % len(items); render(False)
-                elif seq == "[B":
-                    idx = (idx + 1) % len(items); render(False)
-            elif ch == "k":
-                idx = (idx - 1) % len(items); render(False)
-            elif ch == "j":
-                idx = (idx + 1) % len(items); render(False)
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old)
-        print()
-
-    if result == "\x00cancel":
-        return ("cancel", None)
-    if result == _PICK_UNSET:
+    if result == len(names):        # "(unset — classify each document)" row
         return ("unset", None)
-    if result == _PICK_CUSTOM:
+    if result == len(names) + 1:    # "Type my own…" row
         return _ask_custom()
-    return ("set", result)
+    return ("set", names[result])
 
 
 def _configure_default_skill_interactive(key: str, config: dict) -> str | None:
@@ -749,8 +679,23 @@ def _persist(config: dict) -> None:
     # unconditional on every persist to correct an existing loose-permission file too.
 
 
-def _display_value(k, v):
+def _auto_resolved_hint(key: str, config: dict) -> str:
+    """Render 'auto' for a model-aware section budget along with the concrete value it currently
+    resolves to for the configured extractor model, e.g. 'auto (120000 — sonnet)'."""
+    from watchdog.pipeline import section
+    model = config.get("extractor_model")   # None ⇒ default tier
+    threshold, budget = section.model_defaults(model)
+    resolved = threshold if key == "section_token_threshold" else budget
+    tier = model or "sonnet"
+    return f"{_CYAN}auto{_RESET} {_DIM}({resolved} — {tier}){_RESET}"
+
+
+def _display_value(k, v, config=None):
     meta = _CONFIGURE_KEYS.get(k, {})
+    # Model-aware section budgets: 'auto' (or an unset key) resolves to a value derived from the
+    # extraction model's context window — show that resolved value when we have the config.
+    if k in ("section_token_threshold", "section_token_budget") and (v is None or v == "auto"):
+        return _auto_resolved_hint(k, config) if config is not None else f"{_CYAN}auto{_RESET}"
     if v is None:
         if k == "ocr_languages":
             return f"{_DIM}auto-detect (default){_RESET}"
@@ -838,6 +783,55 @@ def _coerce_value(config: dict, key: str, value: str) -> str:
     return value
 
 
+# Provider name -> the `_OPENAI_PRICING` model-id prefix used to group its models in the picker.
+_PROVIDER_MODEL_PREFIXES = {"openai": "gpt-", "deepseek": "deepseek-", "gemini": "gemini-"}
+
+
+def _pick_model_interactive(current: str | None = None, *, only_provider: str | None = None) -> str | None:
+    """Arrow-key picker for a `[backend:]model` config value (classifier_model/extractor_model/
+    finalizer_model). Offers Claude tiers plus every OpenAI/DeepSeek/Gemini model
+    `model_client.py` has pricing for, grouped under section headers, with a free-text escape
+    hatch. Pass `only_provider` to show just that provider's models (e.g. from the metered-
+    ingestion setup wizard, which already knows the provider). Returns the chosen value, or
+    ``None`` if cancelled or left blank."""
+    from watchdog.model_client import _MODEL_IDS, _OPENAI_PRICING
+
+    if only_provider:
+        prefix = _PROVIDER_MODEL_PREFIXES[only_provider]
+        groups = [(None, only_provider, [m for m in _OPENAI_PRICING if m.startswith(prefix)])]
+    else:
+        groups = [
+            ("Claude", None, list(_MODEL_IDS)),
+            ("OpenAI", "openai", [m for m in _OPENAI_PRICING if m.startswith("gpt-")]),
+            ("DeepSeek", "deepseek", [m for m in _OPENAI_PRICING if m.startswith("deepseek-")]),
+            ("Gemini", "gemini", [m for m in _OPENAI_PRICING if m.startswith("gemini-")]),
+        ]
+
+    items: list = []
+    item_values: list[str | None] = []   # parallel to items; None for Header rows
+    for title, backend, models in groups:
+        if not models:
+            continue
+        if title:
+            items.append(interactive.Header(title))
+            item_values.append(None)
+        for m in models:
+            items.append(f"  {m}")
+            item_values.append(m if backend is None else f"{backend}:{m}")
+    items.append("  Type my own…")
+    item_values.append("__custom__")
+
+    initial = item_values.index(current) if current in item_values else 0
+    result = interactive.pick(items, initial, title="Choose a model")
+    if result is interactive.CANCELLED:
+        return None
+    chosen = item_values[result]
+    if chosen == "__custom__":
+        value = input("  Model (e.g. openai:gpt-5-mini): ").strip()
+        return value or None
+    return chosen
+
+
 def _edit_key_interactive(config: dict, key: str) -> None:
     """Show a key's help and current value, prompt for a new value, then coerce, persist, and
     report. Used by `watchdog configure <key>` and the wizard. Prints an error and returns
@@ -847,7 +841,7 @@ def _edit_key_interactive(config: dict, key: str) -> None:
     for line in meta["help"].split("\n"):
         print(f"  {_DIM}{line.strip()}{_RESET}")
     print()
-    print(f"  Current value:  {_display_value(key, config.get(key))}")
+    print(f"  Current value:  {_display_value(key, config.get(key), config)}")
     if key in ("chunk_workers", "chew_workers"):
         print(f"  Machine cores:  {os.cpu_count() or 1}")
 
@@ -861,7 +855,8 @@ def _edit_key_interactive(config: dict, key: str) -> None:
         current = config.get(key)
         current = bool(meta.get("default", False) if current is None else current)
         print()
-        answer = input(f"  Enable? [{'Y/n' if current else 'y/N'}]  (Enter to keep current) ").strip().lower()
+        answer = interactive.read_answer(
+            f"  Enable? [{'Y/n' if current else 'y/N'}]  (Enter to keep current) ")
         if answer == "":
             print(f"\n  {_DIM}No change.{_RESET}\n")
             return
@@ -872,10 +867,26 @@ def _edit_key_interactive(config: dict, key: str) -> None:
         else:
             print(f"\n  {_YELLOW}Error:{_RESET} enter y or n\n")
             return
+    elif key in ("classifier_model", "extractor_model", "finalizer_model"):
+        current = config.get(key, meta.get("default"))
+        print()
+        value = _pick_model_interactive(current)
+        if value is None:
+            print(f"\n  {_DIM}No change.{_RESET}\n")
+            return
+    elif meta["type"] == "enum":
+        choices = meta.get("choices", [])
+        current = config.get(key, meta.get("default"))
+        idx = choices.index(current) if current in choices else 0
+        print()
+        result = interactive.pick(choices, idx, title="Choose a value")
+        if result is interactive.CANCELLED:
+            print(f"\n  {_DIM}No change.{_RESET}\n")
+            return
+        value = choices[result]
     else:
         print()
-        answer = input("  Change this value? [y/N] ").strip().lower()
-        if answer not in ("y", "yes"):
+        if not interactive.confirm("  Change this value?", default=False):
             print()
             return
         print()
@@ -898,107 +909,42 @@ def _wizard_menu(config: dict, initial_sel: int = 0):
     showing each key's current value. Returns ``(key, sel)`` — the chosen key and the menu
     position so the caller can restore it on the next pass — or ``(None, sel)`` to quit.
 
-    Uses raw-mode terminal input (↑/↓ or j/k, Enter, q). Falls back to a numbered prompt when
-    raw mode isn't available or the menu is taller than the terminal."""
-    import termios
-    import tty
+    Built on the shared `interactive.pick()` (raw-mode with a numbered fallback)."""
+    def _label(k):
+        return f"{k:<22} {_display_value(k, config.get(k), config)}"
 
-    rows = []            # (is_key: bool, text: str, key: str | None)
+    items: list = []   # str (selectable key label) or interactive.Header
+    keys: list = []    # keys, parallel to the selectable items in `items`
     shown = set()
 
-    def _label(k):
-        return f"{k:<22} {_display_value(k, config.get(k))}"
-
-    for title, _blurb, keys in _CONFIGURE_SECTIONS:
-        present = [k for k in keys if k in _CONFIGURE_KEYS]
+    for title, _blurb, section_keys in _CONFIGURE_SECTIONS:
+        present = [k for k in section_keys if k in _CONFIGURE_KEYS]
         if not present:
             continue
-        rows.append((False, title, None))
+        items.append(interactive.Header(title))
         for k in present:
-            rows.append((True, _label(k), k))
+            items.append(_label(k))
+            keys.append(k)
             shown.add(k)
     leftovers = [k for k in _CONFIGURE_KEYS if k not in shown]
     if leftovers:
-        rows.append((False, "Other", None))
+        items.append(interactive.Header("Other"))
         for k in leftovers:
-            rows.append((True, _label(k), k))
+            items.append(_label(k))
+            keys.append(k)
 
-    selectable = [i for i, r in enumerate(rows) if r[0]]
-    if not selectable:
+    if not keys:
         return (None, 0)
-    sel = max(0, min(initial_sel, len(selectable) - 1))
+    sel = max(0, min(initial_sel, len(keys) - 1))
 
-    try:
-        fd  = sys.stdin.fileno()
-        old = termios.tcgetattr(fd)
-    except (termios.error, ValueError, OSError, AttributeError):
-        old = None
-
-    try:
-        fits = os.get_terminal_size().lines >= len(rows) + 3
-    except OSError:
-        fits = True
-
-    if old is None or not fits:   # numbered fallback
-        print(f"\n  {_BOLD}Configure{_RESET}  {_DIM}pick a setting to change{_RESET}")
-        numbered = []
-        for is_key, text, k in rows:
-            if is_key:
-                numbered.append(k)
-                print(f"    {_CYAN}{len(numbered):>2}{_RESET}  {text}")
-            else:
-                print(f"\n  {_BOLD}{text}{_RESET}")
-        try:
-            ans = input("\n  Number to edit (Enter to quit): ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            return (None, sel)
-        if ans.isdigit() and 1 <= int(ans) <= len(numbered):
-            return (numbered[int(ans) - 1], int(ans) - 1)
+    result = interactive.pick(items, sel, title="Configure",
+                               hint="↑/↓ move · Enter edit · q quit")
+    if result is interactive.CANCELLED:
         return (None, sel)
 
-    def render(first: bool) -> None:
-        if not first:
-            sys.stdout.write(f"\x1b[{1 + len(rows)}A\r")
-        sys.stdout.write(f"  {_BOLD}Configure{_RESET}\x1b[K\n")
-        for i, (is_key, text, k) in enumerate(rows):
-            if not is_key:
-                sys.stdout.write(f"  {_DIM}{text}{_RESET}\x1b[K\n")
-            elif i == selectable[sel]:
-                sys.stdout.write(f"  {_CYAN}❯{_RESET} {text}\x1b[K\n")
-            else:
-                sys.stdout.write(f"    {text}\x1b[K\n")
-        sys.stdout.write(f"  {_DIM}↑/↓ move · Enter edit · q quit{_RESET}\x1b[K")
-        sys.stdout.flush()
-
-    chosen = None
-    print()
-    try:
-        tty.setcbreak(fd)
-        render(first=True)
-        while chosen is None:
-            ch = sys.stdin.read(1)
-            if ch in ("\r", "\n"):
-                chosen = rows[selectable[sel]][2]
-            elif ch in ("q", "\x03"):              # q or Ctrl-C
-                chosen = "\x00quit"
-            elif ch == "\x1b":                     # arrow-key escape sequence
-                seq = sys.stdin.read(2)
-                if seq == "[A":
-                    sel = (sel - 1) % len(selectable); render(False)
-                elif seq == "[B":
-                    sel = (sel + 1) % len(selectable); render(False)
-            elif ch == "k":
-                sel = (sel - 1) % len(selectable); render(False)
-            elif ch == "j":
-                sel = (sel + 1) % len(selectable); render(False)
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old)
-        print()
-
-    if chosen == "\x00quit":
-        return (None, sel)
-    return (chosen, sel)
+    selectable_positions = [i for i, it in enumerate(items) if not isinstance(it, interactive.Header)]
+    new_sel = selectable_positions.index(result)
+    return (keys[new_sel], new_sel)
 
 
 def _run_configure_wizard(config: dict) -> None:
@@ -1026,10 +972,12 @@ def cmd_configure(args) -> None:
     if key is None:
         print()
         print(f"  {_BOLD}Configuration{_RESET}  {_DIM}{CONFIG_FILE}{_RESET}")
+        print(f"  {_DIM}Model authentication (Claude subscription/API key, other provider keys) is"
+              f" managed separately — see{_RESET} {_CYAN}watchdog auth{_RESET}{_DIM}.{_RESET}")
 
         def _print_key(k):
             meta = _CONFIGURE_KEYS[k]
-            print(f"  {_DIM}{k:<26}{_RESET} {_display_value(k, config.get(k))}")
+            print(f"  {_DIM}{k:<26}{_RESET} {_display_value(k, config.get(k), config)}")
             print(f"  {' ' * 26} {_DIM}{meta['short']}{_RESET}")
             print()
 
@@ -1068,7 +1016,7 @@ def cmd_configure(args) -> None:
         if sys.stdin.isatty():
             _edit_key_interactive(config, key)
         else:
-            print(f"\n  {_BOLD}{key}{_RESET} = {_display_value(key, config.get(key))}\n")
+            print(f"\n  {_BOLD}{key}{_RESET} = {_display_value(key, config.get(key), config)}\n")
         return
 
     try:

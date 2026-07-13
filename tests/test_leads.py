@@ -3,7 +3,6 @@ import json
 import re
 from pathlib import Path
 
-import pytest
 
 from watchdog.pipeline import leads
 from watchdog.cmd.leads import cmd_leads

@@ -35,13 +35,25 @@ dependencies = [
     "claude-agent-sdk>=0.1",
     "nh3>=0.2",
     "ocrmac; sys_platform == 'darwin'",
+    # Previously only transitive dependencies of docling; declared explicitly (#369) since
+    # file_metadata.py reads them directly to capture embedded document/image metadata —
+    # depending on a transitive dep risks a mystery breakage when docling reshuffles its own
+    # requirements. Already downloaded either way, so this adds nothing to install size.
+    "python-docx>=1.0",
+    "python-pptx>=1.0",
+    "openpyxl>=3.1",
+    "Pillow>=10.0",
+    # Office metadata lives in XML inside an untrusted document. The stdlib xml.etree parser
+    # expands internal entities, so a hostile .docx could ship a billion-laughs bomb; defusedxml
+    # refuses. Any XML parsed out of a document goes through this, never xml.etree.
+    "defusedxml>=0.7",
 ]
 
 [project.optional-dependencies]
 asr = ["docling[asr]"]          # Audio/video transcription — requires ffmpeg
 tesseract = ["tesserocr"]       # Faster Tesseract OCR; requires system Tesseract headers
 web = ["playwright>=1.49"]      # Rendered web capture for `watchdog research`/`fetch` — requires `playwright install chromium`
-dev = ["pytest>=8.0", "numpy>=1.24"]
+dev = ["pytest>=8.0", "numpy>=1.24", "ruff>=0.15"]
 
 [project.scripts]
 watchdog = "watchdog.cli:main"
@@ -57,4 +69,22 @@ packages = ["src/watchdog"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+# Conservative, correctness-focused set: pyflakes (F) for real errors like unused
+# imports/vars plus the pycodestyle logical-error subsets (E4/E7/E9). Line-length
+# (E501) and import sorting (I) are intentionally not enforced — this project does
+# not adopt an autoformatter or import reordering here, only correctness lint.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# cli.py deliberately re-imports a wide surface (registry/vault/setup helpers)
+# purely so tests can reach them via `watchdog.cli.<name>` for monkeypatching —
+# the same rationale as the `# noqa` on `import sys` at the top of that file.
+# These are intentional re-exports, not dead imports, so F401 is exempt here.
+"src/watchdog/cli.py" = ["F401"]
 

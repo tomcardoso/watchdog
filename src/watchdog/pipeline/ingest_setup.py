@@ -77,10 +77,10 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
     if backend == "claude-agent-sdk" or not documents:
         return result
 
-    reg_dir = vault / ".watchdog" / "Registry"
-    usage_files = sorted(reg_dir.glob("usage-*.json")) if reg_dir.exists() else []
+    from watchdog.pipeline import orchestrate
+    files = orchestrate.usage_files(vault)
     ratios = []
-    for uf in usage_files[-max_runs:]:
+    for uf in files[-max_runs:]:
         try:
             totals = json.loads(uf.read_text(encoding="utf-8")).get("totals", {})
         except (OSError, json.JSONDecodeError):
@@ -170,7 +170,7 @@ def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "so
         "queue_files": queue_files,
         "extractor_model": extractor_model,
         "finalizer_model": finalizer_model,
-        "section_token_threshold": _section_token_threshold(),
+        "section_token_threshold": _section_token_threshold(extractor_model),
         "backup_dir": str(backup_dir) if backup_dir else None,
     }
     state_file.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
