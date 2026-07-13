@@ -12,7 +12,7 @@ This skill is loaded by Watchdog when the document type is a statute, regulation
 - Acts of parliament, congress, legislature, and national assembly (primary legislation)
 - Bills at any stage — as introduced, as amended in committee, as passed
 - Statutory instruments, regulations, orders-in-council, and decrees (secondary legislation)
-- By-laws and municipal ordinances
+- By-laws and municipal ordinances (the enacted text — the council application and decision records around a by-law are covered by `municipal-records`)
 - Policy directives, ministerial guidelines, and government directives
 - Codes of conduct with statutory force
 - Proclamations and royal assent notices

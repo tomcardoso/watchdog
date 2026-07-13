@@ -1,5 +1,5 @@
 ---
-description: a government-produced report, departmental evaluation, departmental or municipal annual report, royal commission report, public inquiry report, task force report, advisory council report, white paper, green paper, consultation paper, regulatory impact assessment, or similar policy document produced by or for a government body; for auditor general or value-for-money/performance audits, use `audit-reports`; for the legal instruments themselves (statutes, regulations, bills) use `legislation`
+description: a government-produced report, departmental evaluation, departmental or municipal annual report, royal commission report, public inquiry report, task force report, parliamentary or legislative committee report, advisory council report, white paper, green paper, consultation paper, regulatory impact assessment, or similar policy document produced by or for a government body; for auditor general or value-for-money/performance audits, use `audit-reports`; for the legal instruments themselves (statutes, regulations, bills) use `legislation`
 ---
 # Domain knowledge — Government reports
 

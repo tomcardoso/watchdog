@@ -1,5 +1,5 @@
 ---
-description: a health regulatory body discipline decision, fitness to practise finding, hospital incident report, public health inspection report, or similar professional licensing or healthcare regulatory document. For non-healthcare professions, use `professional-licensing` instead
+description: a health regulatory body discipline decision, fitness to practise finding, hospital incident report, public health inspection report, coroner's inquest into a healthcare death, or similar professional licensing or healthcare regulatory document. For non-healthcare professions, use `professional-licensing` instead
 ---
 # Domain knowledge — Healthcare licensing and regulatory records
 

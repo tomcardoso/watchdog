@@ -1,9 +1,9 @@
 ---
-description: a YouTube video transcript, podcast transcript, broadcast transcript, recorded speech, deposition video, or similar audio or video-derived text
+description: a YouTube video transcript, podcast transcript, broadcast transcript, recorded speech, press conference or earnings call transcript, or similar audio or video-derived text; for official verbatim proceeding records (Hansard, committee transcripts, court or deposition transcripts) use `legislature-transcripts`, `court-documents`, or `criminal-proceedings`
 ---
 # Domain knowledge — Audio and video content
 
-This skill is loaded by Watchdog when the document type is a YouTube video transcript, podcast transcript, broadcast transcript, recorded speech, deposition video, or similar audio or video-derived text.
+This skill is loaded by Watchdog when the document type is a YouTube video transcript, podcast transcript, broadcast transcript, recorded speech, press conference or earnings call transcript, or similar audio or video-derived text. Official verbatim proceeding records are covered elsewhere: Hansard and legislative committee transcripts by `legislature-transcripts`; court and deposition transcripts by `court-documents` and `criminal-proceedings`.
 
 ---
 
@@ -12,14 +12,11 @@ This skill is loaded by Watchdog when the document type is a YouTube video trans
 - YouTube video transcripts (auto-generated or manual)
 - Podcast episode transcripts
 - Broadcast news transcripts (TV, radio)
-- Parliamentary broadcast transcripts
 - Press conference transcripts
 - Public speech transcripts
-- Recorded deposition or examination excerpts
 - Earnings call transcripts
 - Investor day presentation transcripts
 - Corporate AGM transcripts
-- Court proceeding recordings and transcripts
 - Social media video transcripts (Twitter/X Spaces, Facebook Live, Instagram)
 
 ---

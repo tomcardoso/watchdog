@@ -1,18 +1,17 @@
 ---
-description: a securities disclosure, public-company annual report, insider trading report, continuous disclosure document, prospectus, proxy statement, or similar filing with a securities regulator (10-K, 10-Q, 8-K, DEF 14A, AIF); for the financial statements themselves use `financial-statements`, for corporate registry records use `corporate-filings`
+description: a securities disclosure, insider trading report, material change or current report, prospectus, proxy statement, annual information form, or similar event-driven filing with a securities regulator (8-K, Form 4, 13D, DEF 14A, AIF); for annual and quarterly reports built around financial statements (10-K, 10-Q, MD&A) use `financial-statements`, for corporate registry records use `corporate-filings`
 ---
 # Domain knowledge — Regulatory filings
 
-This skill is loaded by Watchdog when the document type is a securities disclosure, insider trading report, continuous disclosure document, prospectus, or similar filing with a securities regulator.
+This skill is loaded by Watchdog when the document type is a securities disclosure, insider trading report, material change or current report, prospectus, proxy statement, annual information form, or similar filing with a securities regulator.
 
-For the financial statements themselves (balance sheet, income statement, auditor's report), see `financial-statements`; for corporate registry records, see `corporate-filings`.
+For annual and quarterly reports built around the financial statements themselves (10-K, 10-Q, statements plus MD&A), see `financial-statements`; for corporate registry records, see `corporate-filings`.
 
 ---
 
 ## Document types covered
 
-- Annual reports and annual information forms
-- Management discussion and analysis (MD&A)
+- Annual information forms (AIF)
 - Material change reports and current reports (material events)
 - Insider trading reports
 - Early warning / large shareholder disclosure filings
@@ -22,7 +21,7 @@ For the financial statements themselves (balance sheet, income statement, audito
 - Business acquisition reports
 - Technical reports (mining and resource sector)
 - In Canada: Annual Information Forms (AIF); Material Change Reports (MCR); SEDI insider trading reports; Early Warning Reports (EWR); management information circulars; NI 43-101 technical reports; SEDAR+ filings generally
-- In the US: SEC Form 10-K (annual); 10-Q (quarterly); 8-K (material events); proxy statements (DEF 14A); Form 4 (insider transactions); Forms 13D/G (5%+ shareholder); EDGAR filings generally
+- In the US: SEC Form 8-K (material events); proxy statements (DEF 14A); Form 4 (insider transactions); Forms 13D/G (5%+ shareholder); registration statements and prospectuses; EDGAR filings generally (annual and quarterly 10-K/10-Q reports are covered by `financial-statements`)
 - In the UK: Annual reports filed with Companies House; Regulatory News Service (RNS) disclosures; FCA filings
 - In Australia: ASX continuous disclosure announcements; ASIC filings
 

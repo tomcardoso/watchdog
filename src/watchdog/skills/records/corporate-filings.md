@@ -1,5 +1,5 @@
 ---
-description: a corporate registration, director filing, shareholder register, or beneficial-ownership record from a corporate registry; for securities disclosures, annual reports, or financial statements use `regulatory-filings` or `financial-statements`
+description: a corporate registration, director filing, shareholder register, or beneficial-ownership record from a corporate registry; for securities disclosures use `regulatory-filings`, for annual reports or financial statements use `financial-statements`
 ---
 # Domain knowledge — Corporate filings
 

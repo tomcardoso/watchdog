@@ -14,7 +14,8 @@ Loaded by Watchdog when the document type is a statement of claim, affidavit, ju
 - Court orders and injunctions
 - Judgments (trial and appellate)
 - Notices of motion and motion records
-- Certificates of pending litigation
+- Deposition and examination transcripts
+- Certificates of pending litigation (the court-issued certificate — the copy registered on title is covered by `real-estate`)
 - Writs of execution
 
 (Bankruptcy orders and receiving orders are covered by `bankruptcy`; tribunal decisions by `administrative-tribunals`.)

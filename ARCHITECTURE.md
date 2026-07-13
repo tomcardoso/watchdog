@@ -297,7 +297,7 @@ longer folded into the extractor.
   sidecar is context, not a command: the classify prompt marks it as data and the constrained
   schema (a skill filename) bounds the blast radius; the document text governs on disagreement.
   See D84.
-- **Universal red flags live in `extract_instructions.md`, not the matched skill (D86).**
+- **Universal red flags live in `extract_instructions.md`, not the matched skill (D114).**
   Type-agnostic patterns — document integrity, what's missing, backdating/timeline
   anomalies, self-reported-vs-verified — apply to every record, so they sit in the
   always-loaded extraction instructions rather than being restated per skill or reachable

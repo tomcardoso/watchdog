@@ -391,7 +391,7 @@ Skills are jurisdiction-agnostic by default: universal principles come first, wi
 | [`records/immigration-refugee`](src/watchdog/skills/records/immigration-refugee.md) | Asylum decisions, detention reviews, deportation orders, judicial reviews |
 | [`records/healthcare-licensing`](src/watchdog/skills/records/healthcare-licensing.md) | Discipline decisions, fitness to practise, facility inspections (medicine, nursing, pharmacy) |
 | [`records/professional-licensing`](src/watchdog/skills/records/professional-licensing.md) | Discipline decisions for lawyers, accountants, engineers, financial advisers, real estate agents |
-| [`records/legislation`](src/watchdog/skills/records/legislation.md) | Statutes, regulations, orders-in-council, policy directives, white papers |
+| [`records/legislation`](src/watchdog/skills/records/legislation.md) | Statutes, regulations, orders-in-council, bills, policy directives |
 
 ### Government and public records
 
@@ -399,7 +399,7 @@ Skills are jurisdiction-agnostic by default: universal principles come first, wi
 |-------|--------|
 | [`records/government-contracts`](src/watchdog/skills/records/government-contracts.md) | RFPs, sole-source justifications, contract awards, amendments, vendor performance, standing offer call-ups |
 | [`records/audit-reports`](src/watchdog/skills/records/audit-reports.md) | Auditor general reports, performance audits, inspector general reports |
-| [`records/government-reports`](src/watchdog/skills/records/government-reports.md) | Royal commissions, public inquiries, parliamentary committee reports |
+| [`records/government-reports`](src/watchdog/skills/records/government-reports.md) | Royal commissions, public inquiries, committee reports, white papers, consultations |
 | [`records/foi-responses`](src/watchdog/skills/records/foi-responses.md) | FOI/ATI response packages, exemption indexes, redaction logs |
 | [`records/legislature-transcripts`](src/watchdog/skills/records/legislature-transcripts.md) | Hansard, committee transcripts, question period, congressional hearings |
 | [`records/lobbying-records`](src/watchdog/skills/records/lobbying-records.md) | Lobbyist registrations, communication reports, revolving door disclosures |
@@ -413,8 +413,7 @@ Skills are jurisdiction-agnostic by default: universal principles come first, wi
 
 | Skill | Covers |
 |-------|--------|
-| [`records/real-estate`](src/watchdog/skills/records/real-estate.md) | Title transfers, mortgages, liens, assessments, market transactions |
-| [`records/land-registries`](src/watchdog/skills/records/land-registries.md) | Land registry and title systems — common law and civil law; deeds, charges, caveats |
+| [`records/real-estate`](src/watchdog/skills/records/real-estate.md) | Title transfers, mortgages, liens, assessments, land registry and title systems — common law and civil law; caveats, PPSA/RDPRM charges |
 | [`records/vehicle-registrations`](src/watchdog/skills/records/vehicle-registrations.md) | Motor vehicle and vessel registrations, title transfers, liens, fleet records |
 
 ### Specialized

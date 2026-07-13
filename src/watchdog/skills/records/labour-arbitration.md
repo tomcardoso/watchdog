@@ -1,5 +1,5 @@
 ---
-description: a grievance arbitration award, labour board decision, collective agreement, interest arbitration award, unfair labour practice ruling, or similar labour relations document
+description: a grievance arbitration award, labour board decision, collective agreement, interest arbitration award, unfair labour practice ruling, employment human rights or discrimination decision, or similar labour relations document
 ---
 # Domain knowledge — Labour and arbitration records
 

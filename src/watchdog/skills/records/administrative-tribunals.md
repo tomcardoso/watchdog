@@ -1,16 +1,15 @@
 ---
-description: a decision, order, or ruling from a quasi-judicial administrative tribunal (human rights, competition, privacy, energy, utility, and similar government-created bodies) that is not a court, a labour arbitration, an immigration body, or a professional licensing panel; for the FOI response package itself use `foi-responses`
+description: a decision, order, or ruling from a quasi-judicial administrative tribunal (human rights in housing or services, competition, privacy, energy, utility, and similar government-created bodies) that is not a court, a labour arbitration, an immigration body, or a professional licensing panel; for employment discrimination or harassment decisions use `labour-arbitration`, for environmental assessment and review-panel decisions use `environmental-filings`, for the FOI response package itself use `foi-responses`
 ---
 # Domain knowledge — Administrative tribunal records
 
-This skill is loaded by Watchdog when the document type is a decision, order, or ruling from a quasi-judicial administrative tribunal that is not a court of law, not a labour or employment arbitration (covered by `labour-arbitration`), not an immigration body (covered by `immigration-refugee`), and not a professional licensing panel (covered by `professional-licensing` or `healthcare-licensing`). Administrative tribunals are government-created bodies with statutory powers to hear disputes and make binding decisions.
+This skill is loaded by Watchdog when the document type is a decision, order, or ruling from a quasi-judicial administrative tribunal that is not a court of law, not a labour or employment arbitration (covered by `labour-arbitration`), not an immigration body (covered by `immigration-refugee`), and not a professional licensing panel (covered by `professional-licensing` or `healthcare-licensing`). Environmental assessment and review-panel decisions are covered by `environmental-filings`. Administrative tribunals are government-created bodies with statutory powers to hear disputes and make binding decisions.
 
 ---
 
 ## Document types covered
 
 - Human rights tribunal decisions (discrimination in housing, services, facilities — not employment, which is `labour-arbitration`)
-- Environmental and energy review board decisions and panel reports
 - Competition tribunal decisions and consent agreements
 - Expropriation boards and compensation decisions
 - Privacy commissioner investigation reports and orders

@@ -13,7 +13,6 @@ This skill is loaded by Watchdog when the document type is an insurance regulato
 - Supervisory letters and regulatory orders
 - Actuarial valuation reports
 - Reinsurance treaties and arrangements
-- Insurance company prospectuses and offering memoranda
 - Rate filing applications
 - Market conduct review reports
 - Insurance holding company filings

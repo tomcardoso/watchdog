@@ -19,7 +19,6 @@ This skill is loaded by Watchdog when the document type is a grant application, 
 - Research misconduct investigation reports
 - Retraction notices and corrigenda
 - Grant accountability and progress reports
-- University financial statements and endowment reports
 - Academic discipline and investigation letters
 - In Canada: Tri-Agency (NSERC, SSHRC, CIHR) applications; Canada Research Chair nominations; CFI applications
 - In the US: NIH and NSF grant applications (available via FOIA)

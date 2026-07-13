@@ -13,7 +13,6 @@ This skill is loaded by Watchdog when the document type is a freedom of informat
 - Exemption indexes and severance (redaction) logs
 - Informal disclosure packages
 - Proactive or routine disclosure releases
-- Complaint and investigation decisions (information commissioner, ombudsman, or equivalent oversight body)
 - Requests-in-progress logs and disclosure summaries
 - In Canada: Federal ATI (Access to Information) response packages; provincial or municipal FOI responses
 - In the US: FOIA (Freedom of Information Act) response packages; state-level public records responses

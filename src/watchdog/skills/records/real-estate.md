@@ -3,7 +3,7 @@ description: a real property record — title transfer or deed, mortgage/charge/
 ---
 # Domain knowledge — Real estate and land registry records
 
-Loaded by Watchdog when the document type is a title transfer, deed, mortgage or hypothec instrument, discharge, lien, property assessment, land registry or parcel register extract, title search, caveat, or a personal property security registration — any record of real property ownership or financing, or of the registry systems that record them. For Quebec-specific corporate registry records (REQ), see `corporate-filings`.
+Loaded by Watchdog when the document type is a title transfer, deed, mortgage or hypothec instrument, discharge, lien, property assessment, land registry or parcel register extract, title search, caveat, or a personal property security registration — any record of real property ownership or financing, or of the registry systems that record them.
 
 ---
 
@@ -37,6 +37,8 @@ Loaded by Watchdog when the document type is a title transfer, deed, mortgage or
 - Personal Property Security Act (PPSA) registrations — Canada (common law provinces)
 - UCC financing statements — US
 - Companies House charges register — UK
+
+(A lien registered against a specific motor vehicle or vessel is covered by `vehicle-registrations`.)
 
 **Jurisdiction-specific variants:**
 - In Canada (Ontario): Transfers; Charges (mortgages); discharges of charge

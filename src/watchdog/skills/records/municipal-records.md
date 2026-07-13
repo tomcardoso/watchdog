@@ -1,9 +1,9 @@
 ---
-description: a council agenda or minutes, development permit, variance application, zoning amendment, conflict-of-interest disclosure, or other municipal government record
+description: a council agenda or minutes, development permit, variance application, zoning amendment, conflict-of-interest disclosure, integrity commissioner decision, or similar municipal council and planning record; for municipal contract awards and procurement use `government-contracts`, for property tax assessments use `real-estate`
 ---
 # Domain knowledge — Municipal records
 
-This skill is loaded by Watchdog when the document type is a council agenda or minutes, development permit, variance application, zoning amendment, conflict-of-interest disclosure, or other municipal government record.
+This skill is loaded by Watchdog when the document type is a council agenda or minutes, development permit, variance application, zoning amendment, conflict-of-interest disclosure, integrity commissioner decision, or similar municipal council and planning record. Municipal contract awards and procurement are covered by `government-contracts`; property tax assessments by `real-estate`.
 
 ---
 
@@ -18,15 +18,12 @@ This skill is loaded by Watchdog when the document type is a council agenda or m
 - Development permits and variances
 - Conflict-of-interest declarations (municipal councillors)
 - Integrity commissioner or ethics officer complaints and decisions
-- Municipal lobbyist registry records
-- Municipal auditor general reports
 - Council expense reports and indemnity claims
-- Property tax assessment records and appeals
-- Municipal contracts and procurement records
-- Ombudsman investigation reports
 - In Canada (Ontario): Committee of Adjustment decisions; OPA/ZBA applications; LPAT/OLT appeals; MCIA declarations; MFIPPA requests
 - In the US: City council minutes; planning commission decisions; board of zoning appeals decisions; city ethics commission records
 - In the UK: Planning committee decisions; standards committee decisions; overview and scrutiny committee reports
+
+(Adjacent municipal document types live elsewhere: contract awards and procurement in `government-contracts`; municipal auditor general reports in `audit-reports`; ombudsman reports in `government-reports`; property tax assessments and appeals in `real-estate`; municipal lobbyist registrations in `lobbying-records`; the enacted text of a by-law in `legislation`.)
 
 ---
 
@@ -68,11 +65,6 @@ This skill is loaded by Watchdog when the document type is a council agenda or m
 - **Complaint dismissed on procedural grounds** — a complaint dismissed because it was filed late or outside the commissioner's jurisdiction, without a finding on the merits.
 - **Complaint settled before a report** — some complaints are resolved informally before the commissioner issues a report. The existence of an informal resolution may not be publicly disclosed.
 
-### Procurement and contracts
-
-- **Sole-source contract above the tender threshold** — municipal procurement rules typically require competitive bids above a specified threshold. Where the threshold and the contract value both appear in the document, note a sole-source award that exceeds it without documented justification; if the threshold is not stated, log a lead to check the municipality's procurement bylaw.
-- **Vendor relationship with a council member or senior official** — record the awarded vendor and the members or officials involved in the decision; a personal or financial tie between them is rarely stated in the record, so log a lead to check for relationships between the vendor's principals and the decision-makers.
-
 ---
 
 ## Jurisdiction terminology
@@ -102,7 +94,6 @@ This skill is loaded by Watchdog when the document type is a council agenda or m
 3. **Company → Application**: Developer applying for approval
 4. **Councillor → Conflict**: Declared conflict (direct or indirect) and the specific item
 5. **Person → Complaint**: Integrity commissioner or ethics complaint (complainant and subject)
-6. **Vendor → Contract**: Municipal contract (amount, type, procurement method)
 
 ---
 
@@ -116,7 +107,6 @@ This skill is loaded by Watchdog when the document type is a council agenda or m
 6. **Heritage designation and demolition permits** — a property under heritage designation that receives a demolition permit may require council approval. The sequence of decisions (heritage designation lifted, demolition permitted, development approved) can reveal political accommodation of a developer.
 7. **Repeat variances or permits to the same property or developer** — variances are meant to be exceptional. A single decision looks routine; a developer or property that receives them again and again, visible only once the applications are compiled, may be getting systematic accommodation.
 8. **Patterns tied to a single councillor across meetings** — a councillor who routinely declares conflicts involving a particular developer, employer, or sector (real estate, construction, waste management), or who is the repeated subject of integrity-commissioner complaints, only stands out once declarations and complaints from many meetings are assembled — even complaints individually dismissed can form a pattern.
-9. **Contract splitting across multiple awards** — dividing one large purchase into several pieces each below the competitive-tender threshold is invisible in any single award; it appears only when related awards to the same vendor over a short period are viewed together.
 
 ---
 
