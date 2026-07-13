@@ -355,7 +355,7 @@ def test_postflight_verifies_exact_quote_without_warning(tmp_path, capsys):
     (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
     (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
         "pages": [{"page": 2, "markdown": "The transfer ratio set at 65.8%. was confirmed."},
-                  {"page": 3, "markdown": "Unrelated page text."}],
+                  {"page": 3, "markdown": "A $842,018.34 payment was stayed."}],
     }))
     ext = _extraction()
     ext["document"]["key_facts"][0]["quote"] = "Transfer ratio set at 65.8%."
@@ -464,3 +464,44 @@ def test_postflight_coverage_gap_warning_reaches_warn_callback(tmp_path):
     result = postflight_run(vault, ext_path, warn=warnings.append)
     assert result.get("ok"), result
     assert any("pages 2–12" in w and "may have skipped" in w for w in warnings)
+
+
+# ── Figure verification against the morgue text (#363) ──────────────────────
+
+def test_postflight_flags_invented_figure_and_warns(tmp_path, capsys):
+    vault = _full_vault(tmp_path)
+    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
+        "pages": [{"page": 2, "markdown": "The transfer ratio was set at 65.8%."},
+                  {"page": 3, "markdown": "Transfers of $250,000 and $180,000 were recorded."}],
+    }))
+    ext = _extraction()
+    ext["document"]["key_facts"][1]["fact"] = "$430,000 across two transfers."
+    ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
+    ext_path.write_text(json.dumps(ext), encoding="utf-8")
+
+    result = postflight_run(vault, ext_path)
+    assert result.get("ok"), result
+
+    err = capsys.readouterr().err
+    assert "Warning" in err and "430000" in err and "not found on page" in err
+
+
+def test_postflight_does_not_flag_inferred_figure(tmp_path, capsys):
+    vault = _full_vault(tmp_path)
+    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
+        "pages": [{"page": 2, "markdown": "The transfer ratio was set at 65.8%."},
+                  {"page": 3, "markdown": "Nothing about payments here."}],
+    }))
+    ext = _extraction()
+    ext["document"]["key_facts"][1]["fact"] = "$430,000 across two transfers."
+    ext["document"]["key_facts"][1]["basis"] = "inferred"
+    ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
+    ext_path.write_text(json.dumps(ext), encoding="utf-8")
+
+    result = postflight_run(vault, ext_path)
+    assert result.get("ok"), result
+
+    err = capsys.readouterr().err
+    assert "not found on page" not in err

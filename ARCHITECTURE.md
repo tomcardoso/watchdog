@@ -227,10 +227,12 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    unified key_facts into the per-entity `evidence_fragments` + `timeline_events` that the
    writers consume (`explode_key_facts`, D26), **verifies** each `key_facts[].quote` against
    the cited page's text from the chew-time queue descriptor (`quote_verify.verify_quotes`,
-   D75), **flags a file-metadata date mismatch** — `document.file_metadata.created` postdating
-   `date_of_document` by a year or more (`file_metadata.check_date_mismatch`, #369),
-   deterministic and suppressed whenever `ocr_used` is true, since a scan's creation date
-   describes the scan, not the original — then calls `write_vault.run()`.
+   D75), **checks each stated fact's numeric figures** against the cited page's text
+   (`figure_verify.verify_figures`, D112), **flags a file-metadata date mismatch** —
+   `document.file_metadata.created` postdating `date_of_document` by a year or more
+   (`file_metadata.check_date_mismatch`, #369), deterministic and suppressed whenever
+   `ocr_used` is true, since a scan's creation date describes the scan, not the original —
+   then calls `write_vault.run()`.
 
 `write_vault` is the single deterministic writer: it collapses each entity's model-invented
 `type` onto a closed six-value vocabulary (`entity_type.canonical_type`, D105) — so a drifting
