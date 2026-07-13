@@ -874,6 +874,10 @@ def _edit_key_interactive(config: dict, key: str) -> None:
         if value is None:
             print(f"\n  {_DIM}No change.{_RESET}\n")
             return
+        # Routing a stage to a provider we have no key for would leave it broken until the next
+        # ingest failed — ask now, while the user is thinking about that provider.
+        from watchdog.cmd.auth import ensure_provider_key
+        ensure_provider_key(value)
     elif meta["type"] == "enum":
         choices = meta.get("choices", [])
         current = config.get(key, meta.get("default"))

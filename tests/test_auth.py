@@ -202,18 +202,24 @@ def test_bare_auth_noninteractive_just_prints_status(home, monkeypatch, capsys):
     assert "Change something" not in out
 
 
-def test_bare_auth_interactive_decline_changes_nothing(home, monkeypatch):
+# The service picker leads with a "Done — nothing to change" row, so a provider's number is its
+# index in _PROVIDERS + 2 (+1 to make it 1-based, +1 for the Done row).
+def _provider_choice(name: str) -> str:
+    return str(list(auth._PROVIDERS).index(name) + 2)
+
+
+def test_bare_auth_interactive_done_row_changes_nothing(home, monkeypatch):
     auth._save_state({"mode": "subscription", "keys": {}})
     _tty(monkeypatch, True)
-    _answers(monkeypatch, "n")
+    _answers(monkeypatch, "1")          # "Done — nothing to change" is the first row
     auth.cmd_auth(object())
     assert auth._load_state()["mode"] == "subscription"
 
 
 def test_bare_auth_interactive_switch_to_api_key(home, monkeypatch):
-    # Change something? y -> provider 1 (anthropic) -> choice 2 (api-key) -> paste key
+    # Anthropic -> mode 2 (api-key) -> paste key
     _tty(monkeypatch, True)
-    _answers(monkeypatch, "y", "1", "2")
+    _answers(monkeypatch, _provider_choice("anthropic"), "2")
     monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-wizard-123456")
     auth.cmd_auth(object())
     state = auth._load_state()
@@ -224,16 +230,14 @@ def test_bare_auth_interactive_switch_to_api_key(home, monkeypatch):
 def test_bare_auth_interactive_switch_to_subscription(home, monkeypatch):
     auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-old"}})
     _tty(monkeypatch, True)
-    _answers(monkeypatch, "y", "1", "1")
+    _answers(monkeypatch, _provider_choice("anthropic"), "1")
     auth.cmd_auth(object())
     assert auth._load_state()["mode"] == "subscription"
 
 
 def test_bare_auth_interactive_store_openai_key(home, monkeypatch):
-    providers = list(auth._PROVIDERS)
-    openai_choice = str(providers.index("openai") + 1)
     _tty(monkeypatch, True)
-    _answers(monkeypatch, "y", openai_choice)
+    _answers(monkeypatch, _provider_choice("openai"))
     monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-openai-abc1234567")
     auth.cmd_auth(object())
     assert auth.get_api_key("openai") == "sk-openai-abc1234567"
@@ -242,10 +246,8 @@ def test_bare_auth_interactive_store_openai_key(home, monkeypatch):
 
 def test_bare_auth_interactive_replace_existing_key(home, monkeypatch):
     auth._save_state({"mode": "api-key", "keys": {"openai": "sk-openai-old1234567"}})
-    providers = list(auth._PROVIDERS)
-    openai_choice = str(providers.index("openai") + 1)
     _tty(monkeypatch, True)
-    _answers(monkeypatch, "y", openai_choice, "r")
+    _answers(monkeypatch, _provider_choice("openai"), "1")       # 1 = Replace
     monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-openai-new1234567")
     auth.cmd_auth(object())
     assert auth.get_api_key("openai") == "sk-openai-new1234567"
@@ -253,20 +255,16 @@ def test_bare_auth_interactive_replace_existing_key(home, monkeypatch):
 
 def test_bare_auth_interactive_delete_existing_key(home, monkeypatch):
     auth._save_state({"mode": "api-key", "keys": {"openai": "sk-openai-old1234567"}})
-    providers = list(auth._PROVIDERS)
-    openai_choice = str(providers.index("openai") + 1)
     _tty(monkeypatch, True)
-    _answers(monkeypatch, "y", openai_choice, "d")
+    _answers(monkeypatch, _provider_choice("openai"), "2")       # 2 = Delete
     auth.cmd_auth(object())
     assert auth.get_api_key("openai") is None
 
 
 def test_bare_auth_interactive_cancel_leaves_existing_key(home, monkeypatch):
     auth._save_state({"mode": "api-key", "keys": {"openai": "sk-openai-old1234567"}})
-    providers = list(auth._PROVIDERS)
-    openai_choice = str(providers.index("openai") + 1)
     _tty(monkeypatch, True)
-    _answers(monkeypatch, "y", openai_choice, "c")
+    _answers(monkeypatch, _provider_choice("openai"), "3")       # 3 = Cancel
     auth.cmd_auth(object())
     assert auth.get_api_key("openai") == "sk-openai-old1234567"
 
@@ -274,16 +272,97 @@ def test_bare_auth_interactive_cancel_leaves_existing_key(home, monkeypatch):
 def test_bare_auth_invalid_provider_choice_changes_nothing(home, monkeypatch):
     auth._save_state({"mode": "subscription", "keys": {}})
     _tty(monkeypatch, True)
-    _answers(monkeypatch, "y", "99")
+    _answers(monkeypatch, "99")
     auth.cmd_auth(object())
     assert auth._load_state()["mode"] == "subscription"
 
 
 def test_bare_auth_empty_key_entry_does_not_store(home, monkeypatch):
-    providers = list(auth._PROVIDERS)
-    openai_choice = str(providers.index("openai") + 1)
     _tty(monkeypatch, True)
-    _answers(monkeypatch, "y", openai_choice)
+    _answers(monkeypatch, _provider_choice("openai"))
     monkeypatch.setattr(auth, "getpass", lambda *a, **k: "   ")
     auth.cmd_auth(object())
     assert auth.get_api_key("openai") is None
+
+
+# ── status: every stored key is listed, labelled in-use / unused ──────────────
+
+def test_status_lists_a_routed_key_as_in_use(home, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
+    (tmp_path / "config.json").write_text(json.dumps({"extractor_model": "gemini:gemini-2.5-flash"}))
+    auth._save_state({"mode": "subscription", "keys": {"gemini": "gm-routed-key-123456"}})
+    _tty(monkeypatch, False)
+    auth.cmd_auth(object())
+    out = capsys.readouterr().out
+    # The masked value of a key already in active use must appear — it used to be omitted
+    # entirely, because only keys with no stage routed to them were listed.
+    assert auth._mask("gm-routed-key-123456") in out
+    assert "in use" in out
+
+
+def test_status_lists_an_unrouted_key_as_unused(home, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
+    auth._save_state({"mode": "subscription", "keys": {"openai": "sk-openai-idle1234567"}})
+    _tty(monkeypatch, False)
+    auth.cmd_auth(object())
+    out = capsys.readouterr().out
+    assert auth._mask("sk-openai-idle1234567") in out
+    assert "unused" in out
+
+
+# ── ensure_provider_key: picking a model must not leave a stage keyless ───────
+
+def test_ensure_provider_key_prompts_and_stores_for_new_provider(home, monkeypatch):
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "gm-fresh-key-123456")
+    auth.ensure_provider_key("gemini:gemini-2.5-flash")
+    assert auth.get_api_key("gemini") == "gm-fresh-key-123456"
+
+
+def test_ensure_provider_key_noop_for_claude_tier(home, monkeypatch):
+    def _boom(*a, **k):
+        raise AssertionError("must not prompt for a key when the model is a Claude tier")
+    monkeypatch.setattr(auth, "getpass", _boom)
+    auth.ensure_provider_key("sonnet")
+    assert auth._load_state()["keys"] == {}
+
+
+def test_ensure_provider_key_noop_when_key_already_stored(home, monkeypatch):
+    auth._save_state({"mode": "subscription", "keys": {"openai": "sk-openai-existing123"}})
+
+    def _boom(*a, **k):
+        raise AssertionError("must not re-prompt when a key is already stored")
+    monkeypatch.setattr(auth, "getpass", _boom)
+    auth.ensure_provider_key("openai:gpt-5-mini")
+    assert auth.get_api_key("openai") == "sk-openai-existing123"
+
+
+def test_ensure_provider_key_noop_when_key_in_environment(home, monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-deepseek-fromenv12")
+
+    def _boom(*a, **k):
+        raise AssertionError("must not prompt when the provider's env var is set")
+    monkeypatch.setattr(auth, "getpass", _boom)
+    auth.ensure_provider_key("deepseek:deepseek-chat")
+    assert auth._load_state()["keys"] == {}      # nothing written to disk
+
+
+def test_ensure_provider_key_declined_leaves_no_key(home, monkeypatch):
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "")
+    auth.ensure_provider_key("gemini:gemini-2.5-flash")
+    assert auth.get_api_key("gemini") is None
+
+
+def test_configure_model_key_prompts_for_the_providers_key(home, tmp_path, monkeypatch):
+    """The gap this closes: routing a stage to a provider you have no key for used to succeed
+    silently and only blow up mid-ingest."""
+    from watchdog.cmd import setup as setup_cmd
+
+    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
+    monkeypatch.setattr(setup_cmd, "_pick_model_interactive", lambda *a, **k: "gemini:gemini-2.5-flash")
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "gm-configure-key-123")
+
+    config: dict = {}
+    setup_cmd._edit_key_interactive(config, "extractor_model")
+
+    assert config["extractor_model"] == "gemini:gemini-2.5-flash"
+    assert auth.get_api_key("gemini") == "gm-configure-key-123"

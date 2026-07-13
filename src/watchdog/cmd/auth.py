@@ -222,18 +222,60 @@ def _status() -> None:
         print(f"  {mark} {_DIM}{label:<11}{_RESET}{_CYAN}{value}{_RESET}  {_DIM}({provider}){_RESET}")
     print()
 
-    # Stored keys for providers not shown above (kept for reference — e.g. a key added but no
-    # stage currently routed to it).
+    # Every non-Claude provider with a key available, whether or not a stage is routed to it.
+    # Listing only the unrouted ones (as this did before) meant a key in active use — the one
+    # backing a ✓ above — never showed its masked value anywhere, so there was no way to check
+    # *which* key was in play without opening the wizard.
     shown_providers = {_ingest_stage_provider(config.get(k) or d) for k, d in _INGEST_STAGES}
-    others = [(p, get_api_key(p)) for p in _PROVIDERS if p != "anthropic" and p not in shown_providers]
-    if any(key for _, key in others):
-        print(f"  {_DIM}Other stored keys{_RESET}")
-        for p, key in others:
-            if not key:
-                continue
+    keyed = [(p, get_api_key(p)) for p in _PROVIDERS if p != "anthropic"]
+    keyed = [(p, key) for p, key in keyed if key]
+    if keyed:
+        print(f"  {_DIM}Provider keys{_RESET}")
+        for p, key in keyed:
             where = f"${_PROVIDERS[p]['env']}" if os.environ.get(_PROVIDERS[p]["env"]) else "stored"
-            print(f"  {_DIM}{p:<13}{_RESET}{_CYAN}{_mask(key)}{_RESET} {_DIM}({where}){_RESET}")
+            status = "in use" if p in shown_providers else "unused"
+            print(f"  {_DIM}{p:<13}{_RESET}{_CYAN}{_mask(key)}{_RESET} {_DIM}({where}, {status}){_RESET}")
         print()
+
+
+def prompt_and_store_key(provider: str, state: dict) -> bool:
+    """Prompt for a non-Claude provider's API key, warn on an unexpected prefix, store it, and
+    confirm with the masked value. Returns True if a key was stored.
+
+    The single implementation of "ask for a key and save it" — shared by setup's extra-provider
+    offer, the metered-ingestion wizard, `watchdog auth`'s key editor, and the check that runs
+    when a model is picked from a provider with no key yet. Mutates and persists `state`.
+    """
+    meta = _PROVIDERS[provider]
+    try:
+        key = getpass(f"  Paste {meta['label']} API key (hidden): ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    if not key:
+        print(f"  {_DIM}No key entered — skipped.{_RESET}")
+        return False
+    if meta["prefix"] and not key.startswith(meta["prefix"]):
+        print(f"  {_YELLOW}!{_RESET}  Key doesn't start with '{meta['prefix']}' — storing it anyway.")
+    state.setdefault("keys", {})[provider] = key
+    _save_state(state)
+    print(f"  {_GREEN}✓{_RESET}  {meta['label']} key stored ({_mask(key)}).")
+    return True
+
+
+def ensure_provider_key(value: str) -> None:
+    """Prompt for a key if the just-chosen `[backend:]model` points at a provider that has none.
+
+    Picking, say, `gemini:gemini-2.5-flash` for a stage used to leave that stage silently
+    unusable until the user separately remembered to run `watchdog auth` — the failure only
+    surfaced mid-ingest. Asking here keeps "pick a model" and "be able to run it" together.
+    A Claude tier, or a provider whose key is already stored or in the environment, is a no-op.
+    """
+    provider = _ingest_stage_provider(value)
+    if provider == "anthropic" or get_api_key(provider):
+        return
+    print()
+    prompt_and_store_key(provider, _load_state())
 
 
 def _apply_anthropic_choice(state: dict, choice: str) -> None:
@@ -343,22 +385,11 @@ def _setup_metered_ingestion(state: dict) -> None:
     provider = extras[result]
     meta = _PROVIDERS[provider]
 
+    print()
     if os.environ.get(meta["env"]) or state["keys"].get(provider):
-        print(f"\n  {_GREEN}✓{_RESET}  {meta['label']} key already available.")
-    else:
-        try:
-            key = getpass(f"\n  Paste {meta['label']} API key (hidden): ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            return
-        if not key:
-            print(f"  {_DIM}No key entered — skipped.{_RESET}")
-            return
-        if meta["prefix"] and not key.startswith(meta["prefix"]):
-            print(f"  {_YELLOW}!{_RESET}  Key doesn't start with '{meta['prefix']}' — storing it anyway.")
-        state["keys"][provider] = key
-        _save_state(state)
-        print(f"  {_GREEN}✓{_RESET}  {meta['label']} key stored ({_mask(key)}).")
+        print(f"  {_GREEN}✓{_RESET}  {meta['label']} key already available.")
+    elif not prompt_and_store_key(provider, state):
+        return
 
     from watchdog.cmd.base import CONFIG_FILE, WATCHDOG_HOME
     from watchdog.cmd.setup import _pick_model_interactive
@@ -401,30 +432,19 @@ def _offer_extra_providers(state: dict) -> None:
             continue                                   # already available
         if not confirm(f"  Add a {meta['label']} key?", default=False):
             continue
-        try:
-            key = getpass(f"  Paste {p} API key (hidden): ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            continue
-        if not key:
-            print(f"  {_DIM}No key entered — skipped.{_RESET}")
-            continue
-        if meta["prefix"] and not key.startswith(meta["prefix"]):
-            print(f"  {_YELLOW}!{_RESET}  Key doesn't start with '{meta['prefix']}' — storing it anyway.")
-        state["keys"][p] = key
-        _save_state(state)
-        print(f"  {_GREEN}✓{_RESET}  {p} key stored ({_mask(key)}).")
+        prompt_and_store_key(p, state)
 
 
 def _choose_provider_interactive() -> str | None:
-    """Ask which provider to change. Returns the provider key, or None if cancelled/invalid."""
+    """Ask whether to change anything and, if so, which service. "Done" is the first row rather
+    than a separate y/n prompt in front of the picker — one keypress to leave `watchdog auth`
+    instead of two. Returns the provider key, or None if the user chose "Done" or cancelled."""
     providers = list(_PROVIDERS)
-    items = [_PROVIDERS[p]["label"] for p in providers]
-    result = pick(items, 0, title="Which service?")
-    if result is CANCELLED:
-        print(f"\n  {_YELLOW}Invalid choice — nothing changed.{_RESET}\n")
+    items = ["Done — nothing to change"] + [_PROVIDERS[p]["label"] for p in providers]
+    result = pick(items, 0, title="Change something?")
+    if result is CANCELLED or result == 0:
         return None
-    return providers[result]
+    return providers[result - 1]
 
 
 def _pick_anthropic_mode_interactive(state: dict) -> None:
@@ -451,33 +471,17 @@ def _pick_key_provider_interactive(provider: str, state: dict) -> None:
 
     if existing:
         print(f"  Current key: {_CYAN}{_mask(existing)}{_RESET} {_DIM}(stored){_RESET}")
-        try:
-            ans = input("  [r]eplace, [d]elete, or [c]ancel? [c] ").strip().lower() or "c"
-        except (EOFError, KeyboardInterrupt):
-            print()
+        items = ["Replace the stored key", "Delete the stored key", "Cancel"]
+        result = pick(items, 0, title="What would you like to do?")
+        if result is CANCELLED or result == 2:
             return
-        if ans.startswith("d"):
+        if result == 1:
             del state["keys"][provider]
             _save_state(state)
-            print(f"\n  {_GREEN}Removed:{_RESET} stored key for {_BOLD}{provider}{_RESET}\n")
-            return
-        if not ans.startswith("r"):
-            print()
+            print(f"  {_GREEN}Removed:{_RESET} stored key for {_BOLD}{provider}{_RESET}\n")
             return
 
-    try:
-        key = getpass(f"  Paste {meta['label']} API key (hidden): ").strip()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        return
-    if not key:
-        print(f"\n  {_DIM}No key entered — nothing changed.{_RESET}\n")
-        return
-    if meta["prefix"] and not key.startswith(meta["prefix"]):
-        print(f"\n  {_YELLOW}Warning:{_RESET} key doesn't start with '{meta['prefix']}' — storing it anyway.")
-    state["keys"][provider] = key
-    _save_state(state)
-    print(f"\n  {_GREEN}Stored:{_RESET} {_BOLD}{provider}{_RESET} {_CYAN}{_mask(key)}{_RESET}")
+    prompt_and_store_key(provider, state)
     print()
 
 
@@ -491,10 +495,6 @@ def cmd_auth(args) -> None:
     if not sys.stdin.isatty():
         return
 
-    if not confirm("  Change something?", default=False):
-        return
-
-    print()
     provider = _choose_provider_interactive()
     if provider is None:
         return
