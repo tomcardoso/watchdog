@@ -10,6 +10,7 @@ set-union — no LLM reasoning:
   * a normalized-name pass folds any id drift (OCR variance) onto one id
   * document key_facts concatenated and deduped (the fact layer, including each
     fact's date / entity tags — postflight fans these back out per entity)
+  * document_requests unioned across sections, deduped by normalized `what` text (#365)
 
 The output is shape-identical to a single-document extraction JSON, so it feeds
 straight into `watchdog post-flight` unchanged.
@@ -63,6 +64,25 @@ def _dedup_key_facts(facts: list) -> list:
     return out
 
 
+def _dedup_document_requests(requests: list) -> list:
+    """Dedup by normalized `what` (whitespace-collapsed, lowercased), keeping first-seen order
+    and first-seen wording — same idea as `_dedup_key_facts`, one field instead of the whole
+    fact text."""
+    seen: set[str] = set()
+    out: list = []
+    for r in requests:
+        if not isinstance(r, dict):
+            continue
+        what = (r.get("what") or "").strip()
+        if not what:
+            continue
+        key = " ".join(what.split()).lower()
+        if key not in seen:
+            seen.add(key)
+            out.append(r)
+    return out
+
+
 def merge_extractions(sections: list[dict]) -> dict:
     """Merge a list of partial extraction dicts into one extraction dict."""
     docs = [s.get("document") or {} for s in sections]
@@ -71,6 +91,11 @@ def merge_extractions(sections: list[dict]) -> dict:
     key_facts: list = []
     for d in docs:
         key_facts.extend(d.get("key_facts", []))
+
+    document_requests: list = []
+    for sec in sections:
+        document_requests.extend(sec.get("document_requests") or [])
+    document_requests = _dedup_document_requests(document_requests)
 
     by_id: dict[str, dict] = {}
     norm_index: dict[str, str] = {}   # normalized surface form -> canonical id
@@ -138,12 +163,15 @@ def merge_extractions(sections: list[dict]) -> dict:
     document.pop("key_facts", None)
     document["key_facts"] = _dedup_key_facts(key_facts)
 
-    return {
+    merged = {
         "document": document,
         "entities": entities,
         "morgue_entity_id": morgue_entity_id,
         "morgue_document_type": morgue_document_type,
     }
+    if document_requests:
+        merged["document_requests"] = document_requests
+    return merged
 
 
 def run(vault: Path, sha256: str) -> dict:

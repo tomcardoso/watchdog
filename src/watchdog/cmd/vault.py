@@ -719,7 +719,7 @@ def cmd_delete(args) -> None:
         purge_backed_up = _snapshot(vault, "delete-purge", [
             reg_dir / "entities.json", reg_dir / "documents.json",
             reg_dir / "registry.json", reg_dir / "manifest.json",
-            reg_dir / "resolutions.json",
+            reg_dir / "resolutions.json", reg_dir / "requests.json",
         ]) is not None
         shutil.rmtree(vault)
 

@@ -37,6 +37,7 @@ my-investigation/
 ├── timeline.md             ← chronological event log across the investigation
 ├── context.md              ← your investigation intent and key questions
 ├── watchlist.md            ← terms to watch for in new documents (one per line)
+├── requests.md             ← documents to go and get, regenerated after every ingest
 ├── index.md                ← landing page linking to the dashboard
 └── dashboard.base          ← dashboard of live tables (Obsidian Bases)
 ```
@@ -70,6 +71,7 @@ my-investigation/
 - **`timeline.md`** — every datable event extracted across the investigation, assembled into one chronological view.
 - **`context.md`** — your investigation intent and key questions, written by the context interview.
 - **`watchlist.md`** — terms you want flagged when they appear in new documents, one per line. The format and the scan are covered in [Investigating](investigating.md).
+- **`requests.md`** — documents named in what you have already ingested that you could go and get: a hearing transcript an order cites, an enabling regulation, a referenced filing. Regenerated after every ingest and covered in [Investigating](investigating.md#document-requests).
 - **`index.md`** — a thin landing page that links to the dashboard.
 - **`dashboard.base`** — the dashboard itself, described next.
 

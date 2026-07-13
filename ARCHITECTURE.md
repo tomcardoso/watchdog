@@ -212,7 +212,9 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    layer** — entities (deduped against the pre-flight candidates) with aliases, roles, and
    contradictions. It no longer restates the document as per-entity summaries, evidence
    fragments, or timeline events, nor pads `key_facts` to a fixed count — the full Docling text
-   is retained in the morgue (§3, §12), so extraction indexes it rather than reproducing it.
+   is retained in the morgue (§3, §12), so extraction indexes it rather than reproducing it. An
+   optional `document_requests` array names concrete, obtainable artifacts the document refers
+   to (a cited transcript, an enabling regulation) — omitted when there are none; see D111.
    Schema validation + a same-model retry live in `model_client` (no automatic tier
    escalation — see D20); the orchestrator adds one post-flight repair retry. When chew
    captured embedded file metadata (§3, #369), `prompts.build_extract_prompt`/
@@ -526,6 +528,17 @@ callouts) drop resolved ids from the active list. The store is populated by `wat
 by `- [x]` checkbox sync from the briefing files (`<!--wid:<id>-->` markers), and undone by
 `watchdog unresolve`; `merge-entities` remaps lead ids onto the survivor (§I1, D54).
 
+**Document requests (`pipeline/requests.py`, D111).** A **document request** is a concrete
+artifact to acquire — a document type, the specific thing, why it matters, and often where to
+get it — distinct from a lead's open-ended thread. The model emits `document_requests` on
+`EXTRACTION`/`SECTION` (moved out of `scratchpad`/`observations`, never duplicated); Python
+stamps each into `.watchdog/Registry/requests.json` with an id (`request:<sha7>:<hash>`) and
+provenance (§I1), inside `write_vault`'s registry lock. `write_requests` renders the still-open
+entries to the vault-root `requests.md` (overwrite, current-state, same `<!--wid:...-->`
+checkbox convention as leads/alerts) and `sync_from_briefings` reads it alongside the briefing
+files. Resolution is manual only — no fuzzy auto-close — and a resolved or rendered request is
+never re-fed into any later model prompt.
+
 **Promoting a surface-found contradiction (`watchdog contradiction-add`, D82, D83).**
 `/watchdog-surface` reports cross-document contradictions as labelled *candidates* rather than
 writing callouts into pipeline-owned entity notes (D81). When the journalist explicitly confirms
@@ -665,6 +678,7 @@ morgue/<entity>/<type>/…     original source files + a sibling <name>.md of th
                             Docling full text, filed by subject (D26)
 timeline.md                 rendered global timeline
 briefings/<date>.md         per-ingest briefings
+requests.md                 open document requests — documents to go and get (D111)
 context.md / hot.md / log.md investigation context, hot cache, run log
 index.md / dashboard.base    landing page + native Obsidian Bases dashboard (D42)
 .embeddings/                semantic search index
@@ -686,7 +700,8 @@ Registry/
                             file_metadata (author/producer/created/…, #369)
   registry.json             counts + last-updated
   manifest.json             lightweight id→{name,type,aliases,note_path} lookup
-  resolutions.json          acknowledged leads/alerts/contradictions overlay (D68)
+  resolutions.json          acknowledged leads/alerts/contradictions/requests overlay (D68, D111)
+  requests.json             document-request ledger — id/provenance stamped by Python (D111)
   ingest.log                append-only ingest log (START/OK/WARN/FAILED per doc, D102)
   usage/usage-<ts>.json     per-run model-call token/cost/latency telemetry (D50, D86, D102)
   batch-pending.json        pending claude-batch extraction state (D52)

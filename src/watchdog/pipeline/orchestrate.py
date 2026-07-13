@@ -26,8 +26,8 @@ from watchdog import model_client, skills_catalog
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 from watchdog.cmd.live import LiveRegion
 from watchdog.pipeline import (
-    abort, batch_extract, leads, merge, preflight, postflight, prompts, schemas, section,
-    synthesis_bundle, timeline, watchlist,
+    abort, batch_extract, leads, merge, preflight, postflight, prompts, requests, schemas,
+    section, synthesis_bundle, timeline, watchlist,
 )
 from watchdog.pipeline.write_vault import _doc_slug
 
@@ -934,7 +934,7 @@ def _fts_add_note_safe(vault: Path, note_path: str, kind: str, title: str, text:
 
 
 def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
-                    contradiction_flags: list) -> str:
+                    contradiction_flags: list, n_new_requests: int = 0) -> str:
     # Resolve entity ids the model may have echoed instead of display names (#342) — deterministic
     # backstop on top of the prompt/schema instructions, since not every backend honours those.
     names = _load_entity_names(vault)
@@ -964,6 +964,10 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
         body += "\n## Near-duplicate alerts\n\n" + "\n".join(
             f"- {a['filename']}: {a['similarity']:.0%} similar to an existing document"
             for a in neardup_alerts) + "\n"
+    if n_new_requests:
+        body += (f"\n## Document requests\n\n"
+                 f"- {n_new_requests} new document request"
+                 f"{'s' if n_new_requests != 1 else ''} — see [[requests|requests.md]]\n")
     (vault / "briefings").mkdir(exist_ok=True)
     (vault / "briefings" / f"{slug}.md").write_text(body, encoding="utf-8")
     _fts_add_note_safe(vault, f"briefings/{slug}", "briefing", f"Briefing {slug}", body)
@@ -1123,6 +1127,11 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                       for r in ok if r.get("near_dup_similarity", 0) >= 0.85]
     contradiction_flags = [{"filename": r["filename"], "entities": r["contradictions"]}
                            for r in ok if r.get("contradictions")]
+    # Deterministic pointer, not a model input (D111): count this run's open document requests
+    # (recorded per-document into the ledger by write_vault, at extraction time) so the briefing
+    # can point at requests.md without the requests themselves ever entering a prompt.
+    ok_shas = {r["sha256"] for r in ok}
+    n_new_requests = len([r for r in requests.open_requests(vault) if r.get("source_sha256") in ok_shas])
     try:
         r = await _call_model(
             task="briefing", model=post_model, backend=post_backend, schema=schemas.BRIEFING,
@@ -1130,7 +1139,8 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                 brief=brief, results=ok, scratchpads=scratchpads,
                 neardup_alerts=neardup_alerts, contradiction_flags=contradiction_flags),
             effort=post_effort)
-        out["briefing"] = _write_briefing(vault, r.parsed, ok, neardup_alerts, contradiction_flags)
+        out["briefing"] = _write_briefing(vault, r.parsed, ok, neardup_alerts, contradiction_flags,
+                                          n_new_requests)
     except model_client.RateLimitError as e:
         out["briefing_error"] = str(e)
         _say(f"{_YELLOW}briefing skipped{_RESET}{_DIM} — {e}{_RESET}")
@@ -1171,6 +1181,17 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         _say(f"{_YELLOW}⚠{_RESET}  {_BOLD}{n}{_RESET} lead{'s' if n != 1 else ''} "
              f"{_DIM}(named-but-unprofiled, isolated, contradictions){_RESET} — "
              f"{_CYAN}{leads_relpath}{_RESET}")
+
+    # 6. Document requests (deterministic, no model; #365). Re-render requests.md from the
+    # ledger write_vault populated per-document at extraction time — requests are never re-fed
+    # into a model prompt.
+    requests_relpath = requests.write_requests(vault)
+    if requests_relpath:
+        n = len(requests.open_requests(vault))
+        out["requests"] = requests_relpath
+        _say(f"{_YELLOW}⚠{_RESET}  {_BOLD}{n}{_RESET} open document request"
+             f"{'s' if n != 1 else ''} {_DIM}(documents to go and get){_RESET} — "
+             f"{_CYAN}{requests_relpath}{_RESET}")
     return out
 
 

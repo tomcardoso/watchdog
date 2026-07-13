@@ -848,7 +848,7 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
         # Resolved-contradiction overlay (#266): callouts the journalist has acknowledged are
         # dropped from the rendered note body. The registry keeps the full list, so unresolving
         # restores them on the next write.
-        from watchdog.pipeline import resolutions
+        from watchdog.pipeline import requests, resolutions
         resolved_ids = resolutions.resolved_ids(vault_path)
 
         morgue_relative = (
@@ -911,6 +911,17 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
             "minhash":          sig,
             "morgue_path":      morgue_relative,
         }
+
+        # ── 2b. Record document requests ──────────────────────────────────────
+        #
+        # The model authors what/why/likely_source in the extraction; Python stamps the rid and
+        # source provenance (§I1) — the same code/model split as the registries above. `record`
+        # dedups by rid, so a repair retry of this document converges instead of duplicating.
+        requests.record(
+            vault_path, extraction.get("document_requests") or [],
+            sha256=doc_sha256, filename=doc["filename"],
+            document_note=documents_reg[doc_sha256]["document_note"],
+        )
 
         # ── 3. Write entity notes ─────────────────────────────────────────────
         #
