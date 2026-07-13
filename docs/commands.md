@@ -140,7 +140,7 @@ Prints the deterministic lead sweep over the vault's entity graph — no model c
 
 ### watchdog resolve and unresolve
 
-Every item in the leads and alerts reports carries a short resolution id (for example `lead:isolated:acme`). Run `watchdog resolve <id…>` from inside the vault to acknowledge items so the deterministic reports stop re-surfacing them. Two flags change the mode: `--sync` imports any `- [x]` checkboxes you have ticked in the `briefings/` files instead of taking ids, and `--list` shows what is currently acknowledged. `watchdog unresolve <id…>` is the inverse, bringing items back into the active list. Acknowledgments are stored in the vault's registry and follow an entity through `watchdog merge-entities`.
+Every item in the leads, alerts, and document-request reports carries a short resolution id (for example `lead:isolated:acme`, or `request:1a2b3c4:9f8e7d6c` for a document request). Run `watchdog resolve <id…>` from inside the vault to acknowledge items so the deterministic reports stop re-surfacing them. Two flags change the mode: `--sync` imports any `- [x]` checkboxes you have ticked in the `briefings/` files or the vault-root `requests.md` instead of taking ids, and `--list` shows what is currently acknowledged. `watchdog unresolve <id…>` is the inverse, bringing items back into the active list. Acknowledgments are stored in the vault's registry and follow an entity through `watchdog merge-entities`.
 
 ### watchdog merge-entities
 

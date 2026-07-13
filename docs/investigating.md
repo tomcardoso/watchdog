@@ -100,6 +100,20 @@ watchdog leads
 
 A bare `watchdog` with nothing pending also nudges you when leads are open.
 
+## Document requests
+
+Some documents refer to other documents you don't have yet — the transcript a hearing order cites, the regulation it enforces, an exhibit that was filed but never attached. Watchdog surfaces these as document requests: a concrete artifact to go and get, filed apart from the open-ended leads described above because it names a specific known-to-exist thing rather than a thread to chase.
+
+Requests are written to `requests.md` in the vault root, grouped by document type, each carrying the reason it matters, where it can plausibly be obtained, and a link back to the document that named it. The file is regenerated after every ingest, so it always reflects what is still outstanding — a routine document that names nothing worth chasing simply adds nothing to it.
+
+Resolve a request the same way as a lead, once you have the document in hand:
+
+```bash
+watchdog resolve --sync
+```
+
+A document request is written once, from what the model read at extraction time, and is never read back into a later model call — checking `requests.md` costs no tokens.
+
 ## The watchlist
 
 `watchlist.md` in the vault root is a list of terms you want flagged whenever they appear in new documents — one per line: a name, a company, an address, a phrase. Matching is case-insensitive and whole-word; wrap a line in `/.../` to use a regular expression (a pattern-matching syntax) instead. An empty watchlist does nothing.
@@ -116,13 +130,13 @@ It writes to the same `briefings/alerts-<date>.md`.
 
 ## Resolving items
 
-Once you have dealt with a lead, a watchlist alert, or a contradiction, mark it done so it stops reappearing. Every item in the leads and alerts files carries a short resolution id, printed next to it:
+Once you have dealt with a lead, a watchlist alert, a contradiction, or a document request, mark it done so it stops reappearing. Every item in the leads, alerts, and requests files carries a short resolution id, printed next to it:
 
 ```bash
 watchdog resolve lead:isolated:acme
 ```
 
-Or tick the item's `- [x]` checkbox in the briefing file and import your ticks:
+Or tick the item's `- [x]` checkbox in the briefing file (or `requests.md`) and import your ticks:
 
 ```bash
 watchdog resolve --sync

@@ -150,9 +150,9 @@ def build_section_prompt(*, pages_text: str, existing_entities: list, existing_t
                         "document.summary (the whole-document summary is composed after the "
                         "merge); supply entities + document.key_facts for this section only.")
     volatile.append("Put only forward-looking reporting notes for the briefing in `observations` — "
-                    "leads to chase, open questions, missing documents, threads to other sections or "
-                    "documents. Do NOT restate figures, dates, chronology, or contradictions (those "
-                    "are captured in key_facts); leave it empty if there is nothing forward-looking.")
+                    "leads to chase, open questions, threads to other sections or documents. Do NOT "
+                    "restate figures, dates, chronology, or contradictions (those are captured in "
+                    "key_facts); leave it empty if there is nothing forward-looking.")
     if carry_forward:
         volatile.append(f"\nCARRY-FORWARD (entities/observations from earlier sections — reuse these "
                         f"ids):\n{carry_forward}")

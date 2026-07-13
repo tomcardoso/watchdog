@@ -41,6 +41,26 @@ _KEY_FACT = _obj(
     ["fact"],   # basis omitted ⇒ stated (the overwhelming default)
 )
 
+# A concrete document a reporter could go and get — distinct from a "lead" (an open-ended
+# thread to investigate): a known-to-exist artifact with a type, a reason, and often a venue.
+# This content is *moved* out of `scratchpad` (#365), not duplicated — extract_instructions.md
+# tells the model not to also describe documents-to-request there.
+_DOCUMENT_REQUEST = _obj(
+    {
+        "type": {"type": "string",
+                  "description": "the kind of document, e.g. hearing transcript, enabling "
+                                  "regulation, criminal complaint"},
+        "what": {"type": "string",
+                 "description": "the specific artifact, identified precisely enough to ask for it"},
+        "why_it_matters": {"type": "string",
+                            "description": "what obtaining it would establish"},
+        "likely_source": {"type": "string",
+                           "description": "where it can plausibly be obtained — registry, court, "
+                                           "regulator, FOI office, published source"},
+    },
+    ["type", "what", "why_it_matters"],
+)
+
 _ROLE = _obj(
     {
         "relationship": {"type": "string"},
@@ -101,6 +121,9 @@ EXTRACTION = _obj(
         # (orchestrate._stamp_document) — kept optional here so the stamped dict validates.
         "morgue_document_type": {"type": "string"},
         "scratchpad": {"type": "string"},   # curated briefing notes (Step 9 of the old skill)
+        # Concrete documents this document refers to that a reporter could go and get (#365) —
+        # moved out of scratchpad, not duplicated. Optional: omit entirely when none apply.
+        "document_requests": {"type": "array", "items": _DOCUMENT_REQUEST},
     },
     ["document", "entities", "morgue_entity_id", "scratchpad"],
 )
@@ -118,6 +141,9 @@ SECTION = _obj(
         "morgue_entity_id": {"type": "string"},
         "morgue_document_type": {"type": "string"},
         "observations": {"type": "string"},   # appended to the carry-forward scratchpad
+        # Same field as EXTRACTION's, moved out of `observations` (#365) — optional, omit when
+        # this section names nothing obtainable. merge.merge_extractions unions across sections.
+        "document_requests": {"type": "array", "items": _DOCUMENT_REQUEST},
     },
     ["entities"],
 )
