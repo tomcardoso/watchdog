@@ -133,8 +133,6 @@ def merge_extractions(sections: list[dict]) -> dict:
             if len(ent.get("name", "")) > len(cur["name"]):
                 cur["name"] = ent["name"]
             cur["type"] = cur["type"] or ent.get("type", "")
-            if ent.get("contradictions"):
-                cur.setdefault("contradictions", []).extend(ent["contradictions"])
 
             for nm in surfaces:
                 if nm:

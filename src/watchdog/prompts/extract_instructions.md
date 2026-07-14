@@ -21,9 +21,8 @@ UNIVERSAL RED FLAGS — beyond the type-specific flags in the DOMAIN SKILL, thes
 - **Dates and timelines** — backdating (a document signed or filed after the events it describes but dated to look contemporaneous — common in fraud); implausible sequences (an approval before the application, a contract executed after the work, a meeting on a day the body wouldn't sit); and always distinguish when a document was written from when the events it describes occurred.
 - **Self-reporting vs. independent verification** — figures, headcounts, or statistics supplied by the subject without independent audit are claims, not facts; a document produced by or for the party it describes (a company's own audit, a police force's own use-of-force review) carries less evidentiary weight than one from an independent regulator or court.
 
-ENTITIES — the graph. Use EXISTING_ENTITIES for deduplication — match on name or any alias (OCR errors are common; be generous). For each entity:
-- `id`: the existing id from EXISTING_ENTITIES if matched, otherwise a new kebab-case slug.
-- `match_id`: set to the matched entity's id if this matches an existing entity; OMIT entirely for new entities (do not set null or "").
+ENTITIES — the graph. Name the entities THIS document mentions. You are reading one document with no view of the rest of the investigation, so do not try to guess whether an entity already exists elsewhere in the vault or reconcile it against one: a later stage sees every document's entities at once and does that reconciliation properly. Just name what is here, as this document names it. For each entity:
+- `id`: a kebab-case slug derived from the entity's name.
 - `name`: the canonical full name as it appears most completely.
 - `type`: choose exactly ONE from this fixed set — do NOT coin any other type:
     - `person` — a named individual.
@@ -38,14 +37,9 @@ ENTITIES — the graph. Use EXISTING_ENTITIES for deduplication — match on nam
 
 Create an entity for anything a fact, a role, or the timeline needs to refer to — including incidental actors (counsel, a clerk) named in a fact. Do NOT write a summary or per-entity prose: who the entity is follows from the facts tagged to it.
 
-Basis (facts, roles): emit `basis` as `"inferred"` ONLY when the claim is NOT directly stated in the document — i.e. you reasoned it from other statements rather than reading it. OMIT `basis` entirely when the claim is stated outright on the page; absent means `"stated"`, the overwhelming default. The test is concrete: could you point to a sentence that says this, or did you derive it? If derived, it is `inferred` — a lead to verify, not a finding. Tag a claim `inferred` if ANY step from page to claim is a reasoning step (never let a stated wrapper launder an inferred core). Do NOT use `basis` to flag a conflict with the vault — that is what the `[!contradiction]` callout is for. Likewise omit `page` when there is no page marker (don't emit null), and omit empty arrays rather than emitting `[]`. When a figure is derived — a sum, difference, or count you computed rather than read directly — name its components in the fact text (e.g. "$430,000 across two transfers ($250,000 and $180,000)") so the figure is traceable to the page.
+Basis (facts, roles): emit `basis` as `"inferred"` ONLY when the claim is NOT directly stated in the document — i.e. you reasoned it from other statements rather than reading it. OMIT `basis` entirely when the claim is stated outright on the page; absent means `"stated"`, the overwhelming default. The test is concrete: could you point to a sentence that says this, or did you derive it? If derived, it is `inferred` — a lead to verify, not a finding. Tag a claim `inferred` if ANY step from page to claim is a reasoning step (never let a stated wrapper launder an inferred core). Likewise omit `page` when there is no page marker (don't emit null), and omit empty arrays rather than emitting `[]`. When a figure is derived — a sum, difference, or count you computed rather than read directly — name its components in the fact text (e.g. "$430,000 across two transfers ($250,000 and $180,000)") so the figure is traceable to the page.
 
-CONTRADICTION CHECK — for each entity that matched an EXISTING_ENTITIES entry, compare key dates, roles, and relationships in this document against that entry's recorded roles and claims, and against its prior dated events in EXISTING_TIMELINE (shared across entities — find an entity's events by its id in each event's `entities` list). Flag a material discrepancy only when both sides are directly stated (not inferred) and you are confident it is genuine — this is the only verification step; any callout is saved as-is. Put each as a string in that entity's `contradictions` array, formatted exactly:
-> [!contradiction] <short label>
-> - **<existing value>** — [[documents/<slug>|<title>]], p. <n>
-> - **<new value>** — [[documents/<new-slug>|<title>]], p. <n>
-
-Do not flag discrepancies that rest on an inferred value on either side, trivial name variations, or contradictions already present.
+Basis is what makes the downstream contradiction check possible: it only compares claims that are `stated` on both sides, so an accurate `basis` is what keeps a reasoning step of yours from being reported to a journalist as a conflict between two documents.
 
 Also produce:
 - `document.title`: the document's own title, or a concise descriptive name if it has none (it falls back to the filename if you leave it empty).
@@ -59,6 +53,6 @@ Also produce:
     - `why_it_matters`: what obtaining it would establish.
     - `likely_source`: where it can plausibly be obtained — registry, court, regulator, FOI office, published source.
   Only genuinely referenced, genuinely obtainable artifacts — a routine form usually produces none. Do NOT pad this to a quota; OMIT the field entirely (do not emit an empty array) when the document names nothing worth requesting.
-- `scratchpad`: forward-looking reporting notes for the briefing — leads to chase, open questions, and threads that may connect to other documents. Do NOT restate figures, dates, or chronology (those are captured in `key_facts` and fed to the briefing separately), do NOT restate contradictions, and do NOT list documents to request here — those belong in `document_requests` above. Only the leads a reporter would jot in the margin; keep it short, and return an empty string if there is nothing forward-looking to add.
+- `scratchpad`: forward-looking reporting notes for the briefing — leads to chase, open questions, and threads that may connect to other documents. Do NOT restate figures, dates, or chronology (those are captured in `key_facts` and fed to the briefing separately), and do NOT list documents to request here — those belong in `document_requests` above. Only the leads a reporter would jot in the margin; keep it short, and return an empty string if there is nothing forward-looking to add.
 
 Cite page numbers (from the <!-- PAGE N --> markers) wherever possible; use null when a section has no page markers.

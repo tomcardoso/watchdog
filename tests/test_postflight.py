@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 
 from watchdog.pipeline.postflight import (
-    _apply_match_ids,
     _find_coverage_gap,
     _render_coverage_warning,
     _sanitize_dates,
@@ -93,16 +92,6 @@ def test_sanitize_dates_keeps_valid_iso_shapes():
     assert _sanitize_dates(extraction) == []
     dates = [f.get("date") for f in extraction["document"]["key_facts"]]
     assert dates == ["2021", "2021-03", "2021-03-30", None]
-
-
-def test_apply_match_ids_remaps_key_fact_tags():
-    extraction = {
-        "document": {"key_facts": [{"fact": "x", "entities": ["new-slug", "other"]}]},
-        "entities": [{"id": "new-slug", "match_id": "canonical", "name": "N", "type": "Person"}],
-    }
-    _apply_match_ids(extraction)
-    assert extraction["entities"][0]["id"] == "canonical"
-    assert extraction["document"]["key_facts"][0]["entities"] == ["canonical", "other"]
 
 
 # ── _sanitize_entity_ids (#303: path-traversal / vault-escape via unslugified entity id) ────

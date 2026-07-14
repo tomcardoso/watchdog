@@ -26,8 +26,8 @@ from watchdog import model_client, skills_catalog
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 from watchdog.cmd.live import LiveRegion
 from watchdog.pipeline import (
-    abort, batch_extract, leads, merge, preflight, postflight, prompts, requests, schemas,
-    section, synthesis_bundle, timeline, watchlist,
+    abort, batch_extract, leads, merge, preflight, postflight, prompts, reconcile, requests,
+    schemas, section, synthesis_bundle, timeline, watchlist,
 )
 from watchdog.pipeline.write_vault import _doc_slug
 
@@ -315,7 +315,16 @@ def _briefing_facts(doc: dict) -> list[dict]:
     return out
 
 
-def _compact_result(sha: str, filename: str, extraction: dict, near_dup: dict, cost: float | None) -> dict:
+def _compact_result(sha: str, filename: str, extraction: dict, near_dup: dict, cost: float | None,
+                    written: dict) -> dict:
+    """`written` is post-flight's report of what the writer did with this document's entities —
+    which ids were new to the registry and which were added to. That is a deterministic fact the
+    writer holds; extraction no longer guesses at it via `match_id` (#381/D118).
+
+    There is no `contradictions` key any more: a single document cannot see a conflict, so
+    nothing at this stage has one to report. The briefing's contradiction flags are fed by the
+    finalizer's reconciliation pass instead (`_post_ingest`).
+    """
     entities = extraction.get("entities", [])
     doc = extraction.get("document", {})
     return {
@@ -324,27 +333,29 @@ def _compact_result(sha: str, filename: str, extraction: dict, near_dup: dict, c
         "record_skill": doc.get("record_skill"),
         "date": doc.get("date_of_document"),
         "entity_count": len(entities),
-        "new_entities": [e["id"] for e in entities if not e.get("match_id")],
-        "updated_entities": [e["match_id"] for e in entities if e.get("match_id")],
-        "contradictions": [e["id"] for e in entities if e.get("contradictions")],
+        "new_entities": written.get("new_entities", []),
+        "updated_entities": written.get("updated_entities", []),
         "key_facts": _briefing_facts(doc),
         "near_dup_similarity": near_dup.get("top_similarity", 0.0),
         "cost_usd": cost,
     }
 
 
-def _write_postflight(vault: Path, sha: str, extraction: dict) -> tuple[bool, list[str], list[str]]:
-    """Returns (ok, errors, warnings). Warnings are collected rather than printed here — the
-    caller only knows once the document has actually finished (not discarded for a repair
+def _write_postflight(vault: Path, sha: str, extraction: dict) -> tuple[bool, list[str], list[str], dict]:
+    """Returns (ok, errors, warnings, written). Warnings are collected rather than printed here —
+    the caller only knows once the document has actually finished (not discarded for a repair
     retry) whether they're worth surfacing, and where in the live region's output they belong
     (tucked under this document's own OK line, not wherever a concurrent document happens to
-    be at the moment post-flight ran, #333 follow-up)."""
+    be at the moment post-flight ran, #333 follow-up). `written` is the writer's new/updated
+    entity split, empty on failure."""
     tmp = vault / ".watchdog" / "tmp" / f"wdg_ex_{sha}.json"
     tmp.parent.mkdir(parents=True, exist_ok=True)
     tmp.write_text(json.dumps(extraction, ensure_ascii=False, indent=2), encoding="utf-8")
     warnings: list[str] = []
     outcome = postflight.run(vault, tmp, quiet=True, warn=warnings.append)
-    return ("errors" not in outcome), outcome.get("errors", []), warnings
+    ok = "errors" not in outcome
+    written = {k: outcome.get(k, []) for k in ("new_entities", "updated_entities")} if ok else {}
+    return ok, outcome.get("errors", []), warnings, written
 
 
 def _append_repair_note(base, errors: list[str]):
@@ -362,8 +373,7 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
                           effort=None, backend=None):
     """Whole-document extraction, with one repair attempt if post-flight rejects."""
     base = prompts.build_extract_prompt(
-        pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
-        existing_timeline=pf.get("existing_timeline", []),
+        pages_text=_pages_text(pf["pages"]),
         skill_text=skill_text, sidecar=_read_sidecar(vault, pf["filename"]), brief=brief,
         known_document_types=pf.get("known_document_types", []),
         file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
@@ -380,16 +390,16 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
         except model_client.ModelError as e:
             # No valid JSON after the client's own retries — often output truncated on a
             # dense doc. Report failure so the caller can fall back to sectioning.
-            return extraction, scratchpad, cost, False, [f"extraction returned no valid JSON ({e})"], []
+            return extraction, scratchpad, cost, False, [f"extraction returned no valid JSON ({e})"], [], {}
         cost += r.cost_usd or 0.0
         extraction = r.parsed
         scratchpad = extraction.pop("scratchpad", "")
         _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault,
                         skill_text=skill_text, extract_model=model, extract_effort=effort)
-        ok, errors, warnings = _write_postflight(vault, sha, extraction)
+        ok, errors, warnings, written = _write_postflight(vault, sha, extraction)
         if ok:
-            return extraction, scratchpad, cost, True, [], warnings
-    return extraction, scratchpad, cost, False, errors, []
+            return extraction, scratchpad, cost, True, [], warnings, written
+    return extraction, scratchpad, cost, False, errors, [], {}
 
 
 # Cap on the observations text carried into the next section's prompt (A5) — only the most
@@ -461,8 +471,7 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
     for sec in sections:
         sec_text = (vault / sec["pages_path"]).read_text(encoding="utf-8")
         prompt = prompts.build_section_prompt(
-            pages_text=sec_text, existing_entities=pf.get("existing_entities", []),
-            existing_timeline=pf.get("existing_timeline", []),
+            pages_text=sec_text,
             skill_text=skill_text, carry_forward=carry, section_label=sec["label"],
             is_first=(sec["index"] == 1), brief=brief,
             known_document_types=pf.get("known_document_types", []),
@@ -488,8 +497,8 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
     cost += digest_cost
     _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault,
                     skill_text=skill_text, extract_model=model, extract_effort=effort)
-    ok, errors, warnings = _write_postflight(vault, sha, extraction)
-    return extraction, scratchpad, cost, ok, errors, warnings
+    ok, errors, warnings, written = _write_postflight(vault, sha, extraction)
+    return extraction, scratchpad, cost, ok, errors, warnings, written
 
 
 def _queued_filename(vault: Path, sha: str) -> str | None:
@@ -540,15 +549,10 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     # log is otherwise completion-ordered, which reads misleadingly like sequential work).
     _log(vault, f"START {filename}")
 
-    # Digest-size telemetry (#216): how much prior-entity context this extraction carries. Watch it
-    # on a mature vault to decide whether per-candidate caps are worth adding, and at what sizes.
-    # Silent when there are no candidates (e.g. a fresh vault, or a document with no recurring
-    # entities) — "0.0 KB · 0 candidates" on every line is noise, not signal (#317).
-    _n_cand = pf.get("existing_entities_count", 0)
-    if _n_cand:
-        _say(f"{_DIM}   {filename} · prior-entity digest "
-             f"{pf.get('existing_entities_bytes', 0) / 1024:.1f} KB · "
-             f"{_n_cand} candidate{'s' if _n_cand != 1 else ''}{_RESET}")
+    # The prior-entity digest telemetry (#216) that used to print here is gone with the digest
+    # itself (#381/D118): extraction no longer carries any vault context, so there is no longer a
+    # per-document number to watch. What it measured — a per-page tax that grew with the vault —
+    # is now paid once per ingest by the reconciliation call instead.
 
     def _step(tty: str, plain: str) -> None:
         """Mutate this document's single in-flight live row (TTY); append the plain transition
@@ -581,12 +585,12 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         n_sections = len(plan.get("sections", []))
         _step(f"{_DIM}→  {filename}  {flow} · extracting · {n_sections} sections…{_RESET}",
               f"{_DIM}→  {filename}  extracting · {n_sections} sections…{_RESET}")
-        extraction, scratchpad, cost, ok, errors, warnings = await _extract_sectioned(
+        extraction, scratchpad, cost, ok, errors, warnings, written = await _extract_sectioned(
             vault, sha, pf, skill_text, plan, extract_model, skill_label, extract_effort, extract_backend, brief)
     else:
         _step(f"{_DIM}→  {filename}  {flow} · extracting…{_RESET}",
               f"{_DIM}→  {filename}  extracting…{_RESET}")
-        extraction, scratchpad, cost, ok, errors, warnings = await _simple_extract(
+        extraction, scratchpad, cost, ok, errors, warnings, written = await _simple_extract(
             vault, sha, pf, skill_text, brief, extract_model, skill_label, extract_effort, extract_backend)
         # Whole-document extraction can overrun the model's output ceiling on entity-dense docs and
         # get authoritatively rejected as truncated (#343) — pagination handles the continuation-
@@ -602,19 +606,20 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
                       f"{_DIM}↻  {filename}  whole-doc extraction rejected — "
                       f"re-extracting in {n_sections} sections…{_RESET}")
                 whole_cost = cost
-                extraction, scratchpad, cost, ok, errors, warnings = await _extract_sectioned(
+                extraction, scratchpad, cost, ok, errors, warnings, written = await _extract_sectioned(
                     vault, sha, pf, skill_text, fb, extract_model, skill_label, extract_effort, extract_backend, brief)
                 cost += whole_cost   # account for the failed whole-doc attempt
 
     if not ok:
         return _fail(vault, sha, filename, "post-flight rejected: " + "; ".join(errors[:3]))
-    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, warnings)
+    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, warnings, written)
 
 
 
 def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, scratchpad: str,
                        cost: float, pf: dict,
-                       warnings: list[str] | None = None) -> dict:
+                       warnings: list[str] | None = None,
+                       written: dict | None = None) -> dict:
     """Shared tail once an extraction has passed post-flight: settle-print, warnings, log,
     persist `result_<sha>.json`. Used by both the synchronous per-document path
     (`_extract_document`) and the batch-collect path (`_finish_batch_item`, #214) so a
@@ -637,7 +642,8 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
     for msg in (warnings or []):
         _say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{msg}{_RESET}")
         _log(vault, f"WARN {filename}: {msg}")
-    result = _compact_result(sha, filename, extraction, pf.get("near_dup", {}), round(cost, 6))
+    result = _compact_result(sha, filename, extraction, pf.get("near_dup", {}), round(cost, 6),
+                             written or {})
     # Persist the compact result so `watchdog finalize` can run post-ingest from disk alone.
     (vault / ".watchdog" / "tmp" / f"result_{sha}.json").write_text(
         json.dumps(result, ensure_ascii=False), encoding="utf-8")
@@ -691,8 +697,7 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
                       filename=filename, detail=f"pages 1–{page_count}")
     if not item["ok"]:
         prompt = prompts.build_extract_prompt(
-            pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
-            existing_timeline=pf.get("existing_timeline", []),
+            pages_text=_pages_text(pf["pages"]),
             skill_text=skill_text, sidecar=_read_sidecar(vault, filename), brief=brief,
             known_document_types=pf.get("known_document_types", []),
             file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}))
@@ -710,10 +715,10 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
     scratchpad = extraction.pop("scratchpad", "") if isinstance(extraction, dict) else ""
     _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault,
                     skill_text=skill_text, extract_model=model, extract_effort=effort)
-    ok, errors, warnings = _write_postflight(vault, sha, extraction)
+    ok, errors, warnings, written = _write_postflight(vault, sha, extraction)
     if not ok:
         return _fail(vault, sha, filename, "post-flight rejected: " + "; ".join(errors[:3]))
-    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, warnings)
+    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, warnings, written)
 
 
 
@@ -783,8 +788,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
             sectioned_shas.append(sha)
         else:
             prompt = prompts.build_extract_prompt(
-                pages_text=_pages_text(pf["pages"]), existing_entities=pf.get("existing_entities", []),
-                existing_timeline=pf.get("existing_timeline", []),
+                pages_text=_pages_text(pf["pages"]),
                 skill_text=skill_text, sidecar=_read_sidecar(vault, pf["filename"]), brief=brief,
                 known_document_types=pf.get("known_document_types", []), cache_ttl="1h",
                 file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}))
@@ -1003,9 +1007,50 @@ def _select_kept(events: list[dict], groups) -> list[dict]:
 
 async def _post_ingest(vault: Path, results: list, brief: str | None, post_model: str,
                        post_effort: str | None = None, post_backend: str | None = None) -> dict:
-    out: dict = {"synthesized": 0, "timeline_collisions": 0, "briefing": None}
+    out: dict = {"synthesized": 0, "timeline_collisions": 0, "briefing": None,
+                 "merged": [], "contradictions": []}
     print()
     _say(f"{_BOLD}Post-processing{_RESET}")
+
+    # 0. Reconciliation (#381/D118) — entity resolution + contradiction detection, the two jobs
+    # that need every document's claims side by side. Extraction cannot do either (it reads one
+    # document, and only ever sees the documents that landed before it); this is the first stage
+    # that can. One call, whatever the batch size.
+    #
+    # It runs FIRST in post-ingest, because both of its outputs change what the later steps see: a
+    # merge means synthesis writes one summary for one entity instead of two half-summaries for
+    # two, and a contradiction callout is written into the entity note that synthesis and the
+    # briefing then read.
+    rec_bundle = reconcile.build_bundle(vault)
+    if rec_bundle["entities"] or rec_bundle["pairs"]:
+        n_pairs, n_ents = len(rec_bundle["pairs"]), len(rec_bundle["entities"])
+        _say(f"{_DIM}→  reconciling · {n_ents} recurring entit{'ies' if n_ents != 1 else 'y'}, "
+             f"{n_pairs} possible duplicate{'s' if n_pairs != 1 else ''}…{_RESET}")
+        try:
+            r = await _call_model(
+                task="reconcile", model=post_model, backend=post_backend, schema=schemas.RECONCILE,
+                prompt=prompts.build_reconcile_prompt(rec_bundle), effort=post_effort)
+        except (model_client.ModelError, model_client.RateLimitError) as e:
+            # Reconciliation is enrichment over an already-written vault: the entities and their
+            # claims are on disk either way. Skipping leaves duplicates unmerged and conflicts
+            # unflagged — recoverable by re-running `watchdog finalize` — rather than losing the
+            # ingest.
+            _say(f"{_YELLOW}reconciliation skipped{_RESET}{_DIM} — {e}{_RESET}")
+            _log(vault, f"RECONCILE skipped: {e}")
+        else:
+            applied = reconcile.apply(vault, r.parsed, rec_bundle,
+                                      warn=lambda m: (_say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{m}{_RESET}"),
+                                                      _log(vault, f"WARN {m}")))
+            out["merged"] = applied["merged"]
+            out["contradictions"] = applied["contradictions"]
+            for m in applied["merged"]:
+                _say(f"   {_DIM}merged{_RESET} {m['merge_name']} {_DIM}→{_RESET} "
+                     f"{_BOLD}{m['keep_name']}{_RESET}  {_DIM}{m['reason']}{_RESET}")
+                _log(vault, f"MERGED {m['merge_id']} into {m['keep_id']}: {m['reason']}")
+            for c in applied["contradictions"]:
+                _say(f"   {_YELLOW}⚠{_RESET}  {_BOLD}{c['label']}{_RESET} {_DIM}—{_RESET} "
+                     f"{c['entity_name']}  {_CYAN}{c['note_path']}{_RESET}")
+                _log(vault, f"CONTRADICTION {c['entity_id']}: {c['label']}")
 
     # 1. Entity synthesis for multi-mention entities (Python builds + applies; model reconciles).
     bundle = synthesis_bundle.build_bundle(vault)
@@ -1084,8 +1129,11 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                    for p in sorted((vault / ".watchdog" / "tmp").glob("notes_*.md"))]
     neardup_alerts = [{"filename": r["filename"], "similarity": r["near_dup_similarity"]}
                       for r in ok if r.get("near_dup_similarity", 0) >= 0.85]
-    contradiction_flags = [{"filename": r["filename"], "entities": r["contradictions"]}
-                           for r in ok if r.get("contradictions")]
+    # Fed by the reconciliation pass (#381/D118), which is the only stage that can see a conflict
+    # at all. This used to be scraped off the per-document extraction results, so the count could
+    # only ever include conflicts the extractor happened to be positioned to notice.
+    contradiction_flags = [{"entity": c["entity_name"], "label": c["label"]}
+                           for c in out["contradictions"]]
     # Deterministic pointer, not a model input (D111): count this run's open document requests
     # (recorded per-document into the ledger by write_vault, at extraction time) so the briefing
     # can point at requests.md without the requests themselves ever entering a prompt.

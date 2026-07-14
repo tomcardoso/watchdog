@@ -805,7 +805,7 @@ def _record_entity_fragment(
 
 # ── Main operation ────────────────────────────────────────────────────────────
 
-def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = None, neardup_data: dict | None = None, quiet: bool = False) -> None:
+def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = None, neardup_data: dict | None = None, quiet: bool = False) -> dict:
     extraction = json.loads(extraction_path.read_text(encoding="utf-8"))
     doc = extraction.get("document")
     if not doc:
@@ -865,13 +865,21 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
         _resolve_role_targets(incoming_entities, entities_reg)
 
         modified: set[str] = set()
+        # Which entities this document *introduced* vs. added to — decided here, where it is
+        # simply a fact about the registry, and reported back for the briefing (#381/D118). This
+        # used to be read off the extractor's `match_id`, i.e. the model's belief about what it
+        # had seen before, which was wrong whenever the entity it matched had not been written yet.
+        new_ids: list[str] = []
+        updated_ids: list[str] = []
 
         for entity in incoming_entities:
             eid = entity["id"]
             if eid in entities_reg:
                 _merge_entity(entities_reg[eid], entity, doc_sha256)
+                updated_ids.append(eid)
             else:
                 entities_reg[eid] = _new_entity(entity, doc_sha256)
+                new_ids.append(eid)
             modified.add(eid)
 
         for entity in incoming_entities:
@@ -1107,6 +1115,8 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
             f"entities={len(incoming_entities)}  "
             f"doc=documents/{slug}"
         )
+
+    return {"new_entities": new_ids, "updated_entities": updated_ids}
 
 
 def main() -> None:

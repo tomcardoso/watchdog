@@ -72,19 +72,22 @@ _ROLE = _obj(
     ["relationship", "target_id"],
 )
 
-# The graph layer (#140): entity identity + relationships + contradictions. What a document
-# *says* about an entity (claims, dated events) is no longer carried here — it lives in the
-# document's `key_facts`, tagged by entity id, and postflight reconstructs the per-entity views.
+# The graph layer (#140): entity identity + relationships. What a document *says* about an
+# entity (claims, dated events) is not carried here — it lives in the document's `key_facts`,
+# tagged by entity id, and postflight reconstructs the per-entity views.
+#
+# Extraction is a pure function of the document (#381/D118): it names the entities *this*
+# document mentions and nothing else. It carries no `match_id` (entity resolution against the
+# vault is the finalizer's job — see RECONCILE) and no `contradictions` (a conflict needs two
+# claims side by side, which no single extraction call can see).
 _ENTITY = _obj(
     {
         "id": {"type": "string"},
-        "match_id": {"type": "string"},          # omit entirely for new entities
         "name": {"type": "string"},
         "type": {"type": "string",
                  "description": ("exactly one of the fixed entity classes: person, "
                                  "organization, public-body, place, asset, proceeding")},
         "aliases": {"type": "array", "items": {"type": "string"}},
-        "contradictions": {"type": "array", "items": {"type": "string"}},
         "roles": {"type": "array", "items": _ROLE},
     },
     ["id", "name", "type"],
@@ -180,6 +183,62 @@ SYNTHESIS = _obj(
         }
     },
     ["entity_syntheses"],
+)
+
+# Post-ingest reconciliation (#381/D118) — the two jobs extraction is structurally unable to do,
+# because both need a view extraction never has: the whole entity set, after every document has
+# landed.
+#
+#   `merges`         — entity resolution. Python has already blocked the field down to plausible
+#                      candidate PAIRS (reconcile.candidate_pairs — same canonical type, token
+#                      subset or Jaccard overlap); the model only confirms or rejects each. It
+#                      answers by pair `index`, so it never re-types an id and cannot invent one.
+#   `contradictions` — two conflicting claims about one entity, each grounded in a value, a
+#                      source document, and a page. Deliberately structured, not model-authored
+#                      markdown: these fields are exactly `contradiction.run`'s arguments, so the
+#                      callout is rendered and filed by the same deterministic writer the manual
+#                      `watchdog contradiction` command uses (D81's escape hatch), and a bad
+#                      document reference fails validation instead of landing in a note.
+RECONCILE = _obj(
+    {
+        "merges": {
+            "type": "array",
+            "items": _obj(
+                {"pair": {"type": "integer",
+                          "description": "index into the CANDIDATE PAIRS list"},
+                 "keep_id": {"type": "string",
+                             "description": "which of the pair's two ids survives — copied "
+                                            "verbatim; the other is folded into it"},
+                 "reason": {"type": "string",
+                            "description": "one clause on why these are the same real-world thing"}},
+                ["pair", "keep_id", "reason"],
+            ),
+        },
+        "contradictions": {
+            "type": "array",
+            "items": _obj(
+                {"entity_id": {"type": "string",
+                               "description": "the entity the conflict is about, copied verbatim "
+                                              "from the bundle"},
+                 "label": {"type": "string",
+                           "description": "a short label for the conflict, e.g. 'Insolvency date'"},
+                 "a_value": {"type": "string",
+                             "description": "the first claim's conflicting value, stated briefly"},
+                 "a_doc": {"type": "string",
+                           "description": "the slug of the document the first claim comes from — "
+                                          "the `<slug>` in the [[documents/<slug>|…]] link the "
+                                          "claim is filed under in the bundle"},
+                 "a_page": {"type": ["integer", "null"]},
+                 "b_value": {"type": "string",
+                             "description": "the second claim's conflicting value"},
+                 "b_doc": {"type": "string",
+                           "description": "the slug of the document the second claim comes from"},
+                 "b_page": {"type": ["integer", "null"]}},
+                ["entity_id", "label", "a_value", "a_doc", "b_value", "b_doc"],
+            ),
+        },
+    },
+    ["merges", "contradictions"],
 )
 
 # Post-ingest briefing prose (Python writes the files from this).

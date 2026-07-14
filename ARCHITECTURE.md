@@ -70,8 +70,9 @@ Two human-invoked phases, with a clean handoff via the queue:
    chunking, near-duplicate fingerprinting. Writes one queue JSON per document.
 2. **Ingest** (`watchdog ingest`) — a **Python orchestrator** (`pipeline/orchestrate.py`)
    that runs the whole pipeline in-process and calls the model (via `model_client`) **only
-   for the reasoning steps**: classify, extract, synthesize entity prose, dedup colliding
-   timeline events, write the briefing. Everything mechanical — dispatch, pre/post-flight,
+   for the reasoning steps**: classify, extract, reconcile entities + contradictions,
+   synthesize entity prose, dedup colliding timeline events, write the briefing. Everything
+   mechanical — dispatch, pre/post-flight,
    registry writes, timeline staging, the synthesis bundle, near-dup — is deterministic
    Python. Documents are extracted concurrently (semaphore-bounded); a failed document is
    logged and set aside (`_failed/`) without sinking the batch.
@@ -184,20 +185,12 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
 `orchestrate.run` scans the queue and extracts documents concurrently, bounded by an
 `asyncio.Semaphore(extract_concurrency)`. Per document (`_extract_document`):
 
-1. **Pre-flight** (`preflight.run`, a function call) — packages the page text and the
-   candidate existing entities matched against the manifest (no ML), each carrying its current
-   note summary + roles/contradictions digest (§8). Prior dated timeline events are hoisted out
-   of the per-candidate digests into one shared `existing_timeline` list, deduplicated by
-   (date, event text) and tagged with the candidate ids each event concerns — a fact tagging
-   several recurring entities is sent once instead of once per candidate (D109). Matching is
-   **whole-token**, not raw substring: a name must sit on word boundaries (so `Lee` no longer
-   matches `asleep`), with a plain-substring fallback for non-ASCII-edged names that regex
-   boundaries can't segment (CJK etc.), so non-Latin names never match less than before. Aliases
-   below `preflight_alias_min_length` (default 3) are ignored — that's where short, noisy strings
-   (initials, abbreviations) accumulate over merges and drag whole digests into the prompt on
-   false hits; the **canonical name always matches at any length**, so `BP`/`GE`/`3M` stay
-   findable (D60). Pre-flight reports the combined candidates + shared-timeline byte size and
-   candidate count per document, surfaced during ingest, to size caps from real data.
+1. **Pre-flight** (`preflight.run`, a function call) — packages the page text and the document's
+   processing facts. **It reads no vault entity state (D118):** extraction is a pure function of
+   the document, so pre-flight no longer snapshots the entity registry or builds candidate/timeline
+   digests. Its one registry read is `known_document_types` (§6), an order-insensitive set of
+   type strings the extractor may reuse. Entity resolution and the contradiction check that
+   digest used to feed both moved to the finalizer (§8.5).
 2. **Classify** — one cheap model call (`model_client.acomplete_json`, `classifier_model`,
    default haiku) over the document's first `classify_pages` pages, the document's `.yml`
    provenance sidecar when present, and the generated in-memory skill index, returning the
@@ -209,8 +202,10 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    (D26): a **fact layer** — `document.key_facts`, each a single material fact written once,
    carrying an optional `date` (when the fact *is* a datable occurrence) and an optional
    `entities` list (the ids the fact is about) plus an optional verbatim `quote`; and a **graph
-   layer** — entities (deduped against the pre-flight candidates) with aliases, roles, and
-   contradictions. It no longer restates the document as per-entity summaries, evidence
+   layer** — the entities *this document* names, with aliases and roles. It carries **no
+   `match_id` and no contradictions** (D118): resolving entities against the vault and comparing
+   claims across documents both need a whole-vault view extraction doesn't have, so both moved to
+   the finalizer (§8.5). It no longer restates the document as per-entity summaries, evidence
    fragments, or timeline events, nor pads `key_facts` to a fixed count — the full Docling text
    is retained in the morgue (§3, §12), so extraction indexes it rather than reproducing it. An
    optional `document_requests` array names concrete, obtainable artifacts the document refers
@@ -222,8 +217,7 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    instructions, stating the trust caveat (forgeable, often machine-generated) plus the
    `ocr_used`/`source_type` processing facts, so the model can judge whether a creation date
    plausibly describes the original or just a scan/template.
-4. **Post-flight** (`postflight.run`, a function call) — validates the JSON, applies
-   `match_id` merges (remapping `key_facts.entities` tags onto canonical ids), **explodes** the
+4. **Post-flight** (`postflight.run`, a function call) — validates the JSON, **explodes** the
    unified key_facts into the per-entity `evidence_fragments` + `timeline_events` that the
    writers consume (`explode_key_facts`, D26), **verifies** each `key_facts[].quote` against
    the cited page's text from the chew-time queue descriptor (`quote_verify.verify_quotes`,
@@ -394,10 +388,10 @@ model.
   order; mechanical merge/sort is correct and free. Prose is a cross-source judgement
   that only the model can do well.
 - **Why Contradictions are their own cited section** (not folded into Analysis prose,
-  not made chronological). They are verifiable claims with citations. The extractor
-  subagent is the sole verifier — it confirms each one at extraction time, against the
-  entity's prior contradictions and context supplied by pre-flight, so there is no
-  later orchestrator removal pass. Sorting them by date would make them a worse
+  not made chronological). They are verifiable claims with citations. The finalizer's
+  reconciliation pass (§8.5, D118) is the sole detector — it compares each recurring
+  entity's claims across documents once, after all extraction, since a conflict needs
+  both claims in view; nothing removes a callout afterward. Sorting them by date would make them a worse
   Timeline keyed on the *document/provenance* date rather than the *event* date — the
   wrong axis. So they stay a discrete, append-only, deduped log that the prose
   synthesis never disturbs.
@@ -464,6 +458,42 @@ Bundled synthesis writes **only** Summary and Analysis; Contradictions,
 Timeline, Relationships, and Notes are preserved untouched. `apply_bundle` skips
 any entity the model omits or returns with an empty summary, so its carried-forward
 prose stays in place.
+
+---
+
+## 8.5. Reconciliation: entity resolution & contradiction detection
+
+**Code:** `pipeline/reconcile.py`, driven from `orchestrate._post_ingest` (model: `post_model`).
+
+The two jobs stateless extraction (§5, D118) can't do, because both need every document's claims
+side by side: **entity resolution** (the same real-world thing extracted under two ids) and
+**contradiction detection** (two documents disagreeing about one entity). Both run here, once per
+ingest, **before** synthesis — a merge changes what synthesis summarizes, and a contradiction
+callout is written into the note synthesis then reads. Being post-extraction, the pass is
+concurrency-immune, order-immune, and near-constant in cost (one model call).
+
+- **Entity resolution is two-tier.** `write_vault._reconcile_entity_ids` already folds *exact*
+  normalized-name duplicates in-lock at write time (§5, untouched). This pass handles the
+  *token-variant* judgement calls that pass deliberately won't auto-merge ("Laurentian University"
+  vs "…of Sudbury"). To keep it from being an every-entity-against-every-other call that eventually
+  won't fit a context window, `reconcile.candidate_pairs` **blocks** the field deterministically:
+  a pair is sent only if it shares a canonical type, scores ≥ `_JACCARD_MIN` (0.5) on some pair of
+  its known names (a strict token-subset scores 1.0), and involves at least one entity touched this
+  run — ranked by overlap and capped at `_MAX_PAIRS` (200). The model confirms or rejects each pair
+  by index and names the surviving id; `reconcile._apply_merges` drives the existing
+  `merge_entities.run` surgery (§10), chaining merges and following a just-merged id to its survivor,
+  and `_fold_fragments` carries the losing entity's in-flight synthesis fragments onto the survivor.
+- **Contradiction detection** reads each recurring entity's (`appears_in ≥ 2`, the D26 gate) `##
+  Analysis` claim ledger — already source-attributed by document — and the model returns structured
+  `{entity_id, label, a_value/a_doc/a_page, b_value/b_doc/b_page}` items. `reconcile._apply_contradictions`
+  files each through `contradiction.run` (D81), the same deterministic writer the manual `watchdog
+  contradiction` command uses, which validates both document slugs — so a hallucinated reference is a
+  skipped item and a warning, never a fabricated citation. The flags feed the briefing's
+  "Contradictions flagged" count (§9).
+
+I1 holds: the model answers only *which* pairs are the same and *which* claims conflict; every
+write is deterministic code. A resolution or reconciliation model failure is enrichment-only — the
+entities and claims are already on disk, and `watchdog finalize` re-runs the pass.
 
 ---
 
@@ -847,8 +877,9 @@ everything below runs only during `watchdog ingest`.
 | Call | Runs | Sent to the model | Withheld |
 |---|---|---|---|
 | **classify** (§6) | once per document; skipped entirely if a skill is pinned | first `classify_pages` pages of extracted text, the in-memory skill-catalog index, the `.yml` provenance sidecar if present | the rest of the document; all entity/registry data |
-| **extract** — whole-doc or per-section (§5) | once per document, or once per section for a document over the sectioning threshold | the page/section text, `EXISTING_ENTITIES` candidates (each matched entity's name/aliases/type plus its note summary, roles digest, and prior contradictions), `EXISTING_TIMELINE` (those candidates' prior dated events, deduplicated across candidates and tagged with which candidate ids each concerns, D109), the matched domain skill, the investigation brief (`context.md`), the `.yml` sidecar, known document types | original-file metadata (EXIF, PDF author fields — stripped at chew, §3); any entity not textually matched against *this* document |
+| **extract** — whole-doc or per-section (§5) | once per document, or once per section for a document over the sectioning threshold | the page/section text, the matched domain skill, the investigation brief (`context.md`), the `.yml` sidecar, known document types | **all vault entity state** — extraction is a pure function of the document (D118); original-file metadata (EXIF, PDF author fields — stripped at chew, §3) |
 | **digest** (§5) | once per sectioned document, after merge — whole-doc extraction composes its digest inline instead, with no extra call | filename, title, document_type, page_count, the merged `key_facts` (not the raw text), the domain skill, brief, sidecar | the document's raw text |
+| **reconcile** (§8.5) | once per run, if any entity was touched | deterministically-blocked candidate duplicate pairs (same type, overlapping names), and each recurring entity's source-attributed `## Analysis` claim ledger + roles digest | raw document text; entities with no plausible duplicate and no cross-document claims |
 | **entity-synthesis** (§8) | once per run, batched, only for entities appearing in 2+ documents vault-wide | per qualifying entity: its current `## Summary`/`## Analysis` prose plus every accumulated fact fragment tagged to it across all its documents | timeline, relationships, contradictions — deterministic, never seen by a model |
 | **timeline-dedup** (§9) | once per colliding date (0+ per run) | the event text and page for every event sharing that date | entities' full histories; unrelated dates |
 | **timeline-precision** (§9) | once per month mixing month- and day-precision dates | that month's coarse and precise event text + page | other months; entity histories |
