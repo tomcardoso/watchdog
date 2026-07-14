@@ -16,6 +16,11 @@ document:
   date: 2021-01-30
   author: Ernst & Young Inc. (Proposed Monitor)
   court_file: "not yet assigned — cover page reads 'Court File No. __________'"
+  expected_skill: bankruptcy
+  expected_skill_rationale: >
+    The catalog names this document type verbatim: "trustee's or monitor's report ... CCAA or
+    other court-supervised restructuring proceeding".
+  ingest_order: 1
   role_in_benchmark: "Contradiction side B; entity-rich (affiliates, lenders, pension plans)."
 
 entities:

@@ -32,6 +32,12 @@ document:
   fiscal_year_end: 2021-04-30
   publisher: Laurentian University of Sudbury
   auditor: KPMG LLP
+  expected_skill: financial-statements
+  expected_skill_rationale: >
+    Same as doc 1. Carries CCAA disclosure in the notes, but it is still an annual report built
+    around audited financial statements — the CCAA content is disclosure within the statements,
+    not the document's type.
+  ingest_order: 6
   role_in_benchmark: >
     The dense 50+ page document. Tests sectioning, page coverage, and the 16K output ceiling
     (#309). Entities, relationships, facts and contradictions all compete for the same output

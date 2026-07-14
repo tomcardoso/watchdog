@@ -15,6 +15,12 @@ document:
   auditors_report_date: 2020-10-30
   publisher: Laurentian University of Sudbury
   auditor: KPMG LLP
+  expected_skill: financial-statements
+  expected_skill_rationale: >
+    An annual report built around audited consolidated financial statements plus MD&A. The
+    catalog's `audit-reports` description explicitly redirects an organization's own audited
+    statements here.
+  ingest_order: 5
   role_in_benchmark: "Contradiction side A — the reassuring account, three months before insolvency."
 
 entities:

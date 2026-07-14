@@ -17,6 +17,11 @@ document:
   doc_type: court order
   date: 2021-03-17
   court_file: CV-21-00656040-00CL
+  expected_skill: bankruptcy
+  expected_skill_rationale: >
+    A court order made within a court-supervised restructuring, which the `bankruptcy`
+    description covers; `court-documents` redirects insolvency orders away from itself.
+  ingest_order: 4
   role_in_benchmark: >
     A short, sharp document for contrast. Low page count, high density of named parties and
     two precise dollar/ratio figures — a condition that degrades here is degrading on easy mode.

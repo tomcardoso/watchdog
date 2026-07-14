@@ -55,6 +55,64 @@ a credited normalization, not a miss.
   prints the court file number without leading zeros. Faithfully extracting the wrong value is
   *correct* extraction. Neither is a miss.
 
+## The run protocol these keys assume
+
+Two settings are load-bearing. Getting either wrong makes the results uninterpretable, silently.
+
+### `--concurrency 1` — not optional
+
+`preflight.run()` is called *inside* `_extract_document`, so each document snapshots the entity
+registry **at the moment its own extraction starts**. At the default `--concurrency 5`, the first
+five documents extract in parallel and every one of them takes its digest snapshot before any of
+the others has written a single entity. **They cannot see each other.**
+
+A contradiction can only fire when the second document of a pair is read *after* the first has
+landed in the registry. So at default concurrency, whether the scored contradiction is catchable
+at all is decided by which parallel wave each document happens to fall into — and if it lands
+badly, every condition scores zero on contradictions and the result reads as "no model catches
+these" when the pipeline never gave any of them the chance.
+
+Sequential extraction costs wall-clock time, not tokens.
+
+### Two passes, because `--skill` pins ONE skill for the whole run
+
+The corpus needs two skills (see `expected_skill` in each key). `--skill` applies one skill to
+every queued document, so a single pinned run would extract two of the six under the wrong skill —
+and several `must_not_miss` items in the FY20-21 report are exactly what `financial-statements`
+primes for and `bankruptcy` does not. Use `chew --file` to control what is queued, then drain the
+queue twice:
+
+```
+# Pass 1 — the four insolvency documents, in chronological order
+watchdog ingest --skill bankruptcy --concurrency 1 [--extractor-model … --extractor-effort …]
+
+# Pass 2 — the two annual reports
+watchdog ingest --skill financial-statements --concurrency 1 [same model flags]
+```
+
+### Ingest order (fixed across all conditions)
+
+| # | Skill | Document |
+|---|---|---|
+| 1 | `bankruptcy` | Pre-Filing Report of the Proposed Monitor |
+| 2 | `bankruptcy` | CCAA Initial Order |
+| 3 | `bankruptcy` | First Report of the Monitor |
+| 4 | `bankruptcy` | Pension Order |
+| 5 | `financial-statements` | Annual Financial Report 2019-20 |
+| 6 | `financial-statements` | Annual Financial Report 2020-21 |
+
+The order is chosen, not incidental:
+
+- **FY2019-20 is fifth**, so its digest already holds the Pre-Filing Report's "LU is insolvent…
+  will not have sufficient funding / liquidity to meet payroll in February." Both sides of the
+  scored contradiction are then explicitly available — one on the page, one in the digest — which
+  is what the contradiction machinery needs to fire.
+- **FY2020-21 is last**, so it sees FY2019-20 and the restatement contradictions (C2) become
+  catchable too.
+
+Consequence to expect, not trip over: two ingest passes means the finalizer runs twice, so each
+vault gets two briefings. Identical across all conditions, so it does not distort the comparison.
+
 ## The freeze
 
 Once reviewed, hash the keys the way the corpus is hashed and do not touch them again:
