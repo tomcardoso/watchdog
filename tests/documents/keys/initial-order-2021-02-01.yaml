@@ -1,0 +1,394 @@
+# Answer key — corpus-v1, document 4 — THE OCR ARM
+#
+# Drafted from the SOURCE PDF by reading the SCANNED PAGES VISUALLY — deliberately NOT from an
+# OCR pass. OCRing the scan first and drafting from that would bake the pipeline's own OCR errors
+# into the key: anything the OCR mangles would be absent from the key, the extractor would never
+# be scored on it, and every condition would "pass". That is the correlation failure mode #361
+# warns about, one stage earlier. So the key records what is ON THE PAGE, and the OCR hazards are
+# enumerated in `ocr_hazards` below so scoring can tell an OCR failure apart from an extraction
+# failure.
+
+document:
+  file: "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021.pdf"
+  sha256: e943be8173383b5d077a492401ce783a50e188cc5336547acd5090acb1d73408
+  pages: 17
+  text_layer: "NONE — court-stamped scan, requires OCR"
+  doc_type: court order (CCAA Initial Order)
+  date: 2021-02-01
+  court_file: "CV-21-___656040___-00CL (typed into blank rules on the form — see ocr_hazards)"
+  role_in_benchmark: >
+    The OCR arm. A clean-PDF corpus flatters every model; this document is where the pipeline
+    actually meets a scanned court document with a seal, a wet signature, a registry stamp and a
+    sideways backsheet.
+
+entities:
+  - name: Laurentian University of Sudbury
+    type: organization
+    aliases: ["LU", "the Applicant"]
+    role: Applicant; DECLARED INSOLVENT by the Court in this order
+    page: 2
+  - name: G.B. Morawetz
+    type: person
+    aliases: ["Chief Justice Morawetz", "THE HONOURABLE CHIEF JUSTICE MORAWETZ"]
+    role: Chief Justice; signed the Initial Order
+    page: 1
+  - name: Ernst & Young Inc.
+    type: organization
+    aliases: ["EY", "the Monitor"]
+    role: appointed Monitor, an officer of the Court
+    page: 9
+  - name: Robert Haché
+    type: person
+    aliases: ["Dr. Robert Haché"]
+    role: affiant; the Haché Affidavit sworn 30 January 2021
+    page: 1
+  - name: Laurentian University Students General Association
+    type: organization
+    aliases: ["SGA"]
+    role: >
+      Designated a "Non-Applicant Stay Party" — not a CCAA applicant, but granted the benefit of a
+      limited stay.
+    page: 2
+  - name: Thornton Grout Finnigan LLP
+    type: organization
+    aliases: ["TGF"]
+    role: Lawyers for the Applicant
+    page: 17
+  - name: D.J. Miller
+    type: person
+    role: counsel for LU (LSO# 344393P)
+    page: 17
+  - name: Mitchell W. Grossell
+    type: person
+    role: counsel for LU (LSO# 69993I)
+    page: 17
+  - name: Andrew Hanrahan
+    type: person
+    role: counsel for LU (LSO# 78003K)
+    page: 17
+  - name: Derek Harland
+    type: person
+    role: counsel for LU (LSO# 79504N)
+    page: 17
+  - name: Ontario Ministry of Colleges and Universities
+    type: organization
+    aliases: ["MCU"]
+    role: government body the Monitor is empowered to talk to
+    page: 10
+  - name: Board of Governors
+    type: organization
+    aliases: ["the Board"]
+    role: beneficiary of the Directors' Charge and the indemnity
+    page: 8
+
+relationships:
+  - subject: G.B. Morawetz
+    predicate: issued
+    object: the Initial Order
+    page: 16
+  - subject: Ernst & Young Inc.
+    predicate: appointed Monitor of
+    object: Laurentian University of Sudbury
+    page: 9
+  - subject: Thornton Grout Finnigan LLP
+    predicate: counsel for
+    object: Laurentian University of Sudbury
+    page: 17
+  - subject: Laurentian University Students General Association
+    predicate: Non-Applicant Stay Party in
+    object: the LU CCAA proceedings
+    page: 2
+  - subject: Laurentian University of Sudbury
+    predicate: indemnifies
+    object: its directors, officers and the Board
+    page: 9
+
+facts:
+  - id: F1
+    fact: "The Court ORDERS AND DECLARES that the Applicant is insolvent and is a company to which the CCAA applies."
+    page: 2
+    paragraph: 4
+    quote: "THIS COURT ORDERS AND DECLARES that the Applicant is insolvent and is a company to which the CCAA applies."
+    note: "The judicial finding of insolvency — the legal fact the whole corpus turns on."
+  - id: F2
+    fact: "The order was made Monday, 1 February 2021 by Chief Justice Morawetz, heard by Zoom videoconference in Toronto because of the COVID-19 pandemic."
+    page: 1
+    quote: "was heard this day by videoconference via Zoom in Toronto, Ontario due to the COVID-19 pandemic."
+  - id: F3
+    fact: >
+      The Court read the Haché Affidavit sworn JANUARY 30, 2021 and the Pre-Filing Report of the
+      proposed monitor, Ernst & Young Inc., dated January 30, 2021.
+    page: 1
+    quote: "ON READING the affidavit of Dr. Robert Haché sworn January 30, 2021 and the Exhibits thereto (the \"Haché Affidavit\"), the pre-filing report of the proposed monitor, Ernst & Young Inc. (\"EY\"), dated January 30, 2021"
+    note: >
+      NOTE THE DATE. This order says the affidavit was sworn January 30, **2021**. Both the
+      Pre-Filing Report (¶8) and the First Report (¶9) say "sworn January 30, **2020**". This
+      document is the correct one; the Monitor's reports carry a copy-pasted typo. Relevant to
+      must_not_miss M2 in prefiling-report-monitor.yaml.
+  - id: F4
+    fact: "The Laurentian University Students General Association (SGA) is designated a 'Non-Applicant Stay Party' — not a CCAA applicant, but given the benefit of a limited stay."
+    page: 2
+    paragraph: 3
+    quote: "THIS COURT ORDERS that the Laurentian University Students General Association (the \"SGA\") shall be referred to herein as a \"Non-Applicant Stay Party\"."
+  - id: F5
+    fact: >
+      SEGREGATED FUNDS: segregated bank accounts established from and after 1 DECEMBER 2020 —
+      holding research grants, restricted donations, endowments and benefit-plan contributions —
+      must be used for their specific purpose, and SHALL NOT FORM PART OF the Applicant's Property.
+    page: 3
+    paragraph: 7
+    quote: "the Segregated Funds shall not form part of the Applicant's Property."
+    note: >
+      The court ring-fencing the restricted money that the Pre-Filing Report (¶167) says had been
+      co-mingled. The 1 December 2020 date matters — it is two months before filing.
+  - id: F6
+    fact: "The Property subject to the Charges does NOT include the Segregated Accounts."
+    page: 13
+    paragraph: 38
+    quote: "the Property subject to the Charges herein shall not include the Segregated Accounts."
+    note: "Reinforces F5 — even the super-priority charges cannot reach the restricted funds."
+  - id: F7
+    fact: >
+      Payments to former employees and retirees under the SuRP and the RHBP, and termination or
+      severance payments, are STAYED — while ordinary-course wages and benefits for CURRENT
+      employees continue.
+    page: 4
+    paragraph: "8(a)"
+    quote: "(but not including any payments to former employees or retirees in respect of the SuRP and the RHBP, as such terms are defined in the Haché Affidavit, or termination or severance payments, which are hereby stayed)"
+    note: "Retirees stop being paid; active staff keep being paid. Buried in a parenthesis."
+  - id: F8
+    fact: "Normal-course Pension Plan contributions continue to be remitted, until further order of the Court."
+    page: 5
+    paragraph: "10(a)"
+    quote: "until further order of this Court, all outstanding and future normal course contributions to or payments in respect of the Pension Plan"
+  - id: F9
+    fact: "The Applicant is directed to make no payments to pre-filing creditors — expressly including in respect of the INTEREST RATE SWAP transactions."
+    page: 6
+    paragraph: "11(a)"
+    quote: "(including for greater certainty in respect of the interest rate swap transactions)"
+  - id: F10
+    fact: "The initial Stay Period runs until and including 11 February 2021."
+    page: 6
+    paragraph: 13
+    quote: "that until and including February 11, 2021, or such later date as this Court may subsequently order (the \"Stay Period\")"
+  - id: F11
+    fact: "The Directors' Charge is granted on the Property, not to exceed $2,000,000."
+    page: 9
+    paragraph: 21
+    quote: "a charge (the \"Directors' Charge\") on the Property, which charge shall not exceed an aggregate amount of $2,000,000"
+  - id: F12
+    fact: "The Administration Charge is granted on the Property, not to exceed $400,000."
+    page: 12
+    paragraph: 31
+    quote: "a charge (the \"Administration Charge\") on the Property, which charge shall not exceed an aggregate amount of $400,000"
+  - id: F13
+    fact: "Charge priority: FIRST the Administration Charge ($400,000), SECOND the Directors' Charge ($2,000,000)."
+    page: 12
+    paragraph: 32
+    quote: "First – Administration Charge (to the maximum amount of $400,000); and Second –Directors' Charge (to the maximum amount of $2,000,000)."
+  - id: F14
+    fact: >
+      Board Counsel's fees paid by the Applicant after the date of the order are capped at $250,000
+      plus HST, pending further order.
+    page: 12
+    paragraph: 29
+    quote: "the fees and disbursement of Board Counsel paid by the Applicant from and after the date of this Order shall not exceed the aggregate amount of $250,000, plus HST, pending further Order of the Court."
+  - id: F15
+    fact: >
+      The directors' indemnity does NOT extend to obligations incurred through gross negligence or
+      wilful misconduct.
+    page: 9
+    paragraph: 20
+    quote: "except to the extent that, with respect to any officer, director or member of the Board, the obligation or liability was incurred as a result of the director's or officer's gross negligence or wilful misconduct."
+  - id: F16
+    fact: >
+      Directors and officers only get the benefit of the Directors' Charge to the extent they lack
+      insurance coverage, or it is insufficient; no insurer may be subrogated to the charge.
+    page: 9
+    paragraph: 22
+    quote: "no insurer shall be entitled to be subrogated to or claim the benefit of the Directors' Charge"
+  - id: F17
+    fact: >
+      The Monitor must publish notice in the Globe & Mail and the Sudbury Star, and notify every
+      known creditor with a claim over $1,000 — EXCLUDING individual employees, former employees
+      with pension entitlements, and retirees.
+    page: 13
+    paragraph: 39
+    quote: "send, in the prescribed manner, a notice to every known creditor who has a claim against the Applicant of more than $1,000 (excluding any individual employees, former employees with pension and/or retirement savings or benefits plan entitlements, and retirees and other beneficiaries who have entitlements under any pension or retirement savings plan)"
+    note: "Pensioners are creditors — and are expressly carved out of the creditor notice."
+  - id: F18
+    fact: "Confidential Exhibits 'EEE' and 'FFF' of the Haché Affidavit are SEALED and shall not form part of the public record."
+    page: 15
+    paragraph: 44
+    quote: "THIS COURT ORDERS that Confidential Exhibits \"EEE\" and \"FFF\" of the Haché Affidavit are hereby sealed pending further order of the Court, and shall not form part of the public record."
+  - id: F19
+    fact: "The Monitor shall not take possession of the Property and takes no part in managing the Business."
+    page: 10
+    paragraph: 25
+    quote: "THIS COURT ORDERS that the Monitor shall not take possession of the Property of the Applicant"
+  - id: F20
+    fact: "A case website is ordered established at www.ey.com/ca/Laurentian."
+    page: 14
+    paragraph: 40
+    quote: "This Court further orders that a Case Website shall be established in accordance with the Protocol with the following URL: www.ey.com/ca/Laurentian."
+  - id: F21
+    fact: "The Order is effective as of 12:01 a.m. Eastern Time on 1 February 2021 and is enforceable without entry and filing."
+    page: 16
+    paragraph: 49
+    quote: "this Order and all of its provisions are effective as of 12:01 a.m. Eastern Time on the date of this Order, and is enforceable without any need for entry and filing."
+  - id: F22
+    fact: >
+      The Monitor is protected from environmental liability — nothing requires it to take
+      possession of contaminated property under the Canadian Environmental Protection Act, the
+      Ontario Environmental Protection Act, the Ontario Water Resources Act or the Occupational
+      Health and Safety Act.
+    page: 11
+    paragraph: 26
+    quote: "nothing herein contained shall require the Monitor to occupy or to take control, care, charge, possession or management … of any of the Property that might be environmentally contaminated"
+
+contradictions: []
+
+# OCR HAZARDS — the point of this document in the benchmark.
+# These are scanned-page features that a text-extraction or OCR pass can plausibly mangle. When
+# scoring, check these FIRST: if a condition misses a fact anchored to one of these, establish
+# whether the OCR surfaced the text at all before charging it to the extractor.
+ocr_hazards:
+  - id: H1
+    hazard: "A red Superior Court of Justice seal is stamped over the left margin of page 1, overlapping the case-title text."
+    page: 1
+    risk: "OCR may drop, garble, or hallucinate characters where the seal overlaps the printed text."
+  - id: H2
+    hazard: >
+      The court file number is TYPED INTO BLANK RULED LINES on the form: "Court File No.
+      CV-21-___656040___-00CL". The digits sit between underscores/rules.
+    pages: [1, 17]
+    risk: >
+      OCR commonly renders the rules as characters or drops them, producing variants like
+      "CV-21-656040-00CL" or "CV-21- 656040 -00CL". This is the likely origin of the format
+      variance seen in the First Report. An extractor that resolves all variants to ONE court-file
+      entity is doing the right thing; one that creates several is not.
+  - id: H3
+    hazard: "A handwritten wet signature of Chief Justice G.B. Morawetz appears above his printed name."
+    page: 16
+    risk: "OCR may emit nothing, or noise characters, where the signature is. The printed name below it should still be recoverable."
+  - id: H4
+    hazard: >
+      A bilingual court registry stamp: "ENTERED AT / INSCRIT À TORONTO — ON / BOOK NO: — LE / DANS
+      LE REGISTRE NO:", with the date "FEB 0 1 2021" and handwritten registrar initials after
+      "PER / PAR:".
+    page: 16
+    risk: >
+      Two languages interleaved, a date with irregular spacing ("FEB 0 1 2021"), and handwriting.
+      A high-value target: this stamp is the proof the order was actually entered.
+  - id: H5
+    hazard: "THE BACKSHEET (page 17) IS ROTATED 90 DEGREES — the entire page reads sideways."
+    page: 17
+    risk: >
+      THE SINGLE BIGGEST HAZARD IN THE CORPUS. If the OCR does not auto-rotate, page 17 yields
+      nothing or gibberish — and page 17 is the ONLY place in this document where the applicant's
+      law firm and its four named lawyers appear. A condition that returns no counsel for this
+      document has almost certainly hit a rotation failure, not a reasoning failure. Check the chew
+      output for page 17 before scoring this against any extractor.
+  - id: H6
+    hazard: "Email addresses and LSO numbers on the sideways backsheet (djmiller@tgf.ca, LSO# 344393P, etc.)."
+    page: 17
+    risk: "Alphanumeric strings with punctuation, rotated. Compounding H5. Expect character-level errors even if rotation is handled."
+
+must_not_miss:
+  - id: M1
+    item: >
+      The backsheet: Thornton Grout Finnigan LLP, 3200–100 Wellington Street West, TD West Tower,
+      Toronto-Dominion Centre, Toronto ON M5K 1K7 — D.J. Miller (LSO# 344393P), Mitchell W.
+      Grossell (LSO# 69993I), Andrew Hanrahan (LSO# 78003K), Derek Harland (LSO# 79504N).
+      Lawyers for the Applicant.
+    page: 17
+    location: backsheet — ROTATED 90°
+    why: >
+      Last page, rotated, and the only place the applicant's counsel is named. This is the
+      highest-value must-not-miss item in the corpus precisely because it sits behind an OCR
+      rotation failure. See ocr_hazards H5.
+
+  - id: M2
+    item: >
+      The registry stamp proving entry: "ENTERED AT / INSCRIT À TORONTO", "FEB 0 1 2021", with
+      handwritten registrar initials.
+    page: 16
+    location: court registry stamp, below the signature
+    why: "Bilingual, handwritten, stamped. The evidence the order took effect. See H4."
+
+  - id: M3
+    item: "The signature block: CHIEF JUSTICE G.B. MORAWETZ, with a wet signature above the printed name."
+    page: 16
+    location: signature block
+    why: "Signature blocks are the first casualty of both extraction and OCR."
+
+  - id: M4
+    item: >
+      Segregated Funds — established from and after 1 DECEMBER 2020 — do not form part of the
+      Applicant's Property, and the Charges cannot reach them.
+    pages: [3, 13]
+    paragraph: "7, 38"
+    why: >
+      Stated in two places 10 pages apart, and it is the court's answer to the co-mingling problem.
+      The 1 December 2020 date is the tell: LU only began segregating restricted money two months
+      before filing.
+
+  - id: M5
+    item: >
+      Payments to retirees and former employees under the SuRP and RHBP, and all termination and
+      severance payments, are STAYED — inside a parenthesis in a paragraph about paying employees.
+    page: 4
+    paragraph: "8(a)"
+    why: >
+      The paragraph reads as "we will keep paying everyone"; the parenthesis says retirees and
+      severance are cut off. Inverting this inverts the meaning of the order.
+
+  - id: M6
+    item: >
+      The creditor-notice carve-out: employees, former employees with pension entitlements and
+      retirees are EXCLUDED from the notice to known creditors.
+    page: 13
+    paragraph: 39
+    why: >
+      A parenthetical exclusion determining who was told they were a creditor. Buried mid-sentence
+      in a service-and-notice paragraph.
+
+  - id: M7
+    item: "Confidential Exhibits 'EEE' and 'FFF' of the Haché Affidavit are sealed from the public record."
+    page: 15
+    paragraph: 44
+    why: >
+      A two-line sealing provision. It tells a journalist exactly which exhibits to fight for —
+      the single most actionable line in the document for a reporter.
+
+  - id: M8
+    item: "Board Counsel's fees are capped at $250,000 plus HST."
+    page: 12
+    paragraph: 29
+    why: "A discrete dollar cap at the end of a long paragraph about professional fees."
+
+  - id: M9
+    item: >
+      The Directors' Charge does not cover gross negligence or wilful misconduct, and directors get
+      its benefit only where insurance does not respond.
+    page: 9
+    paragraph: "20, 22"
+    why: "The limits on the indemnity — the part that would matter if anyone were later found at fault."
+
+  - id: M10
+    item: >
+      The stay expressly captures the INTEREST RATE SWAP transactions ("for greater certainty").
+    page: 6
+    paragraph: "11(a)"
+    why: >
+      A parenthetical that connects to the $24.7M swap termination obligation in doc 3 and the
+      $340K/month outflow in doc 2. Three documents, one thread, and this is the quietest mention.
+
+  - id: M11
+    item: "The SGA is a 'Non-Applicant Stay Party' — protected by the stay without being an applicant."
+    page: 2
+    paragraph: 3
+    why: >
+      An unusual CCAA device, and the reason the students' association and its $8.5M loan sit
+      inside the proceeding. A short paragraph under its own heading, early, where extractors are
+      still processing boilerplate.
