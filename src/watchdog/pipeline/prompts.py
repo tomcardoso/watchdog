@@ -86,14 +86,20 @@ def _file_metadata_block(file_metadata: dict, processing: dict) -> str:
     )
 
 
-def build_extract_prompt(*, pages_text: str, existing_entities: list, existing_timeline: list,
-                         skill_text: str, sidecar: str | None, brief: str | None,
-                         known_document_types: list, cache_ttl: str = "5m",
+def build_extract_prompt(*, pages_text: str, skill_text: str, sidecar: str | None,
+                         brief: str | None, known_document_types: list, cache_ttl: str = "5m",
                          file_metadata: dict | None = None,
                          processing: dict | None = None) -> list[dict]:
     # Document identity (sha256/filename/original_path/page_count) and provenance
     # (source/obtained) are stamped onto the result by Python — see
     # orchestrate._stamp_document — so they are deliberately not asked of the model here.
+    #
+    # No vault state enters this prompt (#381/D118): extraction is a pure function of the
+    # document, its skill, the brief, and its sidecar. Entity resolution and contradiction
+    # detection — the two jobs the old EXISTING_ENTITIES / EXISTING_TIMELINE blocks fed — moved
+    # to the finalizer's reconciliation pass, which is the only stage that sees all the claims
+    # at once. That also removes the prompt's single biggest and fastest-growing volatile block:
+    # every page of every document used to carry the vault's accumulated entity context.
     #
     # Returned as content blocks, not one string (A1): block 1 (instructions + brief) is
     # constant for the whole run; block 2 (the domain skill) is constant per document type and
@@ -105,12 +111,7 @@ def build_extract_prompt(*, pages_text: str, existing_entities: list, existing_t
     if brief:
         stable.append(f"\nINVESTIGATION BRIEF (orient extraction toward this):\n{brief}")
 
-    volatile = [f"\nEXISTING_ENTITIES (for dedup + contradiction check):\n"
-               f"{json.dumps(existing_entities, ensure_ascii=False)}",
-               f"\nEXISTING_TIMELINE (prior dated events of EXISTING_ENTITIES, deduplicated — "
-               f"each event's 'entities' lists the candidate ids it concerns):\n"
-               f"{json.dumps(existing_timeline, ensure_ascii=False)}",
-               _known_types_block(known_document_types)]
+    volatile = [_known_types_block(known_document_types)]
     if sidecar:
         volatile.append(f"\nSIDECAR (provenance + notes — context for your extraction):\n{sidecar}")
     if file_metadata:
@@ -125,8 +126,8 @@ def build_extract_prompt(*, pages_text: str, existing_entities: list, existing_t
     ]
 
 
-def build_section_prompt(*, pages_text: str, existing_entities: list, existing_timeline: list,
-                         skill_text: str, carry_forward: str, section_label: str, is_first: bool,
+def build_section_prompt(*, pages_text: str, skill_text: str, carry_forward: str,
+                         section_label: str, is_first: bool,
                          known_document_types: list, brief: str | None = None,
                          file_metadata: dict | None = None,
                          processing: dict | None = None) -> list[dict]:
@@ -153,13 +154,13 @@ def build_section_prompt(*, pages_text: str, existing_entities: list, existing_t
                     "leads to chase, open questions, threads to other sections or documents. Do NOT "
                     "restate figures, dates, chronology, or contradictions (those are captured in "
                     "key_facts); leave it empty if there is nothing forward-looking.")
+    # Carry-forward is intra-document — the entity ids and observations from *this document's*
+    # earlier sections — so it survives the move to stateless extraction (#381/D118) untouched.
+    # It is not vault state: it never reaches outside the document being extracted, which is why
+    # it costs extraction neither determinism nor order-independence.
     if carry_forward:
         volatile.append(f"\nCARRY-FORWARD (entities/observations from earlier sections — reuse these "
                         f"ids):\n{carry_forward}")
-    volatile.append(f"\nEXISTING_ENTITIES:\n{json.dumps(existing_entities, ensure_ascii=False)}")
-    volatile.append(f"\nEXISTING_TIMELINE (prior dated events of EXISTING_ENTITIES, deduplicated — "
-                    f"each event's 'entities' lists the candidate ids it concerns):\n"
-                    f"{json.dumps(existing_timeline, ensure_ascii=False)}")
     if file_metadata:
         volatile.append(_file_metadata_block(file_metadata, processing))
     volatile.append(f"\nSECTION TEXT:\n{pages_text}")
@@ -186,6 +187,32 @@ def build_synthesis_prompt(bundle: dict) -> str:
     return (
         f"{_text('synthesis')}\n\n"
         f"Entities:\n{json.dumps(bundle.get('entities', []), ensure_ascii=False)}"
+    )
+
+
+def build_reconcile_prompt(bundle: dict) -> str:
+    """The finalizer's reconciliation call (#381/D118) — entity resolution + contradiction
+    detection over the whole entity set, once, after every document has landed.
+
+    Two blocks, both assembled deterministically in Python:
+
+    * **CANDIDATE PAIRS** — the duplicate-entity question, already narrowed. `reconcile.
+      candidate_pairs` blocks the field down to pairs that are plausibly the same thing (same
+      canonical type, one name a token-subset of the other, identical in tokens — a word-order or
+      stopword variant — or a high token overlap); the model only confirms or rejects each, and
+      answers by pair index, so it cannot invent an id.
+      Exact normalized-name duplicates never reach here — `write_vault._reconcile_entity_ids`
+      already merged those deterministically, in-lock, at write time.
+    * **ENTITIES** — the contradiction question. Each recurring entity's full source-attributed
+      claim ledger (its note's `## Analysis`, which carries a `[[documents/<slug>|<title>]]`
+      block per document), plus its roles and any contradictions already recorded.
+    """
+    return (
+        f"{_text('reconcile')}\n\n"
+        f"CANDIDATE PAIRS (possible duplicate entities — confirm or reject each):\n"
+        f"{json.dumps(bundle.get('pairs', []), ensure_ascii=False)}\n\n"
+        f"ENTITIES (each with the claims recorded about it, by source document):\n"
+        f"{json.dumps(bundle.get('entities', []), ensure_ascii=False)}"
     )
 
 

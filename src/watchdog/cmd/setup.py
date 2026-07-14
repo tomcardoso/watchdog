@@ -119,20 +119,6 @@ _CONFIGURE_KEYS = {
         "type": "string",
         "default": None,
     },
-    "preflight_alias_min_length": {
-        "short": "Shortest entity alias that can match document text during extraction (default: 3)",
-        "help": (
-            "When preparing a document for extraction, Watchdog carries forward every known entity\n"
-            "  whose name or alias appears in the text, so the extractor can dedup and check\n"
-            "  contradictions. Aliases shorter than this are ignored — short aliases (initials,\n"
-            "  abbreviations) false-match common words and drag whole entity digests into the prompt,\n"
-            "  inflating cost. The canonical name always matches at any length, so short real names\n"
-            "  (BP, GE, 3M) are unaffected. Lower it to 1 to match all aliases. Default: 3."
-        ),
-        "type": "int",
-        "default": 3,
-        "min": 1,
-    },
     "chunk_size": {
         "short": "Pages per chunk when splitting large PDFs for parallel processing (default: 40)",
         "help": (
@@ -256,12 +242,14 @@ _CONFIGURE_KEYS = {
         "default": "sonnet",
     },
     "finalizer_model": {
-        "short": "Model for post-ingest synthesis + timeline + briefing (default: haiku)",
+        "short": "Model for the post-ingest step — reconciliation + synthesis + briefing (default: haiku)",
         "help": (
-            "Model used for the post-ingest step: synthesizing prose for multi-mention\n"
-            "  entities, reconciling timeline collisions, and writing the briefing.\n"
-            "  This step composes prose from compact digests rather than reading raw documents,\n"
-            "  so the cheaper Haiku tier is the default; raise it if synthesized prose feels thin.\n"
+            "Model used for the post-ingest step: merging duplicate entities, flagging\n"
+            "  contradictions between documents, synthesizing prose for multi-mention entities,\n"
+            "  reconciling timeline collisions, and writing the briefing.\n"
+            "  This step works from compact digests rather than reading raw documents, so the\n"
+            "  cheaper Haiku tier is the default; raise it if synthesized prose feels thin, if\n"
+            "  duplicate entities slip through, or if contradictions are being missed.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
             "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-2.5-flash).\n"
             "  Default: haiku.\n"
@@ -286,7 +274,7 @@ _CONFIGURE_KEYS = {
         "choices": ["low", "medium", "high"],
     },
     "finalizer_effort": {
-        "short": "Reasoning effort for post-ingest synthesis + timeline + briefing (default: high)",
+        "short": "Reasoning effort for the post-ingest step (default: high)",
         "help": (
             "How hard the finalizer model thinks during post-ingest. Reasoning helps the prose\n"
             "  steps, so keep this higher than the extractor unless cost-trimming; lower it to spend\n"
@@ -436,7 +424,7 @@ _CONFIGURE_SECTIONS = [
     ("Chew", "Local preprocessing — parallelism and large-PDF handling.",
      ["chew_workers", "chunk_size", "chunk_workers", "chunk_timeout", "table_structure"]),
     ("Ingest", "Extraction run — parallelism, classification, skill pinning, sectioning.",
-     ["extract_concurrency", "classify_pages", "default_skill", "preflight_alias_min_length",
+     ["extract_concurrency", "classify_pages", "default_skill",
       "section_token_threshold", "section_token_budget", "section_overlap_tokens"]),
     ("Models", "Which Claude model runs each step, and how hard it thinks.",
      ["classifier_model", "extractor_model", "finalizer_model",

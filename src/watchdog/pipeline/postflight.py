@@ -3,11 +3,17 @@ Watchdog post-flight — validates an extraction JSON and writes it to the vault
 
 Handles everything after Claude produces the extraction JSON:
   1. Validates the extraction (schema + required fields)
-  2. Applies match_id decisions (Claude signals entity merges)
-  3. Reads near-dup minhash from the queue file
-  4. Calls write_vault.run() directly
-  5. Cleans up temp files
-  6. Returns {"ok": true} or {"errors": [...]}
+  2. Reads near-dup minhash from the queue file
+  3. Calls write_vault.run() directly
+  4. Cleans up temp files
+  5. Returns {"ok": true} or {"errors": [...]}
+
+Entity *resolution* is not done here (#381/D118). Post-flight used to apply the extractor's
+`match_id` merge decisions, but an extractor that reads one document can only resolve against the
+documents that happened to land before it. Two deterministic passes now cover it instead:
+`write_vault._reconcile_entity_ids` folds exact normalized-name duplicates in-lock at write time,
+and the finalizer's `reconcile` pass resolves the name *variants* that need judgement, once, with
+every document's entities in view.
 """
 
 import json
@@ -104,26 +110,6 @@ def _validate(data: dict) -> list[str]:
         errors.append("morgue_document_type is missing or empty — use a slug like annual-report, court-order, bankruptcy-filing")
 
     return errors
-
-
-def _apply_match_ids(extraction: dict) -> dict:
-    """Rewrite entity IDs based on Claude's match_id merge decisions.
-
-    Also remaps any ``key_facts.entities`` tags that referenced the extraction-time id onto the
-    canonical matched id, so the explode step files facts under the right entity.
-    """
-    remap: dict[str, str] = {}
-    for entity in extraction.get("entities", []):
-        match_id = entity.pop("match_id", None)
-        if match_id:
-            remap[entity["id"]] = match_id
-            entity["id"] = match_id
-    if remap:
-        for fact in extraction.get("document", {}).get("key_facts", []):
-            tags = fact.get("entities")
-            if tags:
-                fact["entities"] = [remap.get(t, t) for t in tags]
-    return extraction
 
 
 def _sanitize_entity_ids(extraction: dict) -> list[str]:
@@ -259,8 +245,6 @@ def run(vault: Path, extraction_path: Path, quiet: bool = False, warn=None) -> d
     if errors:
         return {"errors": errors}
 
-    extraction = _apply_match_ids(extraction)
-
     # Slugify entity ids before anything downstream uses them as a path segment (#303) —
     # a warning per id actually changed, so a malicious/malformed value is visible, not silent.
     for warning in _sanitize_entity_ids(extraction):
@@ -327,14 +311,14 @@ def run(vault: Path, extraction_path: Path, quiet: bool = False, warn=None) -> d
     if gap:
         _warn(_render_coverage_warning(gap, page_count))
 
-    # Write the validated (and match_id-resolved) extraction back so write_vault reads it
+    # Write the validated (and sanitized) extraction back so write_vault reads it
     extraction_path.write_text(
         json.dumps(extraction, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
     try:
         from watchdog.pipeline.write_vault import run as wv_run
-        wv_run(
+        written = wv_run(
             extraction_path=extraction_path,
             vault_path=vault,
             neardup_data=neardup_data,
@@ -365,7 +349,9 @@ def run(vault: Path, extraction_path: Path, quiet: bool = False, warn=None) -> d
         except OSError:
             pass
 
-    return {"ok": True, "sha256": sha256}
+    # `new_entities`/`updated_entities` come from the writer, not the model (#381/D118) — it is
+    # the stage that knows whether an id was already in the registry.
+    return {"ok": True, "sha256": sha256, **written}
 
 
 def main() -> None:

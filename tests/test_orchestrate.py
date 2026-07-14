@@ -124,9 +124,14 @@ def test_compact_result_carries_key_facts_for_the_briefing():
                                    {"fact": "Merger closed", "date": "2024-03-01"}]},
         "entities": [{"id": "acme", "name": "Acme", "type": "Company"}],
     }
-    r = orchestrate._compact_result("sha1", "doc.pdf", extraction, {}, 0.01)
+    r = orchestrate._compact_result("sha1", "doc.pdf", extraction, {}, 0.01,
+                                    {"new_entities": ["acme"], "updated_entities": []})
     assert r["key_facts"] == [{"fact": "Revenue was $5M"},
                               {"fact": "Merger closed", "date": "2024-03-01"}]
+    # new/updated split comes from the writer's report, not from a model-emitted field (#381/D118)
+    assert r["new_entities"] == ["acme"]
+    assert r["updated_entities"] == []
+    assert "contradictions" not in r        # a single document cannot flag one
 
 
 def test_write_briefing_resolves_entity_ids_to_display_names(tmp_path):
@@ -407,16 +412,179 @@ def test_orchestrator_extracts_and_writes_vault(tmp_path, monkeypatch):
     assert (vault / "timeline.md").exists()
 
 
-def test_prior_entity_digest_line_hidden_when_no_candidates(tmp_path, monkeypatch, capsys):
-    """#317: a fresh vault has no manifest entries to match, so the per-doc "prior-entity
-    digest" telemetry line (#216) is noise (always "0.0 KB · 0 candidates") — suppress it."""
+def test_extraction_prompt_is_invariant_to_vault_entity_state(tmp_path, monkeypatch):
+    """AC #381/D118: extraction is a pure function of the document, so its prompt must be
+    byte-identical whether the vault is empty or already full of entities. A registry that changes
+    the prompt is exactly what made extraction depend on ingest order and concurrency wave — the
+    same document could get a different prompt depending on what had landed before it.
+
+    (`known_document_types` is the one deliberate registry read that survives; both vaults here
+    have an empty documents.json, so it is held constant and the test isolates entity state.)"""
+    captured: list[str] = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "extract":
+            captured.append(_flat(prompt))
+        return model_client.ModelResult(
+            parsed={"classify": {"skill": "general-records.md"},
+                    "extract": _extraction()}.get(task, {"entity_syntheses": [], "groups": [],
+                                                         "merges": [], "contradictions": [],
+                                                         "investigation_status": "x",
+                                                         "what_was_ingested": []}),
+            text="", model="m", backend="claude-agent-sdk", auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    # Empty vault.
+    v1 = make_vault(tmp_path / "empty")
+    _queue_doc(v1, text="Acme Corp filed an annual report.")
+    asyncio.run(orchestrate.run(v1))
+
+    # A vault already carrying a populated entity registry — the thing that used to change the prompt.
+    v2 = make_vault(tmp_path / "populated")
+    (v2 / ".watchdog" / "Registry" / "entities.json").write_text(json.dumps({
+        "acme-corp": {"id": "acme-corp", "name": "Acme Corp", "type": "organization",
+                      "aliases": ["ACME"], "appears_in": ["old-sha"],
+                      "note_path": "entities/organization/acme-corp", "roles": [],
+                      "timeline_events": [{"date": "2019-01-01", "event": "Prior event"}]},
+    }))
+    (v2 / ".watchdog" / "Registry" / "manifest.json").write_text(json.dumps({
+        "acme-corp": {"name": "Acme Corp", "type": "organization", "aliases": ["ACME"],
+                      "note_path": "entities/organization/acme-corp"},
+    }))
+    _queue_doc(v2, text="Acme Corp filed an annual report.")
+    asyncio.run(orchestrate.run(v2))
+
+    assert len(captured) == 2
+    assert captured[0] == captured[1]                 # byte-identical despite the populated registry
+    assert "EXISTING_ENTITIES" not in captured[0]     # and no vault state rode along at all
+
+
+def test_cross_document_contradiction_caught_and_fed_to_briefing(tmp_path, monkeypatch):
+    """AC #381/D118: a contradiction between two documents about one entity is caught by the
+    finalizer's reconciliation pass — the only stage that sees both claims — annotated on the
+    entity's note, and counted in the briefing's contradiction flags. Neither document's own
+    extraction could ever have seen the other's claim."""
+    contradiction_item = {
+        "entity_id": "acme-corp", "label": "Insolvency date",
+        "a_value": "insolvent as of 2023-01-01", "a_doc": "doc-one", "a_page": 1,
+        "b_value": "insolvent as of 2024-06-01", "b_doc": "doc-two", "b_page": 1,
+    }
+
+    def _ext(sha, filename, fact):
+        return {
+            "document": {"sha256": sha, "filename": filename,
+                         "original_path": f"_INCOMING/{filename}",
+                         "title": filename, "document_type": "Filing",
+                         "date_of_document": "2024-01-15", "page_count": 1,
+                         "source": None, "obtained": None, "near_duplicate_of": None,
+                         "summary": "A filing.",
+                         "key_facts": [{"fact": fact, "page": 1, "basis": "stated",
+                                        "entities": ["acme-corp"]}]},
+            "entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
+                          "aliases": [], "roles": []}],
+            "morgue_entity_id": "acme-corp", "morgue_document_type": "filing",
+            "scratchpad": "",
+        }
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        flat = _flat(prompt)
+        if task == "classify":
+            parsed = {"skill": "general-records.md"}
+        elif task == "extract":
+            if "INSOLVENT-A" in flat:
+                parsed = _ext("sha-one", "doc-one.pdf", "Acme was INSOLVENT-A as of 2023-01-01")
+            else:
+                parsed = _ext("sha-two", "doc-two.pdf", "Acme was INSOLVENT-B as of 2024-06-01")
+        elif task == "reconcile":
+            parsed = {"merges": [], "contradictions": [contradiction_item]}
+        elif task == "entity-synthesis":
+            parsed = {"entity_syntheses": []}
+        elif task == "timeline-dedup":
+            parsed = {"groups": []}
+        elif task == "briefing":
+            parsed = {"investigation_status": "x", "what_was_ingested": []}
+        else:
+            parsed = {}
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="claude-agent-sdk", auth_mode="subscription",
+                                        cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
     vault = make_vault(tmp_path)
-    _queue_doc(vault)
-    _mock(monkeypatch, extraction=_extraction())
+    _queue_doc(vault, sha="sha-one", filename="doc-one.pdf",
+               text="Acme was INSOLVENT-A as of 2023-01-01")
+    _queue_doc(vault, sha="sha-two", filename="doc-two.pdf",
+               text="Acme was INSOLVENT-B as of 2024-06-01")
 
-    asyncio.run(orchestrate.run(vault))
+    summary = asyncio.run(orchestrate.run(vault))
+    assert summary["extracted"] == 2
 
-    assert "prior-entity digest" not in capsys.readouterr().out
+    # The two documents collapsed onto one entity (exact-name reconcile in write_vault), so the
+    # finalizer had both claims in one ledger to compare.
+    note = (vault / "entities" / "organization" / "acme-corp.md").read_text()
+    assert "[!contradiction] Insolvency date" in note
+    assert "documents/doc-one" in note and "documents/doc-two" in note
+
+    # And it reached the briefing's flagged count — fed by reconciliation, not by any single doc.
+    assert summary["post_ingest"]["contradictions"]
+    assert "Contradictions flagged:** 1" in (vault / "log.md").read_text()
+
+
+def test_reconcile_failure_leaves_batch_finalizable(tmp_path, monkeypatch):
+    """A reconcile failure must not leave the batch looking clean: `finalize()` only clears the
+    fragment queue when `out` has neither `error` nor `briefing_error`, so if reconcile fails but
+    synthesis and briefing succeed, `out["error"]` must still be set — otherwise the queue
+    `reconcile._touched_ids` reads is deleted and the documented recovery (`watchdog finalize`)
+    silently no-ops."""
+    def _ext(sha, filename, fact):
+        return {
+            "document": {"sha256": sha, "filename": filename,
+                         "original_path": f"_INCOMING/{filename}",
+                         "title": filename, "document_type": "Filing",
+                         "date_of_document": "2024-01-15", "page_count": 1,
+                         "source": None, "obtained": None, "near_duplicate_of": None,
+                         "summary": "A filing.",
+                         "key_facts": [{"fact": fact, "page": 1, "basis": "stated",
+                                        "entities": ["acme-corp"]}]},
+            "entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
+                          "aliases": [], "roles": []}],
+            "morgue_entity_id": "acme-corp", "morgue_document_type": "filing",
+            "scratchpad": "",
+        }
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        flat = _flat(prompt)
+        if task == "classify":
+            parsed = {"skill": "general-records.md"}
+        elif task == "extract":
+            if "ONE" in flat:
+                parsed = _ext("sha-one", "doc-one.pdf", "Acme filed ONE")
+            else:
+                parsed = _ext("sha-two", "doc-two.pdf", "Acme filed TWO")
+        elif task == "reconcile":
+            raise model_client.ModelError("reconcile boom")
+        elif task == "entity-synthesis":
+            parsed = {"entity_syntheses": []}
+        elif task == "timeline-dedup":
+            parsed = {"groups": []}
+        elif task == "briefing":
+            parsed = {"investigation_status": "x", "what_was_ingested": []}
+        else:
+            parsed = {}
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="claude-agent-sdk", auth_mode="subscription",
+                                        cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha-one", filename="doc-one.pdf", text="Acme filed ONE")
+    _queue_doc(vault, sha="sha-two", filename="doc-two.pdf", text="Acme filed TWO")
+
+    summary = asyncio.run(orchestrate.run(vault))
+    assert summary["extracted"] == 2
+
+    assert "reconcile boom" in summary["post_ingest"]["error"]
+    assert (vault / ".watchdog" / "tmp" / "entity-fragments" / "_queue.json").exists()
 
 
 def test_orchestrator_reports_failed_on_postflight_rejection(tmp_path, monkeypatch):
@@ -1221,7 +1389,7 @@ def test_post_ingest_fails_loudly_on_briefing_model_error_without_retrying(tmp_p
     results = [orchestrate._compact_result(
         "sha1", "doc.pdf",
         {"document": {"key_facts": [{"fact": f"fact {i}"} for i in range(20)]}, "entities": []},
-        {}, 0.01)]
+        {}, 0.01, {})]
 
     briefing_calls = []
 
@@ -1591,7 +1759,7 @@ def test_extract_sectioned_composes_digest_after_merge(tmp_path, monkeypatch):
                                         cost_usd=0.01)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    extraction, scratchpad, cost, ok, errors, warnings = asyncio.run(orchestrate._extract_sectioned(
+    extraction, scratchpad, cost, ok, errors, warnings, _written = asyncio.run(orchestrate._extract_sectioned(
         vault, "abc123", pf, "SKILL TEXT", plan, "sonnet", "annual-report", backend="claude-api",
         brief="CHASE THE FRAUD"))
 
@@ -1621,7 +1789,7 @@ def test_digest_model_error_falls_back_to_deterministic_stitch(tmp_path, monkeyp
         raise model_client.ModelError("boom")
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    extraction, scratchpad, cost, ok, errors, warnings = asyncio.run(orchestrate._extract_sectioned(
+    extraction, scratchpad, cost, ok, errors, warnings, _written = asyncio.run(orchestrate._extract_sectioned(
         vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
 
     summary = extraction["document"]["summary"]
@@ -1640,7 +1808,7 @@ def test_digest_empty_response_falls_back_to_deterministic_stitch(tmp_path, monk
                                         auth_mode="subscription", cost_usd=0.0)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    extraction, scratchpad, cost, ok, errors, warnings = asyncio.run(orchestrate._extract_sectioned(
+    extraction, scratchpad, cost, ok, errors, warnings, _written = asyncio.run(orchestrate._extract_sectioned(
         vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
 
     summary = extraction["document"]["summary"]

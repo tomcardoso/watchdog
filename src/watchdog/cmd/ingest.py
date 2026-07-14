@@ -582,7 +582,7 @@ def _print_ingest_summary(summary: dict) -> None:
 
 
 def cmd_finalize(args) -> None:
-    """Complete post-ingest (synthesis + timeline + briefing) for an already-extracted batch.
+    """Complete post-ingest (entity reconciliation + synthesis + timeline + briefing) for an already-extracted batch.
 
     `watchdog ingest` finalizes automatically at the end; run this when a rate limit or
     interrupt stopped post-processing before it finished, so the batch isn't left half-done."""
@@ -635,7 +635,7 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
         when = f" (lock acquired {ts})" if ts else ""
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} an ingest or finalize is already running{when}.\n"
                  f"  If stale, run {_CYAN}watchdog unlock{_RESET}.\n")
-    print(f"\n  {_DIM}Finalizing — synthesis + timeline + briefing (model: {_RESET}"
+    print(f"\n  {_DIM}Finalizing — entity reconciliation + synthesis + timeline + briefing (model: {_RESET}"
           f"{_BOLD}{post_model}{_RESET}{_DIM}).{_RESET}")
     try:
         import asyncio

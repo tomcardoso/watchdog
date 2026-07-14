@@ -36,7 +36,6 @@ Or run `watchdog configure <key>` with no value to see that one key's help and c
 | `extract_concurrency` | `5` | Documents extracted in parallel during `watchdog ingest`. |
 | `classify_pages` | `5` | Leading pages of each document shown to the classifier. |
 | `default_skill` | *(unset)* | Pin one record skill for every ingested document, skipping classification. |
-| `preflight_alias_min_length` | `3` | Shortest entity alias that can match a document during extraction. |
 | `section_token_threshold` | `auto` | Estimated tokens above which a document is split into sections for extraction. `auto` derives it from ~60% of the extraction model's context window, capped tighter for models whose output limit it can't work around; set a number to override. |
 | `section_token_budget` | `auto` | Target estimated tokens per section when a document is sectioned. `auto` is half the threshold; set a number to override. |
 | `section_overlap_tokens` | `4000` | Estimated-token overlap between consecutive sections. |
@@ -75,9 +74,9 @@ Both search models run entirely on your machine — no API calls, no cost, nothi
 
 ### Models and cost
 
-The three model keys and two effort keys are the main cost controls — see [Controlling cost](#controlling-cost) below. Each model key takes a Claude tier (`haiku`, `sonnet`, `opus`) or a `backend:model` value (see [Model backends](#model-backends)), and each has a matching per-run flag on `watchdog ingest`. The classifier default is Haiku because picking a skill is easy work; the finalizer default is Haiku because it composes prose from compact digests rather than reading raw documents — raise it if synthesized prose feels thin.
+The three model keys and two effort keys are the main cost controls — see [Controlling cost](#controlling-cost) below. Each model key takes a Claude tier (`haiku`, `sonnet`, `opus`) or a `backend:model` value (see [Model backends](#model-backends)), and each has a matching per-run flag on `watchdog ingest`. The classifier default is Haiku because picking a skill is easy work; the finalizer default is Haiku because it works from compact digests rather than raw documents. The finalizer also reconciles duplicate entities and flags contradictions between documents — the pipeline's two hardest judgements — so raise it if synthesized prose feels thin, if duplicate entities are slipping through, or if cross-document contradictions are being missed. It runs only a few times per ingest regardless of how many documents you feed it, so raising it costs far less than raising the extractor.
 
-`default_skill` pins one record skill for every document, skipping classification — for vaults that are always one document type. Run `watchdog configure default_skill` with no value to pick from the catalogue interactively. `preflight_alias_min_length` exists because extraction carries forward every known entity a document mentions, and short aliases (initials, abbreviations) false-match common words and quietly inflate the prompt as a vault matures. The canonical name always matches at any length, so short real names like `BP` or `3M` are unaffected; set it to `1` to match all aliases.
+`default_skill` pins one record skill for every document, skipping classification — for vaults that are always one document type. Run `watchdog configure default_skill` with no value to pick from the catalogue interactively.
 
 ### Research
 
@@ -169,7 +168,7 @@ watchdog ingest                                           # later: collects it o
 
 ## Controlling cost
 
-Watchdog is built to keep token costs predictable. Everything mechanical runs locally and costs nothing: OCR, document conversion, search indexing, reranking, the lead sweep, the watchlist scan. The model is called only for the reasoning steps of ingest — classify, extract, synthesize, reconcile the timeline, write the briefing — and each document's classification loads only the single matching domain skill, not all of them.
+Watchdog is built to keep token costs predictable. Everything mechanical runs locally and costs nothing: OCR, document conversion, search indexing, reranking, the lead sweep, the watchlist scan. The model is called only for the reasoning steps of ingest — classify, extract, reconcile entities and contradictions, synthesize, reconcile the timeline, write the briefing — and each document's classification loads only the single matching domain skill, not all of them.
 
 The main levers, roughly in order of impact:
 

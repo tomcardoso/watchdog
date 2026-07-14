@@ -406,7 +406,9 @@ def main() -> None:
     p_ingest.add_argument("--extractor-model", default=None, dest="extractor_model", metavar="MODEL",
                           help=f"Model for extraction — {_model_help}; overrides watchdog configure (default: sonnet)")
     p_ingest.add_argument("--finalizer-model", default=None, dest="finalizer_model", metavar="MODEL",
-                          help=f"Model for synthesis + timeline + briefing — {_model_help}; overrides watchdog configure (default: haiku)")
+                          help=f"Model for the post-ingest step — reconciling duplicate entities, "
+                               f"flagging contradictions, synthesis, timeline, briefing — {_model_help}; "
+                               f"overrides watchdog configure (default: haiku)")
     p_ingest.add_argument("--classifier-model", default=None, dest="classifier_model", metavar="MODEL",
                           help=f"Model for document classification — {_model_help}; overrides watchdog configure (default: haiku)")
     p_ingest.add_argument("--extractor-effort", choices=_effort_choices, default=None,
@@ -415,7 +417,8 @@ def main() -> None:
                                "overrides watchdog configure (default: high)")
     p_ingest.add_argument("--finalizer-effort", choices=_effort_choices, default=None,
                           dest="finalizer_effort",
-                          help="Reasoning effort for synthesis + timeline + briefing — "
+                          help="Reasoning effort for the post-ingest step — entity reconciliation, "
+                               "contradiction flagging, synthesis, timeline, briefing — "
                                "overrides watchdog configure (default: high)")
     p_ingest.add_argument("--concurrency", type=int, default=None,
                           help="Documents extracted in parallel — overrides watchdog configure (default: 5)")
@@ -434,12 +437,15 @@ def main() -> None:
                           help="Print a token/cost estimate for the queue and exit — no lock, no confirm, no extraction")
     p_ingest.set_defaults(func=cmd_ingest)
 
-    p_finalize = sub.add_parser("finalize", help="Complete post-ingest (synthesis + timeline + briefing) for an already-extracted batch — e.g. after a rate limit stopped it")
+    p_finalize = sub.add_parser("finalize", help="Complete post-ingest (entity reconciliation, synthesis, timeline, briefing) for an already-extracted batch — e.g. after a rate limit stopped it")
     p_finalize.add_argument("--finalizer-model", default=None, dest="finalizer_model", metavar="MODEL",
-                            help=f"Model for synthesis + timeline + briefing — {_model_help}; overrides watchdog configure (default: haiku)")
+                            help=f"Model for the post-ingest step — reconciling duplicate entities, "
+                                 f"flagging contradictions, synthesis, timeline, briefing — {_model_help}; "
+                                 f"overrides watchdog configure (default: haiku)")
     p_finalize.add_argument("--finalizer-effort", choices=_effort_choices, default=None,
                             dest="finalizer_effort",
-                            help="Reasoning effort for synthesis + timeline + briefing — "
+                            help="Reasoning effort for the post-ingest step — entity reconciliation, "
+                                 "contradiction flagging, synthesis, timeline, briefing — "
                                  "overrides watchdog configure (default: high)")
     p_finalize.set_defaults(func=cmd_finalize)
 

@@ -172,6 +172,35 @@ def test_cmd_usage_shows_full_model_name_next_to_stage(tmp_path, monkeypatch, ca
     assert "  Model  " not in out   # no more per-row Model column
 
 
+def test_cmd_usage_reconcile_task_groups_under_finalizer(tmp_path, monkeypatch, capsys):
+    """The reconcile call (#381/D118) is a post-ingest step like synthesis/timeline/briefing, so
+    it must group under FINALIZER — not render as its own stray stage section — and its cost must
+    count toward the finalizer column in the `--all` comparison."""
+    vault = _build_vault(tmp_path, runs={
+        "usage-2026-01-01T00-00-00": [
+            _call(task="reconcile", filename="reconcile", detail="2 entities · 1 pairs",
+                  cost_usd=0.01),
+            _call(task="entity-synthesis", filename="entity-synthesis", cost_usd=0.02),
+        ],
+    })
+    monkeypatch.chdir(vault)
+
+    cmd_usage(_args())
+    out = capsys.readouterr().out
+    assert "FINALIZER" in out
+    assert "RECONCILE" not in out
+
+    capsys.readouterr()
+    cmd_usage(_args(all_runs=True))
+    out = capsys.readouterr().out
+    # Run row: Run | Calls | Classifier | Extractor | Finalizer | ... | Cost — the Finalizer
+    # column must carry both calls' cost (0.03), not just entity-synthesis's (0.02), or the
+    # stage columns stop summing to the Cost column on the right.
+    run_row = next(line for line in out.splitlines() if "usage-2026-01-01" in line)
+    dollars = [float(v) for v in run_row.replace("$", "").split()[2:5]]
+    assert dollars == [0.0, 0.0, 0.03]   # classifier, extractor, finalizer
+
+
 def test_cmd_usage_run_flag_no_match(tmp_path, monkeypatch):
     vault = _build_vault(tmp_path, runs={"usage-2026-01-01T00-00-00": [_call()]})
     monkeypatch.chdir(vault)

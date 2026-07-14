@@ -6,7 +6,6 @@ from pathlib import Path
 
 from watchdog.pipeline.write_vault import run as wv_run, _extract_section
 import watchdog.pipeline.finalize_entity as fe
-import watchdog.pipeline.preflight as pf
 
 from tests.test_write_vault import make_vault, make_extraction
 
@@ -81,23 +80,6 @@ def test_two_documents_bump_gate_to_two(tmp_path):
 
 
 # ── Pre-flight carries the current summary forward ────────────────────────────
-
-def test_preflight_carries_entity_summary(tmp_path):
-    vault = make_vault(tmp_path)
-    (vault / ".watchdog" / "queue").mkdir(parents=True)
-    wv_run(make_extraction(tmp_path), vault)  # creates alice-smith note + manifest
-
-    # Queue a new document whose text names the existing entity.
-    new_sha = "newdoc99"
-    (vault / ".watchdog" / "queue" / f"{new_sha}.json").write_text(json.dumps({
-        "filename": "new.pdf",
-        "pages": [{"markdown": "A meeting attended by Alice Smith was held."}],
-    }))
-
-    result = pf.run(vault, new_sha)
-    alice = next(c for c in result["existing_entities"] if c["id"] == "alice-smith")
-    assert alice["summary"] == "Alice Smith is a director of Acme Corp."
-
 
 # ── Finalizer writes prose only, preserves structured sections ────────────────
 
