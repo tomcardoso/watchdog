@@ -1,0 +1,425 @@
+# Answer key — corpus-v1, document 2 — CONTRADICTION SIDE B
+#
+# Drafted from the SOURCE PDF. Frozen before any condition runs.
+#
+# This is one half of the scored contradiction pair. The other half is
+# Annual-Financial-Report-19-20.pdf (document 1). NEITHER DOCUMENT MENTIONS THE OTHER — the
+# extractor has to notice the conflict by comparing against the vault digest, which is the
+# machinery under test. See CORPUS-v1.md.
+
+document:
+  file: "Laurentian Pre-Filing Report of the Proposed Monitor.pdf"
+  sha256: c5e89ac26f89d571136b9231f6cb943bcdd61199cfd4b622745f85489a480dcb
+  pages: 47
+  text_layer: born-digital
+  doc_type: monitor's report (pre-filing), CCAA
+  date: 2021-01-30
+  author: Ernst & Young Inc. (Proposed Monitor)
+  court_file: "not yet assigned — cover page reads 'Court File No. __________'"
+  role_in_benchmark: "Contradiction side B; entity-rich (affiliates, lenders, pension plans)."
+
+entities:
+  - name: Ernst & Young Inc.
+    type: organization
+    aliases: ["EY", "the Proposed Monitor", "the Monitor"]
+    role: proposed CCAA Monitor; licensed insolvency trustee under s.2 of the BIA
+    page: 3
+  - name: Laurentian University of Sudbury
+    type: organization
+    aliases: ["LU", "the Applicant"]
+    role: CCAA applicant; incorporated 28 March 1960 under the Laurentian Act
+    page: 1
+  - name: Stikeman Elliott LLP
+    type: organization
+    role: independent counsel to the Proposed Monitor
+    page: 4
+  - name: Robert Haché
+    type: person
+    aliases: ["Dr. Haché", "Dr. Robert Haché"]
+    role: President and Vice-Chancellor of LU; affiant; also CHAIR of the NOSM board
+    page: 3
+  - name: Royal Bank of Canada
+    type: organization
+    aliases: ["RBC"]
+    role: primary banking relationship; operating accounts; $250,000 revolving demand facility
+    page: 31
+  - name: Desjardins
+    type: organization
+    role: line of credit; $14.4M drawn as at 30 April 2020
+    page: 26
+  - name: TD Canada Trust
+    type: organization
+    aliases: ["TD"]
+    role: blocked account for debt service; lender to the SGA ($8.5M student centre loan)
+    page: 31
+  - name: Bank of Montreal
+    type: organization
+    aliases: ["BMO"]
+    role: blocked account for debt service
+    page: 31
+  - name: SEI Private Trust Company
+    type: organization
+    role: investment account custodian
+    page: 24
+  - name: RBC Dominion Securities Inc.
+    type: organization
+    role: investment account custodian
+    page: 24
+  - name: Northern Ontario School of Medicine
+    type: organization
+    aliases: ["NOSM"]
+    role: not-for-profit; LU and Lakehead are its two members; Haché chairs its board
+    page: 7
+  - name: Lakehead University
+    type: organization
+    aliases: ["Lakehead"]
+    role: co-member of NOSM
+    page: 7
+  - name: University of Sudbury
+    type: organization
+    aliases: ["SU"]
+    role: federated university; founded 1913 as Collège du Sacré-Coeur
+    page: 7
+  - name: Thorneloe University
+    type: organization
+    aliases: ["Thorneloe"]
+    role: federated university; Anglican Church of Canada roots
+    page: 8
+  - name: Huntington University
+    type: organization
+    aliases: ["Huntington"]
+    role: federated university; founded 1960
+    page: 8
+  - name: SNOLab
+    type: organization
+    aliases: ["Sudbury Neutrino Observatory Laboratory", "SNOLAB"]
+    role: >
+      Underground lab in Vale's Creighton mine; trust of five institutions (LU, Carleton, Queen's,
+      Alberta, Montréal); LU's proportionate share is 20%; LU processes payroll for ~128 employees.
+    page: 9
+  - name: MIRARCO
+    type: organization
+    aliases: ["Mining Innovation Rehabilitation and Applied Research Corporation"]
+    role: mining research arm; LU is sole member; consolidated in LU's statements; 19 employees
+    page: 10
+  - name: Centre for Excellence in Mining Innovation
+    type: organization
+    aliases: ["CEMI"]
+    role: affiliate; participating employer in the DB Pension Plan
+    page: 6
+  - name: Students General Association
+    type: organization
+    aliases: ["SGA"]
+    role: owes TD $8,500,000 under a 10 April 2018 letter agreement for a new student centre
+    page: 28
+  - name: Laurentian University Faculty Association
+    type: organization
+    aliases: ["LUFA"]
+    role: faculty union; relationship with LU described as "currently strained"
+    page: 39
+  - name: Université de Hearst
+    type: organization
+    role: its President is a non-voting member of LU's Senate
+    page: 5
+
+relationships:
+  - subject: Ernst & Young Inc.
+    predicate: proposed Monitor of
+    object: Laurentian University of Sudbury
+    page: 1
+  - subject: Stikeman Elliott LLP
+    predicate: independent counsel to
+    object: Ernst & Young Inc.
+    page: 4
+  - subject: Robert Haché
+    predicate: President and Vice-Chancellor of
+    object: Laurentian University of Sudbury
+    page: 5
+  - subject: Robert Haché
+    predicate: Chair of the board of
+    object: Northern Ontario School of Medicine
+    page: 7
+  - subject: Laurentian University of Sudbury
+    predicate: primary employer under the DB Pension Plan covering
+    object: Federated Universities, SNOLab, MIRARCO, CEMI
+    page: 14
+  - subject: Students General Association
+    predicate: owes $8.5M to
+    object: TD Canada Trust
+    page: 28
+  - subject: Laurentian University of Sudbury
+    predicate: leases NOSM's Sudbury buildings to
+    object: Northern Ontario School of Medicine
+    page: 7
+  - subject: Laurentian University of Sudbury
+    predicate: holds ~$14M of endowments designated for
+    object: Northern Ontario School of Medicine
+    page: 7
+
+facts:
+  - id: F1
+    fact: "LU IS INSOLVENT and, absent the relief sought, will not have sufficient liquidity to meet payroll in February."
+    page: 31
+    paragraph: 165
+    quote: "LU is insolvent and absent the relief sought in the Initial Order, will not have sufficient funding / liquidity to meet payroll in February."
+    note: "CONTRADICTION SIDE B. The single most important sentence in the corpus."
+  - id: F2
+    fact: >
+      The Monitor attributes the crisis to "the pattern of recurring deficits over a number of
+      years", exacerbated by recent revenue pressures — NOT to the pandemic.
+    page: 39
+    paragraph: 206
+    quote: "the pattern of recurring deficits over a number of years, exacerbated by recent significant pressures on revenue described earlier in this report, has brought the Applicant to the point where it has an immediate and dramatic liquidity crisis"
+    note: "Reinforces the contradiction with document 1's COVID-attribution."
+  - id: F3
+    fact: >
+      Restricted funds were CO-MINGLED. All receipts — operating, research grants, restricted
+      donations — flowed into the same Operating Accounts. There were no separate bank accounts
+      set up to receive and hold restricted funds.
+    page: 31
+    paragraph: 167
+    quote: "There were no separate bank accounts set up to receive and hold restricted funds. All funds available in the Operating Accounts were utilized prior to drawing on lines of credit."
+  - id: F4
+    fact: >
+      LU does not hold enough money to cover its restricted-fund obligations — it spent money it
+      was holding for someone else.
+    page: 32
+    paragraph: 168
+    quote: "the funds held by LU at the current time are insufficient to cover obligations in connection with these restricted funds"
+  - id: F5
+    fact: >
+      In December 2020 the practice was brought to the President's attention and the Board ordered
+      three new Segregated Accounts created (Unspent Research Grant Account, Restricted Funds
+      Account, RHBP Account) — weeks before the CCAA filing.
+    page: 32
+    paragraph: 169
+    quote: "In December 2020, LU's cash management practices were brought to the attention of LU's President and the matter was discussed with the Board. The Board instructed management to amend its practice and immediately create three new bank accounts"
+  - id: F6
+    fact: "As at 29 January 2021: ~$13.3M in operating accounts and ~$3.3M in the Segregated Accounts."
+    page: 32
+    paragraph: 174
+    quote: "the Applicant has an estimated aggregate cash balance in its operating accounts of approximately $13.3 million. In addition, it has an estimated aggregate cash balance in the Segregated Accounts (described above) of $3.3 million."
+  - id: F7
+    fact: "LU has insufficient cash to fund operations through February 2021 or beyond; the previously relied-upon lines of credit are no longer available."
+    page: 33
+    paragraph: 175
+    quote: "the Applicant currently has insufficient cash to fund operations through the month of February or beyond"
+  - id: F8
+    fact: >
+      13-week cash flow forecast (30 Jan – 30 Apr 2021): receipts ~$29.5M, disbursements ~$58.5M,
+      net cash outflow ~$29.0M.
+    page: 34
+    paragraph: 184
+    quote: "estimated total combined receipts of approximately $29.5 million … Estimated total combined disbursements are forecast to be approximately $58.5 million … This results in projected net cash outflow (net of Segregated Account activity) of approximately $29.0 million."
+  - id: F9
+    fact: "At 30 April 2020 LU held ~$52.8 million in endowments; investment accounts totalled $54.7 million."
+    page: 24
+    paragraph: 120
+    quote: "At April 30, 2020, the balance in these investment accounts was $54.7 million … The majority of this amount is designated to support the $52.8 million in endowments held by LU"
+    note: >
+      Matches document 1's stated $52.8M endowment exactly. The endowment figure is NOT the
+      contradiction — the *narrative* is. An extractor that flags these two as conflicting has
+      produced a FALSE POSITIVE.
+  - id: F10
+    fact: "LU had minimal cash at 30 April 2020 — ~$2.6M cash and $1.9M short-term investments."
+    page: 24
+    paragraph: 118
+    quote: "As at April 30, 2020, LU had minimal cash on hand – approximately $2.6 million in cash and $1.9 million in short-term investments."
+  - id: F11
+    fact: "Net assets fell $32.9 million, from $69.6 million in FY2014-15."
+    page: 29
+    paragraph: 154
+    quote: "Net assets have decreased by $32.9 million from $69.6 million in fiscal year 2014-2015"
+    note: "Dates the decline to 2014-15 — six years before COVID."
+  - id: F12
+    fact: >
+      DB Pension Plan: solvency ratio 85.4%, going-concern deficiency ~$4.5M, per the 1 January
+      2020 actuarial valuation (updated December 2020).
+    page: 14
+    paragraph: 89
+    quote: "the DB Pension Plan had a solvency ratio of 85.4%, representing a going concern deficiency of approximately $4.5 million"
+  - id: F13
+    fact: >
+      DB Pension Plan membership: 406 individuals collecting a lifetime pension, 981 active
+      contributing members, ~500 with deferred status.
+    page: 14
+    paragraph: 88
+    quote: "There are currently 406 individuals collecting a lifetime pension from the DB Pension Plan. There are 981 active members currently contributing to the DB Pension Plan but not yet collecting a benefit. In addition, approximately 500 members have deferred status"
+  - id: F14
+    fact: >
+      Pension current service contributions were set at $16,188,000 annually (~$1,349,000 monthly),
+      plus a special payment of $505,000 annually (~$42,083 monthly) to address the deficiency.
+    page: 15
+    paragraph: 90
+    quote: "the DB Pension Plan current service contributions for the next three years would be set at $16,188,000, annually, payable in monthly instalment of approximately $1,349,000"
+  - id: F15
+    fact: "LU administers three plans: the DB Pension Plan, the SuRP (supplementary, UNFUNDED), and the RHBP (retirement health benefits)."
+    page: 14
+    paragraph: 86
+    quote: "LU administers three employee pension and benefit plans: (i) a registered defined benefit pension plan (the \"DB Pension Plan\"); (ii) a supplementary unfunded retirement plan (the \"SuRP\") and (iii) a retirement health benefits plan (the \"RHBP\")."
+  - id: F16
+    fact: "LU's interest rate swaps produced a net cash OUTFLOW of approximately $340,000 per month."
+    page: 28
+    paragraph: 147
+    quote: "The net impact of these interest rate swap transactions has been a net cash outflow from LU of approximately $340,000 monthly."
+  - id: F17
+    fact: "LU drew $14.4 million on the Desjardins line of credit as at 30 April 2020."
+    page: 26
+    paragraph: 126
+    quote: "As at April 30, 2020, LU had drawn $14.4 million against the Desjardins Line of Credit."
+  - id: F18
+    fact: "LU holds approximately $14 million in endowments designated for future NOSM student scholarships."
+    page: 7
+    paragraph: 39
+    quote: "LU holds approximately $14 million in endowments designated to fund future scholarships for qualifying NOSM students."
+  - id: F19
+    fact: >
+      Federated Funding Formula: LU distributes a share of provincial grants and tuition to the
+      Federated Universities, less a service fee of 15% of the grant and tuition revenues
+      distributed. Amended 1 May 2019 in a way that DECREASED funding to them.
+    page: 9
+    paragraph: 51
+    quote: "an offsetting charge for service fees charged by LU to the Federated Universities … (calculated as 15% of grant and tuition revenues distributed to the Federated Universities)"
+  - id: F20
+    fact: "LU's Board has 21 voting and 9 non-voting members, with FOUR voting positions vacant. The Senate has 77 voting and 6 non-voting members."
+    page: 5
+    paragraph: 23
+    quote: "The Board is currently comprised of 21 voting members and 9 non-voting members. Four voting member positions are vacant."
+  - id: F21
+    fact: "The Monitor recommends a court-appointed mediator, preferably a sitting or recently retired judge, on an urgent basis; the LU–LUFA relationship is 'currently strained'."
+    page: 39
+    paragraph: 208
+    quote: "The Proposed Monitor notes the relationship between the Applicant and LUFA is currently strained."
+
+contradictions:
+  - id: C1
+    type: cross-document
+    scored: true
+    against: "Annual-Financial-Report-19-20.pdf (corpus document 1)"
+    this_document_claims: >
+      LU is insolvent and cannot meet February payroll (¶165, p. 31); the cause is "the pattern of
+      recurring deficits over a number of years" (¶206, p. 39); net assets have fallen $32.9M since
+      FY2014-15 (¶154).
+    other_document_claims: >
+      LU was "on track" with an anticipated "small deficit of $0.9 million"; the actual $5.4M
+      operating deficit was $5.2M "related to the COVID-19 outbreak"; LU "continues to trace its
+      path to sustainability."
+    why_it_matters: >
+      Weeks apart. A university claiming a $0.9M planned deficit, blaming the pandemic, and
+      tracing a "path to sustainability" — then unable to make payroll. Neither document cites the
+      other, so the extractor must notice the conflict via the entity digest. Both sides are
+      explicit positive claims, so it can fire without proving a negative.
+
+must_not_miss:
+  - id: M1
+    item: >
+      The Monitor's reliability caveat: it quotes Haché's own affidavit saying LU "has experienced
+      a number of challenges with the limited team and resources in the Finance department", and
+      concludes "the Information relied upon for purposes of this Report may be limited by these
+      challenges."
+    page: 3
+    paragraph: 8
+    location: Terms of Reference and Disclaimer
+    why: >
+      The Monitor is telling the Court, on page 3, that LU's own numbers may not be trustworthy.
+      Buried in boilerplate disclaimer language that extractors are trained to skip.
+
+  - id: M2
+    item: >
+      The Haché affidavit is described as "sworn January 30, 2020" — a year before the report's own
+      date of January 30, 2021 (elsewhere, and in the Pension Order, it is 2021).
+    page: 3
+    paragraph: 8
+    location: Terms of Reference
+    why: >
+      A DATE ERROR IN THE SOURCE. Recorded here so scoring can tell the difference between an
+      extractor faithfully reporting the document's stated (wrong) date — which is CORRECT
+      extraction — and one silently "fixing" it to 2021. Both behaviours are interesting; neither
+      should be scored as a miss.
+
+  - id: M3
+    item: "The co-mingling of restricted funds, and the December 2020 creation of three Segregated Accounts."
+    pages: [31, 32]
+    paragraph: "167–173"
+    location: Cash Management section
+    why: >
+      The core governance failure in the entire Laurentian story — restricted research grants and
+      donations spent on operations. It appears in the middle of a procedural section titled "Cash
+      Management", which reads like plumbing.
+
+  - id: M4
+    item: "LU's proportionate share of SNOLab's assets, liabilities and obligations is 20%."
+    page: 10
+    paragraph: 53
+    why: "A quantified off-balance-sheet exposure to a national physics facility, in one clause."
+
+  - id: M5
+    item: "Dr. Haché, LU's President, serves as CHAIR of NOSM's board."
+    page: 7
+    paragraph: 36
+    why: >
+      The president of the insolvent university chairs the board of the related party it owes money
+      to and holds $14M of endowments for. Stated once, in passing.
+
+  - id: M6
+    item: "The interest rate swaps bled ~$340,000 per month in net cash outflow."
+    page: 28
+    paragraph: 147
+    why: >
+      ~$4M a year, and the swap termination later cost $24.7M (see doc 3). One sentence at the end
+      of a technical subsection.
+
+  - id: M7
+    item: >
+      The SGA owes TD $8,500,000 under a letter agreement dated 10 April 2018 for a new student
+      centre — the debt LU guaranteed.
+    page: 28
+    paragraph: 144
+    why: "Names the counterparty, amount and instrument date. Buried in the debt schedule."
+
+  - id: M8
+    item: "The SuRP is a supplementary retirement plan that is UNFUNDED."
+    page: 14
+    paragraph: 86
+    why: "One word — 'unfunded' — inside a list item. It is an entire unsecured liability class."
+
+  - id: M9
+    item: "Stikeman Elliott LLP acts as independent counsel to the Proposed Monitor."
+    page: 4
+    paragraph: 13
+    why: "A one-sentence paragraph. The Monitor's own law firm, easy to drop."
+
+  - id: M10
+    item: >
+      Pension membership: 406 collecting, 981 active, ~500 deferred — roughly 1,900 people whose
+      retirement depends on an 85.4%-solvent plan.
+    page: 14
+    paragraph: 88
+    why: "The human scale of the pension exposure, given only as three numbers in one paragraph."
+
+  - id: M11
+    item: >
+      The Barrie satellite campus has been closed since 2019; LU is one of twenty public
+      universities in Ontario.
+    page: 6
+    paragraph: 26
+    why: "Prior retrenchment, mentioned once in a scene-setting paragraph."
+
+  - id: M12
+    item: >
+      The furlough days negotiated in summer 2020 gave LU a one-time cash benefit of just $450,000.
+    page: 20
+    paragraph: 83
+    why: >
+      The scale of the cost-cutting versus the scale of the hole — $450K against a $29M quarterly
+      outflow. Easy to drop as trivia; it is the point.
+
+  - id: M13
+    item: >
+      The Federated Funding Formula's 15% service fee, and its 1 May 2019 amendment that decreased
+      funding to the Federated Universities.
+    pages: [9, 30]
+    paragraph: "51, 163(iv)"
+    why: >
+      LU was already squeezing the federated universities two years before disclaiming them
+      entirely. Requires joining a definition on p. 9 with a cost-cutting list on p. 30.
