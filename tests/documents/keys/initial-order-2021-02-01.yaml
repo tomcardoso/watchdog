@@ -20,7 +20,6 @@ document:
   expected_skill_rationale: >
     A CCAA initial order. `court-documents` explicitly redirects: "for bankruptcy or
     receivership orders use `bankruptcy`".
-  ingest_order: 2
   role_in_benchmark: >
     The OCR arm. A clean-PDF corpus flatters every model; this document is where the pipeline
     actually meets a scanned court document with a seal, a wet signature, a registry stamp and a

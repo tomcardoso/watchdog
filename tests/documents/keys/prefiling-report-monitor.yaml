@@ -3,9 +3,9 @@
 # Drafted from the SOURCE PDF. Frozen before any condition runs.
 #
 # This is one half of the scored contradiction pair. The other half is
-# Annual-Financial-Report-19-20.pdf (document 1). NEITHER DOCUMENT MENTIONS THE OTHER — the
-# extractor has to notice the conflict by comparing against the vault digest, which is the
-# machinery under test. See CORPUS-v1.md.
+# Annual-Financial-Report-19-20.pdf (document 1). NEITHER DOCUMENT MENTIONS THE OTHER — catching
+# the conflict requires comparing claims across documents, which is the finalizer's reconciliation
+# pass (#381), the machinery under test. See CORPUS-v1.md.
 
 document:
   file: "Laurentian Pre-Filing Report of the Proposed Monitor.pdf"
@@ -20,7 +20,6 @@ document:
   expected_skill_rationale: >
     The catalog names this document type verbatim: "trustee's or monitor's report ... CCAA or
     other court-supervised restructuring proceeding".
-  ingest_order: 1
   role_in_benchmark: "Contradiction side B; entity-rich (affiliates, lenders, pension plans)."
 
 entities:
@@ -312,8 +311,9 @@ contradictions:
     why_it_matters: >
       Weeks apart. A university claiming a $0.9M planned deficit, blaming the pandemic, and
       tracing a "path to sustainability" — then unable to make payroll. Neither document cites the
-      other, so the extractor must notice the conflict via the entity digest. Both sides are
-      explicit positive claims, so it can fire without proving a negative.
+      other, so catching it requires comparing claims across documents — the finalizer's
+      reconciliation pass (#381). Both sides are explicit positive claims, so it can fire without
+      proving a negative.
 
 must_not_miss:
   - id: M1

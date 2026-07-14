@@ -20,7 +20,6 @@ document:
     An annual report built around audited consolidated financial statements plus MD&A. The
     catalog's `audit-reports` description explicitly redirects an organization's own audited
     statements here.
-  ingest_order: 5
   role_in_benchmark: "Contradiction side A — the reassuring account, three months before insolvency."
 
 entities:
@@ -232,8 +231,9 @@ contradictions:
     why_it_matters: >
       THE SCORED CONTRADICTION. Two explicit, positive, incompatible claims — one that the trouble
       is a pandemic blip on a sustainable institution, one that the institution is insolvent and
-      has been failing since 2014. Neither document cites the other, so the extractor must catch it
-      by comparing against the vault digest. This is the whole point of the corpus.
+      has been failing since 2014. Neither document cites the other, so catching it requires
+      comparing claims across documents — the job of the finalizer's reconciliation pass as of
+      #381, not the extractor. This is the whole point of the corpus.
 
   - id: C2
     type: cross-document

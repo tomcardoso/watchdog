@@ -21,7 +21,6 @@ document:
   expected_skill_rationale: >
     A court order made within a court-supervised restructuring, which the `bankruptcy`
     description covers; `court-documents` redirects insolvency orders away from itself.
-  ingest_order: 4
   role_in_benchmark: >
     A short, sharp document for contrast. Low page count, high density of named parties and
     two precise dollar/ratio figures — a condition that degrades here is degrading on easy mode.
@@ -118,9 +117,11 @@ entities:
     type: organization
     role: >
       Court-appointed monitor. NOTE — Ernst & Young is NOT named anywhere in this document; the
-      document says only "the Monitor". An extraction that outputs "Ernst & Young" here is
-      importing knowledge from another document (fine if the vault digest supplied it) or
-      hallucinating (not fine). Worth watching which.
+      document says only "the Monitor". Under #381 the extractor reads each document in isolation,
+      so the CORRECT extraction here is "the Monitor" — resolving it to Ernst & Young is the
+      finalizer reconciliation pass's job, not the extractor's. An extraction that outputs
+      "Ernst & Young" for this document is therefore either a lucky guess or a hallucination (there
+      is no vault state feeding it), and should be scored as ungrounded, not as a credited match.
     page: 3
 
 relationships:

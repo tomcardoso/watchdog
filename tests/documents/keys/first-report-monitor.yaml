@@ -3,8 +3,10 @@
 # Drafted from the SOURCE PDF. Frozen before any condition runs.
 #
 # Role: entity overlap. This document shares E&Y, the Board, LUFA, Firm Capital and the DIP
-# facility with documents 2 and 3, which is what makes it useful — it tests whether an extractor
-# RESOLVES entities against the vault digest or duplicates them.
+# facility with documents 2 and 3, which is what makes it useful — it tests whether the finalizer's
+# reconciliation pass (#381) RESOLVES these to the same entities as the other documents or leaves
+# duplicates. (Under #381 the extractor no longer resolves against vault state; it names entities
+# per-document and reconciliation merges them afterward.)
 
 document:
   file: "Laurentian First Report of the Monitor.pdf"
@@ -18,7 +20,6 @@ document:
   expected_skill: bankruptcy
   expected_skill_rationale: >
     A monitor's report in a CCAA proceeding — named verbatim in the catalog description.
-  ingest_order: 3
   role_in_benchmark: "Entity overlap — E&Y, the Board, the DIP facility, LUFA."
 
 entities:
