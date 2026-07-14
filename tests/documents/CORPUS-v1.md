@@ -96,6 +96,15 @@ public university in Canada to use the *Companies' Creditors Arrangement Act*.
 
 Keys live in `keys/` (one YAML per document), drafted from the **source documents** — never from a
 pipeline extraction — and **frozen before any condition runs**. See #361 for why model-drafted keys
-are legitimate for this benchmark and what their limits are. The `must_not_miss` list for document 3
-(the 70-page FY2020-21 report) is **hand-written** — that is the one part a model judge cannot be
-trusted with, because it misses the same buried items the extractor does.
+are legitimate for this benchmark and what their limits are.
+
+The `must_not_miss` list for document 3 (the 70-page FY2020-21 report) gets a **dedicated adversarial
+pass** whose only job is hunting buried items — walk the schedules, footnotes, signature blocks, and
+appendices. Run that pass on **two model families (Opus and Gemini) and take the union**. The risk
+here is *correlation*, not capability: a list drafted by Opus alone omits whatever Opus misses, and
+Opus's blind spots correlate with Sonnet's and Haiku's — so Haiku would "pass" on a schedule nobody
+ever wrote down. Independence fixes that; human labour doesn't.
+
+A human then **reviews** the union — that is where a journalist's judgement earns its keep (is this
+buried item material, or trivia?), and it is the quality gate for the whole benchmark: a frozen key
+with a bad fact in it silently corrupts all four conditions at once, and nothing downstream catches it.
