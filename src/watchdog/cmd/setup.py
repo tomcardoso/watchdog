@@ -242,12 +242,14 @@ _CONFIGURE_KEYS = {
         "default": "sonnet",
     },
     "finalizer_model": {
-        "short": "Model for post-ingest synthesis + timeline + briefing (default: haiku)",
+        "short": "Model for the post-ingest step — reconciliation + synthesis + briefing (default: haiku)",
         "help": (
-            "Model used for the post-ingest step: synthesizing prose for multi-mention\n"
-            "  entities, reconciling timeline collisions, and writing the briefing.\n"
-            "  This step composes prose from compact digests rather than reading raw documents,\n"
-            "  so the cheaper Haiku tier is the default; raise it if synthesized prose feels thin.\n"
+            "Model used for the post-ingest step: merging duplicate entities, flagging\n"
+            "  contradictions between documents, synthesizing prose for multi-mention entities,\n"
+            "  reconciling timeline collisions, and writing the briefing.\n"
+            "  This step works from compact digests rather than reading raw documents, so the\n"
+            "  cheaper Haiku tier is the default; raise it if synthesized prose feels thin, if\n"
+            "  duplicate entities slip through, or if contradictions are being missed.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
             "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-2.5-flash).\n"
             "  Default: haiku.\n"
@@ -272,7 +274,7 @@ _CONFIGURE_KEYS = {
         "choices": ["low", "medium", "high"],
     },
     "finalizer_effort": {
-        "short": "Reasoning effort for post-ingest synthesis + timeline + briefing (default: high)",
+        "short": "Reasoning effort for the post-ingest step (default: high)",
         "help": (
             "How hard the finalizer model thinks during post-ingest. Reasoning helps the prose\n"
             "  steps, so keep this higher than the extractor unless cost-trimming; lower it to spend\n"

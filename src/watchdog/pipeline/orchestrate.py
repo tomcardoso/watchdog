@@ -1024,17 +1024,25 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     rec_bundle = reconcile.build_bundle(vault)
     if rec_bundle["entities"] or rec_bundle["pairs"]:
         n_pairs, n_ents = len(rec_bundle["pairs"]), len(rec_bundle["entities"])
+        # Sized and reported the same way the old #216 digest telemetry was — visibility now, so
+        # a future cap/chunking decision (§8.5) comes from real bundle sizes, not a guess.
+        rec_prompt = prompts.build_reconcile_prompt(rec_bundle)
+        kb = len(rec_prompt) / 1024
         _say(f"{_DIM}→  reconciling · {n_ents} recurring entit{'ies' if n_ents != 1 else 'y'}, "
-             f"{n_pairs} possible duplicate{'s' if n_pairs != 1 else ''}…{_RESET}")
+             f"{n_pairs} possible duplicate{'s' if n_pairs != 1 else ''} · {kb:.1f} KB…{_RESET}")
         try:
             r = await _call_model(
                 task="reconcile", model=post_model, backend=post_backend, schema=schemas.RECONCILE,
-                prompt=prompts.build_reconcile_prompt(rec_bundle), effort=post_effort)
+                prompt=rec_prompt, effort=post_effort,
+                detail=f"{n_ents} entities · {n_pairs} pairs · {kb:.1f} KB")
         except (model_client.ModelError, model_client.RateLimitError) as e:
             # Reconciliation is enrichment over an already-written vault: the entities and their
             # claims are on disk either way. Skipping leaves duplicates unmerged and conflicts
-            # unflagged — recoverable by re-running `watchdog finalize` — rather than losing the
-            # ingest.
+            # unflagged — recoverable by re-running `watchdog finalize` — but only because this
+            # flag (the same key synthesis uses) stops `finalize()` from clearing the fragment
+            # queue below; without it the queue reconcile reads `_touched_ids` from would be
+            # deleted and the recovery would silently no-op.
+            out["error"] = str(e)
             _say(f"{_YELLOW}reconciliation skipped{_RESET}{_DIM} — {e}{_RESET}")
             _log(vault, f"RECONCILE skipped: {e}")
         else:

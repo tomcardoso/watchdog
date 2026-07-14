@@ -22,10 +22,10 @@ module sends to the model.
 **Bundle size.** Naively, entity resolution is every entity against every other entity — one call
 that grows quadratically and eventually will not fit a context window. So Python blocks the field
 first (`candidate_pairs`): only pairs sharing a canonical type, with one name a token-subset of the
-other or a high token overlap, and with at least one side touched by *this* run, are ever sent. The
-model confirms or rejects each pair by index. The contradiction half is bounded by the same
-recurrence gate synthesis uses (D26): an entity needs claims in two documents before two of its
-claims can disagree.
+other, identical in tokens (a word-order or stopword variant), or a high token overlap, and with at
+least one side touched by *this* run, are ever sent. The model confirms or rejects each pair by
+index. The contradiction half is bounded by the same recurrence gate synthesis uses (D26): an
+entity needs claims in two documents before two of its claims can disagree.
 
 I1 holds throughout: the model only ever answers *which* — which pairs are the same thing, which
 claims conflict. Every write is done by deterministic code that already exists — `merge_entities.
@@ -77,20 +77,22 @@ def _tokens(name: str) -> frozenset[str]:
 def _overlap(a: str, b: str) -> float:
     """How strongly two names suggest the same thing, in [0, 1]; 0 means "do not send this pair".
 
-    Two shapes qualify. A **strict token subset** — every token of one name appears in the other,
-    plus at least one more — is the abbreviation/partial-name case ("Laurentian University" ⊂
-    "Laurentian University of Sudbury"), scored 1.0 because it is the single strongest signal
-    available short of an exact match. Otherwise, plain **Jaccard overlap** of the token sets,
-    which catches spelling and word-order drift.
-
-    Identical token sets score 0: `write_vault._reconcile_entity_ids` has already merged those
-    deterministically, so a pair that reaches here identical is one the deterministic pass
-    *declined* — different canonical types — and the model should not be asked to override that.
+    Three shapes qualify. **Identical token sets** score 1.0 — the strongest signal available:
+    `normalize_entity_name` (see `entity_norm.py`) is order- and stopword-sensitive, so
+    `write_vault._reconcile_entity_ids` never folds an inverted person name ("Tom Cardoso" /
+    "Cardoso, Tom") or a stopword variant ("The Acme Group" / "Acme Group") — a truly identical
+    *normalized name* never coexists in the registry, since that pass already folded it in-lock at
+    write time. So a pair that reaches here with identical token sets differs only by word order or
+    a dropped stopword, which is exactly the judgement-call territory this pass exists for. A
+    **strict token subset** — every token of one name appears in the other, plus at least one more
+    — is the abbreviation/partial-name case ("Laurentian University" ⊂ "Laurentian University of
+    Sudbury"), also scored 1.0. Otherwise, plain **Jaccard overlap** of the token sets, which
+    catches spelling drift.
     """
     ta, tb = _tokens(a), _tokens(b)
-    if not ta or not tb or ta == tb:
+    if not ta or not tb:
         return 0.0
-    if ta < tb or tb < ta:
+    if ta == tb or ta < tb or tb < ta:
         return 1.0
     return len(ta & tb) / len(ta | tb)
 
@@ -103,26 +105,41 @@ def candidate_pairs(entities_reg: dict, touched: set[str]) -> list[dict]:
     their known names, and (3) involve at least one entity this run touched, so an ingest does not
     re-litigate the whole vault's history on every run.
 
+    Iterates touched entities against the registry (O(touched·n)) rather than every registry pair
+    (O(n²)) — on a vault with thousands of entities, a single-document ingest touches a handful, and
+    the untouched-against-untouched pairs that dominate the full cross product can never qualify
+    anyway. A pair reachable from both sides (both touched) is scored once.
+
     Returned newest-signal-first (strongest overlap first) and capped at `_MAX_PAIRS`.
     """
-    ids = sorted(entities_reg)
-    scored: list[tuple[float, dict]] = []
+    types = {eid: canonical_type(e.get("type", "")) for eid, e in entities_reg.items()}
+    all_ids = sorted(entities_reg)
+    touched_ids = sorted(eid for eid in touched if eid in entities_reg)
 
-    for i, a_id in enumerate(ids):
-        a = entities_reg[a_id]
-        a_type = canonical_type(a.get("type", ""))
-        a_names = _surfaces(a)
-        for b_id in ids[i + 1:]:
-            if a_id not in touched and b_id not in touched:
+    scored: list[tuple[float, dict]] = []
+    seen: set[frozenset] = set()   # dedup a pair reachable from both touched sides
+
+    for t_id in touched_ids:
+        t = entities_reg[t_id]
+        t_type = types[t_id]
+        t_names = _surfaces(t)
+        for o_id in all_ids:
+            if o_id == t_id:
                 continue
-            b = entities_reg[b_id]
-            if canonical_type(b.get("type", "")) != a_type:
+            pair_key = frozenset((t_id, o_id))
+            if pair_key in seen:
                 continue
+            seen.add(pair_key)
+            if types[o_id] != t_type:
+                continue
+            o = entities_reg[o_id]
             score = max(
-                (_overlap(an, bn) for an in a_names for bn in _surfaces(b)), default=0.0
+                (_overlap(tn, on) for tn in t_names for on in _surfaces(o)), default=0.0
             )
             if score < _JACCARD_MIN:
                 continue
+            a_id, b_id = sorted((t_id, o_id))
+            a, b = entities_reg[a_id], entities_reg[b_id]
             scored.append((score, {
                 "a": {"id": a_id, "name": a.get("name", ""), "type": a.get("type", ""),
                       "aliases": a.get("aliases", [])},
@@ -283,6 +300,11 @@ def _apply_merges(vault: Path, merges: list, pairs: list, warn) -> tuple[list[di
         applied.append({"keep_id": keep_id, "keep_name": report["keep_name"],
                         "merge_id": merge_id, "merge_name": report["merge_name"],
                         "reason": item.get("reason", "")})
+
+    # Flatten the chain: consumers (`_apply_contradictions`, `_fold_fragments`) each follow the
+    # map one step only, so every key must point straight at its final survivor rather than an
+    # intermediate id that a later merge in this same batch folded away.
+    remap = {eid: _current(eid) for eid in remap}
     return applied, remap
 
 

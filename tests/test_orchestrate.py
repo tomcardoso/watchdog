@@ -530,6 +530,63 @@ def test_cross_document_contradiction_caught_and_fed_to_briefing(tmp_path, monke
     assert "Contradictions flagged:** 1" in (vault / "log.md").read_text()
 
 
+def test_reconcile_failure_leaves_batch_finalizable(tmp_path, monkeypatch):
+    """A reconcile failure must not leave the batch looking clean: `finalize()` only clears the
+    fragment queue when `out` has neither `error` nor `briefing_error`, so if reconcile fails but
+    synthesis and briefing succeed, `out["error"]` must still be set — otherwise the queue
+    `reconcile._touched_ids` reads is deleted and the documented recovery (`watchdog finalize`)
+    silently no-ops."""
+    def _ext(sha, filename, fact):
+        return {
+            "document": {"sha256": sha, "filename": filename,
+                         "original_path": f"_INCOMING/{filename}",
+                         "title": filename, "document_type": "Filing",
+                         "date_of_document": "2024-01-15", "page_count": 1,
+                         "source": None, "obtained": None, "near_duplicate_of": None,
+                         "summary": "A filing.",
+                         "key_facts": [{"fact": fact, "page": 1, "basis": "stated",
+                                        "entities": ["acme-corp"]}]},
+            "entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
+                          "aliases": [], "roles": []}],
+            "morgue_entity_id": "acme-corp", "morgue_document_type": "filing",
+            "scratchpad": "",
+        }
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        flat = _flat(prompt)
+        if task == "classify":
+            parsed = {"skill": "general-records.md"}
+        elif task == "extract":
+            if "ONE" in flat:
+                parsed = _ext("sha-one", "doc-one.pdf", "Acme filed ONE")
+            else:
+                parsed = _ext("sha-two", "doc-two.pdf", "Acme filed TWO")
+        elif task == "reconcile":
+            raise model_client.ModelError("reconcile boom")
+        elif task == "entity-synthesis":
+            parsed = {"entity_syntheses": []}
+        elif task == "timeline-dedup":
+            parsed = {"groups": []}
+        elif task == "briefing":
+            parsed = {"investigation_status": "x", "what_was_ingested": []}
+        else:
+            parsed = {}
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="claude-agent-sdk", auth_mode="subscription",
+                                        cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha-one", filename="doc-one.pdf", text="Acme filed ONE")
+    _queue_doc(vault, sha="sha-two", filename="doc-two.pdf", text="Acme filed TWO")
+
+    summary = asyncio.run(orchestrate.run(vault))
+    assert summary["extracted"] == 2
+
+    assert "reconcile boom" in summary["post_ingest"]["error"]
+    assert (vault / ".watchdog" / "tmp" / "entity-fragments" / "_queue.json").exists()
+
+
 def test_orchestrator_reports_failed_on_postflight_rejection(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault)

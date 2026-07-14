@@ -29,7 +29,7 @@ Investigation names tab-complete in zsh and bash once `watchdog setup` has run.
 | `watchdog fetch <url…>` | Download one or more URLs (or a links file) into `_INCOMING/` — see [below](#watchdog-fetch). |
 | `watchdog chew` | Convert everything in `_INCOMING/` into extracted text queued for ingest — see [below](#watchdog-chew). |
 | `watchdog ingest` | Extract all queued documents into the vault — see [below](#watchdog-ingest). |
-| `watchdog finalize` | Complete the post-ingest step (entity synthesis, timeline, briefing) for a batch that was interrupted after extraction; takes the same `--finalizer-model` and `--finalizer-effort` overrides as ingest. |
+| `watchdog finalize` | Complete the post-ingest step (merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline, briefing) for a batch that was interrupted after extraction; takes the same `--finalizer-model` and `--finalizer-effort` overrides as ingest. |
 | `watchdog requeue` | Move documents quarantined in `queue/_failed/` back into the active queue, ready for the next `watchdog ingest`. |
 | `watchdog context [name]` | Open Claude Code with the context-seeding skill, which reads `_CONTEXT/`, interviews you, and writes `context.md`; `--model` picks `sonnet`, `opus`, or `haiku` (default: `sonnet`). |
 | `watchdog watch [name]` | Watch `_INCOMING/` and chew files automatically as they arrive. |
@@ -42,7 +42,7 @@ Investigation names tab-complete in zsh and bash once `watchdog setup` has run.
 **Model and effort flags.** Each takes effect for this run only; the persistent defaults live in [Configuration](configuration.md).
 
 - `--extractor-model MODEL` — the model that extracts each document (default: `sonnet`).
-- `--finalizer-model MODEL` — the model for the post-ingest step: entity synthesis, timeline reconciliation, and the briefing (default: `haiku`).
+- `--finalizer-model MODEL` — the model for the post-ingest step: merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline reconciliation, and the briefing (default: `haiku`).
 - `--classifier-model MODEL` — the model that reads a document's first pages and picks its record skill (default: `haiku`).
 - `--extractor-effort low|medium|high` — how hard the extractor thinks; lower spends fewer tokens (default: `high`).
 - `--finalizer-effort low|medium|high` — the same knob for the post-ingest step (default: `high`).
@@ -59,7 +59,7 @@ Each model flag takes a Claude tier (`haiku`, `sonnet`, `opus`) or a `backend:mo
 
 **Resumability.** Pressing Ctrl+C, or hitting a rate limit without `--wait`, stops the batch cleanly: finished documents are saved and unfinished ones stay queued, so re-running `watchdog ingest` picks up where it left off. A document that genuinely fails extraction is set aside in `queue/_failed/`; the run reports how many, and `watchdog requeue` moves them back to retry.
 
-**Finalization.** Every ingest finishes with a post-ingest step — entity synthesis, timeline reconciliation, and the briefing. If that step is interrupted (for example, a rate limit hits after the documents extract), the batch is left finalizable: `watchdog status` flags it, and `watchdog finalize` completes it without re-extracting anything. If you start another `watchdog ingest` while a batch is pending, it asks what to do: **merge** the pending batch into the new run and finalize everything together, **finalize** it first and stop, or **discard** it.
+**Finalization.** Every ingest finishes with a post-ingest step — merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline reconciliation, and the briefing. If that step is interrupted (for example, a rate limit hits after the documents extract), the batch is left finalizable: `watchdog status` flags it, and `watchdog finalize` completes it without re-extracting anything. If you start another `watchdog ingest` while a batch is pending, it asks what to do: **merge** the pending batch into the new run and finalize everything together, **finalize** it first and stop, or **discard** it.
 
 ### watchdog chew
 

@@ -478,11 +478,18 @@ concurrency-immune, order-immune, and near-constant in cost (one model call).
   vs "…of Sudbury"). To keep it from being an every-entity-against-every-other call that eventually
   won't fit a context window, `reconcile.candidate_pairs` **blocks** the field deterministically:
   a pair is sent only if it shares a canonical type, scores ≥ `_JACCARD_MIN` (0.5) on some pair of
-  its known names (a strict token-subset scores 1.0), and involves at least one entity touched this
-  run — ranked by overlap and capped at `_MAX_PAIRS` (200). The model confirms or rejects each pair
+  its known names (a strict token-subset scores 1.0, as do identical token sets — a word-order or
+  stopword variant the exact-name pass can't fold, e.g. "Cardoso, Tom" vs "Tom Cardoso"), and
+  involves at least one entity touched this run — ranked by overlap and capped at `_MAX_PAIRS`
+  (200). The model confirms or rejects each pair
   by index and names the surviving id; `reconcile._apply_merges` drives the existing
   `merge_entities.run` surgery (§10), chaining merges and following a just-merged id to its survivor,
   and `_fold_fragments` carries the losing entity's in-flight synthesis fragments onto the survivor.
+  The bundle's size (entity/pair counts and KB) is reported both live and in `watchdog usage`'s
+  per-call detail, so a future cap or chunking decision comes from real bundle sizes rather than a
+  guess; if it ever does outgrow a context window, it can be split at entity/pair boundaries into
+  several calls with no quality loss, since contradiction detection only compares claims within one
+  entity and each candidate pair is judged independently.
 - **Contradiction detection** reads each recurring entity's (`appears_in ≥ 2`, the D26 gate) `##
   Analysis` claim ledger — already source-attributed by document — and the model returns structured
   `{entity_id, label, a_value/a_doc/a_page, b_value/b_doc/b_page}` items. `reconcile._apply_contradictions`

@@ -24,11 +24,21 @@ def test_overlap_strict_subset_scores_highest():
     assert reconcile._overlap("Chief Justice Morawetz", "Chief Justice G.B. Morawetz") == 1.0
 
 
-def test_overlap_identical_token_sets_score_zero():
-    """An identical normalized name is not this pass's job — write_vault already merged those in
-    lock. A pair that reaches here identical is one the deterministic pass *declined*, so the model
-    must not be asked to override it."""
-    assert reconcile._overlap("Ernst & Young", "Ernst and Young") == 0.0
+def test_overlap_identical_token_sets_score_highest():
+    """`normalize_entity_name` is order- and stopword-sensitive, so write_vault's exact-match pass
+    never folds an inverted person name ("Tom Cardoso" / "Cardoso, Tom" — very common in court and
+    registry documents) or a stopword variant ("The Acme Group" / "Acme Group"). Those are exactly
+    the shapes this pass exists to catch, so blocking must send them to the model rather than
+    scoring them 0 and letting them fall through both tiers."""
+    assert reconcile._overlap("Tom Cardoso", "Cardoso, Tom") == 1.0
+    assert reconcile._overlap("The Acme Group", "Acme Group") == 1.0
+
+
+def test_candidate_pairs_sends_identical_token_set_names():
+    reg = _reg("Tom Cardoso", "Person", "Cardoso, Tom", "Person")
+    pairs = reconcile.candidate_pairs(reg, touched={"a", "b"})
+    assert len(pairs) == 1
+    assert {pairs[0]["a"]["id"], pairs[0]["b"]["id"]} == {"a", "b"}
 
 
 def test_overlap_partial_token_overlap_is_jaccard():
@@ -124,15 +134,22 @@ def test_build_bundle_claims_come_from_the_analysis_ledger(tmp_path):
     """The per-entity claim record the pass reasons over is the note's ## Analysis section —
     already source-attributed by document, exactly what a contradiction check needs."""
     vault = make_vault(tmp_path)
+    acme_note = vault / "entities" / "company" / "acme-corp.md"
+    # write_vault appends one *<date>, via [[documents/<slug>|<title>]]:* block per document,
+    # followed by that document's claim bullets — reproduce that shape directly on the note.
+    acme_note.write_text(
+        acme_note.read_text().replace(
+            "## Notes",
+            "## Analysis\n\n*2024-01-01, via [[documents/doc-a|Doc A]]:*\n"
+            "- Acme Corp reported $10M revenue. (p. 3)\n\n## Notes",
+        )
+    )
     _queue(vault, "acme-corp")
     bundle = reconcile.build_bundle(vault)
     acme = next(e for e in bundle["entities"] if e["entity_id"] == "acme-corp")
-    # acme-corp's note has no Analysis, so build one to prove the wiring by pointing at alice's.
     assert acme["roles"]                 # roles digest is carried for role-vs-role conflicts
-    # alice's ledger is where the attributed claims live; assert the mechanism directly:
-    alice_note = vault / "entities" / "person" / "alice-smith.md"
-    from watchdog.pipeline.write_vault import _extract_analysis
-    assert "via [[documents/doc-a|Doc A]]" in _extract_analysis(alice_note)
+    assert "via [[documents/doc-a|Doc A]]" in acme["claims"]
+    assert "Acme Corp reported $10M revenue." in acme["claims"]
 
 
 def test_build_bundle_empty_on_fresh_vault(tmp_path):
@@ -201,6 +218,24 @@ def test_apply_merges_chains_through_prior_merge(tmp_path):
     assert "bob-jones" not in reg and "a-smith-duplicate" not in reg
 
 
+def test_apply_merges_returns_flattened_remap(tmp_path):
+    """A chain (a-smith-duplicate -> alice-smith, then alice-smith -> bob-jones) must leave every
+    key pointing straight at the *final* survivor — a consumer that follows the map only one step
+    (both do) would otherwise resolve a-smith-duplicate to alice-smith, an id that no longer
+    exists."""
+    vault = make_vault(tmp_path)
+    pairs = [
+        {"index": 0, "a": {"id": "a-smith-duplicate"}, "b": {"id": "alice-smith"}},
+        {"index": 1, "a": {"id": "alice-smith"}, "b": {"id": "bob-jones"}},
+    ]
+    merges = [
+        {"pair": 0, "keep_id": "alice-smith", "reason": "same person"},
+        {"pair": 1, "keep_id": "bob-jones", "reason": "same person again"},
+    ]
+    _, remap = reconcile._apply_merges(vault, merges, pairs, warn=lambda m: None)
+    assert remap == {"a-smith-duplicate": "bob-jones", "alice-smith": "bob-jones"}
+
+
 # ── _fold_fragments: keeping synthesis from losing a merged entity ────────────
 
 def test_fold_fragments_moves_losing_file_and_unions_queue(tmp_path):
@@ -227,6 +262,41 @@ def test_fold_fragments_moves_losing_file_and_unions_queue(tmp_path):
     queue = json.loads((frag / "_queue.json").read_text())
     assert "a-smith-duplicate" not in queue
     assert set(queue["alice-smith"]["shas"]) == {"sha-a", "sha-b"}
+
+
+def test_fold_fragments_chain_unions_shas_onto_final_survivor(tmp_path):
+    """A chained remap (a-smith-duplicate -> bob-jones, alice-smith -> bob-jones, both flattened
+    to the final survivor) must carry every entity's fragments and shas onto that one survivor —
+    not stall halfway at an intermediate id that no longer exists in the registry."""
+    vault = make_vault(tmp_path)
+    frag = vault / ".watchdog" / "tmp" / "entity-fragments"
+    frag.mkdir(parents=True)
+    (frag / "alice-smith.md").write_text("### Doc A\nAlice claim.\n")
+    (frag / "a-smith-duplicate.md").write_text("### Doc B\nSmith claim.\n")
+    (frag / "bob-jones.md").write_text("### Doc C\nBob claim.\n")
+    (frag / "_queue.json").write_text(json.dumps({
+        "alice-smith": {"name": "Alice Smith", "note_path": "entities/person/alice-smith",
+                        "shas": ["sha-a"]},
+        "a-smith-duplicate": {"name": "A. Smith", "note_path": "entities/person/a-smith-duplicate",
+                              "shas": ["sha-b"]},
+        "bob-jones": {"name": "Bob Jones", "note_path": "entities/person/bob-jones",
+                      "shas": ["sha-c"]},
+    }))
+
+    from watchdog.pipeline import merge_entities
+    merge_entities.run(vault, "alice-smith", "a-smith-duplicate")
+    merge_entities.run(vault, "bob-jones", "alice-smith")
+    remap = {"a-smith-duplicate": "bob-jones", "alice-smith": "bob-jones"}   # flattened, as _apply_merges returns
+
+    reconcile._fold_fragments(vault, remap)
+
+    assert not (frag / "alice-smith.md").exists()
+    assert not (frag / "a-smith-duplicate.md").exists()
+    survived = (frag / "bob-jones.md").read_text()
+    assert "Alice claim." in survived and "Smith claim." in survived and "Bob claim." in survived
+    queue = json.loads((frag / "_queue.json").read_text())
+    assert "alice-smith" not in queue and "a-smith-duplicate" not in queue
+    assert set(queue["bob-jones"]["shas"]) == {"sha-a", "sha-b", "sha-c"}
 
 
 # ── _apply_contradictions: driving contradiction.run safely ───────────────────
@@ -269,6 +339,34 @@ def test_apply_contradictions_follows_a_merge_remap(tmp_path):
         "a_value": "director", "a_doc": "doc-a", "b_value": "officer", "b_doc": "doc-b",
     }], remap={"a-smith-duplicate": "alice-smith"}, warn=lambda m: None)
     assert applied and applied[0]["entity_id"] == "alice-smith"
+
+
+def test_apply_contradictions_follows_a_chained_remap(tmp_path):
+    """A chained batch (a-smith-duplicate -> alice-smith, then alice-smith -> bob-jones) must file
+    a contradiction on a-smith-duplicate at the *final* survivor, bob-jones — not at alice-smith,
+    an id `_apply_merges`'s flattened remap no longer even names as a key's value along the way."""
+    vault = make_vault(tmp_path)
+    bundle = {
+        "pairs": [
+            {"index": 0, "a": {"id": "a-smith-duplicate"}, "b": {"id": "alice-smith"}},
+            {"index": 1, "a": {"id": "alice-smith"}, "b": {"id": "bob-jones"}},
+        ],
+        "entities": [],
+    }
+    parsed = {
+        "merges": [
+            {"pair": 0, "keep_id": "alice-smith", "reason": "same person"},
+            {"pair": 1, "keep_id": "bob-jones", "reason": "same person again"},
+        ],
+        "contradictions": [{
+            "entity_id": "a-smith-duplicate", "label": "Role",
+            "a_value": "director", "a_doc": "doc-a", "b_value": "officer", "b_doc": "doc-b",
+        }],
+    }
+    out = reconcile.apply(vault, parsed, bundle, warn=lambda m: None)
+    assert out["contradictions"][0]["entity_id"] == "bob-jones"
+    note = (vault / "entities" / "person" / "bob-jones.md").read_text()
+    assert "[!contradiction] Role" in note
 
 
 # ── apply: ordering ───────────────────────────────────────────────────────────

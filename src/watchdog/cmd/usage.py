@@ -22,7 +22,7 @@ from watchdog.pipeline.orchestrate import usage_files
 _STAGE = {
     "classify": "classifier",
     "extract": "extractor", "extract-section": "extractor",
-    "entity-synthesis": "finalizer", "timeline-dedup": "finalizer",
+    "reconcile": "finalizer", "entity-synthesis": "finalizer", "timeline-dedup": "finalizer",
     "timeline-precision": "finalizer", "briefing": "finalizer",
 }
 _STAGE_ORDER = ("classifier", "extractor", "finalizer")

@@ -130,10 +130,10 @@ _CMD_HELP: dict[str, dict] = {
         "desc": "Extract queued documents (runs the Python pipeline)",
         "opts": [
             ("--extractor-model M",  "Override the extraction model for this run — a tier (sonnet/opus/haiku) or backend:model (e.g. deepseek:deepseek-v4-flash); default from watchdog configure"),
-            ("--finalizer-model M",  "Override the synthesis + timeline + briefing model for this run — tier or backend:model; default from watchdog configure"),
+            ("--finalizer-model M",  "Override the post-ingest model (entity reconciliation + synthesis + timeline + briefing) for this run — tier or backend:model; default from watchdog configure"),
             ("--classifier-model M", "Override the document-classification model for this run — tier or backend:model; default from watchdog configure"),
             ("--extractor-effort E", "Reasoning effort for extraction (low/medium/high) — lower spends fewer tokens; default from watchdog configure"),
-            ("--finalizer-effort E", "Reasoning effort for synthesis + timeline + briefing (low/medium/high); default from watchdog configure"),
+            ("--finalizer-effort E", "Reasoning effort for the post-ingest step (low/medium/high); default from watchdog configure"),
             ("--concurrency N",      "Documents extracted in parallel for this run (default from watchdog configure: 5)"),
             ("--classify-pages N",   "Pages shown to the document classifier for this run (default from watchdog configure: 5)"),
             ("--skill [NAME|PATH]",  "Pin a record skill (name or file path) for every document, skipping classification (no value = pick from the list)"),
