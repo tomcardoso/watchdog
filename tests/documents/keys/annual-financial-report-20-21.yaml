@@ -1,0 +1,526 @@
+# Answer key — corpus-v1, document 3 (THE DENSE DOCUMENT)
+#
+# Drafted from the SOURCE PDF. Frozen before any condition runs.
+#
+# The `must_not_miss` list below was built against a MECHANICAL INVENTORY of the document
+# (every note heading 1–27 enumerated programmatically with its page number) rather than from a
+# model skim. That matters: the risk #361 identifies is CORRELATION — if a drafting model simply
+# overlooks page 41, the item is absent from the key and every condition "passes" on it. The
+# inventory removes that failure mode, because the schedule is on the list whether or not any
+# model noticed it. See CORPUS-v1.md and #361.
+#
+# Note map (mechanical, complete):
+#   p23 title | p24-27 Independent Auditors' Report | p28 Financial Position | p29 Operations
+#   p30 Changes in Net Assets | p31 Cash Flows
+#   N1 Description p32 · N2 Basis of presentation/going concern p32 · N3 Accounting policies p35
+#   N4 Cash and investments p39 · N5 Accounts receivable p40 · N6 Employee future benefits p40
+#   N7 Capital assets p45 · N8 Accounts payable p46 · N9 Short-term loan p46 · N10 DIP loan p46
+#   N11 Long-term debt p47 · N12 Liabilities subject to compromise p48 · N13 Deferred contributions p50
+#   N14 Endowment p52 · N15 Investment in capital assets p54 · N16 Internally restricted p54
+#   N17 Internally financed capital projects p55 · N18 Commitments and contingencies p55
+#   N19 Non-cash working capital p57 · N20 Other fees and income p57 · N21 Restructuring costs p58
+#   N22 Financial risks p58 · N23 Effects of COVID-19 p60 · N24 Related party transactions p60
+#   N25 Restatement of comparative information p62 · N26 Subsequent events p67
+#   N27 Restatement of financial statements p68
+
+document:
+  file: "Annual-Financial-Report-20-21.pdf"
+  sha256: e5719ed1f525bc284d6da314dc74bfbeb8f76476251b1489ae589632b3d30550
+  pages: 70
+  text_layer: born-digital
+  doc_type: annual financial report (audited consolidated financial statements + MD&A)
+  fiscal_year_end: 2021-04-30
+  publisher: Laurentian University of Sudbury
+  auditor: KPMG LLP
+  role_in_benchmark: >
+    The dense 50+ page document. Tests sectioning, page coverage, and the 16K output ceiling
+    (#309). Entities, relationships, facts and contradictions all compete for the same output
+    budget here — this is where cheap conditions are expected to degrade first, and where the
+    must_not_miss list does its real work.
+
+entities:
+  - name: Laurentian University of Sudbury
+    type: organization
+    aliases: ["LU", "the University", "Laurentian"]
+    role: reporting entity; CCAA applicant; registered charity, tax-exempt under s.149(1)(f) ITA
+    page: 32
+  - name: KPMG LLP
+    type: organization
+    role: independent auditor (Sudbury office; report signed Ottawa)
+    page: 24
+  - name: Ernst & Young Inc.
+    type: organization
+    aliases: ["E&Y", "the Monitor"]
+    role: court-appointed Monitor under the CCAA
+    page: 32
+  - name: Firm Capital Corporation
+    type: organization
+    aliases: ["FCC", "the DIP lender"]
+    role: original DIP lender ($25M facility, 8.50% floor)
+    page: 46
+  - name: Ontario Ministry of Colleges and Universities
+    type: organization
+    aliases: ["MCU"]
+    role: provider of the Replacement DIP Facility and the government support package
+    page: 67
+  - name: Ontario Superior Court of Justice (Commercial List)
+    type: organization
+    aliases: ["the CCAA Court", "the Court"]
+    role: supervising court
+    page: 32
+  - name: Board of Governors
+    type: organization
+    role: governing body; addressee of the auditors' report; subject to mandated renewal
+    page: 24
+  - name: TD Canada Trust
+    type: organization
+    role: lender of the unsecured short-term loan financing the Student Recreation Centre
+    page: 46
+  - name: Desjardins
+    type: organization
+    role: provider of a $26.0M unsecured line of credit; $14.4M drawn at 30 April 2020
+    page: 55
+  - name: Royal Bank
+    type: organization
+    role: provider of a $5.0M unsecured line of credit; undrawn
+    page: 55
+  - name: Northern Ontario School of Medicine
+    type: organization
+    aliases: ["NOSM"]
+    role: related party; LU and Lakehead are its only voting members
+    page: 60
+  - name: Lakehead University
+    type: organization
+    role: the only other voting member of NOSM
+    page: 60
+  - name: Centre for Excellence in Mining and Innovation
+    type: organization
+    aliases: ["CEMI"]
+    role: related party, created 23 April 2007 with $10.0M of provincial money contributed by LU
+    page: 61
+  - name: Thorneloe University
+    type: organization
+    role: federated university; relationship terminated/disclaimed in the restructuring
+    page: 6
+  - name: University of Sudbury
+    type: organization
+    role: federated university; relationship terminated/disclaimed in the restructuring
+    page: 6
+  - name: Huntington University
+    type: organization
+    role: federated university; active employees ceased accruing pension entitlement 30 June 2021
+    page: 6
+  - name: Students' General Association
+    type: organization
+    aliases: ["Student General Association", "SGA"]
+    role: holder of a long-term debt facility guaranteed by LU for $8.5M
+    page: 55
+  - name: SNOLAB
+    type: organization
+    role: participating employer in the LU-administered Pension Plan
+    page: 56
+  - name: MIRARCO
+    type: organization
+    role: participating employer in the LU-administered Pension Plan
+    page: 56
+  - name: McEwen School of Architecture
+    type: organization
+    role: became the 12th accredited architecture school in Canada during 2020-21
+    page: 7
+  - name: Chief Redevelopment Officer
+    type: role
+    aliases: ["CRO"]
+    role: court-appointed officer assisting LU with strategic initiatives
+    page: 6
+
+relationships:
+  - subject: KPMG LLP
+    predicate: auditor of
+    object: Laurentian University of Sudbury
+    page: 24
+  - subject: Ernst & Young Inc.
+    predicate: court-appointed Monitor of
+    object: Laurentian University of Sudbury
+    page: 32
+  - subject: Firm Capital Corporation
+    predicate: DIP lender to
+    object: Laurentian University of Sudbury
+    page: 46
+  - subject: Ontario Ministry of Colleges and Universities
+    predicate: replacement DIP lender to
+    object: Laurentian University of Sudbury
+    page: 67
+  - subject: Laurentian University of Sudbury
+    predicate: guarantor of the $8.5M loan to
+    object: Students' General Association
+    page: 55
+  - subject: Laurentian University of Sudbury
+    predicate: principal employer of the Pension Plan covering
+    object: Federated Universities, SNOLAB, CEMI, MIRARCO
+    page: 56
+  - subject: Laurentian University of Sudbury
+    predicate: voting member of
+    object: Northern Ontario School of Medicine
+    page: 60
+  - subject: Lakehead University
+    predicate: voting member of
+    object: Northern Ontario School of Medicine
+    page: 60
+  - subject: Laurentian University of Sudbury
+    predicate: disclaimed federation agreements with
+    object: Thorneloe University, University of Sudbury, Huntington University
+    page: 6
+  - subject: TD Canada Trust
+    predicate: lender to
+    object: Laurentian University of Sudbury
+    page: 46
+
+facts:
+  - id: F1
+    fact: "Deficiency of revenue over expenses for FY2021: $66,671 thousand ($66.7M), against $3,387 thousand ($3.4M) restated in FY2020."
+    page: 29
+    quote: "Deficiency of revenue over expenses $ (66,671) $ (3,387)"
+  - id: F2
+    fact: "Total net assets swung to a DEFICIENCY of $15,366 thousand, from positive $34,824 thousand a year earlier — a $50.2M reversal."
+    page: 28
+    quote: "Endowment (note 14) 61,482 54,299 … (15,366) 34,824"
+  - id: F3
+    fact: "Unrestricted net assets fell to a deficiency of $89,207 thousand from $23,640 thousand."
+    page: 28
+    quote: "Unrestricted (89,207) (23,640)"
+  - id: F4
+    fact: "Restructuring costs of $78,904 thousand were recognized in FY2021 (nil in FY2020) — the single largest expense line after salaries."
+    page: 29
+    quote: "Restructuring costs (note 21) 78,904 –"
+  - id: F5
+    fact: "Liabilities subject to compromise total $186,820 thousand."
+    page: 48
+    quote: "$           186,820"
+  - id: F6
+    fact: >
+      Total claims ASSERTED by creditors are $360,291 thousand — but only $186,820 thousand is
+      recognized. The $173.5M difference is NOT recognized in the financial statements because
+      LU cannot yet estimate it.
+    page: 49
+    quote: "Total claims asserted by creditors are $360,291 pursuant to the claim procedures approved by the Court. The difference between the total claims asserted and the amount recognized as subject to compromise of $186,820 is not recognized in these financial statements"
+    note: "The largest single number in the document, and it is off the balance sheet."
+  - id: F7
+    fact: >
+      The DIP loan was provided by Firm Capital Corporation at the higher of 8.50% or TD prime
+      plus a 6.05% margin. Initial draw $10,000 thousand (16 Feb 2021), second draw $15,000
+      thousand (26 Mar 2021). Debt issuance costs $591 thousand; interest expense $583 thousand.
+    page: 46
+    quote: "with interest at the higher of 8.50% or the TD Canada Trust Posted Bank Prime Interest Rate plus a margin of 6.05%"
+  - id: F8
+    fact: >
+      The Replacement DIP Facility from the Ontario MCU (executed 19 Jan 2022, court-authorized
+      27 Jan 2022, capped at $35,000 thousand) carried an interest rate of 1.11% on advance.
+    page: 67
+    quote: "As at the advance of funds on January 28, 2022 the rate of interest was 1.11%"
+    note: "1.11% from the province versus 8.50% from Firm Capital — a striking spread."
+  - id: F9
+    fact: "An interest rate swap termination obligation of $24,700 thousand forms part of both restructuring costs and liabilities subject to compromise."
+    page: 48
+    quote: "Interest rate swap termination obligation (note 11) 24,700"
+  - id: F10
+    fact: >
+      Restructuring costs break down as: interest rate swap termination $24,700; employee
+      restructuring and termination costs $44,658; employee future benefit liabilities $704;
+      accounts payable $35; legal fees $4,903; Monitor fees $2,800; consulting fees $223;
+      interest and finance costs $881.
+    page: 58
+    quote: "Legal fees   $       4,903 \nMonitor fees           2,800 \nConsulting fees              223"
+  - id: F11
+    fact: "Employee compensation costs of $59,568 thousand sit within liabilities subject to compromise."
+    page: 48
+    quote: "Employee compensation costs  59,568"
+  - id: F12
+    fact: >
+      The auditors' report contains a Material Uncertainty Related to Going Concern, pointing to
+      Note 2 and the CCAA stay extended to 31 May 2022. The opinion is NOT modified in respect of it.
+    page: 24
+    quote: "Material Uncertainty Related to Going Concern … Our opinion is not modified in respect of this matter."
+  - id: F13
+    fact: >
+      The financial statements were AMENDED after issuance. Statements originally reported on
+      7 March 2022 were corrected for errors found afterwards, changing the reported deficiency
+      from $(65,982) to $(66,671).
+    page: 68
+    quote: "The financial statements that were original issued with an auditors' report date of March 7, 2022 have been amended for errors identified after their issuance."
+  - id: F14
+    fact: >
+      Note 27 corrections: Other fees and income decreased $2,138; Salaries and benefits decreased
+      $141; Operating and research decreased $1,075; Restructuring costs decreased $233; Employee
+      future benefits remeasurements increased $689.
+    page: 68
+    quote: "(i) Decreased Other fees and income revenue by $2,138"
+  - id: F15
+    fact: >
+      FY2020 comparatives were separately restated (Note 25) for changes in accounting policy AND
+      for "items that had not been properly recognized, measured or presented". Opening net assets
+      were restated from $53,164 thousand as previously reported to $52,010 thousand.
+    page: 30
+    quote: "Net assets (deficiency), beginning of year, previously reported $ (14,544) … $ 53,164 … Restatement adjustments (note 25) … Net assets (deficiency), beginning of year, restated (17,761) … 52,010"
+  - id: F16
+    fact: >
+      MD&A attributes the insolvency to LONG-RUN causes, not the pandemic: "many years of
+      recurring operational deficits", declining enrolment from 2015-16 to 2019-20, and the
+      provincially mandated 10% tuition cut (2019-20) followed by a freeze (2020-21). The combined
+      accumulated unrestricted deficit and employee benefit liabilities deficit had reached
+      $42.2 million by the end of April 2020.
+    page: 5
+    quote: "Laurentian had generated operating losses for a number of years and as result, the University's combined accumulated unrestricted fund deficit and employee benefit liabilities deficit had grown to $42.2 million at the end of April 2020."
+    note: "Directly relevant to the scored contradiction — see `contradictions` below."
+  - id: F17
+    fact: "LU closed 39 English-language programs and 27 French-language programs under the CCAA process."
+    page: 5
+    quote: "Laurentian approved the closure of 39 English-language programs and 27 French-language programs"
+  - id: F18
+    fact: "Restructuring reduced operating expenses by $40 million per year, a 25% reduction."
+    page: 6
+    quote: "The restructuring initiatives implemented to date have resulted in a reduction of operating expenses by $40 million per year, representing a 25% reduction."
+  - id: F19
+    fact: >
+      Endowment net assets rose to $61,482 thousand from $54,299 thousand (restated), driven by
+      $8,211 thousand of long-term investment income — not by contributions, which were only
+      $175 thousand (down from $1,193 thousand).
+    page: 53
+    quote: "Balance, beginning of year  $         54,299 … Endowment contributions                  175 … Balance, end of year  $         61,482"
+  - id: F20
+    fact: >
+      The endowment distribution policy was cut from 3.5% to 2.0% of the trailing 12-month fair
+      value of the endowment pool, and LU charged a $590 thousand administrative fee against
+      endowment investment income (2020: nil).
+    page: 52
+    quote: "constrains the amount of investment income available for distribution to 2.0% (2020 – 3.5%) of the last 12 months fair value of the endowment investment pool"
+  - id: F21
+    fact: "Enrolment headcount rose 4.2% to 9,323 in fall 2020, but fell 14% for fall 2021 after the CCAA filing."
+    page: 9
+    quote: "Subsequent to the end of fiscal year 2020-21, the University has seen a reduction of total enrolment (headcount) of 14% for fall 2021."
+  - id: F22
+    fact: >
+      The Ontario government support package: up to $6,000 thousand in COVID-19 relief and up to
+      $22,000 thousand of enrolment corridor and performance protection — conditional on renewal
+      of the Board of Governors and completion of a long-term strategic plan.
+    page: 67
+    quote: "up to $6,000 in COVID-19 relief funding for the University, and enrolment corridor and performance protection of up to $22,000 over a number of years … subject to certain conditions, which include renewal at the Board of Governors"
+
+# Cross-document contradiction. The SCORED pair for the benchmark is documents 1 and 2 (see
+# CORPUS-v1.md), but this document independently contradicts document 1 and that is worth
+# scoring — it fires only if the extractor compares against the vault digest, which is exactly
+# the machinery under test.
+contradictions:
+  - id: C1
+    type: cross-document
+    against: "Annual-Financial-Report-19-20.pdf (corpus document 1)"
+    this_document_claims: >
+      The deficits are long-run and structural — "many years of recurring operational deficits",
+      declining enrolment since 2015-16, and the 2019 tuition cut and freeze. The accumulated
+      deficit had already reached $42.2M by the end of April 2020.
+    page: 5
+    other_document_claims: >
+      The FY2019-20 report attributes the $5.4M operating deficit almost entirely to the pandemic
+      ("$5.2 million is related to the COVID-19 outbreak") and says LU was "on track" with an
+      anticipated "small deficit of $0.9 million", while "tracing its path to sustainability".
+    why_it_matters: >
+      The same institution, one year apart, gives two incompatible accounts of WHY it was losing
+      money. Both are explicit positive claims, so an extractor can fire on the conflict without
+      having to prove a negative.
+  - id: C2
+    type: cross-document
+    against: "Annual-Financial-Report-19-20.pdf (corpus document 1)"
+    this_document_claims: >
+      FY2020 figures as previously reported were WRONG and have been restated: opening net assets
+      $53,164 → $52,010; opening cash $7,505 → $5,185.
+    page: 30
+    other_document_claims: "The FY2019-20 report presented those original, later-corrected figures as audited fact."
+    why_it_matters: >
+      A restatement is a self-declared contradiction with a prior published document. If the vault
+      holds both reports, the extractor has both numbers stated explicitly.
+
+# Buried items — built against the mechanical note inventory above. Scored SEPARATELY from facts.
+must_not_miss:
+  - id: M1
+    item: >
+      The auditors' report is DUAL-DATED: "March 7, 2022, except as to Note 27, which is as of
+      April 22, 2022."
+    page: 27
+    location: auditors' signature block, final line
+    why: >
+      A dual date is the auditor formally limiting how far forward their responsibility runs. It
+      is one line, in a signature block, on the last page of the audit report — and it is the
+      strongest single signal in the document that something went wrong after publication.
+
+  - id: M2
+    item: "The Board of Governors signature block on the balance sheet has TWO BLANK 'Governor' lines."
+    page: 28
+    location: foot of the Consolidated Statement of Financial Position
+    why: >
+      The statements are presented "On behalf of the Board of Governors" over two unsigned lines.
+      Extractors reliably drop signature blocks entirely.
+
+  - id: M3
+    item: >
+      Note 27 exists at all — a restatement OF the already-restated statements, made after issuance
+      for errors discovered post-publication.
+    page: 68
+    location: final substantive note, page 68 of 70
+    why: >
+      Second-to-last note in a 70-page document. This is the archetypal buried item: the most
+      damaging disclosure, placed last.
+
+  - id: M4
+    item: >
+      Total claims asserted by creditors of $360,291 thousand versus $186,820 thousand recognized —
+      a $173.5M gap deliberately not recognized.
+    page: 49
+    location: Note 12, prose paragraph AFTER the table
+    why: >
+      Sits below a table. Extractors that parse the table capture $186,820 and stop reading before
+      the sentence that says the real number may be nearly twice that.
+
+  - id: M5
+    item: "Interest rate swap termination obligation of $24,700 thousand."
+    page: 48
+    location: Note 12 table row; repeated in Note 21 (p. 58)
+    why: >
+      A derivative unwind buried as a single table row. Nothing in the MD&A mentions that LU held
+      interest rate swaps at all.
+
+  - id: M6
+    item: >
+      Uncertified class action claims relating to a DATA BREACH, plus claims from employees.
+    page: 56
+    location: Note 18(d), commitments and contingencies
+    why: >
+      A data breach is disclosed nowhere else in the report — not in the MD&A, not in the risk
+      note. It appears once, in a subclause of the contingencies note.
+
+  - id: M7
+    item: >
+      LU guaranteed the Students' General Association loan for $8,500 thousand, and "No amount has
+      been recorded in these financial statements relating to the University's guarantee."
+    pages: [55, 62]
+    location: Note 18(c) and Note 24(c)
+    why: "An $8.5M off-balance-sheet guarantee, explicitly unrecorded. Stated twice, capture-rate still low."
+
+  - id: M8
+    item: >
+      Firm Capital Corporation lent at the higher of 8.50% or TD prime + 6.05%; the province's
+      replacement facility charged 1.11%.
+    pages: [46, 67]
+    location: Note 10 and Note 26 — two notes, 21 pages apart
+    why: >
+      Neither rate is remarkable alone; the pair is the story. Requires joining two notes at
+      opposite ends of the document, which is exactly what section-chunked extraction does badly.
+
+  - id: M9
+    item: >
+      A new $590 thousand administrative fee charged against endowment investment income
+      (2020 – nil), alongside the distribution policy cut from 3.5% to 2.0%.
+    page: 52
+    location: Note 14, closing sentence of the opening paragraph
+    why: >
+      LU began charging the endowment a fee it had never charged, in the year it went insolvent.
+      One sentence, end of a dense policy paragraph.
+
+  - id: M10
+    item: "Stayed payables of $1,412 thousand owed to NOSM, up from $28 thousand."
+    page: 61
+    location: Note 24(a), prose after the transactions table
+    why: >
+      LU stayed money owed to the medical school it co-founded — a 50x increase, in a sentence
+      after a table.
+
+  - id: M11
+    item: >
+      Note 25's cash restatement: cash at the beginning of FY2020 was corrected from $7,505
+      thousand to $5,185 thousand — a $2,320 thousand error in previously reported cash.
+    page: 67
+    location: Note 25 continuation table, top of page
+    why: "An error in *cash* — the least estimable line on the statements. Buried in a restatement table."
+
+  - id: M12
+    item: >
+      LU is principal employer of a Pension Plan that also covers the Federated Universities,
+      SNOLAB, CEMI and MIRARCO. Huntington employees ceased accruing 30 June 2021; University of
+      Sudbury and Thorneloe employees became suspended members after 31 December 2021.
+    page: 56
+    location: Note 18(e)
+    why: >
+      The blast radius of the pension problem extends to four other institutions. Buried in the
+      fifth subclause of the contingencies note.
+
+  - id: M13
+    item: >
+      The Royal Bank ($5,000 thousand) and Desjardins ($26,000 thousand) lines of credit were
+      withdrawn — "At April 30, 2021 these lines of credit are no longer available to the University."
+    page: 55
+    location: Note 18(a)
+    why: "$31M of committed liquidity vanished. One clause at the end of a subsection."
+
+  - id: M14
+    item: >
+      Professional fees inside restructuring costs: legal $4,903, Monitor $2,800, consulting $223,
+      interest and finance $881 — $8,807 thousand of "Legal, Monitor, consulting, interest and
+      finance costs".
+    page: 58
+    location: Note 21 table, lower half
+    why: "What the insolvency cost in fees. A lower-table block, routinely truncated."
+
+  - id: M15
+    item: >
+      LU participates in a reciprocal insurance exchange sharing property and liability risk with
+      forty other Canadian universities.
+    page: 55
+    location: Note 18(b)
+    why: "A contingent, shared liability with 40 institutions. A single sentence, no dollar figure attached."
+
+  - id: M16
+    item: >
+      CEMI was created on 23 April 2007 with $10,000 thousand of provincial money that LU received
+      and contributed.
+    page: 61
+    location: Note 24(b)
+    why: "$10M of public money routed through LU into a separate entity LU does not consolidate."
+
+  - id: M17
+    item: >
+      The TD Canada Trust short-term loan financed the Student Recreation Centre; the CCAA filing
+      was an event of default that made it due on demand.
+    page: 46
+    location: Note 9
+    why: "Names both the lender and what the money built. Short note, sandwiched between two longer ones."
+
+  - id: M18
+    item: >
+      Internally financed capital projects, itemized: Campus Modernization $14,739; Cardiovascular
+      Metabolic Research Lab $5,027; Great Hall renovations $1,146; Ancillaries $855; Cliff Fielding
+      Building $146; Parking Lot 4 $761; School of Education Building $341; DNA Lab $161.
+    page: 55
+    location: Note 17 table
+    why: >
+      A named, itemized schedule of what LU spent internal money on. Precisely the kind of table
+      that gets flattened or dropped — and it names the projects.
+
+  - id: M19
+    item: >
+      The government support package is CONDITIONAL on renewal of the Board of Governors and
+      completion of a long-term strategic plan; first phase of Board renewal began 16 Dec 2021.
+    page: 67
+    location: Note 26, final paragraph
+    why: "The province made governance change a condition of the money. Last paragraph of the subsequent-events note."
+
+  - id: M20
+    item: >
+      The "Laurentian by the Numbers" infographic (p. 3): total revenue $193.4M, total expenses
+      $260.1M, deficiency $66.7M, total net assets -$15.4M, available expendable resources -$85.9M,
+      capital spending $1.4M, endowment per FTE $8,672, FTE 7,090.
+    page: 3
+    location: page-3 infographic
+    why: >
+      TEXT-EXTRACTION HAZARD, flagged deliberately. In the raw text layer the figures detach from
+      their labels and interleave (the "-$85.9M" appears adjacent to "Capital Spending", which is
+      wrong). Any condition that reports these numbers with the WRONG labels attached has been
+      caught by a table-flattening failure, not a reasoning failure — score it as such, and check
+      whether chew/Docling reproduces the same scrambling before blaming the extractor.
