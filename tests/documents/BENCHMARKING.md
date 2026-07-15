@@ -1,8 +1,12 @@
 # Running the extraction benchmark (#361 / #215)
 
 A step-by-step guide to measuring the three ingest model stages against corpus-v1. Written to be
-followed top to bottom. Nothing here spends money until Step 4, and every run gets a free cost
+followed top to bottom. Nothing here spends money until Step 3, and every run gets a free cost
 preview first.
+
+**Do not run a live ingest (Steps 3, 4, 5, or 6) without Tom's explicit go-ahead.** These runs cost
+real money and share his subscription session window — `--estimate` first, always, but the
+estimate is a preview, not the ask.
 
 ## What we are deciding
 
@@ -93,8 +97,10 @@ judge cross-check in scoring — not for the runs.)
 
 ## Step 3 — the per-condition recipe
 
-Every condition follows the same shape. Example for the baseline (`extractor sonnet/high`,
-`finalizer sonnet/high`):
+Every condition follows the same shape. Worked below for the baseline (`extractor sonnet/high`,
+`finalizer sonnet/high`) — this run **is** `bench-ex-sonnet-high` from Step 4's table, not a
+separate example; repeat the same shape for every other row in Steps 4–6, swapping only the model
+flags and the vault name:
 
 ```
 # 1. Fresh vault

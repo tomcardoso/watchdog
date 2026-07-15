@@ -1,7 +1,9 @@
 # Answer keys — corpus-v1
 
-One YAML per corpus document. These are the fixed reference the four benchmark conditions
-(#361, #215) are scored against. **Not yet frozen — pending Tom's review.**
+One YAML per corpus document. These are the fixed reference every condition in the #361 / #215
+benchmark is scored against — see `../BENCHMARKING.md` for how many runs that is and what each one
+varies. **Drafted and reviewed; not yet frozen.** Freezing (see "The freeze" below) is Step 0 of
+`BENCHMARKING.md` — the one thing to do before anything else in that guide.
 
 ## What these are, and what they are not
 
