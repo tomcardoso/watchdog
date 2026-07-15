@@ -251,6 +251,29 @@ def _sidecar_provenance(vault: Path, filename: str) -> dict:
     return {k: str(data[k]) for k in ("source", "obtained") if data.get(k) is not None}
 
 
+def _sidecar_skill(vault: Path, filename: str) -> str | None:
+    """A per-document record-skill pin from the sidecar's `skill:` field, resolved
+    deterministically in Python — never shown to the classifier, same posture as
+    `_sidecar_provenance`. Lets one ingest queue mix document types without `--skill`
+    forcing a single pin across the whole run (D120: benchmarking a corpus that spans
+    more than one skill needed this without a second `chew`/`ingest` pass per skill)."""
+    text = _read_sidecar(vault, filename)
+    if not text:
+        return None
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return None
+    if not isinstance(data, dict) or not data.get("skill"):
+        return None
+    value = str(data["skill"])
+    resolved = skills_catalog.resolve(value)
+    if not resolved:
+        _say(f"  {_YELLOW}⚠{_RESET}  {filename}: sidecar pins unknown skill "
+             f"'{value}' — classifying instead{_RESET}")
+    return resolved
+
+
 def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str, vault: Path,
                     skill_text: str | None = None, extract_model: str | None = None,
                     extract_effort: str | None = None) -> None:
@@ -562,10 +585,13 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         else:
             _say(plain)
 
-    if pinned_skill:
-        # Skill pinned for the whole run (a resolved skill-file path) — skip classification.
-        skill_text = Path(pinned_skill).read_text(encoding="utf-8")
-        skill_label = Path(pinned_skill).stem
+    # A sidecar's own `skill:` pin is more specific than a run-wide `--skill`, so it wins —
+    # this is what lets one ingest queue mix skills without a second pass (D120).
+    doc_pinned_skill = _sidecar_skill(vault, filename) or pinned_skill
+    if doc_pinned_skill:
+        # Skill pinned for this document (a resolved skill-file path) — skip classification.
+        skill_text = Path(doc_pinned_skill).read_text(encoding="utf-8")
+        skill_label = Path(doc_pinned_skill).stem
     else:
         _step(f"{_DIM}→  {filename}  {pg} · classifying…{_RESET}",
               f"{_DIM}→  {filename}  classifying ({page_count} page{'s' if page_count != 1 else ''})…{_RESET}")

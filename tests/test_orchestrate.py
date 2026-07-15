@@ -372,6 +372,29 @@ def test_sidecar_provenance_absent_or_malformed(tmp_path):
     assert orchestrate._sidecar_provenance(vault, "bad.pdf") == {}
 
 
+def test_sidecar_skill_resolves_known_name(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "doc.pdf.yml").write_text("skill: bankruptcy\n", encoding="utf-8")
+    resolved = orchestrate._sidecar_skill(vault, "doc.pdf")
+    assert resolved is not None and Path(resolved).stem == "bankruptcy"
+
+
+def test_sidecar_skill_absent_or_malformed(tmp_path):
+    vault = make_vault(tmp_path)
+    assert orchestrate._sidecar_skill(vault, "missing.pdf") is None
+    (vault / "_INCOMING" / "bad.pdf.yml").write_text("just a string, not a map\n", encoding="utf-8")
+    assert orchestrate._sidecar_skill(vault, "bad.pdf") is None
+    (vault / "_INCOMING" / "nokey.pdf.yml").write_text("source: https://x\n", encoding="utf-8")
+    assert orchestrate._sidecar_skill(vault, "nokey.pdf") is None
+
+
+def test_sidecar_skill_unknown_name_warns_and_falls_back(tmp_path, capsys):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "doc.pdf.yml").write_text("skill: not-a-real-skill\n", encoding="utf-8")
+    assert orchestrate._sidecar_skill(vault, "doc.pdf") is None
+    assert "not-a-real-skill" in capsys.readouterr().out
+
+
 def test_stamp_document_applies_sidecar_provenance(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "_INCOMING" / "real.pdf.yml").write_text(
@@ -949,6 +972,48 @@ def test_pinned_skill_is_injected_into_extraction(tmp_path, monkeypatch):
 
     asyncio.run(orchestrate.run(vault, pinned_skill=str(skill_file)))
     assert "CORPORATE FILINGS SKILL BODY" in _flat(seen["prompt"])
+
+
+def test_sidecar_skill_pins_per_document_without_global_flag(tmp_path, monkeypatch):
+    """Two documents, two different sidecar skill pins, no --skill: classification is skipped
+    for both, and each lands on its own pinned skill rather than a run-wide one (D120)."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="aaa", filename="a.pdf")
+    _queue_doc(vault, sha="bbb", filename="b.pdf")
+    (vault / "_INCOMING" / "a.pdf.yml").write_text("skill: bankruptcy\n", encoding="utf-8")
+    (vault / "_INCOMING" / "b.pdf.yml").write_text("skill: court-documents\n", encoding="utf-8")
+    tasks = []
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        tasks.append(task)
+        # _stamp_document overwrites sha256/filename from the queue entry regardless of what the
+        # mocked extraction returns, so both docs can safely share one fixture body here.
+        parsed = {
+            "extract": _extraction(sha="aaa", filename="a.pdf"),
+            "entity-synthesis": {"entity_syntheses": []},
+            "timeline-dedup": {"groups": []},
+            "briefing": {"investigation_status": "x", "what_was_ingested": []},
+        }.get(task, {})
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault, concurrency=2))
+    assert "classify" not in tasks
+    skills = {r["filename"]: r["record_skill"] for r in summary["results"]}
+    assert skills == {"a.pdf": "bankruptcy", "b.pdf": "court-documents"}
+
+
+def test_sidecar_skill_overrides_run_wide_pinned_skill(tmp_path, monkeypatch):
+    """A document's own sidecar pin is more specific than --skill/default_skill, so it wins."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    (vault / "_INCOMING" / "test-doc.pdf.yml").write_text("skill: bankruptcy\n", encoding="utf-8")
+    _mock(monkeypatch, extraction=_extraction())
+
+    skill_file = tmp_path / "pinned.md"
+    skill_file.write_text("PINNED SKILL BODY")
+    summary = asyncio.run(orchestrate.run(vault, pinned_skill=str(skill_file)))
+    assert summary["results"][0]["record_skill"] == "bankruptcy"
 
 
 def test_record_skill_provenance_is_persisted(tmp_path, monkeypatch):

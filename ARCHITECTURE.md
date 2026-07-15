@@ -343,7 +343,13 @@ longer folded into the extractor.
   skill-based extractor self-classified, that work was turns inside the expensive
   extraction call (the #87 tax); a separate haiku call is cheaper.
 - **Pinning.** `--skill` / `default_skill` skips this call entirely and uses one skill
-  for the whole run (see §5, D21).
+  for the whole run (see §5, D21). A document's own `.yml` sidecar can also carry a
+  `skill:` field pinning *that document alone* — read deterministically in Python
+  (`_sidecar_skill`), never sent through the model, so it never crosses the
+  data/instruction line the provenance fields below hold (D120). It takes priority over a
+  run-wide pin, so one ingest queue can mix skills without a second `chew`/`ingest` pass per
+  skill. Falls back to classification (with a warning) if the named skill isn't in the
+  catalog and isn't a file path.
 - **Provenance-aware.** The classifier also sees the document's `.yml` sidecar (source +
   collection note) when present, so a document whose type is ambiguous from its text alone —
   a bare form, a scanned table — can be routed by where it came from, not text alone. The
@@ -883,7 +889,7 @@ everything below runs only during `watchdog ingest`.
 
 | Call | Runs | Sent to the model | Withheld |
 |---|---|---|---|
-| **classify** (§6) | once per document; skipped entirely if a skill is pinned | first `classify_pages` pages of extracted text, the in-memory skill-catalog index, the `.yml` provenance sidecar if present | the rest of the document; all entity/registry data |
+| **classify** (§6) | once per document; skipped entirely if a skill is pinned (run-wide `--skill`/`default_skill`, or that document's own sidecar `skill:` field) | first `classify_pages` pages of extracted text, the in-memory skill-catalog index, the `.yml` provenance sidecar if present | the rest of the document; all entity/registry data |
 | **extract** — whole-doc or per-section (§5) | once per document, or once per section for a document over the sectioning threshold | the page/section text, the matched domain skill, the investigation brief (`context.md`), the `.yml` sidecar, known document types | **all vault entity state** — extraction is a pure function of the document (D118); original-file metadata (EXIF, PDF author fields — stripped at chew, §3) |
 | **digest** (§5) | once per sectioned document, after merge — whole-doc extraction composes its digest inline instead, with no extra call | filename, title, document_type, page_count, the merged `key_facts` (not the raw text), the domain skill, brief, sidecar | the document's raw text |
 | **reconcile** (§8.5) | once per run, if any entity was touched | deterministically-blocked candidate duplicate pairs (same type, overlapping names), and each recurring entity's source-attributed `## Analysis` claim ledger + roles digest | raw document text; entities with no plausible duplicate and no cross-document claims |

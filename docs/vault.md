@@ -151,6 +151,14 @@ notes: Check the director change on page 12.
 
 This context is merged into the document record and preserved through ingest. Watchdog also writes sidecars of its own: files downloaded by `watchdog fetch` and web research arrive in `_INCOMING/` with a provenance sidecar already attached.
 
+A sidecar can also pin that one document's record skill:
+
+```yaml
+skill: bankruptcy
+```
+
+Unlike `notes` and `source`, this field never reaches the model — it is read directly and skips classification for that document, the same way `--skill` does for a whole run. That means a batch mixing document types (a corporate filing next to a court order, say) can pin each one correctly in a single `ingest`, rather than needing one run per type. See [Skills](skills.md#reading-and-pinning-skills).
+
 ---
 
 **Where next:** [Investigating](investigating.md) for the day-to-day work of reading and questioning the vault, or [Skills](skills.md) for the domain knowledge Watchdog applies while filling it.
