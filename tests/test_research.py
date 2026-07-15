@@ -322,6 +322,20 @@ def test_seen_urls_unions_documents_and_incoming_sidecars(tmp_path):
     }
 
 
+def test_seen_urls_includes_chewed_not_yet_ingested_queue_entries(tmp_path):
+    """Chew deletes a document's .yml once it filters it into the queue JSON (D121) — for that
+    in-between state there is no file left in _INCOMING/ to find, only the queue's own copy."""
+    vault = tmp_path / "v"
+    queue = vault / ".watchdog" / "queue"
+    queue.mkdir(parents=True)
+    (queue / "sha4.json").write_text(json.dumps({
+        "sha256": "sha4", "filename": "c.pdf",
+        "sidecar": "source: https://chewed.example/pending\n",
+    }))
+    (queue / "sha5.json").write_text(json.dumps({"sha256": "sha5", "filename": "d.pdf"}))
+    assert research.seen_urls(vault) == {"https://chewed.example/pending"}
+
+
 def test_seen_urls_empty_when_no_artifacts(tmp_path):
     assert research.seen_urls(tmp_path / "v") == set()
 

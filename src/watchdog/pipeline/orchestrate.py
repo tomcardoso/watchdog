@@ -20,14 +20,12 @@ import sys
 import time
 from pathlib import Path
 
-import yaml
-
 from watchdog import model_client, skills_catalog
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 from watchdog.cmd.live import LiveRegion
 from watchdog.pipeline import (
     abort, batch_extract, leads, merge, preflight, postflight, prompts, reconcile, requests,
-    schemas, section, synthesis_bundle, timeline, watchlist,
+    schemas, section, sidecar, synthesis_bundle, timeline, watchlist,
 )
 from watchdog.pipeline.write_vault import _doc_slug
 
@@ -229,44 +227,16 @@ def _pages_text(pages: list[dict]) -> str:
     )
 
 
-def _read_sidecar(vault: Path, filename: str) -> str | None:
-    sc = vault / "_INCOMING" / f"{filename}.yml"
-    return sc.read_text(encoding="utf-8") if sc.exists() else None
-
-
-def _sidecar_provenance(vault: Path, filename: str) -> dict:
-    """Parse `source`/`obtained` from the document's `.yml` sidecar — deterministically, in
-    Python, rather than passing the sidecar text through the model and reading the fields back
-    out of its response. The sidecar still reaches the model as extraction context (its `notes`)."""
-    text = _read_sidecar(vault, filename)
-    if not text:
-        return {}
-    try:
-        data = yaml.safe_load(text)
-    except yaml.YAMLError:
-        return {}
-    if not isinstance(data, dict):
-        return {}
-    # str() coerces YAML's auto-parsed scalars (e.g. `obtained: 2026-06-05` → a date) back to text.
-    return {k: str(data[k]) for k in ("source", "obtained") if data.get(k) is not None}
-
-
-def _sidecar_skill(vault: Path, filename: str) -> str | None:
+def _sidecar_skill(sidecar_text: str | None, *, filename: str) -> str | None:
     """A per-document record-skill pin from the sidecar's `skill:` field, resolved
-    deterministically in Python — never shown to the classifier, same posture as
-    `_sidecar_provenance`. Lets one ingest queue mix document types without `--skill`
-    forcing a single pin across the whole run (D120: benchmarking a corpus that spans
-    more than one skill needed this without a second `chew`/`ingest` pass per skill)."""
-    text = _read_sidecar(vault, filename)
-    if not text:
+    deterministically in Python — never shown to the classifier. Lets one ingest queue mix
+    document types without `--skill` forcing a single pin across the whole run (D120: benchmarking
+    a corpus that spans more than one skill needed this without a second `chew`/`ingest` pass per
+    skill). `sidecar_text` is already filtered/allowlisted at chew time (pipeline/sidecar.py,
+    D121) — nothing here reads `_INCOMING/` again."""
+    value = sidecar.skill_pin(sidecar_text)
+    if not value:
         return None
-    try:
-        data = yaml.safe_load(text)
-    except yaml.YAMLError:
-        return None
-    if not isinstance(data, dict) or not data.get("skill"):
-        return None
-    value = str(data["skill"])
     resolved = skills_catalog.resolve(value)
     if not resolved:
         _say(f"  {_YELLOW}⚠{_RESET}  {filename}: sidecar pins unknown skill "
@@ -274,7 +244,7 @@ def _sidecar_skill(vault: Path, filename: str) -> str | None:
     return resolved
 
 
-def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str, vault: Path,
+def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str,
                     skill_text: str | None = None, extract_model: str | None = None,
                     extract_effort: str | None = None) -> None:
     """Stamp the deterministic, Python-owned document fields onto the extraction, before
@@ -300,7 +270,10 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str, v
     doc["filename"] = pf["filename"]
     doc["original_path"] = pf.get("original_path")
     doc["page_count"] = pf.get("page_count") or len(pf["pages"])
-    doc.update(_sidecar_provenance(vault, pf["filename"]))
+    doc.update(sidecar.provenance(pf.get("sidecar")))
+    # The filtered sidecar text itself (D121) — carried onto the document so write_vault can
+    # re-materialize a .yml in morgue without ever reading _INCOMING/ again.
+    doc["sidecar"] = pf.get("sidecar")
     # File-intrinsic embedded metadata (#369) — captured deterministically at chew time and
     # stamped here, same posture as sha256/filename above: a claim the file makes about itself,
     # never asked of the model.
@@ -397,7 +370,7 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
     """Whole-document extraction, with one repair attempt if post-flight rejects."""
     base = prompts.build_extract_prompt(
         pages_text=_pages_text(pf["pages"]),
-        skill_text=skill_text, sidecar=_read_sidecar(vault, pf["filename"]), brief=brief,
+        skill_text=skill_text, sidecar=pf.get("sidecar"), brief=brief,
         known_document_types=pf.get("known_document_types", []),
         file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
     )
@@ -417,7 +390,7 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
         cost += r.cost_usd or 0.0
         extraction = r.parsed
         scratchpad = extraction.pop("scratchpad", "")
-        _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault,
+        _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label,
                         skill_text=skill_text, extract_model=model, extract_effort=effort)
         ok, errors, warnings, written = _write_postflight(vault, sha, extraction)
         if ok:
@@ -516,9 +489,9 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
     page_count = pf.get("page_count") or len(pf.get("pages", []))
     doc["summary"], digest_cost = await _compose_digest(
         doc, page_count, model, backend, pf["filename"],
-        skill_text, brief, _read_sidecar(vault, pf["filename"]))
+        skill_text, brief, pf.get("sidecar"))
     cost += digest_cost
-    _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault,
+    _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label,
                     skill_text=skill_text, extract_model=model, extract_effort=effort)
     ok, errors, warnings, written = _write_postflight(vault, sha, extraction)
     return extraction, scratchpad, cost, ok, errors, warnings, written
@@ -587,7 +560,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
 
     # A sidecar's own `skill:` pin is more specific than a run-wide `--skill`, so it wins —
     # this is what lets one ingest queue mix skills without a second pass (D120).
-    doc_pinned_skill = _sidecar_skill(vault, filename) or pinned_skill
+    doc_pinned_skill = _sidecar_skill(pf.get("sidecar"), filename=filename) or pinned_skill
     if doc_pinned_skill:
         # Skill pinned for this document (a resolved skill-file path) — skip classification.
         skill_text = Path(doc_pinned_skill).read_text(encoding="utf-8")
@@ -598,7 +571,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         # Classify on the first N pages (page-aware, not a mid-page char cut); the char cap is a guard.
         excerpt = _pages_text(pages[:max(1, classify_pages)])[:_CLASSIFY_EXCERPT_CHARS]
         skill = await _classify(excerpt, classify_model, classify_backend, filename=filename,
-                                sidecar=_read_sidecar(vault, filename))
+                                sidecar=pf.get("sidecar"))
         skill_text = skills_catalog.read_skill(skill)
         skill_label = skill.removesuffix(".md")
         _step(f"{_DIM}→  {filename}  {pg} · {skill_label}{_RESET}",
@@ -724,7 +697,7 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
     if not item["ok"]:
         prompt = prompts.build_extract_prompt(
             pages_text=_pages_text(pf["pages"]),
-            skill_text=skill_text, sidecar=_read_sidecar(vault, filename), brief=brief,
+            skill_text=skill_text, sidecar=pf.get("sidecar"), brief=brief,
             known_document_types=pf.get("known_document_types", []),
             file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}))
         if item.get("error"):
@@ -739,7 +712,7 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
         cost += r.cost_usd or 0.0
 
     scratchpad = extraction.pop("scratchpad", "") if isinstance(extraction, dict) else ""
-    _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label, vault=vault,
+    _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label,
                     skill_text=skill_text, extract_model=model, extract_effort=effort)
     ok, errors, warnings, written = _write_postflight(vault, sha, extraction)
     if not ok:
@@ -815,7 +788,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
         else:
             prompt = prompts.build_extract_prompt(
                 pages_text=_pages_text(pf["pages"]),
-                skill_text=skill_text, sidecar=_read_sidecar(vault, pf["filename"]), brief=brief,
+                skill_text=skill_text, sidecar=pf.get("sidecar"), brief=brief,
                 known_document_types=pf.get("known_document_types", []), cache_ttl="1h",
                 file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}))
             batch_docs.append({"sha": sha, "prompt": prompt})

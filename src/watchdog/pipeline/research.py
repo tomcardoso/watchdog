@@ -15,9 +15,9 @@ never reach the vault as a direct note. Two properties make this safe and durabl
   session that runs out of tokens never loses what it already pulled; `deposit_many` re-pulls a
   durable worklist idempotently (deposit filenames are a stable hash of the URL).
 
-Provenance rides the existing `.yml` sidecar convention (orchestrate `_sidecar_provenance`):
-`source`/`obtained` are stamped deterministically at ingest and the whole sidecar reaches the
-extractor as `notes` context, then travels to the morgue. See ARCHITECTURE §15 and DECISIONS D45.
+Provenance rides the existing `.yml` sidecar convention (`pipeline.sidecar`): `source`/`obtained`
+are stamped deterministically at ingest and the filtered sidecar reaches the extractor as `notes`
+context, then is re-written into the morgue. See ARCHITECTURE §15 and DECISIONS D45, D121.
 """
 
 from __future__ import annotations
@@ -38,6 +38,7 @@ from urllib.parse import urljoin, urlsplit
 import nh3
 import yaml
 
+from watchdog.pipeline import sidecar
 from watchdog.pipeline.preprocess import DIRECT_TEXT_SUFFIXES, DOCLING_SUFFIXES
 from watchdog.pipeline.write_vault import slugify
 
@@ -414,9 +415,13 @@ def retain_pending(vault: Path, keep: list[dict]) -> None:
 
 
 def seen_urls(vault: Path) -> set[str]:
-    """URLs already captured — so research can skip re-fetching them. Derived, not stored: the union
-    of every ingested document's `source` (documents.json) and every in-flight `_INCOMING/**.yml`
-    sidecar `source` (downloaded, not yet ingested). Mirrors how chew dedups against the registry."""
+    """URLs already captured — so research can skip re-fetching them. Derived, not stored: the
+    union of every ingested document's `source` (documents.json), every in-flight
+    `_INCOMING/**.yml` sidecar `source` (fetched, not yet chewed), and every chewed-but-not-yet-
+    ingested queue entry's embedded sidecar `source`. The last of those exists because chew
+    deletes the `.yml` once it's filtered into the queue JSON (D121) — there is no file left in
+    `_INCOMING/` for that state, only the queue's own copy. Mirrors how chew dedups against the
+    registry."""
     urls: set[str] = set()
 
     docs_file = vault / ".watchdog" / "registry" / "documents.json"
@@ -431,12 +436,23 @@ def seen_urls(vault: Path) -> set[str]:
 
     incoming = vault / "_INCOMING"
     if incoming.is_dir():
-        for sidecar in incoming.rglob("*.yml"):
+        for sidecar_path in incoming.rglob("*.yml"):
             try:
-                data = yaml.safe_load(sidecar.read_text(encoding="utf-8"))
+                data = yaml.safe_load(sidecar_path.read_text(encoding="utf-8"))
             except (OSError, yaml.YAMLError):
                 continue
             if isinstance(data, dict) and data.get("source"):
                 urls.add(str(data["source"]))
+
+    queue_dir = vault / ".watchdog" / "queue"
+    if queue_dir.is_dir():
+        for queue_file in queue_dir.glob("*.json"):
+            try:
+                entry = json.loads(queue_file.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            src = sidecar.provenance(entry.get("sidecar")).get("source")
+            if src:
+                urls.add(str(src))
 
     return urls

@@ -523,6 +523,95 @@ def test_garbled_doc_still_queued(tmp_path, monkeypatch, capsys):
     assert not (incoming / "_FAILED").exists()
 
 
+# ── sidecar handling (D121) ─────────────────────────────────────────────────────
+
+def test_sidecar_filtered_and_embedded_in_queue_json(tmp_path, monkeypatch):
+    vault, incoming, queue, staging = _make_vault(tmp_path)
+    f = incoming / "report.pdf"
+    f.write_bytes(b"")
+    (incoming / "report.pdf.yml").write_text(
+        "source: https://sedar.com/x\nobtained: 2026-06-05\n", encoding="utf-8")
+
+    monkeypatch.setattr(ppb, "preprocess_one", lambda path, *a, **kw: {
+        "sha256": "aabbcc", "pages": [{"markdown": "hello"}], "char_count": 5,
+        "source_path": str(path)
+    })
+
+    _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
+
+    entry = json.loads((queue / "aabbcc.json").read_text())
+    assert "source: https://sedar.com/x" in entry["sidecar"]
+    assert not (incoming / "report.pdf.yml").exists()
+
+
+def test_sidecar_absent_leaves_queue_field_none(tmp_path, monkeypatch):
+    vault, incoming, queue, staging = _make_vault(tmp_path)
+    f = incoming / "report.pdf"
+    f.write_bytes(b"")
+
+    monkeypatch.setattr(ppb, "preprocess_one", lambda path, *a, **kw: {
+        "sha256": "aabbcc", "pages": [{"markdown": "hello"}], "char_count": 5,
+        "source_path": str(path)
+    })
+
+    _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
+
+    entry = json.loads((queue / "aabbcc.json").read_text())
+    assert entry["sidecar"] is None
+
+
+def test_sidecar_unknown_field_dropped_and_warned(tmp_path, monkeypatch, capsys):
+    vault, incoming, queue, staging = _make_vault(tmp_path)
+    f = incoming / "report.pdf"
+    f.write_bytes(b"")
+    (incoming / "report.pdf.yml").write_text(
+        "source: https://sedar.com/x\nweird_field: nope\n", encoding="utf-8")
+
+    monkeypatch.setattr(ppb, "preprocess_one", lambda path, *a, **kw: {
+        "sha256": "aabbcc", "pages": [{"markdown": "hello"}], "char_count": 5,
+        "source_path": str(path)
+    })
+
+    _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
+
+    entry = json.loads((queue / "aabbcc.json").read_text())
+    assert "weird_field" not in entry["sidecar"]
+    assert "source: https://sedar.com/x" in entry["sidecar"]
+    assert "weird_field" in capsys.readouterr().out
+
+
+def test_sidecar_moved_to_failed_alongside_source(tmp_path, monkeypatch):
+    vault, incoming, queue, staging = _make_vault(tmp_path)
+    f = incoming / "broken.pdf"
+    f.write_bytes(b"")
+    (incoming / "broken.pdf.yml").write_text("source: https://x\n", encoding="utf-8")
+
+    monkeypatch.setattr(ppb, "preprocess_one", lambda path, *a, **kw: {
+        "error": "boom", "source_path": str(path)
+    })
+
+    _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
+
+    assert (incoming / "_FAILED" / "broken.pdf.yml").exists()
+    assert not (incoming / "broken.pdf.yml").exists()
+
+
+def test_sidecar_moved_to_skipped_alongside_source(tmp_path, monkeypatch):
+    vault, incoming, queue, staging = _make_vault(tmp_path)
+    f = incoming / "blank.jpg"
+    f.write_bytes(b"")
+    (incoming / "blank.jpg.yml").write_text("source: https://x\n", encoding="utf-8")
+
+    monkeypatch.setattr(ppb, "preprocess_one", lambda path, *a, **kw: {
+        "sha256": "deadbeef", "pages": [], "char_count": 0, "source_path": str(path)
+    })
+
+    _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
+
+    assert (incoming / "_SKIPPED" / "blank.jpg.yml").exists()
+    assert not (incoming / "blank.jpg.yml").exists()
+
+
 # ── live status region (#158) ───────────────────────────────────────────────────
 
 def test_tty_run_shows_inflight_row_and_progress(tmp_path, monkeypatch):

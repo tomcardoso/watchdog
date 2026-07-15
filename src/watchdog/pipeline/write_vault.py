@@ -17,6 +17,7 @@ emits per-entity summaries, fragments, or timeline events:
     "sha256": str, "filename": str, "original_path": str,
     "title": str, "document_type": str, "date_of_document": str|null,
     "page_count": int, "source": str|null, "obtained": str|null,
+    "sidecar": str|null,  // filtered/allowlisted .yml text (D121) — re-written into morgue
     "near_duplicate_of": str|null, "shingles": [],
     "summary": str,
     "key_facts": [{"fact": str, "page": int|null, "basis": "stated"|"inferred",
@@ -1086,9 +1087,12 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
     source = vault_path / doc.get("original_path", f"_INCOMING/{doc['filename']}")
     if source.exists():
         shutil.move(str(source), str(morgue_dir / source.name))
-        sidecar = Path(str(source) + ".yml")
-        if sidecar.exists():
-            shutil.move(str(sidecar), str(morgue_dir / sidecar.name))
+        # No sidecar file survives past chew (D121) — it's filtered/allowlisted into the queue
+        # JSON there and carried onto `doc["sidecar"]` by orchestrate._stamp_document. Re-write it
+        # as a .yml here so morgue still keeps a permanent, citable copy alongside the source.
+        sidecar_text = doc.get("sidecar")
+        if sidecar_text:
+            (morgue_dir / f"{source.name}.yml").write_text(sidecar_text, encoding="utf-8")
         # Preserve the Docling text alongside the original so the full document stays greppable in
         # the vault — extraction now indexes this substrate rather than restating it (#140).
         _write_morgue_markdown(vault_path, doc_sha256, morgue_dir, source.stem)

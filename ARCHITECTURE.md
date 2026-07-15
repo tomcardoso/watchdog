@@ -109,6 +109,15 @@ Two human-invoked phases, with a clean handoff via the queue:
 - **Output.** Per document: `.watchdog/queue/<sha256>.json` (filename, sha256,
   page count, per-page markdown, `near_dup`, MinHash signature). The original is
   moved to `.watchdog/staging/<sha256>/`.
+- **Sidecar filtering (`pipeline/sidecar.py`, D121).** A document's `.yml` sidecar, if
+  present, is read here — the only place it's ever read off disk — filtered to an allowlist
+  of known keys (`source`, `obtained`, `notes`, `skill`, plus the fields `pipeline/research.py`
+  writes), each value length-capped, and the clean result embedded as the queue JSON's
+  `sidecar` field; the original `.yml` is then deleted. Every later reader (classify, extract,
+  the per-document skill pin, the morgue write) takes the sidecar from there, never from
+  `_INCOMING/` again — the source file and its provenance travel as one unit from this point
+  on. If chew instead fails or finds no text, the sidecar moves with the source into
+  `_INCOMING/_FAILED/` or `_INCOMING/_SKIPPED/` unfiltered, since nothing has consumed it yet.
 - **Embedded file metadata (`pipeline/file_metadata.py`, #369).** Alongside the text,
   `preprocess.main()` captures the file's own embedded metadata — PDF DocumentInfo,
   Office core properties, image EXIF, audio/video container tags via `ffprobe` (gated on
@@ -345,17 +354,17 @@ longer folded into the extractor.
 - **Pinning.** `--skill` / `default_skill` skips this call entirely and uses one skill
   for the whole run (see §5, D21). A document's own `.yml` sidecar can also carry a
   `skill:` field pinning *that document alone* — read deterministically in Python
-  (`_sidecar_skill`), never sent through the model, so it never crosses the
-  data/instruction line the provenance fields below hold (D120). It takes priority over a
-  run-wide pin, so one ingest queue can mix skills without a second `chew`/`ingest` pass per
-  skill. Falls back to classification (with a warning) if the named skill isn't in the
-  catalog and isn't a file path.
-- **Provenance-aware.** The classifier also sees the document's `.yml` sidecar (source +
-  collection note) when present, so a document whose type is ambiguous from its text alone —
-  a bare form, a scanned table — can be routed by where it came from, not text alone. The
-  sidecar is context, not a command: the classify prompt marks it as data and the constrained
-  schema (a skill filename) bounds the blast radius; the document text governs on disagreement.
-  See D84.
+  (`_sidecar_skill`, parsing the queue JSON's already-filtered `sidecar` text, D121), never
+  sent through the model, so it never crosses the data/instruction line the provenance fields
+  below hold (D120). It takes priority over a run-wide pin, so one ingest queue can mix skills
+  without a second `chew`/`ingest` pass per skill. Falls back to classification (with a
+  warning) if the named skill isn't in the catalog and isn't a file path.
+- **Provenance-aware.** The classifier also sees the document's sidecar (source + collection
+  note), filtered to an allowlist at chew time (D121) and carried in the queue JSON, when
+  present — so a document whose type is ambiguous from its text alone — a bare form, a scanned
+  table — can be routed by where it came from, not text alone. The sidecar is context, not a
+  command: the classify prompt marks it as data and the constrained schema (a skill filename)
+  bounds the blast radius; the document text governs on disagreement. See D84.
 - **Universal red flags live in `extract_instructions.md`, not the matched skill (D114).**
   Type-agnostic patterns — document integrity, what's missing, backdating/timeline
   anomalies, self-reported-vs-verified — apply to every record, so they sit in the
