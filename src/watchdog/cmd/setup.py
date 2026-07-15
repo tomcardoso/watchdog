@@ -1036,7 +1036,7 @@ def cmd_unlock(args) -> None:
 
     locks = [
         (vault / ".watchdog" / ".chew-lock",                 ".chew-lock",   "chew"),
-        (vault / ".watchdog" / "Registry" / ".ingest-lock",  ".ingest-lock", "ingest"),
+        (vault / ".watchdog" / "registry" / ".ingest-lock",  ".ingest-lock", "ingest"),
     ]
 
     print()

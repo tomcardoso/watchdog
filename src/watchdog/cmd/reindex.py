@@ -93,7 +93,7 @@ def cmd_reindex(args) -> None:
     _, info, vault = _resolve_vault(getattr(args, "project", None))
     from watchdog.pipeline import embed, fulltext
 
-    reg_dir = vault / ".watchdog" / "Registry"
+    reg_dir = vault / ".watchdog" / "registry"
     documents_reg = {}
     documents_path = reg_dir / "documents.json"
     if documents_path.exists():

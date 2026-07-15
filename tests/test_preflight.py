@@ -6,7 +6,7 @@ from watchdog.pipeline import preflight
 
 def _vault(tmp_path: Path) -> Path:
     vault = tmp_path / "vault"
-    reg = vault / ".watchdog" / "Registry"
+    reg = vault / ".watchdog" / "registry"
     reg.mkdir(parents=True)
     (vault / ".watchdog" / "queue").mkdir()
     return vault
@@ -50,7 +50,7 @@ def test_pages_and_identity_surfaced_from_queue(tmp_path):
 def test_already_extracted_flagged_when_sha_in_documents(tmp_path):
     vault = _vault(tmp_path)
     _write_queue(vault, "doc1", "Some text.")
-    (vault / ".watchdog" / "Registry" / "documents.json").write_text(
+    (vault / ".watchdog" / "registry" / "documents.json").write_text(
         json.dumps({"doc1": {"sha256": "doc1", "document_type": "Report"}}))
     assert preflight.run(vault, "doc1")["already_extracted"] is True
 
@@ -60,7 +60,7 @@ def test_known_document_types_collected_from_registry(tmp_path):
     can reuse them (deduped, sorted; missing/empty types ignored)."""
     vault = _vault(tmp_path)
     _write_queue(vault, "sha-new", "Some new document text.")
-    (vault / ".watchdog" / "Registry" / "documents.json").write_text(json.dumps({
+    (vault / ".watchdog" / "registry" / "documents.json").write_text(json.dumps({
         "a": {"sha256": "a", "document_type": "Annual Report"},
         "b": {"sha256": "b", "document_type": "Affidavit"},
         "c": {"sha256": "c", "document_type": "Annual Report"},   # dup

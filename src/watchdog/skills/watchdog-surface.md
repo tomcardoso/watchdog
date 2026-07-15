@@ -20,8 +20,8 @@ Read `context.md` if it exists. This tells you what the journalist is pursuing a
 
 Read these files to build your working index:
 
-1. **`.watchdog/Registry/manifest.json`** — every entity's `id`, `name`, `type`, `aliases`, `note_path`. This is your entity directory. Do not read individual entity notes yet.
-2. **`.watchdog/Registry/documents.json`** — every document's `sha256`, `filename`, `title`, `document_type`, `entities_extracted`, `page_count`, `document_note`.
+1. **`.watchdog/registry/manifest.json`** — every entity's `id`, `name`, `type`, `aliases`, `note_path`. This is your entity directory. Do not read individual entity notes yet.
+2. **`.watchdog/registry/documents.json`** — every document's `sha256`, `filename`, `title`, `document_type`, `entities_extracted`, `page_count`, `document_note`.
 3. **`timeline.md`** — global chronological view of all events across all entities.
 
 Build a working index in memory:

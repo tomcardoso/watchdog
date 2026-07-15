@@ -419,7 +419,7 @@ def seen_urls(vault: Path) -> set[str]:
     sidecar `source` (downloaded, not yet ingested). Mirrors how chew dedups against the registry."""
     urls: set[str] = set()
 
-    docs_file = vault / ".watchdog" / "Registry" / "documents.json"
+    docs_file = vault / ".watchdog" / "registry" / "documents.json"
     if docs_file.exists():
         try:
             for entry in json.loads(docs_file.read_text(encoding="utf-8")).values():

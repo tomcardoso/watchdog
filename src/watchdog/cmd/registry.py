@@ -17,7 +17,7 @@ def cmd_entity_index(args) -> None:
         _, info = _find_project(args.project)
         vault = Path(info["path"])
 
-    manifest_file = vault / ".watchdog" / "Registry" / "manifest.json"
+    manifest_file = vault / ".watchdog" / "registry" / "manifest.json"
     if not manifest_file.exists():
         print("[]")
         return
@@ -101,7 +101,7 @@ def cmd_is_duplicate(args) -> None:
         _, info = _find_project(args.project)
         vault = Path(info["path"])
 
-    docs_file = vault / ".watchdog" / "Registry" / "documents.json"
+    docs_file = vault / ".watchdog" / "registry" / "documents.json"
     try:
         docs = json.loads(docs_file.read_text()) if docs_file.exists() else {}
     except json.JSONDecodeError:

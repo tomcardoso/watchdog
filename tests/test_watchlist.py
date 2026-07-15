@@ -18,7 +18,7 @@ def _build_vault(tmp_path: Path, *, watchlist_text=None, pages=None,
     """Make a minimal vault: optional watchlist.md, a page-marked morgue .md, and the
     documents/manifest registries the scan reads."""
     vault = tmp_path / "vault"
-    (vault / ".watchdog" / "Registry").mkdir(parents=True)
+    (vault / ".watchdog" / "registry").mkdir(parents=True)
     if watchlist_text is not None:
         (vault / "watchlist.md").write_text(watchlist_text, encoding="utf-8")
 
@@ -30,8 +30,8 @@ def _build_vault(tmp_path: Path, *, watchlist_text=None, pages=None,
 
     docs_reg = {sha: {"sha256": sha, "filename": filename,
                       "document_note": "documents/doc", "morgue_path": morgue_path}}
-    (vault / ".watchdog" / "Registry" / "documents.json").write_text(json.dumps(docs_reg))
-    (vault / ".watchdog" / "Registry" / "manifest.json").write_text(json.dumps(manifest or {}))
+    (vault / ".watchdog" / "registry" / "documents.json").write_text(json.dumps(docs_reg))
+    (vault / ".watchdog" / "registry" / "manifest.json").write_text(json.dumps(manifest or {}))
     return vault
 
 
@@ -256,7 +256,7 @@ def _build_multi_doc_vault(tmp_path: Path, *, watchlist_text=None, docs=()) -> P
     (each with its own `documents.json` entry and page-marked morgue `.md`) — standing in
     for a whole vault that predates a `watchlist.md` edit, unlike `_build_vault`'s single doc."""
     vault = tmp_path / "vault"
-    (vault / ".watchdog" / "Registry").mkdir(parents=True)
+    (vault / ".watchdog" / "registry").mkdir(parents=True)
     if watchlist_text is not None:
         (vault / "watchlist.md").write_text(watchlist_text, encoding="utf-8")
 
@@ -270,8 +270,8 @@ def _build_multi_doc_vault(tmp_path: Path, *, watchlist_text=None, docs=()) -> P
         docs_reg[d["sha"]] = {"sha256": d["sha"], "filename": d["filename"],
                               "document_note": f"documents/{d['filename']}",
                               "morgue_path": morgue_path}
-    (vault / ".watchdog" / "Registry" / "documents.json").write_text(json.dumps(docs_reg))
-    (vault / ".watchdog" / "Registry" / "manifest.json").write_text(json.dumps({}))
+    (vault / ".watchdog" / "registry" / "documents.json").write_text(json.dumps(docs_reg))
+    (vault / ".watchdog" / "registry" / "manifest.json").write_text(json.dumps({}))
     return vault
 
 

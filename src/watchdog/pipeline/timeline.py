@@ -300,7 +300,7 @@ def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
     from watchdog.pipeline.write_vault import _date_sort_key
 
     td = _timeline_dir(vault)
-    registry_dir = vault / ".watchdog" / "Registry"
+    registry_dir = vault / ".watchdog" / "registry"
     docs_reg = _load_registry(registry_dir / "documents.json")
     manifest = _load_registry(registry_dir / "manifest.json")
 

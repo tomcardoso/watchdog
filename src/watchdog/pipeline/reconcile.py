@@ -203,7 +203,7 @@ def build_bundle(vault: Path) -> dict:
     it is built once per ingest instead, and — unlike the pre-flight digest — it is complete,
     because every document has landed by the time it is read.
     """
-    entities_path = vault / ".watchdog" / "Registry" / "entities.json"
+    entities_path = vault / ".watchdog" / "registry" / "entities.json"
     if not entities_path.exists():
         return {"entities": [], "pairs": []}
     try:
@@ -327,7 +327,7 @@ def _fold_fragments(vault: Path, remap: dict) -> None:
         return
 
     entities_reg = json.loads(
-        (vault / ".watchdog" / "Registry" / "entities.json").read_text(encoding="utf-8"))
+        (vault / ".watchdog" / "registry" / "entities.json").read_text(encoding="utf-8"))
 
     for merge_id, keep_id in remap.items():
         losing = frag_dir / f"{merge_id}.md"

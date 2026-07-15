@@ -32,7 +32,7 @@ def _note(vault: Path, eid: str = "alice-smith") -> str:
 
 
 def _entities(vault: Path) -> dict:
-    return json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    return json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
 
 
 # ── build_callout format ──────────────────────────────────────────────────────

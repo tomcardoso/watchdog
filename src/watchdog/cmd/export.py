@@ -1,5 +1,5 @@
 """Knowledge-graph export: emit the entity/relationship graph as Neo4j-import CSV
-(or a single Cypher file). Fully deterministic — reads `.watchdog/Registry/entities.json`
+(or a single Cypher file). Fully deterministic — reads `.watchdog/registry/entities.json`
 and writes; no model calls, no markdown parsing. See DECISIONS D39."""
 
 import csv
@@ -117,7 +117,7 @@ def _write_cypher(entities: dict, edges: list[dict], out: Path) -> Path:
 def cmd_export(args) -> None:
     slug, info, vault = _resolve_vault(args.project)
 
-    entities_path = vault / ".watchdog" / "Registry" / "entities.json"
+    entities_path = vault / ".watchdog" / "registry" / "entities.json"
     if not entities_path.exists():
         sys.exit(f"Error: no entity registry found for {info['name']} — has anything been ingested?")
     try:

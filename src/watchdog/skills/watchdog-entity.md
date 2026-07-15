@@ -17,14 +17,14 @@ Run this when an entity has accumulated enough documents that its ingest-time Su
 
 ### 1. Load the entity
 
-Read `.watchdog/Registry/entities.json`. Find the entry for this entity ID. If not found, print an error and skip to the next ID.
+Read `.watchdog/registry/entities.json`. Find the entry for this entity ID. If not found, print an error and skip to the next ID.
 
 Extract:
 - `name`, `type`, `note_path`, `appears_in` (list of SHA-256s)
 
 ### 2. Load all document notes
 
-Read `.watchdog/Registry/documents.json`. For each SHA-256 in `appears_in`:
+Read `.watchdog/registry/documents.json`. For each SHA-256 in `appears_in`:
 - Look up `document_note` (e.g. `documents/form-79`)
 - Read `<document_note>.md` from the vault
 

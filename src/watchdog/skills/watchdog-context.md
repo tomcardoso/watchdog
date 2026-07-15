@@ -192,7 +192,7 @@ Skipped — context.md not written.
 
 ## Guidelines
 
-- **Never create entity notes or registry entries** — `_CONTEXT/` files are background, not evidence. Nothing from this skill touches `.watchdog/Registry/`.
+- **Never create entity notes or registry entries** — `_CONTEXT/` files are background, not evidence. Nothing from this skill touches `.watchdog/registry/`.
 - **Don't cite `_CONTEXT/` files as sources** — they are the reporter's prior knowledge, not the vault's evidence base.
 - **Questions must be specific** — generic questions produce generic answers. Generate questions from what you actually read.
 - **Respect skipped questions** — if the reporter doesn't answer, make a reasonable inference or leave a placeholder. Don't repeat the question.

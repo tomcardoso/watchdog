@@ -20,7 +20,7 @@ from watchdog.pipeline import watchlist as _watchlist
 def cmd_watchlist(args) -> None:
     _, info, vault = _resolve_vault(getattr(args, "project", None))
 
-    documents_path = vault / ".watchdog" / "Registry" / "documents.json"
+    documents_path = vault / ".watchdog" / "registry" / "documents.json"
     try:
         documents_reg = json.loads(documents_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):

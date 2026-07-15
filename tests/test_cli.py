@@ -159,7 +159,7 @@ def test_load_registry_missing(tmp_path):
 
 
 def test_load_registry_returns_data(tmp_path):
-    reg_dir = tmp_path / ".watchdog" / "Registry"
+    reg_dir = tmp_path / ".watchdog" / "registry"
     reg_dir.mkdir(parents=True)
     data = {"document_count": 5, "entity_count": 3, "last_updated": "2026-06-07T00:00:00Z"}
     (reg_dir / "registry.json").write_text(json.dumps(data))
@@ -167,7 +167,7 @@ def test_load_registry_returns_data(tmp_path):
 
 
 def test_load_registry_corrupt_json(tmp_path):
-    reg_dir = tmp_path / ".watchdog" / "Registry"
+    reg_dir = tmp_path / ".watchdog" / "registry"
     reg_dir.mkdir(parents=True)
     (reg_dir / "registry.json").write_text("not json {{{")
     assert cli._load_registry(tmp_path) is None
@@ -193,7 +193,7 @@ def test_cmd_new_vault_structure(configured):
 
 def test_cmd_new_registry_initialized(configured):
     cli.cmd_new(args(name="My Story", dir=str(configured)))
-    reg = json.loads((configured / "my-story" / ".watchdog" / "Registry" / "registry.json").read_text())
+    reg = json.loads((configured / "my-story" / ".watchdog" / "registry" / "registry.json").read_text())
     assert reg["document_count"] == 0
     assert reg["entity_count"] == 0
     assert reg["schema_version"] == "1"
@@ -307,7 +307,7 @@ def test_cmd_new_no_description_no_context_file(configured):
     cli.cmd_new(args(name="My Story", dir=str(configured)))
     assert not (configured / "my-story" / "context.md").exists()
     assert "description" not in json.loads(
-        (configured / "my-story" / ".watchdog" / "Registry" / "registry.json").read_text()
+        (configured / "my-story" / ".watchdog" / "registry" / "registry.json").read_text()
     )
 
 
@@ -481,7 +481,7 @@ def test_cmd_list_shows_project(configured, wdg_home, capsys):
 def test_cmd_list_shows_counts(configured, wdg_home, capsys):
     cli.cmd_new(args(name="Shell Co Probe", dir=str(configured)))
     vault = configured / "shell-co-probe"
-    reg = vault / ".watchdog" / "Registry" / "registry.json"
+    reg = vault / ".watchdog" / "registry" / "registry.json"
     data = json.loads(reg.read_text())
     data["document_count"] = 7
     data["entity_count"] = 4
@@ -495,7 +495,7 @@ def test_cmd_list_shows_counts(configured, wdg_home, capsys):
 
 def test_cmd_list_missing_registry_shows_dashes(configured, wdg_home, capsys):
     cli.cmd_new(args(name="Shell Co Probe", dir=str(configured)))
-    (configured / "shell-co-probe" / ".watchdog" / "Registry" / "registry.json").unlink()
+    (configured / "shell-co-probe" / ".watchdog" / "registry" / "registry.json").unlink()
     cli.cmd_list(args())
     assert "—" in capsys.readouterr().out
 
@@ -519,7 +519,7 @@ def test_cmd_list_no_description_omits_line(configured, wdg_home, capsys):
 
 def _make_vault_with_data(vault: Path, docs: list[dict], entities: list[dict]) -> None:
     """Populate a fresh vault's registry with doc and entity data."""
-    reg = vault / ".watchdog" / "Registry"
+    reg = vault / ".watchdog" / "registry"
     docs_dict = {str(i): d for i, d in enumerate(docs)}
     ents_dict = {e["id"]: e for e in entities}
     (reg / "documents.json").write_text(json.dumps(docs_dict))
@@ -637,10 +637,10 @@ def test_cmd_status_no_batch_line_when_none_pending(configured, capsys):
 
 def test_cmd_status_shows_last_ingest_usage(configured, capsys):
     """#222: the user-facing half of A2's telemetry — watchdog status shows what the last
-    ingest cost, without having to go spelunking in .watchdog/Registry/."""
+    ingest cost, without having to go spelunking in .watchdog/registry/."""
     cli.cmd_new(args(name="Test Proj", dir=str(configured)))
     vault = configured / "test-proj"
-    reg = vault / ".watchdog" / "Registry"
+    reg = vault / ".watchdog" / "registry"
     (reg / "usage-20260101T000000Z.json").write_text(json.dumps({
         "calls": [], "totals": {"input_tokens": 41200, "output_tokens": 9600,
                                 "cache_read_tokens": 0, "cache_write_tokens": 0, "cost_usd": 1.87},
@@ -685,7 +685,7 @@ def test_cmd_status_shows_document_count(configured, capsys):
 
 def test_cmd_status_no_registry(configured, capsys):
     cli.cmd_new(args(name="Test Proj", dir=str(configured)))
-    (configured / "test-proj" / ".watchdog" / "Registry" / "registry.json").unlink()
+    (configured / "test-proj" / ".watchdog" / "registry" / "registry.json").unlink()
     cli.cmd_status(args(name="Test Proj"))
     assert "No registry found" in capsys.readouterr().out
 
@@ -697,7 +697,7 @@ def test_cmd_status_unknown_project_exits(configured):
 
 def test_cmd_status_corrupt_registry_exits(configured):
     cli.cmd_new(args(name="Test Proj", dir=str(configured)))
-    reg = configured / "test-proj" / ".watchdog" / "Registry"
+    reg = configured / "test-proj" / ".watchdog" / "registry"
     (reg / "documents.json").write_text("not valid json {{{")
     with pytest.raises(SystemExit, match="corrupt"):
         cli.cmd_status(args(name="Test Proj"))
@@ -1413,7 +1413,7 @@ def test_setup_writes_auto_for_worker_keys(tmp_path, monkeypatch):
 def _make_vault_with_lock(configured, timestamp_str):
     """Helper: register a project and write a lock file with the given timestamp."""
     vault = configured / "test-proj"
-    lock_dir = vault / ".watchdog" / "Registry"
+    lock_dir = vault / ".watchdog" / "registry"
     lock_dir.mkdir(parents=True)
     lock_path = lock_dir / ".ingest-lock"
     lock_path.write_text(f"pid: claude-session\nstarted_at: {timestamp_str}\n")
@@ -1424,7 +1424,7 @@ def _make_vault_with_lock(configured, timestamp_str):
 
 def test_unlock_no_lock(configured, capsys):
     vault = configured / "test-proj"
-    (vault / ".watchdog" / "Registry").mkdir(parents=True)
+    (vault / ".watchdog" / "registry").mkdir(parents=True)
     cli.save_projects({"test-proj": {"name": "Test Proj", "path": str(vault), "created": "2026-01-01"}})
     cli.cmd_unlock(args(project="test-proj"))
     assert "nothing to do" in capsys.readouterr().out
@@ -1496,7 +1496,7 @@ def test_cmd_delete_purge_no_backup_hint_when_registry_missing(configured, monke
     cli.cmd_new(args(name="Shell Co", dir=str(configured)))
     vault = configured / "shell-co"
     for name in ("entities.json", "documents.json", "registry.json", "manifest.json", "resolutions.json"):
-        (vault / ".watchdog" / "Registry" / name).unlink(missing_ok=True)
+        (vault / ".watchdog" / "registry" / name).unlink(missing_ok=True)
     monkeypatch.setattr("builtins.input", lambda _: "y")
     cli.cmd_delete(args(name="Shell Co", purge=True))
     out = _strip_ansi(capsys.readouterr().out)
@@ -1690,7 +1690,7 @@ def test_cmd_rename_blocked_by_chew_lock(configured, capsys):
 def test_cmd_rename_blocked_by_ingest_lock(configured, capsys):
     cli.cmd_new(args(name="Shell Co", dir=str(configured)))
     vault = configured / "shell-co"
-    (vault / ".watchdog" / "Registry" / ".ingest-lock").write_text("started_at: 2026-01-01T00:00:00Z\n")
+    (vault / ".watchdog" / "registry" / ".ingest-lock").write_text("started_at: 2026-01-01T00:00:00Z\n")
     with pytest.raises(SystemExit):
         cli.cmd_rename(args(project="Shell Co", name="Oil Co"))
 
@@ -2110,7 +2110,7 @@ def test_cmd_ingest_wait_loops_until_rate_limit_clears(wdg_home, tmp_path, monke
     assert len(calls) == 2
     assert all(k.get("wait") is True for k in calls)
     assert waited == [None]
-    assert not (vault / ".watchdog" / "Registry" / ".ingest-lock").exists()
+    assert not (vault / ".watchdog" / "registry" / ".ingest-lock").exists()
     out = capsys.readouterr().out
     assert "1" in out and "extracted" in out   # merged total, not the first cycle's 0
     assert "not started" not in out            # sha1's cycle-1 "cancelled" stub must not survive
@@ -2237,7 +2237,7 @@ def test_cmd_ingest_estimate_prints_and_exits_without_lock(wdg_home, tmp_path, m
     out = _strip_ansi(capsys.readouterr().out)
     assert "1 document" in out
     assert "tokens in" in out
-    assert not (vault / ".watchdog" / "Registry" / ".ingest-lock").exists()
+    assert not (vault / ".watchdog" / "registry" / ".ingest-lock").exists()
     assert not (vault / ".watchdog" / "ingest-state.json").exists()
 
 
@@ -2262,7 +2262,7 @@ def test_cmd_ingest_estimate_subscription_mode_shows_no_dollar_figure(wdg_home, 
     vault = _vault_with_queued_doc(tmp_path)
     monkeypatch.chdir(vault)
     monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "subscription"})
-    (vault / ".watchdog" / "Registry" / "usage-20260101T000000Z.json").write_text(json.dumps({
+    (vault / ".watchdog" / "registry" / "usage-20260101T000000Z.json").write_text(json.dumps({
         "calls": [], "totals": {"input_tokens": 1000, "output_tokens": 0,
                                  "cache_read_tokens": 0, "cache_write_tokens": 0, "cost_usd": 5.0},
     }))
@@ -2280,7 +2280,7 @@ def test_cmd_ingest_estimate_api_key_with_usage_history_shows_dollar_range(wdg_h
     vault = _vault_with_queued_doc(tmp_path)
     monkeypatch.chdir(vault)
     monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
-    (vault / ".watchdog" / "Registry" / "usage-20260101T000000Z.json").write_text(json.dumps({
+    (vault / ".watchdog" / "registry" / "usage-20260101T000000Z.json").write_text(json.dumps({
         "calls": [], "totals": {"input_tokens": 1000, "output_tokens": 0,
                                  "cache_read_tokens": 0, "cache_write_tokens": 0, "cost_usd": 5.0},
     }))
@@ -2790,7 +2790,7 @@ def test_search_exact_lane_failure_does_not_crash_search(configured, monkeypatch
 # ── cmd_search --batch (#110) ───────────────────────────────────────────────────
 
 def _write_manifest(vault, manifest):
-    reg_dir = vault / ".watchdog" / "Registry"
+    reg_dir = vault / ".watchdog" / "registry"
     reg_dir.mkdir(parents=True, exist_ok=True)
     (reg_dir / "manifest.json").write_text(json.dumps(manifest))
 

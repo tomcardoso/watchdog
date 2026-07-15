@@ -7,7 +7,7 @@ note by hand. This is the one deterministic mechanism serving all three — a sm
 store the report generators consult, so acknowledged items drop out of the active list and the
 reports gain the workable-queue property. Pure I1-side Python: no model calls, no judgement.
 
-Stored at ``.watchdog/Registry/resolutions.json``::
+Stored at ``.watchdog/registry/resolutions.json``::
 
     {"schema_version": 1, "resolved": {"<rid>": {"at": "<iso>", "label": "<human label>"}}}
 
@@ -38,7 +38,7 @@ _CHECKBOX_RE = re.compile(r"^\s*[-*]\s*\[(?P<mark>[ xX])\]")
 
 
 def _path(vault: Path) -> Path:
-    return vault / ".watchdog" / "Registry" / "resolutions.json"
+    return vault / ".watchdog" / "registry" / "resolutions.json"
 
 
 def _short(text: str, n: int) -> str:

@@ -13,7 +13,7 @@ from watchdog.pipeline.entity_norm import normalize_entity_name
 def make_vault(tmp_path: Path) -> Path:
     """Create a minimal vault structure."""
     vault = tmp_path / "vault"
-    reg_dir = vault / ".watchdog" / "Registry"
+    reg_dir = vault / ".watchdog" / "registry"
     reg_dir.mkdir(parents=True)
     (vault / "_INCOMING").mkdir()
     (vault / "entities" / "person").mkdir(parents=True)
@@ -326,11 +326,11 @@ def test_note_only_contradiction_backfilled_into_registry(tmp_path):
             "roles": [], "date_first_seen": "2024-01-01", "date_last_updated": "2024-01-01",
         }
     }
-    (vault / ".watchdog" / "Registry" / "entities.json").write_text(json.dumps(existing_entities))
+    (vault / ".watchdog" / "registry" / "entities.json").write_text(json.dumps(existing_entities))
 
     run(make_extraction(tmp_path), vault)
 
-    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     assert entities["alice-smith"]["contradictions"] == ["> [!contradiction] Note-only callout"]
 
 
@@ -373,7 +373,7 @@ def test_existing_entity_notes_section_preserved(tmp_path):
             "date_last_updated": "2024-01-01",
         }
     }
-    (vault / ".watchdog" / "Registry" / "entities.json").write_text(
+    (vault / ".watchdog" / "registry" / "entities.json").write_text(
         json.dumps(existing_entities)
     )
 
@@ -406,7 +406,7 @@ def test_analysis_accumulates_across_ingests(tmp_path):
             "date_last_updated": "2024-01-01",
         }
     }
-    (vault / ".watchdog" / "Registry" / "entities.json").write_text(
+    (vault / ".watchdog" / "registry" / "entities.json").write_text(
         json.dumps(existing_entities)
     )
 
@@ -442,7 +442,7 @@ def test_summary_replaced_on_reingest(tmp_path):
             "date_last_updated": "2024-01-01",
         }
     }
-    (vault / ".watchdog" / "Registry" / "entities.json").write_text(
+    (vault / ".watchdog" / "registry" / "entities.json").write_text(
         json.dumps(existing_entities)
     )
 
@@ -472,7 +472,7 @@ def test_merge_adds_new_alias(tmp_path):
             "date_last_updated": "2024-01-01",
         }
     }
-    reg_dir = vault / ".watchdog" / "Registry"
+    reg_dir = vault / ".watchdog" / "registry"
     (reg_dir / "entities.json").write_text(json.dumps(existing_entities))
 
     run(make_extraction(tmp_path), vault)
@@ -499,14 +499,14 @@ def test_merge_adds_sha_to_appears_in(tmp_path):
             "date_last_updated": "2024-01-01",
         }
     }
-    (vault / ".watchdog" / "Registry" / "entities.json").write_text(
+    (vault / ".watchdog" / "registry" / "entities.json").write_text(
         json.dumps(existing_entities)
     )
 
     run(make_extraction(tmp_path), vault)
 
     entities = json.loads(
-        (vault / ".watchdog" / "Registry" / "entities.json").read_text()
+        (vault / ".watchdog" / "registry" / "entities.json").read_text()
     )
     assert "prior-sha" in entities["alice-smith"]["appears_in"]
     assert "abc123" in entities["alice-smith"]["appears_in"]
@@ -540,14 +540,14 @@ def test_merge_deduplicates_roles(tmp_path):
             "date_last_updated": "2024-01-01",
         }
     }
-    (vault / ".watchdog" / "Registry" / "entities.json").write_text(
+    (vault / ".watchdog" / "registry" / "entities.json").write_text(
         json.dumps(existing_entities)
     )
 
     run(make_extraction(tmp_path), vault)
 
     entities = json.loads(
-        (vault / ".watchdog" / "Registry" / "entities.json").read_text()
+        (vault / ".watchdog" / "registry" / "entities.json").read_text()
     )
     director_roles = [
         r for r in entities["alice-smith"]["roles"]
@@ -568,7 +568,7 @@ def test_new_entity_persists_contradictions_to_registry(tmp_path):
     run(make_extraction(tmp_path, overrides), vault)
 
     entities = json.loads(
-        (vault / ".watchdog" / "Registry" / "entities.json").read_text()
+        (vault / ".watchdog" / "registry" / "entities.json").read_text()
     )
     assert entities["alice-smith"]["contradictions"] == [callout]
 
@@ -592,7 +592,7 @@ def test_merge_deduplicates_contradictions(tmp_path):
             "date_last_updated": "2024-01-01",
         }
     }
-    (vault / ".watchdog" / "Registry" / "entities.json").write_text(
+    (vault / ".watchdog" / "registry" / "entities.json").write_text(
         json.dumps(existing_entities)
     )
 
@@ -602,7 +602,7 @@ def test_merge_deduplicates_contradictions(tmp_path):
     run(make_extraction(tmp_path, overrides), vault)
 
     entities = json.loads(
-        (vault / ".watchdog" / "Registry" / "entities.json").read_text()
+        (vault / ".watchdog" / "registry" / "entities.json").read_text()
     )
     assert entities["alice-smith"]["contradictions"] == [callout, new_callout]
 
@@ -652,7 +652,7 @@ def test_documents_json_updated(tmp_path):
     run(make_extraction(tmp_path), vault)
 
     docs = json.loads(
-        (vault / ".watchdog" / "Registry" / "documents.json").read_text()
+        (vault / ".watchdog" / "registry" / "documents.json").read_text()
     )
     assert "abc123" in docs
     assert docs["abc123"]["filename"] == "test-doc.pdf"
@@ -668,7 +668,7 @@ def test_documents_json_persists_file_metadata(tmp_path):
     fm = {"author": "Jane Doe", "producer": "Acrobat Distiller", "created": "2023-01-15T12:00:00-05:00"}
     run(make_extraction(tmp_path, {"document": {"file_metadata": fm}}), vault)
 
-    docs = json.loads((vault / ".watchdog" / "Registry" / "documents.json").read_text())
+    docs = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
     assert docs["abc123"]["file_metadata"] == fm
 
     note = (vault / "documents" / "test-doc.md").read_text()
@@ -680,7 +680,7 @@ def test_documents_json_defaults_file_metadata_to_empty_dict_when_absent(tmp_pat
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
-    docs = json.loads((vault / ".watchdog" / "Registry" / "documents.json").read_text())
+    docs = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
     assert docs["abc123"]["file_metadata"] == {}
 
 
@@ -690,7 +690,7 @@ def test_entities_json_updated(tmp_path):
     run(make_extraction(tmp_path), vault)
 
     entities = json.loads(
-        (vault / ".watchdog" / "Registry" / "entities.json").read_text()
+        (vault / ".watchdog" / "registry" / "entities.json").read_text()
     )
     assert "alice-smith" in entities
     assert "acme-corp" in entities
@@ -702,7 +702,7 @@ def test_registry_json_counts_updated(tmp_path):
     run(make_extraction(tmp_path), vault)
 
     reg = json.loads(
-        (vault / ".watchdog" / "Registry" / "registry.json").read_text()
+        (vault / ".watchdog" / "registry" / "registry.json").read_text()
     )
     assert reg["document_count"] == 1
     assert reg["entity_count"] == 2
@@ -713,7 +713,7 @@ def test_ingest_log_appended(tmp_path):
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
-    log = (vault / ".watchdog" / "Registry" / "ingest.log").read_text()
+    log = (vault / ".watchdog" / "registry" / "ingest.log").read_text()
     assert "INGEST" in log
     assert "test-doc.pdf" in log
     assert "abc123" in log
@@ -726,7 +726,7 @@ def test_manifest_created_on_ingest(tmp_path):
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
-    manifest_path = vault / ".watchdog" / "Registry" / "manifest.json"
+    manifest_path = vault / ".watchdog" / "registry" / "manifest.json"
     assert manifest_path.exists()
     manifest = json.loads(manifest_path.read_text())
     assert "alice-smith" in manifest
@@ -739,7 +739,7 @@ def test_manifest_contains_only_lookup_fields(tmp_path):
     run(make_extraction(tmp_path), vault)
 
     manifest = json.loads(
-        (vault / ".watchdog" / "Registry" / "manifest.json").read_text()
+        (vault / ".watchdog" / "registry" / "manifest.json").read_text()
     )
     entry = manifest["alice-smith"]
     assert set(entry.keys()) == {"name", "type", "aliases", "note_path"}
@@ -755,7 +755,7 @@ def test_manifest_includes_aliases(tmp_path):
     run(make_extraction(tmp_path), vault)
 
     manifest = json.loads(
-        (vault / ".watchdog" / "Registry" / "manifest.json").read_text()
+        (vault / ".watchdog" / "registry" / "manifest.json").read_text()
     )
     assert "A. Smith" in manifest["alice-smith"]["aliases"]
 
@@ -766,7 +766,7 @@ def test_manifest_note_path_is_correct(tmp_path):
     run(make_extraction(tmp_path), vault)
 
     manifest = json.loads(
-        (vault / ".watchdog" / "Registry" / "manifest.json").read_text()
+        (vault / ".watchdog" / "registry" / "manifest.json").read_text()
     )
     assert manifest["alice-smith"]["note_path"] == "entities/person/alice-smith"
 
@@ -820,7 +820,7 @@ def test_missing_source_file_does_not_raise(tmp_path):
     run(make_extraction(tmp_path), vault)
 
     docs = json.loads(
-        (vault / ".watchdog" / "Registry" / "documents.json").read_text()
+        (vault / ".watchdog" / "registry" / "documents.json").read_text()
     )
     assert "abc123" in docs
 
@@ -873,7 +873,7 @@ def test_timeline_events_stored_in_registry(tmp_path):
     run(make_extraction(tmp_path), vault)
 
     entities = json.loads(
-        (vault / ".watchdog" / "Registry" / "entities.json").read_text()
+        (vault / ".watchdog" / "registry" / "entities.json").read_text()
     )
     events = entities["alice-smith"]["timeline_events"]
     assert len(events) == 2
@@ -901,14 +901,14 @@ def test_timeline_events_deduplicated(tmp_path):
             "date_last_updated": "2020-03-15",
         }
     }
-    (vault / ".watchdog" / "Registry" / "entities.json").write_text(
+    (vault / ".watchdog" / "registry" / "entities.json").write_text(
         json.dumps(existing_entities)
     )
 
     run(make_extraction(tmp_path), vault)
 
     entities = json.loads(
-        (vault / ".watchdog" / "Registry" / "entities.json").read_text()
+        (vault / ".watchdog" / "registry" / "entities.json").read_text()
     )
     # The "Appointed director" event already existed — should not be duplicated
     matching = [
@@ -948,7 +948,7 @@ def test_timeline_dedup_keeps_events_with_long_shared_opening(tmp_path):
             "date_last_updated": "2019-03-03",
         }
     }
-    (vault / ".watchdog" / "Registry" / "entities.json").write_text(
+    (vault / ".watchdog" / "registry" / "entities.json").write_text(
         json.dumps(existing_entities)
     )
 
@@ -963,7 +963,7 @@ def test_timeline_dedup_keeps_events_with_long_shared_opening(tmp_path):
     ]}), vault)
 
     entities = json.loads(
-        (vault / ".watchdog" / "Registry" / "entities.json").read_text()
+        (vault / ".watchdog" / "registry" / "entities.json").read_text()
     )
     matching = [
         e for e in entities["alice-smith"]["timeline_events"]
@@ -1313,7 +1313,7 @@ def test_two_sequential_runs_merge_shared_entity(tmp_path):
         "morgue_document_type": "press-release",
     }), vault)
 
-    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     alice = entities["alice-smith"]
     assert "sha-a" in alice["appears_in"]
     assert "sha-b" in alice["appears_in"]
@@ -1369,7 +1369,7 @@ def test_parallel_slug_variants_reconciled(tmp_path):
     run(_company_extraction(dir_b, "sha-b", "doc-b.pdf",
                             "ernst-young-inc", "Ernst and Young Inc"), vault)
 
-    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     assert "ernst-and-young-inc" in entities
     assert "ernst-young-inc" not in entities          # reconciled away, not a duplicate
     ey = entities["ernst-and-young-inc"]
@@ -1389,7 +1389,7 @@ def test_distinct_same_type_entities_not_merged(tmp_path):
     run(_company_extraction(dir_a, "sha-a", "doc-a.pdf", "acme-corp", "Acme Corp"), vault)
     run(_company_extraction(dir_b, "sha-b", "doc-b.pdf", "globex-corp", "Globex Corp"), vault)
 
-    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     assert "acme-corp" in entities
     assert "globex-corp" in entities
 
@@ -1427,7 +1427,7 @@ def test_reconcile_remaps_role_target_in_same_document(tmp_path):
         "morgue_document_type": "filing",
     }), vault)
 
-    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     # Person's role now points at the canonical slug, not the orphaned one.
     role = entities["jane-doe"]["roles"][0]
     assert role["target_id"] == "ernst-and-young-inc"
@@ -1457,7 +1457,7 @@ def test_reconcile_matches_against_existing_alias(tmp_path):
     run(_company_extraction(dir_b, "sha-b", "doc-b.pdf",
                             "international-business-machines", "International Business Machines"), vault)
 
-    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     assert "international-business-machines" not in entities   # reconciled onto the alias match
     assert "sha-b" in entities["ibm"]["appears_in"]
 
@@ -1481,7 +1481,7 @@ def test_reconcile_does_not_merge_across_types(tmp_path):
     }), vault)
     run(_company_extraction(dir_b, "sha-b", "doc-b.pdf", "morgan-company", "Morgan"), vault)
 
-    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     assert "morgan-person" in entities and "morgan-company" in entities  # type-scoped, not merged
 
 
@@ -1516,7 +1516,7 @@ def test_drifting_type_synonyms_reconcile_to_one_entity(tmp_path):
         "morgue_entity_id": "toronto-dominion-bank", "morgue_document_type": "annual-report",
     }), vault)
 
-    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     assert "td-bank" in entities
     assert "toronto-dominion-bank" not in entities        # reconciled, not forked (#335)
     td = entities["td-bank"]
@@ -1599,14 +1599,14 @@ def test_repair_retry_converges_after_crash_before_registry_persist(tmp_path, mo
         run(ex, vault)
 
     # Commit never landed: registries empty, but the entity note was written (partial write).
-    assert json.loads((vault / ".watchdog/Registry/entities.json").read_text()) == {}
+    assert json.loads((vault / ".watchdog/registry/entities.json").read_text()) == {}
     assert (vault / "entities" / "person" / "alice-smith.md").exists()
 
     # Repair retry (crash cleared) must converge.
     monkeypatch.setattr(Path, "rename", real_rename)
     run(_real_sha_extraction(tmp_path), vault)
 
-    entities = json.loads((vault / ".watchdog/Registry/entities.json").read_text())
+    entities = json.loads((vault / ".watchdog/registry/entities.json").read_text())
     assert _REAL_SHA in entities["alice-smith"]["appears_in"]
     note = (vault / "entities" / "person" / "alice-smith.md").read_text()
     assert wv._extract_section(note, "Analysis").count("via [[documents/test-doc") == 1
@@ -1637,7 +1637,7 @@ def test_repair_retry_converges_after_crash_during_derived_writes(tmp_path, monk
         run(ex, vault)
 
     # The registries committed before the crash.
-    entities = json.loads((vault / ".watchdog/Registry/entities.json").read_text())
+    entities = json.loads((vault / ".watchdog/registry/entities.json").read_text())
     assert _REAL_SHA in entities["alice-smith"]["appears_in"]
 
     # Repair retry with fragments healthy again must converge — no doubled blocks.
@@ -1672,7 +1672,7 @@ def test_registry_lock_uses_msvcrt_on_windows(tmp_path, monkeypatch):
     monkeypatch.setattr(wv, "_HAS_FLOCK", False)
     monkeypatch.setattr(wv, "_msvcrt", fake)
 
-    with wv._registry_lock(vault / ".watchdog" / "Registry"):
+    with wv._registry_lock(vault / ".watchdog" / "registry"):
         pass
 
     assert fake.calls == [(fake.LK_LOCK, 1), (fake.LK_UNLCK, 1)]
@@ -1685,10 +1685,10 @@ def test_registry_lock_is_noop_when_neither_locking_mechanism_available(tmp_path
     monkeypatch.setattr(wv, "_HAS_FLOCK", False)
     monkeypatch.setattr(wv, "_msvcrt", None)
 
-    with wv._registry_lock(vault / ".watchdog" / "Registry"):
+    with wv._registry_lock(vault / ".watchdog" / "registry"):
         pass  # must not raise
 
-    assert (vault / ".watchdog" / "Registry" / ".write-lock").exists()
+    assert (vault / ".watchdog" / "registry" / ".write-lock").exists()
 
 
 def test_drop_analysis_entry_replaces_only_matching_document():

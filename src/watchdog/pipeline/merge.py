@@ -191,7 +191,7 @@ def run(vault: Path, sha256: str) -> dict:
 
     # New-vs-updated split, computed against the registry *before* post-flight writes.
     registry: dict = {}
-    reg_path = vault / ".watchdog" / "Registry" / "entities.json"
+    reg_path = vault / ".watchdog" / "registry" / "entities.json"
     if reg_path.exists():
         try:
             registry = json.loads(reg_path.read_text(encoding="utf-8"))

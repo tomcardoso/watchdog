@@ -10,7 +10,7 @@ from watchdog.pipeline.write_entity import run
 
 def make_vault(tmp_path: Path) -> Path:
     vault = tmp_path / "vault"
-    reg_dir = vault / ".watchdog" / "Registry"
+    reg_dir = vault / ".watchdog" / "registry"
     reg_dir.mkdir(parents=True)
     (vault / "entities" / "person").mkdir(parents=True)
     (vault / "documents").mkdir()
@@ -100,7 +100,7 @@ def test_timeline_events_replaced_in_registry(tmp_path):
     run(make_extraction(tmp_path), vault)
 
     entities = json.loads(
-        (vault / ".watchdog" / "Registry" / "entities.json").read_text()
+        (vault / ".watchdog" / "registry" / "entities.json").read_text()
     )
     events = entities["alice-smith"]["timeline_events"]
     dates = [e["date"] for e in events]

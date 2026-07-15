@@ -23,10 +23,10 @@ Read the lightweight index files first — these are small and give you a comple
 
 ```bash
 # Entity index: id, name, type, aliases, note_path
-cat .watchdog/Registry/manifest.json
+cat .watchdog/registry/manifest.json
 
 # Document index: sha256 → title, document_type, entities_extracted, page_count, document_note
-cat .watchdog/Registry/documents.json
+cat .watchdog/registry/documents.json
 ```
 
 Read all briefing notes (these are small and inform which angles are already active):

@@ -7,7 +7,7 @@ is the sole caller; this module only knows the batch's own lifecycle (state, sub
 collect) — it never touches the vault or calls postflight/write_vault, matching the existing
 preflight/postflight separation of concerns.
 
-State is a single `.watchdog/Registry/batch-pending.json` per vault — only one batch is ever in
+State is a single `.watchdog/registry/batch-pending.json` per vault — only one batch is ever in
 flight at a time (mirroring `has_pending_finalization`'s "resolve the pending thing first"
 precedent) — durable across interruption, mirroring the research URL worklist (D46).
 """
@@ -19,7 +19,7 @@ from pathlib import Path
 from watchdog import model_client
 from watchdog.pipeline import schemas
 
-STATE_REL = Path(".watchdog") / "Registry" / "batch-pending.json"
+STATE_REL = Path(".watchdog") / "registry" / "batch-pending.json"
 
 
 def state_path(vault: Path) -> Path:

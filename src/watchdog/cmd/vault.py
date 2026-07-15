@@ -317,7 +317,7 @@ def cmd_new(args) -> None:
         "_INCOMING",
         "_CONTEXT",
         "morgue",
-        ".watchdog/Registry",
+        ".watchdog/registry",
         ".watchdog/queue",
         ".watchdog/staging",
         ".watchdog/timeline",
@@ -335,17 +335,17 @@ def cmd_new(args) -> None:
     ]:
         (vault / d).mkdir(parents=True)
 
-    (vault / ".watchdog" / "Registry" / "documents.json").write_text("{}\n")
-    (vault / ".watchdog" / "Registry" / "entities.json").write_text("{}\n")
-    (vault / ".watchdog" / "Registry" / "manifest.json").write_text("{}\n")
-    (vault / ".watchdog" / "Registry" / "registry.json").write_text(
+    (vault / ".watchdog" / "registry" / "documents.json").write_text("{}\n")
+    (vault / ".watchdog" / "registry" / "entities.json").write_text("{}\n")
+    (vault / ".watchdog" / "registry" / "manifest.json").write_text("{}\n")
+    (vault / ".watchdog" / "registry" / "registry.json").write_text(
         json.dumps(
             {"schema_version": "1", "created_at": now, "last_updated": now,
              "document_count": 0, "entity_count": 0},
             indent=2,
         ) + "\n"
     )
-    (vault / ".watchdog" / "Registry" / "ingest.log").write_text("")
+    (vault / ".watchdog" / "registry" / "ingest.log").write_text("")
 
     (vault / ".obsidian" / "app.json").write_text(
         json.dumps(
@@ -712,7 +712,7 @@ def cmd_delete(args) -> None:
     if args.purge and vault.exists():
         if not (vault / ".watchdog").exists():
             sys.exit(f"Error: {vault} does not look like a watchdog vault — aborting purge.")
-        reg_dir = vault / ".watchdog" / "Registry"
+        reg_dir = vault / ".watchdog" / "registry"
         # Backing up the whole vault would defeat the purpose of --purge, so this is
         # registry data only — and it lives inside the vault being deleted, so it's a
         # hedge against a partial failure, not a way to undo the purge (#270).
@@ -1027,8 +1027,8 @@ def cmd_status(args) -> None:
         print(f"\n  {_DIM}No registry found — run {_RESET}{_CYAN}watchdog chew{_RESET}{_DIM} then {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} to begin.{_RESET}\n")
         return
 
-    docs_file = vault / ".watchdog" / "Registry" / "documents.json"
-    ents_file = vault / ".watchdog" / "Registry" / "entities.json"
+    docs_file = vault / ".watchdog" / "registry" / "documents.json"
+    ents_file = vault / ".watchdog" / "registry" / "entities.json"
     try:
         docs_data = json.loads(docs_file.read_text()) if docs_file.exists() else {}
         ents_data = json.loads(ents_file.read_text()) if ents_file.exists() else {}
@@ -1258,7 +1258,7 @@ def cmd_search_batch(args, vault: Path, batch_file: str) -> None:
     if not terms:
         sys.exit(f"Error: no terms found in {batch_file}")
 
-    manifest_path = vault / ".watchdog" / "Registry" / "manifest.json"
+    manifest_path = vault / ".watchdog" / "registry" / "manifest.json"
     manifest = {}
     if manifest_path.exists():
         try:
@@ -1349,7 +1349,7 @@ def cmd_search_everywhere(args) -> None:
             continue
         vault = Path(info["path"])
 
-        manifest_path = vault / ".watchdog" / "Registry" / "manifest.json"
+        manifest_path = vault / ".watchdog" / "registry" / "manifest.json"
         manifest = {}
         if manifest_path.exists():
             try:

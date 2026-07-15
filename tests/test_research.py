@@ -305,7 +305,7 @@ def test_retain_pending_empty_deletes_worklist(tmp_path):
 
 def test_seen_urls_unions_documents_and_incoming_sidecars(tmp_path):
     vault = tmp_path / "v"
-    reg = vault / ".watchdog" / "Registry"
+    reg = vault / ".watchdog" / "registry"
     reg.mkdir(parents=True)
     (reg / "documents.json").write_text(json.dumps({
         "sha1": {"source": "https://doc.example/ingested"},

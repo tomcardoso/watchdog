@@ -50,7 +50,7 @@ def test_build_bundle_gates_on_project_wide_appears_in(tmp_path):
     an entity in 2 documents total is selected even if only touched once this run; an entity in
     1 document total is skipped even when touched this run."""
     vault = make_vault(tmp_path)
-    reg_path = vault / ".watchdog" / "Registry" / "entities.json"
+    reg_path = vault / ".watchdog" / "registry" / "entities.json"
     reg = {
         "recurring-co": {"id": "recurring-co", "name": "Recurring Co", "type": "Company",
                          "note_path": "entities/company/recurring-co",
@@ -148,5 +148,5 @@ def test_apply_bundle_writes_registry_once_for_multiple(tmp_path):
     outcome = apply_bundle(result, vault)
 
     assert set(outcome["applied"]) == {"alice-smith", "acme-corp"}
-    reg = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    reg = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     assert "alice-smith" in reg and "acme-corp" in reg

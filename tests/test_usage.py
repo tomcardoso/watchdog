@@ -25,7 +25,7 @@ def _call(task="extract", filename="doc.pdf", detail="pages 1–1", model="claud
 def _build_vault(tmp_path: Path, *, runs: dict[str, list[dict]], documents=None) -> Path:
     """A vault with one usage-<stem>.json per entry in `runs` (stem -> list of call dicts)."""
     vault = tmp_path / "vault"
-    registry = vault / ".watchdog" / "Registry"
+    registry = vault / ".watchdog" / "registry"
     registry.mkdir(parents=True)
     for stem, calls in runs.items():
         (registry / f"{stem}.json").write_text(json.dumps({"calls": calls}), encoding="utf-8")
@@ -40,7 +40,7 @@ def _args(project=None, all_runs=False, run=None):
 
 def test_cmd_usage_no_runs_yet(tmp_path, monkeypatch):
     vault = tmp_path / "vault"
-    (vault / ".watchdog" / "Registry").mkdir(parents=True)
+    (vault / ".watchdog" / "registry").mkdir(parents=True)
     monkeypatch.chdir(vault)
     with pytest.raises(SystemExit, match="no ingest runs recorded"):
         cmd_usage(_args())

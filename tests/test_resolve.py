@@ -8,7 +8,7 @@ from watchdog.pipeline import resolutions
 
 
 def _vault(tmp_path: Path) -> Path:
-    (tmp_path / ".watchdog" / "Registry").mkdir(parents=True)
+    (tmp_path / ".watchdog" / "registry").mkdir(parents=True)
     return tmp_path
 
 

@@ -127,11 +127,11 @@ def _usage_totals(records: list[dict]) -> dict:
 
 def usage_files(vault: Path) -> list[Path]:
     """Every persisted `usage-<ts>.json` for this vault, oldest first (#319). Checks both the
-    current location (`.watchdog/Registry/usage/`) and the pre-move flat location
-    (`.watchdog/Registry/`) directly, so a vault ingested before that reorganization doesn't
+    current location (`.watchdog/registry/usage/`) and the pre-move flat location
+    (`.watchdog/registry/`) directly, so a vault ingested before that reorganization doesn't
     lose its older history — filenames sort chronologically regardless of which directory
     they're in, so the two sets merge correctly once combined."""
-    reg_dir = vault / ".watchdog" / "Registry"
+    reg_dir = vault / ".watchdog" / "registry"
     usage_dir = reg_dir / "usage"
     files = list(usage_dir.glob("usage-*.json")) if usage_dir.exists() else []
     files += list(reg_dir.glob("usage-*.json")) if reg_dir.exists() else []   # legacy location
@@ -140,16 +140,16 @@ def usage_files(vault: Path) -> list[Path]:
 
 def _write_usage(vault: Path, records: list[dict]) -> str | None:
     """Persist this run's per-call token/cost telemetry to
-    `.watchdog/Registry/usage/usage-<ts>.json` (A2, relocated out of the flat Registry dir
+    `.watchdog/registry/usage/usage-<ts>.json` (A2, relocated out of the flat Registry dir
     in #319 since this one accumulates a new file every run, unlike the fixed-size registries
     it used to sit alongside). Returns the vault-relative path, or None if the run made no
     model calls (e.g. an all-skipped batch)."""
     if not records:
         return None
-    usage_dir = vault / ".watchdog" / "Registry" / "usage"
+    usage_dir = vault / ".watchdog" / "registry" / "usage"
     usage_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    relpath = f".watchdog/Registry/usage/usage-{ts}.json"
+    relpath = f".watchdog/registry/usage/usage-{ts}.json"
     (vault / relpath).write_text(
         json.dumps({"calls": records, "totals": _usage_totals(records)}, ensure_ascii=False, indent=2),
         encoding="utf-8")
@@ -184,7 +184,7 @@ _GRAPH_PALETTE = [0x4C9A2A, 0xC0392B, 0x2980B9, 0x8E44AD, 0xD35400,
 
 
 def _log(vault: Path, msg: str) -> None:
-    log = vault / ".watchdog" / "Registry" / "ingest.log"
+    log = vault / ".watchdog" / "registry" / "ingest.log"
     try:
         log.parent.mkdir(parents=True, exist_ok=True)
         ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -870,7 +870,7 @@ def _load_entity_names(vault: Path) -> dict:
     references back to display names deterministically (#342) — the model isn't reliable
     across all backends about avoiding the internal kebab-case id in prose. Tolerates a
     missing or unparseable manifest (returns {}, so callers just pass items through)."""
-    manifest_file = vault / ".watchdog" / "Registry" / "manifest.json"
+    manifest_file = vault / ".watchdog" / "registry" / "manifest.json"
     if not manifest_file.exists():
         return {}
     try:
@@ -1249,7 +1249,7 @@ def pending_finalization(vault: Path) -> dict:
     if q.exists():
         try:
             queue = json.loads(q.read_text(encoding="utf-8"))
-            reg_path = vault / ".watchdog" / "Registry" / "entities.json"
+            reg_path = vault / ".watchdog" / "registry" / "entities.json"
             registry = json.loads(reg_path.read_text(encoding="utf-8")) if reg_path.exists() else {}
             entities = sum(1 for eid in queue
                            if len(registry.get(eid, {}).get("appears_in", [])) >= 2)

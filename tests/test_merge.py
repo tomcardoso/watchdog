@@ -158,7 +158,7 @@ def test_run_splits_new_vs_updated_against_registry(tmp_path):
     vault = tmp_path / "vault"
     tmp = vault / ".watchdog" / "tmp"
     tmp.mkdir(parents=True)
-    reg = vault / ".watchdog" / "Registry"
+    reg = vault / ".watchdog" / "registry"
     reg.mkdir(parents=True)
     reg.joinpath("entities.json").write_text(json.dumps({"a": {"id": "a", "name": "A"}}))
 

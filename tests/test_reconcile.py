@@ -172,7 +172,7 @@ def test_apply_merges_folds_confirmed_duplicate(tmp_path):
 
     assert remap == {"a-smith-duplicate": "alice-smith"}
     assert applied[0]["keep_id"] == "alice-smith"
-    reg = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    reg = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     assert "a-smith-duplicate" not in reg          # folded away
     assert "sha-b" in reg["alice-smith"]["appears_in"]   # its document carried over
 
@@ -186,7 +186,7 @@ def test_apply_merges_skips_bad_pair_index_with_warning(tmp_path):
     assert applied == [] and remap == {}
     assert warnings and "not in the candidate list" in warnings[0]
     # nothing was merged
-    reg = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    reg = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     assert "a-smith-duplicate" in reg
 
 
@@ -214,7 +214,7 @@ def test_apply_merges_chains_through_prior_merge(tmp_path):
     ]
     applied, remap = reconcile._apply_merges(vault, merges, pairs, warn=lambda m: None)
     assert len(applied) == 2
-    reg = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    reg = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     assert "bob-jones" not in reg and "a-smith-duplicate" not in reg
 
 

@@ -138,7 +138,7 @@ def test_write_vault_persists_contradictions_findable_by_leads(tmp_path):
     write_vault.run(make_extraction(tmp_path, overrides), vault)
 
     entities_reg = json.loads(
-        (vault / ".watchdog" / "Registry" / "entities.json").read_text()
+        (vault / ".watchdog" / "registry" / "entities.json").read_text()
     )
     data = leads.find_leads(entities_reg)
     assert len(data["contradictions"]) == 1
@@ -187,7 +187,7 @@ def test_write_leads_overwrites_not_appends(tmp_path):
 
 def _vault(tmp_path, registry) -> Path:
     vault = tmp_path / "vault"
-    reg = vault / ".watchdog" / "Registry"
+    reg = vault / ".watchdog" / "registry"
     reg.mkdir(parents=True)
     (reg / "entities.json").write_text(json.dumps(registry), encoding="utf-8")
     return vault

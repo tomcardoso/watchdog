@@ -35,7 +35,7 @@ Read the vault's open state to ground the research in real gaps — do not start
    ```bash
    watchdog leads
    ```
-3. **`.watchdog/Registry/manifest.json`** — the entity directory (`id`, `name`, `type`, `aliases`). Use it to know who/what is already in the vault, so you research *around* the known graph and avoid re-pulling what is already documented.
+3. **`.watchdog/registry/manifest.json`** — the entity directory (`id`, `name`, `type`, `aliases`). Use it to know who/what is already in the vault, so you research *around* the known graph and avoid re-pulling what is already documented.
 4. **`watchdog research-seen`** — the URLs the vault has already captured (downloaded or ingested) in prior cycles. Run it and hold the list:
    ```bash
    watchdog research-seen
