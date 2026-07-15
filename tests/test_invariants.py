@@ -42,24 +42,20 @@ from watchdog import model_client as mc
 from watchdog import skills_catalog as sc
 from watchdog.pipeline import orchestrate, preprocess, research
 
-from tests.test_write_vault import make_vault
-
 _SRC = Path(__file__).resolve().parents[1] / "src" / "watchdog"
 
 
 # ── I1 — deterministic code writes; the model only reasons ───────────────────
 
-def test_I1_stamp_document_overrides_every_model_lied_field(tmp_path):
+def test_I1_stamp_document_overrides_every_model_lied_field():
     """`_stamp_document` is the single place identity/provenance/derived fields are set. Build a
     fake extraction where the model lies about every field it stamps, and confirm the pipeline's
     own values win on all of them — sha256, filename, original_path, page_count, record_skill,
     record_skill_hash, extract_model, extract_effort, source/obtained (from the sidecar), and
     the derived morgue_document_type/morgue_entity_id."""
-    vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "real.pdf.yml").write_text(
-        "source: FOI A-2026-001\nobtained: 2026-01-02\n", encoding="utf-8")
     pf = {"filename": "real.pdf", "original_path": "_INCOMING/real.pdf",
-          "page_count": 7, "pages": [{}]}
+          "page_count": 7, "pages": [{}],
+          "sidecar": "source: FOI A-2026-001\nobtained: 2026-01-02\n"}
 
     lied_extraction = {
         "document": {
@@ -81,7 +77,7 @@ def test_I1_stamp_document_overrides_every_model_lied_field(tmp_path):
 
     orchestrate._stamp_document(
         lied_extraction, sha="realsha256", pf=pf, skill_label="court-documents.md",
-        vault=vault, skill_text="SKILL BODY", extract_model="sonnet", extract_effort="low",
+        skill_text="SKILL BODY", extract_model="sonnet", extract_effort="low",
     )
 
     d = lied_extraction["document"]

@@ -141,7 +141,7 @@ shell-co-annual-report-2023.pdf
 shell-co-annual-report-2023.yml
 ```
 
-The sidecar can record where the document came from and anything you want Watchdog to know about it:
+The sidecar can record where the document came from and any note you want attached to it, using these fields:
 
 ```yaml
 source: https://www.sedar.com/filing/xyz
@@ -149,7 +149,9 @@ obtained: 2026-06-05
 notes: Check the director change on page 12.
 ```
 
-This context is merged into the document record and preserved through ingest. Watchdog also writes sidecars of its own: files downloaded by `watchdog fetch` and web research arrive in `_INCOMING/` with a provenance sidecar already attached.
+Any other field is dropped — a sidecar isn't a place to invent your own metadata schema. This context is merged into the document record and preserved through ingest. Watchdog also writes sidecars of its own: files downloaded by `watchdog fetch` and web research arrive in `_INCOMING/` with a provenance sidecar already attached.
+
+Edit a sidecar before running `chew`: chew reads it once, and the file is gone afterward, so an edit made between `chew` and `ingest` has no effect. Re-run `chew` if you need to change one.
 
 A sidecar can also pin that one document's record skill:
 

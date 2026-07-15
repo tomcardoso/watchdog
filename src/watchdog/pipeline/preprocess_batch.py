@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from watchdog.cmd.live import LiveRegion
+from watchdog.pipeline import sidecar
 from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
 
 DEFAULT_FILE_TIMEOUT = 600
@@ -437,6 +438,11 @@ def _run_ingest_inner(
             # Settle this file's row: print its result above the live region, clearing the in-flight row.
             live.finish(str(path), f"  {status}  {_BOLD}{rel}{_RESET}{label_str}{garb_str}")
 
+            # A sidecar sits beside `path` under the original filename, whatever `path`'s own
+            # outcome — read here, while it still does, before `path` (and possibly the sidecar)
+            # moves out from under this name (D121).
+            sidecar_path = path.with_name(path.name + ".yml")
+
             if is_err:
                 failed_dir = incoming / "_FAILED"
                 failed_dir.mkdir(exist_ok=True)
@@ -444,6 +450,11 @@ def _run_ingest_inner(
                     path.rename(failed_dir / path.name)
                 except OSError:
                     pass
+                if sidecar_path.exists():
+                    try:
+                        sidecar_path.rename(failed_dir / sidecar_path.name)
+                    except OSError:
+                        pass
                 live.note(f"       {_YELLOW}→ _INCOMING/_FAILED/{_RESET}  {_DIM}{result['error'][:80]}{_RESET}")
             elif is_empty:
                 skipped += 1
@@ -453,6 +464,11 @@ def _run_ingest_inner(
                     path.rename(skipped_dir / path.name)
                 except OSError:
                     pass
+                if sidecar_path.exists():
+                    try:
+                        sidecar_path.rename(skipped_dir / sidecar_path.name)
+                    except OSError:
+                        pass
                 live.note(f"       {_DIM}→ _INCOMING/_SKIPPED/  no text content extracted{_RESET}")
             else:
                 sha256 = result.get("sha256", "")
@@ -467,6 +483,18 @@ def _run_ingest_inner(
                         pass
                     result["near_dup"] = _compute_near_dup(result, vault)
                     result["document_type"] = None
+                    # Filter to the allowlisted fields, embed the clean copy in the queue JSON,
+                    # and drop the original — nothing reads a sidecar off disk past this point
+                    # (D121). A dropped (non-allowlisted) key is worth a note; it silently never
+                    # reaches a model prompt or a permanent vault write otherwise.
+                    clean_sidecar, dropped = sidecar.filter_and_render(
+                        sidecar_path.read_text(encoding="utf-8") if sidecar_path.exists() else None
+                    )
+                    result["sidecar"] = clean_sidecar
+                    if dropped:
+                        live.note(f"       {_YELLOW}⚠{_RESET}  {_DIM}sidecar field(s) not recognized, dropped: "
+                                  f"{', '.join(dropped)}{_RESET}")
+                    sidecar_path.unlink(missing_ok=True)
                     (queue / f"{sha256}.json").write_text(
                         json.dumps(result, ensure_ascii=False)
                     )

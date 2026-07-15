@@ -64,6 +64,9 @@ def run(vault: Path, sha256: str) -> dict:
         # the stamped document (orchestrate._stamp_document).
         "file_metadata": queue.get("file_metadata", {}),
         "processing": queue.get("metadata", {}),
+        # Already filtered/allowlisted at chew time (pipeline/sidecar.py) — raw text or None,
+        # never read from _INCOMING again past this point (D121).
+        "sidecar": queue.get("sidecar"),
     }
 
 

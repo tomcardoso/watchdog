@@ -801,40 +801,47 @@ def test_staging_dir_pruned_after_move_to_morgue(tmp_path):
     assert not staging_dir.exists()
 
 
-def test_sidecar_moved_with_source(tmp_path):
+def test_sidecar_written_to_morgue_from_extraction(tmp_path):
+    """No sidecar file survives past chew (D121) — it's filtered into the queue JSON there and
+    carried onto doc["sidecar"] through extraction. write_vault re-materializes it in morgue
+    from that text, not by moving a file off disk."""
     vault = make_vault(tmp_path)
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
-    sidecar = vault / "_INCOMING" / "test-doc.pdf.yml"
-    sidecar.write_text("source: SEDAR\n")
+
+    run(make_extraction(tmp_path, {"document": {"sidecar": "source: SEDAR\n"}}), vault)
+
+    written = vault / "morgue" / "acme-corp" / "annual-report" / "test-doc.pdf.yml"
+    assert written.exists()
+    assert written.read_text() == "source: SEDAR\n"
+
+
+def test_no_sidecar_file_written_when_extraction_has_none(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
 
     run(make_extraction(tmp_path), vault)
 
-    assert not sidecar.exists()
-    assert (
+    assert not (
         vault / "morgue" / "acme-corp" / "annual-report" / "test-doc.pdf.yml"
     ).exists()
 
 
-def test_sidecar_moved_with_source_from_staging(tmp_path):
-    """The realistic post-chew case: chew moves the source into .watchdog/staging/<sha>/ but
-    deliberately leaves the sidecar behind in _INCOMING/ (orchestrate._read_sidecar reads it
-    from there through ingest) — the morgue move must still find it by filename, not by
-    looking next to the now-relocated source."""
+def test_sidecar_written_to_morgue_regardless_of_staging_source(tmp_path):
+    """Re-guards the #396 bug: the morgue sidecar write must not depend on where the source file
+    currently sits (staging vs. _INCOMING/), only on doc["sidecar"]."""
     vault = make_vault(tmp_path)
     staging_dir = vault / ".watchdog" / "staging" / "abc123"
     staging_dir.mkdir(parents=True)
     (staging_dir / "test-doc.pdf").write_text("dummy")
-    sidecar = vault / "_INCOMING" / "test-doc.pdf.yml"
-    sidecar.write_text("source: SEDAR\n")
 
     run(make_extraction(tmp_path, {"document": {
         "original_path": ".watchdog/staging/abc123/test-doc.pdf",
+        "sidecar": "source: SEDAR\n",
     }}), vault)
 
-    assert not sidecar.exists()
-    assert (
-        vault / "morgue" / "acme-corp" / "annual-report" / "test-doc.pdf.yml"
-    ).exists()
+    written = vault / "morgue" / "acme-corp" / "annual-report" / "test-doc.pdf.yml"
+    assert written.exists()
+    assert written.read_text() == "source: SEDAR\n"
 
 
 def test_missing_source_file_does_not_raise(tmp_path):

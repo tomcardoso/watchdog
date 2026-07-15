@@ -17,13 +17,17 @@ from tests.test_write_vault import make_vault
 _flat = model_client._flatten_prompt   # extract/section prompts are content-block lists (A1)
 
 
-def _queue_doc(vault, sha="abc123", filename="test-doc.pdf", text="Acme Corp filed an annual report."):
+def _queue_doc(vault, sha="abc123", filename="test-doc.pdf", text="Acme Corp filed an annual report.",
+              sidecar=None):
+    """`sidecar`, if given, stands in for what chew would already have filtered into the queue
+    JSON (pipeline/sidecar.py, D121) — pass already-allowlisted text, not a raw sidecar file."""
     qdir = vault / ".watchdog" / "queue"
     qdir.mkdir(parents=True, exist_ok=True)
     (qdir / f"{sha}.json").write_text(json.dumps({
         "sha256": sha, "filename": filename, "source_path": f"_INCOMING/{filename}",
         "page_count": 1, "pages": [{"page": 1, "markdown": text}],
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
+        "sidecar": sidecar,
     }))
     (vault / "_INCOMING" / filename).write_text("dummy source bytes")
 
@@ -255,13 +259,12 @@ def test_select_kept_never_empties_a_date_on_all_invalid_groups(tmp_path):
     assert kept == events   # nothing placed → nothing dropped → all survive
 
 
-def test_stamp_document_overwrites_model_identity(tmp_path):
+def test_stamp_document_overwrites_model_identity():
     """Identity fields are stamped from Python, overriding whatever the model emitted."""
-    vault = make_vault(tmp_path)
     pf = {"filename": "real.pdf", "original_path": "_INCOMING/real.pdf",
           "page_count": 7, "pages": [{}]}
     ext = {"document": {"sha256": "WRONGSHA", "filename": "wrong.pdf", "page_count": 999}}
-    orchestrate._stamp_document(ext, sha="realsha", pf=pf, skill_label="court-documents", vault=vault)
+    orchestrate._stamp_document(ext, sha="realsha", pf=pf, skill_label="court-documents")
     d = ext["document"]
     assert d["sha256"] == "realsha"
     assert d["filename"] == "real.pdf"
@@ -270,51 +273,46 @@ def test_stamp_document_overwrites_model_identity(tmp_path):
     assert d["record_skill"] == "court-documents"
 
 
-def test_stamp_document_derives_morgue_type_from_document_type(tmp_path):
+def test_stamp_document_derives_morgue_type_from_document_type():
     """morgue_document_type is slugify(document_type), derived in Python — the model's value
     (if any) is overridden."""
-    vault = make_vault(tmp_path)
     pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}]}
     ext = {"document": {"document_type": "CCAA Initial Order"}, "morgue_document_type": "WRONG"}
-    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="court-documents", vault=vault)
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="court-documents")
     assert ext["morgue_document_type"] == "ccaa-initial-order"
 
 
-def test_stamp_document_morgue_type_falls_back_when_no_type(tmp_path):
-    vault = make_vault(tmp_path)
+def test_stamp_document_morgue_type_falls_back_when_no_type():
     pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}]}
     ext = {"document": {}}
-    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault)
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records")
     assert ext["morgue_document_type"] == "document"
 
 
-def test_stamp_document_slugifies_morgue_entity_id_with_spaces(tmp_path):
+def test_stamp_document_slugifies_morgue_entity_id_with_spaces():
     """morgue_entity_id is used raw as a morgue path segment (write_vault) — a model value with
     spaces must be slugified so it doesn't produce a broken morgue directory (#262)."""
-    vault = make_vault(tmp_path)
     pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}]}
     ext = {"document": {}, "morgue_entity_id": "Acme Corp"}
-    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault)
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records")
     assert ext["morgue_entity_id"] == "acme-corp"
 
 
-def test_stamp_document_slugifies_morgue_entity_id_with_embedded_slash(tmp_path):
+def test_stamp_document_slugifies_morgue_entity_id_with_embedded_slash():
     """An embedded path separator (e.g. from the model nesting a subsidiary name) must not
     survive into the morgue path segment (#262)."""
-    vault = make_vault(tmp_path)
     pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}]}
     ext = {"document": {}, "morgue_entity_id": "acme/subsidiary"}
-    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault)
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records")
     assert "/" not in ext["morgue_entity_id"]
 
 
-def test_stamp_document_records_extraction_provenance(tmp_path):
+def test_stamp_document_records_extraction_provenance():
     """record_skill_hash/extract_model/extract_effort (#268) are stamped alongside record_skill
     so a vault can later tell which skill content/model/effort produced a given extraction."""
-    vault = make_vault(tmp_path)
     pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}]}
     ext = {"document": {}}
-    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault,
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records",
                                 skill_text="SKILL BODY", extract_model="sonnet", extract_effort="low")
     d = ext["document"]
     assert d["extract_model"] == "claude-sonnet-4-6"   # resolved from the tier name
@@ -322,88 +320,62 @@ def test_stamp_document_records_extraction_provenance(tmp_path):
     assert d["record_skill_hash"] == hashlib.sha256(b"SKILL BODY").hexdigest()[:12]
 
 
-def test_stamp_document_provenance_defaults_to_none_when_not_supplied(tmp_path):
+def test_stamp_document_provenance_defaults_to_none_when_not_supplied():
     """The three new params are optional, so existing call sites/tests that omit them keep
     working — the fields are simply stamped null rather than left off the document."""
-    vault = make_vault(tmp_path)
     pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}]}
     ext = {"document": {}}
-    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault)
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records")
     d = ext["document"]
     assert d["record_skill_hash"] is None
     assert d["extract_model"] is None
     assert d["extract_effort"] is None
 
 
-def test_stamp_document_stamps_file_metadata_from_preflight(tmp_path):
+def test_stamp_document_stamps_file_metadata_from_preflight():
     """file_metadata (#369) is stamped from pf, the values the pipeline already holds — never
     asked of the model — same posture as sha256/filename above it."""
-    vault = make_vault(tmp_path)
     fm = {"author": "Jane Doe", "producer": "Acrobat Distiller"}
     pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}],
           "file_metadata": fm}
     ext = {"document": {}}
-    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault)
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records")
     assert ext["document"]["file_metadata"] == fm
 
 
-def test_stamp_document_defaults_file_metadata_to_empty_dict(tmp_path):
-    vault = make_vault(tmp_path)
+def test_stamp_document_defaults_file_metadata_to_empty_dict():
     pf = {"filename": "f.pdf", "original_path": None, "page_count": 1, "pages": [{}]}
     ext = {"document": {}}
-    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records", vault=vault)
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records")
     assert ext["document"]["file_metadata"] == {}
 
 
-def test_sidecar_provenance_parsed_in_python(tmp_path):
-    """source/obtained come from the .yml sidecar (parsed in Python), not the model — and an
-    unquoted ISO date is coerced back to a string rather than a date object."""
-    vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "doc.pdf.yml").write_text(
-        "source: https://sedar.com/x\nobtained: 2026-06-05\nnotes: check p.12\n", encoding="utf-8")
-    assert orchestrate._sidecar_provenance(vault, "doc.pdf") == {
-        "source": "https://sedar.com/x", "obtained": "2026-06-05"}
-
-
-def test_sidecar_provenance_absent_or_malformed(tmp_path):
-    vault = make_vault(tmp_path)
-    assert orchestrate._sidecar_provenance(vault, "missing.pdf") == {}
-    (vault / "_INCOMING" / "bad.pdf.yml").write_text("just a string, not a map\n", encoding="utf-8")
-    assert orchestrate._sidecar_provenance(vault, "bad.pdf") == {}
-
-
-def test_sidecar_skill_resolves_known_name(tmp_path):
-    vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "doc.pdf.yml").write_text("skill: bankruptcy\n", encoding="utf-8")
-    resolved = orchestrate._sidecar_skill(vault, "doc.pdf")
+def test_sidecar_skill_resolves_known_name():
+    """The sidecar text handed in here is already filtered (pipeline/sidecar.py, D121) — chew's
+    own filtering is tested separately in tests/test_sidecar.py."""
+    resolved = orchestrate._sidecar_skill("skill: bankruptcy\n", filename="doc.pdf")
     assert resolved is not None and Path(resolved).stem == "bankruptcy"
 
 
-def test_sidecar_skill_absent_or_malformed(tmp_path):
-    vault = make_vault(tmp_path)
-    assert orchestrate._sidecar_skill(vault, "missing.pdf") is None
-    (vault / "_INCOMING" / "bad.pdf.yml").write_text("just a string, not a map\n", encoding="utf-8")
-    assert orchestrate._sidecar_skill(vault, "bad.pdf") is None
-    (vault / "_INCOMING" / "nokey.pdf.yml").write_text("source: https://x\n", encoding="utf-8")
-    assert orchestrate._sidecar_skill(vault, "nokey.pdf") is None
+def test_sidecar_skill_absent_or_malformed():
+    assert orchestrate._sidecar_skill(None, filename="missing.pdf") is None
+    assert orchestrate._sidecar_skill("just a string, not a map\n", filename="bad.pdf") is None
+    assert orchestrate._sidecar_skill("source: https://x\n", filename="nokey.pdf") is None
 
 
-def test_sidecar_skill_unknown_name_warns_and_falls_back(tmp_path, capsys):
-    vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "doc.pdf.yml").write_text("skill: not-a-real-skill\n", encoding="utf-8")
-    assert orchestrate._sidecar_skill(vault, "doc.pdf") is None
+def test_sidecar_skill_unknown_name_warns_and_falls_back(capsys):
+    assert orchestrate._sidecar_skill("skill: not-a-real-skill\n", filename="doc.pdf") is None
     assert "not-a-real-skill" in capsys.readouterr().out
 
 
-def test_stamp_document_applies_sidecar_provenance(tmp_path):
-    vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "real.pdf.yml").write_text(
-        "source: FOI A-2026-001\nobtained: 2026-06-05\n", encoding="utf-8")
-    pf = {"filename": "real.pdf", "original_path": "_INCOMING/real.pdf", "page_count": 1, "pages": [{}]}
+def test_stamp_document_applies_sidecar_provenance():
+    pf = {"filename": "real.pdf", "original_path": "_INCOMING/real.pdf", "page_count": 1,
+          "pages": [{}], "sidecar": "source: FOI A-2026-001\nobtained: 2026-06-05\n"}
     ext = {"document": {}}   # model emitted no source/obtained
-    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="foi-responses", vault=vault)
+    orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="foi-responses")
     assert ext["document"]["source"] == "FOI A-2026-001"
     assert ext["document"]["obtained"] == "2026-06-05"
+    assert ext["document"]["sidecar"] == pf["sidecar"]
 
 
 def test_orchestrator_extracts_and_writes_vault(tmp_path, monkeypatch):
@@ -757,7 +729,8 @@ def test_classifier_sees_only_first_n_pages(tmp_path, monkeypatch):
 
 
 def test_classifier_sees_the_sidecar(tmp_path, monkeypatch):
-    """The document's `.yml` provenance sidecar is passed to the classify call."""
+    """The document's sidecar — already filtered into the queue JSON at chew time (D121) —
+    is passed to the classify call."""
     vault = make_vault(tmp_path)
     qdir = vault / ".watchdog" / "queue"
     qdir.mkdir(parents=True, exist_ok=True)
@@ -765,10 +738,9 @@ def test_classifier_sees_the_sidecar(tmp_path, monkeypatch):
         "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
         "page_count": 1, "pages": [{"page": 1, "markdown": "opaque table"}],
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
+        "sidecar": "source: https://example.gov/lobby-registry\nnotes: sidecarhint\n",
     }))
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
-    (vault / "_INCOMING" / "test-doc.pdf.yml").write_text(
-        "source: https://example.gov/lobby-registry\nnotes: sidecarhint\n")
 
     seen = {}
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
@@ -978,10 +950,8 @@ def test_sidecar_skill_pins_per_document_without_global_flag(tmp_path, monkeypat
     """Two documents, two different sidecar skill pins, no --skill: classification is skipped
     for both, and each lands on its own pinned skill rather than a run-wide one (D120)."""
     vault = make_vault(tmp_path)
-    _queue_doc(vault, sha="aaa", filename="a.pdf")
-    _queue_doc(vault, sha="bbb", filename="b.pdf")
-    (vault / "_INCOMING" / "a.pdf.yml").write_text("skill: bankruptcy\n", encoding="utf-8")
-    (vault / "_INCOMING" / "b.pdf.yml").write_text("skill: court-documents\n", encoding="utf-8")
+    _queue_doc(vault, sha="aaa", filename="a.pdf", sidecar="skill: bankruptcy\n")
+    _queue_doc(vault, sha="bbb", filename="b.pdf", sidecar="skill: court-documents\n")
     tasks = []
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
         tasks.append(task)
@@ -1006,8 +976,7 @@ def test_sidecar_skill_pins_per_document_without_global_flag(tmp_path, monkeypat
 def test_sidecar_skill_overrides_run_wide_pinned_skill(tmp_path, monkeypatch):
     """A document's own sidecar pin is more specific than --skill/default_skill, so it wins."""
     vault = make_vault(tmp_path)
-    _queue_doc(vault)
-    (vault / "_INCOMING" / "test-doc.pdf.yml").write_text("skill: bankruptcy\n", encoding="utf-8")
+    _queue_doc(vault, sidecar="skill: bankruptcy\n")
     _mock(monkeypatch, extraction=_extraction())
 
     skill_file = tmp_path / "pinned.md"
