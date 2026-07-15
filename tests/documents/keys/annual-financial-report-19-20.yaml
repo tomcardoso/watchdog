@@ -1,0 +1,362 @@
+# Answer key — corpus-v1, document 1 — CONTRADICTION SIDE A
+#
+# Drafted from the SOURCE PDF. Frozen before any condition runs.
+#
+# The other half of the scored contradiction pair is the Pre-Filing Report of the Proposed
+# Monitor (document 2), published weeks later. Neither document mentions the other.
+
+document:
+  file: "Annual-Financial-Report-19-20.pdf"
+  sha256: 66788b16ad5cbfff78a6c5d01f96125affe248e79af7b5f6d4441477ef40a837
+  pages: 36
+  text_layer: born-digital
+  doc_type: annual financial report (audited consolidated financial statements + MD&A)
+  fiscal_year_end: 2020-04-30
+  auditors_report_date: 2020-10-30
+  publisher: Laurentian University of Sudbury
+  auditor: KPMG LLP
+  expected_skill: financial-statements
+  expected_skill_rationale: >
+    An annual report built around audited consolidated financial statements plus MD&A. The
+    catalog's `audit-reports` description explicitly redirects an organization's own audited
+    statements here.
+  role_in_benchmark: "Contradiction side A — the reassuring account, three months before insolvency."
+
+entities:
+  - name: Laurentian University of Sudbury
+    type: organization
+    aliases: ["LU", "the University", "Laurentian"]
+    role: reporting entity
+    page: 3
+  - name: KPMG LLP
+    type: organization
+    role: independent auditor; unqualified opinion dated 30 October 2020, Sudbury
+    page: 16
+  - name: Lorella Hayes
+    type: person
+    role: Vice-President, Administration; signatory to the Statement of Administrative Responsibility
+    page: 14
+    credentials: "CPA, CA"
+  - name: Normand Lavallée
+    type: person
+    role: Associate Vice-President, Financial Services; signatory to the Statement of Administrative Responsibility
+    page: 14
+    credentials: "FCPA, FCMA, FCA"
+  - name: Eckler Ltd.
+    type: organization
+    role: actuary retained to estimate pension and employee future benefit liabilities
+    page: 14
+  - name: Board of Governors
+    type: organization
+    role: governing body; discharges financial oversight through its Audit Committee
+    page: 14
+  - name: Audit Committee
+    type: organization
+    role: >
+      Committee of the Board; members are not officers or full-time employees; auditors have full
+      access with and without administration present.
+    page: 14
+  - name: MIRARCO
+    type: organization
+    role: consolidated entity
+    page: 5
+  - name: SNOLAB
+    type: organization
+    role: consolidated at 20%
+    page: 5
+  - name: Federated Universities
+    type: organization
+    role: LU administers the pension plan and RHBP on their behalf
+    page: 8
+
+relationships:
+  - subject: KPMG LLP
+    predicate: auditor of
+    object: Laurentian University of Sudbury
+    page: 16
+  - subject: Eckler Ltd.
+    predicate: actuary for
+    object: Laurentian University of Sudbury
+    page: 14
+  - subject: Lorella Hayes
+    predicate: Vice-President, Administration of
+    object: Laurentian University of Sudbury
+    page: 14
+  - subject: Normand Lavallée
+    predicate: Associate Vice-President, Financial Services of
+    object: Laurentian University of Sudbury
+    page: 14
+  - subject: Laurentian University of Sudbury
+    predicate: consolidates
+    object: MIRARCO and 20% of SNOLAB
+    page: 5
+  - subject: Laurentian University of Sudbury
+    predicate: principal employer of the pension plan and administrator of the RHBP for
+    object: the Federated Universities and SNOLAB
+    page: 8
+
+facts:
+  - id: F1
+    fact: >
+      The FY2019-20 approved budget expected BALANCED results from operations, and LU says it was
+      "on track" to operate the year with an anticipated small deficit of $0.9 million.
+    page: 5
+    quote: "The fiscal 2019-20 approved budget expected balanced results from operations … the University was on track to operating fiscal year 2019-20 with an anticipated a small deficit of $0.9 million from operations."
+    note: "CONTRADICTION SIDE A, part 1."
+  - id: F2
+    fact: >
+      The operating deficit was $5.4 million, of which $5.2 million is attributed to the COVID-19
+      outbreak — i.e. 96% of the miss is blamed on the pandemic.
+    page: 5
+    quote: "The net impact was an operating deficit of $5.4 million of which $5.2 million is related to the COVID-19 outbreak."
+    note: "CONTRADICTION SIDE A, part 2. The Monitor and the FY20-21 report both attribute the deficits to years of structural decline instead."
+  - id: F3
+    fact: "LU describes its commitment as 'unwavering as it continues to trace its path to sustainability'."
+    page: 4
+    quote: "Laurentian's commitment to providing world-class education and opportunities for students is unwavering as it continues to trace its path to sustainability."
+    note: "CONTRADICTION SIDE A, part 3."
+  - id: F4
+    fact: >
+      LU reports $52.8 million in endowment, "an increase of $1 million over 2018-19", with a
+      spending rate of 3.5%.
+    page: 9
+    quote: "The University has $52.8 million in endowment, an increase of $1 million over 2018-19. For 2019-20, the University assigned a spending rate of 3.5% towards the scholarships and other commitments supported by the funds."
+  - id: F5
+    fact: >
+      KPMG issued an UNQUALIFIED opinion — the statements "present fairly, in all material
+      respects" — dated 30 October 2020 at Sudbury. The opinion carries NO going-concern
+      modification and no emphasis of matter.
+    pages: [16, 18]
+    quote: "In our opinion, the accompanying financial statements present fairly, in all material respects, the consolidated financial position of Laurentian University of Sudbury as at April 30, 2020 … Sudbury, Canada October 30, 2020"
+    note: >
+      The single most consequential fact in this document. Three months later the Monitor told the
+      court LU was insolvent and could not make payroll. Compare the FY20-21 report, whose audit
+      report DOES carry a Material Uncertainty Related to Going Concern.
+  - id: F6
+    fact: "Deficiency of revenue over expenses for FY2020: $3,120 thousand (FY2019: $4,100 thousand)."
+    page: 20
+    quote: "Deficiency of revenue over expenses $ (3,120) $ (4,100)"
+    note: "Later RESTATED to $(3,387) in the FY20-21 report. See contradictions C2."
+  - id: F7
+    fact: "Total net assets at 30 April 2020: $36,682 thousand (2019: $53,164 thousand) — a $16.5M decline in one year."
+    page: 19
+    quote: "36,682 53,164"
+    note: "Later restated to $34,824. See C2."
+  - id: F8
+    fact: "Unrestricted net assets (the accumulated operating deficit) worsened from $14,544 thousand to $19,986 thousand."
+    pages: [5, 19]
+    quote: "The Unrestricted net assets (ie. Accumulated operating deficit) increased from $14.544 million to $19.986 million due to the operating budget deficit."
+    note: "Later restated to $(23,640). See C2."
+  - id: F9
+    fact: "Employee future benefits liabilities rose $11.5 million, from $9,237 thousand to $20,788 thousand, and the prior year's $1,929 thousand benefit ASSET became a liability."
+    pages: [12, 19]
+    quote: "Employee future benefits liabilities increased $11.5M based on actuarial valuation."
+  - id: F10
+    fact: "Cash and short-term investments fell to $4,544 thousand from $7,505 thousand."
+    page: 19
+    quote: "Cash and short-term investments (note 2) $ 4,544 $ 7,505"
+    note: "Later restated to $3,425 (2020) and $5,185 (2019). See C2."
+  - id: F11
+    fact: "$14.4 million of the line of credit was drawn at 30 April 2020 — and it was used for CAPITAL SPENDING."
+    page: 12
+    quote: "At April 30, 2020, $14.4M of the University's line of credit was utilized for capital spending, a decrease of $3.2M."
+  - id: F12
+    fact: >
+      The DB Pension Plan solvency ratio was 85.4% at 1 January 2020 (2019: 87.8%). LU is only
+      required to fund solvency deficits up to an 85% level.
+    page: 8
+    quote: "The solvency ratio deficit for the January 1, 2020 was 85.4% (2019, 87.8%) … The University is only required to fund solvency deficits up to an 85% level with a 5-year amortization period."
+  - id: F13
+    fact: "The Provision for Adverse Deviation (PfAD) rate rose to 10.3% from 7.94%."
+    page: 8
+    quote: "The current PfAD rate is 10.3% (2019, 7.94%) applied to current services costs."
+  - id: F14
+    fact: >
+      LU claims $20 million in pre-COVID savings under its Long Term Sustainability Plan, plus
+      ~$10 million post-COVID — over $30 million total since 2018, as of August 2020.
+    page: 4
+    quote: "Pre-Covid, our Long Term Sustainability Plan enabled Laurentian to achieve $20 million in savings and cost reductions compared to plan, and post COVID, the accelerated plan enabled additional savings of approx. $10 million, bringing total savings achieved since 2018 to over $30 million as of August 2020."
+  - id: F15
+    fact: >
+      Budget-to-actual reconciliation: the 2019-20 budget was $160,983 revenue / $160,983 expenses
+      / net (0.0) — a literally balanced budget. Actual audited result was $198,397 / $201,517 /
+      $(3,120).
+    page: 5
+    quote: "Per 2019-20 Budget 160,983 160,983 (0.0)"
+  - id: F16
+    fact: "Tuition revenue fell 7.6% because of the provincially mandated 10% domestic tuition reduction."
+    page: 13
+    quote: "Tuition revenue decreased by 7.6% due to the 10.0% reduction in domestic tuition fees"
+  - id: F17
+    fact: >
+      Operating grants rose 7.7% mainly because of a ONE-TIME Northern Sustainability grant — a
+      non-recurring prop under the year's revenue.
+    page: 13
+    quote: "Operating grants increased 7.7% mainly due to a one-time Northern Sustainability grant received in 2020."
+  - id: F18
+    fact: >
+      SMA3 reset the corridor midpoint at 16,423.53 Weighted Grant Units. Enrolment-based funding
+      of $2,903 per WGU in 2019-20 is anticipated to fall to $1,173 per WGU.
+    pages: [8, 9]
+    quote: "Correspondingly, enrolment-based funding which in 2019-20 was at $2,903 per WGU is anticipated to decrease to $1,173 per WGU."
+  - id: F19
+    fact: "Endowment returns were NEGATIVE for the year; the 3.5% spending rate was funded from the operating fund at a cost of $1.8 million."
+    page: 9
+    quote: "Due to COVID-19 the fund had returned a negative value for the year. As a result, the amounts spent to cover the spending rate were a cost of the operating fund in the amount of $1.8 million."
+  - id: F20
+    fact: "Ancillary contribution came in at $2,747 thousand against a budget of $3,639 thousand; $1.2 million of residence and ancillary refunds were issued to students."
+    page: 9
+    quote: "the actual contribution is lower than anticipated due to the residence and ancillary services refunds of $1.2 million provided to the students"
+  - id: F21
+    fact: "Long-term debt stood at $88,973 thousand, with $2,738 thousand in current portion."
+    page: 19
+    quote: "Long-term debt (note 8) 88,973 91,711"
+
+contradictions:
+  - id: C1
+    type: cross-document
+    scored: true
+    against: "Laurentian Pre-Filing Report of the Proposed Monitor.pdf (corpus document 2)"
+    this_document_claims: >
+      LU expected a BALANCED budget, was "on track" for a "small deficit of $0.9 million", blames
+      $5.2M of the $5.4M actual operating deficit on COVID-19, and "continues to trace its path to
+      sustainability". KPMG signed an unqualified opinion with no going-concern flag on
+      30 October 2020.
+    pages: [4, 5, 16]
+    other_document_claims: >
+      "LU is insolvent and absent the relief sought in the Initial Order, will not have sufficient
+      funding / liquidity to meet payroll in February" (p. 31, ¶165), caused by "the pattern of
+      recurring deficits over a number of years" (¶206), with net assets down $32.9M since
+      FY2014-15 (¶154).
+    why_it_matters: >
+      THE SCORED CONTRADICTION. Two explicit, positive, incompatible claims — one that the trouble
+      is a pandemic blip on a sustainable institution, one that the institution is insolvent and
+      has been failing since 2014. Neither document cites the other, so catching it requires
+      comparing claims across documents — the job of the finalizer's reconciliation pass as of
+      #381, not the extractor. This is the whole point of the corpus.
+
+  - id: C2
+    type: cross-document
+    against: "Annual-Financial-Report-20-21.pdf (corpus document 3)"
+    this_document_claims: >
+      The FY2020 audited figures as originally published: deficiency $(3,120); total net assets
+      $36,682; unrestricted $(19,986); cash $4,544 (2019: $7,505); endowment $52,845.
+    pages: [19, 20]
+    other_document_claims: >
+      The FY20-21 report restates every one of those figures (Notes 25 and 27): deficiency
+      $(3,387); total net assets $34,824; unrestricted $(23,640); cash $3,425 (2019: $5,185);
+      endowment $54,299.
+    why_it_matters: >
+      LU's own later filing declares these numbers wrong. Both values are explicitly stated in
+      their respective documents, so this is checkable without any outside knowledge — a
+      restatement is a self-declared contradiction with a prior published document.
+
+must_not_miss:
+  - id: M1
+    item: >
+      The auditors' report is CLEAN — an unqualified opinion, dated 30 October 2020, with no
+      going-concern material uncertainty and no emphasis of matter.
+    pages: [16, 18]
+    location: Independent Auditors' Report, opinion paragraph and signature block
+    why: >
+      Three months before EY told the court LU was insolvent, KPMG said the statements presented
+      fairly with no going-concern flag. The FY20-21 audit report DOES carry that flag. Scoring
+      note — an extractor cannot prove an absence, so score the PRESENCE of the unqualified opinion
+      and its date; the significance of what is missing is for the human reading the scorecard.
+
+  - id: M2
+    item: >
+      The Statement of Administrative Responsibility is signed by Lorella Hayes (CPA, CA),
+      Vice-President Administration, and Normand Lavallée (FCPA, FCMA, FCA), Associate
+      Vice-President Financial Services.
+    page: 14
+    location: signature block, Statement of Administrative Responsibility
+    why: >
+      The only place in the document where an individual human being personally attests to the
+      numbers, by name. Signature blocks are the first thing an extractor drops.
+
+  - id: M3
+    item: "Eckler Ltd. is the actuary retained to estimate the pension and employee future benefit liabilities."
+    page: 14
+    location: Statement of Administrative Responsibility, second paragraph
+    why: >
+      Names the firm behind the single largest and most judgement-dependent liability on the
+      balance sheet. Mentioned exactly once, inside a governance boilerplate page.
+
+  - id: M4
+    item: >
+      The line of credit was used for CAPITAL SPENDING — $14.4M drawn at 30 April 2020.
+    page: 12
+    location: Financial Statement Highlights commentary
+    why: >
+      Funding long-lived capital assets with a revolving short-term facility is a liquidity red
+      flag. It is stated plainly, in a caption-like commentary block beside a chart, and reads as
+      routine.
+
+  - id: M5
+    item: >
+      The 7.7% rise in operating grants was driven by a ONE-TIME Northern Sustainability grant.
+    page: 13
+    location: Financial Statement Highlights, revenue commentary
+    why: >
+      The year's single biggest revenue improvement was non-recurring. Without it the picture is
+      materially worse — and the FY20-21 report duly shows operating grants falling back to $79.3M.
+
+  - id: M6
+    item: >
+      LU is only required to fund solvency deficits up to an 85% level — and the plan sits at 85.4%.
+    page: 8
+    location: Employee Future Benefits section
+    why: >
+      The plan is 0.4 percentage points above the threshold that would trigger mandatory solvency
+      funding. Two numbers in adjacent sentences; the relationship between them is never stated.
+
+  - id: M7
+    item: >
+      Endowment returns were NEGATIVE, and the 3.5% distribution was paid out of the operating fund
+      at a cost of $1.8 million.
+    page: 9
+    location: Endowments section
+    why: >
+      LU borrowed from operations to keep paying scholarships when the endowment lost money — while
+      simultaneously reporting the endowment as having "increased $1 million". Both claims sit in
+      the same short section.
+
+  - id: M8
+    item: >
+      Enrolment-based funding is projected to fall from $2,903 per WGU to $1,173 per WGU — a ~60%
+      cut in the core funding rate.
+    page: 9
+    location: Funding Formula and Strategic Mandate Agreement section
+    why: "The most consequential forward-looking number in the document, given as a bare comparison."
+
+  - id: M9
+    item: >
+      The 2019-20 budget was presented as exactly balanced: revenues $160,983 = expenses $160,983,
+      net (0.0).
+    page: 5
+    location: budget-to-actual reconciliation table
+    why: >
+      A literally zero-net budget. The Auditor General later found LU "presented budget deficits
+      year over year, while publicly saying it was presenting balanced budgets" — this table is
+      that practice, on the page.
+
+  - id: M10
+    item: >
+      The Audit Committee's members are not officers or full-time employees, and the auditors have
+      full access to it with and without administration present.
+    page: 14
+    location: Statement of Administrative Responsibility, third paragraph
+    why: >
+      A governance safeguard asserted in the document. Worth capturing because the Auditor General
+      later concluded the oversight did not work.
+
+  - id: M11
+    item: >
+      The prior year's $1,929 thousand employee future benefit ASSET flipped to a $20,788 thousand
+      liability — an $11.5M swing driven by a discount-rate change.
+    pages: [12, 19]
+    location: balance sheet line + highlights commentary
+    why: >
+      An asset became a liability. It is presented as a routine actuarial remeasurement in a single
+      commentary sentence.

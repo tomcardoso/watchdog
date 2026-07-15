@@ -1,0 +1,346 @@
+# Answer key — corpus-v1, document 5
+#
+# Drafted from the SOURCE PDF. Frozen before any condition runs.
+#
+# Role: entity overlap. This document shares E&Y, the Board, LUFA, Firm Capital and the DIP
+# facility with documents 2 and 3, which is what makes it useful — it tests whether the finalizer's
+# reconciliation pass (#381) RESOLVES these to the same entities as the other documents or leaves
+# duplicates. (Under #381 the extractor no longer resolves against vault state; it names entities
+# per-document and reconciliation merges them afterward.)
+
+document:
+  file: "Laurentian First Report of the Monitor.pdf"
+  sha256: afa4ca9505db70174489fef51e79ec0a2d24e316065cd841a07c53d595306a0d
+  pages: 34
+  text_layer: born-digital
+  doc_type: monitor's report (first report), CCAA
+  date: 2021-02-07
+  author: Ernst & Young Inc. (Monitor)
+  court_file: "CV-21-656040-00CL (as printed — note the format differs from other corpus documents; see M1)"
+  expected_skill: bankruptcy
+  expected_skill_rationale: >
+    A monitor's report in a CCAA proceeding — named verbatim in the catalog description.
+  role_in_benchmark: "Entity overlap — E&Y, the Board, the DIP facility, LUFA."
+
+entities:
+  - name: Ernst & Young Inc.
+    type: organization
+    aliases: ["EY", "the Monitor"]
+    role: court-appointed Monitor
+    page: 1
+  - name: Laurentian University of Sudbury
+    type: organization
+    aliases: ["LU", "the Applicant"]
+    role: CCAA applicant
+    page: 1
+  - name: Firm Capital Corporation
+    type: organization
+    role: counterparty that EXECUTED the DIP Term Sheet — then assigned its interest away
+    page: 8
+  - name: Firm Capital Mortgage Fund Inc.
+    type: organization
+    aliases: ["the DIP Lender"]
+    role: >
+      The actual DIP Lender, by assignment from Firm Capital Corporation. A DISTINCT legal entity
+      from Firm Capital Corporation.
+    page: 8
+  - name: Sean Dunphy
+    type: person
+    aliases: ["Justice Sean Dunphy", "the Honourable Justice Sean Dunphy"]
+    role: >
+      Judge of the Ontario Superior Court of Justice, appointed Court-Appointed Mediator; formerly
+      a leading insolvency lawyer; bilingual.
+    page: 7
+  - name: G.B. Morawetz
+    type: person
+    aliases: ["Chief Justice Morawetz"]
+    role: Chief Justice; issued the Initial Order and endorsements
+    page: 5
+  - name: Laurentian University Faculty Association
+    type: organization
+    aliases: ["LUFA"]
+    role: faculty union; counterparty to the mandated negotiated settlement
+    page: 6
+  - name: Robert Haché
+    type: person
+    aliases: ["Dr. Robert Haché", "Dr. Haché"]
+    role: affiant (the Haché Affidavit)
+    page: 3
+  - name: Ontario Ministry of Colleges and Universities
+    type: organization
+    aliases: ["MCU"]
+    role: participated in a call with LU and the Monitor
+    page: 5
+  - name: TD Canada Trust
+    type: organization
+    role: its posted prime rate is the DIP facility's floating benchmark
+    page: 9
+
+relationships:
+  - subject: Ernst & Young Inc.
+    predicate: Monitor of
+    object: Laurentian University of Sudbury
+    page: 1
+  - subject: Firm Capital Corporation
+    predicate: assigned its DIP interest to
+    object: Firm Capital Mortgage Fund Inc.
+    page: 8
+  - subject: Firm Capital Mortgage Fund Inc.
+    predicate: DIP Lender to
+    object: Laurentian University of Sudbury
+    page: 8
+  - subject: Sean Dunphy
+    predicate: Court-Appointed Mediator for
+    object: the LU CCAA proceedings
+    page: 7
+  - subject: G.B. Morawetz
+    predicate: issued the Initial Order in
+    object: the LU CCAA proceedings
+    page: 1
+  - subject: Laurentian University Faculty Association
+    predicate: counterparty to the mandated settlement with
+    object: Laurentian University of Sudbury
+    page: 8
+
+facts:
+  - id: F1
+    fact: "The Initial Order was granted 1 February 2021, appointing E&Y as Monitor with a 10-day stay period."
+    page: 1
+    paragraph: 2
+    quote: "On February 1, 2021, the Court granted an initial order (the \"Initial Order\") that, among other things, appointed Ernst & Young Inc. as monitor of the Applicant in these CCAA proceedings … and approved a stay of proceedings for the initial 10-day period"
+  - id: F2
+    fact: "The comeback motion was scheduled for 9:00am on 10 February 2021."
+    page: 1
+    paragraph: 3
+    quote: "The Court scheduled a comeback motion for 9:00am on February 10, 2021"
+  - id: F3
+    fact: "The Administration Charge is to increase from $400,000 to $1,250,000."
+    page: 2
+    paragraph: "4(d)(iii)"
+    quote: "an increase in the Administration Charge from $400,000 to $1,250,000"
+  - id: F4
+    fact: "The Directors' Charge is to increase from $2,000,000 to $5,000,000."
+    page: 2
+    paragraph: "4(d)(iv)"
+    quote: "an increase in the Directors' Charge from $2,000,000 to $5,000,000"
+  - id: F5
+    fact: >
+      The Administration Charge, Directors' Charge and DIP Lender's Charge are to rank in priority
+      to ALL other secured creditors as defined in the CCAA.
+    page: 2
+    paragraph: "4(d)(v)"
+    quote: "the granting of the Administration Charge, the Directors' Charge and the DIP Lender's Charge in priority to all other \"secured creditors\" as defined in the CCAA"
+  - id: F6
+    fact: "The Stay Period, set to expire 11 February 2021, is to be extended to 30 April 2021."
+    page: 10
+    paragraph: 38
+    quote: "The Stay Period is currently set to expire on February 11, 2021. The Applicant requests an extension of the Stay Period up to and including April 30, 2021."
+  - id: F7
+    fact: >
+      Justice Sean Dunphy of the Ontario Superior Court of Justice was appointed Court-Appointed
+      Mediator. The Court proposed him; all parties confirmed no objection.
+    page: 7
+    paragraph: 28
+    quote: "the Court proposed to appoint the Honourable Justice Sean Dunphy of the Ontario Superior Court of Justice as the Court-Appointed Mediator … All parties at the case conference confirmed that there were no objections to Justice Dunphy's appointment as mediator."
+  - id: F8
+    fact: "Dunphy was previously a leading insolvency lawyer with CCAA and complex labour experience, and is bilingual."
+    page: 7
+    paragraph: 28
+    quote: "During his career, Justice Dunphy was a leading insolvency lawyer with extensive experience in CCAA restructurings, including complex labour negotiations, and is bilingual."
+  - id: F9
+    fact: >
+      LU approached FOUR external lenders specializing in real-estate and infrastructure lending;
+      three submitted non-binding draft term sheets; two were shortlisted; one term sheet was
+      executed.
+    pages: [7, 8]
+    paragraph: "29, 32, 33"
+    quote: "These discussions resulted in the Applicant receiving non-binding draft term sheets from three potential lenders … determined that of the three initial proposals, two were sufficiently preferable to merit narrowing ongoing negotiations to these two parties."
+  - id: F10
+    fact: >
+      LU executed the DIP Term Sheet with Firm Capital Corporation, which then ASSIGNED its
+      interest to Firm Capital Mortgage Fund Inc. — the entity that is the actual DIP Lender.
+    page: 8
+    paragraph: 33
+    quote: "the Applicant executed a term sheet (the \"DIP Term Sheet\") with Firm Capital Corporation. Subsequent to the execution of the DIP Term Sheet, Firm Capital Corporation assigned its interest to Firm Capital Mortgage Fund Inc. (the \"DIP Lender\")."
+  - id: F11
+    fact: >
+      DIP facility: secured, non-revolving, maximum principal $25 million, maturity 1 May 2021,
+      extendable by 90 days on milestones.
+    page: 8
+    paragraph: "34(b)"
+    quote: "the maximum principal amount is $25 million with a maturity date of May 1, 2021. The maturity date may be extended for an additional 90 days if LU achieves the following milestones"
+  - id: F12
+    fact: >
+      DIP interest: the greater of 8.50% per annum or the TD Canada Trust posted prime rate plus
+      6.05% per annum, compounded and payable monthly in arrears.
+    page: 9
+    paragraph: "34(e)"
+    quote: "at a rate that is the greater of 8.50% per annum or the TD Canada Trust Posted Bank Prime Rate of Interest from time to time plus 6.05% per annum"
+  - id: F13
+    fact: >
+      A COMMITMENT FEE of $500,000 is deemed fully earned and payable to the DIP Lender on the date
+      the Court approves the Amended and Restated Initial Order.
+    page: 9
+    paragraph: "34(f)"
+    quote: "a commitment fee of $500,000 shall be deemed to have been fully earned and payable to the DIP Lender on the date that the Court approves the Amended and Restated Initial Order approving the DIP financing."
+  - id: F14
+    fact: >
+      The DIP extension milestones are judged by the DIP Lender "in its sole and unfettered
+      discretion" — including whether LU is financially sustainable.
+    page: 8
+    paragraph: "34(b)"
+    quote: "to the satisfaction of the DIP Lender in its sole and unfettered discretion"
+  - id: F15
+    fact: >
+      The milestones require LU to reach consensus on academic restructuring, to settle with LUFA
+      (terminations, grievances, a new collective agreement), and to deliver a multi-year budget
+      showing sustainability.
+    page: 8
+    paragraph: "34(b)(i)-(iii)"
+    quote: "LU enters into a negotiated settlement with LUFA with respect to terminations to be effected, resolution of outstanding grievances, and the terms of a new collective agreement"
+  - id: F16
+    fact: >
+      TWO parties expressed interest in submitting COMPETING DIP proposals (a law firm on 4 Feb
+      2021 and another party on 5 Feb 2021). LU DECLINED both.
+    page: 9
+    paragraph: 36
+    quote: "the Applicant determined that given the number of weeks it took other potential lenders to conduct their due diligence … it was highly unlikely that a new party could negotiate and execute a non-disclosure agreement, conduct its due diligence and be in a position to submit a binding offer … Accordingly, the Applicant declined the request from the law firm to proceed with any due diligence process"
+  - id: F17
+    fact: >
+      The Monitor repeats the reliability caveat: LU's Finance department "has experienced certain
+      challenges as a result of its limited team and resources", so the Information may be limited.
+    page: 3
+    paragraph: 9
+    quote: "Dr. Haché Notes that he has relied upon information provided by LU's Finance department which has experienced certain challenges as a result of its limited team and resources. As a result, the Monitor notes that the Information relied upon for purposes of this First Report may be limited by these challenges."
+  - id: F18
+    fact: >
+      The Notice to Creditors was mailed to all known creditors with claims over $1,000, and
+      published on 4 February 2021 in the Globe and Mail (National Edition) and the Sudbury Star.
+    pages: [5, 6]
+    paragraph: "23(b), 23(d)"
+    quote: "On February 4, 2021, the Monitor published the Notice to Creditors in the Globe and Mail (National Edition) and the Sudbury Star."
+  - id: F19
+    fact: >
+      The Monitor established a case website (ey.com/ca/Laurentian), a toll-free hotline
+      (1-855-338-1766) and an email address (LaurentianUniversity.Monitor@ca.ey.com).
+    page: 5
+    paragraph: 22
+    quote: "the Monitor has arranged for a toll-free hotline phone number (1-855-338-1766) for calls related to this matter and an e-mail address (LaurentianUniversity.Monitor@ca.ey.com)"
+  - id: F20
+    fact: >
+      LU launched stakeholder websites at laurentianu.info and ulaurentienne.info, and implemented
+      new fiscal restraint policies authorizing only necessary expenses.
+    page: 4
+    paragraph: "18, 19"
+    quote: "the Applicant has drafted and implemented new fiscal restraint policies to monitor and authorize only necessary expenses during the pendency of this CCAA proceeding."
+  - id: F21
+    fact: "Classes continued virtually with no disruption following the Initial Order."
+    page: 4
+    paragraph: 17
+    quote: "Student classes are continuing (virtually due to the Pandemic) with no disruption."
+
+# No internal contradiction. Recorded explicitly so an invented one scores as a false positive.
+contradictions: []
+
+must_not_miss:
+  - id: M1
+    item: >
+      The court file number is printed as "CV-21-656040-00CL" — WITHOUT the leading zeros that
+      appear in the other corpus documents ("CV-21-00656040-00CL").
+    page: 1
+    location: cover page header
+    why: >
+      A formatting discrepancy in the source, recorded so scoring can distinguish faithful
+      extraction of what the page says from silent normalization to the other documents' format.
+      Both behaviours are informative; neither is a miss. It also tests whether the extractor
+      resolves this to the SAME court file entity as the other documents rather than creating a
+      duplicate.
+
+  - id: M2
+    item: >
+      Firm Capital Corporation executed the term sheet, then ASSIGNED its interest to Firm Capital
+      Mortgage Fund Inc., which is the actual DIP Lender. These are two distinct entities.
+    page: 8
+    paragraph: 33
+    why: >
+      Document 3 names only "Firm Capital Corporation". An extractor that collapses these into one
+      entity has lost the assignment; one that creates two unlinked entities has lost the
+      relationship. Both failure modes are worth catching, and this is the only place the
+      distinction is stated.
+
+  - id: M3
+    item: "The $500,000 DIP commitment fee, deemed FULLY EARNED on the date of court approval."
+    page: 9
+    paragraph: "34(f)"
+    why: >
+      Half a million dollars payable simply for the court signing — earned before a dollar is
+      advanced. It is the last item in a lettered list of facility terms, exactly where attention
+      runs out.
+
+  - id: M4
+    item: >
+      LU declined TWO expressions of interest in competing DIP financing, received 4 and 5 February
+      2021, days before the comeback motion.
+    page: 9
+    paragraph: 36
+    why: >
+      The insolvent institution turned away potential competing lenders while locked into an 8.5%
+      facility with a $500K fee. The paragraph reads as procedural housekeeping and is easy to skim.
+
+  - id: M5
+    item: >
+      The DIP extension milestones rest on the lender's "sole and unfettered discretion" — the
+      phrase appears twice, including on the question of whether LU is financially sustainable.
+    page: 8
+    paragraph: "34(b)"
+    why: >
+      A private lender holds unilateral judgment over whether a public university continues. Buried
+      in sub-sub-clauses.
+
+  - id: M6
+    item: >
+      The Administration Charge triples ($400K → $1.25M) and the Directors' Charge more than
+      doubles ($2M → $5M), all ranking ahead of every other secured creditor.
+    page: 2
+    paragraph: "4(d)"
+    why: >
+      $6.25M of super-priority charges jumping the queue ahead of existing secured lenders, listed
+      as roman-numeral sub-items on page 2 in a purpose statement.
+
+  - id: M7
+    item: >
+      Justice Sean Dunphy — the mediator — was himself a leading insolvency lawyer before the
+      bench, and the Court proposed him rather than the parties.
+    page: 7
+    paragraph: 28
+    why: >
+      The mediator's identity and provenance, given once. Note also that bilingualism was added as
+      a criterion here that was NOT in the Pre-Filing Report's list — a small drift worth catching.
+
+  - id: M8
+    item: >
+      The Monitor's reliability caveat about LU's Finance department, repeated from the Pre-Filing
+      Report — including the same erroneous affidavit date ("sworn January 30, 2020").
+    page: 3
+    paragraph: 9
+    why: >
+      Buried in disclaimer boilerplate. The repetition of the date error across two documents is
+      itself a fact: it is a copy-paste, not a fresh statement.
+
+  - id: M9
+    item: >
+      Creditors were notified only if owed more than $1,000, by ordinary mail, based on contact
+      information supplied by LU itself.
+    pages: [5, 6]
+    paragraph: "23(b)"
+    why: >
+      The notice threshold and its dependence on the debtor's own records — a due-process detail
+      that determines who found out. One clause in a list of postings.
+
+  - id: M10
+    item: >
+      The DIP process ran under two successive NDAs, with LU's identity withheld until the first
+      was signed.
+    page: 7
+    paragraph: 30
+    why: "How an insolvent public university shopped for money in secret. Procedural, and routinely dropped."
