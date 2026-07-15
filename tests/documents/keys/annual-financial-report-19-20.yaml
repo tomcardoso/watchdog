@@ -360,3 +360,17 @@ must_not_miss:
     why: >
       An asset became a liability. It is presented as a routine actuarial remeasurement in a single
       commentary sentence.
+
+  - id: M12
+    item: >
+      "Subsequent to year-end, principal repayments on four loans relating to the operations of
+      the residences were deferred for six months" — a cash-flow accommodation negotiated after
+      the audit period but before the 30 October 2020 report date.
+    pages: [7, 11, 30, 35]
+    location: >
+      Financial Statement Highlights (Capital financing), MD&A "Future Impact of COVID-19",
+      Note 8 (Long-term debt), and Note 17 (Effects of COVID-19) — stated four times
+    why: >
+      A subtle cash-crunch signal that survived into the final report despite the clean audit
+      opinion (M1) and the "on track" narrative (F1) — LU was already deferring debt service
+      before this report was even issued.

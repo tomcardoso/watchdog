@@ -12,7 +12,8 @@ These PDFs are committed to git, so the corpus is version-controlled as well as 
 
 ## What this corpus is for
 
-One set of documents, re-ingested under four conditions, to settle three decisions:
+One set of documents, re-ingested under every condition this benchmark runs, to settle three
+decisions:
 
 - **#361** — should the shipped Claude default for extraction stay `sonnet` or drop to `haiku`?
 - **#361** — is DeepSeek good enough to *document* as the cost-saving route for large ingests?
@@ -76,8 +77,9 @@ things, that deficits dated to 2014 (not COVID), that $73M in donations were not
 $36.5M in restricted research money had been spent on capital.
 <https://www.auditor.on.ca/en/content/specialreports/specialreports/LaurentianUniversity_EN.pdf>
 
-Also left out of corpus-v1, but available in this folder if a document needs swapping: the Second and
-Third Reports of the Monitor, the Claims Process Order, and the Appointment of Mediator Order.
+Also considered and left out of corpus-v1: the Second and Third Reports of the Monitor, the Claims
+Process Order, and the Appointment of Mediator Order — all public filings in the same CCAA
+proceeding, no longer kept in this folder now that the corpus is settled.
 
 ## Provenance
 
@@ -107,4 +109,5 @@ ever wrote down. Independence fixes that; human labour doesn't.
 
 A human then **reviews** the union — that is where a journalist's judgement earns its keep (is this
 buried item material, or trivia?), and it is the quality gate for the whole benchmark: a frozen key
-with a bad fact in it silently corrupts all four conditions at once, and nothing downstream catches it.
+with a bad fact in it silently corrupts every condition scored against it at once, and nothing
+downstream catches it.
