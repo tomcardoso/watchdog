@@ -529,3 +529,15 @@ must_not_miss:
       wrong). Any condition that reports these numbers with the WRONG labels attached has been
       caught by a table-flattening failure, not a reasoning failure — score it as such, and check
       whether chew/Docling reproduces the same scrambling before blaming the extractor.
+
+  - id: M21
+    item: >
+      LU "continues to manage a considerable deferred maintenance backlog estimated at
+      $135.0 million" — against the $1.4 million it was actually able to invest in capital
+      projects that year.
+    page: 17
+    location: MD&A, Capital Investments section, closing paragraph
+    why: >
+      The largest figure in the capital section, dropped in the sentence right after the report
+      discloses its own $1.4 million spend — a 96x gap between the backlog and that year's
+      response to it.

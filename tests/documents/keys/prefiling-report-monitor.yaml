@@ -428,3 +428,38 @@ must_not_miss:
     why: >
       LU was already squeezing the federated universities two years before disclaiming them
       entirely. Requires joining a definition on p. 9 with a cost-cutting list on p. 30.
+
+  - id: M14
+    item: >
+      The Provost's 2020 decision to suspend enrolment in 17 academic programs with "very low
+      enrolment" is the subject of an ongoing unfair labour practice complaint and a judicial
+      review brought by LUFA.
+    page: 13
+    paragraph: 80
+    why: >
+      Program suspensions a full year before the CCAA filing — the bridge between the FY2019-20
+      annual report's "sustainable" narrative (see C1) and the insolvency reality, and already
+      contested in court before the restructuring even began.
+
+  - id: M15
+    item: >
+      The unfunded SuRP has 32 retired employees currently collecting benefits, a forecast payout
+      of approximately $260,000 in July 2021, and an accrued benefit obligation of $3,063,000 at
+      30 April 2020.
+    page: 15
+    paragraph: 94
+    why: >
+      M8 flags the SuRP as merely "unfunded" — this is the headcount and dollar scale behind that
+      word, paid out of current operating funds rather than a trust.
+
+  - id: M16
+    item: >
+      MIRARCO "has experienced financial difficulties in the last several years, which has
+      resulted in delays in reimbursements to LU" for the payroll and benefits LU fronts on its
+      behalf.
+    page: 10
+    paragraph: 59
+    why: >
+      Explains part of LU's cash erosion: it was carrying the operating costs of its own
+      mining-research affiliate on reimbursements that came back late, buried in a routine
+      description of the payroll arrangement.
