@@ -79,6 +79,8 @@ Skills are jurisdiction-agnostic by default: universal principles come first, wi
 
 If a vault is always one document type — 400 pages of the same filing, say — you can skip per-document classification by pinning a skill: `watchdog ingest --skill <name>` for one run (see [Commands](commands.md)), or set `default_skill` to make it permanent (see [Configuration](configuration.md)).
 
+If a batch mixes document types instead, pin each document individually by adding a `skill:` field to its `.yml` sidecar (see [Vault](vault.md#sidecar-files)) — it overrides both `--skill` and `default_skill` for that one document and skips classification for it, so one `ingest` run can correctly handle several document types at once.
+
 ## Custom skills
 
 You can add your own skills in `~/.watchdog/skills/records/` — plain markdown, no code required. A custom skill overrides a built-in one of the same name, so you can also adapt an existing skill to your beat by copying and editing it.

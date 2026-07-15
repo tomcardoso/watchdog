@@ -96,6 +96,16 @@ def read_skill(name: str) -> str:
     return Path(path).read_text(encoding="utf-8") if path else ""
 
 
+def resolve(value: str) -> str | None:
+    """Resolve a skill pin — a catalog name or an explicit file path — to a skill file path,
+    or None if neither matches. Shared by `--skill`/`default_skill` (cmd/ingest.py) and the
+    per-document sidecar pin (pipeline/orchestrate.py) so both use one resolution rule."""
+    as_path = Path(value).expanduser()
+    if as_path.is_file():
+        return str(as_path.resolve())
+    return catalog().get(value.removesuffix(".md"))
+
+
 def build_index() -> str:
     """The classification index text, generated in memory from the catalog.
 
