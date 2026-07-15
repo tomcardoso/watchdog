@@ -58,7 +58,8 @@ a credited normalization, not a miss.
 ## The run protocol these keys assume
 
 One setting is load-bearing: the **skill pin**. Concurrency and ingest order used to be too — that
-changed with #381, and the history matters for reading this benchmark, so it is recorded below.
+changed with #381, and how many passes the corpus needs used to be too — that changed with D120.
+The history matters for reading this benchmark, so both are recorded below.
 
 ### Concurrency and order no longer matter (#381 / D118)
 
@@ -79,35 +80,30 @@ document has landed and reads the complete per-entity claim ledger. So:
 
 This has a direct bearing on what the benchmark measures — see "What each arm measures" below.
 
-### Still two passes, because `--skill` pins ONE skill for the whole run
+### One pass now — each document's sidecar pins its own skill (D120)
 
-The corpus needs two skills (see `expected_skill` in each key). `--skill` applies one skill to
-every queued document, so a single pinned run would extract two of the six under the wrong skill —
-and several `must_not_miss` items in the FY20-21 report are exactly what `financial-statements`
-primes for and `bankruptcy` does not. Use `chew --file` to control what is queued, then drain the
-queue twice:
+The corpus needs two skills (see `expected_skill` in each key), and `--skill` pins one skill for
+the whole run — so before D120 a single pinned run would have extracted two of the six under the
+wrong skill, and several `must_not_miss` items in the FY20-21 report are exactly what
+`financial-statements` primes for and `bankruptcy` does not. That used to mean draining the queue
+twice, once per skill.
 
-```
-# Pass 1 — the four insolvency documents
-watchdog ingest --skill bankruptcy [--extractor-model … --extractor-effort … --finalizer-model …]
-
-# Pass 2 — the two annual reports
-watchdog ingest --skill financial-statements [same model flags]
-```
-
-Split the two skills across two passes; within each pass, order and concurrency are free.
+Each corpus PDF now ships with a `.yml` sidecar of the same name (e.g.
+`Annual-Financial-Report-20-21.pdf.yml`) carrying its correct `skill:` value — resolved
+deterministically in Python, never sent through the model, so it costs nothing and can't be
+misclassified. Copy every document into `_INCOMING/` (sidecars travel with them), `chew`, then a
+single `watchdog ingest` with no `--skill` flag at all correctly classifies all six:
 
 | Skill | Documents |
 |---|---|
 | `bankruptcy` | Pre-Filing Report · Initial Order · First Report · Pension Order |
 | `financial-statements` | Annual Financial Report 2019-20 · 2020-21 |
 
-Consequence to expect, not trip over: two ingest passes means the finalizer runs twice, so each
-vault gets two briefings and two reconciliation passes. Identical across all conditions, so it does
-not distort the comparison — but the *second* reconciliation is the one that can see all six
-documents, so it is the one that catches the cross-skill contradiction (C1 spans a `bankruptcy`
-document and a `financial-statements` one). Run the `bankruptcy` pass first so the annual reports
-are present for the reconciliation that matters.
+Consequence to expect: the finalizer and briefing now run **once** per vault, over all six
+documents at once — which is strictly better for scoring than the old two-pass protocol, since the
+cross-skill contradiction (C1, spanning a `bankruptcy` document and a `financial-statements` one)
+and the entity-duplicate count no longer depend on which pass ran first or on an intermediate,
+partial-corpus reconciliation state.
 
 ## What each arm measures (post-#381)
 

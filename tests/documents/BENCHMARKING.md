@@ -45,8 +45,9 @@ sidecar. Entity resolution and cross-document contradiction detection moved to t
 Each stage is measured by varying it while holding the other two fixed at a known baseline.
 
 - **Extractor sweep** — vary `--extractor-model` × `--extractor-effort`; hold the finalizer fixed
-  at a strong baseline (`sonnet` / `high`); pin `--skill` so the classifier is out of the loop.
-  These are full ingests: this is where the money goes.
+  at a strong baseline (`sonnet` / `high`); the corpus's per-document sidecar pins (D120) keep the
+  classifier out of the loop, no `--skill` flag needed. These are full ingests: this is where the
+  money goes.
 - **Finalizer sweep** — vary `--finalizer-model` × `--finalizer-effort`; hold the extractor fixed
   at **`deepseek:deepseek-v4-flash`**. Two reasons for the cheap fixed extractor: (a) it keeps the wasted
   re-extraction cheap — you cannot re-finalize a finished vault (#384), so each finalizer arm is its
@@ -100,37 +101,31 @@ Every condition follows the same shape. Example for the baseline (`extractor son
 watchdog new "bench-ex-sonnet-high"
 cd <projects_dir>/bench-ex-sonnet-high
 
-# 2. Pass 1 — the four bankruptcy documents
-cp "<corpus>/Laurentian Pre-Filing Report of the Proposed Monitor.pdf" _INCOMING/
-cp "<corpus>/CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021.pdf" _INCOMING/
-cp "<corpus>/Laurentian First Report of the Monitor.pdf" _INCOMING/
-cp "<corpus>/Pension Order Morawetz CJ- March 17 2021(as stamped by Court).PDF" _INCOMING/
+# 2. All six documents, one pass — each PDF's own .yml sidecar pins its record skill (D120),
+#    so no --skill flag is needed and nothing gets classified under the wrong one. The glob
+#    below grabs each PDF and its same-named sidecar together.
+cp "<corpus>/Laurentian Pre-Filing Report of the Proposed Monitor.pdf"* _INCOMING/
+cp "<corpus>/CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021.pdf"* _INCOMING/
+cp "<corpus>/Laurentian First Report of the Monitor.pdf"* _INCOMING/
+cp "<corpus>/Pension Order Morawetz CJ- March 17 2021(as stamped by Court).PDF"* _INCOMING/
+cp "<corpus>/Annual-Financial-Report-19-20.pdf"* _INCOMING/
+cp "<corpus>/Annual-Financial-Report-20-21.pdf"* _INCOMING/
 watchdog chew
 
 # FREE cost preview — always run this first
-watchdog ingest --skill bankruptcy \
+watchdog ingest \
   --extractor-model sonnet --extractor-effort high \
   --finalizer-model sonnet --finalizer-effort high --estimate
 
 # The real run (same flags, no --estimate)
-watchdog ingest --skill bankruptcy \
-  --extractor-model sonnet --extractor-effort high \
-  --finalizer-model sonnet --finalizer-effort high
-
-# 3. Pass 2 — the two annual reports, SAME model flags
-cp "<corpus>/Annual-Financial-Report-19-20.pdf" _INCOMING/
-cp "<corpus>/Annual-Financial-Report-20-21.pdf" _INCOMING/
-watchdog chew
-watchdog ingest --skill financial-statements \
+watchdog ingest \
   --extractor-model sonnet --extractor-effort high \
   --finalizer-model sonnet --finalizer-effort high
 ```
 
-Two passes because `--skill` pins **one** skill for the whole queue, and the corpus needs two (see
-`expected_skill` in each key). Keep the model flags **identical across both passes** — they are one
-condition. Run the `bankruptcy` pass first so all four insolvency documents are present when the
-annual reports are reconciled (the scored contradiction C1 spans a `bankruptcy` document and a
-`financial-statements` one).
+Confirm the sidecars landed before trusting the run: `ls _INCOMING/*.yml` should list six files.
+Classification is skipped for every document (each is pinned by its own sidecar), so this is one
+`chew`/`ingest` pass instead of the two the corpus used to need — see `keys/README.md` for why.
 
 **Capture, per vault, before touching the next one** (the terminal output is not recoverable — page
 -coverage warnings and per-document digest-size lines print only there):
@@ -182,11 +177,13 @@ label, both values, both document slugs, and both page numbers — not the brief
 
 ## Step 6 — classifier smoke test
 
-One vault, no `--skill` (let it classify), default classifier:
+One vault, no `--skill` (let it classify), default classifier. **Copy only the six bare PDFs, not
+their `.yml` sidecars** — a sidecar pin skips classification entirely (D120), which is exactly what
+this step needs to exercise:
 
 ```
 watchdog new "bench-classify"
-# load all six documents, chew, then:
+# copy the six PDFs only (no *.yml), chew, then:
 watchdog ingest --extractor-model deepseek:deepseek-v4-flash --finalizer-model deepseek:deepseek-v4-flash
 ```
 

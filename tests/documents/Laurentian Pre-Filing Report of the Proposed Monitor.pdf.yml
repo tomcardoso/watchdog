@@ -1,0 +1,3 @@
+# corpus-v1 (#361/#215): pins this document's record skill so a single ingest pass can
+# mix skills across the corpus instead of one chew/ingest pass per skill (D120).
+skill: bankruptcy
