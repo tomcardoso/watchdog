@@ -180,16 +180,12 @@ def _resolve_pinned_skill(args, config: dict) -> str | None:
     value = raw or config.get("default_skill")
     if not value:
         return None
-    as_path = Path(value).expanduser()
-    if as_path.is_file():                                   # an explicit skill file
-        return str(as_path.resolve())
-    catalog = skills_catalog.catalog()                      # otherwise a catalog name
-    canon = value.removesuffix(".md")
-    if canon in catalog:
-        return catalog[canon]
-    avail = ", ".join(catalog) or "(none available)"
-    sys.exit(f"\n  {_YELLOW}Error:{_RESET} record skill {_BOLD}{canon}{_RESET} not found "
-             f"(not a known skill or a file path).\n  Available: {_CYAN}{avail}{_RESET}\n")
+    resolved = skills_catalog.resolve(value)
+    if resolved:
+        return resolved
+    avail = ", ".join(skills_catalog.catalog()) or "(none available)"
+    sys.exit(f"\n  {_YELLOW}Error:{_RESET} record skill {_BOLD}{value.removesuffix('.md')}{_RESET} "
+             f"not found (not a known skill or a file path).\n  Available: {_CYAN}{avail}{_RESET}\n")
 
 
 def _run_preprocess(
