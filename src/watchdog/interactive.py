@@ -71,10 +71,13 @@ def pick(items, current=0, *, title=None, hint="↑/↓ move · Enter select · 
     import termios
     import tty
 
+    header_lines = 1 if title else 0
+
     def render(first: bool) -> None:
         if not first:
-            sys.stdout.write(f"\x1b[{2 + len(items)}A\r")
-        sys.stdout.write((f"  {_BOLD}{title}{_RESET}" if title else "") + "\x1b[K\n")
+            sys.stdout.write(f"\x1b[{1 + header_lines + len(items)}A\r")
+        if title:
+            sys.stdout.write(f"  {_BOLD}{title}{_RESET}\x1b[K\n")
         for i, it in enumerate(items):
             if isinstance(it, Header):
                 sys.stdout.write(f"  {_DIM}{it.text}{_RESET}\x1b[K\n")
