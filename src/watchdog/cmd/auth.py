@@ -278,21 +278,33 @@ def ensure_provider_key(value: str) -> None:
     prompt_and_store_key(provider, _load_state())
 
 
-def _apply_anthropic_choice(state: dict, choice: str) -> None:
-    """Apply a Claude access choice ("1"=subscription, "2"=api-key) and save state."""
+def _apply_anthropic_choice(state: dict, choice: str, *, show_detection: bool = True) -> bool:
+    """Apply a Claude access choice ("1"=subscription, "2"=api-key) and save state. Returns
+    whether anything was printed, so a caller that prints its own follow-up right after a
+    picker closes knows whether it still needs a separating blank line or one was already
+    produced.
+
+    `show_detection` controls whether the subscription branch reports login detection —
+    set it False when the caller already showed that status right before the picker, so it
+    isn't printed twice."""
     meta = _PROVIDERS["anthropic"]
+    printed = False
 
     if choice == "1":
         state["mode"] = "subscription"
         _save_state(state)
-        if claude_code_logged_in():
-            print(f"\n  {_GREEN}✓{_RESET}  Claude Code login detected.")
-        else:
-            print(f"\n  {_YELLOW}!{_RESET}  Claude Code login not detected — run {_CYAN}claude{_RESET} to log in.")
+        if show_detection:
+            if claude_code_logged_in():
+                print(f"  {_GREEN}✓{_RESET}  Claude Code login detected.")
+            else:
+                print(f"  {_YELLOW}!{_RESET}  Claude Code login not detected — run {_CYAN}claude{_RESET} to log in.")
+            printed = True
         if os.environ.get(meta["env"]):
             print(f"  {_YELLOW}!{_RESET}  ${meta['env']} is set and the SDK uses it first — unset it to avoid metering.")
+            printed = True
     else:
-        print(f"\n  {_DIM}Create a key at{_RESET} {_CYAN}https://platform.claude.com/{_RESET} {_DIM}→ API keys.{_RESET}")
+        printed = True
+        print(f"  {_DIM}Create a key at{_RESET} {_CYAN}https://platform.claude.com/{_RESET} {_DIM}→ API keys.{_RESET}")
         try:
             key = getpass("  Paste your Anthropic API key (hidden): ").strip()
         except (EOFError, KeyboardInterrupt):
@@ -307,6 +319,8 @@ def _apply_anthropic_choice(state: dict, choice: str) -> None:
         else:
             _save_state(state)
             print(f"\n  {_YELLOW}!{_RESET}  No key entered — mode set to api-key but no key stored yet.")
+
+    return printed
 
 
 def _ask_anthropic_mode() -> str | None:
@@ -358,12 +372,14 @@ def setup_auth_interactive(interactive: bool | None = None) -> None:
         return
 
     state = _load_state()
-    _apply_anthropic_choice(state, choice)
+    printed = _apply_anthropic_choice(state, choice, show_detection=False)
 
     if choice == "1":  # subscription
-        print(f"\n  {_YELLOW}Note:{_RESET} ingesting more than a few documents can be token-heavy for a")
-        print(f"  {_DIM}Pro subscription's session limits. See{_RESET} {_CYAN}docs/configuration.md{_RESET}"
-              f"{_DIM} (\"Model backends\") for cheaper metered alternatives — OpenAI, DeepSeek, Gemini.{_RESET}")
+        lead = "\n" if printed else ""
+        print(f"{lead}  {_YELLOW}Note:{_RESET} {_DIM}ingesting more than a few documents can be token-heavy for a "
+              f"Pro subscription's session limits. See{_RESET}")
+        print(f"  {_CYAN}docs/configuration.md{_RESET} {_DIM}(\"Model backends\") for cheaper metered "
+              f"alternatives — OpenAI, DeepSeek, Gemini.{_RESET}")
         if confirm("\n  Route ingestion to a metered API service instead of your subscription?", default=False):
             _setup_metered_ingestion(state)
     else:
