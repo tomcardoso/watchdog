@@ -8,7 +8,7 @@ and often where to get it), not a thread to investigate. Splitting it out follow
 authors the content (``type``/``what``/``why_it_matters``/``likely_source``); Python stamps the
 id and provenance.
 
-Ledger at ``.watchdog/Registry/requests.json``::
+Ledger at ``.watchdog/registry/requests.json``::
 
     {"schema_version": 1, "requests": {"<rid>": {
         "type": str, "what": str, "why_it_matters": str, "likely_source": str|None,
@@ -33,7 +33,7 @@ _SCHEMA_VERSION = 1
 
 
 def _path(vault: Path) -> Path:
-    return vault / ".watchdog" / "Registry" / "requests.json"
+    return vault / ".watchdog" / "registry" / "requests.json"
 
 
 def load(vault: Path) -> dict:

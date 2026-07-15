@@ -1,6 +1,6 @@
 """`watchdog usage` — per-call token/cost/latency breakdown for ingest runs (#207, #317, #319).
 
-Reads `.watchdog/Registry/usage/usage-<ts>.json` (D50, relocated out of the flat Registry dir
+Reads `.watchdog/registry/usage/usage-<ts>.json` (D50, relocated out of the flat Registry dir
 in #319) — the Python orchestrator's own per-call telemetry, written after every `watchdog
 ingest`/`watchdog finalize` run — and groups calls by stage (classifier / extractor / finalizer,
 matching the CLI's own `--classifier-model` / `--extractor-model` / `--finalizer-model`
@@ -79,7 +79,7 @@ def _short_auth(mode: str | None) -> str:
 def _corpus_pages(vault: Path) -> tuple[int, int] | None:
     """(total_pages, document_count) from the vault's document registry, or None if unavailable —
     the right denominator for cost/page, since it covers every ingested document, not just this run."""
-    reg = vault / ".watchdog" / "Registry" / "documents.json"
+    reg = vault / ".watchdog" / "registry" / "documents.json"
     if not reg.exists():
         return None
     try:

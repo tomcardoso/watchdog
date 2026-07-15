@@ -12,22 +12,22 @@ Audit the vault for structural problems: orphaned notes, broken links, registry 
 
 ### Documents
 
-Read `.watchdog/Registry/documents.json`. For each entry:
+Read `.watchdog/registry/documents.json`. For each entry:
 - Check that `documents/<document_note>.md` exists
 - If the file is missing, report: `MISSING NOTE: documents/<slug>.md (registered as <sha256>)`
 
 List all files in `documents/`. For each:
-- Check that it has a corresponding entry in `.watchdog/Registry/documents.json` (match on `file` frontmatter field)
+- Check that it has a corresponding entry in `.watchdog/registry/documents.json` (match on `file` frontmatter field)
 - If no registry entry, report: `ORPHANED NOTE: documents/<filename> (no registry entry)`
 
 ### Entities
 
-Read `.watchdog/Registry/entities.json`. For each entry:
+Read `.watchdog/registry/entities.json`. For each entry:
 - Check that `entities/<type-lowercase>/<id>.md` exists
 - If missing, report: `MISSING NOTE: entities/<type>/<id>.md (registered as entity)`
 
 List all files in `entities/` recursively. For each:
-- Check that it has a corresponding entry in `.watchdog/Registry/entities.json` (match on `id` frontmatter)
+- Check that it has a corresponding entry in `.watchdog/registry/entities.json` (match on `id` frontmatter)
 - If no registry entry, report: `ORPHANED NOTE: <path> (no registry entry)`
 
 ---
@@ -59,14 +59,14 @@ Note: links use pipe-alias syntax (`[[path|Display Name]]`). Extract only the pa
 
 ## 4. Lock file check
 
-Check whether `.watchdog/Registry/.ingest-lock` exists. If it does, read its `started_at` field and compute the age. If older than 30 minutes, report:
-`STALE LOCK: .watchdog/Registry/.ingest-lock (created <timestamp>, <N>m ago) — run: watchdog unlock <project-slug>`
+Check whether `.watchdog/registry/.ingest-lock` exists. If it does, read its `started_at` field and compute the age. If older than 30 minutes, report:
+`STALE LOCK: .watchdog/registry/.ingest-lock (created <timestamp>, <N>m ago) — run: watchdog unlock <project-slug>`
 
 ---
 
 ## 5. Manifest consistency
 
-Read `.watchdog/Registry/manifest.json` and `.watchdog/Registry/entities.json`.
+Read `.watchdog/registry/manifest.json` and `.watchdog/registry/entities.json`.
 
 For each entity in `entities.json`, check that:
 - An entry with the same `id` exists in `manifest.json`
@@ -87,7 +87,7 @@ Report mismatches as warnings:
 
 ## 6. Registry counts
 
-Read `.watchdog/Registry/registry.json`. Compare `document_count` and `entity_count` against the actual counts in `documents.json` and `entities.json`. If they differ, report:
+Read `.watchdog/registry/registry.json`. Compare `document_count` and `entity_count` against the actual counts in `documents.json` and `entities.json`. If they differ, report:
 `COUNT MISMATCH: registry.json says <n> documents but documents.json has <m>`
 
 Also check that the following files exist at the vault root. Report any that are missing:
@@ -117,7 +117,7 @@ For each callout, report: `CONTRADICTION: entities/<type>/<id>.md — <first lin
 
 ## 9. Unreviewed near-duplicates
 
-During chew, MinHash flags a document that closely matches an earlier one by writing `near_duplicate_of` into its registry entry — detection only, never auto-discarded, so the journalist decides whether they are the same document. Read `.watchdog/Registry/documents.json`; for every entry with a non-empty `near_duplicate_of`, report:
+During chew, MinHash flags a document that closely matches an earlier one by writing `near_duplicate_of` into its registry entry — detection only, never auto-discarded, so the journalist decides whether they are the same document. Read `.watchdog/registry/documents.json`; for every entry with a non-empty `near_duplicate_of`, report:
 
 `NEAR-DUPLICATE: documents/<slug>.md ~ <near_duplicate_of> — confirm same or different`
 

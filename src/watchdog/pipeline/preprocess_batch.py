@@ -37,7 +37,7 @@ def _compute_near_dup(result: dict, vault: Path) -> dict:
         text = " ".join(p.get("markdown", "") for p in result.get("pages", []))
         if not text.strip():
             return {"near_duplicates": [], "top_similarity": 0.0, "candidate_minhash": []}
-        documents_path = vault / ".watchdog" / "Registry" / "documents.json"
+        documents_path = vault / ".watchdog" / "registry" / "documents.json"
         documents = json.loads(documents_path.read_text()) if documents_path.exists() else {}
         candidate_mh = minhash(shingles_from_text(text))
         threshold = 0.85
@@ -263,7 +263,7 @@ def _filter_already_seen(files: list, vault: Path, incoming: Path, queue: Path) 
     again. (Exact bytes only; a near-duplicate has a different sha and is handled by the MinHash
     check at ingest.)
     """
-    docs_path = vault / ".watchdog" / "Registry" / "documents.json"
+    docs_path = vault / ".watchdog" / "registry" / "documents.json"
     try:
         ingested = set(json.loads(docs_path.read_text(encoding="utf-8"))) if docs_path.exists() else set()
     except (OSError, json.JSONDecodeError):

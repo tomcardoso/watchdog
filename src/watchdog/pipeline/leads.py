@@ -2,7 +2,7 @@
 
 A whole-vault, registry-only pass that surfaces investigative leads without a model call —
 the cheap, on-brand complement to the model-driven `/watchdog-surface`. Four signals, all
-read straight from `.watchdog/Registry/entities.json`:
+read straight from `.watchdog/registry/entities.json`:
 
   * **Named but never profiled** — a relationship `target_id` that no entity record exists
     for. The extractor named (say) a company as the target of a "Director" role but never
@@ -135,7 +135,7 @@ def total(leads: dict) -> int:
 
 def scan(vault: Path) -> dict:
     """Run the sweep over a vault's entity registry, minus anything already resolved (#266)."""
-    return find_leads(_load_json(vault / ".watchdog" / "Registry" / "entities.json"),
+    return find_leads(_load_json(vault / ".watchdog" / "registry" / "entities.json"),
                       resolutions.resolved_ids(vault))
 
 

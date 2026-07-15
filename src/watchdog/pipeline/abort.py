@@ -76,7 +76,7 @@ def run(vault: Path, sha256: str) -> dict:
         queue_file.replace(dest)
         requeue_path = str(dest.relative_to(vault))
 
-    log = vault / ".watchdog" / "Registry" / "ingest.log"
+    log = vault / ".watchdog" / "registry" / "ingest.log"
     try:
         log.parent.mkdir(parents=True, exist_ok=True)
         with open(log, "a", encoding="utf-8") as f:

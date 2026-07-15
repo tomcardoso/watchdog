@@ -86,7 +86,7 @@ def run(vault: Path, entity_id: str, label: str,
     result dict with ``added`` (False if the callout was already present), the callout's
     resolution ``rid``, the entity name, and the note path. Raises ValueError on bad input.
     """
-    registry_dir = vault / ".watchdog" / "Registry"
+    registry_dir = vault / ".watchdog" / "registry"
     entities_path = registry_dir / "entities.json"
     documents_path = registry_dir / "documents.json"
 

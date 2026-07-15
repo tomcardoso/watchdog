@@ -88,7 +88,7 @@ def _load_json(path: Path) -> dict:
 
 def _entity_index(vault: Path) -> dict[str, dict]:
     """Lowercased name/alias → entity, from the registry manifest (free, already on disk)."""
-    manifest = _load_json(vault / ".watchdog" / "Registry" / "manifest.json")
+    manifest = _load_json(vault / ".watchdog" / "registry" / "manifest.json")
     idx: dict[str, dict] = {}
     for eid, e in manifest.items():
         for name in [e.get("name", ""), *e.get("aliases", [])]:
@@ -129,7 +129,7 @@ def scan(vault: Path, results: list[dict]) -> list[dict]:
     terms = load_terms(vault)
     if not terms:
         return []
-    docs_reg = _load_json(vault / ".watchdog" / "Registry" / "documents.json")
+    docs_reg = _load_json(vault / ".watchdog" / "registry" / "documents.json")
     entity_index = _entity_index(vault)
     resolved = resolutions.resolved_ids(vault)
 

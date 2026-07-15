@@ -6,7 +6,7 @@ from watchdog.pipeline import abort
 
 def _vault(tmp_path: Path) -> Path:
     vault = tmp_path / "vault"
-    for sub in ("tmp", "timeline", "queue", "Registry"):
+    for sub in ("tmp", "timeline", "queue", "registry"):
         (vault / ".watchdog" / sub).mkdir(parents=True)
     return vault
 
@@ -48,7 +48,7 @@ def test_abort_removes_staging_and_moves_queue_file(tmp_path):
 
 def test_abort_never_touches_vault_registry(tmp_path):
     vault = _vault(tmp_path)
-    entities = vault / ".watchdog" / "Registry" / "entities.json"
+    entities = vault / ".watchdog" / "registry" / "entities.json"
     entities.write_text(json.dumps({"acme": {"id": "acme", "name": "Acme"}}))
 
     abort.run(vault, "somesha")

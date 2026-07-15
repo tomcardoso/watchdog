@@ -223,7 +223,7 @@ def test_coverage_gap_handles_missing_page_count():
 
 def _full_vault(tmp_path: Path) -> Path:
     vault = tmp_path / "vault"
-    reg = vault / ".watchdog" / "Registry"
+    reg = vault / ".watchdog" / "registry"
     reg.mkdir(parents=True)
     (vault / ".watchdog" / "tmp").mkdir()
     (vault / ".watchdog" / "queue").mkdir()
@@ -423,7 +423,7 @@ def test_postflight_persists_coverage_gap_on_document_registry_record(tmp_path):
     result = postflight_run(vault, ext_path)
     assert result.get("ok"), result
 
-    documents_reg = json.loads((vault / ".watchdog" / "Registry" / "documents.json").read_text())
+    documents_reg = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
     assert documents_reg["sha777aaa"]["coverage_gap"] == {"start": 2, "end": 12, "pages": 11}
 
 
@@ -437,7 +437,7 @@ def test_postflight_persists_none_coverage_gap_for_clean_extraction(tmp_path):
     result = postflight_run(vault, ext_path)
     assert result.get("ok"), result
 
-    documents_reg = json.loads((vault / ".watchdog" / "Registry" / "documents.json").read_text())
+    documents_reg = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
     record = documents_reg["sha777aaa"]
     assert "coverage_gap" in record   # key present even when assessed clean/not-assessable
     assert record["coverage_gap"] is None

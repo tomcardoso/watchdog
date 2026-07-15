@@ -26,7 +26,7 @@ def make_vault(tmp_path: Path) -> Path:
     - acme-corp (Company) — carries the auto-generated reverse roles for both
     """
     vault = tmp_path / "vault"
-    reg_dir = vault / ".watchdog" / "Registry"
+    reg_dir = vault / ".watchdog" / "registry"
     reg_dir.mkdir(parents=True)
     (vault / "entities" / "person").mkdir(parents=True)
     (vault / "entities" / "company").mkdir(parents=True)
@@ -207,7 +207,7 @@ def test_merge_remaps_third_party_role_target(tmp_path):
     """Acceptance criteria: a third entity's role pointing at the merged id must
     follow the merge."""
     vault = make_vault(tmp_path)
-    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     result = merge(entities, "alice-smith", "a-smith-duplicate")
 
     bob_targets = {r["target_id"] for r in entities["bob-jones"]["roles"]}
@@ -224,7 +224,7 @@ def test_merge_remaps_reverse_role_and_keeps_both_relationships(tmp_path):
     alice-smith, and since the relationship labels differ, both survive (Alice is
     legitimately both) rather than being collapsed into one."""
     vault = make_vault(tmp_path)
-    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     merge(entities, "alice-smith", "a-smith-duplicate")
 
     acme_roles = {(r["relationship"], r["target_id"]) for r in entities["acme-corp"]["roles"]}
@@ -287,7 +287,7 @@ def test_run_writes_merged_entities_json(tmp_path):
     vault = make_vault(tmp_path)
     run(vault, "alice-smith", "a-smith-duplicate")
 
-    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     assert "a-smith-duplicate" not in entities
     alice = entities["alice-smith"]
     assert "Smith, A." in alice["aliases"]
@@ -301,7 +301,7 @@ def test_run_updates_manifest(tmp_path):
     vault = make_vault(tmp_path)
     run(vault, "alice-smith", "a-smith-duplicate")
 
-    manifest = json.loads((vault / ".watchdog" / "Registry" / "manifest.json").read_text())
+    manifest = json.loads((vault / ".watchdog" / "registry" / "manifest.json").read_text())
     assert "a-smith-duplicate" not in manifest
     assert "Smith, A." in manifest["alice-smith"]["aliases"]
 
@@ -310,7 +310,7 @@ def test_run_updates_registry_entity_count(tmp_path):
     vault = make_vault(tmp_path)
     run(vault, "alice-smith", "a-smith-duplicate")
 
-    registry = json.loads((vault / ".watchdog" / "Registry" / "registry.json").read_text())
+    registry = json.loads((vault / ".watchdog" / "registry" / "registry.json").read_text())
     assert registry["entity_count"] == 3
 
 
@@ -411,17 +411,17 @@ def test_run_snapshots_entities_and_notes_before_mutation(tmp_path):
     manifest.json, both entity notes, and any third-party note about to be
     regenerated (bob-jones, whose role targets the losing id) before writing."""
     vault = make_vault(tmp_path)
-    manifest_path = vault / ".watchdog" / "Registry" / "manifest.json"
+    manifest_path = vault / ".watchdog" / "registry" / "manifest.json"
     manifest_path.write_text('{"pre-existing": true}')
-    original_entities = (vault / ".watchdog" / "Registry" / "entities.json").read_text()
+    original_entities = (vault / ".watchdog" / "registry" / "entities.json").read_text()
     original_bob_note = (vault / "entities" / "person" / "bob-jones.md").read_text()
 
     result = run(vault, "alice-smith", "a-smith-duplicate")
 
     backup_dir = result["backup_dir"]
     assert backup_dir is not None
-    assert (backup_dir / ".watchdog" / "Registry" / "entities.json").read_text() == original_entities
-    assert (backup_dir / ".watchdog" / "Registry" / "manifest.json").read_text() == '{"pre-existing": true}'
+    assert (backup_dir / ".watchdog" / "registry" / "entities.json").read_text() == original_entities
+    assert (backup_dir / ".watchdog" / "registry" / "manifest.json").read_text() == '{"pre-existing": true}'
     assert (backup_dir / "entities" / "person" / "alice-smith.md").exists()
     assert (backup_dir / "entities" / "person" / "a-smith-duplicate.md").exists()
     assert (backup_dir / "entities" / "person" / "bob-jones.md").read_text() == original_bob_note
@@ -431,7 +431,7 @@ def test_run_merge_carries_registry_contradiction_to_survivor(tmp_path):
     """#288: the losing entity's registry-only contradiction (never written to its note
     body) must survive the merge, not just whatever text happens to be in the notes."""
     vault = make_vault(tmp_path)
-    entities_path = vault / ".watchdog" / "Registry" / "entities.json"
+    entities_path = vault / ".watchdog" / "registry" / "entities.json"
     entities = json.loads(entities_path.read_text())
     entities["a-smith-duplicate"]["contradictions"] = ["> [!contradiction] Loser-side callout"]
     entities_path.write_text(json.dumps(entities))
@@ -456,7 +456,7 @@ def test_run_backfills_note_only_contradiction_into_registry(tmp_path):
 
     run(vault, "alice-smith", "a-smith-duplicate")
 
-    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     assert entities["alice-smith"]["contradictions"] == ["> [!contradiction] Note-only callout"]
 
 
@@ -508,7 +508,7 @@ def test_cli_prints_merge_summary(tmp_path, monkeypatch, capsys):
     assert "watchdog reindex" in out
     assert "backup:" in out and ".watchdog/backups/" in out and "undo" in out
 
-    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     assert "a-smith-duplicate" not in entities
 
 
@@ -526,7 +526,7 @@ def test_cli_shows_preview_and_asks_for_confirmation(tmp_path, monkeypatch, caps
     assert "Alice Smith" in out and "A. Smith" in out   # preview shown
     assert "cannot be undone" in _strip_ansi(prompts[0])   # real input() prints the prompt too
     assert "Cancelled" in out
-    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     assert "a-smith-duplicate" in entities   # nothing merged
 
 
@@ -539,14 +539,14 @@ def test_cli_proceeds_on_explicit_yes(tmp_path, monkeypatch, capsys):
 
     out = _strip_ansi(capsys.readouterr().out)
     assert "Merged:" in out
-    entities = json.loads((vault / ".watchdog" / "Registry" / "entities.json").read_text())
+    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     assert "a-smith-duplicate" not in entities
 
 
 def test_cli_warns_on_mismatched_types(tmp_path, monkeypatch, capsys):
     vault = make_vault(tmp_path)
     monkeypatch.chdir(vault)
-    reg_path = vault / ".watchdog" / "Registry" / "entities.json"
+    reg_path = vault / ".watchdog" / "registry" / "entities.json"
     entities = json.loads(reg_path.read_text())
     entities["a-smith-duplicate"]["type"] = "Company"   # was Person — force a mismatch
     reg_path.write_text(json.dumps(entities))

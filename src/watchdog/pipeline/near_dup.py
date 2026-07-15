@@ -124,7 +124,7 @@ def main() -> None:
     parser.add_argument("--text", help="Candidate document text (or use --stdin/--text-file)")
     parser.add_argument("--stdin", action="store_true", help="Read candidate text from stdin")
     parser.add_argument("--text-file", help="Path to a file containing the candidate text")
-    parser.add_argument("--registry", help="Path to Registry/documents.json")
+    parser.add_argument("--registry", help="Path to registry/documents.json")
     parser.add_argument(
         "--threshold",
         type=float,

@@ -384,7 +384,7 @@ def _update_manifest(vault_path: Path, entities_reg: dict) -> None:
         }
         for eid, entry in entities_reg.items()
     }
-    manifest_path = vault_path / ".watchdog" / "Registry" / "manifest.json"
+    manifest_path = vault_path / ".watchdog" / "registry" / "manifest.json"
     manifest_path.write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
@@ -820,7 +820,7 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
     slug = _doc_slug(doc["filename"])
     doc_title = doc.get("title", doc["filename"])
 
-    registry_dir = vault_path / ".watchdog" / "Registry"
+    registry_dir = vault_path / ".watchdog" / "registry"
     registry_dir.mkdir(parents=True, exist_ok=True)
 
     with _registry_lock(registry_dir):

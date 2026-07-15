@@ -197,7 +197,7 @@ def test_collisions_leaves_raws_when_canonical_exists(tmp_path):
 
 
 def _seed_registries(vault: Path, docs: dict, manifest: dict) -> None:
-    reg = vault / ".watchdog" / "Registry"
+    reg = vault / ".watchdog" / "registry"
     reg.mkdir(parents=True, exist_ok=True)
     (reg / "documents.json").write_text(json.dumps(docs), encoding="utf-8")
     (reg / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
@@ -430,7 +430,7 @@ def test_apply_matches_no_matches_is_noop(tmp_path):
 
 def _full_vault(tmp_path: Path) -> Path:
     vault = tmp_path / "vault"
-    reg = vault / ".watchdog" / "Registry"
+    reg = vault / ".watchdog" / "registry"
     reg.mkdir(parents=True)
     (vault / ".watchdog" / "tmp").mkdir()
     (vault / "_INCOMING").mkdir()

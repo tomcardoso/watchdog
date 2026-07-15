@@ -90,8 +90,8 @@ _VAULT_PERMISSIONS = [
     # setup sweeps), so a crashed session's queue survives.
     "Write(.watchdog/research/**)",
     "Edit(.watchdog/research/**)",
-    "Write(.watchdog/Registry/**)",
-    "Edit(.watchdog/Registry/**)",
+    "Write(.watchdog/registry/**)",
+    "Edit(.watchdog/registry/**)",
     "Write(.watchdog/timeline/**)",
     "Edit(.watchdog/timeline/**)",
     # session-authored pages (compounding queries → wiki threads)
@@ -347,7 +347,7 @@ _CMD_HELP: dict[str, dict] = {
             ("--run TIMESTAMP", "Analyze one specific past run instead of the latest"),
         ],
         "notes": [
-            "Reads `.watchdog/Registry/usage/usage-<ts>.json`, written after every `watchdog",
+            "Reads `.watchdog/registry/usage/usage-<ts>.json`, written after every `watchdog",
             "ingest`/`watchdog finalize` run, and groups calls by stage (classifier/extractor/",
             "finalizer, matching the CLI's own --classifier-model/--extractor-model/",
             "--finalizer-model flags). Extractor rows show the filename and page range (or",
@@ -485,7 +485,7 @@ def _check_project_health(info: dict) -> str | None:
 
 
 def _load_registry(vault: Path) -> dict | None:
-    reg = vault / ".watchdog" / "Registry" / "registry.json"
+    reg = vault / ".watchdog" / "registry" / "registry.json"
     if not reg.exists():
         return None
     try:
@@ -586,7 +586,7 @@ def _launch_claude(vault: Path, prompt: str | None = None, model: str | None = N
 
 def _check_vault_locks(vault: Path, slug: str) -> None:
     chew_lock   = vault / ".watchdog" / ".chew-lock"
-    ingest_lock = vault / ".watchdog" / "Registry" / ".ingest-lock"
+    ingest_lock = vault / ".watchdog" / "registry" / ".ingest-lock"
     if chew_lock.exists():
         sys.exit(f"Error: chew is in progress. Wait for it to finish or run: watchdog unlock {slug}")
     if ingest_lock.exists():

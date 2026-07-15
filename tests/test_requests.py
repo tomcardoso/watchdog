@@ -10,7 +10,7 @@ SHA = "a1b2c3d4e5f6" + "0" * 52   # 64 chars, like a real sha256
 
 
 def _vault(tmp_path: Path) -> Path:
-    (tmp_path / ".watchdog" / "Registry").mkdir(parents=True)
+    (tmp_path / ".watchdog" / "registry").mkdir(parents=True)
     return tmp_path
 
 
@@ -75,7 +75,7 @@ def test_record_of_the_same_text_from_two_documents_keeps_both(tmp_path):
 
 def test_load_tolerates_a_corrupt_ledger(tmp_path):
     vault = _vault(tmp_path)
-    (vault / ".watchdog" / "Registry" / "requests.json").write_text("{not json", encoding="utf-8")
+    (vault / ".watchdog" / "registry" / "requests.json").write_text("{not json", encoding="utf-8")
     assert requests.load(vault) == {"schema_version": 1, "requests": {}}
 
 

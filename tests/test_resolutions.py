@@ -5,7 +5,7 @@ from watchdog.pipeline import resolutions
 
 
 def _vault(tmp_path: Path) -> Path:
-    (tmp_path / ".watchdog" / "Registry").mkdir(parents=True)
+    (tmp_path / ".watchdog" / "registry").mkdir(parents=True)
     return tmp_path
 
 
@@ -28,7 +28,7 @@ def test_id_builders_are_stable_and_namespaced():
 def test_missing_and_corrupt_store_reads_empty(tmp_path):
     v = _vault(tmp_path)
     assert resolutions.resolved_ids(v) == frozenset()
-    (v / ".watchdog" / "Registry" / "resolutions.json").write_text("{ not json", encoding="utf-8")
+    (v / ".watchdog" / "registry" / "resolutions.json").write_text("{ not json", encoding="utf-8")
     assert resolutions.resolved_ids(v) == frozenset()
 
 
@@ -44,7 +44,7 @@ def test_resolve_unresolve_roundtrip_and_idempotence(tmp_path):
     assert removed == ["lead:isolated:john"]
     assert resolutions.resolved_ids(v) == {"lead:inferred:carol"}
 
-    stored = json.loads((v / ".watchdog" / "Registry" / "resolutions.json").read_text())
+    stored = json.loads((v / ".watchdog" / "registry" / "resolutions.json").read_text())
     assert stored["schema_version"] == 1
     assert stored["resolved"]["lead:inferred:carol"]["label"] == "manual"
 

@@ -13,7 +13,7 @@ At the start of every session: (1) read `hot.md` for a summary of recent activit
 | `morgue/` | Original files after successful ingest |
 | `.watchdog/queue/` | Chewed files ready for extraction — populated by `watchdog chew` |
 | `.watchdog/staging/` | Original files waiting to move to morgue after ingest |
-| `.watchdog/Registry/` | Internal state — do not edit manually |
+| `.watchdog/registry/` | Internal state — do not edit manually |
 | `entities/` | One note per real-world entity |
 | `documents/` | One note per ingested document |
 | `briefings/` | Post-ingest briefing notes |
@@ -31,7 +31,7 @@ The following are auto-allowed in `.claude/settings.json` — never ask for conf
 |-----------|------------------|
 | Read any file within this vault | always allowed |
 | Write/edit files in `.watchdog/tmp/` | auto-allowed |
-| Write/edit files in `.watchdog/Registry/` | auto-allowed |
+| Write/edit files in `.watchdog/registry/` | auto-allowed |
 | Write/edit briefing notes in `briefings/` | auto-allowed |
 | Write/edit `hot.md` | auto-allowed |
 | Write/edit `log.md` | auto-allowed |
@@ -46,7 +46,7 @@ The following are auto-allowed in `.claude/settings.json` — never ask for conf
 
 **What is NOT permitted and must never be attempted:** `mkdir`, `which`, `pip show`, `python3 -c "…"`, `watchdog <cmd> --help`, shell pipelines to parse JSON (`cat … | python3 -c "…"`), absolute paths in any bash command, or `cd <path> &&` prefixes. Always use paths relative to the vault root. `.watchdog/tmp/` always exists — do not create it.
 
-**To read registry files** (`.watchdog/Registry/entities.json`, `documents.json`, `manifest.json`, etc.), use the Read tool directly — never shell out to parse them.
+**To read registry files** (`.watchdog/registry/entities.json`, `documents.json`, `manifest.json`, etc.), use the Read tool directly — never shell out to parse them.
 
 **Never pass `--vault` to any watchdog command.** All watchdog commands default to the current directory as the vault. Passing `--vault` could affect a different project.
 
@@ -54,11 +54,11 @@ The following are auto-allowed in `.claude/settings.json` — never ask for conf
 
 1. Public records only — never process confidential source material, private correspondence, or leaked documents. If a document cannot be identified as a public record, stop and ask before proceeding.
 2. Registry updates are atomic with note creation — never one without the other.
-3. No duplicate entities — check `.watchdog/Registry/manifest.json` before creating (it is lighter than `entities.json` and contains id, name, type, aliases, and note_path).
+3. No duplicate entities — check `.watchdog/registry/manifest.json` before creating (it is lighter than `entities.json` and contains id, name, type, aliases, and note_path).
 4. Entity IDs are kebab-case: `john-doe`, `shell-co-ltd`, `123-main-st`.
 5. Every extracted fact records its `basis`: `stated` (directly in the document) or `inferred` (reasoned from it). An `inferred` fact is a lead, not a finding. `stated` is the default and is left implicit; only `inferred` facts are marked.
 6. The `## Notes` section in any note is reserved for journalist annotations — never overwrite it.
-7. Acquire `.watchdog/Registry/.ingest-lock` before any vault writes; release it on completion or failure.
+7. Acquire `.watchdog/registry/.ingest-lock` before any vault writes; release it on completion or failure.
 
 ## Commands
 

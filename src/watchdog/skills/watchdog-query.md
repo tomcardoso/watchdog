@@ -26,7 +26,7 @@ Identify:
 
 **Facets — narrow before you read.** If the question names a filter — an entity type ("which companies…"), a document type ("court filings", "annual reports"), or a date range ("in 2021", "between 2019 and 2022") — apply it before opening individual notes, using metadata already captured at ingest. No new lookups are needed, and facets combine (e.g. "companies named in court filings from 2021" narrows on all three):
 
-- **Entity type** — `.watchdog/Registry/manifest.json`'s `type` field (`Person`, `Company`, `Fund`, `Address`, …). Keep only matching entries before matching on name/alias in the manifest step below.
+- **Entity type** — `.watchdog/registry/manifest.json`'s `type` field (`Person`, `Company`, `Fund`, `Address`, …). Keep only matching entries before matching on name/alias in the manifest step below.
 - **Document type** — each document note's `document_type` frontmatter field. Grep across notes rather than opening each one:
   ```bash
   grep -l "^document_type: <type>" documents/*.md
@@ -37,7 +37,7 @@ A facet narrows which notes you read, not what you conclude from them — read t
 
 Read the relevant vault files. Prioritise in this order:
 
-1. **`.watchdog/Registry/manifest.json`** — lightweight index of every entity: `id`, `name`, `type`, `aliases`, `note_path`. Read this first to find which entities are relevant to the question. Match on name and all aliases.
+1. **`.watchdog/registry/manifest.json`** — lightweight index of every entity: `id`, `name`, `type`, `aliases`, `note_path`. Read this first to find which entities are relevant to the question. Match on name and all aliases.
 2. **Entity notes** — read only the specific notes identified in step 1 (use the `note_path` field, append `.md`). Each note has a `## Summary`, `## Timeline`, `## Analysis`, and `## Relationships`.
 3. **timeline.md** — global chronological view across all entities; use this for "when did X happen?" or "what happened in year Y?" questions
 4. **Document notes** (`documents/*.md`) — for the source documents those entities appear in

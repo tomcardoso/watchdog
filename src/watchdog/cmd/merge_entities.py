@@ -33,7 +33,7 @@ def cmd_merge_entities(args) -> None:
     if not (vault / ".watchdog").is_dir():
         sys.exit("Error: must be run from inside a Watchdog vault directory")
 
-    entities_path = vault / ".watchdog" / "Registry" / "entities.json"
+    entities_path = vault / ".watchdog" / "registry" / "entities.json"
     try:
         entities_reg = json.loads(entities_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):

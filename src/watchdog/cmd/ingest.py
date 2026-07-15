@@ -473,7 +473,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
                  f"collect it.\n")
 
     def _release_lock() -> None:
-        (vault / ".watchdog" / "Registry" / ".ingest-lock").unlink(missing_ok=True)
+        (vault / ".watchdog" / "registry" / ".ingest-lock").unlink(missing_ok=True)
         (vault / ".watchdog" / "ingest-state.json").unlink(missing_ok=True)
 
     if confirm:
@@ -496,7 +496,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         print(f"  {_YELLOW}Large documents can take several minutes each{_RESET}{_DIM} — a long pause on a "
               f"row is normal, not a stall.{_RESET}")
         print(f"  {_DIM}Press {_RESET}{_CYAN}Ctrl+C{_RESET}{_DIM} to stop; finished documents are kept.{_RESET}\n")
-    lock_file = vault / ".watchdog" / "Registry" / ".ingest-lock"
+    lock_file = vault / ".watchdog" / "registry" / ".ingest-lock"
     try:
         summary = None
         while True:
@@ -627,7 +627,7 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
     from watchdog.pipeline import orchestrate
     from watchdog.pipeline.locks import acquire_or_take_stale, lock_started_at
     from watchdog.pipeline.ingest_setup import STALE_SECONDS, _iso_now
-    lock = vault / ".watchdog" / "Registry" / ".ingest-lock"
+    lock = vault / ".watchdog" / "registry" / ".ingest-lock"
     # Atomic acquisition (#257): the shared .ingest-lock means a running ingest or a second
     # finalize is excluded without a check-then-write race; a >30-min stale lock is taken over.
     if not acquire_or_take_stale(lock, f"pid: cli-finalize\nstarted_at: {_iso_now()}\n", STALE_SECONDS):

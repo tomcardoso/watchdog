@@ -138,7 +138,7 @@ annual reports are reconciled (the scored contradiction C1 spans a `bankruptcy` 
 ```
 watchdog usage --all > usage.txt      # token/cost/latency per stage
 cp -r briefings/ ../captures/<vault>-briefings/
-cp -r .watchdog/Registry ../captures/<vault>-registry/
+cp -r .watchdog/registry ../captures/<vault>-registry/
 # and save the scrollback of each ingest run
 ```
 

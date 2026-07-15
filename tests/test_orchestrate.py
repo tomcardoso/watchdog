@@ -93,7 +93,7 @@ def test_ingest_log_records_start_before_ok(tmp_path, monkeypatch):
 
     asyncio.run(orchestrate.run(vault))
 
-    log = (vault / ".watchdog" / "Registry" / "ingest.log").read_text(encoding="utf-8")
+    log = (vault / ".watchdog" / "registry" / "ingest.log").read_text(encoding="utf-8")
     assert "START test-doc.pdf" in log
     assert log.index("START test-doc.pdf") < log.index("OK test-doc.pdf")
 
@@ -139,7 +139,7 @@ def test_write_briefing_resolves_entity_ids_to_display_names(tmp_path):
     entity, the briefing and hot.md must still show the display name — resolved deterministically
     against the registry manifest for this batch, rather than trusting the model."""
     vault = make_vault(tmp_path)
-    (vault / ".watchdog" / "Registry" / "manifest.json").write_text(json.dumps({
+    (vault / ".watchdog" / "registry" / "manifest.json").write_text(json.dumps({
         "andrew-hanrahan": {"name": "Andrew Hanrahan", "type": "person", "aliases": [],
                             "note_path": "entities/person/andrew-hanrahan"},
         "fsra": {"name": "Financial Services Regulatory Authority", "type": "public-body",
@@ -166,7 +166,7 @@ def test_write_briefing_leaves_unmatched_items_unchanged(tmp_path):
     pass through unchanged — the resolver only fires on a whole-item match (#342); it must not
     rewrite substrings inside prose, which risks corrupting legitimate text."""
     vault = make_vault(tmp_path)
-    (vault / ".watchdog" / "Registry" / "manifest.json").write_text(json.dumps({
+    (vault / ".watchdog" / "registry" / "manifest.json").write_text(json.dumps({
         "andrew-hanrahan": {"name": "Andrew Hanrahan", "type": "person", "aliases": [],
                             "note_path": "entities/person/andrew-hanrahan"},
     }))
@@ -187,7 +187,7 @@ def test_write_briefing_handles_missing_manifest(tmp_path):
     """No manifest.json yet (a vault's very first ingest) must not crash the briefing — items
     just pass through unresolved (#342)."""
     vault = make_vault(tmp_path)
-    assert not (vault / ".watchdog" / "Registry" / "manifest.json").exists()
+    assert not (vault / ".watchdog" / "registry" / "manifest.json").exists()
     b = {
         "investigation_status": "Early days.",
         "what_was_ingested": ["doc.pdf — Annual Report"],
@@ -441,13 +441,13 @@ def test_extraction_prompt_is_invariant_to_vault_entity_state(tmp_path, monkeypa
 
     # A vault already carrying a populated entity registry — the thing that used to change the prompt.
     v2 = make_vault(tmp_path / "populated")
-    (v2 / ".watchdog" / "Registry" / "entities.json").write_text(json.dumps({
+    (v2 / ".watchdog" / "registry" / "entities.json").write_text(json.dumps({
         "acme-corp": {"id": "acme-corp", "name": "Acme Corp", "type": "organization",
                       "aliases": ["ACME"], "appears_in": ["old-sha"],
                       "note_path": "entities/organization/acme-corp", "roles": [],
                       "timeline_events": [{"date": "2019-01-01", "event": "Prior event"}]},
     }))
-    (v2 / ".watchdog" / "Registry" / "manifest.json").write_text(json.dumps({
+    (v2 / ".watchdog" / "registry" / "manifest.json").write_text(json.dumps({
         "acme-corp": {"name": "Acme Corp", "type": "organization", "aliases": ["ACME"],
                       "note_path": "entities/organization/acme-corp"},
     }))
@@ -600,7 +600,7 @@ def test_orchestrator_reports_failed_on_postflight_rejection(tmp_path, monkeypat
     # abort cleanup: queue file moved to _failed/ (preserved, not auto-retried), failure logged
     assert not (vault / ".watchdog" / "queue" / "abc123.json").exists()
     assert (vault / ".watchdog" / "queue" / "_failed" / "abc123.json").exists()
-    assert "FAILED" in (vault / ".watchdog" / "Registry" / "ingest.log").read_text()
+    assert "FAILED" in (vault / ".watchdog" / "registry" / "ingest.log").read_text()
 
 
 def test_orchestrator_empty_queue(tmp_path):
@@ -961,7 +961,7 @@ def test_record_skill_provenance_is_persisted(tmp_path, monkeypatch):
     expected_hash = hashlib.sha256(
         skills_catalog.read_skill("general-records.md").encode("utf-8")).hexdigest()[:12]
 
-    docs = json.loads((vault / ".watchdog" / "Registry" / "documents.json").read_text())
+    docs = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
     entry = next(iter(docs.values()))
     assert entry["record_skill"] == "general-records"
     assert entry["record_skill_hash"] == expected_hash
@@ -1046,7 +1046,7 @@ def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
 
     usage_path = summary["usage_path"]
     assert usage_path and (vault / usage_path).exists()
-    assert usage_path.startswith(".watchdog/Registry/usage/usage-")   # #319: moved out of the flat Registry dir
+    assert usage_path.startswith(".watchdog/registry/usage/usage-")   # #319: moved out of the flat Registry dir
     data = json.loads((vault / usage_path).read_text())
     tasks = [c["task"] for c in data["calls"]]
     assert "classify" in tasks and "extract" in tasks and "briefing" in tasks
@@ -1103,7 +1103,7 @@ def test_latest_usage_none_before_any_ingest(tmp_path):
 
 def test_latest_usage_returns_the_most_recent_run(tmp_path):
     vault = make_vault(tmp_path)
-    reg = vault / ".watchdog" / "Registry"
+    reg = vault / ".watchdog" / "registry"
     (reg / "usage-20260101T000000Z.json").write_text(
         json.dumps({"calls": [], "totals": {"input_tokens": 1, "output_tokens": 1,
                                             "cache_read_tokens": 0, "cache_write_tokens": 0,
@@ -1121,7 +1121,7 @@ def test_usage_files_merges_new_subfolder_with_legacy_flat_location(tmp_path):
     vault ingested before that move still has real history sitting in the old flat location —
     `usage_files` (and everything built on it) must keep seeing both, in chronological order."""
     vault = make_vault(tmp_path)
-    reg = vault / ".watchdog" / "Registry"
+    reg = vault / ".watchdog" / "registry"
     (reg / "usage-20260101T000000Z.json").write_text("{}")   # legacy (pre-move) location
     usage_dir = reg / "usage"
     usage_dir.mkdir(parents=True)
@@ -1133,7 +1133,7 @@ def test_usage_files_merges_new_subfolder_with_legacy_flat_location(tmp_path):
 
 def test_latest_usage_prefers_new_subfolder_over_legacy_when_newer(tmp_path):
     vault = make_vault(tmp_path)
-    reg = vault / ".watchdog" / "Registry"
+    reg = vault / ".watchdog" / "registry"
     (reg / "usage-20260101T000000Z.json").write_text(
         json.dumps({"calls": [], "totals": {"input_tokens": 1, "output_tokens": 1,
                                             "cache_read_tokens": 0, "cache_write_tokens": 0,
@@ -1511,7 +1511,7 @@ def test_pending_finalization_uses_registry_appears_in_gate(tmp_path):
         "acme-corp": {"count": 1},   # touched once this run...
         "beta-llc": {"count": 1},
     }))
-    (vault / ".watchdog" / "Registry" / "entities.json").write_text(json.dumps({
+    (vault / ".watchdog" / "registry" / "entities.json").write_text(json.dumps({
         "acme-corp": {"appears_in": ["doc1", "doc2"]},   # ...but recurs project-wide → eligible
         "beta-llc": {"appears_in": ["doc1"]},            # single-document → not eligible
     }))
@@ -1534,7 +1534,7 @@ def test_ingest_setup_wipe_pending_controls_cleanup(tmp_path):
     (frag / "_queue.json").write_text('{"acme-corp": {"count": 2}}')
     (tmp / "result_old.json").write_text("{}")
     (tmp / "notes_old.md").write_text("obs")
-    lock = vault / ".watchdog" / "Registry" / ".ingest-lock"
+    lock = vault / ".watchdog" / "registry" / ".ingest-lock"
 
     # merge: inputs preserved so this run finalizes together with the pending batch
     ingest_setup.run(vault, wipe_pending=False)
@@ -2087,7 +2087,7 @@ def test_finish_batch_item_stamps_extraction_provenance(tmp_path):
         model="claude-sonnet-4-6", effort="medium"))
 
     assert result["status"] == "ok"
-    docs = json.loads((vault / ".watchdog" / "Registry" / "documents.json").read_text())
+    docs = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
     entry = docs["sha1"]
     assert entry["record_skill_hash"] == hashlib.sha256(b"SKILL BODY").hexdigest()[:12]
     assert entry["extract_model"] == "claude-sonnet-4-6"

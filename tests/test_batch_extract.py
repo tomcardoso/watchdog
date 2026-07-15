@@ -12,7 +12,7 @@ from watchdog.pipeline import batch_extract as be
 
 def make_vault(tmp_path):
     vault = tmp_path / "vault"
-    (vault / ".watchdog" / "Registry").mkdir(parents=True)
+    (vault / ".watchdog" / "registry").mkdir(parents=True)
     return vault
 
 

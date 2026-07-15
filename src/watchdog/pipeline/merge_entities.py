@@ -203,7 +203,7 @@ def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
     Returns a report dict for the CLI to print. Raises `ValueError` on bad input —
     the caller is expected to turn that into a clean `sys.exit`.
     """
-    registry_dir = vault_path / ".watchdog" / "Registry"
+    registry_dir = vault_path / ".watchdog" / "registry"
     entities_path = registry_dir / "entities.json"
     documents_path = registry_dir / "documents.json"
     registry_path = registry_dir / "registry.json"

@@ -128,7 +128,7 @@ def test_write_cypher_escapes_quotes(tmp_path):
 
 def _vault_with_entities(tmp_path, entities) -> Path:
     vault = tmp_path / "vault"
-    reg = vault / ".watchdog" / "Registry"
+    reg = vault / ".watchdog" / "registry"
     reg.mkdir(parents=True)
     (reg / "entities.json").write_text(json.dumps(entities), encoding="utf-8")
     return vault

@@ -45,7 +45,7 @@ def build_bundle(vault_path: Path, min_docs: int = 2) -> dict:
     if not queue_path.exists():
         return {"entities": []}
 
-    entities_path = vault_path / ".watchdog" / "Registry" / "entities.json"
+    entities_path = vault_path / ".watchdog" / "registry" / "entities.json"
     entities_reg = json.loads(entities_path.read_text(encoding="utf-8")) if entities_path.exists() else {}
 
     queue = json.loads(queue_path.read_text(encoding="utf-8"))
@@ -80,7 +80,7 @@ def apply_bundle(result_path: Path, vault_path: Path) -> dict:
     result = json.loads(result_path.read_text(encoding="utf-8"))
     syntheses = result.get("entity_syntheses", [])
 
-    registry_dir   = vault_path / ".watchdog" / "Registry"
+    registry_dir   = vault_path / ".watchdog" / "registry"
     entities_path  = registry_dir / "entities.json"
     documents_path = registry_dir / "documents.json"
     if not entities_path.exists():

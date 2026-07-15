@@ -95,7 +95,7 @@ def run(extraction_path: Path, vault_path: Path) -> None:
     new_summary  = extraction.get("summary") or None
     new_analysis = extraction.get("analysis") or ""
 
-    registry_dir   = vault_path / ".watchdog" / "Registry"
+    registry_dir   = vault_path / ".watchdog" / "registry"
     entities_path  = registry_dir / "entities.json"
     documents_path = registry_dir / "documents.json"
 

@@ -12,7 +12,7 @@ def _vault(tmp_path: Path) -> Path:
     v = tmp_path / "vault"
     (v / "_INCOMING").mkdir(parents=True)
     (v / ".watchdog" / "queue").mkdir(parents=True)
-    (v / ".watchdog" / "Registry").mkdir(parents=True)
+    (v / ".watchdog" / "registry").mkdir(parents=True)
     return v
 
 
@@ -32,7 +32,7 @@ def test_filter_skips_ingested_queued_and_intrabatch(tmp_path):
     dup2 = incoming / "dup2.txt"
     dup2.write_text("same bytes")   # identical to dup1
 
-    (v / ".watchdog" / "Registry" / "documents.json").write_text(
+    (v / ".watchdog" / "registry" / "documents.json").write_text(
         json.dumps({sha256_file(ingested): {"filename": "ingested.txt"}}))
     (queue / f"{sha256_file(queued)}.json").write_text("{}")
 

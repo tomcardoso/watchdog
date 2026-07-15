@@ -133,7 +133,7 @@ Chew is fully local and writes no model-derived fields — `document_type` is le
 **Code:** `pipeline/ingest_setup.py`, `cmd/ingest.py`.
 
 `watchdog ingest` resolves auth (`auth.resolve_auth`; errors to `watchdog setup` if
-unconfigured), acquires a run lock (`.watchdog/Registry/.ingest-lock`, stale after 30
+unconfigured), acquires a run lock (`.watchdog/registry/.ingest-lock`, stale after 30
 minutes), scans the queue, and clears the previous run's entity-fragment staging (§8).
 It then runs the Python orchestrator in-process (`asyncio.run(orchestrate.run(...))`) and
 releases the lock in a `finally`. Models, concurrency, and classification come from
@@ -156,7 +156,7 @@ check-then-write left a race window). A lock provably older than 30 minutes is t
 whose `started_at` is missing or unparseable is left in place for `watchdog unlock` rather than
 deleted regardless of age.
 
-A second, finer lock (`.watchdog/Registry/.write-lock`) serializes the actual registry/note
+A second, finer lock (`.watchdog/registry/.write-lock`) serializes the actual registry/note
 writes so the concurrent document workers write safely. Uses `flock` on macOS/Linux
 (blocks indefinitely) and `msvcrt.locking` on Windows (bounded retries, ~10s, then raises)
 — see D69.
@@ -315,7 +315,7 @@ quarantine, never silent data loss. See D104, D19.
 
 **Failure handling.** The model adapter raises if it can't get schema-valid JSON; a doc
 whose extraction or post-flight fails (after the output-overrun fallback, for multi-page
-docs) is logged to `.watchdog/Registry/ingest.log` and
+docs) is logged to `.watchdog/registry/ingest.log` and
 cleaned via `abort.run` (`pipeline/abort.py`) — staging/section temp removed, queue file
 moved to `.watchdog/queue/_failed/`, registry untouched. One bad document never sinks the
 batch; move the queue file back from `_failed/` to retry.
@@ -567,7 +567,7 @@ alongside the briefing and are also available on demand: the lead sweep (`pipeli
 inferred signals, and the watch-word scan (`pipeline/watchlist.py`, `watchdog watchlist`) greps
 the morgue full text for `watchlist.md` terms. Both write dated `briefings/` files. Because they
 regenerate from scratch every run they used to re-surface handled items; `pipeline/resolutions.py`
-is the shared acknowledgment overlay that fixes that. Its `.watchdog/Registry/resolutions.json`
+is the shared acknowledgment overlay that fixes that. Its `.watchdog/registry/resolutions.json`
 keys acknowledged items on stable ids (`lead:<signal>:<id>`, `contradiction:<callout-hash>`,
 `alert:<sha7>:<term-hash>`); the report generators (and the entity-note writer, for contradiction
 callouts) drop resolved ids from the active list. The store is populated by `watchdog resolve`,
@@ -578,7 +578,7 @@ by `- [x]` checkbox sync from the briefing files (`<!--wid:<id>-->` markers), an
 artifact to acquire — a document type, the specific thing, why it matters, and often where to
 get it — distinct from a lead's open-ended thread. The model emits `document_requests` on
 `EXTRACTION`/`SECTION` (moved out of `scratchpad`/`observations`, never duplicated); Python
-stamps each into `.watchdog/Registry/requests.json` with an id (`request:<sha7>:<hash>`) and
+stamps each into `.watchdog/registry/requests.json` with an id (`request:<sha7>:<hash>`) and
 provenance (§I1), inside `write_vault`'s registry lock. `write_requests` renders the still-open
 entries to the vault-root `requests.md` (overwrite, current-state, same `<!--wid:...-->`
 checkbox convention as leads/alerts) and `sync_from_briefings` reads it alongside the briefing
@@ -740,7 +740,7 @@ queue/<sha>.json            chewed documents awaiting ingest
 staging/<sha>/              chewed originals
 timeline/                   raw + canonical NDJSON event files
 tmp/                        scratch (wdg_* temp, entity-fragments/)
-Registry/
+registry/
   entities.json             full entity records (roles, events, appears_in)
   documents.json            per-document metadata + MinHash signatures + embedded
                             file_metadata (author/producer/created/…, #369)
@@ -859,7 +859,7 @@ completed purge, and the CLI hint says so.
   available on subscription). Documents needing **sectioned** extraction fall back to
   `claude-api` — a section's carry-forward depends on the previous section's result, so it
   can't be an independent batch request. `watchdog ingest` submits and exits rather than
-  blocking; state persists to `.watchdog/Registry/batch-pending.json` (one batch in flight
+  blocking; state persists to `.watchdog/registry/batch-pending.json` (one batch in flight
   per vault, mirroring `has_pending_finalization`'s precedent), and a *later* `watchdog
   ingest` invocation checks it — collecting and writing to the vault if `ended`, or reporting
   progress and exiting if still processing. 50% off every token, stacking with the A1 prompt

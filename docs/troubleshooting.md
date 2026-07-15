@@ -51,7 +51,7 @@ Two things send a file here, and neither is an error:
 
 ## A document failed during ingest
 
-A document whose extraction fails is logged to `.watchdog/Registry/ingest.log` and set aside in `.watchdog/queue/_failed/` — the rest of the batch still completes. To retry, run these from inside the vault directory:
+A document whose extraction fails is logged to `.watchdog/registry/ingest.log` and set aside in `.watchdog/queue/_failed/` — the rest of the batch still completes. To retry, run these from inside the vault directory:
 
 ```bash
 watchdog requeue
