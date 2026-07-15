@@ -815,6 +815,28 @@ def test_sidecar_moved_with_source(tmp_path):
     ).exists()
 
 
+def test_sidecar_moved_with_source_from_staging(tmp_path):
+    """The realistic post-chew case: chew moves the source into .watchdog/staging/<sha>/ but
+    deliberately leaves the sidecar behind in _INCOMING/ (orchestrate._read_sidecar reads it
+    from there through ingest) — the morgue move must still find it by filename, not by
+    looking next to the now-relocated source."""
+    vault = make_vault(tmp_path)
+    staging_dir = vault / ".watchdog" / "staging" / "abc123"
+    staging_dir.mkdir(parents=True)
+    (staging_dir / "test-doc.pdf").write_text("dummy")
+    sidecar = vault / "_INCOMING" / "test-doc.pdf.yml"
+    sidecar.write_text("source: SEDAR\n")
+
+    run(make_extraction(tmp_path, {"document": {
+        "original_path": ".watchdog/staging/abc123/test-doc.pdf",
+    }}), vault)
+
+    assert not sidecar.exists()
+    assert (
+        vault / "morgue" / "acme-corp" / "annual-report" / "test-doc.pdf.yml"
+    ).exists()
+
+
 def test_missing_source_file_does_not_raise(tmp_path):
     vault = make_vault(tmp_path)
     run(make_extraction(tmp_path), vault)

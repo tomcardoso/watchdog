@@ -1086,7 +1086,10 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
     source = vault_path / doc.get("original_path", f"_INCOMING/{doc['filename']}")
     if source.exists():
         shutil.move(str(source), str(morgue_dir / source.name))
-        sidecar = Path(str(source) + ".yml")
+        # The sidecar stays in _INCOMING/ keyed by filename even once chew moves the source
+        # into staging (orchestrate._read_sidecar reads it from there through ingest) — look it
+        # up the same way rather than next to `source`, which is staging once chew has run.
+        sidecar = vault_path / "_INCOMING" / f"{doc['filename']}.yml"
         if sidecar.exists():
             shutil.move(str(sidecar), str(morgue_dir / sidecar.name))
         # Preserve the Docling text alongside the original so the full document stays greppable in
