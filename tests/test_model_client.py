@@ -687,6 +687,71 @@ def test_merge_usage_does_not_add_booleans():
     assert mc._merge_usage({"cache_hit": 3}, {"cache_hit": True}) == {"cache_hit": 3}
 
 
+def test_merge_usage_sums_agent_sdk_timing_fields():
+    # #402: duration_api_ms/num_turns are plain numeric fields once inside the usage dict, so a
+    # continuation round's harness timing accumulates the same way token counts do — deliberate,
+    # not an accident of the generic dict-merge (arguably correct: the total call spent that much
+    # time across both API requests, and made that many internal turns in total).
+    a = {"input_tokens": 10, "duration_api_ms": 500, "num_turns": 1}
+    b = {"input_tokens": 3, "duration_api_ms": 200, "num_turns": 2}
+    assert mc._merge_usage(a, b) == {"input_tokens": 13, "duration_api_ms": 700, "num_turns": 3}
+
+
+# ── agent-SDK harness timing (#402) ─────────────────────────────────────────────
+
+def _result_message(**attrs):
+    """A stand-in for `claude_agent_sdk.ResultMessage` — `_agent_query` only dispatches on
+    `type(message).__name__`, so a dynamically-named plain object works fine."""
+    defaults = dict(result="", total_cost_usd=None, usage=None, is_error=False,
+                    api_error_status=None, duration_api_ms=None, num_turns=None, content=None)
+    defaults.update(attrs)
+    return type("ResultMessage", (), defaults)()
+
+
+def _patch_agent_query(monkeypatch, message):
+    import claude_agent_sdk
+
+    async def fake_query(prompt, options):
+        yield message
+
+    monkeypatch.setattr(claude_agent_sdk, "query", fake_query)
+
+
+def test_agent_query_captures_harness_timing_into_usage(monkeypatch):
+    msg = _result_message(result='{"name": "Acme"}', total_cost_usd=0.02,
+                          usage={"input_tokens": 10}, duration_api_ms=1234, num_turns=3)
+    _patch_agent_query(monkeypatch, msg)
+    out = asyncio.run(mc._agent_query("p", "model", None))
+    assert out["usage"] == {"input_tokens": 10, "duration_api_ms": 1234, "num_turns": 3}
+
+
+def test_agent_query_timing_present_even_without_token_usage(monkeypatch):
+    # The SDK's `usage` dict is optional but duration_api_ms/num_turns are not (#402) — the
+    # harness timing must still surface even when there's no token-usage dict to piggyback on.
+    msg = _result_message(result="{}", usage=None, duration_api_ms=500, num_turns=1)
+    _patch_agent_query(monkeypatch, msg)
+    out = asyncio.run(mc._agent_query("p", "model", None))
+    assert out["usage"] == {"duration_api_ms": 500, "num_turns": 1}
+
+
+def test_agent_query_usage_normalizes_non_dict_shape_without_crashing(monkeypatch):
+    # Defensive normalization: a weird (non-dict, non-None) `usage` shape must not crash the
+    # call — it's discarded rather than trusted, and harness timing still lands.
+    msg = _result_message(result="{}", usage="not-a-dict", duration_api_ms=42, num_turns=2)
+    _patch_agent_query(monkeypatch, msg)
+    out = asyncio.run(mc._agent_query("p", "model", None))
+    assert out["usage"] == {"duration_api_ms": 42, "num_turns": 2}
+
+
+def test_agent_query_usage_stays_none_when_nothing_present(monkeypatch):
+    # No token usage and no timing (e.g. an older SDK build) — usage stays None, matching the
+    # pre-#402 contract, rather than becoming a spurious empty dict.
+    msg = _result_message(result="{}", usage=None, duration_api_ms=None, num_turns=None)
+    _patch_agent_query(monkeypatch, msg)
+    out = asyncio.run(mc._agent_query("p", "model", None))
+    assert out["usage"] is None
+
+
 @pytest.mark.parametrize("task, backend, model, expected", [
     ("extract", "deepseek", "deepseek-v4-flash-thinking", mc._DEEPSEEK_THINKING_MAX_TOKENS),
     ("extract", "deepseek", "deepseek-v4-flash", 16000),     # non-thinking → normal task ceiling

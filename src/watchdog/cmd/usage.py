@@ -15,7 +15,7 @@ import json
 import sys
 from pathlib import Path
 
-from watchdog.cmd.base import _resolve_vault
+from watchdog.cmd.base import _DIM, _RESET, _resolve_vault
 from watchdog.pipeline.orchestrate import usage_files
 
 # task name -> stage bucket, matching --classifier-model/--extractor-model/--finalizer-model.
@@ -142,11 +142,20 @@ def _print_stage(calls: list[dict]) -> dict:
         trunc_name = (name[:name_w - 1] + "…") if len(name) > name_w else name
         trunc_detail = (detail[:detail_w - 1] + "…") if len(detail) > detail_w else detail
         retry_note = f"  ×{attempts}" if attempts > 1 else ""
+        # The claude-agent-sdk harness's own timing (#402): time actually spent in API requests,
+        # vs. this row's wall-clock Latency figure — a large gap is the harness backing off
+        # internally (throttled), not the model being slow. Only present for that backend, so
+        # trail it after the fixed columns rather than widening Latency for every row.
+        api_note = ""
+        if c.get("api_ms") is not None:
+            turns = c.get("num_turns")
+            turns_note = f", {turns} turns" if turns and turns != 1 else ""
+            api_note = f"  {_DIM}· api {_fmt_secs(c['api_ms'] / 1000)}{turns_note}{_RESET}"
         print(
             f"  {trunc_name:<{name_w}}  {trunc_detail:<{detail_w}}  "
             f"{effort:<{effort_w}}  {auth:<{auth_w}}  "
             f"{_fmt(c['input_tokens']):>8}  {_fmt(c['cache_read_tokens']):>8}  {_fmt(c['cache_write_tokens']):>8}  "
-            f"{_fmt(c['output_tokens']):>7}  {_fmt_secs(latency):>8}  ${cost:>6.4f}{retry_note}"
+            f"{_fmt(c['output_tokens']):>7}  {_fmt_secs(latency):>8}  ${cost:>6.4f}{retry_note}{api_note}"
         )
         totals["input_tokens"] += c["input_tokens"]
         totals["output_tokens"] += c["output_tokens"]

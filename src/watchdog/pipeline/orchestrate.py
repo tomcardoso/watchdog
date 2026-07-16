@@ -83,11 +83,17 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
     — both surfaced per call by `watchdog usage` (#319). `end_ts` is the call's completion time
     (epoch seconds); paired with `latency_s` it gives each call a [start, end] interval, so
     `watchdog usage` can report wall-clock elapsed per stage — the real time a concurrently-run
-    stage took — alongside the summed per-call time (#317 follow-up)."""
+    stage took — alongside the summed per-call time (#317 follow-up).
+
+    `api_ms`/`num_turns` (#402) are the `claude-agent-sdk` harness's own timing — time actually
+    spent in API requests vs. the call's wall-clock `latency_s`, and the internal request count.
+    They're only added to the record when `usage` carries them, so records for every other
+    backend stay exactly as they were — a large `latency_s` − `api_ms` gap is the signature of
+    the harness throttling/backing off internally rather than the model itself being slow."""
     if _usage is None:
         return
     u = usage or {}
-    _usage.append({
+    record = {
         "task": task, "model": model, "backend": backend,
         "input_tokens": u.get("input_tokens", u.get("prompt_tokens", 0)) or 0,
         "output_tokens": u.get("output_tokens", u.get("completion_tokens", 0)) or 0,
@@ -95,7 +101,12 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         "cache_write_tokens": u.get("cache_creation_input_tokens", 0) or 0,
         "cost_usd": cost_usd, "attempts": attempts, "latency_s": latency_s, "effort": effort,
         "auth_mode": auth_mode, "filename": filename, "detail": detail, "end_ts": time.time(),
-    })
+    }
+    if u.get("duration_api_ms") is not None:
+        record["api_ms"] = u["duration_api_ms"]
+    if u.get("num_turns") is not None:
+        record["num_turns"] = u["num_turns"]
+    _usage.append(record)
 
 
 async def _call_model(*, task, prompt, schema, model=None, backend=None,

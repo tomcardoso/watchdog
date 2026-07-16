@@ -12,14 +12,21 @@ from watchdog.cmd.usage import cmd_usage
 
 def _call(task="extract", filename="doc.pdf", detail="pages 1–1", model="claude-sonnet-4-6",
           cost_usd=0.01, input_tokens=100, output_tokens=20, latency_s=1.5,
-          effort=None, auth_mode="api-key", attempts=1, end_ts=None):
-    return {
+          effort=None, auth_mode="api-key", attempts=1, end_ts=None, api_ms=None, num_turns=None):
+    call = {
         "task": task, "model": model, "backend": "claude-api",
         "input_tokens": input_tokens, "output_tokens": output_tokens,
         "cache_read_tokens": 0, "cache_write_tokens": 0,
         "cost_usd": cost_usd, "attempts": attempts, "latency_s": latency_s, "effort": effort,
         "auth_mode": auth_mode, "filename": filename, "detail": detail, "end_ts": end_ts,
     }
+    # api_ms/num_turns (#402) are only present on claude-agent-sdk records — omitted here by
+    # default so a plain _call() matches a real raw-API record with no such keys at all.
+    if api_ms is not None:
+        call["api_ms"] = api_ms
+    if num_turns is not None:
+        call["num_turns"] = num_turns
+    return call
 
 
 def _build_vault(tmp_path: Path, *, runs: dict[str, list[dict]], documents=None) -> Path:
@@ -81,6 +88,45 @@ def test_cmd_usage_shows_auth_mode_and_retry_marker(tmp_path, monkeypatch, capsy
     assert "Auth" in out
     assert "sub" in out and "key" in out
     assert "×3" in out   # the retried call is flagged inline
+
+
+def test_cmd_usage_shows_api_time_alongside_latency_when_present(tmp_path, monkeypatch, capsys):
+    """#402: a claude-agent-sdk call's harness timing (api_ms/num_turns) surfaces next to the
+    wall-clock Latency figure — a large latency-vs-api gap is the throttling signature this
+    exists to reveal. A call with no api_ms (e.g. a raw-API backend) shows nothing extra."""
+    vault = _build_vault(tmp_path, runs={
+        "usage-2026-01-01T00-00-00": [
+            _call(filename="throttled.pdf", latency_s=2621.0, api_ms=726_000, num_turns=5),
+            _call(filename="plain.pdf", latency_s=10.0),
+        ],
+    })
+    monkeypatch.chdir(vault)
+
+    cmd_usage(_args())
+
+    out = capsys.readouterr().out
+    assert "api 12.1m" in out       # 726_000ms == 12.1 minutes
+    assert "5 turns" in out
+    throttled_line = next(line for line in out.splitlines() if "throttled.pdf" in line)
+    plain_line = next(line for line in out.splitlines() if "plain.pdf" in line)
+    assert "api" in throttled_line
+    assert "api" not in plain_line   # no harness timing on this call — nothing appended
+
+
+def test_cmd_usage_omits_turns_note_when_a_single_turn(tmp_path, monkeypatch, capsys):
+    """A single-turn call is the healthy baseline — noting `1 turns` on every row would just be
+    noise, so the turns count is only appended when it deviates from 1."""
+    vault = _build_vault(tmp_path, runs={
+        "usage-2026-01-01T00-00-00": [_call(filename="healthy.pdf", api_ms=5000, num_turns=1)],
+    })
+    monkeypatch.chdir(vault)
+
+    cmd_usage(_args())
+
+    out = capsys.readouterr().out
+    row = next(line for line in out.splitlines() if "healthy.pdf" in line)
+    assert "api 5.0s" in row
+    assert "turns" not in row
 
 
 def test_cmd_usage_shows_wall_clock_elapsed_for_concurrent_stage(tmp_path, monkeypatch, capsys):
