@@ -319,7 +319,22 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
             if name == "ResultMessage":
                 out["text"] = getattr(message, "result", "") or ""
                 out["cost_usd"] = getattr(message, "total_cost_usd", None)
-                out["usage"] = getattr(message, "usage", None)
+                # `usage` is normally a dict, but never trust a third-party shape enough to crash
+                # on it — fall back to a fresh dict so the harness-timing fields below always land.
+                raw_usage = getattr(message, "usage", None)
+                usage = dict(raw_usage) if isinstance(raw_usage, dict) else {}
+                # Harness-level timing (#402): `duration_api_ms` is time actually spent in API
+                # requests, vs. the message's own wall-clock `duration_ms` — the gap is
+                # backoff/wait the harness did internally. `num_turns` is the internal request
+                # count for the session. Together they let a throttled call (long gap, i.e. many
+                # turns) be told apart from a genuinely slow one after the fact.
+                api_ms = getattr(message, "duration_api_ms", None)
+                if api_ms is not None:
+                    usage["duration_api_ms"] = api_ms
+                num_turns = getattr(message, "num_turns", None)
+                if num_turns is not None:
+                    usage["num_turns"] = num_turns
+                out["usage"] = usage or None
                 is_error = bool(getattr(message, "is_error", False))
                 api_status = getattr(message, "api_error_status", None)
             elif name in ("RateLimitEvent", "RateLimitInfo"):

@@ -1106,6 +1106,44 @@ def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
     assert round(summary["usage"]["cost_usd"], 4) == round(0.01 * n_calls, 4)
 
 
+def test_record_usage_carries_agent_sdk_harness_timing():
+    """#402: a `claude-agent-sdk` usage dict carrying `duration_api_ms`/`num_turns` (harness
+    timing) surfaces as `api_ms`/`num_turns` on the persisted call record — the signal that
+    tells a throttled call (long gap between wall-clock latency and API time) apart from a
+    genuinely slow one."""
+    orchestrate._usage = []
+    try:
+        orchestrate._record_usage(
+            "extract", model="claude-sonnet-4-6", backend="claude-agent-sdk",
+            usage={"input_tokens": 100, "output_tokens": 20,
+                  "duration_api_ms": 12345, "num_turns": 3},
+            cost_usd=0.01, latency_s=60.0)
+        assert len(orchestrate._usage) == 1
+        record = orchestrate._usage[0]
+        assert record["api_ms"] == 12345
+        assert record["num_turns"] == 3
+    finally:
+        orchestrate._usage = None
+
+
+def test_record_usage_omits_harness_timing_keys_for_other_backends():
+    """A raw-API backend's usage dict has no `duration_api_ms`/`num_turns` — the persisted
+    record must not grow `api_ms`/`num_turns` keys (even as null) for it, so existing
+    `usage-<ts>.json` consumers see byte-identical records to before #402."""
+    orchestrate._usage = []
+    try:
+        orchestrate._record_usage(
+            "extract", model="claude-sonnet-4-6", backend="claude-api",
+            usage={"input_tokens": 100, "output_tokens": 20},
+            cost_usd=0.01, latency_s=1.0)
+        assert len(orchestrate._usage) == 1
+        record = orchestrate._usage[0]
+        assert "api_ms" not in record
+        assert "num_turns" not in record
+    finally:
+        orchestrate._usage = None
+
+
 def test_log_md_ingest_entry_includes_usage_line(tmp_path, monkeypatch):
     """F5/#222: the log.md entry for an ingest carries the run's token/cost totals, the
     user-facing half of A2's telemetry."""
