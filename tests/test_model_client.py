@@ -709,12 +709,18 @@ def _result_message(**attrs):
 
 
 def _patch_agent_query(monkeypatch, message):
-    import claude_agent_sdk
+    """Stands in for the real `claude_agent_sdk` package via `sys.modules`, so these tests don't
+    require it installed — CI's test job deliberately excludes heavy SDK deps (see ci.yml)."""
+    import sys
+    import types
 
     async def fake_query(prompt, options):
         yield message
 
-    monkeypatch.setattr(claude_agent_sdk, "query", fake_query)
+    fake_module = types.ModuleType("claude_agent_sdk")
+    fake_module.query = fake_query
+    fake_module.ClaudeAgentOptions = lambda **kwargs: kwargs
+    monkeypatch.setitem(sys.modules, "claude_agent_sdk", fake_module)
 
 
 def test_agent_query_captures_harness_timing_into_usage(monkeypatch):
