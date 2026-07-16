@@ -1534,6 +1534,110 @@ def test_finalize_completes_an_interrupted_run(tmp_path, monkeypatch):
     assert orchestrate.has_pending_finalization(vault) is False
 
 
+def test_skip_finalize_stops_after_extraction_with_no_post_ingest_calls(tmp_path, monkeypatch):
+    """`--no-finalize` (#384): `orchestrate.run(..., skip_finalize=True)` extracts the queue but
+    never calls post-ingest — no reconciliation/synthesis/timeline-dedup/briefing model call —
+    and leaves the batch pending finalization, with the per-doc result and fragment inputs on
+    disk for a later `watchdog finalize`."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="aaa", filename="a.pdf")
+
+    calls = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        calls.append(task)
+        if task == "classify":
+            parsed = {"skill": "general-records.md"}
+        elif task == "extract":
+            parsed = _extraction(sha="aaa", filename="a.pdf")
+        else:
+            raise AssertionError(f"unexpected post-ingest call with skip_finalize=True: {task}")
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="claude-agent-sdk", auth_mode="subscription")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault, skip_finalize=True))
+
+    assert summary["extracted"] == 1
+    assert summary["finalize_skipped"] is True
+    assert "post_ingest" not in summary
+    assert calls == ["classify", "extract"]     # no entity-synthesis/timeline-dedup/briefing/reconcile
+    assert orchestrate.has_pending_finalization(vault) is True
+    assert (vault / ".watchdog" / "tmp" / "result_aaa.json").exists()
+    assert (vault / ".watchdog" / "tmp" / "entity-fragments" / "_queue.json").exists()
+
+
+def test_finalize_after_skip_finalize_consumes_staged_inputs(tmp_path, monkeypatch):
+    """The inputs an extract-only run (`skip_finalize=True`) leaves on disk are exactly what a
+    later, standalone `orchestrate.finalize()` needs — it completes synthesis + briefing from
+    them and clears them once done, the same as finishing an interrupted run (#384)."""
+    def _ext(sha, filename, fact):
+        return {
+            "document": {"sha256": sha, "filename": filename,
+                         "original_path": f"_INCOMING/{filename}",
+                         "title": filename, "document_type": "Filing",
+                         "date_of_document": "2024-01-15", "page_count": 1,
+                         "source": None, "obtained": None, "near_duplicate_of": None,
+                         "summary": "A filing.",
+                         "key_facts": [{"fact": fact, "page": 1, "basis": "stated",
+                                        "entities": ["acme-corp"]}]},
+            "entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
+                          "aliases": [], "roles": []}],
+            "morgue_entity_id": "acme-corp", "morgue_document_type": "filing",
+            "scratchpad": "",
+        }
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        flat = _flat(prompt)
+        if task == "classify":
+            parsed = {"skill": "general-records.md"}
+        elif task == "extract":
+            parsed = _ext("sha-one", "doc-one.pdf", "Acme filed ONE") if "ONE" in flat \
+                else _ext("sha-two", "doc-two.pdf", "Acme filed TWO")
+        elif task == "entity-synthesis":
+            parsed = {"entity_syntheses": [{"entity_id": "acme-corp",
+                                            "summary": "Synthesized prose.", "analysis": ""}]}
+        elif task == "timeline-dedup":
+            parsed = {"groups": []}
+        elif task == "briefing":
+            parsed = {"investigation_status": "x", "what_was_ingested": ["doc-one.pdf", "doc-two.pdf"]}
+        else:
+            parsed = {}
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="claude-agent-sdk", auth_mode="subscription")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha-one", filename="doc-one.pdf", text="Acme filed ONE")
+    _queue_doc(vault, sha="sha-two", filename="doc-two.pdf", text="Acme filed TWO")
+
+    # Phase 1: extract-only.
+    summary = asyncio.run(orchestrate.run(vault, skip_finalize=True))
+    assert summary["extracted"] == 2
+    assert "post_ingest" not in summary
+    assert orchestrate.has_pending_finalization(vault) is True
+
+    # Phase 2: a standalone finalize (e.g. `watchdog finalize --finalizer-model ...`) consumes
+    # exactly the staged inputs — no re-extraction, no "extract" call this phase.
+    calls = []
+    orig_fake = fake
+
+    async def counting_fake(*, task, **kw):
+        calls.append(task)
+        return await orig_fake(task=task, **kw)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", counting_fake)
+
+    out = asyncio.run(orchestrate.finalize(vault, post_model="haiku"))
+
+    assert "extract" not in calls
+    assert out["synthesized"] == 1
+    assert "error" not in out
+    assert "Synthesized prose." in (vault / "entities" / "organization" / "acme-corp.md").read_text()
+    assert not (vault / ".watchdog" / "tmp" / "entity-fragments").exists()
+    assert not list((vault / ".watchdog" / "tmp").glob("result_*.json"))
+    assert orchestrate.has_pending_finalization(vault) is False
+
+
 def test_pending_finalization_uses_registry_appears_in_gate(tmp_path):
     """Entity count reflects the registry's `appears_in >= 2` gate (D26), not the fragment
     queue's `count`, which is only a touched-set marker post-D26."""

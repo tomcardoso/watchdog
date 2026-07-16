@@ -467,6 +467,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} --wait isn't supported with claude-batch — a batch "
                  f"already runs in the background; re-run {_CYAN}watchdog ingest{_RESET} later to "
                  f"collect it.\n")
+    no_finalize = getattr(args, "no_finalize", False)
 
     def _release_lock() -> None:
         (vault / ".watchdog" / "registry" / ".ingest-lock").unlink(missing_ok=True)
@@ -495,13 +496,17 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
     lock_file = vault / ".watchdog" / "registry" / ".ingest-lock"
     try:
         summary = None
+        # This loop's only exit condition is `iter_summary["rate_limited"]`, which reflects a
+        # rate limit hit *during extraction* — finalize (skipped entirely when no_finalize is
+        # set) never sets it, so --wait + --no-finalize already stops as soon as the queue
+        # drains, with no special-casing needed here (#384).
         while True:
             iter_summary = asyncio.run(orchestrate.run(
                 vault, concurrency=concurrency, extract_model=extract_model, post_model=post_model,
                 classify_model=classify_model, classify_pages=classify_pages, pinned_skill=pinned_skill,
                 extract_effort=extract_effort, post_effort=post_effort,
                 extract_backend=extract_backend, post_backend=post_backend,
-                classify_backend=classify_backend, wait=wait))
+                classify_backend=classify_backend, wait=wait, skip_finalize=no_finalize))
             summary = _merge_summary(summary, iter_summary)
             if not (wait and iter_summary.get("rate_limited")):
                 break
@@ -573,6 +578,12 @@ def _print_ingest_summary(summary: dict) -> None:
               f"{_DIM} later to check on it and collect results.{_RESET}\n")
     elif cancelled:
         print(f"\n  {_DIM}Re-run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} to process the remaining documents.{_RESET}\n")
+    elif summary.get("finalize_skipped"):
+        print(f"\n  {_DIM}Extraction staged, post-processing skipped{_RESET} "
+              f"{_DIM}({_RESET}{_BOLD}{ext}{_RESET}{_DIM} document{'s' if ext != 1 else ''} on disk).{_RESET}")
+        print(f"  {_DIM}Finalize when ready — run it once for the vault as-is, or copy the vault "
+              f"folder to try more than one finalizer:{_RESET}")
+        print(f"  {_CYAN}watchdog finalize{_RESET}{_DIM} [--finalizer-model MODEL]{_RESET}\n")
     else:
         print(f"\n  {_DIM}Open a fresh Claude Code session to ask investigation questions.{_RESET}\n")
 

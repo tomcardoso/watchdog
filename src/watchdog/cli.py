@@ -433,6 +433,10 @@ def main() -> None:
                           help="On a rate limit, sleep until it resets and resume automatically "
                                "instead of stopping for you to re-run ingest. Not with a "
                                "claude-batch extractor model.")
+    p_ingest.add_argument("--no-finalize", action="store_true", default=False, dest="no_finalize",
+                          help="Stop after extraction; run post-processing later with "
+                               "watchdog finalize. Useful for comparing finalizer models against "
+                               "the same extraction without paying for it twice.")
     p_ingest.add_argument("--estimate", action="store_true",
                           help="Print a token/cost estimate for the queue and exit — no lock, no confirm, no extraction")
     p_ingest.set_defaults(func=cmd_ingest)

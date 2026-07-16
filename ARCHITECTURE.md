@@ -180,7 +180,9 @@ sleeps until `RateLimitError.resets_at` (plus a buffer; a fixed fallback when th
 report one — only `claude-agent-sdk` does) before looping again, until the queue drains and
 finalize completes. The sleep is chunked under the 30-minute staleness window, refreshing the held
 lock's `started_at` after each chunk, so a wait that outlasts it doesn't make a live run look
-abandoned. Opt-in only — without the flag, a rate limit stops the batch exactly as before.
+abandoned. Opt-in only — without the flag, a rate limit stops the batch exactly as before. The
+loop's only exit condition is a rate limit *during extraction*; with `--no-finalize` (§5) finalize
+never runs at all, so `--wait` simply stops once the queue drains, same as normal.
 
 ---
 
@@ -328,6 +330,16 @@ docs) is logged to `.watchdog/registry/ingest.log` and
 cleaned via `abort.run` (`pipeline/abort.py`) — staging/section temp removed, queue file
 moved to `.watchdog/queue/_failed/`, registry untouched. One bad document never sinks the
 batch; move the queue file back from `_failed/` to retry.
+
+**Extract-only (`--no-finalize`, #384).** `orchestrate.run(..., skip_finalize=True)` returns as
+soon as extraction finishes, at the single point (shared by the concurrent per-document loop and
+the claude-batch collect path, §5) that would otherwise call `finalize` — post-ingest (§8, §8.5,
+§9) never runs, and nothing is cleared, so `has_pending_finalization(vault)` stays True on exactly
+what a normal interrupted run would leave behind. That lets a later `watchdog finalize
+--finalizer-model <model>` run against a fixed extraction, including against several copies of the
+vault to compare finalizer candidates without re-paying extraction's cost each time. Re-running
+`finalize` idempotently over a batch it has already completed is explicitly out of scope; run it
+once per vault (or vault copy).
 
 ---
 
