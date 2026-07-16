@@ -2145,6 +2145,73 @@ def test_cmd_ingest_no_wait_stops_on_rate_limit_without_looping(wdg_home, tmp_pa
     assert len(calls) == 1
     assert calls[0].get("wait") is False
 
+
+# ── cmd_ingest --no-finalize (#384) ──────────────────────────────────────────
+
+def test_cmd_ingest_no_finalize_threads_skip_finalize_to_orchestrate_run(wdg_home, tmp_path, monkeypatch, capsys):
+    """`--no-finalize` on the CLI reaches `orchestrate.run` as `skip_finalize=True`, and the
+    closing block tells the user how to finalize later instead of the usual "open a session"
+    line."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+
+    calls = []
+
+    async def fake_run(*a, **k):
+        calls.append(k)
+        return {"results": [{"sha256": "sha1", "filename": "a.pdf", "status": "ok", "entity_count": 1}],
+                "extracted": 1, "skipped": 0, "failed": 0, "cancelled": False,
+                "rate_limited": False, "stop_message": None, "rate_limit_resets_at": None,
+                "quarantined": 0, "finalize_skipped": True}
+    monkeypatch.setattr(orch_module, "run", fake_run)
+
+    ing.cmd_ingest(args(no_finalize=True), confirm=False)
+
+    assert len(calls) == 1
+    assert calls[0].get("skip_finalize") is True
+    out = capsys.readouterr().out
+    assert "watchdog finalize" in out
+    assert "Open a fresh Claude Code session" not in out
+
+
+def test_cmd_ingest_wait_and_no_finalize_stops_once_queue_drains(wdg_home, tmp_path, monkeypatch):
+    """`--wait` loops on a rate-limited *extraction*, not on finalize — with `--no-finalize`,
+    finalize never runs at all, so once the queue finishes extracting cleanly the loop must stop
+    after a single call rather than waiting for a finalize that will never happen."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+
+    calls = []
+
+    async def fake_run(*a, **k):
+        calls.append(k)
+        return {"results": [{"sha256": "sha1", "filename": "a.pdf", "status": "ok", "entity_count": 1}],
+                "extracted": 1, "skipped": 0, "failed": 0, "cancelled": False,
+                "rate_limited": False, "stop_message": None, "rate_limit_resets_at": None,
+                "quarantined": 0, "finalize_skipped": True}
+    monkeypatch.setattr(orch_module, "run", fake_run)
+    monkeypatch.setattr(ing, "_wait_for_rate_limit",
+                        lambda *a, **k: pytest.fail("must not wait — nothing rate-limited"))
+
+    ing.cmd_ingest(args(wait=True, no_finalize=True), confirm=False)
+
+    assert len(calls) == 1
+    assert calls[0].get("wait") is True
+    assert calls[0].get("skip_finalize") is True
+
+
 def test_cmd_ingest_prints_backup_hint_when_discard_snapshotted(wdg_home, tmp_path, monkeypatch, capsys):
     """#270: when ingest_setup.run() reports a backup_dir (the discard choice actually threw
     something away), cmd_ingest must print a restore hint."""

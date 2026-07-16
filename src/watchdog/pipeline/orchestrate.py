@@ -1294,7 +1294,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
               pinned_skill: str | None = None,
               extract_effort: str | None = None, post_effort: str | None = None,
               extract_backend: str | None = None, post_backend: str | None = None,
-              classify_backend: str | None = None, wait: bool = False) -> dict:
+              classify_backend: str | None = None, wait: bool = False,
+              skip_finalize: bool = False) -> dict:
     """Extract every queued document (bounded by `concurrency`), then post-ingest.
 
     `extract_model` drives extraction (whole-doc + section, and the sectioned-doc digest); `post_model` drives
@@ -1307,6 +1308,12 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     non-Claude backend's `*_model` is that provider's raw model id (D37).
     `wait` only changes the rate-limit notice text — the caller (`cmd_ingest`) owns the
     actual sleep-and-resume loop; this function always stops cleanly on a rate limit.
+    `skip_finalize` (#384) stops the run after extraction — post-ingest (reconciliation,
+    synthesis, timeline, briefing) is never called, and none of its inputs
+    (`entity-fragments/`, `result_*.json`, `notes_*.md`) are cleared. That leaves
+    `has_pending_finalization(vault)` True so a later `watchdog finalize` — possibly with a
+    different `--finalizer-model`, and possibly against a copy of the vault — can pick up
+    exactly where extraction left off.
     """
     queue_dir = vault / ".watchdog" / "queue"
     shas = [f.stem for f in sorted(queue_dir.glob("*.json"))] if queue_dir.exists() else []
@@ -1434,7 +1441,13 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                "quarantined": quarantined, **extra_summary}
     if not pinned_skill:
         _nudge_skill_pin(results)
-    if summary["extracted"] and not cancelled_flag:
+    if summary["extracted"] and not cancelled_flag and skip_finalize:
+        # Extract-only (#384): leave the post-ingest inputs on disk untouched — a later
+        # `watchdog finalize` (possibly on a vault copy, possibly with a different
+        # `--finalizer-model`) consumes them. `has_pending_finalization` is already True by
+        # this point (`_finish_extraction` persisted `result_*.json`/fragments per document).
+        summary["finalize_skipped"] = True
+    elif summary["extracted"] and not cancelled_flag:
         try:
             # Finalize over the persisted per-doc results on disk (not just this run's in-memory
             # ones) so a merged batch — a prior pending run kept via wipe_pending=False — is
