@@ -351,6 +351,34 @@ def test_openai_backend_request_shape(monkeypatch):
     assert out["cost_usd"] == pytest.approx(10 * 0.14e-6 + 5 * 0.28e-6)
 
 
+def test_openai_backend_verifies_via_os_trust_store(monkeypatch):
+    # Cert verification must go through the OS trust store (truststore), not certifi's bundled
+    # list — otherwise a TLS-inspecting corporate proxy whose root CA the OS
+    # already trusts fails cert verification here even though the browser is fine.
+    import httpx
+    import truststore
+
+    client_kwargs = {}
+
+    class FakeResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self):
+            return {"choices": [{"message": {"content": '{"name": "Acme"}'}}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+
+    class FakeClient:
+        def __init__(self, *a, **k): client_kwargs.update(k)
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, headers=None, json=None): return FakeResp()
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+    asyncio.run(mc._openai_complete_async("prompt", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+                                          base_url="https://api.deepseek.com"))
+    assert isinstance(client_kwargs["verify"], truststore.SSLContext)
+
+
 def test_split_deepseek_thinking():
     assert mc._split_deepseek_thinking("deepseek-v4-flash") == ("deepseek-v4-flash", False)
     assert mc._split_deepseek_thinking("deepseek-v4-flash-thinking") == ("deepseek-v4-flash", True)
