@@ -592,6 +592,8 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     assistant message rather than continuing the given one, so they never prefill (excluded from
     `_CONTINUATION_BACKENDS`) and always reach this with `prefix=None`. The returned
     `finish_reason` lets the shell distinguish a max-token cut (`length`) from a natural stop."""
+    import ssl
+
     import httpx
 
     is_deepseek = "deepseek" in base_url
@@ -627,7 +629,12 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
         body["thinking"] = {"type": "enabled" if thinking else "disabled"}
     url = base_url.rstrip("/") + path
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    async with httpx.AsyncClient(timeout=600) as client:
+    # Verify via the OS trust store rather than the bundled certifi CA list — on a machine
+    # running a TLS-inspecting corporate proxy, the proxy's root CA is trusted
+    # by the OS but absent from certifi, which otherwise fails cert verification here.
+    import truststore
+    ssl_context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    async with httpx.AsyncClient(timeout=600, verify=ssl_context) as client:
         # Bounded retry on 5xx only (#354) — parity with the Anthropic SDK's built-in transient
         # retry. 429 is excluded: it raises RateLimitError below on the first response.
         for attempt in range(_TRANSIENT_RETRIES + 1):
