@@ -196,6 +196,19 @@ def _install_completion(shell: str, profile: Path | None, force: bool = False) -
     return str(profile)
 
 
+def _download_gliner_model():
+    """Load (downloading if not cached) the GLiNER model, verifying TLS via the OS trust store
+    rather than certifi's bundled list — same corporate-proxy fix as D122. `inject_into_ssl`
+    patches the global `ssl` module, so it's scoped to just this one-time load via `finally`."""
+    import truststore
+    truststore.inject_into_ssl()
+    try:
+        from gliner import GLiNER
+        return GLiNER.from_pretrained("urchade/gliner_multi-v2.1")
+    finally:
+        truststore.extract_from_ssl()
+
+
 def run(force: bool = False) -> None:
     if CONFIG_FILE.exists() and not force:
         print("  Watchdog is already set up. Use --force to re-run.")
@@ -299,6 +312,34 @@ def run(force: bool = False) -> None:
             _ok("Document conversion models (Docling)")
         except Exception as e:
             _warn(f"Docling model download failed: {e}")
+        # GLiNER (local named-entity recognition) is an optional extra, not installed by
+        # `pipx install watchdog-intel` — it feeds the extraction candidate harvest's
+        # person/org/location detection (#361). Pre-download it if present; if missing, attempt
+        # to install it ourselves, falling back to a manual install pointer only if that fails.
+        try:
+            _download_gliner_model()
+            _ok("Local name detection model (GLiNER)")
+        except ImportError:
+            print(f"  {_DIM}Installing GLiNER (local name detection) — this pulls in PyTorch and\n"
+                  f"  may take several minutes on first run...{_RESET}")
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "gliner"],
+                capture_output=True, text=True,
+            )
+            gliner_ready = False
+            if result.returncode == 0:
+                try:
+                    _download_gliner_model()
+                    _ok("Local name detection model (GLiNER)")
+                    gliner_ready = True
+                except Exception:
+                    pass
+            if not gliner_ready:
+                _warn("gliner not installed — the candidate harvest will skip name detection")
+                print(f"      {_DIM}Install it later with:{_RESET}")
+                print(f"        {_CYAN}pipx inject watchdog-intel gliner{_RESET}")
+        except Exception as e:
+            _warn(f"GLiNER model download failed: {e}")
 
     # 8. Write config
     WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)

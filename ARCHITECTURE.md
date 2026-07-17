@@ -303,6 +303,19 @@ backend) understands blocks; `claude-agent-sdk` and the OpenAI-compatible backen
 them to plain text (`model_client._flatten_prompt`) since neither exposes a cache knob to us
 (D51). `cache_read_input_tokens` is surfaced in the usage telemetry (§12) to verify hits.
 
+**Candidate harvest (Tier 0, #361/D123).** Benchmark hand-scoring found extraction misses
+"buried" facts — a lone sentence after a table, a table row, a one-line disclosure — even on
+strong models, almost always anchored by a money figure, date, percentage, proper noun, or
+court file number. Before the prompt is built, `pipeline/harvest.py` regex-harvests
+deterministic candidates (money, bare table figures, percentages, dates including French
+month names, court file numbers) from the same page-marked text, plus person/org/location
+names from the optional local GLiNER model (`harvest_entities`, import-guarded — a missing
+package or any model failure degrades to no entity candidates, never an ingest failure).
+Candidates are deduped per page, capped at 3 page-occurrences each (running headers/footers),
+and capped at 80 per page by kind priority, then rendered into a compact per-page checklist
+(`format_checklist`) that `build_extract_prompt`/`build_section_prompt` inject as a volatile
+block, turning recall ("notice it") into verification ("here it is — is it material?").
+
 **Output truncation — never accept a partial extraction (#343).** Sectioning is gated on
 *input* size, but a moderate-input, entity-dense document can overrun the model's *output*
 `max_tokens` ceiling and truncate the JSON mid-object. Three layers guarantee no truncated
