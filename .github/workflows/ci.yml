@@ -51,7 +51,7 @@ jobs:
       # file_metadata tests (#369) run rather than `importorskip` themselves into a silent pass —
       # a skipped entity-bomb test is worth nothing.
       - name: Install package and dev dependencies
-        run: pip install --no-deps -e . && pip install pyyaml pypdf argcomplete numpy pytest pytest-timeout jsonschema httpx nh3 python-docx python-pptx openpyxl Pillow defusedxml
+        run: pip install --no-deps -e . && pip install pyyaml pypdf argcomplete numpy pytest pytest-timeout jsonschema httpx truststore nh3 python-docx python-pptx openpyxl Pillow defusedxml
 
       - name: Run tests
         run: pytest --timeout=60
