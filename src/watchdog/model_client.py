@@ -197,7 +197,23 @@ def context_window(model: str | None) -> int:
 
 
 class ModelError(RuntimeError):
-    """The model could not return schema-valid JSON, or the chosen backend can't run."""
+    """The model could not return schema-valid JSON, or the chosen backend can't run.
+
+    `usage`/`cost_usd`/`attempts`/`model`/`backend`/`auth_mode` (D125) are set only when the
+    failure happened after at least one attempt actually called the model — the JSON-validation-
+    failure path and the truncation path in `acomplete_json` — so the real spend on a failed call
+    isn't lost. A backend/transport exception (raised before any usage exists) leaves these None."""
+
+    def __init__(self, message: str, *, usage: dict | None = None, cost_usd: float | None = None,
+                attempts: int = 0, model: str | None = None, backend: str | None = None,
+                auth_mode: str | None = None):
+        super().__init__(message)
+        self.usage = usage
+        self.cost_usd = cost_usd
+        self.attempts = attempts
+        self.model = model
+        self.backend = backend
+        self.auth_mode = auth_mode
 
 
 class RateLimitError(RuntimeError):
@@ -890,6 +906,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
     last_err = "no attempts made"
     attempts = 0
     pruned_all: list[str] = []
+    agg_usage: dict | None = None
     for _ in range(max_retries + 1):
         attempts += 1
         try:
@@ -901,6 +918,10 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
             raise ModelError(f"{chosen} backend error: {e}") from e
         if out.get("cost_usd"):
             total_cost += out["cost_usd"]
+        # Accumulate usage across every attempt (not just the one that ends up succeeding) so a
+        # retried call's telemetry reflects everything actually spent (#412) — a failed attempt's
+        # tokens were real spend, not free information.
+        agg_usage = _merge_usage(agg_usage, out.get("usage"))
 
         if out.get("truncated"):
             # Authoritatively truncated at the provider's output ceiling and not recoverable by
@@ -921,16 +942,20 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
             if not errors:
                 return ModelResult(
                     parsed=parsed, text=out["text"], model=model_id, backend=chosen,
-                    auth_mode=auth_mode, usage=out.get("usage"),
+                    auth_mode=auth_mode, usage=agg_usage,
                     cost_usd=round(total_cost, 6) or None,
                     latency_s=round(time.monotonic() - start, 3), attempts=attempts,
                     pruned=pruned_all or None,
                 )
             last_err = "; ".join(errors[:3])
 
+    # Every attempt's usage was real spend even though none produced valid JSON — attach it so
+    # the caller can still record it (D125), instead of the failure burning tokens invisibly.
     raise ModelError(
         f"task '{task}' failed JSON validation after {attempts} attempt(s) "
-        f"on {chosen}: {last_err}")
+        f"on {chosen}: {last_err}",
+        usage=agg_usage, cost_usd=round(total_cost, 6) or None, attempts=attempts,
+        model=model_id, backend=chosen, auth_mode=auth_mode)
 
 
 def complete_json(**kwargs) -> ModelResult:

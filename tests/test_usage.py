@@ -12,7 +12,8 @@ from watchdog.cmd.usage import cmd_usage
 
 def _call(task="extract", filename="doc.pdf", detail="pages 1–1", model="claude-sonnet-4-6",
           cost_usd=0.01, input_tokens=100, output_tokens=20, latency_s=1.5,
-          effort=None, auth_mode="api-key", attempts=1, end_ts=None, api_ms=None, num_turns=None):
+          effort=None, auth_mode="api-key", attempts=1, end_ts=None, api_ms=None, num_turns=None,
+          failed=False):
     call = {
         "task": task, "model": model, "backend": "claude-api",
         "input_tokens": input_tokens, "output_tokens": output_tokens,
@@ -26,6 +27,8 @@ def _call(task="extract", filename="doc.pdf", detail="pages 1–1", model="claud
         call["api_ms"] = api_ms
     if num_turns is not None:
         call["num_turns"] = num_turns
+    if failed:
+        call["failed"] = True
     return call
 
 
@@ -167,6 +170,28 @@ def test_cmd_usage_omits_wall_clock_when_no_end_ts(tmp_path, monkeypatch, capsys
     out = capsys.readouterr().out
     assert "elapsed" not in out
     assert "call time" in out
+
+
+def test_cmd_usage_shows_failed_marker_and_includes_in_subtotal(tmp_path, monkeypatch, capsys):
+    """#412/D125: a call that never returned valid JSON is recorded with `failed: true` rather
+    than vanishing from telemetry — it gets a visibly distinct marker, and its tokens/cost still
+    count toward the stage subtotal (it was real spend)."""
+    vault = _build_vault(tmp_path, runs={
+        "usage-2026-01-01T00-00-00": [
+            _call(filename="ok.pdf", cost_usd=0.01, input_tokens=100),
+            _call(filename="broke.pdf", cost_usd=0.02, input_tokens=200, attempts=2, failed=True),
+        ],
+    })
+    monkeypatch.chdir(vault)
+
+    cmd_usage(_args())
+
+    out = capsys.readouterr().out
+    failed_line = next(line for line in out.splitlines() if "broke.pdf" in line)
+    ok_line = next(line for line in out.splitlines() if "ok.pdf" in line)
+    assert "failed" in failed_line
+    assert "failed" not in ok_line
+    assert "$0.0300" in out   # subtotal includes the failed call's cost (0.01 + 0.02)
 
 
 def test_cmd_usage_all_compares_every_run(tmp_path, monkeypatch, capsys):

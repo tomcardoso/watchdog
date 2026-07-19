@@ -135,6 +135,50 @@ def test_call_model_without_vault_does_not_log(tmp_path, monkeypatch):
     assert r.pruned == ["extra_field"]
 
 
+def test_call_model_records_failed_usage_and_reraises(tmp_path, monkeypatch):
+    """#412/D125: a ModelError carrying usage/cost (the JSON-validation-failure/truncation
+    paths — the only ones where an attempt actually reached the model) must still be recorded,
+    flagged `failed=True`, before propagating — the failed attempt's tokens were real spend."""
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        raise model_client.ModelError(
+            "task 't' failed JSON validation after 2 attempt(s) on claude-api: bad json",
+            usage={"input_tokens": 20}, cost_usd=0.05, attempts=2,
+            model="claude-sonnet-4-6", backend="claude-api", auth_mode="api-key")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    orchestrate._usage = []
+    try:
+        with pytest.raises(model_client.ModelError):
+            asyncio.run(orchestrate._call_model(task="extract", prompt="p", schema=schemas.EXTRACTION,
+                                                filename="broke.pdf"))
+        assert len(orchestrate._usage) == 1
+        record = orchestrate._usage[0]
+        assert record["failed"] is True
+        assert record["input_tokens"] == 20
+        assert record["cost_usd"] == 0.05
+        assert record["attempts"] == 2
+        assert record["filename"] == "broke.pdf"
+    finally:
+        orchestrate._usage = None
+
+
+def test_call_model_does_not_record_usage_for_error_without_usage(tmp_path, monkeypatch):
+    """A ModelError raised before any attempt reached the model (e.g. auth/backend resolution
+    failures) carries no usage/cost — `_call_model` must not synthesize a bogus failed record
+    for it."""
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        raise model_client.ModelError("no auth configured")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    orchestrate._usage = []
+    try:
+        with pytest.raises(model_client.ModelError):
+            asyncio.run(orchestrate._call_model(task="extract", prompt="p", schema=schemas.EXTRACTION))
+        assert orchestrate._usage == []
+    finally:
+        orchestrate._usage = None
+
+
 def test_briefing_facts_projects_fact_and_date_only():
     """The briefing projection (#150) keeps the fact text and a date when present, and drops
     page/basis/entities/quote — narrative noise the briefing doesn't need."""

@@ -68,7 +68,7 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
                   cost_usd: float | None, attempts: int = 1, latency_s: float = 0.0,
                   effort: str | None = None, auth_mode: str | None = None,
                   filename: str | None = None, detail: str | None = None,
-                  pruned: list[str] | None = None) -> None:
+                  pruned: list[str] | None = None, failed: bool = False) -> None:
     """Append one call's usage to the run-scoped `_usage` accumulator, if one is active.
     Tolerates both Anthropic-style (`input_tokens`/`output_tokens`) and OpenAI-compatible
     (`prompt_tokens`/`completion_tokens`) usage dicts (D37) — the latter's cache-token fields
@@ -95,7 +95,11 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
     `pruned` (D124): dotted/bracketed paths of any JSON keys the model emitted outside the
     schema and that `model_client._prune_unknown` removed rather than failing validation over.
     Only added when non-empty, so systematic schema drift stays visible in `watchdog usage`
-    without cluttering every ordinary record."""
+    without cluttering every ordinary record.
+
+    `failed` (D125): True when this record is a call that ultimately raised `ModelError` rather
+    than returning — every attempt still spent real tokens, so it's recorded like any other call
+    (and counted in the same subtotals) rather than vanishing from telemetry."""
     if _usage is None:
         return
     u = usage or {}
@@ -114,6 +118,8 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         record["num_turns"] = u["num_turns"]
     if pruned:
         record["pruned"] = pruned
+    if failed:
+        record["failed"] = True
     _usage.append(record)
 
 
@@ -125,9 +131,21 @@ async def _call_model(*, task, prompt, schema, model=None, backend=None,
     directly, so telemetry can't silently miss a call site. `filename`/`detail` are passed
     through to `_record_usage` unchanged (#247). `vault` (D124) is used only to log a WARN
     line to `ingest.log` when the call's JSON carried unexpected keys that were pruned rather
-    than failing validation — pass it whenever a vault is in scope."""
-    r = await model_client.acomplete_json(task=task, prompt=prompt, schema=schema, model=model,
-                                          backend=backend, max_retries=max_retries, effort=effort)
+    than failing validation — pass it whenever a vault is in scope.
+
+    A `ModelError` that carries usage/cost (D125 — the JSON-validation-failure and truncation
+    paths in `acomplete_json`, the only ones where an attempt actually reached the model) is
+    still recorded, flagged `failed=True`, before re-raising unchanged — every attempt spent
+    real tokens even though none produced a usable result, and that spend used to vanish."""
+    try:
+        r = await model_client.acomplete_json(task=task, prompt=prompt, schema=schema, model=model,
+                                              backend=backend, max_retries=max_retries, effort=effort)
+    except model_client.ModelError as e:
+        if e.usage is not None or e.cost_usd is not None:
+            _record_usage(task, model=e.model, backend=e.backend, usage=e.usage, cost_usd=e.cost_usd,
+                         attempts=e.attempts, effort=effort, auth_mode=e.auth_mode,
+                         filename=filename, detail=detail, failed=True)
+        raise
     _record_usage(task, model=r.model, backend=r.backend, usage=r.usage, cost_usd=r.cost_usd,
                  attempts=r.attempts, latency_s=r.latency_s, effort=effort, auth_mode=r.auth_mode,
                  filename=filename, detail=detail, pruned=r.pruned)

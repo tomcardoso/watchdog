@@ -15,7 +15,7 @@ import json
 import sys
 from pathlib import Path
 
-from watchdog.cmd.base import _DIM, _RESET, _resolve_vault
+from watchdog.cmd.base import _DIM, _RESET, _YELLOW, _resolve_vault
 from watchdog.pipeline.orchestrate import usage_files
 
 # task name -> stage bucket, matching --classifier-model/--extractor-model/--finalizer-model.
@@ -118,7 +118,10 @@ def _print_stage(calls: list[dict]) -> dict:
     """Print one row per call (highest cost first), a subtotal row, and return the subtotal.
     A call that needed more than one attempt (a schema-validation retry) gets a `×N` marker
     after its cost — each retry re-pays that call's tokens, so it's worth flagging inline
-    rather than leaving an inflated cost/latency unexplained."""
+    rather than leaving an inflated cost/latency unexplained. A call that never returned valid
+    JSON at all (`"failed": True`, D125) gets a further `✗ failed` marker — its tokens/cost are
+    ordinary record fields, so they're already included in the subtotal below; the marker only
+    makes the row identifiable."""
     name_w = max(min(28, max(len(c.get("filename") or c["task"]) for c in calls)), len("Filename"))
     detail_w = max(min(24, max(len(c.get("detail") or "—") for c in calls)), len("Detail"))
     effort_w = max(max(len(c.get("effort") or "—") for c in calls), len("Effort"))
@@ -142,6 +145,8 @@ def _print_stage(calls: list[dict]) -> dict:
         trunc_name = (name[:name_w - 1] + "…") if len(name) > name_w else name
         trunc_detail = (detail[:detail_w - 1] + "…") if len(detail) > detail_w else detail
         retry_note = f"  ×{attempts}" if attempts > 1 else ""
+        if c.get("failed"):
+            retry_note += f"  {_YELLOW}✗ failed{_RESET}"
         # The claude-agent-sdk harness's own timing (#402): time actually spent in API requests,
         # vs. this row's wall-clock Latency figure — a large gap is the harness backing off
         # internally (throttled), not the model being slow. Only present for that backend, so
