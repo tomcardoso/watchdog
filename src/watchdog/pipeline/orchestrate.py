@@ -24,8 +24,8 @@ from watchdog import model_client, skills_catalog
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 from watchdog.cmd.live import LiveRegion
 from watchdog.pipeline import (
-    abort, batch_extract, leads, merge, preflight, postflight, prompts, reconcile, requests,
-    schemas, section, sidecar, synthesis_bundle, timeline, watchlist,
+    abort, batch_extract, harvest, leads, merge, preflight, postflight, prompts, reconcile,
+    requests, schemas, section, sidecar, synthesis_bundle, timeline, watchlist,
 )
 from watchdog.pipeline.write_vault import _doc_slug
 
@@ -238,6 +238,15 @@ def _pages_text(pages: list[dict]) -> str:
     )
 
 
+def _candidates_checklist(text: str) -> str:
+    """Tier 0 candidate harvest (#361/D123): deterministic spans (money, figure, percent,
+    date, docket) plus optional local-NER entities, rendered as the per-page checklist injected
+    into the extraction prompt. `text` carries the same `<!-- PAGE N -->` markers as `_pages_text`
+    output (whole-document or one section's), so this works for both extraction paths."""
+    candidates = harvest.harvest(text) + harvest.harvest_entities(harvest.split_pages(text))
+    return harvest.format_checklist(candidates)
+
+
 def _sidecar_skill(sidecar_text: str | None, *, filename: str) -> str | None:
     """A per-document record-skill pin from the sidecar's `skill:` field, resolved
     deterministically in Python — never shown to the classifier. Lets one ingest queue mix
@@ -379,11 +388,16 @@ def _append_repair_note(base, errors: list[str]):
 async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
                           effort=None, backend=None):
     """Whole-document extraction, with one repair attempt if post-flight rejects."""
+    text = _pages_text(pf["pages"])
+    # GLiNER inference over every page can take minutes on a long document — run it off the
+    # event loop so it doesn't stall every other concurrent document.
+    candidates = await asyncio.to_thread(_candidates_checklist, text)
     base = prompts.build_extract_prompt(
-        pages_text=_pages_text(pf["pages"]),
+        pages_text=text,
         skill_text=skill_text, sidecar=pf.get("sidecar"), brief=brief,
         known_document_types=pf.get("known_document_types", []),
         file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
+        candidates=candidates,
     )
     page_count = pf.get("page_count") or len(pf["pages"])
     cost, errors, extraction, scratchpad = 0.0, [], {}, ""
@@ -477,12 +491,15 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
     sections = plan["sections"]
     for sec in sections:
         sec_text = (vault / sec["pages_path"]).read_text(encoding="utf-8")
+        # Off the event loop — see the comment in `_simple_extract`.
+        candidates = await asyncio.to_thread(_candidates_checklist, sec_text)
         prompt = prompts.build_section_prompt(
             pages_text=sec_text,
             skill_text=skill_text, carry_forward=carry, section_label=sec["label"],
             is_first=(sec["index"] == 1), brief=brief,
             known_document_types=pf.get("known_document_types", []),
             file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
+            candidates=candidates,
         )
         r = await _call_model(task="extract-section", model=model, backend=backend,
                               prompt=prompt, schema=schemas.SECTION, effort=effort,
@@ -706,11 +723,15 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
                       cost_usd=item.get("cost_usd"), effort=effort, auth_mode="api-key",
                       filename=filename, detail=f"pages 1–{page_count}")
     if not item["ok"]:
+        text = _pages_text(pf["pages"])
+        # Off the event loop — see the comment in `_simple_extract`.
+        candidates = await asyncio.to_thread(_candidates_checklist, text)
         prompt = prompts.build_extract_prompt(
-            pages_text=_pages_text(pf["pages"]),
+            pages_text=text,
             skill_text=skill_text, sidecar=pf.get("sidecar"), brief=brief,
             known_document_types=pf.get("known_document_types", []),
-            file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}))
+            file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
+            candidates=candidates)
         if item.get("error"):
             prompt = _append_repair_note(prompt, [item["error"]])
         try:
@@ -797,11 +818,15 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
         if section.run(vault, sha, model=extract_model).get("sectioned"):
             sectioned_shas.append(sha)
         else:
+            text = _pages_text(pf["pages"])
+            # Off the event loop — see the comment in `_simple_extract`.
+            candidates = await asyncio.to_thread(_candidates_checklist, text)
             prompt = prompts.build_extract_prompt(
-                pages_text=_pages_text(pf["pages"]),
+                pages_text=text,
                 skill_text=skill_text, sidecar=pf.get("sidecar"), brief=brief,
                 known_document_types=pf.get("known_document_types", []), cache_ttl="1h",
-                file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}))
+                file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
+                candidates=candidates)
             batch_docs.append({"sha": sha, "prompt": prompt})
 
     if sectioned_shas:

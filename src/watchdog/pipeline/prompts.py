@@ -89,7 +89,8 @@ def _file_metadata_block(file_metadata: dict, processing: dict) -> str:
 def build_extract_prompt(*, pages_text: str, skill_text: str, sidecar: str | None,
                          brief: str | None, known_document_types: list, cache_ttl: str = "5m",
                          file_metadata: dict | None = None,
-                         processing: dict | None = None) -> list[dict]:
+                         processing: dict | None = None,
+                         candidates: str | None = None) -> list[dict]:
     # Document identity (sha256/filename/original_path/page_count) and provenance
     # (source/obtained) are stamped onto the result by Python — see
     # orchestrate._stamp_document — so they are deliberately not asked of the model here.
@@ -116,6 +117,8 @@ def build_extract_prompt(*, pages_text: str, skill_text: str, sidecar: str | Non
         volatile.append(f"\nSIDECAR (provenance + notes — context for your extraction):\n{sidecar}")
     if file_metadata:
         volatile.append(_file_metadata_block(file_metadata, processing))
+    if candidates:
+        volatile.append(f"\n{_text('candidates_intro')}\n{candidates}")
     volatile.append(f"\nDOCUMENT TEXT:\n{pages_text}")
 
     return [
@@ -130,7 +133,8 @@ def build_section_prompt(*, pages_text: str, skill_text: str, carry_forward: str
                          section_label: str, is_first: bool,
                          known_document_types: list, brief: str | None = None,
                          file_metadata: dict | None = None,
-                         processing: dict | None = None) -> list[dict]:
+                         processing: dict | None = None,
+                         candidates: str | None = None) -> list[dict]:
     # Same cache-block split as build_extract_prompt (A1): instructions + brief + skill lead,
     # since those are the only parts stable across every section of one run — the section
     # label/metadata-mode note, carry-forward, and section text change on every call, so they
@@ -163,6 +167,8 @@ def build_section_prompt(*, pages_text: str, skill_text: str, carry_forward: str
                         f"ids):\n{carry_forward}")
     if file_metadata:
         volatile.append(_file_metadata_block(file_metadata, processing))
+    if candidates:
+        volatile.append(f"\n{_text('candidates_intro')}\n{candidates}")
     volatile.append(f"\nSECTION TEXT:\n{pages_text}")
 
     return [

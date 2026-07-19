@@ -8,7 +8,8 @@ from watchdog.pipeline import prompts
 _flat = model_client._flatten_prompt   # extract/section prompts are content-block lists (A1)
 
 _TEMPLATES = ["classify", "extract_instructions", "section_intro",
-              "synthesis", "briefing", "timeline_dedup", "timeline_precision", "digest"]
+              "synthesis", "briefing", "timeline_dedup", "timeline_precision", "digest",
+              "candidates_intro"]
 
 
 @pytest.mark.parametrize("name", _TEMPLATES)
@@ -255,6 +256,39 @@ def test_section_prompt_omits_file_metadata_block_when_empty():
         pages_text="x", skill_text="", carry_forward="",
         section_label="pp.1-10", is_first=True, known_document_types=[])
     assert "FILE_METADATA" not in _flat(p)
+
+
+# ── candidate checklist (#361/D123) ─────────────────────────────────────────────────────────
+
+def test_extract_prompt_candidates_land_in_volatile_block_only():
+    p = prompts.build_extract_prompt(
+        pages_text="x", skill_text="SKILL", sidecar=None, brief=None,
+        known_document_types=[], candidates="p.1: [money] $5")
+    assert "p.1: [money] $5" in p[-1]["text"]
+    assert "p.1: [money] $5" not in p[0]["text"]     # not in the stable prefix
+    assert "p.1: [money] $5" not in p[1]["text"]     # not in the cached skill block
+
+
+def test_extract_prompt_omits_candidates_block_when_none():
+    without = prompts.build_extract_prompt(
+        pages_text="x", skill_text="SKILL", sidecar=None, brief=None, known_document_types=[])
+    assert "CANDIDATE CHECKLIST" not in _flat(without)
+
+
+def test_section_prompt_candidates_land_in_volatile_block_only():
+    p = prompts.build_section_prompt(
+        pages_text="x", skill_text="SKILL", carry_forward="", section_label="pp.1-10",
+        is_first=True, known_document_types=[], candidates="p.1: [money] $5")
+    assert "p.1: [money] $5" in p[-1]["text"]
+    assert "p.1: [money] $5" not in p[0]["text"]
+    assert "p.1: [money] $5" not in p[1]["text"]
+
+
+def test_section_prompt_omits_candidates_block_when_none():
+    p = prompts.build_section_prompt(
+        pages_text="x", skill_text="SKILL", carry_forward="", section_label="pp.1-10",
+        is_first=True, known_document_types=[])
+    assert "CANDIDATE CHECKLIST" not in _flat(p)
 
 
 def test_prompt_templates_not_in_skills_catalog():

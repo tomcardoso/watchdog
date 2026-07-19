@@ -89,6 +89,8 @@ watchdog setup
 
 Setup checks that qpdf and Ghostscript are installed, enables tab completion in your terminal, detects your machine's OCR engine, and downloads the models Watchdog uses for document conversion and search. The model download happens once and may take a few minutes on a slow connection.
 
+Setup also checks for GLiNER, an optional local model that recognizes names of people, organizations, and places in your documents during processing — this is called named-entity recognition, or NER. If it's missing, setup installs it automatically (it pulls in PyTorch, so this can take several minutes on a slow connection); if that install fails, setup prints the command to add it later instead (`pipx inject watchdog-intel gliner`) and moves on. Everything works without it — document processing just relies on the AI model alone to catch names, rather than having a mechanical check as backup.
+
 Along the way it asks three questions:
 
 1. **Where to store your investigation projects.** Press Return to accept the default (`~/Investigations`), or type a different path.

@@ -57,6 +57,7 @@ dependencies = [
 asr = ["docling[asr]"]          # Audio/video transcription — requires ffmpeg
 tesseract = ["tesserocr"]       # Faster Tesseract OCR; requires system Tesseract headers
 web = ["playwright>=1.49"]      # Rendered web capture for `watchdog research`/`fetch` — requires `playwright install chromium`
+ner = ["gliner>=0.2"]           # Local person/org/location detection for the extraction candidate harvest (#361)
 dev = ["pytest>=8.0", "numpy>=1.24", "ruff>=0.15"]
 
 [project.scripts]
