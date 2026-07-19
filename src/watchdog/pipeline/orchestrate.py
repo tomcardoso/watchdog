@@ -67,7 +67,8 @@ def _settle(sha: str, line: str) -> None:
 def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
                   cost_usd: float | None, attempts: int = 1, latency_s: float = 0.0,
                   effort: str | None = None, auth_mode: str | None = None,
-                  filename: str | None = None, detail: str | None = None) -> None:
+                  filename: str | None = None, detail: str | None = None,
+                  pruned: list[str] | None = None, failed: bool = False) -> None:
     """Append one call's usage to the run-scoped `_usage` accumulator, if one is active.
     Tolerates both Anthropic-style (`input_tokens`/`output_tokens`) and OpenAI-compatible
     (`prompt_tokens`/`completion_tokens`) usage dicts (D37) — the latter's cache-token fields
@@ -89,7 +90,16 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
     spent in API requests vs. the call's wall-clock `latency_s`, and the internal request count.
     They're only added to the record when `usage` carries them, so records for every other
     backend stay exactly as they were — a large `latency_s` − `api_ms` gap is the signature of
-    the harness throttling/backing off internally rather than the model itself being slow."""
+    the harness throttling/backing off internally rather than the model itself being slow.
+
+    `pruned` (D124): dotted/bracketed paths of any JSON keys the model emitted outside the
+    schema and that `model_client._prune_unknown` removed rather than failing validation over.
+    Only added when non-empty, so systematic schema drift stays visible in `watchdog usage`
+    without cluttering every ordinary record.
+
+    `failed` (D125): True when this record is a call that ultimately raised `ModelError` rather
+    than returning — every attempt still spent real tokens, so it's recorded like any other call
+    (and counted in the same subtotals) rather than vanishing from telemetry."""
     if _usage is None:
         return
     u = usage or {}
@@ -106,20 +116,42 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         record["api_ms"] = u["duration_api_ms"]
     if u.get("num_turns") is not None:
         record["num_turns"] = u["num_turns"]
+    if pruned:
+        record["pruned"] = pruned
+    if failed:
+        record["failed"] = True
     _usage.append(record)
 
 
 async def _call_model(*, task, prompt, schema, model=None, backend=None,
-                      max_retries=1, effort=None, filename=None, detail=None) -> "model_client.ModelResult":
+                      max_retries=1, effort=None, filename=None, detail=None,
+                      vault: Path | None = None) -> "model_client.ModelResult":
     """Thin wrapper around `model_client.acomplete_json` that also records this call's usage
     (A2) — every reasoning call in the orchestrator goes through here instead of the client
     directly, so telemetry can't silently miss a call site. `filename`/`detail` are passed
-    through to `_record_usage` unchanged (#247)."""
-    r = await model_client.acomplete_json(task=task, prompt=prompt, schema=schema, model=model,
-                                          backend=backend, max_retries=max_retries, effort=effort)
+    through to `_record_usage` unchanged (#247). `vault` (D124) is used only to log a WARN
+    line to `ingest.log` when the call's JSON carried unexpected keys that were pruned rather
+    than failing validation — pass it whenever a vault is in scope.
+
+    A `ModelError` that carries usage/cost (D125 — the JSON-validation-failure and truncation
+    paths in `acomplete_json`, the only ones where an attempt actually reached the model) is
+    still recorded, flagged `failed=True`, before re-raising unchanged — every attempt spent
+    real tokens even though none produced a usable result, and that spend used to vanish."""
+    try:
+        r = await model_client.acomplete_json(task=task, prompt=prompt, schema=schema, model=model,
+                                              backend=backend, max_retries=max_retries, effort=effort)
+    except model_client.ModelError as e:
+        if e.usage is not None or e.cost_usd is not None:
+            _record_usage(task, model=e.model, backend=e.backend, usage=e.usage, cost_usd=e.cost_usd,
+                         attempts=e.attempts, effort=effort, auth_mode=e.auth_mode,
+                         filename=filename, detail=detail, failed=True)
+        raise
     _record_usage(task, model=r.model, backend=r.backend, usage=r.usage, cost_usd=r.cost_usd,
                  attempts=r.attempts, latency_s=r.latency_s, effort=effort, auth_mode=r.auth_mode,
-                 filename=filename, detail=detail)
+                 filename=filename, detail=detail, pruned=r.pruned)
+    if r.pruned and vault is not None:
+        _log(vault, f"WARN {filename or task}: pruned unexpected JSON key(s) from model "
+                    f"output: {', '.join(r.pruned)}")
     return r
 
 
@@ -308,11 +340,12 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str,
 
 
 async def _classify(doc_excerpt: str, model: str, backend: str | None = None,
-                    filename: str | None = None, sidecar: str | None = None) -> str:
+                    filename: str | None = None, sidecar: str | None = None,
+                    vault: Path | None = None) -> str:
     r = await _call_model(
         task="classify", model=model, backend=backend, schema=schemas.CLASSIFY,
         prompt=prompts.build_classify_prompt(doc_excerpt, skills_catalog.build_index(), sidecar),
-        filename=filename,
+        filename=filename, vault=vault,
     )
     return r.parsed.get("skill") or "general-records.md"
 
@@ -407,7 +440,7 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
         try:
             r = await _call_model(task="extract", model=model, backend=backend,
                                   prompt=p, schema=schemas.EXTRACTION, effort=effort,
-                                  filename=pf["filename"], detail=detail)
+                                  filename=pf["filename"], detail=detail, vault=vault)
         except model_client.ModelError as e:
             # No valid JSON after the client's own retries — often output truncated on a
             # dense doc. Report failure so the caller can fall back to sectioning.
@@ -458,7 +491,7 @@ def _stitch_digest(doc: dict, page_count: int | None) -> str:
 
 async def _compose_digest(doc: dict, page_count: int | None, model: str, backend: str | None,
                           filename: str, skill_text: str | None, brief: str | None,
-                          sidecar: str | None) -> tuple[str, float]:
+                          sidecar: str | None, vault: Path | None = None) -> tuple[str, float]:
     """One small model call composing the whole-document digest from the merged key_facts
     (#279) — no section call ever sees the whole document, so this runs once after merge, on the
     extractor tier (the same model that read the sections), so both digest paths — inline for a
@@ -473,7 +506,7 @@ async def _compose_digest(doc: dict, page_count: int | None, model: str, backend
     try:
         r = await _call_model(task="digest", model=model, backend=backend,
                               prompt=prompt, schema=schemas.DIGEST,
-                              filename=filename, detail="digest")
+                              filename=filename, detail="digest", vault=vault)
         summary = (r.parsed.get("summary") or "").strip()
         if summary:
             return summary, r.cost_usd or 0.0
@@ -503,7 +536,7 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
         )
         r = await _call_model(task="extract-section", model=model, backend=backend,
                               prompt=prompt, schema=schemas.SECTION, effort=effort,
-                              filename=pf["filename"], detail=sec["label"])
+                              filename=pf["filename"], detail=sec["label"], vault=vault)
         cost += r.cost_usd or 0.0
         parts.append(r.parsed)
         for e in r.parsed.get("entities") or []:
@@ -517,7 +550,7 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
     page_count = pf.get("page_count") or len(pf.get("pages", []))
     doc["summary"], digest_cost = await _compose_digest(
         doc, page_count, model, backend, pf["filename"],
-        skill_text, brief, pf.get("sidecar"))
+        skill_text, brief, pf.get("sidecar"), vault=vault)
     cost += digest_cost
     _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label,
                     skill_text=skill_text, extract_model=model, extract_effort=effort)
@@ -599,7 +632,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         # Classify on the first N pages (page-aware, not a mid-page char cut); the char cap is a guard.
         excerpt = _pages_text(pages[:max(1, classify_pages)])[:_CLASSIFY_EXCERPT_CHARS]
         skill = await _classify(excerpt, classify_model, classify_backend, filename=filename,
-                                sidecar=pf.get("sidecar"))
+                                sidecar=pf.get("sidecar"), vault=vault)
         skill_text = skills_catalog.read_skill(skill)
         skill_label = skill.removesuffix(".md")
         _step(f"{_DIM}→  {filename}  {pg} · {skill_label}{_RESET}",
@@ -737,7 +770,8 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
         try:
             r = await _call_model(task="extract", model=None, backend="claude-api",
                                   prompt=prompt, schema=schemas.EXTRACTION,
-                                  filename=filename, detail=f"pages 1–{page_count} (repair)")
+                                  filename=filename, detail=f"pages 1–{page_count} (repair)",
+                                  vault=vault)
         except model_client.ModelError as e:
             return _fail(vault, sha, filename, f"batch result invalid and repair failed: {e}")
         extraction = r.parsed
@@ -1069,7 +1103,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             r = await _call_model(
                 task="reconcile", model=post_model, backend=post_backend, schema=schemas.RECONCILE,
                 prompt=rec_prompt, effort=post_effort,
-                detail=f"{n_ents} entities · {n_pairs} pairs · {kb:.1f} KB")
+                detail=f"{n_ents} entities · {n_pairs} pairs · {kb:.1f} KB", vault=vault)
         except (model_client.ModelError, model_client.RateLimitError) as e:
             # Reconciliation is enrichment over an already-written vault: the entities and their
             # claims are on disk either way. Skipping leaves duplicates unmerged and conflicts
@@ -1103,7 +1137,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         try:
             r = await _call_model(
                 task="entity-synthesis", model=post_model, backend=post_backend, schema=schemas.SYNTHESIS,
-                prompt=prompts.build_synthesis_prompt(bundle), effort=post_effort)
+                prompt=prompts.build_synthesis_prompt(bundle), effort=post_effort, vault=vault)
         except (model_client.ModelError, model_client.RateLimitError) as e:
             # Synthesis is enrichment: leave the structured claims already in the notes
             # rather than crashing. The fragment queue persists, so a later ingest redoes it.
@@ -1134,7 +1168,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             r = await _call_model(
                 task="timeline-dedup", model=post_model, backend=post_backend, schema=schemas.TIMELINE_DEDUP,
                 prompt=prompts.build_timeline_dedup_prompt(col["date"], events), effort=post_effort,
-                detail=col["date"])
+                detail=col["date"], vault=vault)
             kept = _select_kept(events, r.parsed.get("groups"))
         except (model_client.ModelError, model_client.RateLimitError):
             # Dedup failed (e.g. rate limit): leave the canonical AND its raws untouched so the
@@ -1157,7 +1191,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                 task="timeline-precision", model=post_model, backend=post_backend,
                 schema=schemas.TIMELINE_PRECISION_MATCH, effort=post_effort,
                 prompt=prompts.build_timeline_precision_prompt(grp["month"], grp["coarse"], grp["precise"]),
-                detail=grp["month"])
+                detail=grp["month"], vault=vault)
         except (model_client.ModelError, model_client.RateLimitError):
             continue   # leave the month untouched rather than risk a bad fold
         timeline.apply_precision_matches(vault, grp, r.parsed.get("matches") or [])
@@ -1188,7 +1222,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             prompt=prompts.build_briefing_prompt(
                 brief=brief, results=ok, scratchpads=scratchpads,
                 neardup_alerts=neardup_alerts, contradiction_flags=contradiction_flags),
-            effort=post_effort)
+            effort=post_effort, vault=vault)
         out["briefing"] = _write_briefing(vault, r.parsed, ok, neardup_alerts, contradiction_flags,
                                           n_new_requests)
     except model_client.RateLimitError as e:

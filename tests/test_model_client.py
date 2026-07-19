@@ -106,6 +106,88 @@ def test_fails_after_retries(api_key_auth, monkeypatch):
         mc.complete_json(task="t", prompt="p", schema=SCHEMA, max_retries=1)
 
 
+# ── usage telemetry for retried/failed calls (#412/D125) ─────────────────────
+
+def test_usage_merges_across_attempts_on_success(api_key_auth, monkeypatch):
+    """A retried call's usage is the SUM over every attempt, not just the last one — the
+    failed first attempt still spent real tokens."""
+    api = FakeBackend(_out("not json"), _out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    r = mc.complete_json(task="t", prompt="p", schema=SCHEMA)
+    assert r.usage == {"input_tokens": 20}   # 10 + 10, both attempts' usage
+
+
+def test_model_error_carries_merged_usage_cost_and_attempts(api_key_auth, monkeypatch):
+    """When every attempt fails, the raised ModelError still carries the aggregate usage/cost/
+    attempts/model/backend/auth_mode — a failed call's spend must not vanish from telemetry."""
+    api = FakeBackend(_out("nope", cost=0.02), _out("still nope", cost=0.03))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    with pytest.raises(mc.ModelError) as excinfo:
+        mc.complete_json(task="t", prompt="p", schema=SCHEMA, max_retries=1)
+    err = excinfo.value
+    assert err.usage == {"input_tokens": 20}
+    assert err.cost_usd == pytest.approx(0.05)
+    assert err.attempts == 2
+    assert err.backend == "claude-api"
+    assert err.auth_mode == "api-key"
+
+
+# ── prune-and-log unknown JSON keys (#412/D124) ───────────────────────────────
+
+_ROLE_SCHEMA = {
+    "type": "object",
+    "properties": {"relationship": {"type": "string"}, "target_id": {"type": "string"}},
+    "required": ["relationship", "target_id"],
+    "additionalProperties": False,
+}
+_ENTITY_SCHEMA = {
+    "type": "object",
+    "properties": {"id": {"type": "string"}, "roles": {"type": "array", "items": _ROLE_SCHEMA}},
+    "required": ["id"],
+    "additionalProperties": False,
+}
+_NESTED_SCHEMA = {
+    "type": "object",
+    "properties": {"entities": {"type": "array", "items": _ENTITY_SCHEMA}},
+    "required": ["entities"],
+    "additionalProperties": False,
+}
+
+
+def test_acomplete_json_prunes_top_level_extra_key_and_succeeds(api_key_auth, monkeypatch):
+    api = FakeBackend(_out('{"name": "Acme", "extra_field": "nope"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    r = mc.complete_json(task="t", prompt="p", schema=SCHEMA)
+    assert r.parsed == {"name": "Acme"}
+    assert r.attempts == 1
+    assert r.pruned == ["extra_field"]
+
+
+def test_acomplete_json_prunes_key_nested_in_array_item(api_key_auth, monkeypatch):
+    payload = ('{"entities": [{"id": "e1", "roles": [{"relationship": "ceo", '
+              '"target_id": "x", "date": "2020"}]}]}')
+    api = FakeBackend(_out(payload))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    r = mc.complete_json(task="t", prompt="p", schema=_NESTED_SCHEMA)
+    assert r.pruned == ["entities[0].roles[0].date"]
+    assert "date" not in r.parsed["entities"][0]["roles"][0]
+
+
+def test_prune_does_not_rescue_missing_required_field(api_key_auth, monkeypatch):
+    # "name" is required but absent — pruning an unrelated extra key must not paper over it.
+    api = FakeBackend(_out('{"extra_field": "nope"}'), _out('{"extra_field": "still nope"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    with pytest.raises(mc.ModelError):
+        mc.complete_json(task="t", prompt="p", schema=SCHEMA, max_retries=1)
+
+
+def test_prune_does_not_rescue_wrong_typed_field(api_key_auth, monkeypatch):
+    api = FakeBackend(_out('{"name": 123}'), _out('{"name": 456}'))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    with pytest.raises(mc.ModelError):
+        mc.complete_json(task="t", prompt="p", schema=SCHEMA, max_retries=1)
+
+
 def test_raw_model_id_does_not_escalate(api_key_auth, monkeypatch):
     api = FakeBackend(_out("bad"), _out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
@@ -551,6 +633,42 @@ def test_extract_json(text, expected):
 def test_validate_reports_errors():
     assert mc._validate({"wrong": 1}, SCHEMA)        # non-empty → errors
     assert mc._validate({"name": "ok"}, SCHEMA) == []
+
+
+def test_prune_unknown_removes_top_level_extra_key():
+    obj = {"name": "Acme", "extra": "nope"}
+    removed = mc._prune_unknown(obj, SCHEMA)
+    assert removed == ["extra"]
+    assert obj == {"name": "Acme"}
+
+
+def test_prune_unknown_removes_nested_array_item_key():
+    obj = {"entities": [{"id": "e1", "roles": [
+        {"relationship": "ceo", "target_id": "x", "date": "2020"}]}]}
+    removed = mc._prune_unknown(obj, _NESTED_SCHEMA)
+    assert removed == ["entities[0].roles[0].date"]
+    assert "date" not in obj["entities"][0]["roles"][0]
+
+
+def test_prune_unknown_leaves_free_form_object_untouched():
+    # file_metadata is a real example (schemas.py's _DOCUMENT): a plain {"type": "object"}
+    # with no additionalProperties:False, so its contents must never be touched.
+    free_form_schema = {
+        "type": "object",
+        "properties": {"file_metadata": {"type": "object"}},
+        "required": [],
+        "additionalProperties": False,
+    }
+    obj = {"file_metadata": {"author": "Jane Doe", "weird_key": 1}}
+    removed = mc._prune_unknown(obj, free_form_schema)
+    assert removed == []
+    assert obj["file_metadata"] == {"author": "Jane Doe", "weird_key": 1}
+
+
+def test_prune_unknown_no_op_when_nothing_extra():
+    obj = {"name": "Acme"}
+    assert mc._prune_unknown(obj, SCHEMA) == []
+    assert obj == {"name": "Acme"}
 
 
 def test_api_cost_uses_pricing_table():
