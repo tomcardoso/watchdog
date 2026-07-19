@@ -102,6 +102,39 @@ def test_ingest_log_records_start_before_ok(tmp_path, monkeypatch):
     assert log.index("START test-doc.pdf") < log.index("OK test-doc.pdf")
 
 
+def test_call_model_logs_pruned_keys_to_ingest_log(tmp_path, monkeypatch):
+    """#412/D124: when `model_client.acomplete_json` reports pruned keys and a vault is
+    passed, `_call_model` writes a WARN line to ingest.log naming them."""
+    vault = make_vault(tmp_path)
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        return model_client.ModelResult(
+            parsed={"name": "Acme"}, text="", model="m", backend="claude-api",
+            auth_mode="api-key", cost_usd=0.0,
+            pruned=["extra_field", "entities[0].roles[0].date"])
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate._call_model(task="extract", prompt="p", schema=schemas.EXTRACTION,
+                                        filename="doc.pdf", vault=vault))
+
+    log = (vault / ".watchdog" / "registry" / "ingest.log").read_text(encoding="utf-8")
+    assert ("WARN doc.pdf: pruned unexpected JSON key(s) from model output: "
+           "extra_field, entities[0].roles[0].date") in log
+
+
+def test_call_model_without_vault_does_not_log(tmp_path, monkeypatch):
+    """No vault in scope (genuinely out of scope call sites) — pruning is still recorded on
+    the result, but there is nowhere to log to, so `_call_model` must not raise."""
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        return model_client.ModelResult(
+            parsed={"name": "Acme"}, text="", model="m", backend="claude-api",
+            auth_mode="api-key", cost_usd=0.0, pruned=["extra_field"])
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    r = asyncio.run(orchestrate._call_model(task="extract", prompt="p", schema=schemas.EXTRACTION))
+    assert r.pruned == ["extra_field"]
+
+
 def test_briefing_facts_projects_fact_and_date_only():
     """The briefing projection (#150) keeps the fact text and a date when present, and drops
     page/basis/entities/quote — narrative noise the briefing doesn't need."""
@@ -1140,6 +1173,31 @@ def test_record_usage_omits_harness_timing_keys_for_other_backends():
         record = orchestrate._usage[0]
         assert "api_ms" not in record
         assert "num_turns" not in record
+    finally:
+        orchestrate._usage = None
+
+
+def test_record_usage_includes_pruned_keys_when_present():
+    """#412/D124: pruned key paths ride along on the usage record so schema drift stays
+    visible in `watchdog usage`, not just ingest.log."""
+    orchestrate._usage = []
+    try:
+        orchestrate._record_usage(
+            "extract", model="claude-sonnet-4-6", backend="claude-api",
+            usage={"input_tokens": 100, "output_tokens": 20}, cost_usd=0.01,
+            pruned=["extra_field"])
+        assert orchestrate._usage[0]["pruned"] == ["extra_field"]
+    finally:
+        orchestrate._usage = None
+
+
+def test_record_usage_omits_pruned_key_when_absent():
+    orchestrate._usage = []
+    try:
+        orchestrate._record_usage(
+            "extract", model="claude-sonnet-4-6", backend="claude-api",
+            usage={"input_tokens": 100, "output_tokens": 20}, cost_usd=0.01)
+        assert "pruned" not in orchestrate._usage[0]
     finally:
         orchestrate._usage = None
 

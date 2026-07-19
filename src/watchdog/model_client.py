@@ -238,6 +238,7 @@ class ModelResult:
     cost_usd: float | None = None
     latency_s: float = 0.0
     attempts: int = 1
+    pruned: list[str] | None = None
 
 
 # ── JSON handling ─────────────────────────────────────────────────────────────
@@ -275,6 +276,35 @@ def _validate(obj: dict, schema: dict) -> list[str]:
     """Return schema-validation error messages (empty list = valid)."""
     import jsonschema
     return [e.message for e in jsonschema.Draft202012Validator(schema).iter_errors(obj)]
+
+
+def _prune_unknown(obj, schema, _path: str = "") -> list[str]:
+    """Remove properties not declared in `schema`'s `properties`, but only inside an object
+    schema that declares `"additionalProperties": False` — a free-form object (e.g.
+    `file_metadata`, plain `{"type": "object"}`) is left untouched. Recurses through
+    `properties` sub-schemas and array `items` schemas; mutates `obj` in place. Returns the
+    dotted/bracketed path of every key removed (e.g. ``entities[3].roles[0].date``), so a
+    caller can log schema drift instead of failing the whole document over a stray key (#412).
+    """
+    removed: list[str] = []
+    if not isinstance(schema, dict):
+        return removed
+    if schema.get("type") == "object" and isinstance(obj, dict):
+        properties = schema.get("properties") or {}
+        if schema.get("additionalProperties") is False:
+            for key in list(obj.keys()):
+                if key not in properties:
+                    removed.append(f"{_path}.{key}" if _path else key)
+                    del obj[key]
+        for key, sub_schema in properties.items():
+            if key in obj:
+                removed += _prune_unknown(obj[key], sub_schema, f"{_path}.{key}" if _path else key)
+    elif schema.get("type") == "array" and isinstance(obj, list):
+        items_schema = schema.get("items")
+        if items_schema:
+            for i, item in enumerate(obj):
+                removed += _prune_unknown(item, items_schema, f"{_path}[{i}]")
+    return removed
 
 
 # ── backends: each is (prompt, model_id, schema, api_key) -> {text, usage, cost_usd} ──
@@ -859,6 +889,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
     total_cost = 0.0
     last_err = "no attempts made"
     attempts = 0
+    pruned_all: list[str] = []
     for _ in range(max_retries + 1):
         attempts += 1
         try:
@@ -885,6 +916,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
         if parsed is None:
             last_err = "response was not valid JSON"
         else:
+            pruned_all += _prune_unknown(parsed, schema)
             errors = _validate(parsed, schema)
             if not errors:
                 return ModelResult(
@@ -892,6 +924,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
                     auth_mode=auth_mode, usage=out.get("usage"),
                     cost_usd=round(total_cost, 6) or None,
                     latency_s=round(time.monotonic() - start, 3), attempts=attempts,
+                    pruned=pruned_all or None,
                 )
             last_err = "; ".join(errors[:3])
 
