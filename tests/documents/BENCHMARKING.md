@@ -212,6 +212,20 @@ Full scoring protocol and the decision rules are in **#361** and **`keys/README.
   finding.
 - **Read the first scorecard by hand** before automating anything (#362).
 
+For a free first pass before any judge model runs, `score_arms.py` (this directory) scores the
+keys' numeric-anchored items — roughly a third of them — against one or more ingested vaults,
+offline, no model calls:
+
+```
+~/.local/pipx/venvs/watchdog-intel/bin/python tests/documents/score_arms.py \
+    <projects_dir>/bench-ex-sonnet-med <projects_dir>/bench-t0-sonnet-med
+```
+
+It ranks arms against each other (never an absolute recall number) and is blob-level — no
+citation provenance, so sibling documents can cross-credit; hand-adjudicate the rows where
+paired arms diverge. Items with no numeric anchor are listed as unscorable for the judge pass.
+First used for the Tier 0 checklist A/B (#412).
+
 ## Rough cost
 
 Order-of-magnitude, from the per-token pricing (extraction is output-dominated). The full corpus on
