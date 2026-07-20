@@ -56,15 +56,21 @@ _NORMALIZERS = [
 # logical contents, so hashing it would fail for reasons unrelated to what was indexed.
 _CONTENT_EXEMPT = ("ingest.log", "usage/", ".write-lock", "/tmp/", ".fulltext/index.db")
 
-# Paths excluded from the manifest entirely — not even their presence is recorded. #403 phase 1
-# introduces `.watchdog/extracted/<sha>.json`, a durable extraction artifact that (deliberately,
-# per the design) is never cleaned up on success — unlike `.watchdog/queue/`/`.watchdog/tmp/`,
-# which empty out by the end of a normal run and so never needed an explicit exclusion here. This
-# test's contract is the vault's *observable* surface — notes, registries, morgue, timeline,
-# indexes, briefings — not this refactor's own new internal bookkeeping, so the artifact directory
-# is excluded rather than pinned: pinning it would make this test assert on the exact set of shas
-# ingested by a *particular* run, which is not what "vault output must not change" means here.
-_PATH_EXEMPT = (".watchdog/extracted/",)
+# Paths excluded from the manifest entirely — not even their presence is recorded.
+#
+# `.watchdog/extracted/<sha>.json` (#403 phase 1): a durable extraction artifact that,
+# deliberately, is never cleaned up on success — unlike `.watchdog/queue/`/`.watchdog/tmp/`, which
+# empty out by the end of a normal run. This test's contract is the vault's *observable* surface —
+# notes, registries, morgue, timeline, indexes, briefings — not this refactor's own internal
+# bookkeeping, so the artifact directory is excluded rather than pinned: pinning it would make the
+# test assert on the exact set of shas a *particular* run ingested.
+#
+# `.embeddings/`: semantic-search vectors written by an optional local model (fastembed), which is
+# not a CI dependency and whose indexer swallows any failure (embed.py) — so these files exist on a
+# dev machine with the model installed but are absent in CI. Like GLiNER's entity contribution,
+# embeddings are an environment-dependent enrichment, not deterministic vault state, so the golden
+# test cannot pin them without being non-portable. The notes they derive from *are* pinned.
+_PATH_EXEMPT = (".watchdog/extracted/", ".embeddings/")
 
 
 def _normalize(text: str) -> str:
