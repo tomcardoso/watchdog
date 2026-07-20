@@ -1704,7 +1704,11 @@ def test_skip_finalize_stops_after_extraction_with_no_post_ingest_calls(tmp_path
     assert calls == ["classify", "extract"]     # no entity-synthesis/timeline-dedup/briefing/reconcile
     assert orchestrate.has_pending_finalization(vault) is True
     assert (vault / ".watchdog" / "tmp" / "result_aaa.json").exists()
-    assert (vault / ".watchdog" / "tmp" / "entity-fragments" / "_queue.json").exists()
+    # The staged extraction artifact (#403 phase 1) — not the entity-fragments queue, which is
+    # write_vault's own byproduct and only appears once the commit pass actually runs write_vault,
+    # i.e. at finalize, which this run deliberately never reaches.
+    assert (vault / ".watchdog" / "extracted" / "aaa.json").exists()
+    assert not (vault / ".watchdog" / "tmp" / "entity-fragments" / "_queue.json").exists()
 
 
 def test_finalize_after_skip_finalize_consumes_staged_inputs(tmp_path, monkeypatch):
@@ -2037,7 +2041,7 @@ def test_extract_sectioned_composes_digest_after_merge(tmp_path, monkeypatch):
                                         cost_usd=0.01)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    extraction, scratchpad, cost, ok, errors, warnings, _written = asyncio.run(orchestrate._extract_sectioned(
+    extraction, scratchpad, cost, ok, errors, warnings = asyncio.run(orchestrate._extract_sectioned(
         vault, "abc123", pf, "SKILL TEXT", plan, "sonnet", "annual-report", backend="claude-api",
         brief="CHASE THE FRAUD"))
 
@@ -2067,7 +2071,7 @@ def test_digest_model_error_falls_back_to_deterministic_stitch(tmp_path, monkeyp
         raise model_client.ModelError("boom")
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    extraction, scratchpad, cost, ok, errors, warnings, _written = asyncio.run(orchestrate._extract_sectioned(
+    extraction, scratchpad, cost, ok, errors, warnings = asyncio.run(orchestrate._extract_sectioned(
         vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
 
     summary = extraction["document"]["summary"]
@@ -2086,7 +2090,7 @@ def test_digest_empty_response_falls_back_to_deterministic_stitch(tmp_path, monk
                                         auth_mode="subscription", cost_usd=0.0)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    extraction, scratchpad, cost, ok, errors, warnings, _written = asyncio.run(orchestrate._extract_sectioned(
+    extraction, scratchpad, cost, ok, errors, warnings = asyncio.run(orchestrate._extract_sectioned(
         vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
 
     summary = extraction["document"]["summary"]
@@ -2354,7 +2358,9 @@ def test_finish_batch_item_records_usage_for_the_batch_call_itself(tmp_path):
 def test_finish_batch_item_stamps_extraction_provenance(tmp_path):
     """The claude-batch path (#214) has its own extraction call sequence — separate from
     _simple_extract/_extract_sectioned — so it needs its own coverage that record_skill_hash/
-    extract_model/extract_effort (#268) reach documents.json from here too."""
+    extract_model/extract_effort (#268) reach the staged artifact from here too (#403 phase 1:
+    _finish_batch_item only stages now; write_vault, and so documents.json, comes from the
+    commit pass, exercised here via _commit_extracted directly)."""
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="sha1", filename="a.pdf")
 
@@ -2365,6 +2371,13 @@ def test_finish_batch_item_stamps_extraction_provenance(tmp_path):
         model="claude-sonnet-4-6", effort="medium"))
 
     assert result["status"] == "ok"
+    staged = json.loads((vault / ".watchdog" / "extracted" / "sha1.json").read_text())
+    doc = staged["document"]
+    assert doc["record_skill_hash"] == hashlib.sha256(b"SKILL BODY").hexdigest()[:12]
+    assert doc["extract_model"] == "claude-sonnet-4-6"
+    assert doc["extract_effort"] == "medium"
+
+    orchestrate._commit_extracted(vault, "sha1")
     docs = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
     entry = docs["sha1"]
     assert entry["record_skill_hash"] == hashlib.sha256(b"SKILL BODY").hexdigest()[:12]
@@ -2413,3 +2426,134 @@ def test_run_resumes_pending_batch_even_with_empty_queue(tmp_path, monkeypatch):
                                           pinned_skill=str(skill_file)))
     assert summary["batch_pending"] is True
     assert not submit_calls   # resumed the pending batch instead of submitting a new one
+
+
+# ── #403 phase 1: staged extraction + commit pass ────────────────────────────────────────────
+
+def test_already_staged_document_skips_extraction_with_no_model_calls(tmp_path, monkeypatch):
+    """Sha-only extraction idempotence (#403 phase 1): once `.watchdog/extracted/<sha>.json`
+    exists, re-running extraction for that sha must not call the model again — independent of
+    whether the document has been committed to the vault yet (`--no-finalize` deliberately leaves
+    it uncommitted here)."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="abc123", filename="test-doc.pdf")
+    _mock(monkeypatch, extraction=_extraction())
+
+    asyncio.run(orchestrate.run(vault, skip_finalize=True))
+    assert (vault / ".watchdog" / "extracted" / "abc123.json").exists()
+    assert not json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
+    queue_file = vault / ".watchdog" / "queue" / "abc123.json"
+    assert queue_file.exists()   # not yet committed — still needed
+
+    def fail_if_called(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        raise AssertionError(f"model must not be called for an already-staged document ({task})")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fail_if_called)
+
+    result = asyncio.run(orchestrate._extract_document(vault, "abc123", None, "sonnet", "haiku"))
+
+    assert result["status"] == "skipped"
+    assert queue_file.exists()   # still not touched — the commit pass owns its removal
+
+
+def test_commit_pass_writes_vault_from_staged_artifact_when_registry_missing_entry(tmp_path, monkeypatch):
+    """The resume case (#403 phase 1): an extraction artifact on disk with no matching
+    `registry/documents.json` entry gets committed the next time finalize runs — covering a
+    resumed run after a rate-limit stop or a standalone `watchdog finalize`, not just the tail of
+    the same `watchdog ingest` invocation that produced it."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="abc123", filename="test-doc.pdf")
+    _mock(monkeypatch, extraction=_extraction())
+
+    asyncio.run(orchestrate.run(vault, skip_finalize=True))
+    assert not json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
+    assert not (vault / "entities" / "organization" / "acme-corp.md").exists()
+
+    out = asyncio.run(orchestrate.finalize(vault, post_model="haiku"))
+
+    assert not out.get("error") and not out.get("briefing_error")
+    docs = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
+    assert "abc123" in docs
+    assert (vault / "entities" / "organization" / "acme-corp.md").exists()
+
+
+def test_commit_pass_processes_staged_artifacts_in_sorted_sha_order(tmp_path, monkeypatch):
+    """Determinism (#403 phase 1, D126): the commit pass replays write_vault in sorted sha order,
+    not discovery/extraction order — this is what removes the appears_in/fragment-order race that
+    used to leak from concurrent extraction (tests/test_golden_vault.py verifies the end-to-end
+    consequence; this pins the ordering mechanism directly)."""
+    from watchdog.pipeline import write_vault as write_vault_module
+
+    vault = make_vault(tmp_path)
+    extracted_dir = vault / ".watchdog" / "extracted"
+    extracted_dir.mkdir(parents=True)
+    for sha in ("cccc", "aaaa", "bbbb"):
+        (extracted_dir / f"{sha}.json").write_text(
+            json.dumps(_extraction(sha=sha, filename=f"{sha}.pdf")), encoding="utf-8")
+
+    order = []
+
+    def fake_wv_run(*, extraction_path, vault_path, neardup_data=None, neardup_file=None, quiet=False):
+        order.append(extraction_path.stem)
+        return {"new_entities": [], "updated_entities": []}
+    monkeypatch.setattr(write_vault_module, "run", fake_wv_run)
+
+    result = orchestrate._commit_pending(vault)
+
+    assert result["committed"] == 3
+    assert order == ["aaaa", "bbbb", "cccc"]
+
+
+def test_commit_pass_survives_one_artifact_failing_to_commit(tmp_path, monkeypatch, capsys):
+    """One malformed/corrupt staged artifact must not sink the whole commit pass — mirrors the
+    'one bad document must not sink the batch' posture extraction already has (`_fail`), and
+    replaces the try/except postflight.run used to wrap this same write_vault call before #403
+    phase 1 moved it here. The failing sha's artifact and queue file are left in place so a later
+    finalize retries it, instead of losing it silently."""
+    from watchdog.pipeline import write_vault as write_vault_module
+
+    vault = make_vault(tmp_path)
+    extracted_dir = vault / ".watchdog" / "extracted"
+    extracted_dir.mkdir(parents=True)
+    for sha in ("aaaa", "bbbb"):
+        (extracted_dir / f"{sha}.json").write_text(
+            json.dumps(_extraction(sha=sha, filename=f"{sha}.pdf")), encoding="utf-8")
+    queue_dir = vault / ".watchdog" / "queue"
+    queue_dir.mkdir(parents=True, exist_ok=True)
+    (queue_dir / "aaaa.json").write_text("{}")
+
+    def fake_wv_run(*, extraction_path, vault_path, neardup_data=None, neardup_file=None, quiet=False):
+        if extraction_path.stem == "aaaa":
+            raise ValueError("boom")
+        return {"new_entities": ["bbbb"], "updated_entities": []}
+    monkeypatch.setattr(write_vault_module, "run", fake_wv_run)
+
+    result = orchestrate._commit_pending(vault)
+
+    # The good one still commits...
+    assert result["written"]["bbbb"] == {"new_entities": ["bbbb"], "updated_entities": []}
+    # ...the bad one is reported, not silently dropped, and left for a later retry.
+    assert "bbbb" in result["written"] and "aaaa" not in result["written"]
+    assert (extracted_dir / "aaaa.json").exists()
+    assert (queue_dir / "aaaa.json").exists()
+    assert "boom" in capsys.readouterr().out
+
+
+def test_commit_pass_writes_morgue_markdown_from_surviving_queue_file(tmp_path, monkeypatch):
+    """§5 of the #403 phase 1 spec: the queue file is not deleted at extraction time —
+    write_vault._write_morgue_markdown reads its page markdown at commit time to write the
+    morgue .md sibling, and is best-effort-silent if the file is already gone. Deleted only once
+    committed."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="abc123", filename="test-doc.pdf", text="The quick brown fox.")
+    _mock(monkeypatch, extraction=_extraction())
+
+    asyncio.run(orchestrate.run(vault, skip_finalize=True))
+    queue_file = vault / ".watchdog" / "queue" / "abc123.json"
+    assert queue_file.exists()   # survives extraction — still needed at commit
+
+    asyncio.run(orchestrate.finalize(vault, post_model="haiku"))
+
+    assert not queue_file.exists()   # consumed once committed
+    md_files = list((vault / "morgue").rglob("*.md"))
+    assert len(md_files) == 1
+    assert "The quick brown fox." in md_files[0].read_text(encoding="utf-8")

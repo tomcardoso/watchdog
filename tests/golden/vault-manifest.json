@@ -1,0 +1,22 @@
+{
+  ".fulltext/index.db": "<exempt>",
+  ".watchdog/registry/.write-lock": "<exempt>",
+  ".watchdog/registry/documents.json": "e8507e789e58eede",
+  ".watchdog/registry/entities.json": "57001e3eec96317f",
+  ".watchdog/registry/ingest.log": "<exempt>",
+  ".watchdog/registry/manifest.json": "fa3590f752ccef49",
+  ".watchdog/registry/registry.json": "f2fcb5c053806910",
+  ".watchdog/registry/usage/usage-<TIMESTAMP>.json": "<exempt>",
+  ".watchdog/tmp/synthesis-result.json": "<exempt>",
+  "briefings/<DATE>-<TIME>.md": "95ab0881c2b03e0e",
+  "documents/alpha.md": "5d77f208a362756e",
+  "documents/beta.md": "dc287fbe4aed0b9e",
+  "entities/organization/acme-corp.md": "ac3ea085c6980bd6",
+  "hot.md": "5fc5e1144ca99478",
+  "log.md": "2c6b6ca2b2f6277b",
+  "morgue/acme-corp/annual-report/alpha.md": "76ea5f642a477f39",
+  "morgue/acme-corp/annual-report/alpha.pdf": "71f5d2e3fc386395",
+  "morgue/acme-corp/annual-report/beta.md": "c2ca6145ee2aabf2",
+  "morgue/acme-corp/annual-report/beta.pdf": "71f5d2e3fc386395",
+  "timeline.md": "e348c6b9314ed3c5"
+}

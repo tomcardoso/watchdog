@@ -237,22 +237,48 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    `document.file_metadata.created` postdating `date_of_document` by a year or more
    (`file_metadata.check_date_mismatch`, #369), deterministic and suppressed whenever
    `ocr_used` is true, since a scan's creation date describes the scan, not the original —
-   then calls `write_vault.run()`.
+   stages raw timeline NDJSON (`timeline.stage_timeline_events`, into `.watchdog/timeline/`,
+   not the vault proper — a pure function of this extraction, needing no committed registry
+   state) — and, in place of writing to the vault directly, **stages the validated extraction**
+   as a durable artifact at `.watchdog/extracted/<sha>.json` (#403 phase 1, D126). The artifact is
+   never cleaned up on success — it doubles as an audit record and is what makes a document's
+   extraction durable and reusable rather than transient pipeline state. **`write_vault.run()`
+   is not called here any more** — see the commit pass below.
 
-`write_vault` is the single deterministic writer: it collapses each entity's model-invented
-`type` onto a closed six-value vocabulary (`entity_type.canonical_type`, D105) — so a drifting
-near-synonym (`company` vs `financialinstitution`) can't fork one real-world entity across two
-folders — then merges entities (reconciling near-duplicate slugs coined by concurrent workers
-via the shared `entity_norm` name+type normalization, the type half keyed on the canonical
-bucket), writes entity and document notes, updates the registry files,
-stages timeline events, and moves the source file to the morgue — all inside the write
-lock. The **registry persist is the commit point**: the registries are written last, atomically
-(temp-then-rename), and every rebuilt-from-source artifact — the embed/FTS indexes and the
-per-entity finalizer fragments — is (re)written *after* that commit and keyed for idempotent
-replay (indexes upsert by note_path; fragment blocks replace-by-sha), so a repair retry after a
-mid-write crash converges instead of doubling claims (D67). Registry merges are themselves
-idempotent (sha-guarded), and the entity note's `## Analysis` block is keyed by the source
-document and replaced, not appended.
+**Commit pass (`orchestrate._commit_pending`, #403 phase 1, D126).** At the top of
+`orchestrate.finalize` — before any post-ingest model call, and covering all three ways finalize
+runs (the tail of `watchdog ingest`, a standalone `watchdog finalize`, and a resumed run after a
+rate-limit stop) — every `.watchdog/extracted/<sha>.json` whose sha is not yet a key in
+`registry/documents.json` is committed by replaying the unmodified `write_vault.run()` over it, in
+**sorted sha order**. Sorting is what makes this deterministic (§7 of the phase 1 spec; see
+`tests/test_golden_vault.py`): under concurrent extraction, documents still race to produce their
+staged artifact, but the write that used to leak completion order into `appears_in`/fragment
+ordering no longer happens at extraction time at all — every ordering-sensitive write now happens
+serially, in a fixed order, at commit. The queue file survives until this point (moved out of
+`_finish_extraction`, #403 phase 1): `write_vault._write_morgue_markdown` and the corpus indexer
+both still need to read it, and it is unlinked immediately after a successful commit.
+
+`write_vault` is the single deterministic writer, unchanged by this refactor: it collapses each
+entity's model-invented `type` onto a closed six-value vocabulary (`entity_type.canonical_type`,
+D105) — so a drifting near-synonym (`company` vs `financialinstitution`) can't fork one real-world
+entity across two folders — then merges entities (reconciling near-duplicate slugs coined by
+concurrent workers via the shared `entity_norm` name+type normalization, the type half keyed on
+the canonical bucket), writes entity and document notes, updates the registry files, and moves
+the source file to the morgue — all inside the write lock. The **registry persist is the commit
+point**: the registries are written last, atomically (temp-then-rename), and every
+rebuilt-from-source artifact — the embed/FTS indexes and the per-entity finalizer fragments — is
+(re)written *after* that commit and keyed for idempotent replay (indexes upsert by note_path;
+fragment blocks replace-by-sha), so a repair retry after a mid-write crash converges instead of
+doubling claims (D67). Registry merges are themselves idempotent (sha-guarded), and the entity
+note's `## Analysis` block is keyed by the source document and replaced, not appended.
+
+**Two independent "already done" questions (D126).** `preflight.run` answers both, deliberately
+not overloaded onto one flag: `already_staged` (the extraction artifact exists — skip the
+classify/extract call entirely, sha-only, whatever model/effort/skill produced it; re-extracting
+under a different one needs `--force`, #424, out of scope for phase 1) and `already_extracted`
+(the sha is in `registry/documents.json` — nothing left to do at all, its pre-existing meaning).
+A document can be staged without being committed (between extraction and the next finalize); it
+cannot be committed without being staged.
 
 **Large documents — sectioned extraction.** Code: `pipeline/section.py`,
 `pipeline/merge.py`. A document over `section_token_threshold` is split by `section.run`
@@ -482,7 +508,10 @@ investigation**, otherwise it stays a deterministic stub.
   quotes, roles — plus document attribution) in `.watchdog/tmp/entity-fragments/<id>.md`.
   This is a *free byproduct* of data the extractor already produced. The fragment block is keyed
   by the source document's sha and written *after* the registry commit, so a repair retry replaces
-  the block rather than appending a second copy (D67). In `_post_ingest`,
+  the block rather than appending a second copy (D67). `write_vault` itself now runs during the
+  commit pass at finalize-start rather than inline with extraction (§5, #403 phase 1, D126), so
+  fragments appear on disk once commit runs, not progressively per document — `build_bundle`
+  below still only ever sees fragments for documents already committed by that point. In `_post_ingest`,
   `build_bundle` selects the recurring entities and packs each one's fragments + current prose
   into one compact bundle; a single model call synthesizes them all; `synthesis_bundle.apply_bundle`
   bulk-writes the Summary/Analysis via the shared writer in `pipeline/finalize_entity.py`.
@@ -776,8 +805,12 @@ index.md / dashboard.base    landing page + native Obsidian Bases dashboard (D42
 **`.watchdog/` (pipeline state):**
 
 ```
-queue/<sha>.json            chewed documents awaiting ingest
+queue/<sha>.json            chewed documents awaiting ingest — survives until the commit pass
+                            (#403 phase 1), not deleted at extraction time
 staging/<sha>/              chewed originals
+extracted/<sha>.json        durable, validated extraction output (#403 phase 1, D126) — staged by
+                            post-flight, committed to the vault by finalize's commit pass, never
+                            cleaned up on success (doubles as an audit record)
 timeline/                   raw + canonical NDJSON event files
 tmp/                        scratch (wdg_* temp, entity-fragments/)
 registry/

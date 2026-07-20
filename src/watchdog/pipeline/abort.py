@@ -3,9 +3,13 @@ watchdog ingest-abort <sha256> — clean up after a runaway or failed extraction
 
 When an extraction gives up (its runaway guard fires) or returns an unparseable
 result, the document must be left in a clean state so it can be re-ingested
-later. A clean bail happens *before* the vault write, so the only state to undo
-is the per-document staging in `.watchdog/tmp/` (and any raw timeline files), plus
-moving the queue file out of the active queue into a holding area.
+later. A clean bail happens *before* the vault write, so the state to undo
+is the per-document staging in `.watchdog/tmp/` (and any raw timeline files), any
+durable extraction artifact in `.watchdog/extracted/` (#403 phase 1 — belt and braces: a
+document only reaches that artifact once post-flight has already validated it, so in
+practice abort fires before it exists, but discarding a document's extraction should
+discard its staged output too if it somehow got that far), plus moving the queue file
+out of the active queue into a holding area.
 
 This never touches the vault registry or the morgue: the registries are the atomic
 commit point for a document (write_vault persists them last, temp-then-rename), so a
@@ -57,6 +61,14 @@ def run(vault: Path, sha256: str) -> dict:
             for p in sorted(tmp.glob(pattern)):
                 p.unlink()
                 removed.append(str(p.relative_to(vault)))
+
+    # Durable extraction artifact (#403 phase 1). Aborting a document means discarding its
+    # extraction, so this goes too if present — in practice abort fires on extraction *failure*,
+    # before post-flight ever writes it, so this is belt and braces, not a behaviour change.
+    extracted_file = vault / ".watchdog" / "extracted" / f"{sha256}.json"
+    if extracted_file.exists():
+        extracted_file.unlink()
+        removed.append(str(extracted_file.relative_to(vault)))
 
     # Raw timeline files for this sha (named {date}_{sha[:7]}.ndjson). Canonical
     # files have no sha suffix, so they are never matched here.
