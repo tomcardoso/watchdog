@@ -15,6 +15,20 @@ only stage that sees the whole entity set, so extraction is now a pure function 
 `known_document_types` is the one registry read that remains — it steers the document_type
 vocabulary and is order-insensitive by nature (a growing set of strings to reuse from, which
 changes nothing about what the document says).
+
+**Two independent "already done" questions (#403 phase 1).** Extraction now stages its output as
+a durable artifact (`.watchdog/extracted/<sha>.json`, written by `postflight.run`) instead of
+writing straight to the vault; a separate commit pass at finalize-start replays `write_vault` over
+whatever hasn't been committed yet. That splits what used to be one flag into two, each answering
+a different question and consulted at a different point in the pipeline:
+
+  - **Has this document been extracted?** — `already_staged`, true when the extraction artifact
+    exists. The orchestrator checks this *before* spending a classify/extract call: no artifact,
+    no reason to pay for one again. This check is deliberately sha-only — re-extracting under a
+    different model/effort/skill needs `--force` (#424, out of scope here).
+  - **Has this document been committed to the vault?** — `already_extracted`, true when its sha
+    is a key in `registry/documents.json`. This is the pre-existing flag and keeps its pre-existing
+    meaning; it answers "is there anything left to do for this document at all."
 """
 
 import json
@@ -29,8 +43,8 @@ def run(vault: Path, sha256: str) -> dict:
 
     queue = json.loads(queue_file.read_text(encoding="utf-8"))
 
-    # Check if already extracted; collect the document types already used in this vault so
-    # the extractor can reuse one rather than coining a near-duplicate (keeps the type
+    # Check if already committed to the vault; collect the document types already used in this
+    # vault so the extractor can reuse one rather than coining a near-duplicate (keeps the type
     # vocabulary — and the `watchdog status` tally — consistent).
     documents_path = vault / ".watchdog" / "registry" / "documents.json"
     already_extracted = False
@@ -44,6 +58,11 @@ def run(vault: Path, sha256: str) -> dict:
         except Exception:
             pass
 
+    # Has this document already been extracted (staged), regardless of whether it has been
+    # committed yet? Sha-only, deliberately (#403 phase 1 / #424) — a durable artifact here means
+    # no classify/extract call is needed, whatever model/effort/skill produced it.
+    already_staged = (vault / ".watchdog" / "extracted" / f"{sha256}.json").exists()
+
     near_dup = queue.get("near_dup", {})
 
     return {
@@ -52,6 +71,7 @@ def run(vault: Path, sha256: str) -> dict:
         "original_path":      queue.get("source_path", ""),
         "page_count":         queue.get("page_count") or len(queue.get("pages", [])),
         "already_extracted":  already_extracted,
+        "already_staged":     already_staged,
         "pages":              queue.get("pages", []),
         "near_dup": {
             "near_duplicates": near_dup.get("near_duplicates", []),

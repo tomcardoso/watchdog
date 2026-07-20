@@ -46,6 +46,25 @@ def test_abort_removes_staging_and_moves_queue_file(tmp_path):
     assert result["requeue_path"].endswith(f"_failed/{sha}.json")
 
 
+def test_abort_removes_staged_extraction_artifact(tmp_path):
+    """#403 phase 1: aborting a document discards its staged extraction too, if it got that far —
+    belt and braces, since abort normally fires on extraction failure, before the artifact
+    exists."""
+    vault = _vault(tmp_path)
+    sha = "abc1234def5678"
+    extracted_dir = vault / ".watchdog" / "extracted"
+    extracted_dir.mkdir(parents=True)
+    (extracted_dir / f"{sha}.json").write_text("{}")
+    (extracted_dir / "otherSHA.json").write_text("{}")   # other doc — keep
+
+    result = abort.run(vault, sha)
+
+    assert result["ok"] is True
+    assert not (extracted_dir / f"{sha}.json").exists()
+    assert (extracted_dir / "otherSHA.json").exists()
+    assert f".watchdog/extracted/{sha}.json" in result["removed"]
+
+
 def test_abort_never_touches_vault_registry(tmp_path):
     vault = _vault(tmp_path)
     entities = vault / ".watchdog" / "registry" / "entities.json"

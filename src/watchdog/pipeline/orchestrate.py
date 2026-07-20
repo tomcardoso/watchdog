@@ -366,9 +366,11 @@ def _briefing_facts(doc: dict) -> list[dict]:
 
 def _compact_result(sha: str, filename: str, extraction: dict, near_dup: dict, cost: float | None,
                     written: dict) -> dict:
-    """`written` is post-flight's report of what the writer did with this document's entities —
-    which ids were new to the registry and which were added to. That is a deterministic fact the
-    writer holds; extraction no longer guesses at it via `match_id` (#381/D118).
+    """`written` is the writer's report of what it did with this document's entities — which ids
+    were new to the registry and which were added to. That is a deterministic fact `write_vault`
+    holds; extraction no longer guesses at it via `match_id` (#381/D118). At extraction time this
+    is always `{}` — write_vault hasn't run yet (#403 phase 1) — and `_commit_pending` patches
+    the real split onto the persisted result once the commit pass runs it.
 
     There is no `contradictions` key any more: a single document cannot see a conflict, so
     nothing at this stage has one to report. The briefing's contradiction flags are fed by the
@@ -390,21 +392,24 @@ def _compact_result(sha: str, filename: str, extraction: dict, near_dup: dict, c
     }
 
 
-def _write_postflight(vault: Path, sha: str, extraction: dict) -> tuple[bool, list[str], list[str], dict]:
-    """Returns (ok, errors, warnings, written). Warnings are collected rather than printed here —
+def _write_postflight(vault: Path, sha: str, extraction: dict) -> tuple[bool, list[str], list[str]]:
+    """Returns (ok, errors, warnings). Warnings are collected rather than printed here —
     the caller only knows once the document has actually finished (not discarded for a repair
     retry) whether they're worth surfacing, and where in the live region's output they belong
     (tucked under this document's own OK line, not wherever a concurrent document happens to
-    be at the moment post-flight ran, #333 follow-up). `written` is the writer's new/updated
-    entity split, empty on failure."""
+    be at the moment post-flight ran, #333 follow-up).
+
+    Post-flight only stages the extraction now (#403 phase 1) — it no longer writes to the
+    vault, so there is no writer's new/updated entity split to return here. That comes from the
+    commit pass at finalize-start instead, which patches it onto the persisted
+    `result_<sha>.json` directly (`_commit_pending`)."""
     tmp = vault / ".watchdog" / "tmp" / f"wdg_ex_{sha}.json"
     tmp.parent.mkdir(parents=True, exist_ok=True)
     tmp.write_text(json.dumps(extraction, ensure_ascii=False, indent=2), encoding="utf-8")
     warnings: list[str] = []
-    outcome = postflight.run(vault, tmp, quiet=True, warn=warnings.append)
+    outcome = postflight.run(vault, tmp, warn=warnings.append)
     ok = "errors" not in outcome
-    written = {k: outcome.get(k, []) for k in ("new_entities", "updated_entities")} if ok else {}
-    return ok, outcome.get("errors", []), warnings, written
+    return ok, outcome.get("errors", []), warnings
 
 
 def _append_repair_note(base, errors: list[str]):
@@ -444,16 +449,16 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
         except model_client.ModelError as e:
             # No valid JSON after the client's own retries — often output truncated on a
             # dense doc. Report failure so the caller can fall back to sectioning.
-            return extraction, scratchpad, cost, False, [f"extraction returned no valid JSON ({e})"], [], {}
+            return extraction, scratchpad, cost, False, [f"extraction returned no valid JSON ({e})"], []
         cost += r.cost_usd or 0.0
         extraction = r.parsed
         scratchpad = extraction.pop("scratchpad", "")
         _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label,
                         skill_text=skill_text, extract_model=model, extract_effort=effort)
-        ok, errors, warnings, written = _write_postflight(vault, sha, extraction)
+        ok, errors, warnings = _write_postflight(vault, sha, extraction)
         if ok:
-            return extraction, scratchpad, cost, True, [], warnings, written
-    return extraction, scratchpad, cost, False, errors, [], {}
+            return extraction, scratchpad, cost, True, [], warnings
+    return extraction, scratchpad, cost, False, errors, []
 
 
 # Cap on the observations text carried into the next section's prompt (A5) — only the most
@@ -554,8 +559,8 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
     cost += digest_cost
     _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label,
                     skill_text=skill_text, extract_model=model, extract_effort=effort)
-    ok, errors, warnings, written = _write_postflight(vault, sha, extraction)
-    return extraction, scratchpad, cost, ok, errors, warnings, written
+    ok, errors, warnings = _write_postflight(vault, sha, extraction)
+    return extraction, scratchpad, cost, ok, errors, warnings
 
 
 def _queued_filename(vault: Path, sha: str) -> str | None:
@@ -594,6 +599,13 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     if pf.get("already_extracted"):
         _say(f"{_DIM}–  {pf.get('filename')}  already extracted — skipping{_RESET}")
         (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
+        return {"sha256": sha, "filename": pf.get("filename"), "status": "skipped"}
+    if pf.get("already_staged"):
+        # Extracted in a prior run but not yet committed (#403 phase 1) — no reason to spend a
+        # classify/extract call again. The queue file must survive: the eventual commit pass
+        # still needs it (write_vault._write_morgue_markdown, the corpus index). Its
+        # result_<sha>.json is still on disk from that prior run, so it still feeds finalize.
+        _say(f"{_DIM}–  {pf.get('filename')}  already extracted — pending commit{_RESET}")
         return {"sha256": sha, "filename": pf.get("filename"), "status": "skipped"}
 
     filename = pf["filename"]
@@ -645,12 +657,12 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         n_sections = len(plan.get("sections", []))
         _step(f"{_DIM}→  {filename}  {flow} · extracting · {n_sections} sections…{_RESET}",
               f"{_DIM}→  {filename}  extracting · {n_sections} sections…{_RESET}")
-        extraction, scratchpad, cost, ok, errors, warnings, written = await _extract_sectioned(
+        extraction, scratchpad, cost, ok, errors, warnings = await _extract_sectioned(
             vault, sha, pf, skill_text, plan, extract_model, skill_label, extract_effort, extract_backend, brief)
     else:
         _step(f"{_DIM}→  {filename}  {flow} · extracting…{_RESET}",
               f"{_DIM}→  {filename}  extracting…{_RESET}")
-        extraction, scratchpad, cost, ok, errors, warnings, written = await _simple_extract(
+        extraction, scratchpad, cost, ok, errors, warnings = await _simple_extract(
             vault, sha, pf, skill_text, brief, extract_model, skill_label, extract_effort, extract_backend)
         # Whole-document extraction can overrun the model's output ceiling on entity-dense docs and
         # get authoritatively rejected as truncated (#343) — pagination handles the continuation-
@@ -666,20 +678,19 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
                       f"{_DIM}↻  {filename}  whole-doc extraction rejected — "
                       f"re-extracting in {n_sections} sections…{_RESET}")
                 whole_cost = cost
-                extraction, scratchpad, cost, ok, errors, warnings, written = await _extract_sectioned(
+                extraction, scratchpad, cost, ok, errors, warnings = await _extract_sectioned(
                     vault, sha, pf, skill_text, fb, extract_model, skill_label, extract_effort, extract_backend, brief)
                 cost += whole_cost   # account for the failed whole-doc attempt
 
     if not ok:
         return _fail(vault, sha, filename, "post-flight rejected: " + "; ".join(errors[:3]))
-    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, warnings, written)
+    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, warnings)
 
 
 
 def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, scratchpad: str,
                        cost: float, pf: dict,
-                       warnings: list[str] | None = None,
-                       written: dict | None = None) -> dict:
+                       warnings: list[str] | None = None) -> dict:
     """Shared tail once an extraction has passed post-flight: settle-print, warnings, log,
     persist `result_<sha>.json`. Used by both the synchronous per-document path
     (`_extract_document`) and the batch-collect path (`_finish_batch_item`, #214) so a
@@ -688,12 +699,19 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
     `warnings` (post-flight's quote-verify/sanitization/coverage-gap messages, if any) are
     printed here — after the OK line, not when post-flight ran — so they're tucked visually
     under this document's own row instead of landing wherever a concurrently-extracting
-    document happened to be at the time (#333 follow-up)."""
+    document happened to be at the time (#333 follow-up).
+
+    The queue file is deliberately *not* removed here any more (#403 phase 1): the vault has not
+    been written yet at this point (post-flight only staged the extraction), and
+    `write_vault._write_morgue_markdown` / corpus indexing still need to read it at commit time.
+    It is removed by the commit pass instead (`_commit_extracted`), once write_vault has actually
+    consumed it. `new_entities`/`updated_entities` are similarly not known yet — they come from
+    the writer, which hasn't run — so `_compact_result` gets an empty split here; the commit pass
+    patches the persisted result with the real one before `_post_ingest` reads it."""
     if scratchpad:
         (vault / ".watchdog" / "tmp" / f"notes_{sha}.md").write_text(scratchpad, encoding="utf-8")
     for stale in (vault / ".watchdog" / "tmp").glob(f"section_{sha}_*.md"):
         stale.unlink(missing_ok=True)
-    (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
     n_entities = len(extraction.get("entities", []))
     _settle(sha, f"  {_GREEN}OK{_RESET}  {filename}  "
             f"{_DIM}{n_entities} entit{'ies' if n_entities != 1 else 'y'}{_RESET}  "
@@ -702,8 +720,7 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
     for msg in (warnings or []):
         _say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{msg}{_RESET}")
         _log(vault, f"WARN {filename}: {msg}")
-    result = _compact_result(sha, filename, extraction, pf.get("near_dup", {}), round(cost, 6),
-                             written or {})
+    result = _compact_result(sha, filename, extraction, pf.get("near_dup", {}), round(cost, 6), {})
     # Persist the compact result so `watchdog finalize` can run post-ingest from disk alone.
     (vault / ".watchdog" / "tmp" / f"result_{sha}.json").write_text(
         json.dumps(result, ensure_ascii=False), encoding="utf-8")
@@ -741,6 +758,10 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
         filename = pf.get("filename")
         _say(f"{_DIM}–  {filename}  already extracted — skipping{_RESET}")
         (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
+        return {"sha256": sha, "filename": filename, "status": "skipped"}
+    if pf.get("already_staged"):        # extracted already (#403 phase 1) — nothing left to do
+        filename = pf.get("filename")
+        _say(f"{_DIM}–  {filename}  already extracted — pending commit{_RESET}")
         return {"sha256": sha, "filename": filename, "status": "skipped"}
 
     filename = pf["filename"]
@@ -780,10 +801,10 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
     scratchpad = extraction.pop("scratchpad", "") if isinstance(extraction, dict) else ""
     _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label,
                     skill_text=skill_text, extract_model=model, extract_effort=effort)
-    ok, errors, warnings, written = _write_postflight(vault, sha, extraction)
+    ok, errors, warnings = _write_postflight(vault, sha, extraction)
     if not ok:
         return _fail(vault, sha, filename, "post-flight rejected: " + "; ".join(errors[:3]))
-    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, warnings, written)
+    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, warnings)
 
 
 
@@ -847,6 +868,10 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
         if pf.get("already_extracted"):
             _say(f"{_DIM}–  {pf.get('filename')}  already extracted — skipping{_RESET}")
             (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
+            results.append({"sha256": sha, "filename": pf.get("filename"), "status": "skipped"})
+            continue
+        if pf.get("already_staged"):    # extracted already (#403 phase 1) — don't resubmit
+            _say(f"{_DIM}–  {pf.get('filename')}  already extracted — pending commit{_RESET}")
             results.append({"sha256": sha, "filename": pf.get("filename"), "status": "skipped"})
             continue
         if section.run(vault, sha, model=extract_model).get("sectioned"):
@@ -1290,6 +1315,108 @@ def _load_results(vault: Path) -> list:
     return out
 
 
+# ── Commit pass (#403 phase 1) ───────────────────────────────────────────────────────────────
+#
+# Extraction stages its output (postflight.run) instead of writing to the vault; this pass
+# replays the existing writer (write_vault.run, unmodified) over every staged-but-uncommitted
+# artifact, sorted by sha for determinism (see D126), before any post-ingest model call. It runs
+# at the top of `finalize`, so it covers all three entry paths that call it: the tail of
+# `watchdog ingest`, a standalone `watchdog finalize`, and a resumed run after a rate-limit stop.
+
+def _pending_commits(vault: Path) -> list[str]:
+    """Every sha with a durable extraction artifact (`.watchdog/extracted/<sha>.json`) that is
+    not yet a key in `registry/documents.json` — sorted, so the commit pass that consumes this
+    runs in a fixed order regardless of which document happened to extract first."""
+    extracted_dir = vault / ".watchdog" / "extracted"
+    if not extracted_dir.exists():
+        return []
+    documents_path = vault / ".watchdog" / "registry" / "documents.json"
+    committed: set = set()
+    if documents_path.exists():
+        try:
+            committed = set(json.loads(documents_path.read_text(encoding="utf-8")))
+        except (OSError, json.JSONDecodeError):
+            pass
+    return sorted(p.stem for p in extracted_dir.glob("*.json") if p.stem not in committed)
+
+
+def _commit_extracted(vault: Path, sha: str) -> dict | None:
+    """Replay `write_vault.run` over one staged extraction artifact — the commit half of the
+    #403 phase 1 split. Reads near-dup data from the queue file (still present — its deletion is
+    deferred to here, since `write_vault._write_morgue_markdown` and the corpus indexer both
+    still need to read it) and removes the queue file once the write succeeds. Returns
+    write_vault's `{"new_entities", "updated_entities"}` split, or None if the artifact is
+    missing (defensive; `_pending_commits` just listed it, so this should not happen in practice)
+    or if the commit failed.
+
+    A failure here is caught, not left to propagate — the same posture postflight.run used to
+    take around this same call (it validates before staging, so a well-formed artifact should
+    never trip write_vault, but a batch of several documents must not go uncommitted because one
+    staged artifact turned out to be corrupt or malformed on disk). The artifact and queue file
+    are left in place on failure, so the next finalize retries this sha rather than losing it."""
+    extracted_path = vault / ".watchdog" / "extracted" / f"{sha}.json"
+    if not extracted_path.exists():
+        return None
+    queue_file = vault / ".watchdog" / "queue" / f"{sha}.json"
+    neardup_data: dict = {}
+    if queue_file.exists():
+        try:
+            neardup_data = json.loads(queue_file.read_text(encoding="utf-8")).get("near_dup", {})
+        except (OSError, json.JSONDecodeError):
+            pass
+    from watchdog.pipeline.write_vault import run as wv_run
+    try:
+        written = wv_run(extraction_path=extracted_path, vault_path=vault,
+                         neardup_data=neardup_data, quiet=True)
+    except SystemExit as e:
+        _say(f"{_YELLOW}⚠{_RESET}  commit failed for {sha[:12]}…{_RESET}{_DIM} — {e}{_RESET}")
+        _log(vault, f"WARN commit failed for {sha}: {e}")
+        return None
+    except Exception as e:
+        _say(f"{_YELLOW}⚠{_RESET}  commit failed for {sha[:12]}…{_RESET}{_DIM} — {e}{_RESET}")
+        _log(vault, f"WARN commit failed for {sha}: {e}")
+        return None
+    queue_file.unlink(missing_ok=True)
+    return written
+
+
+def _commit_pending(vault: Path) -> dict:
+    """Commit every staged-but-uncommitted extraction to the vault, in sorted sha order, before
+    any post-ingest model call runs. Patches each committed document's persisted
+    `result_<sha>.json` with the writer's new/updated entity split, if that file still exists —
+    at extraction time `_finish_extraction` could not know it (write_vault hadn't run yet), so
+    the briefing prompt would otherwise never see it (#150's `key_facts` still ride along either
+    way).
+
+    Returns ``{"committed": n, "written": {sha: {"new_entities", "updated_entities"}, ...}}`` —
+    the per-sha split is also returned (not just patched to disk) so `run()` can sync it onto
+    its own in-memory `results` list, which is built before this pass ever runs and would
+    otherwise keep reporting an empty new/updated split for the life of that call."""
+    shas = _pending_commits(vault)
+    if not shas:
+        return {"committed": 0, "written": {}}
+    _say(f"{_DIM}→  committing {len(shas)} document{'s' if len(shas) != 1 else ''} "
+         f"to the vault…{_RESET}")
+    tmp_dir = vault / ".watchdog" / "tmp"
+    written_map: dict[str, dict] = {}
+    for sha in shas:
+        written = _commit_extracted(vault, sha)
+        if not written:
+            continue
+        written_map[sha] = written
+        result_path = tmp_dir / f"result_{sha}.json"
+        if not result_path.exists():
+            continue
+        try:
+            result = json.loads(result_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        result["new_entities"] = written.get("new_entities", [])
+        result["updated_entities"] = written.get("updated_entities", [])
+        result_path.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+    return {"committed": len(shas), "written": written_map}
+
+
 def _clear_post_ingest_inputs(vault: Path) -> None:
     """Remove the per-run post-ingest inputs once they have been finalized cleanly."""
     tmp = vault / ".watchdog" / "tmp"
@@ -1330,24 +1457,35 @@ def pending_finalization(vault: Path) -> dict:
 async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None = None,
                    results: list | None = None, post_effort: str | None = None,
                    post_backend: str | None = None) -> dict:
-    """Run (or re-run) post-ingest over the current on-disk state: synthesize multi-mention
-    entities, reconcile the timeline, and write the briefing/hot.md/log.
+    """Commit every staged extraction to the vault, then run (or re-run) post-ingest over the
+    current on-disk state: synthesize multi-mention entities, reconcile the timeline, and write
+    the briefing/hot.md/log.
 
     Called at the tail of every ``watchdog ingest`` (with this run's results in memory) and
     standalone by ``watchdog finalize`` (reading persisted ``result_*.json``) to complete a
     post-ingest an earlier rate limit or interrupt left unfinished. On a clean pass the consumed
     inputs (fragments, results, scratchpads) are cleared; if any step failed they are left in
     place so a later finalize can retry.
+
+    The commit pass (#403 phase 1, ``_commit_pending``) runs first, before any post-ingest model
+    call and before ``results`` is loaded from disk — it replays ``write_vault.run`` over every
+    ``.watchdog/extracted/<sha>.json`` not yet in the registry, in sorted sha order, which is what
+    covers this function's three entry paths (ingest's tail, standalone ``watchdog finalize``,
+    and a resumed run after a rate-limit stop) with one code path.
     """
     global _usage
     standalone_usage = _usage is None   # not nested inside `run` — this call owns the usage file
     if standalone_usage:
         _usage = []
+    commit_summary = _commit_pending(vault)
     if brief is None:
         brief = _read_brief(vault)
     if results is None:
         results = _load_results(vault)
     out = await _post_ingest(vault, results, brief, post_model, post_effort, post_backend)
+    # Surfaced so `run()` can sync the writer's new/updated split onto its own in-memory
+    # `summary["results"]`, built before this pass ever runs (see `_commit_pending`'s docstring).
+    out["committed_writes"] = commit_summary["written"]
     if not out.get("error") and not out.get("briefing_error"):
         _clear_post_ingest_inputs(vault)
     if standalone_usage:
@@ -1528,6 +1666,16 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             # synthesized and briefed together with this run's documents.
             summary["post_ingest"] = await finalize(vault, post_model=post_model, brief=brief,
                                                     post_effort=post_effort, post_backend=post_backend)
+            # `results` was built before finalize's commit pass ran write_vault, so each item's
+            # new/updated entity split was still unknown at the time (#403 phase 1) — sync it in
+            # now from what the commit pass actually did, so a caller reading `summary["results"]`
+            # (not just the briefing, which already reads the patched result_<sha>.json) sees it.
+            written_map = summary["post_ingest"].get("committed_writes") or {}
+            for r in results:
+                w = written_map.get(r.get("sha256"))
+                if w:
+                    r["new_entities"] = w.get("new_entities", [])
+                    r["updated_entities"] = w.get("updated_entities", [])
             _update_graph_colours(vault)
         except Exception as e:   # post-ingest is enrichment — never let it crash a saved batch
             summary["post_ingest_error"] = str(e)

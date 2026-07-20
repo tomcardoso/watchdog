@@ -1,12 +1,20 @@
 """
-Watchdog post-flight — validates an extraction JSON and writes it to the vault.
+Watchdog post-flight — validates an extraction JSON and stages it as a durable artifact.
 
 Handles everything after Claude produces the extraction JSON:
   1. Validates the extraction (schema + required fields)
   2. Reads near-dup minhash from the queue file
-  3. Calls write_vault.run() directly
+  3. Writes the validated/sanitized/exploded extraction to `.watchdog/extracted/<sha>.json`
   4. Cleans up temp files
   5. Returns {"ok": true} or {"errors": [...]}
+
+**Post-flight no longer writes to the vault** (#403 phase 1). It used to call `write_vault.run()`
+directly, so the vault populated progressively, one document at a time, as extraction completed.
+Now it stages the validated extraction as a durable artifact instead, and a serial commit pass at
+the top of `orchestrate.finalize` replays `write_vault.run()` over every staged-but-uncommitted
+artifact, sorted by sha. The artifact is never cleaned up on success — it doubles as an audit
+record of what the model actually produced, and it is what makes a document's extraction durable
+and reusable rather than transient pipeline state.
 
 Entity *resolution* is not done here (#381/D118). Post-flight used to apply the extractor's
 `match_id` merge decisions, but an extractor that reads one document can only resolve against the
@@ -222,7 +230,7 @@ def explode_key_facts(extraction: dict) -> None:
                 ent.setdefault("timeline_events", []).append(event)
 
 
-def run(vault: Path, extraction_path: Path, quiet: bool = False, warn=None) -> dict:
+def run(vault: Path, extraction_path: Path, warn=None) -> dict:
     """`warn`, when given, receives each warning message instead of the default raw
     ``print(..., file=sys.stderr)`` — the caller can route it through a live-region-aware
     printer and the ingest log (a raw stderr print during a LiveRegion redraw can be erased by
@@ -260,9 +268,10 @@ def run(vault: Path, extraction_path: Path, quiet: bool = False, warn=None) -> d
     # write_vault and timeline staging consume (#140).
     explode_key_facts(extraction)
 
-    # Get near-dup minhash and page text from the queue file (both computed/captured at chew time)
+    # Get page text from the queue file (captured at chew time) for the deterministic checks
+    # below. Near-dup minhash is no longer read here — write_vault (and the neardup_data it
+    # needs) now runs at commit time (#403 phase 1), not here.
     sha256 = extraction.get("document", {}).get("sha256", "")
-    neardup_data: dict = {}
     page_texts: dict[int, str] = {}
     processing: dict = {}
     if sha256:
@@ -270,7 +279,6 @@ def run(vault: Path, extraction_path: Path, quiet: bool = False, warn=None) -> d
         if queue_file.exists():
             try:
                 q = json.loads(queue_file.read_text(encoding="utf-8"))
-                neardup_data = q.get("near_dup", {})
                 page_texts = {
                     p["page"]: p.get("markdown", "")
                     for p in q.get("pages", []) if p.get("page") is not None
@@ -311,35 +319,32 @@ def run(vault: Path, extraction_path: Path, quiet: bool = False, warn=None) -> d
     if gap:
         _warn(_render_coverage_warning(gap, page_count))
 
-    # Write the validated (and sanitized) extraction back so write_vault reads it
-    extraction_path.write_text(
+    # Stage the validated (and sanitized) extraction durably (#403 phase 1) — a sibling of
+    # .watchdog/queue/ and .watchdog/staging/, deliberately not under .watchdog/tmp/ (swept by
+    # abort.run) nor .watchdog/staging/<sha>/ (already the chewed-original path, preprocess_batch).
+    # Never cleaned up on success: the commit pass (orchestrate._commit_pending) replays
+    # write_vault.run() over it, and it stays afterward as an audit record of what the model
+    # actually produced.
+    extracted_dir = vault / ".watchdog" / "extracted"
+    extracted_dir.mkdir(parents=True, exist_ok=True)
+    (extracted_dir / f"{sha256}.json").write_text(
         json.dumps(extraction, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
-    try:
-        from watchdog.pipeline.write_vault import run as wv_run
-        written = wv_run(
-            extraction_path=extraction_path,
-            vault_path=vault,
-            neardup_data=neardup_data,
-            quiet=quiet,
-        )
-    except SystemExit as e:
-        return {"errors": [str(e)]}
-    except Exception as e:
-        return {"errors": [str(e)]}
-
-    # Stage raw timeline NDJSON files (replaces the pre-D18 subagent's manual
-    # per-date writes). The vault is already written at this point, so a staging failure
-    # is reported as a warning rather than failing the whole extraction —
-    # erroring here would trigger a retry and double-write the vault.
+    # Stage raw timeline NDJSON files (replaces the pre-D18 subagent's manual per-date writes).
+    # Stays here rather than moving to the commit pass: `.watchdog/timeline/` is not the vault
+    # proper (it is cross-document-deduped and rendered into timeline.md only after `_post_ingest`
+    # runs, same as before this refactor), and staging is a pure function of this extraction —
+    # it needs no committed registry state. A staging failure is reported as a warning rather
+    # than failing the whole extraction — erroring here would trigger a retry and double-stage.
     try:
         from watchdog.pipeline.timeline import stage_timeline_events
         stage_timeline_events(vault, extraction)
     except Exception as e:
         print(f"Warning: timeline staging failed: {e}", file=sys.stderr)
 
-    # Clean up temp files
+    # Clean up temp files. `extraction_path` (the caller's transient tmp copy) is never the
+    # durable artifact — that now lives at `extracted_dir / f"{sha256}.json"`, written above.
     for path in [
         extraction_path,
         vault / ".watchdog" / "tmp" / f"wdg_nd_{sha256}.json",
@@ -349,9 +354,7 @@ def run(vault: Path, extraction_path: Path, quiet: bool = False, warn=None) -> d
         except OSError:
             pass
 
-    # `new_entities`/`updated_entities` come from the writer, not the model (#381/D118) — it is
-    # the stage that knows whether an id was already in the registry.
-    return {"ok": True, "sha256": sha256, **written}
+    return {"ok": True, "sha256": sha256}
 
 
 def main() -> None:

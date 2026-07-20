@@ -220,6 +220,15 @@ def test_coverage_gap_handles_missing_page_count():
 
 
 # ── end-to-end through postflight ───────────────────────────────────────────
+#
+# Post-flight no longer writes to the vault (#403 phase 1) — it validates, sanitizes, explodes,
+# and stages the result to `.watchdog/extracted/<sha>.json`. These tests read that staged
+# artifact directly rather than a vault note; the commit pass that replays `write_vault` over it
+# (and the vault notes that produces) is covered in tests/test_orchestrate.py.
+
+def _staged(vault: Path, sha: str) -> dict:
+    return json.loads((vault / ".watchdog" / "extracted" / f"{sha}.json").read_text(encoding="utf-8"))
+
 
 def _full_vault(tmp_path: Path) -> Path:
     vault = tmp_path / "vault"
@@ -257,6 +266,8 @@ def _extraction(sha="sha777aaa"):
 
 
 def test_postflight_builds_entity_analysis_from_tagged_facts(tmp_path):
+    """The staged artifact — not a vault note (#403 phase 1: post-flight no longer writes to the
+    vault) — carries each entity's fanned-out evidence_fragments/timeline_events."""
     vault = _full_vault(tmp_path)
     (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
     ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
@@ -265,14 +276,16 @@ def test_postflight_builds_entity_analysis_from_tagged_facts(tmp_path):
     result = postflight_run(vault, ext_path)
     assert result.get("ok"), result
 
-    lu_note = (vault / "entities" / "organization" / "lu.md").read_text(encoding="utf-8")
-    assert "Transfer ratio set at 65.8%." in lu_note       # tagged fact → analysis
-    assert "Stayed a $842,018.34 payment." in lu_note
-    assert "2021-03-30" in lu_note or "30 Mar 2021" in lu_note   # dated fact → entity timeline
+    staged = _staged(vault, "sha777aaa")
+    lu = next(e for e in staged["entities"] if e["id"] == "lu")
+    pbgf = next(e for e in staged["entities"] if e["id"] == "pbgf")
 
-    pbgf_note = (vault / "entities" / "organization" / "pbgf.md").read_text(encoding="utf-8")
-    assert "Stayed a $842,018.34 payment." in pbgf_note
-    assert "Transfer ratio set at 65.8%." not in pbgf_note  # not tagged to pbgf
+    lu_claims = {f["claim"] for f in lu["evidence_fragments"]}
+    assert lu_claims == {"Transfer ratio set at 65.8%.", "Stayed a $842,018.34 payment."}
+    assert [ev["date"] for ev in lu["timeline_events"]] == ["2021-03-30"]
+
+    pbgf_claims = {f["claim"] for f in pbgf["evidence_fragments"]}
+    assert pbgf_claims == {"Stayed a $842,018.34 payment."}   # not tagged to pbgf
 
 
 def test_postflight_run_drops_malformed_date_before_timeline_write(tmp_path, capsys):
@@ -296,10 +309,15 @@ def test_postflight_run_drops_malformed_date_before_timeline_write(tmp_path, cap
     assert "Warning" in err and "2024/03" in err
 
 
-def test_postflight_writes_morgue_markdown(tmp_path):
+def test_postflight_does_not_write_morgue_and_leaves_queue_file_in_place(tmp_path):
+    """Post-flight no longer calls write_vault (#403 phase 1): the morgue directory is not
+    created and the queue file (needed at commit time by write_vault._write_morgue_markdown and
+    the corpus indexer) is left untouched. See tests/test_orchestrate.py for the commit pass
+    actually writing the morgue markdown from this same queue file."""
     vault = _full_vault(tmp_path)
     (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
-    (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
+    queue_file = vault / ".watchdog" / "queue" / "sha777aaa.json"
+    queue_file.write_text(json.dumps({
         "pages": [{"page": 1, "markdown": "# Heading one"},
                   {"page": 2, "markdown": "Second page body."}],
     }))
@@ -308,11 +326,9 @@ def test_postflight_writes_morgue_markdown(tmp_path):
 
     assert postflight_run(vault, ext_path).get("ok")
 
-    md_files = list((vault / "morgue").rglob("*.md"))
-    assert len(md_files) == 1
-    text = md_files[0].read_text(encoding="utf-8")
-    assert "<!-- PAGE 1 -->" in text and "<!-- PAGE 2 -->" in text
-    assert "# Heading one" in text and "Second page body." in text
+    assert not (vault / "morgue").exists()
+    assert queue_file.exists()
+    assert (vault / ".watchdog" / "extracted" / "sha777aaa.json").exists()
 
 
 # ── Quote verification against the morgue text (#267) ───────────────────────
@@ -332,8 +348,9 @@ def test_postflight_flags_unverified_quote_and_warns(tmp_path, capsys):
     result = postflight_run(vault, ext_path)
     assert result.get("ok"), result
 
-    lu_note = (vault / "entities" / "organization" / "lu.md").read_text(encoding="utf-8")
-    assert "*(quote not found on cited page — verify against source)*" in lu_note
+    lu = next(e for e in _staged(vault, "sha777aaa")["entities"] if e["id"] == "lu")
+    frag = next(f for f in lu["evidence_fragments"] if f["claim"] == "Transfer ratio set at 65.8%.")
+    assert frag["quote_verified"] is False
 
     err = capsys.readouterr().err
     assert "Warning" in err and "not found on page" in err
@@ -354,8 +371,9 @@ def test_postflight_verifies_exact_quote_without_warning(tmp_path, capsys):
     result = postflight_run(vault, ext_path)
     assert result.get("ok"), result
 
-    lu_note = (vault / "entities" / "organization" / "lu.md").read_text(encoding="utf-8")
-    assert "quote not found" not in lu_note
+    lu = next(e for e in _staged(vault, "sha777aaa")["entities"] if e["id"] == "lu")
+    frag = next(f for f in lu["evidence_fragments"] if f["claim"] == "Transfer ratio set at 65.8%.")
+    assert frag.get("quote_verified") is not False
 
     err = capsys.readouterr().err
     assert "not found on page" not in err
@@ -415,6 +433,9 @@ def _gappy_extraction(sha="sha777aaa"):
 
 
 def test_postflight_persists_coverage_gap_on_document_registry_record(tmp_path):
+    """`coverage_gap` is written onto the staged artifact's document record — write_vault (at
+    commit time, #403 phase 1) carries it into `documents.json` unchanged, since it just persists
+    whatever `document` dict it's handed."""
     vault = _full_vault(tmp_path)
     (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
     ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
@@ -423,8 +444,8 @@ def test_postflight_persists_coverage_gap_on_document_registry_record(tmp_path):
     result = postflight_run(vault, ext_path)
     assert result.get("ok"), result
 
-    documents_reg = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
-    assert documents_reg["sha777aaa"]["coverage_gap"] == {"start": 2, "end": 12, "pages": 11}
+    staged = _staged(vault, "sha777aaa")
+    assert staged["document"]["coverage_gap"] == {"start": 2, "end": 12, "pages": 11}
 
 
 def test_postflight_persists_none_coverage_gap_for_clean_extraction(tmp_path):
@@ -437,10 +458,9 @@ def test_postflight_persists_none_coverage_gap_for_clean_extraction(tmp_path):
     result = postflight_run(vault, ext_path)
     assert result.get("ok"), result
 
-    documents_reg = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
-    record = documents_reg["sha777aaa"]
-    assert "coverage_gap" in record   # key present even when assessed clean/not-assessable
-    assert record["coverage_gap"] is None
+    doc = _staged(vault, "sha777aaa")["document"]
+    assert "coverage_gap" in doc   # key present even when assessed clean/not-assessable
+    assert doc["coverage_gap"] is None
 
 
 def test_postflight_coverage_gap_warning_reaches_warn_callback(tmp_path):

@@ -56,6 +56,16 @@ _NORMALIZERS = [
 # logical contents, so hashing it would fail for reasons unrelated to what was indexed.
 _CONTENT_EXEMPT = ("ingest.log", "usage/", ".write-lock", "/tmp/", ".fulltext/index.db")
 
+# Paths excluded from the manifest entirely — not even their presence is recorded. #403 phase 1
+# introduces `.watchdog/extracted/<sha>.json`, a durable extraction artifact that (deliberately,
+# per the design) is never cleaned up on success — unlike `.watchdog/queue/`/`.watchdog/tmp/`,
+# which empty out by the end of a normal run and so never needed an explicit exclusion here. This
+# test's contract is the vault's *observable* surface — notes, registries, morgue, timeline,
+# indexes, briefings — not this refactor's own new internal bookkeeping, so the artifact directory
+# is excluded rather than pinned: pinning it would make this test assert on the exact set of shas
+# ingested by a *particular* run, which is not what "vault output must not change" means here.
+_PATH_EXEMPT = (".watchdog/extracted/",)
+
 
 def _normalize(text: str) -> str:
     for pattern, replacement in _NORMALIZERS:
@@ -74,6 +84,8 @@ def _manifest(vault: Path) -> dict:
         if not path.is_file():
             continue
         rel = _normalize(path.relative_to(vault).as_posix())
+        if any(rel.startswith(marker) for marker in _PATH_EXEMPT):
+            continue
         if any(marker in rel for marker in _CONTENT_EXEMPT):
             out[rel] = "<exempt>"
             continue
@@ -87,14 +99,16 @@ def _manifest(vault: Path) -> dict:
 
 def _run_fixture_ingest(tmp_path, monkeypatch) -> Path:
     """A two-document fixture ingest, model mocked, run end to end through the real
-    preflight/post-flight/write_vault/finalize path.
+    preflight/post-flight/write_vault/finalize path, at the default concurrency.
 
-    `concurrency=1` is load-bearing, not incidental. Under the default concurrency the two
-    documents race, and whichever extraction finishes first writes first — so `appears_in`
-    ordering in the registry (and the fragment order in the entity note) flips between
-    otherwise identical runs. Serializing pins that order so the manifest is comparable at all.
-    The underlying nondeterminism is a property of the current per-document write path; #403
-    phase 1, which serializes writes into a single commit pass, is what removes it.
+    Before #403 phase 1, this fixture pinned `concurrency=1`: extraction wrote to the vault
+    per-document, so the two documents raced and whichever finished first wrote first —
+    `appears_in` ordering in the registry (and fragment order in the entity note) flipped between
+    otherwise-identical runs. Phase 1 moves the write to a single serial commit pass at
+    finalize-start, sorted by sha (D126) — extraction can still race, but the write that used to
+    leak that race into observable output no longer runs at extraction time at all, so ordering
+    is now a function of sha, not of which document happened to finish first. Verified by running
+    this test dozens of times at default concurrency with no flake (§7 of the #403 phase 1 spec).
     """
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="a" * 64, filename="alpha.pdf",
@@ -102,7 +116,7 @@ def _run_fixture_ingest(tmp_path, monkeypatch) -> Path:
     _queue_doc(vault, sha="b" * 64, filename="beta.pdf",
                text="Acme Corp received a loan of $1,200,000 from Beta Bank.")
     _mock(monkeypatch, extraction=_extraction(sha="a" * 64, filename="alpha.pdf"))
-    asyncio.run(orchestrate.run(vault, concurrency=1))
+    asyncio.run(orchestrate.run(vault))
     return vault
 
 

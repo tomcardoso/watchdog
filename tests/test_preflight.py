@@ -55,6 +55,23 @@ def test_already_extracted_flagged_when_sha_in_documents(tmp_path):
     assert preflight.run(vault, "doc1")["already_extracted"] is True
 
 
+def test_already_staged_flagged_when_extraction_artifact_exists(tmp_path):
+    """#403 phase 1: `already_staged` answers a different question than `already_extracted` —
+    whether this document has been extracted at all, regardless of whether it has been committed
+    to the vault yet (`registry/documents.json` stays empty in this test)."""
+    vault = _vault(tmp_path)
+    _write_queue(vault, "doc1", "Some text.")
+    assert preflight.run(vault, "doc1")["already_staged"] is False
+
+    extracted_dir = vault / ".watchdog" / "extracted"
+    extracted_dir.mkdir(parents=True)
+    (extracted_dir / "doc1.json").write_text("{}")
+
+    pf = preflight.run(vault, "doc1")
+    assert pf["already_staged"] is True
+    assert pf["already_extracted"] is False   # still not committed — a separate question
+
+
 def test_known_document_types_collected_from_registry(tmp_path):
     """preflight surfaces the distinct document_types already in the vault so the extractor
     can reuse them (deduped, sorted; missing/empty types ignored)."""
