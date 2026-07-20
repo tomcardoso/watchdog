@@ -136,15 +136,20 @@ def _reconcile_entity_ids(incoming_entities: list[dict], entities_reg: dict) -> 
 
     Documents extract in parallel from a pre-flight snapshot taken at launch, so two
     documents referencing the same real-world entity can coin different ids (e.g.
-    'ernst-and-young-inc' vs 'ernst-young-inc'). write_vault runs inside the registry
-    lock with a fresh read of entities_reg — the one place that sees entities written
-    by concurrent extraction tasks earlier in the batch — so we reconcile here: any incoming
-    *new* entity whose normalized (name, type) matches an existing one is remapped to
-    that existing id, routing it through the merge path instead of creating a duplicate.
+    'ernst-and-young-inc' vs 'ernst-young-inc'). Any incoming *new* entity whose normalized
+    (name, type) matches an existing one is remapped to that existing id, routing it through
+    the merge path instead of creating a duplicate.
 
     The type half of the key is canonicalized (#335) so a real-world entity labelled with
     drifting near-synonyms across documents (``company`` vs ``financialinstitution``) still
     reconciles instead of forking into a second folder — see entity_type.canonical_type.
+
+    As of #403 phase 2 this is no longer called per-document inside write_vault's registry
+    lock; it is driven by `orchestrate._batch_exact_fold`, a deterministic pre-commit pass over
+    every staged extraction in a batch, sorted-sha order (D126), against a throwaway in-memory
+    registry copy that accumulates as the pass walks the batch. The original cross-worker-race
+    rationale for reconciling inside the lock no longer applies — the batch pass runs serially,
+    before any commit. The function itself is unchanged and still used, just called from there.
     """
     norm_index: dict[tuple[str, str], str] = {}
     for eid, entry in entities_reg.items():
@@ -860,8 +865,9 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
 
         # ── 1. Update entity registry ─────────────────────────────────────────
 
-        # Reconcile near-duplicate slugs coined by concurrent extraction tasks before merging.
-        _reconcile_entity_ids(incoming_entities, entities_reg)
+        # Near-duplicate slugs coined by concurrent extraction tasks are already reconciled by
+        # this point — the batch-wide pre-commit fold (#403 phase 2, orchestrate._batch_exact_fold)
+        # ran over the staged extraction JSON before any commit began.
         # Roles arrive as target_id only; re-inflate target_name/target_type deterministically.
         _resolve_role_targets(incoming_entities, entities_reg)
 

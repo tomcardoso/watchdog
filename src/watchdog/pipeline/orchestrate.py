@@ -1318,10 +1318,64 @@ def _load_results(vault: Path) -> list:
 # ── Commit pass (#403 phase 1) ───────────────────────────────────────────────────────────────
 #
 # Extraction stages its output (postflight.run) instead of writing to the vault; this pass
-# replays the existing writer (write_vault.run, unmodified) over every staged-but-uncommitted
-# artifact, sorted by sha for determinism (see D126), before any post-ingest model call. It runs
-# at the top of `finalize`, so it covers all three entry paths that call it: the tail of
-# `watchdog ingest`, a standalone `watchdog finalize`, and a resumed run after a rate-limit stop.
+# runs a deterministic exact-name entity fold over every staged-but-uncommitted artifact
+# (`_batch_exact_fold`, #403 phase 2), then replays the writer (write_vault.run) over each one in
+# the same sorted order, before any post-ingest model call. It runs at the top of `finalize`, so
+# it covers all three entry paths that call it: the tail of `watchdog ingest`, a standalone
+# `watchdog finalize`, and a resumed run after a rate-limit stop.
+
+def _batch_exact_fold(vault: Path, shas: list[str]) -> None:
+    """Fold exact-name entity duplicates across a batch of staged extractions, before any of
+    them commits to the vault (#403 phase 2).
+
+    Documents extract in parallel from a pre-flight snapshot taken at launch, so two documents
+    referencing the same real-world entity can coin different ids (e.g. 'ernst-and-young-inc'
+    vs 'ernst-young-inc'). This used to be reconciled by `write_vault._reconcile_entity_ids`
+    running per-document inside the registry lock, against a fresh read of the live registry —
+    the one place that saw entities written by concurrent extraction tasks earlier in the batch.
+    Now that commit is a separate, serial pass (phase 1), the same cross-document visibility is
+    available up front: walk the given `shas` in order (the caller passes them pre-sorted, see
+    D126) over a throwaway in-memory registry copy, reconciling each document's entities against
+    it with the same `_reconcile_entity_ids` and then folding that document's (already-
+    reconciled) entities into the copy with the same `_new_entity`/`_merge_entity` used at real
+    commit time — so later documents in the batch match against earlier ones exactly as they did
+    under the old per-document call. The real registry on disk is never touched here; the commit
+    pass still does the actual writes. Mutates each staged `.watchdog/extracted/<sha>.json` in
+    place (id remaps, alias appends, role-target remaps) so the commit pass that follows replays
+    already-folded entities.
+
+    `_add_reverse_role` is deliberately not simulated — it only appends roles onto entities
+    already in the registry copy and never mints a new id, so it cannot affect name/type/alias
+    matching for any later document.
+    """
+    from watchdog.pipeline.write_vault import _merge_entity, _new_entity, _reconcile_entity_ids
+
+    # Freshly parsed from disk, so this is already an in-memory copy independent of the real
+    # registry file — mutating it below (reconcile/merge) can never write through to disk.
+    entities_path = vault / ".watchdog" / "registry" / "entities.json"
+    pseudo_reg: dict = (
+        json.loads(entities_path.read_text(encoding="utf-8")) if entities_path.exists() else {}
+    )
+
+    extracted_dir = vault / ".watchdog" / "extracted"
+    for sha in shas:
+        artifact_path = extracted_dir / f"{sha}.json"
+        artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+        entities = artifact.get("entities") or []
+
+        _reconcile_entity_ids(entities, pseudo_reg)
+
+        for entity in entities:
+            eid = entity["id"]
+            if eid in pseudo_reg:
+                _merge_entity(pseudo_reg[eid], entity, sha)
+            else:
+                pseudo_reg[eid] = _new_entity(entity, sha)
+
+        artifact_path.write_text(
+            json.dumps(artifact, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+
 
 def _pending_commits(vault: Path) -> list[str]:
     """Every sha with a durable extraction artifact (`.watchdog/extracted/<sha>.json`) that is
@@ -1395,6 +1449,7 @@ def _commit_pending(vault: Path) -> dict:
     shas = _pending_commits(vault)
     if not shas:
         return {"committed": 0, "written": {}}
+    _batch_exact_fold(vault, shas)
     _say(f"{_DIM}→  committing {len(shas)} document{'s' if len(shas) != 1 else ''} "
          f"to the vault…{_RESET}")
     tmp_dir = vault / ".watchdog" / "tmp"

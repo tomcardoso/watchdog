@@ -12,7 +12,7 @@ from watchdog import model_client
 from watchdog.cmd import auth as auth_module
 from watchdog.pipeline import batch_extract, orchestrate, schemas, timeline
 
-from tests.test_write_vault import make_vault
+from tests.test_write_vault import make_extraction, make_vault
 
 _flat = model_client._flatten_prompt   # extract/section prompts are content-block lists (A1)
 
@@ -2557,3 +2557,201 @@ def test_commit_pass_writes_morgue_markdown_from_surviving_queue_file(tmp_path, 
     md_files = list((vault / "morgue").rglob("*.md"))
     assert len(md_files) == 1
     assert "The quick brown fox." in md_files[0].read_text(encoding="utf-8")
+
+
+# ── #403 phase 2: batch-wide exact-name fold before commit ──────────────────────────────────
+#
+# The fold that used to run per-document inside write_vault.run's registry lock
+# (write_vault._reconcile_entity_ids) is now a single pass over every staged-but-uncommitted
+# extraction, run once up front by _commit_pending (orchestrate._batch_exact_fold). These tests
+# used to drive the fold via two `write_vault.run()` calls directly (tests/test_write_vault.py);
+# now they stage two extraction artifacts under `.watchdog/extracted/` — as extraction itself
+# would leave them — and drive the commit pass that folds and then writes them.
+
+def _stage_extracted(vault, tmp_path, sha, filename, overrides=None):
+    """Write a staged extraction artifact (`.watchdog/extracted/<sha>.json`), the on-disk form
+    `_pending_commits`/`_commit_pending` consume — built from test_write_vault's extraction
+    fixture so the document/entity shape stays identical to what real extraction produces.
+    `tmp_path` just needs to be a scratch dir distinct per call (make_extraction always writes
+    to `<tmp_path>/extraction.json`)."""
+    overrides = dict(overrides or {})
+    doc_overrides = {"sha256": sha, "filename": filename, "original_path": f"_INCOMING/{filename}"}
+    doc_overrides.update(overrides.pop("document", {}))
+    overrides["document"] = doc_overrides
+    (tmp_path).mkdir(parents=True, exist_ok=True)
+    src = make_extraction(tmp_path, overrides)
+    dest_dir = vault / ".watchdog" / "extracted"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / f"{sha}.json"
+    dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+    return dest
+
+
+def _stage_company(vault, tmp_path, sha, filename, eid, name, entity_type="Company"):
+    return _stage_extracted(vault, tmp_path, sha, filename, overrides={
+        "entities": [{
+            "id": eid, "name": name, "type": entity_type,
+            "aliases": [], "summary": None, "timeline_events": [], "roles": [],
+        }],
+        "morgue_entity_id": eid,
+        "morgue_document_type": "annual-report",
+    })
+
+
+def test_parallel_slug_variants_reconciled(tmp_path):
+    """Two docs coining different slugs for the same entity must collapse to one, folded before
+    either commits (sha-a < sha-b, so sha-a's slug is the one that survives, per D126)."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
+    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+
+    # First-sorted-sha wins the slug; the other coins a near-duplicate id + name variant.
+    _stage_company(vault, tmp_path / "a", "sha-a", "doc-a.pdf",
+                   "ernst-and-young-inc", "Ernst & Young Inc.")
+    _stage_company(vault, tmp_path / "b", "sha-b", "doc-b.pdf",
+                   "ernst-young-inc", "Ernst and Young Inc")
+
+    orchestrate._commit_pending(vault)
+
+    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
+    assert "ernst-and-young-inc" in entities
+    assert "ernst-young-inc" not in entities          # reconciled away, not a duplicate
+    ey = entities["ernst-and-young-inc"]
+    assert "sha-a" in ey["appears_in"] and "sha-b" in ey["appears_in"]
+    assert "Ernst and Young Inc" in ey["aliases"]     # variant folded in as alias
+
+
+def test_reconcile_remaps_role_target_in_same_document(tmp_path):
+    """A role pointing at a reconciled entity in the same extraction is remapped too."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
+    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+
+    # Doc A establishes the canonical company slug.
+    _stage_company(vault, tmp_path / "a", "sha-a", "doc-a.pdf",
+                   "ernst-and-young-inc", "Ernst & Young Inc.")
+
+    # Doc B re-coins the company under a different slug AND references it from a person.
+    _stage_extracted(vault, tmp_path / "b", "sha-b", "doc-b.pdf", overrides={
+        "entities": [
+            {"id": "jane-doe", "name": "Jane Doe", "type": "Person",
+             "aliases": [], "summary": None, "timeline_events": [],
+             "roles": [{
+                 "relationship": "Partner at", "target_id": "ernst-young-inc",
+                 "target_type": "Company", "target_name": "Ernst and Young Inc",
+                 "page": 1, "basis": "stated", "date_range": None,
+             }]},
+            {"id": "ernst-young-inc", "name": "Ernst and Young Inc", "type": "Company",
+             "aliases": [], "summary": None, "timeline_events": [], "roles": []},
+        ],
+        "morgue_entity_id": "jane-doe",
+        "morgue_document_type": "filing",
+    })
+
+    orchestrate._commit_pending(vault)
+
+    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
+    # Person's role now points at the canonical slug, not the orphaned one.
+    role = entities["jane-doe"]["roles"][0]
+    assert role["target_id"] == "ernst-and-young-inc"
+    # Reverse role landed on the canonical company entity.
+    assert any(r["target_id"] == "jane-doe" for r in entities["ernst-and-young-inc"]["roles"])
+
+
+def test_reconcile_matches_against_existing_alias(tmp_path):
+    """A new slug matching an existing entity's *alias* (not its name) reconciles."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
+    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+
+    # Doc A establishes the entity with an alias.
+    _stage_extracted(vault, tmp_path / "a", "sha-a", "doc-a.pdf", overrides={
+        "entities": [{"id": "ibm", "name": "IBM", "type": "Company",
+                      "aliases": ["International Business Machines"], "summary": None,
+                      "timeline_events": [], "roles": []}],
+        "morgue_entity_id": "ibm", "morgue_document_type": "annual-report",
+    })
+
+    # Doc B coins a new slug whose name matches the *alias* above.
+    _stage_company(vault, tmp_path / "b", "sha-b", "doc-b.pdf",
+                   "international-business-machines", "International Business Machines")
+
+    orchestrate._commit_pending(vault)
+
+    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
+    assert "international-business-machines" not in entities   # reconciled onto the alias match
+    assert "sha-b" in entities["ibm"]["appears_in"]
+
+
+def test_reconcile_does_not_merge_across_types(tmp_path):
+    """Same normalized name but different entity types must stay separate."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
+    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+
+    # A Person and a Company that normalize to the same key.
+    _stage_extracted(vault, tmp_path / "a", "sha-a", "doc-a.pdf", overrides={
+        "entities": [{"id": "morgan-person", "name": "Morgan", "type": "Person",
+                      "aliases": [], "summary": None, "timeline_events": [], "roles": []}],
+        "morgue_entity_id": "morgan-person", "morgue_document_type": "filing",
+    })
+    _stage_company(vault, tmp_path / "b", "sha-b", "doc-b.pdf", "morgan-company", "Morgan")
+
+    orchestrate._commit_pending(vault)
+
+    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
+    assert "morgan-person" in entities and "morgan-company" in entities  # type-scoped, not merged
+
+
+def test_drifting_type_synonyms_reconcile_to_one_entity(tmp_path):
+    """#335: the same real-world entity labelled with drifting near-synonyms across two
+    documents (``Company`` in one, ``Financial Institution`` in the next) must reconcile onto
+    a single id/folder instead of forking — both collapse to the ``organization`` bucket, so
+    the reconciliation key matches where free-text types used to miss."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
+    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+
+    # Doc A: the bank labelled a plain "Company".
+    _stage_company(vault, tmp_path / "a", "sha-a", "doc-a.pdf",
+                   "td-bank", "Toronto-Dominion Bank")
+
+    # Doc B: same bank, a different slug AND a drifting type label the old code would have forked.
+    _stage_company(vault, tmp_path / "b", "sha-b", "doc-b.pdf",
+                   "toronto-dominion-bank", "Toronto-Dominion Bank",
+                   entity_type="Financial Institution")
+
+    orchestrate._commit_pending(vault)
+
+    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
+    assert "td-bank" in entities
+    assert "toronto-dominion-bank" not in entities        # reconciled, not forked (#335)
+    td = entities["td-bank"]
+    assert "sha-a" in td["appears_in"] and "sha-b" in td["appears_in"]
+    assert td["type"] == "organization"                   # stored type is the canonical bucket
+
+
+def test_batch_fold_collapses_staged_duplicates_before_commit(tmp_path):
+    """The fold itself, isolated from the commit: two staged artifacts naming the same entity
+    under different (normalized-identical) names/ids must carry one canonical id — the
+    earliest-sha document's — in the staged JSON on disk *before* `_batch_exact_fold` returns,
+    i.e. before either has been committed to the vault."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
+    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+
+    _stage_company(vault, tmp_path / "a", "sha-a", "doc-a.pdf",
+                   "ernst-and-young-inc", "Ernst & Young Inc.")
+    _stage_company(vault, tmp_path / "b", "sha-b", "doc-b.pdf",
+                   "ernst-young-inc", "Ernst and Young Inc")
+
+    orchestrate._batch_exact_fold(vault, ["sha-a", "sha-b"])
+
+    # Nothing committed yet — the registry is untouched.
+    assert not json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
+
+    staged_a = json.loads((vault / ".watchdog" / "extracted" / "sha-a.json").read_text())
+    staged_b = json.loads((vault / ".watchdog" / "extracted" / "sha-b.json").read_text())
+    assert staged_a["entities"][0]["id"] == "ernst-and-young-inc"   # untouched — it's the winner
+    assert staged_b["entities"][0]["id"] == "ernst-and-young-inc"   # remapped onto the winner
+    assert "Ernst and Young Inc" in staged_b["entities"][0]["aliases"]   # variant name preserved
