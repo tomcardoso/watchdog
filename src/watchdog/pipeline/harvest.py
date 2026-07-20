@@ -14,6 +14,8 @@ loads the optional local GLiNER NER model — import-guarded and wrapped so a mi
 any model failure degrades to an empty list rather than breaking ingest.
 """
 
+import contextlib
+import io
 import re
 import warnings
 
@@ -233,12 +235,19 @@ def _load_gliner():
         import os
         import truststore
         # The load prints hub progress bars to stderr even on a cache hit; ingest's terminal
-        # output is user-facing, so keep them out of it.
+        # output is user-facing, so keep them out of it. `from_pretrained` also emits a
+        # load-time UserWarning (resume_download deprecation) and an unauthenticated-requests
+        # notice via huggingface_hub's own logging — neither is a predict-time warning, so
+        # they slip past harvest_entities' own catch_warnings (#419). redirect_stderr catches
+        # both regardless of which mechanism raises them, same pattern as setup_cmd's model
+        # downloads.
         os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
         truststore.inject_into_ssl()
         try:
             from gliner import GLiNER
-            _gliner_model = GLiNER.from_pretrained("urchade/gliner_multi-v2.1")
+            with warnings.catch_warnings(), contextlib.redirect_stderr(io.StringIO()):
+                warnings.simplefilter("ignore", UserWarning)
+                _gliner_model = GLiNER.from_pretrained("urchade/gliner_multi-v2.1")
         finally:
             truststore.extract_from_ssl()
     return _gliner_model
