@@ -1482,7 +1482,11 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             # finish-current-writes path — see that handler's comment for what differs.
             pass
         try:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            # capture_stderr (#419): a dependency running in one of these tasks' worker
+            # threads (e.g. harvest's GLiNER load) can write straight to stderr mid-extraction;
+            # left alone that corrupts the board's redraw math, duplicating in-flight rows.
+            with _board.capture_stderr():
+                await asyncio.gather(*tasks, return_exceptions=True)
         finally:
             if handler_set:
                 loop.remove_signal_handler(signal.SIGINT)

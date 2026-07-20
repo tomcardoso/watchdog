@@ -1,6 +1,9 @@
 """Tier 0 candidate harvest (#361/D123): deterministic regex spans + optional GLiNER entities."""
 
 import builtins
+import sys
+import types
+import warnings
 
 from watchdog.pipeline import harvest
 
@@ -185,6 +188,30 @@ def test_harvest_and_checklist_unaffected_by_missing_gliner(monkeypatch):
     text = _paged("Fees of $590 were charged.")
     cands = harvest.harvest(text) + harvest.harvest_entities(harvest.split_pages(text))
     assert harvest.format_checklist(cands) == "p.1: [money] $590"
+
+
+def test_load_gliner_suppresses_load_time_warnings_and_stderr(monkeypatch, capsys):
+    """`from_pretrained` emits a deprecation UserWarning and writes an unauthenticated-requests
+    notice straight to stderr on load (#419) — neither is a predict-time warning, so they slip
+    past harvest_entities' own catch_warnings. The live ingest board isn't resilient to
+    arbitrary foreign stderr, so this load path must stay silent by construction."""
+    class _FakeGLiNER:
+        @staticmethod
+        def from_pretrained(name):
+            warnings.warn("The `resume_download` argument is deprecated", UserWarning)
+            print("Warning: you are sending unauthenticated requests", file=sys.stderr)
+            return "fake-model"
+
+    monkeypatch.setitem(sys.modules, "gliner", types.SimpleNamespace(GLiNER=_FakeGLiNER))
+    monkeypatch.setattr(harvest, "_gliner_model", None)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = harvest._load_gliner()
+
+    assert model == "fake-model"
+    assert caught == []
+    assert capsys.readouterr().err == ""
 
 
 # ── real-corpus regression fixtures (#361 benchmark misses) ────────────────────────────────

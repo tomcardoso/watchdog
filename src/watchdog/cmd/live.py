@@ -13,6 +13,7 @@ pass fully-formatted lines (including the 2-space indent and colour codes); the 
 truncates live rows to the terminal width so the redraw math stays one physical line per row.
 """
 
+import contextlib
 import os
 import re
 import shutil
@@ -126,6 +127,29 @@ class LiveRegion:
             if self.enabled:
                 self.stream.flush()
 
+    @contextlib.contextmanager
+    def capture_stderr(self):
+        """While active, fold writes to `sys.stderr` into this region's own scrollback
+        (`note`) instead of letting them land on the terminal directly (#419). The region's
+        redraw math assumes it owns the screen rows below its last render; a third-party
+        write (a library's warning, an unauthenticated-request notice) that lands directly on
+        the terminal shifts the cursor by lines `_rendered` doesn't know about, so the next
+        `_clear()` erases the wrong rows and leaves stale duplicate text on screen. Routing
+        those writes through `note()` keeps the region's own bookkeeping authoritative
+        regardless of what else writes to stderr mid-run. No-op when the region is disabled
+        (no TTY, so there's no cursor math to protect)."""
+        if not self.enabled:
+            yield
+            return
+        real_stderr = sys.stderr
+        tap = _StderrTap(self)
+        sys.stderr = tap
+        try:
+            yield
+        finally:
+            tap.flush()
+            sys.stderr = real_stderr
+
     # ── rendering ─────────────────────────────────────────────────────────────
 
     def _print(self, line: str) -> None:
@@ -151,3 +175,31 @@ class LiveRegion:
     def _emit_above(self, line: str) -> None:
         self._clear()
         self.stream.write(line + "\n")
+
+
+class _StderrTap:
+    """Write-only stream that lines-buffer foreign stderr writes and hands each complete line
+    to a `LiveRegion`'s `note()`, so they scroll into its permanent output instead of
+    corrupting its redraw math (#419, see `LiveRegion.capture_stderr`)."""
+
+    def __init__(self, region: LiveRegion):
+        self._region = region
+        self._buf = ""
+
+    def write(self, s: str) -> int:
+        if not s:
+            return 0
+        self._buf += s
+        while "\n" in self._buf:
+            line, self._buf = self._buf.split("\n", 1)
+            if line:
+                self._region.note(line)
+        return len(s)
+
+    def flush(self) -> None:
+        if self._buf:
+            self._region.note(self._buf)
+            self._buf = ""
+
+    def isatty(self) -> bool:
+        return False

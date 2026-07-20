@@ -2,6 +2,7 @@
 
 import io
 import re
+import sys
 import threading
 
 from watchdog.cmd.live import LiveRegion, _truncate
@@ -168,3 +169,59 @@ def test_concurrent_finishes_keep_every_line_intact():
     for i in range(n):
         assert f"DONE-{i}" in out                 # no finished line lost to a torn write
     assert r._rows == {} and r._order == []       # every row settled, none orphaned
+
+
+# ── capture_stderr (#419) ──────────────────────────────────────────────────────────
+
+def test_capture_stderr_routes_foreign_writes_into_scrollback(monkeypatch):
+    """A third-party write to stderr (e.g. a dependency's warning) while the region is
+    active must land through `note()` — above the region, with the region re-rendered below
+    it — instead of writing straight to the terminal and corrupting the redraw math."""
+    s = _Stream(tty=True)
+    r = LiveRegion(s, enabled=True)
+    r.update("a", "row-A")
+    with r.capture_stderr():
+        print("foreign warning line", file=sys.stderr)
+    out = _CURSOR_RE.sub("", s.getvalue())
+    lines = out.rstrip("\n").split("\n")
+    assert "foreign warning line" in lines
+    assert lines[-1] == "row-A"                    # region re-rendered below the foreign line
+
+
+def test_capture_stderr_restores_real_stderr_on_exit():
+    s = _Stream(tty=True)
+    r = LiveRegion(s, enabled=True)
+    real = sys.stderr
+    with r.capture_stderr():
+        assert sys.stderr is not real
+    assert sys.stderr is real
+
+
+def test_capture_stderr_restores_real_stderr_on_exception():
+    s = _Stream(tty=True)
+    r = LiveRegion(s, enabled=True)
+    real = sys.stderr
+    try:
+        with r.capture_stderr():
+            raise ValueError("boom")
+    except ValueError:
+        pass
+    assert sys.stderr is real
+
+
+def test_capture_stderr_flushes_partial_line_without_trailing_newline():
+    s = _Stream(tty=True)
+    r = LiveRegion(s, enabled=True)
+    with r.capture_stderr():
+        sys.stderr.write("no newline at all")
+    out = _CURSOR_RE.sub("", s.getvalue())
+    assert "no newline at all" in out.rstrip("\n").split("\n")
+
+
+def test_capture_stderr_is_noop_when_region_disabled():
+    s = _Stream(tty=False)
+    r = LiveRegion(s, enabled=False)
+    real = sys.stderr
+    with r.capture_stderr():
+        assert sys.stderr is real                  # disabled region never swaps stderr
+    assert sys.stderr is real
