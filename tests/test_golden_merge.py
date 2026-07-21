@@ -17,10 +17,15 @@ non-deterministic under the mock, so staging the artifacts directly is both more
 the only way to assign each entity to a fixed sha. `finalize` is the exact surface phase 3
 touches (commit + reconcile).
 
-The manifest is committed alongside this test, GENERATED ON PRE-PHASE-3 CODE. Its contract is
-that phase 3 leaves the committed vault byte-identical: the merged entity's note, the merged-away
-redirect stub, the registry, the timeline, and the briefing must match what the old post-commit
-`merge_entities.run` produced. Regenerate deliberately, never reflexively:
+The manifest's contract is that the reconcile-before-commit refactor leaves the committed vault
+byte-identical: the merged entity's note, the merged-away redirect stub, the registry, and the
+timeline must match what the old post-commit `merge_entities.run` produced. It was generated on
+pre-phase-3 code and regenerated once in phase 4, when `_stage` started writing the companion
+`result_<sha>.json` that a real extraction always leaves (see its docstring) — that is the batch
+scope the phase-4 synthesis pass reads, so without it the fixture no longer exercised synthesis
+at all. The regeneration touched only two hashes (`briefings/`, `log.md`): the document count
+those files report went from 0 to 2, which is what a real two-document ingest records. The merge
+write-surface above was unchanged. Regenerate deliberately, never reflexively:
 
     REGENERATE_GOLDEN=1 PYTHONPATH=src ~/.local/pipx/venvs/watchdog-intel/bin/pytest \
         tests/test_golden_merge.py
@@ -73,11 +78,23 @@ def _stage(vault: Path, tmp_path: Path, sha: str, filename: str, entity_id: str,
            text: str) -> None:
     """Queue the document (for the morgue markdown the commit writes) and stage its extraction
     through the real post-flight, so `.watchdog/extracted/<sha>.json` is genuine post-flight
-    output — validated, sanitized, key_facts exploded into evidence fragments."""
+    output — validated, sanitized, key_facts exploded into evidence fragments.
+
+    Also writes the companion `result_<sha>.json` that `_finish_extraction` leaves alongside every
+    real extraction: it is the batch manifest `finalize` reads (`_load_results`) to know which shas
+    this run committed — the scope for both the synthesis pass (#403 phase 4) and the briefing's
+    document count. Bypassing full extraction (below) must not also skip this deterministic
+    byproduct, or the fixture under-represents a real ingest."""
     _queue_doc(vault, sha=sha, filename=filename, text=text)
     raw = tmp_path / f"raw_{sha}.json"
     raw.write_text(json.dumps(_raw_extraction(sha, filename, entity_id, name)), encoding="utf-8")
     postflight.run(vault, raw)
+
+    staged = json.loads((vault / ".watchdog" / "extracted" / f"{sha}.json").read_text(encoding="utf-8"))
+    result = orchestrate._compact_result(sha, filename, staged, {}, 0.0, {})
+    tmp = vault / ".watchdog" / "tmp"
+    tmp.mkdir(parents=True, exist_ok=True)
+    (tmp / f"result_{sha}.json").write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
 
 
 def _mock_reconcile_merge(monkeypatch):

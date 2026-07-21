@@ -45,13 +45,13 @@ def test_snapshot_skips_missing_paths_but_copies_existing_ones(tmp_path):
 
 def test_snapshot_copies_directories(tmp_path):
     vault = make_vault(tmp_path)
-    frag = vault / ".watchdog" / "tmp" / "entity-fragments"
-    frag.mkdir(parents=True)
-    (frag / "_queue.json").write_text("{}")
+    somedir = vault / ".watchdog" / "tmp" / "somedir"
+    somedir.mkdir(parents=True)
+    (somedir / "a-file.json").write_text("{}")
 
-    backup_dir = snapshot(vault, "ingest-discard", [frag])
+    backup_dir = snapshot(vault, "ingest-discard", [somedir])
 
-    assert (backup_dir / ".watchdog" / "tmp" / "entity-fragments" / "_queue.json").exists()
+    assert (backup_dir / ".watchdog" / "tmp" / "somedir" / "a-file.json").exists()
 
 
 def test_snapshot_names_directory_with_operation(tmp_path):

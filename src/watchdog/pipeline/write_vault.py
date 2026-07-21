@@ -733,82 +733,6 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
     return fm + body
 
 
-# ── Entity fragments (post-ingest finalizer input) ───────────────────────────
-
-def _fragments_dir(vault_path: Path) -> Path:
-    return vault_path / ".watchdog" / "tmp" / "entity-fragments"
-
-
-# Header of one document's block in an entity's fragment file, e.g.
-# ``### Acme Annual Report — annual-report, 2024-12-31 (sha 1a2b3c4)``. The 7-hex sha keys the
-# block for replace-not-append rewrites (#259).
-_FRAG_BLOCK_RE = re.compile(r"^### .*\(sha ([0-9a-f]{7})\)", re.MULTILINE)
-
-
-def _drop_fragment_block(text: str, sha256: str) -> str:
-    """Remove any prior fragment block this document (``sha256``) contributed, so re-running
-    write_vault replaces its block instead of appending a duplicate (#259)."""
-    if not text:
-        return text
-    matches = list(_FRAG_BLOCK_RE.finditer(text))
-    if not matches:
-        return text
-    short = sha256[:7]
-    kept = text[: matches[0].start()]  # preamble before the first block (leading newline)
-    for i, m in enumerate(matches):
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
-        if m.group(1) != short:
-            kept += text[m.start():end]
-    return kept
-
-
-def _record_entity_fragment(
-    vault_path: Path, eid: str, entry: dict, incoming: dict, doc: dict, doc_title: str
-) -> None:
-    """Record this document's view of an entity in its fragment file and mark the entity in the
-    finalizer queue. Runs after the registries persist, and is idempotent per document: a re-run
-    (repair retry) replaces this document's block rather than appending a second copy (#259).
-
-    The fragments are the digest the post-ingest finalizer synthesizes from — it never
-    re-reads the source document.
-    """
-    frag_dir = _fragments_dir(vault_path)
-    frag_dir.mkdir(parents=True, exist_ok=True)
-    sha256 = doc["sha256"]
-
-    dtype = doc.get("document_type") or "document"
-    ddate = doc.get("date_of_document") or "undated"
-    parts = [f"\n### {_defang(doc_title)} — {dtype}, {ddate} (sha {sha256[:7]})\n"]
-    if incoming.get("summary"):
-        parts.append(incoming["summary"].strip() + "\n")
-    fragments = incoming.get("evidence_fragments") or []
-    if fragments:
-        parts.append("\nClaims:\n" + _render_evidence_fragments(fragments) + "\n")
-    roles = incoming.get("roles", [])
-    if roles:
-        rendered = "; ".join(
-            f"{r.get('relationship', '')} {r.get('target_name', '')}".strip() for r in roles
-        )
-        parts.append(f"\nRoles: {rendered}\n")
-
-    frag_path = frag_dir / f"{eid}.md"
-    existing = frag_path.read_text(encoding="utf-8") if frag_path.exists() else ""
-    frag_path.write_text(_drop_fragment_block(existing, sha256) + "".join(parts), encoding="utf-8")
-
-    # Mark the entity as touched this run. The queue keys on the set of contributing shas so a
-    # repair retry cannot inflate the count; the count is now only a touched-set marker (post-D26
-    # the synthesis gate reads registry appears_in, not this).
-    queue_path = frag_dir / "_queue.json"
-    queue = json.loads(queue_path.read_text(encoding="utf-8")) if queue_path.exists() else {}
-    rec = queue.get(eid, {})
-    shas = set(rec.get("shas", []))
-    shas.add(sha256)
-    rec.update({"name": entry["name"], "note_path": entry["note_path"],
-                "shas": sorted(shas), "count": len(shas)})
-    queue[eid] = rec
-    queue_path.write_text(json.dumps(queue, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
 # ── Main operation ────────────────────────────────────────────────────────────
 
 def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = None, neardup_data: dict | None = None, quiet: bool = False) -> dict:
@@ -942,18 +866,17 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
         # ── 3. Write entity notes ─────────────────────────────────────────────
         #
         # Steps 3–4 write the vault notes (the human-facing artifacts); the derived search
-        # indexes and finalizer fragments are deferred to step 6, *after* the registries
-        # persist, since they are rebuilt-from-source data that a re-run regenerates (#259).
-        # The notes themselves are idempotent per document: the ## Analysis block and each
-        # fragment block are keyed by this document (doc-note link / sha) and replaced, not
-        # appended, so a repair retry converges instead of doubling claims.
+        # indexes are deferred to step 6, *after* the registries persist, since they are
+        # rebuilt-from-source data that a re-run regenerates (#259). The notes themselves are
+        # idempotent per document: the ## Analysis block is keyed by this document (doc-note
+        # link) and replaced, not appended, so a repair retry converges instead of doubling
+        # claims.
 
         incoming_by_id = {e["id"]: e for e in incoming_entities}
 
         # (note_path, kind, title, content) tuples replayed into the embed + FTS indexes
-        # after the commit point; and the entities whose fragment blocks to (re)write.
+        # after the commit point.
         note_index_jobs: list[tuple[str, str, str, str]] = []
-        fragment_jobs: list[tuple[str, dict, dict]] = []
 
         for eid in modified:
             entry = entities_reg[eid]
@@ -1003,11 +926,6 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
             note_path.write_text(note_content, encoding="utf-8")
             note_index_jobs.append((entry["note_path"], "entity", entry["name"], note_content))
 
-            # Fragment for the post-ingest finalizer — only for entities actually extracted
-            # from this document, not reverse-role touches. Deferred to step 6.
-            if incoming:
-                fragment_jobs.append((eid, entry, incoming))
-
         # ── 4. Write document note ────────────────────────────────────────────
 
         doc_note_path = _assert_in_vault(
@@ -1050,12 +968,12 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
                 f"type={doc.get('document_type', 'unknown')}\n"
             )
 
-        # ── 6. Update derived data (search indexes + finalizer fragments) ─────
+        # ── 6. Update derived data (search indexes) ───────────────────────────
         #
-        # These are rebuilt-from-source: the embed/FTS indexes are keyed by note_path (upsert)
-        # and the fragment blocks are keyed by sha (replace), so replaying them after the commit
-        # point is idempotent — a repair retry converges instead of doubling (#259). Kept inside
-        # the registry lock so fragment writes stay race-free with other write_vault calls.
+        # These are rebuilt-from-source: the embed/FTS indexes are keyed by note_path (upsert),
+        # so replaying them after the commit point is idempotent — a repair retry converges
+        # instead of doubling (#259). Kept inside the registry lock so writes stay race-free
+        # with other write_vault calls.
         for idx_note_path, kind, idx_title, idx_content in note_index_jobs:
             try:
                 from watchdog.pipeline.embed import add_note
@@ -1074,9 +992,6 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
             _index_corpus_passages(vault_path, doc, entity_entries_for_note, morgue_path=morgue_relative)
         except Exception as e:
             print(f"  Warning: corpus index update failed for {doc['filename']}: {e}", file=sys.stderr)
-
-        for eid, entry, incoming in fragment_jobs:
-            _record_entity_fragment(vault_path, eid, entry, incoming, doc, doc_title)
 
     # The global timeline is no longer rebuilt per document (#237): it is rendered
     # exclusively from the cross-document-deduped canonical NDJSON, which only exists after

@@ -13,7 +13,6 @@ Human workflow:
 """
 
 import json
-import shutil
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -147,18 +146,17 @@ def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "so
         return err if err is not None else {
             "error": "ingest already running; if stale, run: watchdog unlock"}
 
-    # Fresh run — clear the post-ingest inputs (entity fragments, per-doc results, and
-    # scratchpads) left by a prior ingest so the finalizer gate + briefing see only this run's
-    # documents. Skipped when merging into a pending batch (wipe_pending=False), so this run's
-    # documents accumulate onto it and they finalize together.
+    # Fresh run — clear the post-ingest inputs (per-doc results and scratchpads) left by a
+    # prior ingest so the finalizer gate + briefing see only this run's documents. Skipped when
+    # merging into a pending batch (wipe_pending=False), so this run's documents accumulate onto
+    # it and they finalize together.
     backup_dir = None
     if wipe_pending:
         tmp = vault / ".watchdog" / "tmp"
-        about_to_wipe = [tmp / "entity-fragments", *tmp.glob("result_*.json"), *tmp.glob("notes_*.md")]
+        about_to_wipe = [*tmp.glob("result_*.json"), *tmp.glob("notes_*.md")]
         # A no-op on an ordinary ingest (nothing left over from a prior run to wipe) — this
         # only produces a backup when the discard choice is actually throwing something away.
         backup_dir = _snapshot(vault, "ingest-discard", about_to_wipe)
-        shutil.rmtree(tmp / "entity-fragments", ignore_errors=True)
         for p in list(tmp.glob("result_*.json")) + list(tmp.glob("notes_*.md")):
             p.unlink(missing_ok=True)
 

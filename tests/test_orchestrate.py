@@ -1689,7 +1689,6 @@ def test_finalize_completes_an_interrupted_run(tmp_path, monkeypatch):
     assert "error" not in out
     assert "Synthesized prose." in (vault / "entities" / "organization" / "acme-corp.md").read_text()
     # a clean finalize clears the per-run inputs, so there is nothing left pending
-    assert not (vault / ".watchdog" / "tmp" / "entity-fragments").exists()
     assert not list((vault / ".watchdog" / "tmp").glob("result_*.json"))
     assert orchestrate.has_pending_finalization(vault) is False
 
@@ -1724,11 +1723,9 @@ def test_skip_finalize_stops_after_extraction_with_no_post_ingest_calls(tmp_path
     assert calls == ["classify", "extract"]     # no entity-synthesis/timeline-dedup/briefing/reconcile
     assert orchestrate.has_pending_finalization(vault) is True
     assert (vault / ".watchdog" / "tmp" / "result_aaa.json").exists()
-    # The staged extraction artifact (#403 phase 1) — not the entity-fragments queue, which is
-    # write_vault's own byproduct and only appears once the commit pass actually runs write_vault,
-    # i.e. at finalize, which this run deliberately never reaches.
+    # The staged extraction artifact (#403 phase 1) is what a later finalize's synthesis reads
+    # from (#403 phase 4) — it is written at extraction time, before finalize ever runs.
     assert (vault / ".watchdog" / "extracted" / "aaa.json").exists()
-    assert not (vault / ".watchdog" / "tmp" / "entity-fragments" / "_queue.json").exists()
 
 
 def test_finalize_after_skip_finalize_consumes_staged_inputs(tmp_path, monkeypatch):
@@ -1797,27 +1794,31 @@ def test_finalize_after_skip_finalize_consumes_staged_inputs(tmp_path, monkeypat
     assert out["synthesized"] == 1
     assert "error" not in out
     assert "Synthesized prose." in (vault / "entities" / "organization" / "acme-corp.md").read_text()
-    assert not (vault / ".watchdog" / "tmp" / "entity-fragments").exists()
     assert not list((vault / ".watchdog" / "tmp").glob("result_*.json"))
     assert orchestrate.has_pending_finalization(vault) is False
 
 
 def test_pending_finalization_uses_registry_appears_in_gate(tmp_path):
-    """Entity count reflects the registry's `appears_in >= 2` gate (D26), not the fragment
-    queue's `count`, which is only a touched-set marker post-D26."""
+    """Entity count reflects the registry's `appears_in >= 2` gate (D26), read over the entities
+    mentioned in this batch's staged extractions (#403 phase 4) — not a fragment-queue count."""
     vault = make_vault(tmp_path)
     tmp = vault / ".watchdog" / "tmp"
-    frag = tmp / "entity-fragments"
-    frag.mkdir(parents=True, exist_ok=True)
-    (frag / "_queue.json").write_text(json.dumps({
-        "acme-corp": {"count": 1},   # touched once this run...
-        "beta-llc": {"count": 1},
-    }))
+    _stage_extracted(vault, tmp_path / "a", "sha-a", "doc-a.pdf", overrides={
+        "entities": [
+            {"id": "acme-corp", "name": "Acme Corp", "type": "Company", "aliases": [],
+             "summary": None, "timeline_events": [], "roles": []},
+            {"id": "beta-llc", "name": "Beta LLC", "type": "Company", "aliases": [],
+             "summary": None, "timeline_events": [], "roles": []},
+        ],
+        "morgue_entity_id": "acme-corp",
+        "morgue_document_type": "filing",
+    })
     (vault / ".watchdog" / "registry" / "entities.json").write_text(json.dumps({
-        "acme-corp": {"appears_in": ["doc1", "doc2"]},   # ...but recurs project-wide → eligible
+        "acme-corp": {"appears_in": ["doc1", "doc2"]},   # recurs project-wide → eligible
         "beta-llc": {"appears_in": ["doc1"]},            # single-document → not eligible
     }))
-    (tmp / "result_a.json").write_text("{}")
+    tmp.mkdir(parents=True, exist_ok=True)
+    (tmp / "result_sha-a.json").write_text("{}")
 
     result = orchestrate.pending_finalization(vault)
     assert result["docs"] == 1
@@ -1831,36 +1832,30 @@ def test_ingest_setup_wipe_pending_controls_cleanup(tmp_path):
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="new1", filename="new.pdf")          # a queued doc → total > 0
     tmp = vault / ".watchdog" / "tmp"
-    frag = tmp / "entity-fragments"
-    frag.mkdir(parents=True, exist_ok=True)
-    (frag / "_queue.json").write_text('{"acme-corp": {"count": 2}}')
+    tmp.mkdir(parents=True, exist_ok=True)
     (tmp / "result_old.json").write_text("{}")
     (tmp / "notes_old.md").write_text("obs")
     lock = vault / ".watchdog" / "registry" / ".ingest-lock"
 
     # merge: inputs preserved so this run finalizes together with the pending batch
     ingest_setup.run(vault, wipe_pending=False)
-    assert (frag / "_queue.json").exists()
     assert (tmp / "result_old.json").exists() and (tmp / "notes_old.md").exists()
 
     # default: inputs wiped for a fresh batch
     lock.unlink(missing_ok=True)                               # release the lock from the prior call
     ingest_setup.run(vault, wipe_pending=True)
-    assert not (frag / "_queue.json").exists()
     assert not (tmp / "result_old.json").exists() and not (tmp / "notes_old.md").exists()
 
 
 def test_ingest_setup_discard_snapshots_before_wiping(tmp_path):
     """#270: the discard choice (wipe_pending=True with leftover residue from a prior
-    unfinalized batch) is irreversible — back up entity-fragments/, result_*.json, and
-    notes_*.md before deleting them."""
+    unfinalized batch) is irreversible — back up result_*.json and notes_*.md before
+    deleting them."""
     from watchdog.pipeline import ingest_setup
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="new1", filename="new.pdf")
     tmp = vault / ".watchdog" / "tmp"
-    frag = tmp / "entity-fragments"
-    frag.mkdir(parents=True, exist_ok=True)
-    (frag / "_queue.json").write_text('{"acme-corp": {"count": 2}}')
+    tmp.mkdir(parents=True, exist_ok=True)
     (tmp / "result_old.json").write_text('{"old": true}')
     (tmp / "notes_old.md").write_text("scratchpad notes")
 
@@ -1868,12 +1863,10 @@ def test_ingest_setup_discard_snapshots_before_wiping(tmp_path):
 
     assert state["backup_dir"] is not None
     backup_dir = Path(state["backup_dir"])
-    assert (backup_dir / ".watchdog" / "tmp" / "entity-fragments" / "_queue.json").read_text() \
-        == '{"acme-corp": {"count": 2}}'
     assert (backup_dir / ".watchdog" / "tmp" / "result_old.json").read_text() == '{"old": true}'
     assert (backup_dir / ".watchdog" / "tmp" / "notes_old.md").read_text() == "scratchpad notes"
     # And the originals are still gone — the backup doesn't block the wipe.
-    assert not (frag / "_queue.json").exists()
+    assert not (tmp / "result_old.json").exists()
 
 
 def test_ingest_setup_ordinary_run_leaves_no_backup(tmp_path):
