@@ -60,6 +60,8 @@ watchdog ingest
 
 `watchdog requeue` moves everything in `queue/_failed/` back into the queue.
 
+You don't have to remember to check: a bare `watchdog ingest` with nothing new to read notices a document waiting in `queue/_failed/` and offers to requeue and retry it right there, instead of just reporting an empty queue. `watchdog ingest --estimate` mentions it too, without moving anything (an estimate never changes what's on disk). And if you press Ctrl+C while ingest is finishing up — the wrap-up step described below — the cancellation message still tells you a document needs attention, the same as it would at the end of a normal run.
+
 ## Hitting rate limits
 
 A rate limit is a cap on how much work the AI provider lets you do in a window of time. Large batches can hit it. Two levers help:
@@ -93,6 +95,10 @@ watchdog finalize
 ```
 
 This runs just the wrap-up: it writes the documents to the vault, reconciles duplicate entities, and produces the briefing. It is safe to run more than once — if the wrap-up itself hits a rate limit partway through (for example while reconciling entities), nothing is written to your vault at all, and you simply run `watchdog finalize` again once the limit resets. It picks up from the saved working files each time. Re-running `watchdog ingest` also notices an unfinished batch and asks what to do with it — see the [command reference](commands.md).
+
+## Ingest prevents the machine from sleeping during a run
+
+`watchdog ingest` and `watchdog extract` prevent the machine from sleeping for as long as they're running — a sleep partway through a document kills whatever call was in flight outright, unlike a network blip a retry can absorb. On macOS this uses the system's own `caffeinate` utility; on Linux, `systemd-inhibit` (present wherever systemd is, which is most mainstream distros). Neither needs setup, and both release the machine the moment the run ends or is interrupted. On a Linux system without systemd, or on Windows, there's no equivalent to fall back to, so a run there is not protected against the machine sleeping.
 
 ## A lock is stuck
 

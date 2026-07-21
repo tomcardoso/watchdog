@@ -1,6 +1,11 @@
 """Document pipeline commands: chew, ingest, queue-status, pre-flight, post-flight."""
 
+import contextlib
 import json
+import os
+import shutil
+import signal
+import subprocess
 import sys
 import time
 from datetime import datetime, timedelta
@@ -433,6 +438,101 @@ def _requeue_forced_selectors(vault: Path, selectors: list[str]) -> None:
                                 force_shas={sha for sha, _ in to_requeue})
 
 
+def _failed_count(vault: Path) -> int:
+    """How many documents are parked in `.watchdog/queue/_failed/` awaiting `watchdog requeue`
+    (#406) — shared by every place that needs to know whether an empty active queue also means
+    nothing needs attention, or just that a prior run's failures are still sitting there."""
+    failed_dir = vault / ".watchdog" / "queue" / "_failed"
+    return len(list(failed_dir.glob("*.json"))) if failed_dir.exists() else 0
+
+
+def _quarantine_notice(n: int) -> str:
+    """The '_failed/ needs attention' line (#406), shared by the normal-completion summary,
+    the Ctrl+C message, and the empty-queue checks — same wording everywhere a quarantined
+    document could otherwise go unmentioned."""
+    return (f"{_YELLOW}{n} document{'s' if n != 1 else ''} need attention{_RESET}"
+            f"{_DIM} in {_RESET}{_CYAN}queue/_failed/{_RESET}{_DIM} — run {_RESET}"
+            f"{_CYAN}watchdog requeue{_RESET}{_DIM} to retry {'them' if n != 1 else 'it'}.{_RESET}")
+
+
+@contextlib.contextmanager
+def _caffeinate():
+    """Keep the machine from sleeping for the life of a real ingest run (#415) — unlike a
+    network blip a retry can absorb, the OS suspending mid-run kills any active model call
+    outright. Never a hard dependency, and a no-op everywhere else (including
+    `--estimate`/preview paths, which never reach this) — including when the platform's own
+    tool isn't on PATH (Windows has no equivalent worth shelling out to at all).
+
+    macOS: `caffeinate -i -w <pid>` self-terminates if this process dies, so a plain
+    `terminate()` in `finally` is enough.
+
+    Linux: `systemd-inhibit` (present wherever systemd is, i.e. most mainstream distros) only
+    holds its sleep/idle inhibitor for as long as a command it launches is running — there's no
+    "watch this other pid" mode — so it wraps a `sleep infinity` placeholder in its own process
+    group (`start_new_session`). Killing just the `systemd-inhibit` process on the way out would
+    leave that placeholder as an orphan still running forever, so cleanup signals the whole
+    group instead.
+    """
+    proc = None
+    own_group = False
+    if sys.platform == "darwin" and shutil.which("caffeinate"):
+        try:
+            proc = subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            proc = None
+    elif sys.platform.startswith("linux") and shutil.which("systemd-inhibit"):
+        try:
+            proc = subprocess.Popen(
+                ["systemd-inhibit", "--what=sleep:idle", "--who=watchdog",
+                 "--why=ingest running", "sleep", "infinity"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            own_group = True
+        except OSError:
+            proc = None
+    try:
+        yield
+    finally:
+        # Note: no `return` in here — inside a `finally`, that would silently swallow whatever
+        # exception (e.g. the KeyboardInterrupt that stops an ingest) is propagating through.
+        if proc is not None:
+            if own_group:
+                try:
+                    os.killpg(proc.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+            else:
+                proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                # Same target as the initial signal above (#437 review) — SIGKILL-ing only the
+                # systemd-inhibit process itself, not its group, could leave the `sleep infinity`
+                # placeholder it launched running as an orphan.
+                if own_group:
+                    try:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                else:
+                    proc.kill()
+                proc.wait(timeout=5)
+
+
+def _requeue_failed(vault: Path) -> int:
+    """Move every document from `queue/_failed/` back into the active queue. Returns how many
+    were moved (0 if none were waiting) — the mutation behind `watchdog requeue`, also reused
+    by `cmd_ingest`'s empty-queue prompt (#406) so accepting it doesn't duplicate the move."""
+    failed_dir = vault / ".watchdog" / "queue" / "_failed"
+    files = sorted(failed_dir.glob("*.json")) if failed_dir.exists() else []
+    if not files:
+        return 0
+    queue_dir = vault / ".watchdog" / "queue"
+    for f in files:
+        f.replace(queue_dir / f.name)
+    return len(files)
+
+
 def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> None:
     vault = Path(".").resolve()
     if not (vault / ".watchdog").is_dir():
@@ -474,8 +574,14 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         from watchdog.pipeline.ingest_setup import scan_queue, cost_estimate
         queue_files = scan_queue(vault)
         if not queue_files:
-            print(f"\n  {_DIM}Queue is empty — nothing to estimate.{_RESET}")
-            print(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in _INCOMING/ first.{_RESET}\n")
+            failed = _failed_count(vault)
+            if failed:
+                # --estimate is read-only (#406): say what's blocking it rather than requeueing
+                # for the user, unlike the interactive bare-ingest prompt below.
+                print(f"\n  {_quarantine_notice(failed)}{_DIM} Nothing else is queued.{_RESET}\n")
+            else:
+                print(f"\n  {_DIM}Queue is empty — nothing to estimate.{_RESET}")
+                print(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in _INCOMING/ first.{_RESET}\n")
             return
         # Claude's auth mode only matters for the estimate when the extractor is actually
         # routed to Claude (it picks subscription vs api-key pricing) — a stage pinned to
@@ -571,9 +677,27 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
     if "error" in result:
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} {result['error']}\n")
     if result["total"] == 0 and not batch_pending:
-        print(f"\n  {_DIM}Queue is empty — nothing to ingest.{_RESET}")
-        print(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in _INCOMING/ first.{_RESET}\n")
-        return
+        failed = _failed_count(vault)
+        # #406: an empty active queue with documents parked in _failed/ isn't really "nothing to
+        # ingest" — offer to requeue right here rather than send the user hunting for the fix.
+        if failed and interactive.confirm(
+                f"\n  {_quarantine_notice(failed)} Nothing else is queued."
+                f"{_DIM} Requeue {'them' if failed != 1 else 'it'} and retry now?{_RESET}", default=True):
+            _requeue_failed(vault)
+            result = is_run(vault, wipe_pending=wipe_pending, force_lock=batch_pending)
+            if "error" in result:
+                sys.exit(f"\n  {_YELLOW}Error:{_RESET} {result['error']}\n")
+        if result["total"] == 0:
+            # Re-check rather than trust the `failed` count captured above (#437 review) — a
+            # requeue attempt in between (or a concurrent `watchdog requeue`) can have already
+            # emptied _failed/, and "run watchdog requeue" would be a dead end at that point.
+            if _failed_count(vault):
+                print(f"\n  {_DIM}Run {_RESET}{_CYAN}watchdog requeue{_RESET}{_DIM} when ready, then "
+                      f"{_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} again.{_RESET}\n")
+            else:
+                print(f"\n  {_DIM}Queue is empty — nothing to ingest.{_RESET}")
+                print(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in _INCOMING/ first.{_RESET}\n")
+            return
 
     q = len(result["queue_files"])
     if q and not skip_preview:
@@ -652,28 +776,37 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         # rate limit hit *during extraction* — finalize (skipped entirely when no_finalize is
         # set) never sets it, so --wait + --no-finalize already stops as soon as the queue
         # drains, with no special-casing needed here (#384).
-        while True:
-            iter_summary = asyncio.run(orchestrate.run(
-                vault, concurrency=concurrency, extract_model=extract_model, post_model=post_model,
-                classify_model=classify_model, classify_pages=classify_pages, pinned_skill=pinned_skill,
-                extract_effort=extract_effort, post_effort=post_effort,
-                extract_backend=extract_backend, post_backend=post_backend,
-                classify_backend=classify_backend, wait=wait, skip_finalize=run_skip_finalize,
-                force=force))
-            summary = _merge_summary(summary, iter_summary)
-            if not (wait and iter_summary.get("rate_limited")):
-                break
-            _wait_for_rate_limit(lock_file, iter_summary.get("rate_limit_resets_at"))
+        with _caffeinate():
+            while True:
+                iter_summary = asyncio.run(orchestrate.run(
+                    vault, concurrency=concurrency, extract_model=extract_model, post_model=post_model,
+                    classify_model=classify_model, classify_pages=classify_pages, pinned_skill=pinned_skill,
+                    extract_effort=extract_effort, post_effort=post_effort,
+                    extract_backend=extract_backend, post_backend=post_backend,
+                    classify_backend=classify_backend, wait=wait, skip_finalize=run_skip_finalize,
+                    force=force))
+                summary = _merge_summary(summary, iter_summary)
+                if not (wait and iter_summary.get("rate_limited")):
+                    break
+                _wait_for_rate_limit(lock_file, iter_summary.get("rate_limit_resets_at"))
     except KeyboardInterrupt:
         # Fallback only — orchestrate.run normally traps SIGINT itself and returns a
         # cancelled summary. This catches a Ctrl+C in the brief window before/after that,
         # or on platforms where asyncio can't install a SIGINT handler at all (e.g. Windows'
         # Proactor event loop) — there, every interrupt takes this rougher path, and can
-        # land mid-write rather than after a document finishes cleanly.
+        # land mid-write rather than after a document finishes cleanly. It's also the *only*
+        # path a Ctrl+C during finalize's sequential post-processing takes (#406): that phase
+        # runs after `orchestrate.run`'s own SIGINT handler is torn down, so the interrupt
+        # propagates as a real `KeyboardInterrupt` instead of the graceful cancelled-summary
+        # path extraction gets — meaning this message, not `_print_ingest_summary`, is the one
+        # place that needs to mention a document quarantined earlier in the same run.
         _release_lock()
         print(f"\n  {_YELLOW}Ingest cancelled.{_RESET}{_DIM} Documents that finished before the "
               f"interrupt are saved; the one in progress may be incomplete. Re-run "
               f"{_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} to resume.{_RESET}\n")
+        failed = _failed_count(vault)
+        if failed:
+            print(f"  {_quarantine_notice(failed)}\n")
         sys.exit(130)
     finally:
         _release_lock()
@@ -715,9 +848,7 @@ def _print_ingest_summary(summary: dict) -> None:
             print(f"  {_YELLOW}✗ {name}  {r.get('reason', '')}{_RESET}")
     quarantined = summary.get("quarantined", 0)
     if quarantined:
-        print(f"\n  {_YELLOW}{quarantined} document{'s' if quarantined != 1 else ''} need attention{_RESET}"
-              f"{_DIM} in {_RESET}{_CYAN}queue/_failed/{_RESET}{_DIM} — run {_RESET}"
-              f"{_CYAN}watchdog requeue{_RESET}{_DIM} to retry {'them' if quarantined != 1 else 'it'}.{_RESET}")
+        print(f"\n  {_quarantine_notice(quarantined)}")
     pi_error = summary.get("post_ingest_error") or (summary.get("post_ingest") or {}).get("error")
     if pi_error:
         print(f"\n  {_YELLOW}Post-processing didn't finish{_RESET}{_DIM} — {pi_error}.{_RESET}")
@@ -845,15 +976,10 @@ def cmd_requeue(args) -> None:
     vault = Path(".").resolve()
     if not (vault / ".watchdog").is_dir():
         sys.exit("Error: must be run from inside a Watchdog vault directory")
-    failed_dir = vault / ".watchdog" / "queue" / "_failed"
-    files = sorted(failed_dir.glob("*.json")) if failed_dir.exists() else []
-    if not files:
+    n = _requeue_failed(vault)
+    if not n:
         print(f"\n  {_DIM}No documents in {_RESET}{_CYAN}queue/_failed/{_RESET}{_DIM} — nothing to requeue.{_RESET}\n")
         return
-    queue_dir = vault / ".watchdog" / "queue"
-    for f in files:
-        f.replace(queue_dir / f.name)
-    n = len(files)
     print(f"\n  {_GREEN}Requeued {_BOLD}{n}{_RESET}{_GREEN} document{'s' if n != 1 else ''}{_RESET}"
           f"{_DIM} — run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} to retry.{_RESET}\n")
 
