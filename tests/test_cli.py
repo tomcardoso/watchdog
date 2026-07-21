@@ -2531,6 +2531,36 @@ def test_cmd_ingest_empty_queue_declines_requeue_offer_prints_hint(wdg_home, tmp
     assert (vault / ".watchdog" / "queue" / "_failed" / "shafail.json").exists()
 
 
+def test_cmd_ingest_requeue_offer_race_does_not_dead_end(wdg_home, tmp_path, monkeypatch, capsys):
+    """If something else (e.g. a concurrent `watchdog requeue`) empties _failed/ between the
+    count that triggered the offer and the confirmed requeue actually running, the final hint
+    must not tell the user to run `watchdog requeue` — there's nothing left there for it to move
+    (PR #437 review)."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+    from watchdog import interactive
+
+    vault = _vault_with_failed_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+    monkeypatch.setattr(interactive, "confirm", lambda *a, **k: True)
+
+    real_requeue_failed = ing._requeue_failed
+
+    def racing_requeue_failed(v):
+        (v / ".watchdog" / "queue" / "_failed" / "shafail.json").unlink()
+        return real_requeue_failed(v)
+    monkeypatch.setattr(ing, "_requeue_failed", racing_requeue_failed)
+
+    ing.cmd_ingest(args(), confirm=False)
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "watchdog requeue" not in out
+    assert "Queue is empty" in out
+
+
 def test_cmd_ingest_keyboard_interrupt_mentions_quarantined_docs(wdg_home, tmp_path, monkeypatch, capsys):
     """A Ctrl+C that propagates as a real `KeyboardInterrupt` — the only path a Ctrl+C during
     finalize's sequential post-processing takes (#406), since `orchestrate.run`'s own SIGINT
@@ -2635,6 +2665,39 @@ def test_caffeinate_spawns_systemd_inhibit_on_linux_when_available(monkeypatch):
     assert killpg_calls == [(54321, ing.signal.SIGTERM)]
     assert fake_proc.waited
     assert not fake_proc.terminated   # cleanup goes through the process group, not proc.terminate()
+
+
+def test_caffeinate_systemd_inhibit_sigkills_the_group_on_timeout(monkeypatch):
+    """If the group doesn't die from SIGTERM in time, the SIGKILL fallback must also target the
+    whole process group — not just `proc.kill()` on the `systemd-inhibit` process itself, which
+    would risk leaving the `sleep infinity` placeholder running as an orphan (PR #437 review)."""
+    from watchdog.cmd import ingest as ing
+
+    monkeypatch.setattr("watchdog.cmd.ingest.sys.platform", "linux")
+    monkeypatch.setattr(ing.shutil, "which",
+                        lambda name: "/usr/bin/systemd-inhibit" if name == "systemd-inhibit" else None)
+
+    class _StuckFakeProc(_FakeProc):
+        def __init__(self, pid):
+            super().__init__(pid=pid)
+            self.wait_calls = 0
+
+        def wait(self, timeout=None):
+            self.wait_calls += 1
+            if self.wait_calls == 1:
+                raise ing.subprocess.TimeoutExpired(cmd="systemd-inhibit", timeout=timeout)
+
+    fake_proc = _StuckFakeProc(pid=54321)
+    monkeypatch.setattr(ing.subprocess, "Popen", lambda *a, **k: fake_proc)
+    killpg_calls = []
+    monkeypatch.setattr(ing.os, "killpg", lambda pid, sig: killpg_calls.append((pid, sig)))
+
+    with ing._caffeinate():
+        pass
+
+    assert killpg_calls == [(54321, ing.signal.SIGTERM), (54321, ing.signal.SIGKILL)]
+    assert not fake_proc.killed   # the group kill replaces proc.kill(), not alongside it
+    assert fake_proc.wait_calls == 2
 
 
 def test_caffeinate_noop_on_windows(monkeypatch):

@@ -506,7 +506,16 @@ def _caffeinate():
             try:
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                proc.kill()
+                # Same target as the initial signal above (#437 review) — SIGKILL-ing only the
+                # systemd-inhibit process itself, not its group, could leave the `sleep infinity`
+                # placeholder it launched running as an orphan.
+                if own_group:
+                    try:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                else:
+                    proc.kill()
                 proc.wait(timeout=5)
 
 
@@ -679,7 +688,10 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
             if "error" in result:
                 sys.exit(f"\n  {_YELLOW}Error:{_RESET} {result['error']}\n")
         if result["total"] == 0:
-            if failed:
+            # Re-check rather than trust the `failed` count captured above (#437 review) — a
+            # requeue attempt in between (or a concurrent `watchdog requeue`) can have already
+            # emptied _failed/, and "run watchdog requeue" would be a dead end at that point.
+            if _failed_count(vault):
                 print(f"\n  {_DIM}Run {_RESET}{_CYAN}watchdog requeue{_RESET}{_DIM} when ready, then "
                       f"{_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} again.{_RESET}\n")
             else:
