@@ -14,7 +14,6 @@ import asyncio
 import datetime
 import hashlib
 import json
-import shutil
 import signal
 import sys
 import time
@@ -1132,7 +1131,8 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             _log(vault, f"CONTRADICTION {c['entity_id']}: {c['label']}")
 
     # 1. Entity synthesis for multi-mention entities (Python builds + applies; model reconciles).
-    bundle = synthesis_bundle.build_bundle(vault)
+    batch_shas = [r["sha256"] for r in results if r.get("status") == "ok"]
+    bundle = synthesis_bundle.build_bundle(vault, batch_shas)
     if bundle.get("entities"):
         _say(f"{_DIM}→  synthesizing {len(bundle['entities'])} multi-mention "
              f"entit{'ies' if len(bundle['entities']) != 1 else 'y'}…{_RESET}")
@@ -1142,7 +1142,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                 prompt=prompts.build_synthesis_prompt(bundle), effort=post_effort, vault=vault)
         except (model_client.ModelError, model_client.RateLimitError) as e:
             # Synthesis is enrichment: leave the structured claims already in the notes
-            # rather than crashing. The fragment queue persists, so a later ingest redoes it.
+            # rather than crashing. The staged artifacts persist, so a later finalize redoes it.
             out["error"] = str(e)
             _say(f"{_YELLOW}synthesis skipped{_RESET}{_DIM} — {e}{_RESET}")
         else:
@@ -1511,38 +1511,43 @@ def _commit_pending(vault: Path, shas: list[str] | None = None) -> dict:
 def _clear_post_ingest_inputs(vault: Path) -> None:
     """Remove the per-run post-ingest inputs once they have been finalized cleanly."""
     tmp = vault / ".watchdog" / "tmp"
-    shutil.rmtree(tmp / "entity-fragments", ignore_errors=True)
     for p in list(tmp.glob("result_*.json")) + list(tmp.glob("notes_*.md")):
         p.unlink(missing_ok=True)
 
 
 def has_pending_finalization(vault: Path) -> bool:
     """True if an extracted-but-not-finalized batch is sitting in tmp (e.g. a rate-limited run)."""
-    tmp = vault / ".watchdog" / "tmp"
-    return ((tmp / "entity-fragments" / "_queue.json").exists()
-            or any(tmp.glob("result_*.json")))
+    return any((vault / ".watchdog" / "tmp").glob("result_*.json"))
 
 
 def pending_finalization(vault: Path) -> dict:
     """Best-effort counts for an extracted-but-not-finalized batch sitting in tmp.
 
     Entity count uses the same gate as `synthesis_bundle.build_bundle` — registry
-    `appears_in >= 2` (D26) — not the fragment queue's `count`, which is only a
-    touched-set marker post-D26 and no longer the synthesis gate."""
+    `appears_in >= 2` (D26) — over the entities mentioned in this batch's staged
+    extractions (``.watchdog/extracted/<sha>.json``, one per ``result_<sha>.json``)."""
     tmp = vault / ".watchdog" / "tmp"
-    docs = len(list(tmp.glob("result_*.json")))
+    results = list(tmp.glob("result_*.json"))
     entities = 0
-    q = tmp / "entity-fragments" / "_queue.json"
-    if q.exists():
-        try:
-            queue = json.loads(q.read_text(encoding="utf-8"))
-            reg_path = vault / ".watchdog" / "registry" / "entities.json"
-            registry = json.loads(reg_path.read_text(encoding="utf-8")) if reg_path.exists() else {}
-            entities = sum(1 for eid in queue
-                           if len(registry.get(eid, {}).get("appears_in", [])) >= 2)
-        except (OSError, json.JSONDecodeError, AttributeError):
-            pass
-    return {"docs": docs, "entities": entities}
+    try:
+        reg_path = vault / ".watchdog" / "registry" / "entities.json"
+        registry = json.loads(reg_path.read_text(encoding="utf-8")) if reg_path.exists() else {}
+        extracted_dir = vault / ".watchdog" / "extracted"
+        touched: set = set()
+        for p in results:
+            sha = p.stem[len("result_"):]
+            art = extracted_dir / f"{sha}.json"
+            if not art.exists():
+                continue
+            artifact = json.loads(art.read_text(encoding="utf-8"))
+            for e in artifact.get("entities") or []:
+                if e.get("id"):
+                    touched.add(e["id"])
+        entities = sum(1 for eid in touched
+                       if len(registry.get(eid, {}).get("appears_in", [])) >= 2)
+    except (OSError, json.JSONDecodeError):
+        pass
+    return {"docs": len(results), "entities": entities}
 
 
 async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None = None,
@@ -1636,7 +1641,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     actual sleep-and-resume loop; this function always stops cleanly on a rate limit.
     `skip_finalize` (#384) stops the run after extraction — post-ingest (reconciliation,
     synthesis, timeline, briefing) is never called, and none of its inputs
-    (`entity-fragments/`, `result_*.json`, `notes_*.md`) are cleared. That leaves
+    (`result_*.json`, `notes_*.md`) are cleared. That leaves
     `has_pending_finalization(vault)` True so a later `watchdog finalize` — possibly with a
     different `--finalizer-model`, and possibly against a copy of the vault — can pick up
     exactly where extraction left off.

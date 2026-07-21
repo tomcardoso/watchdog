@@ -51,34 +51,6 @@ def test_contradictions_dedupe_on_repeat(tmp_path):
     assert _note(vault).count("[!contradiction]") == 1
 
 
-# ── Fragment emission + finalizer gate ────────────────────────────────────────
-
-def _frag_queue(vault: Path) -> dict:
-    return json.loads((vault / ".watchdog" / "tmp" / "entity-fragments" / "_queue.json").read_text())
-
-
-def test_fragment_written_per_entity_with_count(tmp_path):
-    vault = make_vault(tmp_path)
-    wv_run(make_extraction(tmp_path), vault)  # mentions alice-smith + acme-corp once
-
-    q = _frag_queue(vault)
-    assert q["alice-smith"]["count"] == 1
-    assert q["alice-smith"]["name"] == "Alice Smith"
-    frag = (vault / ".watchdog" / "tmp" / "entity-fragments" / "alice-smith.md").read_text()
-    assert "Alice Smith is a director" in frag
-
-
-def test_two_documents_bump_gate_to_two(tmp_path):
-    vault = make_vault(tmp_path)
-    wv_run(make_extraction(tmp_path), vault)
-    wv_run(make_extraction(tmp_path, {"document": {"sha256": "def456", "filename": "two.pdf"}}), vault)
-
-    q = _frag_queue(vault)
-    assert q["alice-smith"]["count"] == 2          # gated → finalize
-    frag = (vault / ".watchdog" / "tmp" / "entity-fragments" / "alice-smith.md").read_text()
-    assert frag.count("### ") == 2                 # one block per document
-
-
 # ── Pre-flight carries the current summary forward ────────────────────────────
 
 # ── Finalizer writes prose only, preserves structured sections ────────────────
