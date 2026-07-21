@@ -21,6 +21,7 @@ import re
 
 import pytest
 
+import watchdog.cli as cli
 from watchdog.pipeline import orchestrate
 
 from tests.test_orchestrate import _extraction, _mock, _queue_doc
@@ -433,3 +434,287 @@ def test_estimate_force_prices_the_queued_document(wdg_home, tmp_path, monkeypat
 
     out = _strip_ansi(capsys.readouterr().out)
     assert "1 document" in out   # priced, not silently excluded as already-committed
+
+
+# ── --force <selector>: re-queue-from-morgue front end ────────────────────────────────────────
+#
+# A committed document's original does NOT survive at `.watchdog/staging/<sha>/` — `write_vault`'s
+# commit pass moves it out of staging into the morgue (`shutil.move`, write_vault.py step 7) and
+# prunes the now-empty staging/<sha>/ directory. The durable, sha-stable location of a committed
+# document's original is `registry/documents.json[sha]["morgue_path"]`, so that is what
+# `_requeue_forced_selectors` re-chews — not a staging path.
+
+def test_resolve_force_selectors_matches_sha_prefix_filename_and_note(tmp_path):
+    from watchdog.cmd.ingest import _resolve_force_selectors
+
+    vault = make_vault(tmp_path)
+    (vault / ".watchdog" / "registry" / "documents.json").write_text(json.dumps({
+        SHA: {"filename": "alpha.pdf", "document_note": "documents/alpha"},
+        "b" * 64: {"filename": "beta.pdf", "document_note": "documents/beta"},
+    }))
+
+    assert _resolve_force_selectors(vault, [SHA]) == [SHA]
+    assert _resolve_force_selectors(vault, [SHA[:12]]) == [SHA]          # unambiguous sha prefix
+    assert _resolve_force_selectors(vault, ["alpha.pdf"]) == [SHA]        # filename
+    assert _resolve_force_selectors(vault, ["documents/alpha"]) == [SHA]  # full document_note
+    assert _resolve_force_selectors(vault, ["alpha"]) == [SHA]            # note's slug
+    # Two selectors naming the same document collapse to one entry.
+    assert _resolve_force_selectors(vault, ["alpha.pdf", SHA]) == [SHA]
+
+
+def test_resolve_force_selectors_errors_on_no_match(tmp_path):
+    from watchdog.cmd.ingest import _resolve_force_selectors
+
+    vault = make_vault(tmp_path)
+    (vault / ".watchdog" / "registry" / "documents.json").write_text(json.dumps({
+        SHA: {"filename": "alpha.pdf", "document_note": "documents/alpha"},
+    }))
+
+    with pytest.raises(SystemExit):
+        _resolve_force_selectors(vault, ["nonexistent.pdf"])
+
+
+def test_resolve_force_selectors_errors_on_ambiguous_prefix(tmp_path):
+    from watchdog.cmd.ingest import _resolve_force_selectors
+
+    vault = make_vault(tmp_path)
+    (vault / ".watchdog" / "registry" / "documents.json").write_text(json.dumps({
+        "aa11" + "0" * 60: {"filename": "one.pdf", "document_note": "documents/one"},
+        "aa22" + "0" * 60: {"filename": "two.pdf", "document_note": "documents/two"},
+    }))
+
+    with pytest.raises(SystemExit):
+        _resolve_force_selectors(vault, ["aa"])
+
+
+def _committed_vault_with_morgue_original(tmp_path, *, filename="alpha.pdf", text="original bytes"):
+    """A vault with `SHA` committed and its real original sitting where a commit actually leaves
+    it — the morgue, per `write_vault.run`'s step 7 — not `.watchdog/staging/<sha>/`."""
+    vault = make_vault(tmp_path)
+    morgue_rel = f"morgue/acme-corp/annual-report/{filename}"
+    morgue_file = vault / morgue_rel
+    morgue_file.parent.mkdir(parents=True, exist_ok=True)
+    morgue_file.write_text(text)
+    (vault / ".watchdog" / "registry" / "documents.json").write_text(json.dumps({
+        SHA: {"filename": filename, "document_note": "documents/alpha", "morgue_path": morgue_rel},
+    }))
+    return vault, morgue_file
+
+
+def test_requeue_forced_selectors_rechews_morgue_original_bypassing_dedup(tmp_path, monkeypatch):
+    """The core plumbing: resolving a selector re-chews the morgue original with the dedup filter
+    bypassed for that sha (it IS already ingested — that's the point) and the near-dup check
+    excluding its own committed self (otherwise it would always match itself at ~1.0 similarity).
+
+    `sha256_file` is patched to return the fixture's `SHA` regardless of the morgue file's actual
+    bytes — otherwise `_filter_already_seen`'s dedup check (which hashes the file for real) would
+    never recognize this file as "already ingested" in the first place, since the fixture's
+    `SHA = 'a' * 64` isn't the genuine hash of its placeholder content. Patching this is what makes
+    the bypass itself, not a fixture coincidence, the reason the file survives filtering."""
+    from watchdog.cmd.ingest import _requeue_forced_selectors
+    from watchdog.pipeline import preprocess_batch as ppb
+
+    vault, morgue_file = _committed_vault_with_morgue_original(tmp_path)
+    monkeypatch.setattr(ppb, "sha256_file", lambda f: SHA)
+
+    seen_exclude = {}
+    real_compute = ppb._compute_near_dup
+    def spy_compute_near_dup(result, v, exclude_sha=None):
+        seen_exclude["exclude_sha"] = exclude_sha
+        return real_compute(result, v, exclude_sha=exclude_sha)
+    monkeypatch.setattr(ppb, "_compute_near_dup", spy_compute_near_dup)
+    monkeypatch.setattr(ppb, "preprocess_one", lambda path, *a, **kw: {
+        "sha256": SHA, "filename": path.name,
+        "pages": [{"page": 1, "markdown": "Acme Corp restated its annual report."}],
+        "page_count": 1, "char_count": 40, "source_path": str(path),
+    })
+
+    _requeue_forced_selectors(vault, [SHA])
+
+    queue_file = vault / ".watchdog" / "queue" / f"{SHA}.json"
+    assert queue_file.exists()
+    assert seen_exclude["exclude_sha"] == SHA   # self-match excluded, not just computed
+    # The morgue original moved into staging (the normal chew destination) — reused machinery,
+    # not a duplicated OCR pipeline.
+    assert not morgue_file.exists()
+    assert (vault / ".watchdog" / "staging" / SHA / morgue_file.name).exists()
+
+
+def test_requeue_forced_selectors_errors_on_missing_morgue_file(tmp_path):
+    from watchdog.cmd.ingest import _requeue_forced_selectors
+
+    vault, morgue_file = _committed_vault_with_morgue_original(tmp_path)
+    morgue_file.unlink()   # the recorded original is gone from disk
+
+    with pytest.raises(SystemExit):
+        _requeue_forced_selectors(vault, [SHA])
+
+
+def test_requeue_forced_selectors_skips_already_queued_sha(tmp_path, monkeypatch):
+    """A sha whose queue entry already exists (an earlier `--force` run staged it and it was
+    never finalized) is left alone — no second OCR pass."""
+    from watchdog.cmd.ingest import _requeue_forced_selectors
+    from watchdog.pipeline import preprocess_batch as ppb
+
+    vault, morgue_file = _committed_vault_with_morgue_original(tmp_path)
+    queue_dir = vault / ".watchdog" / "queue"
+    queue_dir.mkdir(parents=True, exist_ok=True)
+    (queue_dir / f"{SHA}.json").write_text(json.dumps({"sha256": SHA, "filename": "alpha.pdf"}))
+
+    def _boom(*a, **k):
+        raise AssertionError("must not re-chew a sha that is already queued")
+    monkeypatch.setattr(ppb, "run_ingest", _boom)
+
+    _requeue_forced_selectors(vault, [SHA])   # no-op — must not raise
+    assert morgue_file.exists()               # untouched
+
+
+# ── --force <selector>: full CLI flow (end-to-end, model mocked) ─────────────────────────────
+
+def test_ingest_force_sha_selector_end_to_end_replaces_note(wdg_home, tmp_path, monkeypatch):
+    """The complete #424 flow: `ingest --force <sha-prefix>` resolves the selector, re-chews the
+    morgue original (bypassing dedup and near-dup self-match), re-extracts under a different
+    mocked extraction, fires the overwrite gate, confirms, and finalizes — REPLACING the
+    committed note/registry entry in place. No live model calls (extraction is mocked)."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import preprocess_batch as ppb
+
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha=SHA, filename="alpha.pdf", text="Acme Corp filed an annual report.")
+    _mock(monkeypatch, extraction=_ext(
+        title="Acme Annual Report", summary="Acme's annual report.",
+        fact_text="Acme filed in 2024.", entity_summary="A company that filed an annual report."))
+    asyncio.run(orchestrate.run(vault))   # commits — the original lands in the morgue
+
+    documents_path = vault / ".watchdog" / "registry" / "documents.json"
+    docs_before = json.loads(documents_path.read_text())
+    assert docs_before[SHA]["title"] == "Acme Annual Report"
+    morgue_path = vault / docs_before[SHA]["morgue_path"]
+    assert morgue_path.exists()
+
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(ing.interactive, "confirm", lambda *a, **k: True)   # confirm the overwrite
+    # The morgue file's real placeholder bytes don't genuinely hash to SHA (a fixture constant) —
+    # patch sha256_file so `_filter_already_seen`'s dedup check actually recognizes this file as
+    # "already ingested", making the `force_shas` bypass (not a fixture coincidence) the reason
+    # it survives filtering.
+    monkeypatch.setattr(ppb, "sha256_file", lambda f: SHA)
+    monkeypatch.setattr(ppb, "preprocess_one", lambda path, *a, **kw: {
+        "sha256": SHA, "filename": path.name,
+        "pages": [{"page": 1, "markdown": "Acme Corp restated its annual report disclosing $9,000,000."}],
+        "page_count": 1, "char_count": 60, "source_path": str(path),
+    })
+    _mock(monkeypatch, extraction=_ext(
+        title="Acme Restated Annual Report", summary="Acme's restated report.",
+        fact_text="Acme restated 2024 disclosing $9,000,000.",
+        entity_summary="A company that restated its annual report."))
+
+    ing.cmd_ingest(_args(force=[SHA[:16]]), confirm=False)
+
+    docs_after = json.loads(documents_path.read_text())
+    entities_after = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
+    assert len(docs_after) == 1                    # not duplicated
+    assert docs_after[SHA]["title"] == "Acme Restated Annual Report"
+    assert len(entities_after) == 1
+    assert entities_after["acme-corp"]["appears_in"] == [SHA]
+    doc_notes = list((vault / "documents").glob("*.md"))
+    assert len(doc_notes) == 1
+    assert "Acme Restated Annual Report" in doc_notes[0].read_text()
+    # The original is back in the morgue (re-chew → staging → recommit moves it back).
+    assert (vault / docs_after[SHA]["morgue_path"]).exists()
+
+
+def test_ingest_force_filename_selector_requeues_before_extraction(wdg_home, tmp_path, monkeypatch):
+    """A `--force <filename>` selector resolves against `registry/documents.json` the same as a
+    sha, proving the filename-selector path (not just sha) drives the re-queue-from-morgue flow —
+    checked here by asserting the queue entry exists *before* `orchestrate.run` is even called."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module, preprocess_batch as ppb
+
+    vault, _ = _committed_vault_with_morgue_original(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+    monkeypatch.setattr(ppb, "sha256_file", lambda f: SHA)   # see the sha-selector test for why
+    monkeypatch.setattr(ppb, "preprocess_one", lambda path, *a, **kw: {
+        "sha256": SHA, "filename": path.name,
+        "pages": [{"page": 1, "markdown": "text"}], "page_count": 1, "char_count": 4,
+        "source_path": str(path),
+    })
+
+    queue_path = vault / ".watchdog" / "queue" / f"{SHA}.json"
+
+    async def fake_run(*a, **k):
+        assert queue_path.exists()   # the filename selector already re-queued it
+        return {"results": [], "extracted": 0, "skipped": 0, "failed": 0, "cancelled": False,
+                "rate_limited": False, "stop_message": None, "rate_limit_resets_at": None,
+                "quarantined": 0, "finalize_skipped": True}
+    monkeypatch.setattr(orch_module, "run", fake_run)
+    monkeypatch.setattr(ing, "_run_finalize", lambda *a, **k: {})
+
+    ing.cmd_ingest(_args(force=["alpha.pdf"]), confirm=False)
+
+    assert queue_path.exists()
+
+
+def test_bare_ingest_force_never_requeues(wdg_home, tmp_path, monkeypatch):
+    """Bare `ingest --force` (no selectors) must behave byte-identically to before this change —
+    in particular, it must never touch `_requeue_forced_selectors`/chew at all."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+    monkeypatch.setattr(ing, "_requeue_forced_selectors",
+                        lambda *a, **k: pytest.fail("bare --force must not re-queue anything"))
+
+    async def fake_run(*a, **k):
+        return {"results": [{"sha256": SHA, "filename": "alpha.pdf", "status": "ok", "entity_count": 1}],
+                "extracted": 1, "skipped": 0, "failed": 0, "cancelled": False,
+                "rate_limited": False, "stop_message": None, "rate_limit_resets_at": None,
+                "quarantined": 0, "finalize_skipped": True}
+    monkeypatch.setattr(orch_module, "run", fake_run)
+    monkeypatch.setattr(ing, "_run_finalize", lambda *a, **k: {})
+
+    # Both the real argparse "bare --force" value ([]) and store_true's True must behave alike.
+    ing.cmd_ingest(_args(force=[]), confirm=False)
+    ing.cmd_ingest(_args(force=True), confirm=False)
+
+
+# ── --force parser: nargs="*" (absent / bare / with selectors) ───────────────────────────────
+
+def test_ingest_force_parser_nargs_absent_bare_and_selectors(monkeypatch):
+    import sys
+    seen = []
+    monkeypatch.setattr(cli, "cmd_ingest", lambda a, **k: seen.append(a.force))
+
+    monkeypatch.setattr(sys, "argv", ["watchdog", "ingest"])
+    cli.main()
+    monkeypatch.setattr(sys, "argv", ["watchdog", "ingest", "--force"])
+    cli.main()
+    monkeypatch.setattr(sys, "argv", ["watchdog", "ingest", "--force", "a.pdf", "9f2c"])
+    cli.main()
+
+    assert seen == [None, [], ["a.pdf", "9f2c"]]
+
+
+def test_extract_force_parser_stays_store_true(monkeypatch):
+    """`extract --force` is deliberately left as the bare `store_true` it already was — re-queueing
+    a committed doc under `extract` would strand a staged extraction that a plain `watchdog
+    finalize` can't recommit (`_pending_commits` excludes committed shas without `force_shas`)."""
+    import sys
+    seen = []
+    monkeypatch.setattr(cli, "cmd_extract", lambda a, **k: seen.append(a.force))
+
+    monkeypatch.setattr(sys, "argv", ["watchdog", "extract"])
+    cli.main()
+    monkeypatch.setattr(sys, "argv", ["watchdog", "extract", "--force"])
+    cli.main()
+
+    assert seen == [False, True]

@@ -436,10 +436,13 @@ def main() -> None:
                                "claude-batch extractor model.")
     p_ingest.add_argument("--estimate", action="store_true",
                           help="Print a token/cost estimate for the queue and exit — no lock, no confirm, no extraction")
-    p_ingest.add_argument("--force", action="store_true", default=False, dest="force",
+    p_ingest.add_argument("--force", nargs="*", default=None, dest="force", metavar="DOC",
                           help="Re-extract even when a cached extraction already exists — costs "
                                "full extraction spend on every document. Warns before overwriting "
-                               "any note already committed to the vault (default: cancel).")
+                               "any note already committed to the vault (default: cancel). Pass "
+                               "one or more committed documents (sha256, an unambiguous sha256 "
+                               "prefix, or filename) to re-queue and re-extract them too, e.g. "
+                               "--force report.pdf 9f2c1a.")
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_extract = sub.add_parser("extract", help="Classify and extract queued documents; stop before finalize (run watchdog finalize next)")

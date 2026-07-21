@@ -612,6 +612,36 @@ def test_sidecar_moved_to_skipped_alongside_source(tmp_path, monkeypatch):
     assert not (incoming / "blank.jpg.yml").exists()
 
 
+# ── near-dup self-match guard (#424) ────────────────────────────────────────────
+#
+# Re-chewing a committed document's own morgue original for `--force <selector>` compares its
+# text against `registry/documents.json`, which still holds that same document's own minhash —
+# without excluding it, the re-queued document would always "near-duplicate" itself at ~1.0
+# similarity, since it IS itself.
+
+def test_compute_near_dup_excludes_forced_self_match(tmp_path):
+    from watchdog.pipeline.near_dup import shingles_from_text, minhash
+    from watchdog.pipeline.preprocess_batch import _compute_near_dup
+
+    vault = tmp_path / "vault"
+    (vault / ".watchdog" / "registry").mkdir(parents=True)
+    text = ("Acme Corp filed an annual report disclosing significant revenue "
+            "for the fiscal year ending in December.")
+    mh = minhash(shingles_from_text(text))
+    (vault / ".watchdog" / "registry" / "documents.json").write_text(json.dumps({
+        "self-sha": {"filename": "alpha.pdf", "minhash": mh, "document_note": "documents/alpha"},
+    }))
+    result = {"pages": [{"markdown": text}]}
+
+    without_exclude = _compute_near_dup(result, vault)
+    assert without_exclude["top_similarity"] >= 0.85
+    assert any(m["sha256"] == "self-sha" for m in without_exclude["near_duplicates"])
+
+    with_exclude = _compute_near_dup(result, vault, exclude_sha="self-sha")
+    assert with_exclude["near_duplicates"] == []
+    assert with_exclude["top_similarity"] == 0.0
+
+
 # ── live status region (#158) ───────────────────────────────────────────────────
 
 def test_tty_run_shows_inflight_row_and_progress(tmp_path, monkeypatch):

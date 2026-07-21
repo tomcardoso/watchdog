@@ -357,10 +357,96 @@ def _handle_force_gate(vault: Path, summary: dict, post_model: str,
                                            force_shas=[sha for sha, _ in targets] or None)
 
 
+def _resolve_force_selectors(vault: Path, selectors: list[str]) -> list[str]:
+    """Resolve each `ingest --force <selector>` argument to a committed document's sha256, against
+    `registry/documents.json` (#424). A selector matches by full sha256, an unambiguous sha256
+    prefix, its original filename, or its document note (`documents/<slug>` or just `<slug>`).
+    Exits with a clear error on no match or an ambiguous prefix — never a silent no-op. Returns
+    shas in selector order, de-duplicated (two selectors naming the same document collapse to one)."""
+    documents_path = vault / ".watchdog" / "registry" / "documents.json"
+    try:
+        documents = json.loads(documents_path.read_text(encoding="utf-8")) if documents_path.exists() else {}
+    except (OSError, json.JSONDecodeError):
+        documents = {}
+
+    resolved: list[str] = []
+    for sel in selectors:
+        if sel in documents:
+            resolved.append(sel)
+            continue
+        candidates = {sha for sha in documents if sha.startswith(sel)}
+        for sha, entry in documents.items():
+            note = entry.get("document_note") or ""
+            if sel == entry.get("filename") or sel == note or sel == Path(note).name:
+                candidates.add(sha)
+        if len(candidates) == 1:
+            resolved.append(next(iter(candidates)))
+        elif len(candidates) > 1:
+            sys.exit(f"\n  {_YELLOW}Error:{_RESET} '{sel}' matches more than one committed "
+                     f"document — use the full sha256, or an exact filename.\n")
+        else:
+            sys.exit(f"\n  {_YELLOW}Error:{_RESET} '{sel}' does not match any committed document "
+                     f"(by sha256, filename, or note).\n")
+
+    seen: set[str] = set()
+    out: list[str] = []
+    for sha in resolved:
+        if sha not in seen:
+            seen.add(sha)
+            out.append(sha)
+    return out
+
+
+def _requeue_forced_selectors(vault: Path, selectors: list[str]) -> None:
+    """`ingest --force <selector…>` (#424): resolve each selector to a committed document, then
+    re-chew its original — which a commit moves out of `.watchdog/staging/<sha>/` into the morgue,
+    recorded as `documents.json[sha]["morgue_path"]` — with chew's dedup filter and near-dup
+    self-match both bypassed for that sha, so it re-enters `.watchdog/queue/` for the force
+    re-extraction that follows. Reuses the real chew/OCR pipeline (`preprocess_batch.run_ingest`)
+    rather than duplicating it. A sha whose queue entry already exists (e.g. an earlier `--force`
+    run staged it and it was never finalized) is left alone — no need to pay for OCR twice."""
+    shas = _resolve_force_selectors(vault, selectors)
+    documents_path = vault / ".watchdog" / "registry" / "documents.json"
+    documents = json.loads(documents_path.read_text(encoding="utf-8")) if documents_path.exists() else {}
+    queue_dir = vault / ".watchdog" / "queue"
+
+    to_requeue: list[tuple[str, Path]] = []
+    for sha in shas:
+        if (queue_dir / f"{sha}.json").exists():
+            continue
+        entry = documents.get(sha, {})
+        morgue_rel = entry.get("morgue_path")
+        morgue_path = (vault / morgue_rel) if morgue_rel else None
+        if not morgue_path or not morgue_path.exists():
+            name = entry.get("filename", sha[:12])
+            sys.exit(f"\n  {_YELLOW}Error:{_RESET} the original for {_CYAN}{name}{_RESET} isn't "
+                     f"on disk at its recorded morgue path — cannot re-chew it.\n")
+        to_requeue.append((sha, morgue_path))
+
+    if not to_requeue:
+        return
+    from watchdog.pipeline import preprocess_batch
+    names = ", ".join(p.name for _, p in to_requeue)
+    print(f"\n  {_DIM}Re-chewing from the morgue (dedup bypassed):{_RESET} {_CYAN}{names}{_RESET}"
+          f"{_DIM} — local and free, but re-OCR of a big document can take a moment.{_RESET}")
+    preprocess_batch.run_ingest(vault, files=[p for _, p in to_requeue], show_ingest_hint=False,
+                                force_shas={sha for sha, _ in to_requeue})
+
+
 def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> None:
     vault = Path(".").resolve()
     if not (vault / ".watchdog").is_dir():
         sys.exit("Error: must be run from inside a Watchdog vault directory")
+
+    raw_force = getattr(args, "force", False)
+    if isinstance(raw_force, list):
+        force = True
+        force_selectors = raw_force
+    else:
+        force = bool(raw_force)
+        force_selectors = []
+    if force_selectors:
+        _requeue_forced_selectors(vault, force_selectors)
 
     from watchdog.cmd.base import CONFIG_FILE
     config: dict = {}
@@ -517,11 +603,12 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
                  f"already runs in the background; re-run {_CYAN}watchdog ingest{_RESET} later to "
                  f"collect it.\n")
     no_finalize = getattr(args, "no_finalize", False)
-    force = getattr(args, "force", False)
-    # `ingest --force` (#424) always extracts with finalize held off, same as `extract --force`
-    # (no_finalize) — the difference is what happens after: `cmd_extract` leaves the batch
-    # pending for a later `watchdog finalize`; plain `ingest --force` gates the overwrite of any
-    # already-committed document below, then finalizes itself once confirmed.
+    # `force`/`force_selectors` were already resolved at the top of this function (before the
+    # re-queue-from-morgue step, which must run ahead of everything else here). `ingest --force`
+    # always extracts with finalize held off, same as `extract --force` (no_finalize) — the
+    # difference is what happens after: `cmd_extract` leaves the batch pending for a later
+    # `watchdog finalize`; plain `ingest --force` gates the overwrite of any already-committed
+    # document below, then finalizes itself once confirmed.
     run_skip_finalize = no_finalize or force
 
     def _release_lock() -> None:
