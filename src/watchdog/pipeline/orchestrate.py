@@ -591,15 +591,22 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
                             pinned_skill: str | None = None,
                             extract_effort: str | None = None,
                             extract_backend: str | None = None,
-                            classify_backend: str | None = None) -> dict:
+                            classify_backend: str | None = None,
+                            force: bool = False) -> dict:
     pf = preflight.run(vault, sha)
     if pf.get("error"):
         return _fail(vault, sha, "", pf["error"])
-    if pf.get("already_extracted"):
+    if force and (pf.get("already_extracted") or pf.get("already_staged")):
+        # --force (#424): bypass both "already done" checks and pay for a fresh classify/extract
+        # call even though a cached artifact (or a committed vault note) already exists — the
+        # whole point of --force is to regenerate under a different model/effort/skill.
+        _say(f"{_DIM}↻{_RESET}  {pf.get('filename')}  {_YELLOW}re-extracting (--force){_RESET}"
+             f"{_DIM} — note will be replaced{_RESET}")
+    elif pf.get("already_extracted"):
         _say(f"{_DIM}–  {pf.get('filename')}  already extracted — skipping{_RESET}")
         (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
         return {"sha256": sha, "filename": pf.get("filename"), "status": "skipped"}
-    if pf.get("already_staged"):
+    elif pf.get("already_staged"):
         # Extracted in a prior run but not yet committed (#403 phase 1) — no reason to spend a
         # classify/extract call again. The queue file must survive: the eventual commit pass
         # still needs it (write_vault._write_morgue_markdown, the corpus index). Its
@@ -738,7 +745,8 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
 
 async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_text: str,
                              skill_label: str, brief: str | None, api_key: str,
-                             model: str | None = None, effort: str | None = None) -> dict:
+                             model: str | None = None, effort: str | None = None,
+                             force: bool = False) -> dict:
     """Turn one collected batch result into a finished document. `item` is `batch_extract.collect`'s
     per-sha entry (or None if the batch has no result for this sha at all). A batch response that
     didn't pass schema validation gets exactly one synchronous claude-api repair attempt — not a
@@ -749,16 +757,21 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
     own usage (D64) — unlike every other extraction path, this one never calls `_call_model`
     itself when the batch result is already valid, so without this the batch's real token spend
     would silently never reach `usage-<ts>.json` — and, with `effort`, to stamp this document's
-    extraction provenance (#268)."""
+    extraction provenance (#268). `force` (#424) bypasses both "already done" skip checks below,
+    same as `_extract_document` — the batch already ran, so bypassing just means the collected
+    result is staged/committed instead of discarded."""
     pf = preflight.run(vault, sha)
     if pf.get("error"):
         return _fail(vault, sha, "", pf["error"])
-    if pf.get("already_extracted"):     # a retried collection pass after a partial rate limit
+    if force and (pf.get("already_extracted") or pf.get("already_staged")):
+        _say(f"{_DIM}↻{_RESET}  {pf.get('filename')}  {_YELLOW}re-extracting (--force){_RESET}"
+             f"{_DIM} — note will be replaced{_RESET}")
+    elif pf.get("already_extracted"):     # a retried collection pass after a partial rate limit
         filename = pf.get("filename")
         _say(f"{_DIM}–  {filename}  already extracted — skipping{_RESET}")
         (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
         return {"sha256": sha, "filename": filename, "status": "skipped"}
-    if pf.get("already_staged"):        # extracted already (#403 phase 1) — nothing left to do
+    elif pf.get("already_staged"):        # extracted already (#403 phase 1) — nothing left to do
         filename = pf.get("filename")
         _say(f"{_DIM}–  {filename}  already extracted — pending commit{_RESET}")
         return {"sha256": sha, "filename": filename, "status": "skipped"}
@@ -808,7 +821,7 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
 
 
 async def _resume_batch(vault: Path, state: dict, pinned_skill: str, brief: str | None,
-                        api_key: str) -> dict:
+                        api_key: str, force: bool = False) -> dict:
     """Check a pending batch's status; collect and write it if `ended`, otherwise report
     progress and return without touching the vault."""
     st = await batch_extract.status(state["batch_id"], api_key)
@@ -831,7 +844,8 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str, brief: str 
         for sha in state["shas"]:
             results.append(await _finish_batch_item(vault, sha, collected.get(sha), skill_text,
                                                      skill_label, brief, api_key,
-                                                     model=state["model"], effort=state.get("effort")))
+                                                     model=state["model"], effort=state.get("effort"),
+                                                     force=force))
     except model_client.RateLimitError as e:
         # A repair-retry call (claude-api) hit a rate limit partway through collection. Leave
         # the batch state in place — already-written documents are safe (preflight's
@@ -848,7 +862,7 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str, brief: str 
 async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract_model: str,
                         pinned_skill: str, extract_effort: str | None, concurrency: int,
                         classify_model: str, classify_pages: int, classify_backend: str | None,
-                        api_key: str) -> dict:
+                        api_key: str, force: bool = False) -> dict:
     """Split the queue into sectioned (→ synchronous claude-api, via the normal
     `_extract_document`) and whole-document (→ one batch submission) shas, run the former, then
     submit the latter and return — submit-and-exit, not blocking-poll (a batch can take up to
@@ -864,12 +878,15 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
         if pf.get("error"):
             results.append(_fail(vault, sha, "", pf["error"]))
             continue
-        if pf.get("already_extracted"):
+        if force and (pf.get("already_extracted") or pf.get("already_staged")):
+            _say(f"{_DIM}↻{_RESET}  {pf.get('filename')}  {_YELLOW}re-extracting (--force){_RESET}"
+                 f"{_DIM} — note will be replaced{_RESET}")
+        elif pf.get("already_extracted"):
             _say(f"{_DIM}–  {pf.get('filename')}  already extracted — skipping{_RESET}")
             (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
             results.append({"sha256": sha, "filename": pf.get("filename"), "status": "skipped"})
             continue
-        if pf.get("already_staged"):    # extracted already (#403 phase 1) — don't resubmit
+        elif pf.get("already_staged"):    # extracted already (#403 phase 1) — don't resubmit
             _say(f"{_DIM}–  {pf.get('filename')}  already extracted — pending commit{_RESET}")
             results.append({"sha256": sha, "filename": pf.get("filename"), "status": "skipped"})
             continue
@@ -898,7 +915,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
                 return await _extract_document(vault, sha, brief, extract_model, classify_model,
                                                classify_pages, pinned_skill, extract_effort,
                                                extract_backend="claude-api",
-                                               classify_backend=classify_backend)
+                                               classify_backend=classify_backend, force=force)
         results.extend(await asyncio.gather(*[_sectioned(s) for s in sectioned_shas]))
 
     if not batch_docs:
@@ -918,7 +935,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
 async def _run_batch(vault: Path, shas: list[str], brief: str | None, extract_model: str,
                      pinned_skill: str | None, extract_effort: str | None, concurrency: int,
                      classify_model: str, classify_pages: int,
-                     classify_backend: str | None) -> dict:
+                     classify_backend: str | None, force: bool = False) -> dict:
     """Entry point for `run` when `extract_backend == "claude-batch"`. Defense-in-depth guards
     beyond `cmd_ingest`'s own checks — a programmatic caller that skips CLI validation still
     gets a clear error rather than a confusing downstream failure."""
@@ -934,10 +951,10 @@ async def _run_batch(vault: Path, shas: list[str], brief: str | None, extract_mo
 
     state = batch_extract.read_state(vault)
     if state is not None:
-        return await _resume_batch(vault, state, pinned_skill, brief, api_key)
+        return await _resume_batch(vault, state, pinned_skill, brief, api_key, force=force)
     return await _submit_batch(vault, shas, brief, extract_model, pinned_skill, extract_effort,
                                concurrency, classify_model, classify_pages, classify_backend,
-                               api_key)
+                               api_key, force=force)
 
 
 def _nudge_skill_pin(results: list) -> None:
@@ -1354,10 +1371,14 @@ def _batch_exact_fold(vault: Path, shas: list[str]) -> None:
         )
 
 
-def _pending_commits(vault: Path) -> list[str]:
+def _pending_commits(vault: Path, force_shas: list[str] | None = None) -> list[str]:
     """Every sha with a durable extraction artifact (`.watchdog/extracted/<sha>.json`) that is
     not yet a key in `registry/documents.json` — sorted, so the commit pass that consumes this
-    runs in a fixed order regardless of which document happened to extract first."""
+    runs in a fixed order regardless of which document happened to extract first.
+
+    `force_shas` (#424) are included even when already a key in `registry/documents.json` — a
+    `--force` re-extraction overwrote their staged artifact and needs `_commit_extracted` to
+    replay over it again, which the plain "not yet committed" filter would otherwise exclude."""
     extracted_dir = vault / ".watchdog" / "extracted"
     if not extracted_dir.exists():
         return []
@@ -1368,6 +1389,7 @@ def _pending_commits(vault: Path) -> list[str]:
             committed = set(json.loads(documents_path.read_text(encoding="utf-8")))
         except (OSError, json.JSONDecodeError):
             pass
+    committed -= set(force_shas or [])
     return sorted(p.stem for p in extracted_dir.glob("*.json") if p.stem not in committed)
 
 
@@ -1552,7 +1574,7 @@ def pending_finalization(vault: Path) -> dict:
 
 async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None = None,
                    results: list | None = None, post_effort: str | None = None,
-                   post_backend: str | None = None) -> dict:
+                   post_backend: str | None = None, force_shas: list[str] | None = None) -> dict:
     """Reconcile, then commit every staged extraction to the vault, then run (or re-run)
     post-ingest over the current on-disk state: file contradictions, synthesize multi-mention
     entities, reconcile the timeline, and write the briefing/hot.md/log.
@@ -1574,13 +1596,21 @@ async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None 
     If reconciliation itself fails (rate limit / model error), nothing in this batch commits —
     every staged artifact is left exactly as it was, still pending, so a later ``watchdog
     finalize`` retries the whole sequence rather than committing half-reconciled state.
+
+    `force_shas` (#424) are shas that were force-re-extracted and already have a
+    `registry/documents.json` entry from an earlier ingest — `_pending_commits` would otherwise
+    treat them as already committed and silently drop them from this batch. Passing them here
+    puts them back through the commit pass (`_commit_extracted` overwrites their existing document
+    note and registry entry in place, the same replace-not-append path a repair retry of an
+    already-committed document already relied on) and the reconciliation bundle, so their touched
+    entities are re-synthesized along with the rest of this batch.
     """
     global _usage
     standalone_usage = _usage is None   # not nested inside `run` — this call owns the usage file
     if standalone_usage:
         _usage = []
 
-    shas = _pending_commits(vault)
+    shas = _pending_commits(vault, force_shas=force_shas)
     rec_result: dict = {"merged": [], "remap": {}, "contradictions": [], "error": None}
     if shas:
         _batch_exact_fold(vault, shas)
@@ -1626,7 +1656,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
               extract_effort: str | None = None, post_effort: str | None = None,
               extract_backend: str | None = None, post_backend: str | None = None,
               classify_backend: str | None = None, wait: bool = False,
-              skip_finalize: bool = False) -> dict:
+              skip_finalize: bool = False, force: bool = False) -> dict:
     """Extract every queued document (bounded by `concurrency`), then post-ingest.
 
     `extract_model` drives extraction (whole-doc + section, and the sectioned-doc digest); `post_model` drives
@@ -1645,6 +1675,10 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     `has_pending_finalization(vault)` True so a later `watchdog finalize` — possibly with a
     different `--finalizer-model`, and possibly against a copy of the vault — can pick up
     exactly where extraction left off.
+    `force` (#424) re-extracts every queued document even when a cached artifact or a committed
+    vault note already exists for its sha — `cmd_ingest` always pairs this with
+    `skip_finalize=True` so it can gate the overwrite of already-committed documents (via
+    `finalize`'s own `force_shas`) before anything is recommitted.
     """
     queue_dir = vault / ".watchdog" / "queue"
     shas = [f.stem for f in sorted(queue_dir.glob("*.json"))] if queue_dir.exists() else []
@@ -1660,7 +1694,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         brief = _read_brief(vault)
         batch_out = await _run_batch(vault, shas, brief, extract_model, pinned_skill,
                                      extract_effort, concurrency, classify_model, classify_pages,
-                                     classify_backend)
+                                     classify_backend, force=force)
         results = batch_out["results"]
         cancelled_flag = False
         rate_limit_msg = None
@@ -1701,7 +1735,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                 try:
                     return await _extract_document(vault, sha, brief, extract_model, classify_model,
                                                    classify_pages, pinned_skill, extract_effort,
-                                                   extract_backend, classify_backend)
+                                                   extract_backend, classify_backend, force=force)
                 except model_client.RateLimitError as e:  # session-wide — stop, leave queued for resume
                     if not cancelled.is_set():
                         print()

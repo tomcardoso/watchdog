@@ -311,10 +311,149 @@ def _merge_summary(base: dict | None, new: dict) -> dict:
     return merged
 
 
+def _forced_overwrite_targets(vault: Path, summary: dict) -> list[tuple[str, str]]:
+    """Which of this run's force-re-extracted documents (#424) already have a committed vault
+    note — the set the overwrite-warning gate must list and confirm before finalize recommits
+    them. Returns (sha256, document_note) pairs, in `summary["results"]` order."""
+    documents_path = vault / ".watchdog" / "registry" / "documents.json"
+    if not documents_path.exists():
+        return []
+    try:
+        committed = json.loads(documents_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    out = []
+    for r in summary.get("results", []):
+        entry = committed.get(r.get("sha256"))
+        if r.get("status") == "ok" and entry:
+            out.append((r["sha256"], entry.get("document_note") or r["sha256"][:12]))
+    return out
+
+
+def _handle_force_gate(vault: Path, summary: dict, post_model: str,
+                       post_effort: str | None, post_backend: str | None) -> None:
+    """After `ingest --force` re-extracts with finalize held off, warn before finalize recommits
+    any document that was already in the vault — replacing an already-committed note/registry
+    entry is genuinely destructive, unlike the routine ingest confirm, so this defaults to
+    Cancel (#424). On cancel the re-staged extraction is left pending, exactly as `extract
+    --force` would leave it, for a later `watchdog finalize` to pick up; nothing is rolled back.
+
+    When force touched no already-committed document (a queue of only new documents, extracted
+    with finalize held off purely because `--force` was passed), there is nothing to warn about —
+    finalize just runs.
+    """
+    targets = _forced_overwrite_targets(vault, summary)
+    if targets:
+        n = len(targets)
+        print(f"\n  {_YELLOW}--force replaces {n} note{'s' if n != 1 else ''} already in the vault:{_RESET}")
+        for _, note in targets:
+            print(f"    {_CYAN}{note}{_RESET}")
+        if not interactive.confirm("\n  Overwrite and finalize?", default=False):
+            print(f"\n  {_DIM}Cancelled — nothing overwritten. The re-extracted batch is staged; "
+                  f"run {_RESET}{_CYAN}watchdog finalize{_RESET}{_DIM} later to complete it.{_RESET}")
+            return
+    summary["finalize_skipped"] = False
+    summary["post_ingest"] = _run_finalize(vault, post_model, post_effort, post_backend,
+                                           force_shas=[sha for sha, _ in targets] or None)
+
+
+def _resolve_force_selectors(vault: Path, selectors: list[str]) -> list[str]:
+    """Resolve each `ingest --force <selector>` argument to a committed document's sha256, against
+    `registry/documents.json` (#424). A selector matches by full sha256, an unambiguous sha256
+    prefix, its original filename, or its document note (`documents/<slug>` or just `<slug>`).
+    Exits with a clear error on no match or an ambiguous prefix — never a silent no-op. Returns
+    shas in selector order, de-duplicated (two selectors naming the same document collapse to one)."""
+    documents_path = vault / ".watchdog" / "registry" / "documents.json"
+    try:
+        documents = json.loads(documents_path.read_text(encoding="utf-8")) if documents_path.exists() else {}
+    except (OSError, json.JSONDecodeError):
+        documents = {}
+
+    resolved: list[str] = []
+    for sel in selectors:
+        if sel in documents:
+            resolved.append(sel)
+            continue
+        candidates = {sha for sha in documents if sha.startswith(sel)}
+        for sha, entry in documents.items():
+            note = entry.get("document_note") or ""
+            if sel == entry.get("filename") or sel == note or sel == Path(note).name:
+                candidates.add(sha)
+        if len(candidates) == 1:
+            resolved.append(next(iter(candidates)))
+        elif len(candidates) > 1:
+            sys.exit(f"\n  {_YELLOW}Error:{_RESET} '{sel}' matches more than one committed "
+                     f"document — use the full sha256, or an exact filename.\n")
+        else:
+            sys.exit(f"\n  {_YELLOW}Error:{_RESET} '{sel}' does not match any committed document "
+                     f"(by sha256, filename, or note).\n")
+
+    seen: set[str] = set()
+    out: list[str] = []
+    for sha in resolved:
+        if sha not in seen:
+            seen.add(sha)
+            out.append(sha)
+    return out
+
+
+def _requeue_forced_selectors(vault: Path, selectors: list[str]) -> None:
+    """`ingest --force <selector…>` (#424): resolve each selector to a committed document, then
+    re-chew its original — which a commit moves out of `.watchdog/staging/<sha>/` into the morgue,
+    recorded as `documents.json[sha]["morgue_path"]` — with chew's dedup filter and near-dup
+    self-match both bypassed for that sha, so it re-enters `.watchdog/queue/` for the force
+    re-extraction that follows. Reuses the real chew/OCR pipeline (`preprocess_batch.run_ingest`)
+    rather than duplicating it. A sha whose queue entry already exists (e.g. an earlier `--force`
+    run staged it and it was never finalized) is left alone — no need to pay for OCR twice."""
+    shas = _resolve_force_selectors(vault, selectors)
+    documents_path = vault / ".watchdog" / "registry" / "documents.json"
+    documents = json.loads(documents_path.read_text(encoding="utf-8")) if documents_path.exists() else {}
+    queue_dir = vault / ".watchdog" / "queue"
+
+    to_requeue: list[tuple[str, Path]] = []
+    for sha in shas:
+        if (queue_dir / f"{sha}.json").exists():
+            continue
+        entry = documents.get(sha, {})
+        morgue_rel = entry.get("morgue_path")
+        morgue_path = (vault / morgue_rel) if morgue_rel else None
+        if not morgue_path or not morgue_path.exists():
+            name = entry.get("filename", sha[:12])
+            sys.exit(f"\n  {_YELLOW}Error:{_RESET} the original for {_CYAN}{name}{_RESET} isn't "
+                     f"on disk at its recorded morgue path — cannot re-chew it.\n")
+        to_requeue.append((sha, morgue_path))
+
+    if not to_requeue:
+        return
+    from watchdog.pipeline import preprocess_batch
+    names = ", ".join(p.name for _, p in to_requeue)
+    print(f"\n  {_DIM}Re-chewing from the morgue (dedup bypassed):{_RESET} {_CYAN}{names}{_RESET}"
+          f"{_DIM} — local and free, but re-OCR of a big document can take a moment.{_RESET}")
+    preprocess_batch.run_ingest(vault, files=[p for _, p in to_requeue], show_ingest_hint=False,
+                                force_shas={sha for sha, _ in to_requeue})
+
+
 def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> None:
     vault = Path(".").resolve()
     if not (vault / ".watchdog").is_dir():
         sys.exit("Error: must be run from inside a Watchdog vault directory")
+
+    raw_force = getattr(args, "force", False)
+    if isinstance(raw_force, list):
+        force = True
+        force_selectors = raw_force
+    else:
+        force = bool(raw_force)
+        force_selectors = []
+    # --estimate promises "no lock, no confirm, no extraction" — read-only. Re-queueing named
+    # documents is a real mutation (moves the morgue original into staging, writes a queue file),
+    # so it must not run under --estimate; bare --force --estimate is unaffected, since it has no
+    # selectors to re-queue in the first place (#424).
+    if force_selectors and getattr(args, "estimate", False):
+        print(f"\n  {_DIM}--estimate is read-only — the named document(s) are not re-queued; "
+              f"this estimate reflects the current queue only.{_RESET}")
+    elif force_selectors:
+        _requeue_forced_selectors(vault, force_selectors)
 
     from watchdog.cmd.base import CONFIG_FILE
     config: dict = {}
@@ -342,6 +481,9 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         # routed to Claude (it picks subscription vs api-key pricing) — a stage pinned to
         # another provider needs no Claude auth at all (#325).
         auth_mode = resolve_auth()["mode"] if extract_backend is None else None
+        # cost_estimate sums est_tokens over every queue_files entry unconditionally — it already
+        # prices a --force run the same as any other, since it has no notion of a cached artifact
+        # to discount (#424 needs no extra handling here).
         est = cost_estimate(vault, queue_files, _effective_extract_backend(extract_backend, auth_mode))
         print(f"\n{_format_cost_estimate(est)}\n")
         return
@@ -468,6 +610,13 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
                  f"already runs in the background; re-run {_CYAN}watchdog ingest{_RESET} later to "
                  f"collect it.\n")
     no_finalize = getattr(args, "no_finalize", False)
+    # `force`/`force_selectors` were already resolved at the top of this function (before the
+    # re-queue-from-morgue step, which must run ahead of everything else here). `ingest --force`
+    # always extracts with finalize held off, same as `extract --force` (no_finalize) — the
+    # difference is what happens after: `cmd_extract` leaves the batch pending for a later
+    # `watchdog finalize`; plain `ingest --force` gates the overwrite of any already-committed
+    # document below, then finalizes itself once confirmed.
+    run_skip_finalize = no_finalize or force
 
     def _release_lock() -> None:
         (vault / ".watchdog" / "registry" / ".ingest-lock").unlink(missing_ok=True)
@@ -484,6 +633,9 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
     log_path = vault / "log.md"
     if not log_path.exists():
         log_path.write_text(_render_template("log.md"))
+    if force:
+        print(f"\n  {_YELLOW}--force{_RESET}{_DIM}: re-extracting even where a cached extraction "
+              f"or a committed vault note already exists.{_RESET}")
     if extract_backend == "claude-batch":
         print(f"\n  {_DIM}claude-batch: sectioned documents (if any) extract via claude-api now; "
               f"the rest submit as one batch and finish later.{_RESET}")
@@ -506,7 +658,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
                 classify_model=classify_model, classify_pages=classify_pages, pinned_skill=pinned_skill,
                 extract_effort=extract_effort, post_effort=post_effort,
                 extract_backend=extract_backend, post_backend=post_backend,
-                classify_backend=classify_backend, wait=wait, skip_finalize=no_finalize))
+                classify_backend=classify_backend, wait=wait, skip_finalize=run_skip_finalize,
+                force=force))
             summary = _merge_summary(summary, iter_summary)
             if not (wait and iter_summary.get("rate_limited")):
                 break
@@ -524,6 +677,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         sys.exit(130)
     finally:
         _release_lock()
+    if force and not no_finalize and summary.get("finalize_skipped") and not summary.get("batch_pending"):
+        _handle_force_gate(vault, summary, post_model, post_effort, post_backend)
     _print_ingest_summary(summary)
 
 
@@ -645,8 +800,13 @@ def cmd_finalize(args) -> None:
 
 
 def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
-                  post_backend: str | None = None) -> dict:
-    """Acquire the ingest lock, run post-ingest over the pending batch, print the outcome."""
+                  post_backend: str | None = None, force_shas: list[str] | None = None) -> dict:
+    """Acquire the ingest lock, run post-ingest over the pending batch, print the outcome.
+
+    `force_shas` (#424) are already-committed shas a forced re-extraction just re-staged —
+    passed straight through to `orchestrate.finalize`, which puts them back through the commit
+    pass so their vault note and registry entry are replaced rather than silently skipped as
+    already-committed."""
     from watchdog.pipeline import orchestrate
     from watchdog.pipeline.locks import acquire_or_take_stale, lock_started_at
     from watchdog.pipeline.ingest_setup import STALE_SECONDS, _iso_now
@@ -663,7 +823,7 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
     try:
         import asyncio
         out = asyncio.run(orchestrate.finalize(vault, post_model=post_model, post_effort=post_effort,
-                                               post_backend=post_backend))
+                                               post_backend=post_backend, force_shas=force_shas))
     finally:
         lock.unlink(missing_ok=True)
 

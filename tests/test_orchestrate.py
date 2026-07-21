@@ -2200,7 +2200,7 @@ def test_submit_batch_splits_sectioned_and_whole_doc(tmp_path, monkeypatch):
     sectioned_calls = []
     async def fake_extract_document(vault, sha, brief, extract_model, classify_model,
                                     classify_pages, pinned_skill, extract_effort,
-                                    extract_backend, classify_backend):
+                                    extract_backend, classify_backend, force=False):
         sectioned_calls.append({"sha": sha, "extract_backend": extract_backend})
         return {"sha256": sha, "filename": f"{sha}.pdf", "status": "ok", "record_skill": "s"}
     monkeypatch.setattr(orchestrate, "_extract_document", fake_extract_document)

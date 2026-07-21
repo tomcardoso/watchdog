@@ -58,3 +58,30 @@ def test_filter_keeps_everything_when_nothing_seen(tmp_path):
     kept = _filter_already_seen([a, b], v, incoming, queue)
     assert {f.name for f in kept} == {"a.txt", "b.txt"}
     assert not (incoming / "_SKIPPED").exists()
+
+
+def test_filter_force_shas_bypasses_already_ingested_but_not_others(tmp_path):
+    """`--force <selector>` (#424) re-chews a committed document's own morgue original, which is
+    "already ingested" by design — that sha must be bypassed, but any other already-ingested file
+    in the same batch must still be skipped as usual."""
+    v = _vault(tmp_path)
+    incoming = v / "_INCOMING"
+    queue = v / ".watchdog" / "queue"
+
+    forced = incoming / "forced.txt"
+    forced.write_text("being re-chewed on purpose")
+    other_ingested = incoming / "other.txt"
+    other_ingested.write_text("also already in the vault, not forced")
+
+    forced_sha = sha256_file(forced)
+    other_sha = sha256_file(other_ingested)
+    (v / ".watchdog" / "registry" / "documents.json").write_text(json.dumps({
+        forced_sha: {"filename": "forced.txt"},
+        other_sha: {"filename": "other.txt"},
+    }))
+
+    kept = _filter_already_seen([forced, other_ingested], v, incoming, queue,
+                                force_shas={forced_sha})
+
+    assert {f.name for f in kept} == {"forced.txt"}
+    assert {p.name for p in (incoming / "_SKIPPED").glob("*")} == {"other.txt"}

@@ -31,8 +31,13 @@ _PROGRESS_KEY = "__progress__"
 _SPACER_KEY = "__progress_spacer__"
 
 
-def _compute_near_dup(result: dict, vault: Path) -> dict:
-    """Compute near-duplicate check for a freshly chewed document. Never raises."""
+def _compute_near_dup(result: dict, vault: Path, exclude_sha: str | None = None) -> dict:
+    """Compute near-duplicate check for a freshly chewed document. Never raises.
+
+    `exclude_sha` (#424) leaves one sha out of the comparison — needed when re-chewing a
+    document's own committed original for `--force`: its own registry entry is still there
+    (this isn't a fresh document), and comparing its content against itself would always match
+    at ~1.0 similarity, which would misreport the re-queued document as its own near-duplicate."""
     try:
         from watchdog.pipeline.near_dup import shingles_from_text, minhash, minhash_similarity
         text = " ".join(p.get("markdown", "") for p in result.get("pages", []))
@@ -49,6 +54,8 @@ def _compute_near_dup(result: dict, vault: Path) -> dict:
             pass
         matches = []
         for sha, doc in documents.items():
+            if sha == exclude_sha:
+                continue
             stored_mh = doc.get("minhash")
             if stored_mh:
                 sim = minhash_similarity(candidate_mh, stored_mh)
@@ -254,7 +261,8 @@ def preprocess_one(
     return result
 
 
-def _filter_already_seen(files: list, vault: Path, incoming: Path, queue: Path) -> list:
+def _filter_already_seen(files: list, vault: Path, incoming: Path, queue: Path,
+                         force_shas: set | None = None) -> list:
     """Drop files whose exact content is already known, before paying for OCR (#146).
 
     Each file's sha256 is checked against the document registry (already ingested) and the pending
@@ -263,6 +271,10 @@ def _filter_already_seen(files: list, vault: Path, incoming: Path, queue: Path) 
     rather than re-OCR'd and re-queued — the journalist keeps the file, it just isn't processed
     again. (Exact bytes only; a near-duplicate has a different sha and is handled by the MinHash
     check at ingest.)
+
+    `force_shas` (#424) bypasses the "already ingested"/"already queued" checks for exactly those
+    shas — used when re-chewing a committed document's morgue original for `--force <selector>`,
+    where being already-ingested is the whole point, not a reason to skip it.
     """
     docs_path = vault / ".watchdog" / "registry" / "documents.json"
     try:
@@ -270,12 +282,17 @@ def _filter_already_seen(files: list, vault: Path, incoming: Path, queue: Path) 
     except (OSError, json.JSONDecodeError):
         ingested = set()
     queued = {p.stem for p in queue.glob("*.json")}
+    force_shas = force_shas or set()
 
     keep, seen = [], set()
     for f in files:
         try:
             sha = sha256_file(f)
         except OSError:
+            keep.append(f)
+            continue
+        if sha in force_shas:
+            seen.add(sha)
             keep.append(f)
             continue
         reason = ("already ingested" if sha in ingested
@@ -303,7 +320,12 @@ def run_ingest(
     chunk_workers: int | None = None,
     files: list | None = None,
     show_ingest_hint: bool = True,
+    force_shas: set | None = None,
 ) -> None:
+    """`force_shas` (#424): re-chew these specific shas even though their content is already
+    known — bypasses `_filter_already_seen`'s dedup for exactly them, and excludes each from its
+    own near-duplicate comparison. Used by `ingest --force <selector>` to regenerate a queue entry
+    from a committed document's morgue original; every other caller leaves this unset."""
     incoming = vault / "_INCOMING"
     queue    = vault / ".watchdog" / "queue"
     staging  = vault / ".watchdog" / "staging"
@@ -327,7 +349,7 @@ def run_ingest(
 
     try:
         _run_ingest_inner(vault, incoming, queue, staging, workers, chunk_workers, files,
-                          show_ingest_hint)
+                          show_ingest_hint, force_shas=force_shas)
     finally:
         try:
             lock_file.unlink()
@@ -344,10 +366,11 @@ def _run_ingest_inner(
     chunk_workers: int | None,
     files: list | None,
     show_ingest_hint: bool = True,
+    force_shas: set | None = None,
 ) -> None:
     if files is None:
         files = find_files([incoming])
-    files = _filter_already_seen(files, vault, incoming, queue)
+    files = _filter_already_seen(files, vault, incoming, queue, force_shas=force_shas)
     if not files:
         queued = len(list(queue.glob("*.json")))
         if queued:
@@ -481,7 +504,8 @@ def _run_ingest_inner(
                         result["source_path"] = str(dest)
                     except OSError:
                         pass
-                    result["near_dup"] = _compute_near_dup(result, vault)
+                    force_self = sha256 if force_shas and sha256 in force_shas else None
+                    result["near_dup"] = _compute_near_dup(result, vault, exclude_sha=force_self)
                     result["document_type"] = None
                     # Filter to the allowlisted fields, embed the clean copy in the queue JSON,
                     # and drop the original — nothing reads a sidecar off disk past this point
