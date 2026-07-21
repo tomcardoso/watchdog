@@ -1100,59 +1100,36 @@ def _select_kept(events: list[dict], groups) -> list[dict]:
 
 
 async def _post_ingest(vault: Path, results: list, brief: str | None, post_model: str,
-                       post_effort: str | None = None, post_backend: str | None = None) -> dict:
+                       post_effort: str | None = None, post_backend: str | None = None,
+                       rec_result: dict | None = None) -> dict:
     out: dict = {"synthesized": 0, "timeline_collisions": 0, "briefing": None,
                  "merged": [], "contradictions": []}
     print()
     _say(f"{_BOLD}Post-processing{_RESET}")
 
-    # 0. Reconciliation (#381/D118) — entity resolution + contradiction detection, the two jobs
-    # that need every document's claims side by side. Extraction cannot do either (it reads one
-    # document, and only ever sees the documents that landed before it); this is the first stage
-    # that can. One call, whatever the batch size.
-    #
-    # It runs FIRST in post-ingest, because both of its outputs change what the later steps see: a
-    # merge means synthesis writes one summary for one entity instead of two half-summaries for
-    # two, and a contradiction callout is written into the entity note that synthesis and the
-    # briefing then read.
-    rec_bundle = reconcile.build_bundle(vault)
-    if rec_bundle["entities"] or rec_bundle["pairs"]:
-        n_pairs, n_ents = len(rec_bundle["pairs"]), len(rec_bundle["entities"])
-        # Sized and reported the same way the old #216 digest telemetry was — visibility now, so
-        # a future cap/chunking decision (§8.5) comes from real bundle sizes, not a guess.
-        rec_prompt = prompts.build_reconcile_prompt(rec_bundle)
-        kb = len(rec_prompt) / 1024
-        _say(f"{_DIM}→  reconciling · {n_ents} recurring entit{'ies' if n_ents != 1 else 'y'}, "
-             f"{n_pairs} possible duplicate{'s' if n_pairs != 1 else ''} · {kb:.1f} KB…{_RESET}")
-        try:
-            r = await _call_model(
-                task="reconcile", model=post_model, backend=post_backend, schema=schemas.RECONCILE,
-                prompt=rec_prompt, effort=post_effort,
-                detail=f"{n_ents} entities · {n_pairs} pairs · {kb:.1f} KB", vault=vault)
-        except (model_client.ModelError, model_client.RateLimitError) as e:
-            # Reconciliation is enrichment over an already-written vault: the entities and their
-            # claims are on disk either way. Skipping leaves duplicates unmerged and conflicts
-            # unflagged — recoverable by re-running `watchdog finalize` — but only because this
-            # flag (the same key synthesis uses) stops `finalize()` from clearing the fragment
-            # queue below; without it the queue reconcile reads `_touched_ids` from would be
-            # deleted and the recovery would silently no-op.
-            out["error"] = str(e)
-            _say(f"{_YELLOW}reconciliation skipped{_RESET}{_DIM} — {e}{_RESET}")
-            _log(vault, f"RECONCILE skipped: {e}")
-        else:
-            applied = reconcile.apply(vault, r.parsed, rec_bundle,
-                                      warn=lambda m: (_say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{m}{_RESET}"),
-                                                      _log(vault, f"WARN {m}")))
-            out["merged"] = applied["merged"]
-            out["contradictions"] = applied["contradictions"]
-            for m in applied["merged"]:
-                _say(f"   {_DIM}merged{_RESET} {m['merge_name']} {_DIM}→{_RESET} "
-                     f"{_BOLD}{m['keep_name']}{_RESET}  {_DIM}{m['reason']}{_RESET}")
-                _log(vault, f"MERGED {m['merge_id']} into {m['keep_id']}: {m['reason']}")
-            for c in applied["contradictions"]:
-                _say(f"   {_YELLOW}⚠{_RESET}  {_BOLD}{c['label']}{_RESET} {_DIM}—{_RESET} "
-                     f"{c['entity_name']}  {_CYAN}{c['note_path']}{_RESET}")
-                _log(vault, f"CONTRADICTION {c['entity_id']}: {c['label']}")
+    # 0. Contradictions — the post-commit half of reconciliation (#381/D118). The merge half
+    # (entity-duplicate resolution) now runs BEFORE the commit pass, over the staged batch
+    # (`_reconcile_pre_commit`, called from `finalize` — #403 phase 3): a merge changes what a
+    # contradiction would even be about, and folding it pre-commit means a same-batch duplicate
+    # becomes a cheap staged id rewrite instead of post-commit note surgery. Contradictions still
+    # wait until here, because `contradiction.run` validates both document slugs against
+    # `registry/documents.json`, which only has this batch's documents once they are committed.
+    # `rec_result` carries forward `_reconcile_pre_commit`'s merge remap — a contradiction may name
+    # an entity a merge folded away moments before commit — and its raw (unapplied) merges/
+    # contradictions for the briefing/log below.
+    rec_result = rec_result or {}
+    out["merged"] = rec_result.get("merged", [])
+    contradiction_items = rec_result.get("contradictions") or []
+    if contradiction_items:
+        applied_contradictions = reconcile.apply_contradictions(
+            vault, contradiction_items, rec_result.get("remap") or {},
+            warn=lambda m: (_say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{m}{_RESET}"),
+                            _log(vault, f"WARN {m}")))
+        out["contradictions"] = applied_contradictions
+        for c in applied_contradictions:
+            _say(f"   {_YELLOW}⚠{_RESET}  {_BOLD}{c['label']}{_RESET} {_DIM}—{_RESET} "
+                 f"{c['entity_name']}  {_CYAN}{c['note_path']}{_RESET}")
+            _log(vault, f"CONTRADICTION {c['entity_id']}: {c['label']}")
 
     # 1. Entity synthesis for multi-mention entities (Python builds + applies; model reconciles).
     bundle = synthesis_bundle.build_bundle(vault)
@@ -1434,7 +1411,58 @@ def _commit_extracted(vault: Path, sha: str) -> dict | None:
     return written
 
 
-def _commit_pending(vault: Path) -> dict:
+async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
+                                post_effort: str | None, post_backend: str | None) -> dict:
+    """Pre-commit reconciliation (#381/D118, #403 phase 3): entity-duplicate resolution over the
+    staged batch unioned with the registry, before any of it is written to the vault. Runs before
+    the commit pass (see `finalize`) because a confirmed merge between two of this batch's own
+    documents is cheapest resolved as a staged id rewrite — write_vault then commits the two as
+    one entity naturally, and no post-commit note surgery (redirect stub, backup) is ever needed.
+
+    Returns ``{"merged": [...], "remap": {...}, "contradictions": [...], "error": str | None}``.
+    `contradictions` are the model's raw (unapplied) items — `apply_contradictions` needs the
+    committed vault to validate document slugs against, so it runs after the commit pass
+    (`_post_ingest` step 0). On a `ModelError`/`RateLimitError`, `error` is set and nothing is
+    applied — the caller (`finalize`) must not commit in that case: the staged JSON is the durable
+    input now (not the fragment queue), so leaving it uncommitted is what lets a later
+    `watchdog finalize` retry the whole fold → reconcile → commit sequence cleanly.
+    """
+    result: dict = {"merged": [], "remap": {}, "contradictions": [], "error": None}
+    rec_bundle = reconcile.build_bundle(vault, shas)
+    if not (rec_bundle["entities"] or rec_bundle["pairs"]):
+        return result
+    n_pairs, n_ents = len(rec_bundle["pairs"]), len(rec_bundle["entities"])
+    # Sized and reported the same way the old #216 digest telemetry was — visibility now, so
+    # a future cap/chunking decision (§8.5) comes from real bundle sizes, not a guess.
+    rec_prompt = prompts.build_reconcile_prompt(rec_bundle)
+    kb = len(rec_prompt) / 1024
+    _say(f"{_DIM}→  reconciling · {n_ents} recurring entit{'ies' if n_ents != 1 else 'y'}, "
+         f"{n_pairs} possible duplicate{'s' if n_pairs != 1 else ''} · {kb:.1f} KB…{_RESET}")
+    try:
+        r = await _call_model(
+            task="reconcile", model=post_model, backend=post_backend, schema=schemas.RECONCILE,
+            prompt=rec_prompt, effort=post_effort,
+            detail=f"{n_ents} entities · {n_pairs} pairs · {kb:.1f} KB", vault=vault)
+    except (model_client.ModelError, model_client.RateLimitError) as e:
+        result["error"] = str(e)
+        _say(f"{_YELLOW}reconciliation skipped{_RESET}{_DIM} — {e}{_RESET}")
+        _log(vault, f"RECONCILE skipped: {e}")
+        return result
+
+    applied = reconcile.apply_merges(
+        vault, shas, r.parsed, rec_bundle,
+        warn=lambda m: (_say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{m}{_RESET}"), _log(vault, f"WARN {m}")))
+    result["merged"] = applied["merged"]
+    result["remap"] = applied["remap"]
+    result["contradictions"] = applied["contradictions"]
+    for m in applied["merged"]:
+        _say(f"   {_DIM}merged{_RESET} {m['merge_name']} {_DIM}→{_RESET} "
+             f"{_BOLD}{m['keep_name']}{_RESET}  {_DIM}{m['reason']}{_RESET}")
+        _log(vault, f"MERGED {m['merge_id']} into {m['keep_id']}: {m['reason']}")
+    return result
+
+
+def _commit_pending(vault: Path, shas: list[str] | None = None) -> dict:
     """Commit every staged-but-uncommitted extraction to the vault, in sorted sha order, before
     any post-ingest model call runs. Patches each committed document's persisted
     `result_<sha>.json` with the writer's new/updated entity split, if that file still exists —
@@ -1442,14 +1470,22 @@ def _commit_pending(vault: Path) -> dict:
     the briefing prompt would otherwise never see it (#150's `key_facts` still ride along either
     way).
 
+    `shas`, when given (by `finalize`, which has already computed and exact-folded them ahead of
+    its own pre-commit reconciliation pass), is used as-is — no redundant re-fold. Standalone
+    callers (tests; a bare commit pass with no reconciliation) can omit it and get the old
+    self-contained behaviour: compute the pending set and fold it here.
+
     Returns ``{"committed": n, "written": {sha: {"new_entities", "updated_entities"}, ...}}`` —
     the per-sha split is also returned (not just patched to disk) so `run()` can sync it onto
     its own in-memory `results` list, which is built before this pass ever runs and would
     otherwise keep reporting an empty new/updated split for the life of that call."""
-    shas = _pending_commits(vault)
-    if not shas:
+    if shas is None:
+        shas = _pending_commits(vault)
+        if not shas:
+            return {"committed": 0, "written": {}}
+        _batch_exact_fold(vault, shas)
+    elif not shas:
         return {"committed": 0, "written": {}}
-    _batch_exact_fold(vault, shas)
     _say(f"{_DIM}→  committing {len(shas)} document{'s' if len(shas) != 1 else ''} "
          f"to the vault…{_RESET}")
     tmp_dir = vault / ".watchdog" / "tmp"
@@ -1512,9 +1548,9 @@ def pending_finalization(vault: Path) -> dict:
 async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None = None,
                    results: list | None = None, post_effort: str | None = None,
                    post_backend: str | None = None) -> dict:
-    """Commit every staged extraction to the vault, then run (or re-run) post-ingest over the
-    current on-disk state: synthesize multi-mention entities, reconcile the timeline, and write
-    the briefing/hot.md/log.
+    """Reconcile, then commit every staged extraction to the vault, then run (or re-run)
+    post-ingest over the current on-disk state: file contradictions, synthesize multi-mention
+    entities, reconcile the timeline, and write the briefing/hot.md/log.
 
     Called at the tail of every ``watchdog ingest`` (with this run's results in memory) and
     standalone by ``watchdog finalize`` (reading persisted ``result_*.json``) to complete a
@@ -1522,22 +1558,49 @@ async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None 
     inputs (fragments, results, scratchpads) are cleared; if any step failed they are left in
     place so a later finalize can retry.
 
-    The commit pass (#403 phase 1, ``_commit_pending``) runs first, before any post-ingest model
-    call and before ``results`` is loaded from disk — it replays ``write_vault.run`` over every
-    ``.watchdog/extracted/<sha>.json`` not yet in the registry, in sorted sha order, which is what
-    covers this function's three entry paths (ingest's tail, standalone ``watchdog finalize``,
-    and a resumed run after a rate-limit stop) with one code path.
+    #403 phase 3 order: exact-name fold → pre-commit reconciliation (entity-duplicate resolution,
+    over the staged batch — ``_reconcile_pre_commit``) → the commit pass (#403 phase 1,
+    ``_commit_pending``, which replays ``write_vault.run`` over every
+    ``.watchdog/extracted/<sha>.json`` not yet in the registry, in sorted sha order) → post-ingest
+    (contradictions, synthesis, timeline, briefing). This is what covers this function's three
+    entry paths (ingest's tail, standalone ``watchdog finalize``, and a resumed run after a
+    rate-limit stop) with one code path.
+
+    If reconciliation itself fails (rate limit / model error), nothing in this batch commits —
+    every staged artifact is left exactly as it was, still pending, so a later ``watchdog
+    finalize`` retries the whole sequence rather than committing half-reconciled state.
     """
     global _usage
     standalone_usage = _usage is None   # not nested inside `run` — this call owns the usage file
     if standalone_usage:
         _usage = []
-    commit_summary = _commit_pending(vault)
+
+    shas = _pending_commits(vault)
+    rec_result: dict = {"merged": [], "remap": {}, "contradictions": [], "error": None}
+    if shas:
+        _batch_exact_fold(vault, shas)
+        rec_result = await _reconcile_pre_commit(vault, shas, post_model, post_effort, post_backend)
+
+    if rec_result.get("error"):
+        # Reconciliation runs before the commit pass (#403 phase 3), so its failure means nothing
+        # in this batch was written — the staged artifacts are all still pending. `commit_skipped`
+        # lets the caller say that accurately, rather than the post-commit "documents are saved"
+        # message that fits a synthesis/briefing failure.
+        out = {"synthesized": 0, "timeline_collisions": 0, "briefing": None,
+               "merged": [], "contradictions": [], "error": rec_result["error"],
+               "committed_writes": {}, "commit_skipped": True}
+        if standalone_usage:
+            out["usage_path"] = _write_usage(vault, _usage)
+            out["usage"] = _usage_totals(_usage) if _usage else None
+            _usage = None
+        return out
+
+    commit_summary = _commit_pending(vault, shas)
     if brief is None:
         brief = _read_brief(vault)
     if results is None:
         results = _load_results(vault)
-    out = await _post_ingest(vault, results, brief, post_model, post_effort, post_backend)
+    out = await _post_ingest(vault, results, brief, post_model, post_effort, post_backend, rec_result)
     # Surfaced so `run()` can sync the writer's new/updated split onto its own in-memory
     # `summary["results"]`, built before this pass ever runs (see `_commit_pending`'s docstring).
     out["committed_writes"] = commit_summary["written"]

@@ -603,11 +603,14 @@ def test_cross_document_contradiction_caught_and_fed_to_briefing(tmp_path, monke
 
 
 def test_reconcile_failure_leaves_batch_finalizable(tmp_path, monkeypatch):
-    """A reconcile failure must not leave the batch looking clean: `finalize()` only clears the
-    fragment queue when `out` has neither `error` nor `briefing_error`, so if reconcile fails but
-    synthesis and briefing succeed, `out["error"]` must still be set — otherwise the queue
-    `reconcile._touched_ids` reads is deleted and the documented recovery (`watchdog finalize`)
-    silently no-ops."""
+    """A reconcile failure must not leave the batch looking clean — but #403 phase 3 moved
+    reconciliation BEFORE the commit pass, over the staged batch, so "leaving it finalizable" now
+    means nothing in this batch commits at all: every staged extraction artifact is the durable
+    input, still pending, and a later `watchdog finalize` retries the whole
+    fold -> reconcile -> commit sequence from scratch rather than committing half-reconciled state
+    a retry could never revisit (there would be nothing left pending to reconcile against)."""
+    fails = {"reconcile": True}
+
     def _ext(sha, filename, fact):
         return {
             "document": {"sha256": sha, "filename": filename,
@@ -634,7 +637,9 @@ def test_reconcile_failure_leaves_batch_finalizable(tmp_path, monkeypatch):
             else:
                 parsed = _ext("sha-two", "doc-two.pdf", "Acme filed TWO")
         elif task == "reconcile":
-            raise model_client.ModelError("reconcile boom")
+            if fails["reconcile"]:
+                raise model_client.ModelError("reconcile boom")
+            parsed = {"merges": [], "contradictions": []}
         elif task == "entity-synthesis":
             parsed = {"entity_syntheses": []}
         elif task == "timeline-dedup":
@@ -656,7 +661,20 @@ def test_reconcile_failure_leaves_batch_finalizable(tmp_path, monkeypatch):
     assert summary["extracted"] == 2
 
     assert "reconcile boom" in summary["post_ingest"]["error"]
-    assert (vault / ".watchdog" / "tmp" / "entity-fragments" / "_queue.json").exists()
+    # Flag that lets the CLI say "nothing written yet" rather than the post-commit "documents are
+    # saved" message — the commit pass never ran.
+    assert summary["post_ingest"]["commit_skipped"] is True
+    # Nothing committed — both staged artifacts are still pending.
+    assert orchestrate._pending_commits(vault) == ["sha-one", "sha-two"]
+    assert json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text()) == {}
+
+    # Once reconciliation stops failing, a later finalize completes the deferred commit.
+    fails["reconcile"] = False
+    out = asyncio.run(orchestrate.finalize(vault, post_model="haiku"))
+    assert not out.get("error")
+    assert orchestrate._pending_commits(vault) == []
+    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
+    assert set(entities["acme-corp"]["appears_in"]) == {"sha-one", "sha-two"}
 
 
 def test_orchestrator_reports_failed_on_postflight_rejection(tmp_path, monkeypatch):
@@ -1477,8 +1495,10 @@ def test_failed_doc_is_named_and_quarantine_surfaced(tmp_path, monkeypatch):
 
 
 def test_post_ingest_model_failure_degrades_without_crashing(tmp_path, monkeypatch):
-    """A rate limit (or model error) during post-ingest must not crash: the extracted docs
-    are already saved, synthesis is skipped, and the run returns a summary cleanly."""
+    """A rate limit (or model error) must not crash: the run returns a summary cleanly. Both docs
+    share an entity, so pre-commit reconciliation (#403 phase 3) is the first post-extraction model
+    call and the one that hits the rate limit here — which defers the commit itself (see
+    `test_reconcile_failure_leaves_batch_finalizable`), so synthesis never runs either."""
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="aaa", filename="a.pdf", text="Acme Corp filed.")
     _queue_doc(vault, sha="bbb", filename="b.pdf", text="Acme Corp again.")
