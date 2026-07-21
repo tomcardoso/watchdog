@@ -893,6 +893,9 @@ registry/
   requests.json             document-request ledger — id/provenance stamped by Python (D111)
   ingest.log                append-only ingest log (START/OK/WARN/FAILED per doc, D102)
   usage/usage-<ts>.json     per-run model-call token/cost/latency telemetry (D50, D86, D102)
+  usage/usage-<ts>.partial.jsonl  in-progress run's calls, one JSON line per completed call —
+                            folded into a real usage-<ts>.json and removed at the *next* run's
+                            start if the run that wrote it never reached a clean exit (D132)
   batch-pending.json        pending claude-batch extraction state (D52)
   .ingest-lock / .write-lock  run lock / write serialization
 backups/<ts>-<operation>/   pre-mutation snapshots for irreversible operations (D71)
