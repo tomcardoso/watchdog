@@ -566,8 +566,15 @@ def _print_ingest_summary(summary: dict) -> None:
     pi_error = summary.get("post_ingest_error") or (summary.get("post_ingest") or {}).get("error")
     if pi_error:
         print(f"\n  {_YELLOW}Post-processing didn't finish{_RESET}{_DIM} — {pi_error}.{_RESET}")
-        print(f"  {_DIM}Documents are saved with their extracted claims; run {_RESET}"
-              f"{_CYAN}watchdog finalize{_RESET}{_DIM} to complete synthesis + the briefing.{_RESET}")
+        if (summary.get("post_ingest") or {}).get("commit_skipped"):
+            # Reconciliation failed before the commit pass (#403 phase 3): nothing was written to
+            # the vault yet — the extracted documents are staged and a re-run picks up where it
+            # stopped, so don't imply they're already saved.
+            print(f"  {_DIM}Nothing was written to the vault yet; re-run {_RESET}"
+                  f"{_CYAN}watchdog finalize{_RESET}{_DIM} once your rate limit resets to finish the ingest.{_RESET}")
+        else:
+            print(f"  {_DIM}Documents are saved with their extracted claims; run {_RESET}"
+                  f"{_CYAN}watchdog finalize{_RESET}{_DIM} to complete synthesis + the briefing.{_RESET}")
     usage = summary.get("usage")
     if usage:
         cost = f" · ~${usage['cost_usd']:.4f}" if usage.get("cost_usd") else ""

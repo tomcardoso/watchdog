@@ -8,9 +8,19 @@ began — which meant a document could only ever be compared against the documen
 land ahead of it, and documents in the same concurrency wave could not see each other at all.
 
 The finalizer is the only stage that sees the whole entity set, so both jobs live here. It runs
-once per ingest, after every document has been written, which makes it concurrency-immune,
-order-immune, and near-constant in cost (one call, like the briefing — it does not scale with
-page count).
+once per ingest, over the staged batch's extraction artifacts unioned with the registry, which
+makes it concurrency-immune, order-immune, and near-constant in cost (one call, like the briefing
+— it does not scale with page count).
+
+**Merges run before commit, contradictions after (#403 phase 3).** `build_bundle` and
+`apply_merges` read `.watchdog/extracted/<sha>.json` — the staged, not-yet-committed batch — so a
+confirmed duplicate between two documents landing in the same ingest is folded in the staged JSON
+itself; write_vault then commits the two as one entity and no post-commit note surgery (redirect
+stub, backup, "Merged from" provenance) is ever produced for a same-batch duplicate. A duplicate
+against an *already-committed* entity still gets that surgery (`merge_entities.run`), since that
+entity's note genuinely exists. Contradictions need the committed notes/documents to validate
+against (`contradiction.run` checks both doc slugs exist in `registry/documents.json`), so
+`apply_contradictions` runs after the commit pass, using the merge remap `apply_merges` returned.
 
 **The split with the deterministic writer.** `write_vault._reconcile_entity_ids` already folds
 *exact* normalized-name duplicates together, in-lock, at write time — that pass is untouched and
@@ -34,12 +44,16 @@ or a stale entity id produces a skipped item and a warning, never a bad note.
 """
 
 import json
+from copy import deepcopy
 from pathlib import Path
 
 from watchdog.pipeline import contradiction, merge_entities
 from watchdog.pipeline.entity_norm import normalize_entity_name
 from watchdog.pipeline.entity_type import canonical_type
-from watchdog.pipeline.write_vault import _extract_analysis, _extract_summary
+from watchdog.pipeline.write_vault import (
+    _doc_slug, _extract_analysis, _extract_summary, _merge_entity, _new_entity,
+    _render_evidence_fragments,
+)
 
 # Structural words carry no identifying signal, so they are dropped before names are compared —
 # otherwise "University of Toronto" and "University of Waterloo" share half their tokens ("university",
@@ -180,54 +194,106 @@ def _roles_digest(roles: list[dict]) -> list[dict]:
     ]
 
 
-def _touched_ids(vault: Path) -> set[str]:
-    """The entities this run wrote to, from the finalizer's fragment queue."""
-    q = vault / ".watchdog" / "tmp" / "entity-fragments" / "_queue.json"
-    if not q.exists():
-        return set()
-    try:
-        return set(json.loads(q.read_text(encoding="utf-8")))
-    except (OSError, json.JSONDecodeError):
-        return set()
+def _staged_artifacts(vault: Path, shas: list[str]) -> list[tuple[str, dict]]:
+    """Every staged extraction artifact for `shas` that still exists, parsed, paired with its
+    sha. Tolerates a missing/corrupt artifact (defensive; `shas` normally comes straight from
+    `orchestrate._pending_commits`, which just listed these files) by skipping it silently —
+    the commit pass that follows will surface the same problem loudly if it matters."""
+    extracted_dir = vault / ".watchdog" / "extracted"
+    out = []
+    for sha in shas:
+        p = extracted_dir / f"{sha}.json"
+        if not p.exists():
+            continue
+        try:
+            out.append((sha, json.loads(p.read_text(encoding="utf-8"))))
+        except (OSError, json.JSONDecodeError):
+            continue
+    return out
 
 
-def build_bundle(vault: Path) -> dict:
+def build_bundle(vault: Path, shas: list[str]) -> dict:
     """Assemble the one reconciliation call's input: candidate duplicate pairs, and the claim
-    ledger of every entity that could hold a contradiction.
+    ledger of every entity that could hold a contradiction — reconstructed from the staged batch
+    (`.watchdog/extracted/<sha>.json`, post exact-fold) unioned with the registry, rather than
+    from the committed vault (#403 phase 3). This runs *before* the commit pass, so a confirmed
+    merge between two of this batch's own documents can be applied as a staged id rewrite instead
+    of post-commit note surgery — see the module docstring.
 
-    The claim ledger is the entity note's ``## Analysis`` section — `write_vault` appends a
-    source-attributed block to it per document (`*<date>, via [[documents/<slug>|<title>]]:*`,
-    then that document's claims with page links), so it already *is* the durable, complete,
-    per-entity record of what each document said, in the shape this pass needs. This is the same
-    content pre-flight used to send to the extractor once per document; assembling it here means
-    it is built once per ingest instead, and — unlike the pre-flight digest — it is complete,
-    because every document has landed by the time it is read.
+    A **working entity map** — a deep copy of the registry, folded with each staged artifact's
+    entities via the same `write_vault._new_entity`/`_merge_entity` the real commit will use
+    (mirroring `orchestrate._batch_exact_fold`'s own pattern) — stands in for "the registry as it
+    will look once this batch commits", without writing anything. `touched` is every entity id
+    those staged artifacts contribute (replaces the old fragment-queue-based `_touched_ids`, which
+    only existed post-commit).
+
+    The claim ledger is normally the entity note's ``## Analysis`` section — `write_vault` appends
+    a source-attributed block to it per document (`*<date>, via [[documents/<slug>|<title>]]:*`,
+    then that document's claims with page links). Pre-commit, that block does not exist yet for
+    this batch's own claims, so it is reconstructed here: the existing note's ``## Analysis`` (if
+    the entity was already committed before this batch) plus one rendered block per staged
+    document that touched it, in the same shape. This claims text feeds the model question only —
+    it is never written to disk — so a faithful-enough reconstruction is fine even though it will
+    not be byte-identical to what `write_vault` eventually renders.
     """
     entities_path = vault / ".watchdog" / "registry" / "entities.json"
-    if not entities_path.exists():
-        return {"entities": [], "pairs": []}
     try:
-        entities_reg = json.loads(entities_path.read_text(encoding="utf-8"))
+        original_reg = (
+            json.loads(entities_path.read_text(encoding="utf-8")) if entities_path.exists() else {}
+        )
     except (OSError, json.JSONDecodeError):
-        return {"entities": [], "pairs": []}
+        original_reg = {}
 
-    touched = _touched_ids(vault)
+    working = deepcopy(original_reg)
+    # eid -> this batch's (sha, document, entity) contributions, in `shas` order (sorted, D126),
+    # so a per-entity claim/summary reconstruction below sees documents in the same order commit
+    # will actually process them.
+    contributions: dict[str, list[tuple[str, dict, dict]]] = {}
+    touched: set[str] = set()
+
+    for sha, artifact in _staged_artifacts(vault, shas):
+        doc = artifact.get("document") or {}
+        for entity in artifact.get("entities", []):
+            eid = entity.get("id")
+            if not eid:
+                continue
+            touched.add(eid)
+            if eid in working:
+                _merge_entity(working[eid], entity, sha)
+            else:
+                working[eid] = _new_entity(entity, sha)
+            contributions.setdefault(eid, []).append((sha, doc, entity))
 
     entities = []
     for eid in sorted(touched):
-        entry = entities_reg.get(eid)
-        if entry is None:      # merged away by an earlier pass, or a stale queue entry
+        entry = working.get(eid)
+        if entry is None:
             continue
         if len(entry.get("appears_in", [])) < _MIN_DOCS:
             continue           # one document cannot contradict itself
         note = vault / f"{entry.get('note_path', '')}.md"
+        claims = _extract_analysis(note) if eid in original_reg else ""
+        summary = _extract_summary(note) or ""
+        for sha, doc, entity in contributions.get(eid, []):
+            if entity.get("summary"):
+                summary = entity["summary"]
+            rendered = _render_evidence_fragments(entity.get("evidence_fragments") or [])
+            if not rendered:
+                continue
+            slug = _doc_slug(doc.get("filename", ""))
+            title = doc.get("title") or doc.get("filename", "")
+            date = doc.get("date_of_document")
+            header = f"*{date}, via [[documents/{slug}|{title}]]:*" if date \
+                else f"*via [[documents/{slug}|{title}]]:*"
+            block = f"{header}\n{rendered}"
+            claims = (claims.rstrip() + "\n\n" + block).lstrip() if claims else block
         entities.append({
             "entity_id": eid,
             "name": entry.get("name", ""),
             "type": entry.get("type", ""),
             "aliases": entry.get("aliases", []),
-            "summary": _extract_summary(note) or "",
-            "claims": _extract_analysis(note),
+            "summary": summary,
+            "claims": claims,
             "roles": _roles_digest(entry.get("roles", [])),
             "contradictions": entry.get("contradictions") or [],
         })
@@ -237,32 +303,109 @@ def build_bundle(vault: Path) -> dict:
     # pair member is usually not a contradiction candidate too (it may appear in one document, or
     # not have been touched this run), so its summary is not already in hand, and reading every
     # note in the registry to enrich a handful of pairs would be the expensive way round.
-    pairs = candidate_pairs(entities_reg, touched)
+    pairs = candidate_pairs(working, touched)
     summaries: dict[str, str] = {e["entity_id"]: e["summary"] for e in entities}
     for pair in pairs:
         for side in ("a", "b"):
             eid = pair[side]["id"]
             if eid not in summaries:
-                note = vault / f"{entities_reg[eid].get('note_path', '')}.md"
+                note = vault / f"{working[eid].get('note_path', '')}.md"
                 summaries[eid] = _extract_summary(note) or ""
             pair[side]["summary"] = _orienting_line(summaries[eid])
 
     return {"entities": entities, "pairs": pairs}
 
 
-def _apply_merges(vault: Path, merges: list, pairs: list, warn) -> tuple[list[dict], dict]:
-    """Run each confirmed merge through the existing `watchdog merge-entities` surgery.
+def _rewrite_staged_ids(vault: Path, shas: list[str], merge_id: str, keep_id: str) -> str | None:
+    """Rewrite `merge_id` -> `keep_id` across every staged artifact in the batch: every entity
+    ``id`` and every role ``target_id``, so any of this batch's own claims for the loser land on
+    the survivor once the commit pass replays `write_vault.run` over the (now-rewritten) staged
+    JSON — rather than resurrecting the merged-away id. Preserves the folded name as an alias on
+    the surviving staged entity, mirroring `write_vault._reconcile_entity_ids`.
 
-    Returns the applied merges and a ``{merged_away_id: surviving_id}`` remap, which the
-    contradiction pass needs: the model chose its `entity_id`s from a bundle built *before* these
-    merges ran, so a contradiction may name an entity that no longer exists.
+    Called for both merge-taxonomy branches (#403 phase 3): it *is* the merge when the loser was
+    never committed (nothing else would ever fold it), and it is a supplementary step alongside
+    `merge_entities.run` when the loser was already committed (that surgery only touches the
+    registry/notes on disk, not this batch's still-staged JSON).
 
-    Merges chain (a→b then b→c), so each is validated against the registry as it stands *now*,
-    not as the bundle described it — an id already merged away is followed to its survivor rather
-    than failing the merge.
+    Returns the merged-away entity's display name as it appeared in the batch (for the caller's
+    reporting), or None if the batch never staged it at all.
     """
+    extracted_dir = vault / ".watchdog" / "extracted"
+    merge_name = None
+    for sha in shas:
+        artifact_path = extracted_dir / f"{sha}.json"
+        if not artifact_path.exists():
+            continue
+        try:
+            artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        entities = artifact.get("entities") or []
+        changed = False
+        for entity in entities:
+            if entity.get("id") == merge_id:
+                if merge_name is None:
+                    merge_name = entity.get("name") or merge_id
+                entity["id"] = keep_id
+                name = entity.get("name", "")
+                aliases = entity.setdefault("aliases", [])
+                if name and name.lower() not in {a.lower() for a in aliases}:
+                    aliases.append(name)
+                changed = True
+        for entity in entities:
+            for role in entity.get("roles", []):
+                if role.get("target_id") == merge_id:
+                    role["target_id"] = keep_id
+                    changed = True
+        if changed:
+            artifact_path.write_text(
+                json.dumps(artifact, ensure_ascii=False, indent=2), encoding="utf-8")
+    return merge_name
+
+
+def apply_merges(vault: Path, shas: list[str], parsed: dict, bundle: dict, warn) -> dict:
+    """Apply every confirmed merge from a pre-commit reconciliation call (#403 phase 3), before
+    any of this batch has been written to the vault.
+
+    Each confirmed merge names `keep_id` and (implicitly, the pair's other id) `merge_id`. At this
+    point each id is either **committed** (a key in `registry/entities.json` right now — including
+    a staged entity phase 2's exact fold already remapped onto an existing registry id) or
+    **batch-only** (only ever seen in this batch's staged JSON so far):
+
+    1. **Normalize direction:** if exactly one of the two is committed, force it to `keep` —
+       swapping the model's choice if needed — since the already-written entity always survives
+       and the new one folds onto it (its name stays primary; the folded name becomes an alias).
+       If both or neither are committed, honour the model's `keep_id`.
+    2. **Loser is batch-only:** a plain staged id rewrite (`_rewrite_staged_ids`) — no note, no
+       registry entry, so there is nothing for `merge_entities.run` to operate on. At commit,
+       `write_vault` merges the two staged entities into one naturally. This is the common case (a
+       duplicate caught within one ingest).
+    3. **Loser is committed** (so both are): the full `merge_entities.run` surgery, exactly as
+       before phase 3 — stub + backup + provenance ARE produced, since both entities really
+       existed — *plus* the same staged id rewrite, so any of this batch's own claims about the
+       loser land on the survivor rather than resurrecting the merged-away id.
+
+    Merges chain (a→b then b→c): each is resolved against an accumulating remap, following an
+    already-merged id to its current survivor. Returns
+    ``{"merged": [...], "remap": {...}, "contradictions": parsed.get("contradictions") or []}`` —
+    the remap is flattened (every key points straight at its final survivor) for
+    `apply_contradictions`, which the caller runs later, post-commit; contradictions are carried
+    through unapplied — they need the committed vault to validate against.
+    """
+    entities_path = vault / ".watchdog" / "registry" / "entities.json"
+    try:
+        registry_ids = (
+            set(json.loads(entities_path.read_text(encoding="utf-8")))
+            if entities_path.exists() else set()
+        )
+    except (OSError, json.JSONDecodeError):
+        registry_ids = set()
+
+    pairs = bundle.get("pairs", [])
     applied: list[dict] = []
     remap: dict[str, str] = {}
+    names: dict[str, str] = {}   # id -> best-known display name, for reporting only
 
     def _current(eid: str) -> str:
         seen = {eid}
@@ -273,7 +416,7 @@ def _apply_merges(vault: Path, merges: list, pairs: list, warn) -> tuple[list[di
             seen.add(eid)
         return eid
 
-    for item in merges or []:
+    for item in parsed.get("merges") or []:
         idx = item.get("pair")
         if not isinstance(idx, int) or not 0 <= idx < len(pairs):
             warn(f"reconcile: merge names pair {idx!r}, which is not in the candidate list — skipped")
@@ -286,74 +429,52 @@ def _apply_merges(vault: Path, merges: list, pairs: list, warn) -> tuple[list[di
                  f"({', '.join(sorted(ids))}) — skipped")
             continue
         merge_id = (ids - {keep_id}).pop()
+        names.setdefault(pair["a"]["id"], pair["a"].get("name", pair["a"]["id"]))
+        names.setdefault(pair["b"]["id"], pair["b"].get("name", pair["b"]["id"]))
 
         keep_id, merge_id = _current(keep_id), _current(merge_id)
         if keep_id == merge_id:
             continue               # an earlier merge in this batch already folded them together
 
-        try:
-            report = merge_entities.run(vault, keep_id, merge_id)
-        except ValueError as e:
-            warn(f"reconcile: merge of '{merge_id}' into '{keep_id}' skipped — {e}")
-            continue
+        # Tom's decision: the already-committed side always survives. If exactly one of the two
+        # is committed, force it to `keep` regardless of what the model chose; if both or neither
+        # are committed, honour the model's keep_id. `registry_ids` is a fixed snapshot taken
+        # above — safe even though `merge_entities.run` below deletes a loser from the real
+        # registry as the loop goes, because a merged-away id is always chain-followed via
+        # `_current()` before it could be looked up here again.
+        if merge_id in registry_ids and keep_id not in registry_ids:
+            keep_id, merge_id = merge_id, keep_id
+
+        if merge_id in registry_ids:
+            # Both committed: full merge_entities.run surgery, same as before phase 3 — stub +
+            # backup + provenance, since both entities really existed.
+            try:
+                report = merge_entities.run(vault, keep_id, merge_id)
+            except ValueError as e:
+                warn(f"reconcile: merge of '{merge_id}' into '{keep_id}' skipped — {e}")
+                continue
+            names[keep_id], names[merge_id] = report["keep_name"], report["merge_name"]
+
+        # Either way, fold the staged JSON: a batch-only loser has no registry entry at all, so
+        # this rewrite *is* the merge for that case; a committed loser's registry side is already
+        # folded above, but this batch may still stage claims against it.
+        staged_name = _rewrite_staged_ids(vault, shas, merge_id, keep_id)
+        if staged_name:
+            names[merge_id] = staged_name
+
         remap[merge_id] = keep_id
-        applied.append({"keep_id": keep_id, "keep_name": report["keep_name"],
-                        "merge_id": merge_id, "merge_name": report["merge_name"],
+        applied.append({"keep_id": keep_id, "keep_name": names.get(keep_id, keep_id),
+                        "merge_id": merge_id, "merge_name": names.get(merge_id, merge_id),
                         "reason": item.get("reason", "")})
 
-    # Flatten the chain: consumers (`_apply_contradictions`, `_fold_fragments`) each follow the
-    # map one step only, so every key must point straight at its final survivor rather than an
-    # intermediate id that a later merge in this same batch folded away.
+    # Flatten the chain: `apply_contradictions` follows the map one step only, so every key must
+    # point straight at its final survivor rather than an intermediate id a later merge in this
+    # same batch folded away.
     remap = {eid: _current(eid) for eid in remap}
-    return applied, remap
+    return {"merged": applied, "remap": remap, "contradictions": parsed.get("contradictions") or []}
 
 
-def _fold_fragments(vault: Path, remap: dict) -> None:
-    """Follow a merge through the finalizer's fragment queue.
-
-    `merge_entities.run` is registry surgery — it knows nothing about the in-flight fragment files
-    the *next* step (synthesis) is about to read. Without this, synthesis would look up a merged-away
-    id, find no registry entry, and silently drop the entity it just merged. Concatenates the losing
-    entity's fragment file onto the survivor's (so its claims still reach synthesis) and unions the
-    queue records.
-    """
-    frag_dir = vault / ".watchdog" / "tmp" / "entity-fragments"
-    queue_path = frag_dir / "_queue.json"
-    if not remap or not queue_path.exists():
-        return
-    try:
-        queue = json.loads(queue_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return
-
-    entities_reg = json.loads(
-        (vault / ".watchdog" / "registry" / "entities.json").read_text(encoding="utf-8"))
-
-    for merge_id, keep_id in remap.items():
-        losing = frag_dir / f"{merge_id}.md"
-        if losing.exists():
-            surviving = frag_dir / f"{keep_id}.md"
-            head = surviving.read_text(encoding="utf-8") if surviving.exists() else ""
-            surviving.write_text(head + losing.read_text(encoding="utf-8"), encoding="utf-8")
-            losing.unlink(missing_ok=True)
-
-        merged_rec = queue.pop(merge_id, None)
-        if merged_rec is None:
-            continue
-        keep_entry = entities_reg.get(keep_id)
-        if keep_entry is None:
-            continue
-        rec = queue.get(keep_id, {"name": keep_entry["name"],
-                                  "note_path": keep_entry["note_path"], "shas": []})
-        shas = sorted(set(rec.get("shas", [])) | set(merged_rec.get("shas", [])))
-        rec.update({"name": keep_entry["name"], "note_path": keep_entry["note_path"],
-                    "shas": shas, "count": len(shas)})
-        queue[keep_id] = rec
-
-    queue_path.write_text(json.dumps(queue, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def _apply_contradictions(vault: Path, items: list, remap: dict, warn) -> list[dict]:
+def apply_contradictions(vault: Path, items: list, remap: dict, warn) -> list[dict]:
     """File each flagged contradiction through `contradiction.run` — the same deterministic writer
     the manual `watchdog contradiction` command uses (D81).
 
@@ -379,21 +500,3 @@ def _apply_contradictions(vault: Path, items: list, remap: dict, warn) -> list[d
                             "label": item.get("label", ""),
                             "note_path": result["note_path"]})
     return applied
-
-
-def apply(vault: Path, parsed: dict, bundle: dict, warn=None) -> dict:
-    """Apply one reconciliation result: merges first, then contradictions.
-
-    Merges run first because a merge changes what the contradictions are *about* — two halves of a
-    split entity become one entity whose claim ledger now holds both documents' claims. Running
-    them the other way round would file a callout on a note that is about to be turned into a
-    redirect stub.
-    """
-    def _warn(msg: str) -> None:
-        if warn is not None:
-            warn(msg)
-
-    merged, remap = _apply_merges(vault, parsed.get("merges"), bundle.get("pairs", []), _warn)
-    _fold_fragments(vault, remap)
-    flagged = _apply_contradictions(vault, parsed.get("contradictions"), remap, _warn)
-    return {"merged": merged, "contradictions": flagged}
