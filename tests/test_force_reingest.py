@@ -687,6 +687,32 @@ def test_bare_ingest_force_never_requeues(wdg_home, tmp_path, monkeypatch):
     ing.cmd_ingest(_args(force=True), confirm=False)
 
 
+def test_ingest_force_selector_estimate_is_read_only(wdg_home, tmp_path, monkeypatch, capsys):
+    """`--estimate` promises "no lock, no confirm, no extraction" — read-only. `ingest --force
+    <document> --estimate` must not re-queue the named document (no queue entry, no morgue
+    original moved), and must say so rather than silently ignoring the selector."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import preprocess_batch as ppb
+
+    vault, morgue_file = _committed_vault_with_morgue_original(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+
+    def _boom(*a, **k):
+        raise AssertionError("--estimate must never trigger a re-chew")
+    monkeypatch.setattr(ing, "_requeue_forced_selectors", _boom)
+    monkeypatch.setattr(ppb, "run_ingest", _boom)   # belt-and-suspenders: no chew side effect at all
+
+    ing.cmd_ingest(_args(estimate=True, force=[SHA]), confirm=False)
+
+    queue_file = vault / ".watchdog" / "queue" / f"{SHA}.json"
+    assert not queue_file.exists()      # not re-queued
+    assert morgue_file.exists()         # original left untouched in the morgue
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "not re-queued" in out       # the selector wasn't silently ignored
+
+
 # ── --force parser: nargs="*" (absent / bare / with selectors) ───────────────────────────────
 
 def test_ingest_force_parser_nargs_absent_bare_and_selectors(monkeypatch):

@@ -445,7 +445,14 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
     else:
         force = bool(raw_force)
         force_selectors = []
-    if force_selectors:
+    # --estimate promises "no lock, no confirm, no extraction" — read-only. Re-queueing named
+    # documents is a real mutation (moves the morgue original into staging, writes a queue file),
+    # so it must not run under --estimate; bare --force --estimate is unaffected, since it has no
+    # selectors to re-queue in the first place (#424).
+    if force_selectors and getattr(args, "estimate", False):
+        print(f"\n  {_DIM}--estimate is read-only — the named document(s) are not re-queued; "
+              f"this estimate reflects the current queue only.{_RESET}")
+    elif force_selectors:
         _requeue_forced_selectors(vault, force_selectors)
 
     from watchdog.cmd.base import CONFIG_FILE

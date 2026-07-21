@@ -89,6 +89,8 @@ watchdog ingest --force report.pdf disclosure-2024.pdf
 
 `watchdog extract --force` does not take document names, and never shows the overwrite confirmation — `extract` never touches the vault, so there is nothing on record to replace, and no way to strand a re-queued document past extraction (a plain `watchdog finalize` afterward wouldn't know to recommit it). If you want to regenerate a committed document's note, use `watchdog ingest --force <document>`, which re-chews, re-extracts, and finalizes it as one step.
 
+`--estimate` is read-only — no lock, no confirmation, no extraction — so naming a document alongside it (`watchdog ingest --force report.pdf --estimate`) does not re-chew or re-queue anything; Watchdog prints a note that the estimate reflects the current queue only, rather than silently ignoring the name. Drop `--estimate` to actually re-queue and re-extract it.
+
 ### watchdog extract
 
 `watchdog extract` runs classification and extraction exactly like `watchdog ingest` — same queue, same extractor and classifier models — but stops as soon as the batch is staged. Nothing is written to the vault, and post-processing (merging duplicate entities, flagging contradictions, entity synthesis, timeline reconciliation, the briefing) does not run.
