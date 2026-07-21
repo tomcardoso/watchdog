@@ -57,6 +57,7 @@ Each model flag takes a Claude tier (`haiku`, `sonnet`, `opus`) or a `backend:mo
 - `--skill NAME` — pin one record skill for every document, skipping classification; pass a skill name or a path to a skill file, or use `--skill` with no value to pick from a list. A document's own sidecar can pin a different skill for just that document — see [Skills](skills.md#reading-and-pinning-skills).
 - `--wait` — on a rate limit, sleep until it resets and resume automatically instead of stopping; for unattended overnight batches. It uses the reset time the provider reports, or a fixed fallback interval when it doesn't, and repeats until the queue drains. Not compatible with a `claude-batch` extractor model.
 - `--estimate` — print the token and cost estimate for the queue and exit; no lock, no confirmation, no extraction.
+- `--force` — re-extract a document even when a cached extraction (or a note already committed to the vault) exists for it — see [Re-extracting with --force](#re-extracting-with---force) below. Costs full extraction spend on every queued document, cache or no.
 
 **Resumability.** Pressing Ctrl+C, or hitting a rate limit without `--wait`, stops the batch cleanly: finished documents are saved and unfinished ones stay queued, so re-running `watchdog ingest` picks up where it left off. A document that genuinely fails extraction is set aside in `queue/_failed/`; the run reports how many, and `watchdog requeue` moves them back to retry.
 
@@ -71,11 +72,24 @@ Extraction is the expensive part of an ingest — the finalizer's few calls (rec
 
 `watchdog finalize` does not yet support re-running cleanly over a batch it has already finalized — run it once per vault (or vault copy).
 
+#### Re-extracting with --force
+
+Ordinarily, once a document has been extracted — its output staged, whether or not it has reached the vault yet — `watchdog ingest` and `watchdog extract` skip it rather than spending another extraction call on the same bytes. `--force` overrides that, for when you want to re-run a document (or a whole corpus) under a different extractor model, effort level, or record skill.
+
+What `--force` does depends on the document's state:
+
+- **Staged but not yet in the vault** — `watchdog ingest --force` and `watchdog extract --force` both simply re-extract it, overwriting the staged output. Nothing has been written to the vault yet, so there is nothing to confirm.
+- **Already committed to the vault** — re-extracting only matters if the resulting note actually replaces the old one, so `watchdog ingest --force` re-extracts, then lists the vault notes that are about to be replaced and asks you to confirm before finalizing. Unlike the routine ingest confirmation, this one **defaults to Cancel** — replacing a note that already carries your analysis is not something to do by accident. Cancelling leaves the re-extracted batch staged; run `watchdog finalize` later to complete it once you are ready.
+
+`watchdog extract --force` never shows this confirmation, because `extract` never touches the vault — it only re-stages. The confirmation is specific to `watchdog ingest --force`, the command that can actually overwrite committed work.
+
+`--force` only matters for a document already sitting in the queue — it does not, on its own, put a document back into the queue. `watchdog chew` recognizes a file it has already ingested by its content and sets it aside in `_INCOMING/_SKIPPED/` without queuing it again, so re-dropping a document that has already reached the vault does not currently give you a queue entry for `--force` to act on. In practice, `--force` is for a batch you already have staged or queued — for example, extracting again under a different model before you finalize — rather than for reopening a document the vault already committed weeks ago.
+
 ### watchdog extract
 
 `watchdog extract` runs classification and extraction exactly like `watchdog ingest` — same queue, same extractor and classifier models — but stops as soon as the batch is staged. Nothing is written to the vault, and post-processing (merging duplicate entities, flagging contradictions, entity synthesis, timeline reconciliation, the briefing) does not run.
 
-It takes the extraction-side flags from `watchdog ingest`: `--extractor-model`, `--extractor-effort`, `--classifier-model`, `--concurrency`, `--classify-pages`, `--skill`, `--wait`, and `--estimate`. There is no `--finalizer-model` or `--finalizer-effort` here — those belong to `watchdog finalize`, run afterward to complete the batch.
+It takes the extraction-side flags from `watchdog ingest`: `--extractor-model`, `--extractor-effort`, `--classifier-model`, `--concurrency`, `--classify-pages`, `--skill`, `--wait`, `--estimate`, and `--force`. There is no `--finalizer-model` or `--finalizer-effort` here — those belong to `watchdog finalize`, run afterward to complete the batch.
 
 Use `watchdog extract` when you want to inspect what got extracted before it lands in the vault, or to compare finalizer models against a fixed extraction without paying for extraction again — see [Comparing finalizer models](#comparing-finalizer-models) above. `watchdog status` shows a staged batch as pending finalization until you run `watchdog finalize`.
 

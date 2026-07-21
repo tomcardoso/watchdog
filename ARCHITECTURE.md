@@ -293,11 +293,25 @@ duplicates a retry could never revisit (D128, I7).
 
 **Two independent "already done" questions (D126).** `preflight.run` answers both, deliberately
 not overloaded onto one flag: `already_staged` (the extraction artifact exists — skip the
-classify/extract call entirely, sha-only, whatever model/effort/skill produced it; re-extracting
-under a different one needs `--force`, #424, out of scope for phase 1) and `already_extracted`
-(the sha is in `registry/documents.json` — nothing left to do at all, its pre-existing meaning).
-A document can be staged without being committed (between extraction and the next finalize); it
-cannot be committed without being staged.
+classify/extract call entirely, sha-only, whatever model/effort/skill produced it) and
+`already_extracted` (the sha is in `registry/documents.json` — nothing left to do at all, its
+pre-existing meaning). A document can be staged without being committed (between extraction and
+the next finalize); it cannot be committed without being staged.
+
+**`--force` bypasses both checks for a full re-ingest, not just extract-only (D131, #424).**
+`orchestrate._extract_document`/`_finish_batch_item`/`_submit_batch` skip the `already_staged`/
+`already_extracted` short-circuit when `force=True`, overwriting the staged artifact under
+whatever model/effort/skill this run is using. `watchdog extract --force` stops there — nothing
+committed is touched, so no confirmation is needed. `watchdog ingest --force` goes further:
+`cmd_ingest` runs extraction with finalize held off (the same skip-finalize path `extract` uses),
+then — only if any force-re-extracted document is already a key in `registry/documents.json` —
+warns which vault notes are about to be replaced and confirms, defaulting to **Cancel** (unlike
+the routine ingest confirm, this replaces existing work). On confirm, those shas are passed to
+`orchestrate.finalize` as `force_shas`, which `_pending_commits` folds into the commit-pass set
+even though they are already committed, so `_commit_extracted` replays `write_vault.run` over them
+again — the same replace-not-append note write a repair retry of an already-committed document
+already relied on (D126), just deliberately triggered instead of accidental. On cancel, the
+re-staged extraction is left pending for a later plain `watchdog finalize`.
 
 **Large documents — sectioned extraction.** Code: `pipeline/section.py`,
 `pipeline/merge.py`. A document over `section_token_threshold` is split by `section.run`
