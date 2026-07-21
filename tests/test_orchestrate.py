@@ -1200,6 +1200,70 @@ def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
     assert summary["usage"]["input_tokens"] == 100 * n_calls
     assert round(summary["usage"]["cost_usd"], 4) == round(0.01 * n_calls, 4)
 
+    # #407: a clean run leaves no orphaned partial behind for the next run to trip over.
+    usage_dir = vault / ".watchdog" / "registry" / "usage"
+    assert list(usage_dir.glob("usage-*.partial.jsonl")) == []
+
+
+def test_record_usage_appends_to_partial_file_immediately(tmp_path):
+    """#407: `_record_usage` persists each call as it completes, not just at end-of-run — so a
+    crash between calls still leaves the earlier ones on disk."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    orchestrate._begin_usage_run(vault)
+    try:
+        partial = orchestrate._usage_partial_path
+        assert partial is not None and not partial.exists()   # not created until the first record
+
+        orchestrate._record_usage("extract", model="m", backend="claude-api",
+                                  usage={"input_tokens": 10, "output_tokens": 5}, cost_usd=0.001)
+
+        lines = partial.read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 1
+        record = json.loads(lines[0])
+        assert record["task"] == "extract" and record["input_tokens"] == 10
+
+        orchestrate._record_usage("briefing", model="m", backend="claude-api",
+                                  usage={"input_tokens": 3, "output_tokens": 1}, cost_usd=0.0002)
+        lines = partial.read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 2
+    finally:
+        orchestrate._end_usage_run(vault)
+
+
+def test_aborted_run_partial_is_consolidated_at_next_run_start(tmp_path):
+    """#407: a run that never reaches its own `_end_usage_run` (simulated crash) leaves a
+    `.partial.jsonl` with every call recorded so far; the next top-level run consolidates it
+    into a real `usage-<ts>.json` before starting its own accumulation, so `watchdog usage`
+    doesn't lose the aborted run's spend."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    usage_dir = vault / ".watchdog" / "registry" / "usage"
+
+    orchestrate._begin_usage_run(vault)
+    orphaned_partial = orchestrate._usage_partial_path
+    orchestrate._record_usage("extract", model="m", backend="claude-api",
+                              usage={"input_tokens": 42, "output_tokens": 7}, cost_usd=0.01)
+    # Simulate a crash: neither `_end_usage_run` nor any cleanup runs, so the partial and the
+    # module globals are left exactly as an aborted process would leave them.
+    assert orphaned_partial.exists()
+    orchestrate._usage = None
+    orchestrate._usage_partial_path = None
+
+    try:
+        orchestrate._begin_usage_run(vault)   # the "next run"
+
+        assert not orphaned_partial.exists()   # folded and removed
+        consolidated = [p for p in usage_dir.glob("usage-*.json")]
+        assert len(consolidated) == 1
+        data = json.loads(consolidated[0].read_text(encoding="utf-8"))
+        assert len(data["calls"]) == 1
+        assert data["calls"][0]["input_tokens"] == 42
+
+        assert orchestrate.latest_usage(vault)["input_tokens"] == 42
+    finally:
+        orchestrate._end_usage_run(vault)
+
 
 def test_record_usage_carries_agent_sdk_harness_timing():
     """#402: a `claude-agent-sdk` usage dict carrying `duration_api_ms`/`num_turns` (harness

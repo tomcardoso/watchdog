@@ -44,6 +44,11 @@ _board: LiveRegion | None = None
 # without spelunking Claude Code session logs.
 _usage: list[dict] | None = None
 
+# Path of the current run's `usage-<ts>.partial.jsonl` (#407) — set alongside `_usage` by
+# `_begin_usage_run`, mirrored into `_record_usage` so every call's record lands on disk the
+# moment it completes, not just in the end-of-run `usage-<ts>.json`. None whenever `_usage` is.
+_usage_partial_path: Path | None = None
+
 
 def _say(msg: str) -> None:
     """Print a styled progress line to the terminal (indented per the CLI style guide).
@@ -120,6 +125,13 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
     if failed:
         record["failed"] = True
     _usage.append(record)
+    if _usage_partial_path is not None:
+        # Durable per-call persistence (#407): appended synchronously, so a crash or a hard
+        # interrupt between this call and the run's end-of-run `_write_usage` still leaves
+        # this record on disk. `_record_usage` has no `await` in it, so no other call can
+        # interleave with this write even under concurrent extraction.
+        with open(_usage_partial_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 async def _call_model(*, task, prompt, schema, model=None, backend=None,
@@ -178,6 +190,19 @@ def usage_files(vault: Path) -> list[Path]:
     return sorted(files, key=lambda p: p.name)
 
 
+def _write_usage_file(vault: Path, records: list[dict], ts: str) -> str:
+    """Write `records` to `.watchdog/registry/usage/usage-<ts>.json` for an explicit `ts`,
+    shared by `_write_usage` (fresh timestamp, end of run) and `_consolidate_orphaned_usage`
+    (the orphaned partial's own timestamp, #407)."""
+    usage_dir = vault / ".watchdog" / "registry" / "usage"
+    usage_dir.mkdir(parents=True, exist_ok=True)
+    relpath = f".watchdog/registry/usage/usage-{ts}.json"
+    (vault / relpath).write_text(
+        json.dumps({"calls": records, "totals": _usage_totals(records)}, ensure_ascii=False, indent=2),
+        encoding="utf-8")
+    return relpath
+
+
 def _write_usage(vault: Path, records: list[dict]) -> str | None:
     """Persist this run's per-call token/cost telemetry to
     `.watchdog/registry/usage/usage-<ts>.json` (A2, relocated out of the flat Registry dir
@@ -186,14 +211,64 @@ def _write_usage(vault: Path, records: list[dict]) -> str | None:
     model calls (e.g. an all-skipped batch)."""
     if not records:
         return None
+    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return _write_usage_file(vault, records, ts)
+
+
+def _consolidate_orphaned_usage(vault: Path) -> None:
+    """Fold any `usage-<ts>.partial.jsonl` left behind by a run that never reached its own
+    end-of-run `_write_usage` (crash, kill -9, an interrupt during finalize — none of which
+    `run()`'s own signal handling covers) into a real `usage-<ts>.json`, keyed by the partial's
+    own timestamp so it sorts where that run actually happened (#407). Called once at the start
+    of every top-level `run()`/standalone `finalize()`, before that call's own partial is opened,
+    so `watchdog usage` never loses a run's spend just because it didn't finish cleanly."""
+    usage_dir = vault / ".watchdog" / "registry" / "usage"
+    if not usage_dir.exists():
+        return
+    for partial in sorted(usage_dir.glob("usage-*.partial.jsonl")):
+        ts = partial.name[len("usage-"):-len(".partial.jsonl")]
+        records = []
+        try:
+            for line in partial.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line:
+                    records.append(json.loads(line))
+        except (OSError, json.JSONDecodeError):
+            records = []
+        canonical = usage_dir / f"usage-{ts}.json"
+        if records and not canonical.exists():
+            _write_usage_file(vault, records, ts)
+        partial.unlink(missing_ok=True)
+
+
+def _begin_usage_run(vault: Path) -> None:
+    """Start this run's usage accumulation (#407): first consolidate any orphaned partial from
+    a previous aborted run, then open this run's own `usage-<ts>.partial.jsonl` that
+    `_record_usage` appends each call's record to as it completes. Called by every top-level
+    entry point — `run()` and a standalone `finalize()` — in place of the bare `_usage = []`
+    this replaced."""
+    global _usage, _usage_partial_path
+    _consolidate_orphaned_usage(vault)
+    _usage = []
     usage_dir = vault / ".watchdog" / "registry" / "usage"
     usage_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    relpath = f".watchdog/registry/usage/usage-{ts}.json"
-    (vault / relpath).write_text(
-        json.dumps({"calls": records, "totals": _usage_totals(records)}, ensure_ascii=False, indent=2),
-        encoding="utf-8")
-    return relpath
+    _usage_partial_path = usage_dir / f"usage-{ts}.partial.jsonl"
+
+
+def _end_usage_run(vault: Path) -> tuple[str | None, dict | None]:
+    """Write this run's canonical `usage-<ts>.json` and remove its now-redundant partial
+    (#407) — the counterpart to `_begin_usage_run`, called at every exit point that used to
+    call `_write_usage` directly on a standalone/top-level accumulator. Returns the same
+    `(usage_path, usage_totals)` pair those call sites assembled by hand."""
+    global _usage, _usage_partial_path
+    path = _write_usage(vault, _usage)
+    totals = _usage_totals(_usage) if _usage else None
+    if _usage_partial_path is not None:
+        _usage_partial_path.unlink(missing_ok=True)
+    _usage_partial_path = None
+    _usage = None
+    return path, totals
 
 
 def latest_usage(vault: Path) -> dict | None:
@@ -1608,7 +1683,7 @@ async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None 
     global _usage
     standalone_usage = _usage is None   # not nested inside `run` — this call owns the usage file
     if standalone_usage:
-        _usage = []
+        _begin_usage_run(vault)
 
     shas = _pending_commits(vault, force_shas=force_shas)
     rec_result: dict = {"merged": [], "remap": {}, "contradictions": [], "error": None}
@@ -1625,9 +1700,7 @@ async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None 
                "merged": [], "contradictions": [], "error": rec_result["error"],
                "committed_writes": {}, "commit_skipped": True}
         if standalone_usage:
-            out["usage_path"] = _write_usage(vault, _usage)
-            out["usage"] = _usage_totals(_usage) if _usage else None
-            _usage = None
+            out["usage_path"], out["usage"] = _end_usage_run(vault)
         return out
 
     commit_summary = _commit_pending(vault, shas)
@@ -1642,9 +1715,7 @@ async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None 
     if not out.get("error") and not out.get("briefing_error"):
         _clear_post_ingest_inputs(vault)
     if standalone_usage:
-        out["usage_path"] = _write_usage(vault, _usage)
-        out["usage"] = _usage_totals(_usage) if _usage else None
-        _usage = None
+        out["usage_path"], out["usage"] = _end_usage_run(vault)
     return out
 
 
@@ -1690,7 +1761,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     # pending batch even when `shas` is empty). Both branches converge on `results` /
     # `cancelled_flag` / `rate_limit_msg` / `extra_summary` and rejoin the shared tail below.
     if extract_backend == "claude-batch":
-        _usage = []
+        _begin_usage_run(vault)
         brief = _read_brief(vault)
         batch_out = await _run_batch(vault, shas, brief, extract_model, pinned_skill,
                                      extract_effort, concurrency, classify_model, classify_pages,
@@ -1709,7 +1780,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         # in-flight document, finished/failed lines scrolling above. Auto-disables off a TTY,
         # where it degrades to the previous append-only output.
         _board = LiveRegion()
-        _usage = []
+        _begin_usage_run(vault)
         sem = asyncio.Semaphore(max(1, concurrency))
         cancelled = asyncio.Event()
         stop_reason: dict = {}      # {"rate_limit": "<notice>"} when a limit stopped the batch
@@ -1843,7 +1914,5 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     state = "rate-limited" if summary["rate_limited"] else ("cancelled" if cancelled_flag else "complete")
     _log(vault, f"INGEST {state} — {summary['extracted']} extracted, "
                 f"{summary['skipped']} skipped, {summary['failed']} failed")
-    summary["usage"] = _usage_totals(_usage) if _usage else None
-    summary["usage_path"] = _write_usage(vault, _usage)
-    _usage = None
+    summary["usage_path"], summary["usage"] = _end_usage_run(vault)
     return summary
