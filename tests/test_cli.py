@@ -2441,6 +2441,204 @@ def test_cmd_ingest_estimate_api_key_with_usage_history_shows_dollar_range(wdg_h
     assert "based on your last run" in out
 
 
+# ── quarantined (_failed/) documents surfaced (#406) ──────────────────────────
+
+def _vault_with_failed_doc(tmp_path):
+    from tests.test_write_vault import make_vault
+    vault = make_vault(tmp_path)
+    failed_dir = vault / ".watchdog" / "queue" / "_failed"
+    failed_dir.mkdir(parents=True, exist_ok=True)
+    (failed_dir / "shafail.json").write_text(json.dumps({
+        "sha256": "shafail", "filename": "bad.pdf", "page_count": 1,
+        "pages": [{"page": 1, "markdown": "text"}],
+        "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
+    }))
+    (vault / "_INCOMING").mkdir(exist_ok=True)
+    return vault
+
+
+def test_cmd_ingest_estimate_empty_queue_with_failed_docs_mentions_requeue(wdg_home, tmp_path, monkeypatch, capsys):
+    """--estimate stays read-only (#406): it must say a document is quarantined instead of the
+    plain "queue is empty" — and must not move it out of _failed/ itself."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    vault = _vault_with_failed_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+
+    cmd_ingest(args(estimate=True), confirm=False)
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "need attention" in out
+    assert "queue/_failed/" in out
+    assert "watchdog requeue" in out
+    assert "nothing to estimate" not in out
+    assert (vault / ".watchdog" / "queue" / "_failed" / "shafail.json").exists()
+    assert not (vault / ".watchdog" / "queue" / "shafail.json").exists()
+
+
+def test_cmd_ingest_empty_queue_accepts_requeue_offer_and_continues(wdg_home, tmp_path, monkeypatch):
+    """When the active queue is empty but _failed/ isn't, bare `watchdog ingest` offers to
+    requeue right there (#406); accepting moves the document back into the active queue and lets
+    the ingest proceed, instead of just pointing at `watchdog requeue` and stopping."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+    from watchdog import interactive
+
+    vault = _vault_with_failed_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+    monkeypatch.setattr(interactive, "confirm", lambda *a, **k: True)
+
+    calls = []
+
+    async def fake_run(*a, **k):
+        calls.append(k)
+        return {"results": [{"sha256": "shafail", "filename": "bad.pdf", "status": "ok", "entity_count": 1}],
+                "extracted": 1, "skipped": 0, "failed": 0, "cancelled": False,
+                "rate_limited": False, "stop_message": None, "rate_limit_resets_at": None,
+                "quarantined": 0}
+    monkeypatch.setattr(orch_module, "run", fake_run)
+
+    ing.cmd_ingest(args(), confirm=False)
+
+    assert len(calls) == 1   # the ingest actually proceeded, not just printed a hint
+    assert not (vault / ".watchdog" / "queue" / "_failed" / "shafail.json").exists()
+
+
+def test_cmd_ingest_empty_queue_declines_requeue_offer_prints_hint(wdg_home, tmp_path, monkeypatch, capsys):
+    """Declining the requeue offer leaves the document in _failed/ untouched and never runs an
+    ingest — just the same hint `watchdog usage`/the normal summary already gives."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+    from watchdog import interactive
+
+    vault = _vault_with_failed_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+    monkeypatch.setattr(interactive, "confirm", lambda *a, **k: False)
+    monkeypatch.setattr(orch_module, "run",
+                        lambda *a, **k: pytest.fail("must not run when the requeue offer is declined"))
+
+    ing.cmd_ingest(args(), confirm=False)
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "watchdog requeue" in out
+    assert (vault / ".watchdog" / "queue" / "_failed" / "shafail.json").exists()
+
+
+def test_cmd_ingest_keyboard_interrupt_mentions_quarantined_docs(wdg_home, tmp_path, monkeypatch, capsys):
+    """A Ctrl+C that propagates as a real `KeyboardInterrupt` — the only path a Ctrl+C during
+    finalize's sequential post-processing takes (#406), since `orchestrate.run`'s own SIGINT
+    handling only covers concurrent extraction — must still mention a document already
+    quarantined earlier in the same run. Previously only the normal-completion summary did."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    failed_dir = vault / ".watchdog" / "queue" / "_failed"
+    failed_dir.mkdir(parents=True, exist_ok=True)
+    (failed_dir / "shafail.json").write_text(json.dumps({"sha256": "shafail", "filename": "bad.pdf"}))
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+
+    async def boom(*a, **k):
+        raise KeyboardInterrupt()
+    monkeypatch.setattr(orch_module, "run", boom)
+
+    with pytest.raises(SystemExit) as exc_info:
+        ing.cmd_ingest(args(), confirm=False)
+    assert exc_info.value.code == 130
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Ingest cancelled" in out
+    assert "watchdog requeue" in out
+    assert "queue/_failed/" in out
+
+
+# ── caffeinate (#415) ─────────────────────────────────────────────────────────
+
+def test_caffeinate_spawns_on_darwin_when_available(monkeypatch):
+    from watchdog.cmd import ingest as ing
+
+    monkeypatch.setattr("watchdog.cmd.ingest.sys.platform", "darwin")
+    monkeypatch.setattr(ing.shutil, "which",
+                        lambda name: "/usr/bin/caffeinate" if name == "caffeinate" else None)
+
+    class FakeProc:
+        def __init__(self):
+            self.terminated = False
+
+        def terminate(self):
+            self.terminated = True
+
+    fake_proc = FakeProc()
+    calls = []
+
+    def fake_popen(cmd, **kwargs):
+        calls.append(cmd)
+        return fake_proc
+    monkeypatch.setattr(ing.subprocess, "Popen", fake_popen)
+
+    with ing._caffeinate():
+        assert calls == [["caffeinate", "-i", "-w", str(ing.os.getpid())]]
+        assert not fake_proc.terminated
+    assert fake_proc.terminated
+
+
+def test_caffeinate_noop_on_non_darwin(monkeypatch):
+    from watchdog.cmd import ingest as ing
+
+    monkeypatch.setattr("watchdog.cmd.ingest.sys.platform", "linux")
+    monkeypatch.setattr(ing.subprocess, "Popen",
+                        lambda *a, **k: pytest.fail("must not spawn caffeinate off darwin"))
+
+    with ing._caffeinate():
+        pass
+
+
+def test_caffeinate_noop_when_binary_missing(monkeypatch):
+    from watchdog.cmd import ingest as ing
+
+    monkeypatch.setattr("watchdog.cmd.ingest.sys.platform", "darwin")
+    monkeypatch.setattr(ing.shutil, "which", lambda name: None)
+    monkeypatch.setattr(ing.subprocess, "Popen",
+                        lambda *a, **k: pytest.fail("must not spawn when caffeinate isn't on PATH"))
+
+    with ing._caffeinate():
+        pass
+
+
+def test_caffeinate_terminates_even_if_the_block_raises(monkeypatch):
+    """The context manager's cleanup must run on an exception path too (e.g. the KeyboardInterrupt
+    that stops an ingest, #415) — not just on a clean exit."""
+    from watchdog.cmd import ingest as ing
+
+    monkeypatch.setattr("watchdog.cmd.ingest.sys.platform", "darwin")
+    monkeypatch.setattr(ing.shutil, "which", lambda name: "/usr/bin/caffeinate")
+
+    class FakeProc:
+        def __init__(self):
+            self.terminated = False
+
+        def terminate(self):
+            self.terminated = True
+
+    fake_proc = FakeProc()
+    monkeypatch.setattr(ing.subprocess, "Popen", lambda *a, **k: fake_proc)
+
+    with pytest.raises(KeyboardInterrupt):
+        with ing._caffeinate():
+            raise KeyboardInterrupt()
+    assert fake_proc.terminated
+
+
 # ── configure sections + default_skill ────────────────────────────────────────
 
 def test_configure_sections_cover_every_key_exactly_once():
