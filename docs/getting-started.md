@@ -84,12 +84,22 @@ This context is merged into the document record and preserved through ingest. Th
 
 **Duplicates are handled automatically.** A document that is byte-identical to one already ingested — even under a new name — is set aside in `_INCOMING/_SKIPPED/` rather than processed twice. A separate near-duplicate check flags similar-but-not-identical files (a redlined revision, say) for your review, but never skips them.
 
-## Chew
+## Run the pipeline
 
-Chewing is the mechanical preprocessing step. It runs entirely on your machine — no AI involved yet. From your terminal, go to the vault directory and run:
+From the vault directory, the simplest way to process what you dropped in is to run Watchdog with no arguments:
 
 ```bash
 cd ~/Investigations/shell-company-investigation
+watchdog
+```
+
+Bare `watchdog` walks the pipeline for you — chewing, then ingesting — confirming before each step that costs money or takes time, and skipping any step that has nothing to do. The two sections below describe what chewing and ingestion actually do, in case you want to run either one directly, on a single file, or with flags of your own.
+
+## Chew
+
+Chewing is the mechanical preprocessing step. It runs entirely on your machine — no AI involved yet. Run it on its own with:
+
+```bash
 watchdog chew
 ```
 
@@ -120,7 +130,7 @@ Flags for controlling how many files and chunks are processed in parallel are co
 
 ## Ingest
 
-Ingestion is the extraction step — the part that uses AI. From inside the vault directory, run:
+Ingestion is the extraction step — the part that uses AI. Run it on its own with:
 
 ```bash
 watchdog ingest
@@ -153,6 +163,8 @@ Three features run alongside every ingest; each has its full treatment in the [i
 - **Resolving.** Once you have dealt with a lead or an alert, you can mark it done so it stops reappearing, which turns those reports into a shrinking to-do list. See [resolving items](investigating.md#resolving-items).
 
 If you hit a rate limit — a temporary cap on how much you can send the model — ingest stops cleanly and re-running `watchdog ingest` picks up where it left off. For an unattended overnight batch, `--wait` sleeps through the limit and resumes automatically; see the [command reference](commands.md) for details.
+
+`watchdog ingest` runs extraction and post-processing together. If you want to split them — to check what got extracted before it lands in the vault, or to try more than one post-processing model against the same extraction — run `watchdog extract` to stage the batch, then `watchdog finalize` when you are ready to complete it. See [the command reference](commands.md#watchdog-extract) for details.
 
 ## Explore the vault in Obsidian
 

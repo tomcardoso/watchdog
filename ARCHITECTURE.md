@@ -182,8 +182,8 @@ report one — only `claude-agent-sdk` does) before looping again, until the que
 finalize completes. The sleep is chunked under the 30-minute staleness window, refreshing the held
 lock's `started_at` after each chunk, so a wait that outlasts it doesn't make a live run look
 abandoned. Opt-in only — without the flag, a rate limit stops the batch exactly as before. The
-loop's only exit condition is a rate limit *during extraction*; with `--no-finalize` (§5) finalize
-never runs at all, so `--wait` simply stops once the queue drains, same as normal.
+loop's only exit condition is a rate limit *during extraction*; with `watchdog extract` (§5)
+finalize never runs at all, so `--wait` simply stops once the queue drains, same as normal.
 
 ---
 
@@ -389,11 +389,13 @@ cleaned via `abort.run` (`pipeline/abort.py`) — staging/section temp removed, 
 moved to `.watchdog/queue/_failed/`, registry untouched. One bad document never sinks the
 batch; move the queue file back from `_failed/` to retry.
 
-**Extract-only (`--no-finalize`, #384).** `orchestrate.run(..., skip_finalize=True)` returns as
-soon as extraction finishes, at the single point (shared by the concurrent per-document loop and
-the claude-batch collect path, §5) that would otherwise call `finalize` — post-ingest (§8, §8.5,
-§9) never runs, and nothing is cleared, so `has_pending_finalization(vault)` stays True on exactly
-what a normal interrupted run would leave behind. That lets a later `watchdog finalize
+**Extract-only (`watchdog extract`, #384/#425).** `orchestrate.run(..., skip_finalize=True)`
+returns as soon as extraction finishes, at the single point (shared by the concurrent
+per-document loop and the claude-batch collect path, §5) that would otherwise call `finalize` —
+post-ingest (§8, §8.5, §9) never runs, and nothing is cleared, so `has_pending_finalization(vault)`
+stays True on exactly what a normal interrupted run would leave behind. The CLI exposes this as
+its own command, `watchdog extract` (`cmd_extract` forces `no_finalize` and delegates to
+`cmd_ingest`), rather than a flag on `ingest`. That lets a later `watchdog finalize
 --finalizer-model <model>` run against a fixed extraction, including against several copies of the
 vault to compare finalizer candidates without re-paying extraction's cost each time. Re-running
 `finalize` idempotently over a batch it has already completed is explicitly out of scope; run it

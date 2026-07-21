@@ -64,6 +64,7 @@ from watchdog.cmd.ingest import (
     _run_preprocess,
     cmd_chew,
     cmd_context,
+    cmd_extract,
     cmd_finalize,
     cmd_guided,
     cmd_ingest,
@@ -433,13 +434,34 @@ def main() -> None:
                           help="On a rate limit, sleep until it resets and resume automatically "
                                "instead of stopping for you to re-run ingest. Not with a "
                                "claude-batch extractor model.")
-    p_ingest.add_argument("--no-finalize", action="store_true", default=False, dest="no_finalize",
-                          help="Stop after extraction; run post-processing later with "
-                               "watchdog finalize. Useful for comparing finalizer models against "
-                               "the same extraction without paying for it twice.")
     p_ingest.add_argument("--estimate", action="store_true",
                           help="Print a token/cost estimate for the queue and exit — no lock, no confirm, no extraction")
     p_ingest.set_defaults(func=cmd_ingest)
+
+    p_extract = sub.add_parser("extract", help="Classify and extract queued documents; stop before finalize (run watchdog finalize next)")
+    p_extract.add_argument("--extractor-model", default=None, dest="extractor_model", metavar="MODEL",
+                           help=f"Model for extraction — {_model_help}; overrides watchdog configure (default: sonnet)")
+    p_extract.add_argument("--classifier-model", default=None, dest="classifier_model", metavar="MODEL",
+                           help=f"Model for document classification — {_model_help}; overrides watchdog configure (default: haiku)")
+    p_extract.add_argument("--extractor-effort", choices=_effort_choices, default=None,
+                           dest="extractor_effort",
+                           help="Reasoning effort for extraction — lower spends fewer tokens; "
+                                "overrides watchdog configure (default: high)")
+    p_extract.add_argument("--concurrency", type=int, default=None,
+                           help="Documents extracted in parallel — overrides watchdog configure (default: 5)")
+    p_extract.add_argument("--classify-pages", type=int, default=None, dest="classify_pages",
+                           help="Pages shown to the document classifier — overrides watchdog configure (default: 5)")
+    p_extract.add_argument("--skill", nargs="?", const=_PICK_SKILL, default=None, dest="skill",
+                           metavar="NAME",
+                           help="Pin a record skill for every document, skipping classification. "
+                                "Pass a skill name, or use --skill with no value to pick interactively.")
+    p_extract.add_argument("--wait", action="store_true", default=False,
+                           help="On a rate limit, sleep until it resets and resume automatically "
+                                "instead of stopping for you to re-run extract. Not with a "
+                                "claude-batch extractor model.")
+    p_extract.add_argument("--estimate", action="store_true",
+                           help="Print a token/cost estimate for the queue and exit — no lock, no confirm, no extraction")
+    p_extract.set_defaults(func=cmd_extract)
 
     p_finalize = sub.add_parser("finalize", help="Complete post-ingest (entity reconciliation, synthesis, timeline, briefing) for an already-extracted batch — e.g. after a rate limit stopped it")
     p_finalize.add_argument("--finalizer-model", default=None, dest="finalizer_model", metavar="MODEL",

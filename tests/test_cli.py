@@ -2150,12 +2150,12 @@ def test_cmd_ingest_no_wait_stops_on_rate_limit_without_looping(wdg_home, tmp_pa
     assert calls[0].get("wait") is False
 
 
-# ── cmd_ingest --no-finalize (#384) ──────────────────────────────────────────
+# ── cmd_ingest no_finalize plumbing (#384; the CLI surface is now `watchdog extract`, #425) ──
 
 def test_cmd_ingest_no_finalize_threads_skip_finalize_to_orchestrate_run(wdg_home, tmp_path, monkeypatch, capsys):
-    """`--no-finalize` on the CLI reaches `orchestrate.run` as `skip_finalize=True`, and the
-    closing block tells the user how to finalize later instead of the usual "open a session"
-    line."""
+    """Setting `no_finalize` on args (as `cmd_extract` does) reaches `orchestrate.run` as
+    `skip_finalize=True`, and the closing block tells the user how to finalize later instead of
+    the usual "open a session" line."""
     from watchdog.cmd import auth as auth_module
     from watchdog.cmd import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
@@ -2185,7 +2185,7 @@ def test_cmd_ingest_no_finalize_threads_skip_finalize_to_orchestrate_run(wdg_hom
 
 
 def test_cmd_ingest_wait_and_no_finalize_stops_once_queue_drains(wdg_home, tmp_path, monkeypatch):
-    """`--wait` loops on a rate-limited *extraction*, not on finalize — with `--no-finalize`,
+    """`--wait` loops on a rate-limited *extraction*, not on finalize — with `no_finalize` set,
     finalize never runs at all, so once the queue finishes extracting cleanly the loop must stop
     after a single call rather than waiting for a finalize that will never happen."""
     from watchdog.cmd import auth as auth_module
@@ -2214,6 +2214,84 @@ def test_cmd_ingest_wait_and_no_finalize_stops_once_queue_drains(wdg_home, tmp_p
     assert len(calls) == 1
     assert calls[0].get("wait") is True
     assert calls[0].get("skip_finalize") is True
+
+
+# ── watchdog extract (#425) ──────────────────────────────────────────────────
+
+def test_ingest_parser_no_longer_accepts_no_finalize(monkeypatch, capsys):
+    """`--no-finalize` is fully replaced by `watchdog extract` (#425) — the pre-1.0 app carries
+    no deprecation period, so `ingest` must reject the flag outright."""
+    import sys
+    monkeypatch.setattr(sys, "argv", ["watchdog", "ingest", "--no-finalize"])
+    with pytest.raises(SystemExit):
+        cli.main()
+    err = capsys.readouterr().err
+    assert "unrecognized" in err
+
+
+def test_cmd_extract_threads_skip_finalize_to_orchestrate_run(wdg_home, tmp_path, monkeypatch, capsys):
+    """`watchdog extract` is `cmd_ingest` with finalization forced off: it must reach
+    `orchestrate.run` with `skip_finalize=True` and print the "run watchdog finalize" hint."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+    monkeypatch.setattr(ing.interactive, "pick", lambda *a, **k: 0)   # "Ingest now"
+
+    calls = []
+
+    async def fake_run(*a, **k):
+        calls.append(k)
+        return {"results": [{"sha256": "sha1", "filename": "a.pdf", "status": "ok", "entity_count": 1}],
+                "extracted": 1, "skipped": 0, "failed": 0, "cancelled": False,
+                "rate_limited": False, "stop_message": None, "rate_limit_resets_at": None,
+                "quarantined": 0, "finalize_skipped": True}
+    monkeypatch.setattr(orch_module, "run", fake_run)
+
+    ing.cmd_extract(args())
+
+    assert len(calls) == 1
+    assert calls[0].get("skip_finalize") is True
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "watchdog finalize" in out
+
+
+def test_cmd_extract_sets_no_finalize_on_args(wdg_home, tmp_path, monkeypatch):
+    """cmd_extract mutates the passed-in args to force no_finalize, then delegates to cmd_ingest
+    unchanged — verified directly against cmd_ingest's call signature."""
+    from watchdog.cmd import ingest as ing
+
+    seen = {}
+    monkeypatch.setattr(ing, "cmd_ingest", lambda a: seen.update(no_finalize=a.no_finalize))
+    a = args()
+    ing.cmd_extract(a)
+    assert seen == {"no_finalize": True}
+
+
+def test_extract_parser_rejects_finalizer_model(monkeypatch, capsys):
+    """`extract` gets extraction-only flags — `--finalizer-model` belongs to `ingest`/`finalize`,
+    not `extract` (extract IS no-finalize, so there is nothing to finalize with)."""
+    import sys
+    monkeypatch.setattr(sys, "argv", ["watchdog", "extract", "--finalizer-model", "sonnet"])
+    with pytest.raises(SystemExit):
+        cli.main()
+    err = capsys.readouterr().err
+    assert "unrecognized" in err
+
+
+def test_extract_command_appears_in_help(monkeypatch, capsys):
+    """`watchdog extract --help` must work — i.e. `extract` is a registered subcommand."""
+    import sys
+    monkeypatch.setattr(sys, "argv", ["watchdog", "extract", "--help"])
+    with pytest.raises(SystemExit):
+        cli.main()
+    out = capsys.readouterr().out
+    assert "extract" in out
+    assert "--extractor-model" in out
 
 
 def test_cmd_ingest_prints_backup_hint_when_discard_snapshotted(wdg_home, tmp_path, monkeypatch, capsys):

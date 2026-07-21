@@ -29,7 +29,8 @@ Investigation names tab-complete in zsh and bash once `watchdog setup` has run.
 | `watchdog fetch <url…>` | Download one or more URLs (or a links file) into `_INCOMING/` — see [below](#watchdog-fetch). |
 | `watchdog chew` | Convert everything in `_INCOMING/` into extracted text queued for ingest — see [below](#watchdog-chew). |
 | `watchdog ingest` | Extract all queued documents into the vault — see [below](#watchdog-ingest). |
-| `watchdog finalize` | Complete the post-ingest step (merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline, briefing) for a batch that was interrupted after extraction, or deliberately staged with `watchdog ingest --no-finalize`; takes the same `--finalizer-model` and `--finalizer-effort` overrides as ingest. |
+| `watchdog extract` | Classify and extract queued documents into staged artifacts, then stop — see [below](#watchdog-extract). |
+| `watchdog finalize` | Complete the post-ingest step (merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline, briefing) for a batch that was interrupted after extraction, or deliberately staged with `watchdog extract`; takes the same `--finalizer-model` and `--finalizer-effort` overrides as ingest. |
 | `watchdog requeue` | Move documents quarantined in `queue/_failed/` back into the active queue, ready for the next `watchdog ingest`. |
 | `watchdog context [name]` | Open Claude Code with the context-seeding skill, which reads `_CONTEXT/`, interviews you, and writes `context.md`; `--model` picks `sonnet`, `opus`, or `haiku` (default: `sonnet`). |
 | `watchdog watch [name]` | Watch `_INCOMING/` and chew files automatically as they arrive. |
@@ -55,21 +56,28 @@ Each model flag takes a Claude tier (`haiku`, `sonnet`, `opus`) or a `backend:mo
 - `--classify-pages N` — leading pages shown to the classifier (default: 5); more pages classify ambiguous documents better.
 - `--skill NAME` — pin one record skill for every document, skipping classification; pass a skill name or a path to a skill file, or use `--skill` with no value to pick from a list. A document's own sidecar can pin a different skill for just that document — see [Skills](skills.md#reading-and-pinning-skills).
 - `--wait` — on a rate limit, sleep until it resets and resume automatically instead of stopping; for unattended overnight batches. It uses the reset time the provider reports, or a fixed fallback interval when it doesn't, and repeats until the queue drains. Not compatible with a `claude-batch` extractor model.
-- `--no-finalize` — stop after extraction; run post-processing later with `watchdog finalize`. Useful for comparing finalizer models against the same extraction without paying for it twice — see [Comparing finalizer models](#comparing-finalizer-models) below.
 - `--estimate` — print the token and cost estimate for the queue and exit; no lock, no confirmation, no extraction.
 
 **Resumability.** Pressing Ctrl+C, or hitting a rate limit without `--wait`, stops the batch cleanly: finished documents are saved and unfinished ones stay queued, so re-running `watchdog ingest` picks up where it left off. A document that genuinely fails extraction is set aside in `queue/_failed/`; the run reports how many, and `watchdog requeue` moves them back to retry.
 
-**Finalization.** Documents land in the vault — entity and document notes, the registry — at the start of this step, not progressively as each one extracts; extraction only stages its output durably. The step then continues with merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline reconciliation, and the briefing. If it's interrupted (for example, a rate limit hits after the documents extract), the batch is left finalizable: `watchdog status` flags it, and `watchdog finalize` completes it without re-extracting anything. If you start another `watchdog ingest` while a batch is pending, it asks what to do: **merge** the pending batch into the new run and finalize everything together, **finalize** it first and stop, or **discard** it. Passing `--no-finalize` leaves a batch in this same finalizable state deliberately, instead of as a side effect of an interruption — see below.
+**Finalization.** Documents land in the vault — entity and document notes, the registry — at the start of this step, not progressively as each one extracts; extraction only stages its output durably. The step then continues with merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline reconciliation, and the briefing. If it's interrupted (for example, a rate limit hits after the documents extract), the batch is left finalizable: `watchdog status` flags it, and `watchdog finalize` completes it without re-extracting anything. If you start another `watchdog ingest` while a batch is pending, it asks what to do: **merge** the pending batch into the new run and finalize everything together, **finalize** it first and stop, or **discard** it. Running `watchdog extract` instead of `watchdog ingest` leaves a batch in this same finalizable state deliberately, instead of as a side effect of an interruption — see below.
 
 #### Comparing finalizer models
 
 Extraction is the expensive part of an ingest — the finalizer's few calls (reconciliation, synthesis, timeline, briefing) cost little by comparison. To try more than one finalizer model or effort level against the *same* extraction, without paying for extraction again each time:
 
-1. Run `watchdog ingest --no-finalize`. Documents extract and stage durably, but the run stops before anything is written to the vault or post-processing runs — `watchdog status` will show the batch as pending finalization.
+1. Run `watchdog extract`. Documents extract and stage durably, but nothing is written to the vault and post-processing does not run — `watchdog status` will show the batch as pending finalization.
 2. Run `watchdog finalize --finalizer-model <model>` to try one candidate. Do this from inside the vault, or from a copy of the vault folder if you want to test several candidates against the identical extraction — each copy still has the same staged inputs, so pointing a different `--finalizer-model` at each copy compares them fairly.
 
 `watchdog finalize` does not yet support re-running cleanly over a batch it has already finalized — run it once per vault (or vault copy).
+
+### watchdog extract
+
+`watchdog extract` runs classification and extraction exactly like `watchdog ingest` — same queue, same extractor and classifier models — but stops as soon as the batch is staged. Nothing is written to the vault, and post-processing (merging duplicate entities, flagging contradictions, entity synthesis, timeline reconciliation, the briefing) does not run.
+
+It takes the extraction-side flags from `watchdog ingest`: `--extractor-model`, `--extractor-effort`, `--classifier-model`, `--concurrency`, `--classify-pages`, `--skill`, `--wait`, and `--estimate`. There is no `--finalizer-model` or `--finalizer-effort` here — those belong to `watchdog finalize`, run afterward to complete the batch.
+
+Use `watchdog extract` when you want to inspect what got extracted before it lands in the vault, or to compare finalizer models against a fixed extraction without paying for extraction again — see [Comparing finalizer models](#comparing-finalizer-models) above. `watchdog status` shows a staged batch as pending finalization until you run `watchdog finalize`.
 
 ### watchdog chew
 
