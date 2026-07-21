@@ -4,6 +4,7 @@ import contextlib
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -457,23 +458,56 @@ def _quarantine_notice(n: int) -> str:
 @contextlib.contextmanager
 def _caffeinate():
     """Keep the machine from sleeping for the life of a real ingest run (#415) — unlike a
-    network blip a retry can absorb, macOS suspending mid-run kills any active model call
-    outright. Only on darwin, and only if `caffeinate` is on PATH — never a hard dependency,
-    and a no-op everywhere else (including `--estimate`/preview paths, which never reach this).
-    `-w <pid>` makes `caffeinate` self-terminate if this process dies without ever reaching the
-    `finally` below, so nothing here needs to track more than "did we start one"."""
+    network blip a retry can absorb, the OS suspending mid-run kills any active model call
+    outright. Never a hard dependency, and a no-op everywhere else (including
+    `--estimate`/preview paths, which never reach this) — including when the platform's own
+    tool isn't on PATH (Windows has no equivalent worth shelling out to at all).
+
+    macOS: `caffeinate -i -w <pid>` self-terminates if this process dies, so a plain
+    `terminate()` in `finally` is enough.
+
+    Linux: `systemd-inhibit` (present wherever systemd is, i.e. most mainstream distros) only
+    holds its sleep/idle inhibitor for as long as a command it launches is running — there's no
+    "watch this other pid" mode — so it wraps a `sleep infinity` placeholder in its own process
+    group (`start_new_session`). Killing just the `systemd-inhibit` process on the way out would
+    leave that placeholder as an orphan still running forever, so cleanup signals the whole
+    group instead.
+    """
     proc = None
+    own_group = False
     if sys.platform == "darwin" and shutil.which("caffeinate"):
         try:
             proc = subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except OSError:
             proc = None
+    elif sys.platform.startswith("linux") and shutil.which("systemd-inhibit"):
+        try:
+            proc = subprocess.Popen(
+                ["systemd-inhibit", "--what=sleep:idle", "--who=watchdog",
+                 "--why=ingest running", "sleep", "infinity"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            own_group = True
+        except OSError:
+            proc = None
     try:
         yield
     finally:
+        # Note: no `return` in here — inside a `finally`, that would silently swallow whatever
+        # exception (e.g. the KeyboardInterrupt that stops an ingest) is propagating through.
         if proc is not None:
-            proc.terminate()
+            if own_group:
+                try:
+                    os.killpg(proc.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+            else:
+                proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
 
 
 def _requeue_failed(vault: Path) -> int:

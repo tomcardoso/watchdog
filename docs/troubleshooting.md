@@ -96,9 +96,9 @@ watchdog finalize
 
 This runs just the wrap-up: it writes the documents to the vault, reconciles duplicate entities, and produces the briefing. It is safe to run more than once — if the wrap-up itself hits a rate limit partway through (for example while reconciling entities), nothing is written to your vault at all, and you simply run `watchdog finalize` again once the limit resets. It picks up from the saved working files each time. Re-running `watchdog ingest` also notices an unfinished batch and asks what to do with it — see the [command reference](commands.md).
 
-## Ingest keeps my Mac awake during a run
+## Ingest prevents the machine from sleeping during a run
 
-On macOS, `watchdog ingest` and `watchdog extract` prevent the machine from sleeping for as long as they're running — a sleep partway through a document kills whatever call was in flight outright, unlike a network blip a retry can absorb. This uses the system's own `caffeinate` utility and needs no setup; it releases the machine the moment the run ends or is interrupted, and it has no effect on Linux or Windows.
+`watchdog ingest` and `watchdog extract` prevent the machine from sleeping for as long as they're running — a sleep partway through a document kills whatever call was in flight outright, unlike a network blip a retry can absorb. On macOS this uses the system's own `caffeinate` utility; on Linux, `systemd-inhibit` (present wherever systemd is, which is most mainstream distros). Neither needs setup, and both release the machine the moment the run ends or is interrupted. On a Linux system without systemd, or on Windows, there's no equivalent to fall back to, so a run there is not protected against the machine sleeping.
 
 ## A lock is stuck
 

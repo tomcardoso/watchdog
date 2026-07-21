@@ -2564,6 +2564,25 @@ def test_cmd_ingest_keyboard_interrupt_mentions_quarantined_docs(wdg_home, tmp_p
 
 # ── caffeinate (#415) ─────────────────────────────────────────────────────────
 
+class _FakeProc:
+    """Stand-in for `subprocess.Popen`'s return value, shared by the caffeinate tests below —
+    tracks `terminate()`/`kill()`/`wait()` calls without touching a real process."""
+    def __init__(self, pid=99999):
+        self.pid = pid
+        self.terminated = False
+        self.killed = False
+        self.waited = False
+
+    def terminate(self):
+        self.terminated = True
+
+    def kill(self):
+        self.killed = True
+
+    def wait(self, timeout=None):
+        self.waited = True
+
+
 def test_caffeinate_spawns_on_darwin_when_available(monkeypatch):
     from watchdog.cmd import ingest as ing
 
@@ -2571,14 +2590,7 @@ def test_caffeinate_spawns_on_darwin_when_available(monkeypatch):
     monkeypatch.setattr(ing.shutil, "which",
                         lambda name: "/usr/bin/caffeinate" if name == "caffeinate" else None)
 
-    class FakeProc:
-        def __init__(self):
-            self.terminated = False
-
-        def terminate(self):
-            self.terminated = True
-
-    fake_proc = FakeProc()
+    fake_proc = _FakeProc()
     calls = []
 
     def fake_popen(cmd, **kwargs):
@@ -2590,14 +2602,61 @@ def test_caffeinate_spawns_on_darwin_when_available(monkeypatch):
         assert calls == [["caffeinate", "-i", "-w", str(ing.os.getpid())]]
         assert not fake_proc.terminated
     assert fake_proc.terminated
+    assert fake_proc.waited
 
 
-def test_caffeinate_noop_on_non_darwin(monkeypatch):
+def test_caffeinate_spawns_systemd_inhibit_on_linux_when_available(monkeypatch):
+    """Linux has no macOS-style "watch this pid" flag, so `systemd-inhibit` wraps a placeholder
+    command instead (#415) — killing the whole process group on the way out, not just the
+    `systemd-inhibit` process itself, so that placeholder isn't left running as an orphan."""
     from watchdog.cmd import ingest as ing
 
     monkeypatch.setattr("watchdog.cmd.ingest.sys.platform", "linux")
+    monkeypatch.setattr(ing.shutil, "which",
+                        lambda name: "/usr/bin/systemd-inhibit" if name == "systemd-inhibit" else None)
+
+    fake_proc = _FakeProc(pid=54321)
+    calls = []
+
+    def fake_popen(cmd, **kwargs):
+        calls.append((cmd, kwargs))
+        return fake_proc
+    monkeypatch.setattr(ing.subprocess, "Popen", fake_popen)
+    killpg_calls = []
+    monkeypatch.setattr(ing.os, "killpg", lambda pid, sig: killpg_calls.append((pid, sig)))
+
+    with ing._caffeinate():
+        assert len(calls) == 1
+        cmd, kwargs = calls[0]
+        assert cmd[0] == "systemd-inhibit"
+        assert kwargs.get("start_new_session") is True
+        assert not killpg_calls
+
+    assert killpg_calls == [(54321, ing.signal.SIGTERM)]
+    assert fake_proc.waited
+    assert not fake_proc.terminated   # cleanup goes through the process group, not proc.terminate()
+
+
+def test_caffeinate_noop_on_windows(monkeypatch):
+    """Neither darwin's nor Linux's tool applies on Windows — there's no CLI equivalent worth
+    shelling out to (#415), so this stays a pure no-op there."""
+    from watchdog.cmd import ingest as ing
+
+    monkeypatch.setattr("watchdog.cmd.ingest.sys.platform", "win32")
     monkeypatch.setattr(ing.subprocess, "Popen",
-                        lambda *a, **k: pytest.fail("must not spawn caffeinate off darwin"))
+                        lambda *a, **k: pytest.fail("must not spawn anything on Windows"))
+
+    with ing._caffeinate():
+        pass
+
+
+def test_caffeinate_noop_on_linux_without_systemd_inhibit(monkeypatch):
+    from watchdog.cmd import ingest as ing
+
+    monkeypatch.setattr("watchdog.cmd.ingest.sys.platform", "linux")
+    monkeypatch.setattr(ing.shutil, "which", lambda name: None)
+    monkeypatch.setattr(ing.subprocess, "Popen",
+                        lambda *a, **k: pytest.fail("must not spawn when systemd-inhibit isn't on PATH"))
 
     with ing._caffeinate():
         pass
@@ -2617,26 +2676,32 @@ def test_caffeinate_noop_when_binary_missing(monkeypatch):
 
 def test_caffeinate_terminates_even_if_the_block_raises(monkeypatch):
     """The context manager's cleanup must run on an exception path too (e.g. the KeyboardInterrupt
-    that stops an ingest, #415) — not just on a clean exit."""
+    that stops an ingest, #415) — not just on a clean exit, and it must not swallow that
+    exception (a bare `return` inside `finally` would)."""
     from watchdog.cmd import ingest as ing
 
     monkeypatch.setattr("watchdog.cmd.ingest.sys.platform", "darwin")
     monkeypatch.setattr(ing.shutil, "which", lambda name: "/usr/bin/caffeinate")
 
-    class FakeProc:
-        def __init__(self):
-            self.terminated = False
-
-        def terminate(self):
-            self.terminated = True
-
-    fake_proc = FakeProc()
+    fake_proc = _FakeProc()
     monkeypatch.setattr(ing.subprocess, "Popen", lambda *a, **k: fake_proc)
 
     with pytest.raises(KeyboardInterrupt):
         with ing._caffeinate():
             raise KeyboardInterrupt()
     assert fake_proc.terminated
+
+
+def test_caffeinate_noop_does_not_swallow_exception(monkeypatch):
+    """Same exception-safety property as above, but for the no-op path (`proc is None`) — this
+    is the branch a bare `return` in `finally` would have silently broken."""
+    from watchdog.cmd import ingest as ing
+
+    monkeypatch.setattr("watchdog.cmd.ingest.sys.platform", "win32")
+
+    with pytest.raises(ValueError):
+        with ing._caffeinate():
+            raise ValueError("boom")
 
 
 # ── configure sections + default_skill ────────────────────────────────────────
