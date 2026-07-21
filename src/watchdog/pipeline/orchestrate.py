@@ -1780,7 +1780,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         # Extract-only (#384): leave the post-ingest inputs on disk untouched — a later
         # `watchdog finalize` (possibly on a vault copy, possibly with a different
         # `--finalizer-model`) consumes them. `has_pending_finalization` is already True by
-        # this point (`_finish_extraction` persisted `result_*.json`/fragments per document).
+        # this point (`_finish_extraction` persisted `result_*.json` per document).
         summary["finalize_skipped"] = True
     elif summary["extracted"] and not cancelled_flag:
         try:

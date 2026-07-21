@@ -143,7 +143,8 @@ Chew is fully local and writes no model-derived fields — `document_type` is le
 
 `watchdog ingest` resolves auth (`auth.resolve_auth`; errors to `watchdog setup` if
 unconfigured), acquires a run lock (`.watchdog/registry/.ingest-lock`, stale after 30
-minutes), scans the queue, and clears the previous run's entity-fragment staging (§8).
+minutes), scans the queue, and clears any leftover post-ingest inputs from a prior run
+(per-doc results and scratchpads — §8).
 It then runs the Python orchestrator in-process (`asyncio.run(orchestrate.run(...))`) and
 releases the lock in a `finally`. Models, concurrency, and classification come from
 `watchdog configure` (`classifier_model`, `extractor_model`, `finalizer_model`,
@@ -258,19 +259,37 @@ serially, in a fixed order, at commit. The queue file survives until this point 
 `_finish_extraction`, #403 phase 1): `write_vault._write_morgue_markdown` and the corpus indexer
 both still need to read it, and it is unlinked immediately after a successful commit.
 
-`write_vault` is the single deterministic writer, unchanged by this refactor: it collapses each
+`write_vault` is the single deterministic writer: it collapses each
 entity's model-invented `type` onto a closed six-value vocabulary (`entity_type.canonical_type`,
 D105) — so a drifting near-synonym (`company` vs `financialinstitution`) can't fork one real-world
-entity across two folders — then merges entities (reconciling near-duplicate slugs coined by
-concurrent workers via the shared `entity_norm` name+type normalization, the type half keyed on
-the canonical bucket), writes entity and document notes, updates the registry files, and moves
-the source file to the morgue — all inside the write lock. The **registry persist is the commit
-point**: the registries are written last, atomically (temp-then-rename), and every
-rebuilt-from-source artifact — the embed/FTS indexes and the per-entity finalizer fragments — is
-(re)written *after* that commit and keyed for idempotent replay (indexes upsert by note_path;
-fragment blocks replace-by-sha), so a repair retry after a mid-write crash converges instead of
-doubling claims (D67). Registry merges are themselves idempotent (sha-guarded), and the entity
-note's `## Analysis` block is keyed by the source document and replaced, not appended.
+entity across two folders — then merges each document's entities into the registry, writes entity
+and document notes, updates the registry files, and moves the source file to the morgue — all
+inside the write lock. The cross-worker slug reconciliation it used to do per-document (near-duplicate
+ids coined by concurrent workers) now runs once up front, over the whole staged batch, in the
+pre-commit fold below (#403 phase 2, D127); `write_vault` replays already-folded entities. The
+**registry persist is the commit point**: the registries are written last, atomically
+(temp-then-rename), and the rebuilt-from-source search indexes (embed/FTS) are (re)written *after*
+that commit, keyed for idempotent replay (upsert by note_path), so a repair retry after a mid-write
+crash converges instead of doubling (D67). Registry merges are themselves idempotent (sha-guarded),
+and the entity note's `## Analysis` block is keyed by the source document and replaced, not appended.
+
+**Finalize is a pre-commit resolution pipeline (#403 phases 2–4).** The commit pass does not run in
+isolation: `orchestrate.finalize` resolves the batch *before* it writes, so `write_vault` commits
+already-settled state exactly once. The order is **exact-name fold → entity-merge reconciliation →
+commit → post-ingest**:
+
+1. **Exact-name fold** (`_batch_exact_fold`, §5 above, D127) — deterministic, no model call.
+2. **Entity-merge reconciliation** (`_reconcile_pre_commit` → `reconcile.apply_merges`, §8.5, D128) —
+   the one model call that resolves token-variant duplicates. It runs over the staged batch, so a
+   same-batch duplicate is folded as a cheap staged-id rewrite rather than post-commit note surgery.
+3. **Commit** (`_commit_pending`) — the write, described above.
+4. **Post-ingest** (`_post_ingest`, §8/§8.5/§9) — contradictions (which need the committed documents
+   registry to validate slugs), gated entity synthesis, timeline reconciliation, the briefing.
+
+Because reconciliation precedes the commit, a reconcile model failure **defers the whole batch**:
+nothing commits, every staged artifact stays pending, and a later `watchdog finalize` retries the
+sequence from the fold. This keeps the batch atomic — committing half-reconciled state would strand
+duplicates a retry could never revisit (D128, I7).
 
 **Two independent "already done" questions (D126).** `preflight.run` answers both, deliberately
 not overloaded onto one flag: `already_staged` (the extraction artifact exists — skip the
@@ -487,9 +506,10 @@ investigation**, otherwise it stays a deterministic stub.
 - **Recurrence is the signal, counted across the project — not the batch.** `synthesis_bundle.build_bundle`
   gates on the registry entity's `appears_in` length, so a registering agent or a law firm that
   surfaces in a second document *in a later batch, years apart* is promoted the moment its
-  `appears_in` crosses 2. Only entities *touched this run* (present in the fragment queue) are
-  candidates — an untouched entity has nothing new to reconcile. (The `count` still written to
-  `_queue.json` is now just the touched-set marker, no longer the gate.)
+  `appears_in` crosses 2. Only entities *touched this run* are candidates — an untouched entity has
+  nothing new to reconcile. "Touched this run" is read from the batch's staged extractions: the
+  entities named across the current batch's `.watchdog/extracted/<sha>.json` files (#403 phase 4,
+  D129), the shas taken from the run's `result_*.json` set.
 - **No summary for single-document entities, and no inline revision.** Under D26 the extractor emits
   no per-entity summary, so the old carryforward trick (pre-flight feeds the current `## Summary`
   back and extraction *revises* it) is gone. A one-document entity simply has no Summary section —
@@ -503,22 +523,23 @@ investigation**, otherwise it stays a deterministic stub.
 - **No recency bias.** The synthesis prompt instructs the model to weight the full body of
   evidence: an entity established across many documents is *not* redefined by a new passing
   mention — a minor new reference is folded in without reshaping a settled account.
-- **Gated synthesis mechanics.** As `write_vault` writes each entity, it records a per-entity
-  **fragment** (the entity's slice of the exploded extraction — its tagged-fact claims with any
-  quotes, roles — plus document attribution) in `.watchdog/tmp/entity-fragments/<id>.md`.
-  This is a *free byproduct* of data the extractor already produced. The fragment block is keyed
-  by the source document's sha and written *after* the registry commit, so a repair retry replaces
-  the block rather than appending a second copy (D67). `write_vault` itself now runs during the
-  commit pass at finalize-start rather than inline with extraction (§5, #403 phase 1, D126), so
-  fragments appear on disk once commit runs, not progressively per document — `build_bundle`
-  below still only ever sees fragments for documents already committed by that point. In `_post_ingest`,
-  `build_bundle` selects the recurring entities and packs each one's fragments + current prose
-  into one compact bundle; a single model call synthesizes them all; `synthesis_bundle.apply_bundle`
-  bulk-writes the Summary/Analysis via the shared writer in `pipeline/finalize_entity.py`.
-- **Why fragments are a byproduct, not extractor-written prose.** Having the extractor
-  narrate per-entity notes would add token cost to the expensive parallel phase. The
-  extraction JSON already contains everything a fragment needs.
-- **Known limitation.** Synthesis reconciles this run's fragments with the entity note's *carried
+- **Gated synthesis mechanics.** In `_post_ingest` (after the commit pass), `build_bundle(vault, shas)`
+  reads the batch's staged extractions (`.watchdog/extracted/<sha>.json`) and, for each entity, rebuilds
+  a compact **fragment** on demand — the entity's slice of the exploded extraction (its tagged-fact
+  claims with any quotes, its roles) plus document attribution, one block per document it appears in.
+  The fragment is a pure function of data the extractor already produced, so it is derived here rather
+  than stored: `write_vault` no longer maintains the per-entity fragment files it once did (#403 phase 4,
+  D129). `build_bundle` selects the recurring entities, packs each one's fragments + current prose into
+  one compact bundle; a single model call synthesizes them all; `synthesis_bundle.apply_bundle` bulk-writes
+  the Summary/Analysis via the shared writer in `pipeline/finalize_entity.py`.
+- **Batch scope comes from the result set, not the pending-commit set.** `_post_ingest` passes
+  `build_bundle` the shas of the run's `result_*.json` files, deliberately not `_pending_commits`. On a
+  resume after a synthesis rate-limit the documents are already committed (so `_pending_commits` is empty),
+  but their `result_*.json` persist, and a re-run must still re-synthesize that batch (D129).
+- **Why the fragment is derived, not extractor-written prose.** Having the extractor narrate per-entity
+  notes would add token cost to the expensive parallel phase. The extraction JSON already contains
+  everything a fragment needs, so synthesis reconstructs it for free at finalize.
+- **Known limitation.** Synthesis reconciles this batch's staged claims with the entity note's *carried
   prose*, not a fresh re-read of every source document. The deep, on-demand `/watchdog-entity`
   pass (`pipeline/write_entity.py`, which also re-synthesizes the Timeline) remains the tool for a
   full rebuild of a central figure from all its sources.
@@ -532,44 +553,58 @@ prose stays in place.
 
 ## 8.5. Reconciliation: entity resolution & contradiction detection
 
-**Code:** `pipeline/reconcile.py`, driven from `orchestrate._post_ingest` (model: `post_model`).
+**Code:** `pipeline/reconcile.py`. The merge half is driven from `orchestrate._reconcile_pre_commit`
+(before the commit pass); the contradiction half is applied from `_post_ingest` (after it). Both come
+from **one** model call (`post_model`).
 
 The two jobs stateless extraction (§5, D118) can't do, because both need every document's claims
 side by side: **entity resolution** (the same real-world thing extracted under two ids) and
-**contradiction detection** (two documents disagreeing about one entity). Both run here, once per
-ingest, **before** synthesis — a merge changes what synthesis summarizes, and a contradiction
-callout is written into the note synthesis then reads. Being post-extraction, the pass is
-concurrency-immune, order-immune, and near-constant in cost (one model call).
+**contradiction detection** (two documents disagreeing about one entity). One reconcile call answers
+both; where each is *applied* differs by what it needs (#403 phase 3, D128). **Entity merges apply
+before the commit pass**, over the staged batch — so a same-batch duplicate is folded while it is
+still staged JSON, a cheap id rewrite instead of post-commit note surgery, and the merge that would
+change what synthesis summarizes has already happened. **Contradictions apply after commit**, because
+`contradiction.run` validates both document slugs against `registry/documents.json`, which only holds
+this batch's documents once committed. Being post-extraction, the call is concurrency-immune,
+order-immune, and near-constant in cost (one call per ingest).
 
-- **Entity resolution is two-tier.** `write_vault._reconcile_entity_ids` already folds *exact*
-  normalized-name duplicates in-lock at write time (§5, untouched). This pass handles the
-  *token-variant* judgement calls that pass deliberately won't auto-merge ("Laurentian University"
-  vs "…of Sudbury"). To keep it from being an every-entity-against-every-other call that eventually
-  won't fit a context window, `reconcile.candidate_pairs` **blocks** the field deterministically:
-  a pair is sent only if it shares a canonical type, scores ≥ `_JACCARD_MIN` (0.5) on some pair of
-  its known names (a strict token-subset scores 1.0, as do identical token sets — a word-order or
-  stopword variant the exact-name pass can't fold, e.g. "Cardoso, Tom" vs "Tom Cardoso"), and
-  involves at least one entity touched this run — ranked by overlap and capped at `_MAX_PAIRS`
-  (200). The model confirms or rejects each pair
-  by index and names the surviving id; `reconcile._apply_merges` drives the existing
-  `merge_entities.run` surgery (§10), chaining merges and following a just-merged id to its survivor,
-  and `_fold_fragments` carries the losing entity's in-flight synthesis fragments onto the survivor.
-  The bundle's size (entity/pair counts and KB) is reported both live and in `watchdog usage`'s
+- **Entity resolution is two-tier.** The exact-name fold (`_batch_exact_fold`, §5, D127) already collapses
+  *exact* normalized-name duplicates across the staged batch before reconciliation runs. This pass handles
+  the *token-variant* judgement calls that fold deliberately won't auto-merge ("Laurentian University"
+  vs "…of Sudbury"). `reconcile.build_bundle(vault, shas)` reconstructs the candidate input from the staged
+  batch and the registry (no longer from written notes or a fragment queue). To keep it from being an
+  every-entity-against-every-other call that eventually won't fit a context window, `reconcile.candidate_pairs`
+  **blocks** the field deterministically: a pair is sent only if it shares a canonical type, scores ≥
+  `_JACCARD_MIN` (0.5) on some pair of its known names (a strict token-subset scores 1.0, as do identical
+  token sets — a word-order or stopword variant the exact-name pass can't fold, e.g. "Cardoso, Tom" vs
+  "Tom Cardoso"), and involves at least one entity touched this run — ranked by overlap and capped at
+  `_MAX_PAIRS` (200). The model confirms or rejects each pair by index and names the surviving id;
+  `reconcile.apply_merges` applies each merge by a **taxonomy of what is already committed** (D128): a
+  batch-only loser is a staged-id rewrite (no stub, backup, or provenance — it never existed as committed
+  state); two committed sides get the full `merge_entities.run` surgery (§10); and when exactly one side is
+  committed, the committed side always survives. Merges chain, following a just-merged id to its survivor,
+  and the flattened remap is carried forward so a contradiction naming a folded-away id still lands on the
+  survivor. The bundle's size (entity/pair counts and KB) is reported both live and in `watchdog usage`'s
   per-call detail, so a future cap or chunking decision comes from real bundle sizes rather than a
   guess; if it ever does outgrow a context window, it can be split at entity/pair boundaries into
   several calls with no quality loss, since contradiction detection only compares claims within one
   entity and each candidate pair is judged independently.
 - **Contradiction detection** reads each recurring entity's (`appears_in ≥ 2`, the D26 gate) `##
   Analysis` claim ledger — already source-attributed by document — and the model returns structured
-  `{entity_id, label, a_value/a_doc/a_page, b_value/b_doc/b_page}` items. `reconcile._apply_contradictions`
+  `{entity_id, label, a_value/a_doc/a_page, b_value/b_doc/b_page}` items. `reconcile.apply_contradictions`
   files each through `contradiction.run` (D81), the same deterministic writer the manual `watchdog
   contradiction` command uses, which validates both document slugs — so a hallucinated reference is a
   skipped item and a warning, never a fabricated citation. The flags feed the briefing's
   "Contradictions flagged" count (§9).
 
 I1 holds: the model answers only *which* pairs are the same and *which* claims conflict; every
-write is deterministic code. A resolution or reconciliation model failure is enrichment-only — the
-entities and claims are already on disk, and `watchdog finalize` re-runs the pass.
+write is deterministic code. Failure recovery, though, is no longer symmetric between the two halves
+(#403 phase 3, D128). Because merges now apply *before* the commit pass, a reconcile model failure
+(rate limit) **defers the whole batch**: nothing commits, every staged artifact stays pending, and a
+re-run of `watchdog finalize` retries fold → reconcile → commit — committing half-reconciled state
+would strand duplicates a later retry could never revisit (I7). The contradiction half, applied
+post-commit, stays enrichment-only: the documents are already saved, so a failure there just leaves
+the callouts unwritten for a later `finalize` to add.
 
 ---
 
@@ -812,7 +847,8 @@ extracted/<sha>.json        durable, validated extraction output (#403 phase 1, 
                             post-flight, committed to the vault by finalize's commit pass, never
                             cleaned up on success (doubles as an audit record)
 timeline/                   raw + canonical NDJSON event files
-tmp/                        scratch (wdg_* temp, entity-fragments/)
+tmp/                        scratch (wdg_* temp; per-run post-ingest inputs: result_<sha>.json,
+                            notes_<sha>.md, synthesis-result.json — cleared on a clean finalize)
 registry/
   entities.json             full entity records (roles, events, appears_in)
   documents.json            per-document metadata + MinHash signatures + embedded
@@ -866,7 +902,7 @@ irreversible branch leaves nothing behind. Backups are pruned to the 5 most rece
 (name-sorted, since the timestamp prefix makes lexical order chronological). Each
 call site backs up only what it's about to destroy: `merge-entities` snapshots
 `entities.json`, `manifest.json`, both entity notes, and any third-party note about to
-be regenerated; ingest's discard snapshots `entity-fragments/`, `result_*.json`, and
+be regenerated; ingest's discard snapshots `result_*.json` and
 `notes_*.md`; `delete --purge` snapshots the registry files only (backing up the whole
 vault would defeat the purpose of purge) — and since that snapshot lives inside the
 vault being deleted, it is a hedge against a partial failure, not a way to undo a
@@ -1069,6 +1105,7 @@ Mechanically-checkable postconditions are guarded by named tests in `tests/test_
 - **I4 — Configured model and effort only; no automatic escalation.** Each stage's model *and* its reasoning effort are explicit knobs with stable defaults; a failed call retries on the *same* model at the *same* effort — the pipeline never silently bumps either to recover. Response pagination (D104) is not an exception: continuing a truncated response prefills the same model's partial output at the same effort to finish one reply, changing neither knob. *History: D20, D36, D104.*
 - **I5 — Research output re-enters through `_INCOMING/`, never as a direct vault write.** Web research deposits findings as documents that flow through `chew → ingest`, keeping the deterministic pipeline the single writer (dedup, provenance, registry bookkeeping). Per-doc rationale rides the `.yml` sidecar; batch rationale goes to a `briefings/research-<date>.md` memo — never `context.md`. *History: D45, D46.*
 - **I6 — Anything parsed out of a source document is untrusted input.** Source documents are adversarial by assumption — they arrive from leaks, FOI releases, and hostile parties. Content read *from* a document (its embedded metadata, its XML parts) is data to be defanged before use — never a directive, and never a payload the parser can be exploded by: XML goes through `defusedxml`, never the stdlib `xml.etree` (which expands internal entities, making a crafted `.docx` a billion-laughs bomb); metadata values are allowlisted and length-capped before they can reach a prompt; a reader that fails degrades to an empty dict rather than taking chew down. *History: D110.*
+- **I7 — The vault mutates only at the finalize commit.** Extraction is a pure function of a document: it stages a durable `.watchdog/extracted/<sha>.json` and touches no committed vault state. Every write to that state — entity and document notes, the morgue, the registries, the timeline and search indexes — happens in one serial, sha-sorted commit pass at the top of `finalize` (`_commit_pending` replaying `write_vault.run`), after the pre-commit resolution steps (exact-name fold, entity-merge reconciliation) have run over the staged batch. Nothing before that pass writes a vault path, which is what makes the batch atomic: a reconcile failure leaves it wholly uncommitted and retriable, and `--no-finalize` leaves the vault untouched by construction, not by convention. *History: D126, D127, D128, D129.*
 
 ### Decision log
 

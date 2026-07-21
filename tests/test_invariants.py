@@ -1,4 +1,4 @@
-"""Named guard tests for ARCHITECTURE.md §15's invariants (I1-I5), #349.
+"""Named guard tests for ARCHITECTURE.md §15's invariants (I1-I7), #349.
 
 Each test name starts with the invariant id it guards (`test_I1_...`, `test_I2_...`, etc.), so
 a failing rule shows up as a specific, named red bar instead of relying on code review to catch
@@ -27,6 +27,9 @@ Deliberately NOT guarded here, and why:
   URLs) is a separate, uncapturable process — nothing in this repo can mechanically assert what
   an interactive session does. The guard below instead asserts the deterministic Python side of
   the boundary: `pipeline/research.py`'s enumerable write paths never touch vault notes.
+- **I6's untrusted-input defanging** (defusedxml over stdlib `xml.etree`, metadata allowlisting
+  and length caps) is exercised where the parsers live — `tests/test_file_metadata.py` — and not
+  re-asserted here.
 
 I2's runtime guard was confirmed to run hermetically (the direct-text preprocessing path does
 not import Docling), so both the static and runtime layers described in the issue are present.
@@ -35,6 +38,7 @@ not import Docling), so both the static and runtime layers described in the issu
 import asyncio
 import ast
 import importlib.resources
+import json
 import socket
 from pathlib import Path
 
@@ -262,3 +266,53 @@ def test_I5_research_deposit_never_writes_outside_incoming(tmp_path):
     for rel, content in sentinels.items():
         assert (vault / rel).read_text(encoding="utf-8") == content, \
             f"{rel} was modified by a research deposit"
+
+
+# ── I7 — the vault mutates only at the finalize commit ───────────────────────
+
+def _committed_state(vault: Path) -> dict:
+    """A snapshot of the *committed* vault surface — the state write_vault produces at commit,
+    excluding the staging/bookkeeping under `.watchdog/` that extraction legitimately touches
+    (the staged artifact, the queue, the run lock/log/usage)."""
+    reg = vault / ".watchdog" / "registry"
+    notes = sorted(
+        p.relative_to(vault).as_posix()
+        for sub in ("entities", "documents", "morgue")
+        for p in (vault / sub).rglob("*") if p.is_file()
+    )
+    briefings = (vault / "briefings")
+    return {
+        "entities.json":  (reg / "entities.json").read_text(encoding="utf-8"),
+        "documents.json": (reg / "documents.json").read_text(encoding="utf-8"),
+        "notes":          notes,
+        "timeline":       (vault / "timeline.md").exists(),
+        "briefings":      sorted(p.name for p in briefings.glob("*")) if briefings.exists() else [],
+    }
+
+
+def test_I7_vault_unmutated_until_the_finalize_commit(tmp_path, monkeypatch):
+    """Extraction stages a durable artifact and writes no committed vault state: after an
+    extract-only run (`skip_finalize`), entity/document notes, the morgue, the registries,
+    timeline and briefings are exactly what a fresh vault had — only the staged artifact appeared.
+    The commit pass at finalize is the sole writer of that state (D126-D129)."""
+    from tests.test_write_vault import make_vault
+    from tests.test_orchestrate import _queue_doc, _mock, _extraction
+
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, text="Acme Corp filed an annual report.")
+    _mock(monkeypatch, extraction=_extraction())
+
+    before = _committed_state(vault)
+    asyncio.run(orchestrate.run(vault, skip_finalize=True))
+
+    # Extraction ran and staged a durable artifact...
+    assert (vault / ".watchdog" / "extracted" / "abc123.json").exists()
+    # ...but touched nothing in the committed vault. This is the invariant.
+    assert _committed_state(vault) == before, \
+        "extraction mutated committed vault state before the commit pass (I7 violated)"
+
+    # And the commit pass at finalize is what actually populates the vault — so the guard above
+    # is asserting on a fixture that genuinely produces state, just later (not a vacuous pass).
+    asyncio.run(orchestrate.finalize(vault, post_model="haiku"))
+    assert _committed_state(vault) != before
+    assert json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())

@@ -82,17 +82,17 @@ For an unattended run — overnight, say — add `--wait`. Instead of stopping w
 watchdog ingest --wait
 ```
 
-Without `--wait`, ingest stops cleanly on a rate limit. Nothing is lost: each document is filed away as soon as it's processed, so re-running `watchdog ingest` picks up only what's still queued.
+Without `--wait`, ingest stops cleanly on a rate limit. Nothing is lost: every document processed so far is saved to a durable working file, so re-running `watchdog ingest` picks up only what's still queued.
 
 ## Ingest interrupted after extraction
 
-If extraction finished but ingest was stopped before the wrap-up — no briefing appeared, entity summaries look unfinished — the batch can be completed without re-extracting anything:
+Ingest has two stages. First it reads each document (the slow, paid part); then, at the end, it writes everything to your vault in one pass and produces the briefing. If a run is stopped after the reading is done but before that final write — no briefing appeared, entity summaries look unfinished, or you saw a message that nothing was written yet — the batch can be completed without re-reading anything:
 
 ```bash
 watchdog finalize
 ```
 
-This runs just the post-ingest step: synthesis, timeline, and the briefing. Re-running `watchdog ingest` also notices an unfinished batch and asks what to do with it — see the [command reference](commands.md).
+This runs just the wrap-up: it writes the documents to the vault, reconciles duplicate entities, and produces the briefing. It is safe to run more than once — if the wrap-up itself hits a rate limit partway through (for example while reconciling entities), nothing is written to your vault at all, and you simply run `watchdog finalize` again once the limit resets. It picks up from the saved working files each time. Re-running `watchdog ingest` also notices an unfinished batch and asks what to do with it — see the [command reference](commands.md).
 
 ## A lock is stuck
 
