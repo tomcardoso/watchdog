@@ -595,6 +595,15 @@ def _print_ingest_summary(summary: dict) -> None:
         print(f"\n  {_DIM}Open a fresh Claude Code session to ask investigation questions.{_RESET}\n")
 
 
+def cmd_extract(args) -> None:
+    """`watchdog extract` (#425) — classify + extract queued documents, staging the artifacts,
+    and stop before finalize. A thin wrapper around `cmd_ingest` with finalization forced off:
+    inherits the estimate path, cost preview, skill pinning, `--wait`, the lock/summary
+    machinery, and the "run watchdog finalize next" closing message for free."""
+    args.no_finalize = True
+    cmd_ingest(args)
+
+
 def cmd_finalize(args) -> None:
     """Complete post-ingest (entity reconciliation + synthesis + timeline + briefing) for an already-extracted batch.
 

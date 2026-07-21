@@ -201,12 +201,11 @@ For clipping pages as you browse, install the [Obsidian Web Clipper](https://obs
 After the first ingest, the typical loop is:
 
 1. **Drop new documents** into `_INCOMING/`
-2. **`watchdog chew`** from the vault directory
-3. **`watchdog ingest`** — extracts the queued documents in your terminal
-4. **Read the briefing** — pay particular attention to connections with entities already in the vault
-5. **`/watchdog-surface`** in a fresh Claude Code session, if the new batch was substantial
+2. **`watchdog`** from the vault directory — the guided front door: it offers to chew and then ingest whatever is new, confirming before each step
+3. **Read the briefing** — pay particular attention to connections with entities already in the vault
+4. **`/watchdog-surface`** in a fresh Claude Code session, if the new batch was substantial
 
-Claude Code does not need to be open while you are chewing; the queue accumulates until you are ready to extract. If you are dropping files into a vault over a period of time, `watchdog watch` monitors `_INCOMING/` and chews new files automatically as they arrive — press Ctrl+C to stop.
+Claude Code does not need to be open while you are chewing; the queue accumulates until you are ready to extract. If you would rather run each step yourself instead of the guided walkthrough — chewing now and ingesting later, say — run `watchdog chew` and `watchdog ingest` directly; `watchdog extract` and `watchdog finalize` split extraction and post-processing further, for comparing finalizer models against the same extraction. See the [command reference](commands.md) for all of it. If you are dropping files into a vault over a period of time, `watchdog watch` monitors `_INCOMING/` and chews new files automatically as they arrive — press Ctrl+C to stop.
 
 ## Managing investigations
 
