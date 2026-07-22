@@ -22,9 +22,11 @@ class FakeBackend:
         self.outputs = list(outputs)
         self.calls = []
 
-    async def __call__(self, prompt, model_id, schema, api_key, max_tokens, effort=None):
+    async def __call__(self, prompt, model_id, schema, api_key, max_tokens, effort=None,
+                       prefix=None, base_url=None):
         self.calls.append({"model_id": model_id, "api_key": api_key,
-                           "prompt": prompt, "max_tokens": max_tokens, "effort": effort})
+                           "prompt": prompt, "max_tokens": max_tokens, "effort": effort,
+                           "base_url": base_url})
         return self.outputs.pop(0)
 
 
@@ -360,6 +362,90 @@ def test_gemini_effort_passed_through(gemini_key, monkeypatch):
     assert be.calls[0]["effort"] == "medium"
 
 
+# ── local / self-hosted + OpenRouter (#380) ──────────────────────────────────
+
+@pytest.fixture
+def local_configured(monkeypatch):
+    """A local backend with a base URL configured and no key (the common case — most self-hosted
+    runners don't check for one)."""
+    monkeypatch.setattr(mc.auth, "get_base_url",
+                        lambda provider: "http://localhost:11434/v1" if provider == "local" else None)
+    monkeypatch.setattr(mc.auth, "get_api_key", lambda provider="anthropic": None)
+    monkeypatch.setattr(mc.auth, "provider_requires_key", lambda provider: provider != "local")
+
+
+def test_local_backend_runs_without_a_key(local_configured, monkeypatch):
+    be = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "local", be)
+    r = mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="local", model="llama-3.3-70b")
+    assert r.backend == "local"
+    assert be.calls[0]["api_key"] is None
+    assert be.calls[0]["base_url"] == "http://localhost:11434/v1"
+
+
+def test_local_backend_missing_base_url_errors(monkeypatch):
+    monkeypatch.setattr(mc.auth, "get_base_url", lambda provider: None)
+    with pytest.raises(mc.ModelError, match="local_base_url"):
+        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="local", model="llama-3.3-70b")
+
+
+def test_local_effort_is_always_dropped(local_configured, monkeypatch):
+    be = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "local", be)
+    mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="local",
+                     model="llama-3.3-70b", effort="high")
+    assert be.calls[0]["effort"] is None
+
+
+def test_openrouter_backend_uses_default_base_url(monkeypatch):
+    monkeypatch.setattr(mc.auth, "get_base_url",
+                        lambda provider: "https://openrouter.ai/api/v1" if provider == "openrouter" else None)
+    monkeypatch.setattr(mc.auth, "get_api_key",
+                        lambda provider="anthropic": "sk-or-x" if provider == "openrouter" else None)
+    be = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "openrouter", be)
+    r = mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="openrouter",
+                         model="anthropic/claude-3.5-sonnet")
+    assert r.backend == "openrouter"
+    assert be.calls[0]["api_key"] == "sk-or-x"
+    assert be.calls[0]["base_url"] == "https://openrouter.ai/api/v1"
+
+
+def test_openrouter_backend_without_key_errors(monkeypatch):
+    monkeypatch.setattr(mc.auth, "get_base_url",
+                        lambda provider: "https://openrouter.ai/api/v1" if provider == "openrouter" else None)
+    monkeypatch.setattr(mc.auth, "get_api_key", lambda provider="anthropic": None)
+    with pytest.raises(mc.ModelError, match="watchdog auth"):
+        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="openrouter",
+                         model="anthropic/claude-3.5-sonnet")
+
+
+def test_context_window_local_conservative_default(monkeypatch):
+    from watchdog.cmd import base as cmd_base
+    monkeypatch.setattr(cmd_base, "CONFIG_FILE", cmd_base.WATCHDOG_HOME / "does-not-exist.json")
+    assert mc.context_window("llama-3.3-70b", "local") == 8_000
+
+
+def test_context_window_local_config_override(tmp_path, monkeypatch):
+    from watchdog.cmd import base as cmd_base
+    config_file = tmp_path / "config.json"
+    config_file.write_text('{"local_context_window": 32000}')
+    monkeypatch.setattr(cmd_base, "CONFIG_FILE", config_file)
+    assert mc.context_window("llama-3.3-70b", "local") == 32_000
+
+
+def test_context_window_ignores_backend_for_hosted_models():
+    # backend=None (or any non-"local" backend) keeps the substring-table behaviour untouched.
+    assert mc.context_window("deepseek-v4-flash", "deepseek") == 1_000_000
+
+
+def test_output_ceiling_applies_to_local_and_openrouter():
+    # local/openrouter enforce max_tokens and can't paginate (#380) — same treatment as openai/gemini.
+    assert mc.output_ceiling_for_sectioning("extract", "local", "llama-3.3-70b") == 16000
+    assert mc.output_ceiling_for_sectioning("extract", "openrouter", "anthropic/claude-3.5-sonnet") == 16000
+    assert mc.output_ceiling_for_sectioning("extract", "claude-agent-sdk", "sonnet") is None
+
+
 def test_openai_cost():
     assert mc._openai_cost("deepseek-v4-flash",
                            {"prompt_tokens": 1_000_000, "completion_tokens": 0}) == pytest.approx(0.14)
@@ -566,6 +652,28 @@ def test_gemini_uses_max_tokens(monkeypatch):
     _fake_httpx(monkeypatch, captured)
     asyncio.run(mc._openai_complete_async("p", "gemini-2.5-flash", SCHEMA, "AIza-x", 8000,
                                           base_url="https://generativelanguage.googleapis.com/v1beta/openai"))
+    assert captured["body"]["max_tokens"] == 8000
+    assert "max_completion_tokens" not in captured["body"]
+
+
+def test_local_uses_max_tokens_even_for_an_openai_reasoning_style_id(monkeypatch):
+    # A self-hosted model's id carries no relation to OpenAI's naming (#380) — an operator could
+    # name one "gpt-5-mini" or "o3-mini" and it would still speak the classic max_tokens field.
+    # Gating on base_url (not just model_id) keeps a local/OpenRouter call from sending
+    # max_completion_tokens to a runner that doesn't recognize it.
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async("p", "gpt-5-mini", SCHEMA, None, 8000,
+                                          base_url="http://localhost:11434/v1"))
+    assert captured["body"]["max_tokens"] == 8000
+    assert "max_completion_tokens" not in captured["body"]
+
+
+def test_openrouter_uses_max_tokens_even_for_an_openai_reasoning_style_id(monkeypatch):
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async("p", "o3-mini", SCHEMA, "sk-or-x", 8000,
+                                          base_url="https://openrouter.ai/api/v1"))
     assert captured["body"]["max_tokens"] == 8000
     assert "max_completion_tokens" not in captured["body"]
 

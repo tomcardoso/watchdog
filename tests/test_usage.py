@@ -13,9 +13,9 @@ from watchdog.cmd.usage import cmd_usage
 def _call(task="extract", filename="doc.pdf", detail="pages 1–1", model="claude-sonnet-4-6",
           cost_usd=0.01, input_tokens=100, output_tokens=20, latency_s=1.5,
           effort=None, auth_mode="api-key", attempts=1, end_ts=None, api_ms=None, num_turns=None,
-          failed=False):
+          failed=False, backend="claude-api"):
     call = {
-        "task": task, "model": model, "backend": "claude-api",
+        "task": task, "model": model, "backend": backend,
         "input_tokens": input_tokens, "output_tokens": output_tokens,
         "cache_read_tokens": 0, "cache_write_tokens": 0,
         "cost_usd": cost_usd, "attempts": attempts, "latency_s": latency_s, "effort": effort,
@@ -241,6 +241,27 @@ def test_cmd_usage_shows_full_model_name_next_to_stage(tmp_path, monkeypatch, ca
     out = capsys.readouterr().out
     assert "CLASSIFIER" in out and "model: gemini-3.1-flash-lite" in out
     assert "  Model  " not in out   # no more per-row Model column
+
+
+def test_cmd_usage_flags_local_backend_as_not_actually_free(tmp_path, monkeypatch, capsys):
+    """#380: a `local` call's $0 cost is real but reads as "free" at a glance — the stage header
+    gets a note pointing at Latency as the real cost signal. A stage with no local calls gets no
+    such note."""
+    vault = _build_vault(tmp_path, runs={
+        "usage-2026-01-01T00-00-00": [
+            _call(task="extract", model="llama-3.3-70b", backend="local", cost_usd=0.0),
+            _call(task="classify", model="gemini-3.1-flash-lite", cost_usd=0.001),
+        ],
+    })
+    monkeypatch.chdir(vault)
+
+    cmd_usage(_args())
+
+    out = capsys.readouterr().out
+    assert "local model — no per-token cost; Latency is the real cost signal here" in out
+    classifier_section, extractor_section = out.split("EXTRACTOR")
+    assert "local model" not in classifier_section
+    assert "local model" in extractor_section
 
 
 def test_cmd_usage_reconcile_task_groups_under_finalizer(tmp_path, monkeypatch, capsys):

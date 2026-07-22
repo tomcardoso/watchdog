@@ -48,6 +48,9 @@ Or run `watchdog configure <key>` with no value to see that one key's help and c
 | `finalizer_briefing_model` | *(unset)* | Overrides `finalizer_model` for just the briefing. |
 | `extractor_effort` | `high` | How hard the extractor model thinks: `low`, `medium`, or `high`. |
 | `finalizer_effort` | `high` | How hard the finalizer model thinks: `low`, `medium`, or `high`. |
+| `local_base_url` | *(unset)* | Base URL of a local/self-hosted OpenAI-compatible model server, for the `local` backend. |
+| `local_context_window` | `8000` | Context window (tokens) of the local model, since Watchdog can't infer it from an arbitrary self-hosted model id. |
+| `openrouter_base_url` | `https://openrouter.ai/api/v1` | Base URL for the `openrouter` backend; change only if pointing at an OpenRouter-compatible proxy. |
 | `dup_threshold` | `0.85` | Similarity score at which two documents are flagged as near-duplicates (0.0–1.0). |
 | `shingle_size` | `3` | Word-sequence length used for near-duplicate fingerprinting. |
 | `embed_model` | `BAAI/bge-small-en-v1.5` | Local embedding model that indexes passages and notes for `watchdog search`. |
@@ -113,6 +116,10 @@ watchdog configure extractor_effort medium
 
 # Lower parallelism if you hit model rate limits
 watchdog configure extract_concurrency 2
+
+# Route classification to a local model — documents never leave the machine for this stage
+watchdog configure local_base_url http://localhost:11434/v1
+watchdog configure classifier_model local:llama-3.3-70b
 ```
 
 ## Model backends
@@ -133,6 +140,8 @@ Within ingest, Watchdog is designed around Claude and uses it by default, but ea
 | `gemini:gemini-3.5-flash` | Gemini 3.5 Flash — stable, 1M-token context window. |
 | `gemini:gemini-3.1-flash-lite` | Gemini 3.1 Flash-Lite — stable, cheapest Gemini tier. |
 | `gemini:gemini-3.1-pro-preview` | Gemini 3.1 Pro — preview release; Google may deprecate preview model ids on short notice. |
+| `local:llama-3.3-70b` | A model on your own machine or network — Ollama, LM Studio, llama.cpp's server, vLLM, or anything else speaking the OpenAI-compatible wire format. Requires `local_base_url`; usually no key. |
+| `openrouter:anthropic/claude-3.5-sonnet` | [OpenRouter](https://openrouter.ai) — one key routes to many hosted models, named exactly as OpenRouter itself lists them. |
 
 Point a stage at a provider — persistently or per run:
 
@@ -147,6 +156,25 @@ If you pick a model interactively from a provider you have no key for yet, `watc
 `watchdog setup` offers a shortcut for all of this: if you're on a Claude Code subscription, it asks whether to route ingestion to a metered provider instead, then walks through picking that provider, pasting its key, and choosing a model for each of the three ingest stages in one go. `watchdog auth`'s status view shows, per stage, which provider it currently resolves to and whether that provider is ready (a key is stored or its env var is set), plus every stored key marked `(in use)` or `(unused)`.
 
 Each stage is independent — you can keep extraction on Claude Sonnet while routing the cheaper classification or post-ingest steps to another provider. One honest caveat: non-Claude backends are unproven on dense legal and financial extraction, so the defaults stay on Claude and nothing routes elsewhere unless you ask. The effort knobs apply where the provider supports them and are ignored where it doesn't. DeepSeek thinking mode is off by default and enabled by appending `-thinking` to the model id (e.g. `deepseek:deepseek-v4-flash-thinking`); extraction is schema-bound structured output, so non-thinking is the cheaper, more predictable default, with thinking available for the judgment-heavy cases. Gemini has no equivalent thinking toggle — its `reasoning_effort` is driven entirely by the effort knobs.
+
+### Local and self-hosted models
+
+Cost is one reason to run a stage on a model on your own machine or network, and not the interesting one. The real reason is documents that cannot leave the building: a leaked document set, an unpublished investigation, anything with a source's fingerprints on it. Every backend above — including Claude — sends document text to somebody else's server. A `local` model, pointed at a runner on hardware you control, is the one configuration where it never does.
+
+`local` works with any server that speaks the OpenAI-compatible Chat Completions wire format — Ollama, LM Studio, llama.cpp's server, vLLM, and others. Point it at your server and pick a model:
+
+```bash
+watchdog configure local_base_url http://localhost:11434/v1   # e.g. Ollama's default port
+watchdog configure extractor_model local:llama-3.3-70b
+```
+
+Most self-hosted runners don't check for an API key at all, so `local` doesn't ask for one unless you add it yourself with `watchdog auth` (some gateways in front of a local model do check). Because a self-hosted model's id carries no vendor namespace, Watchdog can't infer its context window the way it does for a hosted model — set `local_context_window` to the real figure (check your model's card or your runner's docs) so document sectioning sizes sections correctly; left unset, Watchdog assumes a conservative 8,000 tokens, which errs toward more (smaller) sections rather than risking an overrun on an unknown model.
+
+`watchdog usage` reports a local call's cost as $0 — genuinely accurate, since there's no per-token bill — but $0 is not the same as free: a local model spends wall-clock time instead, and a `local model` note next to the usual figures says so, so a run that took an hour doesn't read as having cost nothing.
+
+**The honest caveat, sharper here than anywhere else in this page:** the pipeline doesn't chat, it demands schema-valid JSON and retries on failure — the hardest thing to get reliably out of a small local model, and the failure mode is easy to miss (not a crash, a quietly thinner extraction: fewer facts, dropped relationships, elided quotes). This has not yet been run through Watchdog's own extraction benchmark (corpus-v1) the way Claude, DeepSeek, and OpenAI have. Until that's done, treat the classifier and finalizer — short input, more forgiving output — as the first things worth trying locally, and be skeptical of a local extractor on dense legal or financial material specifically.
+
+OpenRouter (`openrouter:anthropic/claude-3.5-sonnet`, or any model id [OpenRouter](https://openrouter.ai) lists) is the same mechanism with a fixed, hosted endpoint and a required key — useful for reaching a model Watchdog has no dedicated backend for, but it does send document text off-machine to OpenRouter and whichever model it routes to, same as any other hosted provider above.
 
 ### claude-batch: bulk extraction at half price
 

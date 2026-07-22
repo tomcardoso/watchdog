@@ -167,7 +167,7 @@ def test_run_threshold_follows_model_window(tmp_path, monkeypatch):
     import watchdog.model_client as mc
     monkeypatch.setattr(section, "_config_get", lambda k, d: d)
     monkeypatch.setattr(mc, "context_window",
-                        lambda model: 500 if model == "small" else 100_000)
+                        lambda model, backend=None: 500 if model == "small" else 100_000)
     vault = _vault(tmp_path)
     pages = [{"page": n, "markdown": "x" * 400} for n in range(1, 11)]   # 1000 est tokens
     _write_queue(vault, "doc1", pages, 10)

@@ -33,6 +33,15 @@ from watchdog.interactive import CANCELLED, confirm, pick
 # Agent SDK and the Claude API backends — they share ANTHROPIC_API_KEY. The
 # OpenAI-compatible providers (#125) each carry their own key, used by the
 # matching `model_client` backend independent of the Claude auth mode.
+#
+# `local` and `openrouter` (#380) additionally carry a **user-supplied base URL**
+# (`base_url_key`/`base_url_env`; `default_base_url` when the provider has a fixed
+# endpoint) rather than the fixed base URLs `model_client._OPENAI_BASE` hard-codes for
+# openai/deepseek/gemini — every mainstream local runner (Ollama, LM Studio, llama.cpp's
+# server, vLLM) and OpenRouter itself speak the same OpenAI-compatible wire format, so the
+# only two things that vary are the endpoint and whether a key is needed. `requires_key`
+# (default True when absent) marks `local` as the one provider that can run with no key at
+# all — most local runners don't check for one.
 _PROVIDERS: dict[str, dict] = {
     "anthropic": {
         "label":  "Anthropic — Claude API / Agent SDK",
@@ -53,6 +62,23 @@ _PROVIDERS: dict[str, dict] = {
         "label":  "Google Gemini — Chat Completions",
         "env":    "GEMINI_API_KEY",
         "prefix": None,  # Google key formats vary (AI Studio, Vertex AI, ...) — no reliable fixed prefix
+    },
+    "local": {
+        "label":  "Local / self-hosted — OpenAI-compatible endpoint",
+        "env":    "LOCAL_API_KEY",
+        "prefix": None,
+        "requires_key": False,
+        "base_url_key": "local_base_url",
+        "base_url_env": "LOCAL_BASE_URL",
+        "default_base_url": None,   # must be supplied — no sensible one-size-fits-all default
+    },
+    "openrouter": {
+        "label":  "OpenRouter — routes to many hosted models",
+        "env":    "OPENROUTER_API_KEY",
+        "prefix": "sk-or-",
+        "base_url_key": "openrouter_base_url",
+        "base_url_env": "OPENROUTER_BASE_URL",
+        "default_base_url": "https://openrouter.ai/api/v1",
     },
 }
 
@@ -129,6 +155,54 @@ def get_api_key(provider: str = "anthropic") -> str | None:
     if meta and os.environ.get(meta["env"]):
         return os.environ[meta["env"]]
     return _load_state()["keys"].get(provider)
+
+
+def provider_requires_key(provider: str) -> bool:
+    """Whether `provider` needs an API key to run — false only for `local` (#380), where most
+    self-hosted runners don't check for one. Every other provider defaults to requiring one."""
+    return _PROVIDERS.get(provider, {}).get("requires_key", True)
+
+
+def _load_config() -> dict:
+    from watchdog.cmd.base import CONFIG_FILE
+    if not CONFIG_FILE.exists():
+        return {}
+    try:
+        return json.loads(CONFIG_FILE.read_text())
+    except json.JSONDecodeError:
+        return {}
+
+
+def _save_config(config: dict) -> None:
+    from watchdog.cmd.base import CONFIG_FILE, WATCHDOG_HOME
+    WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
+    CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")
+    os.chmod(CONFIG_FILE, stat.S_IRUSR | stat.S_IWUSR)   # mirrors setup.py's _persist (#304)
+
+
+def get_base_url(provider: str) -> str | None:
+    """Resolve a provider's OpenAI-compatible base URL (#380): its env var override first, then
+    the `watchdog configure` key named in `base_url_key`, then the provider's fixed default
+    (None for a provider like `local` that has none — the caller must supply one)."""
+    meta = _PROVIDERS.get(provider, {})
+    env_name = meta.get("base_url_env")
+    if env_name and os.environ.get(env_name):
+        return os.environ[env_name].rstrip("/")
+    base_key = meta.get("base_url_key")
+    if base_key:
+        value = _load_config().get(base_key)
+        if value:
+            return value.rstrip("/")
+    return meta.get("default_base_url")
+
+
+def provider_ready(provider: str) -> bool:
+    """Whether `provider` has everything it needs to run a call: a base URL if it requires a
+    user-supplied one, and an API key unless it's the rare provider that doesn't need one."""
+    meta = _PROVIDERS.get(provider, {})
+    if meta.get("base_url_key") and not get_base_url(provider):
+        return False
+    return not provider_requires_key(provider) or bool(get_api_key(provider))
 
 
 def resolve_auth(provider: str = "anthropic") -> dict:
@@ -216,7 +290,7 @@ def _status() -> None:
         value = config.get(stage_key) or default
         provider = _ingest_stage_provider(value)
         ready = (mode == "subscription" or bool(get_api_key("anthropic"))) if provider == "anthropic" \
-            else bool(get_api_key(provider))
+            else provider_ready(provider)
         mark = f"{_GREEN}✓{_RESET}" if ready else f"{_YELLOW}✗{_RESET}"
         label = stage_key[: -len("_model")]
         print(f"  {mark} {_DIM}{label:<11}{_RESET}{_CYAN}{value}{_RESET}  {_DIM}({provider}){_RESET}")
@@ -237,6 +311,15 @@ def _status() -> None:
             print(f"  {_DIM}{p:<13}{_RESET}{_CYAN}{_mask(key)}{_RESET} {_DIM}({where}, {status}){_RESET}")
         print()
 
+    # Providers with a user-supplied base URL (local, openrouter — #380), whichever is set.
+    urled = [(p, get_base_url(p)) for p, m in _PROVIDERS.items() if m.get("base_url_key")]
+    urled = [(p, u) for p, u in urled if u]
+    if urled:
+        print(f"  {_DIM}Base URLs{_RESET}")
+        for p, u in urled:
+            print(f"  {_DIM}{p:<13}{_RESET}{_CYAN}{u}{_RESET}")
+        print()
+
 
 def prompt_and_store_key(provider: str, state: dict) -> bool:
     """Prompt for a non-Claude provider's API key, warn on an unexpected prefix, store it, and
@@ -245,10 +328,16 @@ def prompt_and_store_key(provider: str, state: dict) -> bool:
     The single implementation of "ask for a key and save it" — shared by setup's extra-provider
     offer, the metered-ingestion wizard, `watchdog auth`'s key editor, and the check that runs
     when a model is picked from a provider with no key yet. Mutates and persists `state`.
+
+    A provider that doesn't require one (`local` — #380, most self-hosted runners don't check)
+    still goes through this same prompt, worded as optional, so leaving it blank is a normal,
+    silent outcome rather than something that reads as declining a required step.
     """
     meta = _PROVIDERS[provider]
+    optional = not meta.get("requires_key", True)
+    hint = " (hidden, optional — Enter to skip)" if optional else " (hidden)"
     try:
-        key = getpass(f"  Paste {meta['label']} API key (hidden): ").strip()
+        key = getpass(f"  Paste {meta['label']} API key{hint}: ").strip()
     except (EOFError, KeyboardInterrupt):
         print()
         return False
@@ -263,19 +352,46 @@ def prompt_and_store_key(provider: str, state: dict) -> bool:
     return True
 
 
+def prompt_and_store_base_url(provider: str) -> bool:
+    """Prompt for a provider's OpenAI-compatible base URL and persist it to `watchdog configure`'s
+    `base_url_key` (#380) — the same config.json a user could set directly with `watchdog
+    configure local_base_url <url>`. Returns True if a URL was stored."""
+    meta = _PROVIDERS[provider]
+    example = "http://localhost:11434/v1" if provider == "local" else meta.get("default_base_url", "")
+    try:
+        url = input(f"  Base URL for {meta['label']} (e.g. {example}): ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    if not url:
+        print(f"  {_DIM}No URL entered — skipped.{_RESET}")
+        return False
+    config = _load_config()
+    config[meta["base_url_key"]] = url.rstrip("/")
+    _save_config(config)
+    print(f"  {_GREEN}✓{_RESET}  Base URL stored: {_CYAN}{config[meta['base_url_key']]}{_RESET}")
+    return True
+
+
 def ensure_provider_key(value: str) -> None:
-    """Prompt for a key if the just-chosen `[backend:]model` points at a provider that has none.
+    """Prompt for whatever a just-chosen `[backend:]model` needs and doesn't have yet: a base
+    URL for a provider like `local`/`openrouter` that requires a user-supplied one (#380), and an
+    API key for a provider that requires one (skipped for `local`, which usually needs none).
 
     Picking, say, `gemini:gemini-2.5-flash` for a stage used to leave that stage silently
     unusable until the user separately remembered to run `watchdog auth` — the failure only
     surfaced mid-ingest. Asking here keeps "pick a model" and "be able to run it" together.
-    A Claude tier, or a provider whose key is already stored or in the environment, is a no-op.
+    A Claude tier, or a provider that's already fully configured, is a no-op.
     """
     provider = _ingest_stage_provider(value)
-    if provider == "anthropic" or get_api_key(provider):
+    if provider == "anthropic" or provider_ready(provider):
         return
     print()
-    prompt_and_store_key(provider, _load_state())
+    meta = _PROVIDERS.get(provider, {})
+    if meta.get("base_url_key") and not get_base_url(provider):
+        prompt_and_store_base_url(provider)
+    if provider_requires_key(provider) and not get_api_key(provider):
+        prompt_and_store_key(provider, _load_state())
 
 
 def _apply_anthropic_choice(state: dict, choice: str, *, show_detection: bool = True) -> bool:
@@ -343,10 +459,10 @@ def setup_auth_interactive(interactive: bool | None = None) -> None:
     (/watchdog-query, /watchdog-surface, ...) always run on Claude, and it's the ingestion
     default too. This sets up Claude access first (subscription or API key), and — on a
     subscription — warns that ingesting more than a few documents can be token-heavy for a
-    Pro plan's session limits and offers to route ingestion to a cheaper metered provider
-    instead, walking through picking that provider's models for the three ingest stages if
-    so (#325). Persists the choice; skips cleanly off a terminal. `interactive` is
-    overridable for testing.
+    Pro plan's session limits and offers to route ingestion to another provider instead —
+    a cheaper metered API, or a local/self-hosted model (#380) — walking through picking
+    that provider's models for the three ingest stages if so (#325). Persists the choice;
+    skips cleanly off a terminal. `interactive` is overridable for testing.
     """
     if interactive is None:
         interactive = sys.stdin.isatty()
@@ -378,9 +494,9 @@ def setup_auth_interactive(interactive: bool | None = None) -> None:
         lead = "\n" if printed else ""
         print(f"{lead}  {_YELLOW}Note:{_RESET} {_DIM}ingesting more than a few documents can be token-heavy for a "
               f"Pro subscription's session limits. See{_RESET}")
-        print(f"  {_CYAN}docs/configuration.md{_RESET} {_DIM}(\"Model backends\") for cheaper metered "
-              f"alternatives — OpenAI, DeepSeek, Gemini.{_RESET}")
-        if confirm("\n  Route ingestion to a metered API service instead of your subscription?", default=False):
+        print(f"  {_CYAN}docs/configuration.md{_RESET} {_DIM}(\"Model backends\") for cheaper "
+              f"alternatives — OpenAI, DeepSeek, Gemini, OpenRouter — or a local/self-hosted model.{_RESET}")
+        if confirm("\n  Route ingestion to another provider instead of your subscription?", default=False):
             _setup_metered_ingestion(state)
         else:
             _maybe_tune_concurrency_for_subscription()
@@ -436,7 +552,13 @@ def _setup_metered_ingestion(state: dict) -> None:
     meta = _PROVIDERS[provider]
 
     print()
-    if os.environ.get(meta["env"]) or state["keys"].get(provider):
+    if meta.get("base_url_key") and not get_base_url(provider):
+        if not prompt_and_store_base_url(provider):
+            return   # local/openrouter can't run without one — nothing to fall back to
+
+    if not provider_requires_key(provider):
+        pass   # e.g. local — most self-hosted runners need no key at all
+    elif os.environ.get(meta["env"]) or state["keys"].get(provider):
         print(f"  {_GREEN}✓{_RESET}  {meta['label']} key already available.")
     elif not prompt_and_store_key(provider, state):
         return
@@ -466,23 +588,27 @@ def _setup_metered_ingestion(state: dict) -> None:
 
 
 def _offer_extra_providers(state: dict) -> None:
-    """Optionally store keys for additional (OpenAI-compatible) providers during setup.
+    """Optionally configure additional providers during setup — a key for the OpenAI-compatible
+    ones, or a base URL (and, for OpenRouter, a key) for local/self-hosted (#380).
 
-    Skippable and provider-neutral — Watchdog still runs on Claude by default; these keys just
-    let a user route a stage to another provider later via a `backend:model` config value."""
+    Skippable and provider-neutral — Watchdog still runs on Claude by default; these just let a
+    user route a stage to another provider later via a `backend:model` config value."""
     extras = [p for p in _PROVIDERS if p != "anthropic"]
     if not extras:
         return
     labels = ", ".join(_PROVIDERS[p]["label"].split(" — ")[0] for p in extras)
     print(f"\n  {_BOLD}Other model providers?{_RESET} {_DIM}(optional — {labels}){_RESET}")
-    print(f"  {_DIM}Add a key to route some stages to a cheaper/alternative provider. Skip to stay on Claude.{_RESET}")
+    print(f"  {_DIM}Route a stage to a cheaper, alternative, or local/self-hosted provider. Skip to stay on Claude.{_RESET}")
     for p in extras:
-        meta = _PROVIDERS[p]
-        if os.environ.get(meta["env"]) or state["keys"].get(p):
+        if provider_ready(p):
             continue                                   # already available
-        if not confirm(f"  Add a {meta['label']} key?", default=False):
+        if not confirm(f"  Configure {_PROVIDERS[p]['label']}?", default=False):
             continue
-        prompt_and_store_key(p, state)
+        meta = _PROVIDERS[p]
+        if meta.get("base_url_key") and not get_base_url(p):
+            prompt_and_store_base_url(p)
+        if provider_requires_key(p) and not (os.environ.get(meta["env"]) or state["keys"].get(p)):
+            prompt_and_store_key(p, state)
 
 
 def _choose_provider_interactive() -> str | None:
@@ -508,16 +634,54 @@ def _pick_anthropic_mode_interactive(state: dict) -> None:
     print()
 
 
+def _pick_base_url_provider_interactive(provider: str) -> None:
+    """Set, replace, or remove a provider's user-supplied base URL (#380 — `local`, `openrouter`)."""
+    meta = _PROVIDERS[provider]
+    base_key = meta["base_url_key"]
+    existing = get_base_url(provider)
+
+    if os.environ.get(meta.get("base_url_env") or ""):
+        print(f"  {_YELLOW}Note:{_RESET} ${meta['base_url_env']} is set in your environment and "
+              f"takes precedence over a configured value.")
+
+    if existing:
+        print(f"  Current base URL: {_CYAN}{existing}{_RESET}")
+        items = ["Replace it", "Delete it", "Keep it"]
+        result = pick(items, 2, title="What would you like to do?")
+        if result is CANCELLED or result == 2:
+            return
+        if result == 1:
+            config = _load_config()
+            config.pop(base_key, None)
+            _save_config(config)
+            print(f"  {_GREEN}Removed:{_RESET} base URL for {_BOLD}{provider}{_RESET}\n")
+            return
+
+    prompt_and_store_base_url(provider)
+
+
 def _pick_key_provider_interactive(provider: str, state: dict) -> None:
-    """Store, replace, or remove an OpenAI-compatible provider's key."""
+    """Set the provider's base URL if it needs a user-supplied one (#380), then store, replace,
+    or remove its API key — skipped for a provider that doesn't require one (`local`) unless the
+    user wants to add one anyway (some self-hosted gateways do check for one)."""
     meta = _PROVIDERS[provider]
     existing = state["keys"].get(provider)
 
     print()
     print(f"  {_BOLD}{meta['label']}{_RESET}")
+
+    if meta.get("base_url_key"):
+        _pick_base_url_provider_interactive(provider)
+        print()
+
     if os.environ.get(meta["env"]):
         print(f"  {_YELLOW}Note:{_RESET} ${meta['env']} is set in your environment and "
               f"takes precedence over a stored key.")
+
+    if not provider_requires_key(provider) and not existing:
+        if not confirm(f"  {meta['label']} doesn't require a key — add one anyway?", default=False):
+            print()
+            return
 
     if existing:
         print(f"  Current key: {_CYAN}{_mask(existing)}{_RESET} {_DIM}(stored){_RESET}")
