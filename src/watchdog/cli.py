@@ -452,7 +452,7 @@ def main() -> None:
     p_ingest.add_argument("--extractor-effort", choices=_effort_choices, default=None,
                           dest="extractor_effort",
                           help="Reasoning effort for extraction — lower spends fewer tokens; "
-                               "overrides watchdog configure (default: high)")
+                               "overrides watchdog configure (default: medium)")
     p_ingest.add_argument("--finalizer-effort", choices=_effort_choices, default=None,
                           dest="finalizer_effort",
                           help="Reasoning effort for the post-ingest step — entity reconciliation, "
@@ -499,7 +499,7 @@ def main() -> None:
     p_extract.add_argument("--extractor-effort", choices=_effort_choices, default=None,
                            dest="extractor_effort",
                            help="Reasoning effort for extraction — lower spends fewer tokens; "
-                                "overrides watchdog configure (default: high)")
+                                "overrides watchdog configure (default: medium)")
     p_extract.add_argument("--concurrency", type=int, default=None,
                            help="Documents extracted in parallel — overrides watchdog configure (default: 5)")
     p_extract.add_argument("--classify-pages", type=int, default=None, dest="classify_pages",

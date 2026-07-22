@@ -343,6 +343,39 @@ def test_cmd_extract_force_no_gate_no_finalize(wdg_home, tmp_path, monkeypatch):
     assert calls[0].get("skip_finalize") is True
 
 
+def test_cmd_extract_defaults_extractor_effort_to_medium_when_unconfigured(wdg_home, tmp_path, monkeypatch):
+    """D140: an install with no `--extractor-effort` flag and no `extractor_effort` key in
+    `config.json` (the fresh-install case `wdg_home` gives us — `CONFIG_FILE` doesn't exist)
+    reaches `orchestrate.run` with `extract_effort="medium"`, not `None`. A raw `config.get(key)`
+    with no fallback would silently keep returning `None` here, which `_resolve_effort` treats
+    the same as the old `high` default (omit the parameter) — this pins the read-site fallback
+    that's actually load-bearing, since `cmd/setup.py`'s documented default alone never reaches
+    this code path for a user who never ran `watchdog configure`."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+
+    calls = []
+    async def fake_run(*a, **k):
+        calls.append(k)
+        return {"results": [{"sha256": SHA, "filename": "alpha.pdf", "status": "ok", "entity_count": 1}],
+                "extracted": 1, "skipped": 0, "failed": 0, "cancelled": False,
+                "rate_limited": False, "stop_message": None, "rate_limit_resets_at": None,
+                "quarantined": 0, "finalize_skipped": True}
+    monkeypatch.setattr(orch_module, "run", fake_run)
+    monkeypatch.setattr(ing.interactive, "pick", lambda *a, **k: 0)   # "Ingest now"
+
+    ing.cmd_extract(_args())
+
+    assert len(calls) == 1
+    assert calls[0].get("extract_effort") == "medium"
+
+
 def _committed_vault_with_forced_doc(tmp_path):
     """A vault where `sha` is already a committed document — so `_handle_force_gate` must treat
     it as an overwrite target — plus a fresh queue entry standing in for a forced re-extraction

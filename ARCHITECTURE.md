@@ -1003,13 +1003,16 @@ completed purge, and the CLI hint says so.
   `<stage>_model`/`<stage>_backend` pairs; an absent key falls back to
   `post_model`/`post_backend` (`dict.get`'s own default), so a stage deliberately resolved to
   `None` backend — "route by auth mode" — is never confused with an unset override.
-- **Reasoning effort** (per-stage, default `high` ≡ the model default): `extractor_effort`
-  and `finalizer_effort` (`low`/`medium`/`high`) tune how many thinking tokens each stage
-  spends; thinking bills as output, so a lower effort is the per-run cost lever (D36).
-  `model_client` maps them to each backend's native control (`output_config.effort` /
-  `ClaudeAgentOptions.effort`) and drops them on Haiku-tier stages (classify; any Haiku
-  model), which reject `effort`. Overridable per run via `--extractor-effort` /
-  `--finalizer-effort`.
+- **Reasoning effort** (per-stage): `extractor_effort` and `finalizer_effort` (`low`/`medium`/
+  `high`) tune how many thinking tokens each stage spends; thinking bills as output, so a
+  lower effort is the per-run cost lever (D36). `extractor_effort` defaults to `medium` —
+  the corpus-v1 benchmark found it ties `high` on recall at meaningfully lower cost (D140).
+  `finalizer_effort` still defaults to `high` ≡ the model default (unbenchmarked; entity
+  reconciliation is judgement-heavy cross-document reasoning, a different quality/cost
+  shape than extraction). `model_client` maps a configured effort to each backend's native
+  control (`output_config.effort` / `ClaudeAgentOptions.effort`) and drops it on Haiku-tier
+  stages (classify; any Haiku model), which reject `effort`. Overridable per run via
+  `--extractor-effort` / `--finalizer-effort`.
 - **Model client** (`model_client.py`): the orchestrator's single entry to the model.
   Routes each task to a backend — `claude-agent-sdk` (subscription login or API key — the
   only backend that works on a subscription), `claude-api` (raw Messages + structured

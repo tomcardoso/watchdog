@@ -316,18 +316,19 @@ _CONFIGURE_KEYS = {
         "default": None,
     },
     "extractor_effort": {
-        "short": "Reasoning effort for document extraction (default: high)",
+        "short": "Reasoning effort for document extraction (default: medium)",
         "help": (
             "How hard the extractor model thinks. Thinking tokens bill as output, so a lower\n"
             "  effort spends fewer tokens per document — the main cost lever for an extraction run.\n"
-            "  'high' is the model default (unchanged behaviour); try 'medium' or 'low' to cut cost\n"
-            "  and verify extraction quality holds. Ignored when the extractor is Haiku (which has\n"
-            "  no effort control).\n"
-            "  Valid values: low, medium, high. Default: high.\n"
+            "  'medium' is the default: benchmark testing found it ties 'high' on recall while\n"
+            "  cutting extraction output/cost substantially. Try 'high' if quality on a specific\n"
+            "  corpus seems to need it, or 'low' to cut cost further. Ignored when the extractor\n"
+            "  is Haiku (which has no effort control).\n"
+            "  Valid values: low, medium, high. Default: medium.\n"
             "  Override for a single run with: watchdog dig --extractor-effort E"
         ),
         "type": "enum",
-        "default": "high",
+        "default": "medium",
         "choices": ["low", "medium", "high"],
     },
     "finalizer_effort": {
