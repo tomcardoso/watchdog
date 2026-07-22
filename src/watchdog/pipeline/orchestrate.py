@@ -31,7 +31,7 @@ from watchdog.pipeline.write_vault import _doc_slug
 DEFAULT_CONCURRENCY = 5
 
 # The finalizer stage's own `_call_model(task=...)` names (#417) — every call a *standalone*
-# `watchdog finalize` makes belongs to this set, which is what `ingest_setup.finalize_cost_estimate`
+# `watchdog bark` makes belongs to this set, which is what `ingest_setup.finalize_cost_estimate`
 # uses to recognize a finalize-only usage-<ts>.json file: a `run()` ingest's own finalize tail
 # shares that run's single usage file with extraction/classification, so it never qualifies.
 FINALIZE_TASKS = {"reconcile", "entity-synthesis", "timeline-dedup", "timeline-precision", "briefing"}
@@ -41,6 +41,14 @@ FINALIZE_TASKS = {"reconcile", "entity-synthesis", "timeline-dedup", "timeline-p
 # place and finished/failed lines + notes scroll above it. None outside extraction (and when
 # stdout isn't a TTY), so `_say` falls back to plain append-only printing.
 _board: LiveRegion | None = None
+
+# The command a "re-run to resume/collect later" message should name for the current run (#441,
+# D138). `cmd_ingest` owns which surface it is — `watchdog dig` for a `dig` run, bare `watchdog`
+# for the guided walk or the deprecated `ingest` — and passes it as `run`'s `resume_hint`, which
+# stashes it here so the extraction-side notices (rate-limit stop, batch submit/poll) point back
+# at the right entry point rather than always saying `dig`. One run per process (behind the run
+# lock), same single-run assumption `_board`/`_usage` already rely on.
+_resume_hint: str = "watchdog dig"
 
 # Per-call token/cost telemetry for the current run (A2) — a list of dicts, one per successful
 # model call, accumulated by `_call_model`. None outside a `run`/standalone `finalize` call, so
@@ -875,7 +883,7 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
         _log(vault, f"WARN {filename}: {msg}")
     result = _compact_result(sha, filename, extraction, pf.get("near_dup", {}), round(cost, 6), {},
                              est_input_tokens=section.est_tokens_from_pages(pf.get("pages", [])))
-    # Persist the compact result so `watchdog finalize` can run post-ingest from disk alone.
+    # Persist the compact result so `watchdog bark` can run post-ingest from disk alone.
     (vault / ".watchdog" / "tmp" / f"result_{sha}.json").write_text(
         json.dumps(result, ensure_ascii=False), encoding="utf-8")
     return result
@@ -979,7 +987,7 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str, brief: str 
         done = sum(v for k, v in counts.items() if k != "processing")
         _say(f"{_YELLOW}A batch extraction is still processing{_RESET}{_DIM} "
              f"({done}/{len(state['shas'])} finished so far) — re-run {_RESET}"
-             f"{_CYAN}watchdog ingest{_RESET}{_DIM} later to check again.{_RESET}")
+             f"{_CYAN}{_resume_hint}{_RESET}{_DIM} later to check again.{_RESET}")
         return {"results": [], "batch_pending": True}
 
     _say(f"{_DIM}→  batch {state['batch_id']} finished — collecting {len(state['shas'])} "
@@ -1001,7 +1009,7 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str, brief: str 
         # already_extracted check skips them on the next pass) — so a later run finishes.
         _say(f"{_YELLOW}Rate limit reached during batch collection{_RESET}{_DIM} — {e} "
              f"{len(results)}/{len(state['shas'])} written; re-run {_RESET}"
-             f"{_CYAN}watchdog ingest{_RESET}{_DIM} to finish once it resets.{_RESET}")
+             f"{_CYAN}{_resume_hint}{_RESET}{_DIM} to finish once it resets.{_RESET}")
         return {"results": results, "batch_pending": True}
 
     batch_extract.clear_state(vault)
@@ -1015,7 +1023,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
     """Split the queue into sectioned (→ synchronous claude-api, via the normal
     `_extract_document`) and whole-document (→ one batch submission) shas, run the former, then
     submit the latter and return — submit-and-exit, not blocking-poll (a batch can take up to
-    24h; a *later* `watchdog ingest` invocation collects it, see `_resume_batch`)."""
+    24h; a *later* `watchdog dig` invocation collects it, see `_resume_batch`)."""
     skill_text = Path(pinned_skill).read_text(encoding="utf-8")
     skill_label = Path(pinned_skill).stem
 
@@ -1076,7 +1084,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
                                           effort=extract_effort, skill_label=skill_label,
                                           api_key=api_key)
     _say(f"{_GREEN}Batch submitted{_RESET}  {_CYAN}{batch_id}{_RESET}{_DIM} — this can take up "
-         f"to a few hours (max 24h); re-run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} later "
+         f"to a few hours (max 24h); re-run {_RESET}{_CYAN}{_resume_hint}{_RESET}{_DIM} later "
          f"to collect it.{_RESET}")
     return {"results": results, "batch_pending": True}
 
@@ -1116,7 +1124,7 @@ def _nudge_skill_pin(results: list) -> None:
     if len(ok_skills) > 1 and len(distinct) == 1:
         skill = next(iter(distinct))
         _say(f"{_DIM}All {len(ok_skills)} documents classified as {_RESET}{_CYAN}{skill}{_RESET}"
-             f"{_DIM} — next time run {_RESET}{_CYAN}watchdog ingest --skill {skill}{_RESET}"
+             f"{_DIM} — next time run {_RESET}{_CYAN}watchdog dig --skill {skill}{_RESET}"
              f"{_DIM} to skip classification.{_RESET}")
 
 
@@ -1491,8 +1499,9 @@ def _load_results(vault: Path) -> list:
 # runs a deterministic exact-name entity fold over every staged-but-uncommitted artifact
 # (`_batch_exact_fold`, #403 phase 2), then replays the writer (write_vault.run) over each one in
 # the same sorted order, before any post-ingest model call. It runs at the top of `finalize`, so
-# it covers all three entry paths that call it: the tail of `watchdog ingest`, a standalone
-# `watchdog finalize`, and a resumed run after a rate-limit stop.
+# it covers all three entry paths that call it: the tail of an ingest run (`watchdog ingest`,
+# or `watchdog dig` + `watchdog bark`), a standalone `watchdog bark`, and a resumed run after a
+# rate-limit stop.
 
 def _batch_exact_fold(vault: Path, shas: list[str]) -> None:
     """Fold exact-name entity duplicates across a batch of staged extractions, before any of
@@ -1629,7 +1638,7 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
     (`_post_ingest` step 0). On a `ModelError`/`RateLimitError`, `error` is set and nothing is
     applied — the caller (`finalize`) must not commit in that case: the staged JSON is the durable
     input now (not the fragment queue), so leaving it uncommitted is what lets a later
-    `watchdog finalize` retry the whole fold → reconcile → commit sequence cleanly.
+    `watchdog bark` retry the whole fold → reconcile → commit sequence cleanly.
     """
     fo = finalizer_overrides or {}
     reconciliation_model = fo.get("reconciliation_model", post_model)
@@ -1765,8 +1774,8 @@ async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None 
     post-ingest over the current on-disk state: file contradictions, synthesize multi-mention
     entities, reconcile the timeline, and write the briefing/hot.md/log.
 
-    Called at the tail of every ``watchdog ingest`` (with this run's results in memory) and
-    standalone by ``watchdog finalize`` (reading persisted ``result_*.json``) to complete a
+    Called at the tail of every ingest run (with this run's results in memory) and
+    standalone by ``watchdog bark`` (reading persisted ``result_*.json``) to complete a
     post-ingest an earlier rate limit or interrupt left unfinished. On a clean pass the consumed
     inputs (fragments, results, scratchpads) are cleared; if any step failed they are left in
     place so a later finalize can retry.
@@ -1776,7 +1785,7 @@ async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None 
     ``_commit_pending``, which replays ``write_vault.run`` over every
     ``.watchdog/extracted/<sha>.json`` not yet in the registry, in sorted sha order) → post-ingest
     (contradictions, synthesis, timeline, briefing). This is what covers this function's three
-    entry paths (ingest's tail, standalone ``watchdog finalize``, and a resumed run after a
+    entry paths (ingest's tail, standalone ``watchdog bark``, and a resumed run after a
     rate-limit stop) with one code path.
 
     If reconciliation itself fails (rate limit / model error), nothing in this batch commits —
@@ -1849,7 +1858,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
               extract_backend: str | None = None, post_backend: str | None = None,
               classify_backend: str | None = None, wait: bool = False,
               skip_finalize: bool = False, force: bool = False,
-              skip_briefing: bool = False, finalizer_overrides: dict | None = None) -> dict:
+              skip_briefing: bool = False, finalizer_overrides: dict | None = None,
+              resume_hint: str = "watchdog dig") -> dict:
     """Extract every queued document (bounded by `concurrency`), then post-ingest.
 
     `extract_model` drives extraction (whole-doc + section, and the sectioned-doc digest); `post_model` drives
@@ -1865,7 +1875,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     `skip_finalize` (#384) stops the run after extraction — post-ingest (reconciliation,
     synthesis, timeline, briefing) is never called, and none of its inputs
     (`result_*.json`, `notes_*.md`) are cleared. That leaves
-    `has_pending_finalization(vault)` True so a later `watchdog finalize` — possibly with a
+    `has_pending_finalization(vault)` True so a later `watchdog bark` — possibly with a
     different `--finalizer-model`, and possibly against a copy of the vault — can pick up
     exactly where extraction left off.
     `force` (#424) re-extracts every queued document even when a cached artifact or a committed
@@ -1876,11 +1886,15 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     reconciliation, synthesis, and the timeline, it just skips the briefing model call.
     `finalizer_overrides` (#433) passes straight through to `finalize` — see its docstring for
     the per-stage model/backend keys it accepts.
+    `resume_hint` (#441, D138) is the command a "re-run to resume/collect later" notice names —
+    `cmd_ingest` passes `watchdog dig` for a `dig` run and bare `watchdog` for the guided walk or
+    the deprecated `ingest`, so the extraction-side notices point back at the right entry point.
     """
     queue_dir = vault / ".watchdog" / "queue"
     shas = [f.stem for f in sorted(queue_dir.glob("*.json"))] if queue_dir.exists() else []
 
-    global _board, _usage
+    global _board, _usage, _resume_hint
+    _resume_hint = resume_hint
 
     # claude-batch (#214): submit-many/poll/collect, not one-await-per-document, so it's a
     # genuinely different flow — handled entirely by _run_batch (which also covers a resumed
@@ -1942,7 +1956,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                                  f"Waiting to resume automatically once it resets.{_RESET}")
                         else:
                             _say(f"{_DIM}Stopping; finished documents are saved. Re-run "
-                                 f"{_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} once it resets to continue.{_RESET}")
+                                 f"{_RESET}{_CYAN}{_resume_hint}{_RESET}{_DIM} once it resets to continue.{_RESET}")
                         _request_stop(rate_limit=str(e), resets_at=e.resets_at)
                     return {"sha256": sha, "filename": "", "status": "cancelled"}
                 except asyncio.CancelledError:       # ctrl+c mid-document — queue file stays
@@ -2030,7 +2044,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         _nudge_skill_pin(results)
     if summary["extracted"] and not cancelled_flag and skip_finalize:
         # Extract-only (#384): leave the post-ingest inputs on disk untouched — a later
-        # `watchdog finalize` (possibly on a vault copy, possibly with a different
+        # `watchdog bark` (possibly on a vault copy, possibly with a different
         # `--finalizer-model`) consumes them. `has_pending_finalization` is already True by
         # this point (`_finish_extraction` persisted `result_*.json` per document).
         summary["finalize_skipped"] = True

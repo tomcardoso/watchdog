@@ -5,10 +5,10 @@ Called from `cmd/ingest.py` before extraction runs. Handles:
   1. Stale lock detection (>30 min) and re-acquisition
   2. Queue directory scan
   3. Writes .watchdog/ingest-state.json (present for the run's duration; a stale one
-     signals an interrupted ingest to resume with `watchdog ingest`)
+     signals an interrupted ingest to resume with `watchdog dig`)
 
 Human workflow:
-  watchdog chew    →  watchdog ingest
+  watchdog chew    →  watchdog dig
   (OCR/docling)       (lock + queue + extract, all in-terminal)
 """
 
@@ -66,7 +66,7 @@ def _tokens_calibration(vault: Path, max_runs: int = 3) -> float | None:
     deliberate low/high range for dollars: this feeds a single displayed token count, not a
     range).
 
-    Only files carrying `est_input_tokens` are extraction runs — a standalone `watchdog finalize`
+    Only files carrying `est_input_tokens` are extraction runs — a standalone `watchdog bark`
     never sets it (nothing was extracted), so it's silently skipped without a separate task-based
     filter. A vault with no such history yet (first run since this shipped, or a vault that has
     only ever run standalone finalizes) returns None, and callers fall back to the raw heuristic
@@ -135,7 +135,7 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
 
 
 def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3) -> dict:
-    """Pre-flight cost estimate for `watchdog finalize` (issue #417, a #403 follow-up).
+    """Pre-flight cost estimate for `watchdog bark` (issue #417, a #403 follow-up).
 
     `cost_estimate` above prices an ingest queue's *documents*; finalize's real work is
     reconciliation + synthesis over the staged post-ingest corpus already sitting in
@@ -145,11 +145,11 @@ def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3) 
     pointed at the staged corpus instead.
 
     The $/token ratio can't reuse `cost_estimate`'s own loop: a `run()` ingest's usage file is
-    extraction-dominated and would misprice a lone `watchdog finalize` in either direction. Only
+    extraction-dominated and would misprice a lone `watchdog bark` in either direction. Only
     usage-<ts>.json files written by a *standalone* finalize qualify — every one of their calls
     has to fall in `orchestrate.FINALIZE_TASKS`, which is only true when finalize ran on its own
     (an ingest's own finalize tail shares its run's single usage file with extraction, so it
-    never qualifies). A vault that's never run a standalone `watchdog finalize` gets the doc/token
+    never qualifies). A vault that's never run a standalone `watchdog bark` gets the doc/token
     counts with no dollar figure, the same "not enough history yet" treatment `cost_estimate`
     gives a first-run vault. Subscription auth (`claude-agent-sdk`) never gets a dollar figure
     either, for the same reason `cost_estimate` withholds one (D72): no real billing to project.

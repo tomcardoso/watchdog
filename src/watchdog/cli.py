@@ -10,6 +10,7 @@ from watchdog.cmd.base import (
     WATCHDOG_HOME,
     PROJECTS_FILE,
     _ALIASES,
+    _DEPRECATED_ALIASES,
     _BOLD,
     _CMD_HELP,
     _CYAN,
@@ -125,13 +126,22 @@ def main() -> None:
         return
 
     if len(sys.argv) >= 3 and sys.argv[2] in ("-h", "--help"):
-        cmd = _ALIASES.get(sys.argv[1], sys.argv[1])
+        cmd = _ALIASES.get(sys.argv[1], _DEPRECATED_ALIASES.get(sys.argv[1], sys.argv[1]))
         if cmd in _CMD_HELP:
             _print_cmd_help(cmd)
             return
 
     if len(sys.argv) >= 2 and sys.argv[1] in _ALIASES:
         sys.argv[1] = _ALIASES[sys.argv[1]]
+
+    # `extract`/`finalize` → `dig`/`bark` (#441, D138): kept working during a deprecation
+    # window rather than removed outright, but unlike a plain `_ALIASES` entry, this warns —
+    # the point is for people to actually move onto the new name.
+    if len(sys.argv) >= 2 and sys.argv[1] in _DEPRECATED_ALIASES:
+        old, new = sys.argv[1], _DEPRECATED_ALIASES[sys.argv[1]]
+        print(f"\n  {_YELLOW}Warning:{_RESET} {_CYAN}watchdog {old}{_RESET}{_DIM} is deprecated — "
+              f"use {_RESET}{_CYAN}watchdog {new}{_RESET}{_DIM} instead.{_RESET}")
+        sys.argv[1] = new
 
     if len(sys.argv) >= 2 and sys.argv[1] in _PIPELINE_COMMANDS:
         import importlib
@@ -191,7 +201,7 @@ def main() -> None:
     # Bare `watchdog` (no subcommand) inside a vault walks into `cmd_guided`, which falls
     # through to `cmd_ingest` via `_offer_ingest` — this top-level flag rides along on that
     # same `args` Namespace and reaches `cmd_ingest`'s `getattr(args, "skip_briefing", False)`
-    # unchanged (#410). Subcommand-scoped `--skip-briefing` (on `ingest`/`finalize`) is separate,
+    # unchanged (#410). Subcommand-scoped `--skip-briefing` (on `ingest`/`bark`) is separate,
     # added on their own subparsers below.
     parser.add_argument("--skip-briefing", action="store_true", default=False, dest="skip_briefing",
                         help="When the guided walk reaches ingest, run entity reconciliation, "
@@ -481,7 +491,7 @@ def main() -> None:
                                "Still prints a one-line notice that documents were sent to the model.")
     p_ingest.set_defaults(func=cmd_ingest)
 
-    p_extract = sub.add_parser("extract", help="Classify and extract queued documents; stop before finalize (run watchdog finalize next)")
+    p_extract = sub.add_parser("dig", help="Classify and extract queued documents; stop before finalize (run watchdog bark next)")
     p_extract.add_argument("--extractor-model", default=None, dest="extractor_model", metavar="MODEL",
                            help=f"Model for extraction — {_model_help}; overrides watchdog configure (default: sonnet)")
     p_extract.add_argument("--classifier-model", default=None, dest="classifier_model", metavar="MODEL",
@@ -500,21 +510,21 @@ def main() -> None:
                                 "Pass a skill name, or use --skill with no value to pick interactively.")
     p_extract.add_argument("--wait", action="store_true", default=False,
                            help="On a rate limit, sleep until it resets and resume automatically "
-                                "instead of stopping for you to re-run extract. Not with a "
+                                "instead of stopping for you to re-run dig. Not with a "
                                 "claude-batch extractor model.")
     p_extract.add_argument("--estimate", action="store_true",
                            help="Print a token/cost estimate for the queue and exit — no lock, no confirm, no extraction")
     p_extract.add_argument("--force", action="store_true", default=False, dest="force",
                            help="Re-extract even when a cached extraction already exists — costs "
                                 "full extraction spend on every document. Nothing is committed to "
-                                "the vault by `extract`, so this needs no overwrite warning.")
+                                "the vault by `dig`, so this needs no overwrite warning.")
     p_extract.add_argument("--skip-warning", action="store_true", default=False, dest="skip_warning",
                            help="Skip the 'Public records only' acknowledgement pause — for "
                                 "repeated or scripted runs on a corpus already vetted as public. "
                                 "Still prints a one-line notice that documents were sent to the model.")
     p_extract.set_defaults(func=cmd_extract)
 
-    p_finalize = sub.add_parser("finalize", help="Complete post-ingest (entity reconciliation, synthesis, timeline, briefing) for an already-extracted batch — e.g. after a rate limit stopped it")
+    p_finalize = sub.add_parser("bark", help="Complete post-ingest (entity reconciliation, synthesis, timeline, briefing) for an already-extracted batch — e.g. after a rate limit stopped it")
     p_finalize.add_argument("--finalizer-model", default=None, dest="finalizer_model", metavar="MODEL",
                             help=f"Model for the post-ingest step — reconciling duplicate entities, "
                                  f"flagging contradictions, synthesis, timeline, briefing — {_model_help}; "
@@ -570,6 +580,15 @@ def main() -> None:
     if args.command not in {"setup", "about", "configure"} and not CONFIG_FILE.exists():
         print(f"\n  {_BOLD}Watchdog isn't set up yet.{_RESET}  Run: {_CYAN}watchdog setup{_RESET}\n")
         sys.exit(1)
+
+    # `ingest` combined extract+finalize into one shot; retired in favour of two clearer paths
+    # — the guided `watchdog` walk, or manual `watchdog dig` + `watchdog bark` (#441, D138).
+    # No renamed successor to remap onto, so it keeps its own subparser and just warns here.
+    if args.command == "ingest":
+        print(f"\n  {_YELLOW}Warning:{_RESET} {_CYAN}watchdog ingest{_RESET}{_DIM} is deprecated — "
+              f"use {_RESET}{_CYAN}watchdog{_RESET}{_DIM} for the guided walk, or {_RESET}"
+              f"{_CYAN}watchdog dig{_RESET}{_DIM} then {_RESET}{_CYAN}watchdog bark{_RESET}"
+              f"{_DIM} for manual control.{_RESET}")
 
     args.func(args)
 

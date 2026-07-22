@@ -13,7 +13,8 @@ Never add confidential source material, leaked documents, private correspondence
 1. Drop documents into `_INCOMING/`.
 2. From this folder in your terminal:
    - `watchdog chew` — OCR and prepare the documents
-   - `watchdog ingest` — extract entities, relationships, and timelines
+   - `watchdog dig` — extract entities, relationships, and timelines
+   - `watchdog bark` — reconcile, synthesize, and write the briefing
 3. Browse the results in [Obsidian](https://obsidian.md), or open this folder in Claude Code to ask questions across the whole vault.
 
 ## Common commands
@@ -23,8 +24,8 @@ In your terminal, from this folder:
 | Command | What it does |
 |---------|--------------|
 | `watchdog chew` | Process the files in `_INCOMING/` |
-| `watchdog ingest` | Extract from the chewed documents |
-| `watchdog finalize` | Finish post-processing if an ingest was interrupted |
+| `watchdog dig` | Extract from the chewed documents |
+| `watchdog bark` | Finish post-processing if an ingest was interrupted |
 | `watchdog status` | Vault stats, plus anything queued or pending |
 | `watchdog requeue` | Retry documents that failed extraction |
 

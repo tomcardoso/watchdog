@@ -193,7 +193,7 @@ def cmd_research(args) -> None:
     if _confirm(f"  Download {them} into _INCOMING/ now?"):
         count = _run_download(vault)
         if count:
-            print(f"\n  Next: {_CYAN}watchdog chew{_RESET} then {_CYAN}watchdog ingest{_RESET} "
+            print(f"\n  Next: {_CYAN}watchdog chew{_RESET} then {_CYAN}watchdog dig{_RESET} "
                   f"to fold {'them' if count != 1 else 'it'} into the vault.\n")
     else:
         print(f"\n  Left queued. Run {_CYAN}watchdog research-fetch{_RESET} to download later.\n")
@@ -242,7 +242,7 @@ def cmd_fetch(args) -> None:
     results = research.deposit_many(vault, entries, wayback=wayback, retrieved_by="fetch")
     count = _report_deposits(results, wayback=wayback, requeued_failures=False)
     if count:
-        print(f"\n  Next: {_CYAN}watchdog chew{_RESET} then {_CYAN}watchdog ingest{_RESET} "
+        print(f"\n  Next: {_CYAN}watchdog chew{_RESET} then {_CYAN}watchdog dig{_RESET} "
               f"to fold {'them' if count != 1 else 'it'} into the vault.\n")
     else:
         print()

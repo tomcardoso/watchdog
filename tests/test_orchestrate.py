@@ -1220,7 +1220,7 @@ def test_nudge_skill_pin_fires_when_batch_is_homogeneous(capsys):
         {"status": "ok", "record_skill": "general-records"},
         {"status": "ok", "record_skill": "general-records"},
     ])
-    assert "watchdog ingest --skill general-records" in capsys.readouterr().out
+    assert "watchdog dig --skill general-records" in capsys.readouterr().out
 
 
 def test_nudge_skill_pin_silent_when_mixed_or_single_or_failed(capsys):
@@ -1261,7 +1261,7 @@ def test_skill_pin_nudge_silent_when_run_was_pinned(tmp_path, monkeypatch, capsy
     skill_file.write_text("PINNED SKILL BODY")
 
     asyncio.run(orchestrate.run(vault, concurrency=2, pinned_skill=str(skill_file)))
-    assert "watchdog ingest --skill" not in capsys.readouterr().out
+    assert "watchdog dig --skill" not in capsys.readouterr().out
 
 
 def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
@@ -1676,6 +1676,27 @@ def test_rate_limit_message_reflects_wait_flag(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "Waiting to resume automatically" in out
     assert "Re-run" not in out
+
+
+def test_rate_limit_resume_message_uses_resume_hint(tmp_path, monkeypatch, capsys):
+    """The extraction rate-limit stop notice names `run`'s `resume_hint` — the surface that
+    launched the run — not a hardcoded `watchdog dig`, so a guided bare-`watchdog` walk points
+    back at `watchdog`, not `dig` (#441, D138)."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="aaa111", filename="one.pdf")
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "classify":
+            return model_client.ModelResult(parsed={"skill": "general-records.md"}, text="",
+                                            model="m", backend="claude-agent-sdk", auth_mode="subscription")
+        raise model_client.RateLimitError("session limit")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate.run(vault, concurrency=1, resume_hint="watchdog"))
+    out = capsys.readouterr().out
+    assert "Re-run" in out
+    assert "once it resets to continue" in out
+    assert "watchdog dig" not in out
 
 
 def test_failed_doc_is_named_and_quarantine_surfaced(tmp_path, monkeypatch):

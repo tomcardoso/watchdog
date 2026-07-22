@@ -1,8 +1,8 @@
 """`watchdog usage` — per-call token/cost/latency breakdown for ingest runs (#207, #317, #319).
 
 Reads `.watchdog/registry/usage/usage-<ts>.json` (D50, relocated out of the flat Registry dir
-in #319) — the Python orchestrator's own per-call telemetry, written after every `watchdog
-ingest`/`watchdog finalize` run — and groups calls by stage (classifier / extractor / finalizer,
+in #319) — the Python orchestrator's own per-call telemetry, written after every ingest run
+(`watchdog ingest`, or `watchdog dig`/`watchdog bark`) — and groups calls by stage (classifier / extractor / finalizer,
 matching the CLI's own `--classifier-model` / `--extractor-model` / `--finalizer-model`
 vocabulary). Extractor rows show the filename and page range (or section) each call covered.
 Cost is read directly from each record — there is no local pricing table to keep in sync, since
@@ -299,7 +299,7 @@ def cmd_usage(args) -> None:
     _, info, vault = _resolve_vault(args.project)
     files = usage_files(vault)
     if not files:
-        sys.exit(f"Error: no ingest runs recorded yet for {info['name']} — run `watchdog ingest` first.")
+        sys.exit(f"Error: no ingest runs recorded yet for {info['name']} — run `watchdog dig` first.")
 
     if args.all:
         _analyze_all(vault)

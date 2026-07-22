@@ -55,12 +55,12 @@ A document whose extraction fails is logged to `.watchdog/registry/ingest.log` a
 
 ```bash
 watchdog requeue
-watchdog ingest
+watchdog dig
 ```
 
 `watchdog requeue` moves everything in `queue/_failed/` back into the queue.
 
-You don't have to remember to check: a bare `watchdog ingest` with nothing new to read notices a document waiting in `queue/_failed/` and offers to requeue and retry it right there, instead of just reporting an empty queue. `watchdog ingest --estimate` mentions it too, without moving anything (an estimate never changes what's on disk). And if you press Ctrl+C while ingest is finishing up — the wrap-up step described below — the cancellation message still tells you a document needs attention, the same as it would at the end of a normal run.
+You don't have to remember to check: a bare `watchdog dig` with nothing new to read notices a document waiting in `queue/_failed/` and offers to requeue and retry it right there, instead of just reporting an empty queue. `watchdog dig --estimate` mentions it too, without moving anything (an estimate never changes what's on disk). The same quarantine notice appears if a document needs attention when `watchdog bark`'s wrap-up (described below) finishes or is interrupted.
 
 ## Hitting rate limits
 
@@ -69,7 +69,7 @@ A rate limit is a cap on how much work the AI provider lets you do in a window o
 Lower how many documents are extracted at once (the default is 5):
 
 ```bash
-watchdog ingest --concurrency 2
+watchdog dig --concurrency 2
 ```
 
 Or set it permanently:
@@ -78,13 +78,13 @@ Or set it permanently:
 watchdog configure extract_concurrency 2
 ```
 
-For an unattended run — overnight, say — add `--wait`. Instead of stopping when it hits a limit, ingest sleeps until the limit resets and resumes on its own, repeating until the whole queue is done:
+For an unattended run — overnight, say — add `--wait`. Instead of stopping when it hits a limit, dig sleeps until the limit resets and resumes on its own, repeating until the whole queue is done:
 
 ```bash
-watchdog ingest --wait
+watchdog dig --wait
 ```
 
-Without `--wait`, ingest stops cleanly on a rate limit. Nothing is lost: every document processed so far is saved to a durable working file, so re-running `watchdog ingest` picks up only what's still queued.
+Without `--wait`, dig stops cleanly on a rate limit. Nothing is lost: every document processed so far is saved to a durable working file, so re-running `watchdog dig` picks up only what's still queued.
 
 ## A stage routed to `local` fails immediately
 
@@ -98,17 +98,17 @@ A connection error (refused, timed out) means the server named in `local_base_ur
 
 ## Ingest interrupted after extraction
 
-Ingest has two stages. First it reads each document (the slow, paid part); then, at the end, it writes everything to your vault in one pass and produces the briefing. If a run is stopped after the reading is done but before that final write — no briefing appeared, entity summaries look unfinished, or you saw a message that nothing was written yet — the batch can be completed without re-reading anything:
+Ingest has two stages: `watchdog dig` reads each document (the slow, paid part); `watchdog bark` then writes everything to your vault in one pass and produces the briefing. If `bark` never got a chance to run — no briefing appeared, entity summaries look unfinished, or you saw a message that nothing was written yet — the batch can be completed without re-reading anything:
 
 ```bash
-watchdog finalize
+watchdog bark
 ```
 
-This runs just the wrap-up: it writes the documents to the vault, reconciles duplicate entities, and produces the briefing. It is safe to run more than once — if the wrap-up itself hits a rate limit partway through (for example while reconciling entities), nothing is written to your vault at all, and you simply run `watchdog finalize` again once the limit resets. It picks up from the saved working files each time. Re-running `watchdog ingest` also notices an unfinished batch and asks what to do with it — see the [command reference](commands.md).
+This runs just the wrap-up: it writes the documents to the vault, reconciles duplicate entities, and produces the briefing. It is safe to run more than once — if the wrap-up itself hits a rate limit partway through (for example while reconciling entities), nothing is written to your vault at all, and you simply run `watchdog bark` again once the limit resets. It picks up from the saved working files each time. Re-running `watchdog dig` (or the bare guided walk) also notices an unfinished batch and asks what to do with it — see the [command reference](commands.md).
 
 ## Ingest prevents the machine from sleeping during a run
 
-`watchdog ingest` and `watchdog extract` prevent the machine from sleeping for as long as they're running — a sleep partway through a document kills whatever call was in flight outright, unlike a network blip a retry can absorb. On macOS this uses the system's own `caffeinate` utility; on Linux, `systemd-inhibit` (present wherever systemd is, which is most mainstream distros). Neither needs setup, and both release the machine the moment the run ends or is interrupted. On a Linux system without systemd, or on Windows, there's no equivalent to fall back to, so a run there is not protected against the machine sleeping.
+`watchdog dig` (and the deprecated `watchdog ingest`) prevents the machine from sleeping for as long as it's running — a sleep partway through a document kills whatever call was in flight outright, unlike a network blip a retry can absorb. On macOS this uses the system's own `caffeinate` utility; on Linux, `systemd-inhibit` (present wherever systemd is, which is most mainstream distros). Neither needs setup, and both release the machine the moment the run ends or is interrupted. On a Linux system without systemd, or on Windows, there's no equivalent to fall back to, so a run there is not protected against the machine sleeping.
 
 ## A lock is stuck
 

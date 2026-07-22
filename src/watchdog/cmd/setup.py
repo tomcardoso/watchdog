@@ -85,11 +85,11 @@ _CONFIGURE_KEYS = {
         "min": 1,
     },
     "extract_concurrency": {
-        "short": "Documents extracted in parallel during `watchdog ingest` (default: 5)",
+        "short": "Documents extracted in parallel during `watchdog dig` (default: 5)",
         "help": (
-            "How many documents `watchdog ingest` extracts simultaneously. Each runs a model\n"
+            "How many documents `watchdog dig` extracts simultaneously. Each runs a model\n"
             "  call, so this is bounded by your model rate limits — lower it if you hit throttling,\n"
-            "  raise it for throughput. Override for one run with `watchdog ingest --concurrency N`.\n"
+            "  raise it for throughput. Override for one run with `watchdog dig --concurrency N`.\n"
             "  Default: 5, minimum: 1 (sequential). `watchdog setup` sets this to 3 automatically if\n"
             "  it detects Claude subscription auth and ingestion stays on it — concurrent extractions\n"
             "  there share one Claude Code session's rate limit, and 5 reliably throttles it."
@@ -99,12 +99,12 @@ _CONFIGURE_KEYS = {
         "min": 1,
     },
     "classify_pages": {
-        "short": "Pages shown to the document classifier during `watchdog ingest` (default: 5)",
+        "short": "Pages shown to the document classifier during `watchdog dig` (default: 5)",
         "help": (
             "How many leading pages of each document the classifier reads to pick a record skill.\n"
             "  Uses min(page_count, this). More pages classify ambiguous documents better (e.g. a\n"
             "  cover letter before the real filing) at a small extra cost on the cheap classifier model.\n"
-            "  Override for one run with `watchdog ingest --classify-pages N`. Default: 5. Minimum: 1."
+            "  Override for one run with `watchdog dig --classify-pages N`. Default: 5. Minimum: 1."
         ),
         "type": "int",
         "default": 5,
@@ -116,7 +116,7 @@ _CONFIGURE_KEYS = {
             "When every document in a vault is the same type, set this to a record-skill name\n"
             "  (a file in the vault's records dir, minus .md) to skip per-document classification\n"
             "  and use that one skill for all of them. Leave unset to classify each document.\n"
-            "  Override for one run with: watchdog ingest --skill NAME (or --skill to pick one)."
+            "  Override for one run with: watchdog dig --skill NAME (or --skill to pick one)."
         ),
         "type": "string",
         "default": None,
@@ -223,7 +223,7 @@ _CONFIGURE_KEYS = {
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
             "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-2.5-flash).\n"
             "  Default: haiku.\n"
-            "  Override for a single run with: watchdog ingest --classifier-model M"
+            "  Override for a single run with: watchdog dig --classifier-model M"
         ),
         "type": "string",
         "default": "haiku",
@@ -231,14 +231,14 @@ _CONFIGURE_KEYS = {
     "extractor_model": {
         "short": "Model for document extraction (default: sonnet)",
         "help": (
-            "Model used to extract each document during `watchdog ingest`.\n"
+            "Model used to extract each document during `watchdog dig`.\n"
             "  Haiku is cheaper and faster for large batches of straightforward documents;\n"
             "  Sonnet handles complex or ambiguous documents better.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
             "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-2.5-flash).\n"
             "  Default: sonnet.\n"
             "  DeepSeek thinking mode is off by default; append -thinking (deepseek:deepseek-v4-flash-thinking)\n"
-            "  to enable it. Override for a single run with: watchdog ingest --extractor-model M"
+            "  to enable it. Override for a single run with: watchdog dig --extractor-model M"
         ),
         "type": "string",
         "default": "sonnet",
@@ -255,7 +255,7 @@ _CONFIGURE_KEYS = {
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
             "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-2.5-flash).\n"
             "  Default: haiku.\n"
-            "  Override for a single run with: watchdog ingest --finalizer-model M"
+            "  Override for a single run with: watchdog bark --finalizer-model M"
         ),
         "type": "string",
         "default": "haiku",
@@ -324,7 +324,7 @@ _CONFIGURE_KEYS = {
             "  and verify extraction quality holds. Ignored when the extractor is Haiku (which has\n"
             "  no effort control).\n"
             "  Valid values: low, medium, high. Default: high.\n"
-            "  Override for a single run with: watchdog ingest --extractor-effort E"
+            "  Override for a single run with: watchdog dig --extractor-effort E"
         ),
         "type": "enum",
         "default": "high",
@@ -337,7 +337,7 @@ _CONFIGURE_KEYS = {
             "  steps, so keep this higher than the extractor unless cost-trimming; lower it to spend\n"
             "  fewer tokens. Ignored when the finalizer is Haiku (which has no effort control).\n"
             "  Valid values: low, medium, high. Default: high.\n"
-            "  Override for a single run with: watchdog ingest --finalizer-effort E"
+            "  Override for a single run with: watchdog bark --finalizer-effort E"
         ),
         "type": "enum",
         "default": "high",

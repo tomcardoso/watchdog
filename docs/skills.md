@@ -1,6 +1,6 @@
 # Skills
 
-Watchdog ships with domain knowledge for 32 document types — corporate filings, court documents, land registries, campaign finance returns, and more. This page explains what a skill is, how documents get matched to one, the full catalogue, and how to add your own. Read it if you want to know what Watchdog actually knows about your documents.
+Watchdog ships with domain knowledge for 33 document types — corporate filings, court documents, land registries, campaign finance returns, and more. This page explains what a skill is, how documents get matched to one, the full catalogue, and how to add your own. Read it if you want to know what Watchdog actually knows about your documents.
 
 ## What a skill is
 
@@ -72,14 +72,15 @@ Skills are jurisdiction-agnostic by default: universal principles come first, wi
 | [`dns-whois`](../src/watchdog/skills/records/dns-whois.md) | WHOIS records, DNS data, IP allocation, SSL certificate transparency logs |
 | [`news-clippings`](../src/watchdog/skills/records/news-clippings.md) | News articles, press releases, wire stories, corrections, retractions |
 | [`audio-video`](../src/watchdog/skills/records/audio-video.md) | YouTube transcripts, podcast transcripts, earnings calls, press conference recordings |
+| [`websites-html`](../src/watchdog/skills/records/websites-html.md) | Any HTML file or downloaded website page — both its presentation content and its underlying markup (tracking IDs, hidden elements, outbound links) |
 
 ## Reading and pinning skills
 
 `watchdog show-skills` lists every skill in the catalogue and opens the skills folder on GitHub; `watchdog show-skills <name>` prints one skill in full so you can see exactly what Watchdog will look for.
 
-If a vault is always one document type — 400 pages of the same filing, say — you can skip per-document classification by pinning a skill: `watchdog ingest --skill <name>` for one run (see [Commands](commands.md)), or set `default_skill` to make it permanent (see [Configuration](configuration.md)).
+If a vault is always one document type — 400 pages of the same filing, say — you can skip per-document classification by pinning a skill: `watchdog dig --skill <name>` for one run (see [Commands](commands.md)), or set `default_skill` to make it permanent (see [Configuration](configuration.md)).
 
-If a batch mixes document types instead, pin each document individually by adding a `skill:` field to its `.yml` sidecar (see [Vault](vault.md#sidecar-files)) — it overrides both `--skill` and `default_skill` for that one document and skips classification for it, so one `ingest` run can correctly handle several document types at once.
+If a batch mixes document types instead, pin each document individually by adding a `skill:` field to its `.yml` sidecar (see [Vault](vault.md#sidecar-files)) — it overrides both `--skill` and `default_skill` for that one document and skips classification for it, so one `dig` run can correctly handle several document types at once.
 
 ## Custom skills
 

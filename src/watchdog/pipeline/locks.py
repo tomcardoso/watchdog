@@ -32,7 +32,7 @@ def acquire_lock(lock_file: Path, contents: str) -> bool:
 def refresh_lock(lock_file: Path) -> None:
     """Rewrite an already-held lock's ``started_at`` to now.
 
-    For a long-lived holder (e.g. `watchdog ingest --wait` sleeping through a rate limit) so
+    For a long-lived holder (e.g. `watchdog dig --wait` sleeping through a rate limit) so
     the staleness heuristic never mistakes a live-but-sleeping run for an abandoned one.
     """
     lock_file.write_text(

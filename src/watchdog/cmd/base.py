@@ -51,6 +51,18 @@ _ALIASES = {
     "rn":         "rename",
 }
 
+# Old command names kept working during a deprecation window rather than removed outright
+# (#441, D138) — unlike `_ALIASES` (silent, permanent shortcuts), these print a warning
+# before remapping, since the goal is to move people onto the new name, not hide it forever.
+# `extract`/`finalize` renamed straight across to `dig`/`bark` (same flags, same function);
+# `ingest` has no such 1:1 successor — it combined extract+finalize into one non-interactive
+# shot, a role now split between the guided `watchdog` walk and manual `dig`+`bark` — so it
+# keeps its own subparser and is flagged separately in `main()`, not remapped here.
+_DEPRECATED_ALIASES = {
+    "extract":  "dig",
+    "finalize": "bark",
+}
+
 # The orchestrator (pipeline/orchestrate.py) drives extraction in Python and calls
 # preflight/postflight/synthesis_bundle/section/merge/abort as functions, so those no
 # longer need CLI registrations. What remains are commands the in-Claude-Code skills
@@ -127,7 +139,8 @@ _CMD_HELP: dict[str, dict] = {
         "opts": [("--dir DIR", "Parent directory (default: projects_dir from config)")],
     },
     "ingest": {
-        "desc": "Extract queued documents (runs the Python pipeline)",
+        "desc": "[deprecated] Extract queued documents (runs the Python pipeline) — use "
+                "`watchdog` for the guided walk, or `watchdog dig` then `watchdog bark` instead",
         "opts": [
             ("--extractor-model M",  "Override the extraction model for this run — a tier (sonnet/opus/haiku) or backend:model (e.g. deepseek:deepseek-v4-flash); default from watchdog configure"),
             ("--finalizer-model M",  "Override the post-ingest model (entity reconciliation + synthesis + timeline + briefing) for this run — tier or backend:model; default from watchdog configure"),
@@ -249,7 +262,7 @@ _CMD_HELP: dict[str, dict] = {
             "relationship target but never profiled, entities recurring across documents with no",
             "relationships, and entities carrying unresolved contradiction flags.",
             "",
-            "The same sweep runs at the end of every `watchdog ingest`, writing the full report",
+            "The same sweep runs at the end of every ingest run, writing the full report",
             "to briefings/leads-<date>.md; this command re-runs it on demand between ingests.",
         ],
     },
@@ -314,7 +327,7 @@ _CMD_HELP: dict[str, dict] = {
             "and queues the sources it finds; when the session ends, watchdog downloads them into",
             "_INCOMING/ — so findings flow through the normal chew → ingest pipeline. Claude never",
             "writes vault notes directly. After the download, run `watchdog chew` then",
-            "`watchdog ingest` to fold the sources into the vault.",
+            "`watchdog dig` to fold the sources into the vault.",
         ],
     },
     "watchlist": {
@@ -341,7 +354,7 @@ _CMD_HELP: dict[str, dict] = {
             "browsing — and just want them pulled into the pipeline, no research session needed. Each",
             "URL runs through the same egress hygiene as research sources (public host only, size cap,",
             "scripts stripped) and lands as a document + provenance sidecar. Then run `watchdog chew`",
-            "and `watchdog ingest`. Archives to the Wayback Machine too when wayback_save is on.",
+            "and `watchdog dig`. Archives to the Wayback Machine too when wayback_save is on.",
         ],
     },
     "usage": {
@@ -352,8 +365,8 @@ _CMD_HELP: dict[str, dict] = {
             ("--run TIMESTAMP", "Analyze one specific past run instead of the latest"),
         ],
         "notes": [
-            "Reads `.watchdog/registry/usage/usage-<ts>.json`, written after every `watchdog",
-            "ingest`/`watchdog finalize` run, and groups calls by stage (classifier/extractor/",
+            "Reads `.watchdog/registry/usage/usage-<ts>.json`, written after every ingest run",
+            "(`watchdog ingest`, or `watchdog dig`/`watchdog bark`), and groups calls by stage (classifier/extractor/",
             "finalizer, matching the CLI's own --classifier-model/--extractor-model/",
             "--finalizer-model flags). Extractor rows show the filename and page range (or",
             "section) each call covered.",
@@ -658,7 +671,8 @@ def _print_banner() -> None:
         ("Document processing", [
             ("fetch",            "Download a batch of URLs into _INCOMING/"),
             ("chew",             "Process documents in _INCOMING/"),
-            ("ingest",           "Extract queued documents into the vault"),
+            ("dig",              "Extract queued documents into the vault"),
+            ("bark",             "Complete post-ingest — reconciliation, synthesis, briefing"),
             ("context",          "Seed investigation context from _CONTEXT/"),
             ("watch",            "Watch _INCOMING/ and chew files automatically"),
             ("log",              "Show ingest history"),

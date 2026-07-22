@@ -37,7 +37,7 @@ def verify_quote(page_texts: dict[int, str], page: int | None, quote: str) -> di
     drift), and report the outcome.
 
     Returns ``{"verified": None}`` when there's nothing to check (no page cited, or the
-    page text isn't available at all — e.g. a `watchdog finalize` re-run with no chew-time
+    page text isn't available at all — e.g. a `watchdog bark` re-run with no chew-time
     queue descriptor on disk); ``{"verified": True}`` on an exact substring match;
     ``{"verified": True, "found_page": N}`` when only a normalized match was found, and on
     a different page than cited; ``{"verified": False}`` when page text *is* available but
