@@ -374,7 +374,7 @@ def _run_ingest_inner(
     if not files:
         queued = len(list(queue.glob("*.json")))
         if queued:
-            print(f"\n  {_DIM}_INCOMING/ is empty — {queued} file{'s' if queued != 1 else ''} ready. Run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM}.{_RESET}\n")
+            print(f"\n  {_DIM}_INCOMING/ is empty — {queued} file{'s' if queued != 1 else ''} ready. Run {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM}.{_RESET}\n")
         else:
             print(f"\n  {_DIM}_INCOMING/ is empty — nothing to chew.{_RESET}\n")
         return
@@ -558,6 +558,6 @@ def _run_ingest_inner(
 
     if ok and show_ingest_hint:
         print()
-        print(f"  Run:  {_CYAN}watchdog ingest{_RESET}")
+        print(f"  Run:  {_CYAN}watchdog dig{_RESET}")
 
     print()

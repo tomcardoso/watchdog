@@ -33,7 +33,7 @@ Or run `watchdog configure <key>` with no value to see that one key's help and c
 | `chunk_workers` | `auto` | Parallel subprocesses for large-PDF chunks. |
 | `chunk_timeout` | `300` | Seconds before a chunk subprocess is killed. |
 | `table_structure` | `true` | Whether the table-detection model runs on PDFs; turn off to speed up text-only documents. |
-| `extract_concurrency` | `5` (`3` if `watchdog setup` detects Claude subscription auth) | Documents extracted in parallel during `watchdog ingest`. |
+| `extract_concurrency` | `5` (`3` if `watchdog setup` detects Claude subscription auth) | Documents extracted in parallel during `watchdog dig`. |
 | `classify_pages` | `5` | Leading pages of each document shown to the classifier. |
 | `default_skill` | *(unset)* | Pin one record skill for every ingested document, skipping classification. |
 | `section_token_threshold` | `auto` | Estimated tokens above which a document is split into sections for extraction. `auto` derives it from ~60% of the extraction model's context window, capped tighter for models whose output limit it can't work around; set a number to override. |
@@ -78,7 +78,7 @@ Both search models run entirely on your machine — no API calls, no cost, nothi
 
 ### Models and cost
 
-The three model keys and two effort keys are the main cost controls — see [Controlling cost](#controlling-cost) below. Each model key takes a Claude tier (`haiku`, `sonnet`, `opus`) or a `backend:model` value (see [Model backends](#model-backends)), and each has a matching per-run flag on `watchdog ingest`. The classifier default is Haiku because picking a skill is easy work; the finalizer default is Haiku because it works from compact digests rather than raw documents. The finalizer also reconciles duplicate entities and flags contradictions between documents — the pipeline's two hardest judgements — so raise it if synthesized prose feels thin, if duplicate entities are slipping through, or if cross-document contradictions are being missed. It runs only a few times per ingest regardless of how many documents you feed it, so raising it costs far less than raising the extractor.
+The three model keys and two effort keys are the main cost controls — see [Controlling cost](#controlling-cost) below. Each model key takes a Claude tier (`haiku`, `sonnet`, `opus`) or a `backend:model` value (see [Model backends](#model-backends)), and each has a matching per-run flag on `watchdog dig` (classifier, extractor) or `watchdog bark` (finalizer). The classifier default is Haiku because picking a skill is easy work; the finalizer default is Haiku because it works from compact digests rather than raw documents. The finalizer also reconciles duplicate entities and flags contradictions between documents — the pipeline's two hardest judgements — so raise it if synthesized prose feels thin, if duplicate entities are slipping through, or if cross-document contradictions are being missed. It runs only a few times per ingest regardless of how many documents you feed it, so raising it costs far less than raising the extractor.
 
 `default_skill` pins one record skill for every document, skipping classification — for vaults that are always one document type. Run `watchdog configure default_skill` with no value to pick from the catalogue interactively.
 
@@ -117,7 +117,7 @@ watchdog configure extract_concurrency 2
 
 ## Model backends
 
-Backend choice applies only to the `watchdog ingest` pipeline — the bounded reasoning steps that run in your terminal. The interactive investigation commands (`/watchdog-query`, `/watchdog-surface`, `/watchdog-wiki`, `/watchdog-context`, `/watchdog-health`) are not affected: they are open-ended, multi-turn sessions that run inside Claude Code, on Claude, always. The ingest stages are single-shot calls, which tolerate a cheaper provider far better.
+Backend choice applies only to the ingest pipeline (`watchdog dig` and `watchdog bark`) — the bounded reasoning steps that run in your terminal. The interactive investigation commands (`/watchdog-query`, `/watchdog-surface`, `/watchdog-wiki`, `/watchdog-context`, `/watchdog-health`) are not affected: they are open-ended, multi-turn sessions that run inside Claude Code, on Claude, always. The ingest stages are single-shot calls, which tolerate a cheaper provider far better.
 
 Within ingest, Watchdog is designed around Claude and uses it by default, but each stage — classification, extraction, post-ingest — can run on a different provider. A stage's model key takes either a Claude tier (`haiku`, `sonnet`, `opus`, routed by your `watchdog auth` mode) or a `backend:model` value naming the provider and its model:
 
@@ -139,7 +139,7 @@ Point a stage at a provider — persistently or per run:
 ```bash
 watchdog configure extractor_model                      # interactive: pick the model, then paste the key if it's a new provider
 watchdog configure extractor_model deepseek:deepseek-v4-flash
-watchdog ingest --extractor-model openai:gpt-5-mini     # one-off override
+watchdog dig --extractor-model openai:gpt-5-mini        # one-off override
 ```
 
 If you pick a model interactively from a provider you have no key for yet, `watchdog configure` asks for that key on the spot, so the stage is ready to run rather than failing on the next ingest. Setting the value directly on the command line (the second form above) does not prompt — store the key yourself with `watchdog auth`, or set the provider's environment variable.
@@ -150,7 +150,7 @@ Each stage is independent — you can keep extraction on Claude Sonnet while rou
 
 ### claude-batch: bulk extraction at half price
 
-If you run on a metered API key (not a subscription) and are ingesting a large, same-type dump — say, 200 pages of one filing type — setting `extractor_model` to `claude-batch:sonnet` submits every whole-document extraction as one bulk batch at 50 per cent off every token. The tradeoff is latency, not cost: a batch typically finishes within an hour but can take up to 24, so `watchdog ingest` submits it and exits rather than waiting. Run `watchdog ingest` again later (or check `watchdog status`) to collect the results.
+If you run on a metered API key (not a subscription) and are ingesting a large, same-type dump — say, 200 pages of one filing type — setting `extractor_model` to `claude-batch:sonnet` submits every whole-document extraction as one bulk batch at 50 per cent off every token. The tradeoff is latency, not cost: a batch typically finishes within an hour but can take up to 24, so `watchdog dig` submits it and exits rather than waiting. Run `watchdog dig` again later (or check `watchdog status`) to collect the results.
 
 Four constraints, each enforced with a clear error:
 
@@ -166,8 +166,8 @@ watchdog auth                                             # interactive: switch 
 watchdog configure classifier_model claude-api:haiku
 watchdog configure extractor_model claude-batch:sonnet
 watchdog configure finalizer_model claude-api:haiku
-watchdog ingest --skill court-documents                   # submits the batch, exits
-watchdog ingest                                           # later: collects it once ready
+watchdog dig --skill court-documents                      # submits the batch, exits
+watchdog dig                                               # later: collects it once ready
 ```
 
 ## Controlling cost
@@ -184,11 +184,11 @@ The main levers, roughly in order of impact:
 Before committing to a large run, get a number:
 
 ```bash
-watchdog ingest --estimate
+watchdog dig --estimate
 ```
 
 This prints a token estimate for the queue and exits — no lock, no confirmation, no extraction. On a metered key with prior runs in this vault, it adds a rough dollar range projected from your own usage history; on a subscription, only the token estimate is shown. Use it to decide whether to split a batch.
 
-A failed document never sinks a batch — it is set aside and the rest completes — but for very large collections, chew and ingest in groups anyway. On subscriptions: a Pro plan (US$20/month) is sufficient for most journalism work, and if you ingest hundreds of documents at a time, a Max plan gives higher session limits. An unattended overnight batch on a subscription pairs well with `watchdog ingest --wait`, which sleeps through rate limits and resumes — see [Commands](commands.md#watchdog-ingest).
+A failed document never sinks a batch — it is set aside and the rest completes — but for very large collections, chew and ingest in groups anyway. On subscriptions: a Pro plan (US$20/month) is sufficient for most journalism work, and if you ingest hundreds of documents at a time, a Max plan gives higher session limits. An unattended overnight batch on a subscription pairs well with `watchdog dig --wait`, which sleeps through rate limits and resumes — see [Commands](commands.md#watchdog-dig).
 
 Where next: [Commands](commands.md) for the per-run flags that override these settings, or [Skills](skills.md) for what `default_skill` can be set to.

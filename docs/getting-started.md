@@ -133,12 +133,12 @@ Flags for controlling how many files and chunks are processed in parallel are co
 Ingestion is the extraction step — the part that uses AI. Run it on its own with:
 
 ```bash
-watchdog ingest
+watchdog dig
 ```
 
-This runs in your terminal; there is no Claude Code session to open. Watchdog scans the queue, shows a token estimate — tokens are the units AI usage is measured in — and asks you to confirm before starting. On a metered API key with prior runs, it also shows a rough dollar range based on this vault's own usage history. Run `watchdog ingest --estimate` any time to see that estimate without starting extraction.
+This runs in your terminal; there is no Claude Code session to open. Watchdog scans the queue, shows a token estimate — tokens are the units AI usage is measured in — and asks you to confirm before starting. On a metered API key with prior runs, it also shows a rough dollar range based on this vault's own usage history. Run `watchdog dig --estimate` any time to see that estimate without starting extraction.
 
-For each document, the pipeline:
+For each document, `dig`:
 
 1. Reads the extracted text
 2. Classifies the document type and loads the matching domain skill (34 built-in skills for corporate filings, court documents, real estate records, and more, plus a general fallback — see [skills](skills.md))
@@ -146,11 +146,14 @@ For each document, the pipeline:
 4. Extracts relationships between entities
 5. Extracts datable events for the timeline
 6. Checks for contradictions against entities already in the vault
-7. Writes everything to the vault
 
-Large documents can take several minutes each, so a long pause on a status row is normal.
+Large documents can take several minutes each, so a long pause on a status row is normal. `dig` stops once every document is extracted and staged — nothing has reached the vault yet. Run `watchdog bark` next to write everything and complete post-processing:
 
-When extraction is complete, a post-ingest step synthesizes prose for entities that appear in multiple documents, reconciles the timeline, and produces a **briefing** summarizing what was processed, what entities were found, connections to entities already in the vault, and anything unusual or worth following up. Read the briefing carefully — the connections section is often where the story is.
+```bash
+watchdog bark
+```
+
+`bark` writes the documents to the vault, synthesizes prose for entities that appear in multiple documents, reconciles the timeline, and produces a **briefing** summarizing what was processed, what entities were found, connections to entities already in the vault, and anything unusual or worth following up. Read the briefing carefully — the connections section is often where the story is.
 
 By default Watchdog uses Sonnet (Claude's mid-tier model) for extraction and Haiku (the fast, inexpensive tier) for classification and post-ingest. You can change the models, tune how much reasoning each stage spends, and pin a specific domain skill — per run or as persistent defaults. The [configuration guide](configuration.md) covers all of it, including how to cut cost.
 
@@ -162,9 +165,9 @@ Three features run alongside every ingest; each has its full treatment in the [i
 
 - **Resolving.** Once you have dealt with a lead or an alert, you can mark it done so it stops reappearing, which turns those reports into a shrinking to-do list. See [resolving items](investigating.md#resolving-items).
 
-If you hit a rate limit — a temporary cap on how much you can send the model — ingest stops cleanly and re-running `watchdog ingest` picks up where it left off. For an unattended overnight batch, `--wait` sleeps through the limit and resumes automatically; see the [command reference](commands.md) for details.
+If you hit a rate limit — a temporary cap on how much you can send the model — `dig` stops cleanly and re-running `watchdog dig` picks up where it left off. For an unattended overnight batch, `--wait` sleeps through the limit and resumes automatically; see the [command reference](commands.md) for details.
 
-`watchdog ingest` runs extraction and post-processing together. If you want to split them — to check what got extracted before it lands in the vault, or to try more than one post-processing model against the same extraction — run `watchdog extract` to stage the batch, then `watchdog finalize` when you are ready to complete it. See [the command reference](commands.md#watchdog-extract) for details.
+Running `watchdog dig` then `watchdog bark` as two steps — rather than letting bare `watchdog` do both — is useful when you want to check what got extracted before it lands in the vault, or to try more than one post-processing model against the same extraction. See [the command reference](commands.md#watchdog-dig) for details. (Older versions of Watchdog had a single `watchdog ingest` command for this — it still works but is deprecated; use `watchdog` or `dig`/`bark` instead.)
 
 ## Explore the vault in Obsidian
 

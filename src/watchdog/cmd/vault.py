@@ -416,7 +416,7 @@ def cmd_new(args) -> None:
                                         "from pathlib import Path; "
                                         "p = list(Path('.watchdog/queue').glob('*.json')) "
                                         "if Path('.watchdog/queue').exists() else []; "
-                                        "print('WATCHDOG: ' + str(len(p)) + ' file(s) ready for extraction — run watchdog ingest in your terminal') if p else None"
+                                        "print('WATCHDOG: ' + str(len(p)) + ' file(s) ready for extraction — run watchdog dig in your terminal') if p else None"
                                         "\""
                                     ),
                                 }
@@ -456,8 +456,9 @@ def cmd_new(args) -> None:
     print(f"    1. {_DIM}(optional){_RESET} Drop background material into {_CYAN}{vault}/_CONTEXT/{_RESET} and run {_CYAN}watchdog context{_RESET}")
     print(f"    2. Drop documents into {_CYAN}{vault}/_INCOMING/{_RESET}")
     print(f"    3. Run {_CYAN}watchdog chew{_RESET} to process documents")
-    print(f"    4. Run {_CYAN}watchdog ingest{_RESET} to extract the queued documents")
-    print(f"    5. Run {_CYAN}watchdog obsidian {slug}{_RESET} to open the vault in Obsidian")
+    print(f"    4. Run {_CYAN}watchdog dig{_RESET} to extract the queued documents")
+    print(f"    5. Run {_CYAN}watchdog bark{_RESET} to finish reconciliation, synthesis, and the briefing")
+    print(f"    6. Run {_CYAN}watchdog obsidian {slug}{_RESET} to open the vault in Obsidian")
     print()
 
 
@@ -907,7 +908,7 @@ def cmd_watch(args) -> None:
                 if new_queued > 0:
                     _notify(
                         f"Watchdog — {info['name']}",
-                        f"Chewed {label}. {new_queued} file{'s' if new_queued != 1 else ''} ready — run watchdog ingest.",
+                        f"Chewed {label}. {new_queued} file{'s' if new_queued != 1 else ''} ready — run watchdog dig.",
                     )
                 known = set()
             else:
@@ -1024,7 +1025,7 @@ def cmd_status(args) -> None:
         if info.get("description"):
             print(f"  {_DIM}{info['description']}{_RESET}")
         print(f"  {_DIM}Created {_fmt_date(info.get('created_at', ''))}{_RESET}")
-        print(f"\n  {_DIM}No registry found — run {_RESET}{_CYAN}watchdog chew{_RESET}{_DIM} then {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} to begin.{_RESET}\n")
+        print(f"\n  {_DIM}No registry found — run {_RESET}{_CYAN}watchdog chew{_RESET}{_DIM} then {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM} to begin.{_RESET}\n")
         return
 
     docs_file = vault / ".watchdog" / "registry" / "documents.json"
@@ -1065,7 +1066,7 @@ def cmd_status(args) -> None:
     if incoming_n:
         print(f"  {_YELLOW}{incoming_n} file{'s' if incoming_n != 1 else ''}{_RESET} in {_CYAN}_INCOMING/{_RESET} {_DIM}— run{_RESET} {_CYAN}watchdog chew{_RESET}")
     if queued_n:
-        print(f"  {_YELLOW}{queued_n} file{'s' if queued_n != 1 else ''}{_RESET} chewed and waiting for {_CYAN}watchdog ingest{_RESET}")
+        print(f"  {_YELLOW}{queued_n} file{'s' if queued_n != 1 else ''}{_RESET} chewed and waiting for {_CYAN}watchdog dig{_RESET}")
     _warn_pending_research(vault)
 
     if orchestrate.has_pending_finalization(vault):
@@ -1076,14 +1077,14 @@ def cmd_status(args) -> None:
         if p["entities"]:
             bits.append(f"{p['entities']} entit{'ies' if p['entities'] != 1 else 'y'} to synthesize")
         detail = f" {_DIM}({', '.join(bits)}){_RESET}" if bits else ""
-        print(f"  {_YELLOW}Batch pending finalization{_RESET}{detail} {_DIM}— run{_RESET} {_CYAN}watchdog finalize{_RESET}")
+        print(f"  {_YELLOW}Batch pending finalization{_RESET}{detail} {_DIM}— run{_RESET} {_CYAN}watchdog bark{_RESET}")
 
     from watchdog.pipeline import batch_extract
     pending_batch = batch_extract.read_state(vault)
     if pending_batch:
         n = len(pending_batch.get("shas", []))
         print(f"  {_YELLOW}Batch extraction pending{_RESET} {_DIM}({n} document{'s' if n != 1 else ''}, "
-              f"{pending_batch.get('batch_id', '?')}) — run{_RESET} {_CYAN}watchdog ingest{_RESET}"
+              f"{pending_batch.get('batch_id', '?')}) — run{_RESET} {_CYAN}watchdog dig{_RESET}"
               f"{_DIM} to check on it{_RESET}")
 
     if doc_types:

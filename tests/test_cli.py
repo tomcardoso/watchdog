@@ -626,7 +626,7 @@ def test_cmd_status_shows_pending_batch_extraction(configured, capsys):
     assert "Batch extraction pending" in out
     assert "3 documents" in out
     assert "batch_abc" in out
-    assert "watchdog ingest" in out
+    assert "watchdog dig" in out
 
 
 def test_cmd_status_no_batch_line_when_none_pending(configured, capsys):
@@ -1814,7 +1814,7 @@ def test_offer_ingest_no_prints_hint_and_skips(configured, monkeypatch, capsys):
         raise AssertionError("ingest must not run when declined")
     monkeypatch.setattr(ing, "cmd_ingest", _boom)
     ing._offer_ingest(args(), vault)
-    assert "watchdog ingest" in capsys.readouterr().out
+    assert "watchdog" in capsys.readouterr().out
 
 
 def test_offer_ingest_eof_prints_hint(configured, monkeypatch, capsys):
@@ -1825,7 +1825,19 @@ def test_offer_ingest_eof_prints_hint(configured, monkeypatch, capsys):
     monkeypatch.setattr("builtins.input", _eof)
     monkeypatch.setattr(ing, "cmd_ingest", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no ingest")))
     ing._offer_ingest(args(), vault)
-    assert "watchdog ingest" in capsys.readouterr().out
+    assert "watchdog" in capsys.readouterr().out
+
+
+def test_offer_ingest_no_hints_dig_from_chew_context(configured, monkeypatch, capsys):
+    """When `_offer_ingest` is reached from `watchdog chew` (manual control), the decline hint
+    must point at `watchdog dig`, not the retired `watchdog ingest` or the guided bare walk
+    (#441, D138)."""
+    from watchdog.cmd import ingest as ing
+    vault = _vault_with_queue(configured)
+    monkeypatch.setattr("builtins.input", lambda *a: "2")   # pick(): "Not now"
+    monkeypatch.setattr(ing, "cmd_ingest", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no ingest")))
+    ing._offer_ingest(args(command="chew"), vault)
+    assert "watchdog dig" in capsys.readouterr().out
 
 
 def test_offer_ingest_shows_public_records_warning(configured, monkeypatch, capsys):
@@ -1954,7 +1966,18 @@ def test_ingest_parser_accepts_skip_warning(configured, monkeypatch):
     assert seen == {"skip_warning": True}
 
 
-def test_extract_parser_accepts_skip_warning(configured, monkeypatch):
+def test_dig_parser_accepts_skip_warning(configured, monkeypatch):
+    import sys
+    seen = {}
+    monkeypatch.setattr(cli, "cmd_extract", lambda a: seen.update(skip_warning=a.skip_warning))
+    monkeypatch.setattr(sys, "argv", ["watchdog", "dig", "--skip-warning"])
+    cli.main()
+    assert seen == {"skip_warning": True}
+
+
+def test_extract_alias_still_accepts_skip_warning(configured, monkeypatch):
+    """The deprecated `extract` alias remaps onto `dig` before argparse runs, so it must still
+    parse `dig`'s own flags (#441, D138)."""
     import sys
     seen = {}
     monkeypatch.setattr(cli, "cmd_extract", lambda a: seen.update(skip_warning=a.skip_warning))
@@ -2372,7 +2395,7 @@ def test_cmd_ingest_no_wait_stops_on_rate_limit_without_looping(wdg_home, tmp_pa
     assert calls[0].get("wait") is False
 
 
-# ── cmd_ingest no_finalize plumbing (#384; the CLI surface is now `watchdog extract`, #425) ──
+# ── cmd_ingest no_finalize plumbing (#384; the CLI surface is now `watchdog dig`, #425/#441) ──
 
 def test_cmd_ingest_no_finalize_threads_skip_finalize_to_orchestrate_run(wdg_home, tmp_path, monkeypatch, capsys):
     """Setting `no_finalize` on args (as `cmd_extract` does) reaches `orchestrate.run` as
@@ -2402,7 +2425,7 @@ def test_cmd_ingest_no_finalize_threads_skip_finalize_to_orchestrate_run(wdg_hom
     assert len(calls) == 1
     assert calls[0].get("skip_finalize") is True
     out = capsys.readouterr().out
-    assert "watchdog finalize" in out
+    assert "watchdog bark" in out
     assert "Open a fresh Claude Code session" not in out
 
 
@@ -2474,10 +2497,10 @@ def test_cmd_ingest_skip_briefing_threads_to_orchestrate_run(wdg_home, tmp_path,
     assert "--skip-briefing" in out
 
 
-# ── watchdog extract (#425) ──────────────────────────────────────────────────
+# ── watchdog dig (#425, renamed from `extract` in #441/D138) ─────────────────
 
 def test_ingest_parser_no_longer_accepts_no_finalize(monkeypatch, capsys):
-    """`--no-finalize` is fully replaced by `watchdog extract` (#425) — the pre-1.0 app carries
+    """`--no-finalize` is fully replaced by `watchdog dig` (#425) — the pre-1.0 app carries
     no deprecation period, so `ingest` must reject the flag outright."""
     import sys
     monkeypatch.setattr(sys, "argv", ["watchdog", "ingest", "--no-finalize"])
@@ -2488,8 +2511,8 @@ def test_ingest_parser_no_longer_accepts_no_finalize(monkeypatch, capsys):
 
 
 def test_cmd_extract_threads_skip_finalize_to_orchestrate_run(wdg_home, tmp_path, monkeypatch, capsys):
-    """`watchdog extract` is `cmd_ingest` with finalization forced off: it must reach
-    `orchestrate.run` with `skip_finalize=True` and print the "run watchdog finalize" hint."""
+    """`watchdog dig` is `cmd_ingest` with finalization forced off: it must reach
+    `orchestrate.run` with `skip_finalize=True` and print the "run watchdog bark" hint."""
     from watchdog.cmd import auth as auth_module
     from watchdog.cmd import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
@@ -2515,7 +2538,7 @@ def test_cmd_extract_threads_skip_finalize_to_orchestrate_run(wdg_home, tmp_path
     assert len(calls) == 1
     assert calls[0].get("skip_finalize") is True
     out = _strip_ansi(capsys.readouterr().out)
-    assert "watchdog finalize" in out
+    assert "watchdog bark" in out
 
 
 def test_cmd_extract_sets_no_finalize_on_args(wdg_home, tmp_path, monkeypatch):
@@ -2530,22 +2553,22 @@ def test_cmd_extract_sets_no_finalize_on_args(wdg_home, tmp_path, monkeypatch):
     assert seen == {"no_finalize": True}
 
 
-def test_extract_parser_rejects_finalizer_model(monkeypatch, capsys):
-    """`extract` gets extraction-only flags — `--finalizer-model` belongs to `ingest`/`finalize`,
-    not `extract` (extract IS no-finalize, so there is nothing to finalize with)."""
+def test_dig_parser_rejects_finalizer_model(monkeypatch, capsys):
+    """`dig` gets extraction-only flags — `--finalizer-model` belongs to `ingest`/`bark`,
+    not `dig` (dig IS no-finalize, so there is nothing to finalize with)."""
     import sys
-    monkeypatch.setattr(sys, "argv", ["watchdog", "extract", "--finalizer-model", "sonnet"])
+    monkeypatch.setattr(sys, "argv", ["watchdog", "dig", "--finalizer-model", "sonnet"])
     with pytest.raises(SystemExit):
         cli.main()
     err = capsys.readouterr().err
     assert "unrecognized" in err
 
 
-def test_extract_parser_rejects_finalizer_stage_model(monkeypatch, capsys):
-    """The per-stage finalizer overrides (#433) belong to `ingest`/`finalize` too, for the same
+def test_dig_parser_rejects_finalizer_stage_model(monkeypatch, capsys):
+    """The per-stage finalizer overrides (#433) belong to `ingest`/`bark` too, for the same
     reason as the aggregate `--finalizer-model`."""
     import sys
-    monkeypatch.setattr(sys, "argv", ["watchdog", "extract", "--finalizer-briefing-model", "sonnet"])
+    monkeypatch.setattr(sys, "argv", ["watchdog", "dig", "--finalizer-briefing-model", "sonnet"])
     with pytest.raises(SystemExit):
         cli.main()
     err = capsys.readouterr().err
@@ -2573,25 +2596,67 @@ def test_ingest_parser_accepts_finalizer_stage_models(configured, monkeypatch):
     }
 
 
-def test_finalize_parser_accepts_finalizer_stage_models(configured, monkeypatch):
+def test_bark_parser_accepts_finalizer_stage_models(configured, monkeypatch):
     import sys
     seen = {}
     monkeypatch.setattr(cli, "cmd_finalize", lambda a: seen.update(
         briefing=a.finalizer_briefing_model))
-    monkeypatch.setattr(sys, "argv", ["watchdog", "finalize", "--finalizer-briefing-model", "opus"])
+    monkeypatch.setattr(sys, "argv", ["watchdog", "bark", "--finalizer-briefing-model", "opus"])
     cli.main()
     assert seen == {"briefing": "opus"}
 
 
-def test_extract_command_appears_in_help(monkeypatch, capsys):
-    """`watchdog extract --help` must work — i.e. `extract` is a registered subcommand."""
+def test_dig_command_appears_in_help(monkeypatch, capsys):
+    """`watchdog dig --help` must work — i.e. `dig` is a registered subcommand."""
     import sys
-    monkeypatch.setattr(sys, "argv", ["watchdog", "extract", "--help"])
+    monkeypatch.setattr(sys, "argv", ["watchdog", "dig", "--help"])
     with pytest.raises(SystemExit):
         cli.main()
     out = capsys.readouterr().out
-    assert "extract" in out
+    assert "dig" in out
     assert "--extractor-model" in out
+
+
+def test_extract_alias_warns_and_dispatches_to_dig(configured, monkeypatch, capsys):
+    """`watchdog extract` (#441, D138) is a deprecated alias for `watchdog dig` — same flags,
+    same function, but the CLI must warn before dispatching."""
+    import sys
+    seen = {}
+    monkeypatch.setattr(cli, "cmd_extract", lambda a: seen.update(ran=True))
+    monkeypatch.setattr(sys, "argv", ["watchdog", "extract"])
+    cli.main()
+    assert seen == {"ran": True}
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "deprecated" in out
+    assert "watchdog dig" in out
+
+
+def test_finalize_alias_warns_and_dispatches_to_bark(configured, monkeypatch, capsys):
+    """`watchdog finalize` (#441, D138) is a deprecated alias for `watchdog bark`."""
+    import sys
+    seen = {}
+    monkeypatch.setattr(cli, "cmd_finalize", lambda a: seen.update(ran=True))
+    monkeypatch.setattr(sys, "argv", ["watchdog", "finalize"])
+    cli.main()
+    assert seen == {"ran": True}
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "deprecated" in out
+    assert "watchdog bark" in out
+
+
+def test_ingest_command_warns_deprecated(configured, monkeypatch, capsys):
+    """`watchdog ingest` (#441, D138) still works during the deprecation window, but must warn
+    and point at the guided walk / `dig`+`bark` — it has no single renamed successor."""
+    import sys
+    seen = {}
+    monkeypatch.setattr(cli, "cmd_ingest", lambda a: seen.update(ran=True))
+    monkeypatch.setattr(sys, "argv", ["watchdog", "ingest"])
+    cli.main()
+    assert seen == {"ran": True}
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "deprecated" in out
+    assert "watchdog dig" in out
+    assert "watchdog bark" in out
 
 
 def test_cmd_ingest_prints_backup_hint_when_discard_snapshotted(wdg_home, tmp_path, monkeypatch, capsys):

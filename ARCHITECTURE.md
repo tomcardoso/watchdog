@@ -68,7 +68,8 @@ Two human-invoked phases, with a clean handoff via the queue:
 
 1. **Chew** (`watchdog chew`) — local, no model. OCR/layout extraction, large-PDF
    chunking, near-duplicate fingerprinting. Writes one queue JSON per document.
-2. **Ingest** (`watchdog ingest`) — a **Python orchestrator** (`pipeline/orchestrate.py`)
+2. **Ingest** (`watchdog dig` + `watchdog bark` — or bare `watchdog`, or the deprecated
+   `watchdog ingest`, #441/D138) — a **Python orchestrator** (`pipeline/orchestrate.py`)
    that runs the whole pipeline in-process and calls the model (via `model_client`) **only
    for the reasoning steps**: classify, extract, reconcile entities + contradictions,
    synthesize entity prose, dedup colliding timeline events, write the briefing. Everything
@@ -141,7 +142,8 @@ Chew is fully local and writes no model-derived fields — `document_type` is le
 
 **Code:** `pipeline/ingest_setup.py`, `cmd/ingest.py`.
 
-`watchdog ingest` resolves auth (`auth.resolve_auth`; errors to `watchdog setup` if
+An ingest run (`cmd_ingest`, shared by `watchdog ingest`, `watchdog dig`, and the bare
+guided walk) resolves auth (`auth.resolve_auth`; errors to `watchdog setup` if
 unconfigured), acquires a run lock (`.watchdog/registry/.ingest-lock`, stale after 30
 minutes), scans the queue, and clears any leftover post-ingest inputs from a prior run
 (per-doc results and scratchpads — §8).
@@ -158,7 +160,7 @@ the multiply) by this vault's $/token ratio from its last 3 `usage-<ts>.json` ru
 D86), presented as a range (min/max across those runs) rather than one averaged figure. Subscription
 auth (`claude-agent-sdk`) never gets a dollar figure — there's no real billing to project, only a
 session-limit fraction token counts can't estimate honestly — but it still gets the calibrated
-token count. `watchdog ingest --estimate` and `watchdog extract --estimate` print the same estimate
+token count. `watchdog ingest --estimate` and `watchdog dig --estimate` print the same estimate
 and exit before the lock is touched.
 
 **Tokens-in calibration (D135).** The queue's `est_tokens` is a flat chars/4 heuristic
@@ -171,12 +173,12 @@ only when there's no such history yet. Deliberately scoped to the *displayed* es
 `section.py`'s sectioning threshold: recalibrating what actually gets sent to the model on a
 still-thin, self-reported history would be a pipeline-behaviour change dressed up as a display fix.
 
-**`watchdog finalize --estimate` (D135).** Prices the batch already staged in `.watchdog/tmp/`
+**`watchdog bark --estimate` (D135).** Prices the batch already staged in `.watchdog/tmp/`
 (`result_<sha>.json` + `notes_<sha>.md`, chars/4) rather than a queue — `ingest_setup.
 finalize_cost_estimate`. Its $/token ratio can't reuse `cost_estimate`'s own history: a `run()`
 ingest's finalize tail shares its single usage file with extraction, which would badly misprice a
 lone finalize. Only usage-`<ts>.json` files where every call falls in `orchestrate.FINALIZE_TASKS`
-qualify — true only for a *standalone* `watchdog finalize`, which #403 phase 4's staged-corpus
+qualify — true only for a *standalone* `watchdog bark`, which #403 phase 4's staged-corpus
 read (D129) is what makes estimable at all: before that, the finalizer's inputs were smeared
 across the retired `entity-fragments/` mechanism, not sitting in one place to measure.
 
@@ -195,7 +197,7 @@ writes so the concurrent document workers write safely. Uses `flock` on macOS/Li
 **Rate-limit stop-and-resume, and `--wait` (D71).** A `model_client.RateLimitError` (session-wide,
 not a per-document failure — see §5) stops the batch cleanly: in-flight documents finish or are
 cancelled, their queue files are left in place, and `orchestrate.run` returns without raising.
-Re-running `watchdog ingest` picks up exactly where it left off (the queue re-scan plus the
+Re-running `watchdog dig` (or `watchdog ingest`) picks up exactly where it left off (the queue re-scan plus the
 `already_extracted` registry check are enough — no extra resume state is needed). `--wait` makes
 that re-run automatic: `cmd_ingest` loops on `orchestrate.run`, and on a rate-limited summary
 sleeps until `RateLimitError.resets_at` (plus a buffer; a fixed fallback when the backend didn't
@@ -203,7 +205,7 @@ report one — only `claude-agent-sdk` does) before looping again, until the que
 finalize completes. The sleep is chunked under the 30-minute staleness window, refreshing the held
 lock's `started_at` after each chunk, so a wait that outlasts it doesn't make a live run look
 abandoned. Opt-in only — without the flag, a rate limit stops the batch exactly as before. The
-loop's only exit condition is a rate limit *during extraction*; with `watchdog extract` (§5)
+loop's only exit condition is a rate limit *during extraction*; with `watchdog dig` (§5)
 finalize never runs at all, so `--wait` simply stops once the queue drains, same as normal.
 
 ---
@@ -269,7 +271,8 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
 
 **Commit pass (`orchestrate._commit_pending`, #403 phase 1, D126).** At the top of
 `orchestrate.finalize` — before any post-ingest model call, and covering all three ways finalize
-runs (the tail of `watchdog ingest`, a standalone `watchdog finalize`, and a resumed run after a
+runs (the tail of an ingest run — `watchdog ingest`, or `watchdog dig` + `watchdog bark` — a
+standalone `watchdog bark`, and a resumed run after a
 rate-limit stop) — every `.watchdog/extracted/<sha>.json` whose sha is not yet a key in
 `registry/documents.json` is committed by replaying the unmodified `write_vault.run()` over it, in
 **sorted sha order**. Sorting is what makes this deterministic (§7 of the phase 1 spec; see
@@ -308,7 +311,7 @@ commit → post-ingest**:
    registry to validate slugs), gated entity synthesis, timeline reconciliation, the briefing.
 
 Because reconciliation precedes the commit, a reconcile model failure **defers the whole batch**:
-nothing commits, every staged artifact stays pending, and a later `watchdog finalize` retries the
+nothing commits, every staged artifact stays pending, and a later `watchdog bark` retries the
 sequence from the fold. This keeps the batch atomic — committing half-reconciled state would strand
 duplicates a retry could never revisit (D128, I7).
 
@@ -322,9 +325,9 @@ the next finalize); it cannot be committed without being staged.
 **`--force` bypasses both checks for a full re-ingest, not just extract-only (D131, #424).**
 `orchestrate._extract_document`/`_finish_batch_item`/`_submit_batch` skip the `already_staged`/
 `already_extracted` short-circuit when `force=True`, overwriting the staged artifact under
-whatever model/effort/skill this run is using. `watchdog extract --force` stops there — nothing
+whatever model/effort/skill this run is using. `watchdog dig --force` stops there — nothing
 committed is touched, so no confirmation is needed. `watchdog ingest --force` goes further:
-`cmd_ingest` runs extraction with finalize held off (the same skip-finalize path `extract` uses),
+`cmd_ingest` runs extraction with finalize held off (the same skip-finalize path `dig` uses),
 then — only if any force-re-extracted document is already a key in `registry/documents.json` —
 warns which vault notes are about to be replaced and confirms, defaulting to **Cancel** (unlike
 the routine ingest confirm, this replaces existing work). On confirm, those shas are passed to
@@ -332,7 +335,7 @@ the routine ingest confirm, this replaces existing work). On confirm, those shas
 even though they are already committed, so `_commit_extracted` replays `write_vault.run` over them
 again — the same replace-not-append note write a repair retry of an already-committed document
 already relied on (D126), just deliberately triggered instead of accidental. On cancel, the
-re-staged extraction is left pending for a later plain `watchdog finalize`.
+re-staged extraction is left pending for a later plain `watchdog bark`.
 
 **Re-queueing an already-committed document from the morgue (D131).** `watchdog ingest --force
 <document>` names one or more committed documents (a sha256, an unambiguous sha256 prefix, or a
@@ -347,9 +350,9 @@ document from its own near-duplicate comparison — both bypasses scoped to that
 otherwise-legitimate checks that would misfire only because this document is being deliberately
 re-processed rather than seen for the first time. The re-chew leaves the file in `staging/<sha>/`,
 same as any freshly-chewed document, so the recommit that follows moves it back to the morgue
-exactly as it would for a document ingested for the first time. `watchdog extract --force` takes
+exactly as it would for a document ingested for the first time. `watchdog dig --force` takes
 no document names — a re-queued-then-extracted document would sit staged with no plain `watchdog
-finalize` able to recommit it (its sha is already a registry key, and finalize's own
+bark` able to recommit it (its sha is already a registry key, and finalize's own
 `_pending_commits` excludes those without `force_shas`), so the selector is deliberately `ingest`-only.
 
 **Large documents — sectioned extraction.** Code: `pipeline/section.py`,
@@ -442,16 +445,17 @@ cleaned via `abort.run` (`pipeline/abort.py`) — staging/section temp removed, 
 moved to `.watchdog/queue/_failed/`, registry untouched. One bad document never sinks the
 batch; move the queue file back from `_failed/` to retry.
 
-**Extract-only (`watchdog extract`, #384/#425).** `orchestrate.run(..., skip_finalize=True)`
+**Extract-only (`watchdog dig`, #384/#425, renamed from `extract` in #441/D138).**
+`orchestrate.run(..., skip_finalize=True)`
 returns as soon as extraction finishes, at the single point (shared by the concurrent
 per-document loop and the claude-batch collect path, §5) that would otherwise call `finalize` —
 post-ingest (§8, §8.5, §9) never runs, and nothing is cleared, so `has_pending_finalization(vault)`
 stays True on exactly what a normal interrupted run would leave behind. The CLI exposes this as
-its own command, `watchdog extract` (`cmd_extract` forces `no_finalize` and delegates to
-`cmd_ingest`), rather than a flag on `ingest`. That lets a later `watchdog finalize
+its own command, `watchdog dig` (`cmd_extract` forces `no_finalize` and delegates to
+`cmd_ingest`), rather than a flag on `ingest`. That lets a later `watchdog bark
 --finalizer-model <model>` run against a fixed extraction, including against several copies of the
 vault to compare finalizer candidates without re-paying extraction's cost each time. Re-running
-`finalize` idempotently over a batch it has already completed is explicitly out of scope; run it
+`bark` idempotently over a batch it has already completed is explicitly out of scope; run it
 once per vault (or vault copy).
 
 ---
@@ -656,7 +660,7 @@ I1 holds: the model answers only *which* pairs are the same and *which* claims c
 write is deterministic code. Failure recovery, though, is no longer symmetric between the two halves
 (#403 phase 3, D128). Because merges now apply *before* the commit pass, a reconcile model failure
 (rate limit) **defers the whole batch**: nothing commits, every staged artifact stays pending, and a
-re-run of `watchdog finalize` retries fold → reconcile → commit — committing half-reconciled state
+re-run of `watchdog bark` retries fold → reconcile → commit — committing half-reconciled state
 would strand duplicates a later retry could never revisit (I7). The contradiction half, applied
 post-commit, stays enrichment-only: the documents are already saved, so a failure there just leaves
 the callouts unwritten for a later `finalize` to add.
@@ -717,16 +721,16 @@ merge — deterministic, no model call, parallel to its registry surgery (§I1);
   registry manifest from an entity id to its display name, since not every backend reliably
   avoids echoing ids in prose (D107).
 
-`watchdog ingest` prints the per-document summary; the briefing/hot/log files are the
+An ingest run (`watchdog ingest`, or `watchdog dig`) prints the per-document summary; the briefing/hot/log files are the
 durable record a fresh session reads.
 
-**`--skip-briefing` (D134, #410).** A flag on `ingest` and `finalize`, not a separate command —
+**`--skip-briefing` (D134, #410).** A flag on `ingest` and `bark`, not a separate command —
 plumbed as `skip_briefing` through `orchestrate.run`/`orchestrate.finalize` → `_post_ingest`,
 which skips only the `briefing` model call; reconciliation, synthesis, and the timeline steps
 above still run. Since `_write_briefing` is what writes `hot.md` and the run's `log.md` entry,
 both are skipped along with `briefings/<ts>.md` — the leads/watchlist/requests sweeps below don't
 depend on it and still run. Recorded as `briefing_skipped` (not `briefing_error`), so the caller
-doesn't treat an intentional skip as a failed run needing a later `watchdog finalize`. The bare
+doesn't treat an intentional skip as a failed run needing a later `watchdog bark`. The bare
 `watchdog` guided walk (`cmd_guided`) takes the same flag at the top level of the CLI parser —
 it rides along on the `args` Namespace `_offer_ingest` passes straight into `cmd_ingest`, so it
 needs no separate plumbing of its own.
@@ -934,7 +938,7 @@ registry/
   batch-pending.json        pending claude-batch extraction state (D52)
   .ingest-lock / .write-lock  run lock / write serialization
 backups/<ts>-<operation>/   pre-mutation snapshots for irreversible operations (D71)
-ingest-state.json           present while a run is in progress; stale ⇒ interrupted ingest, resume with `watchdog ingest`
+ingest-state.json           present while a run is in progress; stale ⇒ interrupted ingest, resume with `watchdog dig`
 ```
 
 **Why a manifest separate from `entities.json`.** Pre-flight needs only a small
@@ -987,14 +991,16 @@ completed purge, and the CLI hint says so.
 - **Models** (configurable via `watchdog configure`): `extractor_model` (default sonnet;
   extraction, whole-doc + section) and `finalizer_model` (default haiku; post-ingest
   synthesis + timeline + briefing, §8–§9); classification runs on haiku. `extract_concurrency`
-  (default 5) bounds parallel extraction. Each is overridable per run via the matching
-  `watchdog ingest` flag (`--extractor-model` / `--finalizer-model` / `--concurrency`).
+  (default 5) bounds parallel extraction. Each is overridable per run via the matching flag
+  on `watchdog dig` (`--extractor-model` / `--concurrency`) or `watchdog bark`
+  (`--finalizer-model`) — or on `watchdog ingest`, which takes both.
   `finalizer_model` is itself an aggregate over four `_call_model` task names — `reconcile`,
   `entity-synthesis`, `timeline-dedup`/`timeline-precision`, and `briefing` — each independently
   overridable via `finalizer_reconciliation_model`/`finalizer_synthesis_model`/
   `finalizer_timeline_model`/`finalizer_briefing_model` (config keys, or the matching
-  `--finalizer-<stage>-model` flag; D137/#433). `orchestrate.finalize`'s `finalizer_overrides`
-  dict carries the resolved `<stage>_model`/`<stage>_backend` pairs; an absent key falls back to
+  `--finalizer-<stage>-model` flag on `watchdog bark`/`watchdog ingest`; D137/#433).
+  `orchestrate.finalize`'s `finalizer_overrides` dict carries the resolved
+  `<stage>_model`/`<stage>_backend` pairs; an absent key falls back to
   `post_model`/`post_backend` (`dict.get`'s own default), so a stage deliberately resolved to
   `None` backend — "route by auth mode" — is never confused with an unset override.
 - **Reasoning effort** (per-stage, default `high` ≡ the model default): `extractor_effort`
@@ -1047,10 +1053,10 @@ completed purge, and the CLI hint says so.
   pinned skill (classification isn't batchable) and `api-key` auth (a metered key; not
   available on subscription). Documents needing **sectioned** extraction fall back to
   `claude-api` — a section's carry-forward depends on the previous section's result, so it
-  can't be an independent batch request. `watchdog ingest` submits and exits rather than
+  can't be an independent batch request. `watchdog dig` submits and exits rather than
   blocking; state persists to `.watchdog/registry/batch-pending.json` (one batch in flight
   per vault, mirroring `has_pending_finalization`'s precedent), and a *later* `watchdog
-  ingest` invocation checks it — collecting and writing to the vault if `ended`, or reporting
+  dig` invocation checks it — collecting and writing to the vault if `ended`, or reporting
   progress and exiting if still processing. 50% off every token, stacking with the A1 prompt
   caching above (batch requests use the 1-hour cache TTL, since a batch routinely outlives
   the default 5-minute window).
@@ -1068,7 +1074,7 @@ completed purge, and the CLI hint says so.
 **Data sent per call.** Every ingest model call is enumerated below — what it sends to
 the cloud, what it deliberately withholds, and how often it fires. This is the concrete
 backing for I2 (local-first preprocessing): chew makes none of these calls, and
-everything below runs only during `watchdog ingest`.
+everything below runs only during an ingest run (`watchdog ingest`, or `watchdog dig`/`watchdog bark`).
 
 | Call | Runs | Sent to the model | Withheld |
 |---|---|---|---|
@@ -1185,7 +1191,7 @@ Mechanically-checkable postconditions are guarded by named tests in `tests/test_
 - **I4 — Configured model and effort only; no automatic escalation.** Each stage's model *and* its reasoning effort are explicit knobs with stable defaults; a failed call retries on the *same* model at the *same* effort — the pipeline never silently bumps either to recover. Response pagination (D104) is not an exception: continuing a truncated response prefills the same model's partial output at the same effort to finish one reply, changing neither knob. `finalizer_model` is itself an aggregate over four sub-stages (reconciliation, synthesis, timeline, briefing) each independently overridable (D137) — the "stage" this invariant guards is the finest-grained one actually configured, aggregate or per-stage. *History: D20, D36, D104, D137.*
 - **I5 — Research output re-enters through `_INCOMING/`, never as a direct vault write.** Web research deposits findings as documents that flow through `chew → ingest`, keeping the deterministic pipeline the single writer (dedup, provenance, registry bookkeeping). Per-doc rationale rides the `.yml` sidecar; batch rationale goes to a `briefings/research-<date>.md` memo — never `context.md`. *History: D45, D46.*
 - **I6 — Anything parsed out of a source document is untrusted input.** Source documents are adversarial by assumption — they arrive from leaks, FOI releases, and hostile parties. Content read *from* a document (its embedded metadata, its XML parts) is data to be defanged before use — never a directive, and never a payload the parser can be exploded by: XML goes through `defusedxml`, never the stdlib `xml.etree` (which expands internal entities, making a crafted `.docx` a billion-laughs bomb); metadata values are allowlisted and length-capped before they can reach a prompt; a reader that fails degrades to an empty dict rather than taking chew down. *History: D110.*
-- **I7 — The vault mutates only at the finalize commit.** Extraction is a pure function of a document: it stages a durable `.watchdog/extracted/<sha>.json` and touches no committed vault state. Every write to that state — entity and document notes, the morgue, the registries, the timeline and search indexes — happens in one serial, sha-sorted commit pass at the top of `finalize` (`_commit_pending` replaying `write_vault.run`), after the pre-commit resolution steps (exact-name fold, entity-merge reconciliation) have run over the staged batch. Nothing before that pass writes a vault path, which is what makes the batch atomic: a reconcile failure leaves it wholly uncommitted and retriable, and `--no-finalize` leaves the vault untouched by construction, not by convention. *History: D126, D127, D128, D129.*
+- **I7 — The vault mutates only at the finalize commit.** Extraction is a pure function of a document: it stages a durable `.watchdog/extracted/<sha>.json` and touches no committed vault state. Every write to that state — entity and document notes, the morgue, the registries, the timeline and search indexes — happens in one serial, sha-sorted commit pass at the top of `finalize` (`_commit_pending` replaying `write_vault.run`), after the pre-commit resolution steps (exact-name fold, entity-merge reconciliation) have run over the staged batch. Nothing before that pass writes a vault path, which is what makes the batch atomic: a reconcile failure leaves it wholly uncommitted and retriable, and `watchdog dig` (extraction with finalize held off) leaves the vault untouched by construction, not by convention. *History: D126, D127, D128, D129.*
 
 ### Decision log
 

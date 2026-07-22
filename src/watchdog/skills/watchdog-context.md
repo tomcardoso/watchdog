@@ -179,7 +179,7 @@ entirely if there were no candidates, or the reporter approved none of them.
 
 Print:
 ```
-context.md written. N watchlist term(s) added. Drop records into _INCOMING/, then run `watchdog chew` and `watchdog ingest` to begin processing.
+context.md written. N watchlist term(s) added. Drop records into _INCOMING/, then run `watchdog chew` and `watchdog dig` to begin processing.
 ```
 (Omit the watchlist clause if none were added.)
 

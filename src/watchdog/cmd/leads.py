@@ -2,7 +2,7 @@
 
 Read-only, no model, no lock: runs `pipeline.leads.scan` over the vault's entity registry and
 prints the named-but-unprofiled / isolated / unresolved-contradiction / inferred-facts digest.
-The same sweep runs automatically at the end of `watchdog ingest` (writing
+The same sweep runs automatically at the end of every ingest run (writing
 `briefings/leads-<date>.md`); this command is for re-running it on demand between ingests."""
 
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _RESET, _resolve_vault

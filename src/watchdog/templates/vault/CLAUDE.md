@@ -1,6 +1,6 @@
 # {name} — Watchdog
 
-At the start of every session: (1) read `hot.md` for a summary of recent activity and open questions; (2) read `context.md` to understand what this investigation is about; (3) check `.watchdog/ingest-state.json` — if it exists, an ingest is running or was interrupted; tell the user to run `watchdog ingest` in their terminal to resume it before doing anything else.
+At the start of every session: (1) read `hot.md` for a summary of recent activity and open questions; (2) read `context.md` to understand what this investigation is about; (3) check `.watchdog/ingest-state.json` — if it exists, an ingest is running or was interrupted; tell the user to run `watchdog dig` in their terminal to resume it before doing anything else.
 
 
 ## Vault layout

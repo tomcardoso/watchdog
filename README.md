@@ -27,15 +27,17 @@ Never use it with confidential source communications, leaked or unpublished mate
 
 ## How it works
 
-Three steps, all run from your terminal:
+A few steps, all run from your terminal:
 
 ```
 drop files into _INCOMING/
         ↓
 watchdog chew     reads, OCRs and converts each document — entirely on your machine
         ↓
-watchdog ingest   sends the extracted text to the AI model, which pulls out
-                  entities, facts and timeline events, then writes a briefing
+watchdog dig      sends the extracted text to the AI model, which pulls out
+                  entities, facts and timeline events
+        ↓
+watchdog bark     writes everything to the vault and produces a briefing
         ↓
 your vault        linked notes in Obsidian; ask questions in Claude Code
 ```
@@ -69,7 +71,8 @@ cd ~/Investigations/shell-company-investigation
 
 # drop documents into _INCOMING/, then:
 watchdog chew
-watchdog ingest
+watchdog dig
+watchdog bark
 watchdog obsidian
 ```
 

@@ -171,7 +171,8 @@ Crucially, web research **never writes vault notes**. Instead, Claude queues eve
 
 ```bash
 watchdog chew
-watchdog ingest
+watchdog dig
+watchdog bark
 ```
 
 Then open a fresh session to investigate what came back.
@@ -205,7 +206,7 @@ After the first ingest, the typical loop is:
 3. **Read the briefing** — pay particular attention to connections with entities already in the vault
 4. **`/watchdog-surface`** in a fresh Claude Code session, if the new batch was substantial
 
-Claude Code does not need to be open while you are chewing; the queue accumulates until you are ready to extract. If you would rather run each step yourself instead of the guided walkthrough — chewing now and ingesting later, say — run `watchdog chew` and `watchdog ingest` directly; `watchdog extract` and `watchdog finalize` split extraction and post-processing further, for comparing finalizer models against the same extraction. See the [command reference](commands.md) for all of it. If you are dropping files into a vault over a period of time, `watchdog watch` monitors `_INCOMING/` and chews new files automatically as they arrive — press Ctrl+C to stop.
+Claude Code does not need to be open while you are chewing; the queue accumulates until you are ready to extract. If you would rather run each step yourself instead of the guided walkthrough — chewing now and extracting later, say — run `watchdog chew`, `watchdog dig`, and `watchdog bark` directly; running `dig` and `bark` separately (rather than back to back) is also how you compare finalizer models against the same extraction. See the [command reference](commands.md) for all of it. If you are dropping files into a vault over a period of time, `watchdog watch` monitors `_INCOMING/` and chews new files automatically as they arrive — press Ctrl+C to stop.
 
 ## Managing investigations
 
