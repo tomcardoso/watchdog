@@ -42,6 +42,10 @@ Or run `watchdog configure <key>` with no value to see that one key's help and c
 | `classifier_model` | `haiku` | Model that reads a document's first pages and picks its record skill. |
 | `extractor_model` | `sonnet` | Model that extracts each document. |
 | `finalizer_model` | `haiku` | Model for the post-ingest step: entity synthesis, timeline, briefing. |
+| `finalizer_reconciliation_model` | *(unset)* | Overrides `finalizer_model` for just entity reconciliation and contradiction flagging. |
+| `finalizer_synthesis_model` | *(unset)* | Overrides `finalizer_model` for just multi-mention entity synthesis. |
+| `finalizer_timeline_model` | *(unset)* | Overrides `finalizer_model` for just timeline reconciliation. |
+| `finalizer_briefing_model` | *(unset)* | Overrides `finalizer_model` for just the briefing. |
 | `extractor_effort` | `high` | How hard the extractor model thinks: `low`, `medium`, or `high`. |
 | `finalizer_effort` | `high` | How hard the finalizer model thinks: `low`, `medium`, or `high`. |
 | `dup_threshold` | `0.85` | Similarity score at which two documents are flagged as near-duplicates (0.0–1.0). |
@@ -173,7 +177,7 @@ Watchdog is built to keep token costs predictable. Everything mechanical runs lo
 The main levers, roughly in order of impact:
 
 - **Effort.** Thinking tokens bill as output, so `extractor_effort` is the biggest per-run lever: try `medium` or `low` on a test batch and check whether extraction quality holds. `finalizer_effort` works the same way for the post-ingest prose.
-- **Models.** `extractor_model haiku` is cheaper and faster for large batches of straightforward documents; Sonnet handles complex or ambiguous ones better. The classifier and finalizer already default to Haiku.
+- **Models.** `extractor_model haiku` is cheaper and faster for large batches of straightforward documents; Sonnet handles complex or ambiguous ones better. The classifier and finalizer already default to Haiku. If just one post-ingest stage needs a stronger model — the briefing reads thin, or duplicate entities keep slipping through reconciliation — `finalizer_reconciliation_model`/`finalizer_synthesis_model`/`finalizer_timeline_model`/`finalizer_briefing_model` raise that one stage without paying a stronger model's cost on the other three. Each falls back to `finalizer_model` when left unset.
 - **claude-batch.** On a metered key, the [claude-batch recipe](#claude-batch-bulk-extraction-at-half-price) above halves the cost of a bulk same-type ingest.
 - **Concurrency.** `extract_concurrency` (default 5) doesn't change total cost, but lowering it — persistently, or with `--concurrency` per run — is the fix when you hit model rate limits.
 

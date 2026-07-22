@@ -411,7 +411,7 @@ def test_cmd_ingest_force_gate_confirms_and_finalizes_with_force_shas(
 
     finalize_calls = []
     def fake_run_finalize(vault, post_model, post_effort=None, post_backend=None, force_shas=None,
-                          skip_briefing=False):
+                          skip_briefing=False, finalizer_overrides=None):
         finalize_calls.append(force_shas)
         return {"synthesized": 1}
     monkeypatch.setattr(ing, "_run_finalize", fake_run_finalize)

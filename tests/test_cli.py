@@ -2023,6 +2023,52 @@ def test_resolve_stage_bare_non_tier_is_treated_as_claude_and_rejected():
         _resolve_stage("gpt-5-mini", None)
 
 
+# ── _resolve_finalizer_overrides: per-stage --finalizer-<stage>-model (#433) ───
+
+def test_resolve_finalizer_overrides_falls_back_to_finalizer_model_when_unset():
+    """No per-stage flags/config: every stage resolves to exactly the aggregate finalizer's
+    own (backend, model), not a hardcoded default."""
+    from watchdog.cmd.ingest import _resolve_finalizer_overrides
+    overrides = _resolve_finalizer_overrides(args(), {}, "openai", "gpt-5-mini")
+    assert overrides == {
+        "reconciliation_backend": "openai", "reconciliation_model": "gpt-5-mini",
+        "synthesis_backend": "openai", "synthesis_model": "gpt-5-mini",
+        "timeline_backend": "openai", "timeline_model": "gpt-5-mini",
+        "briefing_backend": "openai", "briefing_model": "gpt-5-mini",
+    }
+
+
+def test_resolve_finalizer_overrides_flag_overrides_one_stage():
+    """A single `--finalizer-<stage>-model` flag overrides only that stage; the others still
+    fall back to the aggregate finalizer."""
+    from watchdog.cmd.ingest import _resolve_finalizer_overrides
+    overrides = _resolve_finalizer_overrides(
+        args(finalizer_briefing_model="claude-api:opus"), {}, None, "haiku")
+    assert overrides["briefing_backend"] == "claude-api"
+    assert overrides["briefing_model"] == "opus"
+    assert overrides["reconciliation_backend"] is None
+    assert overrides["reconciliation_model"] == "haiku"
+    assert overrides["synthesis_backend"] is None
+    assert overrides["synthesis_model"] == "haiku"
+    assert overrides["timeline_backend"] is None
+    assert overrides["timeline_model"] == "haiku"
+
+
+def test_resolve_finalizer_overrides_config_key_and_flag_precedence():
+    """A config-file `finalizer_<stage>_model` sets the stage's default; a flag for the same
+    stage still wins, matching `_resolve_stage`'s own flag-beats-config rule."""
+    from watchdog.cmd.ingest import _resolve_finalizer_overrides
+    config = {"finalizer_synthesis_model": "gemini:gemini-2.5-flash"}
+    overrides = _resolve_finalizer_overrides(args(), config, None, "haiku")
+    assert overrides["synthesis_backend"] == "gemini"
+    assert overrides["synthesis_model"] == "gemini-2.5-flash"
+
+    overrides = _resolve_finalizer_overrides(
+        args(finalizer_synthesis_model="opus"), config, None, "haiku")
+    assert overrides["synthesis_backend"] is None
+    assert overrides["synthesis_model"] == "opus"
+
+
 # ── cmd_ingest / cmd_finalize: Claude auth only required when a stage needs it (#325) ──
 
 def test_cmd_ingest_does_not_require_claude_auth_when_all_stages_non_claude(wdg_home, tmp_path, monkeypatch):
@@ -2493,6 +2539,48 @@ def test_extract_parser_rejects_finalizer_model(monkeypatch, capsys):
         cli.main()
     err = capsys.readouterr().err
     assert "unrecognized" in err
+
+
+def test_extract_parser_rejects_finalizer_stage_model(monkeypatch, capsys):
+    """The per-stage finalizer overrides (#433) belong to `ingest`/`finalize` too, for the same
+    reason as the aggregate `--finalizer-model`."""
+    import sys
+    monkeypatch.setattr(sys, "argv", ["watchdog", "extract", "--finalizer-briefing-model", "sonnet"])
+    with pytest.raises(SystemExit):
+        cli.main()
+    err = capsys.readouterr().err
+    assert "unrecognized" in err
+
+
+def test_ingest_parser_accepts_finalizer_stage_models(configured, monkeypatch):
+    """All four `--finalizer-<stage>-model` flags parse on `ingest`."""
+    import sys
+    seen = {}
+    monkeypatch.setattr(cli, "cmd_ingest", lambda a: seen.update(
+        reconciliation=a.finalizer_reconciliation_model, synthesis=a.finalizer_synthesis_model,
+        timeline=a.finalizer_timeline_model, briefing=a.finalizer_briefing_model))
+    monkeypatch.setattr(sys, "argv", [
+        "watchdog", "ingest",
+        "--finalizer-reconciliation-model", "opus",
+        "--finalizer-synthesis-model", "deepseek:deepseek-v4-flash",
+        "--finalizer-timeline-model", "openai:gpt-5-mini",
+        "--finalizer-briefing-model", "haiku",
+    ])
+    cli.main()
+    assert seen == {
+        "reconciliation": "opus", "synthesis": "deepseek:deepseek-v4-flash",
+        "timeline": "openai:gpt-5-mini", "briefing": "haiku",
+    }
+
+
+def test_finalize_parser_accepts_finalizer_stage_models(configured, monkeypatch):
+    import sys
+    seen = {}
+    monkeypatch.setattr(cli, "cmd_finalize", lambda a: seen.update(
+        briefing=a.finalizer_briefing_model))
+    monkeypatch.setattr(sys, "argv", ["watchdog", "finalize", "--finalizer-briefing-model", "opus"])
+    cli.main()
+    assert seen == {"briefing": "opus"}
 
 
 def test_extract_command_appears_in_help(monkeypatch, capsys):
