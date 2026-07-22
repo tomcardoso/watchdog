@@ -125,3 +125,62 @@ def test_multi_number_fact_lists_only_the_missing_figures():
     assert len(warnings) == 1
     assert "999000" in warnings[0]
     assert "250000" not in warnings[0]
+
+
+# ── D141/#397: exact x1,000 / x1,000,000 scale match (financial "$000s" tables) ──
+
+def test_thousands_scale_match_produces_no_warning():
+    extraction = _fact("Operating grants totalled $21,406,000 in the forecast period.")
+    pages = {3: "Operating Grants 21,406"}
+    assert verify_figures(extraction, pages) == []
+
+
+def test_millions_scale_match_produces_no_warning():
+    extraction = _fact("Total consolidated revenue was $193,400,000.")
+    pages = {3: "Consolidated revenue of $193.4 million was reported."}
+    assert verify_figures(extraction, pages) == []
+
+
+def test_reverse_thousands_scale_match_produces_no_warning():
+    extraction = _fact("Revenue of $21,406 thousand was recorded.")
+    pages = {3: "Total operating grants were $21,406,000."}
+    assert verify_figures(extraction, pages) == []
+
+
+def test_scale_match_does_not_mask_a_genuinely_wrong_figure():
+    extraction = _fact("Paid $430,000 across two transfers.")
+    pages = {3: "The company recorded transfers of $250,000 and $180,000."}
+    warnings = verify_figures(extraction, pages)
+    assert len(warnings) == 1
+    assert "430000" in warnings[0]
+    assert "may be derived or garbled" in warnings[0]
+
+
+# ── D141/#397: figure verbatim elsewhere in the document → softer citation warning ──
+
+def test_figure_found_on_a_different_page_gets_a_citation_warning_not_a_garbled_one():
+    extraction = _fact("Total consolidated revenue was $193.4 million "
+                        "(prior year: $197.6 million).", page=10)
+    pages = {
+        3: "Consolidated revenue of $197.6 million was reported last year.",
+        10: "Consolidated revenue of $193.4 million decreased from the previous year.",
+    }
+    warnings = verify_figures(extraction, pages)
+    assert len(warnings) == 1
+    assert "figure(s) 197.6" in warnings[0]
+    assert "page citation may be wrong" in warnings[0]
+    assert "may be derived or garbled" not in warnings[0]
+
+
+def test_figure_missing_everywhere_still_gets_the_garbled_warning_alongside_citation_warning():
+    extraction = _fact("Paid $197,600 last year and $999,999 this year.", page=10)
+    pages = {
+        3: "The prior payment was $197,600.",
+        10: "Nothing about payments on this page.",
+    }
+    warnings = verify_figures(extraction, pages)
+    assert len(warnings) == 2
+    garbled = next(w for w in warnings if "may be derived or garbled" in w)
+    citation = next(w for w in warnings if "page citation may be wrong" in w)
+    assert "999999" in garbled
+    assert "197600" in citation
