@@ -212,6 +212,10 @@ def _analyze_run(usage_file: Path, vault: Path) -> None:
         stage_calls = by_stage[stage]
         print(f"\n  {stage.upper()}  ({len(stage_calls)} call{'s' if len(stage_calls) != 1 else ''})"
               f"  ·  model: {_stage_models(stage_calls)}")
+        if any(c.get("backend") == "local" for c in stage_calls):
+            # A local model's $0 cost is real, but it isn't "free" the way it reads at a glance
+            # (#380) — it's paid in wall-clock time instead of tokens. Latency is the real signal.
+            print(f"  {_DIM}local model — no per-token cost; Latency is the real cost signal here{_RESET}")
         totals = _print_stage(stage_calls)
         _accumulate(grand, totals)
         n_calls += len(stage_calls)

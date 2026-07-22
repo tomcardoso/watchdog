@@ -80,7 +80,7 @@ def model_defaults(model: str | None, backend: str | None = None) -> tuple[int, 
     whole-document call's expected output stays under that ceiling. `model`/`backend` are the
     extraction stage's tier/id and backend (None ⇒ default tier / auth-routed Claude backend)."""
     from watchdog import model_client
-    window = model_client.context_window(model)
+    window = model_client.context_window(model, backend)
     threshold = int(window * _THRESHOLD_FRACTION)
     budget = int(window * _BUDGET_FRACTION)
     ceiling = model_client.output_ceiling_for_sectioning("extract", backend, model)

@@ -148,7 +148,9 @@ def test_setup_offers_extra_provider_keys(home, monkeypatch):
     # (Subscription mode now offers the dedicated metered-ingestion wizard instead — see
     # test_setup_subscription_declines_metered_ingestion / test_setup_subscription_routes_
     # ingestion_to_metered_provider below.)
-    _answers(monkeypatch, "2", "y", "n", "n")
+    # Extras are offered in _PROVIDERS order: OpenAI (y), DeepSeek (n), Gemini (n),
+    # Local (n), OpenRouter (n).
+    _answers(monkeypatch, "2", "y", "n", "n", "n", "n")
     monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-openai-setup-123456")
     auth.setup_auth_interactive(interactive=True)
     state = auth._load_state()
@@ -209,8 +211,8 @@ def test_setup_subscription_routes_ingestion_to_metered_provider(home, tmp_path,
 
 def test_setup_api_key_does_not_tune_concurrency(home, monkeypatch):
     monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-setupkey-123456")
-    # mode=api-key (2), then decline all three extra-provider offers.
-    _answers(monkeypatch, "2", "n", "n", "n")
+    # mode=api-key (2), then decline all five extra-provider offers.
+    _answers(monkeypatch, "2", "n", "n", "n", "n", "n")
     auth.setup_auth_interactive(interactive=True)
     config = json.loads(base.CONFIG_FILE.read_text()) if base.CONFIG_FILE.exists() else {}
     assert "extract_concurrency" not in config
@@ -399,3 +401,88 @@ def test_configure_model_key_prompts_for_the_providers_key(home, tmp_path, monke
 
     assert config["extractor_model"] == "gemini:gemini-2.5-flash"
     assert auth.get_api_key("gemini") == "gm-configure-key-123"
+
+
+# ── local / self-hosted + OpenRouter (#380) ──────────────────────────────────
+
+def test_local_requires_no_key():
+    assert auth.provider_requires_key("local") is False
+    assert auth.provider_requires_key("openrouter") is True
+    assert auth.provider_requires_key("openai") is True
+
+
+def test_get_base_url_unset_returns_none_for_local(home):
+    assert auth.get_base_url("local") is None
+
+
+def test_get_base_url_openrouter_has_a_default(home):
+    assert auth.get_base_url("openrouter") == "https://openrouter.ai/api/v1"
+
+
+def test_get_base_url_reads_configured_value(home, tmp_path):
+    base.CONFIG_FILE.write_text(json.dumps({"local_base_url": "http://localhost:11434/v1/"}))
+    # trailing slash is stripped so it composes cleanly with the appended request path
+    assert auth.get_base_url("local") == "http://localhost:11434/v1"
+
+
+def test_get_base_url_env_var_wins_over_configured(home, monkeypatch):
+    base.CONFIG_FILE.write_text(json.dumps({"local_base_url": "http://configured:1234/v1"}))
+    monkeypatch.setenv("LOCAL_BASE_URL", "http://from-env:5678/v1")
+    assert auth.get_base_url("local") == "http://from-env:5678/v1"
+
+
+def test_provider_ready_local_needs_only_base_url(home):
+    assert auth.provider_ready("local") is False       # nothing configured yet
+    base.CONFIG_FILE.write_text(json.dumps({"local_base_url": "http://localhost:11434/v1"}))
+    assert auth.provider_ready("local") is True         # no key needed
+
+
+def test_provider_ready_openrouter_needs_a_key_too(home):
+    # openrouter has a default base URL, but still needs a key
+    assert auth.provider_ready("openrouter") is False
+    auth._save_state({"mode": "api-key", "keys": {"openrouter": "sk-or-test-123456"}})
+    assert auth.provider_ready("openrouter") is True
+
+
+def test_prompt_and_store_base_url(home, monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda *a: "http://localhost:11434/v1")
+    assert auth.prompt_and_store_base_url("local") is True
+    config = json.loads(base.CONFIG_FILE.read_text())
+    assert config["local_base_url"] == "http://localhost:11434/v1"
+
+
+def test_prompt_and_store_base_url_blank_is_skipped(home, monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda *a: "")
+    assert auth.prompt_and_store_base_url("local") is False
+    assert auth.get_base_url("local") is None
+
+
+def test_ensure_provider_key_prompts_for_local_base_url_not_a_key(home, monkeypatch):
+    """Picking a `local:...` model should prompt for the base URL, and never ask for a key —
+    most self-hosted runners don't check for one."""
+    monkeypatch.setattr("builtins.input", lambda *a: "http://localhost:11434/v1")
+
+    def _boom(*a, **k):
+        raise AssertionError("must not prompt for a key when the provider doesn't require one")
+    monkeypatch.setattr(auth, "getpass", _boom)
+
+    auth.ensure_provider_key("local:llama-3.3-70b")
+    assert auth.get_base_url("local") == "http://localhost:11434/v1"
+    assert auth.get_api_key("local") is None
+
+
+def test_ensure_provider_key_noop_when_local_already_ready(home, monkeypatch):
+    base.CONFIG_FILE.write_text(json.dumps({"local_base_url": "http://localhost:11434/v1"}))
+
+    def _boom(*a, **k):
+        raise AssertionError("must not re-prompt once the provider is already ready")
+    monkeypatch.setattr("builtins.input", _boom)
+    monkeypatch.setattr(auth, "getpass", _boom)
+    auth.ensure_provider_key("local:llama-3.3-70b")
+
+
+def test_ensure_provider_key_prompts_for_openrouter_key(home, monkeypatch):
+    """OpenRouter has a default base URL, so only the key needs prompting."""
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-or-test-123456")
+    auth.ensure_provider_key("openrouter:anthropic/claude-3.5-sonnet")
+    assert auth.get_api_key("openrouter") == "sk-or-test-123456"

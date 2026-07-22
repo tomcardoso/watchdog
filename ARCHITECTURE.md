@@ -1007,21 +1007,32 @@ completed purge, and the CLI hint says so.
 - **Model client** (`model_client.py`): the orchestrator's single entry to the model.
   Routes each task to a backend — `claude-agent-sdk` (subscription login or API key — the
   only backend that works on a subscription), `claude-api` (raw Messages + structured
-  outputs), or the OpenAI-compatible `openai`/`deepseek`/`gemini` backends (Chat Completions over
-  httpx, one provider each via base URL; D37, D94) — by auth mode and per-task policy, validates
-  the JSON, retries on the same model on failure, and reports cost/latency. Structured-output
-  enforcement differs by provider on the OpenAI-compatible path: Gemini gets a real `json_schema`
-  response format (its schema engine tolerates the same omit-optional-fields `schemas.py` design
-  unmodified), while OpenAI and DeepSeek stay on portable `json_object` + schema-in-prompt (D98).
+  outputs), or the OpenAI-compatible `openai`/`deepseek`/`gemini`/`local`/`openrouter` backends
+  (Chat Completions over httpx, one provider each via base URL; D37, D94, D138) — by auth mode
+  and per-task policy, validates the JSON, retries on the same model on failure, and reports
+  cost/latency. Structured-output enforcement differs by provider on the OpenAI-compatible path:
+  Gemini gets a real `json_schema` response format (its schema engine tolerates the same
+  omit-optional-fields `schemas.py` design unmodified), while OpenAI, DeepSeek, local, and
+  OpenRouter stay on portable `json_object` + schema-in-prompt (D98).
   **Provider
   abstraction:** the abstract `effort` intent is mapped to each provider's native control by
   a per-provider policy (`_EFFORT_POLICY`: Claude `output_config.effort`, OpenAI
   `reasoning_effort` on reasoning models only, Gemini `reasoning_effort` unconditionally (every
   current model accepts it, D94), DeepSeek none — its thinking mode is a separate
-  on/off carried in the model id via a `-thinking` suffix, default off, D88), and `_resolve_backend_auth`
-  resolves the key per backend — Claude backends via the subscription/api-key mode, others
-  via their own stored key (set interactively via `watchdog auth`) independent of the Claude
-  mode. Auth is resolved by `cmd/auth.py` (see #119, D37, D93). **Setup philosophy (D95):**
+  on/off carried in the model id via a `-thinking` suffix, default off, D88; local and OpenRouter
+  none either — an arbitrary self-hosted or OpenRouter-routed model has no capability table to
+  consult, so the safe default never sends a control a given model might reject, D138), and
+  `_resolve_backend_auth` resolves the key per backend — Claude backends via the
+  subscription/api-key mode, others via their own stored key (set interactively via `watchdog
+  auth`) independent of the Claude mode — plus, for `local`/`openrouter`, a **user-supplied base
+  URL** (`watchdog configure local_base_url`/`openrouter_base_url`, or their env-var overrides)
+  rather than the fixed URL the other three OpenAI-compatible backends bind at import time, and
+  no API key requirement for `local` specifically (most self-hosted runners don't check for one,
+  D138). A self-hosted model's id carries no vendor namespace to infer a context window from the
+  way hosted models' do, so `context_window` takes an explicit `backend` and, for `local`, consults
+  a `local_context_window` config override before falling back to a conservative default (D138)
+  rather than guessing from the substring table. Auth is resolved by `cmd/auth.py` (see #119, D37,
+  D93, D138). **Setup philosophy (D95):**
   Claude Code is required — it runs the interactive investigation skills below and is the
   ingestion default — but ingestion specifically can be routed to a cheaper metered provider
   instead, since it is the token-heavy stage. `watchdog setup`'s auth step surfaces this
@@ -1068,7 +1079,11 @@ completed purge, and the CLI hint says so.
 **Data sent per call.** Every ingest model call is enumerated below — what it sends to
 the cloud, what it deliberately withholds, and how often it fires. This is the concrete
 backing for I2 (local-first preprocessing): chew makes none of these calls, and
-everything below runs only during `watchdog ingest`.
+everything below runs only during `watchdog ingest`. The one exception to "the cloud": a
+stage routed to the `local` backend (D138) sends this same "Sent to the model" content to a
+model server on the operator's own machine or network instead — nothing in that stage's
+column leaves the building. Every other backend, Claude included, sends it to that
+provider's servers.
 
 | Call | Runs | Sent to the model | Withheld |
 |---|---|---|---|

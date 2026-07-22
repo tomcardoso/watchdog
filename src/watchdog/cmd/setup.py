@@ -343,6 +343,50 @@ _CONFIGURE_KEYS = {
         "default": "high",
         "choices": ["low", "medium", "high"],
     },
+    # ── Local / self-hosted models (#380) ───────────────────────────────────────
+    "local_base_url": {
+        "short": "Base URL of a local/self-hosted OpenAI-compatible endpoint (default: unset)",
+        "help": (
+            "The base URL of a self-hosted model server — Ollama, LM Studio, llama.cpp's server,\n"
+            "  vLLM, or anything else that speaks the OpenAI-compatible Chat Completions wire\n"
+            "  format. Required before a stage can be routed to the `local` backend\n"
+            "  (`local:llama-3.3-70b`) — there is no default, since it depends entirely on where\n"
+            "  you're running the server.\n"
+            "  Examples: http://localhost:11434/v1 (Ollama), http://localhost:1234/v1 (LM Studio).\n"
+            "  Default: unset. Can also be set via the LOCAL_BASE_URL environment variable, which\n"
+            "  takes precedence over this value."
+        ),
+        "type": "string",
+        "default": None,
+    },
+    "local_context_window": {
+        "short": "Context window (tokens) of the local model, for sectioning (default: 8000)",
+        "help": (
+            "A self-hosted model's id carries no vendor namespace Watchdog can infer a context\n"
+            "  window from the way it does for hosted models (Claude, DeepSeek, Gemini, ...), so\n"
+            "  document sectioning needs to be told the real number to size sections correctly.\n"
+            "  Set it to your model's actual context window (check its model card or runner docs).\n"
+            "  Left unset, Watchdog assumes a conservative 8000 tokens — safe for most small/\n"
+            "  quantized local models, but likely to over-section a model with a genuinely larger\n"
+            "  window, costing more calls than necessary.\n"
+            "  Only affects stages routed to the `local` backend."
+        ),
+        "type": "int",
+        "default": 8_000,
+        "min": 1,
+    },
+    "openrouter_base_url": {
+        "short": "Base URL for OpenRouter (default: https://openrouter.ai/api/v1)",
+        "help": (
+            "The base URL for the `openrouter` backend (`openrouter:anthropic/claude-3.5-sonnet`,\n"
+            "  or any other model id OpenRouter routes to). The default is OpenRouter's own\n"
+            "  endpoint; change this only if you're pointing at an OpenRouter-compatible proxy.\n"
+            "  Default: https://openrouter.ai/api/v1. Can also be set via the OPENROUTER_BASE_URL\n"
+            "  environment variable, which takes precedence over this value."
+        ),
+        "type": "string",
+        "default": "https://openrouter.ai/api/v1",
+    },
     # ── Deduplication ─────────────────────────────────────────────────────────
     "dup_threshold": {
         "short": "Near-duplicate Jaccard similarity threshold — score at which documents are flagged (default: 0.85)",
@@ -487,7 +531,8 @@ _CONFIGURE_SECTIONS = [
      ["classifier_model", "extractor_model", "finalizer_model",
       "finalizer_reconciliation_model", "finalizer_synthesis_model",
       "finalizer_timeline_model", "finalizer_briefing_model",
-      "extractor_effort", "finalizer_effort"]),
+      "extractor_effort", "finalizer_effort",
+      "local_base_url", "local_context_window", "openrouter_base_url"]),
     ("Deduplication", "Near-duplicate detection.",
      ["dup_threshold", "shingle_size"]),
     ("Search", "Local semantic search over the source corpus.",
@@ -844,8 +889,11 @@ def _pick_model_interactive(current: str | None = None, *, only_provider: str | 
     from watchdog.model_client import _MODEL_IDS, _OPENAI_PRICING
 
     if only_provider:
-        prefix = _PROVIDER_MODEL_PREFIXES[only_provider]
-        groups = [(None, only_provider, [m for m in _OPENAI_PRICING if m.startswith(prefix)])]
+        # local/openrouter (#380) have no fixed pricing-table catalogue — arbitrary self-hosted
+        # or OpenRouter-routed model ids — so they fall straight through to "Type my own…" below.
+        prefix = _PROVIDER_MODEL_PREFIXES.get(only_provider)
+        models = [m for m in _OPENAI_PRICING if prefix and m.startswith(prefix)]
+        groups = [(None, only_provider, models)]
     else:
         groups = [
             ("Claude", None, list(_MODEL_IDS)),

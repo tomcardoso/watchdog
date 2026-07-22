@@ -86,6 +86,16 @@ watchdog ingest --wait
 
 Without `--wait`, ingest stops cleanly on a rate limit. Nothing is lost: every document processed so far is saved to a durable working file, so re-running `watchdog ingest` picks up only what's still queued.
 
+## A stage routed to `local` fails immediately
+
+`the local backend needs a base URL` means `local_base_url` isn't set yet — point it at your model server:
+
+```bash
+watchdog configure local_base_url http://localhost:11434/v1
+```
+
+A connection error (refused, timed out) means the server named in `local_base_url` isn't running, isn't reachable from this machine, or the port is wrong — check that your runner (Ollama, LM Studio, llama.cpp's server, vLLM, ...) is actually up and listening on that address before retrying. Most local runners don't need an API key at all; if yours does (some gateways in front of a local model do), add one with `watchdog auth`. See [Configuration](configuration.md#local-and-self-hosted-models).
+
 ## Ingest interrupted after extraction
 
 Ingest has two stages. First it reads each document (the slow, paid part); then, at the end, it writes everything to your vault in one pass and produces the briefing. If a run is stopped after the reading is done but before that final write — no briefing appeared, entity summaries look unfinished, or you saw a message that nothing was written yet — the batch can be completed without re-reading anything:

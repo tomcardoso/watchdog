@@ -135,11 +135,16 @@ def _gemini_effort(model_id: str, effort: str) -> str | None:
 
 
 # provider → the function mapping the abstract effort intent to that provider's native value.
+# `local` and `openrouter` (#380) map to `_no_effort`: an arbitrary self-hosted or
+# OpenRouter-routed model has no capability table the way OpenAI's does, so the safe default is
+# to never send a reasoning-control param a given model might reject, rather than guess.
 _EFFORT_POLICY = {
-    "anthropic": _claude_effort,
-    "openai":    _openai_effort,
-    "deepseek":  _no_effort,
-    "gemini":    _gemini_effort,
+    "anthropic":  _claude_effort,
+    "openai":     _openai_effort,
+    "deepseek":   _no_effort,
+    "gemini":     _gemini_effort,
+    "local":      _no_effort,
+    "openrouter": _no_effort,
 }
 
 
@@ -181,14 +186,39 @@ _CONTEXT_WINDOWS = {
 }
 _DEFAULT_CONTEXT_WINDOW = 128_000
 
+# A self-hosted model's id (#380) is whatever the operator named it in their runner — it carries
+# no vendor namespace to match against `_CONTEXT_WINDOWS`, and guessing from `_DEFAULT_CONTEXT_WINDOW`
+# would be optimistic for the small/quantized models local runners typically serve. `local_context_window`
+# (a `watchdog configure` key) lets an operator state their model's real window; absent that, this
+# conservative default keeps sectioning aggressive rather than risking an overrun on an unknown model.
+_LOCAL_DEFAULT_CONTEXT_WINDOW = 8_000
 
-def context_window(model: str | None) -> int:
+
+def _configured_local_context_window() -> int | None:
+    config = {}
+    try:
+        from watchdog.cmd.base import CONFIG_FILE
+        if CONFIG_FILE.exists():
+            config = json.loads(CONFIG_FILE.read_text())
+    except (OSError, json.JSONDecodeError):
+        config = {}
+    value = config.get("local_context_window")
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
+
+
+def context_window(model: str | None, backend: str | None = None) -> int:
     """Token context window for a stage's model, for provider-aware sectioning (#321).
 
     `model` may be a tier name (haiku/sonnet/opus), a raw provider id (`deepseek-v4-flash`,
     `gpt-5-mini`), or None for the default tier — resolved first, then matched against the
     substring table. Unlisted ids fall back to a conservative default rather than raising, so a
-    new or misspelled id degrades to safe (small-chunk) sectioning instead of an overrun."""
+    new or misspelled id degrades to safe (small-chunk) sectioning instead of an overrun.
+
+    `backend == "local"` (#380) skips the substring table entirely — a self-hosted model's id has
+    no relation to the vendor ids the table is keyed on — in favour of the `local_context_window`
+    config override, or a small conservative default when unset."""
+    if backend == "local":
+        return _configured_local_context_window() or _LOCAL_DEFAULT_CONTEXT_WINDOW
     model_id = resolve_model_id(model or DEFAULT_TIER).lower()
     for marker, window in _CONTEXT_WINDOWS.items():
         if marker in model_id:
@@ -674,7 +704,11 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     if thinking is not None:   # DeepSeek: pin the mode explicitly (provider defaults to enabled)
         body["thinking"] = {"type": "enabled" if thinking else "disabled"}
     url = base_url.rstrip("/") + path
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    # `api_key` is None for a `local` backend with no key configured (#380) — most self-hosted
+    # runners don't check for one, so omit the header rather than sending a literal "Bearer None".
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     # Verify via the OS trust store rather than the bundled certifi CA list — on a machine
     # running a TLS-inspecting corporate proxy, the proxy's root CA is trusted
     # by the OS but absent from certifi, which otherwise fails cert verification here.
@@ -707,12 +741,19 @@ _OPENAI_BASE = {
     "gemini":   "https://generativelanguage.googleapis.com/v1beta/openai",
 }
 
+# `local` and `openrouter` (#380) are OpenAI-compatible too, but their base URL is user-supplied
+# (`watchdog configure local_base_url`/`openrouter_base_url`, or `watchdog auth`) rather than one
+# of the fixed URLs above — so they're left unbound here and partial-applied per call in
+# `acomplete_json` once `_resolve_backend_auth` has resolved the configured URL (see
+# `_DYNAMIC_BASE_URL_BACKENDS`).
 _ABACKENDS = {
     "claude-api":       _api_complete_async,
     "claude-agent-sdk": _agent_complete_async,
     "openai":   partial(_openai_complete_async, base_url=_OPENAI_BASE["openai"]),
     "deepseek": partial(_openai_complete_async, base_url=_OPENAI_BASE["deepseek"]),
     "gemini":   partial(_openai_complete_async, base_url=_OPENAI_BASE["gemini"]),
+    "local":      _openai_complete_async,
+    "openrouter": _openai_complete_async,
 }
 
 # backend name → the auth provider whose key it uses (and whose effort policy applies).
@@ -723,7 +764,13 @@ _BACKEND_PROVIDER = {
     "openai":           "openai",
     "deepseek":         "deepseek",
     "gemini":           "gemini",
+    "local":            "local",
+    "openrouter":       "openrouter",
 }
+
+# Backends whose base URL is resolved per call from `auth.get_base_url` rather than baked into
+# `_ABACKENDS` as a fixed partial (#380).
+_DYNAMIC_BASE_URL_BACKENDS = ("local", "openrouter")
 
 # Selectable backend names (public — the CLI validates a stage's `backend:model` against this).
 BACKENDS = tuple(_BACKEND_PROVIDER)
@@ -739,13 +786,18 @@ CLAUDE_BACKENDS = ("claude-api", "claude-agent-sdk", "claude-batch")
 _BATCH_ONLY_BACKENDS = {"claude-batch"}
 
 
-def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, str]:
-    """Resolve (backend, provider, api_key, auth_mode) for a call.
+def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, str, str | None]:
+    """Resolve (backend, provider, api_key, auth_mode, base_url) for a call.
 
     Claude backends consult the subscription/api-key mode (`auth.resolve_auth`); other providers
     use their stored API key directly (`auth.get_api_key`), independent of the Claude mode — so a
     user with only an OpenAI/DeepSeek key can run those backends without configuring Claude (#125).
-    With no explicit backend, defaults among the Claude backends by auth mode (unchanged)."""
+    With no explicit backend, defaults among the Claude backends by auth mode (unchanged).
+
+    `base_url` is only ever non-None for `local`/`openrouter` (#380), whose endpoint is
+    user-supplied rather than one of the fixed URLs the other OpenAI-compatible backends bind at
+    import time — every other backend gets `None` back since its base URL (if any) is already
+    baked into `_ABACKENDS`."""
     chosen = requested
     if chosen in _BATCH_ONLY_BACKENDS:
         raise ModelError(f"'{chosen}' is a batch-mode-only backend — it cannot be used for a "
@@ -766,12 +818,20 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
             raise ModelError(
                 "the claude-api backend needs an API key, but auth mode is "
                 f"'{auth_mode}' — run `watchdog auth` to switch to api-key mode, or use the claude-agent-sdk backend")
-        return chosen, provider, api_key, auth_mode
+        return chosen, provider, api_key, auth_mode, None
+
+    base_url = None
+    if chosen in _DYNAMIC_BASE_URL_BACKENDS:
+        base_url = auth.get_base_url(provider)
+        if not base_url:
+            raise ModelError(
+                f"the {chosen} backend needs a base URL — run "
+                f"`watchdog configure {provider}_base_url <url>` (e.g. http://localhost:11434/v1)")
 
     api_key = auth.get_api_key(provider)
-    if not api_key:
+    if auth.provider_requires_key(provider) and not api_key:
         raise ModelError(f"the {chosen} backend needs an API key — run `watchdog auth` to add one")
-    return chosen, provider, api_key, "api-key"
+    return chosen, provider, api_key, "api-key", base_url
 
 
 # ── response pagination (#343) ────────────────────────────────────────────────
@@ -838,10 +898,11 @@ def output_ceiling_for_sectioning(task: str, backend: str | None, model: str | N
     when there is nothing to protect (#343). None is returned for the agent SDK (no enforced
     ceiling), for the prefill-continuation backends (claude-api, deepseek — pagination grows the
     output past the cap), and for an unresolved backend (`None` routes to a Claude backend, both
-    of which are None-returning). Only openai and gemini return a real number: they enforce
-    max_tokens yet can't continue, so a document whose estimated output would exceed the ceiling
-    must be sectioned up front rather than truncating and relying on the reactive fallback."""
-    if backend not in ("openai", "gemini"):
+    of which are None-returning). openai, gemini, local, and openrouter (#380) return a real
+    number: they enforce max_tokens yet can't continue, so a document whose estimated output
+    would exceed the ceiling must be sectioned up front rather than truncating and relying on the
+    reactive fallback."""
+    if backend not in ("openai", "gemini", "local", "openrouter"):
         return None
     model_id = resolve_model_id(model or DEFAULT_TIER)
     if backend == "openai" and _openai_is_reasoning(model_id):
@@ -887,13 +948,15 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
     only `claude-api` uses it natively, other backends flatten it to text (`_flatten_prompt`).
     `model` may be a tier name (haiku/sonnet/opus) or a raw model id; omit it for the
     per-task default. `backend` forces a backend ('claude-api', 'claude-agent-sdk',
-    'openai', 'deepseek'); omit it to route by auth mode. `effort` (`low`/`medium`/`high`)
-    is an abstract reasoning-depth intent — each provider maps it to its own native control
-    or ignores it (D36, #125). On invalid/unparseable output the call retries on the **same**
-    model (up to `max_retries` extra attempts) — never escalating — then raises.
+    'openai', 'deepseek', 'local', 'openrouter'); omit it to route by auth mode. `effort`
+    (`low`/`medium`/`high`) is an abstract reasoning-depth intent — each provider maps it to its
+    own native control or ignores it (D36, #125). On invalid/unparseable output the call retries
+    on the **same** model (up to `max_retries` extra attempts) — never escalating — then raises.
     """
-    chosen, provider, api_key, auth_mode = _resolve_backend_auth(backend)
+    chosen, provider, api_key, auth_mode, base_url = _resolve_backend_auth(backend)
     backend_fn = _ABACKENDS[chosen]
+    if chosen in _DYNAMIC_BASE_URL_BACKENDS:
+        backend_fn = partial(backend_fn, base_url=base_url)
 
     requested = model or DEFAULT_TIER
     model_id = resolve_model_id(requested)
