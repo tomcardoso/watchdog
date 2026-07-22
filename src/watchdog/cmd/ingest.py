@@ -202,7 +202,8 @@ def _preview_ingest(vault: Path, args) -> tuple[str, str] | None:
         getattr(args, "finalizer_model", None), config.get("finalizer_model"), default="haiku")
     classify_backend, classify_model = _resolve_stage(
         getattr(args, "classifier_model", None), config.get("classifier_model"), default="haiku")
-    extract_effort = _effort(getattr(args, "extractor_effort", None), config.get("extractor_effort"))
+    extract_effort = _effort(getattr(args, "extractor_effort", None),
+                             config.get("extractor_effort", "medium"))
     post_effort = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
     finalizer_overrides = _resolve_finalizer_overrides(args, config, post_backend, post_model)
 
@@ -736,7 +737,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
     else:
         a = {"mode": None}
 
-    extract_effort = _effort(getattr(args, "extractor_effort", None), config.get("extractor_effort"))
+    extract_effort = _effort(getattr(args, "extractor_effort", None),
+                             config.get("extractor_effort", "medium"))
     post_effort    = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
     try:
         concurrency = int(getattr(args, "concurrency", None) or config.get("extract_concurrency") or 5)

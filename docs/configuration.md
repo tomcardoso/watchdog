@@ -46,7 +46,7 @@ Or run `watchdog configure <key>` with no value to see that one key's help and c
 | `finalizer_synthesis_model` | *(unset)* | Overrides `finalizer_model` for just multi-mention entity synthesis. |
 | `finalizer_timeline_model` | *(unset)* | Overrides `finalizer_model` for just timeline reconciliation. |
 | `finalizer_briefing_model` | *(unset)* | Overrides `finalizer_model` for just the briefing. |
-| `extractor_effort` | `high` | How hard the extractor model thinks: `low`, `medium`, or `high`. |
+| `extractor_effort` | `medium` | How hard the extractor model thinks: `low`, `medium`, or `high`. |
 | `finalizer_effort` | `high` | How hard the finalizer model thinks: `low`, `medium`, or `high`. |
 | `local_base_url` | *(unset)* | Base URL of a local/self-hosted OpenAI-compatible model server, for the `local` backend. |
 | `local_context_window` | `8000` | Context window (tokens) of the local model, since Watchdog can't infer it from an arbitrary self-hosted model id. |
@@ -111,8 +111,8 @@ watchdog configure projects_dir /Volumes/SecureDrive/Investigations
 # Use Haiku for extraction by default (faster and cheaper)
 watchdog configure extractor_model haiku
 
-# Spend fewer thinking tokens on extraction (the main per-run cost lever)
-watchdog configure extractor_effort medium
+# Spend even fewer thinking tokens on extraction than the medium default
+watchdog configure extractor_effort low
 
 # Lower parallelism if you hit model rate limits
 watchdog configure extract_concurrency 2
@@ -204,7 +204,7 @@ Watchdog is built to keep token costs predictable. Everything mechanical runs lo
 
 The main levers, roughly in order of impact:
 
-- **Effort.** Thinking tokens bill as output, so `extractor_effort` is the biggest per-run lever: try `medium` or `low` on a test batch and check whether extraction quality holds. `finalizer_effort` works the same way for the post-ingest prose.
+- **Effort.** Thinking tokens bill as output, so `extractor_effort` is the biggest per-run lever. It already defaults to `medium` — benchmark testing found no recall difference against `high`, at meaningfully lower cost — but `low` is worth trying on a test batch if you want to cut cost further. `finalizer_effort` works the same way for the post-ingest prose, and still defaults to `high`; that stage hasn't been benchmarked the same way.
 - **Models.** `extractor_model haiku` is cheaper and faster for large batches of straightforward documents; Sonnet handles complex or ambiguous ones better. The classifier and finalizer already default to Haiku. If just one post-ingest stage needs a stronger model — the briefing reads thin, or duplicate entities keep slipping through reconciliation — `finalizer_reconciliation_model`/`finalizer_synthesis_model`/`finalizer_timeline_model`/`finalizer_briefing_model` raise that one stage without paying a stronger model's cost on the other three. Each falls back to `finalizer_model` when left unset.
 - **claude-batch.** On a metered key, the [claude-batch recipe](#claude-batch-bulk-extraction-at-half-price) above halves the cost of a bulk same-type ingest.
 - **Concurrency.** `extract_concurrency` doesn't change total cost, but lowering it — persistently, or with `--concurrency` per run — is the fix when you hit model rate limits. `watchdog setup` already lowers the default from 5 to 3 when it detects Claude subscription auth and you keep ingestion on it: concurrent extractions on that path share one Claude Code session's rate limit, and 5 reliably throttles it. Raise it back with `watchdog configure extract_concurrency` if your plan tolerates more.

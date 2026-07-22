@@ -66,7 +66,7 @@ It's shown every time, not just once per vault — the risk is per-document, not
 
 - `--extractor-model MODEL` — the model that extracts each document (default: `sonnet`).
 - `--classifier-model MODEL` — the model that reads a document's first pages and picks its record skill (default: `haiku`).
-- `--extractor-effort low|medium|high` — how hard the extractor thinks; lower spends fewer tokens (default: `high`).
+- `--extractor-effort low|medium|high` — how hard the extractor thinks; lower spends fewer tokens (default: `medium`).
 
 Each model flag takes a Claude tier (`haiku`, `sonnet`, `opus`) or a `backend:model` value that routes the stage to another provider — see [Model backends](configuration.md#model-backends). The effort flag is ignored when the stage runs on Haiku, which has no effort control.
 
