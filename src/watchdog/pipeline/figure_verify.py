@@ -1,4 +1,4 @@
-"""Deterministic figure verification against the morgue text (#363).
+"""Deterministic figure verification against the morgue text (#363, widened by D141/#397).
 
 Tributary's validation review surfaced a failure class quote-checking doesn't catch: a
 model reports "$430,000 across two transfers" when the source pages state $250,000 and
@@ -12,18 +12,28 @@ derivation and is exempt outright; a fact with `basis` absent or `"stated"` clai
 read off the page, so its numeric tokens are checked against the cited page and its
 immediate neighbors.
 
-Normalization is deliberately conservative: no unit conversion and no arithmetic. A
-paraphrase like "about $1.2-million" for a page that says "$1,200,000" will legitimately
-miss and get flagged — acceptable, because this is advisory, not a gate. The alternative —
-expanding "1.2" to "1200000" — risks false confidence from a coincidental small-number
-match, which is worse than an occasional over-flagged paraphrase.
+Normalization is deliberately conservative: no free-form unit conversion and no arithmetic.
+A paraphrase like "about $1.2-million" for a page that says "$1,234,567" will legitimately
+miss and get flagged — accepted, because this is advisory, not a gate.
+
+D141 (#397) narrowed that gap for the one case real-world benchmarking showed to dominate
+the warning volume: financial statements reported in thousands, where the page shows
+"21,406" under a "(in $000s)" header and the model correctly writes the fact as
+"$21,406,000". That's not a paraphrase, it's an exact x1,000/x1,000,000 scale of the same
+digits — `_scale_variants` checks both directions before giving up on a token. A fact citing
+the wrong page for a number that's verbatim elsewhere in the *same* document (a comparative
+figure pulled from the MD&A highlights page while citing the statement page) gets a
+separate, softer warning — the number is real, the citation just points at the wrong spot —
+rather than being lumped in with "may be derived or garbled".
 """
 
 import re
+from decimal import Decimal, InvalidOperation
 
 _GROUPED_NUM_RE = re.compile(r"\d{1,3}(?:[,  ]\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?")
 _PLAIN_NUM_RE = re.compile(r"\d+(?:\.\d+)?")
 _GROUP_CHARS_RE = re.compile(r"[,  ]")
+_SCALE_EXPONENTS = (3, 6)  # thousands, millions
 
 
 def _normalize_token(token: str) -> str:
@@ -59,12 +69,47 @@ def _page_tokens(page_texts: dict[int, str], page: int) -> set[str]:
     return tokens
 
 
+def _scale_variants(token: str) -> set[str]:
+    """A token's exact x1,000 and x1,000,000 scalings, both directions — moving the decimal
+    point is lossless for a base-10 value, unlike the free-form unit conversion this module
+    otherwise declines to do. Catches "21,406" (a $000s table) grounding a fact that correctly
+    writes "$21,406,000", and the symmetric case of a fact quoting the table's raw thousands."""
+    try:
+        value = Decimal(token)
+    except InvalidOperation:
+        return set()
+    variants: set[str] = set()
+    for exponent in _SCALE_EXPONENTS:
+        for scaled in (value.scaleb(exponent), value.scaleb(-exponent)):
+            variants.add(_normalize_token(format(scaled, "f")))
+    variants.discard(token)
+    return variants
+
+
+def _index_pages(page_texts: dict[int, str]) -> dict[str, list[int]]:
+    """Every numeric token in the document, mapped to the sorted pages it appears on —
+    built lazily (only once a fact has a token that failed the near-page check) since most
+    documents never need it."""
+    index: dict[str, list[int]] = {}
+    for page_num, text in page_texts.items():
+        if not text:
+            continue
+        for tok in _tokens(text, _GROUPED_NUM_RE) | _tokens(text, _PLAIN_NUM_RE):
+            index.setdefault(tok, []).append(page_num)
+    for pages in index.values():
+        pages.sort()
+    return index
+
+
 def verify_figures(extraction: dict, page_texts: dict[int, str]) -> list[str]:
     """Check every stated `key_facts[].fact`'s numeric figures against its cited page (and
-    the page ±1). Pure and advisory: mutates nothing, returns a warning per fact with at
-    least one figure that couldn't be found anywhere searched.
+    the page ±1, with exact x1,000/x1,000,000 scale variants allowed). Pure and advisory:
+    mutates nothing. A figure absent nearby but verbatim (or scale-equivalent) elsewhere in
+    the document gets a softer "check the citation" warning; a figure absent from the whole
+    document keeps the original "may be derived or garbled" warning.
     """
     warnings: list[str] = []
+    doc_index: dict[str, list[int]] | None = None
     for i, fact in enumerate(extraction.get("document", {}).get("key_facts", [])):
         if fact.get("basis") == "inferred":
             continue
@@ -82,12 +127,42 @@ def verify_figures(extraction: dict, page_texts: dict[int, str]) -> list[str]:
             continue
 
         page_token_set = _page_tokens(page_texts, page)
-        missing = sorted(t for t in fact_tokens if t not in page_token_set)
-        if missing:
+        near_missing = sorted(
+            t for t in fact_tokens
+            if t not in page_token_set and not (_scale_variants(t) & page_token_set)
+        )
+        if not near_missing:
+            continue
+
+        if doc_index is None:
+            doc_index = _index_pages(page_texts)
+
+        still_missing = []
+        elsewhere: list[tuple[str, list[int]]] = []
+        for t in near_missing:
+            found_on = doc_index.get(t) or []
+            if not found_on:
+                for variant in _scale_variants(t):
+                    found_on = doc_index.get(variant) or []
+                    if found_on:
+                        break
+            if found_on:
+                elsewhere.append((t, found_on))
+            else:
+                still_missing.append(t)
+
+        if still_missing:
             warnings.append(
-                f"document.key_facts[{i}] figure(s) {', '.join(missing)} not found on page "
-                f"{page} (or adjacent pages) — may be derived or garbled; check the source: "
-                f"{text[:80]!r}"
+                f"document.key_facts[{i}] figure(s) {', '.join(still_missing)} not found on "
+                f"page {page} (or adjacent pages) — may be derived or garbled; check the "
+                f"source: {text[:80]!r}"
+            )
+        if elsewhere:
+            detail = ", ".join(f"{t} (page {'/'.join(str(p) for p in pages)})" for t, pages in elsewhere)
+            warnings.append(
+                f"document.key_facts[{i}] figure(s) {detail} not found on page {page} (or "
+                f"adjacent pages) but appear(s) elsewhere in the document — the figure is "
+                f"real, the page citation may be wrong; check the source: {text[:80]!r}"
             )
 
     return warnings
