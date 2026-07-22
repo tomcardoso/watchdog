@@ -100,6 +100,24 @@ def _format_cost_estimate(est: dict) -> str:
     return line
 
 
+def _format_finalize_estimate(est: dict) -> str:
+    """Render `ingest_setup.finalize_cost_estimate`'s result as `watchdog finalize --estimate`'s
+    pre-flight line (#417), e.g. '3 documents staged · est. ~45K tokens in (~$0.18-0.24 based on
+    your last 2 standalone finalizes)'. Costs here run far smaller than ingest's own line (a
+    handful of reconciliation/synthesis calls, not a whole document's extraction), so the dollar
+    figure keeps two decimal places instead of `_format_cost_estimate`'s whole dollars."""
+    n = est["docs"]
+    line = (f"  {_BOLD}{n}{_RESET} document{'s' if n != 1 else ''} staged · "
+            f"est. ~{_fmt_tokens(est['est_tokens'])} tokens in")
+    if est["cost_low"] is not None:
+        low, high = round(est["cost_low"], 2), round(est["cost_high"], 2)
+        cost = f"${low}" if low == high else f"${low}-{high}"
+        runs = est["runs_used"]
+        run_label = "last standalone finalize" if runs == 1 else f"last {runs} standalone finalizes"
+        line += f" {_DIM}(~{cost} based on your {run_label}){_RESET}"
+    return line
+
+
 def _effective_extract_backend(extract_backend: str | None, auth_mode: str) -> str:
     """The backend that will actually serve extraction calls when `extract_backend` is unset
     (plain sonnet/opus/haiku) — mirrors `model_client`'s own subscription/api-key routing, so the
@@ -990,6 +1008,16 @@ def cmd_finalize(args) -> None:
     post_backend, post_model = _resolve_stage(
         getattr(args, "finalizer_model", None), config.get("finalizer_model"), default="haiku")
     post_effort = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
+
+    if getattr(args, "estimate", False):
+        # Read-only, like ingest/extract's own --estimate (#269, #406) — no lock, no auth
+        # requirement beyond what's needed to resolve which backend would actually run.
+        from watchdog.pipeline.ingest_setup import finalize_cost_estimate
+        from watchdog.cmd.auth import resolve_auth
+        auth_mode = resolve_auth()["mode"] if post_backend is None else None
+        est = finalize_cost_estimate(vault, _effective_extract_backend(post_backend, auth_mode))
+        print(f"\n{_format_finalize_estimate(est)}\n")
+        return
 
     # Claude auth is only required when the finalizer is actually routed to it — a stage pinned
     # to another provider must be able to finalize without Claude being configured at all (#325).

@@ -504,6 +504,9 @@ def main() -> None:
                             help="Reasoning effort for the post-ingest step — entity reconciliation, "
                                  "contradiction flagging, synthesis, timeline, briefing — "
                                  "overrides watchdog configure (default: high)")
+    p_finalize.add_argument("--estimate", action="store_true",
+                            help="Print a token/cost estimate for the pending batch and exit — "
+                                 "no lock, no finalize")
     p_finalize.add_argument("--skip-briefing", action="store_true", default=False, dest="skip_briefing",
                             help="Run entity reconciliation, synthesis, and the timeline rebuild, "
                                  "but skip the briefing model call — useful for bulk backfills or "

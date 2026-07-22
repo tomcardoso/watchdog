@@ -30,6 +30,12 @@ from watchdog.pipeline.write_vault import _doc_slug
 
 DEFAULT_CONCURRENCY = 5
 
+# The finalizer stage's own `_call_model(task=...)` names (#417) — every call a *standalone*
+# `watchdog finalize` makes belongs to this set, which is what `ingest_setup.finalize_cost_estimate`
+# uses to recognize a finalize-only usage-<ts>.json file: a `run()` ingest's own finalize tail
+# shares that run's single usage file with extraction/classification, so it never qualifies.
+FINALIZE_TASKS = {"reconcile", "entity-synthesis", "timeline-dedup", "timeline-precision", "briefing"}
+
 
 # During extraction this holds the live status region (#151); per-document rows redraw in
 # place and finished/failed lines + notes scroll above it. None outside extraction (and when
@@ -190,20 +196,31 @@ def usage_files(vault: Path) -> list[Path]:
     return sorted(files, key=lambda p: p.name)
 
 
-def _write_usage_file(vault: Path, records: list[dict], ts: str) -> str:
+def _write_usage_file(vault: Path, records: list[dict], ts: str,
+                      est_input_tokens: int | None = None) -> str:
     """Write `records` to `.watchdog/registry/usage/usage-<ts>.json` for an explicit `ts`,
     shared by `_write_usage` (fresh timestamp, end of run) and `_consolidate_orphaned_usage`
-    (the orphaned partial's own timestamp, #407)."""
+    (the orphaned partial's own timestamp, #407).
+
+    `est_input_tokens` (#417), when given, is added onto `totals` alongside the real
+    `input_tokens` `_usage_totals` already computes — the naive chars/4 estimate summed across
+    this run's successfully extracted documents (`_compact_result`'s own field), so a later
+    `--estimate` can compare estimate to actual across this vault's own history the same way
+    `cost_estimate` already does for dollars. Orphaned-partial recovery has no such per-run total
+    to hand in (the individual call records don't carry it) and leaves it out."""
     usage_dir = vault / ".watchdog" / "registry" / "usage"
     usage_dir.mkdir(parents=True, exist_ok=True)
     relpath = f".watchdog/registry/usage/usage-{ts}.json"
+    totals = _usage_totals(records)
+    if est_input_tokens is not None:
+        totals["est_input_tokens"] = est_input_tokens
     (vault / relpath).write_text(
-        json.dumps({"calls": records, "totals": _usage_totals(records)}, ensure_ascii=False, indent=2),
+        json.dumps({"calls": records, "totals": totals}, ensure_ascii=False, indent=2),
         encoding="utf-8")
     return relpath
 
 
-def _write_usage(vault: Path, records: list[dict]) -> str | None:
+def _write_usage(vault: Path, records: list[dict], est_input_tokens: int | None = None) -> str | None:
     """Persist this run's per-call token/cost telemetry to
     `.watchdog/registry/usage/usage-<ts>.json` (A2, relocated out of the flat Registry dir
     in #319 since this one accumulates a new file every run, unlike the fixed-size registries
@@ -212,7 +229,7 @@ def _write_usage(vault: Path, records: list[dict]) -> str | None:
     if not records:
         return None
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return _write_usage_file(vault, records, ts)
+    return _write_usage_file(vault, records, ts, est_input_tokens=est_input_tokens)
 
 
 def _consolidate_orphaned_usage(vault: Path) -> None:
@@ -256,14 +273,22 @@ def _begin_usage_run(vault: Path) -> None:
     _usage_partial_path = usage_dir / f"usage-{ts}.partial.jsonl"
 
 
-def _end_usage_run(vault: Path) -> tuple[str | None, dict | None]:
+def _end_usage_run(vault: Path, est_input_tokens: int | None = None) -> tuple[str | None, dict | None]:
     """Write this run's canonical `usage-<ts>.json` and remove its now-redundant partial
     (#407) — the counterpart to `_begin_usage_run`, called at every exit point that used to
     call `_write_usage` directly on a standalone/top-level accumulator. Returns the same
-    `(usage_path, usage_totals)` pair those call sites assembled by hand."""
+    `(usage_path, usage_totals)` pair those call sites assembled by hand.
+
+    `est_input_tokens` (#417) is `run()`'s own sum of this run's successfully extracted
+    documents' naive chars/4 estimate — passed through to `_write_usage`/`_write_usage_file` and
+    mirrored onto the returned `totals` so both the persisted file and the in-memory summary
+    agree. The two `finalize()` exit points never extract anything, so they call this with the
+    default `None` and no such field appears."""
     global _usage, _usage_partial_path
-    path = _write_usage(vault, _usage)
+    path = _write_usage(vault, _usage, est_input_tokens=est_input_tokens)
     totals = _usage_totals(_usage) if _usage else None
+    if totals is not None and est_input_tokens is not None:
+        totals["est_input_tokens"] = est_input_tokens
     if _usage_partial_path is not None:
         _usage_partial_path.unlink(missing_ok=True)
     _usage_partial_path = None
@@ -458,7 +483,7 @@ def _briefing_facts(doc: dict) -> list[dict]:
 
 
 def _compact_result(sha: str, filename: str, extraction: dict, near_dup: dict, cost: float | None,
-                    written: dict) -> dict:
+                    written: dict, est_input_tokens: int | None = None) -> dict:
     """`written` is the writer's report of what it did with this document's entities — which ids
     were new to the registry and which were added to. That is a deterministic fact `write_vault`
     holds; extraction no longer guesses at it via `match_id` (#381/D118). At extraction time this
@@ -468,10 +493,15 @@ def _compact_result(sha: str, filename: str, extraction: dict, near_dup: dict, c
     There is no `contradictions` key any more: a single document cannot see a conflict, so
     nothing at this stage has one to report. The briefing's contradiction flags are fed by the
     finalizer's reconciliation pass instead (`_post_ingest`).
+
+    `est_input_tokens` (#417) is the naive chars/4 estimate (`section.est_tokens_from_pages`) for
+    this document's own pages — carried alongside the real `cost_usd` so a run's usage totals can
+    compare what was estimated against what extraction actually consumed, the same way `cost_usd`
+    already lets `watchdog usage` compare estimate to spend.
     """
     entities = extraction.get("entities", [])
     doc = extraction.get("document", {})
-    return {
+    result = {
         "sha256": sha, "filename": filename, "status": "ok",
         "document_type": doc.get("document_type"),
         "record_skill": doc.get("record_skill"),
@@ -483,6 +513,9 @@ def _compact_result(sha: str, filename: str, extraction: dict, near_dup: dict, c
         "near_dup_similarity": near_dup.get("top_similarity", 0.0),
         "cost_usd": cost,
     }
+    if est_input_tokens is not None:
+        result["est_input_tokens"] = est_input_tokens
+    return result
 
 
 def _write_postflight(vault: Path, sha: str, extraction: dict) -> tuple[bool, list[str], list[str]]:
@@ -840,7 +873,8 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
     for msg in (warnings or []):
         _say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{msg}{_RESET}")
         _log(vault, f"WARN {filename}: {msg}")
-    result = _compact_result(sha, filename, extraction, pf.get("near_dup", {}), round(cost, 6), {})
+    result = _compact_result(sha, filename, extraction, pf.get("near_dup", {}), round(cost, 6), {},
+                             est_input_tokens=section.est_tokens_from_pages(pf.get("pages", [])))
     # Persist the compact result so `watchdog finalize` can run post-ingest from disk alone.
     (vault / ".watchdog" / "tmp" / f"result_{sha}.json").write_text(
         json.dumps(result, ensure_ascii=False), encoding="utf-8")
@@ -1997,5 +2031,11 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     state = "rate-limited" if summary["rate_limited"] else ("cancelled" if cancelled_flag else "complete")
     _log(vault, f"INGEST {state} — {summary['extracted']} extracted, "
                 f"{summary['skipped']} skipped, {summary['failed']} failed")
-    summary["usage_path"], summary["usage"] = _end_usage_run(vault)
+    # #417: sum of the naive chars/4 estimate over this run's successfully extracted documents,
+    # so this run's usage file records both what was estimated and what extraction actually
+    # consumed — the input a later `--estimate` calibrates against. None (not 0) when nothing
+    # extracted, so a skipped/all-cached run doesn't masquerade as a zero-token calibration point.
+    est_input_tokens = sum(r.get("est_input_tokens") or 0 for r in results
+                           if r.get("status") == "ok") or None
+    summary["usage_path"], summary["usage"] = _end_usage_run(vault, est_input_tokens=est_input_tokens)
     return summary

@@ -4,7 +4,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-from watchdog.pipeline.ingest_setup import STALE_SECONDS, cost_estimate, run, scan_queue
+from watchdog.pipeline.ingest_setup import (
+    STALE_SECONDS, cost_estimate, finalize_cost_estimate, run, scan_queue,
+)
 
 
 def _make_vault(tmp_path: Path) -> Path:
@@ -20,13 +22,16 @@ def _write_queue_file(vault: Path, sha256: str, source_type: str = "docling", fi
     qf.write_text(json.dumps({"filename": filename or f"{sha256}.pdf", "metadata": {"source_type": source_type}, "pages": []}))
 
 
-def _write_usage_file(vault: Path, ts: str, input_tokens: int, cost_usd) -> None:
+def _write_usage_file(vault: Path, ts: str, input_tokens: int, cost_usd,
+                      est_input_tokens: int | None = None, calls: list | None = None) -> None:
     reg = vault / ".watchdog" / "registry"
     reg.mkdir(parents=True, exist_ok=True)
+    totals = {"input_tokens": input_tokens, "output_tokens": 0,
+              "cache_read_tokens": 0, "cache_write_tokens": 0, "cost_usd": cost_usd}
+    if est_input_tokens is not None:
+        totals["est_input_tokens"] = est_input_tokens
     (reg / f"usage-{ts}.json").write_text(json.dumps({
-        "calls": [],
-        "totals": {"input_tokens": input_tokens, "output_tokens": 0,
-                   "cache_read_tokens": 0, "cache_write_tokens": 0, "cost_usd": cost_usd},
+        "calls": calls if calls is not None else [], "totals": totals,
     }))
 
 
@@ -372,3 +377,138 @@ def test_cost_estimate_skips_usage_files_with_no_cost(tmp_path):
 
     assert est["runs_used"] == 1
     assert est["cost_low"] == est["cost_high"] == 1.0
+
+
+# ── tokens-in calibration (#417) ────────────────────────────────────────────────
+
+def test_cost_estimate_uncalibrated_without_est_input_tokens_history(tmp_path):
+    """No usage file yet carries `est_input_tokens` (either no history, or every past run was a
+    standalone finalize) — the raw chars/4 heuristic is used unchanged, matching the pre-#417
+    behaviour exactly."""
+    vault = _make_vault(tmp_path)
+    qf = vault / ".watchdog" / "queue" / "abc123.json"
+    qf.write_text(json.dumps({"filename": "x.pdf", "pages": [{"page": 1, "markdown": "a" * 4000}]}))
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=1000, cost_usd=1.0)   # no est_input_tokens
+
+    est = cost_estimate(vault, scan_queue(vault), backend="claude-api")
+
+    assert est["est_tokens"] == 1000   # raw chars/4, uncalibrated
+
+
+def test_cost_estimate_applies_empirical_calibration(tmp_path):
+    """Real extraction consistently ran 50% over the naive chars/4 estimate in this vault's
+    history — the displayed 'tokens in' (and, downstream, the dollar range) scales accordingly."""
+    vault = _make_vault(tmp_path)
+    qf = vault / ".watchdog" / "queue" / "abc123.json"
+    qf.write_text(json.dumps({"filename": "x.pdf", "pages": [{"page": 1, "markdown": "a" * 4000}]}))
+    # est_tokens=1000 naive; actual consumed 1500 → ratio 1.5, consistent across both runs.
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=1500, cost_usd=1.5, est_input_tokens=1000)
+    _write_usage_file(vault, "20260102T000000Z", input_tokens=3000, cost_usd=3.0, est_input_tokens=2000)
+
+    est = cost_estimate(vault, scan_queue(vault), backend="claude-api")
+
+    assert est["est_tokens"] == 1500   # 1000 (raw) * 1.5 (calibration)
+    # The dollar range is derived from the *calibrated* tokens, so it also reflects the correction.
+    assert est["cost_low"] == est["cost_high"] == 1.5
+
+
+def test_cost_estimate_calibration_ignores_standalone_finalize_runs(tmp_path):
+    """A usage file from a standalone `watchdog finalize` never carries `est_input_tokens`
+    (nothing was extracted) — it must not be mistaken for an extraction data point."""
+    vault = _make_vault(tmp_path)
+    qf = vault / ".watchdog" / "queue" / "abc123.json"
+    qf.write_text(json.dumps({"filename": "x.pdf", "pages": [{"page": 1, "markdown": "a" * 4000}]}))
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=1500, cost_usd=1.5, est_input_tokens=1000)
+    _write_usage_file(vault, "20260102T000000Z", input_tokens=200, cost_usd=0.05)   # standalone finalize
+
+    est = cost_estimate(vault, scan_queue(vault), backend="claude-api")
+
+    assert est["est_tokens"] == 1500   # only the extraction run's 1.5x ratio applied
+
+
+def test_cost_estimate_calibration_still_applies_under_subscription_auth(tmp_path):
+    """Subscription auth withholds the dollar figure (D72), not the calibrated token count — a
+    subscriber still budgets a session window against tokens."""
+    vault = _make_vault(tmp_path)
+    qf = vault / ".watchdog" / "queue" / "abc123.json"
+    qf.write_text(json.dumps({"filename": "x.pdf", "pages": [{"page": 1, "markdown": "a" * 4000}]}))
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=1500, cost_usd=1.5, est_input_tokens=1000)
+
+    est = cost_estimate(vault, scan_queue(vault), backend="claude-agent-sdk")
+
+    assert est["est_tokens"] == 1500
+    assert est["cost_low"] is None and est["cost_high"] is None
+
+
+# ── finalize --estimate (#417) ──────────────────────────────────────────────────
+
+def _stage_finalize_corpus(vault: Path, docs: dict[str, str]) -> None:
+    """Write `result_<sha>.json` (with `docs[sha]` as filler text) + a matching `notes_<sha>.md`
+    for each sha — the staged tmp/ corpus `finalize_cost_estimate` reads."""
+    tmp = vault / ".watchdog" / "tmp"
+    tmp.mkdir(parents=True, exist_ok=True)
+    for sha, text in docs.items():
+        (tmp / f"result_{sha}.json").write_text(json.dumps({"sha256": sha, "key_facts": text}))
+        (tmp / f"notes_{sha}.md").write_text(text)
+
+
+def test_finalize_cost_estimate_empty_tmp_returns_zero(tmp_path):
+    vault = _make_vault(tmp_path)
+    est = finalize_cost_estimate(vault, backend="claude-api")
+    assert est == {"docs": 0, "est_tokens": 0, "cost_low": None, "cost_high": None, "runs_used": 0}
+
+
+def test_finalize_cost_estimate_no_standalone_history_omits_cost(tmp_path):
+    """A staged batch with no prior *standalone* finalize to price against gets tokens only —
+    same 'not enough history yet' treatment `cost_estimate` gives a first-run vault."""
+    vault = _make_vault(tmp_path)
+    _stage_finalize_corpus(vault, {"sha1": "a" * 400})
+
+    est = finalize_cost_estimate(vault, backend="claude-api")
+
+    assert est["docs"] == 1
+    assert est["est_tokens"] > 0
+    assert est["cost_low"] is None and est["runs_used"] == 0
+
+
+def test_finalize_cost_estimate_derives_range_from_standalone_finalize_history(tmp_path):
+    vault = _make_vault(tmp_path)
+    _stage_finalize_corpus(vault, {"sha1": "a" * 4000})   # result_sha1.json (4035 chars) + notes (4000) → 2008 est_tokens
+    finalize_calls = [{"task": "reconcile"}, {"task": "entity-synthesis"}]
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=1000, cost_usd=1.0, calls=finalize_calls)
+    _write_usage_file(vault, "20260102T000000Z", input_tokens=1000, cost_usd=2.0, calls=finalize_calls)
+
+    est = finalize_cost_estimate(vault, backend="claude-api")
+
+    assert est["docs"] == 1
+    assert est["est_tokens"] == 2008
+    assert est["cost_low"] == 2.008
+    assert est["cost_high"] == 4.016
+    assert est["runs_used"] == 2
+
+
+def test_finalize_cost_estimate_excludes_runs_with_extraction_calls(tmp_path):
+    """A `run()` ingest's own finalize tail shares its usage file with extraction — that file
+    must not be mistaken for a standalone finalize's $/token profile."""
+    vault = _make_vault(tmp_path)
+    _stage_finalize_corpus(vault, {"sha1": "a" * 4000})
+    mixed_calls = [{"task": "extract"}, {"task": "reconcile"}]
+    standalone_calls = [{"task": "reconcile"}, {"task": "briefing"}]
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=999999, cost_usd=999.0, calls=mixed_calls)
+    _write_usage_file(vault, "20260102T000000Z", input_tokens=1000, cost_usd=1.0, calls=standalone_calls)
+
+    est = finalize_cost_estimate(vault, backend="claude-api")
+
+    assert est["runs_used"] == 1   # only the standalone run counted
+    assert est["cost_low"] == est["cost_high"] == 2.008
+
+
+def test_finalize_cost_estimate_subscription_backend_never_shows_cost(tmp_path):
+    vault = _make_vault(tmp_path)
+    _stage_finalize_corpus(vault, {"sha1": "a" * 4000})
+    standalone_calls = [{"task": "reconcile"}]
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=1000, cost_usd=1.0, calls=standalone_calls)
+
+    est = finalize_cost_estimate(vault, backend="claude-agent-sdk")
+
+    assert est["cost_low"] is None and est["cost_high"] is None and est["runs_used"] == 0

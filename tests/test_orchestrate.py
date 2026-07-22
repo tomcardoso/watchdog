@@ -215,6 +215,21 @@ def test_compact_result_carries_key_facts_for_the_briefing():
     assert "contradictions" not in r        # a single document cannot flag one
 
 
+def test_compact_result_omits_est_input_tokens_when_not_given():
+    """Existing call sites that don't pass `est_input_tokens` (e.g. this test file's other
+    fixtures) keep the pre-#417 result shape exactly — no fabricated key."""
+    r = orchestrate._compact_result("sha1", "doc.pdf", {"document": {}, "entities": []}, {}, 0.01, {})
+    assert "est_input_tokens" not in r
+
+
+def test_compact_result_carries_est_input_tokens_when_given():
+    """#417: the naive chars/4 estimate for this document's own pages rides alongside cost_usd,
+    so a run's usage totals can later compare estimate to actual."""
+    r = orchestrate._compact_result("sha1", "doc.pdf", {"document": {}, "entities": []}, {}, 0.01, {},
+                                    est_input_tokens=250)
+    assert r["est_input_tokens"] == 250
+
+
 def test_write_briefing_resolves_entity_ids_to_display_names(tmp_path):
     """#342: on backends that echo the internal id rather than the display name for a new
     entity, the briefing and hot.md must still show the display name — resolved deterministically
@@ -1199,6 +1214,37 @@ def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
     assert data["totals"]["output_tokens"] == 20 * n_calls
     assert summary["usage"]["input_tokens"] == 100 * n_calls
     assert round(summary["usage"]["cost_usd"], 4) == round(0.01 * n_calls, 4)
+
+
+def test_usage_totals_carry_est_input_tokens_for_extraction_runs(tmp_path, monkeypatch):
+    """#417: a run that actually extracts documents records the naive chars/4 estimate for
+    those documents' pages onto its usage totals, both in the persisted file and the returned
+    summary — the input a later `--estimate` calibrates against."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)   # default text: "Acme Corp filed an annual report." → 8 est_tokens
+
+    _mock(monkeypatch, extraction=_extraction())
+    summary = asyncio.run(orchestrate.run(vault))
+    assert summary["extracted"] == 1
+
+    data = json.loads((vault / summary["usage_path"]).read_text())
+    assert data["totals"]["est_input_tokens"] == 8
+    assert summary["usage"]["est_input_tokens"] == 8
+
+
+def test_usage_totals_omit_est_input_tokens_when_nothing_extracted(tmp_path, monkeypatch):
+    """A run where every queued document fails post-flight extracted nothing — its usage file
+    (if any calls were made at all) must not carry a fabricated zero calibration point."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+
+    _mock(monkeypatch, extraction=_extraction(valid=False))   # rejected by post-flight
+    summary = asyncio.run(orchestrate.run(vault))
+    assert summary["extracted"] == 0
+
+    if summary.get("usage_path"):
+        data = json.loads((vault / summary["usage_path"]).read_text())
+        assert "est_input_tokens" not in data["totals"]
 
     # #407: a clean run leaves no orphaned partial behind for the next run to trip over.
     usage_dir = vault / ".watchdog" / "registry" / "usage"
