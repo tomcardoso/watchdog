@@ -153,7 +153,7 @@ releases the lock in a `finally`. Models, concurrency, and classification come f
 
 **Pre-flight cost estimate (D72).** Before the confirm prompt, `ingest_setup.cost_estimate`
 multiplies the queue's own `est_tokens` (already computed per file by `scan_queue` for the
-sectioning threshold, and calibrated — D133 — against this vault's own extraction history before
+sectioning threshold, and calibrated — D134 — against this vault's own extraction history before
 the multiply) by this vault's $/token ratio from its last 3 `usage-<ts>.json` runs (D50,
 D86), presented as a range (min/max across those runs) rather than one averaged figure. Subscription
 auth (`claude-agent-sdk`) never gets a dollar figure — there's no real billing to project, only a
@@ -161,7 +161,7 @@ session-limit fraction token counts can't estimate honestly — but it still get
 token count. `watchdog ingest --estimate` and `watchdog extract --estimate` print the same estimate
 and exit before the lock is touched.
 
-**Tokens-in calibration (D133).** The queue's `est_tokens` is a flat chars/4 heuristic
+**Tokens-in calibration (D134).** The queue's `est_tokens` is a flat chars/4 heuristic
 (`section.est_tokens_from_pages`) with no awareness of prompt overhead or a document's actual
 density. Every successful extraction now carries its own naive estimate (`_compact_result`'s
 `est_input_tokens`) through to the run's usage totals alongside the real `input_tokens` the model
@@ -171,7 +171,7 @@ only when there's no such history yet. Deliberately scoped to the *displayed* es
 `section.py`'s sectioning threshold: recalibrating what actually gets sent to the model on a
 still-thin, self-reported history would be a pipeline-behaviour change dressed up as a display fix.
 
-**`watchdog finalize --estimate` (D133).** Prices the batch already staged in `.watchdog/tmp/`
+**`watchdog finalize --estimate` (D134).** Prices the batch already staged in `.watchdog/tmp/`
 (`result_<sha>.json` + `notes_<sha>.md`, chars/4) rather than a queue — `ingest_setup.
 finalize_cost_estimate`. Its $/token ratio can't reuse `cost_estimate`'s own history: a `run()`
 ingest's finalize tail shares its single usage file with extraction, which would badly misprice a
@@ -914,7 +914,7 @@ registry/
   requests.json             document-request ledger — id/provenance stamped by Python (D111)
   ingest.log                append-only ingest log (START/OK/WARN/FAILED per doc, D102)
   usage/usage-<ts>.json     per-run model-call token/cost/latency telemetry (D50, D86, D102);
-                            `totals.est_input_tokens` (D133), present only when the run actually
+                            `totals.est_input_tokens` (D134), present only when the run actually
                             extracted documents, is the naive chars/4 estimate for them — the
                             input tokens-in calibration compares against `totals.input_tokens`
   usage/usage-<ts>.partial.jsonl  in-progress run's calls, one JSON line per completed call —

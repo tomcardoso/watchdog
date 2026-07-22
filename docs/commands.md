@@ -38,7 +38,26 @@ Investigation names tab-complete in zsh and bash once `watchdog setup` has run.
 
 ### watchdog ingest
 
-`watchdog ingest` runs the extraction pipeline in your terminal — no Claude Code session is involved. It scans the queue, prints a token estimate, asks you to confirm, and then extracts documents in parallel. On a metered API key with at least one prior run, the estimate includes a rough dollar range projected from this vault's own usage history (the last three runs); on a subscription, or before any run has completed, only the token estimate is shown. The token estimate itself sharpens the same way: once a vault has extracted at least one batch, later estimates are scaled by how far this vault's own recent extractions ran over or under the raw estimate, rather than a fixed guess — a new vault falls back to the raw estimate until it has that history.
+`watchdog ingest` runs the extraction pipeline in your terminal — no Claude Code session is involved. It scans the queue, prints a token estimate, then shows the public-records warning below and asks you to acknowledge it before extracting documents in parallel. On a metered API key with at least one prior run, the estimate includes a rough dollar range projected from this vault's own usage history (the last three runs); on a subscription, or before any run has completed, only the token estimate is shown. The token estimate itself sharpens the same way: once a vault has extracted at least one batch, later estimates are scaled by how far this vault's own recent extractions ran over or under the raw estimate, rather than a fixed guess — a new vault falls back to the raw estimate until it has that history.
+
+**Public records only.** Every ingest that will call the model shows this warning and requires an explicit acknowledgement — the default choice — before anything is sent:
+
+```
+  ⚠  Public records only
+
+  The extracted text of every queued document will be sent to a
+  cloud AI model. This cannot be undone. Use Watchdog only for
+  documents that are public, or presumptively public — never for
+  confidential source material, leaks, or anything that could
+  identify a source.
+
+  6 documents will be sent to the model.
+
+    ›  Acknowledge and ingest
+       Cancel
+```
+
+It's shown every time, not just once per vault — the risk is per-document, not per-vault — and it replaces the plain "Ingest now?" prompt rather than adding a second one. `--skip-warning` skips the interactive pause, for repeated or scripted runs on a corpus already vetted as public (benchmarking, `--wait` batches, automation); it still prints a one-line notice naming how many documents were sent, so a skipped run is never silent about what it did. It is a per-invocation flag rather than a `watchdog configure` setting — a persistent "never warn me" default would quietly defeat the safeguard for every future run. `watchdog extract` takes the same flag, for the same reason.
 
 **Model and effort flags.** Each takes effect for this run only; the persistent defaults live in [Configuration](configuration.md).
 
@@ -58,6 +77,7 @@ Each model flag takes a Claude tier (`haiku`, `sonnet`, `opus`) or a `backend:mo
 - `--wait` — on a rate limit, sleep until it resets and resume automatically instead of stopping; for unattended overnight batches. It uses the reset time the provider reports, or a fixed fallback interval when it doesn't, and repeats until the queue drains. Not compatible with a `claude-batch` extractor model.
 - `--estimate` — print the token and cost estimate for the queue and exit; no lock, no confirmation, no extraction.
 - `--force [DOC …]` — re-extract a document even when a cached extraction (or a note already committed to the vault) exists for it — see [Re-extracting with --force](#re-extracting-with---force) below. Costs full extraction spend on every queued document, cache or no. Bare `--force` re-extracts whatever is already queued; naming one or more documents (a sha256, an unambiguous sha256 prefix, or a filename) also re-queues and re-extracts documents already committed to the vault.
+- `--skip-warning` — skip the public-records acknowledgement pause described below; still prints a one-line notice of what was sent.
 
 **Resumability.** Pressing Ctrl+C, or hitting a rate limit without `--wait`, stops the batch cleanly: finished documents are saved and unfinished ones stay queued, so re-running `watchdog ingest` picks up where it left off. A document that genuinely fails extraction is set aside in `queue/_failed/`; the run reports how many, and `watchdog requeue` moves them back to retry — this is surfaced everywhere the queue's state matters: the normal run summary, a Ctrl+C even during the finalize wrap-up below, `--estimate`, and a bare `watchdog ingest` with nothing new to read, which offers to requeue and retry right there instead of just reporting an empty queue. On macOS or Linux, ingest also keeps the machine from sleeping for the run's duration — see [Troubleshooting](troubleshooting.md#ingest-prevents-the-machine-from-sleeping-during-a-run).
 
@@ -97,7 +117,7 @@ watchdog ingest --force report.pdf disclosure-2024.pdf
 
 `watchdog extract` runs classification and extraction exactly like `watchdog ingest` — same queue, same extractor and classifier models — but stops as soon as the batch is staged. Nothing is written to the vault, and post-processing (merging duplicate entities, flagging contradictions, entity synthesis, timeline reconciliation, the briefing) does not run.
 
-It takes the extraction-side flags from `watchdog ingest`: `--extractor-model`, `--extractor-effort`, `--classifier-model`, `--concurrency`, `--classify-pages`, `--skill`, `--wait`, `--estimate`, and `--force` (bare only here — see [Re-extracting with --force](#re-extracting-with---force) for why `extract --force` doesn't take document names). There is no `--finalizer-model` or `--finalizer-effort` here — those belong to `watchdog finalize`, run afterward to complete the batch.
+It takes the extraction-side flags from `watchdog ingest`: `--extractor-model`, `--extractor-effort`, `--classifier-model`, `--concurrency`, `--classify-pages`, `--skill`, `--wait`, `--estimate`, `--skip-warning`, and `--force` (bare only here — see [Re-extracting with --force](#re-extracting-with---force) for why `extract --force` doesn't take document names). There is no `--finalizer-model` or `--finalizer-effort` here — those belong to `watchdog finalize`, run afterward to complete the batch. It shows the same public-records acknowledgement gate as `watchdog ingest`, since it makes the same model calls.
 
 Use `watchdog extract` when you want to inspect what got extracted before it lands in the vault, or to compare finalizer models against a fixed extraction without paying for extraction again — see [Comparing finalizer models](#comparing-finalizer-models) above. `watchdog status` shows a staged batch as pending finalization until you run `watchdog finalize`.
 
@@ -115,7 +135,7 @@ Two flags override the persistent parallelism settings for a single run:
 - `--chew-workers N` — files processed in parallel (the `chew_workers` setting; default: adaptive).
 - `--chunk-workers N` — parallel chunks per large PDF (the `chunk_workers` setting; default: adaptive).
 
-Press Ctrl+C to cancel a chew in progress — the lock is cleaned up automatically and unfinished files remain in `_INCOMING/` for the next run. When the batch completes, Watchdog sends a desktop notification (macOS only) and asks `Ingest now? [Y/n]`, so you can move straight to extraction without typing the next command.
+Press Ctrl+C to cancel a chew in progress — the lock is cleaned up automatically and unfinished files remain in `_INCOMING/` for the next run. When the batch completes, Watchdog sends a desktop notification (macOS only) and offers to ingest right away, so you can move straight to extraction without typing the next command — that offer is the same public-records acknowledgement gate described under [`watchdog ingest`](#watchdog-ingest) below, not a separate confirmation.
 
 ### watchdog fetch
 
