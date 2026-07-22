@@ -11,8 +11,9 @@ from watchdog.cmd import auth, base
 
 @pytest.fixture
 def home(tmp_path, monkeypatch):
-    """Redirect WATCHDOG_HOME, clear the real env key, assume Claude Code logged out."""
+    """Redirect WATCHDOG_HOME/CONFIG_FILE, clear the real env key, assume Claude Code logged out."""
     monkeypatch.setattr(base, "WATCHDOG_HOME", tmp_path)
+    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setattr(auth, "claude_code_logged_in", lambda: False)
     return tmp_path
@@ -165,6 +166,27 @@ def test_setup_subscription_declines_metered_ingestion(home, monkeypatch):
     assert state["keys"] == {}
 
 
+def test_setup_subscription_declined_metered_tunes_concurrency(home, monkeypatch, capsys):
+    # Staying on the subscription for ingestion (issue #400) auto-tunes extract_concurrency
+    # down from the built-in default of 5, since concurrent extractions on that path share
+    # one Claude Code session's rate limit.
+    _answers(monkeypatch, "1", "n")
+    auth.setup_auth_interactive(interactive=True)
+    config = json.loads(base.CONFIG_FILE.read_text())
+    assert config["extract_concurrency"] == 3
+    assert "Detected Claude subscription auth" in capsys.readouterr().out
+
+
+def test_setup_subscription_declined_metered_leaves_custom_concurrency(home, monkeypatch):
+    # A concurrency value the user already set (via `watchdog configure`, or a prior
+    # auto-tune) is a deliberate choice — the auto-tune must not silently overwrite it.
+    base.CONFIG_FILE.write_text(json.dumps({"extract_concurrency": 8}))
+    _answers(monkeypatch, "1", "n")
+    auth.setup_auth_interactive(interactive=True)
+    config = json.loads(base.CONFIG_FILE.read_text())
+    assert config["extract_concurrency"] == 8
+
+
 def test_setup_subscription_routes_ingestion_to_metered_provider(home, tmp_path, monkeypatch):
     monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
     # mode=subscription (1), route to metered (y), pick Gemini (3rd provider), then pick the
@@ -181,6 +203,17 @@ def test_setup_subscription_routes_ingestion_to_metered_provider(home, tmp_path,
     assert config["classifier_model"].startswith("gemini:")
     assert config["extractor_model"].startswith("gemini:")
     assert config["finalizer_model"].startswith("gemini:")
+    # Extraction no longer runs on the subscription session, so nothing tunes concurrency.
+    assert "extract_concurrency" not in config
+
+
+def test_setup_api_key_does_not_tune_concurrency(home, monkeypatch):
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-setupkey-123456")
+    # mode=api-key (2), then decline all three extra-provider offers.
+    _answers(monkeypatch, "2", "n", "n", "n")
+    auth.setup_auth_interactive(interactive=True)
+    config = json.loads(base.CONFIG_FILE.read_text()) if base.CONFIG_FILE.exists() else {}
+    assert "extract_concurrency" not in config
 
 
 # ── `watchdog auth` (bare) — status + interactive wizard ─────────────────────

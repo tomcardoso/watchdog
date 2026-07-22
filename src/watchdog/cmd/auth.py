@@ -382,11 +382,45 @@ def setup_auth_interactive(interactive: bool | None = None) -> None:
               f"alternatives — OpenAI, DeepSeek, Gemini.{_RESET}")
         if confirm("\n  Route ingestion to a metered API service instead of your subscription?", default=False):
             _setup_metered_ingestion(state)
+        else:
+            _maybe_tune_concurrency_for_subscription()
     else:
         _offer_extra_providers(state)
 
     print(f"\n  {_DIM}Tune which model runs each stage anytime with{_RESET} {_CYAN}watchdog configure{_RESET} "
           f"{_DIM}(extractor_model, finalizer_model, extractor_effort, …).{_RESET}")
+
+
+_SUBSCRIPTION_CONCURRENCY = 3
+
+
+def _maybe_tune_concurrency_for_subscription() -> bool:
+    """Lower `extract_concurrency` when `watchdog setup` lands on Claude subscription auth and
+    ingestion stays on it (issue #400): every concurrent extraction on that path shares one
+    Claude Code session, and the built-in default of 5 reliably throttles it — one call in a
+    5-way batch was observed running at ~1/5 the normal token rate. Only touches the setting
+    when it has never been explicitly configured — a prior `watchdog configure
+    extract_concurrency` (including an earlier auto-tune) is left alone, since that's a
+    deliberate choice this shouldn't silently overwrite. Returns whether anything was printed,
+    for the caller's blank-line bookkeeping."""
+    config: dict = {}
+    if base.CONFIG_FILE.exists():
+        try:
+            config = json.loads(base.CONFIG_FILE.read_text())
+        except json.JSONDecodeError:
+            config = {}
+    if "extract_concurrency" in config:
+        return False
+
+    config["extract_concurrency"] = _SUBSCRIPTION_CONCURRENCY
+    base.WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
+    base.CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")
+    os.chmod(base.CONFIG_FILE, stat.S_IRUSR | stat.S_IWUSR)
+    print(f"\n  {_GREEN}✓{_RESET}  Detected Claude subscription auth — set {_BOLD}extract_concurrency{_RESET} "
+          f"to {_BOLD}{_SUBSCRIPTION_CONCURRENCY}{_RESET}.")
+    print(f"  {_DIM}Concurrent extractions share one Claude Code session's rate limit; raise it back "
+          f"with{_RESET} {_CYAN}watchdog configure extract_concurrency{_RESET}{_DIM}.{_RESET}")
+    return True
 
 
 def _setup_metered_ingestion(state: dict) -> None:
