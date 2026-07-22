@@ -50,6 +50,8 @@ pipx inject watchdog-intel pytest numpy
 
 (`pipx run pytest` creates an isolated venv without watchdog's deps and will fail to collect most tests — don't use it for development.)
 
+**No `pipx` available (e.g. a fresh container)?** Don't `pip install -e .[dev]` — that pulls in docling's full tree (torch, onnxruntime, …) and can take several minutes. Mirror `.github/workflows/ci.yml`'s `test` job instead: `pip install --no-deps -e .` plus the explicit lightweight dependency list from that job (pyyaml, pypdf, argcomplete, numpy, pytest, pytest-timeout, jsonschema, httpx, truststore, nh3, python-docx, python-pptx, openpyxl, Pillow, defusedxml) in a venv. Add `ruff` too if you also need to lint.
+
 Tests use `tmp_path` and `monkeypatch` to redirect `WATCHDOG_HOME`, `PROJECTS_FILE`, and `CONFIG_FILE` away from the real home directory — patch all three when testing anything that touches the registry or projects list. See the `wdg_home` and `configured` fixtures in `tests/test_cli.py` for the pattern.
 
 CI runs on every push and PR via `.github/workflows/ci.yml`.
