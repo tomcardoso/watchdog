@@ -72,7 +72,7 @@ Skills are jurisdiction-agnostic by default: universal principles come first, wi
 | [`dns-whois`](../src/watchdog/skills/records/dns-whois.md) | WHOIS records, DNS data, IP allocation, SSL certificate transparency logs |
 | [`news-clippings`](../src/watchdog/skills/records/news-clippings.md) | News articles, press releases, wire stories, corrections, retractions |
 | [`audio-video`](../src/watchdog/skills/records/audio-video.md) | YouTube transcripts, podcast transcripts, earnings calls, press conference recordings |
-| [`websites-html`](../src/watchdog/skills/records/websites-html.md) | Corporate and organizational websites, profile pages, forum posts, social media, blogs, marketplace and job listings, archived snapshots |
+| [`websites-html`](../src/watchdog/skills/records/websites-html.md) | Any HTML file or downloaded website page — both its presentation content and its underlying markup (tracking IDs, hidden elements, outbound links) |
 
 ## Reading and pinning skills
 
