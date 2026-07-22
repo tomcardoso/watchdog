@@ -603,6 +603,11 @@ def _print_cmd_help(cmd: str) -> None:
         usage_parts.append(f"[{name}]" if optional else f"<{name}>")
     if opts:
         usage_parts.append("[options]")
+    # Pad every arg/opt name to the widest one actually in this command's help — a fixed 18
+    # broke alignment as soon as a flag+metavar ran longer than that (e.g. "--classifier-model
+    # M" is 21 chars), leaving its description crammed one space after the flag while shorter
+    # ones sat in a neat column (#411).
+    width = max([len(a[0]) for a in arg_defs] + [len(flag) for flag, _ in opts] + [len("--help")])
     print(f"\n  {info.get('desc', '')}")
     print()
     print(f"  {_DIM}Usage:  {' '.join(usage_parts)}{_RESET}")
@@ -613,12 +618,12 @@ def _print_cmd_help(cmd: str) -> None:
             name, desc = a[0], a[1]
             optional = len(a) > 2 and a[2]
             note = "  (optional)" if optional else ""
-            print(f"    {_CYAN}{name:<18}{_RESET} {desc}{note}")
+            print(f"    {_CYAN}{name:<{width}}{_RESET} {desc}{note}")
     print()
     print(f"  {_BOLD}Options{_RESET}")
     for flag, desc in opts:
-        print(f"    {_CYAN}{flag:<18}{_RESET} {desc}")
-    print(f"    {_CYAN}{'--help':<18}{_RESET} Show this message and exit")
+        print(f"    {_CYAN}{flag:<{width}}{_RESET} {desc}")
+    print(f"    {_CYAN}{'--help':<{width}}{_RESET} Show this message and exit")
     notes = info.get("notes", [])
     if notes:
         print()
