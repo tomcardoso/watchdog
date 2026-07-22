@@ -33,7 +33,7 @@ Or run `watchdog configure <key>` with no value to see that one key's help and c
 | `chunk_workers` | `auto` | Parallel subprocesses for large-PDF chunks. |
 | `chunk_timeout` | `300` | Seconds before a chunk subprocess is killed. |
 | `table_structure` | `true` | Whether the table-detection model runs on PDFs; turn off to speed up text-only documents. |
-| `extract_concurrency` | `5` | Documents extracted in parallel during `watchdog ingest`. |
+| `extract_concurrency` | `5` (`3` if `watchdog setup` detects Claude subscription auth) | Documents extracted in parallel during `watchdog ingest`. |
 | `classify_pages` | `5` | Leading pages of each document shown to the classifier. |
 | `default_skill` | *(unset)* | Pin one record skill for every ingested document, skipping classification. |
 | `section_token_threshold` | `auto` | Estimated tokens above which a document is split into sections for extraction. `auto` derives it from ~60% of the extraction model's context window, capped tighter for models whose output limit it can't work around; set a number to override. |
@@ -179,7 +179,7 @@ The main levers, roughly in order of impact:
 - **Effort.** Thinking tokens bill as output, so `extractor_effort` is the biggest per-run lever: try `medium` or `low` on a test batch and check whether extraction quality holds. `finalizer_effort` works the same way for the post-ingest prose.
 - **Models.** `extractor_model haiku` is cheaper and faster for large batches of straightforward documents; Sonnet handles complex or ambiguous ones better. The classifier and finalizer already default to Haiku. If just one post-ingest stage needs a stronger model — the briefing reads thin, or duplicate entities keep slipping through reconciliation — `finalizer_reconciliation_model`/`finalizer_synthesis_model`/`finalizer_timeline_model`/`finalizer_briefing_model` raise that one stage without paying a stronger model's cost on the other three. Each falls back to `finalizer_model` when left unset.
 - **claude-batch.** On a metered key, the [claude-batch recipe](#claude-batch-bulk-extraction-at-half-price) above halves the cost of a bulk same-type ingest.
-- **Concurrency.** `extract_concurrency` (default 5) doesn't change total cost, but lowering it — persistently, or with `--concurrency` per run — is the fix when you hit model rate limits.
+- **Concurrency.** `extract_concurrency` doesn't change total cost, but lowering it — persistently, or with `--concurrency` per run — is the fix when you hit model rate limits. `watchdog setup` already lowers the default from 5 to 3 when it detects Claude subscription auth and you keep ingestion on it: concurrent extractions on that path share one Claude Code session's rate limit, and 5 reliably throttles it. Raise it back with `watchdog configure extract_concurrency` if your plan tolerates more.
 
 Before committing to a large run, get a number:
 

@@ -90,7 +90,9 @@ _CONFIGURE_KEYS = {
             "How many documents `watchdog ingest` extracts simultaneously. Each runs a model\n"
             "  call, so this is bounded by your model rate limits — lower it if you hit throttling,\n"
             "  raise it for throughput. Override for one run with `watchdog ingest --concurrency N`.\n"
-            "  Default: 5. Minimum: 1 (sequential)."
+            "  Default: 5, minimum: 1 (sequential). `watchdog setup` sets this to 3 automatically if\n"
+            "  it detects Claude subscription auth and ingestion stays on it — concurrent extractions\n"
+            "  there share one Claude Code session's rate limit, and 5 reliably throttles it."
         ),
         "type": "int",
         "default": 5,
