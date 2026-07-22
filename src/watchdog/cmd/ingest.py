@@ -248,6 +248,45 @@ def cmd_chew(args) -> None:
         _offer_ingest(args, vault)
 
 
+def _public_records_warning(n_docs: int) -> str:
+    """The README's `## Public records only` warning (README.md:13-17), reworded for the
+    terminal gate at the point of no return (#426). Wording tracks the README section so the
+    two never drift."""
+    return (
+        f"\n  {_YELLOW}⚠{_RESET}  {_BOLD}Public records only{_RESET}\n\n"
+        "  The extracted text of every queued document will be sent to a\n"
+        "  cloud AI model. This cannot be undone. Use Watchdog only for\n"
+        "  documents that are public, or presumptively public — never for\n"
+        "  confidential source material, leaks, or anything that could\n"
+        "  identify a source.\n\n"
+        f"  {_BOLD}{n_docs}{_RESET} document{'s' if n_docs != 1 else ''} will be sent to the model.\n"
+    )
+
+
+def _confirm_public_records(n_docs: int, *, skip_warning: bool = False) -> bool:
+    """The point-of-no-return gate before any ingest/extract that will call the model (#426):
+    shows the README's 'Public records only' warning and requires an explicit acknowledgement,
+    defaulting to Acknowledge — the standing warning is the real safeguard; a Cancel default
+    would just train people to reflexively pick past it. This replaces the old generic
+    'Ingest now?' pick at both call sites rather than stacking a second prompt.
+
+    `n_docs == 0` means this run makes no new model call (e.g. only checking on a pending
+    claude-batch extraction) — nothing to warn about, so it's a silent no-op.
+
+    `--skip-warning` (for repeated/scripted runs on an already-vetted corpus) suppresses the
+    interactive pause but still prints a one-line notice, so a skipped run is never silent
+    about what it sent.
+    """
+    if n_docs == 0:
+        return True
+    if skip_warning:
+        print(f"\n  {_DIM}Sending {_RESET}{_BOLD}{n_docs}{_RESET}{_DIM} document"
+              f"{'s' if n_docs != 1 else ''} to a cloud AI model.{_RESET}")
+        return True
+    print(_public_records_warning(n_docs))
+    return interactive.pick(["Acknowledge and ingest", "Cancel"], 0) == 0
+
+
 def _offer_ingest(args, vault: Path) -> None:
     """After chew, offer to run ingest right away; print the command hint if declined."""
     preview = _preview_ingest(vault, args)
@@ -255,7 +294,8 @@ def _offer_ingest(args, vault: Path) -> None:
         estimate_line, models_line = preview
         print(estimate_line)
         print(models_line)
-    if interactive.pick(["Ingest now", "Not now"], 0, title="Ingest now?") == 0:
+    n_docs = _count_queued(vault)
+    if _confirm_public_records(n_docs, skip_warning=getattr(args, "skip_warning", False)):
         cmd_ingest(args, confirm=False, skip_preview=True)
     else:
         print(f"\n  Run:  {_CYAN}watchdog ingest{_RESET}\n")
@@ -735,7 +775,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         (vault / ".watchdog" / "ingest-state.json").unlink(missing_ok=True)
 
     if confirm:
-        if interactive.pick(["Ingest now", "Not now"], 0, title="Ingest now?") != 0:
+        if not _confirm_public_records(q, skip_warning=getattr(args, "skip_warning", False)):
             _release_lock()
             print(f"\n  When ready, run:  {_CYAN}watchdog ingest{_RESET}\n")
             return
