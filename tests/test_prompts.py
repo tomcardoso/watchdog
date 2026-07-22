@@ -101,22 +101,40 @@ def test_build_digest_prompt_renders_title_type_pages_and_facts():
                                     document_type="Annual Report", page_count=42,
                                     skill_text="THE DOMAIN SKILL", brief="CHASE THE FRAUD",
                                     sidecar="SIDECAR NOTES", key_facts=facts)
-    assert "acme-ar.pdf" in p
-    assert "Acme AR" in p
-    assert "Annual Report" in p
-    assert "42" in p
-    assert "THE DOMAIN SKILL" in p        # extractor-tier context parity (#279)
-    assert "CHASE THE FRAUD" in p
-    assert "SIDECAR NOTES" in p
-    assert "Filed in 2024" in p and "Revenue grew" in p
+    text = _flat(p)
+    assert "acme-ar.pdf" in text
+    assert "Acme AR" in text
+    assert "Annual Report" in text
+    assert "42" in text
+    assert "THE DOMAIN SKILL" in text     # extractor-tier context parity (#279)
+    assert "CHASE THE FRAUD" in text
+    assert "SIDECAR NOTES" in text
+    assert "Filed in 2024" in text and "Revenue grew" in text
 
 
 def test_build_digest_prompt_falls_back_when_fields_missing():
     p = prompts.build_digest_prompt(filename="", title="", document_type="", page_count=None,
                                     skill_text=None, brief=None, sidecar=None, key_facts=[])
-    assert "(untitled)" in p
-    assert "(unknown)" in p
-    assert "(none)" in p
+    text = _flat(p)
+    assert "(untitled)" in text
+    assert "(unknown)" in text
+    assert "(none)" in text
+
+
+def test_build_digest_prompt_caches_skill_ahead_of_volatile_data():
+    # #393: DOMAIN_SKILL and the brief must lead (and carry the cache breakpoint), with
+    # per-document identity/sidecar/facts strictly after — mirrors build_extract_prompt/
+    # build_section_prompt's block order so prefix caching (explicit or automatic) can hit.
+    p = prompts.build_digest_prompt(filename="acme-ar.pdf", title="Acme AR",
+                                    document_type="Annual Report", page_count=42,
+                                    skill_text="THE DOMAIN SKILL", brief="CHASE THE FRAUD",
+                                    sidecar="SIDECAR NOTES", key_facts=[])
+    assert len(p) == 3
+    assert "cache_control" in p[1]
+    assert "THE DOMAIN SKILL" in p[1]["text"]
+    text = _flat(p)
+    assert text.index("CHASE THE FRAUD") < text.index("THE DOMAIN SKILL")
+    assert text.index("THE DOMAIN SKILL") < text.index("acme-ar.pdf")
 
 
 def test_extract_prompt_includes_instructions_and_data():

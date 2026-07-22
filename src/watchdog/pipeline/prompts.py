@@ -180,13 +180,35 @@ def build_section_prompt(*, pages_text: str, skill_text: str, carry_forward: str
 
 def build_digest_prompt(*, filename: str, title: str, document_type: str, page_count: int | None,
                         skill_text: str | None, brief: str | None, sidecar: str | None,
-                        key_facts: list[dict]) -> str:
-    return _render("digest", filename=filename or "(unknown)", title=title or "(untitled)",
-                   document_type=document_type or "(unknown)",
-                   page_count=page_count or "(unknown)",
-                   brief=brief or "(none)", skill_text=skill_text or "(none)",
-                   sidecar=sidecar or "(none)",
-                   key_facts=json.dumps(key_facts, ensure_ascii=False))
+                        key_facts: list[dict]) -> list[dict]:
+    # Same cache-block split as build_extract_prompt/build_section_prompt (A1), fixing #393:
+    # the old single-string template put FILENAME/TITLE — which differ on every call — ahead of
+    # DOMAIN_SKILL, so no backend's prefix caching (Claude's explicit cache_control or the
+    # automatic server-side caching every OpenAI-compatible backend does) ever got a stable
+    # prefix to hit, even though the skill and brief repeat unchanged across every sectioned
+    # document's digest call in a run. Instructions + brief lead (constant for the whole run);
+    # the skill carries the cache breakpoint (constant per document type); per-document identity,
+    # sidecar, and facts move last since they're volatile on every call.
+    stable = [_text("digest")]
+    if brief:
+        stable.append(f"\nINVESTIGATION_BRIEF:\n{brief}")
+    else:
+        stable.append("\nINVESTIGATION_BRIEF:\n(none)")
+
+    volatile = [
+        f"\nFILENAME: {filename or '(unknown)'}",
+        f"TITLE: {title or '(untitled)'}",
+        f"DOCUMENT_TYPE: {document_type or '(unknown)'}",
+        f"PAGE_COUNT: {page_count or '(unknown)'}",
+        f"SIDECAR:\n{sidecar or '(none)'}",
+        f"KEY_FACTS:\n{json.dumps(key_facts, ensure_ascii=False)}",
+    ]
+
+    return [
+        {"type": "text", "text": "\n".join(stable)},
+        _cache_block(f"\nDOMAIN_SKILL:\n{skill_text or '(none)'}"),
+        {"type": "text", "text": "\n".join(volatile)},
+    ]
 
 
 def build_synthesis_prompt(bundle: dict) -> str:
