@@ -923,7 +923,8 @@ def cmd_finalize(args) -> None:
                      f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
 
 
-    _run_finalize(vault, post_model, post_effort, post_backend)
+    _run_finalize(vault, post_model, post_effort, post_backend,
+                 skip_briefing=getattr(args, "skip_briefing", False))
 
 
 def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,

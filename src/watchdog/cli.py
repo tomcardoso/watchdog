@@ -188,6 +188,14 @@ def main() -> None:
         prog="watchdog",
         description="Investigative journalism document intelligence tool",
     )
+    # Bare `watchdog` (no subcommand) inside a vault walks into `cmd_guided`, which falls
+    # through to `cmd_ingest` via `_offer_ingest` — this top-level flag rides along on that
+    # same `args` Namespace and reaches `cmd_ingest`'s `getattr(args, "skip_briefing", False)`
+    # unchanged (#410). Subcommand-scoped `--skip-briefing` (on `ingest`/`finalize`) is separate,
+    # added on their own subparsers below.
+    parser.add_argument("--skip-briefing", action="store_true", default=False, dest="skip_briefing",
+                        help="When the guided walk reaches ingest, run entity reconciliation, "
+                             "synthesis, and the timeline rebuild, but skip the briefing model call.")
     sub = parser.add_subparsers(dest="command", required=False)
 
     p_register = sub.add_parser("register", help="Register an existing vault folder with watchdog")
@@ -488,6 +496,10 @@ def main() -> None:
                             help="Reasoning effort for the post-ingest step — entity reconciliation, "
                                  "contradiction flagging, synthesis, timeline, briefing — "
                                  "overrides watchdog configure (default: high)")
+    p_finalize.add_argument("--skip-briefing", action="store_true", default=False, dest="skip_briefing",
+                            help="Run entity reconciliation, synthesis, and the timeline rebuild, "
+                                 "but skip the briefing model call — useful for bulk backfills or "
+                                 "re-ingests where the briefing isn't worth the cost every time.")
     p_finalize.set_defaults(func=cmd_finalize)
 
     p_context = sub.add_parser("context", help="Open Claude Code to seed investigation context from _CONTEXT/")
