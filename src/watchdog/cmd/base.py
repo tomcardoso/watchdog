@@ -131,6 +131,10 @@ _CMD_HELP: dict[str, dict] = {
         "opts": [
             ("--extractor-model M",  "Override the extraction model for this run — a tier (sonnet/opus/haiku) or backend:model (e.g. deepseek:deepseek-v4-flash); default from watchdog configure"),
             ("--finalizer-model M",  "Override the post-ingest model (entity reconciliation + synthesis + timeline + briefing) for this run — tier or backend:model; default from watchdog configure"),
+            ("--finalizer-reconciliation-model M", "Override --finalizer-model for just entity reconciliation + contradiction flagging; falls back to --finalizer-model when unset"),
+            ("--finalizer-synthesis-model M", "Override --finalizer-model for just multi-mention entity synthesis; falls back to --finalizer-model when unset"),
+            ("--finalizer-timeline-model M", "Override --finalizer-model for just timeline dedup/reconciliation; falls back to --finalizer-model when unset"),
+            ("--finalizer-briefing-model M", "Override --finalizer-model for just the briefing; falls back to --finalizer-model when unset"),
             ("--classifier-model M", "Override the document-classification model for this run — tier or backend:model; default from watchdog configure"),
             ("--extractor-effort E", "Reasoning effort for extraction (low/medium/high) — lower spends fewer tokens; default from watchdog configure"),
             ("--finalizer-effort E", "Reasoning effort for the post-ingest step (low/medium/high); default from watchdog configure"),

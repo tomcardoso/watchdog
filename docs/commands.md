@@ -30,7 +30,7 @@ Investigation names tab-complete in zsh and bash once `watchdog setup` has run.
 | `watchdog chew` | Convert everything in `_INCOMING/` into extracted text queued for ingest — see [below](#watchdog-chew). |
 | `watchdog ingest` | Extract all queued documents into the vault — see [below](#watchdog-ingest). |
 | `watchdog extract` | Classify and extract queued documents into staged artifacts, then stop — see [below](#watchdog-extract). |
-| `watchdog finalize` | Complete the post-ingest step (merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline, briefing) for a batch that was interrupted after extraction, or deliberately staged with `watchdog extract`; takes the same `--finalizer-model`, `--finalizer-effort`, `--estimate`, and `--skip-briefing` as ingest. |
+| `watchdog finalize` | Complete the post-ingest step (merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline, briefing) for a batch that was interrupted after extraction, or deliberately staged with `watchdog extract`; takes the same `--finalizer-model` (and its four per-stage overrides — see [below](#watchdog-ingest)), `--finalizer-effort`, `--estimate`, and `--skip-briefing` as ingest. |
 | `watchdog requeue` | Move documents quarantined in `queue/_failed/` back into the active queue, ready for the next `watchdog ingest`. |
 | `watchdog context [name]` | Open Claude Code with the context-seeding skill, which reads `_CONTEXT/`, interviews you, and writes `context.md`; `--model` picks `sonnet`, `opus`, or `haiku` (default: `sonnet`). |
 | `watchdog watch [name]` | Watch `_INCOMING/` and chew files automatically as they arrive. |
@@ -69,6 +69,15 @@ It's shown every time, not just once per vault — the risk is per-document, not
 
 Each model flag takes a Claude tier (`haiku`, `sonnet`, `opus`) or a `backend:model` value that routes the stage to another provider — see [Model backends](configuration.md#model-backends). The effort flags are ignored when the stage runs on Haiku, which has no effort control.
 
+**Per-stage finalizer overrides.** `--finalizer-model` sets one model for all of post-ingest, but the step is really four separate model calls — reconciliation, synthesis, timeline, and the briefing — and any one of them can be routed to a different model without touching the other three:
+
+- `--finalizer-reconciliation-model MODEL` — just merging duplicate entities and flagging contradictions between documents.
+- `--finalizer-synthesis-model MODEL` — just writing prose for entities mentioned across more than one document.
+- `--finalizer-timeline-model MODEL` — just deduplicating same-date collisions and folding coarse-precision restatements into their exact date.
+- `--finalizer-briefing-model MODEL` — just the briefing.
+
+Each falls back to `--finalizer-model` (and, below that, `finalizer_model` from `watchdog configure`) when left unset — setting only one of these leaves the other three stages on the aggregate finalizer. A stage overridden this way still uses `--finalizer-effort`; effort isn't overridable per stage. When any override is in effect, the "which model runs each stage" line printed before an ingest starts grows an extra `finalizer:<stage>` row for each stage that actually differs from the aggregate finalizer.
+
 **Scope and behaviour flags.**
 
 - `--concurrency N` — documents extracted in parallel (default: 5); lower it if you hit rate limits.
@@ -92,6 +101,8 @@ Extraction is the expensive part of an ingest — the finalizer's few calls (rec
 
 1. Run `watchdog extract`. Documents extract and stage durably, but nothing is written to the vault and post-processing does not run — `watchdog status` will show the batch as pending finalization.
 2. Run `watchdog finalize --finalizer-model <model>` to try one candidate. Do this from inside the vault, or from a copy of the vault folder if you want to test several candidates against the identical extraction — each copy still has the same staged inputs, so pointing a different `--finalizer-model` at each copy compares them fairly.
+
+To isolate just one stage instead of the whole post-ingest step, pass one of the four per-stage overrides described [above](#watchdog-ingest) — e.g. `watchdog finalize --finalizer-briefing-model opus` tries a different briefing model while reconciliation, synthesis, and the timeline stay on the aggregate finalizer.
 
 `watchdog finalize` does not yet support re-running cleanly over a batch it has already finalized — run it once per vault (or vault copy).
 
