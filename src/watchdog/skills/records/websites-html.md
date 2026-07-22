@@ -1,20 +1,19 @@
 ---
-description: an HTML file or a downloaded/captured website page, of any kind
+description: an HTML file or a downloaded/captured website page
 ---
 # Domain knowledge — Websites and HTML pages
 
-This skill is loaded by Watchdog for any HTML document or captured website page — not only pages deposited into `_INCOMING/` by `watchdog research` or `watchdog fetch`, but any website page that enters the vault by any means. It does not cover news articles, wire stories, or press releases (see `news-clippings`), WHOIS/DNS/infrastructure records (see `dns-whois`), or audio/video transcripts (see `audio-video`) — those document types are owned by their own skills even when the underlying file is HTML.
+This skill is loaded by Watchdog for any HTML document or captured website page, including those deposited into `_INCOMING/` by `watchdog research` or `watchdog fetch`. It does not cover news articles, wire stories, or press releases (see `news-clippings`), WHOIS/DNS/infrastructure records (see `dns-whois`), or audio/video transcripts (see `audio-video`) — those document types are owned by their own skills even when the underlying file is HTML.
 
-An HTML document carries two layers a reporter can read: the **presentation content** (the text, images, and structure a visitor sees) and the **markup and code beneath it** (tags, scripts, comments, embedded identifiers, links). The second layer is at least as revealing as the first and is easy to skip past — this skill weights both.
+An HTML document carries two layers a reporter can read: the **presentation content** (the text, images, and structure a visitor sees) and the **markup and code beneath it** (tags, scripts, comments, embedded identifiers, links). The second layer can be revealing and is easy to skip over — this skill explores both.
 
 ---
 
 ## Document types covered
 
-- Any HTML file or web page, of any subject or purpose
+- Any HTML file or web page
 - Rendered (full browser/Chromium) or plain sanitized-fetch captures of a website
 - Archived or cached snapshots of a web page (Wayback Machine, archive.today, search-engine cache)
-- Website pages added to the vault by any means, not only through `watchdog research`/`watchdog fetch`
 
 ---
 
@@ -45,7 +44,7 @@ An HTML document carries two layers a reporter can read: the **presentation cont
 
 - **Analytics and tracking identifiers** — a Google Analytics measurement ID (`G-XXXXXXX`/`UA-XXXXXXXX`), a Google Tag Manager container ID (`GTM-XXXXXXX`), a Meta/Facebook Pixel ID, or any other tracking snippet's account ID is a stable identifier the page's markup carries whether or not the visible content mentions it. Record every such ID exactly as it appears. **The same ID appearing on two pages presented as unrelated sites or organizations is one of the strongest links available** — capture it and compare against the entity digest and against IDs seen on other captured pages.
 - **Platform or CMS fingerprint** — a `<meta name="generator">` tag, a template-specific path (`/wp-content/`, `/wp-json/`, a Substack or Squarespace asset URL, a Shopify CDN path), or boilerplate class names reveal what software built the site. Record the platform as stated; a claimed enterprise operation running on a template starter site, or two "independent" sites sharing an identical, uncommon template fingerprint, is worth flagging.
-- **Hidden or non-rendered content** — an element whose inline style or class sets it to not display (`display:none`, `visibility:hidden`, zero height/width, off-screen positioning), a hidden `<input>` field carrying a value, or text present in the markup that a visitor would never see. Record the hidden content verbatim and where it sits in the page; content authored for a reader but hidden from one (or authored for a search engine or bot but hidden from a human, i.e. cloaking) is itself a fact worth capturing, not something to explain away.
+- **Hidden or non-rendered content** — an element whose styling or class sets it to not display (`display:none`, `visibility:hidden`, zero height/width, off-screen positioning), a hidden `<input>` field carrying a value, or text present in the markup that a visitor would never see. Record the hidden content verbatim and where it sits in the page; content authored for a reader but hidden from one (or authored for a search engine or bot but hidden from a human, i.e. cloaking) is itself a fact worth capturing, not something to explain away.
 - **Outbound links across domains** — collect every hyperlink's destination domain. A page's outbound-link pattern (which domains it sends visitors to) can reveal an affiliate network, a syndication relationship, an advertising partner, or a shared operator behind pages that otherwise look unrelated. Record the set of external domains linked; a link target that recurs across pages already in the digest is a match worth flagging.
 - **HTML comments and leftover markup** — text inside `<!-- -->` comments is invisible to a visitor but present in the source: developer notes, TODOs, an earlier draft of a claim, or content commented out rather than deleted. Record any comment with substantive content.
 - **Meta tags that contradict the visible page** — a `robots` meta tag or header set to `noindex`/`nofollow` means the page's operator asked search engines not to surface it; combined with content that reads as intended for public visibility, this is worth recording as a stated fact about how the page was configured. Likewise record a `canonical` link element that points to a different URL than the one captured — it names what the page's own markup claims is the authoritative version.
@@ -95,8 +94,6 @@ An HTML document carries two layers a reporter can read: the **presentation cont
 3. **Organization → Place**: Address shown on the page
 4. **Website/Domain → Organization**: Stated or implied operator of the site (cross-reference the `dns-whois` skill for the registrant of the underlying domain)
 5. **Website → Website**: Outbound link to another domain (partner, affiliate, syndication, or advertising relationship)
-
-Use `→` notation. Include the relationship type after the colon.
 
 ---
 
