@@ -25,7 +25,7 @@ The source file stays wherever `watchdog chew` already put it, in `.watchdog/sta
 
 Re-ingest later: move the queue file back —
   mv .watchdog/queue/_failed/<sha>.json .watchdog/queue/
-then run `watchdog ingest` again.
+then run `watchdog dig` again.
 """
 
 import json

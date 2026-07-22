@@ -1123,7 +1123,7 @@ def test_nudge_skill_pin_fires_when_batch_is_homogeneous(capsys):
         {"status": "ok", "record_skill": "general-records"},
         {"status": "ok", "record_skill": "general-records"},
     ])
-    assert "watchdog ingest --skill general-records" in capsys.readouterr().out
+    assert "watchdog dig --skill general-records" in capsys.readouterr().out
 
 
 def test_nudge_skill_pin_silent_when_mixed_or_single_or_failed(capsys):
@@ -1164,7 +1164,7 @@ def test_skill_pin_nudge_silent_when_run_was_pinned(tmp_path, monkeypatch, capsy
     skill_file.write_text("PINNED SKILL BODY")
 
     asyncio.run(orchestrate.run(vault, concurrency=2, pinned_skill=str(skill_file)))
-    assert "watchdog ingest --skill" not in capsys.readouterr().out
+    assert "watchdog dig --skill" not in capsys.readouterr().out
 
 
 def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
