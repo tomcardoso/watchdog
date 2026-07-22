@@ -2205,9 +2205,10 @@ def test_extract_sectioned_composes_digest_after_merge(tmp_path, monkeypatch):
     assert digest_calls[0]["model"] == "sonnet"        # extractor tier, not finalizer
     assert digest_calls[0]["backend"] == "claude-api"  # same backend the sections used
     # Extractor-tier context parity (#279): the digest prompt carries the skill + brief.
-    assert "SKILL TEXT" in digest_calls[0]["prompt"]
-    assert "CHASE THE FRAUD" in digest_calls[0]["prompt"]
-    assert "test-doc.pdf" in digest_calls[0]["prompt"]
+    digest_text = model_client._flatten_prompt(digest_calls[0]["prompt"])
+    assert "SKILL TEXT" in digest_text
+    assert "CHASE THE FRAUD" in digest_text
+    assert "test-doc.pdf" in digest_text
     assert extraction["document"]["summary"] == "Composed digest text."
     assert ok, errors
     assert cost == pytest.approx(0.02)   # one section call + one digest call
