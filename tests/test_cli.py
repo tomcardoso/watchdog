@@ -1831,7 +1831,7 @@ def test_offer_ingest_eof_prints_hint(configured, monkeypatch, capsys):
 def test_offer_ingest_no_hints_dig_from_chew_context(configured, monkeypatch, capsys):
     """When `_offer_ingest` is reached from `watchdog chew` (manual control), the decline hint
     must point at `watchdog dig`, not the retired `watchdog ingest` or the guided bare walk
-    (#441, D136)."""
+    (#441, D138)."""
     from watchdog.cmd import ingest as ing
     vault = _vault_with_queue(configured)
     monkeypatch.setattr("builtins.input", lambda *a: "2")   # pick(): "Not now"
@@ -1977,7 +1977,7 @@ def test_dig_parser_accepts_skip_warning(configured, monkeypatch):
 
 def test_extract_alias_still_accepts_skip_warning(configured, monkeypatch):
     """The deprecated `extract` alias remaps onto `dig` before argparse runs, so it must still
-    parse `dig`'s own flags (#441, D136)."""
+    parse `dig`'s own flags (#441, D138)."""
     import sys
     seen = {}
     monkeypatch.setattr(cli, "cmd_extract", lambda a: seen.update(skip_warning=a.skip_warning))
@@ -2044,6 +2044,52 @@ def test_resolve_stage_bare_non_tier_is_treated_as_claude_and_rejected():
     # No backend prefix → interpreted as a Claude tier → invalid (use openai:gpt-5-mini instead).
     with pytest.raises(SystemExit, match="unknown model"):
         _resolve_stage("gpt-5-mini", None)
+
+
+# ── _resolve_finalizer_overrides: per-stage --finalizer-<stage>-model (#433) ───
+
+def test_resolve_finalizer_overrides_falls_back_to_finalizer_model_when_unset():
+    """No per-stage flags/config: every stage resolves to exactly the aggregate finalizer's
+    own (backend, model), not a hardcoded default."""
+    from watchdog.cmd.ingest import _resolve_finalizer_overrides
+    overrides = _resolve_finalizer_overrides(args(), {}, "openai", "gpt-5-mini")
+    assert overrides == {
+        "reconciliation_backend": "openai", "reconciliation_model": "gpt-5-mini",
+        "synthesis_backend": "openai", "synthesis_model": "gpt-5-mini",
+        "timeline_backend": "openai", "timeline_model": "gpt-5-mini",
+        "briefing_backend": "openai", "briefing_model": "gpt-5-mini",
+    }
+
+
+def test_resolve_finalizer_overrides_flag_overrides_one_stage():
+    """A single `--finalizer-<stage>-model` flag overrides only that stage; the others still
+    fall back to the aggregate finalizer."""
+    from watchdog.cmd.ingest import _resolve_finalizer_overrides
+    overrides = _resolve_finalizer_overrides(
+        args(finalizer_briefing_model="claude-api:opus"), {}, None, "haiku")
+    assert overrides["briefing_backend"] == "claude-api"
+    assert overrides["briefing_model"] == "opus"
+    assert overrides["reconciliation_backend"] is None
+    assert overrides["reconciliation_model"] == "haiku"
+    assert overrides["synthesis_backend"] is None
+    assert overrides["synthesis_model"] == "haiku"
+    assert overrides["timeline_backend"] is None
+    assert overrides["timeline_model"] == "haiku"
+
+
+def test_resolve_finalizer_overrides_config_key_and_flag_precedence():
+    """A config-file `finalizer_<stage>_model` sets the stage's default; a flag for the same
+    stage still wins, matching `_resolve_stage`'s own flag-beats-config rule."""
+    from watchdog.cmd.ingest import _resolve_finalizer_overrides
+    config = {"finalizer_synthesis_model": "gemini:gemini-2.5-flash"}
+    overrides = _resolve_finalizer_overrides(args(), config, None, "haiku")
+    assert overrides["synthesis_backend"] == "gemini"
+    assert overrides["synthesis_model"] == "gemini-2.5-flash"
+
+    overrides = _resolve_finalizer_overrides(
+        args(finalizer_synthesis_model="opus"), config, None, "haiku")
+    assert overrides["synthesis_backend"] is None
+    assert overrides["synthesis_model"] == "opus"
 
 
 # ── cmd_ingest / cmd_finalize: Claude auth only required when a stage needs it (#325) ──
@@ -2451,7 +2497,7 @@ def test_cmd_ingest_skip_briefing_threads_to_orchestrate_run(wdg_home, tmp_path,
     assert "--skip-briefing" in out
 
 
-# ── watchdog dig (#425, renamed from `extract` in #441/D136) ─────────────────
+# ── watchdog dig (#425, renamed from `extract` in #441/D138) ─────────────────
 
 def test_ingest_parser_no_longer_accepts_no_finalize(monkeypatch, capsys):
     """`--no-finalize` is fully replaced by `watchdog dig` (#425) — the pre-1.0 app carries
@@ -2518,6 +2564,48 @@ def test_dig_parser_rejects_finalizer_model(monkeypatch, capsys):
     assert "unrecognized" in err
 
 
+def test_dig_parser_rejects_finalizer_stage_model(monkeypatch, capsys):
+    """The per-stage finalizer overrides (#433) belong to `ingest`/`bark` too, for the same
+    reason as the aggregate `--finalizer-model`."""
+    import sys
+    monkeypatch.setattr(sys, "argv", ["watchdog", "dig", "--finalizer-briefing-model", "sonnet"])
+    with pytest.raises(SystemExit):
+        cli.main()
+    err = capsys.readouterr().err
+    assert "unrecognized" in err
+
+
+def test_ingest_parser_accepts_finalizer_stage_models(configured, monkeypatch):
+    """All four `--finalizer-<stage>-model` flags parse on `ingest`."""
+    import sys
+    seen = {}
+    monkeypatch.setattr(cli, "cmd_ingest", lambda a: seen.update(
+        reconciliation=a.finalizer_reconciliation_model, synthesis=a.finalizer_synthesis_model,
+        timeline=a.finalizer_timeline_model, briefing=a.finalizer_briefing_model))
+    monkeypatch.setattr(sys, "argv", [
+        "watchdog", "ingest",
+        "--finalizer-reconciliation-model", "opus",
+        "--finalizer-synthesis-model", "deepseek:deepseek-v4-flash",
+        "--finalizer-timeline-model", "openai:gpt-5-mini",
+        "--finalizer-briefing-model", "haiku",
+    ])
+    cli.main()
+    assert seen == {
+        "reconciliation": "opus", "synthesis": "deepseek:deepseek-v4-flash",
+        "timeline": "openai:gpt-5-mini", "briefing": "haiku",
+    }
+
+
+def test_bark_parser_accepts_finalizer_stage_models(configured, monkeypatch):
+    import sys
+    seen = {}
+    monkeypatch.setattr(cli, "cmd_finalize", lambda a: seen.update(
+        briefing=a.finalizer_briefing_model))
+    monkeypatch.setattr(sys, "argv", ["watchdog", "bark", "--finalizer-briefing-model", "opus"])
+    cli.main()
+    assert seen == {"briefing": "opus"}
+
+
 def test_dig_command_appears_in_help(monkeypatch, capsys):
     """`watchdog dig --help` must work — i.e. `dig` is a registered subcommand."""
     import sys
@@ -2530,7 +2618,7 @@ def test_dig_command_appears_in_help(monkeypatch, capsys):
 
 
 def test_extract_alias_warns_and_dispatches_to_dig(configured, monkeypatch, capsys):
-    """`watchdog extract` (#441, D136) is a deprecated alias for `watchdog dig` — same flags,
+    """`watchdog extract` (#441, D138) is a deprecated alias for `watchdog dig` — same flags,
     same function, but the CLI must warn before dispatching."""
     import sys
     seen = {}
@@ -2544,7 +2632,7 @@ def test_extract_alias_warns_and_dispatches_to_dig(configured, monkeypatch, caps
 
 
 def test_finalize_alias_warns_and_dispatches_to_bark(configured, monkeypatch, capsys):
-    """`watchdog finalize` (#441, D136) is a deprecated alias for `watchdog bark`."""
+    """`watchdog finalize` (#441, D138) is a deprecated alias for `watchdog bark`."""
     import sys
     seen = {}
     monkeypatch.setattr(cli, "cmd_finalize", lambda a: seen.update(ran=True))
@@ -2557,7 +2645,7 @@ def test_finalize_alias_warns_and_dispatches_to_bark(configured, monkeypatch, ca
 
 
 def test_ingest_command_warns_deprecated(configured, monkeypatch, capsys):
-    """`watchdog ingest` (#441, D136) still works during the deprecation window, but must warn
+    """`watchdog ingest` (#441, D138) still works during the deprecation window, but must warn
     and point at the guided walk / `dig`+`bark` — it has no single renamed successor."""
     import sys
     seen = {}

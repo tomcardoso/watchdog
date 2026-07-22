@@ -52,7 +52,7 @@ _ALIASES = {
 }
 
 # Old command names kept working during a deprecation window rather than removed outright
-# (#441, D136) — unlike `_ALIASES` (silent, permanent shortcuts), these print a warning
+# (#441, D138) — unlike `_ALIASES` (silent, permanent shortcuts), these print a warning
 # before remapping, since the goal is to move people onto the new name, not hide it forever.
 # `extract`/`finalize` renamed straight across to `dig`/`bark` (same flags, same function);
 # `ingest` has no such 1:1 successor — it combined extract+finalize into one non-interactive
@@ -144,6 +144,10 @@ _CMD_HELP: dict[str, dict] = {
         "opts": [
             ("--extractor-model M",  "Override the extraction model for this run — a tier (sonnet/opus/haiku) or backend:model (e.g. deepseek:deepseek-v4-flash); default from watchdog configure"),
             ("--finalizer-model M",  "Override the post-ingest model (entity reconciliation + synthesis + timeline + briefing) for this run — tier or backend:model; default from watchdog configure"),
+            ("--finalizer-reconciliation-model M", "Override --finalizer-model for just entity reconciliation + contradiction flagging; falls back to --finalizer-model when unset"),
+            ("--finalizer-synthesis-model M", "Override --finalizer-model for just multi-mention entity synthesis; falls back to --finalizer-model when unset"),
+            ("--finalizer-timeline-model M", "Override --finalizer-model for just timeline dedup/reconciliation; falls back to --finalizer-model when unset"),
+            ("--finalizer-briefing-model M", "Override --finalizer-model for just the briefing; falls back to --finalizer-model when unset"),
             ("--classifier-model M", "Override the document-classification model for this run — tier or backend:model; default from watchdog configure"),
             ("--extractor-effort E", "Reasoning effort for extraction (low/medium/high) — lower spends fewer tokens; default from watchdog configure"),
             ("--finalizer-effort E", "Reasoning effort for the post-ingest step (low/medium/high); default from watchdog configure"),

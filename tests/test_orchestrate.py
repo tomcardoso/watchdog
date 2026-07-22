@@ -792,6 +792,103 @@ def test_orchestrator_threads_configured_backends(tmp_path, monkeypatch):
     assert by_task["briefing"] == "openai"
 
 
+# ── finalizer_overrides: per-stage model/backend overrides (#433) ─────────────
+
+def test_reconcile_pre_commit_stage_override_routes_reconcile_call(tmp_path, monkeypatch):
+    """`finalizer_overrides["reconciliation_model"/"reconciliation_backend"]` routes the
+    reconcile call away from post_model/post_backend, which a plain post_model/post_backend run
+    would otherwise use."""
+    vault = make_vault(tmp_path)
+    monkeypatch.setattr(orchestrate.reconcile, "build_bundle",
+                        lambda vault, shas: {"entities": [{"id": "e1"}], "pairs": [{"a": "e1", "b": "e2"}]})
+    monkeypatch.setattr(orchestrate.reconcile, "apply_merges",
+                        lambda vault, shas, parsed, bundle, warn:
+                        {"merged": [], "remap": {}, "contradictions": []})
+
+    seen = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        seen.append((task, model, backend))
+        return model_client.ModelResult(parsed={"merges": [], "contradictions": []}, text="",
+                                        model=model or "?", backend=backend or "b",
+                                        auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate._reconcile_pre_commit(
+        vault, ["sha1"], "haiku", None, None,
+        finalizer_overrides={"reconciliation_model": "opus", "reconciliation_backend": "claude-api"}))
+
+    assert seen == [("reconcile", "opus", "claude-api")]
+
+
+def test_reconcile_pre_commit_falls_back_to_post_model_when_unoverridden(tmp_path, monkeypatch):
+    """No `finalizer_overrides` (or a dict missing the reconciliation keys) reconciles on
+    post_model/post_backend, unchanged from before #433."""
+    vault = make_vault(tmp_path)
+    monkeypatch.setattr(orchestrate.reconcile, "build_bundle",
+                        lambda vault, shas: {"entities": [{"id": "e1"}], "pairs": [{"a": "e1", "b": "e2"}]})
+    monkeypatch.setattr(orchestrate.reconcile, "apply_merges",
+                        lambda vault, shas, parsed, bundle, warn:
+                        {"merged": [], "remap": {}, "contradictions": []})
+
+    seen = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        seen.append((task, model, backend))
+        return model_client.ModelResult(parsed={"merges": [], "contradictions": []}, text="",
+                                        model=model or "?", backend=backend or "b",
+                                        auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate._reconcile_pre_commit(vault, ["sha1"], "haiku", None, "openai"))
+
+    assert seen == [("reconcile", "haiku", "openai")]
+
+
+def test_post_ingest_stage_overrides_route_synthesis_timeline_briefing(tmp_path, monkeypatch):
+    """`finalizer_overrides`' synthesis/timeline/briefing keys each route their own stage away
+    from post_model/post_backend — `_seed_collision` forces a real timeline-dedup call, and a
+    mocked non-empty synthesis bundle forces a real entity-synthesis call."""
+    vault = make_vault(tmp_path)
+    _seed_collision(vault)
+    (vault / ".watchdog" / "tmp").mkdir(parents=True, exist_ok=True)
+    results = [orchestrate._compact_result(
+        "sha1", "doc.pdf",
+        {"document": {"key_facts": [{"fact": "a fact"}]}, "entities": []},
+        {}, 0.01, {})]
+
+    monkeypatch.setattr(orchestrate.synthesis_bundle, "build_bundle",
+                        lambda vault, shas: {"entities": [{"id": "e1", "name": "E1"}]})
+    monkeypatch.setattr(orchestrate.synthesis_bundle, "apply_bundle",
+                        lambda res_path, vault: {"applied": ["e1"]})
+
+    seen = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        seen.append((task, model, backend))
+        parsed = {
+            "entity-synthesis": {"entity_syntheses": []},
+            "timeline-dedup": {"groups": [{"keep": 0, "duplicates": [1]}]},
+            "briefing": {"investigation_status": "x", "what_was_ingested": []},
+        }.get(task, {})
+        return model_client.ModelResult(parsed=parsed, text="", model=model or "?",
+                                        backend=backend or "b", auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    overrides = {
+        "synthesis_model": "opus", "synthesis_backend": "claude-api",
+        "timeline_model": "gpt-5-mini", "timeline_backend": "openai",
+        "briefing_model": "gemini-2.5-flash", "briefing_backend": "gemini",
+    }
+    asyncio.run(orchestrate._post_ingest(vault, results, None, "haiku",
+                                         finalizer_overrides=overrides))
+
+    by_task = {t: (m, b) for t, m, b in seen}
+    assert by_task["entity-synthesis"] == ("opus", "claude-api")
+    assert by_task["timeline-dedup"] == ("gpt-5-mini", "openai")
+    assert by_task["briefing"] == ("gemini-2.5-flash", "gemini")
+
+
 def test_orchestrator_updates_graph_colours(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault)
@@ -1579,6 +1676,27 @@ def test_rate_limit_message_reflects_wait_flag(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "Waiting to resume automatically" in out
     assert "Re-run" not in out
+
+
+def test_rate_limit_resume_message_uses_resume_hint(tmp_path, monkeypatch, capsys):
+    """The extraction rate-limit stop notice names `run`'s `resume_hint` — the surface that
+    launched the run — not a hardcoded `watchdog dig`, so a guided bare-`watchdog` walk points
+    back at `watchdog`, not `dig` (#441, D138)."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="aaa111", filename="one.pdf")
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "classify":
+            return model_client.ModelResult(parsed={"skill": "general-records.md"}, text="",
+                                            model="m", backend="claude-agent-sdk", auth_mode="subscription")
+        raise model_client.RateLimitError("session limit")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate.run(vault, concurrency=1, resume_hint="watchdog"))
+    out = capsys.readouterr().out
+    assert "Re-run" in out
+    assert "once it resets to continue" in out
+    assert "watchdog dig" not in out
 
 
 def test_failed_doc_is_named_and_quarantine_surfaced(tmp_path, monkeypatch):

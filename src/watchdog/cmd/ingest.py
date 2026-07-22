@@ -52,6 +52,31 @@ def _effort(flag_val, config_val):
     return e
 
 
+# Per-stage finalizer overrides (#433): each key pair below routes just that post-ingest stage
+# to a different model than the aggregate --finalizer-model, falling back to it when unset.
+_FINALIZER_STAGES = ("reconciliation", "synthesis", "timeline", "briefing")
+
+
+def _resolve_finalizer_overrides(args, config: dict, post_backend: str | None, post_model: str) -> dict:
+    """Resolve the four per-stage `--finalizer-<stage>-model` overrides (#433) — reconciliation,
+    synthesis, timeline, briefing — each via the same `[backend:]model` parsing `_resolve_stage`
+    already does for the aggregate `--finalizer-model`. `default` is the already-resolved
+    finalizer stage itself, so an unset override falls back to exactly what the rest of
+    post-ingest runs on, not a hardcoded tier.
+
+    Returns a dict with `<stage>_model`/`<stage>_backend` keys for every stage — the shape
+    `orchestrate.finalize`'s `finalizer_overrides` parameter expects directly."""
+    default = f"{post_backend}:{post_model}" if post_backend else post_model
+    overrides: dict = {}
+    for stage in _FINALIZER_STAGES:
+        flag_attr = f"finalizer_{stage}_model"
+        backend, model = _resolve_stage(
+            getattr(args, flag_attr, None), config.get(flag_attr), default=default)
+        overrides[f"{stage}_backend"] = backend
+        overrides[f"{stage}_model"] = model
+    return overrides
+
+
 def _resolve_stage(flag_val, config_val, default="sonnet") -> tuple[str | None, str]:
     """Resolve a stage's `[backend:]model` knob into (backend, model) (#125).
 
@@ -126,17 +151,27 @@ def _effective_extract_backend(extract_backend: str | None, auth_mode: str) -> s
 
 
 def _format_models_line(classify_backend, classify_model, extract_backend, extract_model,
-                        post_backend, post_model, extract_effort=None, post_effort=None) -> str:
+                        post_backend, post_model, extract_effort=None, post_effort=None,
+                        finalizer_overrides=None) -> str:
     """Which model runs each ingest stage — printed alongside the cost estimate before an
     ingest starts, so a run under a non-default provider (#325) is obvious up front instead of
     the older generic 'Using the configured provider(s).' notice. Stage names are padded to a
     common width so the model values line up in a column (#411); classify has no effort knob
-    (D36), so only the extractor/finalizer rows can carry an "(effort: …)" suffix."""
+    (D36), so only the extractor/finalizer rows can carry an "(effort: …)" suffix.
+
+    `finalizer_overrides` (#433) adds one extra row per post-ingest stage whose resolved
+    model/backend differs from the aggregate finalizer row — an unoverridden stage (the common
+    case) stays folded into the single "finalizer" line rather than repeating it four times."""
     def label(backend, model):
         return f"{backend}:{model}" if backend else model
-    stages = (("classifier", classify_backend, classify_model, None),
+    stages = [("classifier", classify_backend, classify_model, None),
               ("extractor", extract_backend, extract_model, extract_effort),
-              ("finalizer", post_backend, post_model, post_effort))
+              ("finalizer", post_backend, post_model, post_effort)]
+    for stage in _FINALIZER_STAGES:
+        b = (finalizer_overrides or {}).get(f"{stage}_backend", post_backend)
+        m = (finalizer_overrides or {}).get(f"{stage}_model", post_model)
+        if (b, m) != (post_backend, post_model):
+            stages.append((f"finalizer:{stage}", b, m, post_effort))
     width = max(len(name) for name, *_ in stages)
     lines = []
     for name, b, m, effort in stages:
@@ -169,12 +204,13 @@ def _preview_ingest(vault: Path, args) -> tuple[str, str] | None:
         getattr(args, "classifier_model", None), config.get("classifier_model"), default="haiku")
     extract_effort = _effort(getattr(args, "extractor_effort", None), config.get("extractor_effort"))
     post_effort = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
+    finalizer_overrides = _resolve_finalizer_overrides(args, config, post_backend, post_model)
 
     auth_mode = resolve_auth()["mode"] if extract_backend is None else None
     est = cost_estimate(vault, queue_files, _effective_extract_backend(extract_backend, auth_mode))
     models_line = _format_models_line(classify_backend, classify_model,
                                       extract_backend, extract_model, post_backend, post_model,
-                                      extract_effort, post_effort)
+                                      extract_effort, post_effort, finalizer_overrides)
     return _format_cost_estimate(est), models_line
 
 
@@ -328,7 +364,7 @@ def _offer_ingest(args, vault: Path) -> None:
     else:
         # No leading blank line here — pick()'s own close-out already leaves one (#411).
         # Reached from `watchdog chew` (manual control) or the guided `watchdog` walk (bare) —
-        # point back at whichever got here, not the retired `watchdog ingest` (#441, D136).
+        # point back at whichever got here, not the retired `watchdog ingest` (#441, D138).
         next_cmd = "watchdog dig" if getattr(args, "command", None) == "chew" else "watchdog"
         print(f"  Run:  {_CYAN}{next_cmd}{_RESET}\n")
 
@@ -409,7 +445,7 @@ def _forced_overwrite_targets(vault: Path, summary: dict) -> list[tuple[str, str
 
 def _handle_force_gate(vault: Path, summary: dict, post_model: str,
                        post_effort: str | None, post_backend: str | None,
-                       skip_briefing: bool = False) -> None:
+                       skip_briefing: bool = False, finalizer_overrides: dict | None = None) -> None:
     """After a forced re-extraction (`ingest --force`, or `dig --force`) with finalize held off,
     warn before finalize recommits any document that was already in the vault — replacing an
     already-committed note/registry entry is genuinely destructive, unlike the routine ingest
@@ -434,7 +470,8 @@ def _handle_force_gate(vault: Path, summary: dict, post_model: str,
     summary["finalize_skipped"] = False
     summary["post_ingest"] = _run_finalize(vault, post_model, post_effort, post_backend,
                                            force_shas=[sha for sha, _ in targets] or None,
-                                           skip_briefing=skip_briefing)
+                                           skip_briefing=skip_briefing,
+                                           finalizer_overrides=finalizer_overrides)
 
 
 def _resolve_force_selectors(vault: Path, selectors: list[str]) -> list[str]:
@@ -616,7 +653,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
     # This function backs three CLI surfaces: the deprecated `ingest` (full pipeline),
     # `dig` (extract only, via cmd_extract setting no_finalize), and the guided `watchdog`
     # walk (bare, via _offer_ingest). "Run it again" hints below point at whichever of those
-    # got the caller here, rather than the retired `watchdog ingest` (#441, D136).
+    # got the caller here, rather than the retired `watchdog ingest` (#441, D138).
     pipeline_hint = "watchdog dig" if getattr(args, "command", None) == "dig" else "watchdog"
 
     raw_force = getattr(args, "force", False)
@@ -680,12 +717,17 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         getattr(args, "finalizer_model", None), config.get("finalizer_model"), default="haiku")
     classify_backend, classify_model = _resolve_stage(
         getattr(args, "classifier_model", None), config.get("classifier_model"), default="haiku")
+    finalizer_overrides = _resolve_finalizer_overrides(args, config, post_backend, post_model)
 
     # Claude auth is only required when at least one stage is actually routed to it — a vault
     # configured entirely on another provider (e.g. all three stages set to gemini:...) must be
-    # able to ingest without Claude being configured at all (#325).
-    needs_claude_auth = any(b is None or b in CLAUDE_BACKENDS
-                             for b in (extract_backend, post_backend, classify_backend))
+    # able to ingest without Claude being configured at all (#325). Includes the per-stage
+    # finalizer overrides (#433) — a lone overridden stage still routed to Claude must not let
+    # an all-non-Claude aggregate --finalizer-model skip the auth check.
+    needs_claude_auth = any(
+        b is None or b in CLAUDE_BACKENDS
+        for b in (extract_backend, post_backend, classify_backend,
+                  *(finalizer_overrides.get(f"{s}_backend") for s in _FINALIZER_STAGES)))
     if needs_claude_auth:
         a = resolve_auth()
         if a["mode"] == "none":
@@ -738,7 +780,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
             return
         if choice == 1:                        # finalize now, then stop
             out = _run_finalize(vault, post_model, post_effort, post_backend,
-                                skip_briefing=skip_briefing)
+                                skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides)
             if not (out.get("error") or out.get("briefing_error")):
                 print(f"  {_DIM}Now run {_RESET}{_CYAN}{pipeline_hint}{_RESET}{_DIM} for the queued documents.{_RESET}\n")
             return
@@ -788,7 +830,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         est = cost_estimate(vault, result["queue_files"], _effective_extract_backend(extract_backend, a["mode"]))
         print(f"\n{_format_cost_estimate(est)}")
         print(_format_models_line(classify_backend, classify_model, extract_backend, extract_model,
-                                  post_backend, post_model, extract_effort, post_effort))
+                                  post_backend, post_model, extract_effort, post_effort,
+                                  finalizer_overrides))
     elif batch_pending:
         print(f"\n  {_DIM}Checking on a pending batch extraction…{_RESET}")
 
@@ -800,7 +843,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
     if pinned_skill:
         print(f"  {_DIM}Skill pinned:{_RESET} {_CYAN}{Path(pinned_skill).stem}{_RESET}{_DIM} — classification skipped.{_RESET}")
 
-    if classify_backend == "claude-batch" or post_backend == "claude-batch":
+    if (classify_backend == "claude-batch" or post_backend == "claude-batch"
+            or any(finalizer_overrides.get(f"{s}_backend") == "claude-batch" for s in _FINALIZER_STAGES)):
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} claude-batch is only valid for extractor_model, "
                  f"not classifier_model/finalizer_model.\n")
     if extract_backend == "claude-batch":
@@ -883,7 +927,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
                     extract_effort=extract_effort, post_effort=post_effort,
                     extract_backend=extract_backend, post_backend=post_backend,
                     classify_backend=classify_backend, wait=wait, skip_finalize=run_skip_finalize,
-                    force=force, skip_briefing=skip_briefing))
+                    force=force, skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides,
+                    resume_hint=pipeline_hint))
                 summary = _merge_summary(summary, iter_summary)
                 if not (wait and iter_summary.get("rate_limited")):
                     break
@@ -911,7 +956,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         _release_lock()
     if force and not no_finalize and summary.get("finalize_skipped") and not summary.get("batch_pending"):
         _handle_force_gate(vault, summary, post_model, post_effort, post_backend,
-                           skip_briefing=skip_briefing)
+                           skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides)
     _print_ingest_summary(summary, pipeline_hint)
 
 
@@ -985,7 +1030,7 @@ def _print_ingest_summary(summary: dict, pipeline_hint: str = "watchdog") -> Non
 
 
 def cmd_extract(args) -> None:
-    """`watchdog dig` (#425, renamed from `extract` in #441/D136) — classify + extract queued
+    """`watchdog dig` (#425, renamed from `extract` in #441/D138) — classify + extract queued
     documents, staging the artifacts, and stop before finalize. A thin wrapper around
     `cmd_ingest` with finalization forced off: inherits the estimate path, cost preview, skill
     pinning, `--wait`, the lock/summary machinery, and the "run watchdog bark next" closing
@@ -995,7 +1040,7 @@ def cmd_extract(args) -> None:
 
 
 def cmd_finalize(args) -> None:
-    """`watchdog bark` (renamed from `finalize` in #441/D136) — complete post-ingest (entity
+    """`watchdog bark` (renamed from `finalize` in #441/D138) — complete post-ingest (entity
     reconciliation + synthesis + timeline + briefing) for an already-extracted batch.
 
     The guided `watchdog` walk finalizes automatically at the end; run this when a rate limit or
@@ -1020,6 +1065,7 @@ def cmd_finalize(args) -> None:
     post_backend, post_model = _resolve_stage(
         getattr(args, "finalizer_model", None), config.get("finalizer_model"), default="haiku")
     post_effort = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
+    finalizer_overrides = _resolve_finalizer_overrides(args, config, post_backend, post_model)
 
     if getattr(args, "estimate", False):
         # Read-only, like ingest/extract's own --estimate (#269, #406) — no lock, no auth
@@ -1033,8 +1079,11 @@ def cmd_finalize(args) -> None:
 
     # Claude auth is only required when the finalizer is actually routed to it — a stage pinned
     # to another provider must be able to finalize without Claude being configured at all (#325).
+    # Includes the per-stage overrides (#433): a lone overridden stage still routed to Claude
+    # must not let an all-non-Claude aggregate --finalizer-model skip the auth check.
     from watchdog.model_client import CLAUDE_BACKENDS
-    if post_backend is None or post_backend in CLAUDE_BACKENDS:
+    stage_backends = (post_backend, *(finalizer_overrides.get(f"{s}_backend") for s in _FINALIZER_STAGES))
+    if any(b is None or b in CLAUDE_BACKENDS for b in stage_backends):
         from watchdog.cmd.auth import resolve_auth
         a = resolve_auth()
         if a["mode"] == "none":
@@ -1043,12 +1092,13 @@ def cmd_finalize(args) -> None:
 
 
     _run_finalize(vault, post_model, post_effort, post_backend,
-                 skip_briefing=getattr(args, "skip_briefing", False))
+                 skip_briefing=getattr(args, "skip_briefing", False),
+                 finalizer_overrides=finalizer_overrides)
 
 
 def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
                   post_backend: str | None = None, force_shas: list[str] | None = None,
-                  skip_briefing: bool = False) -> dict:
+                  skip_briefing: bool = False, finalizer_overrides: dict | None = None) -> dict:
     """Acquire the ingest lock, run post-ingest over the pending batch, print the outcome.
 
     `force_shas` (#424) are already-committed shas a forced re-extraction just re-staged —
@@ -1057,7 +1107,10 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
     already-committed.
 
     `skip_briefing` (#410) passes straight through to `orchestrate.finalize` — reconciliation,
-    synthesis, and the timeline still run; only the briefing model call is skipped."""
+    synthesis, and the timeline still run; only the briefing model call is skipped.
+
+    `finalizer_overrides` (#433) passes straight through to `orchestrate.finalize` — per-stage
+    model/backend overrides for reconciliation, synthesis, timeline, and briefing."""
     from watchdog.pipeline import orchestrate
     from watchdog.pipeline.locks import acquire_or_take_stale, lock_started_at
     from watchdog.pipeline.ingest_setup import STALE_SECONDS, _iso_now
@@ -1077,7 +1130,8 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
         import asyncio
         out = asyncio.run(orchestrate.finalize(vault, post_model=post_model, post_effort=post_effort,
                                                post_backend=post_backend, force_shas=force_shas,
-                                               skip_briefing=skip_briefing))
+                                               skip_briefing=skip_briefing,
+                                               finalizer_overrides=finalizer_overrides))
     finally:
         lock.unlink(missing_ok=True)
 

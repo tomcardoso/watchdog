@@ -42,6 +42,14 @@ FINALIZE_TASKS = {"reconcile", "entity-synthesis", "timeline-dedup", "timeline-p
 # stdout isn't a TTY), so `_say` falls back to plain append-only printing.
 _board: LiveRegion | None = None
 
+# The command a "re-run to resume/collect later" message should name for the current run (#441,
+# D138). `cmd_ingest` owns which surface it is — `watchdog dig` for a `dig` run, bare `watchdog`
+# for the guided walk or the deprecated `ingest` — and passes it as `run`'s `resume_hint`, which
+# stashes it here so the extraction-side notices (rate-limit stop, batch submit/poll) point back
+# at the right entry point rather than always saying `dig`. One run per process (behind the run
+# lock), same single-run assumption `_board`/`_usage` already rely on.
+_resume_hint: str = "watchdog dig"
+
 # Per-call token/cost telemetry for the current run (A2) — a list of dicts, one per successful
 # model call, accumulated by `_call_model`. None outside a `run`/standalone `finalize` call, so
 # unit tests that exercise the per-document helpers directly (without going through either) don't
@@ -979,7 +987,7 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str, brief: str 
         done = sum(v for k, v in counts.items() if k != "processing")
         _say(f"{_YELLOW}A batch extraction is still processing{_RESET}{_DIM} "
              f"({done}/{len(state['shas'])} finished so far) — re-run {_RESET}"
-             f"{_CYAN}watchdog dig{_RESET}{_DIM} later to check again.{_RESET}")
+             f"{_CYAN}{_resume_hint}{_RESET}{_DIM} later to check again.{_RESET}")
         return {"results": [], "batch_pending": True}
 
     _say(f"{_DIM}→  batch {state['batch_id']} finished — collecting {len(state['shas'])} "
@@ -1001,7 +1009,7 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str, brief: str 
         # already_extracted check skips them on the next pass) — so a later run finishes.
         _say(f"{_YELLOW}Rate limit reached during batch collection{_RESET}{_DIM} — {e} "
              f"{len(results)}/{len(state['shas'])} written; re-run {_RESET}"
-             f"{_CYAN}watchdog dig{_RESET}{_DIM} to finish once it resets.{_RESET}")
+             f"{_CYAN}{_resume_hint}{_RESET}{_DIM} to finish once it resets.{_RESET}")
         return {"results": results, "batch_pending": True}
 
     batch_extract.clear_state(vault)
@@ -1076,7 +1084,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
                                           effort=extract_effort, skill_label=skill_label,
                                           api_key=api_key)
     _say(f"{_GREEN}Batch submitted{_RESET}  {_CYAN}{batch_id}{_RESET}{_DIM} — this can take up "
-         f"to a few hours (max 24h); re-run {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM} later "
+         f"to a few hours (max 24h); re-run {_RESET}{_CYAN}{_resume_hint}{_RESET}{_DIM} later "
          f"to collect it.{_RESET}")
     return {"results": results, "batch_pending": True}
 
@@ -1266,7 +1274,20 @@ def _select_kept(events: list[dict], groups) -> list[dict]:
 
 async def _post_ingest(vault: Path, results: list, brief: str | None, post_model: str,
                        post_effort: str | None = None, post_backend: str | None = None,
-                       rec_result: dict | None = None, skip_briefing: bool = False) -> dict:
+                       rec_result: dict | None = None, skip_briefing: bool = False,
+                       finalizer_overrides: dict | None = None) -> dict:
+    """`finalizer_overrides` (#433) may carry `synthesis_model`/`synthesis_backend`,
+    `timeline_model`/`timeline_backend`, and `briefing_model`/`briefing_backend`, routing each
+    of those three stages to a different model than the rest of post-ingest; each falls back to
+    `post_model`/`post_backend` when absent from the dict (see `_reconcile_pre_commit`, which
+    resolves reconciliation's own pair the same way)."""
+    fo = finalizer_overrides or {}
+    synthesis_model = fo.get("synthesis_model", post_model)
+    synthesis_backend = fo.get("synthesis_backend", post_backend)
+    timeline_model = fo.get("timeline_model", post_model)
+    timeline_backend = fo.get("timeline_backend", post_backend)
+    briefing_model = fo.get("briefing_model", post_model)
+    briefing_backend = fo.get("briefing_backend", post_backend)
     out: dict = {"synthesized": 0, "timeline_collisions": 0, "briefing": None,
                  "merged": [], "contradictions": []}
     print()
@@ -1304,7 +1325,8 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
              f"entit{'ies' if len(bundle['entities']) != 1 else 'y'}…{_RESET}")
         try:
             r = await _call_model(
-                task="entity-synthesis", model=post_model, backend=post_backend, schema=schemas.SYNTHESIS,
+                task="entity-synthesis", model=synthesis_model, backend=synthesis_backend,
+                schema=schemas.SYNTHESIS,
                 prompt=prompts.build_synthesis_prompt(bundle), effort=post_effort, vault=vault)
         except (model_client.ModelError, model_client.RateLimitError) as e:
             # Synthesis is enrichment: leave the structured claims already in the notes
@@ -1334,7 +1356,8 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             continue
         try:
             r = await _call_model(
-                task="timeline-dedup", model=post_model, backend=post_backend, schema=schemas.TIMELINE_DEDUP,
+                task="timeline-dedup", model=timeline_model, backend=timeline_backend,
+                schema=schemas.TIMELINE_DEDUP,
                 prompt=prompts.build_timeline_dedup_prompt(col["date"], events), effort=post_effort,
                 detail=col["date"], vault=vault)
             kept = _select_kept(events, r.parsed.get("groups"))
@@ -1356,7 +1379,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     for grp in timeline.month_precision_groups(vault):
         try:
             r = await _call_model(
-                task="timeline-precision", model=post_model, backend=post_backend,
+                task="timeline-precision", model=timeline_model, backend=timeline_backend,
                 schema=schemas.TIMELINE_PRECISION_MATCH, effort=post_effort,
                 prompt=prompts.build_timeline_precision_prompt(grp["month"], grp["coarse"], grp["precise"]),
                 detail=grp["month"], vault=vault)
@@ -1397,7 +1420,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         n_new_requests = len([r for r in requests.open_requests(vault) if r.get("source_sha256") in ok_shas])
         try:
             r = await _call_model(
-                task="briefing", model=post_model, backend=post_backend, schema=schemas.BRIEFING,
+                task="briefing", model=briefing_model, backend=briefing_backend, schema=schemas.BRIEFING,
                 prompt=prompts.build_briefing_prompt(
                     brief=brief, results=ok, scratchpads=scratchpads,
                     neardup_alerts=neardup_alerts, contradiction_flags=contradiction_flags),
@@ -1596,12 +1619,18 @@ def _commit_extracted(vault: Path, sha: str) -> dict | None:
 
 
 async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
-                                post_effort: str | None, post_backend: str | None) -> dict:
+                                post_effort: str | None, post_backend: str | None,
+                                finalizer_overrides: dict | None = None) -> dict:
     """Pre-commit reconciliation (#381/D118, #403 phase 3): entity-duplicate resolution over the
     staged batch unioned with the registry, before any of it is written to the vault. Runs before
     the commit pass (see `finalize`) because a confirmed merge between two of this batch's own
     documents is cheapest resolved as a staged id rewrite — write_vault then commits the two as
     one entity naturally, and no post-commit note surgery (redirect stub, backup) is ever needed.
+
+    `finalizer_overrides` (#433) may carry `reconciliation_model`/`reconciliation_backend`,
+    routing just this stage to a different model than the rest of post-ingest; each falls back
+    to `post_model`/`post_backend` when absent from the dict (`.get`'s default), so an explicit
+    `None` backend already resolved by the caller — "route by auth mode" — survives untouched.
 
     Returns ``{"merged": [...], "remap": {...}, "contradictions": [...], "error": str | None}``.
     `contradictions` are the model's raw (unapplied) items — `apply_contradictions` needs the
@@ -1611,6 +1640,9 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
     input now (not the fragment queue), so leaving it uncommitted is what lets a later
     `watchdog bark` retry the whole fold → reconcile → commit sequence cleanly.
     """
+    fo = finalizer_overrides or {}
+    reconciliation_model = fo.get("reconciliation_model", post_model)
+    reconciliation_backend = fo.get("reconciliation_backend", post_backend)
     result: dict = {"merged": [], "remap": {}, "contradictions": [], "error": None}
     rec_bundle = reconcile.build_bundle(vault, shas)
     if not (rec_bundle["entities"] or rec_bundle["pairs"]):
@@ -1624,8 +1656,8 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
          f"{n_pairs} possible duplicate{'s' if n_pairs != 1 else ''} · {kb:.1f} KB…{_RESET}")
     try:
         r = await _call_model(
-            task="reconcile", model=post_model, backend=post_backend, schema=schemas.RECONCILE,
-            prompt=rec_prompt, effort=post_effort,
+            task="reconcile", model=reconciliation_model, backend=reconciliation_backend,
+            schema=schemas.RECONCILE, prompt=rec_prompt, effort=post_effort,
             detail=f"{n_ents} entities · {n_pairs} pairs · {kb:.1f} KB", vault=vault)
     except (model_client.ModelError, model_client.RateLimitError) as e:
         result["error"] = str(e)
@@ -1737,7 +1769,7 @@ def pending_finalization(vault: Path) -> dict:
 async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None = None,
                    results: list | None = None, post_effort: str | None = None,
                    post_backend: str | None = None, force_shas: list[str] | None = None,
-                   skip_briefing: bool = False) -> dict:
+                   skip_briefing: bool = False, finalizer_overrides: dict | None = None) -> dict:
     """Reconcile, then commit every staged extraction to the vault, then run (or re-run)
     post-ingest over the current on-disk state: file contradictions, synthesize multi-mention
     entities, reconcile the timeline, and write the briefing/hot.md/log.
@@ -1771,6 +1803,10 @@ async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None 
     `skip_briefing` (#410) skips only the briefing model call — synthesis and the timeline still
     run. Not an error, so it never sets `briefing_error`/leaves inputs pending the way a genuine
     briefing failure does.
+
+    `finalizer_overrides` (#433) routes individual post-ingest stages to a different model than
+    `post_model`/`post_backend` — see `_reconcile_pre_commit` and `_post_ingest` for the keys it
+    accepts and how each falls back when absent.
     """
     global _usage
     standalone_usage = _usage is None   # not nested inside `run` — this call owns the usage file
@@ -1781,7 +1817,8 @@ async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None 
     rec_result: dict = {"merged": [], "remap": {}, "contradictions": [], "error": None}
     if shas:
         _batch_exact_fold(vault, shas)
-        rec_result = await _reconcile_pre_commit(vault, shas, post_model, post_effort, post_backend)
+        rec_result = await _reconcile_pre_commit(vault, shas, post_model, post_effort, post_backend,
+                                                 finalizer_overrides=finalizer_overrides)
 
     if rec_result.get("error"):
         # Reconciliation runs before the commit pass (#403 phase 3), so its failure means nothing
@@ -1801,7 +1838,7 @@ async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None 
     if results is None:
         results = _load_results(vault)
     out = await _post_ingest(vault, results, brief, post_model, post_effort, post_backend, rec_result,
-                             skip_briefing=skip_briefing)
+                             skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides)
     # Surfaced so `run()` can sync the writer's new/updated split onto its own in-memory
     # `summary["results"]`, built before this pass ever runs (see `_commit_pending`'s docstring).
     out["committed_writes"] = commit_summary["written"]
@@ -1821,7 +1858,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
               extract_backend: str | None = None, post_backend: str | None = None,
               classify_backend: str | None = None, wait: bool = False,
               skip_finalize: bool = False, force: bool = False,
-              skip_briefing: bool = False) -> dict:
+              skip_briefing: bool = False, finalizer_overrides: dict | None = None,
+              resume_hint: str = "watchdog dig") -> dict:
     """Extract every queued document (bounded by `concurrency`), then post-ingest.
 
     `extract_model` drives extraction (whole-doc + section, and the sectioned-doc digest); `post_model` drives
@@ -1846,11 +1884,17 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     `finalize`'s own `force_shas`) before anything is recommitted.
     `skip_briefing` (#410) passes straight through to `finalize` — post-ingest still runs
     reconciliation, synthesis, and the timeline, it just skips the briefing model call.
+    `finalizer_overrides` (#433) passes straight through to `finalize` — see its docstring for
+    the per-stage model/backend keys it accepts.
+    `resume_hint` (#441, D138) is the command a "re-run to resume/collect later" notice names —
+    `cmd_ingest` passes `watchdog dig` for a `dig` run and bare `watchdog` for the guided walk or
+    the deprecated `ingest`, so the extraction-side notices point back at the right entry point.
     """
     queue_dir = vault / ".watchdog" / "queue"
     shas = [f.stem for f in sorted(queue_dir.glob("*.json"))] if queue_dir.exists() else []
 
-    global _board, _usage
+    global _board, _usage, _resume_hint
+    _resume_hint = resume_hint
 
     # claude-batch (#214): submit-many/poll/collect, not one-await-per-document, so it's a
     # genuinely different flow — handled entirely by _run_batch (which also covers a resumed
@@ -1912,7 +1956,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                                  f"Waiting to resume automatically once it resets.{_RESET}")
                         else:
                             _say(f"{_DIM}Stopping; finished documents are saved. Re-run "
-                                 f"{_RESET}{_CYAN}watchdog dig{_RESET}{_DIM} once it resets to continue.{_RESET}")
+                                 f"{_RESET}{_CYAN}{_resume_hint}{_RESET}{_DIM} once it resets to continue.{_RESET}")
                         _request_stop(rate_limit=str(e), resets_at=e.resets_at)
                     return {"sha256": sha, "filename": "", "status": "cancelled"}
                 except asyncio.CancelledError:       # ctrl+c mid-document — queue file stays
@@ -2011,7 +2055,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             # synthesized and briefed together with this run's documents.
             summary["post_ingest"] = await finalize(vault, post_model=post_model, brief=brief,
                                                     post_effort=post_effort, post_backend=post_backend,
-                                                    skip_briefing=skip_briefing)
+                                                    skip_briefing=skip_briefing,
+                                                    finalizer_overrides=finalizer_overrides)
             # `results` was built before finalize's commit pass ran write_vault, so each item's
             # new/updated entity split was still unknown at the time (#403 phase 1) — sync it in
             # now from what the commit pass actually did, so a caller reading `summary["results"]`

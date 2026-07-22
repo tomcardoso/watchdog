@@ -134,7 +134,7 @@ def main() -> None:
     if len(sys.argv) >= 2 and sys.argv[1] in _ALIASES:
         sys.argv[1] = _ALIASES[sys.argv[1]]
 
-    # `extract`/`finalize` → `dig`/`bark` (#441, D136): kept working during a deprecation
+    # `extract`/`finalize` → `dig`/`bark` (#441, D138): kept working during a deprecation
     # window rather than removed outright, but unlike a plain `_ALIASES` entry, this warns —
     # the point is for people to actually move onto the new name.
     if len(sys.argv) >= 2 and sys.argv[1] in _DEPRECATED_ALIASES:
@@ -421,6 +421,24 @@ def main() -> None:
     _model_help = ("a Claude tier (sonnet/opus/haiku) or a backend:model form "
                    "(claude-api:opus, openai:gpt-5-mini, deepseek:deepseek-v4-flash, "
                    "gemini:gemini-2.5-flash)")
+    # Per-stage finalizer model overrides (issue #433): each routes just that post-ingest stage
+    # to a different model than --finalizer-model, falling back to it when unset. Shared between
+    # `ingest` and `finalize`, which both run post-ingest.
+    _finalizer_stage_help = {
+        "reconciliation": "merging duplicate entities and flagging contradictions between documents",
+        "synthesis": "synthesizing prose for multi-mention entities",
+        "timeline": "deduplicating and reconciling timeline collisions",
+        "briefing": "writing the briefing",
+    }
+
+    def _add_finalizer_stage_flags(p) -> None:
+        for stage, what in _finalizer_stage_help.items():
+            p.add_argument(f"--finalizer-{stage}-model", default=None,
+                           dest=f"finalizer_{stage}_model", metavar="MODEL",
+                           help=f"Model for {what} only, overriding --finalizer-model for just "
+                                f"this stage — {_model_help}; falls back to --finalizer-model "
+                                f"(or finalizer_model) when unset")
+
     p_ingest = sub.add_parser("ingest", help="Extract queued documents (runs the Python pipeline)")
     p_ingest.add_argument("--extractor-model", default=None, dest="extractor_model", metavar="MODEL",
                           help=f"Model for extraction — {_model_help}; overrides watchdog configure (default: sonnet)")
@@ -439,6 +457,7 @@ def main() -> None:
                           help="Reasoning effort for the post-ingest step — entity reconciliation, "
                                "contradiction flagging, synthesis, timeline, briefing — "
                                "overrides watchdog configure (default: high)")
+    _add_finalizer_stage_flags(p_ingest)
     p_ingest.add_argument("--concurrency", type=int, default=None,
                           help="Documents extracted in parallel — overrides watchdog configure (default: 5)")
     p_ingest.add_argument("--classify-pages", type=int, default=None, dest="classify_pages",
@@ -514,6 +533,7 @@ def main() -> None:
                             help="Reasoning effort for the post-ingest step — entity reconciliation, "
                                  "contradiction flagging, synthesis, timeline, briefing — "
                                  "overrides watchdog configure (default: high)")
+    _add_finalizer_stage_flags(p_finalize)
     p_finalize.add_argument("--estimate", action="store_true",
                             help="Print a token/cost estimate for the pending batch and exit — "
                                  "no lock, no finalize")
@@ -561,7 +581,7 @@ def main() -> None:
         sys.exit(1)
 
     # `ingest` combined extract+finalize into one shot; retired in favour of two clearer paths
-    # — the guided `watchdog` walk, or manual `watchdog dig` + `watchdog bark` (#441, D136).
+    # — the guided `watchdog` walk, or manual `watchdog dig` + `watchdog bark` (#441, D138).
     # No renamed successor to remap onto, so it keeps its own subparser and just warns here.
     if args.command == "ingest":
         print(f"\n  {_YELLOW}Warning:{_RESET} {_CYAN}watchdog ingest{_RESET}{_DIM} is deprecated — "

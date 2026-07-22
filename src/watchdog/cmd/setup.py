@@ -90,7 +90,9 @@ _CONFIGURE_KEYS = {
             "How many documents `watchdog dig` extracts simultaneously. Each runs a model\n"
             "  call, so this is bounded by your model rate limits — lower it if you hit throttling,\n"
             "  raise it for throughput. Override for one run with `watchdog dig --concurrency N`.\n"
-            "  Default: 5. Minimum: 1 (sequential)."
+            "  Default: 5, minimum: 1 (sequential). `watchdog setup` sets this to 3 automatically if\n"
+            "  it detects Claude subscription auth and ingestion stays on it — concurrent extractions\n"
+            "  there share one Claude Code session's rate limit, and 5 reliably throttles it."
         ),
         "type": "int",
         "default": 5,
@@ -257,6 +259,61 @@ _CONFIGURE_KEYS = {
         ),
         "type": "string",
         "default": "haiku",
+    },
+    "finalizer_reconciliation_model": {
+        "short": "Model override for entity-duplicate reconciliation only (default: unset — uses finalizer_model)",
+        "help": (
+            "Overrides finalizer_model for just the reconciliation stage — merging duplicate\n"
+            "  entities and flagging contradictions between documents. Leave unset to use\n"
+            "  finalizer_model, like every other post-ingest stage.\n"
+            "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
+            "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-2.5-flash).\n"
+            "  Default: unset.\n"
+            "  Override for a single run with: watchdog ingest --finalizer-reconciliation-model M"
+        ),
+        "type": "string",
+        "default": None,
+    },
+    "finalizer_synthesis_model": {
+        "short": "Model override for multi-mention entity synthesis only (default: unset — uses finalizer_model)",
+        "help": (
+            "Overrides finalizer_model for just the synthesis stage — writing prose for entities\n"
+            "  mentioned across more than one document. Leave unset to use finalizer_model, like\n"
+            "  every other post-ingest stage.\n"
+            "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
+            "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-2.5-flash).\n"
+            "  Default: unset.\n"
+            "  Override for a single run with: watchdog ingest --finalizer-synthesis-model M"
+        ),
+        "type": "string",
+        "default": None,
+    },
+    "finalizer_timeline_model": {
+        "short": "Model override for timeline reconciliation only (default: unset — uses finalizer_model)",
+        "help": (
+            "Overrides finalizer_model for just the timeline stage — deduplicating same-date\n"
+            "  collisions and folding coarse-precision restatements into their exact date. Leave\n"
+            "  unset to use finalizer_model, like every other post-ingest stage.\n"
+            "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
+            "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-2.5-flash).\n"
+            "  Default: unset.\n"
+            "  Override for a single run with: watchdog ingest --finalizer-timeline-model M"
+        ),
+        "type": "string",
+        "default": None,
+    },
+    "finalizer_briefing_model": {
+        "short": "Model override for writing the briefing only (default: unset — uses finalizer_model)",
+        "help": (
+            "Overrides finalizer_model for just the briefing stage. Leave unset to use\n"
+            "  finalizer_model, like every other post-ingest stage.\n"
+            "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
+            "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-2.5-flash).\n"
+            "  Default: unset.\n"
+            "  Override for a single run with: watchdog ingest --finalizer-briefing-model M"
+        ),
+        "type": "string",
+        "default": None,
     },
     "extractor_effort": {
         "short": "Reasoning effort for document extraction (default: high)",
@@ -428,6 +485,8 @@ _CONFIGURE_SECTIONS = [
       "section_token_threshold", "section_token_budget", "section_overlap_tokens"]),
     ("Models", "Which Claude model runs each step, and how hard it thinks.",
      ["classifier_model", "extractor_model", "finalizer_model",
+      "finalizer_reconciliation_model", "finalizer_synthesis_model",
+      "finalizer_timeline_model", "finalizer_briefing_model",
       "extractor_effort", "finalizer_effort"]),
     ("Deduplication", "Near-duplicate detection.",
      ["dup_threshold", "shingle_size"]),
