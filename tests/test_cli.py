@@ -1808,6 +1808,141 @@ def test_offer_ingest_eof_prints_hint(configured, monkeypatch, capsys):
     assert "watchdog ingest" in capsys.readouterr().out
 
 
+def test_offer_ingest_shows_public_records_warning(configured, monkeypatch, capsys):
+    """The guided (post-chew) offer must show the same warning as the direct path (#426) —
+    it's the acknowledgement itself now, not a second confirmation stacked on top of it."""
+    from watchdog.cmd import ingest as ing
+    vault = _vault_with_queue(configured)
+    monkeypatch.setattr("builtins.input", lambda *a: "1")   # numbered fallback: Acknowledge
+    monkeypatch.setattr(ing, "cmd_ingest", lambda *a, **k: None)
+    ing._offer_ingest(args(), vault)
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Public records only" in out
+    assert "1 document will be sent to the model" in out
+
+
+# ── Public-records warning gate (#426) ──────────────────────────────────────
+
+def test_confirm_public_records_zero_docs_is_noop(monkeypatch):
+    """Nothing new is being sent this call (e.g. only checking a pending claude-batch
+    extraction) — no warning, no prompt."""
+    from watchdog.cmd import ingest as ing
+    monkeypatch.setattr(ing.interactive, "pick",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("no pick when nothing is sent")))
+    assert ing._confirm_public_records(0) is True
+
+
+def test_confirm_public_records_skip_warning_prints_notice_no_pick(monkeypatch, capsys):
+    from watchdog.cmd import ingest as ing
+    monkeypatch.setattr(ing.interactive, "pick",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("--skip-warning must not prompt")))
+    assert ing._confirm_public_records(3, skip_warning=True) is True
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "3" in out and "cloud AI model" in out
+
+
+def test_confirm_public_records_acknowledge_is_the_default(monkeypatch, capsys):
+    from watchdog.cmd import ingest as ing
+    monkeypatch.setattr("builtins.input", lambda *a: "1")   # numbered fallback: row 1 = Acknowledge (the default row)
+    assert ing._confirm_public_records(6) is True
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Public records only" in out
+    assert "6 documents will be sent to the model" in out
+
+
+def test_confirm_public_records_cancel(monkeypatch):
+    from watchdog.cmd import ingest as ing
+    monkeypatch.setattr("builtins.input", lambda *a: "2")   # numbered fallback: Cancel
+    assert ing._confirm_public_records(1) is False
+
+
+def test_cmd_ingest_confirm_cancel_never_calls_model(wdg_home, tmp_path, monkeypatch):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+    monkeypatch.setattr(ing.interactive, "pick", lambda *a, **k: 1)   # "Cancel"
+
+    async def fake_run(*a, **k):
+        raise AssertionError("model must not be called after Cancel")
+    monkeypatch.setattr(orch_module, "run", fake_run)
+
+    ing.cmd_ingest(args())   # confirm defaults True
+
+
+def test_cmd_ingest_confirm_acknowledge_calls_model(wdg_home, tmp_path, monkeypatch):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+    monkeypatch.setattr(ing.interactive, "pick", lambda *a, **k: 0)   # "Acknowledge and ingest"
+
+    calls = []
+    async def fake_run(*a, **k):
+        calls.append(k)
+        return {"results": [{"sha256": "sha1", "filename": "a.pdf", "status": "ok", "entity_count": 1}],
+                "extracted": 1, "skipped": 0, "failed": 0, "cancelled": False,
+                "rate_limited": False, "stop_message": None, "rate_limit_resets_at": None,
+                "quarantined": 0}
+    monkeypatch.setattr(orch_module, "run", fake_run)
+
+    ing.cmd_ingest(args())
+    assert len(calls) == 1
+
+
+def test_cmd_ingest_skip_warning_bypasses_pick_but_still_notifies(wdg_home, tmp_path, monkeypatch, capsys):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+    monkeypatch.setattr(ing.interactive, "pick",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("--skip-warning must not prompt")))
+
+    calls = []
+    async def fake_run(*a, **k):
+        calls.append(k)
+        return {"results": [{"sha256": "sha1", "filename": "a.pdf", "status": "ok", "entity_count": 1}],
+                "extracted": 1, "skipped": 0, "failed": 0, "cancelled": False,
+                "rate_limited": False, "stop_message": None, "rate_limit_resets_at": None,
+                "quarantined": 0}
+    monkeypatch.setattr(orch_module, "run", fake_run)
+
+    ing.cmd_ingest(args(skip_warning=True))
+    assert len(calls) == 1
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "cloud AI model" in out
+
+
+def test_ingest_parser_accepts_skip_warning(configured, monkeypatch):
+    """`ingest --help` is intercepted by cmd/base.py's hand-maintained `_CMD_HELP` dict before
+    argparse ever sees it (and that dict already omits --estimate/--force), so check the flag
+    parses instead of grepping --help output."""
+    import sys
+    seen = {}
+    monkeypatch.setattr(cli, "cmd_ingest", lambda a: seen.update(skip_warning=a.skip_warning))
+    monkeypatch.setattr(sys, "argv", ["watchdog", "ingest", "--skip-warning"])
+    cli.main()
+    assert seen == {"skip_warning": True}
+
+
+def test_extract_parser_accepts_skip_warning(configured, monkeypatch):
+    import sys
+    seen = {}
+    monkeypatch.setattr(cli, "cmd_extract", lambda a: seen.update(skip_warning=a.skip_warning))
+    monkeypatch.setattr(sys, "argv", ["watchdog", "extract", "--skip-warning"])
+    cli.main()
+    assert seen == {"skip_warning": True}
+
+
 # ── classifier_model config ───────────────────────────────────────────────────
 
 def test_classifier_model_is_a_configurable_key():
