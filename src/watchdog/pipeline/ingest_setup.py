@@ -54,10 +54,46 @@ def scan_queue(vault: Path) -> list[dict]:
     return queue_files
 
 
+def _tokens_calibration(vault: Path, max_runs: int = 3) -> float | None:
+    """Empirical correction factor for the naive chars/4 'tokens in' estimate (issue #417).
+
+    Every usage-<ts>.json written by a run that actually extracted documents now carries both
+    what was estimated for those documents at queue time (``totals.est_input_tokens``, the same
+    chars/4 heuristic ``scan_queue`` uses, summed by `orchestrate._compact_result`) and what
+    extraction really consumed (``totals.input_tokens``) — their ratio is how far off the
+    heuristic ran, against this vault's own recent documents rather than a fixed global guess.
+    Averaged over the last `max_runs` such files (a blend here, unlike `cost_estimate`'s
+    deliberate low/high range for dollars: this feeds a single displayed token count, not a
+    range).
+
+    Only files carrying `est_input_tokens` are extraction runs — a standalone `watchdog finalize`
+    never sets it (nothing was extracted), so it's silently skipped without a separate task-based
+    filter. A vault with no such history yet (first run since this shipped, or a vault that has
+    only ever run standalone finalizes) returns None, and callers fall back to the raw heuristic
+    rather than fabricate a correction. Not backend-aware: a queue about to extract on a different
+    provider than produced this history gets the same correction as any other — consistent with
+    `cost_estimate`'s own $/token ratio, which has never been backend-filtered either.
+    """
+    from watchdog.pipeline import orchestrate
+    ratios = []
+    for uf in reversed(orchestrate.usage_files(vault)):
+        try:
+            totals = json.loads(uf.read_text(encoding="utf-8")).get("totals", {})
+        except (OSError, json.JSONDecodeError):
+            continue
+        est, actual = totals.get("est_input_tokens"), totals.get("input_tokens")
+        if est and actual:
+            ratios.append(actual / est)
+        if len(ratios) >= max_runs:
+            break
+    return sum(ratios) / len(ratios) if ratios else None
+
+
 def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
                    max_runs: int = 3) -> dict:
     """Pre-flight token/cost estimate for a queue (#269): the queue's own `est_tokens` (already
-    computed by `scan_queue`) times this vault's own $/token history, so a batch's rough cost is
+    computed by `scan_queue`, and calibrated against this vault's own extraction history — #417,
+    see `_tokens_calibration`) times this vault's own $/token history, so a batch's rough cost is
     visible at the confirm prompt instead of discovered mid-run. The $/token ratio is read fresh
     from each of the last `max_runs` usage-*.json files (not averaged into one number) so the
     result can be presented as a range — extraction output varies with document density, and a
@@ -65,12 +101,15 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
 
     Subscription auth (``claude-agent-sdk``) never gets a dollar figure: there's no real billing
     to project, only a session-limit fraction this can't estimate honestly from token counts
-    alone. With no usage history yet (first run), the token estimate alone is returned — no
-    invented dollar figure.
+    alone. It still gets the calibrated token estimate, though — that's what a subscriber budgets
+    a session window against. With no usage history yet (first run), the token estimate alone is
+    returned — no invented dollar figure.
     """
     documents = len(queue_files)
     pages = sum(f.get("page_count") or 0 for f in queue_files)
-    est_tokens = sum(f.get("est_tokens") or 0 for f in queue_files)
+    raw_tokens = sum(f.get("est_tokens") or 0 for f in queue_files)
+    calibration = _tokens_calibration(vault, max_runs) if documents else None
+    est_tokens = round(raw_tokens * calibration) if calibration else raw_tokens
     result = {"documents": documents, "pages": pages, "est_tokens": est_tokens,
               "cost_low": None, "cost_high": None, "runs_used": 0}
     if backend == "claude-agent-sdk" or not documents:
@@ -87,6 +126,69 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
         input_tokens, cost_usd = totals.get("input_tokens") or 0, totals.get("cost_usd")
         if input_tokens > 0 and cost_usd:
             ratios.append(cost_usd / input_tokens)
+
+    if ratios:
+        result["cost_low"] = est_tokens * min(ratios)
+        result["cost_high"] = est_tokens * max(ratios)
+        result["runs_used"] = len(ratios)
+    return result
+
+
+def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3) -> dict:
+    """Pre-flight cost estimate for `watchdog finalize` (issue #417, a #403 follow-up).
+
+    `cost_estimate` above prices an ingest queue's *documents*; finalize's real work is
+    reconciliation + synthesis over the staged post-ingest corpus already sitting in
+    `.watchdog/tmp/` (`result_<sha>.json` + `notes_<sha>.md`) — #403 made synthesis read that
+    staged corpus directly, which is what makes a token estimate here newly possible at all.
+    'Tokens in' is the same chars/4 heuristic `scan_queue` applies to queued documents, just
+    pointed at the staged corpus instead.
+
+    The $/token ratio can't reuse `cost_estimate`'s own loop: a `run()` ingest's usage file is
+    extraction-dominated and would misprice a lone `watchdog finalize` in either direction. Only
+    usage-<ts>.json files written by a *standalone* finalize qualify — every one of their calls
+    has to fall in `orchestrate.FINALIZE_TASKS`, which is only true when finalize ran on its own
+    (an ingest's own finalize tail shares its run's single usage file with extraction, so it
+    never qualifies). A vault that's never run a standalone `watchdog finalize` gets the doc/token
+    counts with no dollar figure, the same "not enough history yet" treatment `cost_estimate`
+    gives a first-run vault. Subscription auth (`claude-agent-sdk`) never gets a dollar figure
+    either, for the same reason `cost_estimate` withholds one (D72): no real billing to project.
+    """
+    tmp = vault / ".watchdog" / "tmp"
+    results = sorted(tmp.glob("result_*.json"))
+    docs = len(results)
+    est_tokens = 0
+    for p in results:
+        try:
+            est_tokens += len(p.read_text(encoding="utf-8")) // 4
+        except OSError:
+            continue
+    for p in tmp.glob("notes_*.md"):
+        try:
+            est_tokens += len(p.read_text(encoding="utf-8")) // 4
+        except OSError:
+            continue
+    result = {"docs": docs, "est_tokens": est_tokens,
+              "cost_low": None, "cost_high": None, "runs_used": 0}
+    if backend == "claude-agent-sdk" or not docs:
+        return result
+
+    from watchdog.pipeline import orchestrate
+    ratios = []
+    for uf in reversed(orchestrate.usage_files(vault)):
+        try:
+            data = json.loads(uf.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        calls = data.get("calls") or []
+        if not calls or any(c.get("task") not in orchestrate.FINALIZE_TASKS for c in calls):
+            continue   # empty, or shares a usage file with extraction/classification
+        totals = data.get("totals", {})
+        input_tokens, cost_usd = totals.get("input_tokens") or 0, totals.get("cost_usd")
+        if input_tokens > 0 and cost_usd:
+            ratios.append(cost_usd / input_tokens)
+        if len(ratios) >= max_runs:
+            break
 
     if ratios:
         result["cost_low"] = est_tokens * min(ratios)

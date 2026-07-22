@@ -484,6 +484,9 @@ def main() -> None:
                             help="Reasoning effort for the post-ingest step — entity reconciliation, "
                                  "contradiction flagging, synthesis, timeline, briefing — "
                                  "overrides watchdog configure (default: high)")
+    p_finalize.add_argument("--estimate", action="store_true",
+                            help="Print a token/cost estimate for the pending batch and exit — "
+                                 "no lock, no finalize")
     p_finalize.set_defaults(func=cmd_finalize)
 
     p_context = sub.add_parser("context", help="Open Claude Code to seed investigation context from _CONTEXT/")

@@ -2441,6 +2441,103 @@ def test_cmd_ingest_estimate_api_key_with_usage_history_shows_dollar_range(wdg_h
     assert "based on your last run" in out
 
 
+# ── finalize --estimate (#417) ──────────────────────────────────────────────────
+
+def _vault_with_staged_finalize_corpus(tmp_path):
+    """A vault with a pending (staged, not yet finalized) batch in `.watchdog/tmp/` —
+    what `watchdog finalize --estimate` prices."""
+    from tests.test_write_vault import make_vault
+    vault = make_vault(tmp_path)
+    tmp = vault / ".watchdog" / "tmp"
+    tmp.mkdir(parents=True, exist_ok=True)
+    (tmp / "result_sha1.json").write_text(json.dumps({"sha256": "sha1", "key_facts": "a" * 400}))
+    (tmp / "notes_sha1.md").write_text("a" * 400)
+    return vault
+
+
+def test_cmd_finalize_estimate_prints_and_exits_without_lock(wdg_home, tmp_path, monkeypatch, capsys):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    vault = _vault_with_staged_finalize_corpus(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+
+    ing.cmd_finalize(args(estimate=True))
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "1 document" in out
+    assert "tokens in" in out
+    assert not (vault / ".watchdog" / "registry" / ".ingest-lock").exists()
+
+
+def test_cmd_finalize_estimate_nothing_pending(wdg_home, tmp_path, monkeypatch, capsys):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from tests.test_write_vault import make_vault
+    vault = make_vault(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+
+    ing.cmd_finalize(args(estimate=True))
+
+    assert "Nothing to finalize" in capsys.readouterr().out
+
+
+def test_cmd_finalize_estimate_subscription_mode_shows_no_dollar_figure(wdg_home, tmp_path, monkeypatch, capsys):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    vault = _vault_with_staged_finalize_corpus(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "subscription"})
+    (vault / ".watchdog" / "registry" / "usage-20260101T000000Z.json").write_text(json.dumps({
+        "calls": [{"task": "reconcile"}],
+        "totals": {"input_tokens": 1000, "cost_usd": 5.0},
+    }))
+
+    ing.cmd_finalize(args(estimate=True))
+
+    out = capsys.readouterr().out
+    assert "$" not in out
+    assert "tokens in" in out
+
+
+def test_cmd_finalize_estimate_shows_dollar_range_from_standalone_history(wdg_home, tmp_path, monkeypatch, capsys):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    vault = _vault_with_staged_finalize_corpus(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    (vault / ".watchdog" / "registry" / "usage-20260101T000000Z.json").write_text(json.dumps({
+        "calls": [{"task": "reconcile"}, {"task": "briefing"}],
+        "totals": {"input_tokens": 1000, "cost_usd": 5.0},
+    }))
+
+    ing.cmd_finalize(args(estimate=True))
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "$" in out
+    assert "based on your last standalone finalize" in out
+
+
+def test_cmd_finalize_estimate_ignores_mixed_ingest_usage_history(wdg_home, tmp_path, monkeypatch, capsys):
+    """A usage file from a full `watchdog ingest` run (extraction + finalize sharing one file)
+    must not be mistaken for a standalone finalize's own $/token profile."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    vault = _vault_with_staged_finalize_corpus(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    (vault / ".watchdog" / "registry" / "usage-20260101T000000Z.json").write_text(json.dumps({
+        "calls": [{"task": "extract"}, {"task": "reconcile"}],
+        "totals": {"input_tokens": 500000, "cost_usd": 5.0, "est_input_tokens": 480000},
+    }))
+
+    ing.cmd_finalize(args(estimate=True))
+
+    out = capsys.readouterr().out
+    assert "$" not in out   # no standalone-finalize history to price against
+
+
 # ── quarantined (_failed/) documents surfaced (#406) ──────────────────────────
 
 def _vault_with_failed_doc(tmp_path):
