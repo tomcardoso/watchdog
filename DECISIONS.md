@@ -953,7 +953,15 @@ Before this, the only prompt at the point where extracted text actually leaves t
 
 **Tradeoff:** every ingest now costs one extra keypress past what used to be a single Enter, even for a journalist who has already internalized the risk — accepted, since the warning is the point, and it's the standing full-text block (not the friction) that's meant to catch someone about to send the wrong file.
 
-### D134 — Tokens-in estimate calibrated from real telemetry; `watchdog finalize` gets its own `--estimate` (issue #417)
+### D134 — `--skip-briefing` skips only the briefing model call, not the rest of finalize (issue #410)
+
+A bulk backfill or a re-ingest after a fix often doesn't need a fresh briefing every time, but still wants entities reconciled, synthesized, and the timeline kept current — those are what later ingests and investigation sessions actually depend on. Folding this into `ingest` and `finalize` (rather than a new command) keeps with the CLI's no-near-duplicate-commands stance; a flag scoped to just the briefing call, rather than reusing `skip_finalize`/`watchdog extract`, is what lets synthesis and the timeline still run.
+
+`skip_briefing` threads through `orchestrate.run`/`orchestrate.finalize` → `_post_ingest`, which skips step 3 (the `briefing` model call and `_write_briefing`) but leaves contradictions, synthesis, and timeline reconciliation untouched. Recorded as `out["briefing_skipped"] = True`, deliberately distinct from `briefing_error` — an intentional skip must not trip the "post-processing didn't finish, run `watchdog finalize`" path a genuine briefing failure (rate limit, output-cap truncation) does, and post-ingest inputs are cleared normally rather than left pending for a retry that was never wanted. `watchdog finalize --skip-briefing` takes the same flag directly, for completing an already-staged/interrupted batch without a briefing. The bare `watchdog` guided walk exposes it too, as a flag on the top-level CLI parser rather than `ingest`'s subparser — `cmd_guided` never builds its own `args`, it reuses the one `main()` parsed, so the flag reaches `cmd_ingest` through the same `args` Namespace `_offer_ingest` already passes through, no separate plumbing needed.
+
+**Tradeoff:** `hot.md` and that run's `log.md` entry are only written by `_write_briefing`, so both go stale until a run without `--skip-briefing` (or a manual `watchdog finalize` once a standalone briefing-only command exists) catches them up — the leads sweep, watch-word scan, and `requests.md` are unaffected since they don't depend on the briefing.
+
+### D135 — Tokens-in estimate calibrated from real telemetry; `watchdog finalize` gets its own `--estimate` (issue #417)
 
 D72's dollar figure was always real — derived from this vault's own $/token history — but the tokens-in number it's multiplied against was still the flat `chars/4` heuristic from before any of that telemetry existed, with no feedback loop back to reality. Separately, `watchdog finalize` had no estimate at all, unlike `ingest`/`extract`: not an oversight so much as a genuine gap, since before #403 phase 4 (D129) the finalizer's inputs were smeared across the retired `entity-fragments/` mechanism rather than sitting in one measurable place.
 

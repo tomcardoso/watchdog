@@ -30,11 +30,11 @@ Investigation names tab-complete in zsh and bash once `watchdog setup` has run.
 | `watchdog chew` | Convert everything in `_INCOMING/` into extracted text queued for ingest — see [below](#watchdog-chew). |
 | `watchdog ingest` | Extract all queued documents into the vault — see [below](#watchdog-ingest). |
 | `watchdog extract` | Classify and extract queued documents into staged artifacts, then stop — see [below](#watchdog-extract). |
-| `watchdog finalize` | Complete the post-ingest step (merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline, briefing) for a batch that was interrupted after extraction, or deliberately staged with `watchdog extract`; takes the same `--finalizer-model`, `--finalizer-effort`, and `--estimate` as ingest. |
+| `watchdog finalize` | Complete the post-ingest step (merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline, briefing) for a batch that was interrupted after extraction, or deliberately staged with `watchdog extract`; takes the same `--finalizer-model`, `--finalizer-effort`, `--estimate`, and `--skip-briefing` as ingest. |
 | `watchdog requeue` | Move documents quarantined in `queue/_failed/` back into the active queue, ready for the next `watchdog ingest`. |
 | `watchdog context [name]` | Open Claude Code with the context-seeding skill, which reads `_CONTEXT/`, interviews you, and writes `context.md`; `--model` picks `sonnet`, `opus`, or `haiku` (default: `sonnet`). |
 | `watchdog watch [name]` | Watch `_INCOMING/` and chew files automatically as they arrive. |
-| `watchdog` | With no arguments inside a vault: walk the pipeline — offering to seed context, chew, then ingest — skipping any stage with no pending work. |
+| `watchdog [--skip-briefing]` | With no subcommand inside a vault: walk the pipeline — offering to seed context, chew, then ingest — skipping any stage with no pending work. `--skip-briefing` carries through to the ingest step if the walk reaches it. |
 
 ### watchdog ingest
 
@@ -78,6 +78,7 @@ Each model flag takes a Claude tier (`haiku`, `sonnet`, `opus`) or a `backend:mo
 - `--estimate` — print the token and cost estimate for the queue and exit; no lock, no confirmation, no extraction.
 - `--force [DOC …]` — re-extract a document even when a cached extraction (or a note already committed to the vault) exists for it — see [Re-extracting with --force](#re-extracting-with---force) below. Costs full extraction spend on every queued document, cache or no. Bare `--force` re-extracts whatever is already queued; naming one or more documents (a sha256, an unambiguous sha256 prefix, or a filename) also re-queues and re-extracts documents already committed to the vault.
 - `--skip-warning` — skip the public-records acknowledgement pause described below; still prints a one-line notice of what was sent.
+- `--skip-briefing` — finalize as usual (merging duplicate entities, flagging contradictions, entity synthesis, timeline reconciliation) but skip the briefing model call. Useful for bulk backfills or re-ingests where a briefing isn't worth its cost every time. `hot.md` and that run's entry in `log.md` are only written alongside a briefing, so both are skipped too — the run still ends with `briefings/leads-<date>.md`, `requests.md`, and `watchlist.md` alerts, which don't depend on the briefing. Also available on `watchdog finalize --skip-briefing`, and as a top-level `watchdog --skip-briefing` when the bare guided walk reaches ingest.
 
 **Resumability.** Pressing Ctrl+C, or hitting a rate limit without `--wait`, stops the batch cleanly: finished documents are saved and unfinished ones stay queued, so re-running `watchdog ingest` picks up where it left off. A document that genuinely fails extraction is set aside in `queue/_failed/`; the run reports how many, and `watchdog requeue` moves them back to retry — this is surfaced everywhere the queue's state matters: the normal run summary, a Ctrl+C even during the finalize wrap-up below, `--estimate`, and a bare `watchdog ingest` with nothing new to read, which offers to requeue and retry right there instead of just reporting an empty queue. On macOS or Linux, ingest also keeps the machine from sleeping for the run's duration — see [Troubleshooting](troubleshooting.md#ingest-prevents-the-machine-from-sleeping-during-a-run).
 

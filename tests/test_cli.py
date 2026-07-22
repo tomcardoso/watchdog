@@ -658,6 +658,26 @@ def test_cmd_status_no_usage_line_before_any_ingest(configured, capsys):
     assert "Last ingest" not in _strip_ansi(capsys.readouterr().out)
 
 
+def test_bare_watchdog_skip_briefing_flag_reaches_cmd_guided(configured, tmp_path, monkeypatch):
+    """`watchdog --skip-briefing` with no subcommand (#410) parses `command=None` and
+    `skip_briefing=True` on the same Namespace `cmd_guided` receives — it rides through
+    unchanged to `cmd_ingest` via `_offer_ingest`, no separate plumbing needed."""
+    import sys
+    vault = tmp_path / "bare-vault"
+    (vault / ".watchdog" / "queue").mkdir(parents=True)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(sys, "argv", ["watchdog", "--skip-briefing"])
+
+    captured = []
+    monkeypatch.setattr(cli, "cmd_guided", lambda a: captured.append(a))
+
+    cli.main()
+
+    assert len(captured) == 1
+    assert captured[0].command is None
+    assert captured[0].skip_briefing is True
+
+
 def test_cmd_guided_warns_pending_research(configured, capsys, monkeypatch):
     cli.cmd_new(args(name="Test Proj", dir=str(configured)))
     vault = configured / "test-proj"
@@ -2067,6 +2087,27 @@ def test_cmd_finalize_does_not_require_claude_auth_when_finalizer_non_claude(wdg
         ing.cmd_finalize(args())
 
 
+def test_cmd_finalize_threads_skip_briefing_to_run_finalize(wdg_home, tmp_path, monkeypatch):
+    """`watchdog finalize --skip-briefing` (#410) reaches `_run_finalize` as `skip_briefing=True`,
+    same as `ingest`'s own plumbing."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: True)
+
+    calls = []
+    monkeypatch.setattr(ing, "_run_finalize",
+                        lambda *a, **k: (calls.append(k), {"synthesized": 0})[1])
+
+    ing.cmd_finalize(args(skip_briefing=True))
+
+    assert len(calls) == 1
+    assert calls[0].get("skip_briefing") is True
+
+
 # ── cmd_ingest: claude-batch validation guards (#214) ──────────────────────────
 
 def _vault_with_queued_doc(tmp_path):
@@ -2349,6 +2390,42 @@ def test_cmd_ingest_wait_and_no_finalize_stops_once_queue_drains(wdg_home, tmp_p
     assert len(calls) == 1
     assert calls[0].get("wait") is True
     assert calls[0].get("skip_finalize") is True
+
+
+# ── cmd_ingest --skip-briefing plumbing (#410) ───────────────────────────────
+
+def test_cmd_ingest_skip_briefing_threads_to_orchestrate_run(wdg_home, tmp_path, monkeypatch, capsys):
+    """`--skip-briefing` reaches `orchestrate.run` as `skip_briefing=True` — synthesis and the
+    timeline still run (`finalize_skipped` stays False), only the briefing model call is
+    skipped, so the closing block shows the usual "open a session" line."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+
+    calls = []
+
+    async def fake_run(*a, **k):
+        calls.append(k)
+        return {"results": [{"sha256": "sha1", "filename": "a.pdf", "status": "ok", "entity_count": 1}],
+                "extracted": 1, "skipped": 0, "failed": 0, "cancelled": False,
+                "rate_limited": False, "stop_message": None, "rate_limit_resets_at": None,
+                "quarantined": 0, "finalize_skipped": False,
+                "post_ingest": {"synthesized": 0, "timeline_collisions": 0, "briefing": None,
+                                "briefing_skipped": True, "merged": [], "contradictions": []}}
+    monkeypatch.setattr(orch_module, "run", fake_run)
+
+    ing.cmd_ingest(args(skip_briefing=True), confirm=False)
+
+    assert len(calls) == 1
+    assert calls[0].get("skip_briefing") is True
+    out = capsys.readouterr().out
+    assert "Briefing skipped" in out
+    assert "--skip-briefing" in out
 
 
 # ── watchdog extract (#425) ──────────────────────────────────────────────────
