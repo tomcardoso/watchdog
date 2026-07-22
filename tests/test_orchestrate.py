@@ -1670,6 +1670,37 @@ def test_post_ingest_fails_loudly_on_briefing_model_error_without_retrying(tmp_p
     assert out.get("briefing_error")                  # failure recorded so the caller can surface it
 
 
+def test_post_ingest_skip_briefing_makes_no_briefing_call(tmp_path, monkeypatch):
+    """`skip_briefing=True` (#410) never calls the model for the briefing task — synthesis and
+    the timeline-dedup calls still happen — and records the skip as `briefing_skipped` rather
+    than `briefing_error`, so the caller doesn't treat it as a failure."""
+    vault = make_vault(tmp_path)
+    results = [orchestrate._compact_result(
+        "sha1", "doc.pdf",
+        {"document": {"key_facts": [{"fact": "a fact"}]}, "entities": []},
+        {}, 0.01, {})]
+
+    calls = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        calls.append(task)
+        if task == "briefing":
+            raise AssertionError("briefing must not be called when skip_briefing=True")
+        parsed = {"groups": []} if task == "timeline-dedup" else {}
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="claude-agent-sdk", auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    out = asyncio.run(orchestrate._post_ingest(vault, results, None, "haiku", skip_briefing=True))
+
+    assert "briefing" not in calls
+    assert out.get("briefing") is None
+    assert out.get("briefing_error") is None
+    assert out.get("briefing_skipped") is True
+    assert not (vault / "briefings").exists()   # no briefing file written
+    assert not (vault / "hot.md").exists()      # hot.md is only written by _write_briefing
+
+
 def test_post_ingest_leaves_collision_untouched_when_dedup_fails(tmp_path, monkeypatch):
     """A rate limit during timeline dedup must leave BOTH the canonical and its raw untouched, so
     the next ingest retries the collision cleanly. The pre-#250 bug wrote the canonical+raw union

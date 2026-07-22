@@ -699,6 +699,14 @@ merge — deterministic, no model call, parallel to its registry surgery (§I1);
 `watchdog ingest` prints the per-document summary; the briefing/hot/log files are the
 durable record a fresh session reads.
 
+**`--skip-briefing` (D133, #410).** A flag on `ingest`, not a separate command — plumbed as
+`skip_briefing` through `orchestrate.run` → `finalize` → `_post_ingest`, which skips only the
+`briefing` model call; reconciliation, synthesis, and the timeline steps above still run. Since
+`_write_briefing` is what writes `hot.md` and the run's `log.md` entry, both are skipped along
+with `briefings/<ts>.md` — the leads/watchlist/requests sweeps below don't depend on it and still
+run. Recorded as `briefing_skipped` (not `briefing_error`), so the caller doesn't treat an
+intentional skip as a failed run needing a later `watchdog finalize`.
+
 **Deterministic sweeps + resolution overlay (D68).** Two model-free, whole-vault passes run
 alongside the briefing and are also available on demand: the lead sweep (`pipeline/leads.py`,
 `watchdog leads`) reads the entity registry for named-but-unprofiled / isolated / contradiction /

@@ -1192,7 +1192,7 @@ def _select_kept(events: list[dict], groups) -> list[dict]:
 
 async def _post_ingest(vault: Path, results: list, brief: str | None, post_model: str,
                        post_effort: str | None = None, post_backend: str | None = None,
-                       rec_result: dict | None = None) -> dict:
+                       rec_result: dict | None = None, skip_briefing: bool = False) -> dict:
     out: dict = {"synthesized": 0, "timeline_collisions": 0, "briefing": None,
                  "merged": [], "contradictions": []}
     print()
@@ -1294,48 +1294,60 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
          f"{n_events} event{'s' if n_events != 1 else ''}{_RESET}")
 
     # 3. Briefing + hot.md + log.md (model writes prose; Python writes the files).
-    _say(f"{_DIM}→  writing briefing…{_RESET}")
     ok = [r for r in results if r.get("status") == "ok"]
-    scratchpads = [p.read_text(encoding="utf-8")
-                   for p in sorted((vault / ".watchdog" / "tmp").glob("notes_*.md"))]
-    neardup_alerts = [{"filename": r["filename"], "similarity": r["near_dup_similarity"]}
-                      for r in ok if r.get("near_dup_similarity", 0) >= 0.85]
-    # Fed by the reconciliation pass (#381/D118), which is the only stage that can see a conflict
-    # at all. This used to be scraped off the per-document extraction results, so the count could
-    # only ever include conflicts the extractor happened to be positioned to notice.
-    contradiction_flags = [{"entity": c["entity_name"], "label": c["label"]}
-                           for c in out["contradictions"]]
-    # Deterministic pointer, not a model input (D111): count this run's open document requests
-    # (recorded per-document into the ledger by write_vault, at extraction time) so the briefing
-    # can point at requests.md without the requests themselves ever entering a prompt.
-    ok_shas = {r["sha256"] for r in ok}
-    n_new_requests = len([r for r in requests.open_requests(vault) if r.get("source_sha256") in ok_shas])
-    try:
-        r = await _call_model(
-            task="briefing", model=post_model, backend=post_backend, schema=schemas.BRIEFING,
-            prompt=prompts.build_briefing_prompt(
-                brief=brief, results=ok, scratchpads=scratchpads,
-                neardup_alerts=neardup_alerts, contradiction_flags=contradiction_flags),
-            effort=post_effort, vault=vault)
-        out["briefing"] = _write_briefing(vault, r.parsed, ok, neardup_alerts, contradiction_flags,
-                                          n_new_requests)
-    except model_client.RateLimitError as e:
-        out["briefing_error"] = str(e)
-        _say(f"{_YELLOW}briefing skipped{_RESET}{_DIM} — {e}{_RESET}")
-    except model_client.ModelError as e:
-        # Extraction has already run through this same backend, so a briefing ModelError is
-        # almost always an output-cap truncation: the briefing's arrays (what_was_ingested/
-        # connections/leads/…) scale with batch size, so a big/dense batch can overrun even the
-        # 16k-token ceiling and truncate the JSON. That's deterministic — a plain re-run feeds
-        # the identical input into the identical ceiling and fails the same way (#296) — so we
-        # fail loudly with the real remedy (a smaller batch) rather than retrying or silently
-        # shipping a degraded briefing. Everything else (per-doc facts, entity notes, timeline)
-        # is already on disk; only the synthesized briefing is lost, and the pending batch can be
-        # discarded on the next ingest to unstick. Streaming (an unbounded ceiling) is future work.
-        out["briefing_error"] = str(e)
-        _say(f"{_YELLOW}briefing not written{_RESET}{_DIM} — the model's output limit was exceeded "
-             f"(this batch is too large to summarize in one pass). Re-ingest it in smaller "
-             f"batches; everything else was written.{_RESET}")
+    if skip_briefing:
+        # #410: an intentional skip, not a failure — leave `briefing`/`briefing_error` alone so
+        # this doesn't trip the "post-processing didn't finish" path (that's for a briefing that
+        # was attempted and failed). hot.md and log.md's per-run entry are both written by
+        # `_write_briefing`, so neither updates this run either — only the briefing model call
+        # itself is skipped; synthesis and the timeline above already ran.
+        out["briefing_skipped"] = True
+        _say(f"{_DIM}→  briefing skipped{_RESET}{_DIM} (--skip-briefing){_RESET}")
+    else:
+        _say(f"{_DIM}→  writing briefing…{_RESET}")
+        scratchpads = [p.read_text(encoding="utf-8")
+                       for p in sorted((vault / ".watchdog" / "tmp").glob("notes_*.md"))]
+        neardup_alerts = [{"filename": r["filename"], "similarity": r["near_dup_similarity"]}
+                          for r in ok if r.get("near_dup_similarity", 0) >= 0.85]
+        # Fed by the reconciliation pass (#381/D118), which is the only stage that can see a
+        # conflict at all. This used to be scraped off the per-document extraction results, so
+        # the count could only ever include conflicts the extractor happened to be positioned to
+        # notice.
+        contradiction_flags = [{"entity": c["entity_name"], "label": c["label"]}
+                               for c in out["contradictions"]]
+        # Deterministic pointer, not a model input (D111): count this run's open document
+        # requests (recorded per-document into the ledger by write_vault, at extraction time) so
+        # the briefing can point at requests.md without the requests themselves ever entering a
+        # prompt.
+        ok_shas = {r["sha256"] for r in ok}
+        n_new_requests = len([r for r in requests.open_requests(vault) if r.get("source_sha256") in ok_shas])
+        try:
+            r = await _call_model(
+                task="briefing", model=post_model, backend=post_backend, schema=schemas.BRIEFING,
+                prompt=prompts.build_briefing_prompt(
+                    brief=brief, results=ok, scratchpads=scratchpads,
+                    neardup_alerts=neardup_alerts, contradiction_flags=contradiction_flags),
+                effort=post_effort, vault=vault)
+            out["briefing"] = _write_briefing(vault, r.parsed, ok, neardup_alerts, contradiction_flags,
+                                              n_new_requests)
+        except model_client.RateLimitError as e:
+            out["briefing_error"] = str(e)
+            _say(f"{_YELLOW}briefing skipped{_RESET}{_DIM} — {e}{_RESET}")
+        except model_client.ModelError as e:
+            # Extraction has already run through this same backend, so a briefing ModelError is
+            # almost always an output-cap truncation: the briefing's arrays (what_was_ingested/
+            # connections/leads/…) scale with batch size, so a big/dense batch can overrun even
+            # the 16k-token ceiling and truncate the JSON. That's deterministic — a plain re-run
+            # feeds the identical input into the identical ceiling and fails the same way (#296)
+            # — so we fail loudly with the real remedy (a smaller batch) rather than retrying or
+            # silently shipping a degraded briefing. Everything else (per-doc facts, entity
+            # notes, timeline) is already on disk; only the synthesized briefing is lost, and the
+            # pending batch can be discarded on the next ingest to unstick. Streaming (an
+            # unbounded ceiling) is future work.
+            out["briefing_error"] = str(e)
+            _say(f"{_YELLOW}briefing not written{_RESET}{_DIM} — the model's output limit was exceeded "
+                 f"(this batch is too large to summarize in one pass). Re-ingest it in smaller "
+                 f"batches; everything else was written.{_RESET}")
 
     # 4. Watch-word scan (deterministic, no model; #165). Scans this run's documents against
     # the vault-root watchlist.md and writes briefings/alerts-<date>.md. No-op if the list is empty.
@@ -1649,7 +1661,8 @@ def pending_finalization(vault: Path) -> dict:
 
 async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None = None,
                    results: list | None = None, post_effort: str | None = None,
-                   post_backend: str | None = None, force_shas: list[str] | None = None) -> dict:
+                   post_backend: str | None = None, force_shas: list[str] | None = None,
+                   skip_briefing: bool = False) -> dict:
     """Reconcile, then commit every staged extraction to the vault, then run (or re-run)
     post-ingest over the current on-disk state: file contradictions, synthesize multi-mention
     entities, reconcile the timeline, and write the briefing/hot.md/log.
@@ -1679,6 +1692,10 @@ async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None 
     note and registry entry in place, the same replace-not-append path a repair retry of an
     already-committed document already relied on) and the reconciliation bundle, so their touched
     entities are re-synthesized along with the rest of this batch.
+
+    `skip_briefing` (#410) skips only the briefing model call — synthesis and the timeline still
+    run. Not an error, so it never sets `briefing_error`/leaves inputs pending the way a genuine
+    briefing failure does.
     """
     global _usage
     standalone_usage = _usage is None   # not nested inside `run` — this call owns the usage file
@@ -1708,7 +1725,8 @@ async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None 
         brief = _read_brief(vault)
     if results is None:
         results = _load_results(vault)
-    out = await _post_ingest(vault, results, brief, post_model, post_effort, post_backend, rec_result)
+    out = await _post_ingest(vault, results, brief, post_model, post_effort, post_backend, rec_result,
+                             skip_briefing=skip_briefing)
     # Surfaced so `run()` can sync the writer's new/updated split onto its own in-memory
     # `summary["results"]`, built before this pass ever runs (see `_commit_pending`'s docstring).
     out["committed_writes"] = commit_summary["written"]
@@ -1727,7 +1745,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
               extract_effort: str | None = None, post_effort: str | None = None,
               extract_backend: str | None = None, post_backend: str | None = None,
               classify_backend: str | None = None, wait: bool = False,
-              skip_finalize: bool = False, force: bool = False) -> dict:
+              skip_finalize: bool = False, force: bool = False,
+              skip_briefing: bool = False) -> dict:
     """Extract every queued document (bounded by `concurrency`), then post-ingest.
 
     `extract_model` drives extraction (whole-doc + section, and the sectioned-doc digest); `post_model` drives
@@ -1750,6 +1769,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     vault note already exists for its sha — `cmd_ingest` always pairs this with
     `skip_finalize=True` so it can gate the overwrite of already-committed documents (via
     `finalize`'s own `force_shas`) before anything is recommitted.
+    `skip_briefing` (#410) passes straight through to `finalize` — post-ingest still runs
+    reconciliation, synthesis, and the timeline, it just skips the briefing model call.
     """
     queue_dir = vault / ".watchdog" / "queue"
     shas = [f.stem for f in sorted(queue_dir.glob("*.json"))] if queue_dir.exists() else []
@@ -1893,7 +1914,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             # ones) so a merged batch — a prior pending run kept via wipe_pending=False — is
             # synthesized and briefed together with this run's documents.
             summary["post_ingest"] = await finalize(vault, post_model=post_model, brief=brief,
-                                                    post_effort=post_effort, post_backend=post_backend)
+                                                    post_effort=post_effort, post_backend=post_backend,
+                                                    skip_briefing=skip_briefing)
             # `results` was built before finalize's commit pass ran write_vault, so each item's
             # new/updated entity split was still unknown at the time (#403 phase 1) — sync it in
             # now from what the commit pass actually did, so a caller reading `summary["results"]`

@@ -2216,6 +2216,42 @@ def test_cmd_ingest_wait_and_no_finalize_stops_once_queue_drains(wdg_home, tmp_p
     assert calls[0].get("skip_finalize") is True
 
 
+# ── cmd_ingest --skip-briefing plumbing (#410) ───────────────────────────────
+
+def test_cmd_ingest_skip_briefing_threads_to_orchestrate_run(wdg_home, tmp_path, monkeypatch, capsys):
+    """`--skip-briefing` reaches `orchestrate.run` as `skip_briefing=True` — synthesis and the
+    timeline still run (`finalize_skipped` stays False), only the briefing model call is
+    skipped, so the closing block shows the usual "open a session" line."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+
+    calls = []
+
+    async def fake_run(*a, **k):
+        calls.append(k)
+        return {"results": [{"sha256": "sha1", "filename": "a.pdf", "status": "ok", "entity_count": 1}],
+                "extracted": 1, "skipped": 0, "failed": 0, "cancelled": False,
+                "rate_limited": False, "stop_message": None, "rate_limit_resets_at": None,
+                "quarantined": 0, "finalize_skipped": False,
+                "post_ingest": {"synthesized": 0, "timeline_collisions": 0, "briefing": None,
+                                "briefing_skipped": True, "merged": [], "contradictions": []}}
+    monkeypatch.setattr(orch_module, "run", fake_run)
+
+    ing.cmd_ingest(args(skip_briefing=True), confirm=False)
+
+    assert len(calls) == 1
+    assert calls[0].get("skip_briefing") is True
+    out = capsys.readouterr().out
+    assert "Briefing skipped" in out
+    assert "--skip-briefing" in out
+
+
 # ── watchdog extract (#425) ──────────────────────────────────────────────────
 
 def test_ingest_parser_no_longer_accepts_no_finalize(monkeypatch, capsys):

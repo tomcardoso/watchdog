@@ -436,6 +436,10 @@ def main() -> None:
                                "claude-batch extractor model.")
     p_ingest.add_argument("--estimate", action="store_true",
                           help="Print a token/cost estimate for the queue and exit — no lock, no confirm, no extraction")
+    p_ingest.add_argument("--skip-briefing", action="store_true", default=False, dest="skip_briefing",
+                          help="Run entity reconciliation, synthesis, and the timeline rebuild, "
+                               "but skip the briefing model call — useful for bulk backfills or "
+                               "re-ingests where the briefing isn't worth the cost every time.")
     p_ingest.add_argument("--force", nargs="*", default=None, dest="force", metavar="DOC",
                           help="Re-extract even when a cached extraction already exists — costs "
                                "full extraction spend on every document. Warns before overwriting "
