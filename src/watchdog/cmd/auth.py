@@ -459,10 +459,10 @@ def setup_auth_interactive(interactive: bool | None = None) -> None:
     (/watchdog-query, /watchdog-surface, ...) always run on Claude, and it's the ingestion
     default too. This sets up Claude access first (subscription or API key), and — on a
     subscription — warns that ingesting more than a few documents can be token-heavy for a
-    Pro plan's session limits and offers to route ingestion to a cheaper metered provider
-    instead, walking through picking that provider's models for the three ingest stages if
-    so (#325). Persists the choice; skips cleanly off a terminal. `interactive` is
-    overridable for testing.
+    Pro plan's session limits and offers to route ingestion to another provider instead —
+    a cheaper metered API, or a local/self-hosted model (#380) — walking through picking
+    that provider's models for the three ingest stages if so (#325). Persists the choice;
+    skips cleanly off a terminal. `interactive` is overridable for testing.
     """
     if interactive is None:
         interactive = sys.stdin.isatty()
@@ -494,9 +494,9 @@ def setup_auth_interactive(interactive: bool | None = None) -> None:
         lead = "\n" if printed else ""
         print(f"{lead}  {_YELLOW}Note:{_RESET} {_DIM}ingesting more than a few documents can be token-heavy for a "
               f"Pro subscription's session limits. See{_RESET}")
-        print(f"  {_CYAN}docs/configuration.md{_RESET} {_DIM}(\"Model backends\") for cheaper metered "
-              f"alternatives — OpenAI, DeepSeek, Gemini.{_RESET}")
-        if confirm("\n  Route ingestion to a metered API service instead of your subscription?", default=False):
+        print(f"  {_CYAN}docs/configuration.md{_RESET} {_DIM}(\"Model backends\") for cheaper "
+              f"alternatives — OpenAI, DeepSeek, Gemini, OpenRouter — or a local/self-hosted model.{_RESET}")
+        if confirm("\n  Route ingestion to another provider instead of your subscription?", default=False):
             _setup_metered_ingestion(state)
         else:
             _maybe_tune_concurrency_for_subscription()

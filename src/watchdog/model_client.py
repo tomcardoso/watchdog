@@ -673,6 +673,7 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     import httpx
 
     is_deepseek = "deepseek" in base_url
+    is_openai = base_url.rstrip("/") == _OPENAI_BASE["openai"]
     thinking: bool | None = None
     if is_deepseek:
         model_id, thinking = _split_deepseek_thinking(model_id)
@@ -694,8 +695,14 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     else:
         body["response_format"] = response_format
     # OpenAI reasoning models reject `max_tokens` and require `max_completion_tokens`; chat models
-    # and DeepSeek (classic wire format) take `max_tokens`. Driven by the one capability table.
-    if not is_deepseek and _openai_is_reasoning(model_id):
+    # and every other OpenAI-compatible provider (DeepSeek, Gemini, local, OpenRouter) take
+    # `max_tokens`. Gated to the real OpenAI endpoint specifically (#380) — `_openai_is_reasoning`'s
+    # prefix table (`gpt-5`, `o1`, `o3`, `o4`) is OpenAI's own naming convention, and a local model's
+    # id has no relation to it (an operator could name a self-hosted model anything); sending
+    # `max_completion_tokens` to a runner that doesn't recognize it would either be silently
+    # ignored (defeating the max_tokens ceiling `output_ceiling_for_sectioning` relies on for
+    # local/openrouter) or rejected outright.
+    if is_openai and _openai_is_reasoning(model_id):
         body["max_completion_tokens"] = max_tokens
     else:
         body["max_tokens"] = max_tokens

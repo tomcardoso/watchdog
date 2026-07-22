@@ -656,6 +656,28 @@ def test_gemini_uses_max_tokens(monkeypatch):
     assert "max_completion_tokens" not in captured["body"]
 
 
+def test_local_uses_max_tokens_even_for_an_openai_reasoning_style_id(monkeypatch):
+    # A self-hosted model's id carries no relation to OpenAI's naming (#380) — an operator could
+    # name one "gpt-5-mini" or "o3-mini" and it would still speak the classic max_tokens field.
+    # Gating on base_url (not just model_id) keeps a local/OpenRouter call from sending
+    # max_completion_tokens to a runner that doesn't recognize it.
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async("p", "gpt-5-mini", SCHEMA, None, 8000,
+                                          base_url="http://localhost:11434/v1"))
+    assert captured["body"]["max_tokens"] == 8000
+    assert "max_completion_tokens" not in captured["body"]
+
+
+def test_openrouter_uses_max_tokens_even_for_an_openai_reasoning_style_id(monkeypatch):
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async("p", "o3-mini", SCHEMA, "sk-or-x", 8000,
+                                          base_url="https://openrouter.ai/api/v1"))
+    assert captured["body"]["max_tokens"] == 8000
+    assert "max_completion_tokens" not in captured["body"]
+
+
 def test_gemini_backend_request_shape(monkeypatch):
     captured = {}
     _fake_httpx(monkeypatch, captured)
