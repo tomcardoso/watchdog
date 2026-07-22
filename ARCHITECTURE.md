@@ -699,7 +699,7 @@ merge — deterministic, no model call, parallel to its registry surgery (§I1);
 `watchdog ingest` prints the per-document summary; the briefing/hot/log files are the
 durable record a fresh session reads.
 
-**`--skip-briefing` (D133, #410).** A flag on `ingest` and `finalize`, not a separate command —
+**`--skip-briefing` (D134, #410).** A flag on `ingest` and `finalize`, not a separate command —
 plumbed as `skip_briefing` through `orchestrate.run`/`orchestrate.finalize` → `_post_ingest`,
 which skips only the `briefing` model call; reconciliation, synthesis, and the timeline steps
 above still run. Since `_write_briefing` is what writes `hot.md` and the run's `log.md` entry,

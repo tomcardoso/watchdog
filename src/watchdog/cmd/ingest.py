@@ -108,16 +108,23 @@ def _effective_extract_backend(extract_backend: str | None, auth_mode: str) -> s
 
 
 def _format_models_line(classify_backend, classify_model, extract_backend, extract_model,
-                        post_backend, post_model) -> str:
+                        post_backend, post_model, extract_effort=None, post_effort=None) -> str:
     """Which model runs each ingest stage — printed alongside the cost estimate before an
     ingest starts, so a run under a non-default provider (#325) is obvious up front instead of
-    the older generic 'Using the configured provider(s).' notice."""
+    the older generic 'Using the configured provider(s).' notice. Stage names are padded to a
+    common width so the model values line up in a column (#411); classify has no effort knob
+    (D36), so only the extractor/finalizer rows can carry an "(effort: …)" suffix."""
     def label(backend, model):
         return f"{backend}:{model}" if backend else model
-    stages = (("classifier", classify_backend, classify_model),
-              ("extractor", extract_backend, extract_model),
-              ("finalizer", post_backend, post_model))
-    return "\n".join(f"  {_DIM}{name}{_RESET} {_CYAN}{label(b, m)}{_RESET}" for name, b, m in stages)
+    stages = (("classifier", classify_backend, classify_model, None),
+              ("extractor", extract_backend, extract_model, extract_effort),
+              ("finalizer", post_backend, post_model, post_effort))
+    width = max(len(name) for name, *_ in stages)
+    lines = []
+    for name, b, m, effort in stages:
+        suffix = f" {_DIM}(effort: {effort}){_RESET}" if effort else ""
+        lines.append(f"  {_DIM}{name:<{width}}{_RESET} {_CYAN}{label(b, m)}{_RESET}{suffix}")
+    return "\n".join(lines)
 
 
 def _preview_ingest(vault: Path, args) -> tuple[str, str] | None:
@@ -142,11 +149,14 @@ def _preview_ingest(vault: Path, args) -> tuple[str, str] | None:
         getattr(args, "finalizer_model", None), config.get("finalizer_model"), default="haiku")
     classify_backend, classify_model = _resolve_stage(
         getattr(args, "classifier_model", None), config.get("classifier_model"), default="haiku")
+    extract_effort = _effort(getattr(args, "extractor_effort", None), config.get("extractor_effort"))
+    post_effort = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
 
     auth_mode = resolve_auth()["mode"] if extract_backend is None else None
     est = cost_estimate(vault, queue_files, _effective_extract_backend(extract_backend, auth_mode))
     models_line = _format_models_line(classify_backend, classify_model,
-                                      extract_backend, extract_model, post_backend, post_model)
+                                      extract_backend, extract_model, post_backend, post_model,
+                                      extract_effort, post_effort)
     return _format_cost_estimate(est), models_line
 
 
@@ -248,6 +258,45 @@ def cmd_chew(args) -> None:
         _offer_ingest(args, vault)
 
 
+def _public_records_warning(n_docs: int) -> str:
+    """The README's `## Public records only` warning (README.md:13-17), reworded for the
+    terminal gate at the point of no return (#426). Wording tracks the README section so the
+    two never drift."""
+    return (
+        f"\n  {_YELLOW}⚠{_RESET}  {_BOLD}Public records only{_RESET}\n\n"
+        "  The extracted text of every queued document will be sent to a\n"
+        "  cloud AI model. This cannot be undone. Use Watchdog only for\n"
+        "  documents that are public, or presumptively public — never for\n"
+        "  confidential source material, leaks, or anything that could\n"
+        "  identify a source.\n\n"
+        f"  {_BOLD}{n_docs}{_RESET} document{'s' if n_docs != 1 else ''} will be sent to the model.\n"
+    )
+
+
+def _confirm_public_records(n_docs: int, *, skip_warning: bool = False) -> bool:
+    """The point-of-no-return gate before any ingest/extract that will call the model (#426):
+    shows the README's 'Public records only' warning and requires an explicit acknowledgement,
+    defaulting to Acknowledge — the standing warning is the real safeguard; a Cancel default
+    would just train people to reflexively pick past it. This replaces the old generic
+    'Ingest now?' pick at both call sites rather than stacking a second prompt.
+
+    `n_docs == 0` means this run makes no new model call (e.g. only checking on a pending
+    claude-batch extraction) — nothing to warn about, so it's a silent no-op.
+
+    `--skip-warning` (for repeated/scripted runs on an already-vetted corpus) suppresses the
+    interactive pause but still prints a one-line notice, so a skipped run is never silent
+    about what it sent.
+    """
+    if n_docs == 0:
+        return True
+    if skip_warning:
+        print(f"\n  {_DIM}Sending {_RESET}{_BOLD}{n_docs}{_RESET}{_DIM} document"
+              f"{'s' if n_docs != 1 else ''} to a cloud AI model.{_RESET}")
+        return True
+    print(_public_records_warning(n_docs))
+    return interactive.pick(["Acknowledge and ingest", "Cancel"], 0) == 0
+
+
 def _offer_ingest(args, vault: Path) -> None:
     """After chew, offer to run ingest right away; print the command hint if declined."""
     preview = _preview_ingest(vault, args)
@@ -255,10 +304,12 @@ def _offer_ingest(args, vault: Path) -> None:
         estimate_line, models_line = preview
         print(estimate_line)
         print(models_line)
-    if interactive.pick(["Ingest now", "Not now"], 0, title="Ingest now?") == 0:
+    n_docs = _count_queued(vault)
+    if _confirm_public_records(n_docs, skip_warning=getattr(args, "skip_warning", False)):
         cmd_ingest(args, confirm=False, skip_preview=True)
     else:
-        print(f"\n  Run:  {_CYAN}watchdog ingest{_RESET}\n")
+        # No leading blank line here — pick()'s own close-out already leaves one (#411).
+        print(f"  Run:  {_CYAN}watchdog ingest{_RESET}\n")
 
 
 def _wait_seconds(resets_at: int | None) -> tuple[int, bool]:
@@ -508,7 +559,16 @@ def _caffeinate():
             try:
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                proc.kill()
+                # Same target as the initial signal above (#437 review) — SIGKILL-ing only the
+                # systemd-inhibit process itself, not its group, could leave the `sleep infinity`
+                # placeholder it launched running as an orphan.
+                if own_group:
+                    try:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                else:
+                    proc.kill()
                 proc.wait(timeout=5)
 
 
@@ -640,23 +700,23 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
             bits.append(f"{p['entities']} entit{'ies' if p['entities'] != 1 else 'y'} to synthesize")
         detail = f" {_DIM}({', '.join(bits)}){_RESET}" if bits else ""
         print(f"\n  {_YELLOW}A previous batch is pending finalization{_RESET}{detail}{_DIM}.{_RESET}")
-        print(f"  {_DIM}A new ingest resets it — what would you like to do?{_RESET}\n")
-        print(f"    {_BOLD}m{_RESET}  merge it into this ingest {_DIM}— extract the new docs, then finalize everything together{_RESET}")
-        print(f"    {_BOLD}f{_RESET}  finalize it now, then stop {_DIM}— ingest the new docs afterward{_RESET}")
-        print(f"    {_BOLD}d{_RESET}  discard it and ingest only the new docs")
-        try:
-            choice = input(f"\n  Choice? [{_BOLD}m{_RESET}] ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print()
+        print(f"  {_DIM}A new ingest resets it — what would you like to do?{_RESET}")
+        choice = interactive.pick(
+            [f"Merge it into this ingest {_DIM}— extract the new docs, then finalize everything together{_RESET}",
+             f"Finalize it now, then stop {_DIM}— ingest the new docs afterward{_RESET}",
+             "Discard it and ingest only the new docs"],
+            0, title="Pending batch")
+        if choice is interactive.CANCELLED:
             return
-        if choice in ("f", "finalize"):
+        if choice == 1:                        # finalize now, then stop
             out = _run_finalize(vault, post_model, post_effort, post_backend,
                                 skip_briefing=skip_briefing)
             if not (out.get("error") or out.get("briefing_error")):
                 print(f"  {_DIM}Now run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} for the queued documents.{_RESET}\n")
             return
-        if choice in ("d", "discard"):
+        if choice == 2:                        # discard
             wipe_pending = True
+            print(f"  {_DIM}Discarding the pending batch — ingesting only the new documents.{_RESET}")
         else:                                  # default: merge (non-destructive)
             wipe_pending = False
             print(f"  {_DIM}Merging the pending batch into this ingest.{_RESET}")
@@ -683,7 +743,10 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
             if "error" in result:
                 sys.exit(f"\n  {_YELLOW}Error:{_RESET} {result['error']}\n")
         if result["total"] == 0:
-            if failed:
+            # Re-check rather than trust the `failed` count captured above (#437 review) — a
+            # requeue attempt in between (or a concurrent `watchdog requeue`) can have already
+            # emptied _failed/, and "run watchdog requeue" would be a dead end at that point.
+            if _failed_count(vault):
                 print(f"\n  {_DIM}Run {_RESET}{_CYAN}watchdog requeue{_RESET}{_DIM} when ready, then "
                       f"{_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} again.{_RESET}\n")
             else:
@@ -697,7 +760,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         est = cost_estimate(vault, result["queue_files"], _effective_extract_backend(extract_backend, a["mode"]))
         print(f"\n{_format_cost_estimate(est)}")
         print(_format_models_line(classify_backend, classify_model, extract_backend, extract_model,
-                                  post_backend, post_model))
+                                  post_backend, post_model, extract_effort, post_effort))
     elif batch_pending:
         print(f"\n  {_DIM}Checking on a pending batch extraction…{_RESET}")
 
@@ -739,9 +802,10 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         (vault / ".watchdog" / "ingest-state.json").unlink(missing_ok=True)
 
     if confirm:
-        if interactive.pick(["Ingest now", "Not now"], 0, title="Ingest now?") != 0:
+        if not _confirm_public_records(q, skip_warning=getattr(args, "skip_warning", False)):
             _release_lock()
-            print(f"\n  When ready, run:  {_CYAN}watchdog ingest{_RESET}\n")
+            # No leading blank line — pick()'s own close-out already leaves one (#411).
+            print(f"  When ready, run:  {_CYAN}watchdog ingest{_RESET}\n")
             return
 
     import asyncio
@@ -749,15 +813,30 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
     log_path = vault / "log.md"
     if not log_path.exists():
         log_path.write_text(_render_template("log.md"))
+
+    # The block below is what a user sees right as extraction starts — reached either straight
+    # from this function's own "Ingest now?" pick() (confirm=True) or via _offer_ingest's pick()
+    # in the caller (confirm=False); either way a picker just closed and already left one blank
+    # line, so the first of these notices must not add its own leading "\n" on top of it (#411).
+    said_since_pick = False
+
+    def _say_since_pick(msg: str) -> None:
+        nonlocal said_since_pick
+        print((f"\n{msg}" if said_since_pick else msg))
+        said_since_pick = True
+
     if force:
-        print(f"\n  {_YELLOW}--force{_RESET}{_DIM}: re-extracting even where a cached extraction "
-              f"or a committed vault note already exists.{_RESET}")
+        _say_since_pick(f"  {_YELLOW}--force{_RESET}{_DIM}: re-extracting even where a cached "
+                        f"extraction or a committed vault note already exists.{_RESET}")
+    if no_finalize:
+        _say_since_pick(f"  {_DIM}--no-finalize: stopping after extraction — run {_RESET}"
+                        f"{_CYAN}watchdog finalize{_RESET}{_DIM} later to complete the batch.{_RESET}")
     if extract_backend == "claude-batch":
-        print(f"\n  {_DIM}claude-batch: sectioned documents (if any) extract via claude-api now; "
-              f"the rest submit as one batch and finish later.{_RESET}")
+        _say_since_pick(f"  {_DIM}claude-batch: sectioned documents (if any) extract via claude-api now; "
+                        f"the rest submit as one batch and finish later.{_RESET}")
     else:
-        print(f"\n  {_DIM}Extracting (≤{concurrency} parallel) — the model is called only for reasoning; "
-              f"the pipeline runs in Python.{_RESET}")
+        _say_since_pick(f"  {_DIM}Extracting (≤{concurrency} parallel) — the model is called only for "
+                        f"reasoning; the pipeline runs in Python.{_RESET}")
         print(f"  {_YELLOW}Large documents can take several minutes each{_RESET}{_DIM} — a long pause on a "
               f"row is normal, not a stall.{_RESET}")
         print(f"  {_DIM}Press {_RESET}{_CYAN}Ctrl+C{_RESET}{_DIM} to stop; finished documents are kept.{_RESET}\n")

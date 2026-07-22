@@ -455,6 +455,10 @@ def main() -> None:
                                "one or more committed documents (sha256, an unambiguous sha256 "
                                "prefix, or filename) to re-queue and re-extract them too, e.g. "
                                "--force report.pdf 9f2c1a.")
+    p_ingest.add_argument("--skip-warning", action="store_true", default=False, dest="skip_warning",
+                          help="Skip the 'Public records only' acknowledgement pause — for "
+                               "repeated or scripted runs on a corpus already vetted as public. "
+                               "Still prints a one-line notice that documents were sent to the model.")
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_extract = sub.add_parser("extract", help="Classify and extract queued documents; stop before finalize (run watchdog finalize next)")
@@ -484,6 +488,10 @@ def main() -> None:
                            help="Re-extract even when a cached extraction already exists — costs "
                                 "full extraction spend on every document. Nothing is committed to "
                                 "the vault by `extract`, so this needs no overwrite warning.")
+    p_extract.add_argument("--skip-warning", action="store_true", default=False, dest="skip_warning",
+                           help="Skip the 'Public records only' acknowledgement pause — for "
+                                "repeated or scripted runs on a corpus already vetted as public. "
+                                "Still prints a one-line notice that documents were sent to the model.")
     p_extract.set_defaults(func=cmd_extract)
 
     p_finalize = sub.add_parser("finalize", help="Complete post-ingest (entity reconciliation, synthesis, timeline, briefing) for an already-extracted batch — e.g. after a rate limit stopped it")

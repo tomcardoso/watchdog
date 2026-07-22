@@ -344,12 +344,31 @@ def _pages_text(pages: list[dict]) -> str:
     )
 
 
-def _candidates_checklist(text: str) -> str:
+def _candidates_checklist(text: str, *, vault: Path | None = None, sha: str | None = None,
+                          filename: str | None = None, flow: str = "") -> str:
     """Tier 0 candidate harvest (#361/D123): deterministic spans (money, figure, percent,
     date, docket) plus optional local-NER entities, rendered as the per-page checklist injected
     into the extraction prompt. `text` carries the same `<!-- PAGE N -->` markers as `_pages_text`
-    output (whole-document or one section's), so this works for both extraction paths."""
+    output (whole-document or one section's), so this works for both extraction paths.
+
+    `vault`/`sha`/`filename`/`flow`, when given, mark this step on the document's live in-flight
+    row before it runs and log its result to ingest.log after (#411) — GLiNER's local model load
+    + inference (`harvest_entities`) is the one step that can silently run for minutes on a long
+    document; without this the row just sat on "extracting…" the whole time, with no sign
+    anything was happening. Callers pass these only from the two hot, per-document extraction
+    paths (`_simple_extract`, `_extract_sectioned`) — the rarer batch-repair/submit paths omit
+    them and get the old silent behaviour, since they have no live per-document row today."""
+    if sha is not None:
+        tty = f"{_DIM}→  {filename}  {flow}{' · ' if flow else ''}harvesting candidates…{_RESET}"
+        plain = f"{_DIM}→  {filename}  harvesting candidates…{_RESET}"
+        if _board is not None:
+            _board.update(sha, f"  {tty}", f"  {plain}")
+        else:
+            _say(plain)
     candidates = harvest.harvest(text) + harvest.harvest_entities(harvest.split_pages(text))
+    if sha is not None and vault is not None:
+        n = len(candidates)
+        _log(vault, f"HARVEST {filename}: {n} candidate{'s' if n != 1 else ''}")
     return harvest.format_checklist(candidates)
 
 
@@ -501,9 +520,17 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
                           effort=None, backend=None):
     """Whole-document extraction, with one repair attempt if post-flight rejects."""
     text = _pages_text(pf["pages"])
+    page_count = pf.get("page_count") or len(pf["pages"])
+    filename = pf["filename"]
+    flow = f"{page_count}p · {skill_label}"
     # GLiNER inference over every page can take minutes on a long document — run it off the
     # event loop so it doesn't stall every other concurrent document.
-    candidates = await asyncio.to_thread(_candidates_checklist, text)
+    candidates = await asyncio.to_thread(
+        _candidates_checklist, text, vault=vault, sha=sha, filename=filename, flow=flow)
+    # Restore the row to "extracting…" now that harvesting is done and the model call is next.
+    if _board is not None:
+        _board.update(sha, f"  {_DIM}→  {filename}  {flow} · extracting…{_RESET}",
+                      f"  {_DIM}→  {filename}  extracting…{_RESET}")
     base = prompts.build_extract_prompt(
         pages_text=text,
         skill_text=skill_text, sidecar=pf.get("sidecar"), brief=brief,
@@ -511,7 +538,6 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
         file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
         candidates=candidates,
     )
-    page_count = pf.get("page_count") or len(pf["pages"])
     cost, errors, extraction, scratchpad = 0.0, [], {}, ""
     for _ in range(2):
         p = base if not errors else _append_repair_note(base, errors)
@@ -604,7 +630,13 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
     for sec in sections:
         sec_text = (vault / sec["pages_path"]).read_text(encoding="utf-8")
         # Off the event loop — see the comment in `_simple_extract`.
-        candidates = await asyncio.to_thread(_candidates_checklist, sec_text)
+        candidates = await asyncio.to_thread(
+            _candidates_checklist, sec_text, vault=vault, sha=sha, filename=pf["filename"],
+            flow=sec["label"])
+        # Restore the row to "extracting…" now that harvesting is done and the model call is next.
+        if _board is not None:
+            _board.update(sha, f"  {_DIM}→  {pf['filename']}  {sec['label']} · extracting…{_RESET}",
+                          f"  {_DIM}→  {pf['filename']}  extracting…{_RESET}")
         prompt = prompts.build_section_prompt(
             pages_text=sec_text,
             skill_text=skill_text, carry_forward=carry, section_label=sec["label"],
@@ -765,13 +797,14 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
 
     if not ok:
         return _fail(vault, sha, filename, "post-flight rejected: " + "; ".join(errors[:3]))
-    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, warnings)
+    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, warnings,
+                              skill_label=skill_label)
 
 
 
 def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, scratchpad: str,
-                       cost: float, pf: dict,
-                       warnings: list[str] | None = None) -> dict:
+                       cost: float, pf: dict, warnings: list[str] | None = None,
+                       skill_label: str | None = None) -> dict:
     """Shared tail once an extraction has passed post-flight: settle-print, warnings, log,
     persist `result_<sha>.json`. Used by both the synchronous per-document path
     (`_extract_document`) and the batch-collect path (`_finish_batch_item`, #214) so a
@@ -781,6 +814,10 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
     printed here — after the OK line, not when post-flight ran — so they're tucked visually
     under this document's own row instead of landing wherever a concurrently-extracting
     document happened to be at the time (#333 follow-up).
+
+    `skill_label` (#411), when given, is the classified/pinned record skill — shown alongside the
+    page count and entity count so the completion line answers "what kind of document was this,
+    and how big" without a separate lookup.
 
     The queue file is deliberately *not* removed here any more (#403 phase 1): the vault has not
     been written yet at this point (post-flight only staged the extraction), and
@@ -794,10 +831,12 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
     for stale in (vault / ".watchdog" / "tmp").glob(f"section_{sha}_*.md"):
         stale.unlink(missing_ok=True)
     n_entities = len(extraction.get("entities", []))
+    page_count = pf.get("page_count") or len(pf.get("pages", []))
+    type_bit = f" · {skill_label}" if skill_label else ""
     _settle(sha, f"  {_GREEN}OK{_RESET}  {filename}  "
-            f"{_DIM}{n_entities} entit{'ies' if n_entities != 1 else 'y'}{_RESET}  "
+            f"{_DIM}{page_count}p · {n_entities} entit{'ies' if n_entities != 1 else 'y'}{type_bit}{_RESET}  "
             f"{_CYAN}documents/{_doc_slug(filename)}{_RESET}")
-    _log(vault, f"OK {filename}: {n_entities} entities")
+    _log(vault, f"OK {filename}: {page_count}p, {n_entities} entities{type_bit}")
     for msg in (warnings or []):
         _say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{msg}{_RESET}")
         _log(vault, f"WARN {filename}: {msg}")
@@ -891,7 +930,8 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
     ok, errors, warnings = _write_postflight(vault, sha, extraction)
     if not ok:
         return _fail(vault, sha, filename, "post-flight rejected: " + "; ".join(errors[:3]))
-    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, warnings)
+    return _finish_extraction(vault, sha, filename, extraction, scratchpad, cost, pf, warnings,
+                              skill_label=skill_label)
 
 
 
@@ -1850,6 +1890,21 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         # are already written to the vault; unfinished ones keep their queue file for resume.
         tasks[:] = [asyncio.ensure_future(_guarded(s)) for s in shas]
 
+        async def _tick_elapsed() -> None:
+            """Keep a pinned "elapsed MM:SS" row at the bottom of the live region while
+            extraction runs (#411) — a long pause on a dense document (minutes, not seconds,
+            #398) otherwise reads as a stall rather than normal progress."""
+            start = time.monotonic()
+            while True:
+                await asyncio.sleep(1)
+                elapsed = int(time.monotonic() - start)
+                _board.update("__elapsed__", f"  {_DIM}elapsed {elapsed // 60:02d}:{elapsed % 60:02d}{_RESET}",
+                              pin=True)
+
+        # Only on a real TTY — LiveRegion.update() falls back to plain append-only printing
+        # when disabled, which would spam a new line every second into logs/CI output.
+        timer_task = asyncio.ensure_future(_tick_elapsed()) if _board.enabled else None
+
         def _on_interrupt() -> None:
             if cancelled.is_set():
                 return
@@ -1875,6 +1930,12 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             with _board.capture_stderr():
                 await asyncio.gather(*tasks, return_exceptions=True)
         finally:
+            if timer_task is not None:
+                timer_task.cancel()
+                try:
+                    await timer_task
+                except asyncio.CancelledError:
+                    pass
             if handler_set:
                 loop.remove_signal_handler(signal.SIGINT)
             # Close the live region: extraction is done, so post-processing (sequential) and the
