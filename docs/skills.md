@@ -1,6 +1,6 @@
 # Skills
 
-Watchdog ships with domain knowledge for 32 document types — corporate filings, court documents, land registries, campaign finance returns, and more. This page explains what a skill is, how documents get matched to one, the full catalogue, and how to add your own. Read it if you want to know what Watchdog actually knows about your documents.
+Watchdog ships with domain knowledge for 33 document types — corporate filings, court documents, land registries, campaign finance returns, and more. This page explains what a skill is, how documents get matched to one, the full catalogue, and how to add your own. Read it if you want to know what Watchdog actually knows about your documents.
 
 ## What a skill is
 
@@ -72,6 +72,7 @@ Skills are jurisdiction-agnostic by default: universal principles come first, wi
 | [`dns-whois`](../src/watchdog/skills/records/dns-whois.md) | WHOIS records, DNS data, IP allocation, SSL certificate transparency logs |
 | [`news-clippings`](../src/watchdog/skills/records/news-clippings.md) | News articles, press releases, wire stories, corrections, retractions |
 | [`audio-video`](../src/watchdog/skills/records/audio-video.md) | YouTube transcripts, podcast transcripts, earnings calls, press conference recordings |
+| [`websites-html`](../src/watchdog/skills/records/websites-html.md) | Corporate and organizational websites, profile pages, forum posts, social media, blogs, marketplace and job listings, archived snapshots |
 
 ## Reading and pinning skills
 
