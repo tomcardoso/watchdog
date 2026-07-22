@@ -387,7 +387,8 @@ def _forced_overwrite_targets(vault: Path, summary: dict) -> list[tuple[str, str
 
 
 def _handle_force_gate(vault: Path, summary: dict, post_model: str,
-                       post_effort: str | None, post_backend: str | None) -> None:
+                       post_effort: str | None, post_backend: str | None,
+                       skip_briefing: bool = False) -> None:
     """After `ingest --force` re-extracts with finalize held off, warn before finalize recommits
     any document that was already in the vault — replacing an already-committed note/registry
     entry is genuinely destructive, unlike the routine ingest confirm, so this defaults to
@@ -410,7 +411,8 @@ def _handle_force_gate(vault: Path, summary: dict, post_model: str,
             return
     summary["finalize_skipped"] = False
     summary["post_ingest"] = _run_finalize(vault, post_model, post_effort, post_backend,
-                                           force_shas=[sha for sha, _ in targets] or None)
+                                           force_shas=[sha for sha, _ in targets] or None,
+                                           skip_briefing=skip_briefing)
 
 
 def _resolve_force_selectors(vault: Path, selectors: list[str]) -> list[str]:
@@ -596,6 +598,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
     else:
         force = bool(raw_force)
         force_selectors = []
+    skip_briefing = getattr(args, "skip_briefing", False)
     # --estimate promises "no lock, no confirm, no extraction" — read-only. Re-queueing named
     # documents is a real mutation (moves the morgue original into staging, writes a queue file),
     # so it must not run under --estimate; bare --force --estimate is unaffected, since it has no
@@ -706,7 +709,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         if choice is interactive.CANCELLED:
             return
         if choice == 1:                        # finalize now, then stop
-            out = _run_finalize(vault, post_model, post_effort, post_backend)
+            out = _run_finalize(vault, post_model, post_effort, post_backend,
+                                skip_briefing=skip_briefing)
             if not (out.get("error") or out.get("briefing_error")):
                 print(f"  {_DIM}Now run {_RESET}{_CYAN}watchdog ingest{_RESET}{_DIM} for the queued documents.{_RESET}\n")
             return
@@ -851,7 +855,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
                     extract_effort=extract_effort, post_effort=post_effort,
                     extract_backend=extract_backend, post_backend=post_backend,
                     classify_backend=classify_backend, wait=wait, skip_finalize=run_skip_finalize,
-                    force=force))
+                    force=force, skip_briefing=skip_briefing))
                 summary = _merge_summary(summary, iter_summary)
                 if not (wait and iter_summary.get("rate_limited")):
                     break
@@ -878,7 +882,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
     finally:
         _release_lock()
     if force and not no_finalize and summary.get("finalize_skipped") and not summary.get("batch_pending"):
-        _handle_force_gate(vault, summary, post_model, post_effort, post_backend)
+        _handle_force_gate(vault, summary, post_model, post_effort, post_backend,
+                           skip_briefing=skip_briefing)
     _print_ingest_summary(summary)
 
 
@@ -928,6 +933,9 @@ def _print_ingest_summary(summary: dict) -> None:
         else:
             print(f"  {_DIM}Documents are saved with their extracted claims; run {_RESET}"
                   f"{_CYAN}watchdog finalize{_RESET}{_DIM} to complete synthesis + the briefing.{_RESET}")
+    elif (summary.get("post_ingest") or {}).get("briefing_skipped"):
+        print(f"\n  {_DIM}Briefing skipped{_RESET} {_DIM}({_RESET}{_CYAN}--skip-briefing{_RESET}"
+              f"{_DIM}) — entities synthesized and the timeline rebuilt.{_RESET}")
     usage = summary.get("usage")
     if usage:
         cost = f" · ~${usage['cost_usd']:.4f}" if usage.get("cost_usd") else ""
@@ -994,17 +1002,22 @@ def cmd_finalize(args) -> None:
                      f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
 
 
-    _run_finalize(vault, post_model, post_effort, post_backend)
+    _run_finalize(vault, post_model, post_effort, post_backend,
+                 skip_briefing=getattr(args, "skip_briefing", False))
 
 
 def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
-                  post_backend: str | None = None, force_shas: list[str] | None = None) -> dict:
+                  post_backend: str | None = None, force_shas: list[str] | None = None,
+                  skip_briefing: bool = False) -> dict:
     """Acquire the ingest lock, run post-ingest over the pending batch, print the outcome.
 
     `force_shas` (#424) are already-committed shas a forced re-extraction just re-staged —
     passed straight through to `orchestrate.finalize`, which puts them back through the commit
     pass so their vault note and registry entry are replaced rather than silently skipped as
-    already-committed."""
+    already-committed.
+
+    `skip_briefing` (#410) passes straight through to `orchestrate.finalize` — reconciliation,
+    synthesis, and the timeline still run; only the briefing model call is skipped."""
     from watchdog.pipeline import orchestrate
     from watchdog.pipeline.locks import acquire_or_take_stale, lock_started_at
     from watchdog.pipeline.ingest_setup import STALE_SECONDS, _iso_now
@@ -1016,12 +1029,15 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
         when = f" (lock acquired {ts})" if ts else ""
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} an ingest or finalize is already running{when}.\n"
                  f"  If stale, run {_CYAN}watchdog unlock{_RESET}.\n")
-    print(f"\n  {_DIM}Finalizing — entity reconciliation + synthesis + timeline + briefing (model: {_RESET}"
+    stages = "entity reconciliation + synthesis + timeline" if skip_briefing else \
+        "entity reconciliation + synthesis + timeline + briefing"
+    print(f"\n  {_DIM}Finalizing — {stages} (model: {_RESET}"
           f"{_BOLD}{post_model}{_RESET}{_DIM}).{_RESET}")
     try:
         import asyncio
         out = asyncio.run(orchestrate.finalize(vault, post_model=post_model, post_effort=post_effort,
-                                               post_backend=post_backend, force_shas=force_shas))
+                                               post_backend=post_backend, force_shas=force_shas,
+                                               skip_briefing=skip_briefing))
     finally:
         lock.unlink(missing_ok=True)
 
@@ -1034,6 +1050,8 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
     parts = [f"{_BOLD}{n}{_RESET} entit{'ies' if n != 1 else 'y'} synthesized"]
     if out.get("briefing"):
         parts.append(f"briefing {_CYAN}{out['briefing']}{_RESET}")
+    elif out.get("briefing_skipped"):
+        parts.append("briefing skipped")
     print(f"\n  {_GREEN}Finalized{_RESET}  " + ", ".join(parts) + "\n")
     return out
 
