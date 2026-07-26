@@ -775,8 +775,10 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         print(f"  {_DIM}A new ingest resets it — what would you like to do?{_RESET}")
         choice = interactive.pick(
             [f"Merge it into this ingest {_DIM}— extract the new docs, then finalize everything together{_RESET}",
-             f"Finalize it now, then stop {_DIM}— ingest the new docs afterward{_RESET}",
-             "Discard it and ingest only the new docs"],
+             f"Finalize it now, then stop {_DIM}— real model spend now (reconciliation, synthesis, "
+             f"the briefing); ingest the new docs after{_RESET}",
+             f"Discard it and ingest only the new docs {_DIM}— safe: never touches what's already "
+             f"extracted, just clears state kept for a future bark{_RESET}"],
             0, title="Pending batch")
         if choice is interactive.CANCELLED:
             return

@@ -2787,6 +2787,41 @@ def test_cmd_ingest_and_cmd_finalize_agree_on_finalizer_default(wdg_home, tmp_pa
     assert finalizer_defaults["ingest"] == finalizer_defaults["finalize"] == "haiku"
 
 
+def test_pending_batch_dialog_flags_spend_and_safety(wdg_home, tmp_path, monkeypatch):
+    """The pending-finalization dialog's "Finalize it now" and "Discard" options used to give
+    no hint that one spends real money right now and the other is actually safe/non-destructive
+    (#458) — a reader had to already know the internals to tell them apart."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: True)
+    monkeypatch.setattr(orch_module, "pending_finalization", lambda v: {"docs": 1, "entities": 0})
+
+    class _Stop(Exception):
+        pass
+
+    monkeypatch.setattr("watchdog.pipeline.ingest_setup.run",
+                        lambda *a, **k: (_ for _ in ()).throw(_Stop()))
+
+    captured = {}
+
+    def _fake_pick(choices, *a, **k):
+        captured["choices"] = choices
+        return 0
+
+    monkeypatch.setattr(ing.interactive, "pick", _fake_pick)
+
+    with pytest.raises(_Stop):
+        ing.cmd_ingest(args(), confirm=False)
+    finalize_label, discard_label = captured["choices"][1], captured["choices"][2]
+    assert "real model spend" in finalize_label
+    assert "safe" in discard_label
+
+
 # ── ingest --estimate (#269) ────────────────────────────────────────────────────
 
 def test_cmd_ingest_estimate_prints_and_exits_without_lock(wdg_home, tmp_path, monkeypatch, capsys):
