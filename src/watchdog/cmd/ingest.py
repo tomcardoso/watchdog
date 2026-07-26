@@ -152,7 +152,7 @@ def _effective_extract_backend(extract_backend: str | None, auth_mode: str) -> s
 
 def _format_models_line(classify_backend, classify_model, extract_backend, extract_model,
                         post_backend, post_model, extract_effort=None, post_effort=None,
-                        finalizer_overrides=None, concurrency=None) -> str:
+                        finalizer_overrides=None, concurrency=None, is_dig=False) -> str:
     """Which model runs each ingest stage — printed alongside the cost estimate before an
     ingest starts, so a run under a non-default provider (#325) is obvious up front instead of
     the older generic 'Using the configured provider(s).' notice. Stage names are padded to a
@@ -165,17 +165,22 @@ def _format_models_line(classify_backend, classify_model, extract_backend, extra
 
     `concurrency` (#456), when given, is the raw `--concurrency` value the user explicitly
     passed — omitted (None) when a run falls back to the config/default value, so this row
-    only appears when it actually reflects a deliberate choice rather than a fixed default."""
+    only appears when it actually reflects a deliberate choice rather than a fixed default.
+
+    `is_dig` (#456) drops the finalizer row(s) entirely: `watchdog dig` always stops before
+    finalization in the same run (unlike the bare guided walk or the deprecated `ingest`, both of
+    which finalize inline), so which model would run it is irrelevant noise on this run's summary."""
     def label(backend, model):
         return f"{backend}:{model}" if backend else model
     stages = [("classifier", classify_backend, classify_model, None),
-              ("extractor", extract_backend, extract_model, extract_effort),
-              ("finalizer", post_backend, post_model, post_effort)]
-    for stage in _FINALIZER_STAGES:
-        b = (finalizer_overrides or {}).get(f"{stage}_backend", post_backend)
-        m = (finalizer_overrides or {}).get(f"{stage}_model", post_model)
-        if (b, m) != (post_backend, post_model):
-            stages.append((f"finalizer:{stage}", b, m, post_effort))
+              ("extractor", extract_backend, extract_model, extract_effort)]
+    if not is_dig:
+        stages.append(("finalizer", post_backend, post_model, post_effort))
+        for stage in _FINALIZER_STAGES:
+            b = (finalizer_overrides or {}).get(f"{stage}_backend", post_backend)
+            m = (finalizer_overrides or {}).get(f"{stage}_model", post_model)
+            if (b, m) != (post_backend, post_model):
+                stages.append((f"finalizer:{stage}", b, m, post_effort))
     width = max(len(name) for name, *_ in stages)
     if concurrency is not None:
         width = max(width, len("concurrency"))
@@ -220,7 +225,8 @@ def _preview_ingest(vault: Path, args) -> tuple[str, str] | None:
     models_line = _format_models_line(classify_backend, classify_model,
                                       extract_backend, extract_model, post_backend, post_model,
                                       extract_effort, post_effort, finalizer_overrides,
-                                      concurrency=getattr(args, "concurrency", None))
+                                      concurrency=getattr(args, "concurrency", None),
+                                      is_dig=getattr(args, "command", None) == "dig")
     return _format_cost_estimate(est), models_line
 
 
@@ -325,7 +331,11 @@ def cmd_chew(args) -> None:
 def _public_records_warning(n_docs: int) -> str:
     """The README's `## Public records only` warning (README.md:13-17), reworded for the
     terminal gate at the point of no return (#426). Wording tracks the README section so the
-    two never drift."""
+    two never drift.
+
+    No trailing `\\n` on the returned string (#456 follow-up): the caller's `print()` already
+    appends one, and `interactive.pick()`'s own leading blank line supplies the separator before
+    the menu — an embedded trailing newline on top of both stacked into a double blank line."""
     return (
         f"\n  {_YELLOW}⚠{_RESET}  {_BOLD}Public records only{_RESET}\n\n"
         "  The extracted text of every queued document will be sent to a\n"
@@ -333,7 +343,7 @@ def _public_records_warning(n_docs: int) -> str:
         "  documents that are public, or presumptively public — never for\n"
         "  confidential source material, leaks, or anything that could\n"
         "  identify a source.\n\n"
-        f"  {_BOLD}{n_docs}{_RESET} document{'s' if n_docs != 1 else ''} will be sent to the model.\n"
+        f"  {_BOLD}{n_docs}{_RESET} document{'s' if n_docs != 1 else ''} will be sent to the model."
     )
 
 
@@ -665,6 +675,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
     # walk (bare, via _offer_ingest). "Run it again" hints below point at whichever of those
     # got the caller here, rather than the retired `watchdog ingest` (#441, D138).
     pipeline_hint = "watchdog dig" if getattr(args, "command", None) == "dig" else "watchdog"
+    is_dig = pipeline_hint == "watchdog dig"
 
     raw_force = getattr(args, "force", False)
     if isinstance(raw_force, list):
@@ -784,28 +795,34 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         print(f"  {_DIM}A new ingest resets it — what would you like to do?{_RESET}")
         # `dig` never finalizes in the same run it's invoked from — "then finalize everything
         # together" would be wrong there, since merging just carries the old batch's state
-        # forward for a later `watchdog bark` (#456).
+        # forward for a later `watchdog bark` (#456). For the same reason, `dig` drops the
+        # "finalize it now" choice entirely: dig-by-definition stops before finalization, so
+        # offering to finalize inline here would contradict the command it was invoked as (#456).
         merge_label = (
             f"Merge it into this ingest {_DIM}— extract the new docs; a later "
             f"{_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} finalizes both batches together{_RESET}"
-            if pipeline_hint == "watchdog dig" else
+            if is_dig else
             f"Merge it into this ingest {_DIM}— extract the new docs, then finalize everything together{_RESET}")
-        choice = interactive.pick(
-            [merge_label,
-             f"Finalize it now, then stop {_DIM}— real model spend now (reconciliation, synthesis, "
-             f"the briefing); ingest the new docs after{_RESET}",
-             f"Discard it and ingest only the new docs {_DIM}— safe: never touches what's already "
-             f"extracted, just clears state kept for a future bark{_RESET}"],
-            0, title="Pending batch")
+        discard_label = (
+            f"Discard it and ingest only the new docs {_DIM}— safe: never touches what's already "
+            f"extracted, just clears state kept for a future bark{_RESET}")
+        options = [merge_label]
+        if not is_dig:
+            options.append(
+                f"Finalize it now, then stop {_DIM}— real model spend now (reconciliation, synthesis, "
+                f"the briefing); ingest the new docs after{_RESET}")
+        options.append(discard_label)
+        choice = interactive.pick(options, 0, title="Pending batch")
         if choice is interactive.CANCELLED:
             return
-        if choice == 1:                        # finalize now, then stop
+        discard_choice = len(options) - 1
+        if not is_dig and choice == 1:         # finalize now, then stop
             out = _run_finalize(vault, post_model, post_effort, post_backend,
                                 skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides)
             if not (out.get("error") or out.get("briefing_error")):
                 print(f"  {_DIM}Now run {_RESET}{_CYAN}{pipeline_hint}{_RESET}{_DIM} for the queued documents.{_RESET}\n")
             return
-        if choice == 2:                        # discard
+        if choice == discard_choice:           # discard
             wipe_pending = True
             print(f"  {_DIM}Discarding the pending batch — ingesting only the new documents.{_RESET}")
         else:                                  # default: merge (non-destructive)
@@ -852,7 +869,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         print(f"\n{_format_cost_estimate(est)}")
         print(_format_models_line(classify_backend, classify_model, extract_backend, extract_model,
                                   post_backend, post_model, extract_effort, post_effort,
-                                  finalizer_overrides, concurrency=getattr(args, "concurrency", None)))
+                                  finalizer_overrides, concurrency=getattr(args, "concurrency", None),
+                                  is_dig=is_dig))
     elif batch_pending:
         print(f"\n  {_DIM}Checking on a pending batch extraction…{_RESET}")
 

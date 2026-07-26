@@ -70,6 +70,8 @@ It's shown every time, not just once per vault — the risk is per-document, not
 
 Each model flag takes a Claude tier (`haiku`, `sonnet`, `opus`) or a `backend:model` value that routes the stage to another provider — see [Model backends](configuration.md#model-backends). The effort flag is ignored when the stage runs on Haiku, which has no effort control.
 
+The "which model runs each stage" line printed before extraction starts shows only classifier and extractor for `dig` — no finalizer row, since `dig` never finalizes in the run it's invoked from; that row appears for `watchdog bark` and the bare guided walk instead, both of which do finalize inline.
+
 **Scope and behaviour flags.**
 
 - `--concurrency N` — documents extracted in parallel (default: 5); lower it if you hit rate limits.
@@ -82,7 +84,7 @@ Each model flag takes a Claude tier (`haiku`, `sonnet`, `opus`) or a `backend:mo
 
 **Resumability.** Pressing Ctrl+C, or hitting a rate limit without `--wait`, stops the batch cleanly: finished documents are saved and unfinished ones stay queued, so re-running `watchdog dig` picks up where it left off. A document that genuinely fails extraction is set aside in `queue/_failed/`; the run reports how many, and `watchdog requeue` moves them back to retry — this is surfaced everywhere the queue's state matters: the normal run summary, `--estimate`, and a bare `watchdog dig` with nothing new to read, which offers to requeue and retry right there instead of just reporting an empty queue. On macOS or Linux, dig also keeps the machine from sleeping for the run's duration — see [Troubleshooting](troubleshooting.md#ingest-prevents-the-machine-from-sleeping-during-a-run).
 
-If a previous batch is still pending finalization when you start `watchdog dig` (or the bare guided walk), it asks what to do: **merge** the pending batch into this run and finalize everything together with a following `watchdog bark`, **finalize** it first and stop, or **discard** it.
+If a previous batch is still pending finalization when you start `watchdog dig`, it asks what to do: **merge** the pending batch into this run (a following `watchdog bark` finalizes both together), or **discard** it. `dig` never finalizes in the run it's invoked from, so it doesn't offer to finalize inline — the bare guided walk (which does finalize inline) offers that as a third option, **finalize** it first and stop.
 
 ### watchdog bark
 
