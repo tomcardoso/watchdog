@@ -2737,6 +2737,63 @@ def test_cmd_ingest_and_cmd_finalize_agree_on_finalizer_default(wdg_home, tmp_pa
     assert finalizer_defaults["ingest"] == finalizer_defaults["finalize"] == "haiku"
 
 
+def test_pending_batch_merge_label_reflects_dig_vs_ingest(wdg_home, tmp_path, monkeypatch):
+    """`dig` never finalizes in the same run it's invoked from — its pending-finalization
+    dialog must not claim merging "finalizes everything together"; only `watchdog bark` does
+    that later. The old combined pipeline (bare `watchdog`/`ingest`) does finalize inline, so
+    keeps the original wording (#456)."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: True)
+    monkeypatch.setattr(orch_module, "pending_finalization", lambda v: {"docs": 1, "entities": 0})
+
+    class _Stop(Exception):
+        pass
+
+    monkeypatch.setattr("watchdog.pipeline.ingest_setup.run",
+                        lambda *a, **k: (_ for _ in ()).throw(_Stop()))
+
+    captured = {}
+
+    def _fake_pick(choices, *a, **k):
+        captured["choices"] = choices
+        return 0   # Merge
+
+    monkeypatch.setattr(ing.interactive, "pick", _fake_pick)
+
+    with pytest.raises(_Stop):
+        ing.cmd_ingest(args(command="dig"), confirm=False)
+    dig_merge_label = captured["choices"][0]
+    assert "watchdog bark" in dig_merge_label
+    assert "then finalize everything together" not in dig_merge_label
+
+    captured.clear()
+    with pytest.raises(_Stop):
+        ing.cmd_ingest(args(), confirm=False)
+    bare_merge_label = captured["choices"][0]
+    assert "then finalize everything together" in bare_merge_label
+
+
+def test_format_models_line_shows_concurrency_only_when_explicitly_set(monkeypatch):
+    """`--concurrency` was silently dropped from the pre-run summary (#456) — it should only
+    appear when the user actually passed it, not for a run left at the default/config value."""
+    from watchdog.cmd import ingest as ing
+
+    without = ing._format_models_line("haiku", "haiku", None, "sonnet", None, "haiku",
+                                      "medium", None, None, concurrency=None)
+    assert "concurrency" not in without
+
+    with_value = ing._format_models_line("haiku", "haiku", None, "sonnet", None, "haiku",
+                                         "medium", None, None, concurrency=2)
+    assert "concurrency" in with_value
+    assert "2" in with_value.splitlines()[-1]
+
+
 # ── ingest --estimate (#269) ────────────────────────────────────────────────────
 
 def test_cmd_ingest_estimate_prints_and_exits_without_lock(wdg_home, tmp_path, monkeypatch, capsys):
