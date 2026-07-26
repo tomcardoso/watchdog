@@ -533,6 +533,31 @@ def _count_queued(vault: Path) -> int:
     return sum(1 for f in queue.iterdir() if f.suffix == ".json")
 
 
+def _count_awaiting_dig(vault: Path) -> int:
+    """Queued documents with no staged extraction yet — chewed but not yet dug (#461). A queue
+    file persists until `bark` commits it (`orchestrate._commit_extracted`), so post-dig/bark
+    split `_count_queued` alone conflates "not yet dug" with "dug, awaiting bark" — this and
+    `_count_awaiting_bark` split it by whether a matching `.watchdog/extracted/<sha>.json`
+    (staged by `dig`) exists for that queue entry."""
+    queue = vault / ".watchdog" / "queue"
+    if not queue.exists():
+        return 0
+    extracted = vault / ".watchdog" / "extracted"
+    return sum(1 for f in queue.iterdir()
+              if f.suffix == ".json" and not (extracted / f.name).exists())
+
+
+def _count_awaiting_bark(vault: Path) -> int:
+    """Queued documents already dug (staged extraction present) but not yet committed via
+    `bark` — see `_count_awaiting_dig`."""
+    queue = vault / ".watchdog" / "queue"
+    if not queue.exists():
+        return 0
+    extracted = vault / ".watchdog" / "extracted"
+    return sum(1 for f in queue.iterdir()
+              if f.suffix == ".json" and (extracted / f.name).exists())
+
+
 def _warn_pending_research(vault: Path) -> None:
     """Warn when web-research URLs are queued but not downloaded (#196). A crashed research session
     leaves them in the durable worklist; bare `watchdog`, `chew`, and `status` surface them so they
