@@ -16,6 +16,7 @@ any model failure degrades to an empty list rather than breaking ingest.
 
 import contextlib
 import io
+import os
 import re
 import warnings
 
@@ -226,26 +227,46 @@ _GLINER_WINDOW_OVERLAP = 50
 _gliner_model = None   # module-level singleton — loaded once per process
 
 
+@contextlib.contextmanager
+def _quiet_stderr():
+    """Suppress stderr at the OS file-descriptor level for the duration of the block, on top of
+    whatever Python-level suppression (`redirect_stderr`, `warnings` filters) the caller also has
+    active. `contextlib.redirect_stderr` only swaps Python's `sys.stderr` object; huggingface_hub's
+    own logging handler doesn't consult it — it holds a direct reference to the real stream,
+    captured at import time — so its "unauthenticated requests" notice writes straight past
+    redirect_stderr regardless of the warnings/logging filters in effect (#456). An fd-level
+    dup2 catches that write no matter which mechanism produced it."""
+    saved_fd = os.dup(2)
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    try:
+        os.dup2(devnull_fd, 2)
+        yield
+    finally:
+        os.dup2(saved_fd, 2)
+        os.close(devnull_fd)
+        os.close(saved_fd)
+
+
 def _load_gliner():
     global _gliner_model
     if _gliner_model is None:
         # Verify the model download via the OS trust store rather than certifi's bundled list —
         # same corporate-proxy fix as D122. `inject_into_ssl` patches the global `ssl` module,
         # so it's scoped to just this one-time load via `finally` (harmless no-op when cached).
-        import os
         import truststore
-        # The load prints hub progress bars to stderr even on a cache hit; ingest's terminal
-        # output is user-facing, so keep them out of it. `from_pretrained` also emits a
-        # load-time UserWarning (resume_download deprecation) and an unauthenticated-requests
-        # notice via huggingface_hub's own logging — neither is a predict-time warning, so
-        # they slip past harvest_entities' own catch_warnings (#419). redirect_stderr catches
-        # both regardless of which mechanism raises them, same pattern as setup_cmd's model
-        # downloads.
         os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+        # Ignored permanently, not just for this load call: harvest_entities runs concurrently
+        # across documents via asyncio.to_thread, and a scoped `warnings.catch_warnings()` context
+        # per predict() call (the previous approach) is documented as not thread-safe — concurrent
+        # enter/exit pairs race on the shared global filter list, letting a truncation warning from
+        # one thread leak out when another thread's context has already restored it (#456). A
+        # permanent filter, set once here before any concurrent predict() call can start, needs no
+        # restore and so can't race.
+        warnings.filterwarnings("ignore", category=UserWarning, module=r"gliner(\..*)?")
         truststore.inject_into_ssl()
         try:
             from gliner import GLiNER
-            with warnings.catch_warnings(), contextlib.redirect_stderr(io.StringIO()):
+            with warnings.catch_warnings(), contextlib.redirect_stderr(io.StringIO()), _quiet_stderr():
                 warnings.simplefilter("ignore", UserWarning)
                 _gliner_model = GLiNER.from_pretrained("urchade/gliner_multi-v2.1")
         finally:
@@ -272,16 +293,15 @@ def harvest_entities(text_by_page: dict[int, str]) -> list[dict]:
 
     try:
         candidates = []
-        # gliner warns on stderr when a window still exceeds its token limit; ingest's terminal
-        # output is user-facing, so keep those out of it — truncation is already mitigated by
-        # the conservative window size above.
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", UserWarning)
-            for page, text in text_by_page.items():
-                for chunk in _chunk_words(text):
-                    for ent in model.predict_entities(chunk, _GLINER_LABELS,
-                                                       threshold=_GLINER_THRESHOLD):
-                        candidates.append({"page": page, "kind": ent["label"], "value": ent["text"]})
+        # gliner warns on stderr when a window still exceeds its token limit — truncation is
+        # already mitigated by the conservative window size above; the permanent filter set in
+        # _load_gliner keeps it out of ingest's terminal output without a per-call context
+        # manager (concurrent documents call this via asyncio.to_thread, see _load_gliner).
+        for page, text in text_by_page.items():
+            for chunk in _chunk_words(text):
+                for ent in model.predict_entities(chunk, _GLINER_LABELS,
+                                                   threshold=_GLINER_THRESHOLD):
+                    candidates.append({"page": page, "kind": ent["label"], "value": ent["text"]})
         return _dedupe_and_cap(candidates)
     except Exception:
         return []

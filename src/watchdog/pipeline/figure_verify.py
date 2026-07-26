@@ -155,14 +155,14 @@ def verify_figures(extraction: dict, page_texts: dict[int, str]) -> list[str]:
             warnings.append(
                 f"document.key_facts[{i}] figure(s) {', '.join(still_missing)} not found on "
                 f"page {page} (or adjacent pages) — may be derived or garbled; check the "
-                f"source: {text[:80]!r}"
+                f"source: {text!r}"
             )
         if elsewhere:
             detail = ", ".join(f"{t} (page {'/'.join(str(p) for p in pages)})" for t, pages in elsewhere)
             warnings.append(
                 f"document.key_facts[{i}] figure(s) {detail} not found on page {page} (or "
                 f"adjacent pages) but appear(s) elsewhere in the document — the figure is "
-                f"real, the page citation may be wrong; check the source: {text[:80]!r}"
+                f"real, the page citation may be wrong; check the source: {text!r}"
             )
 
     return warnings

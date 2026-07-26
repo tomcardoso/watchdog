@@ -99,3 +99,18 @@ def test_verify_quotes_skips_verification_when_no_page_text_available():
     warnings = verify_quotes(extraction, {})
     assert "quote_verified" not in extraction["document"]["key_facts"][0]
     assert warnings == []
+
+
+def test_verify_quotes_does_not_truncate_the_quote_shown_in_the_warning():
+    """The warning used to hard-truncate the quote to 80 chars with no ellipsis (#456/#460) —
+    on a quote over that length, the truncated preview can cut off before the part that
+    actually failed to verify, making the warning look inexplicable rather than accurate."""
+    long_quote = ("Total claims asserted by creditors as per the claims process were $360.3 "
+                  "million, compared to $186.8 million recognized as subject to compromise.")
+    assert len(long_quote) > 80
+    extraction = {"document": {"key_facts": [
+        {"fact": "x", "page": 3, "quote": long_quote},
+    ]}, "entities": []}
+    warnings = verify_quotes(extraction, {3: "Totally unrelated page content."})
+    assert len(warnings) == 1
+    assert long_quote in warnings[0]

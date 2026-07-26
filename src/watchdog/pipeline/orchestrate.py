@@ -1970,18 +1970,23 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         tasks[:] = [asyncio.ensure_future(_guarded(s)) for s in shas]
 
         async def _tick_elapsed() -> None:
-            """Keep a pinned "elapsed MM:SS" row at the bottom of the live region while
+            """Keep a pinned "Elapsed MM:SS" row at the bottom of the live region while
             extraction runs (#411) — a long pause on a dense document (minutes, not seconds,
             #398) otherwise reads as a stall rather than normal progress."""
             start = time.monotonic()
             while True:
                 await asyncio.sleep(1)
                 elapsed = int(time.monotonic() - start)
-                _board.update("__elapsed__", f"  {_DIM}elapsed {elapsed // 60:02d}:{elapsed % 60:02d}{_RESET}",
+                _board.update("__elapsed__", f"  {_DIM}Elapsed {elapsed // 60:02d}:{elapsed % 60:02d}{_RESET}",
                               pin=True)
 
         # Only on a real TTY — LiveRegion.update() falls back to plain append-only printing
         # when disabled, which would spam a new line every second into logs/CI output.
+        if _board.enabled:
+            # Blank clearance line above the elapsed row (#456), same pattern as chew's own
+            # pinned progress bar (preprocess_batch._SPACER_KEY) — registered once, before the
+            # timer starts, since pinned rows render in insertion order among pinned keys.
+            _board.update("__elapsed_spacer__", "", pin=True)
         timer_task = asyncio.ensure_future(_tick_elapsed()) if _board.enabled else None
 
         def _on_interrupt() -> None:

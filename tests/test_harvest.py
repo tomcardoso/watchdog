@@ -214,6 +214,31 @@ def test_load_gliner_suppresses_load_time_warnings_and_stderr(monkeypatch, capsy
     assert capsys.readouterr().err == ""
 
 
+def test_load_gliner_installs_permanent_predict_time_filter(monkeypatch):
+    """Predict-time truncation warnings used to be suppressed via a `warnings.catch_warnings()`
+    context scoped to each `harvest_entities` call — the stdlib documents that context manager as
+    not thread-safe, and `harvest_entities` runs concurrently across documents via
+    `asyncio.to_thread`, so one thread's `__exit__` could restore the filters while another
+    thread's predict() call still expected them suppressed, leaking a warning (#456). `_load_gliner`
+    now installs a permanent, module-scoped filter instead, which needs no restore and can't race.
+    Simulated with `warn_explicit` (rather than a real gliner call) so this doesn't depend on the
+    installed gliner version's exact warning text or call site."""
+    class _FakeGLiNER:
+        @staticmethod
+        def from_pretrained(name):
+            return "fake-model"
+
+    monkeypatch.setitem(sys.modules, "gliner", types.SimpleNamespace(GLiNER=_FakeGLiNER))
+    monkeypatch.setattr(harvest, "_gliner_model", None)
+
+    harvest._load_gliner()
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.warn_explicit("Sentence of length 999 has been truncated to 384", UserWarning,
+                               "processor.py", 417, module="gliner.data_processing.processor")
+    assert caught == []
+
+
 # ── real-corpus regression fixtures (#361 benchmark misses) ────────────────────────────────
 
 def test_regression_university_administrative_fee():

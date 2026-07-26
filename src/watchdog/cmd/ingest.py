@@ -152,7 +152,7 @@ def _effective_extract_backend(extract_backend: str | None, auth_mode: str) -> s
 
 def _format_models_line(classify_backend, classify_model, extract_backend, extract_model,
                         post_backend, post_model, extract_effort=None, post_effort=None,
-                        finalizer_overrides=None) -> str:
+                        finalizer_overrides=None, concurrency=None) -> str:
     """Which model runs each ingest stage — printed alongside the cost estimate before an
     ingest starts, so a run under a non-default provider (#325) is obvious up front instead of
     the older generic 'Using the configured provider(s).' notice. Stage names are padded to a
@@ -161,7 +161,11 @@ def _format_models_line(classify_backend, classify_model, extract_backend, extra
 
     `finalizer_overrides` (#433) adds one extra row per post-ingest stage whose resolved
     model/backend differs from the aggregate finalizer row — an unoverridden stage (the common
-    case) stays folded into the single "finalizer" line rather than repeating it four times."""
+    case) stays folded into the single "finalizer" line rather than repeating it four times.
+
+    `concurrency` (#456), when given, is the raw `--concurrency` value the user explicitly
+    passed — omitted (None) when a run falls back to the config/default value, so this row
+    only appears when it actually reflects a deliberate choice rather than a fixed default."""
     def label(backend, model):
         return f"{backend}:{model}" if backend else model
     stages = [("classifier", classify_backend, classify_model, None),
@@ -173,10 +177,14 @@ def _format_models_line(classify_backend, classify_model, extract_backend, extra
         if (b, m) != (post_backend, post_model):
             stages.append((f"finalizer:{stage}", b, m, post_effort))
     width = max(len(name) for name, *_ in stages)
+    if concurrency is not None:
+        width = max(width, len("concurrency"))
     lines = []
     for name, b, m, effort in stages:
         suffix = f" {_DIM}(effort: {effort}){_RESET}" if effort else ""
         lines.append(f"  {_DIM}{name:<{width}}{_RESET} {_CYAN}{label(b, m)}{_RESET}{suffix}")
+    if concurrency is not None:
+        lines.append(f"  {_DIM}{'concurrency':<{width}}{_RESET} {_CYAN}{concurrency}{_RESET}")
     return "\n".join(lines)
 
 
@@ -211,7 +219,8 @@ def _preview_ingest(vault: Path, args) -> tuple[str, str] | None:
     est = cost_estimate(vault, queue_files, _effective_extract_backend(extract_backend, auth_mode))
     models_line = _format_models_line(classify_backend, classify_model,
                                       extract_backend, extract_model, post_backend, post_model,
-                                      extract_effort, post_effort, finalizer_overrides)
+                                      extract_effort, post_effort, finalizer_overrides,
+                                      concurrency=getattr(args, "concurrency", None))
     return _format_cost_estimate(est), models_line
 
 
@@ -773,8 +782,16 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         detail = f" {_DIM}({', '.join(bits)}){_RESET}" if bits else ""
         print(f"\n  {_YELLOW}A previous batch is pending finalization{_RESET}{detail}{_DIM}.{_RESET}")
         print(f"  {_DIM}A new ingest resets it — what would you like to do?{_RESET}")
+        # `dig` never finalizes in the same run it's invoked from — "then finalize everything
+        # together" would be wrong there, since merging just carries the old batch's state
+        # forward for a later `watchdog bark` (#456).
+        merge_label = (
+            f"Merge it into this ingest {_DIM}— extract the new docs; a later "
+            f"{_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} finalizes both batches together{_RESET}"
+            if pipeline_hint == "watchdog dig" else
+            f"Merge it into this ingest {_DIM}— extract the new docs, then finalize everything together{_RESET}")
         choice = interactive.pick(
-            [f"Merge it into this ingest {_DIM}— extract the new docs, then finalize everything together{_RESET}",
+            [merge_label,
              f"Finalize it now, then stop {_DIM}— real model spend now (reconciliation, synthesis, "
              f"the briefing); ingest the new docs after{_RESET}",
              f"Discard it and ingest only the new docs {_DIM}— safe: never touches what's already "
@@ -835,7 +852,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         print(f"\n{_format_cost_estimate(est)}")
         print(_format_models_line(classify_backend, classify_model, extract_backend, extract_model,
                                   post_backend, post_model, extract_effort, post_effort,
-                                  finalizer_overrides))
+                                  finalizer_overrides, concurrency=getattr(args, "concurrency", None)))
     elif batch_pending:
         print(f"\n  {_DIM}Checking on a pending batch extraction…{_RESET}")
 
@@ -905,8 +922,11 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         _say_since_pick(f"  {_YELLOW}--force{_RESET}{_DIM}: re-extracting even where a cached "
                         f"extraction or a committed vault note already exists.{_RESET}")
     if no_finalize:
-        _say_since_pick(f"  {_DIM}--no-finalize: stopping after extraction — run {_RESET}"
-                        f"{_CYAN}watchdog bark{_RESET}{_DIM} later to complete the batch.{_RESET}")
+        # `no_finalize` is only ever set by `cmd_extract` (dig) — there is no user-facing
+        # `--no-finalize` flag to reference here (#456).
+        _say_since_pick(f"  {_DIM}Running {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM} and stopping "
+                        f"after extraction — run {_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} later "
+                        f"to complete the batch.{_RESET}")
     if extract_backend == "claude-batch":
         _say_since_pick(f"  {_DIM}claude-batch: sectioned documents (if any) extract via claude-api now; "
                         f"the rest submit as one batch and finish later.{_RESET}")
@@ -1028,7 +1048,7 @@ def _print_ingest_summary(summary: dict, pipeline_hint: str = "watchdog") -> Non
               f"{_DIM}({_RESET}{_BOLD}{ext}{_RESET}{_DIM} document{'s' if ext != 1 else ''} on disk).{_RESET}")
         print(f"  {_DIM}Finalize when ready — run it once for the vault as-is, or copy the vault "
               f"folder to try more than one finalizer:{_RESET}")
-        print(f"  {_CYAN}watchdog bark{_RESET}{_DIM} [--finalizer-model MODEL]{_RESET}\n")
+        print(f"  {_CYAN}watchdog bark{_RESET}\n")
     else:
         print(f"\n  {_DIM}Open a fresh Claude Code session to ask investigation questions.{_RESET}\n")
 
