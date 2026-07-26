@@ -90,7 +90,7 @@ def verify_quotes(extraction: dict, page_texts: dict[int, str]) -> list[str]:
             quote = (fact.get("quote") or "").strip()
             warnings.append(
                 f"document.key_facts[{i}].quote not found on page {fact.get('page')} "
-                f"(or adjacent pages) — flagged as unverified: {quote[:80]!r}"
+                f"(or adjacent pages) — flagged as unverified: {quote!r}"
             )
 
     for entity in extraction.get("entities", []):
