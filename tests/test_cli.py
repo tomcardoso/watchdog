@@ -1938,6 +1938,20 @@ def test_confirm_public_records_cancel(monkeypatch):
     assert ing._confirm_public_records(1) is False
 
 
+def test_confirm_public_records_no_double_blank_line_before_menu(monkeypatch, capsys):
+    """The warning's own trailing newline plus `print()`'s and `pick()`'s own leading blank line
+    used to stack into two blank lines before the menu — the same anti-pattern #395 fixed
+    elsewhere in the picker (#456 follow-up)."""
+    from watchdog.cmd import ingest as ing
+    monkeypatch.setattr("builtins.input", lambda *a: "1")
+    ing._confirm_public_records(1)
+    out = capsys.readouterr().out
+    lines = out.split("\n")
+    idx = next(i for i, line in enumerate(lines) if "will be sent to the model" in line)
+    assert lines[idx + 1].strip() == ""       # exactly one blank line separates content from menu
+    assert lines[idx + 2].strip() != ""       # not a second blank line
+
+
 def test_cmd_ingest_confirm_cancel_never_calls_model(wdg_home, tmp_path, monkeypatch):
     from watchdog.cmd import auth as auth_module
     from watchdog.cmd import ingest as ing
@@ -2864,6 +2878,49 @@ def test_pending_batch_merge_label_reflects_dig_vs_ingest(wdg_home, tmp_path, mo
     assert "then finalize everything together" in bare_merge_label
 
 
+def test_pending_batch_dialog_omits_finalize_for_dig(wdg_home, tmp_path, monkeypatch):
+    """`watchdog dig` is documented to stop before finalization (#456) — its pending-finalization
+    dialog must not offer "Finalize it now", since dig itself can never carry that out. The bare
+    guided walk still offers all three options."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: True)
+    monkeypatch.setattr(orch_module, "pending_finalization", lambda v: {"docs": 1, "entities": 0})
+
+    class _Stop(Exception):
+        pass
+
+    monkeypatch.setattr("watchdog.pipeline.ingest_setup.run",
+                        lambda *a, **k: (_ for _ in ()).throw(_Stop()))
+
+    captured = {}
+
+    def _fake_pick(choices, *a, **k):
+        captured["choices"] = choices
+        return len(choices) - 1   # discard, whatever index that lands on
+
+    monkeypatch.setattr(ing.interactive, "pick", _fake_pick)
+
+    # dig: only merge + discard, no "finalize it now".
+    with pytest.raises(_Stop):
+        ing.cmd_ingest(args(command="dig"), confirm=False)
+    assert len(captured["choices"]) == 2
+    assert not any("Finalize it now" in c for c in captured["choices"])
+    assert "Discard" in captured["choices"][1]
+
+    # bare guided walk: still all three, finalize included.
+    captured.clear()
+    with pytest.raises(_Stop):
+        ing.cmd_ingest(args(), confirm=False)
+    assert len(captured["choices"]) == 3
+    assert any("Finalize it now" in c for c in captured["choices"])
+
+
 def test_format_models_line_shows_concurrency_only_when_explicitly_set(monkeypatch):
     """`--concurrency` was silently dropped from the pre-run summary (#456) — it should only
     appear when the user actually passed it, not for a run left at the default/config value."""
@@ -2877,6 +2934,21 @@ def test_format_models_line_shows_concurrency_only_when_explicitly_set(monkeypat
                                          "medium", None, None, concurrency=2)
     assert "concurrency" in with_value
     assert "2" in with_value.splitlines()[-1]
+
+
+def test_format_models_line_omits_finalizer_for_dig(monkeypatch):
+    """`watchdog dig` always stops before finalization in the same run (#456) — showing which
+    model would finalize is irrelevant noise there, unlike the bare guided walk or `ingest`,
+    which do finalize inline and still need the row."""
+    from watchdog.cmd import ingest as ing
+
+    for_dig = ing._format_models_line("haiku", "haiku", None, "sonnet", None, "haiku",
+                                      "medium", None, None, is_dig=True)
+    assert "finalizer" not in for_dig
+
+    not_dig = ing._format_models_line("haiku", "haiku", None, "sonnet", None, "haiku",
+                                      "medium", None, None, is_dig=False)
+    assert "finalizer" in not_dig
 
 
 # ── ingest --estimate (#269) ────────────────────────────────────────────────────

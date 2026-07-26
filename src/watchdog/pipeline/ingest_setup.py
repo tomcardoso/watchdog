@@ -54,13 +54,26 @@ def scan_queue(vault: Path) -> list[dict]:
     return queue_files
 
 
+def _real_input_tokens(totals: dict) -> int:
+    """Total tokens the model actually processed as input for a run's calls (issue #470): plain
+    `input_tokens` alone badly undercounts once prompt caching is in play, since a cache hit or
+    write moves the bulk of a call's input volume into `cache_read_tokens`/`cache_write_tokens`
+    instead — a sectioned extraction that carries a growing shared prefix across calls can show
+    `input_tokens` in the single digits while the real content processed is orders of magnitude
+    larger. The naive chars/4 estimate this is calibrated against counts a document's full text
+    once regardless of how many cached/fresh calls served it, so the comparison point needs the
+    same full-volume accounting."""
+    return ((totals.get("input_tokens") or 0) + (totals.get("cache_read_tokens") or 0)
+            + (totals.get("cache_write_tokens") or 0))
+
+
 def _tokens_calibration(vault: Path, max_runs: int = 3) -> float | None:
     """Empirical correction factor for the naive chars/4 'tokens in' estimate (issue #417).
 
     Every usage-<ts>.json written by a run that actually extracted documents now carries both
     what was estimated for those documents at queue time (``totals.est_input_tokens``, the same
     chars/4 heuristic ``scan_queue`` uses, summed by `orchestrate._compact_result`) and what
-    extraction really consumed (``totals.input_tokens``) — their ratio is how far off the
+    extraction really consumed (`_real_input_tokens`, #470) — their ratio is how far off the
     heuristic ran, against this vault's own recent documents rather than a fixed global guess.
     Averaged over the last `max_runs` such files (a blend here, unlike `cost_estimate`'s
     deliberate low/high range for dollars: this feeds a single displayed token count, not a
@@ -81,7 +94,7 @@ def _tokens_calibration(vault: Path, max_runs: int = 3) -> float | None:
             totals = json.loads(uf.read_text(encoding="utf-8")).get("totals", {})
         except (OSError, json.JSONDecodeError):
             continue
-        est, actual = totals.get("est_input_tokens"), totals.get("input_tokens")
+        est, actual = totals.get("est_input_tokens"), _real_input_tokens(totals)
         if est and actual:
             ratios.append(actual / est)
         if len(ratios) >= max_runs:
@@ -123,7 +136,7 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
             totals = json.loads(uf.read_text(encoding="utf-8")).get("totals", {})
         except (OSError, json.JSONDecodeError):
             continue
-        input_tokens, cost_usd = totals.get("input_tokens") or 0, totals.get("cost_usd")
+        input_tokens, cost_usd = _real_input_tokens(totals), totals.get("cost_usd")
         if input_tokens > 0 and cost_usd:
             ratios.append(cost_usd / input_tokens)
 
@@ -184,7 +197,7 @@ def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3) 
         if not calls or any(c.get("task") not in orchestrate.FINALIZE_TASKS for c in calls):
             continue   # empty, or shares a usage file with extraction/classification
         totals = data.get("totals", {})
-        input_tokens, cost_usd = totals.get("input_tokens") or 0, totals.get("cost_usd")
+        input_tokens, cost_usd = _real_input_tokens(totals), totals.get("cost_usd")
         if input_tokens > 0 and cost_usd:
             ratios.append(cost_usd / input_tokens)
         if len(ratios) >= max_runs:

@@ -23,11 +23,13 @@ def _write_queue_file(vault: Path, sha256: str, source_type: str = "docling", fi
 
 
 def _write_usage_file(vault: Path, ts: str, input_tokens: int, cost_usd,
-                      est_input_tokens: int | None = None, calls: list | None = None) -> None:
+                      est_input_tokens: int | None = None, calls: list | None = None,
+                      cache_read_tokens: int = 0, cache_write_tokens: int = 0) -> None:
     reg = vault / ".watchdog" / "registry"
     reg.mkdir(parents=True, exist_ok=True)
     totals = {"input_tokens": input_tokens, "output_tokens": 0,
-              "cache_read_tokens": 0, "cache_write_tokens": 0, "cost_usd": cost_usd}
+              "cache_read_tokens": cache_read_tokens, "cache_write_tokens": cache_write_tokens,
+              "cost_usd": cost_usd}
     if est_input_tokens is not None:
         totals["est_input_tokens"] = est_input_tokens
     (reg / f"usage-{ts}.json").write_text(json.dumps({
@@ -410,6 +412,26 @@ def test_cost_estimate_applies_empirical_calibration(tmp_path):
     assert est["est_tokens"] == 1500   # 1000 (raw) * 1.5 (calibration)
     # The dollar range is derived from the *calibrated* tokens, so it also reflects the correction.
     assert est["cost_low"] == est["cost_high"] == 1.5
+
+
+def test_cost_estimate_calibration_counts_cache_tokens_as_real_input(tmp_path):
+    """Prompt caching (#470) moves most of a call's real input volume into
+    `cache_read_tokens`/`cache_write_tokens`, leaving bare `input_tokens` in the single digits even
+    though the model processed the document's full content — a sectioned extraction with a shared,
+    growing prefix across calls is exactly this shape. Calibrating against `input_tokens` alone
+    used to produce a near-zero ratio and an absurdly undercounted 'tokens in' display; it must
+    fold cache reads/writes into the real-input figure instead."""
+    vault = _make_vault(tmp_path)
+    qf = vault / ".watchdog" / "queue" / "abc123.json"
+    qf.write_text(json.dumps({"filename": "x.pdf", "pages": [{"page": 1, "markdown": "a" * 4000}]}))
+    # est_input_tokens=1000 naive; almost nothing counted as bare input_tokens, but cache
+    # read+write together account for the document's real ~1500-token volume → ratio 1.5.
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=1, cost_usd=1.5, est_input_tokens=1000,
+                      cache_read_tokens=500, cache_write_tokens=999)
+
+    est = cost_estimate(vault, scan_queue(vault), backend="claude-api")
+
+    assert est["est_tokens"] == 1500   # 1000 (raw) * 1.5 (calibration from input+cache tokens)
 
 
 def test_cost_estimate_calibration_ignores_standalone_finalize_runs(tmp_path):
