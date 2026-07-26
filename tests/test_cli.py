@@ -500,6 +500,56 @@ def test_cmd_list_missing_registry_shows_dashes(configured, wdg_home, capsys):
     assert "—" in capsys.readouterr().out
 
 
+def _queue_file(vault: Path, sha: str) -> None:
+    q = vault / ".watchdog" / "queue"
+    q.mkdir(parents=True, exist_ok=True)
+    (q / f"{sha}.json").write_text(json.dumps({"sha256": sha, "filename": f"{sha}.pdf", "page_count": 1}))
+
+
+def _extracted_file(vault: Path, sha: str) -> None:
+    e = vault / ".watchdog" / "extracted"
+    e.mkdir(parents=True, exist_ok=True)
+    (e / f"{sha}.json").write_text(json.dumps({"document": {"filename": f"{sha}.pdf"}}))
+
+
+def test_cmd_list_shows_awaiting_dig_and_bark_columns(configured, wdg_home, capsys):
+    """A dig-only vault (#461): the table gets a column for each pipeline stage rather than one
+    ambiguous 'To ingest' count that conflated 'not yet dug' with 'dug, awaiting bark'. One
+    queue file has no staged extraction (awaiting dig), the other already does (awaiting bark),
+    so the two new columns must each show 1, not fall back to a shared/blended count."""
+    cli.cmd_new(args(name="Shell Co Probe", dir=str(configured)))
+    vault = configured / "shell-co-probe"
+    _queue_file(vault, "sha_not_dug")
+    _queue_file(vault, "sha_dug")
+    _extracted_file(vault, "sha_dug")
+    cli.cmd_list(args())
+    lines = _strip_ansi(capsys.readouterr().out).splitlines()
+    assert "To ingest" not in "\n".join(lines)
+    header = next(line for line in lines if "Awaiting dig" in line)
+    row = next(line for line in lines if "Shell Co Probe" in line)
+    dig_start = header.index("Awaiting dig")
+    bark_start = header.index("Awaiting bark")
+    assert row[dig_start:dig_start + len("Awaiting dig")].strip() == "1"
+    assert row[bark_start:bark_start + len("Awaiting bark")].strip() == "1"
+
+
+def test_cmd_status_splits_awaiting_dig_and_awaiting_bark(configured, capsys):
+    """Same split as `cmd_list` (#461), in `cmd_status`'s prose lines: a queue file persists
+    until `bark` commits it, so a raw queue count alone can't distinguish 'chewed, not yet dug'
+    from 'dug, awaiting bark' — two very different states for a vault that may stay dig-only."""
+    cli.cmd_new(args(name="Test Proj", dir=str(configured)))
+    vault = configured / "test-proj"
+    _queue_file(vault, "sha_not_dug")
+    _queue_file(vault, "sha_dug")
+    _extracted_file(vault, "sha_dug")
+    cli.cmd_status(args(name="Test Proj"))
+    lines = _strip_ansi(capsys.readouterr().out).splitlines()
+    dig_line = next(line for line in lines if "awaiting watchdog dig" in line)
+    bark_line = next(line for line in lines if "awaiting watchdog bark" in line)
+    assert "1 file" in dig_line
+    assert "1 file" in bark_line
+
+
 def test_cmd_list_shows_description(configured, wdg_home, capsys):
     cli.cmd_new(args(name="Shell Co Probe", description="Offshore owners behind city land deals", dir=str(configured)))
     cli.cmd_list(args())
@@ -2735,6 +2785,41 @@ def test_cmd_ingest_and_cmd_finalize_agree_on_finalizer_default(wdg_home, tmp_pa
     finalizer_defaults["finalize"] = finalizer_kwargs.get("default")
 
     assert finalizer_defaults["ingest"] == finalizer_defaults["finalize"] == "haiku"
+
+
+def test_pending_batch_dialog_flags_spend_and_safety(wdg_home, tmp_path, monkeypatch):
+    """The pending-finalization dialog's "Finalize it now" and "Discard" options used to give
+    no hint that one spends real money right now and the other is actually safe/non-destructive
+    (#458) — a reader had to already know the internals to tell them apart."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: True)
+    monkeypatch.setattr(orch_module, "pending_finalization", lambda v: {"docs": 1, "entities": 0})
+
+    class _Stop(Exception):
+        pass
+
+    monkeypatch.setattr("watchdog.pipeline.ingest_setup.run",
+                        lambda *a, **k: (_ for _ in ()).throw(_Stop()))
+
+    captured = {}
+
+    def _fake_pick(choices, *a, **k):
+        captured["choices"] = choices
+        return 0
+
+    monkeypatch.setattr(ing.interactive, "pick", _fake_pick)
+
+    with pytest.raises(_Stop):
+        ing.cmd_ingest(args(), confirm=False)
+    finalize_label, discard_label = captured["choices"][1], captured["choices"][2]
+    assert "real model spend" in finalize_label
+    assert "safe" in discard_label
 
 
 def test_pending_batch_merge_label_reflects_dig_vs_ingest(wdg_home, tmp_path, monkeypatch):

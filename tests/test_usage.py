@@ -150,8 +150,31 @@ def test_cmd_usage_shows_wall_clock_elapsed_for_concurrent_stage(tmp_path, monke
     out = capsys.readouterr().out
     assert "9.0s" in out                       # summed call time (subtotal)
     assert "5.0s elapsed" in out               # wall-clock span, per stage
-    assert "concurrently" in out
+    assert "up to 3 concurrent" in out         # all three genuinely overlap at t=99 (#457)
     assert "5.0s elapsed" in out.split("TOTAL")[1]   # and on the TOTAL line
+
+
+def test_cmd_usage_peak_concurrency_not_just_call_count(tmp_path, monkeypatch, capsys):
+    """#457: the old message reported `len(calls)` as "N calls ran concurrently", which
+    overstates it whenever a run was concurrency-capped below the stage's total call count —
+    four calls that ran two at a time still extend the wall-clock span past one call's latency
+    (so the line fires) and total 4, even though only 2 were ever in flight together. Four 2s
+    calls in two back-to-back overlapping pairs (a/b end at t=10/11, c/d end at t=13/14) never
+    have more than 2 overlapping at once."""
+    vault = _build_vault(tmp_path, runs={
+        "usage-2026-01-01T00-00-00": [
+            _call(filename="a.pdf", latency_s=2.0, end_ts=10.0),
+            _call(filename="b.pdf", latency_s=2.0, end_ts=11.0),
+            _call(filename="c.pdf", latency_s=2.0, end_ts=13.0),
+            _call(filename="d.pdf", latency_s=2.0, end_ts=14.0),
+        ],
+    })
+    monkeypatch.chdir(vault)
+
+    cmd_usage(_args())
+
+    out = capsys.readouterr().out
+    assert "4 calls, up to 2 concurrent" in out
 
 
 def test_cmd_usage_omits_wall_clock_when_no_end_ts(tmp_path, monkeypatch, capsys):
@@ -323,3 +346,52 @@ def test_cmd_usage_cost_per_page_from_documents_registry(tmp_path, monkeypatch, 
     out = capsys.readouterr().out
     assert "20 pages across 2 documents" in out
     assert "$0.0500" in out   # 1.0 / 20 pages
+
+
+def test_cmd_usage_cost_per_page_from_extracted_artifacts_without_registry(tmp_path, monkeypatch, capsys):
+    """A dig-only vault (#457/#461) has never committed anything — no documents.json — but
+    `watchdog dig` already staged `.watchdog/extracted/<sha>.json` for each document, carrying
+    the same page_count. Cost/page must work from that alone rather than require a commit."""
+    vault = _build_vault(tmp_path, runs={"usage-2026-01-01T00-00-00": [_call(cost_usd=1.0)]})
+    extracted = vault / ".watchdog" / "extracted"
+    extracted.mkdir(parents=True)
+    (extracted / "sha1.json").write_text(json.dumps({"document": {"page_count": 10}}))
+    (extracted / "sha2.json").write_text(json.dumps({"document": {"page_count": 10}}))
+    monkeypatch.chdir(vault)
+
+    cmd_usage(_args())
+
+    out = capsys.readouterr().out
+    assert "20 pages across 2 documents" in out
+    assert "$0.0500" in out   # 1.0 / 20 pages
+
+
+def test_cmd_usage_no_extracted_or_registry_reports_unavailable(tmp_path, monkeypatch, capsys):
+    vault = _build_vault(tmp_path, runs={"usage-2026-01-01T00-00-00": [_call(cost_usd=1.0)]})
+    monkeypatch.chdir(vault)
+
+    cmd_usage(_args())
+
+    out = capsys.readouterr().out
+    assert "unavailable" in out
+
+
+def test_cmd_usage_per_call_cost_per_page(tmp_path, monkeypatch, capsys):
+    """#457: a "$/pg" column per row, parsed from that call's own page range in `detail` — not
+    the whole-corpus figure. A digest call (no page range) shows "—" instead of a bogus value."""
+    vault = _build_vault(tmp_path, runs={
+        "usage-2026-01-01T00-00-00": [
+            _call(filename="a.pdf", detail="pages 1–36", cost_usd=0.36),
+            _call(filename="b.pdf", detail="digest", cost_usd=0.10),
+        ],
+    })
+    monkeypatch.chdir(vault)
+
+    cmd_usage(_args())
+
+    out = capsys.readouterr().out
+    lines = out.splitlines()
+    a_row = next(line for line in lines if "a.pdf" in line)
+    b_row = next(line for line in lines if "b.pdf" in line)
+    assert "$0.0100" in a_row   # 0.36 / 36 pages
+    assert "—" in b_row

@@ -12,6 +12,7 @@ Formerly the standalone `scripts/analyze-session` dev tool; folded into the CLI 
 usable without a repo checkout."""
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -52,6 +53,35 @@ def _wall_span(calls: list[dict]) -> float | None:
     return max(ends) - min(starts)
 
 
+def _peak_concurrency(calls: list[dict]) -> int:
+    """Highest number of `calls` with overlapping [start, end) intervals at any instant (#457) —
+    what the "N calls ran concurrently" line used to report was just `len(calls)`, the stage's
+    total call count, which overstates it for any run capped below that by `--concurrency`: 4
+    calls that ran two at a time (`--concurrency 2`) both extend the wall-clock span past the
+    fastest call's latency (so the "ran concurrently" line fires) and total 4, even though only
+    2 were ever in flight together. A standard sweep over start/end events tracks the real peak
+    instead. Calls with no `end_ts` (usage files written before #317's follow-up) are excluded,
+    same as `_wall_span`; returns 1 if none carry one (nothing to sweep, no overlap knowable)."""
+    events = []
+    for c in calls:
+        end = c.get("end_ts")
+        if not end:
+            continue
+        start = end - (c.get("latency_s") or 0.0)
+        events.append((start, 1))
+        events.append((end, -1))
+    if not events:
+        return 1
+    # End events (-1) sort before start events (1) at the same instant, so a call ending exactly
+    # when another begins isn't counted as briefly overlapping.
+    events.sort(key=lambda e: (e[0], e[1]))
+    running = peak = 0
+    for _, delta in events:
+        running += delta
+        peak = max(peak, running)
+    return peak
+
+
 def _stage_models(calls: list[dict]) -> str:
     """Distinct full model names used across `calls`, in first-seen order — printed once next
     to the stage header rather than truncated into a per-row column (a per-row abbreviation like
@@ -76,15 +106,55 @@ def _short_auth(mode: str | None) -> str:
     return "—"
 
 
+_PAGE_RANGE_RE = re.compile(r"^pages (\d+)–(\d+)")
+
+
+def _pages_in_detail(detail: str | None) -> int | None:
+    """Page count a call's own `detail` string covers (#457) — `"pages 1–36"` -> 36, `"pages
+    15–34"` -> 20 (a section call's own range, not the whole document's). None for anything
+    that isn't a page range: `"digest"`, `"part N of M"` (a section with no page markers to
+    label by), or a finalizer detail (a date, a month, an entity/pair count)."""
+    if not detail:
+        return None
+    m = _PAGE_RANGE_RE.match(detail)
+    if not m:
+        return None
+    start, end = int(m.group(1)), int(m.group(2))
+    return end - start + 1
+
+
 def _corpus_pages(vault: Path) -> tuple[int, int] | None:
-    """(total_pages, document_count) from the vault's document registry, or None if unavailable —
-    the right denominator for cost/page, since it covers every ingested document, not just this run."""
+    """(total_pages, document_count) covering every ingested document, not just the run being
+    displayed — the right denominator for cost/page.
+
+    Reads `.watchdog/extracted/*.json` (#457), the artifacts `watchdog dig` stages before any
+    `bark` call — present for a dig-only vault too, unlike the committed document registry this
+    used to require exclusively, which stays empty until `bark` runs (never, for a vault that's
+    dig-only by design, e.g. an extractor-only benchmark arm). `_commit_extracted` never deletes
+    an extracted artifact once staged, so this also covers every already-barked document. Falls
+    back to the registry only for a vault ingested before the dig/bark split (#403) shipped,
+    which has committed documents but no `extracted/` directory at all."""
+    extracted = vault / ".watchdog" / "extracted"
+    pages, n = 0, 0
+    if extracted.exists():
+        for f in extracted.glob("*.json"):
+            try:
+                doc = json.loads(f.read_text(encoding="utf-8")).get("document", {})
+            except (json.JSONDecodeError, OSError):
+                continue
+            pages += doc.get("page_count") or 0
+            n += 1
+    if n:
+        return (pages, n)
+
     reg = vault / ".watchdog" / "registry" / "documents.json"
     if not reg.exists():
         return None
     try:
         docs = json.loads(reg.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
+        return None
+    if not docs:
         return None
     pages = sum((v.get("page_count") or 0) for v in docs.values() if isinstance(v, dict))
     return (pages, len(docs))
@@ -110,7 +180,7 @@ def _print_cost_per_page(vault: Path, total_cost: float) -> None:
         print(f"  {'Corpus':<14} {_fmt(pages)} pages across {n_docs} document{'s' if n_docs != 1 else ''}")
         print(f"  {'Cost / page':<14} ${total_cost / pages:.4f}  (${total_cost:.4f} / {_fmt(pages)} pages)")
     else:
-        print(f"  {'Cost / page':<14} unavailable — no document registry at {vault}")
+        print(f"  {'Cost / page':<14} unavailable — no extracted documents on disk for {vault}")
     print()
 
 
@@ -129,7 +199,8 @@ def _print_stage(calls: list[dict]) -> dict:
 
     hdr = (f"  {'Filename':<{name_w}}  {'Detail':<{detail_w}}  {'Effort':<{effort_w}}  "
            f"{'Auth':<{auth_w}}  "
-           f"{'Input':>8}  {'C.read':>8}  {'C.write':>8}  {'Output':>7}  {'Latency':>8}  {'Cost':>8}")
+           f"{'Input':>8}  {'C.read':>8}  {'C.write':>8}  {'Output':>7}  {'Latency':>8}  "
+           f"{'Cost':>8}  {'$/pg':>7}")
     print(hdr)
     print(f"  {'─' * (len(hdr) - 2)}")
 
@@ -147,6 +218,11 @@ def _print_stage(calls: list[dict]) -> dict:
         retry_note = f"  ×{attempts}" if attempts > 1 else ""
         if c.get("failed"):
             retry_note += f"  {_YELLOW}✗ failed{_RESET}"
+        # Per-call cost/page (#457), parsed from this call's own `detail` — None (shown as "—")
+        # for anything that isn't a page range: a digest call, a section with no page markers,
+        # or a finalizer detail (a date, a month, an entity/pair count).
+        pages = _pages_in_detail(c.get("detail"))
+        per_page = f"${cost / pages:.4f}" if pages else "—"
         # The claude-agent-sdk harness's own timing (#402): time actually spent in API requests,
         # vs. this row's wall-clock Latency figure — a large gap is the harness backing off
         # internally (throttled), not the model being slow. Only present for that backend, so
@@ -160,7 +236,7 @@ def _print_stage(calls: list[dict]) -> dict:
             f"  {trunc_name:<{name_w}}  {trunc_detail:<{detail_w}}  "
             f"{effort:<{effort_w}}  {auth:<{auth_w}}  "
             f"{_fmt(c['input_tokens']):>8}  {_fmt(c['cache_read_tokens']):>8}  {_fmt(c['cache_write_tokens']):>8}  "
-            f"{_fmt(c['output_tokens']):>7}  {_fmt_secs(latency):>8}  ${cost:>6.4f}{retry_note}{api_note}"
+            f"{_fmt(c['output_tokens']):>7}  {_fmt_secs(latency):>8}  ${cost:>6.4f}  {per_page:>7}{retry_note}{api_note}"
         )
         totals["input_tokens"] += c["input_tokens"]
         totals["output_tokens"] += c["output_tokens"]
@@ -181,7 +257,9 @@ def _print_stage(calls: list[dict]) -> dict:
     # file predates end_ts.
     span = _wall_span(calls)
     if span is not None and len(calls) > 1 and totals["latency_s"] - span > 0.1:
-        print(f"  ↳ {_fmt_secs(span)} elapsed (wall-clock; {len(calls)} calls ran concurrently)")
+        peak = _peak_concurrency(calls)
+        print(f"  ↳ {_fmt_secs(span)} elapsed (wall-clock; {len(calls)} calls, "
+              f"up to {peak} concurrent)")
     return totals
 
 

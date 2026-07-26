@@ -16,6 +16,8 @@ from watchdog.cmd.base import (
     _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW,
     _check_project_health,
     _check_vault_locks,
+    _count_awaiting_bark,
+    _count_awaiting_dig,
     _count_incoming,
     _count_queued,
     _warn_pending_research,
@@ -942,40 +944,51 @@ def cmd_list(args) -> None:
         docs     = str(reg["document_count"]) if reg else "—"
         entities = str(reg["entity_count"])   if reg else "—"
         updated  = _fmt_date(reg["last_updated"]) if reg else "—"
-        incoming = str(_count_incoming(vault)) if vault.exists() else "—"
-        queued   = str(_count_queued(vault))   if vault.exists() else "—"
+        incoming = str(_count_incoming(vault))    if vault.exists() else "—"
+        # Split rather than a single "queued" count (#461): a queue file persists until `bark`
+        # commits it, so post-dig/bark split, "queued" alone conflates "not yet dug" with "dug,
+        # awaiting bark" — two very different states for a vault that may stay dig-only forever
+        # (e.g. an extractor-only benchmark arm).
+        awaiting_dig  = str(_count_awaiting_dig(vault))  if vault.exists() else "—"
+        awaiting_bark = str(_count_awaiting_bark(vault)) if vault.exists() else "—"
         created  = _fmt_date(info.get("created_at", ""))
         size     = _fmt_size(_vault_size(vault)) if vault.exists() else "—"
         is_arch  = bool(info.get("archived"))
         description = info.get("description", "")
-        rows.append((info["name"], slug, docs, entities, updated, incoming, queued, is_arch, description, health, created, size))
+        rows.append((info["name"], slug, docs, entities, updated, incoming, awaiting_dig,
+                    awaiting_bark, is_arch, description, health, created, size))
 
     name_w = max(len(r[0]) for r in rows) + 2
     slug_w = max(len(r[1]) for r in rows) + 2
-    sep_w = name_w + slug_w + 6 + 8 + 7 + 9 + 10 + 8 + 10 + 9 * 2 - 2
     header = (
         f"  {_BOLD}{'Project':<{name_w}}{_RESET}"
         f"  {_DIM}{'Slug':<{slug_w}}"
         f"  {'Docs':>6}"
         f"  {'Entities':>8}"
-        f"  {'To chew':>7}"
-        f"  {'To ingest':>9}"
+        f"  {'Awaiting chew':>13}"
+        f"  {'Awaiting dig':>12}"
+        f"  {'Awaiting bark':>13}"
         f"  {'Created':>10}"
         f"  {'Size':>8}"
         f"  Updated{_RESET}"
     )
+    sep_w = len(re.sub(r"\033\[[0-9;]*m", "", header)) - 2
     print(f"\n{header}")
     print(f"  {_DIM}{'─' * sep_w}{_RESET}")
-    for name, slug, docs, entities, updated, incoming, queued, is_arch, description, health, created, size in rows:
+    for (name, slug, docs, entities, updated, incoming, awaiting_dig, awaiting_bark,
+         is_arch, description, health, created, size) in rows:
         inc = "—" if incoming == "0" else incoming
-        que = "—" if queued   == "0" else queued
+        dig = "—" if awaiting_dig  == "0" else awaiting_dig
+        bark = "—" if awaiting_bark == "0" else awaiting_bark
         if is_arch:
-            inc_str = f"{_DIM}{inc:>7}{_RESET}"
-            que_str = f"{_DIM}{que:>9}{_RESET}"
+            inc_str = f"{_DIM}{inc:>13}{_RESET}"
+            dig_str = f"{_DIM}{dig:>12}{_RESET}"
+            bark_str = f"{_DIM}{bark:>13}{_RESET}"
             name_str = f"  {_DIM}{name:<{name_w}}{_RESET}"
         else:
-            inc_str = f"{_YELLOW}{inc:>7}{_RESET}" if inc != "—" else f"{_DIM}{inc:>7}{_RESET}"
-            que_str = f"{_YELLOW}{que:>9}{_RESET}" if que != "—" else f"{_DIM}{que:>9}{_RESET}"
+            inc_str = f"{_YELLOW}{inc:>13}{_RESET}" if inc != "—" else f"{_DIM}{inc:>13}{_RESET}"
+            dig_str = f"{_YELLOW}{dig:>12}{_RESET}" if dig != "—" else f"{_DIM}{dig:>12}{_RESET}"
+            bark_str = f"{_YELLOW}{bark:>13}{_RESET}" if bark != "—" else f"{_DIM}{bark:>13}{_RESET}"
             name_str = f"  {_BOLD}{name:<{name_w}}{_RESET}"
         print(
             f"{name_str}"
@@ -983,7 +996,8 @@ def cmd_list(args) -> None:
             f"  {docs:>6}"
             f"  {entities:>8}{_RESET}"
             f"  {inc_str}"
-            f"  {que_str}"
+            f"  {dig_str}"
+            f"  {bark_str}"
             f"  {_DIM}{created:>10}"
             f"  {size:>8}"
             f"  {updated}{_RESET}"
@@ -1040,7 +1054,8 @@ def cmd_status(args) -> None:
     doc_types   = Counter(d["document_type"] for d in docs_data.values() if d.get("document_type"))
     ent_types   = Counter(e["type"]          for e in ents_data.values() if e.get("type"))
     incoming_n = _count_incoming(vault)
-    queued_n   = _count_queued(vault)
+    awaiting_dig_n  = _count_awaiting_dig(vault)
+    awaiting_bark_n = _count_awaiting_bark(vault)
 
     print(f"\n  {_BOLD}{info['name']}{_RESET}  {_DIM}{slugify(info['name'])}{_RESET}")
     print(f"  {_CYAN}{info['path']}{_RESET}")
@@ -1065,8 +1080,10 @@ def cmd_status(args) -> None:
 
     if incoming_n:
         print(f"  {_YELLOW}{incoming_n} file{'s' if incoming_n != 1 else ''}{_RESET} in {_CYAN}_INCOMING/{_RESET} {_DIM}— run{_RESET} {_CYAN}watchdog chew{_RESET}")
-    if queued_n:
-        print(f"  {_YELLOW}{queued_n} file{'s' if queued_n != 1 else ''}{_RESET} chewed and waiting for {_CYAN}watchdog dig{_RESET}")
+    if awaiting_dig_n:
+        print(f"  {_YELLOW}{awaiting_dig_n} file{'s' if awaiting_dig_n != 1 else ''}{_RESET} chewed and awaiting {_CYAN}watchdog dig{_RESET}")
+    if awaiting_bark_n:
+        print(f"  {_YELLOW}{awaiting_bark_n} file{'s' if awaiting_bark_n != 1 else ''}{_RESET} dug and awaiting {_CYAN}watchdog bark{_RESET}")
     _warn_pending_research(vault)
 
     if orchestrate.has_pending_finalization(vault):
