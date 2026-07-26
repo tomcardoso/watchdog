@@ -1,15 +1,19 @@
 """Deterministic anchor-based scorer: frozen corpus-v1 keys vs benchmark-arm vaults (#412).
 
 Not a pytest module — a standalone benchmark tool (no ``test_`` prefix, so pytest never
-collects it). Run it against one or more ingested benchmark vaults:
+collects it). Run it against one or more benchmark vaults, dig-only or fully finalized:
 
     ~/.local/pipx/venvs/watchdog-intel/bin/python tests/documents/score_arms.py \
         ~/Investigations/bench-ex-sonnet-med ~/Investigations/bench-t0-sonnet-med ...
 
 For each key item (facts F*, must_not_miss M*), it pulls numeric anchors from the key text,
 generates formatting variants (comma-grouped, thousands-as-millions decimal, rounded $M),
-and checks them against the vault's extraction-derived markdown (documents/, entities/,
-timeline.md — never morgue/ or _INCOMING/, which would credit the raw source).
+and checks them against `.watchdog/extracted/*.json` — the raw per-document extraction
+artifacts `watchdog dig` stages before any finalizer call. Scoring against these instead of
+the committed vault notes means `watchdog bark` never needs to run for an extractor-only
+arm, and the finalizer's reconciliation/synthesis pass can't dilute the measurement — the
+artifacts persist after `bark` too, so this reads the same regardless of whether a vault has
+been finalized.
 
 Caveats (same spirit as the #215 verbatim tier, see keys/README.md): this RANKS arms against
 the same fixed reference — it is not absolute recall. Scoring is blob-level (no citation
@@ -18,6 +22,7 @@ provenance), so sibling documents can cross-credit; only ~a third of key items c
 First used for the Tier 0 checklist A/B recorded in #412.
 """
 import glob
+import json
 import os
 import re
 import sys
@@ -59,14 +64,23 @@ def norm(text):
     return re.sub(r"(\d),(\d)", r"\1\2", text.lower())   # strip thousands commas
 
 
+def _strings(obj):
+    if isinstance(obj, str):
+        return obj
+    if isinstance(obj, dict):
+        return " ".join(_strings(v) for v in obj.values())
+    if isinstance(obj, list):
+        return " ".join(_strings(v) for v in obj)
+    return ""
+
+
 def vault_text(vault):
     parts = []
-    for pat in ("documents/*.md", "entities/**/*.md", "timeline.md"):
-        for f in glob.glob(os.path.join(vault, pat), recursive=True):
-            try:
-                parts.append(open(f, encoding="utf-8").read())
-            except OSError:
-                pass
+    for f in glob.glob(os.path.join(vault, ".watchdog", "extracted", "*.json")):
+        try:
+            parts.append(_strings(json.loads(open(f, encoding="utf-8").read())))
+        except (OSError, json.JSONDecodeError):
+            pass
     return norm("\n".join(parts))
 
 
