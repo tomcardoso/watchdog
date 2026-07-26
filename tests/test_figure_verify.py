@@ -184,3 +184,21 @@ def test_figure_missing_everywhere_still_gets_the_garbled_warning_alongside_cita
     citation = next(w for w in warnings if "page citation may be wrong" in w)
     assert "999999" in garbled
     assert "197600" in citation
+
+
+def test_citation_warning_does_not_truncate_the_fact_before_the_flagged_figure():
+    """Real #456/#460 case: the fact text is long enough that the old hard 80-char truncation
+    (no ellipsis) cut it off right after the first figure, so the citation warning about the
+    *second* figure showed a preview that never contained the number it was flagging."""
+    fact_text = ("Total claims asserted by creditors as per the claims process were $360.3 "
+                "million, compared to $186.8 million recognized as subject to compromise.")
+    assert len(fact_text) > 80
+    assert fact_text.index("186.8") > 80   # falls past the old truncation point
+    extraction = _fact(fact_text, page=49)
+    pages = {
+        19: "Recognized as subject to compromise: $186.8 million.",
+        49: "Nothing about claims figures on this page.",
+    }
+    warnings = verify_figures(extraction, pages)
+    citation = next(w for w in warnings if "page citation may be wrong" in w)
+    assert fact_text in citation
