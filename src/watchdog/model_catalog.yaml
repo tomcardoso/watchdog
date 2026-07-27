@@ -1,0 +1,219 @@
+# Every model Watchdog can call, by exact id. `name` is the pretty display form printed by the
+# CLI/usage logging (falls back to the raw id if a model or an old, no-longer-catalogued id has
+# none — see model_catalog.py's display_name). `tier` (Claude only) is the short name
+# (haiku/sonnet/opus) that `--model`/config accepts in place of the raw id — the only
+# place that mapping lives. `cache_write`/`cache_read` (Claude) vs `cached_input`
+# (everyone else) reflect the two providers' different cache-pricing shapes — see
+# model_client.py's _api_cost / _openai_cost for how each is applied. `reasoning: true`
+# marks an OpenAI model that accepts `reasoning_effort` and requires
+# `max_completion_tokens` instead of `max_tokens`; omit it (defaults false) for every
+# non-reasoning OpenAI model, and for every non-OpenAI provider (never consulted there).
+models:
+  # Order matches the old _MODEL_IDS table (haiku, sonnet, opus) — cmd/setup.py's interactive
+  # picker lists Claude tiers in this insertion order, so preserving it keeps picker behavior
+  # unchanged rather than silently reshuffling it.
+  - id: claude-haiku-4-5
+    name: Claude Haiku 4.5
+    provider: anthropic
+    tier: haiku
+    input: 1.0e-6
+    output: 5.0e-6
+    cache_write: 1.25e-6
+    cache_read: 0.10e-6
+    context_window: 200_000
+  - id: claude-sonnet-4-6
+    name: Claude Sonnet 4.6
+    provider: anthropic
+    tier: sonnet
+    input: 3.0e-6
+    output: 15.0e-6
+    cache_write: 3.75e-6
+    cache_read: 0.30e-6
+    context_window: 200_000
+  - id: claude-opus-4-8
+    name: Claude Opus 4.8
+    provider: anthropic
+    tier: opus
+    input: 5.0e-6
+    output: 25.0e-6
+    cache_write: 6.25e-6
+    cache_read: 0.50e-6
+    context_window: 200_000
+
+  # DeepSeek V4 (1M-token window; cache-hit input is a ~50x discount on the miss rate)
+  - id: deepseek-v4-flash
+    name: DeepSeek V4 Flash
+    provider: deepseek
+    input: 0.14e-6
+    output: 0.28e-6
+    cached_input: 0.0028e-6
+    context_window: 1_000_000
+  - id: deepseek-v4-pro
+    name: DeepSeek V4 Pro
+    provider: deepseek
+    input: 0.435e-6
+    output: 0.87e-6
+    cached_input: 0.003625e-6
+    context_window: 1_000_000
+
+  # OpenAI GPT-5 family, standard tier (the -pro models publish no cache rate -> no discount)
+  - id: gpt-5.5
+    name: GPT-5.5
+    provider: openai
+    input: 5.0e-6
+    output: 30.0e-6
+    cached_input: 0.50e-6
+    context_window: 400_000
+    reasoning: true
+  - id: gpt-5.5-pro
+    name: GPT-5.5 Pro
+    provider: openai
+    input: 30.0e-6
+    output: 180.0e-6
+    cached_input: 30.0e-6
+    context_window: 400_000
+    reasoning: true
+  - id: gpt-5.4
+    name: GPT-5.4
+    provider: openai
+    input: 2.5e-6
+    output: 15.0e-6
+    cached_input: 0.25e-6
+    context_window: 400_000
+    reasoning: true
+  - id: gpt-5.4-mini
+    name: GPT-5.4 Mini
+    provider: openai
+    input: 0.75e-6
+    output: 4.5e-6
+    cached_input: 0.075e-6
+    context_window: 400_000
+    reasoning: true
+  - id: gpt-5.4-nano
+    name: GPT-5.4 Nano
+    provider: openai
+    input: 0.20e-6
+    output: 1.25e-6
+    cached_input: 0.02e-6
+    context_window: 400_000
+    reasoning: true
+  - id: gpt-5.4-pro
+    name: GPT-5.4 Pro
+    provider: openai
+    input: 30.0e-6
+    output: 180.0e-6
+    cached_input: 30.0e-6
+    context_window: 400_000
+    reasoning: true
+  # GPT-5.6 family (Sol/Terra/Luna) — 1.05M window, wider than gpt-5.4/5.5. Sol (the
+  # flagship, same price as gpt-5.5) isn't added — not asked for; add the same way if wanted.
+  - id: gpt-5.6-terra
+    name: GPT-5.6 Terra
+    provider: openai
+    input: 2.5e-6
+    output: 15.0e-6
+    cached_input: 0.25e-6
+    context_window: 1_050_000
+    reasoning: true
+  - id: gpt-5.6-luna
+    name: GPT-5.6 Luna
+    provider: openai
+    input: 1.0e-6
+    output: 6.0e-6
+    cached_input: 0.10e-6
+    context_window: 1_050_000
+    reasoning: true
+
+  # Gemini 2.5, standard tier at the <=200k-token rate (Pro's >200k rate is double — not
+  # modeled here, same simplification as elsewhere in this catalog).
+  - id: gemini-2.5-flash
+    name: Gemini 2.5 Flash
+    provider: gemini
+    input: 0.30e-6
+    output: 2.50e-6
+    cached_input: 0.03e-6
+    context_window: 1_000_000
+  - id: gemini-2.5-flash-lite
+    name: Gemini 2.5 Flash-Lite
+    provider: gemini
+    input: 0.10e-6
+    output: 0.40e-6
+    cached_input: 0.01e-6
+    context_window: 1_000_000
+  - id: gemini-2.5-pro
+    name: Gemini 2.5 Pro
+    provider: gemini
+    input: 1.25e-6
+    output: 10.0e-6
+    cached_input: 0.125e-6
+    context_window: 1_000_000
+  # Gemini 3.x, standard tier. 3.5 Flash and 3.1 Flash-Lite are stable; 3.1 Pro Preview is
+  # a preview release (Google may deprecate it on two weeks' notice) and its >200k-token
+  # rate is double — not modeled here, same simplification as 2.5 Pro above.
+  - id: gemini-3.5-flash
+    name: Gemini 3.5 Flash
+    provider: gemini
+    input: 1.50e-6
+    output: 9.00e-6
+    cached_input: 0.15e-6
+    context_window: 1_000_000
+  - id: gemini-3.1-flash-lite
+    name: Gemini 3.1 Flash-Lite
+    provider: gemini
+    input: 0.25e-6
+    output: 1.50e-6
+    cached_input: 0.025e-6
+    context_window: 1_000_000
+  - id: gemini-3.1-pro-preview
+    name: Gemini 3.1 Pro Preview
+    provider: gemini
+    input: 2.00e-6
+    output: 12.0e-6
+    cached_input: 0.20e-6
+    context_window: 1_000_000
+
+# Context-window fallback, consulted by model_client.py's context_window() only when a model
+# isn't an exact match in the `models` catalog above — an unpriced local/OpenRouter model (whose
+# id an operator picked themselves) or a real provider id shipped after this catalog was last
+# updated. Matched by SUBSTRING anywhere in the model id (not just a prefix), MOST SPECIFIC FIRST
+# — list order is the match order, so `deepseek-v4` must sit above the broader `deepseek` row or
+# every DeepSeek id would wrongly get the legacy 128K figure. This number directly controls
+# document sectioning (`pipeline/section.py`): too small and a document gets needlessly chopped
+# into more, smaller extraction calls; too large and a single call can overrun the model's real
+# window and fail outright. A model matching nothing here falls through to
+# model_client.py's `_DEFAULT_CONTEXT_WINDOW` (128K) as a final, conservative catch-all. Verbatim
+# from the old `_CONTEXT_WINDOWS` table, unchanged.
+context_window_fallback:
+  - [deepseek-v4, 1_000_000]
+  - [deepseek, 128_000]       # legacy deepseek-chat/reasoner, pre-V4
+  - [gemini-2.5, 1_000_000]
+  - [gemini-3, 1_000_000]
+  - [gpt-5.6, 1_050_000]
+  - [gpt-5, 400_000]
+  - [gpt-4, 128_000]
+  - [o1, 200_000]
+  - [o3, 200_000]
+  - [o4, 200_000]
+  - [claude, 200_000]         # every Claude tier shares this 200K usable window
+
+# Reasoning-model fallback, consulted by model_client.py's _openai_is_reasoning() only when a
+# model isn't an exact match in the `models` catalog above (same uncatalogued-model cases as
+# context_window_fallback). Decides two things about an OpenAI-compatible request: whether to
+# send the `reasoning_effort` parameter at all, and whether to send `max_completion_tokens`
+# (reasoning models) or the classic `max_tokens` (chat models) — sending the wrong one gets the
+# request rejected outright by the provider. Matched by PREFIX only (model id startswith, not
+# substring), MOST SPECIFIC FIRST. No two prefixes here can actually collide today (a `gpt-4...`
+# id can't also start with `gpt-5`), so ordering isn't load-bearing yet the way it is in
+# context_window_fallback — but keep declaring a chat-family override (like `gpt-4`/`chatgpt`)
+# above any broader family row it should take priority over, so that stays true if a future
+# addition ever does overlap. A model matching nothing here defaults to `false` (chat) — the safe
+# direction, since sending a reasoning-only parameter to a chat model risks a 400, while
+# withholding it from an actual reasoning model merely gives up the effort knob. Verbatim from the
+# old `_OPENAI_MODEL_CAPS` table, unchanged.
+reasoning_fallback:
+  - [gpt-4, false]    # gpt-4o / gpt-4.1 / gpt-4-turbo — chat
+  - [chatgpt, false]  # chat-latest — chat
+  - [gpt-5, true]     # entire GPT-5 family reasons
+  - [o1, true]
+  - [o3, true]
+  - [o4, true]

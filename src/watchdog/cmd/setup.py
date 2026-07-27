@@ -887,6 +887,7 @@ def _pick_model_interactive(current: str | None = None, *, only_provider: str | 
     hatch. Pass `only_provider` to show just that provider's models (e.g. from the metered-
     ingestion setup wizard, which already knows the provider). Returns the chosen value, or
     ``None`` if cancelled or left blank."""
+    from watchdog.model_catalog import display_name, resolve_model_id
     from watchdog.model_client import _MODEL_IDS, _OPENAI_PRICING
 
     if only_provider:
@@ -912,7 +913,9 @@ def _pick_model_interactive(current: str | None = None, *, only_provider: str | 
             items.append(interactive.Header(title))
             item_values.append(None)
         for m in models:
-            items.append(f"  {m}")
+            # `m` is a bare Claude tier name (opus/sonnet/haiku) in the Claude group, a raw
+            # provider id everywhere else — resolve_model_id is a no-op passthrough for the latter.
+            items.append(f"  {display_name(resolve_model_id(m))}")
             item_values.append(m if backend is None else f"{backend}:{m}")
     items.append("  Type my own…")
     item_values.append("__custom__")

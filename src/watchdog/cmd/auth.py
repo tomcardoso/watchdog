@@ -234,8 +234,8 @@ def _ingest_stage_provider(value: str | None) -> str:
     if not value or ":" not in value:
         return "anthropic"          # bare Claude tier (haiku/sonnet/opus)
     backend = value.split(":", 1)[0]
-    from watchdog.model_client import _BACKEND_PROVIDER
-    return _BACKEND_PROVIDER.get(backend, "anthropic")
+    from watchdog.model_client import provider_for_backend
+    return provider_for_backend(backend)
 
 
 _INGEST_STAGES = (("classifier_model", "haiku"), ("extractor_model", "sonnet"), ("finalizer_model", "haiku"))

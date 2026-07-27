@@ -35,26 +35,16 @@ from dataclasses import dataclass
 from functools import partial
 
 from watchdog.cmd import auth
-
-# Tier name → model id. The configured model is used as-is — no automatic escalation.
-_MODEL_IDS = {
-    "haiku":  "claude-haiku-4-5",
-    "sonnet": "claude-sonnet-4-6",
-    "opus":   "claude-opus-4-8",
-}
-
-
-def resolve_model_id(model: str) -> str:
-    """Tier name (haiku/sonnet/opus) → API model id, or a raw id returned as-is."""
-    return _MODEL_IDS.get(model, model)
-
-# USD per token: (input, output, cache_write_5m, cache_read). Used to price claude-api
-# usage (the Agent SDK reports its own cost). Update when pricing changes.
-_PRICING = {
-    "claude-opus-4-8":   (5e-6, 25e-6, 6.25e-6, 0.50e-6),
-    "claude-sonnet-4-6": (3e-6, 15e-6, 3.75e-6, 0.30e-6),
-    "claude-haiku-4-5":  (1e-6,  5e-6, 1.25e-6, 0.10e-6),
-}
+from watchdog.model_catalog import (
+    _MODEL_IDS,  # noqa: F401 — re-exported for cmd/setup.py's interactive picker
+    _OPENAI_PRICING,
+    _PRICING,
+    catalog_context_window,
+    catalog_is_reasoning,
+    fallback_context_window,
+    fallback_is_reasoning,
+    resolve_model_id,
+)
 
 DEFAULT_TIER = "sonnet"
 _API_MAX_TOKENS = 8000
@@ -78,32 +68,16 @@ _EFFORT_LEVELS = ("low", "medium", "high")
 _EFFORT_UNSUPPORTED = {"claude-haiku-4-5"}
 # OpenAI-provider model capabilities (#170). A *reasoning* model accepts `reasoning_effort` and
 # requires the newer `max_completion_tokens` field — it 400s on `max_tokens`; a *chat* model is the
-# exact reverse. Both decisions flow from this one table so they can't drift apart. Keyed by model-id
-# prefix, most specific first: declare a family once (`gpt-5`, `o3`) and put any chat exception above
-# its family. An id matching nothing is treated as a chat model — the correctness-safe default that
-# never sends an unsupported param; a genuinely new reasoning model is added here to earn effort,
-# rather than being guessed at from a substring. (DeepSeek is not consulted here: its thinking is a
-# separate per-request toggle, and it uses the classic `max_tokens` field — see `_openai_complete_async`.)
-_OPENAI_MODEL_CAPS: tuple[tuple[str, bool], ...] = (
-    ("gpt-4",   False),   # gpt-4o / gpt-4.1 / gpt-4-turbo — chat
-    ("chatgpt", False),   # chat-latest — chat
-    ("gpt-5",   True),    # entire GPT-5 family reasons
-    ("o1",      True),
-    ("o3",      True),
-    ("o4",      True),
-)
-
-
+# exact reverse. Resolved from the model catalog (model_catalog.yaml's `reasoning` field, or the
+# `reasoning_fallback` prefix table for an uncatalogued id) so it can't drift apart from pricing.
+# An id matching nothing is treated as a chat model — the correctness-safe default that never sends
+# an unsupported param. (DeepSeek is not consulted here: its thinking is a separate per-request
+# toggle, and it uses the classic `max_tokens` field — see `_openai_complete_async`.)
 def _openai_is_reasoning(model_id: str) -> bool:
     """Whether an OpenAI model is a reasoning model — accepts `reasoning_effort` and needs
-    `max_completion_tokens` (rejecting `max_tokens`). Chat models are the reverse. Resolved from the
-    explicit `_OPENAI_MODEL_CAPS` table (most-specific prefix first); an unlisted id is treated as a
-    chat model, the safe default that never sends an unsupported param."""
-    mid = model_id.lower()
-    for prefix, reasoning in _OPENAI_MODEL_CAPS:
-        if mid.startswith(prefix):
-            return reasoning
-    return False
+    `max_completion_tokens` (rejecting `max_tokens`). Chat models are the reverse."""
+    known = catalog_is_reasoning(model_id)
+    return known if known is not None else fallback_is_reasoning(model_id)
 
 
 def _claude_effort(model_id: str, effort: str) -> str | None:
@@ -161,33 +135,14 @@ def _resolve_effort(provider: str, model_id: str, effort: str | None) -> str | N
 
 # Model context windows in tokens, for provider-aware sectioning (#321): the larger a model's
 # window, the more of a document it can read in one extraction call before sectioning pays off.
-# Keyed by a substring of the resolved model id, **most specific first** (dict order is honoured),
-# so `deepseek-v4` wins over the legacy `deepseek` fallback. Anything unmatched gets a
-# conservative default. These are the vendors' published windows, not Watchdog's per-call budget —
-# the sectioning policy reserves headroom from them (see `pipeline/section.py`).
-#
-# Windows are per-model, so add a more specific row above a broader one whenever a model diverges.
-# The `claude` row is a shared fallback only because every Claude tier Watchdog resolves today
-# (Haiku 4.5, Sonnet 4.6, Opus 4.8) has the same 200K *usable* window — Sonnet's 1M is beta-gated
-# behind a request header `_api_complete_async` does not send, so 200K is the correct figure, not
-# just a conservative one. A future tier whose standard window differs (e.g. a Sonnet that ships
-# 1M by default) gets its own `claude-sonnet-N` row above this fallback.
-_CONTEXT_WINDOWS = {
-    "deepseek-v4": 1_000_000,   # DeepSeek V4 flash/pro
-    "deepseek":      128_000,   # legacy deepseek-chat/reasoner
-    "gemini-2.5":  1_000_000,   # Gemini 2.5 Pro/Flash/Flash-Lite share a 1M-token window
-    "gemini-3":    1_000_000,   # Gemini 3.5 Flash / 3.1 Flash-Lite / 3.1 Pro Preview, same window
-    "gpt-5":         400_000,
-    "gpt-4":         128_000,
-    "o1":            200_000,
-    "o3":            200_000,
-    "o4":            200_000,
-    "claude":        200_000,   # shared fallback: Haiku 4.5 / Sonnet 4.6 / Opus 4.8 usable window
-}
+# Resolved from the model catalog (model_catalog.yaml's `context_window` field per model, or the
+# `context_window_fallback` substring table for an uncatalogued id). These are the vendors'
+# published windows, not Watchdog's per-call budget — the sectioning policy reserves headroom
+# from them (see `pipeline/section.py`). Anything unmatched gets the conservative default below.
 _DEFAULT_CONTEXT_WINDOW = 128_000
 
 # A self-hosted model's id (#380) is whatever the operator named it in their runner — it carries
-# no vendor namespace to match against `_CONTEXT_WINDOWS`, and guessing from `_DEFAULT_CONTEXT_WINDOW`
+# no vendor namespace to match against the catalog/fallback, and guessing from `_DEFAULT_CONTEXT_WINDOW`
 # would be optimistic for the small/quantized models local runners typically serve. `local_context_window`
 # (a `watchdog configure` key) lets an operator state their model's real window; absent that, this
 # conservative default keeps sectioning aggressive rather than risking an overrun on an unknown model.
@@ -210,20 +165,21 @@ def context_window(model: str | None, backend: str | None = None) -> int:
     """Token context window for a stage's model, for provider-aware sectioning (#321).
 
     `model` may be a tier name (haiku/sonnet/opus), a raw provider id (`deepseek-v4-flash`,
-    `gpt-5-mini`), or None for the default tier — resolved first, then matched against the
-    substring table. Unlisted ids fall back to a conservative default rather than raising, so a
-    new or misspelled id degrades to safe (small-chunk) sectioning instead of an overrun.
+    `gpt-5-mini`), or None for the default tier — resolved first, then looked up in the model
+    catalog, then the substring fallback table. Unlisted ids fall back to a conservative default
+    rather than raising, so a new or misspelled id degrades to safe (small-chunk) sectioning
+    instead of an overrun.
 
-    `backend == "local"` (#380) skips the substring table entirely — a self-hosted model's id has
-    no relation to the vendor ids the table is keyed on — in favour of the `local_context_window`
+    `backend == "local"` (#380) skips the catalog/fallback entirely — a self-hosted model's id has
+    no relation to the vendor ids they're keyed on — in favour of the `local_context_window`
     config override, or a small conservative default when unset."""
     if backend == "local":
         return _configured_local_context_window() or _LOCAL_DEFAULT_CONTEXT_WINDOW
-    model_id = resolve_model_id(model or DEFAULT_TIER).lower()
-    for marker, window in _CONTEXT_WINDOWS.items():
-        if marker in model_id:
-            return window
-    return _DEFAULT_CONTEXT_WINDOW
+    model_id = resolve_model_id(model or DEFAULT_TIER)
+    known = catalog_context_window(model_id)
+    if known is not None:
+        return known
+    return fallback_context_window(model_id) or _DEFAULT_CONTEXT_WINDOW
 
 
 class ModelError(RuntimeError):
@@ -520,39 +476,12 @@ async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: d
             "finish_reason": getattr(resp, "stop_reason", None)}
 
 
-# OpenAI-compatible (Chat Completions) pricing: model id → (input, output, cached_input) $/tok.
-# `input` is the cache-MISS input rate; `cached_input` is the discounted rate applied to the part
-# of the prompt served from the provider's context cache. `_openai_cost` splits prompt tokens into
-# cached vs uncached from the provider's usage fields (OpenAI nests the count under
-# `prompt_tokens_details.cached_tokens`; DeepSeek reports `prompt_cache_hit_tokens`), so a cache hit
-# is priced at the lower rate rather than over-charged. Models with no published cache rate repeat
-# the input rate (no discount). Verify against the providers before relying on absolute figures:
-#   OpenAI:   https://developers.openai.com/api/docs/pricing
-#   DeepSeek: https://api-docs.deepseek.com/quick_start/pricing
-#   Gemini:   https://ai.google.dev/gemini-api/docs/pricing
-_OPENAI_PRICING = {
-    # DeepSeek V4 (1M-token window; cache-hit input is a ~50x discount on the miss rate)
-    "deepseek-v4-flash": (0.14e-6,  0.28e-6,  0.0028e-6),
-    "deepseek-v4-pro":   (0.435e-6, 0.87e-6,  0.003625e-6),
-    # OpenAI GPT-5 family, standard tier (the -pro models publish no cache rate → no discount)
-    "gpt-5.5":           (5e-6,     30e-6,    0.50e-6),
-    "gpt-5.5-pro":       (30e-6,    180e-6,   30e-6),
-    "gpt-5.4":           (2.5e-6,   15e-6,    0.25e-6),
-    "gpt-5.4-mini":      (0.75e-6,  4.5e-6,   0.075e-6),
-    "gpt-5.4-nano":      (0.20e-6,  1.25e-6,  0.02e-6),
-    "gpt-5.4-pro":       (30e-6,    180e-6,   30e-6),
-    # Gemini 2.5, standard tier at the <=200k-token rate (Pro's >200k rate is double — not
-    # modeled here, same simplification as elsewhere in this table).
-    "gemini-2.5-flash":      (0.30e-6, 2.50e-6, 0.03e-6),
-    "gemini-2.5-flash-lite": (0.10e-6, 0.40e-6, 0.01e-6),
-    "gemini-2.5-pro":        (1.25e-6, 10.0e-6, 0.125e-6),
-    # Gemini 3.x, standard tier. 3.5 Flash and 3.1 Flash-Lite are stable; 3.1 Pro Preview is a
-    # preview release (Google may deprecate it with as little as two weeks' notice) and its
-    # >200k-token rate is double — not modeled here, same simplification as 2.5 Pro above.
-    "gemini-3.5-flash":      (1.50e-6, 9.00e-6,  0.15e-6),
-    "gemini-3.1-flash-lite": (0.25e-6, 1.50e-6,  0.025e-6),
-    "gemini-3.1-pro-preview": (2.00e-6, 12.0e-6, 0.20e-6),
-}
+# OpenAI-compatible (Chat Completions) pricing: model id → (input, output, cached_input) $/tok,
+# from the model catalog (model_catalog.yaml). `input` is the cache-MISS input rate; `cached_input`
+# is the discounted rate applied to the part of the prompt served from the provider's context
+# cache. `_openai_cost` splits prompt tokens into cached vs uncached from the provider's usage
+# fields (OpenAI nests the count under `prompt_tokens_details.cached_tokens`; DeepSeek reports
+# `prompt_cache_hit_tokens`), so a cache hit is priced at the lower rate rather than over-charged.
 
 
 def _cached_input_tokens(usage: dict) -> int:
@@ -665,8 +594,8 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     truncated response — the partial output is appended as an assistant turn with `prefix: true`
     against the `/beta` base, and structured-output enforcement is dropped (the model is
     completing a partial object, not generating a fresh one). OpenAI and Gemini return a *new*
-    assistant message rather than continuing the given one, so they never prefill (excluded from
-    `_CONTINUATION_BACKENDS`) and always reach this with `prefix=None`. The returned
+    assistant message rather than continuing the given one, so they never prefill
+    (`supports_continuation=False` in `_BACKEND_META`) and always reach this with `prefix=None`. The returned
     `finish_reason` lets the shell distinguish a max-token cut (`length`) from a natural stop."""
     import ssl
 
@@ -748,49 +677,66 @@ _OPENAI_BASE = {
     "gemini":   "https://generativelanguage.googleapis.com/v1beta/openai",
 }
 
-# `local` and `openrouter` (#380) are OpenAI-compatible too, but their base URL is user-supplied
-# (`watchdog configure local_base_url`/`openrouter_base_url`, or `watchdog auth`) rather than one
-# of the fixed URLs above — so they're left unbound here and partial-applied per call in
-# `acomplete_json` once `_resolve_backend_auth` has resolved the configured URL (see
-# `_DYNAMIC_BASE_URL_BACKENDS`).
+
+@dataclass(frozen=True)
+class _BackendMeta:
+    """Per-backend registration metadata — everything a new backend needs to slot in, in one
+    place, instead of touching five separate tables (#453)."""
+    provider: str
+    base_url: str | None = None          # fixed URL (openai/deepseek/gemini)
+    dynamic_base_url: bool = False       # user-supplied at call time (local, openrouter, #380)
+    supports_continuation: bool = False  # can prefill+continue past a max-token cut (#343)
+    enforces_max_tokens: bool = False    # wire enforces max_tokens with no way past it (#343)
+    batch_only: bool = False             # selectable but never dispatched via acomplete_json (#214)
+
+
+# backend name → its registration metadata. `local`/`openrouter` (#380) are OpenAI-compatible too,
+# but their base URL is user-supplied (`watchdog configure local_base_url`/`openrouter_base_url`,
+# or `watchdog auth`) rather than one of the fixed URLs above — `dynamic_base_url` marks them so
+# `acomplete_json` partial-applies the resolved URL per call instead of at import time.
+_BACKEND_META: dict[str, _BackendMeta] = {
+    "claude-api":       _BackendMeta(provider="anthropic", supports_continuation=True,
+                                      enforces_max_tokens=True),
+    "claude-agent-sdk": _BackendMeta(provider="anthropic"),
+    # claude-batch is a real, selectable backend (CLI validation, auth resolution) but is never
+    # dispatched through the single-call acomplete_json path — the Message Batches API is
+    # submit-many/poll/collect, handled entirely by orchestrate._run_batch + pipeline.batch_extract
+    # (#214). `batch_only` exists only to turn a misrouted call (e.g. a classifier/finalizer stage
+    # accidentally set to claude-batch) into a clear error instead of the generic "unknown backend" one.
+    "claude-batch":     _BackendMeta(provider="anthropic", batch_only=True),
+    "openai":     _BackendMeta(provider="openai",   base_url=_OPENAI_BASE["openai"],
+                                enforces_max_tokens=True),
+    "deepseek":   _BackendMeta(provider="deepseek", base_url=_OPENAI_BASE["deepseek"],
+                                supports_continuation=True, enforces_max_tokens=True),
+    "gemini":     _BackendMeta(provider="gemini",   base_url=_OPENAI_BASE["gemini"],
+                                enforces_max_tokens=True),
+    "local":      _BackendMeta(provider="local",      dynamic_base_url=True, enforces_max_tokens=True),
+    "openrouter": _BackendMeta(provider="openrouter", dynamic_base_url=True, enforces_max_tokens=True),
+}
+
+# Selectable backend names (public — the CLI validates a stage's `backend:model` against this).
+BACKENDS = tuple(_BACKEND_META)
+# Backends that take a Claude tier name (haiku/sonnet/opus); the rest take a raw provider id.
+CLAUDE_BACKENDS = tuple(name for name, m in _BACKEND_META.items() if m.provider == "anthropic")
+
+# claude-batch is excluded here (batch_only, no dispatch function) — see _BackendMeta above.
 _ABACKENDS = {
     "claude-api":       _api_complete_async,
     "claude-agent-sdk": _agent_complete_async,
-    "openai":   partial(_openai_complete_async, base_url=_OPENAI_BASE["openai"]),
-    "deepseek": partial(_openai_complete_async, base_url=_OPENAI_BASE["deepseek"]),
-    "gemini":   partial(_openai_complete_async, base_url=_OPENAI_BASE["gemini"]),
+    "openai":     partial(_openai_complete_async, base_url=_BACKEND_META["openai"].base_url),
+    "deepseek":   partial(_openai_complete_async, base_url=_BACKEND_META["deepseek"].base_url),
+    "gemini":     partial(_openai_complete_async, base_url=_BACKEND_META["gemini"].base_url),
     "local":      _openai_complete_async,
     "openrouter": _openai_complete_async,
 }
 
-# backend name → the auth provider whose key it uses (and whose effort policy applies).
-_BACKEND_PROVIDER = {
-    "claude-api":       "anthropic",
-    "claude-agent-sdk": "anthropic",
-    "claude-batch":     "anthropic",
-    "openai":           "openai",
-    "deepseek":         "deepseek",
-    "gemini":           "gemini",
-    "local":            "local",
-    "openrouter":       "openrouter",
-}
 
-# Backends whose base URL is resolved per call from `auth.get_base_url` rather than baked into
-# `_ABACKENDS` as a fixed partial (#380).
-_DYNAMIC_BASE_URL_BACKENDS = ("local", "openrouter")
-
-# Selectable backend names (public — the CLI validates a stage's `backend:model` against this).
-BACKENDS = tuple(_BACKEND_PROVIDER)
-# Backends that take a Claude tier name (haiku/sonnet/opus); the rest take a raw provider id.
-CLAUDE_BACKENDS = ("claude-api", "claude-agent-sdk", "claude-batch")
-
-# claude-batch is a real, selectable backend (CLI validation, auth resolution) but is never
-# dispatched through the single-call acomplete_json path — the Message Batches API is
-# submit-many/poll/collect, handled entirely by orchestrate._run_batch + pipeline.batch_extract
-# (#214). Deliberately excluded from _ABACKENDS; this set exists only to turn a misrouted call
-# (e.g. a classifier/finalizer stage accidentally set to claude-batch) into a clear error instead
-# of the generic "unknown backend" one.
-_BATCH_ONLY_BACKENDS = {"claude-batch"}
+def provider_for_backend(backend: str | None) -> str:
+    """Provider name for a backend; None (unresolved/default) maps to 'anthropic'."""
+    if backend is None:
+        return "anthropic"
+    meta = _BACKEND_META.get(backend)
+    return meta.provider if meta else "anthropic"
 
 
 def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, str, str | None]:
@@ -806,12 +752,13 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
     import time — every other backend gets `None` back since its base URL (if any) is already
     baked into `_ABACKENDS`."""
     chosen = requested
-    if chosen in _BATCH_ONLY_BACKENDS:
+    meta = _BACKEND_META.get(chosen) if chosen is not None else None
+    if meta and meta.batch_only:
         raise ModelError(f"'{chosen}' is a batch-mode-only backend — it cannot be used for a "
                          "single-call task; it's only valid as extractor_model (#214)")
-    if chosen is not None and chosen not in _ABACKENDS:
+    if chosen is not None and meta is None:
         raise ModelError(f"unknown backend '{chosen}'")
-    provider = _BACKEND_PROVIDER[chosen] if chosen else "anthropic"
+    provider = meta.provider if chosen else "anthropic"
 
     if provider == "anthropic":
         resolved = auth.resolve_auth()
@@ -828,7 +775,7 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
         return chosen, provider, api_key, auth_mode, None
 
     base_url = None
-    if chosen in _DYNAMIC_BASE_URL_BACKENDS:
+    if meta.dynamic_base_url:
         base_url = auth.get_base_url(provider)
         if not base_url:
             raise ModelError(
@@ -852,9 +799,8 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
 # agent SDK has no cap to hit) never paginate; a truncated result from them is rejected so the
 # orchestrator falls back to bounded-output sectioning.
 
-# Backends whose truncated output can be grown past the ceiling by prefilling the partial as the
-# start of the next call (Claude assistant prefill; DeepSeek chat-prefix-completion beta).
-_CONTINUATION_BACKENDS = ("claude-api", "deepseek")
+# Which backends support continuation (Claude assistant prefill; DeepSeek chat-prefix-completion
+# beta) is recorded per-backend in `_BackendMeta.supports_continuation` above.
 # Hard cap on continuation rounds so a pathological run can't loop forever; hitting it leaves the
 # result flagged truncated → the orchestrator sections instead.
 _MAX_CONTINUATIONS = 8
@@ -909,7 +855,8 @@ def output_ceiling_for_sectioning(task: str, backend: str | None, model: str | N
     number: they enforce max_tokens yet can't continue, so a document whose estimated output
     would exceed the ceiling must be sectioned up front rather than truncating and relying on the
     reactive fallback."""
-    if backend not in ("openai", "gemini", "local", "openrouter"):
+    meta = _BACKEND_META.get(backend)
+    if meta is None or not meta.enforces_max_tokens or meta.supports_continuation:
         return None
     model_id = resolve_model_id(model or DEFAULT_TIER)
     if backend == "openai" and _openai_is_reasoning(model_id):
@@ -931,7 +878,7 @@ async def _complete_with_pagination(backend_fn, backend: str, prompt, model_id: 
     usage = out.get("usage")
     cost = out.get("cost_usd") or 0.0
     rounds = 0
-    while (_is_truncated(out.get("finish_reason")) and backend in _CONTINUATION_BACKENDS
+    while (_is_truncated(out.get("finish_reason")) and _BACKEND_META[backend].supports_continuation
            and rounds < _MAX_CONTINUATIONS):
         rounds += 1
         out = await backend_fn(prompt, model_id, schema, api_key, max_tokens, effort_arg,
@@ -962,7 +909,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
     """
     chosen, provider, api_key, auth_mode, base_url = _resolve_backend_auth(backend)
     backend_fn = _ABACKENDS[chosen]
-    if chosen in _DYNAMIC_BASE_URL_BACKENDS:
+    if _BACKEND_META[chosen].dynamic_base_url:
         backend_fn = partial(backend_fn, base_url=base_url)
 
     requested = model or DEFAULT_TIER
