@@ -87,6 +87,7 @@ For a full first-investigation walkthrough, see [Getting started](https://github
 | [Investigating](https://github.com/tomcardoso/watchdog/blob/main/docs/investigating.md) | Day-to-day work: questions, search, leads, web research |
 | [Commands](https://github.com/tomcardoso/watchdog/blob/main/docs/commands.md) | The complete command reference |
 | [Configuration](https://github.com/tomcardoso/watchdog/blob/main/docs/configuration.md) | Every setting, model choices, controlling cost |
+| [Benchmarks](https://github.com/tomcardoso/watchdog/blob/main/docs/benchmarks.md) | How model/effort defaults are measured, and what to expect in time and cost |
 | [The vault](https://github.com/tomcardoso/watchdog/blob/main/docs/vault.md) | What Watchdog builds on disk and how to read it |
 | [Domain skills](https://github.com/tomcardoso/watchdog/blob/main/docs/skills.md) | The built-in document-type expertise |
 | [Troubleshooting](https://github.com/tomcardoso/watchdog/blob/main/docs/troubleshooting.md) | When something goes wrong |

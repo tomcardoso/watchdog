@@ -126,7 +126,7 @@ The split of labour across models changed, so the attribution of each metric cha
 Once reviewed, hash the keys the way the corpus is hashed and do not touch them again:
 
 ```
-cd tests/documents/keys && shasum -a 256 *.yaml > keys-v1.sha256
+cd benchmarks/keys && shasum -a 256 *.yaml > keys-v1.sha256
 ```
 
 A key that drifts between conditions invalidates every comparison made with it.

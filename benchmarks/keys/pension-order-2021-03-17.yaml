@@ -2,7 +2,7 @@
 #
 # Drafted from the SOURCE PDF (not from a pipeline extraction, not from chewed text).
 # Frozen before any condition runs; reused unchanged across all four conditions.
-# See tests/documents/CORPUS-v1.md and issue #361.
+# See benchmarks/corpus/CORPUS-v1.md and issue #361.
 #
 # Scoring note: `quote` is the verbatim span supporting each fact, and exists so the judge can
 # award the three grounding tiers (verbatim / credited normalization / ungrounded) rather than
