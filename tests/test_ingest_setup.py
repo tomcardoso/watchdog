@@ -3,9 +3,12 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 
 from watchdog.pipeline.ingest_setup import (
-    STALE_SECONDS, cost_estimate, finalize_cost_estimate, run, scan_queue,
+    STALE_SECONDS, cost_estimate, cost_estimate_all_models, finalize_cost_estimate,
+    finalize_cost_estimate_all_models, run, scan_queue,
 )
 
 
@@ -24,10 +27,11 @@ def _write_queue_file(vault: Path, sha256: str, source_type: str = "docling", fi
 
 def _write_usage_file(vault: Path, ts: str, input_tokens: int, cost_usd,
                       est_input_tokens: int | None = None, calls: list | None = None,
-                      cache_read_tokens: int = 0, cache_write_tokens: int = 0) -> None:
+                      cache_read_tokens: int = 0, cache_write_tokens: int = 0,
+                      output_tokens: int = 0) -> None:
     reg = vault / ".watchdog" / "registry"
     reg.mkdir(parents=True, exist_ok=True)
-    totals = {"input_tokens": input_tokens, "output_tokens": 0,
+    totals = {"input_tokens": input_tokens, "output_tokens": output_tokens,
               "cache_read_tokens": cache_read_tokens, "cache_write_tokens": cache_write_tokens,
               "cost_usd": cost_usd}
     if est_input_tokens is not None:
@@ -534,3 +538,67 @@ def test_finalize_cost_estimate_subscription_backend_never_shows_cost(tmp_path):
     est = finalize_cost_estimate(vault, backend="claude-agent-sdk")
 
     assert est["cost_low"] is None and est["cost_high"] is None and est["runs_used"] == 0
+
+
+# ── cost projection across every catalog model (#469) ───────────────────────────
+
+def test_cost_estimate_all_models_no_history_returns_empty(tmp_path):
+    """No usage history yet means no output:input ratio to project output tokens from — no
+    dollar figure is invented for any catalog model."""
+    vault = _make_vault(tmp_path)
+    assert cost_estimate_all_models(vault, est_tokens=1000) == []
+
+
+def test_cost_estimate_all_models_projects_every_catalog_model(tmp_path):
+    from watchdog.model_catalog import all_models
+    vault = _make_vault(tmp_path)
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=1000, cost_usd=1.0, output_tokens=500)
+
+    rows = cost_estimate_all_models(vault, est_tokens=2000)
+
+    catalog = all_models()
+    assert {r["id"] for r in rows} == {m["id"] for m in catalog}
+    assert [r["cost"] for r in rows] == sorted(r["cost"] for r in rows)   # cheapest first
+    # output ratio 500/1000 = 0.5 -> est_output = 1000; cost = 2000*input + 1000*output per model
+    by_id = {r["id"]: r["cost"] for r in rows}
+    haiku = next(m for m in catalog if m["id"] == "claude-haiku-4-5")
+    assert by_id["claude-haiku-4-5"] == pytest.approx(2000 * haiku["input"] + 1000 * haiku["output"])
+
+
+def test_cost_estimate_all_models_ignores_runs_with_no_output_tokens(tmp_path):
+    """A run with zero recorded output tokens can't contribute a ratio — must be skipped, not
+    treated as an output:input ratio of 0 (which would zero out every model's output cost)."""
+    vault = _make_vault(tmp_path)
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=1000, cost_usd=1.0, output_tokens=0)
+    _write_usage_file(vault, "20260102T000000Z", input_tokens=1000, cost_usd=1.0, output_tokens=1000)
+
+    rows = cost_estimate_all_models(vault, est_tokens=1000)
+
+    # only the second run's 1:1 ratio counts -> est_output = 1000
+    by_id = {r["id"]: r["cost"] for r in rows}
+    from watchdog.model_catalog import all_models
+    haiku = next(m for m in all_models() if m["id"] == "claude-haiku-4-5")
+    assert by_id["claude-haiku-4-5"] == pytest.approx(1000 * haiku["input"] + 1000 * haiku["output"])
+
+
+def test_finalize_cost_estimate_all_models_no_standalone_history_returns_empty(tmp_path):
+    """A usage file exists, but only from a mixed dig+bark run — not a standalone finalize —
+    so there's still no ratio to project from, mirroring `finalize_cost_estimate`'s own gate."""
+    vault = _make_vault(tmp_path)
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=1000, cost_usd=1.0, output_tokens=500,
+                      calls=[{"task": "extract"}, {"task": "reconcile"}])
+
+    assert finalize_cost_estimate_all_models(vault, est_tokens=1000) == []
+
+
+def test_finalize_cost_estimate_all_models_uses_standalone_finalize_history(tmp_path):
+    from watchdog.model_catalog import all_models
+    vault = _make_vault(tmp_path)
+    standalone_calls = [{"task": "reconcile"}, {"task": "briefing"}]
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=1000, cost_usd=1.0, output_tokens=500,
+                      calls=standalone_calls)
+
+    rows = finalize_cost_estimate_all_models(vault, est_tokens=2000)
+
+    assert {r["id"] for r in rows} == {m["id"] for m in all_models()}
+    assert [r["cost"] for r in rows] == sorted(r["cost"] for r in rows)

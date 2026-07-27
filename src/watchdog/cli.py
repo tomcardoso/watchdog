@@ -474,6 +474,10 @@ def main() -> None:
                                "claude-batch extractor model.")
     p_ingest.add_argument("--estimate", action="store_true",
                           help="Print a token/cost estimate for the queue and exit — no lock, no confirm, no extraction")
+    p_ingest.add_argument("--estimate-all", action="store_true", dest="estimate_all",
+                          help="Like --estimate, but also project the cost across every model in "
+                               "the catalog, cheapest first — for comparing providers before "
+                               "choosing one")
     p_ingest.add_argument("--skip-briefing", action="store_true", default=False, dest="skip_briefing",
                           help="Run entity reconciliation, synthesis, and the timeline rebuild, "
                                "but skip the briefing model call — useful for bulk backfills or "
@@ -514,6 +518,10 @@ def main() -> None:
                                 "claude-batch extractor model.")
     p_extract.add_argument("--estimate", action="store_true",
                            help="Print a token/cost estimate for the queue and exit — no lock, no confirm, no extraction")
+    p_extract.add_argument("--estimate-all", action="store_true", dest="estimate_all",
+                           help="Like --estimate, but also project the cost across every model in "
+                                "the catalog, cheapest first — for comparing providers before "
+                                "choosing one")
     p_extract.add_argument("--force", action="store_true", default=False, dest="force",
                            help="Re-extract even when a cached extraction already exists — costs "
                                 "full extraction spend on every document. Nothing is committed to "
@@ -538,6 +546,10 @@ def main() -> None:
     p_finalize.add_argument("--estimate", action="store_true",
                             help="Print a token/cost estimate for the pending batch and exit — "
                                  "no lock, no finalize")
+    p_finalize.add_argument("--estimate-all", action="store_true", dest="estimate_all",
+                            help="Like --estimate, but also project the cost across every model in "
+                                 "the catalog, cheapest first — for comparing providers before "
+                                 "choosing one")
     p_finalize.add_argument("--skip-briefing", action="store_true", default=False, dest="skip_briefing",
                             help="Run entity reconciliation, synthesis, and the timeline rebuild, "
                                  "but skip the briefing model call — useful for bulk backfills or "

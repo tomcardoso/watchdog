@@ -79,3 +79,11 @@ def fallback_is_reasoning(model_id: str) -> bool:
         if mid.startswith(prefix):
             return reasoning
     return False
+
+
+def all_models() -> list[dict]:
+    """Every catalog model's id/name/provider/input/output list price, USD per token — for
+    projecting a cost estimate across the whole catalog (#469) rather than a single resolved
+    model. Order matches `model_catalog.yaml`."""
+    return [{"id": m["id"], "name": m.get("name", m["id"]), "provider": m["provider"],
+             "input": float(m["input"]), "output": float(m["output"])} for m in _CATALOG["models"]]
