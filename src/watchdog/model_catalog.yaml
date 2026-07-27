@@ -56,21 +56,14 @@ models:
     cached_input: 0.003625e-6
     context_window: 1_000_000
 
-  # OpenAI GPT-5 family, standard tier (the -pro models publish no cache rate -> no discount)
+  # OpenAI GPT-5 family, standard tier (the -pro variants are excluded: no discounted cache
+  # rate, and a flat 6x price jump over these for no clear quality benefit — see #473)
   - id: gpt-5.5
     name: GPT-5.5
     provider: openai
     input: 5.0e-6
     output: 30.0e-6
     cached_input: 0.50e-6
-    context_window: 400_000
-    reasoning: true
-  - id: gpt-5.5-pro
-    name: GPT-5.5 Pro
-    provider: openai
-    input: 30.0e-6
-    output: 180.0e-6
-    cached_input: 30.0e-6
     context_window: 400_000
     reasoning: true
   - id: gpt-5.4
@@ -95,14 +88,6 @@ models:
     input: 0.20e-6
     output: 1.25e-6
     cached_input: 0.02e-6
-    context_window: 400_000
-    reasoning: true
-  - id: gpt-5.4-pro
-    name: GPT-5.4 Pro
-    provider: openai
-    input: 30.0e-6
-    output: 180.0e-6
-    cached_input: 30.0e-6
     context_window: 400_000
     reasoning: true
   # GPT-5.6 family (Sol/Terra/Luna) — 1.05M window, wider than gpt-5.4/5.5. Sol (the

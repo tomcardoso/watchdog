@@ -93,67 +93,7 @@ cd ~/Investigations/shell-company-investigation
 watchdog
 ```
 
-Bare `watchdog` walks the pipeline for you — chewing, then ingesting — confirming before each step that costs money or takes time, and skipping any step that has nothing to do. The two sections below describe what chewing and ingestion actually do, in case you want to run either one directly, on a single file, or with flags of your own.
-
-## Chew
-
-Chewing is the mechanical preprocessing step. It runs entirely on your machine — no AI involved yet. Run it on its own with:
-
-```bash
-watchdog chew
-```
-
-Chewing:
-
-- Converts documents to structured text using Docling, a document-understanding library
-- Detects scanned documents and applies OCR — the process of turning a scanned image into machine-readable text (Apple Vision on macOS; Tesseract on Linux and Windows)
-- Splits large PDFs into chunks and processes them in parallel
-- Detects near-duplicates
-
-Each file produces an entry in the processing queue, and the original moves to internal staging. Nothing is written to the Obsidian vault yet.
-
-Chewing has a privacy bonus: only the extracted text moves forward from this step. The metadata that rides along inside a file — the author and creator fields in a PDF, camera and location details in a photo, revision history in an office document — is never extracted, so it never reaches an AI model in the later steps. What the model eventually sees is the text itself, the file's name, and any sidecar notes you wrote. The original file, metadata intact, stays on your machine in the vault's document morgue.
-
-Files are processed in parallel. Each shows a live status row while it is worked on, with an overall progress row beneath; finished files settle into the log above with one of three statuses: `OK` (queued for extraction), `SKP` (no text found — moved to `_INCOMING/_SKIPPED/`), or `ERR` (failed — moved to `_INCOMING/_FAILED/` with an explanation). Files with noisy OCR output show a `· garbled OCR` note alongside `OK` — they are still queued, but worth verifying after extraction. On macOS, you get a notification when the batch completes. If a file fails, see [troubleshooting](troubleshooting.md) for the common causes and fixes.
-
-Press **Ctrl+C** to cancel a chew — the lock is cleaned up automatically and unfinished files stay in `_INCOMING/` for the next run.
-
-When chewing finishes, Watchdog asks whether to ingest now (`Ingest now? [Y/n]`). Press Enter to start extraction straight away, or decline and it prints the command to run when you are ready.
-
-To chew a single file rather than the whole folder:
-
-```bash
-watchdog chew path/to/specific-file.pdf
-```
-
-Flags for controlling how many files and chunks are processed in parallel are covered in the [command reference](commands.md).
-
-## Ingest
-
-Ingestion is the extraction step — the part that uses AI. Run it on its own with:
-
-```bash
-watchdog dig
-```
-
-This runs in your terminal; there is no Claude Code session to open. Watchdog scans the queue, shows a token estimate — tokens are the units AI usage is measured in — and asks you to confirm before starting. On a metered API key with prior runs, it also shows a rough dollar range based on this vault's own usage history. Run `watchdog dig --estimate` any time to see that estimate without starting extraction.
-
-For each document, `dig`:
-
-1. Reads the extracted text
-2. Classifies the document type and loads the matching domain skill (34 built-in skills for corporate filings, court documents, real estate records, and more, plus a general fallback — see [skills](skills.md))
-3. Extracts entities (people, companies, addresses) with page-level citations, flagging any fact it inferred rather than read
-4. Extracts relationships between entities
-5. Extracts datable events for the timeline
-6. Checks for contradictions against entities already in the vault
-
-Large documents can take several minutes each, so a long pause on a status row is normal. `dig` stops once every document is extracted and staged — nothing has reached the vault yet. Run `watchdog bark` next to write everything and complete post-processing:
-
-```bash
-watchdog bark
-```
-
-`bark` writes the documents to the vault, synthesizes prose for entities that appear in multiple documents, reconciles the timeline, and produces a **briefing** summarizing what was processed, what entities were found, connections to entities already in the vault, and anything unusual or worth following up. Read the briefing carefully — the connections section is often where the story is.
+Bare `watchdog` walks the whole pipeline for you: it chews what's in `_INCOMING/` — converting and OCRing documents locally, no AI involved — then extracts entities, facts, and timeline events from each one, then writes everything to the vault and produces a **briefing** summarizing what was found, connections to entities already in the vault, and anything worth following up. It confirms before each step that costs money or takes time, and skips any step that has nothing to do. Large documents can take several minutes each to extract, so a long pause on a status row is normal. Read the briefing carefully once it's done — the connections section is often where the story is.
 
 By default Watchdog uses Sonnet (Claude's mid-tier model) for extraction and Haiku (the fast, inexpensive tier) for classification and post-ingest. You can change the models, tune how much reasoning each stage spends, and pin a specific domain skill — per run or as persistent defaults. The [configuration guide](configuration.md) covers all of it, including how to cut cost.
 
@@ -165,9 +105,9 @@ Three features run alongside every ingest; each has its full treatment in the [i
 
 - **Resolving.** Once you have dealt with a lead or an alert, you can mark it done so it stops reappearing, which turns those reports into a shrinking to-do list. See [resolving items](investigating.md#resolving-items).
 
-If you hit a rate limit — a temporary cap on how much you can send the model — `dig` stops cleanly and re-running `watchdog dig` picks up where it left off. For an unattended overnight batch, `--wait` sleeps through the limit and resumes automatically; see the [command reference](commands.md) for details.
+If you hit a rate limit — a temporary cap on how much you can send the model — Watchdog stops cleanly and picks up where it left off next time you run it; see [troubleshooting](troubleshooting.md#hitting-rate-limits).
 
-Running `watchdog dig` then `watchdog bark` as two steps — rather than letting bare `watchdog` do both — is useful when you want to check what got extracted before it lands in the vault, or to try more than one post-processing model against the same extraction. See [the command reference](commands.md#watchdog-dig) for details. (Older versions of Watchdog had a single `watchdog ingest` command for this — it still works but is deprecated; use `watchdog` or `dig`/`bark` instead.)
+Under the hood, `watchdog` runs three steps you can also run one at a time — `watchdog chew` (local preprocessing), `watchdog dig` (extraction), and `watchdog bark` (writing to the vault and the briefing). Running them separately is useful when you want to chew now and extract later, check what got extracted before it lands in the vault, or try more than one post-processing model against the same extraction. See the [command reference](commands.md#processing) for each one's flags in full.
 
 ## Explore the vault in Obsidian
 

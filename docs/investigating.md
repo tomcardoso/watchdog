@@ -170,9 +170,7 @@ This opens Claude Code on the research skill. Seeded by your vault's entities, l
 Crucially, web research **never writes vault notes**. Instead, Claude queues every source it decides to keep — the URL, a reliability tag, and why it matters. When you exit the session, Watchdog downloads the queued sources into `_INCOMING/`, validating each one, so the findings flow through the same chew-and-ingest pipeline as documents you obtained yourself: deduplicated, entity-extracted, and cited. A scraped blog post is never confused with a primary document. After the download, fold the findings in the normal way:
 
 ```bash
-watchdog chew
-watchdog dig
-watchdog bark
+watchdog
 ```
 
 Then open a fresh session to investigate what came back.

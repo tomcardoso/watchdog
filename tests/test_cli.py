@@ -1076,7 +1076,7 @@ def test_pick_model_interactive_only_provider_filters_to_one_group(monkeypatch):
 
 
 def test_pick_model_interactive_custom_free_text(monkeypatch):
-    answers = iter(["20", "openai:my-custom-model"])
+    answers = iter(["18", "openai:my-custom-model"])
     monkeypatch.setattr("builtins.input", lambda *a: next(answers))
     assert _setup._pick_model_interactive(None) == "openai:my-custom-model"
 
