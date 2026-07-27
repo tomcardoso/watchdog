@@ -172,10 +172,17 @@ models:
     cached_input: 0.20e-6
     context_window: 1_000_000
 
-# Fallback for a model NOT in the catalog above (unpriced local/OpenRouter model, or a
-# new id shipped before Watchdog catalogs it) — substring anywhere in the model id,
-# MOST SPECIFIC FIRST (list order is the match order). Verbatim from the old
-# _CONTEXT_WINDOWS table, unchanged.
+# Context-window fallback, consulted by model_client.py's context_window() only when a model
+# isn't an exact match in the `models` catalog above — an unpriced local/OpenRouter model (whose
+# id an operator picked themselves) or a real provider id shipped after this catalog was last
+# updated. Matched by SUBSTRING anywhere in the model id (not just a prefix), MOST SPECIFIC FIRST
+# — list order is the match order, so `deepseek-v4` must sit above the broader `deepseek` row or
+# every DeepSeek id would wrongly get the legacy 128K figure. This number directly controls
+# document sectioning (`pipeline/section.py`): too small and a document gets needlessly chopped
+# into more, smaller extraction calls; too large and a single call can overrun the model's real
+# window and fail outright. A model matching nothing here falls through to
+# model_client.py's `_DEFAULT_CONTEXT_WINDOW` (128K) as a final, conservative catch-all. Verbatim
+# from the old `_CONTEXT_WINDOWS` table, unchanged.
 context_window_fallback:
   - [deepseek-v4, 1_000_000]
   - [deepseek, 128_000]       # legacy deepseek-chat/reasoner, pre-V4
@@ -189,8 +196,20 @@ context_window_fallback:
   - [o4, 200_000]
   - [claude, 200_000]         # every Claude tier shares this 200K usable window
 
-# Fallback OpenAI reasoning-model detection, prefix-anchored (model id startswith),
-# MOST SPECIFIC FIRST. Verbatim from the old _OPENAI_MODEL_CAPS table, unchanged.
+# Reasoning-model fallback, consulted by model_client.py's _openai_is_reasoning() only when a
+# model isn't an exact match in the `models` catalog above (same uncatalogued-model cases as
+# context_window_fallback). Decides two things about an OpenAI-compatible request: whether to
+# send the `reasoning_effort` parameter at all, and whether to send `max_completion_tokens`
+# (reasoning models) or the classic `max_tokens` (chat models) — sending the wrong one gets the
+# request rejected outright by the provider. Matched by PREFIX only (model id startswith, not
+# substring), MOST SPECIFIC FIRST. No two prefixes here can actually collide today (a `gpt-4...`
+# id can't also start with `gpt-5`), so ordering isn't load-bearing yet the way it is in
+# context_window_fallback — but keep declaring a chat-family override (like `gpt-4`/`chatgpt`)
+# above any broader family row it should take priority over, so that stays true if a future
+# addition ever does overlap. A model matching nothing here defaults to `false` (chat) — the safe
+# direction, since sending a reasoning-only parameter to a chat model risks a 400, while
+# withholding it from an actual reasoning model merely gives up the effort knob. Verbatim from the
+# old `_OPENAI_MODEL_CAPS` table, unchanged.
 reasoning_fallback:
   - [gpt-4, false]    # gpt-4o / gpt-4.1 / gpt-4-turbo — chat
   - [chatgpt, false]  # chat-latest — chat
