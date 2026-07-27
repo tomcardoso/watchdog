@@ -32,12 +32,10 @@ A few steps, all run from your terminal:
 ```
 drop files into _INCOMING/
         ↓
-watchdog chew     reads, OCRs and converts each document — entirely on your machine
-        ↓
-watchdog dig      sends the extracted text to the AI model, which pulls out
-                  entities, facts and timeline events
-        ↓
-watchdog bark     writes everything to the vault and produces a briefing
+watchdog          reads, OCRs and converts each document, sends the extracted
+                  text to the AI model to pull out entities, facts and timeline
+                  events, then writes everything to the vault and produces a
+                  briefing — one command, confirming before each step
         ↓
 your vault        linked notes in Obsidian; ask questions in Claude Code
 ```
@@ -70,9 +68,7 @@ watchdog new "Shell Company Investigation"
 cd ~/Investigations/shell-company-investigation
 
 # drop documents into _INCOMING/, then:
-watchdog chew
-watchdog dig
-watchdog bark
+watchdog
 watchdog obsidian
 ```
 

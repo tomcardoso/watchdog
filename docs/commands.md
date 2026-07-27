@@ -139,7 +139,7 @@ To isolate just one stage instead of the whole post-ingest step, pass one of the
     DeepSeek V4 Flash       deepseek    $0.01
     ...
     Claude Sonnet 4.6       anthropic   $0.14
-    GPT-5.5 Pro             openai      $1.44
+    GPT-5.5                 openai      $0.24
 ```
 
 This is a comparison tool, not a billing forecast: every model is priced at its published per-token rate, scaled from this vault's own recent output:input token ratio, as if every input token were a cache miss — cache pricing varies by provider and usage pattern, so it isn't modeled here. It shows every catalog model, including all three Claude tiers, regardless of whether this vault is on subscription auth (where a real Claude run costs nothing extra beyond the subscription) — the table answers "what would each model's list price come to," not "what will I actually be billed." A vault with no usage history yet has nothing to project an output-token ratio from, so `--estimate-all` shows the same "not enough history" message `--estimate` already gives a first-run vault, with no per-model table.
