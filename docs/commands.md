@@ -60,7 +60,7 @@ Investigation names tab-complete in zsh and bash once `watchdog setup` has run.
        Cancel
 ```
 
-It's shown every time, not just once per vault — the risk is per-document, not per-vault — and it replaces the plain "Ingest now?" prompt rather than adding a second one. `--skip-warning` skips the interactive pause, for repeated or scripted runs on a corpus already vetted as public (benchmarking, `--wait` batches, automation); it still prints a one-line notice naming how many documents were sent, so a skipped run is never silent about what it did. It is a per-invocation flag rather than a `watchdog configure` setting — a persistent "never warn me" default would quietly defeat the safeguard for every future run.
+It's shown every time, not just once per vault — the risk is per-document, not per-vault — and it replaces the plain "Ingest now?" prompt rather than adding a second one. `--skip-warning` skips the interactive pause, for repeated or scripted runs on a corpus already vetted as public (benchmarking, `--wait` batches, automation); it still prints a one-line notice naming how many documents were sent, so a skipped run is never silent about what it did. It is a per-invocation flag rather than a `watchdog configure` setting — a persistent "never warn me" default would quietly defeat the safeguard for every future run. (See [Benchmarks](benchmarks.md) for how this flag is used to run the model-comparison suite unattended.)
 
 **Model and effort flags.** Each takes effect for this run only; the persistent defaults live in [Configuration](configuration.md).
 

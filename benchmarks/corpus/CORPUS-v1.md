@@ -5,7 +5,7 @@ Document identity in the pipeline is the sha256 — changing a single byte silen
 incomparable, with nothing to warn you. Verify before every run:
 
 ```
-cd tests/documents && shasum -a 256 -c corpus-v1.sha256
+cd benchmarks/corpus && shasum -a 256 -c corpus-v1.sha256
 ```
 
 These PDFs are committed to git, so the corpus is version-controlled as well as hashed.

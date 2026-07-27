@@ -1,5 +1,11 @@
 # Running the extraction benchmark (#361 / #215)
 
+**Superseded day-to-day by `run_benchmark.py` (#466)**, which automates every step below against
+`benchmark.yaml`'s arm matrix — cost preview, one go-ahead for the whole run, scoring, and a
+written report under `benchmarks/<run-id>/`, instead of a human hand-running each step. This
+document stays as the spec that tool automates, and as the manual fallback if `run_benchmark.py`
+itself needs debugging.
+
 A step-by-step guide to measuring the three ingest model stages against corpus-v1. Written to be
 followed top to bottom. Nothing here spends money until Step 3, and every run gets a free cost
 preview first.
@@ -74,13 +80,13 @@ invalidates every comparison made against the earlier version. Review them (see 
 then:
 
 ```
-cd tests/documents/keys && shasum -a 256 *.yaml > keys-v1.sha256
+cd benchmarks/keys && shasum -a 256 *.yaml > keys-v1.sha256
 ```
 
 ## Step 1 — verify the corpus
 
 ```
-cd tests/documents && shasum -a 256 -c corpus-v1.sha256
+cd benchmarks/corpus && shasum -a 256 -c corpus-v1.sha256
 ```
 
 All six must report `OK`. If any fails, stop — a single changed byte makes runs incomparable.
@@ -257,7 +263,7 @@ keys' numeric-anchored items — roughly a third of them — against one or more
 (dig-only or finalized, both work), offline, no model calls:
 
 ```
-~/.local/pipx/venvs/watchdog-intel/bin/python tests/documents/score_arms.py \
+~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/score_arms.py \
     <projects_dir>/bench-ex-sonnet-med <projects_dir>/bench-t0-sonnet-med
 ```
 

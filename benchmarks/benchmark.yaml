@@ -1,0 +1,62 @@
+# Benchmark arm matrix (#361 / #215 / #466), consumed by run_benchmark.py.
+#
+# Frozen references this run verifies before spending anything: corpus/corpus-v1.sha256 (the
+# extractor/finalizer corpus) and keys/keys-v1.sha256 (the answer keys). See BENCHMARKING.md for
+# the manual protocol this file and run_benchmark.py automate.
+
+corpus: {dir: corpus, sha256: corpus/corpus-v1.sha256}
+keys: {dir: keys, sha256: keys/keys-v1.sha256}
+
+master_vault:
+  name: bench-master                     # sidecar'd, reused by extractor + finalizer-base arms
+  classify_name: bench-classify-master   # bare-PDF twin, classifier smoke test only
+
+extractor_sweep:
+  vault_prefix: bench-ex3
+  arms:
+    - {id: sonnet-high,       extractor_model: sonnet, extractor_effort: high}
+    - {id: sonnet-med,        extractor_model: sonnet, extractor_effort: medium}
+    - {id: haiku,             extractor_model: haiku}
+    - {id: ds-flash,          extractor_model: "deepseek:deepseek-v4-flash"}
+    - {id: ds-flash-think,    extractor_model: "deepseek:deepseek-v4-flash-thinking"}
+    - {id: ds-pro,            extractor_model: "deepseek:deepseek-v4-pro"}
+    - {id: ds-pro-think,      extractor_model: "deepseek:deepseek-v4-pro-thinking"}
+    - {id: gemini-flash-lite, extractor_model: "gemini:gemini-3.1-flash-lite"}   # cheap tier
+    - {id: gemini-flash,      extractor_model: "gemini:gemini-3.5-flash"}       # middle tier
+    # Opus dropped (not worth testing this round). OpenAI arms deferred pending #453 (possible
+    # model-adapter swap) — no fixed model ids worth committing to a frozen benchmark yet.
+
+finalizer_sweep:
+  vault_prefix: bench-fn
+  base: {extractor_model: "deepseek:deepseek-v4-flash"}   # fixed, cheap, deterministic (#381)
+  arms:
+    - {id: haiku,             finalizer_model: haiku}
+    - {id: sonnet-high,       finalizer_model: sonnet, finalizer_effort: high}
+    - {id: sonnet-med,        finalizer_model: sonnet, finalizer_effort: medium}
+    - {id: ds-flash,          finalizer_model: "deepseek:deepseek-v4-flash"}
+    - {id: ds-pro-think,      finalizer_model: "deepseek:deepseek-v4-pro-thinking"}
+    - {id: gemini-flash-lite, finalizer_model: "gemini:gemini-3.1-flash-lite"}
+    - {id: gemini-flash,      finalizer_model: "gemini:gemini-3.5-flash"}
+    # Opus dropped. OpenAI deferred (#453), same reasoning as the extractor sweep.
+
+classifier_smoke:
+  vault_prefix: bench-classify
+  arm: {id: smoke, extractor_model: "deepseek:deepseek-v4-flash", finalizer_model: "deepseek:deepseek-v4-flash"}
+  # Sanity check only — corpus-v1 spans 2 skills, not enough to RANK classifier models.
+
+classifier_sweep:
+  vault_prefix: bench-classify-sweep
+  corpus_dir: classify-corpus     # empty for now — see classify-corpus/README.md
+  fixed: {extractor_model: "deepseek:deepseek-v4-flash", finalizer_model: "deepseek:deepseek-v4-flash"}
+  arms:
+    - {id: haiku,             classifier_model: haiku}    # shipped default
+    - {id: sonnet,            classifier_model: sonnet}
+    - {id: ds-flash,          classifier_model: "deepseek:deepseek-v4-flash"}
+    - {id: gemini-flash-lite, classifier_model: "gemini:gemini-3.1-flash-lite"}
+  # Classifier has no effort knob (BENCHMARKING.md) — model only, no effort sweep. BLOCKED until
+  # classify-corpus/ is populated with a type-diverse document set + expected.yaml labels;
+  # run_benchmark.py detects an empty corpus_dir and skips this stage with a one-line notice, so
+  # it doesn't block the other three stages from running.
+
+# Still deferred (see docs/benchmarks.md "Roadmap"): no CI-trigger section — GitHub Actions
+# integration slots in as a new top-level key later without reworking this schema.
