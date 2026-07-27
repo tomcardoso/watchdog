@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 from watchdog.cmd.base import _DIM, _RESET, _YELLOW, _resolve_vault
+from watchdog.model_catalog import display_name
 from watchdog.pipeline.orchestrate import usage_files
 
 # task name -> stage bucket, matching --classifier-model/--extractor-model/--finalizer-model.
@@ -83,15 +84,18 @@ def _peak_concurrency(calls: list[dict]) -> int:
 
 
 def _stage_models(calls: list[dict]) -> str:
-    """Distinct full model names used across `calls`, in first-seen order — printed once next
-    to the stage header rather than truncated into a per-row column (a per-row abbreviation like
+    """Distinct model names used across `calls`, in first-seen order — printed once next to the
+    stage header rather than truncated into a per-row column (a per-row abbreviation like
     `_short_model`'s old 'claude-sonnet-4-6' -> 'sonnet' silently mangled non-Claude ids, e.g.
-    'gemini-3.1-flash-lite' -> '3.1'). Calls within one stage share a model in the overwhelming
-    majority of runs (one `--classifier-model`/etc. per invocation), but joining distinct values
-    keeps this correct if that ever changes mid-run."""
+    'gemini-3.1-flash-lite' -> '3.1'). Shown via the catalog's pretty `display_name` (e.g.
+    'GPT-5.6 Terra') rather than the raw id — a full name, not an abbreviation, so it doesn't
+    reintroduce that same mangling; falls back to the raw id for anything uncatalogued. Calls
+    within one stage share a model in the overwhelming majority of runs (one
+    `--classifier-model`/etc. per invocation), but joining distinct values keeps this correct if
+    that ever changes mid-run."""
     seen = []
     for c in calls:
-        m = c.get("model") or "?"
+        m = display_name(c.get("model")) if c.get("model") else "?"
         if m not in seen:
             seen.append(m)
     return ", ".join(seen)

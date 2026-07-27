@@ -213,6 +213,7 @@ finalize never runs at all, so `--wait` simply stops once the queue drains, same
 ## 5. Ingest (extraction)
 
 **Code:** `pipeline/orchestrate.py` (the loop), `model_client.py` (the model adapter),
+`model_catalog.py` + `model_catalog.yaml` (the model/pricing catalog — see D142),
 `pipeline/prompts.py` + `pipeline/schemas.py` (task prompt builders + JSON contracts;
 the instruction prose lives in editable templates under `prompts/*.md` — see D28),
 `pipeline/preflight.py`, `pipeline/postflight.py`, `pipeline/write_vault.py`.
@@ -1019,7 +1020,14 @@ completed purge, and the CLI hint says so.
   outputs), or the OpenAI-compatible `openai`/`deepseek`/`gemini`/`local`/`openrouter` backends
   (Chat Completions over httpx, one provider each via base URL; D37, D94, D139) — by auth mode
   and per-task policy, validates the JSON, retries on the same model on failure, and reports
-  cost/latency. Structured-output enforcement differs by provider on the OpenAI-compatible path:
+  cost/latency. Backend registration metadata (provider, base URL, continuation/max-tokens
+  support, batch-only) lives in one `_BACKEND_META` registry keyed by backend name, so a new
+  backend is one entry, not several parallel tables. Every model's id, pricing, context window,
+  reasoning-model flag, and pretty display name is single-sourced in a hand-editable
+  `model_catalog.yaml`, loaded by the dependency-free `model_catalog.py` (D142) — both
+  `model_client.py` and `cmd/base.py` (the `watchdog context`/`_launch_claude` path) read from
+  it, so there's no second, silently divergent copy of a model id. Structured-output enforcement
+  differs by provider on the OpenAI-compatible path:
   Gemini gets a real `json_schema` response format (its schema engine tolerates the same
   omit-optional-fields `schemas.py` design unmodified), while OpenAI, DeepSeek, local, and
   OpenRouter stay on portable `json_object` + schema-in-prompt (D98).

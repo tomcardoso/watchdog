@@ -7,6 +7,7 @@ import sys
 from collections import Counter  # noqa: F401 — re-exported for cmd modules
 from pathlib import Path
 
+from watchdog.model_catalog import _MODEL_IDS, resolve_model_id  # noqa: F401 — re-exported
 from watchdog.pipeline.write_vault import slugify  # noqa: F401 — re-exported
 
 WATCHDOG_HOME = Path.home() / ".watchdog"
@@ -21,12 +22,6 @@ _GREEN  = "\033[0;32m"
 _RESET  = "\033[0m"
 
 VAULT_SCHEMA_VERSION = "1"
-
-_MODEL_IDS = {
-    "sonnet": "claude-sonnet-4-6",
-    "opus":   "claude-opus-4-8",
-    "haiku":  "claude-haiku-4-5-20251001",
-}
 
 _ALIASES = {
     "init":       "new",
@@ -619,7 +614,7 @@ def _launch_claude(vault: Path, prompt: str | None = None, model: str | None = N
         os.chdir(vault)
         cmd = ["claude"]
         if model:
-            cmd += ["--model", _MODEL_IDS.get(model, model)]
+            cmd += ["--model", resolve_model_id(model)]
         if prompt:
             cmd.append(prompt)
         os.execvp("claude", cmd)
