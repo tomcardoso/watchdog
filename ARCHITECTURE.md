@@ -182,6 +182,17 @@ qualify — true only for a *standalone* `watchdog bark`, which #403 phase 4's s
 read (D129) is what makes estimable at all: before that, the finalizer's inputs were smeared
 across the retired `entity-fragments/` mechanism, not sitting in one place to measure.
 
+**`--estimate-all` (D143).** Extends either estimate across every model in `model_catalog.yaml`
+instead of just the configured stage's own model — `ingest_setup.cost_estimate_all_models`/
+`finalize_cost_estimate_all_models`. Unlike the single-model estimate above, a catalog model has
+no $/token run history of its own to draw on, so this prices `est_tokens` directly against each
+model's own catalog list rate rather than an empirical $/token ratio; the output side is
+projected from this vault's own recent output:input *token* ratio (backend-agnostic, `dig`/`bark`
+scoped the same way their own $/token ratios are), applied uniformly across every model. Every
+catalog model is shown, Claude tiers included, regardless of the vault's own auth mode — this is
+a list-price comparison across providers, not a projection of what this vault would actually be
+billed.
+
 **Lock acquisition is atomic** (`pipeline/locks.py`, D66). All three run locks — the ingest
 lock, the shared finalize lock, and chew's `.watchdog/.chew-lock` — are taken with
 `os.open(O_CREAT|O_EXCL)`, so two concurrent invocations can't both win (the old

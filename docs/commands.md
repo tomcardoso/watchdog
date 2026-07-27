@@ -29,7 +29,7 @@ Investigation names tab-complete in zsh and bash once `watchdog setup` has run.
 | `watchdog fetch <url…>` | Download one or more URLs (or a links file) into `_INCOMING/` — see [below](#watchdog-fetch). |
 | `watchdog chew` | Convert everything in `_INCOMING/` into extracted text queued for ingest — see [below](#watchdog-chew). |
 | `watchdog dig` | Classify and extract queued documents into staged artifacts — see [below](#watchdog-dig). |
-| `watchdog bark` | Complete the post-ingest step (merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline, briefing) for a batch staged by `watchdog dig`, or one an interruption left half-done; takes `--finalizer-model` (and its four per-stage overrides), `--finalizer-effort`, `--estimate`, and `--skip-briefing` — see [below](#watchdog-bark). |
+| `watchdog bark` | Complete the post-ingest step (merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline, briefing) for a batch staged by `watchdog dig`, or one an interruption left half-done; takes `--finalizer-model` (and its four per-stage overrides), `--finalizer-effort`, `--estimate`, `--estimate-all`, and `--skip-briefing` — see [below](#watchdog-bark). |
 | `watchdog requeue` | Move documents quarantined in `queue/_failed/` back into the active queue, ready for the next `watchdog dig`. |
 | `watchdog context [name]` | Open Claude Code with the context-seeding skill, which reads `_CONTEXT/`, interviews you, and writes `context.md`; `--model` picks `sonnet`, `opus`, or `haiku` (default: `sonnet`). |
 | `watchdog watch [name]` | Watch `_INCOMING/` and chew files automatically as they arrive. |
@@ -79,6 +79,7 @@ The "which model runs each stage" line printed before extraction starts shows on
 - `--skill NAME` — pin one record skill for every document, skipping classification; pass a skill name or a path to a skill file, or use `--skill` with no value to pick from a list. A document's own sidecar can pin a different skill for just that document — see [Skills](skills.md#reading-and-pinning-skills).
 - `--wait` — on a rate limit, sleep until it resets and resume automatically instead of stopping; for unattended overnight batches. It uses the reset time the provider reports, or a fixed fallback interval when it doesn't, and repeats until the queue drains. Not compatible with a `claude-batch` extractor model.
 - `--estimate` — print the token and cost estimate for the queue and exit; no lock, no confirmation, no extraction.
+- `--estimate-all` — like `--estimate`, but also projects the queue's cost against every model in the catalog (`model_catalog.yaml`), cheapest first — see [Comparing model cost across the catalog](#comparing-model-cost-across-the-catalog) below.
 - `--force` — re-extract even when a cached extraction already exists — see [Re-extracting with --force](#re-extracting-with---force) below. Costs full extraction spend on every queued document, cache or no. Nothing is committed to the vault by `dig`, so this needs no overwrite warning and takes no document names (unlike the deprecated `watchdog ingest --force`).
 - `--skip-warning` — skip the public-records acknowledgement pause described above; still prints a one-line notice of what was sent.
 
@@ -109,6 +110,7 @@ Each falls back to `--finalizer-model` (and, below that, `finalizer_model` from 
 **Other flags.**
 
 - `--estimate` — print a token/cost estimate for the pending batch and exit — no lock, no finalize — the same read-only contract as `dig`'s own `--estimate`. It prices the batch already staged in the vault's working files rather than a queue, so the dollar figure draws only on this vault's history of *standalone* `watchdog bark` runs (a finalize that ran as part of a normal `dig`+`bark` sequence, or the deprecated `watchdog ingest`, doesn't count, since its cost is mixed in with extraction). A vault that has only ever finalized as part of a combined run — never on its own — gets the token count with no dollar figure, until it has that history.
+- `--estimate-all` — like `--estimate`, but also projects the staged batch's cost against every model in the catalog, cheapest first — see [Comparing model cost across the catalog](#comparing-model-cost-across-the-catalog) below.
 - `--skip-briefing` — finalize as usual (merging duplicate entities, flagging contradictions, entity synthesis, timeline reconciliation) but skip the briefing model call. Useful for bulk backfills or re-ingests where a briefing isn't worth its cost every time. `hot.md` and that run's entry in `log.md` are only written alongside a briefing, so both are skipped too — the run still ends with `briefings/leads-<date>.md`, `requests.md`, and `watchlist.md` alerts, which don't depend on the briefing. Also available as a top-level `watchdog --skip-briefing` when the bare guided walk reaches this step.
 
 A Ctrl+C during `bark`'s sequential post-processing stops it cleanly too; re-run `watchdog bark` once you're ready to pick back up.
@@ -123,6 +125,24 @@ Extraction is the expensive part of an ingest — the finalizer's few calls (rec
 To isolate just one stage instead of the whole post-ingest step, pass one of the four per-stage overrides described [above](#watchdog-bark) — e.g. `watchdog bark --finalizer-briefing-model opus` tries a different briefing model while reconciliation, synthesis, and the timeline stay on the aggregate finalizer.
 
 `watchdog bark` does not yet support re-running cleanly over a batch it has already finalized — run it once per vault (or vault copy).
+
+#### Comparing model cost across the catalog
+
+`--estimate-all` (on `dig` or `bark`) prints the same token/cost estimate as `--estimate`, followed by a table projecting that same batch's cost across every model in `model_catalog.yaml` — cheapest first, one line per model:
+
+```
+  1 document · ~12 pages · est. ~24K tokens in (~$3-4 based on your last 3 runs)
+
+  Projected list price by model, cheapest first (every input token priced as a
+  cache miss — a rough ceiling, not what you'd actually pay with caching):
+    Gemini 2.5 Flash-Lite   gemini      $0.01
+    DeepSeek V4 Flash       deepseek    $0.01
+    ...
+    Claude Sonnet 4.6       anthropic   $0.14
+    GPT-5.5 Pro             openai      $1.44
+```
+
+This is a comparison tool, not a billing forecast: every model is priced at its published per-token rate, scaled from this vault's own recent output:input token ratio, as if every input token were a cache miss — cache pricing varies by provider and usage pattern, so it isn't modeled here. It shows every catalog model, including all three Claude tiers, regardless of whether this vault is on subscription auth (where a real Claude run costs nothing extra beyond the subscription) — the table answers "what would each model's list price come to," not "what will I actually be billed." A vault with no usage history yet has nothing to project an output-token ratio from, so `--estimate-all` shows the same "not enough history" message `--estimate` already gives a first-run vault, with no per-model table.
 
 #### Re-extracting with --force
 

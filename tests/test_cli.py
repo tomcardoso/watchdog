@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import json
 import re
 import pytest
@@ -3020,6 +3021,64 @@ def test_cmd_ingest_estimate_api_key_with_usage_history_shows_dollar_range(wdg_h
     assert "based on your last run" in out
 
 
+# ── ingest/finalize --estimate-all (#469) ────────────────────────────────────────
+
+def test_cmd_ingest_estimate_all_prints_per_model_table(wdg_home, tmp_path, monkeypatch, capsys):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    from watchdog.model_catalog import all_models
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    (vault / ".watchdog" / "registry" / "usage-20260101T000000Z.json").write_text(json.dumps({
+        "calls": [], "totals": {"input_tokens": 1000, "output_tokens": 500,
+                                 "cache_read_tokens": 0, "cache_write_tokens": 0, "cost_usd": 5.0},
+    }))
+
+    cmd_ingest(args(estimate=True, estimate_all=True), confirm=False)
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Projected list price by model" in out
+    for m in all_models():
+        assert m["name"] in out
+
+
+def test_cmd_ingest_estimate_all_without_estimate_flag_still_projects(wdg_home, tmp_path, monkeypatch, capsys):
+    """--estimate-all alone (no --estimate) still takes the read-only estimate path — a user
+    shouldn't have to pass both flags to get the catalog comparison."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    (vault / ".watchdog" / "registry" / "usage-20260101T000000Z.json").write_text(json.dumps({
+        "calls": [], "totals": {"input_tokens": 1000, "output_tokens": 500,
+                                 "cache_read_tokens": 0, "cache_write_tokens": 0, "cost_usd": 5.0},
+    }))
+
+    class _Stop(Exception):
+        pass
+    monkeypatch.setattr("watchdog.pipeline.ingest_setup.run", lambda *a, **k: (_ for _ in ()).throw(_Stop()))
+
+    cmd_ingest(args(estimate_all=True), confirm=False)   # must not reach ingest_setup.run
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Projected list price by model" in out
+
+
+def test_cmd_ingest_estimate_all_no_usage_history_shows_hint(wdg_home, tmp_path, monkeypatch, capsys):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+
+    cmd_ingest(args(estimate=True, estimate_all=True), confirm=False)
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Not enough usage history yet" in out
+
+
 # ── finalize --estimate (#417) ──────────────────────────────────────────────────
 
 def _vault_with_staged_finalize_corpus(tmp_path):
@@ -3115,6 +3174,39 @@ def test_cmd_finalize_estimate_ignores_mixed_ingest_usage_history(wdg_home, tmp_
 
     out = capsys.readouterr().out
     assert "$" not in out   # no standalone-finalize history to price against
+
+
+def test_cmd_finalize_estimate_all_prints_per_model_table(wdg_home, tmp_path, monkeypatch, capsys):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.model_catalog import all_models
+    vault = _vault_with_staged_finalize_corpus(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    (vault / ".watchdog" / "registry" / "usage-20260101T000000Z.json").write_text(json.dumps({
+        "calls": [{"task": "reconcile"}, {"task": "briefing"}],
+        "totals": {"input_tokens": 1000, "output_tokens": 500, "cost_usd": 5.0},
+    }))
+
+    ing.cmd_finalize(args(estimate_all=True))
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Projected list price by model" in out
+    for m in all_models():
+        assert m["name"] in out
+
+
+def test_cmd_finalize_estimate_all_no_standalone_history_shows_hint(wdg_home, tmp_path, monkeypatch, capsys):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    vault = _vault_with_staged_finalize_corpus(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+
+    ing.cmd_finalize(args(estimate_all=True))
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "Not enough usage history yet" in out
 
 
 # ── quarantined (_failed/) documents surfaced (#406) ──────────────────────────
@@ -3441,6 +3533,35 @@ def test_caffeinate_noop_does_not_swallow_exception(monkeypatch):
     with pytest.raises(ValueError):
         with ing._caffeinate():
             raise ValueError("boom")
+
+
+def test_run_finalize_wraps_model_call_in_caffeinate(tmp_path, monkeypatch):
+    """#467: `watchdog bark` had no `_caffeinate()` wrap at all, unlike `cmd_ingest`'s extraction
+    loop — a bark run stopped none of the machine sleeping mid-call, the same failure mode #415
+    guarded extraction against. `_run_finalize`'s model call must run inside the same guard."""
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+    from tests.test_write_vault import make_vault
+    vault = make_vault(tmp_path)
+
+    calls = []
+
+    @contextlib.contextmanager
+    def fake_caffeinate():
+        calls.append("enter")
+        yield
+        calls.append("exit")
+
+    monkeypatch.setattr(ing, "_caffeinate", fake_caffeinate)
+
+    async def fake_finalize(*a, **k):
+        assert calls == ["enter"]   # the model call must run inside the caffeinate block
+        return {"synthesized": 0}
+    monkeypatch.setattr(orch_module, "finalize", fake_finalize)
+
+    ing._run_finalize(vault, "haiku")
+
+    assert calls == ["enter", "exit"]
 
 
 # ── configure sections + default_skill ────────────────────────────────────────

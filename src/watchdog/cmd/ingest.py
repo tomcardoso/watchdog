@@ -143,6 +143,26 @@ def _format_finalize_estimate(est: dict) -> str:
     return line
 
 
+def _format_all_models_estimate(rows: list[dict]) -> str:
+    """Render `ingest_setup.cost_estimate_all_models`/`finalize_cost_estimate_all_models`'s
+    per-model projection (#469) as a single cheapest-first table — one line per catalog model,
+    rather than a separate estimate per model per pipeline stage, which is what keeps this
+    readable as the catalog grows. `rows` is already sorted by `cost` ascending."""
+    if not rows:
+        return (f"  {_DIM}Not enough usage history yet to project other models — run an ingest "
+                f"or finalize first, then re-run with {_RESET}{_CYAN}--estimate-all{_RESET}"
+                f"{_DIM}.{_RESET}")
+    name_w = max(len(r["name"]) for r in rows)
+    lines = [f"  {_DIM}Projected list price by model, cheapest first {_RESET}{_DIM}(every input "
+             f"token priced as a cache miss — a rough ceiling, not what you'd actually pay with "
+             f"caching):{_RESET}"]
+    for r in rows:
+        cost = r["cost"]
+        cost_s = f"${cost:.4f}" if cost < 1 else f"${cost:,.2f}"
+        lines.append(f"    {r['name']:<{name_w}}  {_DIM}{r['provider']:<10}{_RESET}  {cost_s}")
+    return "\n".join(lines)
+
+
 def _effective_extract_backend(extract_backend: str | None, auth_mode: str) -> str:
     """The backend that will actually serve extraction calls when `extract_backend` is unset
     (plain sonnet/opus/haiku) — mirrors `model_client`'s own subscription/api-key routing, so the
@@ -685,11 +705,13 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         force = bool(raw_force)
         force_selectors = []
     skip_briefing = getattr(args, "skip_briefing", False)
-    # --estimate promises "no lock, no confirm, no extraction" — read-only. Re-queueing named
-    # documents is a real mutation (moves the morgue original into staging, writes a queue file),
-    # so it must not run under --estimate; bare --force --estimate is unaffected, since it has no
-    # selectors to re-queue in the first place (#424).
-    if force_selectors and getattr(args, "estimate", False):
+    # --estimate promises "no lock, no confirm, no extraction" — read-only, same for its
+    # --estimate-all sibling (#469). Re-queueing named documents is a real mutation (moves the
+    # morgue original into staging, writes a queue file), so it must not run under --estimate;
+    # bare --force --estimate is unaffected, since it has no selectors to re-queue in the first
+    # place (#424).
+    is_estimate = getattr(args, "estimate", False) or getattr(args, "estimate_all", False)
+    if force_selectors and is_estimate:
         print(f"\n  {_DIM}--estimate is read-only — the named document(s) are not re-queued; "
               f"this estimate reflects the current queue only.{_RESET}")
     elif force_selectors:
@@ -710,8 +732,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
     from watchdog.cmd.auth import resolve_auth
     from watchdog.model_client import CLAUDE_BACKENDS
 
-    if getattr(args, "estimate", False):
-        from watchdog.pipeline.ingest_setup import scan_queue, cost_estimate
+    if is_estimate:
+        from watchdog.pipeline.ingest_setup import scan_queue, cost_estimate, cost_estimate_all_models
         queue_files = scan_queue(vault)
         if not queue_files:
             failed = _failed_count(vault)
@@ -731,7 +753,11 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         # prices a --force run the same as any other, since it has no notion of a cached artifact
         # to discount (#424 needs no extra handling here).
         est = cost_estimate(vault, queue_files, _effective_extract_backend(extract_backend, auth_mode))
-        print(f"\n{_format_cost_estimate(est)}\n")
+        print(f"\n{_format_cost_estimate(est)}")
+        if getattr(args, "estimate_all", False):
+            rows = cost_estimate_all_models(vault, est["est_tokens"])
+            print(f"\n{_format_all_models_estimate(rows)}")
+        print()
         return
 
     post_backend, post_model = _resolve_stage(
@@ -1109,14 +1135,18 @@ def cmd_finalize(args) -> None:
     post_effort = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
     finalizer_overrides = _resolve_finalizer_overrides(args, config, post_backend, post_model)
 
-    if getattr(args, "estimate", False):
+    if getattr(args, "estimate", False) or getattr(args, "estimate_all", False):
         # Read-only, like ingest/extract's own --estimate (#269, #406) — no lock, no auth
         # requirement beyond what's needed to resolve which backend would actually run.
-        from watchdog.pipeline.ingest_setup import finalize_cost_estimate
+        from watchdog.pipeline.ingest_setup import finalize_cost_estimate, finalize_cost_estimate_all_models
         from watchdog.cmd.auth import resolve_auth
         auth_mode = resolve_auth()["mode"] if post_backend is None else None
         est = finalize_cost_estimate(vault, _effective_extract_backend(post_backend, auth_mode))
-        print(f"\n{_format_finalize_estimate(est)}\n")
+        print(f"\n{_format_finalize_estimate(est)}")
+        if getattr(args, "estimate_all", False):
+            rows = finalize_cost_estimate_all_models(vault, est["est_tokens"])
+            print(f"\n{_format_all_models_estimate(rows)}")
+        print()
         return
 
     # Claude auth is only required when the finalizer is actually routed to it — a stage pinned
@@ -1170,10 +1200,14 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
           f"{_BOLD}{post_model}{_RESET}{_DIM}).{_RESET}")
     try:
         import asyncio
-        out = asyncio.run(orchestrate.finalize(vault, post_model=post_model, post_effort=post_effort,
-                                               post_backend=post_backend, force_shas=force_shas,
-                                               skip_briefing=skip_briefing,
-                                               finalizer_overrides=finalizer_overrides))
+        # #467: a bark run has no upper bound on how long reconciliation/synthesis/the briefing
+        # take, the same failure mode _caffeinate() was added to guard extraction against (#415)
+        # — without it, the machine sleeping mid-call kills a finalize outright.
+        with _caffeinate():
+            out = asyncio.run(orchestrate.finalize(vault, post_model=post_model, post_effort=post_effort,
+                                                   post_backend=post_backend, force_shas=force_shas,
+                                                   skip_briefing=skip_briefing,
+                                                   finalizer_overrides=finalizer_overrides))
     finally:
         lock.unlink(missing_ok=True)
 

@@ -108,7 +108,7 @@ This runs just the wrap-up: it writes the documents to the vault, reconciles dup
 
 ## Ingest prevents the machine from sleeping during a run
 
-`watchdog dig` (and the deprecated `watchdog ingest`) prevents the machine from sleeping for as long as it's running — a sleep partway through a document kills whatever call was in flight outright, unlike a network blip a retry can absorb. On macOS this uses the system's own `caffeinate` utility; on Linux, `systemd-inhibit` (present wherever systemd is, which is most mainstream distros). Neither needs setup, and both release the machine the moment the run ends or is interrupted. On a Linux system without systemd, or on Windows, there's no equivalent to fall back to, so a run there is not protected against the machine sleeping.
+`watchdog dig`, `watchdog bark` (and the deprecated `watchdog ingest`) prevent the machine from sleeping for as long as they're running — a sleep partway through a call kills whatever was in flight outright, unlike a network blip a retry can absorb. This covers both extraction (`dig`) and post-ingest (`bark`'s entity reconciliation, synthesis, timeline, briefing). On macOS this uses the system's own `caffeinate` utility; on Linux, `systemd-inhibit` (present wherever systemd is, which is most mainstream distros). Neither needs setup, and both release the machine the moment the run ends or is interrupted. On a Linux system without systemd, or on Windows, there's no equivalent to fall back to, so a run there is not protected against the machine sleeping.
 
 ## A lock is stuck
 

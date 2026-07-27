@@ -102,6 +102,73 @@ def _tokens_calibration(vault: Path, max_runs: int = 3) -> float | None:
     return sum(ratios) / len(ratios) if ratios else None
 
 
+def _output_token_ratio(vault: Path, max_runs: int, finalize_only: bool = False) -> float | None:
+    """Backend/model-agnostic output:input token ratio from this vault's own recent usage
+    history (#469) — how much a run tends to write for how much it reads, treated as a property
+    of this vault's documents rather than of whichever model produced the history. Used to
+    project an output-token estimate for a model that has never actually run in this vault, the
+    same kind of extrapolation `_tokens_calibration` already makes for input tokens.
+    `finalize_only` mirrors `finalize_cost_estimate`'s own task filter, keeping the two
+    projections from mixing extraction-heavy and post-ingest-only usage files."""
+    from watchdog.pipeline import orchestrate
+    ratios = []
+    for uf in reversed(orchestrate.usage_files(vault)):
+        try:
+            data = json.loads(uf.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if finalize_only:
+            calls = data.get("calls") or []
+            if not calls or any(c.get("task") not in orchestrate.FINALIZE_TASKS for c in calls):
+                continue
+        totals = data.get("totals", {})
+        input_tokens, output_tokens = _real_input_tokens(totals), totals.get("output_tokens") or 0
+        if input_tokens > 0 and output_tokens > 0:
+            ratios.append(output_tokens / input_tokens)
+        if len(ratios) >= max_runs:
+            break
+    return sum(ratios) / len(ratios) if ratios else None
+
+
+def _catalog_cost_projection(est_tokens: int, output_ratio: float | None) -> list[dict]:
+    """Price `est_tokens` (already the calibrated 'tokens in' figure) against every model in
+    `model_catalog.yaml` at that model's own list price (#469) — unlike `cost_estimate`'s $/token
+    ratio (drawn from this vault's history of the model that actually ran), a model that has
+    never run here has no $/token history of its own to draw on, so this instead uses the
+    catalog's published per-token rates directly, scaled by `output_ratio` for the output side.
+    Priced as if every input token were a cache miss — the simplest apples-to-apples comparison,
+    and a deliberate overestimate rather than a guessed-at cache hit rate that would vary by
+    model and usage pattern. Every catalog model is included, including Claude tiers, regardless
+    of whether this vault is on subscription auth: this is list price for comparison, not a
+    projection of what you would actually be billed. Returns `[]` when there's no usage history
+    yet to derive `output_ratio` from — no dollar figure is invented from nothing."""
+    if output_ratio is None:
+        return []
+    from watchdog.model_catalog import all_models
+    est_output = est_tokens * output_ratio
+    rows = [{"id": m["id"], "name": m["name"], "provider": m["provider"],
+             "cost": est_tokens * m["input"] + est_output * m["output"]}
+            for m in all_models()]
+    rows.sort(key=lambda r: r["cost"])
+    return rows
+
+
+def cost_estimate_all_models(vault: Path, est_tokens: int, max_runs: int = 3) -> list[dict]:
+    """`cost_estimate`'s queue projection, extended across every catalog model (#469) — a cost
+    comparison across providers before committing to one. `est_tokens` should be `cost_estimate`'s
+    own already-calibrated figure, so this projection starts from the same 'tokens in' number the
+    single-model estimate already shows."""
+    return _catalog_cost_projection(est_tokens, _output_token_ratio(vault, max_runs))
+
+
+def finalize_cost_estimate_all_models(vault: Path, est_tokens: int, max_runs: int = 3) -> list[dict]:
+    """`finalize_cost_estimate`'s staged-corpus projection, extended across every catalog model
+    (#469) — same rationale as `cost_estimate_all_models`, scoped to standalone `watchdog bark`
+    history (`finalize_only=True`) for the same reason `finalize_cost_estimate` itself excludes a
+    combined dig+bark run's usage file."""
+    return _catalog_cost_projection(est_tokens, _output_token_ratio(vault, max_runs, finalize_only=True))
+
+
 def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
                    max_runs: int = 3) -> dict:
     """Pre-flight token/cost estimate for a queue (#269): the queue's own `est_tokens` (already

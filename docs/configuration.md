@@ -215,7 +215,7 @@ Before committing to a large run, get a number:
 watchdog dig --estimate
 ```
 
-This prints a token estimate for the queue and exits — no lock, no confirmation, no extraction. On a metered key with prior runs in this vault, it adds a rough dollar range projected from your own usage history; on a subscription, only the token estimate is shown. Use it to decide whether to split a batch.
+This prints a token estimate for the queue and exits — no lock, no confirmation, no extraction. On a metered key with prior runs in this vault, it adds a rough dollar range projected from your own usage history; on a subscription, only the token estimate is shown. Use it to decide whether to split a batch. `watchdog dig --estimate-all` (and `watchdog bark --estimate-all`) goes further, projecting the same estimate across every model in the catalog — see [Comparing model cost across the catalog](commands.md#comparing-model-cost-across-the-catalog).
 
 A failed document never sinks a batch — it is set aside and the rest completes — but for very large collections, chew and ingest in groups anyway. On subscriptions: a Pro plan (US$20/month) is sufficient for most journalism work, and if you ingest hundreds of documents at a time, a Max plan gives higher session limits. An unattended overnight batch on a subscription pairs well with `watchdog dig --wait`, which sleeps through rate limits and resumes — see [Commands](commands.md#watchdog-dig).
 
