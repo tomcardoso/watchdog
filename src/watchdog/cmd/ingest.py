@@ -913,10 +913,10 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} claude-batch is only valid for extractor_model, "
                  f"not classifier_model/finalizer_model.\n")
     if extract_backend == "claude-batch":
-        if not pinned_skill:
-            sys.exit(f"\n  {_YELLOW}Error:{_RESET} claude-batch requires a pinned skill — "
-                     f"classification isn't batchable.\n  Use {_CYAN}--skill{_RESET} or set "
-                     f"{_CYAN}default_skill{_RESET} via {_CYAN}watchdog configure{_RESET}.\n")
+        # No pinned-skill requirement (D144): each document resolves its own skill — sidecar pin,
+        # run-wide pin, else one cheap classify call — before the batch is built, so a mixed-type
+        # drop batches fine. Classification stays a per-document synchronous call; what is batched
+        # is extraction, which is where the 50% discount is worth having.
         if a["mode"] != "api-key":
             sys.exit(f"\n  {_YELLOW}Error:{_RESET} claude-batch requires api-key auth mode "
                      f"(it needs a metered key) — switch to it with {_CYAN}watchdog auth{_RESET}.\n")

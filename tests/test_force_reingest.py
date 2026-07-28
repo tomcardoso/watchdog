@@ -202,7 +202,7 @@ def test_force_bypasses_already_extracted_skip_in_submit_batch(tmp_path, monkeyp
     skill_file.write_text("SKILL BODY")
 
     submitted = {}
-    async def fake_submit(vault, docs, *, model, effort, skill_label, api_key):
+    async def fake_submit(vault, docs, *, model, effort, skills, api_key):
         submitted["docs"] = docs
         return "batch_xyz"
     monkeypatch.setattr(orchestrate.batch_extract, "submit", fake_submit)

@@ -2433,11 +2433,63 @@ def test_stitch_digest_skips_blank_facts():
 
 # ── claude-batch (#214) ─────────────────────────────────────────────────────────
 
-def test_run_batch_requires_pinned_skill(tmp_path):
+def test_run_batch_needs_no_pinned_skill(tmp_path, monkeypatch):
+    """D144: an unpinned batch is legal — `_run_batch` used to raise before doing anything.
+    With no shas queued it should now fall straight through to a clean empty submission."""
     vault = make_vault(tmp_path)
-    with pytest.raises(model_client.ModelError, match="pinned skill"):
-        asyncio.run(orchestrate._run_batch(vault, [], None, "sonnet", None, None, 5,
-                                           "haiku", 5, None))
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    out = asyncio.run(orchestrate._run_batch(vault, [], None, "sonnet", None, None, 5,
+                                             "haiku", 5, None))
+    assert out == {"results": [], "batch_pending": False}
+
+
+def test_batch_skill_prefers_per_sha_map_then_legacy_then_run_pin(tmp_path):
+    """`_batch_skill` resolves a collected document's skill from the per-sha map (D144), falling
+    back to the pre-D144 single `skill_label` so a batch submitted by an older version is still
+    collectable after an upgrade — a batch can sit in flight for up to 24h."""
+    skill = tmp_path / "pinned.md"
+    skill.write_text("RUN-PIN SKILL", encoding="utf-8")
+
+    # per-sha map wins
+    state = {"skills": {"sha1": "bankruptcy"}, "skill_label": "financial-statements"}
+    assert orchestrate._batch_skill(state, "sha1", str(skill))[1] == "bankruptcy"
+    # legacy single label, for a sha the map doesn't name
+    assert orchestrate._batch_skill(state, "sha2", str(skill))[1] == "financial-statements"
+    # neither: fall back to this run's own pin
+    assert orchestrate._batch_skill({}, "sha3", str(skill)) == ("RUN-PIN SKILL", "pinned")
+    # a label that no longer resolves to a skill file (a pre-D144 path stem, or a user-local
+    # skill deleted while the batch was in flight) also falls back rather than failing a batch
+    # that has already been paid for
+    assert orchestrate._batch_skill({"skill_label": "no-such-skill"}, "sha5", str(skill))[1] == "pinned"
+    # nothing usable at all is a clear error, not a silently wrong skill
+    with pytest.raises(model_client.ModelError, match="no usable skill"):
+        orchestrate._batch_skill({}, "sha4", None)
+
+
+def test_submit_batch_resolves_skill_per_document(tmp_path, monkeypatch):
+    """A mixed-type batch: each document's own sidecar `skill:` pin is honoured (D120/D144),
+    so one submission carries two different skills and the state records which is which."""
+    vault = make_vault(tmp_path)
+    for sha, skill in (("sha1", "bankruptcy"), ("sha2", "financial-statements")):
+        _queue_doc(vault, sha, sidecar=f"skill: {skill}")
+
+    captured = {}
+
+    async def _fake_submit(vault, docs, *, model, effort, skills, api_key):
+        captured["docs"] = docs
+        captured["skills"] = skills
+        return "batch_x"
+
+    monkeypatch.setattr(orchestrate.batch_extract, "submit", _fake_submit)
+    monkeypatch.setattr(orchestrate.skills_catalog, "read_skill", lambda n: f"TEXT {n}")
+
+    out = asyncio.run(orchestrate._submit_batch(
+        vault, ["sha1", "sha2"], None, "sonnet", None, None, 5, "haiku", 5, None, "sk-x"))
+
+    assert out["batch_pending"] is True
+    assert captured["skills"] == {"sha1": "bankruptcy", "sha2": "financial-statements"}
+    # Sorted by skill so adjacent same-skill requests share the cached prefix.
+    assert [d["skill_label"] for d in captured["docs"]] == ["bankruptcy", "financial-statements"]
 
 
 def test_run_batch_requires_api_key_auth(tmp_path, monkeypatch):
@@ -2466,8 +2518,9 @@ def test_submit_batch_splits_sectioned_and_whole_doc(tmp_path, monkeypatch):
     monkeypatch.setattr(orchestrate, "_extract_document", fake_extract_document)
 
     submitted = {}
-    async def fake_submit(vault, docs, *, model, effort, skill_label, api_key):
+    async def fake_submit(vault, docs, *, model, effort, skills, api_key):
         submitted["docs"] = docs
+        submitted["skills"] = skills
         return "batch_xyz"
     monkeypatch.setattr(orchestrate.batch_extract, "submit", fake_submit)
 
@@ -2535,8 +2588,9 @@ def test_resume_batch_reports_progress_when_not_ended(tmp_path, monkeypatch, cap
 def test_resume_batch_collects_and_clears_state_when_ended(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="sha1", filename="a.pdf")
+    # Pre-D144 state shape (one run-wide `skill_label`, no per-sha map) — still collectable.
     state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-4-6",
-            "skill_label": "annual-report", "effort": None}
+            "skill_label": "financial-statements", "effort": None}
     batch_extract.write_state(vault, state)
 
     async def fake_status(batch_id, api_key):
@@ -3028,3 +3082,29 @@ def test_batch_fold_collapses_staged_duplicates_before_commit(tmp_path):
     assert staged_a["entities"][0]["id"] == "ernst-and-young-inc"   # untouched — it's the winner
     assert staged_b["entities"][0]["id"] == "ernst-and-young-inc"   # remapped onto the winner
     assert "Ernst and Young Inc" in staged_b["entities"][0]["aliases"]   # variant name preserved
+
+
+def test_submit_batch_classifies_unpinned_docs_but_not_pinned_ones(tmp_path, monkeypatch):
+    """D144's cost note, made checkable: an unpinned document costs one classify call before the
+    batch is built; a sidecar-pinned one costs none. That is what makes `--skill` still worth
+    passing on a genuinely homogeneous batch."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="pinned", filename="p.pdf", sidecar="skill: bankruptcy\n")
+    _queue_doc(vault, sha="loose", filename="l.pdf")
+
+    classified = []
+
+    async def _fake_classify(excerpt, model, backend=None, **kw):
+        classified.append(kw.get("filename"))
+        return "court-documents.md"
+
+    monkeypatch.setattr(orchestrate, "_classify", _fake_classify)
+
+    async def _fake_submit(vault, docs, *, model, effort, skills, api_key):
+        return "batch_x"
+    monkeypatch.setattr(orchestrate.batch_extract, "submit", _fake_submit)
+
+    asyncio.run(orchestrate._submit_batch(
+        vault, ["pinned", "loose"], None, "sonnet", None, None, 5, "haiku", 5, None, "sk-x"))
+
+    assert classified == ["l.pdf"]   # only the unpinned document paid for a classify call
