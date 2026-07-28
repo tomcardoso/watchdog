@@ -292,6 +292,24 @@ def test_cmd_new_uses_config_projects_dir(configured, wdg_home):
     assert str(configured) in projects["auto-dir-test"]["path"]
 
 
+def test_projects_dir_falls_back_when_key_missing(wdg_home):
+    # A config.json that exists but omits "projects_dir" (e.g. hand-edited to set only one
+    # other knob) must fall back to the documented ~/Investigations default, not KeyError —
+    # every command that resolves a vault path calls this, so a bare `config["projects_dir"]`
+    # crashed the whole CLI on a config missing that one key.
+    (wdg_home / "config.json").write_text(json.dumps({"extractor_model": "sonnet"}) + "\n")
+    assert _base._projects_dir() == Path.home() / "Investigations"
+
+
+@pytest.mark.parametrize("value", ["", None])
+def test_projects_dir_falls_back_when_key_is_falsy(wdg_home, value):
+    # An explicit "" or null is not "missing" as far as a bare .get(key, default) is concerned —
+    # it's a genuine falsy value that must be treated the same as absent, or Path("").expanduser()
+    # (the cwd) would become the silent vault-creation directory.
+    (wdg_home / "config.json").write_text(json.dumps({"projects_dir": value}) + "\n")
+    assert _base._projects_dir() == Path.home() / "Investigations"
+
+
 def test_cmd_new_description_stored_in_registry(configured, wdg_home):
     cli.cmd_new(args(name="My Story", description="Tracking shell companies linked to city contracts", dir=str(configured)))
     projects = json.loads((wdg_home / "projects.json").read_text())

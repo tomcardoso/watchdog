@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# Thin wrapper around run_benchmark.py — dev convenience only, not part of the shipped
+# `watchdog` CLI (see docs/benchmarks.md). Exists so you don't have to remember the pipx
+# venv's interpreter path or the full flag set every time you want a quick estimate.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUNNER="$HERE/run_benchmark.py"
+VENV_PY="$HOME/.local/pipx/venvs/watchdog-intel/bin/python"
+# Default shadow vault root (run_benchmark.py's own default) — `clean` targets this unless
+# the config or --vault-root sends vaults somewhere else, in which case remove that path by hand.
+VAULT_ROOT="$HERE/.vaults"
+
+usage() {
+    cat <<'USAGE'
+Usage: bench <command> [args...]
+
+Commands:
+  estimate [--arms ID,...] [--stages S,...]   Free cost preview (--estimate-only)
+  run      [--arms ID,...] [--stages S,...]   The real run — spends money, asks first
+  arms                                        List arm ids from benchmark.yaml, by stage
+  clean                                       Remove the shadow vault root (asks first)
+
+Extra arguments are passed straight through to run_benchmark.py, e.g.:
+  bench estimate --stages extractor --arms haiku,gemini-flash-lite
+
+  -h, --help   Show this help
+USAGE
+}
+
+if [ "$#" -eq 0 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    usage
+    exit 0
+fi
+
+if [ ! -x "$VENV_PY" ]; then
+    echo "Error: pipx venv python not found at $VENV_PY" >&2
+    echo "Run: pipx inject watchdog-intel pytest numpy   (see CLAUDE.md's Testing section)" >&2
+    exit 1
+fi
+
+cmd="$1"
+shift
+
+case "$cmd" in
+    estimate)
+        exec "$VENV_PY" "$RUNNER" --estimate-only "$@"
+        ;;
+    run)
+        exec "$VENV_PY" "$RUNNER" "$@"
+        ;;
+    arms)
+        exec "$VENV_PY" - "$HERE/benchmark.yaml" <<'PYEOF'
+# Lists arm ids grouped by stage so you don't have to open benchmark.yaml to find one.
+import sys
+import yaml
+
+config = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))
+for key in ("extractor_sweep", "finalizer_sweep", "classifier_sweep"):
+    sweep = config.get(key)
+    if not sweep:
+        continue
+    print(f"{key}:")
+    for arm in sweep.get("arms", []):
+        print(f"  {arm['id']}")
+smoke = config.get("classifier_smoke")
+if smoke and smoke.get("arm"):
+    print("classifier_smoke:")
+    print(f"  {smoke['arm']['id']}")
+PYEOF
+        ;;
+    clean)
+        if [ ! -d "$VAULT_ROOT" ]; then
+            echo "Nothing to clean — $VAULT_ROOT does not exist."
+            exit 0
+        fi
+        printf "Remove %s and everything in it? [y/N] " "$VAULT_ROOT"
+        read -r reply
+        case "$reply" in
+            [yY]|[yY][eE][sS])
+                rm -rf "$VAULT_ROOT"
+                echo "Removed $VAULT_ROOT."
+                ;;
+            *)
+                echo "Aborted."
+                ;;
+        esac
+        ;;
+    *)
+        echo "Error: unknown command '$cmd'" >&2
+        usage >&2
+        exit 1
+        ;;
+esac

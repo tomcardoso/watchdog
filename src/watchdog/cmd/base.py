@@ -457,10 +457,17 @@ def save_projects(projects: dict) -> None:
 
 
 def _projects_dir() -> Path:
+    default = Path.home() / "Investigations"
     if CONFIG_FILE.exists():
         config = json.loads(CONFIG_FILE.read_text())
-        return Path(config["projects_dir"]).expanduser()
-    return Path.home() / "Investigations"
+        # config.json can legitimately omit "projects_dir", or carry it as "" / null (e.g. a
+        # config written before that key existed, or hand-edited to set only one other knob) —
+        # `or default` treats any falsy value the same as a missing one, since `config.get(...,
+        # default)` alone only covers the missing-key case: an explicit "" would otherwise pass
+        # through to Path("").expanduser(), which is the cwd ('.'), silently creating vaults
+        # wherever the command happened to be run from.
+        return Path(config.get("projects_dir") or default).expanduser()
+    return default
 
 
 def _fmt_date(iso: str) -> str:

@@ -16,6 +16,10 @@ extractor_sweep:
   arms:
     - {id: sonnet-high,       extractor_model: sonnet, extractor_effort: high}
     - {id: sonnet-med,        extractor_model: sonnet, extractor_effort: medium}
+    # Thinking tokens bill as output and were measured at ~70-80% of Sonnet's own output tokens
+    # at medium effort (#475) — the largest untested cost lever left. D140 already found medium
+    # ties high on recall at meaningfully lower cost; low has never been benchmarked.
+    - {id: sonnet-low,        extractor_model: sonnet, extractor_effort: low}
     - {id: haiku,             extractor_model: haiku}
     - {id: ds-flash,          extractor_model: "deepseek:deepseek-v4-flash"}
     - {id: ds-flash-think,    extractor_model: "deepseek:deepseek-v4-flash-thinking"}
@@ -23,8 +27,7 @@ extractor_sweep:
     - {id: ds-pro-think,      extractor_model: "deepseek:deepseek-v4-pro-thinking"}
     - {id: gemini-flash-lite, extractor_model: "gemini:gemini-3.1-flash-lite"}   # cheap tier
     - {id: gemini-flash,      extractor_model: "gemini:gemini-3.5-flash"}       # middle tier
-    # Opus dropped (not worth testing this round). OpenAI arms deferred pending #453 (possible
-    # model-adapter swap) — no fixed model ids worth committing to a frozen benchmark yet.
+    # Opus dropped (not worth testing this round).
     #
     # Backend A/B (#475). The arms above name a bare Claude tier, which resolves to
     # claude-agent-sdk or claude-api by whatever auth mode the machine is in — so their cost is
@@ -41,6 +44,22 @@ extractor_sweep:
     # carry through and the two-skill corpus batches correctly. Submit-and-exit: the arm returns
     # once submitted, and a later run collects it (see BENCHMARKING.md).
     - {id: batch-sonnet-med,  extractor_model: "claude-batch:sonnet",     extractor_effort: medium}
+    # OpenAI arms (#453 closed, adapter unchanged — the deferral that used to sit here no longer
+    # applies). Cheap/middle tier only, mirroring the Gemini split above: #475's goal is finding
+    # something cheaper than Sonnet, and gpt-5.5/gpt-5.4/gpt-5.6-terra price at $15-30/Mtok
+    # output — the same league as Sonnet, which is already the quality reference in this sweep,
+    # so spending real money to benchmark them would answer a question nobody asked. Needs a
+    # stored OpenAI key (`watchdog auth`).
+    #
+    # D98 caveat: OpenAI does support real Structured Outputs, but Watchdog doesn't use them here
+    # — strict mode requires every property in `required`, and our schema deliberately isn't
+    # all-required (optional fields are meant to be omitted, not nulled; post-flight relies on
+    # that). So an OpenAI arm measures the model plus our weaker prompt-only enforcement, not the
+    # model alone — a poor result here is genuinely ambiguous in a way a Gemini arm's isn't, by
+    # our own schema-design choice rather than a model or provider defect. See D98.
+    - {id: gpt-nano,          extractor_model: "openai:gpt-5.4-nano"}   # cheap tier
+    - {id: gpt-mini,          extractor_model: "openai:gpt-5.4-mini"}   # middle tier
+    - {id: gpt-luna,          extractor_model: "openai:gpt-5.6-luna"}   # middle tier, 1.05M window
 
 finalizer_sweep:
   vault_prefix: bench-fn
@@ -49,11 +68,17 @@ finalizer_sweep:
     - {id: haiku,             finalizer_model: haiku}
     - {id: sonnet-high,       finalizer_model: sonnet, finalizer_effort: high}
     - {id: sonnet-med,        finalizer_model: sonnet, finalizer_effort: medium}
+    # finalizer_effort still defaults to high and has never been benchmarked at any lower effort.
+    - {id: sonnet-low,        finalizer_model: sonnet, finalizer_effort: low}
     - {id: ds-flash,          finalizer_model: "deepseek:deepseek-v4-flash"}
     - {id: ds-pro-think,      finalizer_model: "deepseek:deepseek-v4-pro-thinking"}
     - {id: gemini-flash-lite, finalizer_model: "gemini:gemini-3.1-flash-lite"}
     - {id: gemini-flash,      finalizer_model: "gemini:gemini-3.5-flash"}
-    # Opus dropped. OpenAI deferred (#453), same reasoning as the extractor sweep.
+    # Opus dropped. OpenAI (#453 closed): the finalizer is near-constant cost per run, so one or
+    # two arms is plenty — same D98 structured-output caveat as the extractor sweep (above)
+    # applies here too.
+    - {id: gpt-mini,          finalizer_model: "openai:gpt-5.4-mini"}
+    - {id: gpt-nano,          finalizer_model: "openai:gpt-5.4-nano"}
 
 classifier_smoke:
   vault_prefix: bench-classify

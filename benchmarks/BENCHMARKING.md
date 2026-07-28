@@ -27,6 +27,33 @@ cache-*write* premium on text it never reads back. So:
 - the `sonnet-med-sdk` / `sonnet-med-api` arms pin the backend explicitly. Run them under api-key
   auth (claude-api cannot run on a subscription) or the pair is not comparable.
 
+**Benchmark vaults live in a shadow root, never in your real investigations folder (D146).**
+Early runs of `run_benchmark.py` created `bench-*` vaults straight in the installed watchdog's
+own `projects_dir` and let `cmd_new` register each one in the TWO places it always registers a new
+vault — `~/.watchdog/projects.json` and Obsidian's own `obsidian.json` (its vault switcher) — which
+is why a working copy of `watchdog projects`, or Obsidian's vault switcher itself, may already show
+a stack of stray `bench-*` entries. Those are left alone deliberately, see D146, but nothing new
+should join them. `run_benchmark.py` still creates vaults with the real `cmd_new` (fidelity to an
+actual vault's layout is the point) but points it at `benchmarks/.vaults/` by default, and
+deregisters each vault from both `projects.json` and `obsidian.json` immediately afterward.
+Override the location with `--vault-root PATH` or a top-level `vault_root:` key in
+`benchmark.yaml` (relative paths resolve against the config file, like `corpus.dir`). The shadow
+root is gitignored; delete it any time with `bench clean` (below) or `rm -rf benchmarks/.vaults`.
+
+**The `bench` wrapper (dev convenience, not shipped).** `benchmarks/bench` is a thin shell script
+around `run_benchmark.py` so you don't have to remember the pipx venv's interpreter path or the
+full flag set every time:
+
+```
+benchmarks/bench estimate --stages extractor --arms haiku,gemini-flash   # --estimate-only
+benchmarks/bench run --stages extractor --arms haiku                    # the real thing
+benchmarks/bench arms                                                    # list arm ids per stage
+benchmarks/bench clean                                                   # wipe the shadow vault root
+```
+
+Run `benchmarks/bench --help` for the full list. It is dev tooling for whoever is running the
+benchmark, not part of the shipped `watchdog` CLI — see `docs/benchmarks.md` for that boundary.
+
 A step-by-step guide to measuring the three ingest model stages against corpus-v1. Written to be
 followed top to bottom. Nothing here spends money until Step 3, and every run gets a free cost
 preview first.
