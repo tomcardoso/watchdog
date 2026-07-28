@@ -37,6 +37,54 @@ def _usage_totals(usage: dict | None) -> dict:
     }
 
 
+# A bare `sonnet` arm resolves to claude-agent-sdk or claude-api by whichever auth mode the
+# machine happened to be in, and the two differ materially on billed input tokens. Recording only
+# the arm id left that invisible, so two runs of "the same" arm were not comparable and nothing
+# said so (#475). Every arm row now carries the backend that actually served it.
+_CLAUDE_BACKENDS = ("claude-agent-sdk", "claude-api", "claude-batch")
+
+
+def _backends(usage: dict | None) -> str:
+    """Distinct `backend (auth)` labels across an arm's calls, first-seen order. Auth mode is
+    appended only for Claude backends, where it is what selected the backend."""
+    seen = []
+    for c in (usage or {}).get("calls", []):
+        backend = c.get("backend")
+        if not backend:
+            continue
+        label = (f"{backend} ({c.get('auth_mode')})"
+                 if backend in _CLAUDE_BACKENDS and c.get("auth_mode") else backend)
+        if label not in seen:
+            seen.append(label)
+    return ", ".join(seen) or "—"
+
+
+def _is_notional(usage: dict | None) -> bool:
+    """True when any Claude call in the arm ran on subscription auth — `cost_usd` is then a
+    list-price equivalent rather than an amount billed."""
+    return any(c.get("backend") in _CLAUDE_BACKENDS and c.get("auth_mode") == "subscription"
+               for c in (usage or {}).get("calls", []))
+
+
+def _notional_note(results: list) -> list[str]:
+    """A report-level caveat naming the arms whose costs are list-price projections, or [] when
+    every arm was metered. Without it a subscription arm's dollar figure sits in the same column
+    as a metered one and reads as directly comparable."""
+    arms = [r.arm_id for r in results if r.ok and _is_notional(r.usage)]
+    if not arms:
+        return []
+    return ["", f"> **Costs marked `~` are list-price equivalents, not amounts billed** — "
+                f"{', '.join(f'`{a}`' for a in sorted(set(arms)))} ran on subscription auth, "
+                f"where no per-token billing happens. They are comparable to each other and to "
+                f"list prices, but not to a metered arm's real spend.", ""]
+
+
+def _cost_cell(usage: dict | None) -> str:
+    """`$1.234`, or `~$1.234` when the figure is a subscription list-price equivalent."""
+    total = _usage_totals(usage)["cost_usd"]
+    return f"{'~' if _is_notional(usage) else ''}${total:.3f}"
+
+
 def _pct_cell(totals: dict, vault_basename: str) -> str:
     t = totals.get(vault_basename)
     if not t or not t.get("of"):
@@ -46,38 +94,40 @@ def _pct_cell(totals: dict, vault_basename: str) -> str:
 
 
 def extractor_table_md(results: list, scores: dict) -> str:
-    lines = ["| Arm | Facts | must_not_miss | Cost | Latency (summed) | Retries / sectioned calls |",
-             "|---|---|---|---|---|---|"]
+    lines = ["| Arm | Backend | Facts | must_not_miss | Cost | Latency (summed) | "
+             "Retries / sectioned calls |",
+             "|---|---|---|---|---|---|---|"]
     facts = scores.get("totals", {}).get("facts", {})
     mnm = scores.get("totals", {}).get("must_not_miss", {})
     for r in results:
         if r.stage != "extractor":
             continue
         if not r.ok:
-            lines.append(f"| `{r.arm_id}` | failed: {r.error} | | | | |")
+            lines.append(f"| `{r.arm_id}` | | failed: {r.error} | | | | |")
             continue
         vb = Path(r.vault).name if r.vault else r.arm_id
         u = _usage_totals(r.usage)
-        lines.append(f"| `{vb}` | {_pct_cell(facts, vb)} | {_pct_cell(mnm, vb)} | "
-                     f"${u['cost_usd']:.3f} | {u['latency_s']:.0f}s | "
+        lines.append(f"| `{vb}` | {_backends(r.usage)} | {_pct_cell(facts, vb)} | "
+                     f"{_pct_cell(mnm, vb)} | {_cost_cell(r.usage)} | {u['latency_s']:.0f}s | "
                      f"{u['retries']} retries, {u['sectioned_calls']} sectioned calls |")
     return "\n".join(lines)
 
 
 def finalizer_table_md(results: list) -> str:
-    lines = ["| Arm | Entity duplicates flagged | Contradictions found | Cost | Latency (summed) |",
-             "|---|---|---|---|---|"]
+    lines = ["| Arm | Backend | Entity duplicates flagged | Contradictions found | Cost | "
+             "Latency (summed) |",
+             "|---|---|---|---|---|---|"]
     for r in results:
         if r.stage != "finalizer":
             continue
         if not r.ok:
-            lines.append(f"| `{r.arm_id}` | failed: {r.error} | | | |")
+            lines.append(f"| `{r.arm_id}` | | failed: {r.error} | | | |")
             continue
         vb = Path(r.vault).name if r.vault else r.arm_id
         u = _usage_totals(r.usage)
         dups, contradictions = _entity_note_counts(r.vault) if r.vault else (0, 0)
-        lines.append(f"| `{vb}` | {dups} | {contradictions} | ${u['cost_usd']:.3f} | "
-                     f"{u['latency_s']:.0f}s |")
+        lines.append(f"| `{vb}` | {_backends(r.usage)} | {dups} | {contradictions} | "
+                     f"{_cost_cell(r.usage)} | {u['latency_s']:.0f}s |")
     return "\n".join(lines)
 
 
@@ -135,6 +185,13 @@ def docs_summary_md(results: list, scores: dict) -> str:
     extractor = [r for r in results if r.stage == "extractor" and r.ok]
     finalizer = [r for r in results if r.stage == "finalizer" and r.ok]
     lines = ["## Latest run — quick figures", ""]
+    # This fragment gets hand-pasted into a page journalists read, where a dollar figure is taken
+    # at face value. If any arm ran on subscription auth its cost was never billed, so say so
+    # here too rather than only in the technical report (#475).
+    if any(_is_notional(r.usage) for r in extractor + finalizer):
+        lines += ["> Some figures below come from runs on a Claude subscription rather than "
+                  "pay-as-you-go billing. For those, the amount shown is what the same work "
+                  "would cost at published per-token rates — not a charge that was incurred.", ""]
     if extractor:
         costs = [_usage_totals(r.usage)["cost_usd"] for r in extractor]
         times = [_usage_totals(r.usage)["latency_s"] for r in extractor]
@@ -163,8 +220,10 @@ def write_run(out_root: Path, results: list, scores: dict, config: dict) -> Path
     report = [
         f"# Benchmark run {rid}", "",
         "Verified frozen references: " + ", ".join(f"`{v}`" for v in verified), "",
-        "## Extractor sweep", "", extractor_table_md(results, scores), "",
-        "## Finalizer sweep", "", finalizer_table_md(results), "",
+        "## Extractor sweep", "", extractor_table_md(results, scores),
+        *_notional_note([r for r in results if r.stage == "extractor"]), "",
+        "## Finalizer sweep", "", finalizer_table_md(results),
+        *_notional_note([r for r in results if r.stage == "finalizer"]), "",
         "## Classifier smoke test", "", classifier_table_md(results), "",
         "## Classifier model sweep", "", classifier_sweep_table_md(results), "",
     ]

@@ -53,7 +53,7 @@ def _client(api_key: str):
 
 
 async def submit(vault: Path, docs: list[dict], *, model: str, effort: str | None,
-                 skill_label: str, api_key: str) -> str:
+                 skills: dict[str, str], api_key: str) -> str:
     """Submit one Anthropic Message Batch covering every doc in `docs` (each
     `{"sha": ..., "prompt": [...content blocks...]}`, from `prompts.build_extract_prompt`),
     persist the batch's state, and return its id.
@@ -63,6 +63,11 @@ async def submit(vault: Path, docs: list[dict], *, model: str, effort: str | Non
     single call would be. Reuses `model_client`'s task-budget/system-prompt constants directly
     rather than duplicating them — this is the same request shape `_api_complete_async` builds
     for a single call, just submitted as a batch of them.
+
+    `skills` maps each sha to the record-skill label its prompt was built with (D144). One batch
+    may mix skills — the skill is baked into that request's own prompt blocks, and the API treats
+    each request independently — but collection runs in a later process, so the mapping has to be
+    persisted rather than recomputed.
     """
     model_id = model_client.resolve_model_id(model)
     effort_arg = model_client._resolve_effort("anthropic", model_id, effort)
@@ -91,7 +96,7 @@ async def submit(vault: Path, docs: list[dict], *, model: str, effort: str | Non
         "shas": [d["sha"] for d in docs],
         "model": model_id,
         "effort": effort,
-        "skill_label": skill_label,
+        "skills": dict(skills),
         "submitted_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     })
     return batch.id

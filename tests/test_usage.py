@@ -309,11 +309,11 @@ def test_cmd_usage_reconcile_task_groups_under_finalizer(tmp_path, monkeypatch, 
     capsys.readouterr()
     cmd_usage(_args(all_runs=True))
     out = capsys.readouterr().out
-    # Run row: Run | Calls | Classifier | Extractor | Finalizer | ... | Cost — the Finalizer
-    # column must carry both calls' cost (0.03), not just entity-synthesis's (0.02), or the
-    # stage columns stop summing to the Cost column on the right.
+    # Run row: Run | Backend | Calls | Classifier | Extractor | Finalizer | ... | Cost — the
+    # Finalizer column must carry both calls' cost (0.03), not just entity-synthesis's (0.02),
+    # or the stage columns stop summing to the Cost column on the right.
     run_row = next(line for line in out.splitlines() if "usage-2026-01-01" in line)
-    dollars = [float(v) for v in run_row.replace("$", "").split()[2:5]]
+    dollars = [float(v) for v in run_row.replace("$", "").split()[3:6]]
     assert dollars == [0.0, 0.0, 0.03]   # classifier, extractor, finalizer
 
 
@@ -396,3 +396,85 @@ def test_cmd_usage_per_call_cost_per_page(tmp_path, monkeypatch, capsys):
     b_row = next(line for line in lines if "b.pdf" in line)
     assert "$0.0100" in a_row   # 0.36 / 36 pages
     assert "—" in b_row
+
+
+# ── backend + auth reporting (#475) ────────────────────────────────────────────
+
+def test_cmd_usage_names_backend_and_auth_next_to_stage_model(tmp_path, monkeypatch, capsys):
+    """A bare `sonnet` resolves to claude-agent-sdk or claude-api by auth mode, silently — and
+    the two have materially different input-token costs. The stage header names which one ran,
+    with the auth mode that selected it, so two runs of the "same" arm are distinguishable."""
+    vault = _build_vault(tmp_path, runs={
+        "usage-2026-01-01T00-00-00": [
+            _call(task="extract", backend="claude-agent-sdk", auth_mode="subscription"),
+        ],
+    })
+    monkeypatch.chdir(vault)
+
+    cmd_usage(_args())
+
+    out = capsys.readouterr().out
+    assert "backend: claude-agent-sdk (subscription)" in out
+
+
+def test_cmd_usage_omits_auth_for_non_claude_backends(tmp_path, monkeypatch, capsys):
+    """Auth mode is only interesting where it *chose* the backend. A DeepSeek call is always
+    api-key, so tagging it would be noise."""
+    vault = _build_vault(tmp_path, runs={
+        "usage-2026-01-01T00-00-00": [
+            _call(task="extract", model="deepseek-v4-flash", backend="deepseek"),
+        ],
+    })
+    monkeypatch.chdir(vault)
+
+    cmd_usage(_args())
+
+    out = capsys.readouterr().out
+    assert "backend: deepseek" in out
+    assert "deepseek (api-key)" not in out
+
+
+def test_cmd_usage_flags_subscription_costs_as_notional(tmp_path, monkeypatch, capsys):
+    """On subscription auth `cost_usd` is a list-price equivalent, not money billed. Printing it
+    as a bare dollar figure next to metered runs is how a subscription arm gets mistaken for a
+    priced one — so it carries a caveat."""
+    vault = _build_vault(tmp_path, runs={
+        "usage-2026-01-01T00-00-00": [
+            _call(task="extract", backend="claude-agent-sdk", auth_mode="subscription"),
+        ],
+    })
+    monkeypatch.chdir(vault)
+    cmd_usage(_args())
+    assert "not amounts billed" in capsys.readouterr().out
+
+
+def test_cmd_usage_no_notional_caveat_on_metered_runs(tmp_path, monkeypatch, capsys):
+    vault = _build_vault(tmp_path, runs={
+        "usage-2026-01-01T00-00-00": [
+            _call(task="extract", backend="claude-api", auth_mode="api-key"),
+        ],
+    })
+    monkeypatch.chdir(vault)
+    cmd_usage(_args())
+    assert "not amounts billed" not in capsys.readouterr().out
+
+
+def test_cmd_usage_all_shows_backend_column_per_run(tmp_path, monkeypatch, capsys):
+    """The `--all` comparison is where an unexplained cost gap between two runs of the same
+    model shows up, so each run names its backend/auth compactly."""
+    vault = _build_vault(tmp_path, runs={
+        "usage-2026-01-01T00-00-00": [
+            _call(task="extract", backend="claude-agent-sdk", auth_mode="subscription"),
+        ],
+        "usage-2026-01-02T00-00-00": [
+            _call(task="extract", backend="claude-api", auth_mode="api-key"),
+        ],
+    })
+    monkeypatch.chdir(vault)
+
+    cmd_usage(_args(all_runs=True))
+
+    out = capsys.readouterr().out
+    assert "Backend" in out
+    assert "sdk/sub" in out
+    assert "api/key" in out

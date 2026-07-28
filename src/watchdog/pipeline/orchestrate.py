@@ -733,6 +733,31 @@ def _fail(vault: Path, sha: str, filename: str, reason: str) -> dict:
     return {"sha256": sha, "filename": filename or name, "status": "failed", "reason": reason}
 
 
+async def _resolve_skill(vault: Path, pf: dict, pinned_skill: str | None, classify_model: str,
+                         classify_pages: int, classify_backend: str | None, *, filename: str,
+                         on_classify=None) -> tuple[str, str]:
+    """This document's record skill, as `(skill_text, skill_label)`, following D120's precedence:
+    the document's own sidecar `skill:` pin, then a run-wide `--skill`/`default_skill`, then one
+    cheap classify call.
+
+    Shared by the synchronous per-document path (`_extract_document`) and the batch submit path
+    (`_submit_batch`) so the precedence can't drift between them — it is the rule that lets one
+    queue mix document types, and duplicating it once meant batch mode could only run on a
+    homogeneous, run-wide-pinned batch (D144). `on_classify` is called just before the classify
+    call so a caller with a live progress row can announce it; callers print the resolved label
+    themselves, since the two paths word it differently."""
+    doc_pinned_skill = _sidecar_skill(pf.get("sidecar"), filename=filename) or pinned_skill
+    if doc_pinned_skill:
+        return (Path(doc_pinned_skill).read_text(encoding="utf-8"), Path(doc_pinned_skill).stem)
+    if on_classify is not None:
+        on_classify()
+    # Classify on the first N pages (page-aware, not a mid-page char cut); the char cap is a guard.
+    excerpt = _pages_text(pf.get("pages", [])[:max(1, classify_pages)])[:_CLASSIFY_EXCERPT_CHARS]
+    skill = await _classify(excerpt, classify_model, classify_backend, filename=filename,
+                            sidecar=pf.get("sidecar"), vault=vault)
+    return (skills_catalog.read_skill(skill), skill.removesuffix(".md"))
+
+
 async def _extract_document(vault: Path, sha: str, brief: str | None,
                             extract_model: str, classify_model: str,
                             classify_pages: int = DEFAULT_CLASSIFY_PAGES,
@@ -786,21 +811,16 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
             _say(plain)
 
     # A sidecar's own `skill:` pin is more specific than a run-wide `--skill`, so it wins —
-    # this is what lets one ingest queue mix skills without a second pass (D120).
-    doc_pinned_skill = _sidecar_skill(pf.get("sidecar"), filename=filename) or pinned_skill
-    if doc_pinned_skill:
-        # Skill pinned for this document (a resolved skill-file path) — skip classification.
-        skill_text = Path(doc_pinned_skill).read_text(encoding="utf-8")
-        skill_label = Path(doc_pinned_skill).stem
-    else:
-        _step(f"{_DIM}→  {filename}  {pg} · classifying…{_RESET}",
-              f"{_DIM}→  {filename}  classifying ({page_count} page{'s' if page_count != 1 else ''})…{_RESET}")
-        # Classify on the first N pages (page-aware, not a mid-page char cut); the char cap is a guard.
-        excerpt = _pages_text(pages[:max(1, classify_pages)])[:_CLASSIFY_EXCERPT_CHARS]
-        skill = await _classify(excerpt, classify_model, classify_backend, filename=filename,
-                                sidecar=pf.get("sidecar"), vault=vault)
-        skill_text = skills_catalog.read_skill(skill)
-        skill_label = skill.removesuffix(".md")
+    # this is what lets one ingest queue mix skills without a second pass (D120). The precedence
+    # itself lives in `_resolve_skill`, shared with the batch path (D144).
+    classified = not (_sidecar_skill(pf.get("sidecar"), filename=filename) or pinned_skill)
+    skill_text, skill_label = await _resolve_skill(
+        vault, pf, pinned_skill, classify_model, classify_pages, classify_backend,
+        filename=filename,
+        on_classify=lambda: _step(
+            f"{_DIM}→  {filename}  {pg} · classifying…{_RESET}",
+            f"{_DIM}→  {filename}  classifying ({page_count} page{'s' if page_count != 1 else ''})…{_RESET}"))
+    if classified:
         _step(f"{_DIM}→  {filename}  {pg} · {skill_label}{_RESET}",
               f"{_DIM}·  {filename}  classified ·{_RESET} {_CYAN}{skill_label}{_RESET}")
 
@@ -977,7 +997,28 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
 
 
 
-async def _resume_batch(vault: Path, state: dict, pinned_skill: str, brief: str | None,
+def _batch_skill(state: dict, sha: str, pinned_skill: str | None) -> tuple[str, str]:
+    """The skill a batched document was submitted under, as `(skill_text, skill_label)`.
+
+    Read from the state's per-sha `skills` map (D144). Falls back to the pre-D144 state shape's
+    single run-wide `skill_label`, then to the run's own `--skill` pin, so a batch submitted by
+    an older version is still collectable after an upgrade rather than stranded — a batch can sit
+    in flight for up to 24h, which is easily long enough to span one."""
+    label = (state.get("skills") or {}).get(sha) or state.get("skill_label")
+    resolved = skills_catalog.resolve(label) if label else None
+    if resolved:
+        return Path(resolved).read_text(encoding="utf-8"), Path(resolved).stem
+    # An unresolvable label — a pre-D144 state whose `skill_label` was a file-path stem, or a
+    # user-local skill removed while the batch was in flight — falls back to this run's own pin
+    # rather than failing a batch that has already been paid for.
+    if pinned_skill:
+        return Path(pinned_skill).read_text(encoding="utf-8"), Path(pinned_skill).stem
+    raise model_client.ModelError(
+        f"batch state names no usable skill for {sha[:7]} (label: {label or 'none'}) — "
+        f"cannot rebuild its extraction prompt")
+
+
+async def _resume_batch(vault: Path, state: dict, pinned_skill: str | None, brief: str | None,
                         api_key: str, force: bool = False) -> dict:
     """Check a pending batch's status; collect and write it if `ended`, otherwise report
     progress and return without touching the vault."""
@@ -993,12 +1034,11 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str, brief: str 
     _say(f"{_DIM}→  batch {state['batch_id']} finished — collecting {len(state['shas'])} "
          f"document{'s' if len(state['shas']) != 1 else ''}…{_RESET}")
     collected = await batch_extract.collect(state["batch_id"], api_key, state["model"])
-    skill_text = Path(pinned_skill).read_text(encoding="utf-8")
-    skill_label = Path(pinned_skill).stem
 
     results = []
     try:
         for sha in state["shas"]:
+            skill_text, skill_label = _batch_skill(state, sha, pinned_skill)
             results.append(await _finish_batch_item(vault, sha, collected.get(sha), skill_text,
                                                      skill_label, brief, api_key,
                                                      model=state["model"], effort=state.get("effort"),
@@ -1017,19 +1057,24 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str, brief: str 
 
 
 async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract_model: str,
-                        pinned_skill: str, extract_effort: str | None, concurrency: int,
+                        pinned_skill: str | None, extract_effort: str | None, concurrency: int,
                         classify_model: str, classify_pages: int, classify_backend: str | None,
                         api_key: str, force: bool = False) -> dict:
     """Split the queue into sectioned (→ synchronous claude-api, via the normal
     `_extract_document`) and whole-document (→ one batch submission) shas, run the former, then
     submit the latter and return — submit-and-exit, not blocking-poll (a batch can take up to
-    24h; a *later* `watchdog dig` invocation collects it, see `_resume_batch`)."""
-    skill_text = Path(pinned_skill).read_text(encoding="utf-8")
-    skill_label = Path(pinned_skill).stem
+    24h; a *later* `watchdog dig` invocation collects it, see `_resume_batch`).
 
+    Each document resolves its **own** skill through `_resolve_skill` (D144), so a batch may mix
+    document types: the skill lives inside each request's own prompt blocks, which the Batches
+    API treats as independent, so one submission carries them all. The per-sha skill is persisted
+    in the batch state because collection happens in a *later* process, which has no other way to
+    rebuild the right skill for a repair retry."""
     results: list[dict] = []
     batch_docs: list[dict] = []
+    skills: dict[str, str] = {}          # sha -> skill label, persisted with the batch state
     sectioned_shas: list[str] = []
+    whole_docs: list[tuple[str, dict]] = []
     for sha in shas:
         pf = preflight.run(vault, sha)
         if pf.get("error"):
@@ -1050,16 +1095,34 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
         if section.run(vault, sha, model=extract_model).get("sectioned"):
             sectioned_shas.append(sha)
         else:
-            text = _pages_text(pf["pages"])
-            # Off the event loop — see the comment in `_simple_extract`.
-            candidates = await asyncio.to_thread(_candidates_checklist, text)
-            prompt = prompts.build_extract_prompt(
-                pages_text=text,
-                skill_text=skill_text, sidecar=pf.get("sidecar"), brief=brief,
-                known_document_types=pf.get("known_document_types", []), cache_ttl="1h",
-                file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
-                candidates=candidates)
-            batch_docs.append({"sha": sha, "prompt": prompt})
+            whole_docs.append((sha, pf))
+
+    # Resolve every whole-document skill up front, concurrently. Batch mode exists for large
+    # drops, and an unpinned batch classifies per document (D144) — awaiting those one at a time
+    # inside the loop above would serialize hundreds of round-trips before anything is submitted.
+    # A pinned or sidecar-pinned document short-circuits without a call, so a homogeneous batch
+    # still makes none of these.
+    sem = asyncio.Semaphore(max(1, concurrency))
+
+    async def _skill_for(pf: dict):
+        async with sem:
+            return await _resolve_skill(vault, pf, pinned_skill, classify_model, classify_pages,
+                                        classify_backend, filename=pf["filename"])
+
+    resolved = await asyncio.gather(*[_skill_for(pf) for _, pf in whole_docs])
+
+    for (sha, pf), (skill_text, skill_label) in zip(whole_docs, resolved):
+        text = _pages_text(pf["pages"])
+        # Off the event loop — see the comment in `_simple_extract`.
+        candidates = await asyncio.to_thread(_candidates_checklist, text)
+        prompt = prompts.build_extract_prompt(
+            pages_text=text,
+            skill_text=skill_text, sidecar=pf.get("sidecar"), brief=brief,
+            known_document_types=pf.get("known_document_types", []), cache_ttl="1h",
+            file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
+            candidates=candidates)
+        batch_docs.append({"sha": sha, "prompt": prompt, "skill_label": skill_label})
+        skills[sha] = skill_label
 
     if sectioned_shas:
         _say(f"{_DIM}→  {len(sectioned_shas)} large document"
@@ -1078,10 +1141,16 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
     if not batch_docs:
         return {"results": results, "batch_pending": False}
 
+    # Adjacent same-skill requests share the cached instructions+skill prefix (the `cache_control`
+    # breakpoint sits on the skill block), so sorting by skill keeps a mixed batch's cache hit
+    # rate close to a homogeneous one's. Correctness doesn't depend on it — only cost does.
+    batch_docs.sort(key=lambda d: d["skill_label"])
+    distinct = sorted({d["skill_label"] for d in batch_docs})
+    labels = ", ".join(distinct) if len(distinct) <= 3 else f"{len(distinct)} skills"
     _say(f"{_DIM}→  submitting {len(batch_docs)} document"
-         f"{'s' if len(batch_docs) != 1 else ''} as one batch ({skill_label})…{_RESET}")
+         f"{'s' if len(batch_docs) != 1 else ''} as one batch ({labels})…{_RESET}")
     batch_id = await batch_extract.submit(vault, batch_docs, model=extract_model,
-                                          effort=extract_effort, skill_label=skill_label,
+                                          effort=extract_effort, skills=skills,
                                           api_key=api_key)
     _say(f"{_GREEN}Batch submitted{_RESET}  {_CYAN}{batch_id}{_RESET}{_DIM} — this can take up "
          f"to a few hours (max 24h); re-run {_RESET}{_CYAN}{_resume_hint}{_RESET}{_DIM} later "
@@ -1093,13 +1162,13 @@ async def _run_batch(vault: Path, shas: list[str], brief: str | None, extract_mo
                      pinned_skill: str | None, extract_effort: str | None, concurrency: int,
                      classify_model: str, classify_pages: int,
                      classify_backend: str | None, force: bool = False) -> dict:
-    """Entry point for `run` when `extract_backend == "claude-batch"`. Defense-in-depth guards
-    beyond `cmd_ingest`'s own checks — a programmatic caller that skips CLI validation still
-    gets a clear error rather than a confusing downstream failure."""
-    if not pinned_skill:
-        raise model_client.ModelError(
-            "claude-batch requires a pinned skill (--skill/default_skill) — classification "
-            "is not batchable (#214)")
+    """Entry point for `run` when `extract_backend == "claude-batch"`. Defense-in-depth guard
+    beyond `cmd_ingest`'s own check — a programmatic caller that skips CLI validation still
+    gets a clear error rather than a confusing downstream failure.
+
+    A pinned skill is **not** required (D144): each document resolves its own skill before the
+    batch is built, so a mixed-type drop batches fine. `pinned_skill` is still honoured as the
+    run-wide default when a document has no sidecar pin of its own."""
     from watchdog.cmd import auth
     api_key = auth.resolve_auth().get("key")
     if not api_key:

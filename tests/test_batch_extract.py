@@ -105,7 +105,8 @@ def test_submit_builds_one_request_per_doc_and_persists_state(tmp_path, monkeypa
     docs = [{"sha": "sha1", "prompt": [{"type": "text", "text": "p1"}]},
            {"sha": "sha2", "prompt": [{"type": "text", "text": "p2"}]}]
     batch_id = asyncio.run(be.submit(vault, docs, model="sonnet", effort=None,
-                                     skill_label="annual-report", api_key="sk-x"))
+                                     skills={"sha1": "annual-report", "sha2": "bankruptcy"},
+                                     api_key="sk-x"))
 
     assert batch_id == "batch_abc"
     reqs = fake.create_calls[0]
@@ -117,7 +118,9 @@ def test_submit_builds_one_request_per_doc_and_persists_state(tmp_path, monkeypa
     state = be.read_state(vault)
     assert state["batch_id"] == "batch_abc"
     assert state["shas"] == ["sha1", "sha2"]
-    assert state["skill_label"] == "annual-report"
+    # One batch may mix skills (D144) — the mapping is persisted per sha, since collection
+    # runs in a later process that has no other way to rebuild each document's prompt.
+    assert state["skills"] == {"sha1": "annual-report", "sha2": "bankruptcy"}
     assert state["model"] == "claude-sonnet-4-6"
 
 
@@ -127,7 +130,7 @@ def test_submit_passes_resolved_effort(tmp_path, monkeypatch):
     monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
     docs = [{"sha": "sha1", "prompt": [{"type": "text", "text": "p"}]}]
     asyncio.run(be.submit(vault, docs, model="sonnet", effort="medium",
-                          skill_label="s", api_key="sk-x"))
+                          skills={"sha1": "s"}, api_key="sk-x"))
     assert fake.create_calls[0][0]["params"]["output_config"]["effort"] == "medium"
 
 
@@ -137,7 +140,7 @@ def test_submit_omits_effort_when_high_ie_default(tmp_path, monkeypatch):
     monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
     docs = [{"sha": "sha1", "prompt": [{"type": "text", "text": "p"}]}]
     asyncio.run(be.submit(vault, docs, model="sonnet", effort="high",
-                          skill_label="s", api_key="sk-x"))
+                          skills={"sha1": "s"}, api_key="sk-x"))
     assert "effort" not in fake.create_calls[0][0]["params"]["output_config"]
 
 

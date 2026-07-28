@@ -2258,16 +2258,28 @@ def _vault_with_queued_doc(tmp_path):
     return vault
 
 
-def test_cmd_ingest_claude_batch_requires_pinned_skill(wdg_home, tmp_path, monkeypatch):
+def test_cmd_ingest_claude_batch_needs_no_pinned_skill(wdg_home, tmp_path, monkeypatch):
+    """D144: claude-batch no longer requires a run-wide --skill. Each document resolves its own
+    skill before the batch is built, so an unpinned mixed-type queue is legal — this used to
+    exit with a "pinned skill" error before reaching the orchestrator at all."""
     from watchdog.cmd import auth as auth_module
     from watchdog.cmd.ingest import cmd_ingest
+    from watchdog.pipeline import orchestrate as orch_module
     vault = _vault_with_queued_doc(tmp_path)
     monkeypatch.chdir(vault)
     monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
     (wdg_home / "config.json").write_text(json.dumps({"extractor_model": "claude-batch:sonnet"}))
 
-    with pytest.raises(SystemExit, match="pinned skill"):
-        cmd_ingest(args(), confirm=False)
+    seen = {}
+
+    async def _fake_run(vault, **kwargs):
+        seen.update(kwargs)
+        return {"results": [], "extracted": 0, "skipped": 0, "failed": 0, "batch_pending": True}
+
+    monkeypatch.setattr(orch_module, "run", _fake_run)
+    cmd_ingest(args(), confirm=False)
+    assert seen, "orchestrate.run was never reached — an earlier guard rejected the run"
+    assert seen.get("pinned_skill") is None
 
 
 def test_cmd_ingest_claude_batch_requires_api_key_auth(wdg_home, tmp_path, monkeypatch):

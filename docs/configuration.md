@@ -178,14 +178,17 @@ OpenRouter (`openrouter:anthropic/claude-3.5-sonnet`, or any model id [OpenRoute
 
 ### claude-batch: bulk extraction at half price
 
-If you run on a metered API key (not a subscription) and are ingesting a large, same-type dump — say, 200 pages of one filing type — setting `extractor_model` to `claude-batch:sonnet` submits every whole-document extraction as one bulk batch at 50 per cent off every token. The tradeoff is latency, not cost: a batch typically finishes within an hour but can take up to 24, so `watchdog dig` submits it and exits rather than waiting. Run `watchdog dig` again later (or check `watchdog status`) to collect the results.
+If you run on a metered API key (not a subscription) and are ingesting a large dump — say, 200 pages — setting `extractor_model` to `claude-batch:sonnet` submits every whole-document extraction as one bulk batch at 50 per cent off every token. The tradeoff is latency, not cost: a batch typically finishes within an hour but can take up to 24, so `watchdog dig` submits it and exits rather than waiting. Run `watchdog dig` again later (or check `watchdog status`) to collect the results.
 
-Four constraints, each enforced with a clear error:
+The documents do not have to be the same type. Each one works out its own record skill before the batch is built — from its own `.yml` sidecar if it has one, otherwise the run-wide `--skill` if you set one, otherwise a quick classification — so a mixed drop of court filings and financial statements batches fine, each read with the right skill.
 
-1. It requires a pinned skill (`--skill` or `default_skill`) — classification is one-document-at-a-time and can't be batched.
-2. It requires `api-key` auth mode (switch to it with `watchdog auth`) — batching is not available on a subscription.
-3. It is valid only as `extractor_model`, not `classifier_model` or `finalizer_model`.
-4. A document large enough to need sectioned extraction can't go through the batch, so those extract via the regular API instead, automatically — announced in the run's output, not silent.
+Three constraints, each enforced with a clear error:
+
+1. It requires `api-key` auth mode (switch to it with `watchdog auth`) — batching is not available on a subscription.
+2. It is valid only as `extractor_model`, not `classifier_model` or `finalizer_model`.
+3. A document large enough to need sectioned extraction can't go through the batch, so those extract via the regular API instead, automatically — announced in the run's output, not silent.
+
+Classification itself is not batched — it stays one quick call per document, at the classifier model's price. That is deliberate: it's a cheap call on a short excerpt, and paying it is what removes the requirement to sort your documents by type before ingesting them.
 
 This is also the recipe for keeping a Claude subscription's session limits for interactive work only, spending zero subscription tokens on bulk ingest:
 
@@ -194,8 +197,8 @@ watchdog auth                                             # interactive: switch 
 watchdog configure classifier_model claude-api:haiku
 watchdog configure extractor_model claude-batch:sonnet
 watchdog configure finalizer_model claude-api:haiku
-watchdog dig --skill court-documents                      # submits the batch, exits
-watchdog dig                                               # later: collects it once ready
+watchdog dig                                              # submits the batch, exits
+watchdog dig                                              # later: collects it once ready
 ```
 
 ## Controlling cost
@@ -206,7 +209,8 @@ The main levers, roughly in order of impact:
 
 - **Effort.** Thinking tokens bill as output, so `extractor_effort` is the biggest per-run lever. It already defaults to `medium` — benchmark testing found no recall difference against `high`, at meaningfully lower cost — but `low` is worth trying on a test batch if you want to cut cost further. `finalizer_effort` works the same way for the post-ingest prose, and still defaults to `high`; that stage hasn't been benchmarked the same way. (See [Benchmarks](benchmarks.md) for the methodology behind these defaults.)
 - **Models.** `extractor_model haiku` is cheaper and faster for large batches of straightforward documents; Sonnet handles complex or ambiguous ones better. The classifier and finalizer already default to Haiku. If just one post-ingest stage needs a stronger model — the briefing reads thin, or duplicate entities keep slipping through reconciliation — `finalizer_reconciliation_model`/`finalizer_synthesis_model`/`finalizer_timeline_model`/`finalizer_briefing_model` raise that one stage without paying a stronger model's cost on the other three. Each falls back to `finalizer_model` when left unset.
-- **claude-batch.** On a metered key, the [claude-batch recipe](#claude-batch-bulk-extraction-at-half-price) above halves the cost of a bulk same-type ingest.
+- **claude-batch.** On a metered key, the [claude-batch recipe](#claude-batch-bulk-extraction-at-half-price) above halves the cost of a bulk ingest.
+- **Which Claude backend you're on.** A plain `sonnet` (or `haiku`/`opus`) reaches Claude one of two ways, chosen by your auth mode: a subscription goes through Claude Code's own harness, a metered key goes straight to the API. The two bill different numbers of input tokens for identical documents, so it is worth knowing which one you are on — `watchdog usage` names the backend for every stage. The API path also caches the reusable part of the prompt (the instructions and the record skill) properly, which the subscription path cannot be told to do.
 - **Concurrency.** `extract_concurrency` doesn't change total cost, but lowering it — persistently, or with `--concurrency` per run — is the fix when you hit model rate limits. `watchdog setup` already lowers the default from 5 to 3 when it detects Claude subscription auth and you keep ingestion on it: concurrent extractions on that path share one Claude Code session's rate limit, and 5 reliably throttles it. Raise it back with `watchdog configure extract_concurrency` if your plan tolerates more.
 
 Before committing to a large run, get a number:

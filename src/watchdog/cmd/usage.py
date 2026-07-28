@@ -110,6 +110,70 @@ def _short_auth(mode: str | None) -> str:
     return "—"
 
 
+# Claude is reachable through three backends with very different cost shapes — the agent SDK
+# carries a larger prompt preamble and auto-caches with no `cache_control` knob, claude-api gets
+# the explicit cache breakpoint, and claude-batch is half price — but a bare `sonnet` resolves to
+# one of them by *auth mode*, silently. Nothing used to print which, so two runs of the "same"
+# arm could differ by a third on input tokens with no visible cause (#475). Hence: name the
+# backend wherever a model is named, and the auth mode with it for Claude, where it's the thing
+# that did the choosing.
+_CLAUDE_BACKENDS = ("claude-agent-sdk", "claude-api", "claude-batch")
+
+
+def _backend_label(backend: str | None, auth_mode: str | None) -> str:
+    """`claude-agent-sdk (subscription)` for a Claude backend, bare `deepseek` for the rest —
+    auth mode is only interesting where it selected the backend."""
+    if not backend:
+        return "?"
+    if backend in _CLAUDE_BACKENDS and auth_mode:
+        return f"{backend} ({auth_mode})"
+    return backend
+
+
+def _stage_backends(calls: list[dict]) -> str:
+    """Distinct `backend (auth)` labels across `calls`, first-seen order — the backend twin of
+    `_stage_models`. Joined rather than assumed single, since a finalizer stage can be split
+    across per-sub-stage overrides (D137)."""
+    seen = []
+    for c in calls:
+        label = _backend_label(c.get("backend"), c.get("auth_mode"))
+        if label not in seen:
+            seen.append(label)
+    return ", ".join(seen)
+
+
+def _short_backend(backend: str | None) -> str:
+    """Compact backend tag for the per-run comparison table: `sdk`/`api`/`batch` for the three
+    Claude backends (where the distinction is the point), the provider name otherwise."""
+    return {"claude-agent-sdk": "sdk", "claude-api": "api",
+            "claude-batch": "batch"}.get(backend or "", backend or "—")
+
+
+def _run_backends(calls: list[dict]) -> str:
+    """Compact distinct `backend/auth` tags for one run — e.g. `sdk/sub` or `api/key, deepseek`.
+    Claude backends carry the auth suffix; others don't (they are always api-key)."""
+    seen = []
+    for c in calls:
+        backend = c.get("backend")
+        tag = _short_backend(backend)
+        if backend in _CLAUDE_BACKENDS:
+            tag = f"{tag}/{_short_auth(c.get('auth_mode'))}"
+        if tag not in seen:
+            seen.append(tag)
+    return ", ".join(seen) or "—"
+
+
+def _subscription_note(calls: list[dict]) -> str | None:
+    """Warning text when any Claude call in `calls` ran on subscription auth: `cost_usd` is then
+    a list-price projection, not money that was billed. Presenting it as a plain dollar figure
+    alongside metered runs is how a subscription arm gets mistaken for a priced one (#475)."""
+    if any(c.get("backend") in _CLAUDE_BACKENDS and c.get("auth_mode") == "subscription"
+           for c in calls):
+        return ("subscription auth — Claude costs below are list-price equivalents, "
+                "not amounts billed")
+    return None
+
+
 _PAGE_RANGE_RE = re.compile(r"^pages (\d+)–(\d+)")
 
 
@@ -293,7 +357,8 @@ def _analyze_run(usage_file: Path, vault: Path) -> None:
     for stage in ordered:
         stage_calls = by_stage[stage]
         print(f"\n  {stage.upper()}  ({len(stage_calls)} call{'s' if len(stage_calls) != 1 else ''})"
-              f"  ·  model: {_stage_models(stage_calls)}")
+              f"  ·  model: {_stage_models(stage_calls)}"
+              f"  ·  backend: {_stage_backends(stage_calls)}")
         if any(c.get("backend") == "local" for c in stage_calls):
             # A local model's $0 cost is real, but it isn't "free" the way it reads at a glance
             # (#380) — it's paid in wall-clock time instead of tokens. Latency is the real signal.
@@ -312,6 +377,9 @@ def _analyze_run(usage_file: Path, vault: Path) -> None:
         f"{_fmt(grand['cache_write_tokens'])} cache-write  ·  {_fmt(grand['output_tokens'])} out  ·  "
         f"${grand['cost_usd']:.4f}  ·  {call_time}{elapsed}"
     )
+    note = _subscription_note(calls)
+    if note:
+        print(f"  {_YELLOW}⚠{_RESET}  {_DIM}{note}{_RESET}")
     _print_cost_per_page(vault, grand["cost_usd"])
 
 
@@ -341,12 +409,18 @@ def _analyze_all(vault: Path) -> None:
     print("━" * 108)
 
     rows = []
+    all_calls = []
     for f in files:
         calls = _load(f).get("calls", [])
-        rows.append((f.stem, _run_totals(calls), len(calls)))
-    name_w = min(28, max(len(name) for name, _, _ in rows))
+        all_calls.extend(calls)
+        rows.append((f.stem, _run_totals(calls), len(calls), _run_backends(calls)))
+    name_w = min(28, max(len(name) for name, _, _, _ in rows))
+    # Backend is the column that explains an otherwise inexplicable cost gap between two runs of
+    # the same model (#475), so it sits next to the run name rather than off the right edge.
+    backend_w = max(max(len(b) for _, _, _, b in rows), len("Backend"))
 
-    hdr = (f"  {'Run':<{name_w}}  {'Calls':>5}  {'Classifier':>10}  {'Extractor':>10}  {'Finalizer':>10}  "
+    hdr = (f"  {'Run':<{name_w}}  {'Backend':<{backend_w}}  {'Calls':>5}  {'Classifier':>10}  "
+           f"{'Extractor':>10}  {'Finalizer':>10}  "
            f"{'Input':>9}  {'C.read':>9}  {'C.write':>9}  {'Output':>8}  {'Time':>7}  {'Cost':>8}")
     print()
     print(hdr)
@@ -354,10 +428,11 @@ def _analyze_all(vault: Path) -> None:
 
     grand = dict(_ZERO_TOTALS, classifier_cost=0.0, extractor_cost=0.0, finalizer_cost=0.0)
     n_calls_total = 0
-    for name, t, n_calls in sorted(rows, key=lambda r: -r[1]["cost_usd"]):
+    for name, t, n_calls, backends in sorted(rows, key=lambda r: -r[1]["cost_usd"]):
         trunc = (name[:name_w - 1] + "…") if len(name) > name_w else name
         print(
-            f"  {trunc:<{name_w}}  {n_calls:>5}  ${t['classifier_cost']:>9.4f}  ${t['extractor_cost']:>9.4f}  "
+            f"  {trunc:<{name_w}}  {backends:<{backend_w}}  {n_calls:>5}  "
+            f"${t['classifier_cost']:>9.4f}  ${t['extractor_cost']:>9.4f}  "
             f"${t['finalizer_cost']:>9.4f}  {_fmt(t['input_tokens']):>9}  {_fmt(t['cache_read_tokens']):>9}  "
             f"{_fmt(t['cache_write_tokens']):>9}  {_fmt(t['output_tokens']):>8}  {_fmt_secs(t['latency_s']):>7}  "
             f"${t['cost_usd']:>7.4f}"
@@ -368,12 +443,16 @@ def _analyze_all(vault: Path) -> None:
 
     print(f"  {'─' * (len(hdr) - 2)}")
     print(
-        f"  {'TOTAL':<{name_w}}  {n_calls_total:>5}  ${grand['classifier_cost']:>9.4f}  "
+        f"  {'TOTAL':<{name_w}}  {'':<{backend_w}}  {n_calls_total:>5}  "
+        f"${grand['classifier_cost']:>9.4f}  "
         f"${grand['extractor_cost']:>9.4f}  ${grand['finalizer_cost']:>9.4f}  "
         f"{_fmt(grand['input_tokens']):>9}  {_fmt(grand['cache_read_tokens']):>9}  "
         f"{_fmt(grand['cache_write_tokens']):>9}  {_fmt(grand['output_tokens']):>8}  "
         f"{_fmt_secs(grand['latency_s']):>7}  ${grand['cost_usd']:>7.4f}"
     )
+    note = _subscription_note(all_calls)
+    if note:
+        print(f"  {_YELLOW}⚠{_RESET}  {_DIM}{note}{_RESET}")
     _print_cost_per_page(vault, grand["cost_usd"])
 
 
