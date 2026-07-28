@@ -6,6 +6,27 @@ written report under `benchmarks/<run-id>/`, instead of a human hand-running eac
 document stays as the spec that tool automates, and as the manual fallback if `run_benchmark.py`
 itself needs debugging.
 
+**Running a subset (#475).** `--arms` selects specific arm ids, so one comparison can run without
+paying for the whole ~$15 sweep. An unknown id is a hard error, not a silent full-sweep fallback:
+
+```
+run_benchmark.py --stages extractor --arms sonnet-med-sdk,sonnet-med-api
+```
+
+**Pin the Claude backend when it is what you are measuring (#475).** A bare `sonnet` arm carries
+no backend of its own — `_effective_extract_backend` picks one from the *current auth mode*
+(subscription → `claude-agent-sdk`, api-key → `claude-api`). Those two bill materially different
+input-token counts for identical documents: telemetry from the `bench-ex2` round put actual/
+estimated input at ~2.4x on the agent SDK against ~1.24x elsewhere, and the SDK also pays a
+cache-*write* premium on text it never reads back. So:
+
+- the cost preview now prints each arm's resolved backend and auth mode before you confirm;
+- every arm row in `REPORT.md` names the backend that served it;
+- a subscription arm's costs are marked `~` and captioned as list-price equivalents rather than
+  amounts billed — they are comparable to each other, not to a metered arm's real spend;
+- the `sonnet-med-sdk` / `sonnet-med-api` arms pin the backend explicitly. Run them under api-key
+  auth (claude-api cannot run on a subscription) or the pair is not comparable.
+
 A step-by-step guide to measuring the three ingest model stages against corpus-v1. Written to be
 followed top to bottom. Nothing here spends money until Step 3, and every run gets a free cost
 preview first.
@@ -171,6 +192,11 @@ watchdog dig --extractor-model sonnet --extractor-effort high
 | `bench-ex-ds-flash-think` | `deepseek:deepseek-v4-flash-thinking` | — | DeepSeek flash, thinking on |
 | `bench-ex-ds-pro` | `deepseek:deepseek-v4-pro` | — | DeepSeek pro, thinking off |
 | `bench-ex-ds-pro-think` | `deepseek:deepseek-v4-pro-thinking` | — | DeepSeek pro, thinking on |
+
+**`claude-batch` arms.** Since D144 a batch no longer needs a run-wide pinned skill — each
+document resolves its own, so corpus-v1's per-document sidecar pins (D120) carry through and the
+two-skill corpus batches correctly. A batch arm is submit-and-exit: the arm returns once the batch
+is submitted, and a *later* run collects it, so its `REPORT.md` row is empty until then.
 
 **Correction:** the original `bench-ex-sonnet-high` and `bench-ex-sonnet-med` vaults were run
 (2026-07-15) before the `dig`/`bark` split shipped (#403, merged 2026-07-20/21) — they have no

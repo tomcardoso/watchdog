@@ -25,6 +25,22 @@ extractor_sweep:
     - {id: gemini-flash,      extractor_model: "gemini:gemini-3.5-flash"}       # middle tier
     # Opus dropped (not worth testing this round). OpenAI arms deferred pending #453 (possible
     # model-adapter swap) — no fixed model ids worth committing to a frozen benchmark yet.
+    #
+    # Backend A/B (#475). The arms above name a bare Claude tier, which resolves to
+    # claude-agent-sdk or claude-api by whatever auth mode the machine is in — so their cost is
+    # only interpretable alongside the backend the report now records. These two pin it
+    # explicitly and are the *only* way to measure the difference, which telemetry puts at ~2.4x
+    # actual/estimated input tokens on the agent SDK vs ~1.24x elsewhere, plus a cache-write
+    # premium the SDK pays and never reads back. Run them as a pair, on their own:
+    #     run_benchmark.py --stages extractor --arms sonnet-med-sdk,sonnet-med-api
+    # Both need api-key auth to be comparable — claude-api cannot run on a subscription.
+    - {id: sonnet-med-sdk,    extractor_model: "claude-agent-sdk:sonnet", extractor_effort: medium}
+    - {id: sonnet-med-api,    extractor_model: "claude-api:sonnet",       extractor_effort: medium}
+    # Batch API: 50% off every token, stacking with prompt caching. Needs no `skill:` pin — since
+    # D144 each document resolves its own skill, so corpus-v1's per-document sidecar pins (D120)
+    # carry through and the two-skill corpus batches correctly. Submit-and-exit: the arm returns
+    # once submitted, and a later run collects it (see BENCHMARKING.md).
+    - {id: batch-sonnet-med,  extractor_model: "claude-batch:sonnet",     extractor_effort: medium}
 
 finalizer_sweep:
   vault_prefix: bench-fn

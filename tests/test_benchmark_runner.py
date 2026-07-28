@@ -361,3 +361,141 @@ def test_score_main_reports_na_instead_of_crashing_on_zero_item_category(tmp_pat
 
     out = capsys.readouterr().out
     assert "0/0  (n/a)" in out
+
+
+# ── backend + auth reporting (#475) ────────────────────────────────────────────
+
+def _usage(backend="claude-api", auth_mode="api-key", cost=1.0):
+    return {"calls": [{"cost_usd": cost, "latency_s": 20, "attempts": 1, "task": "extract",
+                       "backend": backend, "auth_mode": auth_mode}]}
+
+
+def test_extractor_table_names_backend_and_auth():
+    """A bare `sonnet` arm resolves to claude-agent-sdk or claude-api by auth mode alone, and the
+    two bill materially different input tokens. The arm row has to say which actually ran, or two
+    runs of "the same" arm are silently incomparable."""
+    results = [_arm_result(arm_id="sonnet-med", vault="/tmp/bench-ex3-sonnet-med",
+                          usage=_usage("claude-agent-sdk", "subscription"))]
+    table = br.extractor_table_md(results, {"totals": {"facts": {}, "must_not_miss": {}}})
+    assert "Backend" in table
+    assert "claude-agent-sdk (subscription)" in table
+
+
+def test_extractor_table_omits_auth_for_non_claude_backends():
+    results = [_arm_result(arm_id="ds-flash", vault="/tmp/bench-ex3-ds-flash",
+                          usage=_usage("deepseek", "api-key"))]
+    table = br.extractor_table_md(results, {"totals": {"facts": {}, "must_not_miss": {}}})
+    assert "| deepseek |" in table
+    assert "deepseek (api-key)" not in table
+
+
+def test_subscription_arm_costs_are_marked_notional():
+    """On subscription auth nothing is billed per token, so `cost_usd` is a list-price
+    projection. It gets a `~` and a caveat, so it isn't read as spend next to a metered arm."""
+    results = [_arm_result(arm_id="sonnet-med", vault="/tmp/bench-ex3-sonnet-med",
+                          usage=_usage("claude-agent-sdk", "subscription", cost=3.0))]
+    table = br.extractor_table_md(results, {"totals": {"facts": {}, "must_not_miss": {}}})
+    assert "~$3.000" in table
+    note = "\n".join(br._notional_note(results))
+    assert "sonnet-med" in note and "not amounts billed" in note
+
+
+def test_metered_arm_costs_are_not_marked_notional():
+    results = [_arm_result(arm_id="sonnet-api", vault="/tmp/bench-ex3-sonnet-api",
+                          usage=_usage("claude-api", "api-key", cost=3.0))]
+    table = br.extractor_table_md(results, {"totals": {"facts": {}, "must_not_miss": {}}})
+    assert "$3.000" in table and "~$3.000" not in table
+    assert br._notional_note(results) == []
+
+
+def test_docs_summary_warns_when_figures_are_notional():
+    """The docs fragment is hand-pasted into a page journalists read, where a dollar figure is
+    taken at face value — the caveat has to travel with it, not just live in the tech report."""
+    results = [_arm_result(arm_id="sonnet-med", vault="/tmp/v",
+                          usage=_usage("claude-agent-sdk", "subscription"))]
+    summary = br.docs_summary_md(results, {"totals": {"facts": {}, "must_not_miss": {}}})
+    assert "not a charge that was incurred" in summary
+
+    metered = [_arm_result(arm_id="ds", vault="/tmp/v", usage=_usage("deepseek", "api-key"))]
+    assert "not a charge that was incurred" not in br.docs_summary_md(
+        metered, {"totals": {"facts": {}, "must_not_miss": {}}})
+
+
+# ── --arms selection (#475) ────────────────────────────────────────────────────
+
+def _matrix_config(tmp_path):
+    """A minimal config with a two-arm extractor sweep, written to disk for main()."""
+    cfg = {
+        "corpus": {"dir": "corpus", "sha256": "corpus/c.sha256"},
+        "keys": {"dir": "keys", "sha256": "keys/k.sha256"},
+        "master_vault": {"name": "m", "classify_name": "mc"},
+        "extractor_sweep": {"vault_prefix": "bench-ex3", "arms": [
+            {"id": "sonnet-med-sdk", "extractor_model": "claude-agent-sdk:sonnet"},
+            {"id": "sonnet-med-api", "extractor_model": "claude-api:sonnet"},
+            {"id": "haiku", "extractor_model": "haiku"},
+        ]},
+    }
+    p = tmp_path / "benchmark.yaml"
+    p.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    return p
+
+
+def test_arm_backend_resolves_bare_tier_by_auth_mode(monkeypatch):
+    """A bare `sonnet` has no backend of its own — auth mode picks it. That is the variable that
+    made two runs of one arm incomparable, so the preview has to resolve and show it."""
+    import watchdog.cmd.auth as wd_auth
+    monkeypatch.setattr(wd_auth, "resolve_auth", lambda *a, **k: {"mode": "subscription"})
+    assert rb.arm_backend("sonnet", default="sonnet") == "claude-agent-sdk"
+    monkeypatch.setattr(wd_auth, "resolve_auth", lambda *a, **k: {"mode": "api-key", "key": "k"})
+    assert rb.arm_backend("sonnet", default="sonnet") == "claude-api"
+
+
+def test_arm_backend_honours_an_explicit_pin_regardless_of_auth_mode(monkeypatch):
+    import watchdog.cmd.auth as wd_auth
+    monkeypatch.setattr(wd_auth, "resolve_auth", lambda *a, **k: {"mode": "subscription"})
+    assert rb.arm_backend("claude-api:sonnet", default="sonnet") == "claude-api"
+    assert rb.arm_backend("deepseek:deepseek-v4-flash", default="sonnet") == "deepseek"
+
+
+def test_confirm_run_prints_backend_and_auth_per_arm(monkeypatch, capsys):
+    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: False)
+    previews = [("extractor:sonnet-med-sdk", {"cost_low": 1.0, "cost_high": 2.0},
+                 {"backend": "claude-agent-sdk", "auth_mode": "subscription"}),
+                ("extractor:ds-flash", {"cost_low": 0.01, "cost_high": 0.02},
+                 {"backend": "deepseek", "auth_mode": "api-key"})]
+    rb.confirm_run(previews, estimate_only=True)
+    out = capsys.readouterr().out
+    assert "backend: claude-agent-sdk (subscription)" in out
+    assert "backend: deepseek" in out
+    assert "deepseek (api-key)" not in out   # auth only matters where it chose the backend
+
+
+def test_arms_filter_runs_only_the_named_arms(tmp_path, monkeypatch, capsys):
+    """A full sweep is ~$15; running one comparison should not require paying for the rest."""
+    cfg = _matrix_config(tmp_path)
+    monkeypatch.setattr(rb, "verify_freeze", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "corpus_documents", lambda d: [Path("a.pdf")])
+    monkeypatch.setattr(rb, "ensure_master_vault", lambda *a, **k: tmp_path / "master")
+    monkeypatch.setattr(rb, "seed_arm_vault", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "arm_vault", lambda prefix, aid: tmp_path / f"{prefix}-{aid}")
+    monkeypatch.setattr(rb, "preview_extractor_arm", lambda v, m: {"cost_low": 1.0, "cost_high": 2.0})
+    monkeypatch.setattr(rb, "arm_backend", lambda m, default: "claude-api")
+    monkeypatch.setattr(rb, "_auth_mode", lambda: "api-key")
+    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: False)
+
+    rb.main(["--config", str(cfg), "--stages", "extractor",
+             "--arms", "sonnet-med-sdk,sonnet-med-api"])
+
+    out = capsys.readouterr().out
+    assert "extractor:sonnet-med-sdk" in out
+    assert "extractor:sonnet-med-api" in out
+    assert "extractor:haiku" not in out
+
+
+def test_arms_filter_rejects_an_unknown_arm_id(tmp_path, monkeypatch):
+    """A typo'd arm id must not silently fall through to running the whole sweep."""
+    cfg = _matrix_config(tmp_path)
+    monkeypatch.setattr(rb, "verify_freeze", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "corpus_documents", lambda d: [Path("a.pdf")])
+    with pytest.raises(SystemExit, match="unknown arm id"):
+        rb.main(["--config", str(cfg), "--stages", "extractor", "--arms", "sonnet-med-sdkk"])

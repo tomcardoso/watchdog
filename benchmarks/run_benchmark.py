@@ -4,7 +4,8 @@ Not a pytest module (no ``test_`` prefix). Run via the pipx dev venv, from the r
 
     ~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/run_benchmark.py \
         [--config benchmarks/benchmark.yaml] [--estimate-only] \
-        [--stages extractor,finalizer,classifier,classifier-sweep]
+        [--stages extractor,finalizer,classifier,classifier-sweep] \
+        [--arms sonnet-med-sdk,sonnet-med-api]
 
 Drives the real `watchdog` CLI functions in-process (`cmd_extract`, `cmd_finalize`, the same
 cost-estimate/usage-file library calls `dig --estimate`/`watchdog usage` use) rather than
@@ -206,17 +207,29 @@ def _effective_backend(backend: str | None) -> str:
     return _effective_extract_backend(backend, auth_mode)
 
 
+def arm_backend(model_str: str, *, default: str) -> str:
+    """The backend an arm will actually run on. A bare Claude tier (`sonnet`) carries no backend
+    of its own — `_effective_backend` resolves it from the *current auth mode*, which is exactly
+    the invisible variable that made two runs of one arm incomparable (#475). Surfacing it in the
+    preview means you see, before spending, whether this run is the agent SDK or the raw API."""
+    backend, _ = _resolve(model_str, default=default)
+    return _effective_backend(backend)
+
+
+def _auth_mode() -> str:
+    from watchdog.cmd.auth import resolve_auth
+    return resolve_auth().get("mode", "none")
+
+
 def preview_extractor_arm(vault: Path, extractor_model: str) -> dict:
     from watchdog.pipeline.ingest_setup import scan_queue, cost_estimate
-    backend, _ = _resolve(extractor_model, default="sonnet")
     queue_files = scan_queue(vault)
-    return cost_estimate(vault, queue_files, _effective_backend(backend))
+    return cost_estimate(vault, queue_files, arm_backend(extractor_model, default="sonnet"))
 
 
 def preview_finalizer_arm(vault: Path, finalizer_model: str) -> dict:
     from watchdog.pipeline.ingest_setup import finalize_cost_estimate
-    backend, _ = _resolve(finalizer_model, default="haiku")
-    return finalize_cost_estimate(vault, _effective_backend(backend))
+    return finalize_cost_estimate(vault, arm_backend(finalizer_model, default="haiku"))
 
 
 def _latest_usage(vault: Path) -> dict | None:
@@ -330,15 +343,21 @@ def confirm_run(previews: list[tuple[str, dict, dict]], *, estimate_only: bool) 
     total_low = total_high = 0.0
     any_priced = False
     print("\nCost preview:")
-    for label, est, _meta in previews:
+    for label, est, meta in previews:
         low, high = est.get("cost_low"), est.get("cost_high")
         if low is None:
             print(f"  {label}: no dollar estimate (subscription auth or no usage history yet)")
-            continue
-        any_priced = True
-        total_low += low
-        total_high += high
-        print(f"  {label}: ~${low:.2f}-{high:.2f}")
+        else:
+            any_priced = True
+            total_low += low
+            total_high += high
+            print(f"  {label}: ~${low:.2f}-{high:.2f}")
+        # Which backend this arm resolves to, and on Claude the auth mode that chose it (#475).
+        backend = (meta or {}).get("backend")
+        if backend:
+            auth = (meta or {}).get("auth_mode")
+            suffix = f" ({auth})" if auth and backend.startswith("claude-") else ""
+            print(f"    backend: {backend}{suffix}")
     if any_priced:
         print(f"  TOTAL: ~${total_low:.2f}-{total_high:.2f}")
     else:
@@ -353,9 +372,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", type=Path, default=HERE / "benchmark.yaml")
     parser.add_argument("--estimate-only", action="store_true")
     parser.add_argument("--stages", default="extractor,finalizer,classifier,classifier-sweep")
+    parser.add_argument("--arms", default=None,
+                        help="comma-separated arm ids to run (default: every arm in the "
+                             "selected stages). Lets one comparison run without paying for the "
+                             "whole sweep, e.g. --arms sonnet-med-sdk,sonnet-med-api")
     parser.add_argument("--out", type=Path, default=HERE)
     args = parser.parse_args(argv)
     stages = set(args.stages.split(","))
+    wanted_arms = {a.strip() for a in args.arms.split(",") if a.strip()} if args.arms else None
 
     config = load_config(args.config)
     config_dir = args.config.parent
@@ -369,6 +393,20 @@ def main(argv: list[str] | None = None) -> int:
     keys = [yaml.safe_load(f.read_text(encoding="utf-8")) for f in sorted(keys_dir.glob("*.yaml"))]
     expected_skills = _corpus_expected_skills(keys)
 
+    # An unknown arm id is a typo, and silently running the whole sweep because of one is an
+    # expensive way to find out — so validate against every id the config defines, up front.
+    if wanted_arms is not None:
+        known = {a["id"] for key in ("extractor_sweep", "finalizer_sweep", "classifier_sweep")
+                 for a in (config.get(key) or {}).get("arms", [])}
+        known |= {(config.get("classifier_smoke") or {}).get("arm", {}).get("id")} - {None}
+        unknown = wanted_arms - known
+        if unknown:
+            sys.exit(f"Error: unknown arm id(s): {', '.join(sorted(unknown))}. "
+                     f"Known: {', '.join(sorted(known))}")
+
+    def _selected(arm: dict) -> bool:
+        return wanted_arms is None or arm.get("id") in wanted_arms
+
     results: list[ArmResult] = []
     previews: list[tuple[str, dict, dict]] = []
     plan: list[tuple[str, dict]] = []   # (kind, arm-plus-context) queued for real execution
@@ -377,11 +415,15 @@ def main(argv: list[str] | None = None) -> int:
         sweep = config["extractor_sweep"]
         master = ensure_master_vault(config["master_vault"]["name"], docs, with_sidecars=True)
         for arm in sweep["arms"]:
+            if not _selected(arm):
+                continue
             vault = arm_vault(sweep["vault_prefix"], arm["id"])
             if not vault.exists():
                 seed_arm_vault(master, vault)
             est = preview_extractor_arm(vault, arm["extractor_model"])
-            previews.append((f"extractor:{arm['id']}", est, {}))
+            meta = {"backend": arm_backend(arm["extractor_model"], default="sonnet"),
+                    "auth_mode": _auth_mode()}
+            previews.append((f"extractor:{arm['id']}", est, meta))
             plan.append(("extractor", {"arm": arm, "vault": vault}))
 
     if "finalizer" in stages and config.get("finalizer_sweep"):
@@ -394,23 +436,30 @@ def main(argv: list[str] | None = None) -> int:
             if not base_result.ok:
                 sys.exit(f"Error: finalizer sweep's base extraction failed: {base_result.error}")
         for arm in sweep["arms"]:
+            if not _selected(arm):
+                continue
             vault = arm_vault(sweep["vault_prefix"], arm["id"])
             if not vault.exists():
                 shutil.copytree(base_vault, vault)
             est = preview_finalizer_arm(vault, arm["finalizer_model"])
-            previews.append((f"finalizer:{arm['id']}", est, {}))
+            meta = {"backend": arm_backend(arm["finalizer_model"], default="haiku"),
+                    "auth_mode": _auth_mode()}
+            previews.append((f"finalizer:{arm['id']}", est, meta))
             plan.append(("finalizer", {"arm": arm, "vault": vault}))
 
     if "classifier" in stages and config.get("classifier_smoke"):
         smoke = config["classifier_smoke"]
         master = ensure_master_vault(config["master_vault"]["classify_name"], docs,
                                      with_sidecars=False)
-        vault = arm_vault(smoke["vault_prefix"], smoke["arm"]["id"])
-        if not vault.exists():
-            seed_arm_vault(master, vault)
-        est = preview_extractor_arm(vault, smoke["arm"]["extractor_model"])
-        previews.append((f"classifier-smoke:{smoke['arm']['id']}", est, {}))
-        plan.append(("classifier", {"arm": smoke["arm"], "vault": vault}))
+        if _selected(smoke["arm"]):
+            vault = arm_vault(smoke["vault_prefix"], smoke["arm"]["id"])
+            if not vault.exists():
+                seed_arm_vault(master, vault)
+            est = preview_extractor_arm(vault, smoke["arm"]["extractor_model"])
+            meta = {"backend": arm_backend(smoke["arm"]["extractor_model"], default="sonnet"),
+                    "auth_mode": _auth_mode()}
+            previews.append((f"classifier-smoke:{smoke['arm']['id']}", est, meta))
+            plan.append(("classifier", {"arm": smoke["arm"], "vault": vault}))
 
     if "classifier-sweep" in stages and config.get("classifier_sweep"):
         sweep = config["classifier_sweep"]
@@ -421,6 +470,8 @@ def main(argv: list[str] | None = None) -> int:
             cc_master_name = f"{sweep['vault_prefix']}-master"
             cc_master = ensure_master_vault(cc_master_name, cc_docs, with_sidecars=False)
             for arm in sweep["arms"]:
+                if not _selected(arm):
+                    continue
                 vault = arm_vault(sweep["vault_prefix"], arm["id"])
                 if not vault.exists():
                     seed_arm_vault(cc_master, vault)
