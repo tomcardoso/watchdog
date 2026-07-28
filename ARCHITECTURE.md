@@ -947,7 +947,8 @@ registry/
   usage/usage-<ts>.partial.jsonl  in-progress run's calls, one JSON line per completed call —
                             folded into a real usage-<ts>.json and removed at the *next* run's
                             start if the run that wrote it never reached a clean exit (D132)
-  batch-pending.json        pending claude-batch extraction state (D52)
+  batch-pending.json        pending claude-batch extraction state (D52) — incl. the per-sha
+                            skill map a later collection pass rebuilds prompts from (D144)
   .ingest-lock / .write-lock  run lock / write serialization
 backups/<ts>-<operation>/   pre-mutation snapshots for irreversible operations (D71)
 ingest-state.json           present while a run is in progress; stale ⇒ interrupted ingest, resume with `watchdog dig`
@@ -1027,7 +1028,9 @@ completed purge, and the CLI hint says so.
   `--extractor-effort` / `--finalizer-effort`.
 - **Model client** (`model_client.py`): the orchestrator's single entry to the model.
   Routes each task to a backend — `claude-agent-sdk` (subscription login or API key — the
-  only backend that works on a subscription), `claude-api` (raw Messages + structured
+  only backend that works on a subscription; it passes **both** `allowed_tools=[]` and
+  `tools=[]`, since only the latter keeps the built-in Claude Code tool suite out of the
+  request — ~11.2K tokens per call otherwise, D145), `claude-api` (raw Messages + structured
   outputs), or the OpenAI-compatible `openai`/`deepseek`/`gemini`/`local`/`openrouter` backends
   (Chat Completions over httpx, one provider each via base URL; D37, D94, D139) — by auth mode
   and per-task policy, validates the JSON, retries on the same model on failure, and reports
@@ -1082,9 +1085,18 @@ completed purge, and the CLI hint says so.
   D52): a fundamentally different flow from the other backends — submit-many/poll/collect over
   minutes-to-24h rather than one call per document — so it isn't in `model_client._ABACKENDS`
   and is never dispatched through `acomplete_json`; `orchestrate._run_batch` handles it
-  entirely, called from `run` instead of the concurrent per-document loop. It requires a
-  pinned skill (classification isn't batchable) and `api-key` auth (a metered key; not
-  available on subscription). Documents needing **sectioned** extraction fall back to
+  entirely, called from `run` instead of the concurrent per-document loop. It requires
+  `api-key` auth (a metered key; not available on subscription). It does **not** require a
+  pinned skill (D144): each document resolves its own through the shared `_resolve_skill`
+  helper — sidecar pin → run-wide pin → one classify call, D120's precedence, the same
+  implementation the synchronous path uses — before the batch is assembled, so a mixed-type
+  drop batches fine. The skill lives inside each request's own prompt blocks, which the
+  Batches API treats independently, so one submission carries several skills; requests are
+  sorted by skill label so adjacent same-skill ones still share the cached prefix. The per-sha
+  skill map is persisted in `batch-pending.json`, since collection runs in a later process.
+  Classification itself is not batched — it stays one cheap synchronous call per document, the
+  cost deliberately accepted to remove the pre-sort-by-type requirement. Documents needing
+  **sectioned** extraction fall back to
   `claude-api` — a section's carry-forward depends on the previous section's result, so it
   can't be an independent batch request. `watchdog dig` submits and exits rather than
   blocking; state persists to `.watchdog/registry/batch-pending.json` (one batch in flight
