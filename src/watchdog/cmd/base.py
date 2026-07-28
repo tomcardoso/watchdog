@@ -459,7 +459,10 @@ def save_projects(projects: dict) -> None:
 def _projects_dir() -> Path:
     if CONFIG_FILE.exists():
         config = json.loads(CONFIG_FILE.read_text())
-        return Path(config["projects_dir"]).expanduser()
+        # config.json can legitimately omit "projects_dir" (e.g. a config written before that
+        # key existed, or hand-edited to set only one knob) — fall back to the documented
+        # default instead of a bare KeyError crashing every command that resolves a vault path.
+        return Path(config.get("projects_dir", "~/Investigations")).expanduser()
     return Path.home() / "Investigations"
 
 
