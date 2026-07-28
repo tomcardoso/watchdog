@@ -265,6 +265,10 @@ def _status() -> None:
         if os.environ.get(meta["env"]):
             print(f"  {_YELLOW}Warning:{_RESET} ${meta['env']} is set — the Agent SDK uses it before the")
             print(f"  {_DIM}subscription login, so runs would be metered. Unset it to use the subscription.{_RESET}")
+        stored_key = state["keys"].get("anthropic")
+        if stored_key:
+            print(f"  {_DIM}A stored Anthropic API key ({_RESET}{_CYAN}{_mask(stored_key)}{_RESET}{_DIM}) is "
+                  f"inactive on subscription mode — switch to api-key mode to use it.{_RESET}")
     else:  # api-key
         key = get_api_key()
         if key:

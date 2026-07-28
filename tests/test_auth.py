@@ -345,6 +345,26 @@ def test_status_lists_an_unrouted_key_as_unused(home, tmp_path, monkeypatch, cap
     assert "unused" in out
 
 
+def test_status_flags_a_stored_anthropic_key_as_inactive_on_subscription(home, monkeypatch, capsys):
+    # Switching Claude access back to subscription leaves a previously-stored Anthropic key on
+    # disk (resolve_auth() just won't return it) — the status view used to say nothing about it,
+    # which read as the key having been deleted.
+    auth._save_state({"mode": "subscription", "keys": {"anthropic": "sk-ant-still-here123"}})
+    _tty(monkeypatch, False)
+    auth.cmd_auth(object())
+    out = capsys.readouterr().out
+    assert auth._mask("sk-ant-still-here123") in out
+    assert "inactive" in out
+
+
+def test_status_says_nothing_about_anthropic_key_when_none_stored(home, monkeypatch, capsys):
+    auth._save_state({"mode": "subscription", "keys": {}})
+    _tty(monkeypatch, False)
+    auth.cmd_auth(object())
+    out = capsys.readouterr().out
+    assert "inactive" not in out
+
+
 # ── ensure_provider_key: picking a model must not leave a stage keyless ───────
 
 def test_ensure_provider_key_prompts_and_stores_for_new_provider(home, monkeypatch):
