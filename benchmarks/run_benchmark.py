@@ -143,17 +143,42 @@ def _quiet(fn, *args, **kwargs):
 
 
 def _deregister_benchmark_vault(slug: str) -> None:
-    """`cmd_new` always registers the vault it creates in `~/.watchdog/projects.json` — that's
-    real `watchdog new` behaviour, and reusing `cmd_new` (rather than hand-rolling the vault
-    layout) is what keeps a benchmark vault authentic. But a benchmark vault is scratch space, not
-    an investigation, so leaving it registered would be exactly the projects.json pollution this
-    shadow root exists to avoid. Undo just that one side effect immediately after `cmd_new`
-    returns, removing only the slug just created — never touching any other entry."""
+    """`cmd_new` registers the vault it creates in TWO places (real `watchdog new` behaviour) —
+    `~/.watchdog/projects.json` (this function) and Obsidian's own `obsidian.json`, the vault
+    switcher (see `_deregister_obsidian_vault` below). Reusing `cmd_new`, rather than hand-rolling
+    the vault layout, is what keeps a benchmark vault authentic — but both registrations assume
+    every vault `cmd_new` creates is a real, permanent investigation, which a benchmark fixture is
+    not, so both have to be undone. This one: remove only the slug just created, never touching
+    any other entry."""
     from watchdog.cmd.base import load_projects, save_projects
     projects = load_projects()
     if slug in projects:
         del projects[slug]
         save_projects(projects)
+
+
+def _deregister_obsidian_vault(vault_path: Path) -> None:
+    """The Obsidian-side half of undoing `cmd_new`'s registration (see
+    `_deregister_benchmark_vault` above for why both exist). Obsidian's `vaults` dict is keyed by
+    an opaque random id, not the vault's path, so matching has to be on the `path` field inside
+    each entry, not the key. Mirrors `_register_obsidian_vault`'s own error posture exactly — a
+    missing, unreadable, or malformed `obsidian.json`, or Obsidian not being installed at all,
+    must never fail a benchmark run, so any failure here is swallowed the same way."""
+    import json
+    from watchdog.cmd.vault import _obsidian_config_path
+    cfg = _obsidian_config_path()
+    try:
+        if not cfg.exists():
+            return
+        data = json.loads(cfg.read_text())
+        vaults = data.get("vaults", {})
+        target = str(vault_path)
+        remaining = {k: v for k, v in vaults.items() if v.get("path") != target}
+        if len(remaining) != len(vaults):
+            data["vaults"] = remaining
+            cfg.write_text(json.dumps(data))
+    except Exception:
+        pass  # non-fatal — same posture as _register_obsidian_vault
 
 
 def corpus_documents(corpus_dir: Path) -> list[Path]:
@@ -182,6 +207,7 @@ def ensure_master_vault(name: str, docs: list[Path], *, with_sidecars: bool, roo
         print(f"  Setting up master vault {name}…")
         _quiet(vault_cmd.cmd_new, _new_vault_args(name, root))
         _deregister_benchmark_vault(name)
+        _deregister_obsidian_vault(vault)
 
     incoming = vault / "_INCOMING"
     for doc in docs:

@@ -177,6 +177,8 @@ def test_ensure_master_vault_passes_shadow_root_to_cmd_new(monkeypatch, tmp_path
     monkeypatch.setattr(wd_vault, "cmd_new", _fake_cmd_new)
     monkeypatch.setattr(rb, "_deregister_benchmark_vault",
                         lambda slug: captured.setdefault("deregistered", slug))
+    monkeypatch.setattr(rb, "_deregister_obsidian_vault",
+                        lambda path: captured.setdefault("obsidian_deregistered", path))
     monkeypatch.setattr(wd_ingest, "_run_preprocess", lambda *a, **k: None)
 
     shadow_root = tmp_path / "shadow"
@@ -185,6 +187,7 @@ def test_ensure_master_vault_passes_shadow_root_to_cmd_new(monkeypatch, tmp_path
     assert captured["dir"] == str(shadow_root)
     assert vault == shadow_root / "bench-master-test"
     assert captured["deregistered"] == "bench-master-test"
+    assert captured["obsidian_deregistered"] == vault
 
 
 def test_deregister_benchmark_vault_removes_only_its_own_slug(monkeypatch, tmp_path):
@@ -216,6 +219,50 @@ def test_deregister_benchmark_vault_is_a_noop_when_slug_absent(monkeypatch, tmp_
     rb._deregister_benchmark_vault("bench-master")  # never registered — must not raise
 
     assert wd_base.load_projects() == {"toms-real-investigation": {"name": "x"}}
+
+
+# ── _deregister_obsidian_vault: the Obsidian-side half of undoing cmd_new ─────
+#
+# cmd_new registers a vault in TWO places — projects.json (above) and Obsidian's own
+# obsidian.json, the vault switcher in the app itself. A user's real obsidian.json can end up
+# almost entirely bench-* fixtures if only the projects.json side gets deregistered.
+
+def test_deregister_obsidian_vault_removes_only_its_own_path(monkeypatch, tmp_path):
+    """Obsidian's `vaults` dict is keyed by an opaque random id, not the vault's path — matching
+    has to be on the `path` field inside each entry, never the key."""
+    import watchdog.cmd.vault as wd_vault
+    cfg = tmp_path / "obsidian.json"
+    monkeypatch.setattr(wd_vault, "_obsidian_config_path", lambda: cfg)
+    bench_path = tmp_path / "bench-master"
+    real_path = tmp_path / "toms-real-investigation"
+    cfg.write_text(json.dumps({"vaults": {
+        "abc123": {"path": str(bench_path), "ts": 1},
+        "def456": {"path": str(real_path), "ts": 2},
+    }}))
+
+    rb._deregister_obsidian_vault(bench_path)
+
+    data = json.loads(cfg.read_text())
+    paths = {v["path"] for v in data["vaults"].values()}
+    assert str(bench_path) not in paths
+    assert str(real_path) in paths
+
+
+def test_deregister_obsidian_vault_is_a_noop_when_config_missing(monkeypatch, tmp_path):
+    import watchdog.cmd.vault as wd_vault
+    monkeypatch.setattr(wd_vault, "_obsidian_config_path", lambda: tmp_path / "does-not-exist.json")
+    rb._deregister_obsidian_vault(tmp_path / "bench-master")  # must not raise
+
+
+def test_deregister_obsidian_vault_swallows_malformed_config(monkeypatch, tmp_path):
+    """Mirrors _register_obsidian_vault's own non-fatal posture (see that function) — a missing,
+    unreadable, or corrupt obsidian.json, or Obsidian not being installed at all, must never fail
+    a benchmark run."""
+    import watchdog.cmd.vault as wd_vault
+    cfg = tmp_path / "obsidian.json"
+    cfg.write_text("not valid json{")
+    monkeypatch.setattr(wd_vault, "_obsidian_config_path", lambda: cfg)
+    rb._deregister_obsidian_vault(tmp_path / "bench-master")  # must not raise
 
 
 # ── _quiet: output suppression, never at the cost of a swallowed failure ──────
