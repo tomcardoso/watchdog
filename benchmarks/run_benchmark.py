@@ -19,7 +19,9 @@ matrix; it never spends money silently and has no flag that bypasses the ask.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
+import io
 import shutil
 import sys
 from dataclasses import dataclass, field
@@ -105,12 +107,53 @@ def verify_freeze(base_dir: Path, sha256_file: Path) -> None:
 
 # ─── vault plumbing ──────────────────────────────────────────────────────────────────────────
 
-def projects_dir() -> Path:
-    """Reuses the installed watchdog's own notion of where vaults live (its CONFIG_FILE's
-    `projects_dir`, falling back to ~/Investigations the same way `_projects_dir` does) — never
-    hardcodes a path, unlike the `seed_bench.sh` script this replaces."""
-    from watchdog.cmd.base import _projects_dir
-    return _projects_dir()
+def vault_root(config: dict, config_dir: Path, cli_override: Path | None) -> Path:
+    """Where benchmark vaults live. This is deliberately NOT the installed watchdog's own
+    `_projects_dir()` (the user's real `~/investigations`) — early runs of this tool created
+    `bench-*` vaults there and registered them in `~/.watchdog/projects.json`, leaving 12+ stray
+    entries in the user's actual project list (#475 follow-up). Benchmark vaults are disposable
+    scratch fixtures, not investigations, so they get their own isolated, gitignored tree.
+    Priority: `--vault-root` flag, then benchmark.yaml's optional `vault_root:` key (resolved
+    relative to the config file, same convention as `corpus.dir`/`keys.dir`), then the default
+    `benchmarks/.vaults/`."""
+    if cli_override is not None:
+        return cli_override.expanduser().resolve()
+    configured = config.get("vault_root")
+    if configured:
+        p = Path(configured).expanduser()
+        return (p if p.is_absolute() else config_dir / p).resolve()
+    return HERE / ".vaults"
+
+
+def _quiet(fn, *args, **kwargs):
+    """Runs `fn` with stdout captured, for the noisy-but-harmless calls this driver makes into
+    the real CLI plumbing (`cmd_new`'s vault-created banner, `_run_preprocess`'s chew progress) —
+    reusing the actual functions is what keeps a benchmark vault's layout genuinely identical to
+    a real one, but their terminal output is meant for an interactive human, not a cost-preview
+    run. On any exception the captured buffer is printed before re-raising, so a real failure is
+    never hidden behind a suppressed happy path. Deliberately not a `--quiet` flag on the
+    production CLI itself — this is benchmark-harness-only cosmetics."""
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            return fn(*args, **kwargs)
+    except BaseException:
+        print(buf.getvalue(), end="")
+        raise
+
+
+def _deregister_benchmark_vault(slug: str) -> None:
+    """`cmd_new` always registers the vault it creates in `~/.watchdog/projects.json` — that's
+    real `watchdog new` behaviour, and reusing `cmd_new` (rather than hand-rolling the vault
+    layout) is what keeps a benchmark vault authentic. But a benchmark vault is scratch space, not
+    an investigation, so leaving it registered would be exactly the projects.json pollution this
+    shadow root exists to avoid. Undo just that one side effect immediately after `cmd_new`
+    returns, removing only the slug just created — never touching any other entry."""
+    from watchdog.cmd.base import load_projects, save_projects
+    projects = load_projects()
+    if slug in projects:
+        del projects[slug]
+        save_projects(projects)
 
 
 def corpus_documents(corpus_dir: Path) -> list[Path]:
@@ -119,24 +162,26 @@ def corpus_documents(corpus_dir: Path) -> list[Path]:
     return sorted(p for p in corpus_dir.iterdir() if p.suffix.lower() == ".pdf")
 
 
-def _new_vault_args(name: str) -> SimpleNamespace:
-    return SimpleNamespace(name=name, name_flag=None, description="", dir=None)
+def _new_vault_args(name: str, root: Path) -> SimpleNamespace:
+    return SimpleNamespace(name=name, name_flag=None, description="", dir=str(root))
 
 
-def ensure_master_vault(name: str, docs: list[Path], *, with_sidecars: bool) -> Path:
+def ensure_master_vault(name: str, docs: list[Path], *, with_sidecars: bool, root: Path) -> Path:
     """Create-and-chew a master vault once, reuse it on every later run. `with_sidecars=False`
     (the classifier master) drops each `.yml` sidecar so classification actually runs — a pinned
     sidecar skips it entirely (D120)."""
     from watchdog.cmd import vault as vault_cmd
     from watchdog.cmd.ingest import _run_preprocess
 
-    vault = projects_dir() / name
+    vault = root / name
     queue_dir = vault / ".watchdog" / "queue"
     if vault.exists() and queue_dir.is_dir() and any(queue_dir.glob("*.json")):
         return vault  # already chewed — reused as-is, matching seed_bench.sh's trust
 
     if not vault.exists():
-        vault_cmd.cmd_new(_new_vault_args(name))
+        print(f"  Setting up master vault {name}…")
+        _quiet(vault_cmd.cmd_new, _new_vault_args(name, root))
+        _deregister_benchmark_vault(name)
 
     incoming = vault / "_INCOMING"
     for doc in docs:
@@ -149,7 +194,11 @@ def ensure_master_vault(name: str, docs: list[Path], *, with_sidecars: bool) -> 
     # _run_preprocess, not cmd_chew: cmd_chew unconditionally offers (and, with skip_warning set,
     # silently runs) a full ingest right after chewing via _offer_ingest — exactly the auto-ingest
     # side effect this driver must avoid, since every arm needs control over its own model knobs.
-    _run_preprocess(vault, confirm=False, show_ingest_hint=False)
+    n = len(docs)
+    label = f"{n} document{'s' if n != 1 else ''}"
+    print(f"  Chewing {label}…")
+    _quiet(_run_preprocess, vault, confirm=False, show_ingest_hint=False)
+    print(f"  ✓ {label} ready")
     return vault
 
 
@@ -176,8 +225,8 @@ def seed_arm_vault(master: Path, dest: Path) -> int:
     return n
 
 
-def arm_vault(prefix: str, arm_id: str) -> Path:
-    return projects_dir() / f"{prefix}-{arm_id}"
+def arm_vault(prefix: str, arm_id: str, root: Path) -> Path:
+    return root / f"{prefix}-{arm_id}"
 
 
 # ─── arm execution ───────────────────────────────────────────────────────────────────────────
@@ -377,12 +426,17 @@ def main(argv: list[str] | None = None) -> int:
                              "selected stages). Lets one comparison run without paying for the "
                              "whole sweep, e.g. --arms sonnet-med-sdk,sonnet-med-api")
     parser.add_argument("--out", type=Path, default=HERE)
+    parser.add_argument("--vault-root", type=Path, default=None,
+                        help="Where benchmark vaults are created (default: benchmarks/.vaults/, "
+                             "or benchmark.yaml's 'vault_root:' key) — always a shadow tree, "
+                             "never the real ~/investigations directory (#475 follow-up)")
     args = parser.parse_args(argv)
     stages = set(args.stages.split(","))
     wanted_arms = {a.strip() for a in args.arms.split(",") if a.strip()} if args.arms else None
 
     config = load_config(args.config)
     config_dir = args.config.parent
+    root = vault_root(config, config_dir, args.vault_root)
 
     corpus_dir = config_dir / config["corpus"]["dir"]
     verify_freeze(corpus_dir, config_dir / config["corpus"]["sha256"])
@@ -413,11 +467,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if "extractor" in stages and config.get("extractor_sweep"):
         sweep = config["extractor_sweep"]
-        master = ensure_master_vault(config["master_vault"]["name"], docs, with_sidecars=True)
+        master = ensure_master_vault(config["master_vault"]["name"], docs, with_sidecars=True,
+                                     root=root)
         for arm in sweep["arms"]:
             if not _selected(arm):
                 continue
-            vault = arm_vault(sweep["vault_prefix"], arm["id"])
+            vault = arm_vault(sweep["vault_prefix"], arm["id"], root)
             if not vault.exists():
                 seed_arm_vault(master, vault)
             est = preview_extractor_arm(vault, arm["extractor_model"])
@@ -428,8 +483,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if "finalizer" in stages and config.get("finalizer_sweep"):
         sweep = config["finalizer_sweep"]
-        base_vault = arm_vault(sweep["vault_prefix"], "base")
-        base_master = ensure_master_vault(config["master_vault"]["name"], docs, with_sidecars=True)
+        base_vault = arm_vault(sweep["vault_prefix"], "base", root)
+        base_master = ensure_master_vault(config["master_vault"]["name"], docs, with_sidecars=True,
+                                          root=root)
         if not base_vault.exists():
             seed_arm_vault(base_master, base_vault)
             base_result = run_extractor_arm({"id": "base", **sweep["base"]}, base_vault)
@@ -438,7 +494,7 @@ def main(argv: list[str] | None = None) -> int:
         for arm in sweep["arms"]:
             if not _selected(arm):
                 continue
-            vault = arm_vault(sweep["vault_prefix"], arm["id"])
+            vault = arm_vault(sweep["vault_prefix"], arm["id"], root)
             if not vault.exists():
                 shutil.copytree(base_vault, vault)
             est = preview_finalizer_arm(vault, arm["finalizer_model"])
@@ -450,9 +506,9 @@ def main(argv: list[str] | None = None) -> int:
     if "classifier" in stages and config.get("classifier_smoke"):
         smoke = config["classifier_smoke"]
         master = ensure_master_vault(config["master_vault"]["classify_name"], docs,
-                                     with_sidecars=False)
+                                     with_sidecars=False, root=root)
         if _selected(smoke["arm"]):
-            vault = arm_vault(smoke["vault_prefix"], smoke["arm"]["id"])
+            vault = arm_vault(smoke["vault_prefix"], smoke["arm"]["id"], root)
             if not vault.exists():
                 seed_arm_vault(master, vault)
             est = preview_extractor_arm(vault, smoke["arm"]["extractor_model"])
@@ -468,11 +524,12 @@ def main(argv: list[str] | None = None) -> int:
             cc_docs = corpus_documents(cc_dir)
             cc_expected = yaml.safe_load((cc_dir / "expected.yaml").read_text(encoding="utf-8"))
             cc_master_name = f"{sweep['vault_prefix']}-master"
-            cc_master = ensure_master_vault(cc_master_name, cc_docs, with_sidecars=False)
+            cc_master = ensure_master_vault(cc_master_name, cc_docs, with_sidecars=False,
+                                            root=root)
             for arm in sweep["arms"]:
                 if not _selected(arm):
                     continue
-                vault = arm_vault(sweep["vault_prefix"], arm["id"])
+                vault = arm_vault(sweep["vault_prefix"], arm["id"], root)
                 if not vault.exists():
                     seed_arm_vault(cc_master, vault)
                 est = preview_extractor_arm(vault, sweep["fixed"]["extractor_model"])

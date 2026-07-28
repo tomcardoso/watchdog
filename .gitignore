@@ -4,6 +4,7 @@ __pycache__/
 .DS_Store
 .claude/settings.local.json
 .claude/worktrees/
+benchmarks/.vaults/
 dev/batch_results.json
 *.egg-info/
 dist/
