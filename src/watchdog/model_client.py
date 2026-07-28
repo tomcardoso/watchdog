@@ -32,7 +32,7 @@ import json
 import re
 import time
 from dataclasses import dataclass
-from functools import partial
+from functools import lru_cache, partial
 
 from watchdog.cmd import auth
 from watchdog.model_catalog import (
@@ -324,6 +324,23 @@ def _flatten_prompt(prompt: str | list[dict]) -> str:
     return "\n".join(b.get("text", "") for b in prompt)
 
 
+@lru_cache(maxsize=1)
+def _agent_supports_tools() -> bool:
+    """Whether the installed `claude-agent-sdk` accepts `ClaudeAgentOptions(tools=…)`. The option
+    postdates our `claude-agent-sdk>=0.1` floor, and `ClaudeAgentOptions` is a dataclass, so
+    passing it blind would `TypeError` on an older SDK.
+
+    Anything unexpected — an SDK that isn't installed, or whose `ClaudeAgentOptions` isn't a
+    dataclass we can introspect — answers False: keep the older, costlier behaviour rather than
+    risk a `TypeError` on every model call over a cost optimization."""
+    import dataclasses
+    try:
+        from claude_agent_sdk import ClaudeAgentOptions
+        return any(f.name == "tools" for f in dataclasses.fields(ClaudeAgentOptions))
+    except Exception:
+        return False
+
+
 async def _agent_query(prompt: str, model: str, env: dict | None,
                        effort: str | None = None) -> dict:
     from claude_agent_sdk import query, ClaudeAgentOptions
@@ -331,11 +348,18 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
     opts = dict(
         model=model,
         system_prompt=_SYSTEM_PROMPT,
-        allowed_tools=[],       # reasoning only — no tools
+        allowed_tools=[],       # nothing is auto-approved (see `tools` below — not the same knob)
         setting_sources=[],     # don't load .claude configs; trims the preamble
         max_turns=1,            # single completion, no agent loop
         env=env or {},
     )
+    # `tools=[]` is what actually keeps the built-in tool suite out of the request. `allowed_tools`
+    # only governs *auto-approval*: with it empty the model never calls a tool, but every Claude
+    # Code tool stayed **defined** in the request — measured at ~11.2K tokens per call, billed at
+    # the cache-write rate (1.25x), to describe tools this stage is forbidden to use. It went
+    # unnoticed precisely because behaviour was correct; only the bill showed it. See D145.
+    if _agent_supports_tools():
+        opts["tools"] = []
     if effort:                  # only set when overriding the model default (D36)
         opts["effort"] = effort
     options = ClaudeAgentOptions(**opts)

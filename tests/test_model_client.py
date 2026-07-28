@@ -975,6 +975,9 @@ def _patch_agent_query(monkeypatch, message):
     fake_module.query = fake_query
     fake_module.ClaudeAgentOptions = lambda **kwargs: kwargs
     monkeypatch.setitem(sys.modules, "claude_agent_sdk", fake_module)
+    # `_agent_supports_tools` is lru_cached and introspects whatever ClaudeAgentOptions is
+    # installed — clear it so a verdict from another test's fake SDK can't leak in here (D145).
+    mc._agent_supports_tools.cache_clear()
 
 
 def test_agent_query_captures_harness_timing_into_usage(monkeypatch):
@@ -1125,3 +1128,74 @@ def test_openai_backend_never_retries_429(monkeypatch):
                                               base_url="https://api.deepseek.com"))
     assert len(posts) == 1
     assert delays == []
+
+
+# ── agent SDK: built-in tools stay out of the request (D145, #475) ─────────────
+
+def _patch_agent_query_capturing(monkeypatch, *, with_tools_field: bool):
+    """Like `_patch_agent_query`, but returns a dict that captures the options `_agent_query`
+    built. `with_tools_field` controls whether the stand-in `ClaudeAgentOptions` dataclass
+    declares a `tools` field, so both sides of the version guard can be exercised."""
+    import sys
+    import types
+    import dataclasses
+
+    captured = {}
+
+    async def fake_query(prompt, options):
+        captured.update(options)
+        yield _result_message(result="{}", usage={"input_tokens": 1})
+
+    fields = [("model", object, None), ("system_prompt", object, None),
+              ("allowed_tools", object, None), ("setting_sources", object, None),
+              ("max_turns", object, None), ("env", object, None), ("effort", object, None)]
+    if with_tools_field:
+        fields.append(("tools", object, None))
+    Options = dataclasses.make_dataclass(
+        "ClaudeAgentOptions", [(n, t, dataclasses.field(default=d)) for n, t, d in fields])
+
+    fake_module = types.ModuleType("claude_agent_sdk")
+    fake_module.query = fake_query
+    # `_agent_query` calls ClaudeAgentOptions(**opts); returning the kwargs keeps the capture
+    # simple while `dataclasses.fields` on the real class drives the version guard.
+    fake_module.ClaudeAgentOptions = lambda **kw: kw
+    fake_module.ClaudeAgentOptions.__wrapped_dataclass__ = Options
+    monkeypatch.setitem(sys.modules, "claude_agent_sdk", fake_module)
+    monkeypatch.setattr(mc, "_agent_supports_tools", lambda: with_tools_field)
+    return captured
+
+
+def test_agent_query_disables_builtin_tools(monkeypatch):
+    """`allowed_tools=[]` only withholds auto-approval — every Claude Code tool stayed *defined*
+    in the request, measured at ~11.2K tokens per call billed at the cache-write rate, to
+    describe tools this stage may not call. `tools=[]` is the knob that removes them."""
+    captured = _patch_agent_query_capturing(monkeypatch, with_tools_field=True)
+    asyncio.run(mc._agent_query("p", "model", None))
+    assert captured["tools"] == []
+    assert captured["allowed_tools"] == []   # still no auto-approval; the two are independent
+
+
+def test_agent_query_omits_tools_on_an_older_sdk(monkeypatch):
+    """`tools` postdates the `claude-agent-sdk>=0.1` floor, and ClaudeAgentOptions is a
+    dataclass — passing it blind would TypeError. An older SDK just keeps the old behaviour."""
+    captured = _patch_agent_query_capturing(monkeypatch, with_tools_field=False)
+    asyncio.run(mc._agent_query("p", "model", None))
+    assert "tools" not in captured
+
+
+def test_agent_supports_tools_detects_the_real_sdk_dataclass(monkeypatch):
+    """The guard reads the installed dataclass's fields rather than a version string."""
+    import sys
+    import types
+    import dataclasses
+
+    for has in (True, False):
+        names = [("allowed_tools", list, dataclasses.field(default_factory=list))]
+        if has:
+            names.append(("tools", object, dataclasses.field(default=None)))
+        mod = types.ModuleType("claude_agent_sdk")
+        mod.ClaudeAgentOptions = dataclasses.make_dataclass("ClaudeAgentOptions", names)
+        monkeypatch.setitem(sys.modules, "claude_agent_sdk", mod)
+        mc._agent_supports_tools.cache_clear()
+        assert mc._agent_supports_tools() is has
+    mc._agent_supports_tools.cache_clear()
