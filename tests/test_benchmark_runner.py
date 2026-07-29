@@ -82,6 +82,33 @@ def test_load_config_tolerates_unknown_top_level_key(tmp_path):
     assert config["some_future_section"] == {"anything": True}
 
 
+def test_load_config_accepts_well_formed_sdk_check(tmp_path):
+    config = rb.load_config(_write_config(tmp_path, sdk_check={
+        "vault_prefix": "bench-sdkcheck", "corpus_dir": "sdk-check-corpus",
+        "arms": [{"id": "sonnet-med-sdk-sub", "extractor_model": "claude-agent-sdk:sonnet"}],
+    }))
+    assert config["sdk_check"]["arms"][0]["id"] == "sonnet-med-sdk-sub"
+
+
+def test_load_config_rejects_sdk_check_duplicate_arm_id(tmp_path):
+    path = _write_config(tmp_path, sdk_check={
+        "vault_prefix": "bench-sdkcheck", "corpus_dir": "sdk-check-corpus",
+        "arms": [{"id": "a", "extractor_model": "claude-agent-sdk:sonnet"},
+                {"id": "a", "extractor_model": "claude-api:sonnet"}],
+    })
+    with pytest.raises(SystemExit):
+        rb.load_config(path)
+
+
+def test_load_config_rejects_sdk_check_missing_model_field(tmp_path):
+    path = _write_config(tmp_path, sdk_check={
+        "vault_prefix": "bench-sdkcheck", "corpus_dir": "sdk-check-corpus",
+        "arms": [{"id": "sonnet-med-sdk-sub"}],
+    })
+    with pytest.raises(SystemExit):
+        rb.load_config(path)
+
+
 # ── verify_freeze ─────────────────────────────────────────────────────────────
 
 def test_verify_freeze_passes_on_matching_hash(tmp_path):
@@ -336,6 +363,33 @@ def test_run_extractor_arm_ok_reads_usage(monkeypatch, tmp_path):
     assert result.usage["calls"][0]["cost_usd"] == 1.5
 
 
+def test_run_extractor_arm_chdirs_into_the_target_vault(monkeypatch, tmp_path):
+    """`cmd_extract` (via `cmd_ingest`) resolves its vault from the current working directory
+    only — no explicit-path argument exists (`ingest.py`'s `Path(".").resolve()`). Without a
+    chdir into the arm's vault first, every real run fails identically with 'must be run from
+    inside a Watchdog vault directory', regardless of which arm or vault — this was live and
+    unnoticed until the first real (non-estimate) run of the tool."""
+    seen_cwd = {}
+
+    def _capture(ns):
+        seen_cwd["cwd"] = Path.cwd()
+
+    monkeypatch.setattr(wd_ingest, "cmd_extract", _capture)
+    outside = Path.cwd()
+    rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
+    assert seen_cwd["cwd"] == tmp_path.resolve()
+    assert Path.cwd() == outside   # restored afterward, not left inside the vault
+
+
+def test_run_extractor_arm_restores_cwd_even_on_failure(monkeypatch, tmp_path):
+    def _fails(ns):
+        raise SystemExit("boom")
+    monkeypatch.setattr(wd_ingest, "cmd_extract", _fails)
+    outside = Path.cwd()
+    rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
+    assert Path.cwd() == outside
+
+
 # ── run_finalizer_arm delegates correctly ──────────────────────────────────────
 
 def test_run_finalizer_arm_passes_arm_knobs_through(monkeypatch, tmp_path):
@@ -403,6 +457,29 @@ def test_extractor_table_renders_scores_and_usage():
     assert "50% (10/20)" in table
     assert "$1.000" in table
     assert "1 retries" in table
+
+
+def test_sdk_check_table_renders_failed_arm():
+    results = [_arm_result(arm_id="sonnet-med-sdk-sub", stage="sdk-check", ok=False,
+                          error="rate limited")]
+    table = br.sdk_check_table_md(results)
+    assert "failed: rate limited" in table
+
+
+def test_sdk_check_table_renders_usage():
+    results = [_arm_result(arm_id="sonnet-med-sdk-sub", stage="sdk-check",
+                          usage={"calls": [{"cost_usd": 0.5, "latency_s": 10,
+                                           "backend": "claude-agent-sdk",
+                                           "auth_mode": "subscription"}]})]
+    table = br.sdk_check_table_md(results)
+    assert "claude-agent-sdk (subscription)" in table
+    assert "~$0.500" in table   # subscription auth -> notional cost, marked with ~
+
+
+def test_sdk_check_table_ignores_other_stages():
+    results = [_arm_result(arm_id="haiku", stage="extractor")]
+    table = br.sdk_check_table_md(results)
+    assert "haiku" not in table
 
 
 def test_classifier_sweep_table_renders_skip_notice():
@@ -651,3 +728,76 @@ def test_arms_filter_rejects_an_unknown_arm_id(tmp_path, monkeypatch):
     monkeypatch.setattr(rb, "corpus_documents", lambda d: [Path("a.pdf")])
     with pytest.raises(SystemExit, match="unknown arm id"):
         rb.main(["--config", str(cfg), "--stages", "extractor", "--arms", "sonnet-med-sdkk"])
+
+
+# ── sdk-check stage (#482 follow-up) ───────────────────────────────────────────
+
+def _sdk_check_config(tmp_path):
+    cfg = {
+        "corpus": {"dir": "corpus", "sha256": "corpus/c.sha256"},
+        "keys": {"dir": "keys", "sha256": "keys/k.sha256"},
+        "master_vault": {"name": "m", "classify_name": "mc"},
+        "sdk_check": {
+            "vault_prefix": "bench-sdkcheck", "corpus_dir": "sdk-check-corpus",
+            "arms": [{"id": "sonnet-med-sdk-sub",
+                     "extractor_model": "claude-agent-sdk:sonnet",
+                     "extractor_effort": "medium"}],
+        },
+    }
+    p = tmp_path / "benchmark.yaml"
+    p.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    return p
+
+
+def test_sdk_check_is_not_run_by_default(tmp_path, monkeypatch, capsys):
+    """Not in the default --stages list — it's meant to be requested explicitly, once auth mode
+    has been switched to subscription, not swept in alongside everything else."""
+    cfg = _sdk_check_config(tmp_path)
+    monkeypatch.setattr(rb, "verify_freeze", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "corpus_documents", lambda d: [Path("a.pdf")])
+
+    rb.main(["--config", str(cfg)])   # no --stages: the argparse default
+
+    out = capsys.readouterr().out
+    assert "sdk-check" not in out
+    assert "Nothing to run" in out
+
+
+def test_sdk_check_arm_relabeled_and_excluded_from_recall_scoring(tmp_path, monkeypatch):
+    """The arm executes via the same run_extractor_arm path as the main sweep (same extraction
+    logic), but must come out labelled 'sdk-check', not 'extractor' — otherwise it would be fed
+    into vaults_to_score against keys for documents its two-document corpus doesn't contain."""
+    cfg = _sdk_check_config(tmp_path)
+    monkeypatch.setattr(rb, "verify_freeze", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "corpus_documents", lambda d: [Path("a.pdf")])
+    monkeypatch.setattr(rb, "ensure_master_vault", lambda *a, **k: tmp_path / "master")
+    monkeypatch.setattr(rb, "seed_arm_vault", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "arm_vault", lambda prefix, aid, root: tmp_path / f"{prefix}-{aid}")
+    monkeypatch.setattr(rb, "preview_extractor_arm", lambda v, m: {"cost_low": None, "cost_high": None})
+    monkeypatch.setattr(rb, "arm_backend", lambda m, default: "claude-agent-sdk")
+    monkeypatch.setattr(rb, "_auth_mode", lambda: "subscription")
+    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: True)
+    monkeypatch.setattr(
+        rb, "run_extractor_arm",
+        lambda arm, vault: rb.ArmResult(arm_id=arm["id"], stage="extractor", vault=str(vault),
+                                        ok=True, usage={"calls": []}))
+
+    captured = {}
+
+    def fake_write_run(out_root, results, scores, config):
+        captured["results"] = results
+        captured["scores"] = scores
+        return tmp_path / "run-out"
+
+    monkeypatch.setattr(br, "write_run", fake_write_run)
+
+    rc = rb.main(["--config", str(cfg), "--stages", "sdk-check"])
+
+    assert rc == 0
+    results = captured["results"]
+    assert len(results) == 1
+    assert results[0].stage == "sdk-check"
+    assert results[0].arm_id == "sonnet-med-sdk-sub"
+    # An empty vaults_to_score (no "extractor"-staged result) short-circuits score_vaults —
+    # confirms the relabel actually took effect before scoring, not just in the final object.
+    assert captured["scores"]["vaults"] == []

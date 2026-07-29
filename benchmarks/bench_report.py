@@ -179,6 +179,23 @@ def classifier_sweep_table_md(results: list) -> str:
     return "\n".join(lines)
 
 
+def sdk_check_table_md(results: list) -> str:
+    """The subscription-mode follow-up to extractor_sweep's sonnet-med-sdk/sonnet-med-api pair
+    (see benchmark.yaml's `sdk_check`) — same shape as the extractor table minus the recall
+    columns, since its two-document corpus doesn't score against the six-document keys."""
+    lines = ["| Arm | Backend | Cost | Latency (summed) |", "|---|---|---|---|"]
+    for r in results:
+        if r.stage != "sdk-check":
+            continue
+        if not r.ok:
+            lines.append(f"| `{r.arm_id}` | | failed: {r.error} | |")
+            continue
+        u = _usage_totals(r.usage)
+        lines.append(f"| `{r.arm_id}` | {_backends(r.usage)} | {_cost_cell(r.usage)} | "
+                     f"{u['latency_s']:.0f}s |")
+    return "\n".join(lines)
+
+
 def docs_summary_md(results: list, scores: dict) -> str:
     """Compact, journalist-safe fragment for hand-pasting into docs/benchmarks.md — never
     auto-inserted into that page."""
@@ -222,6 +239,8 @@ def write_run(out_root: Path, results: list, scores: dict, config: dict) -> Path
         "Verified frozen references: " + ", ".join(f"`{v}`" for v in verified), "",
         "## Extractor sweep", "", extractor_table_md(results, scores),
         *_notional_note([r for r in results if r.stage == "extractor"]), "",
+        "## SDK backend check", "", sdk_check_table_md(results),
+        *_notional_note([r for r in results if r.stage == "sdk-check"]), "",
         "## Finalizer sweep", "", finalizer_table_md(results),
         *_notional_note([r for r in results if r.stage == "finalizer"]), "",
         "## Classifier smoke test", "", classifier_table_md(results), "",

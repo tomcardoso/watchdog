@@ -7,6 +7,10 @@ Not a pytest module (no ``test_`` prefix). Run via the pipx dev venv, from the r
         [--stages extractor,finalizer,classifier,classifier-sweep] \
         [--arms sonnet-med-sdk,sonnet-med-api]
 
+`sdk-check` is a fifth stage (not in the default --stages list — request it explicitly): the
+backend A/B's subscription-mode follow-up, run on its own once `watchdog auth` is switched to
+subscription. See `sdk_check:` in benchmark.yaml.
+
 Drives the real `watchdog` CLI functions in-process (`cmd_extract`, `cmd_finalize`, the same
 cost-estimate/usage-file library calls `dig --estimate`/`watchdog usage` use) rather than
 shelling out or reimplementing ingest/finalize logic — the same idiom `tests/test_cli.py`
@@ -22,6 +26,7 @@ import argparse
 import contextlib
 import hashlib
 import io
+import os
 import shutil
 import sys
 from dataclasses import dataclass, field
@@ -75,6 +80,19 @@ def load_config(path: Path) -> dict:
             seen.add(aid)
             if not arm.get("classifier_model"):
                 sys.exit(f"Error: classifier_sweep arm '{aid}' is missing 'classifier_model'")
+
+    sweep = config.get("sdk_check")
+    if sweep:
+        seen = set()
+        for arm in sweep.get("arms", []):
+            aid = arm.get("id")
+            if not aid:
+                sys.exit("Error: sdk_check has an arm with no 'id'")
+            if aid in seen:
+                sys.exit(f"Error: sdk_check has a duplicate arm id '{aid}'")
+            seen.add(aid)
+            if not arm.get("extractor_model"):
+                sys.exit(f"Error: sdk_check arm '{aid}' is missing 'extractor_model'")
 
     return config
 
@@ -261,6 +279,7 @@ def arm_vault(prefix: str, arm_id: str, root: Path) -> Path:
 class ArmResult:
     arm_id: str
     stage: str                     # "extractor" | "finalizer" | "classifier" | "classifier-sweep"
+                                    # | "sdk-check"
     vault: Path | None
     ok: bool
     skipped: bool = False          # true only for classifier-sweep with an empty corpus
@@ -319,13 +338,29 @@ def _latest_usage(vault: Path) -> dict | None:
         return None
 
 
+@contextlib.contextmanager
+def _in_vault(vault: Path):
+    """`cmd_extract`/`cmd_finalize` (via `cmd_ingest`) resolve their vault from the current
+    working directory only — `ingest.py`'s `vault = Path(".").resolve()` takes no explicit path
+    argument, unlike the cost-estimate/chew functions this driver calls elsewhere. This is the
+    one place that gap gets bridged, so every real-execution call site targets the right vault
+    regardless of where `run_benchmark.py` itself was invoked from."""
+    prev = Path.cwd()
+    os.chdir(vault)
+    try:
+        yield
+    finally:
+        os.chdir(prev)
+
+
 def run_extractor_arm(arm: dict, vault: Path) -> ArmResult:
     from watchdog.cmd import ingest as ing
     ns = SimpleNamespace(command="dig", extractor_model=arm["extractor_model"],
                         extractor_effort=arm.get("extractor_effort"), estimate=False,
                         force=False, skip_warning=True, wait=False, no_finalize=True)
     try:
-        ing.cmd_extract(ns)
+        with _in_vault(vault):
+            ing.cmd_extract(ns)
     except SystemExit as e:
         return ArmResult(arm_id=arm["id"], stage="extractor", vault=vault, ok=False, error=str(e))
     return ArmResult(arm_id=arm["id"], stage="extractor", vault=vault, ok=True,
@@ -338,7 +373,8 @@ def run_finalizer_arm(arm: dict, vault: Path) -> ArmResult:
                         finalizer_effort=arm.get("finalizer_effort"), estimate=False,
                         skip_briefing=False)
     try:
-        ing.cmd_finalize(ns)
+        with _in_vault(vault):
+            ing.cmd_finalize(ns)
     except SystemExit as e:
         return ArmResult(arm_id=arm["id"], stage="finalizer", vault=vault, ok=False, error=str(e))
     return ArmResult(arm_id=arm["id"], stage="finalizer", vault=vault, ok=True,
@@ -368,10 +404,11 @@ def run_classifier_smoke(arm: dict, vault: Path, expected: dict[str, str]) -> Ar
                             extractor_effort=None, estimate=False, force=False,
                             skip_warning=True, wait=False, no_finalize=True)
     try:
-        ing.cmd_extract(ex_ns)
-        fn_ns = SimpleNamespace(finalizer_model=arm["finalizer_model"], finalizer_effort=None,
-                                estimate=False, skip_briefing=True)
-        ing.cmd_finalize(fn_ns)
+        with _in_vault(vault):
+            ing.cmd_extract(ex_ns)
+            fn_ns = SimpleNamespace(finalizer_model=arm["finalizer_model"], finalizer_effort=None,
+                                    estimate=False, skip_briefing=True)
+            ing.cmd_finalize(fn_ns)
     except SystemExit as e:
         return ArmResult(arm_id=arm["id"], stage="classifier", vault=vault, ok=False, error=str(e))
     return ArmResult(arm_id=arm["id"], stage="classifier", vault=vault, ok=True,
@@ -385,10 +422,11 @@ def run_classifier_sweep_arm(arm: dict, vault: Path, fixed: dict, expected: dict
                             estimate=False, force=False, skip_warning=True, wait=False,
                             no_finalize=True)
     try:
-        ing.cmd_extract(ex_ns)
-        fn_ns = SimpleNamespace(finalizer_model=fixed["finalizer_model"], finalizer_effort=None,
-                                estimate=False, skip_briefing=True)
-        ing.cmd_finalize(fn_ns)
+        with _in_vault(vault):
+            ing.cmd_extract(ex_ns)
+            fn_ns = SimpleNamespace(finalizer_model=fixed["finalizer_model"], finalizer_effort=None,
+                                    estimate=False, skip_briefing=True)
+            ing.cmd_finalize(fn_ns)
     except SystemExit as e:
         return ArmResult(arm_id=arm["id"], stage="classifier-sweep", vault=vault, ok=False,
                          error=str(e))
@@ -476,7 +514,8 @@ def main(argv: list[str] | None = None) -> int:
     # An unknown arm id is a typo, and silently running the whole sweep because of one is an
     # expensive way to find out — so validate against every id the config defines, up front.
     if wanted_arms is not None:
-        known = {a["id"] for key in ("extractor_sweep", "finalizer_sweep", "classifier_sweep")
+        known = {a["id"] for key in ("extractor_sweep", "finalizer_sweep", "classifier_sweep",
+                                     "sdk_check")
                  for a in (config.get(key) or {}).get("arms", [])}
         known |= {(config.get("classifier_smoke") or {}).get("arm", {}).get("id")} - {None}
         unknown = wanted_arms - known
@@ -569,6 +608,28 @@ def main(argv: list[str] | None = None) -> int:
             results.append(ArmResult(arm_id="classifier-sweep", stage="classifier-sweep",
                                      vault=None, ok=True, skipped=True))
 
+    # Not in the default --stages list (see the module docstring) — this is the backend A/B's
+    # subscription-mode follow-up (extractor_sweep's sonnet-med-sdk/sonnet-med-api comment), run
+    # on its own once you've switched `watchdog auth` to subscription. Its own small corpus, own
+    # master vault, own prefix — kept fully separate from the main extractor sweep's vaults.
+    if "sdk-check" in stages and config.get("sdk_check"):
+        sweep = config["sdk_check"]
+        sc_dir = config_dir / sweep["corpus_dir"]
+        sc_docs = corpus_documents(sc_dir)
+        sc_master = ensure_master_vault(f"{sweep['vault_prefix']}-master", sc_docs,
+                                        with_sidecars=True, root=root)
+        for arm in sweep["arms"]:
+            if not _selected(arm):
+                continue
+            vault = arm_vault(sweep["vault_prefix"], arm["id"], root)
+            if not vault.exists():
+                seed_arm_vault(sc_master, vault)
+            est = preview_extractor_arm(vault, arm["extractor_model"])
+            meta = {"backend": arm_backend(arm["extractor_model"], default="sonnet"),
+                    "auth_mode": _auth_mode()}
+            previews.append((f"sdk-check:{arm['id']}", est, meta))
+            plan.append(("sdk-check", {"arm": arm, "vault": vault}))
+
     if not plan:
         print("Nothing to run for the requested stage(s).")
         return 0
@@ -589,6 +650,13 @@ def main(argv: list[str] | None = None) -> int:
             elif kind == "classifier-sweep":
                 results.append(run_classifier_sweep_arm(ctx["arm"], ctx["vault"], ctx["fixed"],
                                                         ctx["expected"]))
+            elif kind == "sdk-check":
+                # Same extraction path as the main sweep (run_extractor_arm), relabelled so it's
+                # excluded from extractor-sweep recall scoring and the six-document cost summary
+                # below — its two-document corpus doesn't match either one.
+                result = run_extractor_arm(ctx["arm"], ctx["vault"])
+                result.stage = "sdk-check"
+                results.append(result)
 
     import bench_report
     vaults_to_score = [str(r.vault) for r in results

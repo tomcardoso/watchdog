@@ -39,6 +39,8 @@ extractor_sweep:
     # Both need api-key auth to be comparable — claude-api cannot run on a subscription.
     - {id: sonnet-med-sdk,    extractor_model: "claude-agent-sdk:sonnet", extractor_effort: medium}
     - {id: sonnet-med-api,    extractor_model: "claude-api:sonnet",       extractor_effort: medium}
+    # sdk_check (below) adds the third leg once this pair's metered numbers are in: the same
+    # claude-agent-sdk pin, run later under subscription auth.
     # Batch API: 50% off every token, stacking with prompt caching. Needs no `skill:` pin — since
     # D144 each document resolves its own skill, so corpus-v1's per-document sidecar pins (D120)
     # carry through and the two-skill corpus batches correctly. Submit-and-exit: the arm returns
@@ -98,6 +100,21 @@ classifier_sweep:
   # classify-corpus/ is populated with a type-diverse document set + expected.yaml labels;
   # run_benchmark.py detects an empty corpus_dir and skips this stage with a one-line notice, so
   # it doesn't block the other three stages from running.
+
+sdk_check:
+  # The third leg of the backend A/B above (extractor_sweep's sonnet-med-sdk/sonnet-med-api
+  # pair): the same claude-agent-sdk pin, run later under subscription auth instead of api-key,
+  # once the metered pair has a baseline to compare against. Not part of the default sweep —
+  # switch `watchdog auth` to subscription first, then run it on its own:
+  #     run_benchmark.py --stages sdk-check
+  # A harness/backend spot-check, not a quality re-run, so it uses a two-document subset (one
+  # short, one mid-sized — see BENCHMARKING.md) rather than the full six-document corpus, to
+  # keep it cheap on subscription session time. Excluded from the extractor-sweep recall
+  # scoring and the six-document cost summary for the same reason: its corpus doesn't match.
+  vault_prefix: bench-sdkcheck
+  corpus_dir: sdk-check-corpus
+  arms:
+    - {id: sonnet-med-sdk-sub, extractor_model: "claude-agent-sdk:sonnet", extractor_effort: medium}
 
 # Still deferred (see docs/benchmarks.md "Roadmap"): no CI-trigger section — GitHub Actions
 # integration slots in as a new top-level key later without reworking this schema.

@@ -34,6 +34,24 @@ backend or not. So: switch to api-key mode, run this pair alone (`--arms
 sonnet-med-sdk,sonnet-med-api`), then switch straight back to subscription — leaving mode on
 api-key would also meter every other bare `sonnet`/`haiku`/`opus` arm in the sweep.
 
+**The third leg — `claude-agent-sdk` on subscription — is a separate stage, not part of this
+pair's run.** Once `sonnet-med-sdk`/`sonnet-med-api` have metered numbers, `sdk_check` (its own
+section in `benchmark.yaml`) re-runs the same `claude-agent-sdk:sonnet` pin under subscription
+auth, giving a clean three-way read at the same effort level without conflating auth mode and
+harness overhead into one variable. It uses its own small two-document corpus
+(`sdk-check-corpus/`, not the frozen six-document `corpus-v1`) — a harness/backend spot-check
+doesn't need the full corpus, and keeping it small matters here since subscription mode spends
+session time, not dollars. Not part of the default `--stages` list — switch `watchdog auth` back
+to subscription, then run it on its own:
+
+```
+run_benchmark.py --stages sdk-check
+```
+
+Excluded from the extractor sweep's recall scoring and the six-document cost summary in
+`REPORT.md`/`docs-summary.md`, since its two-document corpus doesn't match either one — it gets
+its own "SDK backend check" section instead.
+
 **Benchmark vaults live in a shadow root, never in your real investigations folder (D146).**
 Early runs of `run_benchmark.py` created `bench-*` vaults straight in the installed watchdog's
 own `projects_dir` and let `cmd_new` register each one in the TWO places it always registers a new
