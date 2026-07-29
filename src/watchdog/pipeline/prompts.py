@@ -148,12 +148,16 @@ def build_section_prompt(*, pages_text: str, skill_text: str, carry_forward: str
     if is_first:
         volatile.append("This is SECTION 1: fill document metadata (title, document_type, "
                         "date_of_document) and the morgue_entity_id field. Omit document.summary "
-                        "— the whole-document summary is composed after all sections are merged.")
+                        "— the whole-document summary is composed after all sections are merged. "
+                        "document.key_facts is still required, same as every other section: "
+                        "capture this section's own material facts, not the whole document's.")
         volatile.append(_known_types_block(known_document_types))
     else:
         volatile.append("This is a LATER section: omit document metadata, morgue fields, and "
                         "document.summary (the whole-document summary is composed after the "
-                        "merge); supply entities + document.key_facts for this section only.")
+                        "merge); supply entities + document.key_facts for this section only. "
+                        "document.key_facts is required on every section — if this section truly "
+                        "contains no material facts, emit an empty array, but don't skip the field.")
     volatile.append("Put only forward-looking reporting notes for the briefing in `observations` — "
                     "leads to chase, open questions, threads to other sections or documents. Do NOT "
                     "restate figures, dates, chronology, or contradictions (those are captured in "

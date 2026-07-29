@@ -132,14 +132,16 @@ EXTRACTION = _obj(
 )
 
 # One page-range section's partial contribution. Looser than EXTRACTION: only section 1
-# fills document metadata + morgue fields; merge.run assembles the whole.
+# fills document metadata + morgue fields; merge.run assembles the whole. `document.key_facts`
+# stays required on every section regardless (#496) — title/document_type/summary are the only
+# fields genuinely section-1-only. Before this, `document` carried no `required` at all, so a
+# model under low reasoning effort could (and, on gemini-flash, reliably did) omit key_facts
+# entirely — schema-valid, silent, and invisible to postflight since every section still
+# reported entities normally. `document` itself is now required at the top level too, so a
+# later section can't skip the object altogether to dodge the inner requirement.
 SECTION = _obj(
     {
-        "document": {
-            "type": "object",
-            "properties": _DOCUMENT["properties"],
-            "additionalProperties": False,
-        },
+        "document": _obj(_DOCUMENT["properties"], ["key_facts"]),
         "entities": {"type": "array", "items": _ENTITY},
         # Nullable (not bare "string"): OpenAI's json_object mode gives no wire-level shape
         # enforcement, so a model that means "nothing for this section" sometimes emits an
@@ -156,7 +158,7 @@ SECTION = _obj(
         # this section names nothing obtainable. merge.merge_extractions unions across sections.
         "document_requests": {"type": "array", "items": _DOCUMENT_REQUEST},
     },
-    ["entities"],
+    ["document", "entities"],
 )
 
 # Classify a document to a domain-skill filename (records/<name>.md).
