@@ -62,11 +62,14 @@ def _count_optional(node, total=0) -> int:
 
 # Anthropic doesn't document the exact counting rule (confirmed unclear even in their own repo's
 # issue tracker as of this writing) — nullable-typed optional fields appear to cost more than
-# plain ones. Margin sized against that: EXTRACTION/SECTION have at most one nullable optional
-# field each (document.date_of_document) after this fix, so even a 2x worst case adds only ~1 —
-# comfortably inside a margin of 2, without demanding headroom the schema has no more room to give
-# (SECTION's own top-level optionality is genuine per-section business logic — see
-# schemas.py's SECTION comment — not padding left to trim).
+# plain ones. SECTION now has four nullable optional fields (document.date_of_document, plus
+# morgue_entity_id/morgue_document_type/observations widened to nullable by #490, to stop OpenAI's
+# weak json_object mode from hard-failing schema validation when it nulls an optional field
+# instead of omitting it) — up from one before that fix. Even a full 2x worst-case weighting on
+# all four only adds ~4 to SECTION's raw count of 21, landing at 25 — over the raw limit of 24,
+# not just inside the margin. This hasn't been verified against a real claude-api call since the
+# nullable-cost theory itself was never confirmed, only inferred defensively; treat this as a real
+# open risk, not a settled one, until it's checked live.
 _CLAUDE_OPTIONAL_PARAM_LIMIT = 24
 _SAFETY_MARGIN = 2
 
@@ -96,3 +99,16 @@ def test_extraction_has_no_morgue_document_type():
     """Same dead-weight pattern as document's stamped fields — orchestrate._stamp_document
     unconditionally derives this as slugify(document_type), never reading the model's value."""
     assert "morgue_document_type" not in schemas.EXTRACTION["properties"]
+
+
+def test_section_tolerates_explicit_null_on_its_optional_string_fields():
+    """#490: gpt-nano's sectioned extraction hard-failed with 'None is not of type string' on
+    exactly these three fields — OpenAI's json_object mode gives no wire-level shape enforcement,
+    so a model that means 'nothing for this section' sometimes emits an explicit null instead of
+    omitting the key. Every downstream reader already treats null and absent the same way, so
+    these being nullable rather than bare 'string' should never fail validation."""
+    import jsonschema
+    section = {"entities": [], "morgue_entity_id": None, "morgue_document_type": None,
+              "observations": None}
+    errors = list(jsonschema.Draft202012Validator(schemas.SECTION).iter_errors(section))
+    assert not errors, [e.message for e in errors]

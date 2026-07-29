@@ -141,9 +141,17 @@ SECTION = _obj(
             "additionalProperties": False,
         },
         "entities": {"type": "array", "items": _ENTITY},
-        "morgue_entity_id": {"type": "string"},
-        "morgue_document_type": {"type": "string"},
-        "observations": {"type": "string"},   # appended to the carry-forward scratchpad
+        # Nullable (not bare "string"): OpenAI's json_object mode gives no wire-level shape
+        # enforcement, so a model that means "nothing for this section" sometimes emits an
+        # explicit `null` here instead of omitting the key — bare "string" made that a hard
+        # schema-validation failure for the whole section. Every downstream reader already
+        # treats null and absent identically (merge.py's `sec.get(...) or ...` folding across
+        # sections, postflight's emptiness checks on the merged document, orchestrate.py's
+        # `.get(...) or ""` reads) — so widening costs nothing and stops a validator rejection
+        # that was never actually protecting a real invariant.
+        "morgue_entity_id": _NULLABLE_STR,
+        "morgue_document_type": _NULLABLE_STR,
+        "observations": _NULLABLE_STR,   # appended to the carry-forward scratchpad
         # Same field as EXTRACTION's, moved out of `observations` (#365) — optional, omit when
         # this section names nothing obtainable. merge.merge_extractions unions across sections.
         "document_requests": {"type": "array", "items": _DOCUMENT_REQUEST},

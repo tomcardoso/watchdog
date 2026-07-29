@@ -130,6 +130,38 @@ def test_run_missing_queue_file_errors(tmp_path):
     assert "error" in section.run(vault, "nope")
 
 
+def test_run_default_overlap_scales_with_budget_not_a_fixed_value(tmp_path, monkeypatch):
+    # No section_overlap_tokens override: the default overlap must scale with budget (#490),
+    # not stay fixed at a value large enough to swallow a small budget outright. Old behaviour
+    # (a fixed 4,000-token overlap) would round to 4 overlap pages here and produce a
+    # 2-page-per-step stride; the fix produces a clean, non-overlapping 6-page stride instead.
+    monkeypatch.setattr(section, "_config_get",
+                        lambda k, d: {"section_token_threshold": 100,
+                                     "section_token_budget": 6000}.get(k, d))
+    vault = _vault(tmp_path)
+    pages = [{"page": n, "markdown": "x" * 4000} for n in range(1, 11)]   # 1000 tok/page, 10 pages
+    _write_queue(vault, "doc1", pages, 10)
+
+    result = section.run(vault, "doc1")
+    assert result["sectioned"] is True
+    labels = [s["label"] for s in result["sections"]]
+    assert labels == ["pages 1–6", "pages 7–10"]
+
+
+def test_default_overlap_reproduces_historical_value_at_claudes_default_budget():
+    # _OVERLAP_NUMERATOR/_OVERLAP_DENOMINATOR must reproduce the old fixed 4,000-token overlap
+    # exactly at Claude's default 60,000-token budget — this fix targets other backends'
+    # runaway scaling, not a behaviour change on the default path.
+    assert max(1, 60_000 * section._OVERLAP_NUMERATOR // section._OVERLAP_DENOMINATOR) == 4_000
+
+
+def test_default_overlap_shrinks_for_a_smaller_output_capped_budget():
+    # At the openai/gemini output-capped budget (14,000, post-#490), overlap scales down
+    # proportionally instead of staying at the old fixed 4,000 (which would have been ~29% of
+    # this budget alone, before even accounting for the halving bug also fixed in #490).
+    assert max(1, 14_000 * section._OVERLAP_NUMERATOR // section._OVERLAP_DENOMINATOR) == 933
+
+
 # ── provider-aware thresholds (#321) ─────────────────────────────────────────
 
 def test_model_defaults_scale_with_context_window():
@@ -179,10 +211,30 @@ def test_run_threshold_follows_model_window(tmp_path, monkeypatch):
 
 def test_model_defaults_capped_by_output_ceiling_for_openai_gemini():
     # A fixed-output-ceiling backend that can't paginate caps threshold/budget by the output-
-    # derived input ceiling: 16000 * 0.7 / 0.8 = 14000 (budget = 14000 // 2 = 7000). The large
-    # input window (400K/1M) is overridden by the much tighter output-driven cap.
-    assert section.model_defaults("gpt-5-mini", backend="openai") == (14_000, 7_000)
-    assert section.model_defaults("gemini-2.5-flash", backend="gemini") == (14_000, 7_000)
+    # derived input ceiling: 16000 * 0.7 / 0.8 = 14000. Budget is NOT halved again on this path
+    # (#490) — the ceiling-derived value already represents the full safe amount a single call
+    # can handle, whether that call covers a whole document or one section. The large input
+    # window (400K/1M) is overridden by the much tighter output-driven cap either way.
+    assert section.model_defaults("gpt-5-mini", backend="openai") == (14_000, 14_000)
+    assert section.model_defaults("gemini-2.5-flash", backend="gemini") == (14_000, 14_000)
+
+
+def test_model_defaults_checks_extract_and_extract_section_ceilings_separately(monkeypatch):
+    # threshold (gates whole-document extraction) and budget (sizes one section) are checked
+    # against their own task's ceiling, not a single shared lookup (#490) — even though
+    # _TASK_MAX_TOKENS happens to give both "extract" and "extract-section" the same value today.
+    import watchdog.model_client as mc
+    seen = []
+
+    def fake_ceiling(task, backend, model):
+        seen.append(task)
+        return {"extract": 32_000, "extract-section": 8_000}[task]
+
+    monkeypatch.setattr(mc, "output_ceiling_for_sectioning", fake_ceiling)
+    threshold, budget = section.model_defaults("gpt-5-mini", backend="openai")
+    assert sorted(seen) == ["extract", "extract-section"]
+    assert threshold == int(32_000 * 0.7 / 0.8)   # capped by the "extract" ceiling
+    assert budget == int(8_000 * 0.7 / 0.8)        # capped by the "extract-section" ceiling
 
 
 def test_model_defaults_uncapped_for_paginating_and_uncapped_backends():

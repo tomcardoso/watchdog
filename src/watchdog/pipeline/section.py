@@ -30,7 +30,18 @@ import json
 import sys
 from pathlib import Path
 
-DEFAULT_OVERLAP_TOKENS = 4_000      # est-token overlap between consecutive sections
+# Overlap between consecutive sections, as a fraction of the section budget (#490's overlap
+# finding) — this used to be a fixed 4,000-token absolute value, calibrated against Claude's
+# historical 60,000-token default budget (6.7%). On a backend with a small output-derived budget
+# (openai/gemini, ~7,000 tokens — see model_defaults below), that same fixed value ate 57% of
+# every section: a 70-page document that needs 6 sections at Claude's overlap ratio needed 22 at
+# the fixed one, each one mostly re-reading pages the previous section already covered. Scaling
+# it keeps the overlap's actual purpose (make sure a table/paragraph straddling a page boundary
+# is wholly visible in at least one section) proportional to the section size instead of
+# swallowing it. `_OVERLAP_NUMERATOR/_OVERLAP_DENOMINATOR` are chosen so Claude's default budget
+# (60,000) reproduces the historical fixed value exactly — this fix targets other backends'
+# runaway scaling, not Claude's already-correct default behaviour.
+_OVERLAP_NUMERATOR, _OVERLAP_DENOMINATOR = 4_000, 60_000
 _CHARS_PER_TOKEN = 4                # cheap heuristic
 
 # Provider-aware sectioning defaults (#321): the threshold and per-section budget are fractions
@@ -77,17 +88,33 @@ def model_defaults(model: str | None, backend: str | None = None) -> tuple[int, 
 
     Derived from `model`'s context window (the input side); then, for a backend that enforces a
     fixed output ceiling it can't paginate past (openai/gemini — #343), additionally capped so a
-    whole-document call's expected output stays under that ceiling. `model`/`backend` are the
-    extraction stage's tier/id and backend (None ⇒ default tier / auth-routed Claude backend)."""
+    call's expected output stays under that ceiling. `model`/`backend` are the extraction stage's
+    tier/id and backend (None ⇒ default tier / auth-routed Claude backend).
+
+    `threshold` and `budget` are checked against *different* tasks' ceilings — a document at or
+    under threshold runs whole-document (`extract`); once sectioned, each section runs as its own
+    `extract-section` call — so each is capped against its own task's ceiling rather than both
+    sharing one lookup. `_TASK_MAX_TOKENS` happens to give both the same value today, so this was
+    previously harmless as a single shared lookup, but it was checking the wrong capability for
+    `budget` specifically, not merely a redundant one.
+
+    Unlike the input-window fractions above (`_BUDGET_FRACTION` is deliberately half
+    `_THRESHOLD_FRACTION`, so a document just over threshold still splits into two sections),
+    `budget` is *not* halved again when the output ceiling caps it (#490's over-sectioning
+    finding): the ceiling-derived max-input already represents the full safe amount a single call
+    can handle, for a whole document or for one section alike — halving it a second time was
+    inherited from the input-window path's reasoning without that reasoning actually applying
+    here, and cost a straight 2x in section count for no added safety."""
     from watchdog import model_client
     window = model_client.context_window(model, backend)
     threshold = int(window * _THRESHOLD_FRACTION)
     budget = int(window * _BUDGET_FRACTION)
-    ceiling = model_client.output_ceiling_for_sectioning("extract", backend, model)
-    if ceiling is not None:
-        max_input = int(ceiling * _OUTPUT_SAFE_FRACTION / _OUTPUT_PER_INPUT_RATIO)
-        threshold = min(threshold, max_input)
-        budget = min(budget, max(1, max_input // 2))
+    extract_ceiling = model_client.output_ceiling_for_sectioning("extract", backend, model)
+    if extract_ceiling is not None:
+        threshold = min(threshold, int(extract_ceiling * _OUTPUT_SAFE_FRACTION / _OUTPUT_PER_INPUT_RATIO))
+    section_ceiling = model_client.output_ceiling_for_sectioning("extract-section", backend, model)
+    if section_ceiling is not None:
+        budget = min(budget, max(1, int(section_ceiling * _OUTPUT_SAFE_FRACTION / _OUTPUT_PER_INPUT_RATIO)))
     return threshold, budget
 
 
@@ -175,7 +202,8 @@ def run(vault: Path, sha256: str, *, force_budget: int | None = None,
     default_threshold, default_budget = model_defaults(model, backend)
     threshold = _resolve_override("section_token_threshold", default_threshold)
     budget = _resolve_override("section_token_budget", default_budget)
-    overlap_tokens = _config_get("section_overlap_tokens", DEFAULT_OVERLAP_TOKENS)
+    default_overlap = max(1, budget * _OVERLAP_NUMERATOR // _OVERLAP_DENOMINATOR)
+    overlap_tokens = _config_get("section_overlap_tokens", default_overlap)
 
     if force_budget is not None:
         budget = min(force_budget, max(1, total_tokens // 2))   # guarantee ≥2 sections
