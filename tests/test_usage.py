@@ -13,7 +13,8 @@ from watchdog.cmd.usage import cmd_usage
 def _call(task="extract", filename="doc.pdf", detail="pages 1–1", model="claude-sonnet-4-6",
           cost_usd=0.01, input_tokens=100, output_tokens=20, latency_s=1.5,
           effort=None, auth_mode="api-key", attempts=1, end_ts=None, api_ms=None, num_turns=None,
-          failed=False, backend="claude-api"):
+          failed=False, backend="claude-api", batch_id=None, batch_submitted_at=None,
+          batch_ended_at=None, batch_collected_at=None):
     call = {
         "task": task, "model": model, "backend": backend,
         "input_tokens": input_tokens, "output_tokens": output_tokens,
@@ -29,6 +30,13 @@ def _call(task="extract", filename="doc.pdf", detail="pages 1–1", model="claud
         call["num_turns"] = num_turns
     if failed:
         call["failed"] = True
+    # batch_* fields are only present on claude-batch-collected records — same "omitted by
+    # default" convention as api_ms/num_turns above.
+    if batch_id is not None:
+        call["batch_id"] = batch_id
+        call["batch_submitted_at"] = batch_submitted_at
+        call["batch_ended_at"] = batch_ended_at
+        call["batch_collected_at"] = batch_collected_at
     return call
 
 
@@ -286,6 +294,40 @@ def test_cmd_usage_flags_local_backend_as_not_actually_free(tmp_path, monkeypatc
     classifier_section, extractor_section = out.split("EXTRACTOR")
     assert "local model" not in classifier_section
     assert "local model" in extractor_section
+
+
+def test_cmd_usage_shows_batch_lifecycle_note_for_a_batch_collected_stage(tmp_path, monkeypatch, capsys):
+    """A claude-batch-collected extractor stage gets a submitted->ended->collected lifecycle
+    note under its header — the only place that lifecycle is visible once `_resume_batch` clears
+    the transient batch-pending.json state on a clean collection."""
+    vault = _build_vault(tmp_path, runs={
+        "usage-2026-01-01T00-00-00": [
+            _call(task="extract", backend="claude-batch", filename="a.pdf",
+                 batch_id="b1", batch_submitted_at="2026-07-29T02:54:46Z",
+                 batch_ended_at="2026-07-29T03:36:02Z", batch_collected_at="2026-07-29T04:10:00Z"),
+            _call(task="classify", model="gemini-3.1-flash-lite", cost_usd=0.001),
+        ],
+    })
+    monkeypatch.chdir(vault)
+
+    cmd_usage(_args())
+
+    out = capsys.readouterr().out
+    classifier_section, extractor_section = out.split("EXTRACTOR")
+    assert "batch b1" not in classifier_section
+    assert "batch b1" in extractor_section
+    assert "submitted 2026-07-29T02:54:46Z" in extractor_section
+    assert "ended 2026-07-29T03:36:02Z (processed 41.3m)" in extractor_section
+    assert "collected 2026-07-29T04:10:00Z (idle 34.0m)" in extractor_section
+
+
+def test_cmd_usage_no_batch_note_for_a_non_batch_stage(tmp_path, monkeypatch, capsys):
+    vault = _build_vault(tmp_path, runs={
+        "usage-2026-01-01T00-00-00": [_call(task="extract", backend="claude-api")],
+    })
+    monkeypatch.chdir(vault)
+    cmd_usage(_args())
+    assert "batch " not in capsys.readouterr().out
 
 
 def test_cmd_usage_reconcile_task_groups_under_finalizer(tmp_path, monkeypatch, capsys):

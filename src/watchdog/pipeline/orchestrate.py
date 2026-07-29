@@ -86,7 +86,8 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
                   cost_usd: float | None, attempts: int = 1, latency_s: float = 0.0,
                   effort: str | None = None, auth_mode: str | None = None,
                   filename: str | None = None, detail: str | None = None,
-                  pruned: list[str] | None = None, failed: bool = False) -> None:
+                  pruned: list[str] | None = None, failed: bool = False,
+                  batch_meta: dict | None = None) -> None:
     """Append one call's usage to the run-scoped `_usage` accumulator, if one is active.
     Tolerates both Anthropic-style (`input_tokens`/`output_tokens`) and OpenAI-compatible
     (`prompt_tokens`/`completion_tokens`) usage dicts (D37) — the latter's cache-token fields
@@ -117,7 +118,15 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
 
     `failed` (D125): True when this record is a call that ultimately raised `ModelError` rather
     than returning — every attempt still spent real tokens, so it's recorded like any other call
-    (and counted in the same subtotals) rather than vanishing from telemetry."""
+    (and counted in the same subtotals) rather than vanishing from telemetry.
+
+    `usage["stop_reason"]`, when present (currently only `batch_extract.collect`'s items carry
+    it), is copied to the record — a batch call's only truncation signal, since it has no
+    continuation/repair path a live call gets. `batch_meta`
+    (`{batch_id, submitted_at, ended_at, collected_at}`, from `_resume_batch`) is copied onto the
+    record when given, so a batch-collected item's usage row carries its own full lifecycle
+    instead of that living only in the transient `batch-pending.json` state that's deleted once
+    collection succeeds."""
     if _usage is None:
         return
     u = usage or {}
@@ -134,10 +143,17 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         record["api_ms"] = u["duration_api_ms"]
     if u.get("num_turns") is not None:
         record["num_turns"] = u["num_turns"]
+    if u.get("stop_reason"):
+        record["stop_reason"] = u["stop_reason"]
     if pruned:
         record["pruned"] = pruned
     if failed:
         record["failed"] = True
+    if batch_meta:
+        record["batch_id"] = batch_meta.get("batch_id")
+        record["batch_submitted_at"] = batch_meta.get("submitted_at")
+        record["batch_ended_at"] = batch_meta.get("ended_at")
+        record["batch_collected_at"] = batch_meta.get("collected_at")
     _usage.append(record)
     if _usage_partial_path is not None:
         # Durable per-call persistence (#407): appended synchronously, so a crash or a hard
@@ -922,7 +938,7 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
 async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_text: str,
                              skill_label: str, brief: str | None, api_key: str,
                              model: str | None = None, effort: str | None = None,
-                             force: bool = False) -> dict:
+                             force: bool = False, batch_meta: dict | None = None) -> dict:
     """Turn one collected batch result into a finished document. `item` is `batch_extract.collect`'s
     per-sha entry (or None if the batch has no result for this sha at all). A batch response that
     didn't pass schema validation gets exactly one synchronous claude-api repair attempt — not a
@@ -935,7 +951,9 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
     would silently never reach `usage-<ts>.json` — and, with `effort`, to stamp this document's
     extraction provenance (#268). `force` (#424) bypasses both "already done" skip checks below,
     same as `_extract_document` — the batch already ran, so bypassing just means the collected
-    result is staged/committed instead of discarded."""
+    result is staged/committed instead of discarded. `batch_meta` (from `_resume_batch`) is
+    passed straight through to `_record_usage` so this item's usage row carries the batch's own
+    submitted/ended/collected lifecycle, not just this call's own token counts."""
     pf = preflight.run(vault, sha)
     if pf.get("error"):
         return _fail(vault, sha, "", pf["error"])
@@ -963,7 +981,7 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
         # one _record_usage call site where auth_mode is a known constant, not a live result field.
         _record_usage("extract", model=model, backend="claude-batch", usage=item["usage"],
                       cost_usd=item.get("cost_usd"), effort=effort, auth_mode="api-key",
-                      filename=filename, detail=f"pages 1–{page_count}")
+                      filename=filename, detail=f"pages 1–{page_count}", batch_meta=batch_meta)
     if not item["ok"]:
         text = _pages_text(pf["pages"])
         # Off the event loop — see the comment in `_simple_extract`.
@@ -1018,6 +1036,45 @@ def _batch_skill(state: dict, sha: str, pinned_skill: str | None) -> tuple[str, 
         f"cannot rebuild its extraction prompt")
 
 
+_BATCH_TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def _fmt_span(start_iso: str | None, end_iso: str | None) -> str | None:
+    """Human duration between two batch-lifecycle timestamps (`_BATCH_TS_FMT` strings), or None
+    if either is missing — `ended_at` is None until a batch finishes, and older persisted state
+    (written before this) has no `submitted_at`."""
+    if not start_iso or not end_iso:
+        return None
+    secs = int((datetime.datetime.strptime(end_iso, _BATCH_TS_FMT)
+               - datetime.datetime.strptime(start_iso, _BATCH_TS_FMT)).total_seconds())
+    m, s = divmod(max(secs, 0), 60)
+    h, m = divmod(m, 60)
+    return f"{h}h{m:02d}m{s:02d}s" if h else (f"{m}m{s:02d}s" if m else f"{s}s")
+
+
+def _batch_log_line(state: dict, st: dict, collected_at: str) -> str:
+    """One-line `ingest.log` summary of a collected batch's full lifecycle: submitted (this
+    run's own clock, persisted in batch state at submit time) -> ended (Anthropic's own record
+    of when processing finished) -> collected (right now) — the middle and last of those
+    routinely differ by hours under D52's submit-and-exit design, since collection happens in
+    a later, unrelated invocation that only reacts once it notices `ended`. Also carries
+    Anthropic's own request-count breakdown (succeeded/errored/etc.), so a partially-failed
+    batch is visible here even though `_finish_batch_item` reports each failure separately too."""
+    submitted, ended = state.get("submitted_at"), st.get("ended_at")
+    counts = st.get("request_counts") or {}
+    count_bits = ", ".join(f"{v} {k}" for k, v in counts.items() if v)
+    processed, idle = _fmt_span(submitted, ended), _fmt_span(ended, collected_at)
+    bits = [
+        f"BATCH {state['batch_id']}",
+        f"submitted {submitted or '?'}",
+        f"ended {ended or '?'}" + (f" (processed {processed})" if processed else ""),
+        f"collected {collected_at}" + (f" (idle {idle})" if idle else ""),
+    ]
+    if count_bits:
+        bits.append(count_bits)
+    return " · ".join(bits)
+
+
 async def _resume_batch(vault: Path, state: dict, pinned_skill: str | None, brief: str | None,
                         api_key: str, force: bool = False) -> dict:
     """Check a pending batch's status; collect and write it if `ended`, otherwise report
@@ -1034,6 +1091,9 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str | None, brie
     _say(f"{_DIM}→  batch {state['batch_id']} finished — collecting {len(state['shas'])} "
          f"document{'s' if len(state['shas']) != 1 else ''}…{_RESET}")
     collected = await batch_extract.collect(state["batch_id"], api_key, state["model"])
+    collected_at = datetime.datetime.now(datetime.timezone.utc).strftime(_BATCH_TS_FMT)
+    batch_meta = {"batch_id": state["batch_id"], "submitted_at": state.get("submitted_at"),
+                 "ended_at": st.get("ended_at"), "collected_at": collected_at}
 
     results = []
     try:
@@ -1042,7 +1102,7 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str | None, brie
             results.append(await _finish_batch_item(vault, sha, collected.get(sha), skill_text,
                                                      skill_label, brief, api_key,
                                                      model=state["model"], effort=state.get("effort"),
-                                                     force=force))
+                                                     force=force, batch_meta=batch_meta))
     except model_client.RateLimitError as e:
         # A repair-retry call (claude-api) hit a rate limit partway through collection. Leave
         # the batch state in place — already-written documents are safe (preflight's
@@ -1052,6 +1112,7 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str | None, brie
              f"{_CYAN}{_resume_hint}{_RESET}{_DIM} to finish once it resets.{_RESET}")
         return {"results": results, "batch_pending": True}
 
+    _log(vault, _batch_log_line(state, st, collected_at))
     batch_extract.clear_state(vault)
     return {"results": results, "batch_pending": False}
 

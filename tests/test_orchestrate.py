@@ -2611,6 +2611,75 @@ def test_resume_batch_collects_and_clears_state_when_ended(tmp_path, monkeypatch
     assert batch_extract.read_state(vault) is None   # state cleared on a clean collection
 
 
+def test_fmt_span_formats_seconds_minutes_and_hours():
+    fmt = orchestrate._BATCH_TS_FMT
+    t0 = "2026-07-29T02:54:46Z"
+    assert orchestrate._fmt_span(t0, "2026-07-29T02:54:51Z") == "5s"
+    assert orchestrate._fmt_span(t0, "2026-07-29T03:36:02Z") == "41m16s"
+    assert orchestrate._fmt_span(t0, "2026-07-29T04:55:02Z") == "2h00m16s"
+    assert fmt == "%Y-%m-%dT%H:%M:%SZ"   # sanity: the format both sides actually use
+
+
+def test_fmt_span_is_none_when_either_timestamp_is_missing():
+    assert orchestrate._fmt_span(None, "2026-07-29T02:54:51Z") is None
+    assert orchestrate._fmt_span("2026-07-29T02:54:46Z", None) is None
+
+
+def test_resume_batch_logs_lifecycle_line_to_ingest_log(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+    state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-4-6",
+            "skill_label": "financial-statements", "effort": None,
+            "submitted_at": "2026-07-29T02:54:46Z"}
+    batch_extract.write_state(vault, state)
+
+    async def fake_status(batch_id, api_key):
+        return {"processing_status": "ended", "request_counts": {"succeeded": 1, "errored": 0},
+               "ended_at": "2026-07-29T03:36:02Z"}
+    monkeypatch.setattr(orchestrate.batch_extract, "status", fake_status)
+
+    async def fake_collect(batch_id, api_key, model_id):
+        return {"sha1": {"ok": True, "parsed": _extraction(sha="sha1", filename="a.pdf"),
+                         "usage": {}, "cost_usd": 0.02, "error": None}}
+    monkeypatch.setattr(orchestrate.batch_extract, "collect", fake_collect)
+
+    skill_file = tmp_path / "pinned.md"
+    skill_file.write_text("SKILL")
+    asyncio.run(orchestrate._resume_batch(vault, state, str(skill_file), None, "sk-x"))
+
+    log = (vault / ".watchdog" / "registry" / "ingest.log").read_text(encoding="utf-8")
+    assert "BATCH b1" in log
+    assert "submitted 2026-07-29T02:54:46Z" in log
+    assert "ended 2026-07-29T03:36:02Z (processed 41m16s)" in log
+    assert "collected" in log
+    assert "1 succeeded" in log
+
+
+def test_finish_batch_item_records_batch_lifecycle_when_batch_meta_given(tmp_path):
+    """`_resume_batch` threads `batch_meta` through so a batch item's usage row carries its own
+    submitted/ended/collected lifecycle — otherwise that only ever lived in the transient
+    `batch-pending.json` state, deleted the moment collection succeeds."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+    item = {"ok": True, "parsed": _extraction(sha="sha1", filename="a.pdf"),
+           "usage": {"input_tokens": 500, "output_tokens": 80}, "cost_usd": 0.015, "error": None}
+    batch_meta = {"batch_id": "b1", "submitted_at": "2026-07-29T02:54:46Z",
+                 "ended_at": "2026-07-29T03:36:02Z", "collected_at": "2026-07-29T04:10:00Z"}
+
+    orchestrate._usage = []
+    try:
+        asyncio.run(orchestrate._finish_batch_item(
+            vault, "sha1", item, "SKILL BODY", "annual-report", None, "sk-x",
+            model="claude-sonnet-4-6", batch_meta=batch_meta))
+        calls = [c for c in orchestrate._usage if c["task"] == "extract"]
+        assert calls[0]["batch_id"] == "b1"
+        assert calls[0]["batch_submitted_at"] == "2026-07-29T02:54:46Z"
+        assert calls[0]["batch_ended_at"] == "2026-07-29T03:36:02Z"
+        assert calls[0]["batch_collected_at"] == "2026-07-29T04:10:00Z"
+    finally:
+        orchestrate._usage = None
+
+
 def test_finish_batch_item_repairs_invalid_result_via_claude_api(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="sha1", filename="a.pdf")

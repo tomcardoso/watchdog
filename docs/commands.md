@@ -277,6 +277,8 @@ When a run used a Claude subscription, the costs shown are what the same work wo
 
 Each call's usage is written to disk as soon as it completes, not just when the run finishes — so a crash, a hard interrupt, or a stop mid-finalize still leaves that run's spend on record. If a run never reaches a clean end, its in-progress file is folded into a normal recorded run the next time you run `watchdog dig` or `watchdog bark`, and shows up in `watchdog usage` from then on.
 
+A batch-collected extractor stage (the Batches API's cheaper, asynchronous extraction path) gets an extra line under its header showing the batch's full lifecycle: when it was submitted, when Anthropic finished processing it, and when this vault actually collected the results — the last two routinely differ by hours, since a batch is submit-and-exit and only a *later* `watchdog dig` invocation notices it has finished and pulls the results in.
+
 ### watchdog export
 
 Exports the investigation's entity and relationship graph for network-analysis tools. The default writes Neo4j-import CSV (`nodes.csv` and `relationships.csv`, also loadable in Gephi); `--format cypher` writes a single `graph.cypher` of `MERGE` statements instead, and `--output DIR` sets the destination (default: `<slug>-export/`). The export is deterministic — it reads the registry, with no model calls. Only stated-direction relationships are exported (auto-generated reverse edges are skipped), and edges to never-profiled entities are dropped so the import stays valid.

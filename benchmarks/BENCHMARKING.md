@@ -13,6 +13,23 @@ paying for the whole ~$15 sweep. An unknown id is a hard error, not a silent ful
 run_benchmark.py --stages extractor --arms sonnet-med-sdk,sonnet-med-api
 ```
 
+**Redoing an already-run arm needs its vault deleted first.** Each arm's vault is a fixed path
+(`bench-ex-<arm-id>`, etc.) — rerunning the same arm id against an existing vault does not start
+over: `seed_arm_vault` refuses to reseed a vault that already has queue files
+(`"already seeded — refusing to reseed"`), and any document already extracted there is skipped
+outright, so the arm would just report "already extracted" for everything instead of producing
+new results. This comes up whenever an arm's config changes after it already ran once (an
+`extractor_effort` pin, a corrected model id) — delete that arm's folder(s), then rerun:
+
+```
+rm -rf benchmarks/.vaults/bench-ex-gpt-nano benchmarks/.vaults/bench-ex-gpt-mini
+run_benchmark.py --stages extractor --arms gpt-nano,gpt-mini
+```
+
+No separate deregistration step needed — shadow vaults under `benchmarks/.vaults/` are never
+added to `~/.watchdog/projects.json` or Obsidian's vault switcher in the first place (D146,
+below), so a plain folder delete is the whole cleanup.
+
 **A real run is terse — one line per arm, not the underlying pipeline's own verbose output.**
 This is developer-only tooling, so `watchdog dig`/`watchdog bark`'s usual per-document progress,
 warnings, and elapsed ticker are suppressed; you get `[i/N] stage:arm  ✓/✗  duration` and nothing
