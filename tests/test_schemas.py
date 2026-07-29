@@ -108,7 +108,29 @@ def test_section_tolerates_explicit_null_on_its_optional_string_fields():
     omitting the key. Every downstream reader already treats null and absent the same way, so
     these being nullable rather than bare 'string' should never fail validation."""
     import jsonschema
-    section = {"entities": [], "morgue_entity_id": None, "morgue_document_type": None,
-              "observations": None}
+    section = {"document": {"key_facts": []}, "entities": [], "morgue_entity_id": None,
+              "morgue_document_type": None, "observations": None}
     errors = list(jsonschema.Draft202012Validator(schemas.SECTION).iter_errors(section))
     assert not errors, [e.message for e in errors]
+
+
+def test_section_requires_document_key_facts():
+    """#496: gemini-flash under extractor_effort=low reliably omitted document.key_facts from
+    every section of every sectioned document — silently, with no schema-validation error, no
+    postflight warning, and a clean OK in ingest.log, because SECTION's inline `document`
+    sub-schema had no `required` list at all. `document` itself was also optional at the top
+    level, so a section could dodge the inner requirement by skipping the whole object. Both a
+    missing `document` key and a `document` present but missing `key_facts` must now fail
+    validation — an empty array is fine (a section can genuinely have no material facts), but
+    omitting the field silently must not be."""
+    import jsonschema
+    validator = jsonschema.Draft202012Validator(schemas.SECTION)
+
+    no_document = {"entities": []}
+    assert list(validator.iter_errors(no_document))
+
+    document_missing_key_facts = {"document": {"title": "x"}, "entities": []}
+    assert list(validator.iter_errors(document_missing_key_facts))
+
+    document_with_empty_key_facts = {"document": {"key_facts": []}, "entities": []}
+    assert not list(validator.iter_errors(document_with_empty_key_facts))
