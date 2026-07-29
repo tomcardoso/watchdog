@@ -371,6 +371,16 @@ def test_arm_line_cancelled():
     assert "✓" not in text and "✗" not in text
 
 
+def test_arm_starting_line_shares_index_and_label_with_the_completion_line():
+    """Printed before a (possibly minutes-long) arm begins, so there is something on screen
+    while it's running — without it, a real extraction call leaves the terminal silent for as
+    long as the call takes, indistinguishable from a hang."""
+    text = rb._arm_starting_line(5, 16, "extractor:sonnet-high")
+    assert "5/16" in text
+    assert "extractor:sonnet-high" in text
+    assert "running" in text
+
+
 # ── resilience: try/except SystemExit per arm ──────────────────────────────────
 
 def test_run_extractor_arm_records_failure_without_raising(monkeypatch, tmp_path):
@@ -901,6 +911,9 @@ def test_cancelled_arm_stops_the_run_before_the_next_arm(tmp_path, monkeypatch, 
     assert calls == ["sonnet-med-sdk"]   # sonnet-med-api and haiku never ran
     out = capsys.readouterr().out
     assert "Run stopped — 1 of 3 arm(s) completed." in out
+    # Printed before the fake arm ran — proof the "running…" line isn't just a formatter that
+    # exists but is never actually called from the loop.
+    assert "extractor:sonnet-med-sdk" in out and "running" in out
 
 
 # ── sdk-check stage (#482 follow-up) ───────────────────────────────────────────

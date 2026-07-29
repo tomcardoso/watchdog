@@ -509,15 +509,29 @@ def confirm_run(previews: list[tuple[str, dict, dict]], *, estimate_only: bool) 
     return interactive.confirm(f"\nRun {len(previews)} arm(s)?", default=False)
 
 
+def _arm_idx(i: int, total: int) -> str:
+    return f"[{i:>{len(str(total))}}/{total}]"
+
+
+def _arm_starting_line(i: int, total: int, label: str) -> str:
+    """Printed the moment an arm begins, before its own line in the run loop. A real extraction
+    arm can run for several minutes (a 209-page document at high effort), and `_quiet` suppresses
+    the underlying pipeline's own progress output entirely — without this there is nothing on
+    screen to say the run is alive rather than hung. A second, separate line rather than
+    overwriting this one in place (`\\r`): the runner's own scrolling design is meant to survive
+    being piped to a log file, which in-place terminal updates don't."""
+    return f"  {_arm_idx(i, total)} {label:<28} running…"
+
+
 def _arm_line(i: int, total: int, label: str, result: ArmResult, elapsed: float) -> str:
-    """One terse line per finished arm. Developer-only tool — the underlying pipeline's own
-    verbose per-document output (progress rows, warnings, an elapsed ticker) is suppressed
-    (`_quiet`) during a real run in favour of this; full failure detail goes to errors.log,
-    not the terminal, so a bad arm doesn't have to be read off a scrolling wall of text."""
-    width = len(str(total))
+    """One terse line per finished arm, printed after `_arm_starting_line`'s. Developer-only
+    tool — the underlying pipeline's own verbose per-document output (progress rows, warnings, an
+    elapsed ticker) is suppressed (`_quiet`) during a real run in favour of this; full failure
+    detail goes to errors.log, not the terminal, so a bad arm doesn't have to be read off a
+    scrolling wall of text."""
     secs = int(elapsed)
     dur = f"{secs // 60}m{secs % 60:02d}s"
-    idx = f"[{i:>{width}}/{total}]"
+    idx = _arm_idx(i, total)
     if result.cancelled:
         return f"  {idx} {label:<28} interrupted"
     if not result.ok or result.doc_errors:
@@ -690,6 +704,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\nRunning {total} arm(s)…\n")
     with _caffeinate():
         for i, (kind, ctx) in enumerate(plan, 1):
+            label = f"{kind}:{ctx['arm']['id']}"
+            print(_arm_starting_line(i, total, label), flush=True)
             start = time.monotonic()
             if kind == "extractor":
                 result = run_extractor_arm(ctx["arm"], ctx["vault"])
@@ -707,8 +723,7 @@ def main(argv: list[str] | None = None) -> int:
                 result = run_extractor_arm(ctx["arm"], ctx["vault"])
                 result.stage = "sdk-check"
             results.append(result)
-            print(_arm_line(i, total, f"{kind}:{ctx['arm']['id']}", result,
-                            time.monotonic() - start))
+            print(_arm_line(i, total, label, result, time.monotonic() - start))
             if result.cancelled:
                 print(f"\nRun stopped — {i} of {total} arm(s) completed.")
                 break
