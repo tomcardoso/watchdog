@@ -90,7 +90,7 @@ def _not_succeeded(custom_id, rtype):
 VALID_EXTRACTION = {
     "document": {"title": "Acme AR", "document_type": "Annual Report",
                 "date_of_document": None, "summary": "s", "key_facts": []},
-    "entities": [], "morgue_entity_id": "acme-corp", "morgue_document_type": "annual-report",
+    "entities": [], "morgue_entity_id": "acme-corp",
     "scratchpad": "",
 }
 
