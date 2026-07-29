@@ -34,7 +34,12 @@ _KEY_FACT = _obj(
         "fact": {"type": "string"},
         "page": {"type": ["integer", "null"]},
         "basis": _BASIS,
-        "date": {"type": "string"},                                   # set ⇒ also a timeline event
+        # Nullable, not bare "string": a gpt-nano sectioned extraction nulled `date` on 21 of 26
+        # key_facts in one live document rather than omitting it — the same weak-json_object-mode
+        # null-vs-omit gap fixed elsewhere in this schema (#490). Every reader already treats null
+        # and absent the same (postflight._sanitize_dates's `if date and ...`, explode_key_facts's
+        # `(fact.get("date") or "").strip()`, merge.py's `f.get("date")` truthiness check).
+        "date": _NULLABLE_STR,                                        # set ⇒ also a timeline event
         "entities": {"type": "array", "items": {"type": "string"}},   # entity ids the fact is about
         "quote": {"type": "string"},   # optional verbatim source sentence (only when wording matters)
     },
@@ -154,6 +159,13 @@ _SECTION_DOCUMENT_PROPS = {
 # entirely — schema-valid, silent, and invisible to postflight since every section still
 # reported entities normally. `document` itself is now required at the top level too, so a
 # later section can't skip the object altogether to dodge the inner requirement.
+#
+# `entities` is deliberately NOT required, unlike `document`/`key_facts` above (#490 follow-up):
+# it has been required since the very first Python-orchestrator commit, not from a documented
+# silent-omission incident the way key_facts was (#496) — and on gpt-nano it hard-failed a whole
+# document with `"'entities' is a required property"` when a section genuinely named no new
+# entities. merge.merge_extractions already reads it as `sec.get("entities", [])`, so an omitted
+# key was always handled safely downstream; only the schema was stricter than the code needed.
 SECTION = _obj(
     {
         "document": _obj(_SECTION_DOCUMENT_PROPS, ["key_facts"]),
@@ -173,7 +185,7 @@ SECTION = _obj(
         # this section names nothing obtainable. merge.merge_extractions unions across sections.
         "document_requests": {"type": "array", "items": _DOCUMENT_REQUEST},
     },
-    ["document", "entities"],
+    ["document"],
 )
 
 # Classify a document to a domain-skill filename (records/<name>.md).

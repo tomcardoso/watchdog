@@ -62,15 +62,16 @@ def _count_optional(node, total=0) -> int:
 
 # Anthropic doesn't document the exact counting rule (confirmed unclear even in their own repo's
 # issue tracker as of this writing) — nullable-typed optional fields appear to cost more than
-# plain ones. SECTION now has seven nullable optional fields (document.date_of_document; morgue_
+# plain ones. SECTION now has eight nullable optional fields (document.date_of_document; morgue_
 # entity_id/morgue_document_type/observations widened by #490/D147; document.title/document_type/
-# summary widened by #490/D149 — all to stop OpenAI's weak json_object mode from hard-failing
-# schema validation when it nulls an optional field instead of omitting it) — up from one before
-# the first of those fixes. SECTION's raw optional-property count is 19; even a full 2x worst-case
-# weighting on all seven nullable fields adds ~7, landing at 26 — over the raw limit of 24, not
-# just inside the margin. This hasn't been verified against a real claude-api call since the
-# nullable-cost theory itself was never confirmed, only inferred defensively; treat this as a real
-# open risk, not a settled one, until it's checked live.
+# summary widened by #490/D149; key_facts[].date widened by #490/D150 — all to stop OpenAI's weak
+# json_object mode from hard-failing schema validation when it nulls an optional field instead of
+# omitting it) — up from one before the first of those fixes. SECTION's raw optional-property
+# count is 20 (also up by one: `entities` itself was made optional by #490/D150); even a full 2x
+# worst-case weighting on all eight nullable fields adds ~8, landing at 28 — over the raw limit of
+# 24, not just inside the margin. This hasn't been verified against a real claude-api call since
+# the nullable-cost theory itself was never confirmed, only inferred defensively; treat this as a
+# real open risk, not a settled one, until it's checked live.
 _CLAUDE_OPTIONAL_PARAM_LIMIT = 24
 _SAFETY_MARGIN = 2
 
@@ -149,3 +150,28 @@ def test_section_requires_document_key_facts():
 
     document_with_empty_key_facts = {"document": {"key_facts": []}, "entities": []}
     assert not list(validator.iter_errors(document_with_empty_key_facts))
+
+
+def test_section_does_not_require_entities():
+    """Live gpt-nano regression (#490 follow-up): a section naming no new entities omitted the
+    `entities` key entirely rather than returning an empty array, hard-failing with
+    "'entities' is a required property". `entities` has been required since the original
+    Python-orchestrator commit, not from a documented silent-omission incident the way
+    document.key_facts was (#496) — and merge.merge_extractions already reads it defensively
+    (`sec.get("entities", [])`), so an omitted key was always handled safely downstream."""
+    import jsonschema
+    section = {"document": {"key_facts": []}}
+    errors = list(jsonschema.Draft202012Validator(schemas.SECTION).iter_errors(section))
+    assert not errors, [e.message for e in errors]
+
+
+def test_key_fact_tolerates_explicit_null_date():
+    """Live gpt-nano regression (#490 follow-up): a sectioned extraction nulled `date` on 21 of
+    26 key_facts in one document rather than omitting it — bare "string" made every one of those
+    a hard schema-validation failure. Every reader already treats null and absent the same way
+    (postflight._sanitize_dates's `if date and ...`, explode_key_facts's `(fact.get("date") or
+    "").strip()`), so this being nullable costs nothing."""
+    import jsonschema
+    key_fact = {"fact": "something happened", "date": None}
+    errors = list(jsonschema.Draft202012Validator(schemas._KEY_FACT).iter_errors(key_fact))
+    assert not errors, [e.message for e in errors]
