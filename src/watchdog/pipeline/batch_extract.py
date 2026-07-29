@@ -128,7 +128,8 @@ async def collect(batch_id: str, api_key: str, model_id: str) -> dict[str, dict]
     business-rule validation still runs afterward, exactly as it does for a synchronous call."""
     client = _client(api_key)
     out: dict[str, dict] = {}
-    async for item in client.messages.batches.results(batch_id):
+    result_stream = await client.messages.batches.results(batch_id)
+    async for item in result_stream:
         sha = item.custom_id
         rtype = item.result.type
         if rtype != "succeeded":
