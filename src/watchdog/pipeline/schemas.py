@@ -106,11 +106,15 @@ _DOCUMENT = _obj(
         "obtained": _NULLABLE_STR,
         "summary": {"type": "string"},
         "key_facts": {"type": "array", "items": _KEY_FACT},
-        "file_metadata": {"type": "object"},
+        "file_metadata": _obj({}, []),
     },
     # sha256/filename/original_path/page_count, source/obtained, and file_metadata are stamped
     # by Python (orchestrate._stamp_document) — deterministic values the pipeline already holds,
     # not echoed by the model. They stay in `properties` (optional) so the stamped dict validates.
+    # file_metadata is `_obj({}, [])` rather than a bare `{"type": "object"}` because Claude's
+    # strict structured-output mode (output_config.format.schema) rejects any object-type node
+    # that doesn't explicitly declare `additionalProperties` — closed-and-empty is correct here
+    # anyway, since the model never fills this field.
     ["title", "document_type", "summary", "key_facts"],
 )
 
