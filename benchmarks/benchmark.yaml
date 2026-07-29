@@ -26,7 +26,14 @@ extractor_sweep:
     - {id: ds-pro,            extractor_model: "deepseek:deepseek-v4-pro"}
     - {id: ds-pro-think,      extractor_model: "deepseek:deepseek-v4-pro-thinking"}
     - {id: gemini-flash-lite, extractor_model: "gemini:gemini-3.1-flash-lite"}   # cheap tier
-    - {id: gemini-flash,      extractor_model: "gemini:gemini-3.5-flash"}       # middle tier
+    # No effort pinned above means no `reasoning_effort` is sent at all — Gemini accepts the knob
+    # unconditionally (unlike OpenAI, no reasoning-capability gate), so this ran on whatever
+    # implicit thinking budget Google defaults to. Measured at 15m21s for this corpus, the same
+    # ~51-call section split every enforces-max-tokens backend gets (see the gpt-* comment below)
+    # even though its output tokens stayed well under the per-call ceiling — the time cost here is
+    # pure section-count overhead, not runaway reasoning tokens. Pinned low for the same reason as
+    # the OpenAI arms: measure the model's real minimum-effort cost, not an unstated default.
+    - {id: gemini-flash,      extractor_model: "gemini:gemini-3.5-flash", extractor_effort: low}   # middle tier
     # Opus dropped (not worth testing this round).
     #
     # Backend A/B (#475). The arms above name a bare Claude tier, which resolves to
@@ -59,9 +66,23 @@ extractor_sweep:
     # that). So an OpenAI arm measures the model plus our weaker prompt-only enforcement, not the
     # model alone — a poor result here is genuinely ambiguous in a way a Gemini arm's isn't, by
     # our own schema-design choice rather than a model or provider defect. See D98.
-    - {id: gpt-nano,          extractor_model: "openai:gpt-5.4-nano"}   # cheap tier
-    - {id: gpt-mini,          extractor_model: "openai:gpt-5.4-mini"}   # middle tier
-    - {id: gpt-luna,          extractor_model: "openai:gpt-5.6-luna"}   # middle tier, 1.05M window
+    #
+    # All three are reasoning models (model_catalog.yaml's `reasoning: true`) and, unlike every
+    # Claude arm above, none pinned `extractor_effort` — so `reasoning_effort` was omitted from
+    # the request entirely and OpenAI applied its own default. Measured on this corpus, that
+    # default burned a median 12K-24K *output* tokens per section call (`gpt-mini` peaked at 46K,
+    # against a 48K hard ceiling) — reasoning tokens dwarfing the actual JSON, on section inputs
+    # capped at ~7K estimated tokens by the same conservative sectioning ceiling. That drove
+    # gpt-nano to 26min/$0.89 and gpt-mini to 43min/$5.71 for a 6-document corpus — see the
+    # investigation notes for the full numbers. Pinned to `low` so these arms measure each model's
+    # real minimum controllable cost instead of an unbounded implicit default. The section-count
+    # side of this (51 calls, ~22 of them for the 70-page report alone) is a separate, deeper
+    # issue in `output_ceiling_for_sectioning` shared with production `watchdog dig` — tracked
+    # separately rather than fixed here, since it needs real data on how much `low` effort alone
+    # changes the picture before touching sectioning math every ingest relies on.
+    - {id: gpt-nano,          extractor_model: "openai:gpt-5.4-nano", extractor_effort: low}   # cheap tier
+    - {id: gpt-mini,          extractor_model: "openai:gpt-5.4-mini", extractor_effort: low}   # middle tier
+    - {id: gpt-luna,          extractor_model: "openai:gpt-5.6-luna", extractor_effort: low}   # middle tier, 1.05M window
 
 finalizer_sweep:
   vault_prefix: bench-fn
