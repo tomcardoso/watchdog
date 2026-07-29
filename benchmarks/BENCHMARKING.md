@@ -27,6 +27,13 @@ cache-*write* premium on text it never reads back. So:
 - the `sonnet-med-sdk` / `sonnet-med-api` arms pin the backend explicitly. Run them under api-key
   auth (claude-api cannot run on a subscription) or the pair is not comparable.
 
+**Bracket the mode switch tightly around this pair.** Unlike DeepSeek/OpenAI/Gemini, a stored
+Anthropic key is not enough on its own — `resolve_auth()` only returns it while `watchdog auth`'s
+mode is `api-key`; a key sitting in credentials.json while mode is `subscription` is inert, pinned
+backend or not. So: switch to api-key mode, run this pair alone (`--arms
+sonnet-med-sdk,sonnet-med-api`), then switch straight back to subscription — leaving mode on
+api-key would also meter every other bare `sonnet`/`haiku`/`opus` arm in the sweep.
+
 **Benchmark vaults live in a shadow root, never in your real investigations folder (D146).**
 Early runs of `run_benchmark.py` created `bench-*` vaults straight in the installed watchdog's
 own `projects_dir` and let `cmd_new` register each one in the TWO places it always registers a new

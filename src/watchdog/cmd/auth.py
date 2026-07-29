@@ -252,9 +252,11 @@ def _status() -> None:
     print(f"  {_BOLD}Model access{_RESET}  {_DIM}{_credentials_path()}{_RESET}")
     print()
 
-    # Claude Code: powers the interactive investigation commands (always) and is the
-    # ingestion default unless a stage is routed elsewhere below.
-    print(f"  {_BOLD}Claude Code{_RESET}  {_DIM}— interactive commands, and ingestion by default{_RESET}")
+    # Claude Code's own access mode — subscription login vs. a metered API key. Whether a
+    # stored Anthropic key is actually in play is reported down in Providers, not here (#482):
+    # it depends on this mode, so it belongs next to the other providers' key status, not
+    # duplicated in both places.
+    print(f"  {_BOLD}Claude Code{_RESET}")
     if mode is None:
         print(f"  {_YELLOW}Not configured.{_RESET}")
         print(f"  {_DIM}Answer the prompt below, or run{_RESET} {_CYAN}watchdog setup{_RESET}{_DIM}.{_RESET}")
@@ -293,21 +295,28 @@ def _status() -> None:
             else provider_ready(provider)
         mark = f"{_GREEN}✓{_RESET}" if ready else f"{_YELLOW}✗{_RESET}"
         label = stage_key[: -len("_model")]
-        print(f"  {mark} {_DIM}{label:<11}{_RESET}{_CYAN}{value}{_RESET}  {_DIM}({provider}){_RESET}")
+        # Anthropic is the one provider with a mode of its own — name it inline here so a
+        # Claude-routed stage's actual billing (subscription vs. metered) is visible without
+        # cross-referencing the Claude Code section above.
+        detail = f"{provider} · {mode}" if provider == "anthropic" and mode else provider
+        print(f"  {mark} {_DIM}{label:<11}{_RESET}{_CYAN}{value}{_RESET}  {_DIM}({detail}){_RESET}")
     print()
 
-    # Every non-Claude provider with a key available, whether or not a stage is routed to it.
-    # Listing only the unrouted ones (as this did before) meant a key in active use — the one
-    # backing a ✓ above — never showed its masked value anywhere, so there was no way to check
-    # *which* key was in play without opening the wizard.
+    # Every provider with a key available, whether or not a stage is routed to it — the
+    # definitive list of what's stored, Anthropic included (#482). A stored Anthropic key is
+    # only ever actually used while Claude Code mode above is api-key, so it's flagged inactive
+    # rather than silently vanishing from the list while on subscription.
     shown_providers = {_ingest_stage_provider(config.get(k) or d) for k, d in _INGEST_STAGES}
-    keyed = [(p, get_api_key(p)) for p in _PROVIDERS if p != "anthropic"]
+    keyed = [(p, get_api_key(p)) for p in _PROVIDERS]
     keyed = [(p, key) for p, key in keyed if key]
     if keyed:
-        print(f"  {_DIM}Provider keys{_RESET}")
+        print(f"  {_DIM}Providers{_RESET}")
         for p, key in keyed:
             where = f"${_PROVIDERS[p]['env']}" if os.environ.get(_PROVIDERS[p]["env"]) else "stored"
-            status = "in use" if p in shown_providers else "unused"
+            if p == "anthropic" and mode != "api-key":
+                status = f"inactive — {mode} mode" if mode else "inactive — not configured"
+            else:
+                status = "in use" if p in shown_providers else "unused"
             print(f"  {_DIM}{p:<13}{_RESET}{_CYAN}{_mask(key)}{_RESET} {_DIM}({where}, {status}){_RESET}")
         print()
 

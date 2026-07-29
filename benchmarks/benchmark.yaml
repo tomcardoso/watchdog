@@ -12,7 +12,7 @@ master_vault:
   classify_name: bench-classify-master   # bare-PDF twin, classifier smoke test only
 
 extractor_sweep:
-  vault_prefix: bench-ex3
+  vault_prefix: bench-ex
   arms:
     - {id: sonnet-high,       extractor_model: sonnet, extractor_effort: high}
     - {id: sonnet-med,        extractor_model: sonnet, extractor_effort: medium}
