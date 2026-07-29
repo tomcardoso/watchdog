@@ -743,6 +743,28 @@ def test_validate_reports_errors():
     assert mc._validate({"name": "ok"}, SCHEMA) == []
 
 
+def test_validate_error_messages_are_path_qualified():
+    """A live gpt-nano failure logged three identical 'None is not of type string' errors with
+    no way to tell which fields — bare jsonschema messages don't include the offending path.
+    Every error _validate returns must name its field, so a future failure like that one is
+    diagnosable straight from the log instead of requiring a live repro to find the culprit."""
+    nested_schema = {
+        "type": "object",
+        "properties": {
+            "items": {"type": "array", "items": {
+                "type": "object",
+                "properties": {"label": {"type": "string"}},
+                "required": ["label"],
+                "additionalProperties": False,
+            }},
+        },
+        "required": [],
+        "additionalProperties": False,
+    }
+    errors = mc._validate({"items": [{"label": None}]}, nested_schema)
+    assert errors == ["items[0].label: None is not of type 'string'"]
+
+
 def test_prune_unknown_removes_top_level_extra_key():
     obj = {"name": "Acme", "extra": "nope"}
     removed = mc._prune_unknown(obj, SCHEMA)

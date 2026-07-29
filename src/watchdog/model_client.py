@@ -275,9 +275,17 @@ def _extract_json(text: str) -> dict | None:
 
 
 def _validate(obj: dict, schema: dict) -> list[str]:
-    """Return schema-validation error messages (empty list = valid)."""
+    """Return schema-validation error messages, path-qualified (empty list = valid). Bare
+    `e.message` (e.g. "None is not of type 'string'") is identical across every field of the
+    same type gone wrong, which made a real live failure undiagnosable from the log alone (issue
+    #490 follow-up) — three fields nulled at once produced the exact same three-line message
+    whichever fields they were, with no way to tell which from the error text itself."""
     import jsonschema
-    return [e.message for e in jsonschema.Draft202012Validator(schema).iter_errors(obj)]
+    errors = []
+    for e in jsonschema.Draft202012Validator(schema).iter_errors(obj):
+        path = "".join(f"[{p}]" if isinstance(p, int) else f".{p}" for p in e.path)
+        errors.append(f"{path.lstrip('.') or '$'}: {e.message}")
+    return errors
 
 
 def _prune_unknown(obj, schema, _path: str = "") -> list[str]:
@@ -989,6 +997,8 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
                     pruned=pruned_all or None,
                 )
             last_err = "; ".join(errors[:3])
+            if len(errors) > 3:
+                last_err += f" (+{len(errors) - 3} more)"
 
     # Every attempt's usage was real spend even though none produced valid JSON — attach it so
     # the caller can still record it (D125), instead of the failure burning tokens invisibly.
