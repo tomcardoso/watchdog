@@ -48,6 +48,23 @@ class _Obj:
         return dict(self.__dict__)
 
 
+class _FakeResultPage:
+    """Stands in for the SDK's `AsyncJSONLDecoder` — an object `results()` resolves to once
+    awaited, itself async-iterable. Distinct from `results()` being an async generator (the
+    shape this fake used to have), since that shape is directly iterable the moment it's called
+    and so hid the missing `await` in `batch_extract.collect` (the real SDK requires it)."""
+    def __init__(self, items):
+        self._items = list(items)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if not self._items:
+            raise StopAsyncIteration
+        return self._items.pop(0)
+
+
 class FakeBatches:
     def __init__(self, batch_id="batch_123", processing_status="ended",
                 request_counts=None, results=None):
@@ -65,8 +82,7 @@ class FakeBatches:
         return _Obj(processing_status=self.processing_status, request_counts=self.request_counts)
 
     async def results(self, batch_id):
-        for r in self._results:
-            yield r
+        return _FakeResultPage(self._results)
 
 
 class FakeClient:
