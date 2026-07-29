@@ -13,6 +13,23 @@ paying for the whole ~$15 sweep. An unknown id is a hard error, not a silent ful
 run_benchmark.py --stages extractor --arms sonnet-med-sdk,sonnet-med-api
 ```
 
+**A real run is terse — one line per arm, not the underlying pipeline's own verbose output.**
+This is developer-only tooling, so `watchdog dig`/`watchdog bark`'s usual per-document progress,
+warnings, and elapsed ticker are suppressed; you get `[i/N] stage:arm  ✓/✗  duration` and nothing
+else per arm. Full failure detail — including a per-document failure that `cmd_extract` catches
+and tallies internally rather than raising, which an `ok`-only summary would miss entirely — goes
+to `errors.log` in the run's report folder, not the terminal; a failed or partially-failed arm's
+terse line just says `(see errors.log)`. Report folders are named to the minute
+(`benchmarks/2026-07-29-1432/`), not just the date, so more than one session in a day gets its
+own folder without a manual `-2`/`-3` disambiguation.
+
+**Ctrl+C stops the whole run, not just the current arm.** `cmd_extract`/`cmd_finalize` trap a
+SIGINT internally and return normally (finishing in-flight writes first) rather than raising —
+without something checking for that, a single interrupt only ever stopped the *current* arm, and
+the runner just started the next one's real API calls. The runner now reads that signal off the
+return value and stops the whole matrix after the interrupted arm finishes, instead of requiring
+one Ctrl+C per remaining arm.
+
 **Pin the Claude backend when it is what you are measuring (#475).** A bare `sonnet` arm carries
 no backend of its own — `_effective_extract_backend` picks one from the *current auth mode*
 (subscription → `claude-agent-sdk`, api-key → `claude-api`). Those two bill materially different

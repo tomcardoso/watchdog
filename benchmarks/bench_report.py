@@ -15,9 +15,10 @@ import yaml
 
 
 def run_id(now: datetime | None = None, *, existing: set[str] | None = None) -> str:
-    """"YYYY-MM-DD", or "YYYY-MM-DD-2"/"-3"/... if that name is already taken (`existing`, or —
-    when not given — an empty set, i.e. always the bare date)."""
-    base = (now or datetime.now()).date().isoformat()
+    """"YYYY-MM-DD-HHMM", or "-2"/"-3"/... if that exact minute is already taken (`existing`, or —
+    when not given — an empty set). Minute precision (not just the date) so more than one run in
+    a day gets its own folder without colliding — a working session often means several."""
+    base = (now or datetime.now()).strftime("%Y-%m-%d-%H%M")
     taken = existing if existing is not None else set()
     if base not in taken:
         return base
@@ -226,6 +227,22 @@ def docs_summary_md(results: list, scores: dict) -> str:
     return "\n".join(lines)
 
 
+def _errors_log_text(results: list) -> str:
+    """Full failure detail for every arm that had any — a hard failure (`error`, arm-level) or
+    per-document failures caught and tallied internally by cmd_extract/cmd_finalize (`doc_errors`
+    — these never raise, so `ok` alone misses them). Kept out of the terminal (run_benchmark.py's
+    terse per-arm line just says "see errors.log") and out of REPORT.md's tables, which are
+    read as much for their shape as their content."""
+    blocks = []
+    for r in results:
+        if r.error:
+            blocks.append(f"{r.stage}:{r.arm_id}\n  {r.error}")
+        elif r.doc_errors:
+            body = "\n".join(f"  {e}" for e in r.doc_errors)
+            blocks.append(f"{r.stage}:{r.arm_id}\n{body}")
+    return "\n\n".join(blocks)
+
+
 def write_run(out_root: Path, results: list, scores: dict, config: dict) -> Path:
     out_root = Path(out_root)
     existing = {p.name for p in out_root.iterdir()} if out_root.is_dir() else set()
@@ -246,14 +263,20 @@ def write_run(out_root: Path, results: list, scores: dict, config: dict) -> Path
         "## Classifier smoke test", "", classifier_table_md(results), "",
         "## Classifier model sweep", "", classifier_sweep_table_md(results), "",
     ]
-    failed = [r for r in results if not r.ok]
+    failed = [r for r in results if not r.ok or r.doc_errors]
     if failed:
-        report += ["## Failed arms", ""]
-        report += [f"- `{r.stage}:{r.arm_id}` — {r.error}" for r in failed]
+        report += ["## Failed arms", "", "Full detail in `errors.log`.", ""]
+        report += [f"- `{r.stage}:{r.arm_id}` — "
+                  + (r.error if r.error else f"{len(r.doc_errors)} document(s) failed")
+                  for r in failed]
         report.append("")
     (run_dir / "REPORT.md").write_text("\n".join(report), encoding="utf-8")
     (run_dir / "docs-summary.md").write_text(docs_summary_md(results, scores), encoding="utf-8")
     (run_dir / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+    errors_text = _errors_log_text(results)
+    if errors_text:
+        (run_dir / "errors.log").write_text(errors_text + "\n", encoding="utf-8")
 
     artifacts = run_dir / "artifacts"
     for r in results:

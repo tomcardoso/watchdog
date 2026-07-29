@@ -685,7 +685,7 @@ def _requeue_failed(vault: Path) -> int:
     return len(files)
 
 
-def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> None:
+def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> dict | None:
     vault = Path(".").resolve()
     if not (vault / ".watchdog").is_dir():
         sys.exit("Error: must be run from inside a Watchdog vault directory")
@@ -1026,6 +1026,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> Non
         _handle_force_gate(vault, summary, post_model, post_effort, post_backend,
                            skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides)
     _print_ingest_summary(summary, pipeline_hint)
+    return summary
 
 
 def _print_ingest_summary(summary: dict, pipeline_hint: str = "watchdog") -> None:
@@ -1097,17 +1098,17 @@ def _print_ingest_summary(summary: dict, pipeline_hint: str = "watchdog") -> Non
         print(f"\n  {_DIM}Open a fresh Claude Code session to ask investigation questions.{_RESET}\n")
 
 
-def cmd_extract(args) -> None:
+def cmd_extract(args) -> dict | None:
     """`watchdog dig` (#425, renamed from `extract` in #441/D138) — classify + extract queued
     documents, staging the artifacts, and stop before finalize. A thin wrapper around
     `cmd_ingest` with finalization forced off: inherits the estimate path, cost preview, skill
     pinning, `--wait`, the lock/summary machinery, and the "run watchdog bark next" closing
     message for free."""
     args.no_finalize = True
-    cmd_ingest(args)
+    return cmd_ingest(args)
 
 
-def cmd_finalize(args) -> None:
+def cmd_finalize(args) -> dict | None:
     """`watchdog bark` (renamed from `finalize` in #441/D138) — complete post-ingest (entity
     reconciliation + synthesis + timeline + briefing) for an already-extracted batch.
 
@@ -1163,7 +1164,7 @@ def cmd_finalize(args) -> None:
                      f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
 
 
-    _run_finalize(vault, post_model, post_effort, post_backend,
+    return _run_finalize(vault, post_model, post_effort, post_backend,
                  skip_briefing=getattr(args, "skip_briefing", False),
                  finalizer_overrides=finalizer_overrides)
 

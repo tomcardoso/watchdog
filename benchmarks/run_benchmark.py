@@ -29,6 +29,7 @@ import io
 import os
 import shutil
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
@@ -283,7 +284,13 @@ class ArmResult:
     vault: Path | None
     ok: bool
     skipped: bool = False          # true only for classifier-sweep with an empty corpus
+    cancelled: bool = False        # ctrl+c during this arm — the whole run stops after it
     error: str | None = None
+    # Per-document failures inside an otherwise-successful call (cmd_extract/cmd_finalize catch
+    # these internally and return normally — `ok` alone would miss them entirely, silently, once
+    # the terse runner stops printing the underlying pipeline's own per-document error lines).
+    # Written to errors.log by bench_report.write_run, not the terminal.
+    doc_errors: list[str] = field(default_factory=list)
     estimate: dict | None = None
     usage: dict | None = None
     extra: dict = field(default_factory=dict)
@@ -353,6 +360,16 @@ def _in_vault(vault: Path):
         os.chdir(prev)
 
 
+def _doc_errors(summary: dict | None) -> list[str]:
+    """Per-document failures from a cmd_extract summary — caught and tallied internally
+    (`_guarded`'s except Exception), never raised, so `ok=True` at the ArmResult level says
+    nothing about whether every document actually succeeded."""
+    if not summary:
+        return []
+    return [f"{r.get('filename') or r.get('sha256', '?')}: {r.get('reason', '')}"
+           for r in summary.get("results", []) if r.get("status") not in ("ok", "skipped", "cancelled")]
+
+
 def run_extractor_arm(arm: dict, vault: Path) -> ArmResult:
     from watchdog.cmd import ingest as ing
     ns = SimpleNamespace(command="dig", extractor_model=arm["extractor_model"],
@@ -360,11 +377,12 @@ def run_extractor_arm(arm: dict, vault: Path) -> ArmResult:
                         force=False, skip_warning=True, wait=False, no_finalize=True)
     try:
         with _in_vault(vault):
-            ing.cmd_extract(ns)
+            summary = _quiet(ing.cmd_extract, ns)
     except SystemExit as e:
         return ArmResult(arm_id=arm["id"], stage="extractor", vault=vault, ok=False, error=str(e))
     return ArmResult(arm_id=arm["id"], stage="extractor", vault=vault, ok=True,
-                     usage=_latest_usage(vault))
+                     cancelled=bool((summary or {}).get("cancelled")),
+                     doc_errors=_doc_errors(summary), usage=_latest_usage(vault))
 
 
 def run_finalizer_arm(arm: dict, vault: Path) -> ArmResult:
@@ -374,11 +392,14 @@ def run_finalizer_arm(arm: dict, vault: Path) -> ArmResult:
                         skip_briefing=False)
     try:
         with _in_vault(vault):
-            ing.cmd_finalize(ns)
+            out = _quiet(ing.cmd_finalize, ns)
     except SystemExit as e:
         return ArmResult(arm_id=arm["id"], stage="finalizer", vault=vault, ok=False, error=str(e))
+    # A finalize failure (rate limit, reconciliation error) is also caught and returned rather
+    # than raised — same silent-`ok=True` trap as extraction's per-document failures.
+    reason = (out or {}).get("error") or (out or {}).get("briefing_error")
     return ArmResult(arm_id=arm["id"], stage="finalizer", vault=vault, ok=True,
-                     usage=_latest_usage(vault))
+                     doc_errors=[reason] if reason else [], usage=_latest_usage(vault))
 
 
 def _classify_results(vault: Path, expected: dict[str, str]) -> dict:
@@ -405,13 +426,17 @@ def run_classifier_smoke(arm: dict, vault: Path, expected: dict[str, str]) -> Ar
                             skip_warning=True, wait=False, no_finalize=True)
     try:
         with _in_vault(vault):
-            ing.cmd_extract(ex_ns)
+            ex_summary = _quiet(ing.cmd_extract, ex_ns)
+            if (ex_summary or {}).get("cancelled"):
+                return ArmResult(arm_id=arm["id"], stage="classifier", vault=vault, ok=True,
+                                 cancelled=True, doc_errors=_doc_errors(ex_summary))
             fn_ns = SimpleNamespace(finalizer_model=arm["finalizer_model"], finalizer_effort=None,
                                     estimate=False, skip_briefing=True)
-            ing.cmd_finalize(fn_ns)
+            _quiet(ing.cmd_finalize, fn_ns)
     except SystemExit as e:
         return ArmResult(arm_id=arm["id"], stage="classifier", vault=vault, ok=False, error=str(e))
     return ArmResult(arm_id=arm["id"], stage="classifier", vault=vault, ok=True,
+                     doc_errors=_doc_errors(ex_summary),
                      extra={"classification": _classify_results(vault, expected)})
 
 
@@ -423,14 +448,18 @@ def run_classifier_sweep_arm(arm: dict, vault: Path, fixed: dict, expected: dict
                             no_finalize=True)
     try:
         with _in_vault(vault):
-            ing.cmd_extract(ex_ns)
+            ex_summary = _quiet(ing.cmd_extract, ex_ns)
+            if (ex_summary or {}).get("cancelled"):
+                return ArmResult(arm_id=arm["id"], stage="classifier-sweep", vault=vault, ok=True,
+                                 cancelled=True, doc_errors=_doc_errors(ex_summary))
             fn_ns = SimpleNamespace(finalizer_model=fixed["finalizer_model"], finalizer_effort=None,
                                     estimate=False, skip_briefing=True)
-            ing.cmd_finalize(fn_ns)
+            _quiet(ing.cmd_finalize, fn_ns)
     except SystemExit as e:
         return ArmResult(arm_id=arm["id"], stage="classifier-sweep", vault=vault, ok=False,
                          error=str(e))
     return ArmResult(arm_id=arm["id"], stage="classifier-sweep", vault=vault, ok=True,
+                     doc_errors=_doc_errors(ex_summary),
                      extra={"classification": _classify_results(vault, expected)})
 
 
@@ -478,6 +507,24 @@ def confirm_run(previews: list[tuple[str, dict, dict]], *, estimate_only: bool) 
     if estimate_only:
         return False
     return interactive.confirm(f"\nRun {len(previews)} arm(s)?", default=False)
+
+
+def _arm_line(i: int, total: int, label: str, result: ArmResult, elapsed: float) -> str:
+    """One terse line per finished arm. Developer-only tool — the underlying pipeline's own
+    verbose per-document output (progress rows, warnings, an elapsed ticker) is suppressed
+    (`_quiet`) during a real run in favour of this; full failure detail goes to errors.log,
+    not the terminal, so a bad arm doesn't have to be read off a scrolling wall of text."""
+    width = len(str(total))
+    secs = int(elapsed)
+    dur = f"{secs // 60}m{secs % 60:02d}s"
+    idx = f"[{i:>{width}}/{total}]"
+    if result.cancelled:
+        return f"  {idx} {label:<28} interrupted"
+    if not result.ok or result.doc_errors:
+        n = len(result.doc_errors)
+        detail = f"{n} failed" if n else "failed"
+        return f"  {idx} {label:<28} ✗ {detail}  {dur}  (see errors.log)"
+    return f"  {idx} {label:<28} ✓  {dur}"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -639,24 +686,32 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     from watchdog.cmd.ingest import _caffeinate
+    total = len(plan)
+    print(f"\nRunning {total} arm(s)…\n")
     with _caffeinate():
-        for kind, ctx in plan:
+        for i, (kind, ctx) in enumerate(plan, 1):
+            start = time.monotonic()
             if kind == "extractor":
-                results.append(run_extractor_arm(ctx["arm"], ctx["vault"]))
+                result = run_extractor_arm(ctx["arm"], ctx["vault"])
             elif kind == "finalizer":
-                results.append(run_finalizer_arm(ctx["arm"], ctx["vault"]))
+                result = run_finalizer_arm(ctx["arm"], ctx["vault"])
             elif kind == "classifier":
-                results.append(run_classifier_smoke(ctx["arm"], ctx["vault"], expected_skills))
+                result = run_classifier_smoke(ctx["arm"], ctx["vault"], expected_skills)
             elif kind == "classifier-sweep":
-                results.append(run_classifier_sweep_arm(ctx["arm"], ctx["vault"], ctx["fixed"],
-                                                        ctx["expected"]))
+                result = run_classifier_sweep_arm(ctx["arm"], ctx["vault"], ctx["fixed"],
+                                                  ctx["expected"])
             elif kind == "sdk-check":
                 # Same extraction path as the main sweep (run_extractor_arm), relabelled so it's
                 # excluded from extractor-sweep recall scoring and the six-document cost summary
                 # below — its two-document corpus doesn't match either one.
                 result = run_extractor_arm(ctx["arm"], ctx["vault"])
                 result.stage = "sdk-check"
-                results.append(result)
+            results.append(result)
+            print(_arm_line(i, total, f"{kind}:{ctx['arm']['id']}", result,
+                            time.monotonic() - start))
+            if result.cancelled:
+                print(f"\nRun stopped — {i} of {total} arm(s) completed.")
+                break
 
     import bench_report
     vaults_to_score = [str(r.vault) for r in results
@@ -665,7 +720,9 @@ def main(argv: list[str] | None = None) -> int:
     scores = score_vaults(vaults_to_score) if vaults_to_score else {
         "vaults": [], "detail": [], "totals": {"facts": {}, "must_not_miss": {}}, "unscorable": []}
     out_dir = bench_report.write_run(args.out, results, scores, config)
-    print(f"\nReport written to {out_dir}")
+    n_failed = sum(1 for r in results if not r.ok or r.doc_errors)
+    tail = f" — {n_failed} arm(s) had failures, see errors.log" if n_failed else ""
+    print(f"\nReport written to {out_dir}{tail}")
     return 0
 
 

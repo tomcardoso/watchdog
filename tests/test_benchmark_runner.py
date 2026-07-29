@@ -340,6 +340,37 @@ def test_confirm_run_asks_once_when_not_estimate_only(monkeypatch):
     assert len(calls) == 1
 
 
+# ── _arm_line: the terse per-arm terminal output ───────────────────────────────
+
+def test_arm_line_ok():
+    text = rb._arm_line(1, 16, "extractor:haiku", _arm_result(), 74.0)
+    assert "1/16" in text
+    assert "extractor:haiku" in text
+    assert "✓" in text
+    assert "1m14s" in text
+
+
+def test_arm_line_hard_failure_points_to_errors_log():
+    text = rb._arm_line(2, 16, "extractor:sonnet-low", _arm_result(ok=False, error="boom"), 3.0)
+    assert "✗" in text
+    assert "errors.log" in text
+
+
+def test_arm_line_per_document_failures_not_masked_by_ok_true():
+    """The exact real-world case: cmd_extract returns ok=True with everything failed inside."""
+    text = rb._arm_line(3, 16, "extractor:sonnet-med",
+                        _arm_result(ok=True, doc_errors=["a: x", "b: y"]), 3.0)
+    assert "✗" in text
+    assert "2 failed" in text
+    assert "errors.log" in text
+
+
+def test_arm_line_cancelled():
+    text = rb._arm_line(4, 16, "extractor:haiku", _arm_result(cancelled=True), 12.0)
+    assert "interrupted" in text
+    assert "✓" not in text and "✗" not in text
+
+
 # ── resilience: try/except SystemExit per arm ──────────────────────────────────
 
 def test_run_extractor_arm_records_failure_without_raising(monkeypatch, tmp_path):
@@ -390,6 +421,39 @@ def test_run_extractor_arm_restores_cwd_even_on_failure(monkeypatch, tmp_path):
     assert Path.cwd() == outside
 
 
+def test_run_extractor_arm_suppresses_cmd_extract_stdout(monkeypatch, tmp_path, capsys):
+    """The runner is terse by design (#benchmark-ux) — the underlying pipeline's own verbose
+    per-document output must not leak to the terminal during a real run."""
+    def _noisy(ns):
+        print("Sending 6 documents to a cloud AI model.")
+        return {"cancelled": False, "results": []}
+    monkeypatch.setattr(wd_ingest, "cmd_extract", _noisy)
+    rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
+    assert "Sending 6 documents" not in capsys.readouterr().out
+
+
+def test_run_extractor_arm_picks_up_cancelled_from_summary(monkeypatch, tmp_path):
+    """cmd_extract traps ctrl+c internally and returns normally with `cancelled: True` — no
+    exception to catch, so this has to come from the return value now that cmd_ingest exposes it."""
+    monkeypatch.setattr(wd_ingest, "cmd_extract", lambda ns: {"cancelled": True, "results": []})
+    result = rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
+    assert result.ok is True
+    assert result.cancelled is True
+
+
+def test_run_extractor_arm_captures_per_document_failures(monkeypatch, tmp_path):
+    """A per-document failure (e.g. the file_metadata schema bug) is caught inside cmd_extract
+    and tallied in `results`, never raised — `ok` alone would miss it entirely."""
+    summary = {"cancelled": False, "results": [
+        {"sha256": "a1", "filename": "doc1.pdf", "status": "failed", "reason": "400: bad schema"},
+        {"sha256": "a2", "filename": "doc2.pdf", "status": "ok"},
+    ]}
+    monkeypatch.setattr(wd_ingest, "cmd_extract", lambda ns: summary)
+    result = rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
+    assert result.ok is True
+    assert result.doc_errors == ["doc1.pdf: 400: bad schema"]
+
+
 # ── run_finalizer_arm delegates correctly ──────────────────────────────────────
 
 def test_run_finalizer_arm_passes_arm_knobs_through(monkeypatch, tmp_path):
@@ -413,6 +477,26 @@ def test_run_finalizer_arm_records_failure(monkeypatch, tmp_path):
     result = rb.run_finalizer_arm({"id": "haiku", "finalizer_model": "haiku"}, tmp_path)
     assert result.ok is False
     assert result.error == "locked"
+
+
+def test_run_finalizer_arm_captures_non_raised_failure(monkeypatch, tmp_path):
+    """A rate limit or reconciliation error during finalize is returned, not raised (same
+    silent-ok=True trap as extraction's per-document failures) — _run_finalize's own `out.get
+    ("error")` check, mirrored here so the terse runner can flag it too."""
+    monkeypatch.setattr(wd_ingest, "cmd_finalize",
+                        lambda ns: {"error": "rate limit reached"})
+    result = rb.run_finalizer_arm({"id": "haiku", "finalizer_model": "haiku"}, tmp_path)
+    assert result.ok is True
+    assert result.doc_errors == ["rate limit reached"]
+
+
+def test_run_finalizer_arm_suppresses_cmd_finalize_stdout(monkeypatch, tmp_path, capsys):
+    def _noisy(ns):
+        print("Finalizing — entity reconciliation + synthesis + timeline + briefing.")
+        return {}
+    monkeypatch.setattr(wd_ingest, "cmd_finalize", _noisy)
+    rb.run_finalizer_arm({"id": "haiku", "finalizer_model": "haiku"}, tmp_path)
+    assert "Finalizing" not in capsys.readouterr().out
 
 
 # ── classifier-sweep skip path ─────────────────────────────────────────────────
@@ -518,6 +602,60 @@ def test_write_run_layout(tmp_path):
 
     run_dir_2 = br.write_run(out_root, results, scores, config)
     assert run_dir_2 != run_dir
+
+
+# ── run_id: minute precision so multiple sessions in a day don't collide ───────
+
+def test_run_id_includes_time_not_just_date():
+    from datetime import datetime
+    rid = br.run_id(datetime(2026, 7, 29, 14, 32))
+    assert rid == "2026-07-29-1432"
+
+
+def test_run_id_still_dedupes_within_the_same_minute():
+    from datetime import datetime
+    now = datetime(2026, 7, 29, 14, 32)
+    first = br.run_id(now)
+    second = br.run_id(now, existing={first})
+    assert second == f"{first}-2"
+
+
+# ── write_run: errors.log ───────────────────────────────────────────────────────
+
+def test_write_run_writes_errors_log_for_a_hard_failure(tmp_path):
+    results = [_arm_result(arm_id="sonnet-low", ok=False, error="auth not configured")]
+    scores = {"totals": {"facts": {}, "must_not_miss": {}}, "detail": [], "unscorable": [],
+             "vaults": []}
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    run_dir = br.write_run(tmp_path / "benchmarks", results, scores, config)
+    log = (run_dir / "errors.log").read_text()
+    assert "extractor:sonnet-low" in log
+    assert "auth not configured" in log
+    assert "errors.log" in (run_dir / "REPORT.md").read_text()
+
+
+def test_write_run_writes_errors_log_for_per_document_failures(tmp_path):
+    """The exact real-world case: ok=True at the arm level, but every document inside failed —
+    REPORT.md's tables alone would show this arm looking indistinguishable from a clean run."""
+    results = [_arm_result(arm_id="sonnet-med", ok=True,
+                          doc_errors=["doc1.pdf: 400 bad schema", "doc2.pdf: 400 bad schema"])]
+    scores = {"totals": {"facts": {}, "must_not_miss": {}}, "detail": [], "unscorable": [],
+             "vaults": []}
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    run_dir = br.write_run(tmp_path / "benchmarks", results, scores, config)
+    log = (run_dir / "errors.log").read_text()
+    assert "doc1.pdf: 400 bad schema" in log
+    assert "doc2.pdf: 400 bad schema" in log
+    assert "2 document(s) failed" in (run_dir / "REPORT.md").read_text()
+
+
+def test_write_run_omits_errors_log_when_nothing_failed(tmp_path):
+    results = [_arm_result(arm_id="haiku", ok=True)]
+    scores = {"totals": {"facts": {}, "must_not_miss": {}}, "detail": [], "unscorable": [],
+             "vaults": []}
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    run_dir = br.write_run(tmp_path / "benchmarks", results, scores, config)
+    assert not (run_dir / "errors.log").exists()
 
 
 # ── score_arms.py refactor regression ──────────────────────────────────────────
@@ -728,6 +866,41 @@ def test_arms_filter_rejects_an_unknown_arm_id(tmp_path, monkeypatch):
     monkeypatch.setattr(rb, "corpus_documents", lambda d: [Path("a.pdf")])
     with pytest.raises(SystemExit, match="unknown arm id"):
         rb.main(["--config", str(cfg), "--stages", "extractor", "--arms", "sonnet-med-sdkk"])
+
+
+# ── ctrl+c stops the whole run, not just the current arm ───────────────────────
+
+def test_cancelled_arm_stops_the_run_before_the_next_arm(tmp_path, monkeypatch, capsys):
+    """cmd_extract traps ctrl+c internally and returns normally (`cancelled: True` in its
+    summary) rather than raising — before this fix the outer loop had no way to see that and
+    just started the next arm's real API calls, which is why a single ctrl+c wasn't enough."""
+    cfg = _matrix_config(tmp_path)   # sonnet-med-sdk, sonnet-med-api, haiku — three arms
+    monkeypatch.setattr(rb, "verify_freeze", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "corpus_documents", lambda d: [Path("a.pdf")])
+    monkeypatch.setattr(rb, "ensure_master_vault", lambda *a, **k: tmp_path / "master")
+    monkeypatch.setattr(rb, "seed_arm_vault", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "arm_vault", lambda prefix, aid, root: tmp_path / f"{prefix}-{aid}")
+    monkeypatch.setattr(rb, "preview_extractor_arm", lambda v, m: {"cost_low": 1.0, "cost_high": 2.0})
+    monkeypatch.setattr(rb, "arm_backend", lambda m, default: "claude-api")
+    monkeypatch.setattr(rb, "_auth_mode", lambda: "api-key")
+    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: True)
+
+    calls = []
+
+    def _fake_run_extractor_arm(arm, vault):
+        calls.append(arm["id"])
+        cancelled = arm["id"] == "sonnet-med-sdk"   # the first arm run
+        return rb.ArmResult(arm_id=arm["id"], stage="extractor", vault=vault, ok=True,
+                            cancelled=cancelled)
+
+    monkeypatch.setattr(rb, "run_extractor_arm", _fake_run_extractor_arm)
+    monkeypatch.setattr(br, "write_run", lambda *a, **k: tmp_path)
+
+    rb.main(["--config", str(cfg), "--stages", "extractor"])
+
+    assert calls == ["sonnet-med-sdk"]   # sonnet-med-api and haiku never ran
+    out = capsys.readouterr().out
+    assert "Run stopped — 1 of 3 arm(s) completed." in out
 
 
 # ── sdk-check stage (#482 follow-up) ───────────────────────────────────────────
