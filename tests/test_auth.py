@@ -365,6 +365,61 @@ def test_status_says_nothing_about_anthropic_key_when_none_stored(home, monkeypa
     assert "inactive" not in out
 
 
+def test_status_lists_anthropic_key_under_providers_as_in_use(home, tmp_path, monkeypatch, capsys):
+    # Providers is meant to be the definitive list of stored keys — Anthropic used to be
+    # filtered out of it unconditionally, which contradicted that claim.
+    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
+    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-api-key-123456"}})
+    _tty(monkeypatch, False)
+    auth.cmd_auth(object())
+    out = capsys.readouterr().out
+    assert "Providers" in out
+    assert auth._mask("sk-ant-api-key-123456") in out
+    assert "in use" in out
+
+
+def test_status_claude_code_heading_has_no_ingestion_subtitle(home, monkeypatch, capsys):
+    # The old "— interactive commands, and ingestion by default" subtitle overstated this
+    # command's scope: `watchdog auth` only ever configures ingestion, never the separate
+    # interactive Claude Code session (which manages its own login).
+    auth._save_state({"mode": "subscription", "keys": {}})
+    _tty(monkeypatch, False)
+    auth.cmd_auth(object())
+    out = capsys.readouterr().out
+    assert "interactive commands" not in out
+
+
+# ── status: an Anthropic-routed ingestion stage names its billing mode ────────
+
+def test_status_ingestion_row_names_anthropic_mode(home, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
+    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-anything-123456"}})
+    _tty(monkeypatch, False)
+    auth.cmd_auth(object())
+    out = capsys.readouterr().out
+    assert "anthropic · api-key" in out
+
+
+def test_status_ingestion_row_names_anthropic_subscription_mode(home, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
+    auth._save_state({"mode": "subscription", "keys": {}})
+    _tty(monkeypatch, False)
+    auth.cmd_auth(object())
+    out = capsys.readouterr().out
+    assert "anthropic · subscription" in out
+
+
+def test_status_ingestion_row_omits_mode_for_non_anthropic_provider(home, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
+    (tmp_path / "config.json").write_text(json.dumps({"extractor_model": "gemini:gemini-2.5-flash"}))
+    auth._save_state({"mode": "api-key", "keys": {"gemini": "gm-key-123456"}})
+    _tty(monkeypatch, False)
+    auth.cmd_auth(object())
+    out = capsys.readouterr().out
+    assert "(gemini)" in out
+    assert "gemini ·" not in out
+
+
 # ── ensure_provider_key: picking a model must not leave a stage keyless ───────
 
 def test_ensure_provider_key_prompts_and_stores_for_new_provider(home, monkeypatch):
