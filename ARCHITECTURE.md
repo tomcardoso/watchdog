@@ -1042,9 +1042,17 @@ completed purge, and the CLI hint says so.
   `model_client.py` and `cmd/base.py` (the `watchdog context`/`_launch_claude` path) read from
   it, so there's no second, silently divergent copy of a model id. Structured-output enforcement
   differs by provider on the OpenAI-compatible path:
-  Gemini gets a real `json_schema` response format (its schema engine tolerates the same
-  omit-optional-fields `schemas.py` design unmodified), while OpenAI, DeepSeek, local, and
-  OpenRouter stay on portable `json_object` + schema-in-prompt (D98).
+  Gemini gets a real `json_schema` response format using `schemas.py`'s schema as-authored (its
+  schema engine tolerates the same omit-optional-fields design unmodified). OpenAI also gets a
+  real, wire-enforced `json_schema` request (`strict: true`), but against a schema mechanically
+  derived by `model_client._to_strict_schema` — OpenAI's strict mode demands every property
+  appear in `required`, so the derived variant forces that and widens each newly-required
+  scalar property to a nullable union; `_denormalize_strict_json`/`_strip_none` then strip those
+  nulls back out of the response before it reaches the shared validate/prune path, so `schemas.py`'s
+  actual (non-strict) schema and every downstream reader's omitted-vs-null handling need no
+  OpenAI-specific carve-out (D151, issue #479). DeepSeek, local, and OpenRouter stay on portable
+  `json_object` + schema-in-prompt (D98) — DeepSeek's JSON mode has no schema field to send, and
+  local/OpenRouter route to an arbitrary model with no capability table to consult (D139).
   **Provider
   abstraction:** the abstract `effort` intent is mapped to each provider's native control by
   a per-provider policy (`_EFFORT_POLICY`: Claude `output_config.effort`, OpenAI
