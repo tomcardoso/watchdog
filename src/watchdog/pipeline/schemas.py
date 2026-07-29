@@ -131,6 +131,21 @@ EXTRACTION = _obj(
     ["document", "entities", "morgue_entity_id", "scratchpad"],
 )
 
+# title/document_type/summary widened to nullable for sections only (not EXTRACTION, where
+# they're required and always meant to carry real content): once #496 made document.key_facts
+# required on every section, gpt-nano started explicitly nulling these three — genuinely
+# section-1-only fields it has nothing to say on past section 1 — on later sections instead of
+# omitting them, the same "OpenAI's json_object mode gives no wire-level shape enforcement" gap
+# that motivated widening morgue_entity_id/morgue_document_type/observations below. Reproduced
+# directly: a SECTION document with these three set to None hard-failed with the exact three
+# "None is not of type 'string'" errors seen on a live gpt-nano ingest.
+_SECTION_DOCUMENT_PROPS = {
+    **_DOCUMENT["properties"],
+    "title": _NULLABLE_STR,
+    "document_type": _NULLABLE_STR,
+    "summary": _NULLABLE_STR,
+}
+
 # One page-range section's partial contribution. Looser than EXTRACTION: only section 1
 # fills document metadata + morgue fields; merge.run assembles the whole. `document.key_facts`
 # stays required on every section regardless (#496) — title/document_type/summary are the only
@@ -141,7 +156,7 @@ EXTRACTION = _obj(
 # later section can't skip the object altogether to dodge the inner requirement.
 SECTION = _obj(
     {
-        "document": _obj(_DOCUMENT["properties"], ["key_facts"]),
+        "document": _obj(_SECTION_DOCUMENT_PROPS, ["key_facts"]),
         "entities": {"type": "array", "items": _ENTITY},
         # Nullable (not bare "string"): OpenAI's json_object mode gives no wire-level shape
         # enforcement, so a model that means "nothing for this section" sometimes emits an

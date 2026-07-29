@@ -62,12 +62,13 @@ def _count_optional(node, total=0) -> int:
 
 # Anthropic doesn't document the exact counting rule (confirmed unclear even in their own repo's
 # issue tracker as of this writing) — nullable-typed optional fields appear to cost more than
-# plain ones. SECTION now has four nullable optional fields (document.date_of_document, plus
-# morgue_entity_id/morgue_document_type/observations widened to nullable by #490, to stop OpenAI's
-# weak json_object mode from hard-failing schema validation when it nulls an optional field
-# instead of omitting it) — up from one before that fix. Even a full 2x worst-case weighting on
-# all four only adds ~4 to SECTION's raw count of 21, landing at 25 — over the raw limit of 24,
-# not just inside the margin. This hasn't been verified against a real claude-api call since the
+# plain ones. SECTION now has seven nullable optional fields (document.date_of_document; morgue_
+# entity_id/morgue_document_type/observations widened by #490/D147; document.title/document_type/
+# summary widened by #490/D149 — all to stop OpenAI's weak json_object mode from hard-failing
+# schema validation when it nulls an optional field instead of omitting it) — up from one before
+# the first of those fixes. SECTION's raw optional-property count is 19; even a full 2x worst-case
+# weighting on all seven nullable fields adds ~7, landing at 26 — over the raw limit of 24, not
+# just inside the margin. This hasn't been verified against a real claude-api call since the
 # nullable-cost theory itself was never confirmed, only inferred defensively; treat this as a real
 # open risk, not a settled one, until it's checked live.
 _CLAUDE_OPTIONAL_PARAM_LIMIT = 24
@@ -110,6 +111,20 @@ def test_section_tolerates_explicit_null_on_its_optional_string_fields():
     import jsonschema
     section = {"document": {"key_facts": []}, "entities": [], "morgue_entity_id": None,
               "morgue_document_type": None, "observations": None}
+    errors = list(jsonschema.Draft202012Validator(schemas.SECTION).iter_errors(section))
+    assert not errors, [e.message for e in errors]
+
+
+def test_section_document_tolerates_explicit_null_on_title_type_and_summary():
+    """Live gpt-nano regression (post-#496): once document.key_facts became required on every
+    section, a later section with nothing to add for title/document_type/summary — genuinely
+    section-1-only fields — started emitting explicit null for them instead of omitting the keys,
+    hard-failing with the exact same 'None is not of type string' shape #490 already fixed once
+    for the morgue/observations fields. merge.merge_extractions only ever reads these three from
+    the first section with a document dict, so a later section's null costs nothing downstream."""
+    import jsonschema
+    section = {"document": {"key_facts": [], "title": None, "document_type": None,
+                             "summary": None}, "entities": []}
     errors = list(jsonschema.Draft202012Validator(schemas.SECTION).iter_errors(section))
     assert not errors, [e.message for e in errors]
 
