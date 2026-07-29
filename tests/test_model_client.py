@@ -759,8 +759,8 @@ def test_prune_unknown_removes_nested_array_item_key():
 
 
 def test_prune_unknown_leaves_free_form_object_untouched():
-    # file_metadata is a real example (schemas.py's _DOCUMENT): a plain {"type": "object"}
-    # with no additionalProperties:False, so its contents must never be touched.
+    # A hypothetical free-form object property: a plain {"type": "object"} with no
+    # additionalProperties:False, so its contents must never be touched.
     free_form_schema = {
         "type": "object",
         "properties": {"file_metadata": {"type": "object"}},

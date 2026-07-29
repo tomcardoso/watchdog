@@ -93,28 +93,27 @@ _ENTITY = _obj(
     ["id", "name", "type"],
 )
 
+# sha256/filename/original_path/page_count, source/obtained, file_metadata, and (on EXTRACTION,
+# below) morgue_document_type used to sit in these schemas too, as optional properties — the
+# model never fills any of them (orchestrate._stamp_document sets every one unconditionally,
+# after the model call returns, straight from pf/sha/document_type — never reading a pre-existing
+# value first), so they were pure dead weight from the model's perspective. They were kept
+# "so the stamped dict validates" against this same schema, but nothing actually re-validates
+# the stamped dict afterward — jsonschema validation only ever runs on the model's raw response,
+# before stamping (model_client.acomplete_json / batch_extract.collect). Claude's strict
+# structured-output mode counts every optional property toward a hard complexity limit
+# ("Schemas contains too many optional parameters (28)... limit: 24") and nullable-typed ones
+# disproportionately so — corpus-v1's dense 70-page document hit exactly this, 400ing every
+# claude-api extraction outright. Dropping these seven dead properties is a genuine schema
+# correction, not just a workaround: they were never part of the model's actual contract.
 _DOCUMENT = _obj(
     {
-        "sha256": {"type": "string"},
-        "filename": {"type": "string"},
-        "original_path": _NULLABLE_STR,
         "title": {"type": "string"},
         "document_type": {"type": "string"},
         "date_of_document": _NULLABLE_STR,
-        "page_count": {"type": ["integer", "null"]},
-        "source": _NULLABLE_STR,
-        "obtained": _NULLABLE_STR,
         "summary": {"type": "string"},
         "key_facts": {"type": "array", "items": _KEY_FACT},
-        "file_metadata": _obj({}, []),
     },
-    # sha256/filename/original_path/page_count, source/obtained, and file_metadata are stamped
-    # by Python (orchestrate._stamp_document) — deterministic values the pipeline already holds,
-    # not echoed by the model. They stay in `properties` (optional) so the stamped dict validates.
-    # file_metadata is `_obj({}, [])` rather than a bare `{"type": "object"}` because Claude's
-    # strict structured-output mode (output_config.format.schema) rejects any object-type node
-    # that doesn't explicitly declare `additionalProperties` — closed-and-empty is correct here
-    # anyway, since the model never fills this field.
     ["title", "document_type", "summary", "key_facts"],
 )
 
@@ -124,9 +123,6 @@ EXTRACTION = _obj(
         "document": _DOCUMENT,
         "entities": {"type": "array", "items": _ENTITY},
         "morgue_entity_id": {"type": "string"},
-        # morgue_document_type is derived in Python as slugify(document.document_type)
-        # (orchestrate._stamp_document) — kept optional here so the stamped dict validates.
-        "morgue_document_type": {"type": "string"},
         "scratchpad": {"type": "string"},   # curated briefing notes (Step 9 of the old skill)
         # Concrete documents this document refers to that a reporter could go and get (#365) —
         # moved out of scratchpad, not duplicated. Optional: omit entirely when none apply.
