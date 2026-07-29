@@ -41,6 +41,36 @@ def _fmt_secs(s: float) -> str:
     return f"{s:.1f}s" if s < 60 else f"{s / 60:.1f}m"
 
 
+_BATCH_TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def _batch_span(start: str | None, end: str | None) -> str | None:
+    """Human duration between two batch-lifecycle timestamps (orchestrate.py's `_BATCH_TS_FMT`
+    strings), or None if either is missing — `ended_at` predates this feature for any batch
+    collected before it shipped, and `collected_at` is absent from a non-batch call entirely."""
+    if not start or not end:
+        return None
+    import datetime
+    secs = (datetime.datetime.strptime(end, _BATCH_TS_FMT)
+           - datetime.datetime.strptime(start, _BATCH_TS_FMT)).total_seconds()
+    return _fmt_secs(max(secs, 0))
+
+
+def _batch_lifecycle_note(call: dict) -> str:
+    """`submitted -> ended -> collected` summary for a batch-collected stage — the middle and
+    last of those routinely differ by hours under D52's submit-and-exit design, since collection
+    happens whenever a later, unrelated `watchdog dig` invocation happens to notice the batch has
+    ended, not right after it does."""
+    submitted, ended, collected = (call.get("batch_submitted_at"), call.get("batch_ended_at"),
+                                   call.get("batch_collected_at"))
+    processed, idle = _batch_span(submitted, ended), _batch_span(ended, collected)
+    return (
+        f"batch {call.get('batch_id') or '?'} · submitted {submitted or '?'} · "
+        f"ended {ended or '?'}" + (f" (processed {processed})" if processed else "") +
+        f" · collected {collected or '?'}" + (f" (idle {idle})" if idle else "")
+    )
+
+
 def _wall_span(calls: list[dict]) -> float | None:
     """Wall-clock elapsed across `calls` — max(end) − min(start), where each call's start is
     `end_ts − latency_s`. This is the real time the calls took together, which for a stage that
@@ -363,6 +393,9 @@ def _analyze_run(usage_file: Path, vault: Path) -> None:
             # A local model's $0 cost is real, but it isn't "free" the way it reads at a glance
             # (#380) — it's paid in wall-clock time instead of tokens. Latency is the real signal.
             print(f"  {_DIM}local model — no per-token cost; Latency is the real cost signal here{_RESET}")
+        batch_call = next((c for c in stage_calls if c.get("batch_id")), None)
+        if batch_call:
+            print(f"  {_DIM}↳ {_batch_lifecycle_note(batch_call)}{_RESET}")
         totals = _print_stage(stage_calls)
         _accumulate(grand, totals)
         n_calls += len(stage_calls)

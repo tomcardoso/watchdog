@@ -3,6 +3,7 @@ collect. The Anthropic SDK client is mocked at the `_client` boundary, matching 
 test_model_client.py mocks _ABACKENDS rather than the real (uninstalled) anthropic package."""
 
 import asyncio
+import datetime
 import json
 
 import pytest
@@ -67,11 +68,13 @@ class _FakeResultPage:
 
 class FakeBatches:
     def __init__(self, batch_id="batch_123", processing_status="ended",
-                request_counts=None, results=None):
+                request_counts=None, results=None, created_at=None, ended_at=None):
         self.batch_id = batch_id
         self.processing_status = processing_status
         self.request_counts = request_counts or {}
         self._results = results or []
+        self.created_at = created_at
+        self.ended_at = ended_at
         self.create_calls = []
 
     async def create(self, *, requests):
@@ -79,7 +82,8 @@ class FakeBatches:
         return _Obj(id=self.batch_id)
 
     async def retrieve(self, batch_id):
-        return _Obj(processing_status=self.processing_status, request_counts=self.request_counts)
+        return _Obj(processing_status=self.processing_status, request_counts=self.request_counts,
+                    created_at=self.created_at, ended_at=self.ended_at)
 
     async def results(self, batch_id):
         return _FakeResultPage(self._results)
@@ -90,17 +94,23 @@ class FakeClient:
         self.messages = _Obj(batches=batches)
 
 
-def _succeeded(custom_id, obj: dict, *, input_tokens=100, output_tokens=20):
+def _succeeded(custom_id, obj: dict, *, input_tokens=100, output_tokens=20, stop_reason="end_turn"):
     message = _Obj(
         content=[_Obj(type="text", text=json.dumps(obj))],
         usage=_Obj(input_tokens=input_tokens, output_tokens=output_tokens,
                   cache_creation_input_tokens=0, cache_read_input_tokens=0),
+        stop_reason=stop_reason,
     )
     return _Obj(custom_id=custom_id, result=_Obj(type="succeeded", message=message))
 
 
 def _not_succeeded(custom_id, rtype):
     return _Obj(custom_id=custom_id, result=_Obj(type=rtype, message=None))
+
+
+def _errored(custom_id, error_type, error_message):
+    err = _Obj(error=_Obj(type=error_type, message=error_message), type="error")
+    return _Obj(custom_id=custom_id, result=_Obj(type="errored", error=err))
 
 
 VALID_EXTRACTION = {
@@ -171,6 +181,23 @@ def test_status_reports_processing_state(monkeypatch):
     assert s["request_counts"] == {"processing": 5, "succeeded": 3}
 
 
+def test_status_reports_created_and_ended_at(monkeypatch):
+    created = datetime.datetime(2026, 7, 29, 2, 54, 46, tzinfo=datetime.timezone.utc)
+    ended = datetime.datetime(2026, 7, 29, 3, 36, 2, tzinfo=datetime.timezone.utc)
+    fake = FakeBatches(processing_status="ended", created_at=created, ended_at=ended)
+    monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
+    s = asyncio.run(be.status("batch_abc", "sk-x"))
+    assert s["created_at"] == "2026-07-29T02:54:46Z"
+    assert s["ended_at"] == "2026-07-29T03:36:02Z"
+
+
+def test_status_ended_at_is_none_while_still_processing(monkeypatch):
+    fake = FakeBatches(processing_status="in_progress", ended_at=None)
+    monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
+    s = asyncio.run(be.status("batch_abc", "sk-x"))
+    assert s["ended_at"] is None
+
+
 # ── collect ───────────────────────────────────────────────────────────────────
 
 def test_collect_maps_succeeded_results_by_sha(monkeypatch):
@@ -194,13 +221,34 @@ def test_collect_prices_at_half_the_standard_rate(monkeypatch):
     assert out["sha1"]["cost_usd"] == pytest.approx(1.5)   # $3/MTok input, batch halves it
 
 
-@pytest.mark.parametrize("rtype", ["errored", "canceled", "expired"])
+@pytest.mark.parametrize("rtype", ["canceled", "expired"])
 def test_collect_reports_non_succeeded_results(monkeypatch, rtype):
     fake = FakeBatches(results=[_not_succeeded("sha1", rtype)])
     monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
     out = asyncio.run(be.collect("batch_abc", "sk-x", "claude-sonnet-4-6"))
     assert out["sha1"]["ok"] is False
     assert rtype in out["sha1"]["error"]
+
+
+def test_collect_surfaces_the_real_reason_for_an_errored_result(monkeypatch):
+    """An `errored` result carries Anthropic's actual reason (ErrorResponse.error.{type,
+    message}) — collapsing it to a generic "wasn't succeeded" string (the old behaviour, still
+    correct for canceled/expired, which carry no further detail) throws away real debugging
+    signal a live call's ModelError would have kept."""
+    fake = FakeBatches(results=[_errored("sha1", "invalid_request_error", "prompt too long")])
+    monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
+    out = asyncio.run(be.collect("batch_abc", "sk-x", "claude-sonnet-4-6"))
+    assert out["sha1"]["ok"] is False
+    assert "invalid_request_error" in out["sha1"]["error"]
+    assert "prompt too long" in out["sha1"]["error"]
+
+
+def test_collect_includes_stop_reason_in_usage(monkeypatch):
+    results = [_succeeded("sha1", VALID_EXTRACTION, stop_reason="max_tokens")]
+    fake = FakeBatches(results=results)
+    monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
+    out = asyncio.run(be.collect("batch_abc", "sk-x", "claude-sonnet-4-6"))
+    assert out["sha1"]["usage"]["stop_reason"] == "max_tokens"
 
 
 def test_collect_flags_unparseable_text_without_crashing(monkeypatch):

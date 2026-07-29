@@ -110,13 +110,41 @@ def _model_dump(obj) -> dict:
     return obj.model_dump() if hasattr(obj, "model_dump") else dict(obj)
 
 
+def _iso(dt: datetime.datetime | None) -> str | None:
+    """A `MessageBatch` timestamp (a real `datetime`, per the SDK's own type) in the same
+    `%Y-%m-%dT%H:%M:%SZ` string shape `write_state` already stamps `submitted_at` with — so the
+    two are directly comparable without a second timestamp format anywhere in a batch's
+    lifecycle. `ended_at` is None until processing ends; passed through as None rather than a
+    placeholder string, since a caller that hasn't checked `processing_status` first shouldn't
+    be able to mistake "not finished yet" for a real timestamp."""
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ") if dt is not None else None
+
+
 async def status(batch_id: str, api_key: str) -> dict:
-    """Current `{"processing_status", "request_counts"}` for a submitted batch. Status starts
-    `in_progress` and becomes `ended` once every request has finished (succeeded/errored/
-    canceled/expired) and results are ready to collect."""
+    """Current `{"processing_status", "request_counts", "created_at", "ended_at"}` for a
+    submitted batch. Status starts `in_progress` and becomes `ended` once every request has
+    finished (succeeded/errored/canceled/expired) and results are ready to collect. `ended_at`
+    is None until then — Anthropic's own record of when processing finished, distinct from
+    `submitted_at` (this run's own clock, in the persisted batch state) and from whenever a
+    *later* run happens to notice `ended` and calls `collect` (D52's submit-and-exit design
+    means those two moments routinely differ by hours)."""
     client = _client(api_key)
     b = await client.messages.batches.retrieve(batch_id)
-    return {"processing_status": b.processing_status, "request_counts": _model_dump(b.request_counts)}
+    return {"processing_status": b.processing_status, "request_counts": _model_dump(b.request_counts),
+           "created_at": _iso(b.created_at), "ended_at": _iso(b.ended_at)}
+
+
+def _batch_error_text(err) -> str:
+    """Human string for a `MessageBatchErroredResult.error` (an `ErrorResponse` wrapping an
+    `ErrorObject` variant — every variant carries `type`/`message`) — falls back to `str(err)`
+    if the SDK's shape doesn't match what's expected here, since collection must never crash
+    over an error shape it didn't anticipate."""
+    inner = getattr(err, "error", None)
+    msg = getattr(inner, "message", None) if inner is not None else None
+    etype = getattr(inner, "type", None) if inner is not None else None
+    if msg:
+        return f"{etype}: {msg}" if etype else msg
+    return str(err)
 
 
 async def collect(batch_id: str, api_key: str, model_id: str) -> dict[str, dict]:
@@ -125,7 +153,14 @@ async def collect(batch_id: str, api_key: str, model_id: str) -> dict[str, dict]
     treatment a single call gets (`model_client._extract_json`/`_validate`), so the caller
     (`orchestrate._run_batch`) can feed a result straight into the same post-flight path used for
     any other extraction. `ok=True` only means schema-valid JSON came back — post-flight's own
-    business-rule validation still runs afterward, exactly as it does for a synchronous call."""
+    business-rule validation still runs afterward, exactly as it does for a synchronous call.
+
+    A succeeded item's `usage` carries `stop_reason` alongside the token counts (D125-style
+    truncation visibility — a batch call has no continuation/repair path the way a live call
+    does, so `"max_tokens"` here is the only signal that a result may be an incomplete JSON
+    fragment rather than genuinely malformed). An `errored` item's `error` is the real reason
+    Anthropic gave, not a generic "wasn't succeeded" placeholder — `canceled`/`expired` have no
+    further detail to give, so those stay generic."""
     client = _client(api_key)
     out: dict[str, dict] = {}
     result_stream = await client.messages.batches.results(batch_id)
@@ -133,13 +168,18 @@ async def collect(batch_id: str, api_key: str, model_id: str) -> dict[str, dict]
         sha = item.custom_id
         rtype = item.result.type
         if rtype != "succeeded":
+            reason = (f"batch result errored: {_batch_error_text(item.result.error)}"
+                      if rtype == "errored" else f"batch result was '{rtype}', not 'succeeded'")
             out[sha] = {"ok": False, "parsed": None, "usage": None, "cost_usd": None,
-                       "error": f"batch result was '{rtype}', not 'succeeded'"}
+                       "error": reason}
             continue
         message = item.result.message
         text = next((b.text for b in message.content if getattr(b, "type", None) == "text"), "")
         parsed = model_client._extract_json(text)
         usage_dict = _model_dump(message.usage)
+        stop_reason = getattr(message, "stop_reason", None)
+        if stop_reason:
+            usage_dict["stop_reason"] = stop_reason
         cost = model_client._batch_cost(model_id, message.usage)
         if parsed is None:
             out[sha] = {"ok": False, "parsed": None, "usage": usage_dict, "cost_usd": cost,
