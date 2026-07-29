@@ -317,6 +317,82 @@ def _prune_unknown(obj, schema, _path: str = "") -> list[str]:
     return removed
 
 
+def _to_strict_schema(node):
+    """Derive an OpenAI strict-mode (`strict: true`) compatible variant of a JSON schema (issue
+    #479): every object's `required` becomes every one of its properties, since strict mode
+    demands each key always be present. A property newly forced required this way — originally
+    optional — is widened to a nullable union if it's a scalar (string/integer/etc.) type, the
+    same `_NULLABLE_STR`-style convention `pipeline/schemas.py` already uses for "no value" —
+    so the model expresses omission as an explicit `null` instead of being unable to omit at
+    all. An optional array-typed property is left as a plain array: the model can already
+    express "nothing here" as `[]` with no null union needed, and there are currently no
+    optional object-typed properties in any schema this runs against. Recurses through
+    `properties` and array `items`. Never mutates its input — every level is copied — since the
+    schemas this runs against (`pipeline/schemas.py`'s module-level constants) are shared,
+    reused objects."""
+    if not isinstance(node, dict):
+        return node
+    node = dict(node)
+    if node.get("type") == "object" and "properties" in node:
+        original_required = set(node.get("required") or [])
+        new_props = {}
+        for key, sub in node["properties"].items():
+            sub = _to_strict_schema(sub)
+            if key not in original_required and sub.get("type") not in ("array", "object"):
+                sub = _nullable_variant(sub)
+            new_props[key] = sub
+        node["properties"] = new_props
+        node["required"] = list(new_props.keys())
+        node["additionalProperties"] = False
+    if "items" in node:
+        node["items"] = _to_strict_schema(node["items"])
+    return node
+
+
+def _nullable_variant(sub: dict) -> dict:
+    """Widen one property schema to also accept `null`, appending `None` to its `enum` list too
+    if it has one (an enum without an explicit `null` member rejects a null value even once the
+    `type` allows it) — the scalar half of `_to_strict_schema`."""
+    sub = dict(sub)
+    t = sub.get("type")
+    if isinstance(t, list):
+        if "null" not in t:
+            sub["type"] = [*t, "null"]
+    elif t is not None and t != "null":
+        sub["type"] = [t, "null"]
+    if "enum" in sub and None not in sub["enum"]:
+        sub["enum"] = [*sub["enum"], None]
+    return sub
+
+
+def _strip_none(value):
+    """Recursively drop `None`-valued dict keys — the inverse of `_to_strict_schema`'s nullable
+    widening. OpenAI's strict mode forces every optional field to be present, using `null` for
+    "no value"; every other backend (and `pipeline/schemas.py`'s own non-strict contract) omits
+    the key entirely for the same meaning. Applied to a strict-mode response before it reaches
+    the shared validate/prune path, so `schemas.py`'s actual schema — and every downstream
+    reader's long-established omitted-vs-null handling — needs no OpenAI-specific carve-out."""
+    if isinstance(value, dict):
+        return {k: _strip_none(v) for k, v in value.items() if v is not None}
+    if isinstance(value, list):
+        return [_strip_none(v) for v in value]
+    return value
+
+
+def _denormalize_strict_json(text: str) -> str:
+    """Undo `_to_strict_schema`'s null-for-omitted-field convention on a raw OpenAI strict-mode
+    response, before the shared `_extract_json`/`_validate`/`_prune_unknown` path sees it — so
+    that path keeps validating against `schemas.py`'s actual (non-strict) schema unmodified,
+    exactly as it does for every other backend. If the response isn't valid JSON (shouldn't
+    happen under real wire-level enforcement, but nothing here should assume it), the text is
+    returned unchanged and the ordinary invalid-JSON retry path handles it."""
+    try:
+        parsed = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return text
+    return json.dumps(_strip_none(parsed))
+
+
 # ── backends: each is (prompt, model_id, schema, api_key) -> {text, usage, cost_usd} ──
 
 # `prompt` is normally a plain string, but a caller that wants prompt caching (A1) — currently
@@ -585,21 +661,27 @@ def _split_deepseek_thinking(model_id: str) -> tuple[str, bool]:
 
 def _openai_response_format(base_url: str, schema: dict) -> dict:
     """The `response_format` for an OpenAI-compatible request — real `json_schema` structured
-    output where it's safe, portable `json_object` mode elsewhere (D98).
+    output where it's safe, portable `json_object` mode elsewhere (D98/D151, issue #479).
 
     Gemini's OpenAI-compat endpoint honours `json_schema` with genuine wire-level enforcement,
     and its own schema engine treats `required` as an optional list rather than demanding every
     property (ai.google.dev/gemini-api/docs/structured-output) — matching schemas.py's
     omit-optional-fields design (e.g. `_KEY_FACT`'s `required` is just `["fact"]`) with no
-    rewrite needed. OpenAI's own Structured Outputs mode is real too, but only in `strict`
-    form, which demands every property be listed in `required` (nullable unions standing in
-    for "optional") — directly conflicting with that same design — and it has no non-strict
-    schema-hint mode, so a `json_schema` request would need a parallel, all-fields-required
-    schema variant to use safely. DeepSeek's JSON Output docs (api-docs.deepseek.com/guides/
-    json_mode) document only `json_object` — no schema field at all. So only Gemini gets the
-    upgrade; OpenAI and DeepSeek keep the schema-in-prompt path."""
+    rewrite needed. OpenAI's own Structured Outputs mode is real too, but only in `strict` form,
+    which demands every property be listed in `required` (nullable unions standing in for
+    "optional") — directly conflicting with that same design, so it gets a mechanically-derived
+    `_to_strict_schema` variant instead of the schema as-authored (D151) — repeated live gpt-nano
+    failures under the weaker `json_object` mode (issue #490) made D98's original prompt-only
+    tradeoff no longer worth it for OpenAI specifically. DeepSeek's JSON Output docs
+    (api-docs.deepseek.com/guides/json_mode) document only `json_object` — no schema field at
+    all, so it (and `local`/`openrouter`, D139 — no capability table for an arbitrary model)
+    keep the schema-in-prompt path."""
     if "generativelanguage.googleapis.com" in base_url:
         return {"type": "json_schema", "json_schema": {"name": "watchdog_response", "schema": schema}}
+    if base_url.rstrip("/") == _OPENAI_BASE["openai"]:
+        return {"type": "json_schema",
+                "json_schema": {"name": "watchdog_response", "strict": True,
+                                 "schema": _to_strict_schema(schema)}}
     return {"type": "json_object"}
 
 
@@ -696,6 +778,8 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     data = resp.json()
     choices = data.get("choices") or []
     text = (choices[0].get("message", {}).get("content") or "") if choices else ""
+    if is_openai and response_format["type"] == "json_schema":
+        text = _denormalize_strict_json(text)
     finish = choices[0].get("finish_reason") if choices else None
     usage = data.get("usage")
     return {"text": text, "usage": usage, "cost_usd": _openai_cost(model_id, usage),

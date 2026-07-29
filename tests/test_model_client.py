@@ -2,6 +2,7 @@
 tier escalation on retry, telemetry. The two SDK backends are mocked."""
 
 import asyncio
+import json
 
 import pytest
 
@@ -692,7 +693,7 @@ def test_gemini_backend_request_shape(monkeypatch):
     assert out["cost_usd"] == pytest.approx(10 * 0.30e-6 + 5 * 2.50e-6)
 
 
-# ── response_format: real json_schema on Gemini, json_object elsewhere (D98) ───────────────────
+# ── response_format: real json_schema on Gemini and OpenAI, json_object elsewhere (D98/D151) ────
 
 def test_gemini_uses_real_json_schema_mode(monkeypatch):
     captured = {}
@@ -707,13 +708,19 @@ def test_gemini_uses_real_json_schema_mode(monkeypatch):
     assert "Return JSON matching this schema" not in captured["body"]["messages"][1]["content"]
 
 
-def test_openai_stays_on_json_object_mode(monkeypatch):
+def test_openai_uses_strict_json_schema_mode(monkeypatch):
+    """#479/D151: OpenAI gets real wire-level enforcement too, via a mechanically-derived
+    all-fields-required strict variant (unlike Gemini, which accepts the schema as-authored)."""
     captured = {}
     _fake_httpx(monkeypatch, captured)
     asyncio.run(mc._openai_complete_async("prompt", "gpt-4o", SCHEMA, "sk-o", 8000,
                                           base_url="https://api.openai.com/v1"))
-    assert captured["body"]["response_format"] == {"type": "json_object"}
-    assert "Return JSON matching this schema" in captured["body"]["messages"][1]["content"]
+    rf = captured["body"]["response_format"]
+    assert rf["type"] == "json_schema"
+    assert rf["json_schema"]["strict"] is True
+    assert rf["json_schema"]["schema"] == mc._to_strict_schema(SCHEMA)
+    # The schema is enforced at the wire level, so it isn't also duplicated into the prompt text.
+    assert "Return JSON matching this schema" not in captured["body"]["messages"][1]["content"]
 
 
 def test_deepseek_stays_on_json_object_mode(monkeypatch):
@@ -722,7 +729,129 @@ def test_deepseek_stays_on_json_object_mode(monkeypatch):
     asyncio.run(mc._openai_complete_async("prompt", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
                                           base_url="https://api.deepseek.com"))
     assert captured["body"]["response_format"] == {"type": "json_object"}
-    assert "Return JSON matching this schema" in captured["body"]["messages"][1]["content"]
+
+
+# ── strict-mode schema derivation and response normalization (#479/D151) ───────────────────────
+
+def test_to_strict_schema_forces_every_property_required():
+    schema = {
+        "type": "object",
+        "properties": {"a": {"type": "string"}, "b": {"type": "string"}},
+        "required": ["a"],
+        "additionalProperties": False,
+    }
+    strict = mc._to_strict_schema(schema)
+    assert set(strict["required"]) == {"a", "b"}
+
+
+def test_to_strict_schema_widens_optional_scalar_to_nullable():
+    schema = {
+        "type": "object",
+        "properties": {"a": {"type": "string"}, "b": {"type": "string"}},
+        "required": ["a"],
+        "additionalProperties": False,
+    }
+    strict = mc._to_strict_schema(schema)
+    assert strict["properties"]["a"]["type"] == "string"          # already required — untouched
+    assert strict["properties"]["b"]["type"] == ["string", "null"]
+
+
+def test_to_strict_schema_leaves_optional_array_unnulled():
+    schema = {
+        "type": "object",
+        "properties": {"a": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}},
+        "required": ["a"],
+        "additionalProperties": False,
+    }
+    strict = mc._to_strict_schema(schema)
+    assert strict["properties"]["tags"]["type"] == "array"        # required now, but not nulled
+    assert "tags" in strict["required"]
+
+
+def test_to_strict_schema_widens_enum_by_appending_null():
+    schema = {
+        "type": "object",
+        "properties": {"a": {"type": "string"},
+                       "basis": {"type": "string", "enum": ["stated", "inferred"]}},
+        "required": ["a"],
+        "additionalProperties": False,
+    }
+    strict = mc._to_strict_schema(schema)
+    assert strict["properties"]["basis"]["enum"] == ["stated", "inferred", None]
+
+
+def test_to_strict_schema_recurses_into_array_items():
+    schema = {
+        "type": "object",
+        "properties": {"a": {"type": "string"}, "items": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"x": {"type": "string"}, "y": {"type": "string"}},
+            "required": ["x"],
+            "additionalProperties": False,
+        }}},
+        "required": ["a", "items"],
+        "additionalProperties": False,
+    }
+    strict = mc._to_strict_schema(schema)
+    item_schema = strict["properties"]["items"]["items"]
+    assert set(item_schema["required"]) == {"x", "y"}
+    assert item_schema["properties"]["y"]["type"] == ["string", "null"]
+
+
+def test_to_strict_schema_does_not_mutate_the_original():
+    schema = {
+        "type": "object",
+        "properties": {"a": {"type": "string"}, "b": {"type": "string"}},
+        "required": ["a"],
+        "additionalProperties": False,
+    }
+    import copy
+    before = copy.deepcopy(schema)
+    mc._to_strict_schema(schema)
+    assert schema == before
+
+
+def test_strip_none_removes_nulls_recursively():
+    assert mc._strip_none({"a": 1, "b": None, "c": {"d": None, "e": 2}, "f": [{"g": None}]}) == {
+        "a": 1, "c": {"e": 2}, "f": [{}],
+    }
+
+
+def test_denormalize_strict_json_round_trips_through_strip_none():
+    text = '{"a": 1, "b": null}'
+    assert json.loads(mc._denormalize_strict_json(text)) == {"a": 1}
+
+
+def test_denormalize_strict_json_passes_through_invalid_json_unchanged():
+    assert mc._denormalize_strict_json("not json") == "not json"
+
+
+def test_openai_backend_denormalizes_nulls_before_returning_text(monkeypatch):
+    """The wire response from a strict-mode OpenAI call may carry explicit nulls for fields the
+    model considered "empty" — those must be stripped before the shared validate/prune path
+    (which expects schemas.py's non-strict, omit-optional-fields shape) ever sees them."""
+    captured = {}
+
+    class FakeResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self):
+            return {"choices": [{"message": {"content": '{"name": "Acme", "extra": null}'}}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+
+    class FakeClient:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, headers=None, json=None):
+            captured.update(body=json)
+            return FakeResp()
+
+    import httpx
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+    out = asyncio.run(mc._openai_complete_async("prompt", "gpt-4o", SCHEMA, "sk-o", 8000,
+                                                base_url="https://api.openai.com/v1"))
+    assert json.loads(out["text"]) == {"name": "Acme"}
 
 
 # ── JSON extraction ───────────────────────────────────────────────────────────
