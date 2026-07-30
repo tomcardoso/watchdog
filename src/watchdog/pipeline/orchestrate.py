@@ -677,41 +677,42 @@ async def _compose_digest(doc: dict, page_count: int | None, model: str, backend
         return _stitch_digest(doc, page_count), 0.0
 
 
-async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_label,
-                             effort=None, backend=None, brief=None):
-    """Sequential per-section extraction with carry-forward, then deterministic merge."""
-    parts, cost = [], 0.0
-    entities_seen: dict[str, dict] = {}
-    carry = ""
-    sections = plan["sections"]
-    for sec in sections:
-        sec_text = (vault / sec["pages_path"]).read_text(encoding="utf-8")
-        # Off the event loop — see the comment in `_simple_extract`.
-        candidates = await asyncio.to_thread(
-            _candidates_checklist, sec_text, vault=vault, sha=sha, filename=pf["filename"],
-            flow=sec["label"])
-        # Restore the row to "extracting…" now that harvesting is done and the model call is next.
-        if _board is not None:
-            _board.update(sha, f"  {_DIM}→  {pf['filename']}  {sec['label']} · extracting…{_RESET}",
-                          f"  {_DIM}→  {pf['filename']}  extracting…{_RESET}")
-        prompt = prompts.build_section_prompt(
-            pages_text=sec_text,
-            skill_text=skill_text, carry_forward=carry, section_label=sec["label"],
-            is_first=(sec["index"] == 1), brief=brief,
-            known_document_types=pf.get("known_document_types", []),
-            file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
-            candidates=candidates,
-        )
-        r = await _call_model(task="extract-section", model=model, backend=backend,
-                              prompt=prompt, schema=schemas.SECTION, effort=effort,
-                              filename=pf["filename"], detail=sec["label"], vault=vault)
-        cost += r.cost_usd or 0.0
-        parts.append(r.parsed)
-        for e in r.parsed.get("entities") or []:
-            if e.get("id"):
-                entities_seen[e["id"]] = {"name": e.get("name"), "type": e.get("type")}
-        carry = _carry_text(entities_seen, r.parsed.get("observations") or "")
+async def _extract_one_section(vault, sha, pf, skill_text, sec, *, is_first, carry, brief,
+                               model, effort, backend, repair_errors=None):
+    """One section's extract-section call. `repair_errors`, when given, appends the post-flight
+    repair note to the prompt (#505) — used only for a targeted section-1 retry, never the
+    normal per-section loop."""
+    sec_text = (vault / sec["pages_path"]).read_text(encoding="utf-8")
+    # Off the event loop — see the comment in `_simple_extract`.
+    candidates = await asyncio.to_thread(
+        _candidates_checklist, sec_text, vault=vault, sha=sha, filename=pf["filename"],
+        flow=sec["label"])
+    # Restore the row to "extracting…" now that harvesting is done and the model call is next.
+    if _board is not None:
+        _board.update(sha, f"  {_DIM}→  {pf['filename']}  {sec['label']} · extracting…{_RESET}",
+                      f"  {_DIM}→  {pf['filename']}  extracting…{_RESET}")
+    prompt = prompts.build_section_prompt(
+        pages_text=sec_text,
+        skill_text=skill_text, carry_forward=carry, section_label=sec["label"],
+        is_first=is_first, brief=brief,
+        known_document_types=pf.get("known_document_types", []),
+        file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
+        candidates=candidates,
+    )
+    detail = sec["label"]
+    if repair_errors:
+        prompt = _append_repair_note(prompt, repair_errors)
+        detail += " (repair)"
+    return await _call_model(task="extract-section", model=model, backend=backend,
+                             prompt=prompt, schema=schemas.SECTION, effort=effort,
+                             filename=pf["filename"], detail=detail, vault=vault)
 
+
+async def _merge_sectioned(parts, pf, sha, skill_label, skill_text, model, effort, backend, brief,
+                           vault):
+    """Merge + whole-document digest + stamping — the steps between having every section's raw
+    output and being ready for post-flight. Split out so the section-1 repair retry (#505) can
+    redo it without duplicating the digest/stamp calls."""
     extraction = merge.merge_extractions(parts)
     scratchpad = "\n".join(p["observations"] for p in parts if p.get("observations"))
     doc = extraction.setdefault("document", {})
@@ -719,10 +720,62 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
     doc["summary"], digest_cost = await _compose_digest(
         doc, page_count, model, backend, pf["filename"],
         skill_text, brief, pf.get("sidecar"), vault=vault)
-    cost += digest_cost
     _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label,
                     skill_text=skill_text, extract_model=model, extract_effort=effort)
+    return extraction, scratchpad, digest_cost
+
+
+# Post-flight errors that only section 1 — the one section ever prompted to supply document
+# metadata and the morgue fields (see build_section_prompt's `is_first` branch) — can fix. A
+# later section's output was never going to repair these, so a repair retry only needs to
+# re-call section 1, not the whole document (#505).
+_SECTION1_OWNED_ERROR_PREFIXES = ("morgue_entity_id ", "morgue_document_type ")
+
+
+def _repairable_by_section1(errors: list[str]) -> bool:
+    return bool(errors) and all(e.startswith(_SECTION1_OWNED_ERROR_PREFIXES) for e in errors)
+
+
+async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_label,
+                             effort=None, backend=None, brief=None):
+    """Sequential per-section extraction with carry-forward, then deterministic merge.
+
+    One repair attempt if post-flight rejects on morgue_entity_id/morgue_document_type — the
+    fields only section 1 is ever asked to supply. Mirrors _simple_extract's repair loop, but
+    re-calls just section 1 rather than re-running the whole document, since a later section's
+    output could never have fixed these anyway (#505)."""
+    parts, cost = [], 0.0
+    entities_seen: dict[str, dict] = {}
+    carry = ""
+    sections = plan["sections"]
+    for sec in sections:
+        r = await _extract_one_section(vault, sha, pf, skill_text, sec,
+                                       is_first=(sec["index"] == 1), carry=carry, brief=brief,
+                                       model=model, effort=effort, backend=backend)
+        cost += r.cost_usd or 0.0
+        parts.append(r.parsed)
+        for e in r.parsed.get("entities") or []:
+            if e.get("id"):
+                entities_seen[e["id"]] = {"name": e.get("name"), "type": e.get("type")}
+        carry = _carry_text(entities_seen, r.parsed.get("observations") or "")
+
+    extraction, scratchpad, digest_cost = await _merge_sectioned(
+        parts, pf, sha, skill_label, skill_text, model, effort, backend, brief, vault)
+    cost += digest_cost
     ok, errors, warnings = _write_postflight(vault, sha, extraction)
+
+    if not ok and _repairable_by_section1(errors):
+        r = await _extract_one_section(vault, sha, pf, skill_text, sections[0],
+                                       is_first=True, carry="", brief=brief,
+                                       model=model, effort=effort, backend=backend,
+                                       repair_errors=errors)
+        cost += r.cost_usd or 0.0
+        parts[0] = r.parsed
+        extraction, scratchpad, digest_cost = await _merge_sectioned(
+            parts, pf, sha, skill_label, skill_text, model, effort, backend, brief, vault)
+        cost += digest_cost
+        ok, errors, warnings = _write_postflight(vault, sha, extraction)
+
     return extraction, scratchpad, cost, ok, errors, warnings
 
 
