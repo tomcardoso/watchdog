@@ -714,7 +714,7 @@ def test_simple_extract_repairs_empty_key_facts_on_substantive_document(tmp_path
     empty-key_facts extraction on a substantive document, feeding _simple_extract's existing
     repair-retry loop — if the retry comes back with real facts, the document still succeeds."""
     vault = make_vault(tmp_path)
-    _queue_doc(vault, page_count=17)
+    _queue_doc(vault, page_count=17, text=" ".join(["word"] * 500))
     empty = _extraction()
     empty["document"]["key_facts"] = []
     repaired = _extraction()
@@ -746,7 +746,7 @@ def test_simple_extract_fails_loudly_when_repair_still_empty(tmp_path, monkeypat
     """If the repair retry still comes back with zero key_facts, the document must fail loudly
     (status: failed, logged as FAILED) rather than shipping a silent OK with nothing in it."""
     vault = make_vault(tmp_path)
-    _queue_doc(vault, page_count=17)
+    _queue_doc(vault, page_count=17, text=" ".join(["word"] * 500))
     empty = _extraction()
     empty["document"]["key_facts"] = []
     _mock(monkeypatch, extraction=empty)

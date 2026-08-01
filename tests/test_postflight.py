@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from watchdog.pipeline import postflight
 from watchdog.pipeline.postflight import (
     _find_coverage_gap,
     _render_coverage_warning,
@@ -222,12 +223,14 @@ def test_coverage_gap_handles_missing_page_count():
 
 # ── empty-extraction guard (#507/#510: sonnet-high silently produced zero key_facts on a
 #    17-page court order — billed, no error, no coverage-gap flag, since the gap detector
-#    itself needs at least one citation to work). ────────────────────────────────────────────
+#    itself needs at least one citation to work). Gated on actual source-text word count
+#    (page_texts), not nominal page_count — a page count is a poor proxy for how much there
+#    was to extract from (an exhibit-heavy filing can be long but nearly blank). ─────────────
 
-def _minimal_valid_doc(page_count=17, key_facts=None):
+def _minimal_valid_doc(key_facts=None):
     return {
         "document": {
-            "sha256": "sha1", "filename": "doc.pdf", "page_count": page_count,
+            "sha256": "sha1", "filename": "doc.pdf", "page_count": 17,
             "key_facts": key_facts if key_facts is not None else [],
         },
         "entities": [{"id": "acme", "name": "Acme", "type": "organization"}],
@@ -235,26 +238,46 @@ def _minimal_valid_doc(page_count=17, key_facts=None):
     }
 
 
-def test_validate_rejects_empty_key_facts_on_substantive_document():
-    errors = _validate(_minimal_valid_doc(page_count=17, key_facts=[]))
-    assert any("key_facts is empty" in e and "17-page" in e for e in errors)
+def _page_texts(word_count, n_pages=1):
+    """`word_count` words of filler text, spread evenly across `n_pages`."""
+    words_per_page = word_count // n_pages
+    return {i + 1: " ".join(["word"] * words_per_page) for i in range(n_pages)}
 
 
-def test_validate_allows_empty_key_facts_on_short_document():
-    # A 2-page cover letter or signature page can legitimately have nothing to extract — same
-    # page threshold as the coverage-gap heuristic (_COVERAGE_MIN_PAGES).
-    assert _validate(_minimal_valid_doc(page_count=2, key_facts=[])) == []
+def test_validate_rejects_empty_key_facts_with_substantial_source_text():
+    errors = _validate(_minimal_valid_doc(key_facts=[]), _page_texts(5000))
+    assert any("key_facts is empty" in e and "5000 words" in e for e in errors)
 
 
-def test_validate_allows_nonempty_key_facts_on_substantive_document():
+def test_validate_allows_empty_key_facts_with_thin_source_text():
+    # A short cover letter or signature page can legitimately have nothing to extract, even if
+    # the model happens to report a nominally long page_count (e.g. a mostly-blank exhibit set).
+    assert _validate(_minimal_valid_doc(key_facts=[]), _page_texts(100)) == []
+
+
+def test_validate_allows_nonempty_key_facts_regardless_of_source_text_volume():
     facts = [{"fact": "Something happened."}]
-    assert _validate(_minimal_valid_doc(page_count=17, key_facts=facts)) == []
+    assert _validate(_minimal_valid_doc(key_facts=facts), _page_texts(5000)) == []
 
 
-def test_validate_skips_empty_check_when_page_count_missing():
-    doc = _minimal_valid_doc(page_count=17, key_facts=[])
-    doc["document"]["page_count"] = None
-    assert _validate(doc) == []
+def test_validate_skips_empty_check_when_no_page_texts_available():
+    # No queue file / page_texts (e.g. it went missing) must not itself trigger the check —
+    # absence of source text to measure is not evidence of a failed extraction.
+    assert _validate(_minimal_valid_doc(key_facts=[])) == []
+
+
+def test_validate_empty_check_honours_configured_threshold(monkeypatch):
+    # `empty_extraction_min_words` (D153): a lower configured threshold catches a shorter
+    # document than the 500-word default would.
+    monkeypatch.setattr(postflight, "_config_get", lambda k, d: 100)
+    errors = _validate(_minimal_valid_doc(key_facts=[]), _page_texts(150))
+    assert any("key_facts is empty" in e for e in errors)
+
+
+def test_validate_empty_check_honours_raised_threshold(monkeypatch):
+    # A raised configured threshold exempts a document the 500-word default would have caught.
+    monkeypatch.setattr(postflight, "_config_get", lambda k, d: 10_000)
+    assert _validate(_minimal_valid_doc(key_facts=[]), _page_texts(5000)) == []
 
 
 # ── end-to-end through postflight ───────────────────────────────────────────
@@ -370,10 +393,13 @@ def test_postflight_does_not_write_morgue_and_leaves_queue_file_in_place(tmp_pat
 
 
 def test_postflight_run_rejects_and_does_not_stage_empty_extraction_on_substantive_document(tmp_path):
-    """#507/#510 end-to-end: a 17-page document with zero key_facts must be rejected by
-    postflight (feeding the caller's repair-retry loop), not silently staged as 'ok'."""
+    """#507/#510 end-to-end: a document with substantial source text but zero key_facts must be
+    rejected by postflight (feeding the caller's repair-retry loop), not silently staged as 'ok'."""
     vault = _full_vault(tmp_path)
     (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
+        "pages": [{"page": p, "markdown": " ".join(["word"] * 500)} for p in range(1, 18)],
+    }))
     ext = _extraction()
     ext["document"]["page_count"] = 17
     ext["document"]["key_facts"] = []

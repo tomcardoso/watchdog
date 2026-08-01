@@ -40,6 +40,24 @@ _COVERAGE_MIN_PAGES = 8         # don't flag short documents
 # between, which is the signature of a skim just as much as a truncated tail is.
 _COVERAGE_GAP_FRACTION = 0.4
 
+# Empty-extraction guard (#507/#510) — a hard failure, not advisory. Gated on real source-text
+# volume (page_texts, from the chew-time queue descriptor) rather than page count: a nominal
+# page count is a poor proxy for how much there was to extract from. 500 words is comfortably
+# below every document in corpus-v1 (smallest: a 5-page order at ~1,200 words) while still
+# exempting a short filing — a cover letter, a signature page — that can legitimately carry
+# nothing to extract. Configurable (`empty_extraction_min_words`, D153) since 500 is a
+# heuristic guess, not a measured constant, and a domain with unusually terse-but-substantive
+# documents may need a different value.
+_EMPTY_EXTRACTION_MIN_WORDS = 500
+
+
+def _config_get(key: str, default):
+    try:
+        cfg = json.loads((Path.home() / ".watchdog" / "config.json").read_text())
+    except Exception:
+        cfg = {}
+    return cfg.get(key, default)
+
 
 def _find_coverage_gap(extraction: dict, page_count: int | None) -> dict | None:
     """Find a possible skim: when a large consecutive run of a multi-page document's pages —
@@ -78,8 +96,9 @@ def _render_coverage_warning(gap: dict, page_count: int) -> str:
             f"anything missed")
 
 
-def _validate(data: dict) -> list[str]:
+def _validate(data: dict, page_texts: dict[int, str] | None = None) -> list[str]:
     errors: list[str] = []
+    page_texts = page_texts or {}
 
     doc = data.get("document")
     if not isinstance(doc, dict):
@@ -97,22 +116,23 @@ def _validate(data: dict) -> list[str]:
                 if "entities" in fact and not isinstance(fact["entities"], list):
                     errors.append(f"document.key_facts[{i}].entities must be a list of entity ids")
 
-        # A near-total extraction failure (#507/#510): a substantive document that comes back
-        # with zero key_facts is not a genuinely fact-free document — it's a degenerate model
+        # A near-total extraction failure (#507/#510): a document with substantial extractable
+        # text but zero key_facts is not a genuinely fact-free document — it's a degenerate model
         # response (observed: an 8690-token call that billed normally and returned an empty
-        # key_facts list with a placeholder summary). Unlike the coverage-gap heuristic above,
-        # which needs at least one citation to measure a gap against and so can't see this case
-        # at all, this is a hard failure: it feeds the same repair-retry loop as any other
-        # post-flight rejection (one automatic re-ask, then a loud FAILED instead of a silent OK).
-        # Short documents are exempt — a real cover page or signature-only filing can legitimately
-        # have nothing to extract — using the same page threshold as the coverage-gap check above.
-        if not doc.get("key_facts") and isinstance(doc.get("page_count"), int) \
-                and doc["page_count"] >= _COVERAGE_MIN_PAGES:
-            errors.append(
-                f"document.key_facts is empty on a {doc['page_count']}-page document — this "
-                "looks like a failed or skipped extraction, not a genuinely fact-free document; "
-                "re-read the source and extract its material facts"
-            )
+        # key_facts list with a placeholder summary on a 17-page court order). Unlike the
+        # coverage-gap heuristic above, which needs at least one citation to measure a gap
+        # against and so can't see this case at all, this is a hard failure: it feeds the same
+        # repair-retry loop as any other post-flight rejection (one automatic re-ask, then a
+        # loud FAILED instead of a silent OK).
+        if not doc.get("key_facts"):
+            words = sum(len(t.split()) for t in page_texts.values())
+            min_words = _config_get("empty_extraction_min_words", _EMPTY_EXTRACTION_MIN_WORDS)
+            if words >= min_words:
+                errors.append(
+                    f"document.key_facts is empty despite {words} words of source text — this "
+                    "looks like a failed or skipped extraction, not a genuinely fact-free "
+                    "document; re-read the source and extract its material facts"
+                )
 
     entities = data.get("entities")
     if not isinstance(entities, list):
@@ -266,7 +286,31 @@ def run(vault: Path, extraction_path: Path, warn=None) -> dict:
     except json.JSONDecodeError as e:
         return {"errors": [f"invalid JSON: {e}"]}
 
-    errors = _validate(extraction)
+    # Get page text from the queue file (captured at chew time) — needed by _validate's
+    # empty-extraction check below as well as the deterministic checks further down. Read
+    # before validation so the empty-extraction check can weigh actual source text volume
+    # rather than the document's nominal page count (#507/#510: a page count is a poor proxy
+    # for how much there was to extract from — a scanned exhibit-heavy filing can be nominally
+    # long but nearly blank, and a dense short order can carry more real text than a longer,
+    # sparser one). Near-dup minhash is no longer read here — write_vault (and the neardup_data
+    # it needs) now runs at commit time (#403 phase 1), not here.
+    sha256 = extraction.get("document", {}).get("sha256", "")
+    page_texts: dict[int, str] = {}
+    processing: dict = {}
+    if sha256:
+        queue_file = vault / ".watchdog" / "queue" / f"{sha256}.json"
+        if queue_file.exists():
+            try:
+                q = json.loads(queue_file.read_text(encoding="utf-8"))
+                page_texts = {
+                    p["page"]: p.get("markdown", "")
+                    for p in q.get("pages", []) if p.get("page") is not None
+                }
+                processing = q.get("metadata", {})
+            except Exception:
+                pass
+
+    errors = _validate(extraction, page_texts)
     if errors:
         return {"errors": errors}
 
@@ -284,25 +328,6 @@ def run(vault: Path, extraction_path: Path, warn=None) -> dict:
     # Fan the unified key_facts out into the per-entity evidence_fragments / timeline_events that
     # write_vault and timeline staging consume (#140).
     explode_key_facts(extraction)
-
-    # Get page text from the queue file (captured at chew time) for the deterministic checks
-    # below. Near-dup minhash is no longer read here — write_vault (and the neardup_data it
-    # needs) now runs at commit time (#403 phase 1), not here.
-    sha256 = extraction.get("document", {}).get("sha256", "")
-    page_texts: dict[int, str] = {}
-    processing: dict = {}
-    if sha256:
-        queue_file = vault / ".watchdog" / "queue" / f"{sha256}.json"
-        if queue_file.exists():
-            try:
-                q = json.loads(queue_file.read_text(encoding="utf-8"))
-                page_texts = {
-                    p["page"]: p.get("markdown", "")
-                    for p in q.get("pages", []) if p.get("page") is not None
-                }
-                processing = q.get("metadata", {})
-            except Exception:
-                pass
 
     # Deterministic quote verification against the morgue text (#267): flags any
     # key_facts.quote that can't be matched on (or near) its cited page — annotation only,
