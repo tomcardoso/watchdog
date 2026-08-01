@@ -1,0 +1,3362 @@
+[
+  [
+    "annual-financial-report-19-20",
+    "F1",
+    "facts",
+    "sonnet-high",
+    "credited",
+    "gives $0.9M anticipated deficit but omits 'balanced budget' framing"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F1",
+    "facts",
+    "gpt-mini",
+    "credited",
+    "states budget anticipated small $0.9M deficit, omits 'balanced results' framing"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F1",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "no mention of the $0.9M anticipated/budgeted deficit anywhere"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F2",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "states $5.4M deficit, $5.2M COVID-related, matching key exactly"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F2",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "quotes $5.4M deficit, $5.2M COVID-related verbatim"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F2",
+    "facts",
+    "sonnet-med",
+    "credited",
+    "gives different precise figures ($5.442M/$5.149M) for same substance"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F3",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "no 'unwavering'/sustainability commitment quote captured"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F3",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "no 'unwavering'/sustainability commitment quote captured"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F3",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "no 'unwavering'/sustainability commitment quote captured"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F4",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "$52.8M, +$1M over prior year, 3.5% rate all stated"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F4",
+    "facts",
+    "gpt-mini",
+    "credited",
+    "has $52.8M and 3.5% rate but omits the $1M increase"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F4",
+    "facts",
+    "sonnet-med",
+    "credited",
+    "gives $52.845M vs $51.809M (implies +$1M) but omits 3.5% rate"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F5",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "unqualified opinion, exact quote, dated Oct 30 2020"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F5",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "no key_fact states the KPMG opinion or its date at all"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F5",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "unqualified opinion, quote, date, even notes no going-concern flag"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F11",
+    "facts",
+    "sonnet-high",
+    "credited",
+    "shows line of credit netted against internal capital financing schedule"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F11",
+    "facts",
+    "gpt-mini",
+    "credited",
+    "$14.4M utilization stated in same sentence as capital financing"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F11",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "$14.4M draw stated but never linked to capital spending"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F12",
+    "facts",
+    "sonnet-high",
+    "credited",
+    "85.4%/87.8% given but omits the 85%-funding-threshold rule"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F12",
+    "facts",
+    "gpt-mini",
+    "credited",
+    "gives 85.4% only, no 2019 comparison or funding threshold"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F12",
+    "facts",
+    "sonnet-med",
+    "credited",
+    "85.4%/87.8% given but omits the 85%-funding-threshold rule"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F13",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "PfAD 10.29%/7.94%, near-exact match"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F13",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "PfAD 10.3%/7.94%, direct quote"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F13",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "PfAD 10.3% up from 7.94%"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F14",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "$20M pre-COVID, $10M post-COVID, $30M total since 2018"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F14",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "same figures, direct quote"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F14",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "same figures, matches key closely"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F16",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "7.6% tuition drop tied to 10% domestic reduction"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F16",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "no fact anywhere states the tuition % decline"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F16",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "7.6% tuition drop tied to 10% domestic reduction"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F17",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "7.7% grant rise tied to one-time Northern Sustainability grant"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F17",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "no mention of Northern Sustainability grant or 7.7% rise"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F17",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "7.7% grant rise tied to one-time Northern Sustainability grant"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F19",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "negative return, $1.8M covered from operating fund"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F19",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "negative return, $1.8M covered from operating fund"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F19",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "negative return, $1.8M covered from operating fund"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M1",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "unqualified opinion + Oct 30 2020 date present"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M1",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "audit opinion and date never surfaced"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M1",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "unqualified opinion + date, also notes no going-concern flag"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M2",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "names both signers with full credentials/titles"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M2",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "Hayes/Lavall\u00e9e never named anywhere, not even in entity list"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M2",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "names both signers with full credentials/titles"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M3",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "names Eckler Ltd. as retained actuary"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M3",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "Eckler Ltd. never named anywhere"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M3",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "names Eckler Ltd. as retained actuary"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M4",
+    "must_not_miss",
+    "sonnet-high",
+    "credited",
+    "line of credit shown as offset within capital-financing schedule"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M4",
+    "must_not_miss",
+    "gpt-mini",
+    "credited",
+    "$14.4M utilization stated alongside capital-project financing"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M4",
+    "must_not_miss",
+    "sonnet-med",
+    "ungrounded",
+    "$14.4M draw stated but never tied to capital spending"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M5",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "grants rise explicitly tied to one-time grant"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M5",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "Northern Sustainability grant never mentioned"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M5",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "grants rise explicitly tied to one-time grant"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M6",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "85.4% ratio given but 85%-threshold funding rule never stated"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M6",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "85.4% ratio given but 85%-threshold funding rule never stated"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M6",
+    "must_not_miss",
+    "sonnet-med",
+    "ungrounded",
+    "85.4% ratio given but 85%-threshold funding rule never stated"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M7",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "negative endowment return + $1.8M operating-fund cost stated"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M7",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "negative endowment return + $1.8M operating-fund cost stated"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M7",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "negative endowment return + $1.8M operating-fund cost stated"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M10",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "no mention of Audit Committee composition or access"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M10",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "only Finance Committee mentioned, not Audit Committee's independence/access"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M10",
+    "must_not_miss",
+    "sonnet-med",
+    "ungrounded",
+    "no mention of Audit Committee composition or access"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M12",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "four loans deferred six months, detailed lenders/rates"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M12",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "deferral stated, plus explicit 'residence debt repayments' framing"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M12",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "four residence-related loans deferred six months"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F12",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "cites Note 2, stay to May 31 2022, and 'unmodified audit opinion' explicitly"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F12",
+    "facts",
+    "sonnet-high",
+    "credited",
+    "captures going-concern EOM + unmodified opinion, but never cites 'Note 2'"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F12",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "explicitly parenthetical '(Note 2)' plus unqualified opinion and stay date"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F16",
+    "facts",
+    "gpt-mini",
+    "credited",
+    "has $42.2M, enrolment decline 2015-16/2019-20, 10%+freeze as separate facts, no explicit long-run framing"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F16",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "only has $42.2M figure; no enrolment decline, no tuition cut/freeze, no causal framing"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F16",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "explicit fact: 'recurring operating deficits over several years' plus enrolment/tuition specifics"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F17",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "exact figures, 39 English/27 French closures under CCAA"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F17",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "same exact figures and framing"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F17",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "same exact figures and framing"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F18",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "exact quote: $40M/year, 25% reduction"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F18",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "'approximately $40 million (approximately 25%)'"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F18",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "'approximately $40 million (25%) per year'"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F20",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "has both 3.5%->2.0% cut and $590K fee (2020 nil)"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F20",
+    "facts",
+    "sonnet-high",
+    "credited",
+    "has distribution cut 3.5%->2.0% but never states the $590K admin fee"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F20",
+    "facts",
+    "sonnet-med",
+    "credited",
+    "has distribution cut 3.5%->2.0% but never states the $590K admin fee"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M1",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "March 7 2022 except Note 27 as of April 22 2022, quoted directly"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M1",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "same dual-date quoted directly"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M1",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "original report March 7 2022, Note 27 amendment April 22 2022"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M2",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "no mention of signature block or blank Governor lines anywhere"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M2",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "signature block/blank lines not mentioned"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M2",
+    "must_not_miss",
+    "sonnet-med",
+    "ungrounded",
+    "signature block/blank lines not mentioned"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M3",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "Note 27 restatement of already-restated 2021 statements, errors found post-issuance"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M3",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "'restated after original issuance (Note 27)' with detail on what changed"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M3",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "'restated after original issuance (Note 27) to correct errors'"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M6",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "quotes 'class action claims related to a data breach and claims from employees'"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M6",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "same data-breach class action + employee claims"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M6",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "same data-breach class action + employee claims"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M8",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "has 1.11% province rate but never states FCC's 8.50%/prime+6.05% rate anywhere"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M8",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "has both: FCC 'higher of 8.50% or TD prime +6.05%' and province's 1.11%"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M8",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "has both rates: FCC 8.50%/prime+6.05% and 1.11% province rate"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M9",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "explicit $590 admin fee (2020 nil) plus the 3.5%->2.0% cut"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M9",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "has the distribution-policy cut but never mentions the new $590K admin fee"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M9",
+    "must_not_miss",
+    "sonnet-med",
+    "ungrounded",
+    "has the distribution-policy cut but never mentions the new $590K admin fee"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M12",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "principal employer of plan covering Federated/SNOLAB/CEMI/MIRARCO, plus exact Huntington/Sudbury/Thorneloe dates"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M12",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "only mentions Huntington re: federated-relationship termination, not pension accrual/suspension at all"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M12",
+    "must_not_miss",
+    "sonnet-med",
+    "credited",
+    "exact Huntington/Sudbury/Thorneloe accrual-suspension dates, but omits 'principal employer'/SNOLAB/CEMI/MIRARCO scope"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M15",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "'reciprocal insurance arrangement with about forty other Canadian universities'"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M15",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "no mention of reciprocal insurance/self-insurance co-operative anywhere"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M15",
+    "must_not_miss",
+    "sonnet-med",
+    "ungrounded",
+    "no mention of reciprocal insurance/self-insurance co-operative anywhere"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M17",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "names TD Canada Trust, financed Student Recreation Centre, CCAA default transferred it to compromise"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M17",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "names TD Canada Trust, Student Recreation Centre, event of default explicitly"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M17",
+    "must_not_miss",
+    "sonnet-med",
+    "ungrounded",
+    "short-term loan appears only as an unnamed $1.3M line item; no lender or Recreation Centre link"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M19",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "conditional on Board renewal + strategic plan, first phase Dec 16 2021"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M19",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "same conditions and Dec 16 2021 date"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M19",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "same conditions and Dec 16 2021 date"
+  ],
+  [
+    "first-report-monitor",
+    "F1",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "states 2021-02-01 order, E&Y as monitor, 10-day stay"
+  ],
+  [
+    "first-report-monitor",
+    "F1",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "same order/monitor/10-day stay to Feb 11"
+  ],
+  [
+    "first-report-monitor",
+    "F1",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "same facts stated directly"
+  ],
+  [
+    "first-report-monitor",
+    "F2",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "exact date/time given"
+  ],
+  [
+    "first-report-monitor",
+    "F2",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "exact date/time given"
+  ],
+  [
+    "first-report-monitor",
+    "F2",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "exact quote match"
+  ],
+  [
+    "first-report-monitor",
+    "F5",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "only gives internal charge rank order, not priority over all secured creditors"
+  ],
+  [
+    "first-report-monitor",
+    "F5",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "same gap - internal rank order only, no 'all secured creditors' scope"
+  ],
+  [
+    "first-report-monitor",
+    "F5",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "same gap - no statement of priority over all other secured creditors"
+  ],
+  [
+    "first-report-monitor",
+    "F6",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "quote matches exactly"
+  ],
+  [
+    "first-report-monitor",
+    "F6",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "same figures stated"
+  ],
+  [
+    "first-report-monitor",
+    "F6",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "same figures stated"
+  ],
+  [
+    "first-report-monitor",
+    "F7",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "court proposed, parties confirmed no objection - matches closely"
+  ],
+  [
+    "first-report-monitor",
+    "F7",
+    "facts",
+    "sonnet-high",
+    "credited",
+    "says CJ 'appointed' him, parties confirmed no objections - reworded"
+  ],
+  [
+    "first-report-monitor",
+    "F7",
+    "facts",
+    "sonnet-med",
+    "credited",
+    "two facts combine: CJ appointed + parties consented without objection"
+  ],
+  [
+    "first-report-monitor",
+    "F8",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "Dunphy's insolvency-lawyer background/bilingualism never stated"
+  ],
+  [
+    "first-report-monitor",
+    "F8",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "no bio detail on Dunphy's prior career or bilingualism"
+  ],
+  [
+    "first-report-monitor",
+    "F8",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "no bio detail on Dunphy's prior career or bilingualism"
+  ],
+  [
+    "first-report-monitor",
+    "F9",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "gives 'four lenders' but never states three submitted/two shortlisted"
+  ],
+  [
+    "first-report-monitor",
+    "F9",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "states four approached, three submitted term sheets, two shortlisted"
+  ],
+  [
+    "first-report-monitor",
+    "F9",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "no mention of four lenders or the three/two narrowing"
+  ],
+  [
+    "first-report-monitor",
+    "F10",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "explicit Firm Capital Corp->assignment->Mortgage Fund quote present"
+  ],
+  [
+    "first-report-monitor",
+    "F10",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "explicit assignment quote present"
+  ],
+  [
+    "first-report-monitor",
+    "F10",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "explicit assignment fact present"
+  ],
+  [
+    "first-report-monitor",
+    "F11",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "secured/non-revolving, $25M, May 1 maturity, 90-day extension all stated"
+  ],
+  [
+    "first-report-monitor",
+    "F11",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "all terms combined in one fact, verbatim"
+  ],
+  [
+    "first-report-monitor",
+    "F11",
+    "facts",
+    "sonnet-med",
+    "credited",
+    "gives amount/maturity/extension but omits 'secured, non-revolving'"
+  ],
+  [
+    "first-report-monitor",
+    "F12",
+    "facts",
+    "gpt-mini",
+    "credited",
+    "gives rate figures but omits 'compounded, payable monthly in arrears'"
+  ],
+  [
+    "first-report-monitor",
+    "F12",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "exact match including compounding/arrears"
+  ],
+  [
+    "first-report-monitor",
+    "F12",
+    "facts",
+    "sonnet-med",
+    "credited",
+    "same rate but drops 'in arrears'"
+  ],
+  [
+    "first-report-monitor",
+    "F14",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "says milestones 'satisfactory to DIP lender', not 'sole and unfettered discretion'"
+  ],
+  [
+    "first-report-monitor",
+    "F14",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "says 'to the DIP Lender's satisfaction', misses discretion phrase"
+  ],
+  [
+    "first-report-monitor",
+    "F14",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "no mention of lender's discretion standard at all"
+  ],
+  [
+    "first-report-monitor",
+    "F15",
+    "facts",
+    "gpt-mini",
+    "credited",
+    "lists academic consensus, LUFA settlement, budget as milestones"
+  ],
+  [
+    "first-report-monitor",
+    "F15",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "just says 'specified restructuring milestones', no detail"
+  ],
+  [
+    "first-report-monitor",
+    "F15",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "just says 'specified milestones', no detail given"
+  ],
+  [
+    "first-report-monitor",
+    "F16",
+    "facts",
+    "gpt-mini",
+    "credited",
+    "vague 'other prospective DIP proposals', no count/dates stated"
+  ],
+  [
+    "first-report-monitor",
+    "F16",
+    "facts",
+    "sonnet-high",
+    "credited",
+    "gives both dates and decline, but not 'law firm' or explicit count"
+  ],
+  [
+    "first-report-monitor",
+    "F16",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "gives both dates plus identifies Feb 4 contact as a law firm"
+  ],
+  [
+    "first-report-monitor",
+    "F17",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "verbatim Dr. Hach\u00e9 quote present"
+  ],
+  [
+    "first-report-monitor",
+    "F17",
+    "facts",
+    "sonnet-high",
+    "credited",
+    "paraphrased, also mis-states affidavit as sworn 2021"
+  ],
+  [
+    "first-report-monitor",
+    "F17",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "verbatim Dr. Hach\u00e9 quote present"
+  ],
+  [
+    "first-report-monitor",
+    "F20",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "mentions 'two informational websites' but omits fiscal restraint policy entirely"
+  ],
+  [
+    "first-report-monitor",
+    "F20",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "no mention of stakeholder websites or fiscal restraint policy"
+  ],
+  [
+    "first-report-monitor",
+    "F20",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "no mention of stakeholder websites or fiscal restraint policy"
+  ],
+  [
+    "first-report-monitor",
+    "F21",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "exact quote: classes continuing virtually with no disruption"
+  ],
+  [
+    "first-report-monitor",
+    "F21",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "no fact or summary mentions continued virtual classes"
+  ],
+  [
+    "first-report-monitor",
+    "F21",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "no mention of classes continuing without disruption"
+  ],
+  [
+    "first-report-monitor",
+    "M2",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "Firm Capital Corp and Mortgage Fund kept as distinct, linked entities"
+  ],
+  [
+    "first-report-monitor",
+    "M2",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "distinct entities with assignment relationship stated"
+  ],
+  [
+    "first-report-monitor",
+    "M2",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "distinct entities with assignment relationship stated"
+  ],
+  [
+    "first-report-monitor",
+    "M4",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "vague 'other prospective DIP proposals', dates/count not surfaced"
+  ],
+  [
+    "first-report-monitor",
+    "M4",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "explicit Feb 4 and Feb 5 dates, decline stated clearly"
+  ],
+  [
+    "first-report-monitor",
+    "M4",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "explicit dates plus identifies one as a law firm"
+  ],
+  [
+    "first-report-monitor",
+    "M5",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "no arm surfaces 'sole and unfettered discretion' phrase"
+  ],
+  [
+    "first-report-monitor",
+    "M5",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "no arm surfaces 'sole and unfettered discretion' phrase"
+  ],
+  [
+    "first-report-monitor",
+    "M5",
+    "must_not_miss",
+    "sonnet-med",
+    "ungrounded",
+    "no arm surfaces 'sole and unfettered discretion' phrase"
+  ],
+  [
+    "first-report-monitor",
+    "M6",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "quote gives exact from/to figures for both charges"
+  ],
+  [
+    "first-report-monitor",
+    "M6",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "gives only final figures, omits baseline, hides tripling/doubling"
+  ],
+  [
+    "first-report-monitor",
+    "M6",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "explicit from/to figures given for both charges"
+  ],
+  [
+    "first-report-monitor",
+    "M7",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "Dunphy's own insolvency-lawyer background never stated"
+  ],
+  [
+    "first-report-monitor",
+    "M7",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "Dunphy's own insolvency-lawyer background never stated"
+  ],
+  [
+    "first-report-monitor",
+    "M7",
+    "must_not_miss",
+    "sonnet-med",
+    "ungrounded",
+    "Dunphy's own insolvency-lawyer background never stated"
+  ],
+  [
+    "first-report-monitor",
+    "M8",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "gives affidavit date as 2021-01-30, not the document's erroneous 2020"
+  ],
+  [
+    "first-report-monitor",
+    "M8",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "explicitly states 'sworn January 30, 2021', misses erroneous 2020 date"
+  ],
+  [
+    "first-report-monitor",
+    "M8",
+    "must_not_miss",
+    "sonnet-med",
+    "ungrounded",
+    "caveat quoted but no affidavit date given at all"
+  ],
+  [
+    "first-report-monitor",
+    "M10",
+    "must_not_miss",
+    "gpt-mini",
+    "credited",
+    "mentions NDAs/data room before sharing info, but not 'two successive' or identity withheld"
+  ],
+  [
+    "first-report-monitor",
+    "M10",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "no mention of NDAs anywhere"
+  ],
+  [
+    "first-report-monitor",
+    "M10",
+    "must_not_miss",
+    "sonnet-med",
+    "ungrounded",
+    "no mention of NDAs anywhere"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F1",
+    "facts",
+    "sonnet-med",
+    "credited",
+    "paraphrases insolvency/CCAA declaration with court name added"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F1",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "quotes the declaration clause almost verbatim"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F1",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "no key_facts content at all"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F2",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "gives date/judge but omits Zoom/videoconference/COVID-19 reason"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F2",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "no mention of Zoom, Toronto, or COVID-19 anywhere"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F2",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F3",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "names Hach\u00e9 affidavit and EY pre-filing report, both dated Jan 30, 2021"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F3",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "no key_fact ties affidavit/pre-filing report to swearing/report date"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F3",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F4",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "states SGA designated Non-Applicant Stay Party, not an applicant"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F4",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "quotes 'LIMITED STAY IN RESPECT OF THE NON-APPLICANT STAY PARTY'"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F4",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F5",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "Dec 1 2020 date, fund categories, and exclusion from Property all present"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F5",
+    "facts",
+    "gpt-mini",
+    "credited",
+    "notes segregated funds excluded but drops Dec 1 2020 date and categories"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F5",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F6",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "no separate mention of Charges excluding Segregated Accounts (p.13)"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F6",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "no separate mention of Charges excluding Segregated Accounts"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F6",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F7",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "SuRP/RHBP retiree payments and severance explicitly stayed"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F7",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "wage/benefit fact omits the stay carve-out, risks implying full payment"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F7",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F8",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "no key_fact on continued Pension Plan contributions"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F8",
+    "facts",
+    "gpt-mini",
+    "credited",
+    "notes pension contributions remitted, drops 'until further order' nuance"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F8",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F9",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "no mention of pre-filing creditor payment bar or swap transactions"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F9",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "no mention of pre-filing creditor payment bar or swap transactions"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F9",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F10",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "stay until Feb 11, 2021, subject to extension"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F10",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "quotes the Stay Period clause exactly"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F10",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F15",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "Directors' Charge fact omits gross negligence/wilful misconduct exception"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F15",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "states indemnity excludes gross negligence/wilful misconduct"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F15",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F16",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "no mention of insurance-first condition or no-subrogation rule"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F16",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "Directors' Charge fact omits insurance/subrogation qualifier"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F16",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F18",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "Exhibits EEE/FFF sealed pending further order"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F18",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "quotes the sealing order almost exactly"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F18",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F19",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "no key_fact stating Monitor takes no possession/management role"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F19",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "quotes 'shall take no part whatsoever in the management' of Business"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F19",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F20",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "gives case website URL exactly"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F20",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "gives case website URL exactly, with quote"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F20",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F21",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "no mention of 12:01 a.m. effective time or enforceability without entry"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F21",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "no mention of 12:01 a.m. effective time or enforceability without entry"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F21",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F22",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "no mention of environmental-liability protection for Monitor"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F22",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "no mention of environmental-liability protection for Monitor"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F22",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M2",
+    "must_not_miss",
+    "sonnet-med",
+    "ungrounded",
+    "no mention of entry stamp or registrar initials"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M2",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "no mention of entry stamp or registrar initials"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M2",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M3",
+    "must_not_miss",
+    "sonnet-med",
+    "ungrounded",
+    "judge named only in summary heading context, not the p.16 signature block"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M3",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "no reference to signature block or wet signature at p.16"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M3",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M4",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "surfaces Dec 1 2020 date and ties segregated funds to charge exclusion"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M4",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "notes exclusion generically but drops the Dec 1 2020 'tell' date"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M4",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M5",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "explicitly surfaces the SuRP/RHBP/severance stay carve-out"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M5",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "wage-payment fact misses the carve-out entirely, risks the inversion"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M5",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M6",
+    "must_not_miss",
+    "sonnet-med",
+    "ungrounded",
+    "notice fact omits the employee/retiree/pension creditor exclusion"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M6",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "explicitly excludes 'certain employee, retiree, and benefit-plan claimants'"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M6",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M7",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "surfaces the EEE/FFF sealing detail directly"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M7",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "surfaces the EEE/FFF sealing detail directly, quoted"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M7",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M9",
+    "must_not_miss",
+    "sonnet-med",
+    "ungrounded",
+    "neither negligence exception nor insurance-limit surfaced"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M9",
+    "must_not_miss",
+    "gpt-mini",
+    "credited",
+    "surfaces negligence exception verbatim but omits insurance-only-benefit limit"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M9",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M10",
+    "must_not_miss",
+    "sonnet-med",
+    "ungrounded",
+    "no mention of interest rate swap transactions anywhere"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M10",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "no mention of interest rate swap transactions anywhere"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M10",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M11",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "surfaces SGA's Non-Applicant Stay Party status clearly"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M11",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "surfaces the limited-stay/non-applicant designation via quote"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M11",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "empty extraction"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F1",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "states CJ Morawetz, March 17 2021, made the order"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F1",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "summary gives Morawetz + March 17, 2021"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F1",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "key_fact gives Morawetz presiding, March 17, 2021"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F2",
+    "facts",
+    "gpt-mini",
+    "credited",
+    "CCAA proceeding + LU as applicant/motion-bringer, stated separately"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F2",
+    "facts",
+    "sonnet-med",
+    "credited",
+    "CCAA proceeding + LU tied via court file, motion-bringing implied not stated"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F2",
+    "facts",
+    "sonnet-high",
+    "credited",
+    "CCAA restructuring proceeding of LU stated, 'brought by LU' implied only"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F3",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "Zoom/COVID/Toronto hearing detail absent from key_facts and summary"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F3",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "\"heard by videoconference via Zoom due to the COVID-19 pandemic\", drops Toronto"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F3",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "quote matches key exactly incl. Toronto and COVID-19"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F4",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "transfer ratio of 65.8% stated directly"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F4",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "Transfer Ratio of 65.8% authorized"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F4",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "Transfer Ratio of 65.8% authorized"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F5",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "effective Jan 1 2020, filed FSRA Dec 2020 - exact match"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F5",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "effective Jan 1 2020, filed FSRAO Dec 2020"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F5",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "effective Jan 1 2020, filed FSRA Dec 2020"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F6",
+    "facts",
+    "gpt-mini",
+    "credited",
+    "paraphrased as 'had elected a CV transfer', origin/statement detail dropped"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F6",
+    "facts",
+    "sonnet-med",
+    "credited",
+    "same paraphrase style, loses 'received retirement/termination statement' origin"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F6",
+    "facts",
+    "sonnet-high",
+    "credited",
+    "same paraphrase 'previously elected a 100% CV transfer'"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F7",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "re-election form + 30 days from notice, missing 'in writing'"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F7",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "30 days of notice to re-elect captured via summary+key_fact"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F7",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "re-election form 'in writing' within 30 days of notice - exact"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F8",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "deemed withdrawn, retains deferred pension - exact"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F8",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "deemed withdrawn, retains deferred pension entitlement"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F8",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "deemed withdrawn, retains deferred pension entitlement"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F10",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "PBGF payment stayed/suspended under paragraph 12"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F10",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "PBGF payment stayed and suspended"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F10",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "PBGF Assessment Payment stayed and suspended"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F11",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "incremental amount for Jul2018-Jun2019, tied to Dec2020 filing, no amount"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F11",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "same period and trigger, correctly unquantified"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F11",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "Incremental PBGF Payment for same period, correctly unquantified"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F12",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "paragraph 12, Amended and Restated Initial Order, Feb 11 2021"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F12",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "quote matches paragraph 12/Feb 11 2021 exactly"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F12",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "both stays pursuant to paragraph 12, Feb 11 2021"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F13",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "directors/officers/etc incur no liability from stay"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F13",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "no key_fact or summary line on director/officer liability shield"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F13",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "directors/officers/etc protected from liability"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F14",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "FSRA's ability to claim for either PBGF payment left open"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F14",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "stay doesn't preclude FSRA claim on 'those payments'"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F14",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "FSRA claim right preserved re: stayed PBGF Payments (plural)"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F15",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "future adjustments under PBA or further court order - exact"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F15",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "no mention of future Transfer Ratio adjustments/PBA anywhere"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F15",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "no mention of future Transfer Ratio adjustments/PBA anywhere"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F16",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "requests recognition from courts/tribunals in Canada and US"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F16",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "aid-and-recognition request not present in key_facts or summary"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F16",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "aid-and-recognition request not present in key_facts or summary"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F17",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "five names only in entity list, no key_fact states they appeared"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F17",
+    "facts",
+    "sonnet-med",
+    "credited",
+    "names the five as appearing, omits 'no one for the rest'"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F17",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "names five appearing + separate entry notes no one else appeared"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F18",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "no key_fact lists the four read documents/dates"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F18",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "all four dates given across two key_facts entries"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F18",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "all four documents/dates listed in one key_fact"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F19",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "'as sponsor and administrator of the Pension Plan' - exact"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F19",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "sponsor+administrator dual role never stated"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F19",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "'LU is the sponsor and administrator of the Pension Plan'"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M1",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "Morawetz only tied to page 1 presiding, no page-4 signature mention"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M1",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "explicit 'order was signed by' with quoted signature-block text"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M1",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "no separate signature-block mention, only page-1 presiding"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M3",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "correctly separates unquantified incremental payment from the $842,018.34"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M3",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "correctly separates unquantified incremental payment"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M3",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "correctly separates unquantified incremental payment"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M4",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "FSRA claim right explicitly preserved despite stay"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M4",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "stay doesn't preclude FSRA claim, stated plainly"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M4",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "FSRA claim right expressly preserved"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M5",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "30-day rule and deferred-pension consequence both stated"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M5",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "30-day rule and deferred-pension consequence both stated"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M5",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "30-day rule and deferred-pension consequence both stated"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M6",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "Harland appears only as a bare entity name, no dual-role stated"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M6",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "Harland tied to both TGF counsel and Affidavit of Service deponent"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M6",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "Harland tied to both Affidavit of Service and TGF counsel roles"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M7",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "five names only in entity list, not linked to appearance as pensioners"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M7",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "all five named as Interim CV Applicants who appeared"
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M7",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "all five named as Interim CV Applicants who appeared"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F1",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "quotes exact insolvent/payroll-in-February language"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F1",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "quotes exact insolvent/payroll-in-February language"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F1",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "quotes exact insolvent/payroll-in-February language"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F2",
+    "facts",
+    "sonnet-med",
+    "credited",
+    "leads summary with 'five consecutive years of operating deficits' before COVID"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F2",
+    "facts",
+    "sonnet-high",
+    "credited",
+    "summary lists recurring deficits first among circumstances"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F2",
+    "facts",
+    "gpt-mini",
+    "credited",
+    "key_fact p27 'year-over-year losses for a significant number of years'"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F3",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "explicit co-mingling fact, no separate restricted-fund accounts"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F3",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "'all receipts including restricted funds were co-mingled in operating accounts'"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F3",
+    "facts",
+    "gpt-mini",
+    "credited",
+    "co-mingling stated, adds donation-account nuance not in key"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F4",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "only general operating-cash shortfall stated, not restricted-fund-specific shortfall"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F4",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "no statement that funds are insufficient to cover restricted obligations specifically"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F4",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "cash balances given but no restricted-fund-shortfall statement"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F5",
+    "facts",
+    "sonnet-med",
+    "credited",
+    "Board directs 3 named accounts Dec 2020; omits 'brought to President's attention'"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F5",
+    "facts",
+    "sonnet-high",
+    "credited",
+    "same three named accounts and Dec 2020 timing; no President mention"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F5",
+    "facts",
+    "gpt-mini",
+    "credited",
+    "three accounts and Board directive captured, no President detail or effective date"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F6",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "$13.3M operating / $3.3M segregated as at Jan 29 2021"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F6",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "same figures stated precisely"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F6",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "same figures stated precisely"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F7",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "'insufficient cash to fund operations beyond February' plus credit lines unavailable elsewhere"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F7",
+    "facts",
+    "sonnet-high",
+    "credited",
+    "insolvency/payroll framing implies this but no exact 'through Feb or beyond' statement"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F7",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "quotes 'insufficient cash to fund operations through the month of February or beyond'"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F8",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "receipts $29.5M, disbursements $58.5M, outflow $29.0M, dates match"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F8",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "same figures with extra segregated-account netting detail"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F8",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "same three figures stated"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F9",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "$54.7M investment accounts, $52.8M endowments, both stated"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F9",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "both figures stated with NOSM detail"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F9",
+    "facts",
+    "gpt-mini",
+    "credited",
+    "endowment $52.845M captured but $54.7M investment-account total not stated"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F10",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "$2.6M cash / $1.9M short-term investments stated separately"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F10",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "same split stated separately"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F10",
+    "facts",
+    "gpt-mini",
+    "credited",
+    "gives combined $4.544M figure, loses the 2.6/1.9 split"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F11",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "$32.9M decline from $69.6M matches exactly"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F11",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "$32.9M decline from $69.6M matches exactly"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F11",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "$32.9M decline from $69.6M matches exactly"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F12",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "85.4% solvency, ~$4.5M deficiency, valuation dates match"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F12",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "85.4% solvency, ~$4.5M deficiency, valuation dates match"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F12",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "85.4% solvency, ~$4.5M deficiency, valuation dates match"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F13",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "406/981/500 DB Pension membership breakdown not found anywhere"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F13",
+    "facts",
+    "sonnet-high",
+    "ungrounded",
+    "406/981/500 DB Pension membership breakdown not found anywhere"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F13",
+    "facts",
+    "gpt-mini",
+    "ungrounded",
+    "gives RHBP membership (866/358) but not DB Pension 406/981/500"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F15",
+    "facts",
+    "sonnet-med",
+    "credited",
+    "DB Plan, SuRP, RHBP each described separately but never grouped as 'three plans'"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F15",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "explicit 'LU administers three employee benefit plans' sentence with all three named"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F15",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "explicit 'LU administers three employee pension and benefit plans'"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F17",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "$14.4M drawn on Desjardins as at April 30 2020"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F17",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "$14.4M drawn on Desjardins as at April 30 2020"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F17",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "$14.4M drawn on Desjardins as at April 30 2020"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F18",
+    "facts",
+    "sonnet-med",
+    "verbatim",
+    "~$14M endowments for NOSM scholarships stated"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F18",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "~$14M endowments for NOSM scholarships stated"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F18",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "~$14M endowments for NOSM scholarships stated"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F19",
+    "facts",
+    "sonnet-med",
+    "credited",
+    "captures 2019 amendment decreasing funding but omits the 15% fee figure"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F19",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "both 15% fee and 2019 funding decrease stated separately"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F19",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "both 15% fee and 2019 funding decrease stated separately"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F20",
+    "facts",
+    "sonnet-med",
+    "ungrounded",
+    "Board/Senate voting-member composition not found in extraction"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F20",
+    "facts",
+    "sonnet-high",
+    "verbatim",
+    "21/9/4-vacant Board and 77/6 Senate figures exactly stated"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F20",
+    "facts",
+    "gpt-mini",
+    "verbatim",
+    "21/9/4-vacant Board and 77/6 Senate figures exactly stated"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F21",
+    "facts",
+    "sonnet-med",
+    "credited",
+    "recommends judge-mediator but omits 'currently strained' relationship phrase"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F21",
+    "facts",
+    "sonnet-high",
+    "credited",
+    "recommends judge-mediator but omits 'currently strained' phrase"
+  ],
+  [
+    "prefiling-report-monitor",
+    "F21",
+    "facts",
+    "gpt-mini",
+    "credited",
+    "recommends judge-mediator but omits 'currently strained' phrase"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M1",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "quotes Finance-dept challenges and ties to report's information reliability"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M1",
+    "must_not_miss",
+    "sonnet-high",
+    "credited",
+    "notes Finance-dept challenges via affidavit but reworded, less precise on Monitor's own caveat"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M1",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "no mention of Hach\u00e9's Finance-department-challenges caveat anywhere"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M2",
+    "must_not_miss",
+    "sonnet-med",
+    "credited",
+    "reports affidavit 'noted in report as Jan 30, 2020' and flags likely typo, preserving source date"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M2",
+    "must_not_miss",
+    "sonnet-high",
+    "credited",
+    "reports sworn date as stated (2020) in report, flags likely typo for 2021"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M2",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "Hach\u00e9 affidavit date not mentioned at all"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M3",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "co-mingling and Dec 2020 creation of three named accounts both clearly present"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M3",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "co-mingling and Dec 2020 creation of three named accounts both clearly present"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M3",
+    "must_not_miss",
+    "gpt-mini",
+    "credited",
+    "both co-mingling and Dec 2020 accounts present, slightly less detailed"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M4",
+    "must_not_miss",
+    "sonnet-med",
+    "ungrounded",
+    "SNOLab's 20% proportionate share not stated anywhere"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M4",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "'LU's proportionate share of SNOLab assets...is 20%' stated exactly"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M4",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "'LU's proportionate share of the assets...of SNOLab is 20%' stated exactly"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M5",
+    "must_not_miss",
+    "sonnet-med",
+    "ungrounded",
+    "Hach\u00e9 chairing NOSM's board not mentioned"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M5",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "Hach\u00e9 chairing NOSM's board not mentioned"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M5",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "'LU's President, Dr. Hach\u00e9 serves as the Chair' of NOSM stated"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M8",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "'SuRP was unfunded' stated explicitly with obligation figure"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M8",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "'SuRP is unfunded' stated explicitly"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M8",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "'SuRP...is unfunded' stated explicitly"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M9",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "Stikeman Elliott named as EY's independent counsel"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M9",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "Stikeman Elliott named as EY's independent counsel"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M9",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "Stikeman Elliott named as EY's independent counsel"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M10",
+    "must_not_miss",
+    "sonnet-med",
+    "ungrounded",
+    "406/981/500 pension membership figures absent"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M10",
+    "must_not_miss",
+    "sonnet-high",
+    "ungrounded",
+    "406/981/500 pension membership figures absent"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M10",
+    "must_not_miss",
+    "gpt-mini",
+    "ungrounded",
+    "406/981/500 pension membership figures absent (gives RHBP counts instead)"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M11",
+    "must_not_miss",
+    "sonnet-med",
+    "credited",
+    "Barrie closure/2019 date captured fully; 'one of twenty universities' omitted"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M11",
+    "must_not_miss",
+    "sonnet-high",
+    "credited",
+    "Barrie closure/2019 date captured fully; 'one of twenty universities' omitted"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M11",
+    "must_not_miss",
+    "gpt-mini",
+    "credited",
+    "Barrie closure captured; 'one of twenty universities' omitted"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M13",
+    "must_not_miss",
+    "sonnet-med",
+    "ungrounded",
+    "2019 funding decrease captured but 15% fee definition missing, join fails"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M13",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "both 15% fee definition and 2019 decrease present and joinable"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M13",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "both 15% fee definition and 2019 decrease present and joinable"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M14",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "17-program suspension tied to unfair labour practice complaint and judicial review"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M14",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "17-program suspension tied to unfair labour practice complaint and judicial review"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M14",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "17-program suspension tied to unfair labour practice complaint and judicial review"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M16",
+    "must_not_miss",
+    "sonnet-med",
+    "verbatim",
+    "MIRARCO financial difficulties causing reimbursement delays to LU stated"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M16",
+    "must_not_miss",
+    "sonnet-high",
+    "verbatim",
+    "MIRARCO financial difficulties causing reimbursement delays to LU stated"
+  ],
+  [
+    "prefiling-report-monitor",
+    "M16",
+    "must_not_miss",
+    "gpt-mini",
+    "verbatim",
+    "quotes MIRARCO financial-difficulties/reimbursement-delay language directly"
+  ]
+]

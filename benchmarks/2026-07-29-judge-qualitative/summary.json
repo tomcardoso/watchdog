@@ -1,0 +1,96 @@
+{
+  "tally": {
+    "sonnet-high": {
+      "facts": {
+        "verbatim": 44,
+        "credited": 14,
+        "ungrounded": 29
+      },
+      "must_not_miss": {
+        "verbatim": 26,
+        "credited": 4,
+        "ungrounded": 23
+      }
+    },
+    "sonnet-med": {
+      "facts": {
+        "verbatim": 45,
+        "credited": 16,
+        "ungrounded": 26
+      },
+      "must_not_miss": {
+        "verbatim": 30,
+        "credited": 3,
+        "ungrounded": 20
+      }
+    },
+    "gpt-mini": {
+      "facts": {
+        "verbatim": 47,
+        "credited": 18,
+        "ungrounded": 22
+      },
+      "must_not_miss": {
+        "verbatim": 25,
+        "credited": 5,
+        "ungrounded": 23
+      }
+    }
+  },
+  "summary": {
+    "sonnet-high": {
+      "facts": {
+        "verbatim": 44,
+        "credited": 14,
+        "ungrounded": 29,
+        "hit": 58,
+        "total": 87,
+        "pct": 67
+      },
+      "must_not_miss": {
+        "verbatim": 26,
+        "credited": 4,
+        "ungrounded": 23,
+        "hit": 30,
+        "total": 53,
+        "pct": 57
+      }
+    },
+    "sonnet-med": {
+      "facts": {
+        "verbatim": 45,
+        "credited": 16,
+        "ungrounded": 26,
+        "hit": 61,
+        "total": 87,
+        "pct": 70
+      },
+      "must_not_miss": {
+        "verbatim": 30,
+        "credited": 3,
+        "ungrounded": 20,
+        "hit": 33,
+        "total": 53,
+        "pct": 62
+      }
+    },
+    "gpt-mini": {
+      "facts": {
+        "verbatim": 47,
+        "credited": 18,
+        "ungrounded": 22,
+        "hit": 65,
+        "total": 87,
+        "pct": 75
+      },
+      "must_not_miss": {
+        "verbatim": 25,
+        "credited": 5,
+        "ungrounded": 23,
+        "hit": 30,
+        "total": 53,
+        "pct": 57
+      }
+    }
+  }
+}
