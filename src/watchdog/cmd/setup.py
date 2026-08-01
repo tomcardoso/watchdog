@@ -213,6 +213,23 @@ _CONFIGURE_KEYS = {
         "default": 4_000,
         "min": 0,
     },
+    "empty_extraction_min_words": {
+        "short": "Source-text word count above which a zero-fact extraction fails post-flight (default: 500)",
+        "help": (
+            "A document with at least this many words of chewed source text but zero extracted\n"
+            "  key_facts is treated as a failed extraction, not a genuinely fact-free document —\n"
+            "  it gets one automatic repair retry, then fails loudly instead of shipping a silent,\n"
+            "  empty result. Gated on actual source-text volume, not page count, so a short but\n"
+            "  dense document is still caught and a long but mostly-blank one (a scanned exhibit\n"
+            "  set) isn't wrongly flagged.\n"
+            "  Lower it if your documents are usually short but substantive (e.g. terse memos);\n"
+            "  raise it if you routinely ingest long documents with legitimately sparse content.\n"
+            "  Default: 500."
+        ),
+        "type": "int",
+        "default": 500,
+        "min": 0,
+    },
     # ── Models ───────────────────────────────────────────────────────────────
     "classifier_model": {
         "short": "Model that picks each document's record skill (default: haiku)",
@@ -527,7 +544,8 @@ _CONFIGURE_SECTIONS = [
      ["chew_workers", "chunk_size", "chunk_workers", "chunk_timeout", "table_structure"]),
     ("Ingest", "Extraction run — parallelism, classification, skill pinning, sectioning.",
      ["extract_concurrency", "classify_pages", "default_skill",
-      "section_token_threshold", "section_token_budget", "section_overlap_tokens"]),
+      "section_token_threshold", "section_token_budget", "section_overlap_tokens",
+      "empty_extraction_min_words"]),
     ("Models", "Which Claude model runs each step, and how hard it thinks.",
      ["classifier_model", "extractor_model", "finalizer_model",
       "finalizer_reconciliation_model", "finalizer_synthesis_model",

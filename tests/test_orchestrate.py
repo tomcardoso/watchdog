@@ -18,14 +18,14 @@ _flat = model_client._flatten_prompt   # extract/section prompts are content-blo
 
 
 def _queue_doc(vault, sha="abc123", filename="test-doc.pdf", text="Acme Corp filed an annual report.",
-              sidecar=None):
+              sidecar=None, page_count=1):
     """`sidecar`, if given, stands in for what chew would already have filtered into the queue
     JSON (pipeline/sidecar.py, D121) — pass already-allowlisted text, not a raw sidecar file."""
     qdir = vault / ".watchdog" / "queue"
     qdir.mkdir(parents=True, exist_ok=True)
     (qdir / f"{sha}.json").write_text(json.dumps({
         "sha256": sha, "filename": filename, "source_path": f"_INCOMING/{filename}",
-        "page_count": 1, "pages": [{"page": 1, "markdown": text}],
+        "page_count": page_count, "pages": [{"page": 1, "markdown": text}],
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
         "sidecar": sidecar,
     }))
@@ -705,6 +705,57 @@ def test_orchestrator_reports_failed_on_postflight_rejection(tmp_path, monkeypat
     # abort cleanup: queue file moved to _failed/ (preserved, not auto-retried), failure logged
     assert not (vault / ".watchdog" / "queue" / "abc123.json").exists()
     assert (vault / ".watchdog" / "queue" / "_failed" / "abc123.json").exists()
+    assert "FAILED" in (vault / ".watchdog" / "registry" / "ingest.log").read_text()
+
+
+def test_simple_extract_repairs_empty_key_facts_on_substantive_document(tmp_path, monkeypatch):
+    """#507/#510: sonnet-high billed a real call and returned an empty key_facts list on a
+    17-page document, and the pipeline shipped it as a silent OK. Post-flight now rejects an
+    empty-key_facts extraction on a substantive document, feeding _simple_extract's existing
+    repair-retry loop — if the retry comes back with real facts, the document still succeeds."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, page_count=17, text=" ".join(["word"] * 500))
+    empty = _extraction()
+    empty["document"]["key_facts"] = []
+    repaired = _extraction()
+
+    calls = {"extract": 0}
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        parsed = {
+            "classify": {"skill": "general-records.md"},
+            "entity-synthesis": {"entity_syntheses": []},
+            "timeline-dedup": {"groups": []},
+            "briefing": {"investigation_status": "x", "what_was_ingested": [], "new_entities": []},
+        }.get(task)
+        if parsed is None:
+            calls["extract"] += 1
+            parsed = empty if calls["extract"] == 1 else repaired
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="claude-agent-sdk", auth_mode="subscription", cost_usd=0.01)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault))
+
+    assert calls["extract"] == 2               # initial attempt + exactly one repair retry
+    assert summary["extracted"] == 1 and summary["failed"] == 0
+    assert summary["results"][0]["key_facts"]   # the repaired, non-empty facts made it through
+
+
+def test_simple_extract_fails_loudly_when_repair_still_empty(tmp_path, monkeypatch):
+    """If the repair retry still comes back with zero key_facts, the document must fail loudly
+    (status: failed, logged as FAILED) rather than shipping a silent OK with nothing in it."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, page_count=17, text=" ".join(["word"] * 500))
+    empty = _extraction()
+    empty["document"]["key_facts"] = []
+    _mock(monkeypatch, extraction=empty)
+
+    summary = asyncio.run(orchestrate.run(vault))
+
+    assert summary["failed"] == 1 and summary["extracted"] == 0
+    assert summary["results"][0]["status"] == "failed"
+    assert "key_facts is empty" in summary["results"][0]["reason"]
     assert "FAILED" in (vault / ".watchdog" / "registry" / "ingest.log").read_text()
 
 
