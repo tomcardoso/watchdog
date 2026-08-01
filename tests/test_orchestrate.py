@@ -695,7 +695,9 @@ def test_reconcile_failure_leaves_batch_finalizable(tmp_path, monkeypatch):
 def test_orchestrator_reports_failed_on_postflight_rejection(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault)
-    _mock(monkeypatch, extraction=_extraction(valid=False))   # missing morgue_entity_id
+    broken = _extraction(valid=False)          # missing morgue_entity_id
+    broken["entities"] = []                    # ...and no entity to derive it from (#505)
+    _mock(monkeypatch, extraction=broken)
 
     summary = asyncio.run(orchestrate.run(vault))
 
@@ -1106,9 +1108,15 @@ def test_whole_doc_failure_falls_back_to_sectioning(tmp_path, monkeypatch):
     assert (vault / "entities" / "organization" / "acme-corp.md").exists()
 
 
-def test_sectioned_repairs_missing_morgue_entity_id(tmp_path, monkeypatch):
-    """Section 1 nulls morgue_entity_id on its first try; the section-1-only repair retry (#505)
-    re-asks just that section (not the whole document) and recovers."""
+def test_sectioned_repairs_missing_morgue_entity_id_with_no_entities_to_fall_back_on(
+        tmp_path, monkeypatch):
+    """morgue_document_type turns out to have its own unconditional fallback already
+    (_stamp_document derives it from document_type, defaulting to "document" — it can never
+    actually reach post-flight empty), and #505 now gives morgue_entity_id a merge-time fallback
+    too whenever the document has at least one entity. The section-1-only repair retry (#505/
+    #506) is still needed for the one case neither fallback can cover: every section — including
+    section 1 — comes back with zero entities, so there is nothing to derive morgue_entity_id
+    from. The repair asks section 1 again, hoping for at least one entity this time."""
     vault = make_vault(tmp_path)
     monkeypatch.setattr(orchestrate.section, "_config_get", lambda k, d: d)
     qdir = vault / ".watchdog" / "queue"
@@ -1126,14 +1134,17 @@ def test_sectioned_repairs_missing_morgue_entity_id(tmp_path, monkeypatch):
         "document": {"sha256": "abc123", "filename": "test-doc.pdf", "title": "Acme AR",
                      "document_type": "Annual Report", "summary": "Acme report.",
                      "key_facts": [{"fact": "x", "basis": "stated"}]},
-        "entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
-                      "timeline_events": [], "roles": []}],
+        "entities": [],
         "morgue_entity_id": None, "morgue_document_type": "annual-report",
         "observations": "sec1",
     }
-    sec_first_repaired = {**sec_first_broken, "morgue_entity_id": "acme-corp"}
-    sec_later = {"entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
-                              "timeline_events": [], "roles": []}], "observations": "sec2"}
+    sec_first_repaired = {
+        **sec_first_broken,
+        "entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
+                      "timeline_events": [], "roles": []}],
+        "morgue_entity_id": "acme-corp",
+    }
+    sec_later = {"entities": [], "observations": "sec2"}   # also empty — nothing to fall back on
     calls = {"extract": 0, "section1": 0, "later": 0}
 
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
@@ -1165,8 +1176,8 @@ def test_sectioned_repairs_missing_morgue_entity_id(tmp_path, monkeypatch):
 
 
 def test_sectioned_repair_gives_up_after_one_attempt(tmp_path, monkeypatch):
-    """If section 1 still nulls morgue_entity_id after the repair retry, the document fails
-    cleanly — no infinite retry loop (mirrors _simple_extract's capped repair)."""
+    """If every section still comes back with zero entities after the repair retry, the document
+    fails cleanly — no infinite retry loop (mirrors _simple_extract's capped repair)."""
     vault = make_vault(tmp_path)
     monkeypatch.setattr(orchestrate.section, "_config_get", lambda k, d: d)
     qdir = vault / ".watchdog" / "queue"
@@ -1184,13 +1195,11 @@ def test_sectioned_repair_gives_up_after_one_attempt(tmp_path, monkeypatch):
         "document": {"sha256": "abc123", "filename": "test-doc.pdf", "title": "Acme AR",
                      "document_type": "Annual Report", "summary": "Acme report.",
                      "key_facts": [{"fact": "x", "basis": "stated"}]},
-        "entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
-                      "timeline_events": [], "roles": []}],
+        "entities": [],
         "morgue_entity_id": None, "morgue_document_type": "annual-report",
         "observations": "sec1",
     }
-    sec_later = {"entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
-                              "timeline_events": [], "roles": []}], "observations": "sec2"}
+    sec_later = {"entities": [], "observations": "sec2"}
     calls = {"section1": 0, "later": 0}
 
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
@@ -1216,6 +1225,62 @@ def test_sectioned_repair_gives_up_after_one_attempt(tmp_path, monkeypatch):
     summary = asyncio.run(orchestrate.run(vault))
     assert calls["section1"] == 2               # initial attempt + exactly one repair retry, then stop
     assert summary["extracted"] == 0 and summary["failed"] == 1
+
+
+def test_sectioned_extraction_falls_back_when_morgue_entity_id_missing(tmp_path, monkeypatch):
+    """#505: when section 1 leaves morgue_entity_id empty but still supplies an entity, merge.py's
+    deterministic fallback fills it in before post-flight ever runs — no repair retry needed."""
+    vault = make_vault(tmp_path)
+    monkeypatch.setattr(orchestrate.section, "_config_get", lambda k, d: d)
+    qdir = vault / ".watchdog" / "queue"
+    qdir.mkdir(parents=True, exist_ok=True)
+    pages = [{"page": 1, "markdown": "Acme part one " * 50},
+             {"page": 2, "markdown": "Acme part two " * 50}]
+    (qdir / "abc123.json").write_text(json.dumps({
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "page_count": 2, "pages": pages,
+        "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
+    }))
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+
+    sec_first = {
+        "document": {"sha256": "abc123", "filename": "test-doc.pdf", "title": "Acme AR",
+                     "document_type": "Annual Report", "summary": "Acme report.",
+                     "key_facts": [{"fact": "x", "basis": "stated"}]},
+        "entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
+                      "timeline_events": [], "roles": []}],
+        "morgue_entity_id": None, "morgue_document_type": "annual-report",
+        "observations": "sec1",
+    }
+    sec_later = {"entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
+                              "timeline_events": [], "roles": []}], "observations": "sec2"}
+    calls = {"extract": 0, "section1": 0, "later": 0}
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "classify":
+            parsed = {"skill": "general-records.md"}
+        elif task == "extract":
+            calls["extract"] += 1
+            parsed = _extraction(valid=False)                 # whole-doc → postflight rejects
+        elif task == "extract-section":
+            if "This is SECTION 1" in _flat(prompt):
+                calls["section1"] += 1
+                parsed = sec_first
+            else:
+                calls["later"] += 1
+                parsed = sec_later
+        elif task == "briefing":
+            parsed = {"investigation_status": "x", "what_was_ingested": []}
+        else:
+            parsed = {"entity_syntheses": []} if task == "entity-synthesis" else {"events": []}
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.01)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault))
+    assert calls["section1"] == 1               # no repair retry needed — the fallback resolved it
+    assert summary["extracted"] == 1 and summary["failed"] == 0
+    assert (vault / "morgue" / "acme-corp" / "annual-report" / "test-doc.pdf").exists()
 
 
 def test_sectioned_does_not_repair_unrelated_postflight_errors(tmp_path, monkeypatch):
@@ -1274,10 +1339,14 @@ def test_sectioned_does_not_repair_unrelated_postflight_errors(tmp_path, monkeyp
 
 
 def test_single_page_failure_does_not_section(tmp_path, monkeypatch):
-    """A 1-page doc can't be split, so a rejection just fails (no fallback loop)."""
+    """A rejection that no fallback can recover from — no entity for #505's merge-time fallback
+    to derive morgue_entity_id from, and the force-sectioning retry hits the identical fixture on
+    every section — just fails."""
     vault = make_vault(tmp_path)
     _queue_doc(vault)                                          # single page
-    _mock(monkeypatch, extraction=_extraction(valid=False))
+    broken = _extraction(valid=False)
+    broken["entities"] = []
+    _mock(monkeypatch, extraction=broken)
     summary = asyncio.run(orchestrate.run(vault))
     assert summary["failed"] == 1 and summary["extracted"] == 0
 
@@ -1553,7 +1622,9 @@ def test_usage_totals_omit_est_input_tokens_when_nothing_extracted(tmp_path, mon
     vault = make_vault(tmp_path)
     _queue_doc(vault)
 
-    _mock(monkeypatch, extraction=_extraction(valid=False))   # rejected by post-flight
+    broken = _extraction(valid=False)          # rejected by post-flight
+    broken["entities"] = []                    # ...and no entity for #505's fallback to use
+    _mock(monkeypatch, extraction=broken)
     summary = asyncio.run(orchestrate.run(vault))
     assert summary["extracted"] == 0
 
