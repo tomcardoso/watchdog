@@ -1195,6 +1195,35 @@ def test_role_target_id_bracket_injection_slugified_in_wikilink_target():
     assert "[[entities/company/acme-entitiescompanycleared|Acme Corp]]" in line
 
 
+def test_role_relationship_bracket_injection_defanged():
+    # relationship is free text, not a wikilink slot, but it's interpolated into the same
+    # Markdown line as the target wikilink — a hostile value could still forge one (#508).
+    from watchdog.pipeline.write_vault import _role_line
+    role = {
+        "relationship": "Director of]] [[entities/company/cleared|Cleared",
+        "target_id": "acme-corp",
+        "target_type": "Company",
+        "target_name": "Acme Corp",
+    }
+    line = _role_line(role, {})
+    assert "]] [[" not in line
+    assert line.count("[[") == 1 and line.count("]]") == 1
+
+
+def test_evidence_fragment_claim_reason_quote_bracket_injection_defanged():
+    # claim/reason/quote are free-text fields written straight into the entity note's Analysis
+    # section (#508). quote in particular is meant to be verbatim source text, so a document
+    # author has direct control over its contents.
+    fragments = [
+        {"claim": "Smith is director]] [[entities/company/cleared|Cleared",
+         "page": 2, "basis": "stated",
+         "reason": "establishes control]] [[entities/company/cleared|Cleared",
+         "quote": "Ms. Smith holds shares]] [[entities/company/cleared|Cleared"},
+    ]
+    rendered = wv._render_evidence_fragments(fragments)
+    assert "]] [[" not in rendered
+
+
 def test_entity_timeline_has_page_link(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")

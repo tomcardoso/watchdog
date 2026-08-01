@@ -113,9 +113,11 @@ def _doc_slug(filename: str) -> str:
 
 
 def _defang(text: str) -> str:
-    """Defang ``[[``/``]]`` in model-supplied name/title text before it is interpolated into
-    wikilink display text or a heading (#305) — otherwise a hostile value can close a wikilink
-    early and forge a second one pointing elsewhere in the vault."""
+    """Defang ``[[``/``]]`` in model-supplied text before it is written into a vault note (#305,
+    #508) — otherwise a hostile value can close a wikilink early and forge a second one pointing
+    elsewhere in the vault. Covers wikilink display text/headings (name, title) as well as free
+    text bodies (claim, reason, quote, relationship) since a quote in particular is meant to be
+    verbatim source text, giving a document author direct control over its contents."""
     from watchdog.pipeline.research import neutralize
     return neutralize(text or "")
 
@@ -432,10 +434,11 @@ def _role_line(role: dict, docs_reg: dict) -> str:
         pg = _page_link("", role.get("page"))
         source_part = f" — {pg}" if pg else ""
 
+    relationship = _defang(role["relationship"])
     if role.get("is_reverse"):
-        return f"- {target_link} — {role['relationship']}{date_part}{basis_part}{source_part}"
+        return f"- {target_link} — {relationship}{date_part}{basis_part}{source_part}"
     else:
-        return f"- {role['relationship']} {target_link}{date_part}{basis_part}{source_part}"
+        return f"- {relationship} {target_link}{date_part}{basis_part}{source_part}"
 
 
 # ── Entity registry operations ────────────────────────────────────────────────
@@ -618,15 +621,15 @@ def _render_evidence_fragments(fragments: list, morgue_path: str = "") -> str:
     """
     lines = []
     for f in fragments:
-        claim = (f.get("claim") or "").strip()
+        claim = _defang((f.get("claim") or "").strip())
         if not claim:
             continue
         pg = _page_link(morgue_path, f.get("page"))
         page = f" ({pg})" if pg else ""
-        reason = f" — {f['reason'].strip()}" if f.get("reason") else ""
+        reason = f" — {_defang(f['reason'].strip())}" if f.get("reason") else ""
         basis_note = " *(inferred)*" if f.get("basis") == "inferred" else ""
         line = f"- {claim}{page}{reason}{basis_note}"
-        quote = (f.get("quote") or "").strip()
+        quote = _defang((f.get("quote") or "").strip())
         if quote:
             line += f"\n  > {quote}{_quote_verification_note(f)}"
         lines.append(line)
