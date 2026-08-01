@@ -160,6 +160,95 @@ def test_seed_arm_vault_refuses_to_reseed(tmp_path):
         rb.seed_arm_vault(master, dest)
 
 
+# ── pre-flight vault staleness gate (#494) ──────────────────────────────────────
+
+def test_stale_reason_none_for_absent_vault(tmp_path):
+    assert rb._stale_reason(tmp_path / "nowhere") is None
+
+
+def test_stale_reason_none_for_freshly_created_empty_vault(tmp_path):
+    vault = tmp_path / "vault"
+    (vault / ".watchdog").mkdir(parents=True)
+    assert rb._stale_reason(vault) is None
+
+
+def test_stale_reason_flags_queued_batch(tmp_path):
+    vault = tmp_path / "vault"
+    (vault / ".watchdog" / "queue").mkdir(parents=True)
+    (vault / ".watchdog" / "queue" / "abc.json").write_text("{}")
+    assert "queued" in rb._stale_reason(vault)
+
+
+def test_stale_reason_flags_pending_finalization(tmp_path):
+    vault = tmp_path / "vault"
+    (vault / ".watchdog" / "tmp").mkdir(parents=True)
+    (vault / ".watchdog" / "tmp" / "result_abc.json").write_text("{}")
+    assert "pending finalization" in rb._stale_reason(vault)
+
+
+def test_stale_reason_flags_pending_batch(tmp_path):
+    vault = tmp_path / "vault"
+    (vault / ".watchdog" / "registry").mkdir(parents=True)
+    (vault / ".watchdog" / "registry" / "batch-pending.json").write_text("{}")
+    assert "Batches API" in rb._stale_reason(vault)
+
+
+def test_stale_reason_flags_already_extracted_documents(tmp_path):
+    vault = tmp_path / "vault"
+    (vault / ".watchdog" / "extracted").mkdir(parents=True)
+    (vault / ".watchdog" / "extracted" / "abc.json").write_text("{}")
+    assert "already has extracted" in rb._stale_reason(vault)
+
+
+def test_planned_arm_vaults_covers_every_selected_stage(tmp_path):
+    config = {
+        "extractor_sweep": {"vault_prefix": "bench-ex", "arms": [{"id": "a"}, {"id": "b"}]},
+        "finalizer_sweep": {"vault_prefix": "bench-fn", "arms": [{"id": "c"}]},
+        "sdk_check": {"vault_prefix": "bench-sc", "arms": [{"id": "d"}]},
+    }
+    stages = {"extractor", "finalizer", "sdk-check"}
+    vaults = rb.planned_arm_vaults(config, tmp_path, stages, tmp_path, lambda a: True)
+    assert set(vaults) == {
+        tmp_path / "bench-ex-a", tmp_path / "bench-ex-b",
+        tmp_path / "bench-fn-base", tmp_path / "bench-fn-c",
+        tmp_path / "bench-sc-d",
+    }
+
+
+def test_planned_arm_vaults_respects_arms_filter_and_unselected_stages(tmp_path):
+    config = {
+        "extractor_sweep": {"vault_prefix": "bench-ex", "arms": [{"id": "a"}, {"id": "b"}]},
+        "finalizer_sweep": {"vault_prefix": "bench-fn", "arms": [{"id": "c"}]},
+    }
+    vaults = rb.planned_arm_vaults(config, tmp_path, {"extractor"}, tmp_path,
+                                   lambda a: a["id"] == "a")
+    assert vaults == [tmp_path / "bench-ex-a"]   # b excluded, finalizer stage not requested
+
+
+def test_main_refuses_the_whole_run_when_one_target_vault_is_stale(tmp_path, monkeypatch, capsys):
+    """A stale vault on arm 3 must stop the run before arm 1 or 2 ever gets a preview printed or
+    a dollar spent — not be discovered mid-sweep after earlier arms already ran (#494)."""
+    cfg = _matrix_config(tmp_path)   # sonnet-med-sdk, sonnet-med-api, haiku
+    monkeypatch.setattr(rb, "verify_freeze", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "corpus_documents", lambda d: [Path("a.pdf")])
+    stale_vault = tmp_path / "bench-ex3-haiku"
+    (stale_vault / ".watchdog" / "queue").mkdir(parents=True)
+    (stale_vault / ".watchdog" / "queue" / "abc.json").write_text("{}")
+    monkeypatch.setattr(rb, "arm_vault", lambda prefix, aid, root: tmp_path / f"{prefix}-{aid}")
+
+    def _boom(*a, **k):
+        raise AssertionError("must not reach preview/confirm once a stale vault is found")
+    monkeypatch.setattr(rb, "ensure_master_vault", _boom)
+    monkeypatch.setattr(rb, "preview_extractor_arm", _boom)
+    monkeypatch.setattr(wd_interactive, "confirm", _boom)
+
+    with pytest.raises(SystemExit, match="aren't fresh"):
+        rb.main(["--config", str(cfg), "--stages", "extractor"])
+
+    out = capsys.readouterr().out
+    assert "extractor:sonnet-med-sdk" not in out
+
+
 # ── vault_root: shadow vault isolation (#475 follow-up, D146) ──────────────────
 #
 # Benchmark vaults must never land in the installed watchdog's real ~/investigations, and must
@@ -384,7 +473,7 @@ def test_arm_starting_line_shares_index_and_label_with_the_completion_line():
 # ── resilience: try/except SystemExit per arm ──────────────────────────────────
 
 def test_run_extractor_arm_records_failure_without_raising(monkeypatch, tmp_path):
-    def _fails(ns):
+    def _fails(ns, **kw):
         raise SystemExit("boom")
     monkeypatch.setattr(wd_ingest, "cmd_extract", _fails)
     result = rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
@@ -395,13 +484,27 @@ def test_run_extractor_arm_records_failure_without_raising(monkeypatch, tmp_path
 
 
 def test_run_extractor_arm_ok_reads_usage(monkeypatch, tmp_path):
-    monkeypatch.setattr(wd_ingest, "cmd_extract", lambda ns: None)
+    monkeypatch.setattr(wd_ingest, "cmd_extract", lambda ns, **kw: None)
     usage_dir = tmp_path / ".watchdog" / "registry" / "usage"
     usage_dir.mkdir(parents=True)
     (usage_dir / "usage-1.json").write_text(json.dumps({"calls": [{"cost_usd": 1.5}]}))
     result = rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
     assert result.ok is True
     assert result.usage["calls"][0]["cost_usd"] == 1.5
+
+
+def test_run_extractor_arm_calls_cmd_extract_non_interactively(monkeypatch, tmp_path):
+    """run_benchmark.py has no human to answer a prompt — cmd_extract must always be called with
+    non_interactive=True from here, not left to its interactive default (#494)."""
+    captured = {}
+
+    def _capture(ns, **kw):
+        captured.update(kw)
+        return {"cancelled": False, "results": []}
+
+    monkeypatch.setattr(wd_ingest, "cmd_extract", _capture)
+    rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
+    assert captured.get("non_interactive") is True
 
 
 def test_run_extractor_arm_chdirs_into_the_target_vault(monkeypatch, tmp_path):
@@ -412,7 +515,7 @@ def test_run_extractor_arm_chdirs_into_the_target_vault(monkeypatch, tmp_path):
     unnoticed until the first real (non-estimate) run of the tool."""
     seen_cwd = {}
 
-    def _capture(ns):
+    def _capture(ns, **kw):
         seen_cwd["cwd"] = Path.cwd()
 
     monkeypatch.setattr(wd_ingest, "cmd_extract", _capture)
@@ -423,7 +526,7 @@ def test_run_extractor_arm_chdirs_into_the_target_vault(monkeypatch, tmp_path):
 
 
 def test_run_extractor_arm_restores_cwd_even_on_failure(monkeypatch, tmp_path):
-    def _fails(ns):
+    def _fails(ns, **kw):
         raise SystemExit("boom")
     monkeypatch.setattr(wd_ingest, "cmd_extract", _fails)
     outside = Path.cwd()
@@ -434,7 +537,7 @@ def test_run_extractor_arm_restores_cwd_even_on_failure(monkeypatch, tmp_path):
 def test_run_extractor_arm_suppresses_cmd_extract_stdout(monkeypatch, tmp_path, capsys):
     """The runner is terse by design (#benchmark-ux) — the underlying pipeline's own verbose
     per-document output must not leak to the terminal during a real run."""
-    def _noisy(ns):
+    def _noisy(ns, **kw):
         print("Sending 6 documents to a cloud AI model.")
         return {"cancelled": False, "results": []}
     monkeypatch.setattr(wd_ingest, "cmd_extract", _noisy)
@@ -445,7 +548,7 @@ def test_run_extractor_arm_suppresses_cmd_extract_stdout(monkeypatch, tmp_path, 
 def test_run_extractor_arm_picks_up_cancelled_from_summary(monkeypatch, tmp_path):
     """cmd_extract traps ctrl+c internally and returns normally with `cancelled: True` — no
     exception to catch, so this has to come from the return value now that cmd_ingest exposes it."""
-    monkeypatch.setattr(wd_ingest, "cmd_extract", lambda ns: {"cancelled": True, "results": []})
+    monkeypatch.setattr(wd_ingest, "cmd_extract", lambda ns, **kw: {"cancelled": True, "results": []})
     result = rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
     assert result.ok is True
     assert result.cancelled is True
@@ -458,7 +561,7 @@ def test_run_extractor_arm_captures_per_document_failures(monkeypatch, tmp_path)
         {"sha256": "a1", "filename": "doc1.pdf", "status": "failed", "reason": "400: bad schema"},
         {"sha256": "a2", "filename": "doc2.pdf", "status": "ok"},
     ]}
-    monkeypatch.setattr(wd_ingest, "cmd_extract", lambda ns: summary)
+    monkeypatch.setattr(wd_ingest, "cmd_extract", lambda ns, **kw: summary)
     result = rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
     assert result.ok is True
     assert result.doc_errors == ["doc1.pdf: 400: bad schema"]
@@ -914,6 +1017,77 @@ def test_cancelled_arm_stops_the_run_before_the_next_arm(tmp_path, monkeypatch, 
     # Printed before the fake arm ran — proof the "running…" line isn't just a formatter that
     # exists but is never actually called from the loop.
     assert "extractor:sonnet-med-sdk" in out and "running" in out
+
+
+# ── the report survives an interrupt or crash mid-sweep, not just the designed cancel (#494) ───
+
+def _stub_common_arm_plumbing(monkeypatch, tmp_path):
+    monkeypatch.setattr(rb, "verify_freeze", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "corpus_documents", lambda d: [Path("a.pdf")])
+    monkeypatch.setattr(rb, "ensure_master_vault", lambda *a, **k: tmp_path / "master")
+    monkeypatch.setattr(rb, "seed_arm_vault", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "arm_vault", lambda prefix, aid, root: tmp_path / f"{prefix}-{aid}")
+    monkeypatch.setattr(rb, "preview_extractor_arm", lambda v, m: {"cost_low": 1.0, "cost_high": 2.0})
+    monkeypatch.setattr(rb, "arm_backend", lambda m, default: "claude-api")
+    monkeypatch.setattr(rb, "_auth_mode", lambda: "api-key")
+    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: True)
+
+
+def test_keyboard_interrupt_mid_arm_still_writes_a_report(tmp_path, monkeypatch, capsys):
+    """A Ctrl+C outside the designed `result.cancelled` path (e.g. one that lands on a blocking
+    prompt, per the #494 incident) used to kill run_benchmark.py before bench_report.write_run
+    ever ran, losing the report for every arm that had already completed."""
+    cfg = _matrix_config(tmp_path)   # sonnet-med-sdk, sonnet-med-api, haiku
+    _stub_common_arm_plumbing(monkeypatch, tmp_path)
+
+    calls = []
+
+    def _fake_run_extractor_arm(arm, vault):
+        calls.append(arm["id"])
+        if arm["id"] == "sonnet-med-api":
+            raise KeyboardInterrupt
+        return rb.ArmResult(arm_id=arm["id"], stage="extractor", vault=vault, ok=True)
+
+    monkeypatch.setattr(rb, "run_extractor_arm", _fake_run_extractor_arm)
+    captured = {}
+    monkeypatch.setattr(br, "write_run",
+                        lambda out_root, results, scores, config: (
+                            captured.__setitem__("results", results), tmp_path)[1])
+
+    rc = rb.main(["--config", str(cfg), "--stages", "extractor"])
+
+    assert calls == ["sonnet-med-sdk", "sonnet-med-api"]   # haiku never started
+    assert [r.arm_id for r in captured["results"]] == ["sonnet-med-sdk"]   # the completed one
+    assert rc == 130
+    out = capsys.readouterr().out
+    assert "Interrupted" in out
+    assert "Report written to" in out
+
+
+def test_unhandled_exception_mid_arm_still_writes_a_report(tmp_path, monkeypatch, capsys):
+    """Same guarantee as the KeyboardInterrupt case, for a genuinely unexpected crash — a bug
+    anywhere in the loop must not cost the run its report either."""
+    cfg = _matrix_config(tmp_path)
+    _stub_common_arm_plumbing(monkeypatch, tmp_path)
+
+    def _fake_run_extractor_arm(arm, vault):
+        if arm["id"] == "sonnet-med-sdk":
+            return rb.ArmResult(arm_id=arm["id"], stage="extractor", vault=vault, ok=True)
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(rb, "run_extractor_arm", _fake_run_extractor_arm)
+    captured = {}
+    monkeypatch.setattr(br, "write_run",
+                        lambda out_root, results, scores, config: (
+                            captured.__setitem__("results", results), tmp_path)[1])
+
+    rc = rb.main(["--config", str(cfg), "--stages", "extractor"])
+
+    assert [r.arm_id for r in captured["results"]] == ["sonnet-med-sdk"]
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "RuntimeError: boom" in out
+    assert "Report written to" in out
 
 
 # ── sdk-check stage (#482 follow-up) ───────────────────────────────────────────

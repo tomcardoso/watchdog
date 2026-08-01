@@ -2642,10 +2642,11 @@ def test_cmd_extract_sets_no_finalize_on_args(wdg_home, tmp_path, monkeypatch):
     from watchdog.cmd import ingest as ing
 
     seen = {}
-    monkeypatch.setattr(ing, "cmd_ingest", lambda a: seen.update(no_finalize=a.no_finalize))
+    monkeypatch.setattr(ing, "cmd_ingest",
+                        lambda a, **kw: seen.update(no_finalize=a.no_finalize, **kw))
     a = args()
     ing.cmd_extract(a)
-    assert seen == {"no_finalize": True}
+    assert seen == {"no_finalize": True, "non_interactive": False}
 
 
 def test_dig_parser_rejects_finalizer_model(monkeypatch, capsys):
@@ -2950,6 +2951,74 @@ def test_pending_batch_dialog_omits_finalize_for_dig(wdg_home, tmp_path, monkeyp
         ing.cmd_ingest(args(), confirm=False)
     assert len(captured["choices"]) == 3
     assert any("Finalize it now" in c for c in captured["choices"])
+
+
+# ── non_interactive: programmatic callers must never block on a human prompt (#494) ────────────
+
+def test_cmd_ingest_non_interactive_refuses_pending_batch_instead_of_prompting(wdg_home, tmp_path, monkeypatch):
+    """A programmatic caller (run_benchmark.py driving cmd_extract) has no human to answer the
+    merge/discard/finalize pick — non_interactive=True must fail loud instead of blocking on it."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: True)
+    monkeypatch.setattr(orch_module, "pending_finalization", lambda v: {"docs": 1, "entities": 0})
+
+    def _boom(*a, **k):
+        raise AssertionError("interactive.pick must not be called in non_interactive mode")
+    monkeypatch.setattr(ing.interactive, "pick", _boom)
+
+    with pytest.raises(SystemExit, match="non-interactive run"):
+        ing.cmd_ingest(args(), confirm=False, non_interactive=True)
+
+
+def test_cmd_extract_threads_non_interactive_through_to_cmd_ingest(wdg_home, tmp_path, monkeypatch):
+    """`cmd_extract` (the `dig` entry point run_benchmark.py actually calls) must pass its
+    `non_interactive` kwarg through rather than dropping it."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: True)
+    monkeypatch.setattr(orch_module, "pending_finalization", lambda v: {"docs": 1, "entities": 0})
+
+    def _boom(*a, **k):
+        raise AssertionError("interactive.pick must not be called in non_interactive mode")
+    monkeypatch.setattr(ing.interactive, "pick", _boom)
+
+    with pytest.raises(SystemExit, match="non-interactive run"):
+        ing.cmd_extract(args(command="dig"), non_interactive=True)
+
+
+def test_cmd_ingest_non_interactive_skips_quarantine_requeue_offer(wdg_home, tmp_path, monkeypatch):
+    """An empty active queue with documents parked in _failed/ normally offers to requeue and
+    retry right there (#406) — a non-interactive caller must not block on that confirm either,
+    and falls through to the same "nothing queued" outcome as declining it."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_failed_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+
+    def _boom(*a, **k):
+        raise AssertionError("interactive.confirm must not be called in non_interactive mode")
+    monkeypatch.setattr(ing.interactive, "confirm", _boom)
+    monkeypatch.setattr(orch_module, "run",
+                        lambda *a, **k: pytest.fail("must not run — the requeue offer was never accepted"))
+
+    ing.cmd_ingest(args(), confirm=False, non_interactive=True)
+
+    assert (vault / ".watchdog" / "queue" / "_failed" / "shafail.json").exists()
 
 
 def test_format_models_line_shows_concurrency_only_when_explicitly_set(monkeypatch):

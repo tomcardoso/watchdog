@@ -274,6 +274,59 @@ def arm_vault(prefix: str, arm_id: str, root: Path) -> Path:
     return root / f"{prefix}-{arm_id}"
 
 
+def _stale_reason(vault: Path) -> str | None:
+    """Why `vault` isn't safe to start a fresh arm run against, or None if it's fresh (either
+    absent, or present but untouched). Checked up front for every arm targeted by this run,
+    rather than only being discovered deep inside that arm's own turn — `seed_arm_vault`'s
+    reseed-refusal, or `cmd_extract`'s two-phase pending-finalization gate — potentially after
+    other arms have already spent real money (#494)."""
+    if not vault.exists():
+        return None
+    wd = vault / ".watchdog"
+    queue = wd / "queue"
+    if queue.is_dir() and any(queue.glob("*.json")):
+        return "already has a queued/staged batch"
+    if any((wd / "tmp").glob("result_*.json")):
+        return "has a batch pending finalization (extracted but not yet finalized)"
+    if (wd / "registry" / "batch-pending.json").exists():
+        return "has a pending Message Batches API extraction"
+    extracted = wd / "extracted"
+    if extracted.is_dir() and any(extracted.glob("*.json")):
+        return "already has extracted documents"
+    return None
+
+
+def planned_arm_vaults(config: dict, config_dir: Path, stages: set[str], root: Path,
+                       selected) -> list[Path]:
+    """Every arm vault this run's selected stages/arms will target — computed without creating
+    or seeding anything, mirroring `main`'s own stage-gating exactly, so staleness can be
+    checked before any vault is touched or any preview computed."""
+    vaults: list[Path] = []
+    if "extractor" in stages and config.get("extractor_sweep"):
+        sweep = config["extractor_sweep"]
+        vaults += [arm_vault(sweep["vault_prefix"], a["id"], root)
+                  for a in sweep["arms"] if selected(a)]
+    if "finalizer" in stages and config.get("finalizer_sweep"):
+        sweep = config["finalizer_sweep"]
+        vaults.append(arm_vault(sweep["vault_prefix"], "base", root))
+        vaults += [arm_vault(sweep["vault_prefix"], a["id"], root)
+                  for a in sweep["arms"] if selected(a)]
+    if "classifier" in stages and config.get("classifier_smoke"):
+        smoke = config["classifier_smoke"]
+        if selected(smoke["arm"]):
+            vaults.append(arm_vault(smoke["vault_prefix"], smoke["arm"]["id"], root))
+    if "classifier-sweep" in stages and config.get("classifier_sweep"):
+        sweep = config["classifier_sweep"]
+        if classify_corpus_ready(config_dir / sweep["corpus_dir"]):
+            vaults += [arm_vault(sweep["vault_prefix"], a["id"], root)
+                      for a in sweep["arms"] if selected(a)]
+    if "sdk-check" in stages and config.get("sdk_check"):
+        sweep = config["sdk_check"]
+        vaults += [arm_vault(sweep["vault_prefix"], a["id"], root)
+                  for a in sweep["arms"] if selected(a)]
+    return vaults
+
+
 # ─── arm execution ───────────────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -377,7 +430,7 @@ def run_extractor_arm(arm: dict, vault: Path) -> ArmResult:
                         force=False, skip_warning=True, wait=False, no_finalize=True)
     try:
         with _in_vault(vault):
-            summary = _quiet(ing.cmd_extract, ns)
+            summary = _quiet(ing.cmd_extract, ns, non_interactive=True)
     except SystemExit as e:
         return ArmResult(arm_id=arm["id"], stage="extractor", vault=vault, ok=False, error=str(e))
     return ArmResult(arm_id=arm["id"], stage="extractor", vault=vault, ok=True,
@@ -426,7 +479,7 @@ def run_classifier_smoke(arm: dict, vault: Path, expected: dict[str, str]) -> Ar
                             skip_warning=True, wait=False, no_finalize=True)
     try:
         with _in_vault(vault):
-            ex_summary = _quiet(ing.cmd_extract, ex_ns)
+            ex_summary = _quiet(ing.cmd_extract, ex_ns, non_interactive=True)
             if (ex_summary or {}).get("cancelled"):
                 return ArmResult(arm_id=arm["id"], stage="classifier", vault=vault, ok=True,
                                  cancelled=True, doc_errors=_doc_errors(ex_summary))
@@ -448,7 +501,7 @@ def run_classifier_sweep_arm(arm: dict, vault: Path, fixed: dict, expected: dict
                             no_finalize=True)
     try:
         with _in_vault(vault):
-            ex_summary = _quiet(ing.cmd_extract, ex_ns)
+            ex_summary = _quiet(ing.cmd_extract, ex_ns, non_interactive=True)
             if (ex_summary or {}).get("cancelled"):
                 return ArmResult(arm_id=arm["id"], stage="classifier-sweep", vault=vault, ok=True,
                                  cancelled=True, doc_errors=_doc_errors(ex_summary))
@@ -587,6 +640,17 @@ def main(argv: list[str] | None = None) -> int:
     def _selected(arm: dict) -> bool:
         return wanted_arms is None or arm.get("id") in wanted_arms
 
+    # Every target vault must be fresh before this run spends a cent — refuse the whole run
+    # rather than discover mid-sweep, after earlier arms already ran, that a later arm's vault
+    # has stale state (#494).
+    stale = [(v, r) for v in planned_arm_vaults(config, config_dir, stages, root, _selected)
+            if (r := _stale_reason(v))]
+    if stale:
+        lines = "\n".join(f"  {v} — {r}" for v, r in stale)
+        rm = "\n".join(f"  rm -rf {v}" for v, _ in stale)
+        sys.exit(f"Error: {len(stale)} target vault(s) aren't fresh — refusing to start the "
+                 f"run:\n{lines}\n\nRemove them first, then re-run, e.g.:\n{rm}")
+
     results: list[ArmResult] = []
     previews: list[tuple[str, dict, dict]] = []
     plan: list[tuple[str, dict]] = []   # (kind, arm-plus-context) queued for real execution
@@ -702,31 +766,46 @@ def main(argv: list[str] | None = None) -> int:
     from watchdog.cmd.ingest import _caffeinate
     total = len(plan)
     print(f"\nRunning {total} arm(s)…\n")
-    with _caffeinate():
-        for i, (kind, ctx) in enumerate(plan, 1):
-            label = f"{kind}:{ctx['arm']['id']}"
-            print(_arm_starting_line(i, total, label), flush=True)
-            start = time.monotonic()
-            if kind == "extractor":
-                result = run_extractor_arm(ctx["arm"], ctx["vault"])
-            elif kind == "finalizer":
-                result = run_finalizer_arm(ctx["arm"], ctx["vault"])
-            elif kind == "classifier":
-                result = run_classifier_smoke(ctx["arm"], ctx["vault"], expected_skills)
-            elif kind == "classifier-sweep":
-                result = run_classifier_sweep_arm(ctx["arm"], ctx["vault"], ctx["fixed"],
-                                                  ctx["expected"])
-            elif kind == "sdk-check":
-                # Same extraction path as the main sweep (run_extractor_arm), relabelled so it's
-                # excluded from extractor-sweep recall scoring and the six-document cost summary
-                # below — its two-document corpus doesn't match either one.
-                result = run_extractor_arm(ctx["arm"], ctx["vault"])
-                result.stage = "sdk-check"
-            results.append(result)
-            print(_arm_line(i, total, label, result, time.monotonic() - start))
-            if result.cancelled:
-                print(f"\nRun stopped — {i} of {total} arm(s) completed.")
-                break
+    # Only `result.cancelled` (SIGINT trapped inside async extraction, see orchestrate.py) is the
+    # *designed* early-stop path — it breaks the loop normally and falls straight through to
+    # scoring/write_run below. Anything else that interrupts the loop (a Ctrl+C outside that
+    # narrow window, or a genuinely unexpected exception) must not lose the whole run's report
+    # over one bad arm — whatever's in `results` so far still gets scored and written (#494).
+    interrupted: BaseException | None = None
+    try:
+        with _caffeinate():
+            for i, (kind, ctx) in enumerate(plan, 1):
+                label = f"{kind}:{ctx['arm']['id']}"
+                print(_arm_starting_line(i, total, label), flush=True)
+                start = time.monotonic()
+                if kind == "extractor":
+                    result = run_extractor_arm(ctx["arm"], ctx["vault"])
+                elif kind == "finalizer":
+                    result = run_finalizer_arm(ctx["arm"], ctx["vault"])
+                elif kind == "classifier":
+                    result = run_classifier_smoke(ctx["arm"], ctx["vault"], expected_skills)
+                elif kind == "classifier-sweep":
+                    result = run_classifier_sweep_arm(ctx["arm"], ctx["vault"], ctx["fixed"],
+                                                      ctx["expected"])
+                elif kind == "sdk-check":
+                    # Same extraction path as the main sweep (run_extractor_arm), relabelled so
+                    # it's excluded from extractor-sweep recall scoring and the six-document cost
+                    # summary below — its two-document corpus doesn't match either one.
+                    result = run_extractor_arm(ctx["arm"], ctx["vault"])
+                    result.stage = "sdk-check"
+                results.append(result)
+                print(_arm_line(i, total, label, result, time.monotonic() - start))
+                if result.cancelled:
+                    print(f"\nRun stopped — {i} of {total} arm(s) completed.")
+                    break
+    except KeyboardInterrupt as e:
+        interrupted = e
+        print(f"\n\nInterrupted — {len(results)} of {total} arm(s) completed. Writing a report "
+              f"for what finished…")
+    except Exception as e:
+        interrupted = e
+        print(f"\n\n{type(e).__name__}: {e}\n{len(results)} of {total} arm(s) completed. "
+              f"Writing a report for what finished…")
 
     import bench_report
     vaults_to_score = [str(r.vault) for r in results
@@ -738,6 +817,8 @@ def main(argv: list[str] | None = None) -> int:
     n_failed = sum(1 for r in results if not r.ok or r.doc_errors)
     tail = f" — {n_failed} arm(s) had failures, see errors.log" if n_failed else ""
     print(f"\nReport written to {out_dir}{tail}")
+    if interrupted is not None:
+        return 130 if isinstance(interrupted, KeyboardInterrupt) else 1
     return 0
 
 
