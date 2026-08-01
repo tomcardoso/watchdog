@@ -1,0 +1,1675 @@
+{
+  "document": "annual-financial-report-19-20",
+  "document_file": "Annual-Financial-Report-19-20.pdf",
+  "items": {
+    "facts": [
+      {
+        "id": "F1",
+        "text": "The FY2019-20 approved budget expected BALANCED results from operations, and LU says it was \"on track\" to operate the year with an anticipated small deficit of $0.9 million.\n",
+        "quote": "The fiscal 2019-20 approved budget expected balanced results from operations … the University was on track to operating fiscal year 2019-20 with an anticipated a small deficit of $0.9 million from operations.",
+        "page": 5
+      },
+      {
+        "id": "F2",
+        "text": "The operating deficit was $5.4 million, of which $5.2 million is attributed to the COVID-19 outbreak — i.e. 96% of the miss is blamed on the pandemic.\n",
+        "quote": "The net impact was an operating deficit of $5.4 million of which $5.2 million is related to the COVID-19 outbreak.",
+        "page": 5
+      },
+      {
+        "id": "F3",
+        "text": "LU describes its commitment as 'unwavering as it continues to trace its path to sustainability'.",
+        "quote": "Laurentian's commitment to providing world-class education and opportunities for students is unwavering as it continues to trace its path to sustainability.",
+        "page": 4
+      },
+      {
+        "id": "F4",
+        "text": "LU reports $52.8 million in endowment, \"an increase of $1 million over 2018-19\", with a spending rate of 3.5%.\n",
+        "quote": "The University has $52.8 million in endowment, an increase of $1 million over 2018-19. For 2019-20, the University assigned a spending rate of 3.5% towards the scholarships and other commitments supported by the funds.",
+        "page": 9
+      },
+      {
+        "id": "F5",
+        "text": "KPMG issued an UNQUALIFIED opinion — the statements \"present fairly, in all material respects\" — dated 30 October 2020 at Sudbury. The opinion carries NO going-concern modification and no emphasis of matter.\n",
+        "quote": "In our opinion, the accompanying financial statements present fairly, in all material respects, the consolidated financial position of Laurentian University of Sudbury as at April 30, 2020 … Sudbury, Canada October 30, 2020",
+        "page": null
+      },
+      {
+        "id": "F11",
+        "text": "$14.4 million of the line of credit was drawn at 30 April 2020 — and it was used for CAPITAL SPENDING.",
+        "quote": "At April 30, 2020, $14.4M of the University's line of credit was utilized for capital spending, a decrease of $3.2M.",
+        "page": 12
+      },
+      {
+        "id": "F12",
+        "text": "The DB Pension Plan solvency ratio was 85.4% at 1 January 2020 (2019: 87.8%). LU is only required to fund solvency deficits up to an 85% level.\n",
+        "quote": "The solvency ratio deficit for the January 1, 2020 was 85.4% (2019, 87.8%) … The University is only required to fund solvency deficits up to an 85% level with a 5-year amortization period.",
+        "page": 8
+      },
+      {
+        "id": "F13",
+        "text": "The Provision for Adverse Deviation (PfAD) rate rose to 10.3% from 7.94%.",
+        "quote": "The current PfAD rate is 10.3% (2019, 7.94%) applied to current services costs.",
+        "page": 8
+      },
+      {
+        "id": "F14",
+        "text": "LU claims $20 million in pre-COVID savings under its Long Term Sustainability Plan, plus ~$10 million post-COVID — over $30 million total since 2018, as of August 2020.\n",
+        "quote": "Pre-Covid, our Long Term Sustainability Plan enabled Laurentian to achieve $20 million in savings and cost reductions compared to plan, and post COVID, the accelerated plan enabled additional savings of approx. $10 million, bringing total savings achieved since 2018 to over $30 million as of August 2020.",
+        "page": 4
+      },
+      {
+        "id": "F16",
+        "text": "Tuition revenue fell 7.6% because of the provincially mandated 10% domestic tuition reduction.",
+        "quote": "Tuition revenue decreased by 7.6% due to the 10.0% reduction in domestic tuition fees",
+        "page": 13
+      },
+      {
+        "id": "F17",
+        "text": "Operating grants rose 7.7% mainly because of a ONE-TIME Northern Sustainability grant — a non-recurring prop under the year's revenue.\n",
+        "quote": "Operating grants increased 7.7% mainly due to a one-time Northern Sustainability grant received in 2020.",
+        "page": 13
+      },
+      {
+        "id": "F19",
+        "text": "Endowment returns were NEGATIVE for the year; the 3.5% spending rate was funded from the operating fund at a cost of $1.8 million.",
+        "quote": "Due to COVID-19 the fund had returned a negative value for the year. As a result, the amounts spent to cover the spending rate were a cost of the operating fund in the amount of $1.8 million.",
+        "page": 9
+      }
+    ],
+    "must_not_miss": [
+      {
+        "id": "M1",
+        "text": "The auditors' report is CLEAN — an unqualified opinion, dated 30 October 2020, with no going-concern material uncertainty and no emphasis of matter.\n",
+        "page": null,
+        "why": "Three months before EY told the court LU was insolvent, KPMG said the statements presented fairly with no going-concern flag. The FY20-21 audit report DOES carry that flag. Scoring note — an extractor cannot prove an absence, so score the PRESENCE of the unqualified opinion and its date; the significance of what is missing is for the human reading the scorecard.\n"
+      },
+      {
+        "id": "M2",
+        "text": "The Statement of Administrative Responsibility is signed by Lorella Hayes (CPA, CA), Vice-President Administration, and Normand Lavallée (FCPA, FCMA, FCA), Associate Vice-President Financial Services.\n",
+        "page": 14,
+        "why": "The only place in the document where an individual human being personally attests to the numbers, by name. Signature blocks are the first thing an extractor drops.\n"
+      },
+      {
+        "id": "M3",
+        "text": "Eckler Ltd. is the actuary retained to estimate the pension and employee future benefit liabilities.",
+        "page": 14,
+        "why": "Names the firm behind the single largest and most judgement-dependent liability on the balance sheet. Mentioned exactly once, inside a governance boilerplate page.\n"
+      },
+      {
+        "id": "M4",
+        "text": "The line of credit was used for CAPITAL SPENDING — $14.4M drawn at 30 April 2020.\n",
+        "page": 12,
+        "why": "Funding long-lived capital assets with a revolving short-term facility is a liquidity red flag. It is stated plainly, in a caption-like commentary block beside a chart, and reads as routine.\n"
+      },
+      {
+        "id": "M5",
+        "text": "The 7.7% rise in operating grants was driven by a ONE-TIME Northern Sustainability grant.\n",
+        "page": 13,
+        "why": "The year's single biggest revenue improvement was non-recurring. Without it the picture is materially worse — and the FY20-21 report duly shows operating grants falling back to $79.3M.\n"
+      },
+      {
+        "id": "M6",
+        "text": "LU is only required to fund solvency deficits up to an 85% level — and the plan sits at 85.4%.\n",
+        "page": 8,
+        "why": "The plan is 0.4 percentage points above the threshold that would trigger mandatory solvency funding. Two numbers in adjacent sentences; the relationship between them is never stated.\n"
+      },
+      {
+        "id": "M7",
+        "text": "Endowment returns were NEGATIVE, and the 3.5% distribution was paid out of the operating fund at a cost of $1.8 million.\n",
+        "page": 9,
+        "why": "LU borrowed from operations to keep paying scholarships when the endowment lost money — while simultaneously reporting the endowment as having \"increased $1 million\". Both claims sit in the same short section.\n"
+      },
+      {
+        "id": "M10",
+        "text": "The Audit Committee's members are not officers or full-time employees, and the auditors have full access to it with and without administration present.\n",
+        "page": 14,
+        "why": "A governance safeguard asserted in the document. Worth capturing because the Auditor General later concluded the oversight did not work.\n"
+      },
+      {
+        "id": "M12",
+        "text": "\"Subsequent to year-end, principal repayments on four loans relating to the operations of the residences were deferred for six months\" — a cash-flow accommodation negotiated after the audit period but before the 30 October 2020 report date.\n",
+        "page": null,
+        "why": "A subtle cash-crunch signal that survived into the final report despite the clean audit opinion (M1) and the \"on track\" narrative (F1) — LU was already deferring debt service before this report was even issued.\n"
+      }
+    ]
+  },
+  "arms": {
+    "X": {
+      "summary": "This is the audited annual financial report of Laurentian University of Sudbury for the fiscal year ended April 30, 2020, audited by KPMG LLP with an unqualified opinion dated October 30, 2020. The University reported a consolidated deficiency of revenue over expenses of $3.120 million (2019: $4.100 million) and total assets of $358.520 million against total liabilities and deferred contributions of $321.838 million, leaving net assets of $36.682 million — down sharply from $53.164 million the prior year, driven largely by a $14.398 million remeasurement loss on employee future benefits. The unrestricted net asset position (accumulated operating deficit) widened from $(14.544) million to $(19.986) million, and the employee future benefits liability swung from a $1.929 million asset to a $20.788 million liability, reflecting actuarial changes and lower discount rates. COVID-19 accounted for $5.2 million of the operating deficit, arising from residence refunds, endowment investment losses, and tuition receivable credit risk; the report warns of material ongoing uncertainty for fiscal 2021 revenues. Total long-term debt stood at $91.711 million, and the University carried a $14.4 million draw on its Desjardins line of credit as at year-end.",
+      "key_facts": [
+        {
+          "fact": "Laurentian University of Sudbury reported a consolidated deficiency of revenue over expenses of $3.120 million for the fiscal year ended April 30, 2020, compared to a deficiency of $4.100 million in fiscal 2019.",
+          "page": 19,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Total consolidated revenues were $198.397 million for fiscal 2020 (2019: $195.224 million), and total expenses were $201.517 million (2019: $199.324 million).",
+          "page": 19,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Operating grants and contracts revenue increased to $86.234 million in fiscal 2020 from $80.063 million in fiscal 2019, a 7.7% increase, largely due to a one-time Northern Sustainability grant.",
+          "page": 19,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Tuition fee revenue declined to $53.211 million in fiscal 2020 from $55.581 million in fiscal 2019, a 7.6% drop, caused by a mandated 10% reduction in domestic tuition rates partially offset by international and graduate enrolment growth.",
+          "page": 19,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Salaries and benefits expense was $134.552 million in fiscal 2020 (2019: $134.939 million), representing approximately 67% of total University expenses.",
+          "page": 19,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The University recorded an investment loss of $1.001 million in fiscal 2020 (2019: investment income of $2.653 million), comprising unrealized losses of $84,000, interest income of $1.291 million, realized losses of $2.016 million, and investment management fees of $192,000.",
+          "page": 26,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Total assets at April 30, 2020 were $358.520 million, down from $371.870 million at April 30, 2019, a 3.6% decline.",
+          "page": 18,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Cash and short-term investments fell to $4.544 million at April 30, 2020 from $7.505 million at April 30, 2019.",
+          "page": 18,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Capital assets (net book value) declined to $227.267 million at April 30, 2020 from $280.187 million at April 30, 2019; gross cost was $448.737 million against accumulated amortization of $176.470 million.",
+          "page": 28,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Long-term investments (endowment funds) totalled $52.845 million at April 30, 2020 (2019: $51.809 million), invested in equity funds ($22.369M), fixed income ($25.884M), and real estate ($2.322M); structured credit of $2.638M held in 2019 was liquidated by 2020.",
+          "page": 26,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The employee future benefits position swung from a net asset of $1.929 million at April 30, 2019 to a net liability of $20.788 million at April 30, 2020: the total accrued benefit obligation was $441.850 million against plan assets of $421.062 million.",
+          "page": 27,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Employee future benefits remeasurements and other items produced a charge of $14.398 million directly to net assets in fiscal 2020 (compared to a credit of $7.374 million in fiscal 2019), driven by lower discount rates increasing the pension liability.",
+          "page": 20,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The pension plan discount rate used for actuarial assumptions was lowered to 5.85% for fiscal 2020 from 6.10% in fiscal 2019; the Provision for Adverse Deviation rate rose to 10.29% from 7.94%.",
+          "page": 28,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "pension-plan"
+          ]
+        },
+        {
+          "fact": "The pension plan solvency ratio as of January 1, 2020 was 85.4% (January 1, 2019: 87.8%), with going-concern deficits now required to be funded over 10 years instead of 15.",
+          "page": 7,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "pension-plan"
+          ]
+        },
+        {
+          "fact": "The most recent pension actuarial valuation was as of January 1, 2020; Eckler Ltd. was retained as actuary.",
+          "page": 23,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "eckler-ltd",
+            "pension-plan"
+          ]
+        },
+        {
+          "fact": "The Federated Universities and SNOLAB have additional post-employment benefit liabilities of $4.918 million, for which Laurentian administers the Retiree Health Benefit Plan as principal employer.",
+          "page": 32,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "federated-universities",
+            "snolab"
+          ]
+        },
+        {
+          "fact": "Total net assets (deficiency) decreased to $36.682 million at April 30, 2020 from $53.164 million at April 30, 2019; unrestricted net assets (accumulated operating deficit) deepened from $(14.544) million to $(19.986) million.",
+          "page": 18,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The vacation and employee future benefits net deficiency component widened to $(22.635) million at April 30, 2020 from $(9.107) million at April 30, 2019.",
+          "page": 20,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Total outstanding long-term debt was $91.711 million at April 30, 2020 (2019: $95.317 million), with lenders including Royal Bank of Canada ($73.026M across four loans at rates of 3.90%–4.63%), TD Canada Trust ($17.319M across two loans at rates of 4.70%–4.74%), and Bank of Montreal ($1.366M at 5.14%).",
+          "page": 29,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "royal-bank-of-canada",
+            "td-canada-trust",
+            "bank-of-montreal"
+          ]
+        },
+        {
+          "fact": "Subsequent to April 30, 2020, principal repayments on four of the long-term loans (Bank of Montreal, two Royal Bank loans at 4.50% and 3.90% maturing 2043 and 2023, and TD Canada Trust at 4.70%) were deferred for six months to manage COVID-19 cash flow pressures.",
+          "page": 29,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The University had drawn $14.400 million on the Desjardins unsecured line of credit (limit $26 million) at April 30, 2020 and had not drawn on the Royal Bank unsecured line of credit (limit $5 million); Desjardins prime less 0.70% and Royal Bank prime less 0.50%.",
+          "page": 32,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "desjardins",
+            "royal-bank-of-canada"
+          ]
+        },
+        {
+          "fact": "The University carried a short-term unsecured loan from TD Canada Trust for the student recreation centre of $1.367 million at a floating rate of 1.91% at April 30, 2020 (2019: 3.28%).",
+          "page": 28,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "td-canada-trust"
+          ]
+        },
+        {
+          "fact": "Internal capital financing totalled $12.850 million at April 30, 2020, of which the largest component was Campus Modernization at $16.878 million (offset by the line of credit draw of $(14.400) million).",
+          "page": 32,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The University's allowance for doubtful accounts increased to $5.020 million at April 30, 2020 from $3.120 million at April 30, 2019, reflecting increased credit risk on tuition receivables attributed to COVID-19.",
+          "page": 27,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The COVID-19-related operating deficiency for fiscal 2020 was $5.2 million, arising from: additional tuition receivable credit risk ($1.300M), ancillary fee refunds and reduced ancillary contribution ($1.521M), scholarships funded from operations due to endowment losses ($1.803M), lower interest/investment income ($1.171M), and other net costs ($0.105M), partly offset by a COVID-19 grant from MCU of $0.751 million.",
+          "page": 6,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ministry-of-colleges-and-universities"
+          ],
+          "quote": "The in-year deficiency associated with COVID-19 was $5.2 million.",
+          "quote_verified": false
+        },
+        {
+          "fact": "The Long Term Sustainability Plan generated $20 million in savings and cost reductions compared to plan prior to COVID-19, with an accelerated plan adding approximately $10 million more post-COVID, for total savings of over $30 million since 2018 as of August 2020.",
+          "page": 4,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The pre-COVID anticipated operating deficit for fiscal 2019-20 was $0.9 million; the actual operating deficit was $5.4 million, of which $5.2 million was COVID-19-related.",
+          "page": 5,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The University's endowment fund stood at $52.8 million at April 30, 2020 (up approximately $1 million over 2018-19); the spending rate for 2019-20 was 3.5%, but the fund returned a negative value, requiring the operating fund to cover $1.8 million in scholarship spending.",
+          "page": 8,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Endowment contributions received in fiscal 2020 totalled $1.036 million (2019: $3.009 million).",
+          "page": 20,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Deferred contributions (research and other) increased to $38.519 million at April 30, 2020 from $36.078 million at April 30, 2019; deferred capital contributions decreased to $129.879 million from $133.474 million.",
+          "page": 30,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Starting in 2020-21, Laurentian's enrolment is below the SMA3 corridor midpoint of 16,423.53 Weighted Grant Units; enrolment-based funding of $2,903 per WGU in 2019-20 is expected to decline to $1,173 per WGU.",
+          "page": 7,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ministry-of-colleges-and-universities"
+          ]
+        },
+        {
+          "fact": "Laurentian signed SMA3 with the Province in September 2020 covering 2020-25; the ministry delayed activation of the Performance-based grant for two years (2020-21 and 2021-22) due to COVID-19.",
+          "page": 9,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ministry-of-colleges-and-universities"
+          ],
+          "quote": "Laurentian signed a new Strategic Mandate Agreements (SMA3) agreement with the Province in September 2020 covering the period of 2020-25."
+        },
+        {
+          "fact": "The University's fall 2019 enrolment was 6,834 FTE students; 65% of alumni reside in Northern Ontario after graduation.",
+          "page": 3,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The Board of Governors guaranteed a student loan up to $8.5 million to fund a new Student Centre, backed by a student levy approved by referendum through the Students' General Association.",
+          "page": 32,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "students-general-association"
+          ]
+        },
+        {
+          "fact": "The McEwen School of Architecture, launched in 2013, carried an internally restricted deficit of $(736,000) at April 30, 2020 (2019: $(1.036) million); losses are to accumulate until full enrolment in the Master in Architecture Program, then be repaid to the Operating Fund.",
+          "page": 31,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "mcewen-school-of-architecture"
+          ]
+        },
+        {
+          "fact": "MIRARCO (Mining Innovation Rehabilitation and Applied Research Corporation) is a wholly controlled entity and is fully consolidated in the financial statements; SNOLAB's 20% proportionate share (revenues and expenses to March 31, 2019) was included but SNOLAB is transitioning to a not-for-profit corporation, and Laurentian wrote off its share of SNOLAB assets and liabilities as at April 30, 2018.",
+          "page": 24,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "mirarco",
+            "snolab"
+          ]
+        },
+        {
+          "fact": "CEMI (Centre for Excellence in Mining and Innovation) was created April 23, 2007 with a $10 million contribution from Laurentian funded by the Provincial Government; the University has no claim to CEMI's assets and its operations are not consolidated.",
+          "page": 25,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "cemi",
+            "provincial-government"
+          ],
+          "quote": "The University contributed $10 million received from the Provincial Government to create and fund CEMI on its inception.",
+          "quote_verified": true,
+          "quote_found_page": 26
+        },
+        {
+          "fact": "The Northern Ontario School of Medicine is not consolidated because, although Laurentian and Lakehead University are the only voting members, Laurentian has no claim to the School's net assets and bears no liability for its obligations.",
+          "page": 24,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "northern-ontario-school-of-medicine",
+            "lakehead-university"
+          ]
+        },
+        {
+          "fact": "The financial statements were prepared under Canadian accounting standards for not-for-profit organizations; three new accounting standards (Sections 4433, 4434, 4441) were adopted effective May 1, 2019 with no adjustments required to opening balances.",
+          "page": 35,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "KPMG LLP issued an unqualified audit opinion on the consolidated financial statements as at and for the year ended April 30, 2020; the auditors' report is dated October 30, 2020.",
+          "page": 17,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "kpmg-llp"
+          ],
+          "quote": "In our opinion, the accompanying financial statements present fairly, in all material respects, the consolidated financial position of Laurentian University of Sudbury as at April 30, 2020.",
+          "quote_verified": true,
+          "quote_found_page": 16
+        },
+        {
+          "fact": "The Statement of Administrative Responsibility was signed by Lorella Hayes, CPA, CA (Vice-President, Administration) and Normand Lavallée, FCPA, FCMA, FCA (Associate Vice-President, Financial Services).",
+          "page": 13,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "lorella-hayes",
+            "normand-lavallee"
+          ]
+        },
+        {
+          "fact": "The University's ancillary operations produced an actual net contribution of $2.747 million in fiscal 2020 versus a budget of $3.639 million; COVID-19 caused $1.2 million in residence and ancillary refunds.",
+          "page": 8,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Other fees and income rose to $17.587 million in fiscal 2020 from $14.940 million in fiscal 2019, driven by new compulsory ancillary fees and increased administrative fees from amended funding arrangements with the Federated Universities.",
+          "page": 33,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "federated-universities"
+          ]
+        },
+        {
+          "fact": "Administrative fees (a component of other fees and income) rose to $4.967 million in fiscal 2020 from $3.885 million in fiscal 2019, reflecting an amendment to funding arrangements with Federated Universities.",
+          "page": 33,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "federated-universities"
+          ]
+        },
+        {
+          "fact": "The University participates in a reciprocal insurance exchange with approximately 40 other Canadian universities as a self-insurance co-operative for property and liability risks.",
+          "page": 32,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The University's long-term debt repayment schedule shows $74.133 million due after 2025, with near-term principal payments of $2.738M (2021), $3.917M (2022), $4.082M (2023), $3.504M (2024), and $3.337M (2025).",
+          "page": 29,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The University uses interest rate swap agreements to convert floating-rate long-term debt to fixed rates; as at April 30, 2020, 0.62% of debt remained at floating rate (2019: 1.96%).",
+          "page": 29,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Scholarships and bursaries expense increased 5.8% to $12.072 million in fiscal 2020 (2019: $11.411 million), partly due to a new scholarship program for international students.",
+          "page": 19,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The University's borrowing exceeds $100 million in total (short and long-term), used to finance residences, the student recreation centre, and educational building modernization.",
+          "page": 22,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "The University has incurred short and long-term borrowing in excess of $100 million, the proceeds of which were used to finance residences, the student recreation centre and various educational buildings to modernize the campus.",
+          "quote_verified": true,
+          "quote_found_page": 23
+        }
+      ],
+      "coverage_gap": null,
+      "entities": [
+        "Laurentian University of Sudbury",
+        "KPMG LLP",
+        "Eckler Ltd.",
+        "Royal Bank of Canada",
+        "TD Canada Trust",
+        "Bank of Montreal",
+        "Desjardins",
+        "Mining Innovation Rehabilitation and Applied Research Corporation",
+        "SNOLAB",
+        "Centre for Excellence in Mining and Innovation",
+        "Northern Ontario School of Medicine",
+        "Lakehead University",
+        "Federated Universities",
+        "Ministry of Colleges and Universities",
+        "Provincial Government of Ontario",
+        "Board of Governors",
+        "Students' General Association",
+        "McEwen School of Architecture",
+        "Pension Plan",
+        "Lorella Hayes",
+        "Normand Lavallée"
+      ]
+    },
+    "Y": {
+      "summary": "Annual Financial Report (Annual-Financial-Report-19-20.pdf) is Laurentian University of Sudbury’s 36-page annual financial report for the fiscal year ended April 30, 2020. It presents the university’s audited financial position and operating results, along with narrative discussion of COVID-19 impacts, financing, pensions, related consolidations, and future funding pressures.\n\nLaurentian reported an audited operating deficit of $5.4 million for 2019-20, versus a budgeted deficit of $0.9 million, with $5.2 million of the shortfall tied to COVID-19; unrestricted net assets, described as accumulated operating deficit, widened from $14.544 million to $19.986 million. At year-end it held $4.544 million in cash and short-term investments, $27.045 million in accounts receivable, $52.845 million in investments, and $227.267 million in capital assets against $14.4 million drawn on a line of credit, a $1.367 million short-term loan, $88.973 million in long-term debt, and $20.788 million in employee future benefits liabilities; total assets were $358.520 million and total net assets were $36.682 million.\n\nThe report says COVID-19 forced a March 2020 move to online instruction, created credit risk on tuition receivables, fee refunds, endowment income, and investment returns, and led to a six-month deferral of residence debt repayments after year-end. It also notes a provincial funding shift under SMA3, with 25% of funding linked to metrics beginning in 2020-21 and enrolment-based funding falling sharply, while the university carried significant borrowing, ongoing litigation of undetermined outcome, and a pension plan with a January 1, 2020 solvency deficit of 85.4%.",
+      "key_facts": [
+        {
+          "fact": "The document is Laurentian University of Sudbury's annual financial report for the fiscal year ended April 30, 2020.",
+          "page": 1,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "Annual Financial Report"
+        },
+        {
+          "fact": "The report says Laurentian University is committed to bilingual education, reconciliation, and a comprehensive approach to Indigenous education.",
+          "page": 3,
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "Laurentian is committed to strengthening the foundation of knowledge in higher education and research to offer an outstanding university experience in English and French with a comprehensive approach to Indigenous education."
+        },
+        {
+          "fact": "The university reports Fall 2019 enrolment of 6,834 FTE and says its earned research income grew 37% between 2017-2018.",
+          "page": 3,
+          "basis": "stated",
+          "date": "2019-09-01",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "Laurentian enrolment Fall 2019 - 6,834 FTE"
+        },
+        {
+          "fact": "The report says Laurentian achieved $20 million in savings and cost reductions under its long-term sustainability plan before COVID-19 and an additional approximately $10 million after COVID-19, for more than $30 million in total savings as of August 2020.",
+          "page": 4,
+          "basis": "stated",
+          "date": "2020-08-01",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "bringing total savings achieved since 2018 to over $30 million as of August 2020."
+        },
+        {
+          "fact": "The fiscal 2019-20 operating budget anticipated a small deficit of $0.9 million, but the audited operating result was a deficit of $5.4 million, including $5.2 million related to COVID-19.",
+          "page": 5,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "The net impact was an operating deficit of $5.4 million of which $5.2 million is related to the COVID-19 outbreak."
+        },
+        {
+          "fact": "Laurentian says its unrestricted net assets, described as accumulated operating deficit, increased from $14.544 million to $19.986 million because of the operating budget deficit.",
+          "page": 5,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "The Unrestricted net assets (ie. Accumulated operating deficit) increased from $14.544 million to $19.986 million due to the operating budget deficit."
+        },
+        {
+          "fact": "The university says the net COVID-19 grant from the Ministry of Colleges and Universities was $751,000 and that it faced additional credit risk on tuition receivables, fee refunds, lost endowment income, and lower investment returns.",
+          "page": 6,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ministry-of-colleges-and-universities"
+          ],
+          "quote": "The net grant to Laurentian University was $751,000."
+        },
+        {
+          "fact": "Capital projects were financed through grants, donations, long-term debt, and internal funding, and total outstanding long-term debt was $91.7 million at the end of fiscal 2020.",
+          "page": 7,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "Total outstanding long-term debt was $91.7 million at the end of fiscal 2020."
+        },
+        {
+          "fact": "The university repaid $3.6 million in long-term debt during the year, had $12.9 million in capital projects financed by internal financing at April 30, 2020, and had utilized $14.4 million of its unsecured line of credit.",
+          "page": 7,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "royal-bank",
+            "desjardins"
+          ],
+          "quote": "At April 30, 2020 the University had utilized $14.4 million."
+        },
+        {
+          "fact": "Laurentian says salaries and benefits represented 67% of expenses and totalled approximately $134 million.",
+          "page": 7,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "Salaries and benefits expense remained consistent with the prior year at approximately $134 million."
+        },
+        {
+          "fact": "The university says it has three post-employment benefit plans, including a defined benefit pension plan, a retiree health benefit plan, and a supplemental pension plan.",
+          "page": 8,
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "pension-plan",
+            "retiree-health-benefit-plan"
+          ],
+          "quote": "The University has three post-employment benefit plans."
+        },
+        {
+          "fact": "The pension plan's new valuation was effective January 1, 2020, the current Provision for Adverse Deviation rate was 10.3%, and the solvency ratio deficit for January 1, 2020 was 85.4%.",
+          "page": 8,
+          "basis": "stated",
+          "date": "2020-01-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "pension-plan"
+          ],
+          "quote": "The current PfAD rate is 10.3% (2019, 7.94%) applied to current services costs."
+        },
+        {
+          "fact": "The corridor midpoint under SMA3 was reset at 16,423.53 Weighted Grant Units, and Laurentian says it will be below the corridor starting in 2020-21.",
+          "page": 8,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ministry-of-colleges-and-universities"
+          ],
+          "quote": "Starting in 2020-21, Laurentian is below the corridor."
+        },
+        {
+          "fact": "Beginning in 2020-21, 25% of provincial funding was to be linked to 10 metrics, rising to 60% by 2024-25, and Laurentian says enrolment-based funding would fall from $2,903 per WGU in 2019-20 to $1,173 per WGU.",
+          "page": 9,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ministry-of-colleges-and-universities"
+          ],
+          "quote": "Beginning in 2020-21, 25% of provincial funding was to be linked to 10 metrics with that share rising to 60% by the 2024-25 academic year."
+        },
+        {
+          "fact": "Laurentian signed a new SMA3 agreement with the Province in September 2020 covering 2020-25, and the ministry delayed activation of the performance-based grant for two years because of COVID-19.",
+          "page": 9,
+          "basis": "stated",
+          "date": "2020-09-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ministry-of-colleges-and-universities"
+          ],
+          "quote": "Laurentian signed a new Strategic Mandate Agreements (SMA3) agreement with the Province in September 2020 covering the period of 2020-25."
+        },
+        {
+          "fact": "Laurentian's ancillary operations include residences, parking, food services, press, conferences and events, the Laurentian English Language Institute, and the Centre for Academic Development.",
+          "page": 9,
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-english-language-institute",
+            "centre-for-academic-development"
+          ],
+          "quote": "Laurentian's ancillary operations include Residences, Parking, Food Services, Press, Conferences and Events, Laurentian English Language Institute and the Centre for Academic Development."
+        },
+        {
+          "fact": "The university says it had $52.8 million in endowment assets and used a 3.5% spending rate in 2019-20; COVID-19 made the fund return negative and $1.8 million of scholarships had to be covered by the operating fund.",
+          "page": 9,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "As a result of COVID-19 the fund had returned a negative value for the year.",
+          "quote_verified": false
+        },
+        {
+          "fact": "The report identifies ongoing research led by named researchers in health, environment, materials, history/language, and COVID-19 response, including work with Naandwechige-Gamig Wikwemikong Health Centre, the Evaluating Children's Health Outcomes Research Centre, the Institut franco-ontarien, the Chiefs of Ontario, and the Ontario Regional Chiefs.",
+          "page": 10,
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "naandwechige-gamig-wikwemikong-health-centre",
+            "evaluating-childrens-health-outcomes-research-centre",
+            "institut-franco-ontarien",
+            "chiefs-of-ontario",
+            "ontario-regional-chiefs"
+          ],
+          "quote": "Dr. Nancy Young is leading a joint initiative between Naandwechige-Gamig Wikwemikong Health Centre and Laurentian University's Evaluating Children's Health Outcomes Research Centre."
+        },
+        {
+          "fact": "The future impact section says the university's in-year deficiency associated with COVID-19 was $5.2 million and that it negotiated a six-month deferral of residence debt repayments after year-end.",
+          "page": 11,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "The in-year deficiency associated with COVID-19 was $5.2 million."
+        },
+        {
+          "fact": "The university's consolidated assets at April 30, 2020 were $358.520 million, down from $371.870 million in 2019.",
+          "page": 19,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "$ 358,520 | $ 371,870"
+        },
+        {
+          "fact": "At April 30, 2020 the university reported $4.544 million in cash and short-term investments, $27.045 million in current accounts receivable, $52.845 million in investments, and $227.267 million in capital assets.",
+          "page": 19,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "Cash and short-term investments (note 2)                              | $ 4,544   | $ 7,505"
+        },
+        {
+          "fact": "At April 30, 2020 the university reported $14.400 million drawn on its line of credit, a $1.367 million short-term loan, $88.973 million of long-term debt, and $20.788 million in employee future benefits liabilities.",
+          "page": 19,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "royal-bank",
+            "desjardins"
+          ],
+          "quote": "Line of credit (note 13)                                              | $ 14,400  | $ 17,600"
+        },
+        {
+          "fact": "At April 30, 2020 the university reported unrestricted net assets of negative $19.986 million and total net assets of $36.682 million.",
+          "page": 19,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "Unrestricted                                                          | (19,986)  | (14,544)"
+        },
+        {
+          "fact": "The university recorded a deficiency of revenue over expenses of $3,120 for 2020, compared with $4,100 in 2019.",
+          "page": 22,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "Deficiency of revenue over expenses $ (3,120) | $ (4,100)"
+        },
+        {
+          "fact": "Cash and short-term investments ended 2020 at $4,544, down from $7,505 at the start of the year.",
+          "page": 22,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "Cash and short-term investments, end of year | $ 4,544",
+          "quote_verified": false
+        },
+        {
+          "fact": "Laurentian University of Sudbury is incorporated by special act under Ontario law and is a registered charity exempt from income tax under section 149 of the Income Tax Act.",
+          "page": 23,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ontario",
+            "canada-revenue-agency"
+          ],
+          "quote": "The university is a registered charity and is therefore, under section 149 of the Income Tax Act, exempt from payment of income tax."
+        },
+        {
+          "fact": "The university says it has short- and long-term borrowing in excess of $100 million, used to finance residences, the student recreation centre, and other educational buildings.",
+          "page": 23,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "The University has incurred short and long-term borrowing in excess of $100 million, the proceeds of which were used to finance residences, the student recreation centre and various educational buildings to modernize the campus."
+        },
+        {
+          "fact": "Management states the university expects COVID-19 to negatively affect ancillary revenues and that it incurred incremental costs to move to digital learning.",
+          "page": 23,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "management anticipates a negative effect on ancillary revenues (note 17). Incremental costs have been incurred for transition to a digital learning environment."
+        },
+        {
+          "fact": "The university follows the deferral method of accounting for contributions, recognizes tuition and related fees when the relevant courses and seminars are held, and carries investments at fair value.",
+          "page": 23,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "The University follows the deferral method of accounting for contributions."
+        },
+        {
+          "fact": "Effective July 1, 2012, the university registered its pension plan for all future service as a defined benefit plan for all employees.",
+          "page": 24,
+          "basis": "stated",
+          "date": "2012-07-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "pension-plan"
+          ],
+          "quote": "Effective July 1, 2012, the University registered its Pension Plan for all future service as a defined benefit plan for all employees of the University."
+        },
+        {
+          "fact": "The most recent actuarial valuation for employee future benefits was as of January 1, 2020.",
+          "page": 24,
+          "basis": "stated",
+          "date": "2020-01-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "pension-plan",
+            "retiree-health-benefit-plan"
+          ],
+          "quote": "The most recent actuarial valuation was as of January 1, 2020."
+        },
+        {
+          "fact": "MIRARCO is a wholly controlled entity whose assets, liabilities, revenues, and expenses are included in the university's consolidated financial statements.",
+          "page": 25,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "mirarco"
+          ],
+          "quote": "These consolidated financial statements are inclusive of the assets, liabilities, revenues and expenses of the Mining Innovation Rehabilitation and Applied Research Corporation, which is a wholly controlled entity."
+        },
+        {
+          "fact": "The university says it has no claim to the Northern Ontario School of Medicine's net assets and no liability for its obligations, so the school is not consolidated.",
+          "page": 25,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "northern-ontario-school-of-medicine"
+          ],
+          "quote": "the University has no claim to the School's net assets nor is the University liable or contingently liable for any of the School's obligations."
+        },
+        {
+          "fact": "Laurentian's proportionate share of SNOLAB revenues and expenses was 20% through March 31, 2019, and the 2020 SNOLAB financial statements were not yet available.",
+          "page": 25,
+          "basis": "stated",
+          "date": "2019-03-31",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "snolab"
+          ],
+          "quote": "As a result, the University's proportionate share (20%) of the entity's revenues and expenses to March 31, 2019 have been included in these consolidated financial statements. The 2020 financial statements are not yet available."
+        },
+        {
+          "fact": "The university contributed $10 million from the Provincial Government to create and fund CEMI when it was created on April 23, 2007.",
+          "page": 26,
+          "basis": "stated",
+          "date": "2007-04-23",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "centre-for-excellence-in-mining-and-innovation",
+            "provincial-government"
+          ],
+          "quote": "The University contributed $10 million received from the Provincial Government to create and fund CEMI on its inception."
+        },
+        {
+          "fact": "At April 30, 2020, Laurentian held $57,389 in cash and investments, including $52,845 in long-term investments held for endowment balances.",
+          "page": 26,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "Long-term investments reflect funds for endowment balances.",
+          "quote_verified": true,
+          "quote_found_page": 27
+        },
+        {
+          "fact": "The university's total accounts receivable were $27,214 at year-end after a $5,020 allowance for doubtful accounts.",
+          "page": 27,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "Accounts receivable $ 32,234 | Less allowance for doubtful accounts (5,020) | $ 27,214",
+          "quote_verified": false
+        },
+        {
+          "fact": "The university reported accrued benefit liabilities of $20,788 for employee future benefits at year-end, compared with $9,237 in 2019.",
+          "page": 27,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "pension-plan",
+            "retiree-health-benefit-plan"
+          ],
+          "quote": "Accrued benefit liabilities ... $ (20,788) | $ (9,237)",
+          "quote_verified": false
+        },
+        {
+          "fact": "Capital assets had a net book value of $272,267 at April 30, 2020, led by buildings at $249,644 net book value.",
+          "page": 28,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "Buildings ... 2020 Net book Value $ 249,644 ... $ 272,267",
+          "quote_verified": false
+        },
+        {
+          "fact": "The university's short-term loan from TD Canada Trust was unsecured, had no mandatory repayment terms, and carried a 1.91% floating rate at April 30, 2020.",
+          "page": 28,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "td-canada-trust"
+          ],
+          "quote": "The short-term loan represents an unsecured loan with no mandatory repayment terms from TD Canada Trust for the student recreation centre, with a floating interest rate of 1.91% at April 30, 2020",
+          "quote_verified": true,
+          "quote_found_page": 29
+        },
+        {
+          "fact": "Long-term debt totaled $91,711 at April 30, 2020, with $88,973 classified as long-term after the current portion.",
+          "page": 29,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "$ 91,711 | Less: current portion of long-term debt (2,738) | $ 88,973",
+          "quote_verified": false
+        },
+        {
+          "fact": "After year-end, principal repayments on four loans were deferred for six months, and the university says this has been reflected in the repayment terms.",
+          "page": 29,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "bank-of-montreal",
+            "royal-bank-of-canada",
+            "td-canada-trust"
+          ],
+          "quote": "Subsequent to year-end, principal repayments on the four loans indicated by (i) were deferred for six months.",
+          "quote_verified": true,
+          "quote_found_page": 30
+        },
+        {
+          "fact": "Deferred contributions ended 2020 at $38,519, and deferred capital contributions ended at $129,879.",
+          "page": 30,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "Balance, end of year | $ 38,519 ... Total unspent and unamortized capital contributions | $ 129,879",
+          "quote_verified": false
+        },
+        {
+          "fact": "The university's investment in capital assets was $22,610 at April 30, 2020 after deducting debt, internal financing, a short-term loan, a line of credit, and deferred capital contributions.",
+          "page": 31,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "The investment in capital assets is calculated as follows:",
+          "quote_verified": true,
+          "quote_found_page": 32
+        },
+        {
+          "fact": "Internally restricted net assets were $3,848 at April 30, 2020, including a $736 deficit tied to the McEwen School of Architecture.",
+          "page": 31,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "mcewen-school-of-architecture"
+          ],
+          "quote": "McEwen School of Architecture ... (736) ... $ 3,848",
+          "quote_verified": false
+        },
+        {
+          "fact": "The university lists internal financing balances for campus modernization, several buildings and labs, and a line of credit, with total internal financing of $12,850 at year-end.",
+          "page": 32,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "cardiovascular-metabolic-research-lab",
+            "great-hall-renovations",
+            "cliff-fielding-research-innovation-and-engineering-building",
+            "parking-lot-4",
+            "school-of-education-building",
+            "dna-lab"
+          ],
+          "quote": "The internal loans bear interest at a floating rate equal to the return earned on short-term investments and are to be repaid over a period ranging from three to twenty-four years.",
+          "quote_verified": true,
+          "quote_found_page": 33
+        },
+        {
+          "fact": "The university had access to a Royal Bank unsecured line of credit for $5,000 and a Desjardins unsecured line of credit for $26,000, and it had drawn $14,400 on the Desjardins line at year-end.",
+          "page": 32,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "royal-bank",
+            "desjardins"
+          ],
+          "quote": "As at April 30, 2020, the University had not drawn on the Royal Bank line and had drawn $14,400 on the Desjardins line of credit.",
+          "quote_verified": true,
+          "quote_found_page": 33
+        },
+        {
+          "fact": "The university guaranteed a student long-term debt facility up to $8,500 for the new Student Centre, after a student levy was approved by referendum.",
+          "page": 32,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "students-general-association",
+            "board-of-governors-of-the-university"
+          ],
+          "quote": "the Board of Governors of the University has approved that the University guarantee the student loan up to the amount of $8,500.",
+          "quote_verified": true,
+          "quote_found_page": 33
+        },
+        {
+          "fact": "Laurentian says it is involved in unspecified legal matters and litigation whose outcomes are not presently determinable.",
+          "page": 32,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "The University is involved in certain legal matters and litigation, the outcomes of which are not presently determinable.",
+          "quote_verified": true,
+          "quote_found_page": 33
+        },
+        {
+          "fact": "The university is the principal employer for the Pension Plan and administers the Retiree Health Benefit Plan on behalf of the Federated Universities and SNOLAB.",
+          "page": 32,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "pension-plan",
+            "retiree-health-benefit-plan",
+            "federated-universities",
+            "snolab"
+          ],
+          "quote": "The University is the principal employer for the Pension Plan and also administers the Retiree Health Benefit Plan on behalf of the Federated Universities and SNOLAB.",
+          "quote_verified": true,
+          "quote_found_page": 33
+        },
+        {
+          "fact": "Deferred revenue changed by a net decrease of $459 during 2020 as part of the working-capital reconciliation.",
+          "page": 33,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "Deferred revenue (459) | (1,054)",
+          "quote_verified": true,
+          "quote_found_page": 34
+        },
+        {
+          "fact": "Other fees and income totaled $17,587 in 2020, including $4,967 in administrative fees and $2,975 in compulsory fees.",
+          "page": 33,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "Administrative fees $ 4,967 ... Compulsory fees 2,975 ... $ 17,587",
+          "quote_verified": false
+        },
+        {
+          "fact": "The university says its credit risk is centered on investments and accounts receivable, and it monitors the portfolio with its Finance Committee and investment advisors.",
+          "page": 33,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "finance-committee"
+          ],
+          "quote": "The University monitors the financial health of its investments on an ongoing basis with the assistance of its Finance Committee and its investment advisors.",
+          "quote_verified": true,
+          "quote_found_page": 34
+        },
+        {
+          "fact": "Laurentian says there were no changes to its risk exposures from 2019 except those resulting from COVID-19.",
+          "page": 34,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "There have been no changes to the risk exposures from 2019, except as a result of the effects of COVID19 (note 17).",
+          "quote_verified": true,
+          "quote_found_page": 35
+        },
+        {
+          "fact": "Laurentian halted in-person activity in March 2020, restricted access to staff and students, and moved to online education based on recommendations from Public Health Ontario.",
+          "page": 34,
+          "basis": "stated",
+          "date": "2020-03-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "public-health-ontario"
+          ],
+          "quote": "Laurentian University halted in-person activity, restricted its facilities to staff and students and moved to online education format in March 2020 based on recommendations from Public Health Ontario.",
+          "quote_verified": true,
+          "quote_found_page": 35
+        },
+        {
+          "fact": "The university says the in-year deficiency associated with COVID-19 was $5.2 million and that revenue into fiscal 2021 is a further concern.",
+          "page": 34,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "world-health-organization"
+          ],
+          "quote": "The in-year deficiency associated with COVID-19 was $5.2 million.",
+          "quote_verified": true,
+          "quote_found_page": 35
+        },
+        {
+          "fact": "After year-end, the university negotiated a six-month deferral of residence debt repayments to manage cash flow.",
+          "page": 34,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "The University negotiated a deferral of residence debt repayments for six months subsequent to year-end to manage cash flow requirements.",
+          "quote_verified": true,
+          "quote_found_page": 35
+        },
+        {
+          "fact": "The university says the pandemic created volatility in world markets that could cause other-than-temporary losses on investments and could increase pension liabilities if low interest rates persist.",
+          "page": 34,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "pension-plan"
+          ],
+          "quote": "The University's investments are recognized at fair value and the impact of the pandemic has created volatility and uncertainty in world markets",
+          "quote_verified": true,
+          "quote_found_page": 35
+        },
+        {
+          "fact": "The university says it cannot reasonably estimate the future financial impact of COVID-19 at this time.",
+          "page": 35,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "The University cannot reasonably reflect the future financial impact of COVID-19.",
+          "quote_verified": true,
+          "quote_found_page": 36
+        },
+        {
+          "fact": "Effective May 1, 2019, the university adopted new Canadian Not-for-Profit Accounting Standards sections 4433, 4434, and 4441 on a prospective basis, with no adjustments to the financial statements as at May 1, 2019.",
+          "page": 35,
+          "basis": "stated",
+          "date": "2019-05-01",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "The University has adopted the following Canadian Not-for-Profit Accounting Standards effective on May 1, 2019:",
+          "quote_verified": true,
+          "quote_found_page": 36
+        },
+        {
+          "fact": "The university says certain comparative information was reclassified to conform with the current-year presentation.",
+          "page": 35,
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "Certain comparative information have been reclassified to conform with the financial statement presentation adopted for the current year.",
+          "quote_verified": true,
+          "quote_found_page": 36
+        }
+      ],
+      "coverage_gap": null,
+      "entities": [
+        "Laurentian University of Sudbury",
+        "Ministry of Colleges and Universities",
+        "KPMG LLP",
+        "Royal Bank",
+        "Desjardins",
+        "Pension Plan",
+        "Retiree Health Benefit Plan",
+        "Laurentian English Language Institute",
+        "Centre for Academic Development",
+        "Naandwechige-Gamig Wikwemikong Health Centre",
+        "Evaluating Children's Health Outcomes Research Centre",
+        "Institut franco-ontarien",
+        "Chiefs of Ontario",
+        "Ontario Regional Chiefs",
+        "Annual Financial Report",
+        "Canada Revenue Agency",
+        "Ontario",
+        "Mining Innovation Rehabilitation and Applied Research Corporation",
+        "Northern Ontario School of Medicine",
+        "Lakehead University",
+        "SNOLAB",
+        "Centre for Excellence in Mining and Innovation",
+        "Provincial Government",
+        "TD Canada Trust",
+        "Bank of Montreal",
+        "McEwen School of Architecture",
+        "Cardiovascular Metabolic Research Lab",
+        "Great Hall renovations",
+        "Cliff Fielding Research, Innovation and Engineering Building",
+        "Parking Lot 4",
+        "School of Education Building",
+        "DNA Lab",
+        "Students' General Association",
+        "Board of Governors of the University",
+        "Federated Universities",
+        "Finance Committee"
+      ]
+    },
+    "Z": {
+      "summary": "This is the audited annual financial report for Laurentian University of Sudbury for the fiscal year ended April 30, 2020, audited by KPMG LLP (clean opinion, no going concern qualification). The University recorded a consolidated deficiency of revenue over expenses of $3.120 million (2019: $4.100 million), with an operating-fund deficit of $5.442 million of which $5.149 million was attributable to COVID-19 impacts. The unrestricted net asset position (accumulated operating deficit) worsened from $(14.544) million to $(19.986) million, while total net assets fell sharply from $53.164 million to $36.682 million, driven primarily by a $14.398 million adverse employee future benefits remeasurement. Long-term debt stood at $91.711 million and total assets declined 3.6% to $358.520 million. The University carries over $100 million in total borrowings, relies materially on the Ministry of Colleges and Universities, and flagged ongoing COVID-19 and structural revenue pressures including permanent domestic tuition reductions, enrolment below the SMA3 corridor, and a pension solvency ratio of 85.4%.",
+      "key_facts": [
+        {
+          "fact": "Laurentian University of Sudbury recorded a consolidated deficiency of revenue over expenses of $3.120 million for the fiscal year ended April 30, 2020, compared to a deficiency of $4.100 million in fiscal 2019.",
+          "page": 19,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "Deficiency of revenue over expenses $ (3,120) $ (4,100)",
+          "quote_verified": true,
+          "quote_found_page": 20
+        },
+        {
+          "fact": "The operating-fund deficit for fiscal 2019-20 was $5.442 million; of this, $5.149 million was attributed to COVID-19 impacts.",
+          "page": 5,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The unrestricted net assets (accumulated operating deficit) increased from $(14.544) million to $(19.986) million during fiscal 2020.",
+          "page": 19,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Total net assets (deficiency) fell from $53.164 million to $36.682 million, primarily driven by a $14.398 million adverse remeasurement in employee future benefits.",
+          "page": 20,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Total assets decreased 3.6% from $371.870 million to $358.520 million at April 30, 2020.",
+          "page": 19,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Total revenues were $198.397 million (2019: $195.224 million) and total expenses were $201.517 million (2019: $199.324 million).",
+          "page": 19,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Salaries and benefits represented 67% of the University's total expenses, remaining consistent with the prior year at approximately $134 million ($134.552 million in 2020 vs $134.939 million in 2019).",
+          "page": 7,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Total outstanding long-term debt was $91.711 million at April 30, 2020, broken down as: campus modernization projects $39.5 million, ancillaries $32.3 million, School of Education $13.2 million, and Voyageur Recreation Centre $6.7 million.",
+          "page": 7,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The University repaid $3.606 million in long-term debt during fiscal 2020 and had $12.9 million in capital projects financed by internal financing at April 30, 2020.",
+          "page": 7,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Subsequent to year-end, principal repayments on four loans related to residence operations were deferred for six months.",
+          "page": 7,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "royal-bank-of-canada",
+            "td-canada-trust",
+            "bank-of-montreal"
+          ]
+        },
+        {
+          "fact": "The University had access to a Royal Bank unsecured line of credit of $5 million and a Desjardins unsecured line of credit of $26 million; at April 30, 2020, $14.4 million of the Desjardins line was drawn (Royal Bank line undrawn).",
+          "page": 33,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "royal-bank-of-canada",
+            "desjardins"
+          ]
+        },
+        {
+          "fact": "Employee future benefits liabilities increased from $9.237 million to $20.788 million; the University's employee future benefit assets of $1.929 million in 2019 became a net liability position in 2020 based on actuarial valuation.",
+          "page": 27,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The total accrued benefit obligation across pension, post-employment, and supplemental plans was $(441.850) million against plan assets of $421.062 million, producing net accrued benefit liabilities of $(20.788) million at April 30, 2020.",
+          "page": 27,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-pension-plan"
+          ]
+        },
+        {
+          "fact": "The pension plan solvency ratio was 85.4% at January 1, 2020 (down from 87.8% in 2019); going concern deficits will now be funded over 10 years instead of 15 years.",
+          "page": 8,
+          "entities": [
+            "laurentian-university-pension-plan",
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The Provision for Adverse Deviation (PfAD) rate applied to pension current service costs was 10.3% in 2020, up from 7.94% in 2019.",
+          "page": 8,
+          "entities": [
+            "laurentian-university-pension-plan"
+          ]
+        },
+        {
+          "fact": "The most recent actuarial valuation for the pension plan was as of January 1, 2020; the actuary retained is Eckler Ltd.",
+          "page": 23,
+          "entities": [
+            "laurentian-university-pension-plan",
+            "eckler-ltd"
+          ],
+          "quote": "The most recent actuarial valuation was as of January 1, 2020.",
+          "quote_verified": true,
+          "quote_found_page": 24
+        },
+        {
+          "fact": "The University had $52.845 million in endowment investments at April 30, 2020 (2019: $51.809 million); endowment contributions of $1.036 million were received in fiscal 2020.",
+          "page": 27,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Due to COVID-19 market losses, the endowment fund returned a negative value for the year, requiring $1.8 million in scholarship spending to be covered by the operating fund instead of the endowment.",
+          "page": 9,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Net investment loss for fiscal 2020 was $(1.001) million (comprising unrealized losses of $(84)k, interest income of $1.291 million, realized losses of $(2.016) million, and management fees of $(192)k), compared to investment income of $2.653 million in 2019.",
+          "page": 27,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Allowance for doubtful accounts on receivables increased from $3.120 million to $5.020 million, reflecting elevated credit risk from students who may not return post-COVID-19.",
+          "page": 27,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Cash and short-term investments fell from $7.505 million to $4.544 million at April 30, 2020.",
+          "page": 22,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The University's total borrowings exceeded $100 million and management noted a level of reliance on the Ministry of Colleges and Universities to meet obligations.",
+          "page": 23,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ministry-of-colleges-and-universities"
+          ],
+          "quote": "Consistent with prior years, the University has a level of reliance on the Ministry of Colleges and Universities to assist in meeting its obligations."
+        },
+        {
+          "fact": "Laurentian signed a new Strategic Mandate Agreement (SMA3) with the Province covering 2020–25 in September 2020; the ministry delayed activation of performance-based grant funding for two years (2020-21 and 2021-22) due to COVID-19.",
+          "page": 9,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ministry-of-colleges-and-universities"
+          ],
+          "quote": "Laurentian signed a new Strategic Mandate Agreements (SMA3) agreement with the Province in September 2020 covering the period of 2020-25."
+        },
+        {
+          "fact": "Starting in 2020-21, Laurentian's enrolment is below the SMA3 corridor midpoint of 16,423.53 Weighted Grant Units (WGU); from 2020-21 only 25% of provincial funding is linked to performance metrics, rising to 60% by 2024-25.",
+          "page": 8,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ministry-of-colleges-and-universities"
+          ]
+        },
+        {
+          "fact": "Enrolment-based provincial funding, which was $2,903 per WGU in 2019-20, is anticipated to decrease to $1,173 per WGU.",
+          "page": 9,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ministry-of-colleges-and-universities"
+          ]
+        },
+        {
+          "fact": "The Long Term Sustainability Plan achieved $20 million in savings and cost reductions compared to plan pre-COVID, with an accelerated plan adding approximately $10 million, bringing total savings since 2018 to over $30 million as of August 2020.",
+          "page": 4,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Tuition fee revenue decreased 7.6% to $53.211 million in 2020 (2019: $55.581 million), largely due to the 10% reduction in domestic tuition rates, partially offset by international and graduate studies growth.",
+          "page": 19,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Operating grants and contracts increased 7.7% to $86.234 million (2019: $80.063 million), mainly due to a one-time Northern Sustainability grant received in fiscal 2020.",
+          "page": 19,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The COVID-19 net grant from the Ministry of Colleges and Universities (MCU) received by Laurentian was $751,000 (net of amount shared with Federated Universities).",
+          "page": 6,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ministry-of-colleges-and-universities"
+          ]
+        },
+        {
+          "fact": "Administrative fees under other fees and income increased to $4.967 million in 2020 (2019: $3.885 million) due to an amendment to funding arrangements with the Federated Universities.",
+          "page": 34,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "federated-universities"
+          ]
+        },
+        {
+          "fact": "KPMG LLP issued an unqualified (clean) audit opinion on the consolidated financial statements of Laurentian University of Sudbury for the year ended April 30, 2020; the auditors' report is dated October 30, 2020.",
+          "page": 18,
+          "entities": [
+            "kpmg-llp",
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "In our opinion, the accompanying financial statements present fairly, in all material respects, the consolidated financial position of Laurentian University of Sudbury as at April 30, 2020.",
+          "quote_verified": false
+        },
+        {
+          "fact": "The financial statements were prepared in accordance with Canadian accounting standards for not-for-profit organizations; accounting standard updates adopted May 1, 2019 (Sections 4433, 4434, 4441) had no adjusting effect on opening balances.",
+          "page": 35,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The Statement of Administrative Responsibility was signed by Lorella Hayes (CPA, CA, Vice-President Administration) and Normand Lavallée (FCPA, FCMA, FCA, Associate Vice-President Financial Services).",
+          "page": 13,
+          "entities": [
+            "lorella-hayes",
+            "normand-lavallee",
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "MIRARCO (Mining Innovation Rehabilitation and Applied Research Corporation) is a wholly controlled entity of the University and is consolidated in the financial statements.",
+          "page": 24,
+          "entities": [
+            "mirarco",
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The University includes 20% of SNOLAB's revenues and expenses (to March 31, 2019) in its consolidated statements; the 2020 SNOLAB financials were not yet available and the University wrote off its share of SNOLAB assets and liabilities as at April 30, 2018.",
+          "page": 24,
+          "entities": [
+            "snolab",
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The Centre for Excellence in Mining and Innovation (CEMI) was created April 23, 2007 with a $10 million contribution from the University funded by the Provincial Government; CEMI's operations are not consolidated.",
+          "page": 26,
+          "entities": [
+            "centre-for-excellence-in-mining-and-innovation",
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "The University contributed $10 million received from the Provincial Government to create and fund CEMI on its inception."
+        },
+        {
+          "fact": "The University guarantees a student loan up to $8,500 thousand for a new Student Centre, approved by the Board of Governors following a student referendum levy.",
+          "page": 33,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "students-general-association"
+          ]
+        },
+        {
+          "fact": "The University is the principal employer for the Pension Plan and administers the Retiree Health Benefit Plan on behalf of the Federated Universities and SNOLAB; those entities' post-employment benefit liabilities total $4.918 million.",
+          "page": 32,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "federated-universities",
+            "snolab",
+            "laurentian-university-pension-plan"
+          ]
+        },
+        {
+          "fact": "The University's long-term debt of $91.711 million includes loans from Royal Bank of Canada (largest component: $39.496 million at 4.63% maturing 2042), TD Canada Trust, and Bank of Montreal; the debt was used to finance residences, School of Education, Student Recreation Centre, and campus modernization.",
+          "page": 29,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "royal-bank-of-canada",
+            "td-canada-trust",
+            "bank-of-montreal"
+          ]
+        },
+        {
+          "fact": "A short-term unsecured loan of $1.367 million from TD Canada Trust for the student recreation centre bore a floating interest rate of 1.91% at April 30, 2020 (2019: 3.28%).",
+          "page": 28,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "td-canada-trust"
+          ]
+        },
+        {
+          "fact": "Capital assets (net book value) were $272.267 million at April 30, 2020 (2019: $280.187 million), with buildings comprising $249.644 million of that total at cost of $356.705 million.",
+          "page": 29,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The McEwen School of Architecture has accumulated a deficit within internally restricted net assets of $(736)k at April 30, 2020 (2019: $(1.036) million); the school was launched in 2013 and losses are expected until full Master of Architecture enrolment.",
+          "page": 31,
+          "entities": [
+            "mcewen-school-of-architecture",
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Fall 2019 enrolment was 6,834 FTE students; 65% of alumni reside in Northern Ontario after graduation.",
+          "page": 3,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Ancillary operations generated actual revenue of $14.979 million and expenses of $12.232 million in 2019-20, a contribution of $2.747 million versus a budget of $3.639 million; the shortfall was mainly due to $1.2 million in residence and ancillary refunds related to COVID-19.",
+          "page": 9,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        }
+      ],
+      "coverage_gap": null,
+      "entities": [
+        "Laurentian University of Sudbury",
+        "KPMG LLP",
+        "Eckler Ltd.",
+        "Laurentian University Pension Plan",
+        "Mining Innovation Rehabilitation and Applied Research Corporation",
+        "SNOLAB",
+        "Federated Universities",
+        "Ministry of Colleges and Universities",
+        "Royal Bank of Canada",
+        "Desjardins",
+        "TD Canada Trust",
+        "Bank of Montreal",
+        "McEwen School of Architecture",
+        "Centre for Excellence in Mining and Innovation",
+        "Northern Ontario School of Medicine",
+        "Students' General Association",
+        "Lorella Hayes",
+        "Normand Lavallée",
+        "Retiree Health Benefit Plan"
+      ]
+    }
+  }
+}

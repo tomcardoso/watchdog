@@ -1,0 +1,135 @@
+{
+  "document": "initial-order-2021-02-01",
+  "judgments": {
+    "F1": {
+      "X": {"tier": "credited", "note": "paraphrases insolvency/CCAA declaration with court name added"},
+      "Y": {"tier": "verbatim", "note": "quotes the declaration clause almost verbatim"},
+      "Z": {"tier": "ungrounded", "note": "no key_facts content at all"}
+    },
+    "F2": {
+      "X": {"tier": "ungrounded", "note": "gives date/judge but omits Zoom/videoconference/COVID-19 reason"},
+      "Y": {"tier": "ungrounded", "note": "no mention of Zoom, Toronto, or COVID-19 anywhere"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "F3": {
+      "X": {"tier": "verbatim", "note": "names Haché affidavit and EY pre-filing report, both dated Jan 30, 2021"},
+      "Y": {"tier": "ungrounded", "note": "no key_fact ties affidavit/pre-filing report to swearing/report date"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "F4": {
+      "X": {"tier": "verbatim", "note": "states SGA designated Non-Applicant Stay Party, not an applicant"},
+      "Y": {"tier": "verbatim", "note": "quotes 'LIMITED STAY IN RESPECT OF THE NON-APPLICANT STAY PARTY'"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "F5": {
+      "X": {"tier": "verbatim", "note": "Dec 1 2020 date, fund categories, and exclusion from Property all present"},
+      "Y": {"tier": "credited", "note": "notes segregated funds excluded but drops Dec 1 2020 date and categories"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "F6": {
+      "X": {"tier": "ungrounded", "note": "no separate mention of Charges excluding Segregated Accounts (p.13)"},
+      "Y": {"tier": "ungrounded", "note": "no separate mention of Charges excluding Segregated Accounts"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "F7": {
+      "X": {"tier": "verbatim", "note": "SuRP/RHBP retiree payments and severance explicitly stayed"},
+      "Y": {"tier": "ungrounded", "note": "wage/benefit fact omits the stay carve-out, risks implying full payment"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "F8": {
+      "X": {"tier": "ungrounded", "note": "no key_fact on continued Pension Plan contributions"},
+      "Y": {"tier": "credited", "note": "notes pension contributions remitted, drops 'until further order' nuance"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "F9": {
+      "X": {"tier": "ungrounded", "note": "no mention of pre-filing creditor payment bar or swap transactions"},
+      "Y": {"tier": "ungrounded", "note": "no mention of pre-filing creditor payment bar or swap transactions"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "F10": {
+      "X": {"tier": "verbatim", "note": "stay until Feb 11, 2021, subject to extension"},
+      "Y": {"tier": "verbatim", "note": "quotes the Stay Period clause exactly"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "F15": {
+      "X": {"tier": "ungrounded", "note": "Directors' Charge fact omits gross negligence/wilful misconduct exception"},
+      "Y": {"tier": "verbatim", "note": "states indemnity excludes gross negligence/wilful misconduct"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "F16": {
+      "X": {"tier": "ungrounded", "note": "no mention of insurance-first condition or no-subrogation rule"},
+      "Y": {"tier": "ungrounded", "note": "Directors' Charge fact omits insurance/subrogation qualifier"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "F18": {
+      "X": {"tier": "verbatim", "note": "Exhibits EEE/FFF sealed pending further order"},
+      "Y": {"tier": "verbatim", "note": "quotes the sealing order almost exactly"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "F19": {
+      "X": {"tier": "ungrounded", "note": "no key_fact stating Monitor takes no possession/management role"},
+      "Y": {"tier": "verbatim", "note": "quotes 'shall take no part whatsoever in the management' of Business"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "F20": {
+      "X": {"tier": "verbatim", "note": "gives case website URL exactly"},
+      "Y": {"tier": "verbatim", "note": "gives case website URL exactly, with quote"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "F21": {
+      "X": {"tier": "ungrounded", "note": "no mention of 12:01 a.m. effective time or enforceability without entry"},
+      "Y": {"tier": "ungrounded", "note": "no mention of 12:01 a.m. effective time or enforceability without entry"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "F22": {
+      "X": {"tier": "ungrounded", "note": "no mention of environmental-liability protection for Monitor"},
+      "Y": {"tier": "ungrounded", "note": "no mention of environmental-liability protection for Monitor"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "M2": {
+      "X": {"tier": "ungrounded", "note": "no mention of entry stamp or registrar initials"},
+      "Y": {"tier": "ungrounded", "note": "no mention of entry stamp or registrar initials"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "M3": {
+      "X": {"tier": "ungrounded", "note": "judge named only in summary heading context, not the p.16 signature block"},
+      "Y": {"tier": "ungrounded", "note": "no reference to signature block or wet signature at p.16"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "M4": {
+      "X": {"tier": "verbatim", "note": "surfaces Dec 1 2020 date and ties segregated funds to charge exclusion"},
+      "Y": {"tier": "ungrounded", "note": "notes exclusion generically but drops the Dec 1 2020 'tell' date"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "M5": {
+      "X": {"tier": "verbatim", "note": "explicitly surfaces the SuRP/RHBP/severance stay carve-out"},
+      "Y": {"tier": "ungrounded", "note": "wage-payment fact misses the carve-out entirely, risks the inversion"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "M6": {
+      "X": {"tier": "ungrounded", "note": "notice fact omits the employee/retiree/pension creditor exclusion"},
+      "Y": {"tier": "verbatim", "note": "explicitly excludes 'certain employee, retiree, and benefit-plan claimants'"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "M7": {
+      "X": {"tier": "verbatim", "note": "surfaces the EEE/FFF sealing detail directly"},
+      "Y": {"tier": "verbatim", "note": "surfaces the EEE/FFF sealing detail directly, quoted"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "M9": {
+      "X": {"tier": "ungrounded", "note": "neither negligence exception nor insurance-limit surfaced"},
+      "Y": {"tier": "credited", "note": "surfaces negligence exception verbatim but omits insurance-only-benefit limit"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "M10": {
+      "X": {"tier": "ungrounded", "note": "no mention of interest rate swap transactions anywhere"},
+      "Y": {"tier": "ungrounded", "note": "no mention of interest rate swap transactions anywhere"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    },
+    "M11": {
+      "X": {"tier": "verbatim", "note": "surfaces SGA's Non-Applicant Stay Party status clearly"},
+      "Y": {"tier": "verbatim", "note": "surfaces the limited-stay/non-applicant designation via quote"},
+      "Z": {"tier": "ungrounded", "note": "empty extraction"}
+    }
+  }
+}

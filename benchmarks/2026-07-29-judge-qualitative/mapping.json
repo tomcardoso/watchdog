@@ -1,0 +1,32 @@
+{
+  "annual-financial-report-19-20": {
+    "X": "sonnet-high",
+    "Y": "gpt-mini",
+    "Z": "sonnet-med"
+  },
+  "annual-financial-report-20-21": {
+    "X": "gpt-mini",
+    "Y": "sonnet-high",
+    "Z": "sonnet-med"
+  },
+  "first-report-monitor": {
+    "X": "gpt-mini",
+    "Y": "sonnet-high",
+    "Z": "sonnet-med"
+  },
+  "initial-order-2021-02-01": {
+    "X": "sonnet-med",
+    "Y": "gpt-mini",
+    "Z": "sonnet-high"
+  },
+  "pension-order-2021-03-17": {
+    "X": "gpt-mini",
+    "Y": "sonnet-med",
+    "Z": "sonnet-high"
+  },
+  "prefiling-report-monitor": {
+    "X": "sonnet-med",
+    "Y": "sonnet-high",
+    "Z": "gpt-mini"
+  }
+}

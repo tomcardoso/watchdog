@@ -1,0 +1,580 @@
+{
+  "document": "initial-order-2021-02-01",
+  "document_file": "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021.pdf",
+  "items": {
+    "facts": [
+      {
+        "id": "F1",
+        "text": "The Court ORDERS AND DECLARES that the Applicant is insolvent and is a company to which the CCAA applies.",
+        "quote": "THIS COURT ORDERS AND DECLARES that the Applicant is insolvent and is a company to which the CCAA applies.",
+        "page": 2
+      },
+      {
+        "id": "F2",
+        "text": "The order was made Monday, 1 February 2021 by Chief Justice Morawetz, heard by Zoom videoconference in Toronto because of the COVID-19 pandemic.",
+        "quote": "was heard this day by videoconference via Zoom in Toronto, Ontario due to the COVID-19 pandemic.",
+        "page": 1
+      },
+      {
+        "id": "F3",
+        "text": "The Court read the Haché Affidavit sworn JANUARY 30, 2021 and the Pre-Filing Report of the proposed monitor, Ernst & Young Inc., dated January 30, 2021.\n",
+        "quote": "ON READING the affidavit of Dr. Robert Haché sworn January 30, 2021 and the Exhibits thereto (the \"Haché Affidavit\"), the pre-filing report of the proposed monitor, Ernst & Young Inc. (\"EY\"), dated January 30, 2021",
+        "page": 1
+      },
+      {
+        "id": "F4",
+        "text": "The Laurentian University Students General Association (SGA) is designated a 'Non-Applicant Stay Party' — not a CCAA applicant, but given the benefit of a limited stay.",
+        "quote": "THIS COURT ORDERS that the Laurentian University Students General Association (the \"SGA\") shall be referred to herein as a \"Non-Applicant Stay Party\".",
+        "page": 2
+      },
+      {
+        "id": "F5",
+        "text": "SEGREGATED FUNDS: segregated bank accounts established from and after 1 DECEMBER 2020 — holding research grants, restricted donations, endowments and benefit-plan contributions — must be used for their specific purpose, and SHALL NOT FORM PART OF the Applicant's Property.\n",
+        "quote": "the Segregated Funds shall not form part of the Applicant's Property.",
+        "page": 3
+      },
+      {
+        "id": "F6",
+        "text": "The Property subject to the Charges does NOT include the Segregated Accounts.",
+        "quote": "the Property subject to the Charges herein shall not include the Segregated Accounts.",
+        "page": 13
+      },
+      {
+        "id": "F7",
+        "text": "Payments to former employees and retirees under the SuRP and the RHBP, and termination or severance payments, are STAYED — while ordinary-course wages and benefits for CURRENT employees continue.\n",
+        "quote": "(but not including any payments to former employees or retirees in respect of the SuRP and the RHBP, as such terms are defined in the Haché Affidavit, or termination or severance payments, which are hereby stayed)",
+        "page": 4
+      },
+      {
+        "id": "F8",
+        "text": "Normal-course Pension Plan contributions continue to be remitted, until further order of the Court.",
+        "quote": "until further order of this Court, all outstanding and future normal course contributions to or payments in respect of the Pension Plan",
+        "page": 5
+      },
+      {
+        "id": "F9",
+        "text": "The Applicant is directed to make no payments to pre-filing creditors — expressly including in respect of the INTEREST RATE SWAP transactions.",
+        "quote": "(including for greater certainty in respect of the interest rate swap transactions)",
+        "page": 6
+      },
+      {
+        "id": "F10",
+        "text": "The initial Stay Period runs until and including 11 February 2021.",
+        "quote": "that until and including February 11, 2021, or such later date as this Court may subsequently order (the \"Stay Period\")",
+        "page": 6
+      },
+      {
+        "id": "F15",
+        "text": "The directors' indemnity does NOT extend to obligations incurred through gross negligence or wilful misconduct.\n",
+        "quote": "except to the extent that, with respect to any officer, director or member of the Board, the obligation or liability was incurred as a result of the director's or officer's gross negligence or wilful misconduct.",
+        "page": 9
+      },
+      {
+        "id": "F16",
+        "text": "Directors and officers only get the benefit of the Directors' Charge to the extent they lack insurance coverage, or it is insufficient; no insurer may be subrogated to the charge.\n",
+        "quote": "no insurer shall be entitled to be subrogated to or claim the benefit of the Directors' Charge",
+        "page": 9
+      },
+      {
+        "id": "F18",
+        "text": "Confidential Exhibits 'EEE' and 'FFF' of the Haché Affidavit are SEALED and shall not form part of the public record.",
+        "quote": "THIS COURT ORDERS that Confidential Exhibits \"EEE\" and \"FFF\" of the Haché Affidavit are hereby sealed pending further order of the Court, and shall not form part of the public record.",
+        "page": 15
+      },
+      {
+        "id": "F19",
+        "text": "The Monitor shall not take possession of the Property and takes no part in managing the Business.",
+        "quote": "THIS COURT ORDERS that the Monitor shall not take possession of the Property of the Applicant",
+        "page": 10
+      },
+      {
+        "id": "F20",
+        "text": "A case website is ordered established at www.ey.com/ca/Laurentian.",
+        "quote": "This Court further orders that a Case Website shall be established in accordance with the Protocol with the following URL: www.ey.com/ca/Laurentian.",
+        "page": 14
+      },
+      {
+        "id": "F21",
+        "text": "The Order is effective as of 12:01 a.m. Eastern Time on 1 February 2021 and is enforceable without entry and filing.",
+        "quote": "this Order and all of its provisions are effective as of 12:01 a.m. Eastern Time on the date of this Order, and is enforceable without any need for entry and filing.",
+        "page": 16
+      },
+      {
+        "id": "F22",
+        "text": "The Monitor is protected from environmental liability — nothing requires it to take possession of contaminated property under the Canadian Environmental Protection Act, the Ontario Environmental Protection Act, the Ontario Water Resources Act or the Occupational Health and Safety Act.\n",
+        "quote": "nothing herein contained shall require the Monitor to occupy or to take control, care, charge, possession or management … of any of the Property that might be environmentally contaminated",
+        "page": 11
+      }
+    ],
+    "must_not_miss": [
+      {
+        "id": "M2",
+        "text": "The registry stamp proving entry: \"ENTERED AT / INSCRIT À TORONTO\", \"FEB 0 1 2021\", with handwritten registrar initials.\n",
+        "page": 16,
+        "why": "Bilingual, handwritten, stamped. The evidence the order took effect. See H4."
+      },
+      {
+        "id": "M3",
+        "text": "The signature block: CHIEF JUSTICE G.B. MORAWETZ, with a wet signature above the printed name.",
+        "page": 16,
+        "why": "Signature blocks are the first casualty of both extraction and OCR."
+      },
+      {
+        "id": "M4",
+        "text": "Segregated Funds — established from and after 1 DECEMBER 2020 — do not form part of the Applicant's Property, and the Charges cannot reach them.\n",
+        "page": null,
+        "why": "Stated in two places 10 pages apart, and it is the court's answer to the co-mingling problem. The 1 December 2020 date is the tell: LU only began segregating restricted money two months before filing.\n"
+      },
+      {
+        "id": "M5",
+        "text": "Payments to retirees and former employees under the SuRP and RHBP, and all termination and severance payments, are STAYED — inside a parenthesis in a paragraph about paying employees.\n",
+        "page": 4,
+        "why": "The paragraph reads as \"we will keep paying everyone\"; the parenthesis says retirees and severance are cut off. Inverting this inverts the meaning of the order.\n"
+      },
+      {
+        "id": "M6",
+        "text": "The creditor-notice carve-out: employees, former employees with pension entitlements and retirees are EXCLUDED from the notice to known creditors.\n",
+        "page": 13,
+        "why": "A parenthetical exclusion determining who was told they were a creditor. Buried mid-sentence in a service-and-notice paragraph.\n"
+      },
+      {
+        "id": "M7",
+        "text": "Confidential Exhibits 'EEE' and 'FFF' of the Haché Affidavit are sealed from the public record.",
+        "page": 15,
+        "why": "A two-line sealing provision. It tells a journalist exactly which exhibits to fight for — the single most actionable line in the document for a reporter.\n"
+      },
+      {
+        "id": "M9",
+        "text": "The Directors' Charge does not cover gross negligence or wilful misconduct, and directors get its benefit only where insurance does not respond.\n",
+        "page": 9,
+        "why": "The limits on the indemnity — the part that would matter if anyone were later found at fault."
+      },
+      {
+        "id": "M10",
+        "text": "The stay expressly captures the INTEREST RATE SWAP transactions (\"for greater certainty\").\n",
+        "page": 6,
+        "why": "A parenthetical that connects to the $24.7M swap termination obligation in doc 3 and the $340K/month outflow in doc 2. Three documents, one thread, and this is the quietest mention.\n"
+      },
+      {
+        "id": "M11",
+        "text": "The SGA is a 'Non-Applicant Stay Party' — protected by the stay without being an applicant.",
+        "page": 2,
+        "why": "An unusual CCAA device, and the reason the students' association and its $8.5M loan sit inside the proceeding. A short paragraph under its own heading, early, where extractors are still processing boilerplate.\n"
+      }
+    ]
+  },
+  "arms": {
+    "X": {
+      "summary": "This is the CCAA Initial Order granted by Chief Justice G.B. Morawetz of the Ontario Superior Court of Justice (Commercial List) on February 1, 2021, commencing restructuring proceedings for Laurentian University of Sudbury. The court declared the University insolvent, appointed Ernst & Young Inc. as Monitor, and imposed a stay of proceedings to February 11, 2021 (with extension possible). Key financial protections include a Directors' Charge of up to $2,000,000 and an Administration Charge of up to $400,000, ranking in that priority order. The Laurentian University Students General Association was designated a Non-Applicant Stay Party, and two confidential exhibits to the supporting affidavit were sealed.",
+      "key_facts": [
+        {
+          "fact": "The Ontario Superior Court of Justice declared Laurentian University of Sudbury insolvent and subject to the CCAA on February 1, 2021.",
+          "page": 4,
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ontario-superior-court-of-justice-commercial-list"
+          ]
+        },
+        {
+          "fact": "Ernst & Young Inc. was appointed as Monitor of Laurentian University of Sudbury under the CCAA.",
+          "page": 9,
+          "date": "2021-02-01",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "A stay of proceedings against the Applicant and its property was ordered until February 11, 2021, subject to extension.",
+          "page": 6,
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The court granted a Directors' Charge on Laurentian's property not exceeding $2,000,000 as security for indemnity of directors, officers, and the Board of Governors.",
+          "page": 9,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The court granted an Administration Charge on Laurentian's property not exceeding $400,000 as security for the professional fees of Restructuring Advisors.",
+          "page": 12,
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ernst-young-inc"
+          ]
+        },
+        {
+          "fact": "The Administration Charge ($400,000) ranks first in priority; the Directors' Charge ($2,000,000) ranks second.",
+          "page": 12,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Board Counsel fees paid by the Applicant after the order date are capped at $250,000 plus HST.",
+          "page": 11,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The Laurentian University Students General Association (SGA) was designated a Non-Applicant Stay Party, enjoying certain protections of the stay despite not being an applicant under the CCAA.",
+          "page": 2,
+          "entities": [
+            "laurentian-university-students-general-association",
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Confidential Exhibits 'EEE' and 'FFF' of the Haché Affidavit were sealed pending further order of the court.",
+          "page": 15,
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The application was supported by the affidavit of Dr. Robert Haché sworn January 30, 2021, and the pre-filing report of Ernst & Young Inc. dated January 30, 2021.",
+          "page": 1,
+          "entities": [
+            "robert-hache",
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Laurentian University's counsel are D.J. Miller, Mitchell W. Grossell, Andrew Hanrahan, and Derek Harland of Thornton Grout Finnigan LLP, located at TD West Tower, 100 Wellington Street West, Toronto.",
+          "page": 17,
+          "entities": [
+            "thornton-grout-finnigan-llp",
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The Monitor was directed to publish notice in the Globe & Mail and the Sudbury Star and to notify all known creditors with claims over $1,000 within five days of the order.",
+          "page": 13,
+          "date": "2021-02-01",
+          "entities": [
+            "ernst-young-inc"
+          ]
+        },
+        {
+          "fact": "Payments to former employees or retirees in respect of the SuRP and RHBP, and termination or severance payments, were stayed by the order.",
+          "page": 4,
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "Segregated bank accounts established from December 1, 2020 onward to hold research grants, restricted donations, endowments, and benefit plan contributions are not part of the Applicant's Property subject to charges.",
+          "page": 3,
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The court ordered that the Monitor may participate in discussions with the Ministry of Colleges and Universities (MCU) and other provincial or federal government agency representatives regarding the restructuring.",
+          "page": 10,
+          "entities": [
+            "ernst-young-inc",
+            "ministry-of-colleges-and-universities"
+          ]
+        },
+        {
+          "fact": "The case website for the CCAA proceedings is www.ey.com/ca/Laurentian.",
+          "page": 14,
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury"
+          ]
+        },
+        {
+          "fact": "The court file number is CV-21-656040 in the Ontario Superior Court of Justice Commercial List.",
+          "page": 1,
+          "entities": [
+            "laurentian-university-ccaa-proceedings"
+          ]
+        }
+      ],
+      "coverage_gap": null,
+      "entities": [
+        "Laurentian University of Sudbury",
+        "Ernst & Young Inc.",
+        "Laurentian University Students General Association",
+        "Thornton Grout Finnigan LLP",
+        "Ontario Superior Court of Justice (Commercial List)",
+        "Ministry of Colleges and Universities",
+        "Dr. Robert Haché",
+        "Chief Justice G.B. Morawetz",
+        "D.J. Miller",
+        "Mitchell W. Grossell",
+        "Andrew Hanrahan",
+        "Derek Harland",
+        "In the Matter of Laurentian University of Sudbury (CV-21-656040)"
+      ]
+    },
+    "Y": {
+      "summary": "This is the Ontario Superior Court of Justice Commercial List’s initial order commencing CCAA protection for Laurentian University of Sudbury. The court declared the university insolvent and subject to the CCAA, appointed Ernst & Young Inc. as monitor, imposed a stay of proceedings through February 11, 2021, and authorized the university to continue operating, using its cash management system, and paying specified ordinary-course expenses and taxes. The order also created a $2 million directors’ charge and a $400,000 administration charge, sealed confidential exhibits from Dr. Robert Haché’s affidavit, and directed notice and case-website procedures for the proceeding.",
+      "key_facts": [
+        {
+          "fact": "The Ontario Superior Court of Justice Commercial List issued an initial order in the CCAA proceeding involving Laurentian University of Sudbury on February 1, 2021.",
+          "page": 1,
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "ontario-superior-court-of-justice-commercial-list",
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "INITIAL ORDER"
+        },
+        {
+          "fact": "The court declared that the applicant is insolvent and that the CCAA applies to it.",
+          "page": 2,
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "THIS COURT ORDERS AND DECLARES that the Applicant is insolvent and is a company to which the CCAA applies."
+        },
+        {
+          "fact": "The court allowed Laurentian University of Sudbury to remain in possession and control of its assets and to continue carrying on business during the proceeding.",
+          "page": 2,
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "The Applicant shall remain in possession and control of its current and future assets... [and] shall continue to carry on business",
+          "quote_verified": false
+        },
+        {
+          "fact": "The order authorized Laurentian University of Sudbury to continue using its existing cash management system and excluded segregated funds held for specified purposes from the university's property.",
+          "page": 3,
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "the Applicant shall be entitled to continue to use the cash management system currently in place",
+          "quote_verified": true,
+          "quote_found_page": 2
+        },
+        {
+          "fact": "The order permitted payment of outstanding and future wages, salaries, employee and retiree benefits, payroll-related expenses, student rebates and refunds, student scholarships and bursaries, and professional fees of retained assistants, all in the ordinary course or in respect of the proceeding.",
+          "page": 4,
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "the Applicant shall be entitled but not required to pay the following expenses",
+          "quote_verified": true,
+          "quote_found_page": 3
+        },
+        {
+          "fact": "The order required the applicant to remit pension contributions, source deductions including employment insurance, Canada Pension Plan and income taxes, sales taxes, and certain municipal or other taxes that are entitled at law to priority over secured creditors.",
+          "page": 5,
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "crown-in-right-of-canada"
+          ],
+          "quote": "The Applicant shall remit, in accordance with legal requirements, or pay"
+        },
+        {
+          "fact": "The stay of proceedings runs until and including February 11, 2021, unless extended by further court order.",
+          "page": 6,
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "until and including February 11, 2021, or such later date as this Court may subsequently order (the \"Stay Period\")"
+        },
+        {
+          "fact": "During the stay period, proceedings against the applicant, the monitor, and the business or property are barred unless the applicant and monitor consent or the court grants leave.",
+          "page": 6,
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ernst-young-inc"
+          ],
+          "quote": "no proceeding or enforcement process... shall be commenced or continued against or in respect of the Applicant or the Monitor",
+          "quote_verified": false
+        },
+        {
+          "fact": "The order also stayed proceedings and certain enforcement and default rights against the non-applicant stay party, the Laurentian University Students General Association, during the stay period.",
+          "page": 7,
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-students-general-association"
+          ],
+          "quote": "LIMITED STAY IN RESPECT OF THE NON-APPLICANT STAY PARTY"
+        },
+        {
+          "fact": "The court prohibited proceedings against the applicant's current and future directors and officers, including the members of the Board of Governors, for pre-order claims tied to the applicant's obligations, subject to the CCAA exception in subsection 11.03(2).",
+          "page": 8,
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "no Proceeding may be commenced or continued against any of the current or future directors or officers of the Applicant, including the members of the Board of Governors of the Applicant"
+        },
+        {
+          "fact": "Laurentian University of Sudbury must indemnify its directors, officers and board members for post-commencement liabilities except for gross negligence or wilful misconduct.",
+          "page": 9,
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "The Applicant shall indemnify its directors, officers and the Board against obligations and liabilities that they may incur"
+        },
+        {
+          "fact": "The court granted a directors' charge on the property of Laurentian University of Sudbury in an aggregate amount not exceeding $2,000,000.",
+          "page": 9,
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "granted a charge (the \"Directors' Charge\") on the Property, which charge shall not exceed an aggregate amount of $2,000,000"
+        },
+        {
+          "fact": "Ernst & Young Inc. was appointed monitor of the proceeding as an officer of the court.",
+          "page": 9,
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "Ernst & Young Inc. is hereby appointed pursuant to the CCAA as the Monitor",
+          "quote_verified": false
+        },
+        {
+          "fact": "The monitor was authorized to monitor receipts and disbursements, report to court, advise on cash flow statements, access the applicant's records and premises, and retain independent legal counsel or other necessary advisors.",
+          "page": 10,
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "monitor the Applicant's receipts and disbursements"
+        },
+        {
+          "fact": "The court ordered that the monitor take no possession of the applicant's property and no part in management of the business.",
+          "page": 10,
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "shall take no part whatsoever in the management or supervision of the management of the Business"
+        },
+        {
+          "fact": "The order authorized payment of reasonable fees and disbursements to the monitor, its counsel, the applicant's restructuring advisors, and board counsel, with board counsel capped at $250,000 plus HST pending further order.",
+          "page": 11,
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "the fees and disbursement of Board Counsel paid by the Applicant from and after the date of this Order shall not exceed the aggregate amount of $250,000, plus HST"
+        },
+        {
+          "fact": "The court granted an administration charge on the property of Laurentian University of Sudbury, capped at $400,000, as security for the restructuring advisors' fees and disbursements.",
+          "page": 12,
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "granted a charge (the \"Administration Charge\") on the Property, which charge shall not exceed an aggregate amount of $400,000"
+        },
+        {
+          "fact": "The administration charge ranks ahead of the directors' charge, and both charges rank ahead of other encumbrances subject to the stated exception for unserved secured creditors.",
+          "page": 12,
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "First - Administration Charge... and Second - Directors' Charge",
+          "quote_verified": false
+        },
+        {
+          "fact": "The monitor must publish notice in the Globe and Mail and the Sudbury Star, make the order public, and send notice to known creditors with claims over $1,000, excluding certain employee, retiree, and benefit-plan claimants.",
+          "page": 13,
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury",
+            "the-globe-and-mail",
+            "sudbury-star"
+          ],
+          "quote": "publish in the Globe & Mail and the Sudbury Star a notice containing the information prescribed under the CCAA",
+          "quote_verified": false
+        },
+        {
+          "fact": "The proceeding’s case website is to be www.ey.com/ca/Laurentian.",
+          "page": 14,
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury"
+          ],
+          "quote": "a Case Website shall be established... with the following URL: www.ey.com/ca/Laurentian",
+          "quote_verified": false
+        },
+        {
+          "fact": "Confidential Exhibits EEE and FFF to the Haché affidavit were sealed and excluded from the public record.",
+          "page": 15,
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "dr-robert-haché"
+          ],
+          "quote": "Confidential Exhibits \"EEE\" and \"FFF\" of the Haché Affidavit are hereby sealed pending further order of the Court"
+        }
+      ],
+      "coverage_gap": null,
+      "entities": [
+        "Laurentian University of Sudbury",
+        "Ernst & Young Inc.",
+        "Ontario Superior Court of Justice Commercial List",
+        "Dr. Robert Haché",
+        "Laurentian University Students General Association",
+        "Crown in right of Canada",
+        "Globe & Mail",
+        "Sudbury Star",
+        "Court File No. CV-21-_656040",
+        "Initial Order in the CCAA proceeding for Laurentian University of Sudbury"
+      ]
+    },
+    "Z": {
+      "summary": "...",
+      "key_facts": [],
+      "coverage_gap": null,
+      "entities": [
+        "Laurentian University of Sudbury"
+      ]
+    }
+  }
+}
