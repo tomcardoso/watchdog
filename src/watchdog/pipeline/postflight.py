@@ -97,6 +97,23 @@ def _validate(data: dict) -> list[str]:
                 if "entities" in fact and not isinstance(fact["entities"], list):
                     errors.append(f"document.key_facts[{i}].entities must be a list of entity ids")
 
+        # A near-total extraction failure (#507/#510): a substantive document that comes back
+        # with zero key_facts is not a genuinely fact-free document — it's a degenerate model
+        # response (observed: an 8690-token call that billed normally and returned an empty
+        # key_facts list with a placeholder summary). Unlike the coverage-gap heuristic above,
+        # which needs at least one citation to measure a gap against and so can't see this case
+        # at all, this is a hard failure: it feeds the same repair-retry loop as any other
+        # post-flight rejection (one automatic re-ask, then a loud FAILED instead of a silent OK).
+        # Short documents are exempt — a real cover page or signature-only filing can legitimately
+        # have nothing to extract — using the same page threshold as the coverage-gap check above.
+        if not doc.get("key_facts") and isinstance(doc.get("page_count"), int) \
+                and doc["page_count"] >= _COVERAGE_MIN_PAGES:
+            errors.append(
+                f"document.key_facts is empty on a {doc['page_count']}-page document — this "
+                "looks like a failed or skipped extraction, not a genuinely fact-free document; "
+                "re-read the source and extract its material facts"
+            )
+
     entities = data.get("entities")
     if not isinstance(entities, list):
         errors.append("missing or invalid 'entities' field")

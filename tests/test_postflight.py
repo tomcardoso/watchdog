@@ -6,6 +6,7 @@ from watchdog.pipeline.postflight import (
     _render_coverage_warning,
     _sanitize_dates,
     _sanitize_entity_ids,
+    _validate,
     explode_key_facts,
 )
 from watchdog.pipeline.postflight import run as postflight_run
@@ -219,6 +220,43 @@ def test_coverage_gap_handles_missing_page_count():
     assert _find_coverage_gap(_ext_with_fact_pages([1, 2]), None) is None
 
 
+# ── empty-extraction guard (#507/#510: sonnet-high silently produced zero key_facts on a
+#    17-page court order — billed, no error, no coverage-gap flag, since the gap detector
+#    itself needs at least one citation to work). ────────────────────────────────────────────
+
+def _minimal_valid_doc(page_count=17, key_facts=None):
+    return {
+        "document": {
+            "sha256": "sha1", "filename": "doc.pdf", "page_count": page_count,
+            "key_facts": key_facts if key_facts is not None else [],
+        },
+        "entities": [{"id": "acme", "name": "Acme", "type": "organization"}],
+        "morgue_entity_id": "acme", "morgue_document_type": "court-order",
+    }
+
+
+def test_validate_rejects_empty_key_facts_on_substantive_document():
+    errors = _validate(_minimal_valid_doc(page_count=17, key_facts=[]))
+    assert any("key_facts is empty" in e and "17-page" in e for e in errors)
+
+
+def test_validate_allows_empty_key_facts_on_short_document():
+    # A 2-page cover letter or signature page can legitimately have nothing to extract — same
+    # page threshold as the coverage-gap heuristic (_COVERAGE_MIN_PAGES).
+    assert _validate(_minimal_valid_doc(page_count=2, key_facts=[])) == []
+
+
+def test_validate_allows_nonempty_key_facts_on_substantive_document():
+    facts = [{"fact": "Something happened."}]
+    assert _validate(_minimal_valid_doc(page_count=17, key_facts=facts)) == []
+
+
+def test_validate_skips_empty_check_when_page_count_missing():
+    doc = _minimal_valid_doc(page_count=17, key_facts=[])
+    doc["document"]["page_count"] = None
+    assert _validate(doc) == []
+
+
 # ── end-to-end through postflight ───────────────────────────────────────────
 #
 # Post-flight no longer writes to the vault (#403 phase 1) — it validates, sanitizes, explodes,
@@ -329,6 +367,23 @@ def test_postflight_does_not_write_morgue_and_leaves_queue_file_in_place(tmp_pat
     assert not (vault / "morgue").exists()
     assert queue_file.exists()
     assert (vault / ".watchdog" / "extracted" / "sha777aaa.json").exists()
+
+
+def test_postflight_run_rejects_and_does_not_stage_empty_extraction_on_substantive_document(tmp_path):
+    """#507/#510 end-to-end: a 17-page document with zero key_facts must be rejected by
+    postflight (feeding the caller's repair-retry loop), not silently staged as 'ok'."""
+    vault = _full_vault(tmp_path)
+    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    ext = _extraction()
+    ext["document"]["page_count"] = 17
+    ext["document"]["key_facts"] = []
+    ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
+    ext_path.write_text(json.dumps(ext), encoding="utf-8")
+
+    result = postflight_run(vault, ext_path)
+    assert "errors" in result
+    assert any("key_facts is empty" in e for e in result["errors"])
+    assert not (vault / ".watchdog" / "extracted" / "sha777aaa.json").exists()
 
 
 # ── Quote verification against the morgue text (#267) ───────────────────────
