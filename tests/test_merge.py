@@ -130,6 +130,48 @@ def test_merge_unions_key_fact_entity_tags_across_sections():
     assert sorted(facts[0]["entities"]) == ["a", "b"]
 
 
+def test_merge_falls_back_to_most_mentioned_entity_when_morgue_entity_id_missing():
+    """#505: section 1 is the only section ever asked for morgue_entity_id — if it comes back
+    empty, derive it deterministically instead of leaving the document unfileable."""
+    sections = [
+        {"document": {"sha256": "x", "key_facts": [
+            {"fact": "Acme filed for bankruptcy.", "entities": ["acme"]},
+            {"fact": "Acme owed creditors $2M.", "entities": ["acme", "creditor"]},
+            {"fact": "The monitor was appointed.", "entities": ["monitor"]},
+        ]},
+         "entities": [
+             {"id": "acme", "name": "Acme Corp", "type": "Company", "aliases": [], "roles": []},
+             {"id": "monitor", "name": "Monitor Inc", "type": "Company", "aliases": [], "roles": []},
+             {"id": "creditor", "name": "Creditor LLC", "type": "Company", "aliases": [], "roles": []},
+         ],
+         "morgue_entity_id": None, "morgue_document_type": "bankruptcy-filing"},
+    ]
+    merged = merge_extractions(sections)
+    assert merged["morgue_entity_id"] == "acme"          # mentioned in 2 of 3 facts
+
+
+def test_merge_falls_back_to_first_entity_when_no_fact_carries_entity_tags():
+    sections = [
+        {"document": {"sha256": "x", "key_facts": [{"fact": "Something happened."}]},
+         "entities": [
+             {"id": "first", "name": "First Co", "type": "Company", "aliases": [], "roles": []},
+             {"id": "second", "name": "Second Co", "type": "Company", "aliases": [], "roles": []},
+         ],
+         "morgue_entity_id": None, "morgue_document_type": "annual-report"},
+    ]
+    merged = merge_extractions(sections)
+    assert merged["morgue_entity_id"] == "first"
+
+
+def test_merge_leaves_morgue_entity_id_none_when_no_entities_to_fall_back_on():
+    sections = [
+        {"document": {"sha256": "x", "key_facts": []}, "entities": [],
+         "morgue_entity_id": None, "morgue_document_type": "annual-report"},
+    ]
+    merged = merge_extractions(sections)
+    assert merged["morgue_entity_id"] is None
+
+
 def test_run_merges_section_files(tmp_path):
     vault = tmp_path / "vault"
     tmp = vault / ".watchdog" / "tmp"

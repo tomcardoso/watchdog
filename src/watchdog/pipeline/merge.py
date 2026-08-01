@@ -161,6 +161,23 @@ def merge_extractions(sections: list[dict]) -> dict:
     document.pop("key_facts", None)
     document["key_facts"] = _dedup_key_facts(key_facts)
 
+    # Fallback if no section ever supplied morgue_entity_id (#505) — section 1 is the only
+    # section ever asked for it (prompts.py), so a single miss there is otherwise a single point
+    # of failure for the whole document. Deterministic, not a model call: the entity mentioned
+    # in the most key_facts is the closest available proxy for "primarily about", falling back to
+    # the first entity encountered when no fact carries an entity tag. Stays None (still a
+    # post-flight failure) when there are no entities at all — nothing to derive from. A later
+    # pre-commit reconciliation pass (#513) keeps this value in sync if the entity it names gets
+    # folded into a different canonical id.
+    if not morgue_entity_id and entities:
+        mention_counts: dict[str, int] = {}
+        for fact in document["key_facts"]:
+            for eid in fact.get("entities") or []:
+                mention_counts[eid] = mention_counts.get(eid, 0) + 1
+        morgue_entity_id = (
+            max(mention_counts, key=mention_counts.get) if mention_counts else entities[0]["id"]
+        )
+
     merged = {
         "document": document,
         "entities": entities,
