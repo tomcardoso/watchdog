@@ -685,7 +685,8 @@ def _requeue_failed(vault: Path) -> int:
     return len(files)
 
 
-def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> dict | None:
+def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
+              non_interactive: bool = False) -> dict | None:
     vault = Path(".").resolve()
     if not (vault / ".watchdog").is_dir():
         sys.exit("Error: must be run from inside a Watchdog vault directory")
@@ -810,6 +811,14 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> dic
             print(f"\n  {_YELLOW}A previous batch is pending finalization{_RESET}{_DIM} — run "
                   f"{_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} to complete it.{_RESET}\n")
             return
+        # A programmatic caller (run_benchmark.py driving cmd_extract directly, not a human at
+        # `watchdog dig`) must never block on the merge/discard/finalize pick below — it has no
+        # way to answer it (#494). Fail loud instead of hanging on an invisible prompt.
+        if non_interactive:
+            sys.exit(f"\n  {_YELLOW}Error:{_RESET} a previous batch is pending finalization in "
+                     f"this vault — refusing to prompt for a decision in a non-interactive run.\n"
+                     f"  Run {_CYAN}watchdog bark{_RESET} to finalize it, or clear the vault's "
+                     f"pending state, then retry.\n")
         p = _orch.pending_finalization(vault)
         bits = []
         if p["docs"]:
@@ -869,7 +878,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False) -> dic
         failed = _failed_count(vault)
         # #406: an empty active queue with documents parked in _failed/ isn't really "nothing to
         # ingest" — offer to requeue right here rather than send the user hunting for the fix.
-        if failed and interactive.confirm(
+        if failed and not non_interactive and interactive.confirm(
                 f"\n  {_quarantine_notice(failed)} Nothing else is queued."
                 f"{_DIM} Requeue {'them' if failed != 1 else 'it'} and retry now?{_RESET}", default=True):
             _requeue_failed(vault)
@@ -1098,14 +1107,19 @@ def _print_ingest_summary(summary: dict, pipeline_hint: str = "watchdog") -> Non
         print(f"\n  {_DIM}Open a fresh Claude Code session to ask investigation questions.{_RESET}\n")
 
 
-def cmd_extract(args) -> dict | None:
+def cmd_extract(args, *, non_interactive: bool = False) -> dict | None:
     """`watchdog dig` (#425, renamed from `extract` in #441/D138) — classify + extract queued
     documents, staging the artifacts, and stop before finalize. A thin wrapper around
     `cmd_ingest` with finalization forced off: inherits the estimate path, cost preview, skill
     pinning, `--wait`, the lock/summary machinery, and the "run watchdog bark next" closing
-    message for free."""
+    message for free.
+
+    `non_interactive` (#494) is for programmatic callers (run_benchmark.py) that have no human to
+    answer a prompt: it fails loud (`sys.exit`) instead of blocking on the pending-finalization
+    merge/discard pick, and skips the quarantined-documents requeue offer instead of blocking on
+    that confirm."""
     args.no_finalize = True
-    return cmd_ingest(args)
+    return cmd_ingest(args, non_interactive=non_interactive)
 
 
 def cmd_finalize(args) -> dict | None:

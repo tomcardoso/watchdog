@@ -15,11 +15,10 @@ run_benchmark.py --stages extractor --arms sonnet-med-sdk,sonnet-med-api
 
 **Redoing an already-run arm needs its vault deleted first.** Each arm's vault is a fixed path
 (`bench-ex-<arm-id>`, etc.) — rerunning the same arm id against an existing vault does not start
-over: `seed_arm_vault` refuses to reseed a vault that already has queue files
-(`"already seeded — refusing to reseed"`), and any document already extracted there is skipped
-outright, so the arm would just report "already extracted" for everything instead of producing
-new results. This comes up whenever an arm's config changes after it already ran once (an
-`extractor_effort` pin, a corrected model id) — delete that arm's folder(s), then rerun:
+over. `run_benchmark.py` checks every target vault up front (queue files, a pending finalization,
+a pending batch, or already-extracted documents) and refuses the whole run before anything is
+touched, naming which vault(s) and the `rm -rf` to clear them (#494) — this comes up whenever an
+arm's config changes after it already ran once (an `extractor_effort` pin, a corrected model id):
 
 ```
 rm -rf benchmarks/.vaults/bench-ex-gpt-nano benchmarks/.vaults/bench-ex-gpt-mini
