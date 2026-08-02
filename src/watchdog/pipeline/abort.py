@@ -38,7 +38,13 @@ def _iso_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def run(vault: Path, sha256: str) -> dict:
+def run(vault: Path, sha256: str, *, keep_section_checkpoints: bool = False) -> dict:
+    """`keep_section_checkpoints` (#498) skips the per-section extraction checkpoints
+    (`section_ex_{sha256}_*.json`) — set by the automatic failure path (`orchestrate._fail`) so a
+    document that failed mid-sectioned-extraction can resume from its already-completed sections
+    on the next `watchdog dig` rather than re-paying for them. The explicit `watchdog ingest-abort`
+    command (this function's other caller) leaves it at the default full wipe: a deliberate abort
+    is a decision to reset the document entirely, not to prime a resume."""
     tmp = vault / ".watchdog" / "tmp"
     timeline = vault / ".watchdog" / "timeline"
     queue = vault / ".watchdog" / "queue"
@@ -51,7 +57,9 @@ def run(vault: Path, sha256: str) -> dict:
         tmp / f"notes_{sha256}.md",
         tmp / f"preflight_{sha256}_pages.md",
     ]
-    globs = [f"section_{sha256}_*.md", f"section_ex_{sha256}_*.json"]
+    globs = [f"section_{sha256}_*.md"]
+    if not keep_section_checkpoints:
+        globs.append(f"section_ex_{sha256}_*.json")
     for p in fixed:
         if p.exists():
             p.unlink()

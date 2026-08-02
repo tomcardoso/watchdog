@@ -736,24 +736,82 @@ def _repairable_by_section1(errors: list[str]) -> bool:
     return bool(errors) and all(e.startswith(_SECTION1_OWNED_ERROR_PREFIXES) for e in errors)
 
 
+def _section_checkpoint_path(vault: Path, sha: str, index: int) -> Path:
+    # Same naming convention section.run() uses for a section's raw text (section_{sha}_{idx}.md)
+    # and the one abort.py's cleanup already globs for (#498) — reusing it means an explicit
+    # `watchdog ingest-abort` sweeps these away for free with no changes needed there.
+    return vault / ".watchdog" / "tmp" / f"section_ex_{sha}_{index:02d}.json"
+
+
+def _load_section_checkpoints(vault: Path, sha: str, sections: list[dict]) -> list[dict]:
+    """Replay already-completed sections for this sha from disk (#498), so a retry after a rate
+    limit, Ctrl-C, or a failure doesn't re-pay for calls already made. Trusts only a contiguous
+    prefix starting at index 1 whose checkpointed section metadata exactly matches the freshly
+    computed plan at the same index — section.run() is deterministic, so an unchanged plan
+    reproduces identical section dicts (label, pages_path); any mismatch (a changed budget/model/
+    backend between attempts, or a different section count) means the plan moved, and everything
+    from that point on is re-extracted rather than risk merging content across a different section
+    boundary than the one it was actually extracted from."""
+    checkpoints = []
+    for i, sec in enumerate(sections, start=1):
+        path = _section_checkpoint_path(vault, sha, i)
+        if not path.exists():
+            break
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            break
+        if data.get("section") != sec:
+            break
+        checkpoints.append(data)
+    return checkpoints
+
+
+def _write_section_checkpoint(vault: Path, sha: str, sec: dict, parsed: dict, cost_usd: float) -> None:
+    path = _section_checkpoint_path(vault, sha, sec["index"])
+    path.write_text(
+        json.dumps({"section": sec, "parsed": parsed, "cost_usd": cost_usd}, ensure_ascii=False),
+        encoding="utf-8")
+
+
+def _clear_section_checkpoints(vault: Path, sha: str) -> None:
+    tmp = vault / ".watchdog" / "tmp"
+    for p in tmp.glob(f"section_ex_{sha}_*.json"):
+        p.unlink(missing_ok=True)
+
+
 async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_label,
                              effort=None, backend=None, brief=None):
     """Sequential per-section extraction with carry-forward, then deterministic merge.
+
+    Each section's result is checkpointed to disk as it completes (#498) and replayed on a retry
+    that lands on the same plan, so a rate limit, Ctrl-C, or a failed post-flight doesn't discard
+    already-paid-for sections. Checkpoints are cleared once post-flight finally succeeds.
 
     One repair attempt if post-flight rejects on morgue_entity_id/morgue_document_type — the
     fields only section 1 is ever asked to supply. Mirrors _simple_extract's repair loop, but
     re-calls just section 1 rather than re-running the whole document, since a later section's
     output could never have fixed these anyway (#505)."""
-    parts, cost = [], 0.0
-    entities_seen: dict[str, dict] = {}
-    carry = ""
     sections = plan["sections"]
-    for sec in sections:
+    checkpoints = _load_section_checkpoints(vault, sha, sections)
+    parts: list[dict] = [c["parsed"] for c in checkpoints]
+    section_cost: dict[int, float] = {
+        c["section"]["index"]: c.get("cost_usd") or 0.0 for c in checkpoints}
+    entities_seen: dict[str, dict] = {}
+    for c in checkpoints:
+        for e in c["parsed"].get("entities") or []:
+            if e.get("id"):
+                entities_seen[e["id"]] = {"name": e.get("name"), "type": e.get("type")}
+    carry = (_carry_text(entities_seen, checkpoints[-1]["parsed"].get("observations") or "")
+             if checkpoints else "")
+
+    for sec in sections[len(checkpoints):]:
         r = await _extract_one_section(vault, sha, pf, skill_text, sec,
                                        is_first=(sec["index"] == 1), carry=carry, brief=brief,
                                        model=model, effort=effort, backend=backend)
-        cost += r.cost_usd or 0.0
+        section_cost[sec["index"]] = r.cost_usd or 0.0
         parts.append(r.parsed)
+        _write_section_checkpoint(vault, sha, sec, r.parsed, section_cost[sec["index"]])
         for e in r.parsed.get("entities") or []:
             if e.get("id"):
                 entities_seen[e["id"]] = {"name": e.get("name"), "type": e.get("type")}
@@ -761,7 +819,7 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
 
     extraction, scratchpad, digest_cost = await _merge_sectioned(
         parts, pf, sha, skill_label, skill_text, model, effort, backend, brief, vault)
-    cost += digest_cost
+    cost = sum(section_cost.values()) + digest_cost
     ok, errors, warnings = _write_postflight(vault, sha, extraction)
 
     if not ok and _repairable_by_section1(errors):
@@ -769,12 +827,17 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
                                        is_first=True, carry="", brief=brief,
                                        model=model, effort=effort, backend=backend,
                                        repair_errors=errors)
-        cost += r.cost_usd or 0.0
+        idx = sections[0]["index"]
+        section_cost[idx] = section_cost.get(idx, 0.0) + (r.cost_usd or 0.0)
         parts[0] = r.parsed
+        _write_section_checkpoint(vault, sha, sections[0], r.parsed, section_cost[idx])
         extraction, scratchpad, digest_cost = await _merge_sectioned(
             parts, pf, sha, skill_label, skill_text, model, effort, backend, brief, vault)
-        cost += digest_cost
+        cost = sum(section_cost.values()) + digest_cost
         ok, errors, warnings = _write_postflight(vault, sha, extraction)
+
+    if ok:
+        _clear_section_checkpoints(vault, sha)
 
     return extraction, scratchpad, cost, ok, errors, warnings
 
@@ -798,7 +861,9 @@ def _fail(vault: Path, sha: str, filename: str, reason: str) -> dict:
     name = filename or _queued_filename(vault, sha) or sha[:7]
     _settle(sha, f"  {_YELLOW}✗{_RESET}  {name}  {_DIM}{reason}{_RESET}")
     _log(vault, f"FAILED {name}: {reason}")
-    abort.run(vault, sha)   # removes staging/section temp, moves the queue file to _failed/
+    # keep_section_checkpoints (#498): an automatic failure should still let a later retry resume
+    # from whatever sections already succeeded, rather than re-paying for them from section 1.
+    abort.run(vault, sha, keep_section_checkpoints=True)   # removes staging/section temp, moves the queue file to _failed/
     return {"sha256": sha, "filename": filename or name, "status": "failed", "reason": reason}
 
 
@@ -960,6 +1025,12 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
         (vault / ".watchdog" / "tmp" / f"notes_{sha}.md").write_text(scratchpad, encoding="utf-8")
     for stale in (vault / ".watchdog" / "tmp").glob(f"section_{sha}_*.md"):
         stale.unlink(missing_ok=True)
+    # Belt-and-braces (#498): _extract_sectioned already clears its own checkpoints once
+    # post-flight succeeds, but a document can also reach here via a different successful path
+    # on a later retry (e.g. whole-document extraction succeeding where a prior sectioned attempt
+    # had left partial checkpoints behind) — this guarantees none linger regardless of which path
+    # this particular success came through.
+    _clear_section_checkpoints(vault, sha)
     n_entities = len(extraction.get("entities", []))
     page_count = pf.get("page_count") or len(pf.get("pages", []))
     type_bit = f" · {skill_label}" if skill_label else ""

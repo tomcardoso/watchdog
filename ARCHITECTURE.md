@@ -390,6 +390,14 @@ The carry-forward is a deduplicated entity-id → name/type map accumulated acro
 section seen so far (rebuilt fresh each section, one line per entity, not a running
 concatenation) plus only the immediately preceding section's `observations` text; and,
 like whole-document extraction, it includes the investigation brief (D49).
+Each section's result is checkpointed to `.watchdog/tmp/section_ex_{sha}_{index}.json` as
+soon as that section's call succeeds (D157, #498), so a rate limit, a Ctrl-C, or a post-flight
+rejection doesn't discard already-paid-for sections — a retry replays a checkpointed prefix
+whose section metadata still matches the freshly recomputed plan, and only extracts what's
+missing. Checkpoints are cleared once post-flight succeeds; the automatic-failure path
+(`orchestrate._fail`) deliberately preserves them (`abort.run(..., keep_section_checkpoints=True)`)
+so the next `watchdog dig` can resume, while the explicit `watchdog ingest-abort` command still
+wipes them, since a deliberate abort means starting the document over.
 
 **Whole-document digest (`document.summary`, #279).** No section call ever sees the whole
 document, so no section emits `document.summary` any more. Immediately after
