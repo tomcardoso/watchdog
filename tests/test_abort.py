@@ -46,6 +46,25 @@ def test_abort_removes_staging_and_moves_queue_file(tmp_path):
     assert result["requeue_path"].endswith(f"_failed/{sha}.json")
 
 
+def test_abort_keep_section_checkpoints_preserves_them_but_still_removes_section_text(tmp_path):
+    """#498: the automatic-failure path passes keep_section_checkpoints=True so a later retry can
+    resume from already-completed sections. Raw section text (section_*.md) is still removed
+    either way — section.run() regenerates it fresh on the next attempt, so there's nothing to
+    preserve there."""
+    vault = _vault(tmp_path)
+    sha = "abc1234def5678"
+    tmp = vault / ".watchdog" / "tmp"
+    (tmp / f"section_{sha}_01.md").write_text("sec")
+    (tmp / f"section_ex_{sha}_01.json").write_text("{}")
+    (vault / ".watchdog" / "queue" / f"{sha}.json").write_text("{}")
+
+    result = abort.run(vault, sha, keep_section_checkpoints=True)
+
+    assert result["ok"] is True
+    assert not (tmp / f"section_{sha}_01.md").exists()
+    assert (tmp / f"section_ex_{sha}_01.json").exists()
+
+
 def test_abort_removes_staged_extraction_artifact(tmp_path):
     """#403 phase 1: aborting a document discards its staged extraction too, if it got that far —
     belt and braces, since abort normally fires on extraction failure, before the artifact

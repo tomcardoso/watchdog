@@ -1396,6 +1396,250 @@ def test_large_single_page_failure_falls_back_to_char_sectioning(tmp_path, monke
     assert summary["extracted"] == 1 and summary["failed"] == 0
 
 
+# ── per-section checkpointing (#498) ──────────────────────────────────────────
+
+def _checkpoint_plan_and_pf(vault, sha="abc123", filename="test-doc.pdf", n=3):
+    tmpd = vault / ".watchdog" / "tmp"
+    tmpd.mkdir(parents=True, exist_ok=True)
+    sections = []
+    for i in range(1, n + 1):
+        path = tmpd / f"section_{sha}_{i:02d}.md"
+        path.write_text(f"Section {i} text.", encoding="utf-8")
+        sections.append({"index": i, "label": f"part {i} of {n}", "paginated": False,
+                         "pages_path": f".watchdog/tmp/section_{sha}_{i:02d}.md"})
+    plan = {"sectioned": True, "page_count": n, "sections": sections}
+    pf = {"filename": filename, "existing_entities": [], "known_document_types": [],
+         "page_count": n, "original_path": f"_INCOMING/{filename}"}
+    return plan, pf
+
+
+def _checkpoint_section_out(index, *, basis="stated"):
+    if index == 1:
+        return {
+            "document": {"sha256": "abc123", "filename": "test-doc.pdf", "title": "Acme AR",
+                        "document_type": "Annual Report",
+                        "key_facts": [{"fact": f"Fact {index}", "basis": basis}]},
+            "entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company", "roles": []}],
+            "morgue_entity_id": "acme-corp", "morgue_document_type": "annual-report",
+            "observations": f"obs{index}",
+        }
+    return {
+        "document": {"key_facts": [{"fact": f"Fact {index}", "basis": basis}]},
+        "entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company", "roles": []}],
+        "observations": f"obs{index}",
+    }
+
+
+def test_extract_sectioned_resumes_from_existing_checkpoint(tmp_path, monkeypatch):
+    """A section already checkpointed on disk (from a prior interrupted attempt) is replayed
+    rather than re-called — the resumed run only pays for the sections still missing."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    plan, pf = _checkpoint_plan_and_pf(vault, n=3)
+    orchestrate._write_section_checkpoint(vault, "abc123", plan["sections"][0],
+                                          _checkpoint_section_out(1), 0.05)
+
+    remaining = [_checkpoint_section_out(2), _checkpoint_section_out(3), {"summary": "digest"}]
+    seen = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        seen.append((task, _flat(prompt)))
+        return model_client.ModelResult(parsed=remaining[len(seen) - 1], text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.02)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    extraction, scratchpad, cost, ok, errors, warnings = asyncio.run(
+        orchestrate._extract_sectioned(vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
+
+    assert ok, errors
+    assert len(seen) == 3                                    # sections 2, 3 + digest — not section 1
+    assert all("Section 1 text." not in p for _, p in seen)
+    assert {f["fact"] for f in extraction["document"]["key_facts"]} == {"Fact 1", "Fact 2", "Fact 3"}
+    assert cost == pytest.approx(0.05 + 0.02 + 0.02 + 0.02)   # checkpoint + 2 sections + digest
+
+
+def test_extract_sectioned_writes_a_checkpoint_per_section(tmp_path, monkeypatch):
+    """Each section's result lands on disk as soon as that section's call completes, not just at
+    the end of the loop — so an interruption after section 2 still leaves 1 and 2 on disk. Forces
+    the failure via an unrelated post-flight error (not repairable, #505) so the run genuinely
+    ends without ever reaching the success-path cleanup."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    plan, pf = _checkpoint_plan_and_pf(vault, n=3)
+    outs = [_checkpoint_section_out(1, basis="maybe"),   # invalid basis — unrelated post-flight error
+           _checkpoint_section_out(2), _checkpoint_section_out(3), {"summary": "digest"}]
+    seen = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        seen.append(task)
+        return model_client.ModelResult(parsed=outs[len(seen) - 1], text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.01)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    extraction, scratchpad, cost, ok, errors, warnings = asyncio.run(
+        orchestrate._extract_sectioned(vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
+
+    assert not ok                                             # invalid basis is a real, unfixable error
+    for i in (1, 2, 3):
+        assert orchestrate._section_checkpoint_path(vault, "abc123", i).exists()
+
+
+def test_extract_sectioned_clears_checkpoints_once_postflight_succeeds(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    plan, pf = _checkpoint_plan_and_pf(vault, n=2)
+    outs = [_checkpoint_section_out(1), _checkpoint_section_out(2), {"summary": "digest"}]
+    seen = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        seen.append(task)
+        return model_client.ModelResult(parsed=outs[len(seen) - 1], text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.01)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    _, _, _, ok, errors, _ = asyncio.run(
+        orchestrate._extract_sectioned(vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
+
+    assert ok, errors
+    assert list((vault / ".watchdog" / "tmp").glob("section_ex_abc123_*.json")) == []
+
+
+def test_finish_extraction_clears_orphaned_checkpoints_on_a_different_successful_path(
+        tmp_path, monkeypatch):
+    """A document can leave section checkpoints from a failed sectioned attempt, then later
+    succeed via a completely different path on retry (e.g. whole-document extraction succeeds
+    once the model behaves) — _finish_extraction's belt-and-braces cleanup must still sweep them,
+    since _extract_sectioned's own cleanup never runs on this path at all."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    tmp = vault / ".watchdog" / "tmp"
+    tmp.mkdir(parents=True, exist_ok=True)
+    (tmp / "section_ex_abc123_01.json").write_text("{}")   # orphaned from an earlier attempt
+
+    _mock(monkeypatch, extraction=_extraction())            # whole-doc succeeds outright
+    summary = asyncio.run(orchestrate.run(vault))
+
+    assert summary["extracted"] == 1 and summary["failed"] == 0
+    assert not (tmp / "section_ex_abc123_01.json").exists()
+
+
+def test_extract_sectioned_ignores_a_checkpoint_whose_section_metadata_no_longer_matches(
+        tmp_path, monkeypatch):
+    """A checkpoint written against a different plan (e.g. the budget/model changed between
+    attempts) must not be trusted — the section is re-extracted rather than risk merging content
+    across a different section boundary than the one it was actually extracted from (#498)."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    plan, pf = _checkpoint_plan_and_pf(vault, n=2)
+    stale_section = {**plan["sections"][0], "label": "a different boundary entirely"}
+    orchestrate._write_section_checkpoint(vault, "abc123", stale_section,
+                                          _checkpoint_section_out(1), 0.05)
+
+    outs = [_checkpoint_section_out(1), _checkpoint_section_out(2), {"summary": "digest"}]
+    seen = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        seen.append(task)
+        return model_client.ModelResult(parsed=outs[len(seen) - 1], text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.01)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    _, _, cost, ok, errors, _ = asyncio.run(
+        orchestrate._extract_sectioned(vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
+
+    assert ok, errors
+    assert len(seen) == 3                        # both sections re-extracted + digest — stale checkpoint unused
+    assert cost == pytest.approx(0.03)            # no leftover 0.05 from the stale checkpoint
+
+
+def test_ingest_retry_resumes_sectioned_extraction_after_a_crash(tmp_path, monkeypatch):
+    """End-to-end: a document that crashes mid-sectioned-extraction fails the run but keeps its
+    completed sections' checkpoints (the automatic-failure path preserves them, #498); moving the
+    queue file back and re-running `orchestrate.run` resumes from section 2 instead of re-paying
+    for section 1."""
+    vault = make_vault(tmp_path)
+    sha = "abc123"
+    pages = [{"page": 1, "markdown": "Acme part one " * 50},
+             {"page": 2, "markdown": "Acme part two " * 50}]
+    qdir = vault / ".watchdog" / "queue"
+    qdir.mkdir(parents=True, exist_ok=True)
+    (qdir / f"{sha}.json").write_text(json.dumps({
+        "sha256": sha, "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "page_count": 2, "pages": pages,
+        "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
+    }))
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    monkeypatch.setattr(orchestrate.section, "_config_get", lambda k, d: d)
+
+    sec1 = {
+        "document": {"sha256": sha, "filename": "test-doc.pdf", "title": "Acme AR",
+                     "document_type": "Annual Report", "summary": "Acme report.",
+                     "key_facts": [{"fact": "x", "basis": "stated"}]},
+        "entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
+                      "timeline_events": [], "roles": []}],
+        "morgue_entity_id": "acme-corp", "morgue_document_type": "annual-report",
+        "observations": "sec1",
+    }
+    sec2 = {"entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company",
+                         "timeline_events": [], "roles": []}], "observations": "sec2"}
+    broken_whole_doc = _extraction(valid=False)
+    broken_whole_doc["entities"] = []          # forces the whole-doc attempt to fail outright,
+                                                # triggering the force-sectioned fallback (#343)
+    section1_calls = {"n": 0}
+
+    async def crashes_on_section2(*, task, prompt, schema, model=None, backend=None,
+                                  max_retries=1, effort=None):
+        if task == "classify":
+            parsed = {"skill": "general-records.md"}
+        elif task == "extract":
+            parsed = broken_whole_doc
+        elif task == "extract-section":
+            if "This is SECTION 1" in _flat(prompt):
+                section1_calls["n"] += 1
+                parsed = sec1
+            else:
+                raise RuntimeError("simulated crash mid-section")
+        else:
+            raise AssertionError(f"unexpected task before crash: {task}")
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.01)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", crashes_on_section2)
+
+    first = asyncio.run(orchestrate.run(vault))
+    assert first["failed"] == 1 and first["extracted"] == 0
+    assert section1_calls["n"] == 1
+    assert (qdir / "_failed" / f"{sha}.json").exists()
+    assert orchestrate._section_checkpoint_path(vault, sha, 1).exists()   # survives the failure
+
+    (qdir / "_failed" / f"{sha}.json").replace(qdir / f"{sha}.json")      # re-queue, per abort.py
+
+    async def succeeds(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "classify":
+            parsed = {"skill": "general-records.md"}
+        elif task == "extract":
+            parsed = broken_whole_doc
+        elif task == "extract-section":
+            if "This is SECTION 1" in _flat(prompt):
+                section1_calls["n"] += 1
+                parsed = sec1
+            else:
+                parsed = sec2
+        elif task == "digest":
+            parsed = {"summary": "digest text"}
+        elif task == "briefing":
+            parsed = {"investigation_status": "x", "what_was_ingested": []}
+        else:
+            parsed = {"entity_syntheses": []} if task == "entity-synthesis" else {"events": []}
+        return model_client.ModelResult(parsed=parsed, text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.01)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", succeeds)
+
+    second = asyncio.run(orchestrate.run(vault))
+    assert second["extracted"] == 1 and second["failed"] == 0
+    assert section1_calls["n"] == 1                # section 1 was never re-called on resume
+    assert list((vault / ".watchdog" / "tmp").glob(f"section_ex_{sha}_*.json")) == []
+
+
 def test_pinned_skill_skips_classification(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault)

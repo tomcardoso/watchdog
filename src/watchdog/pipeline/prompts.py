@@ -134,12 +134,17 @@ def build_section_prompt(*, pages_text: str, skill_text: str, carry_forward: str
                          known_document_types: list, brief: str | None = None,
                          file_metadata: dict | None = None,
                          processing: dict | None = None,
-                         candidates: str | None = None) -> list[dict]:
+                         candidates: str | None = None, cache_ttl: str = "1h") -> list[dict]:
     # Same cache-block split as build_extract_prompt (A1): instructions + brief + skill lead,
     # since those are the only parts stable across every section of one run — the section
     # label/metadata-mode note, carry-forward, and section text change on every call, so they
     # move after the skill block instead of leading (as in the old single-string layout) to
-    # keep the cacheable prefix at the front of the content array.
+    # keep the cacheable prefix at the front of the content array. `cache_ttl` defaults to "1h",
+    # unlike build_extract_prompt's "5m" default: a sectioned document's calls were originally
+    # always back-to-back within a few minutes, so 5m was plenty, but per-section checkpointing
+    # (#498) means a retry can now land on this document's next section anywhere from seconds to
+    # well past an hour later (a rate-limit backoff, a Ctrl-C resumed the next day) — the same
+    # reasoning that gave the batch-submission path (#214) its own "1h" override applies here too.
     stable = [_text("extract_instructions")]
     if brief:
         stable.append(f"\nINVESTIGATION BRIEF (orient extraction toward this):\n{brief}")
@@ -177,7 +182,7 @@ def build_section_prompt(*, pages_text: str, skill_text: str, carry_forward: str
 
     return [
         {"type": "text", "text": "\n".join(stable)},
-        _cache_block(f"\nDOMAIN SKILL:\n{skill_text or '(none)'}"),
+        _cache_block(f"\nDOMAIN SKILL:\n{skill_text or '(none)'}", ttl=cache_ttl),
         {"type": "text", "text": "\n".join(volatile)},
     ]
 

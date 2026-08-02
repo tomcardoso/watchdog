@@ -220,7 +220,24 @@ def test_section_prompt_cache_prefix_is_stable_across_sections():
                                       section_label="pages 2", is_first=False, **kwargs)
     assert [b["text"] for b in p1[:2]] == [b["text"] for b in p2[:2]]
     assert p1[2]["text"] != p2[2]["text"]
-    assert p1[1]["cache_control"] == {"type": "ephemeral"} == p2[1]["cache_control"]
+    # "1h" by default (#498) — see test_section_prompt_cache_ttl_defaults_to_1h_and_is_overridable
+    assert p1[1]["cache_control"] == {"type": "ephemeral", "ttl": "1h"} == p2[1]["cache_control"]
+
+
+def test_section_prompt_cache_ttl_defaults_to_1h_and_is_overridable():
+    """#498: a checkpointed retry can land on this document's next section well past the 5m
+    default window (a rate-limit backoff, a Ctrl-C resumed later) — same reasoning as the batch
+    path's "1h" override, but the default here rather than opt-in, since every section call
+    within one document now has to tolerate an arbitrary gap before the next one."""
+    p = prompts.build_section_prompt(pages_text="x", skill_text="SKILL", carry_forward="",
+                                     section_label="pages 1", is_first=True,
+                                     known_document_types=[])
+    assert p[1]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+
+    p = prompts.build_section_prompt(pages_text="x", skill_text="SKILL", carry_forward="",
+                                     section_label="pages 1", is_first=True,
+                                     known_document_types=[], cache_ttl="5m")
+    assert p[1]["cache_control"] == {"type": "ephemeral"}
 
 
 # ── FILE_METADATA block (#369) ────────────────────────────────────────────────
