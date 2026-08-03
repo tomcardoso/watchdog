@@ -1773,7 +1773,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             n_folded = 0   # leave requests unmerged; a later run with new activity retries
         if n_folded:
             out["requests_folded"] = n_folded
-            _say(f"   {_DIM}folded {n_folded} duplicate document request"
+            _say(f"   {_DIM}consolidated {n_folded} duplicate document request"
                  f"{'s' if n_folded != 1 else ''}{_RESET}")
 
     # 6. Document requests (deterministic Python from here — #365). Re-render requests.md from

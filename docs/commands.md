@@ -89,7 +89,7 @@ If a previous batch is still pending finalization when you start `watchdog dig`,
 
 ### watchdog bark
 
-`watchdog bark` completes post-ingest — merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline reconciliation, the briefing, and (only when the run adds a new document request while others are already open) folding differently-worded document requests that name the same real document — for a batch `watchdog dig` staged, or one an interruption (a rate limit mid-run, a Ctrl+C) left half-done. `watchdog status` flags a batch as pending finalization; `bark` completes it without re-extracting anything. Documents land in the vault — entity and document notes, the registry — at the start of this step, not progressively as each one extracted; extraction only stages its output durably.
+`watchdog bark` completes post-ingest — merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline reconciliation, the briefing, and (only when the run adds a new document request while others are already open) consolidating differently-worded document requests that name the same real document — for a batch `watchdog dig` staged, or one an interruption (a rate limit mid-run, a Ctrl+C) left half-done. `watchdog status` flags a batch as pending finalization; `bark` completes it without re-extracting anything. Documents land in the vault — entity and document notes, the registry — at the start of this step, not progressively as each one extracted; extraction only stages its output durably.
 
 **Model and effort flags.** Each takes effect for this run only; the persistent defaults live in [Configuration](configuration.md).
 
