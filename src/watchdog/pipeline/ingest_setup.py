@@ -170,7 +170,7 @@ def finalize_cost_estimate_all_models(vault: Path, est_tokens: int, max_runs: in
 
 
 def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
-                   max_runs: int = 3) -> dict:
+                   max_runs: int = 3, usage_files: list[Path] | None = None) -> dict:
     """Pre-flight token/cost estimate for a queue (#269): the queue's own `est_tokens` (already
     computed by `scan_queue`, and calibrated against this vault's own extraction history — #417,
     see `_tokens_calibration`) times this vault's own $/token history, so a batch's rough cost is
@@ -184,6 +184,11 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
     alone. It still gets the calibrated token estimate, though — that's what a subscriber budgets
     a session window against. With no usage history yet (first run), the token estimate alone is
     returned — no invented dollar figure.
+
+    ``usage_files``, when given, replaces this vault's own history as the $/token ratio source
+    (issue #478) — for a vault that is guaranteed to have none yet by design (every benchmark arm
+    is a freshly seeded vault, `BENCHMARKING.md`), the caller can instead supply usage files
+    archived from a prior run of the same model/effort/backend combination elsewhere.
     """
     documents = len(queue_files)
     pages = sum(f.get("page_count") or 0 for f in queue_files)
@@ -196,7 +201,7 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
         return result
 
     from watchdog.pipeline import orchestrate
-    files = orchestrate.usage_files(vault)
+    files = orchestrate.usage_files(vault) if usage_files is None else usage_files
     ratios = []
     for uf in files[-max_runs:]:
         try:
@@ -214,7 +219,8 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
     return result
 
 
-def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3) -> dict:
+def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3,
+                           usage_files: list[Path] | None = None) -> dict:
     """Pre-flight cost estimate for `watchdog bark` (issue #417, a #403 follow-up).
 
     `cost_estimate` above prices an ingest queue's *documents*; finalize's real work is
@@ -233,6 +239,9 @@ def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3) 
     counts with no dollar figure, the same "not enough history yet" treatment `cost_estimate`
     gives a first-run vault. Subscription auth (`claude-agent-sdk`) never gets a dollar figure
     either, for the same reason `cost_estimate` withholds one (D72): no real billing to project.
+
+    ``usage_files``, when given, replaces this vault's own history (issue #478) — see
+    `cost_estimate`'s own note on the same parameter.
     """
     tmp = vault / ".watchdog" / "tmp"
     results = sorted(tmp.glob("result_*.json"))
@@ -254,8 +263,9 @@ def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3) 
         return result
 
     from watchdog.pipeline import orchestrate
+    files = orchestrate.usage_files(vault) if usage_files is None else usage_files
     ratios = []
-    for uf in reversed(orchestrate.usage_files(vault)):
+    for uf in reversed(files):
         try:
             data = json.loads(uf.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):

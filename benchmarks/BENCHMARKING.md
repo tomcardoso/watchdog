@@ -46,6 +46,15 @@ the runner just started the next one's real API calls. The runner now reads that
 return value and stops the whole matrix after the interrupted arm finishes, instead of requiring
 one Ctrl+C per remaining arm.
 
+**The cost preview works even though every arm vault is fresh (#478).** `ingest_setup.cost_estimate`
+normally derives its $/token ratio from *this vault's own* recent `usage-<ts>.json` history — which
+an arm vault never has, by design (every condition is its own fresh vault, above). So the preview
+instead borrows usage archived from a past benchmark run of the exact same model/effort/backend
+combination (`benchmarks/<run-id>/artifacts/<vault-name>/usage/`, written by every prior real run),
+and only when no such run exists anywhere yet falls back to a rough catalog-list-price projection —
+printed with an explicit `(rough projection, no matching run history yet)` caption rather than
+shown indistinguishably from a run-calibrated range. See `cost_reference.py`.
+
 **Pin the Claude backend when it is what you are measuring (#475).** A bare `sonnet` arm carries
 no backend of its own — `_effective_extract_backend` picks one from the *current auth mode*
 (subscription → `claude-agent-sdk`, api-key → `claude-api`). Those two bill materially different

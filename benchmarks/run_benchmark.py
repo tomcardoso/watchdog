@@ -380,15 +380,47 @@ def _auth_mode() -> str:
     return resolve_auth().get("mode", "none")
 
 
-def preview_extractor_arm(vault: Path, extractor_model: str) -> dict:
+def preview_extractor_arm(vault: Path, extractor_model: str, extractor_effort: str | None = None,
+                          benchmarks_root: Path | None = None) -> dict:
+    """Cost preview for one extractor arm (issue #478). Every arm vault is fresh by design
+    (`BENCHMARKING.md`), so it never has its own usage history for `cost_estimate` to price
+    against — this instead borrows usage archived from a past benchmark run of the same
+    model/effort/backend combination (`cost_reference.reference_usage_files`), and only when
+    none exists anywhere yet falls back to a rough catalog-list-price projection, clearly marked
+    as such rather than presented as a calibrated figure."""
+    import cost_reference
     from watchdog.pipeline.ingest_setup import scan_queue, cost_estimate
     queue_files = scan_queue(vault)
-    return cost_estimate(vault, queue_files, arm_backend(extractor_model, default="sonnet"))
+    backend = arm_backend(extractor_model, default="sonnet")
+    _, model = _resolve(extractor_model, default="sonnet")
+    ref_files = (cost_reference.reference_usage_files(benchmarks_root, model, extractor_effort,
+                                                      backend) if benchmarks_root else [])
+    est = cost_estimate(vault, queue_files, backend, usage_files=ref_files)
+    if est["cost_low"] is None and backend != "claude-agent-sdk" and est["documents"]:
+        fallback = cost_reference.fallback_estimate(est["est_tokens"], model, extractor_effort)
+        if fallback:
+            est.update(fallback)
+    return est
 
 
-def preview_finalizer_arm(vault: Path, finalizer_model: str) -> dict:
+def preview_finalizer_arm(vault: Path, finalizer_model: str, finalizer_effort: str | None = None,
+                          benchmarks_root: Path | None = None) -> dict:
+    """`preview_extractor_arm`'s counterpart for the finalizer sweep (issue #478) — same
+    borrow-then-fallback chain, restricted to standalone-finalize usage (`finalize_only=True`),
+    matching `finalize_cost_estimate`'s own task filter."""
+    import cost_reference
     from watchdog.pipeline.ingest_setup import finalize_cost_estimate
-    return finalize_cost_estimate(vault, arm_backend(finalizer_model, default="haiku"))
+    backend = arm_backend(finalizer_model, default="haiku")
+    _, model = _resolve(finalizer_model, default="haiku")
+    ref_files = (cost_reference.reference_usage_files(benchmarks_root, model, finalizer_effort,
+                                                      backend, finalize_only=True)
+                if benchmarks_root else [])
+    est = finalize_cost_estimate(vault, backend, usage_files=ref_files)
+    if est["cost_low"] is None and backend != "claude-agent-sdk" and est["docs"]:
+        fallback = cost_reference.fallback_estimate(est["est_tokens"], model, finalizer_effort)
+        if fallback:
+            est.update(fallback)
+    return est
 
 
 def _latest_usage(vault: Path) -> dict | None:
@@ -541,7 +573,7 @@ def confirm_run(previews: list[tuple[str, dict, dict]], *, estimate_only: bool) 
     Prints a per-arm breakdown plus a grand total, then one confirmation for the whole run."""
     from watchdog import interactive
     total_low = total_high = 0.0
-    any_priced = False
+    any_priced = any_projected = False
     print("\nCost preview:")
     for label, est, meta in previews:
         low, high = est.get("cost_low"), est.get("cost_high")
@@ -551,7 +583,15 @@ def confirm_run(previews: list[tuple[str, dict, dict]], *, estimate_only: bool) 
             any_priced = True
             total_low += low
             total_high += high
-            print(f"  {label}: ~${low:.2f}-{high:.2f}")
+            # `cost_reference.fallback_estimate` (#478) sets this when no archived benchmark run
+            # of this exact model/effort/backend exists yet, so the figure is a catalog-list-price
+            # projection rather than one calibrated from real usage — flagged rather than shown
+            # indistinguishably from a run-calibrated range.
+            if est.get("projected"):
+                any_projected = True
+                print(f"  {label}: ~${low:.2f}  (rough projection, no matching run history yet)")
+            else:
+                print(f"  {label}: ~${low:.2f}-{high:.2f}")
         # Which backend this arm resolves to, and on Claude the auth mode that chose it (#475).
         backend = (meta or {}).get("backend")
         if backend:
@@ -559,7 +599,8 @@ def confirm_run(previews: list[tuple[str, dict, dict]], *, estimate_only: bool) 
             suffix = f" ({auth})" if auth and backend.startswith("claude-") else ""
             print(f"    backend: {backend}{suffix}")
     if any_priced:
-        print(f"  TOTAL: ~${total_low:.2f}-{total_high:.2f}")
+        note = "  (includes rough projection(s) — see above)" if any_projected else ""
+        print(f"  TOTAL: ~${total_low:.2f}-{total_high:.2f}{note}")
     else:
         print("  TOTAL: no dollar estimate for any arm")
     if estimate_only:
@@ -670,7 +711,8 @@ def main(argv: list[str] | None = None) -> int:
             vault = arm_vault(sweep["vault_prefix"], arm["id"], root)
             if not vault.exists():
                 seed_arm_vault(master, vault)
-            est = preview_extractor_arm(vault, arm["extractor_model"])
+            est = preview_extractor_arm(vault, arm["extractor_model"], arm.get("extractor_effort"),
+                                        args.out)
             meta = {"backend": arm_backend(arm["extractor_model"], default="sonnet"),
                     "auth_mode": _auth_mode()}
             previews.append((f"extractor:{arm['id']}", est, meta))
@@ -692,7 +734,8 @@ def main(argv: list[str] | None = None) -> int:
             vault = arm_vault(sweep["vault_prefix"], arm["id"], root)
             if not vault.exists():
                 shutil.copytree(base_vault, vault)
-            est = preview_finalizer_arm(vault, arm["finalizer_model"])
+            est = preview_finalizer_arm(vault, arm["finalizer_model"], arm.get("finalizer_effort"),
+                                        args.out)
             meta = {"backend": arm_backend(arm["finalizer_model"], default="haiku"),
                     "auth_mode": _auth_mode()}
             previews.append((f"finalizer:{arm['id']}", est, meta))
@@ -706,7 +749,8 @@ def main(argv: list[str] | None = None) -> int:
             vault = arm_vault(smoke["vault_prefix"], smoke["arm"]["id"], root)
             if not vault.exists():
                 seed_arm_vault(master, vault)
-            est = preview_extractor_arm(vault, smoke["arm"]["extractor_model"])
+            est = preview_extractor_arm(vault, smoke["arm"]["extractor_model"],
+                                        smoke["arm"].get("extractor_effort"), args.out)
             meta = {"backend": arm_backend(smoke["arm"]["extractor_model"], default="sonnet"),
                     "auth_mode": _auth_mode()}
             previews.append((f"classifier-smoke:{smoke['arm']['id']}", est, meta))
@@ -727,7 +771,8 @@ def main(argv: list[str] | None = None) -> int:
                 vault = arm_vault(sweep["vault_prefix"], arm["id"], root)
                 if not vault.exists():
                     seed_arm_vault(cc_master, vault)
-                est = preview_extractor_arm(vault, sweep["fixed"]["extractor_model"])
+                est = preview_extractor_arm(vault, sweep["fixed"]["extractor_model"],
+                                            sweep["fixed"].get("extractor_effort"), args.out)
                 previews.append((f"classifier-sweep:{arm['id']}", est, {}))
                 plan.append(("classifier-sweep",
                             {"arm": arm, "vault": vault, "fixed": sweep["fixed"],
@@ -754,7 +799,8 @@ def main(argv: list[str] | None = None) -> int:
             vault = arm_vault(sweep["vault_prefix"], arm["id"], root)
             if not vault.exists():
                 seed_arm_vault(sc_master, vault)
-            est = preview_extractor_arm(vault, arm["extractor_model"])
+            est = preview_extractor_arm(vault, arm["extractor_model"], arm.get("extractor_effort"),
+                                        args.out)
             meta = {"backend": arm_backend(arm["extractor_model"], default="sonnet"),
                     "auth_mode": _auth_mode()}
             previews.append((f"sdk-check:{arm['id']}", est, meta))
