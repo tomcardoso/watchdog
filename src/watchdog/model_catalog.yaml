@@ -1,8 +1,10 @@
 # Every model Watchdog can call, by exact id. `name` is the pretty display form printed by the
 # CLI/usage logging (falls back to the raw id if a model or an old, no-longer-catalogued id has
-# none — see model_catalog.py's display_name). `tier` (Claude only) is the short name
-# (haiku/sonnet/opus) that `--model`/config accepts in place of the raw id — the only
-# place that mapping lives. `cache_write`/`cache_read` (Claude) vs `cached_input`
+# none — see model_catalog.py's display_name). `tier` (Claude only) is the short name(s) that
+# `--model`/config accept in place of the raw id — a scalar (haiku, opus) for a model with one
+# name, or a list of aliases when it has more than one (Sonnet 4.6's `[sonnet, sonnet-4.6]`: bare
+# `sonnet` keeps resolving to 4.6 as the default, `sonnet-4.6` is the explicit, version-pinned
+# alias to the same id — see D165) — the only place that mapping lives. `cache_write`/`cache_read` (Claude) vs `cached_input`
 # (everyone else) reflect the two providers' different cache-pricing shapes — see
 # model_client.py's _api_cost / _openai_cost for how each is applied. `reasoning: true`
 # marks an OpenAI model that accepts `reasoning_effort` and requires
@@ -31,7 +33,7 @@ models:
   - id: claude-sonnet-4-6
     name: Claude Sonnet 4.6
     provider: anthropic
-    tier: sonnet
+    tier: [sonnet, sonnet-4.6]
     input: 3.0e-6
     output: 15.0e-6
     cache_write: 3.75e-6
@@ -46,6 +48,30 @@ models:
     output: 25.0e-6
     cache_write: 6.25e-6
     cache_read: 0.50e-6
+    context_window: 200_000
+    effort_levels: [low, medium, high, xhigh, max]
+  # Claude Sonnet 5 (#361/#509 benchmark groundwork, D165) — additive alongside 4.6; bare `sonnet`
+  # keeps resolving to 4.6 above, `sonnet-5` is the only way to select this entry. Pricing below is
+  # the INTRODUCTORY rate, in effect through 2026-08-31 (source: platform.claude.com/docs/en/
+  # about-claude/pricing, fetched 2026-08-03). Standard rate takes effect 2026-09-01 and is
+  # identical to Sonnet 4.6's current pricing ($3.0e-6 / $15.0e-6 / $3.75e-6 / $0.30e-6) — a human
+  # needs to flip these four numbers then; no date-conditional logic here on purpose.
+  # Context window is pinned to 200K like every other Claude tier in this catalog (D89) even
+  # though Anthropic's own docs list 1M as both the default and the max for this model — 200K is
+  # this catalog's deliberately conservative *sectioning* window, not the vendor ceiling.
+  # Caveat: Sonnet 5 uses a new tokenizer producing ~30% MORE tokens than 4.6 for the same input
+  # text (source: platform.claude.com/docs/en/about-claude/models/whats-new-sonnet-5). The
+  # chars/4 `est_tokens` heuristic in pipeline/ingest_setup.py's scan_queue is flat across models,
+  # so its input-token cost estimate will run ~30% low for this model versus actual usage. Not
+  # corrected here — flagged as a caveat, not fixed (would need a per-model tokenizer-ratio knob).
+  - id: claude-sonnet-5
+    name: Claude Sonnet 5
+    provider: anthropic
+    tier: sonnet-5
+    input: 2.0e-6
+    output: 10.0e-6
+    cache_write: 2.5e-6
+    cache_read: 0.20e-6
     context_window: 200_000
     effort_levels: [low, medium, high, xhigh, max]
 
