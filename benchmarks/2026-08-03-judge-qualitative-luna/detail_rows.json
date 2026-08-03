@@ -1,0 +1,3362 @@
+[
+  [
+    "annual-financial-report-19-20",
+    "F1",
+    "facts",
+    "gpt-luna-med",
+    "ungrounded",
+    "No mention anywhere of the approved budget expecting balanced results, being 'on track', or the $0.9M anticipated deficit."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F1",
+    "facts",
+    "gpt-luna-high",
+    "ungrounded",
+    "Same omission; Y goes straight to actual operating-fund figures ($159,041K rev / $164,483K exp / $5,442K deficit) with no budgeted-expectation baseline."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F1",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention of the pre-COVID budget expectation or the $0.9M anticipated deficit anywhere in summary or key_facts."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F2",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "States '$5.4 million' deficit 'of which $5.2 million' COVID-related, matching the quote exactly (page 5 key_fact)."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F2",
+    "facts",
+    "gpt-luna-high",
+    "credited",
+    "States the $5,442K/$5,149K reconciliation-table figures (~$5.1M attributed to COVID, both in key_facts and summary) but never states the '$5.2 million' narrative figure the fact quotes \u2014 a related but distinct number from the same document."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F2",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "States '$5.2 million' COVID-attributed within a '$5.4 million' total operating deficit, matching the quote."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F3",
+    "facts",
+    "gpt-luna-med",
+    "ungrounded",
+    "No trace of the 'unwavering commitment' / 'trace its path to sustainability' language."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F3",
+    "facts",
+    "gpt-luna-high",
+    "ungrounded",
+    "No trace of this framing language anywhere in summary or key_facts."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F3",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "No trace of this framing language anywhere in summary or key_facts."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F4",
+    "facts",
+    "gpt-luna-med",
+    "credited",
+    "States '$52.8 million in endowment' (matching part of the quote) but never states the '$1 million increase over 2018-19' or the '3.5% spending rate' \u2014 both absent."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F4",
+    "facts",
+    "gpt-luna-high",
+    "credited",
+    "Same partial match: '$52.8 million in endowment' stated, but the $1M increase and 3.5% spending rate are never mentioned."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F4",
+    "facts",
+    "gpt-luna-low",
+    "credited",
+    "Same partial match: '$52.8 million in endowment' stated, but the $1M increase and 3.5% spending rate are never mentioned."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F5",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "States the unqualified opinion ('presented fairly, in all material respects') with date 2020-10-30 attached to the key_fact."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F5",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Quotes the opinion in full and carries the 2020-10-30 date on the key_fact."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F5",
+    "facts",
+    "gpt-luna-low",
+    "credited",
+    "States the unqualified/'fairly presented' opinion but the key_fact has no date field and no mention of October 30, 2020 anywhere in Z's output \u2014 misses the date element the scoring note calls out as essential."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F11",
+    "facts",
+    "gpt-luna-med",
+    "ungrounded",
+    "States the $14.4M line-of-credit draw (twice, pages 7 and 33) but never connects it to capital spending \u2014 no arm text ties the draw to a capital-spending purpose."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F11",
+    "facts",
+    "gpt-luna-high",
+    "credited",
+    "Doesn't state 'capital spending' directly, but page-32 key_fact folds the $14.400M line-of-credit draw into the calculation of 'investment in capital assets,' implying the capital-financing purpose indirectly."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F11",
+    "facts",
+    "gpt-luna-low",
+    "credited",
+    "Page 7 key_fact: lines of credit exist 'to support internal capital funding,' and $14.4M was utilized \u2014 a paraphrase of 'used for capital spending,' though 'funding' stands in for 'spending.'"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F12",
+    "facts",
+    "gpt-luna-med",
+    "credited",
+    "States the solvency ratio numbers (85.4%/87.8%) but never states the 85% mandatory-funding threshold \u2014 the fact's second half is missing."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F12",
+    "facts",
+    "gpt-luna-high",
+    "credited",
+    "Same: solvency ratio numbers stated (85.4%/87.8%) but the 85%-funding-threshold rule is never mentioned."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F12",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "States both: solvency ratio deficit 85.4% (2019: 87.8%) AND that the University is 'required to fund solvency deficits only up to an 85% level.'"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F13",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "States PfAD rate '10.3%, up from 7.94%' exactly matching the quote."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F13",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "States PfAD rate '10.3% compared with 7.94% in 2019' exactly matching the quote."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F13",
+    "facts",
+    "gpt-luna-low",
+    "credited",
+    "States '10.29% provision for adverse deviation... up from 7.94%' \u2014 same direction and near-identical figure, but not the '10.3%' specifically quoted; treated as a close but distinct precision/citation."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F14",
+    "facts",
+    "gpt-luna-med",
+    "ungrounded",
+    "No mention of the $20M pre-COVID / ~$10M post-COVID / $30M total savings figures anywhere."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F14",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Page-4 key_fact states '$20 million in pre-COVID savings and approximately $10 million in additional post-COVID savings, for more than $30 million in savings since 2018 as of August 2020' \u2014 matches the quote closely."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F14",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention of the $20M/$10M/$30M savings figures anywhere in summary or key_facts."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F16",
+    "facts",
+    "gpt-luna-med",
+    "ungrounded",
+    "No mention of the 7.6% tuition-revenue decline or the 10% domestic tuition-fee reduction."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F16",
+    "facts",
+    "gpt-luna-high",
+    "ungrounded",
+    "Page-11 key_fact references the Sustainability Plan addressing 'the tuition-rate reduction' in passing, but states no percentages and no causal revenue-decline figure \u2014 too thin to credit."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F16",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention of the 7.6% tuition-revenue decline or the 10% domestic tuition-fee reduction."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F17",
+    "facts",
+    "gpt-luna-med",
+    "ungrounded",
+    "No mention of the 7.7% operating-grants rise or the one-time Northern Sustainability grant anywhere."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F17",
+    "facts",
+    "gpt-luna-high",
+    "ungrounded",
+    "Mentions a 'Northern Tuition Sustainability Fund' but in the opposite direction (a $1.4M shortfall, not a one-time grant boosting revenue) and no 7.7% figure \u2014 this is a different item, not a match."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F17",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention of the 7.7% operating-grants rise or the one-time Northern Sustainability grant anywhere."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F19",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "States endowment return was negative and '$1.8 million of scholarship spending' was 'charged to the operating fund' \u2014 matches the quote's substance."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F19",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Same statement: negative endowment return, $1.8 million charged to the operating fund."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "F19",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "Same statement: negative endowment return, $1.8 million charged to the operating fund."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M1",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "Unqualified opinion stated with date 2020-10-30 attached."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M1",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "Unqualified/unmodified opinion quoted in full with date 2020-10-30 attached."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M1",
+    "must_not_miss",
+    "gpt-luna-low",
+    "credited",
+    "States the unqualified, 'fairly presented' opinion, but no date (2020-10-30 or 'October 30') appears anywhere in Z's output \u2014 misses the date element the scoring note singles out."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M2",
+    "must_not_miss",
+    "gpt-luna-med",
+    "ungrounded",
+    "Neither Lorella Hayes nor Normand Lavall\u00e9e appear anywhere in X's entities or key_facts."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M2",
+    "must_not_miss",
+    "gpt-luna-high",
+    "ungrounded",
+    "Both names appear in Y's top-level entities list, but no key_fact or summary text states their titles, credentials, or that they signed the Statement of Administrative Responsibility \u2014 a bare name-drop with no asserted substance doesn't convey the item."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M2",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "Neither Lorella Hayes nor Normand Lavall\u00e9e appear anywhere in Z's entities or key_facts."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M3",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "Key_fact directly quotes: 'Eckler Ltd. has been retained by the University in order to provide an estimate of the University's liability for pension and other employee future benefits.'"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M3",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "Key_fact states 'Eckler Ltd. estimated pension and other employee-future-benefit liabilities.'"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M3",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "'Eckler Ltd.' appears only in Z's top-level entities list; no key_fact or summary text states what Eckler does or its actuarial role."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M4",
+    "must_not_miss",
+    "gpt-luna-med",
+    "ungrounded",
+    "States the $14.4M line-of-credit draw twice but never ties it to capital spending anywhere in X's output."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M4",
+    "must_not_miss",
+    "gpt-luna-high",
+    "credited",
+    "Page-32 key_fact folds the $14.4M line-of-credit draw into the 'investment in capital assets' calculation, indirectly conveying the capital-financing link without stating it plainly."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M4",
+    "must_not_miss",
+    "gpt-luna-low",
+    "credited",
+    "Page-7 key_fact: lines of credit exist 'to support internal capital funding,' with $14.4M utilized \u2014 a paraphrase of the same relationship."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M5",
+    "must_not_miss",
+    "gpt-luna-med",
+    "ungrounded",
+    "No mention of the 7.7% operating-grants rise or the one-time Northern Sustainability grant."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M5",
+    "must_not_miss",
+    "gpt-luna-high",
+    "ungrounded",
+    "Mentions a 'Northern Tuition Sustainability Fund' shortfall (opposite direction, no 7.7% figure) \u2014 not the same item as the one-time grant driving the rise."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M5",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention of the 7.7% operating-grants rise or the one-time Northern Sustainability grant."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M6",
+    "must_not_miss",
+    "gpt-luna-med",
+    "ungrounded",
+    "States the 85.4%/87.8% solvency ratio numbers but never states the 85% mandatory-funding threshold or the relationship between the two figures."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M6",
+    "must_not_miss",
+    "gpt-luna-high",
+    "ungrounded",
+    "Same: solvency ratio numbers given, but the 85%-threshold relationship is never stated."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M6",
+    "must_not_miss",
+    "gpt-luna-low",
+    "verbatim",
+    "Explicitly states the University 'was required to fund solvency deficits only up to an 85% level' alongside the 85.4% ratio \u2014 the specific relationship M6 tests for."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M7",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "States negative endowment return and the $1.8M cost charged to the operating fund."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M7",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "States negative endowment return and the $1.8M cost charged to the operating fund."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M7",
+    "must_not_miss",
+    "gpt-luna-low",
+    "verbatim",
+    "States negative endowment return and the $1.8M cost charged to the operating fund."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M10",
+    "must_not_miss",
+    "gpt-luna-med",
+    "ungrounded",
+    "'Audit Committee' appears as an entity, but no key_fact states its members are non-officers/non-employees or that auditors have full committee access with/without administration present."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M10",
+    "must_not_miss",
+    "gpt-luna-high",
+    "ungrounded",
+    "Audit Committee is mentioned as the Board's review channel (page 14) but the specific independence/full-access safeguard is never stated."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M10",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "'Audit Committee' does not even appear in Z's entities list or key_facts; the governance safeguard is entirely absent."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M12",
+    "must_not_miss",
+    "gpt-luna-med",
+    "credited",
+    "States the six-month deferral of residence-debt repayments after year-end, but never mentions the specific detail of 'four loans.'"
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M12",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "Page-30 key_fact states 'principal repayments on four loans were deferred for six months after year-end' \u2014 matches the specific detail exactly."
+  ],
+  [
+    "annual-financial-report-19-20",
+    "M12",
+    "must_not_miss",
+    "gpt-luna-low",
+    "credited",
+    "States the six-month deferral of residence-debt principal repayments after year-end, but never mentions the specific 'four loans' detail."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F12",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "States MU-going-concern heading, CCAA stay extended to May 31, 2022, and unmodified opinion (across two linked key_facts); does not cite 'Note 2' by number but substance is fully present."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F12",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "States CCAA stay extended to May 31, 2022 tied to going-concern MU, plus a separate unmodified-opinion fact; Note 2 not cited by number but substance present."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F12",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Quotes the auditor's report directly, explicitly naming Note 2, the Feb 1 2021 stay extended to May 31 2022, and 'Our opinion is not modified in respect of this matter.'"
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F16",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention anywhere of the $42.2M combined deficit, multi-year operating losses, enrolment decline 2015-16 to 2019-20, or the 10% tuition cut/freeze; X frames the crisis solely around the CCAA filing and restructuring."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F16",
+    "facts",
+    "gpt-luna-med",
+    "credited",
+    "Captures the $42.2M combined deficit figure verbatim (with quote) but omits the 'many years of recurring deficits' framing, the enrolment-decline years, and the 10% tuition cut/freeze detail \u2014 only a fraction of the long-run causal narrative."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F16",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "States 'many years of recurring operating deficits,' the 2015-16 to 2019-20 enrolment decrease, the mandated 10% tuition cut for 2019-20 plus the 2020-21 freeze, and the $42.2M combined deficit \u2014 full match to the long-run-causes framing."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F17",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "States 39 English-language and 27 French-language program closures under the CCAA process."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F17",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "States the same closure counts as part of CCAA restructuring."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F17",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "States the same closure counts as part of the CCAA process."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F18",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "States $40 million/year, 25% reduction from restructuring."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F18",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "States $40 million/year, 25% reduction."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F18",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "States $40 million/year, 25% reduction."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F20",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "States distribution cut from 3.5% (2020) to 2.0%, and $590,000 administrative fee charged in 2021."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F20",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "States distribution cut from 3.5% (2020) to 2.0%, and $590,000 fee recognized during the year."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "F20",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "States distribution cut from 3.5% (2020) to 2.0%, and $590,000 fee recognized for managing the endowment during the year."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M1",
+    "must_not_miss",
+    "gpt-luna-low",
+    "verbatim",
+    "Direct quote of the dual date: March 7, 2022, except Note 27, as of April 22, 2022."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M1",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "Same dual-date fact stated with quote."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M1",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "Same dual-date fact stated with quote."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M2",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention of the Board of Governors signature block or blank signature lines anywhere in key_facts or entities."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M2",
+    "must_not_miss",
+    "gpt-luna-med",
+    "ungrounded",
+    "'Board of Governors' appears only regarding renewal/governance conditions, never the balance-sheet signature block."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M2",
+    "must_not_miss",
+    "gpt-luna-high",
+    "ungrounded",
+    "'Board of Governors' appears only regarding renewal/governance conditions, never the balance-sheet signature block."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M3",
+    "must_not_miss",
+    "gpt-luna-low",
+    "verbatim",
+    "States Note 27 addresses the post-issuance amendment and covers its content (interfund transfers, RHBP termination accounting) at page 68."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M3",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "States the statements were amended post-issuance for errors identified after publication, tied to Note 27 via the dual-date fact and page-68 detail."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M3",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "States Note 27 describes the amendment, quotes 'financial statements...have been amended for errors identified after their issuance,' and details the restatement's effects."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M6",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention of a data breach or related uncertified class-action claims anywhere in key_facts."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M6",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "Explicitly states uncertified class-action claims relating to a data breach, plus employee claims and CCAA-related contract claims."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M6",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "Explicitly states uncertified class-action claims related to a data breach, employee claims, and CCAA claims, with supporting quote."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M8",
+    "must_not_miss",
+    "gpt-luna-low",
+    "verbatim",
+    "States Firm Capital rate (higher of 8.50% or TD prime + 6.05%) at page 46 and the Replacement DIP Facility's 1.11% rate at page 67 \u2014 both notes joined."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M8",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "States both rates: Firm Capital's 8.50%/TD prime+6.05% and the Replacement Facility's 1.11%."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M8",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "States both rates: Firm Capital's 8.50%/TD prime+6.05% and the Replacement Facility's 1.11%."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M9",
+    "must_not_miss",
+    "gpt-luna-low",
+    "verbatim",
+    "Same as F20 \u2014 states the 3.5%-to-2.0% policy cut alongside the new $590,000 administrative fee."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M9",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "Same as F20 \u2014 states the 3.5%-to-2.0% policy cut alongside the new $590,000 fee."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M9",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "Same as F20 \u2014 states the 3.5%-to-2.0% policy cut alongside the new $590,000 fee."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M12",
+    "must_not_miss",
+    "gpt-luna-low",
+    "credited",
+    "States LU is 'principal employer' of the pension plan and gives both dates (Huntington ceasing accrual June 30 2021; U of Sudbury/Thorneloe suspended after Dec 31 2021), but never states the plan also covers SNOLAB, CEMI, or MIRARCO \u2014 misses the four-institution 'blast radius' breadth."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M12",
+    "must_not_miss",
+    "gpt-luna-med",
+    "credited",
+    "States both specific dates correctly (Huntington June 30 2021; U of Sudbury/Thorneloe Dec 31 2021) but never uses 'principal employer' framing or mentions SNOLAB/CEMI/MIRARCO coverage at all."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M12",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "States explicitly that LU is 'the principal employer for the Pension Plan, which included the Federated Universities, SNOLAB, the Centre for Excellence in Mining and Innovation and MIRARCO,' plus both specific dates \u2014 full match."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M15",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention anywhere of a reciprocal insurance exchange or shared liability with other universities."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M15",
+    "must_not_miss",
+    "gpt-luna-med",
+    "ungrounded",
+    "No mention anywhere of a reciprocal insurance exchange or the 40-university risk pool."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M15",
+    "must_not_miss",
+    "gpt-luna-high",
+    "ungrounded",
+    "No mention anywhere of a reciprocal insurance exchange or the 40-university risk pool."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M17",
+    "must_not_miss",
+    "gpt-luna-low",
+    "verbatim",
+    "States the TD Canada Trust loan financed the Student Recreation Centre and became due on demand after the CCAA default."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M17",
+    "must_not_miss",
+    "gpt-luna-med",
+    "credited",
+    "States the TD Canada Trust loan, amount, and due-on-demand CCAA default, but never ties this specific loan to the Student Recreation Centre (mentions the recreation centre only generically among capital projects elsewhere)."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M17",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "States the TD Canada Trust loan 'financed the Student Recreation Centre' and was triggered due on demand by the CCAA default \u2014 full match."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M19",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "Only says the support package was 'subject to conditions' without ever specifying Board of Governors renewal, the strategic plan, or the December 16, 2021 start date \u2014 the specific detail required is absent."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M19",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "States support was conditional on Board of Governors renewal and a long-term strategic plan, with the first phase of Board renewal beginning December 16, 2021."
+  ],
+  [
+    "annual-financial-report-20-21",
+    "M19",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "States support was conditional on Board of Governors renewal and a long-term strategic plan, with the first phase of Board renewal commencing December 16, 2021."
+  ],
+  [
+    "first-report-monitor",
+    "F1",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "States Feb 1 2021 order, E&Y monitor, and explicitly 'initial 10-day stay'."
+  ],
+  [
+    "first-report-monitor",
+    "F1",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "Explicitly states 'granted an initial 10-day stay of proceedings' with date and monitor."
+  ],
+  [
+    "first-report-monitor",
+    "F1",
+    "facts",
+    "gpt-luna-low",
+    "credited",
+    "Gives Feb 1 order/E&Y monitor and separately the Feb 11 stay-end date, from which 10 days is derivable, but never states '10-day' directly."
+  ],
+  [
+    "first-report-monitor",
+    "F2",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Exact quote: comeback motion 9:00am Feb 10, 2021."
+  ],
+  [
+    "first-report-monitor",
+    "F2",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "Exact quote: comeback motion 9:00am Feb 10, 2021."
+  ],
+  [
+    "first-report-monitor",
+    "F2",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention of a comeback motion anywhere in Z's facts or summary."
+  ],
+  [
+    "first-report-monitor",
+    "F5",
+    "facts",
+    "gpt-luna-high",
+    "credited",
+    "States the charges 'rank ahead of' secured creditors' claims (subcontractors/lessors) rather than using the formal 'all other secured creditors as defined in the CCAA' phrasing, but the priority relationship is captured."
+  ],
+  [
+    "first-report-monitor",
+    "F5",
+    "facts",
+    "gpt-luna-med",
+    "credited",
+    "Same paraphrase: secured creditors' claims 'rank behind the proposed charges.'"
+  ],
+  [
+    "first-report-monitor",
+    "F5",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "Z lists the charge amounts/order but never states they rank ahead of other secured creditors at all."
+  ],
+  [
+    "first-report-monitor",
+    "F6",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Separately states stay through Feb 11 2021 and extension requested/supported to April 30, 2021."
+  ],
+  [
+    "first-report-monitor",
+    "F6",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "States stay extended 'from February 11 through April 30, 2021' explicitly."
+  ],
+  [
+    "first-report-monitor",
+    "F6",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "States stay through Feb 11 2021 and extension supported through April 30, 2021."
+  ],
+  [
+    "first-report-monitor",
+    "F7",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "States Court appointed Dunphy after Feb 5 case conference with parties confirming no objections (near-exact quote match)."
+  ],
+  [
+    "first-report-monitor",
+    "F7",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "Same appointment + no-objection statement, quote matches."
+  ],
+  [
+    "first-report-monitor",
+    "F7",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "Same appointment + no-objection statement, quote matches."
+  ],
+  [
+    "first-report-monitor",
+    "F8",
+    "facts",
+    "gpt-luna-high",
+    "ungrounded",
+    "No mention anywhere of Dunphy's prior insolvency-law career, labour experience, or bilingualism."
+  ],
+  [
+    "first-report-monitor",
+    "F8",
+    "facts",
+    "gpt-luna-med",
+    "ungrounded",
+    "Same gap \u2014 Dunphy's background/bilingualism never mentioned."
+  ],
+  [
+    "first-report-monitor",
+    "F8",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "Same gap \u2014 Dunphy's background/bilingualism never mentioned."
+  ],
+  [
+    "first-report-monitor",
+    "F9",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "States four lenders approached, three non-binding term sheets received, narrowed to two \u2014 matches fact closely."
+  ],
+  [
+    "first-report-monitor",
+    "F9",
+    "facts",
+    "gpt-luna-med",
+    "ungrounded",
+    "No mention anywhere of the four-lender search, three term sheets, or two-party shortlist."
+  ],
+  [
+    "first-report-monitor",
+    "F9",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention anywhere of the four-lender search, three term sheets, or two-party shortlist \u2014 only the eventual Firm Capital outcome is stated."
+  ],
+  [
+    "first-report-monitor",
+    "F10",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Exact quote: Firm Capital Corporation executed term sheet, assigned interest to Firm Capital Mortgage Fund Inc."
+  ],
+  [
+    "first-report-monitor",
+    "F10",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "Same exact statement and quote."
+  ],
+  [
+    "first-report-monitor",
+    "F10",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "Same exact statement and quote."
+  ],
+  [
+    "first-report-monitor",
+    "F11",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Secured, non-revolving, $25M max, May 1 2021 maturity, 90-day extension on milestones \u2014 all present."
+  ],
+  [
+    "first-report-monitor",
+    "F11",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "Same terms all present."
+  ],
+  [
+    "first-report-monitor",
+    "F11",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "Same terms all present."
+  ],
+  [
+    "first-report-monitor",
+    "F12",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "States greater of 8.50%/prime+6.05% and 'payable monthly' \u2014 closest match to the compounding/monthly-arrears detail."
+  ],
+  [
+    "first-report-monitor",
+    "F12",
+    "facts",
+    "gpt-luna-med",
+    "credited",
+    "States the rate figures correctly but omits the monthly/compounding payment detail entirely."
+  ],
+  [
+    "first-report-monitor",
+    "F12",
+    "facts",
+    "gpt-luna-low",
+    "credited",
+    "States the rate figures correctly but omits the monthly/compounding payment detail entirely."
+  ],
+  [
+    "first-report-monitor",
+    "F14",
+    "facts",
+    "gpt-luna-high",
+    "credited",
+    "Paraphrases as milestones assessed 'to the DIP lender's satisfaction' \u2014 captures the lender's judgment call but not the emphatic 'sole and unfettered discretion' language."
+  ],
+  [
+    "first-report-monitor",
+    "F14",
+    "facts",
+    "gpt-luna-med",
+    "credited",
+    "Same 'to the lender's satisfaction' paraphrase, missing the emphatic discretion phrase."
+  ],
+  [
+    "first-report-monitor",
+    "F14",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "Lists the milestone topics but never mentions the lender's satisfaction/discretion at all."
+  ],
+  [
+    "first-report-monitor",
+    "F15",
+    "facts",
+    "gpt-luna-high",
+    "credited",
+    "Captures the three milestone categories (academic restructuring, LUFA settlement, sustainable multi-year budget) but not the granular LUFA detail (terminations, grievances, new collective agreement)."
+  ],
+  [
+    "first-report-monitor",
+    "F15",
+    "facts",
+    "gpt-luna-med",
+    "credited",
+    "Vaguer paraphrase ('academic, labour and financial-sustainability milestones') capturing the same three-part structure without detail."
+  ],
+  [
+    "first-report-monitor",
+    "F15",
+    "facts",
+    "gpt-luna-low",
+    "credited",
+    "Same as X \u2014 three categories captured, granular LUFA detail absent."
+  ],
+  [
+    "first-report-monitor",
+    "F16",
+    "facts",
+    "gpt-luna-high",
+    "ungrounded",
+    "No mention anywhere of competing DIP expressions of interest or LU declining them."
+  ],
+  [
+    "first-report-monitor",
+    "F16",
+    "facts",
+    "gpt-luna-med",
+    "ungrounded",
+    "No mention anywhere of competing DIP expressions of interest or LU declining them."
+  ],
+  [
+    "first-report-monitor",
+    "F16",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention anywhere of competing DIP expressions of interest or LU declining them."
+  ],
+  [
+    "first-report-monitor",
+    "F17",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Exact quote match on Finance department's limited team/resources caveat."
+  ],
+  [
+    "first-report-monitor",
+    "F17",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "Exact quote match on Finance department's limited team/resources caveat."
+  ],
+  [
+    "first-report-monitor",
+    "F17",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "Only has the general unaudited/GAAS caveat; never mentions the specific Finance-department limited-resources caveat."
+  ],
+  [
+    "first-report-monitor",
+    "F20",
+    "facts",
+    "gpt-luna-high",
+    "credited",
+    "Fiscal-restraint policy stated verbatim to source quote, but the stakeholder websites (laurentianu.info/ulaurentienne.info) are never mentioned at all."
+  ],
+  [
+    "first-report-monitor",
+    "F20",
+    "facts",
+    "gpt-luna-med",
+    "credited",
+    "Mentions 'launched public information websites' generically plus fiscal restraint, but no specific URLs \u2014 best partial match of the three."
+  ],
+  [
+    "first-report-monitor",
+    "F20",
+    "facts",
+    "gpt-luna-low",
+    "credited",
+    "Fiscal-restraint policy stated, but no mention of the stakeholder websites at all."
+  ],
+  [
+    "first-report-monitor",
+    "F21",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Exact quote: classes continuing virtually with no disruption."
+  ],
+  [
+    "first-report-monitor",
+    "F21",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "Exact quote: classes continuing virtually with no disruption."
+  ],
+  [
+    "first-report-monitor",
+    "F21",
+    "facts",
+    "gpt-luna-low",
+    "credited",
+    "States classes/operations continued as ordinary/virtual but never explicitly asserts 'no disruption.'"
+  ],
+  [
+    "first-report-monitor",
+    "M2",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "Same as F10 \u2014 assignment relationship between the two distinct Firm Capital entities is explicit."
+  ],
+  [
+    "first-report-monitor",
+    "M2",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "Same as F10."
+  ],
+  [
+    "first-report-monitor",
+    "M2",
+    "must_not_miss",
+    "gpt-luna-low",
+    "verbatim",
+    "Same as F10."
+  ],
+  [
+    "first-report-monitor",
+    "M4",
+    "must_not_miss",
+    "gpt-luna-high",
+    "ungrounded",
+    "Same gap as F16 \u2014 no mention of the two declined competing DIP expressions of interest."
+  ],
+  [
+    "first-report-monitor",
+    "M4",
+    "must_not_miss",
+    "gpt-luna-med",
+    "ungrounded",
+    "Same gap as F16."
+  ],
+  [
+    "first-report-monitor",
+    "M4",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "Same gap as F16."
+  ],
+  [
+    "first-report-monitor",
+    "M5",
+    "must_not_miss",
+    "gpt-luna-high",
+    "credited",
+    "Uses 'to the DIP lender's satisfaction' rather than the emphatic 'sole and unfettered discretion' phrase, and doesn't note it recurs twice or ties explicitly to LU's sustainability question."
+  ],
+  [
+    "first-report-monitor",
+    "M5",
+    "must_not_miss",
+    "gpt-luna-med",
+    "credited",
+    "Same 'lender's satisfaction' paraphrase, same omissions."
+  ],
+  [
+    "first-report-monitor",
+    "M5",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention of lender discretion/satisfaction over the milestones at all."
+  ],
+  [
+    "first-report-monitor",
+    "M6",
+    "must_not_miss",
+    "gpt-luna-high",
+    "ungrounded",
+    "States the current charge amounts ($1.25M admin, $5M total directors) but never states these are increases from prior $400K/$2M figures \u2014 the 'triples/doubles' comparison is entirely absent."
+  ],
+  [
+    "first-report-monitor",
+    "M6",
+    "must_not_miss",
+    "gpt-luna-med",
+    "ungrounded",
+    "Same \u2014 current amounts only, no comparison to prior charge levels."
+  ],
+  [
+    "first-report-monitor",
+    "M6",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "Same \u2014 current amounts only, no comparison to prior charge levels."
+  ],
+  [
+    "first-report-monitor",
+    "M7",
+    "must_not_miss",
+    "gpt-luna-high",
+    "ungrounded",
+    "No mention of Dunphy's prior insolvency-lawyer career, that the Court (not the parties) proposed him, or the bilingualism-as-new-criterion drift versus the Pre-Filing Report."
+  ],
+  [
+    "first-report-monitor",
+    "M7",
+    "must_not_miss",
+    "gpt-luna-med",
+    "ungrounded",
+    "Same \u2014 none of these three sub-points appear."
+  ],
+  [
+    "first-report-monitor",
+    "M7",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "Same \u2014 none of these three sub-points appear."
+  ],
+  [
+    "first-report-monitor",
+    "M8",
+    "must_not_miss",
+    "gpt-luna-high",
+    "ungrounded",
+    "Has the Finance-department caveat but cites the affidavit as 'sworn January 30, 2021' (the correct date) \u2014 it does not reproduce or flag the erroneous 'January 30, 2020' date or the copy-paste-from-Pre-Filing-Report point."
+  ],
+  [
+    "first-report-monitor",
+    "M8",
+    "must_not_miss",
+    "gpt-luna-med",
+    "ungrounded",
+    "No affidavit date mentioned at all, so the specific date-error fact is absent."
+  ],
+  [
+    "first-report-monitor",
+    "M8",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "No affidavit date mentioned at all, and no Finance-department caveat either."
+  ],
+  [
+    "first-report-monitor",
+    "M10",
+    "must_not_miss",
+    "gpt-luna-high",
+    "ungrounded",
+    "No mention anywhere of NDAs or LU's identity being withheld during the lender search."
+  ],
+  [
+    "first-report-monitor",
+    "M10",
+    "must_not_miss",
+    "gpt-luna-med",
+    "ungrounded",
+    "No mention anywhere of NDAs or LU's identity being withheld."
+  ],
+  [
+    "first-report-monitor",
+    "M10",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention anywhere of NDAs or LU's identity being withheld."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F1",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "States Court declared Laurentian insolvent and subject to CCAA, matching quote."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F1",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "Includes the exact quote 'ORDERS AND DECLARES that the Applicant is insolvent and is a company to which the CCAA applies.'"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F1",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "States declaration with matching quote."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F2",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention of Zoom/videoconference, Toronto hearing, COVID-19, or who made the order; Morawetz appears only as a bare entity name."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F2",
+    "facts",
+    "gpt-luna-med",
+    "ungrounded",
+    "Page-16 fact gives effective date/Toronto/Morawetz signature but frames it as registry entry, not the hearing; no mention of Zoom or COVID-19 anywhere."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F2",
+    "facts",
+    "gpt-luna-high",
+    "credited",
+    "Quote attached to the page-1 fact directly includes 'heard this day by videoconference via Zoom in Toronto, Ontario' -- captures the hearing method/location but the quote stops short of the COVID-19 clause and doesn't name Monday or Morawetz as maker."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F3",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "Hach\u00e9 appears only in the entity list; no key_fact states the affidavit or pre-filing report or their Jan 30, 2021 dates."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F3",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "States court considered Hach\u00e9's affidavit and EY's pre-filing report, both dated January 30, 2021."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F3",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "States both documents and dates, with a quote matching the source almost verbatim, plus the EY consent detail."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F4",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "States SGA designated non-applicant stay party, despite not being an applicant, with stay protections."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F4",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "Same substance stated directly."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F4",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "States designation plus quotes the 'Although not an applicant...' clause directly."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F5",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "States segregated accounts from December 1, 2020 for research/donations/endowments/benefit contributions, excluded from Property -- includes the specific date."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F5",
+    "facts",
+    "gpt-luna-med",
+    "credited",
+    "Captures fund types and exclusion from estate property, but never states the December 1, 2020 establishment date."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F5",
+    "facts",
+    "gpt-luna-high",
+    "credited",
+    "Captures fund types, exclusion from Property, and quotes the operative sentence, but omits the December 1, 2020 date."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F6",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "No statement that Property subject to the Charges specifically excludes the Segregated Accounts (the page-13 restatement); only the page-3 general exclusion is present."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F6",
+    "facts",
+    "gpt-luna-med",
+    "ungrounded",
+    "Same gap -- no second, charges-specific exclusion statement anywhere."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F6",
+    "facts",
+    "gpt-luna-high",
+    "ungrounded",
+    "Same gap -- only the general page-3 property exclusion is stated, not the charges-specific restatement."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F7",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "Says wages/benefits payable 'subject to stated exclusions' but never names the SuRP/RHBP/severance carve-out or that those are stayed."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F7",
+    "facts",
+    "gpt-luna-med",
+    "ungrounded",
+    "Lists payable items with no exclusion or stay language at all for retiree/SuRP/RHBP/severance payments."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F7",
+    "facts",
+    "gpt-luna-high",
+    "ungrounded",
+    "Lists 'employee and retiree benefits' as payable with no carve-out or stay for former employees/SuRP/RHBP/severance -- the parenthetical stay is missed entirely."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F8",
+    "facts",
+    "gpt-luna-low",
+    "credited",
+    "States pension contributions must be remitted, but omits the 'until further order of the Court' qualifier."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F8",
+    "facts",
+    "gpt-luna-med",
+    "credited",
+    "States 'ordinary-course pension contributions' must be remitted; same missing qualifier."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F8",
+    "facts",
+    "gpt-luna-high",
+    "credited",
+    "States 'normal-course pension-plan payments' remitted, with quote; missing the 'until further order' qualifier."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F9",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "No statement anywhere that Laurentian is directed to make no payments to pre-filing creditors, and no mention of interest rate swaps."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F9",
+    "facts",
+    "gpt-luna-med",
+    "credited",
+    "States the general prohibition on paying pre-order creditor claims, but never mentions the interest rate swap carve-in."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F9",
+    "facts",
+    "gpt-luna-high",
+    "credited",
+    "Same general prohibition on pre-order payments; swap transactions are not mentioned."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F10",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "States stay imposed until and including February 11, 2021."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F10",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "Same, matches directly."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F10",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Same, with matching quote."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F15",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "States charge secures indemnification 'subject to exceptions for gross negligence or wilful misconduct.'"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F15",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "States indemnity 'except liabilities caused by gross negligence or wilful misconduct.'"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F15",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Same exception stated directly."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F16",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "Directors' Charge fact covers the $2M cap and negligence exception only; no mention of the insurance-sufficiency limitation or the no-subrogation rule."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F16",
+    "facts",
+    "gpt-luna-med",
+    "ungrounded",
+    "Same -- charge amount stated, no insurance/subrogation limitation."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F16",
+    "facts",
+    "gpt-luna-high",
+    "ungrounded",
+    "Same gap -- insurance-coverage limitation and subrogation bar are not stated."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F18",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "States Exhibits EEE and FFF sealed, excluded from public record."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F18",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "Same, stated directly."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F18",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Same, with an exact matching quote."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F19",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "Monitor's role is described (oversight, access to records) but there is no statement that it will not take possession of Property or take part in managing the Business."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F19",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "States monitor 'was not placed in possession or management of Laurentian's property or business.'"
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F19",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "States monitor 'was not to take possession... or participate in management or supervision,' with matching quote."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F20",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "No fact about a case website anywhere in X's extraction (page 14 content appears skipped)."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F20",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "States case website ordered at www.ey.com/ca/Laurentian."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F20",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Same, with matching quote."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F21",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "No statement of the order's effective time/date or its enforceability without entry and filing anywhere in X's extraction."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F21",
+    "facts",
+    "gpt-luna-med",
+    "credited",
+    "States effective 12:01 a.m. ET Feb 1, 2021, but frames it around registry entry/signature rather than the 'enforceable without entry and filing' point, which is not stated."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F21",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "States both the effective time and 'enforceable without entry and filing,' with matching quote."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F22",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention anywhere of environmental-liability protection for the Monitor or the named statutes."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F22",
+    "facts",
+    "gpt-luna-med",
+    "ungrounded",
+    "Same -- entirely absent."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "F22",
+    "facts",
+    "gpt-luna-high",
+    "ungrounded",
+    "Same -- entirely absent; missed by all three arms."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M2",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention of any registry entry stamp or handwritten initials."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M2",
+    "must_not_miss",
+    "gpt-luna-med",
+    "credited",
+    "States order 'was entered in Toronto,' capturing the entry-at-Toronto substance, but conflates it with the judge's signature and omits the bilingual stamp text, date, and handwritten initials."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M2",
+    "must_not_miss",
+    "gpt-luna-high",
+    "ungrounded",
+    "No mention of a registry entry stamp; only the effective-time clause is stated."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M3",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "Morawetz appears only as a bare entity name; no fact states he signed the order or that a signature block exists."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M3",
+    "must_not_miss",
+    "gpt-luna-med",
+    "credited",
+    "States the order 'was entered in Toronto under the signature of Chief Justice G.B. Morawetz' -- captures that Morawetz signed, without the wet-signature/printed-name detail."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M3",
+    "must_not_miss",
+    "gpt-luna-high",
+    "ungrounded",
+    "Morawetz appears only in the entity list; no key_fact states he signed the order."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M4",
+    "must_not_miss",
+    "gpt-luna-low",
+    "credited",
+    "Captures segregated funds excluded from Property with the tell-tale December 1, 2020 date, but never restates that the Charges specifically cannot reach them."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M4",
+    "must_not_miss",
+    "gpt-luna-med",
+    "credited",
+    "Captures general exclusion of segregated funds from estate property but omits both the December 1, 2020 date and the charges-specific restatement."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M4",
+    "must_not_miss",
+    "gpt-luna-high",
+    "credited",
+    "Same as Y -- general exclusion stated, December 1, 2020 date and charges-specific restatement both missing."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M5",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "Only a vague 'subject to stated exclusions' with no naming of SuRP/RHBP/severance stay."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M5",
+    "must_not_miss",
+    "gpt-luna-med",
+    "ungrounded",
+    "No exclusion or stay language for retirees/SuRP/RHBP/severance at all."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M5",
+    "must_not_miss",
+    "gpt-luna-high",
+    "ungrounded",
+    "Lists retiree benefits as payable with no stay carve-out for former employees/SuRP/RHBP/severance -- the parenthetical is missed."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M6",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "'Subject to stated exclusions and privacy restrictions' is too vague -- doesn't name employees/pensioned former employees/retirees as excluded from creditor notice."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M6",
+    "must_not_miss",
+    "gpt-luna-med",
+    "ungrounded",
+    "Same vague 'stated exclusions' language, no specifics named."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M6",
+    "must_not_miss",
+    "gpt-luna-high",
+    "ungrounded",
+    "Describes the notice/publication mechanics in detail but never names the employee/retiree carve-out from the creditor list."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M7",
+    "must_not_miss",
+    "gpt-luna-low",
+    "verbatim",
+    "States Exhibits EEE/FFF sealed, excluded from public record."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M7",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "Same, stated directly."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M7",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "Same, with exact quote."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M9",
+    "must_not_miss",
+    "gpt-luna-low",
+    "credited",
+    "Captures the gross-negligence/wilful-misconduct exception to the Directors' Charge, but not the insurance-sufficiency limitation on when directors get its benefit."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M9",
+    "must_not_miss",
+    "gpt-luna-med",
+    "credited",
+    "Same -- negligence exception present, insurance-only-benefit limitation absent."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M9",
+    "must_not_miss",
+    "gpt-luna-high",
+    "credited",
+    "Same -- negligence exception present, insurance-only-benefit limitation absent."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M10",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention of interest rate swap transactions anywhere."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M10",
+    "must_not_miss",
+    "gpt-luna-med",
+    "ungrounded",
+    "General pre-order-payment prohibition stated, but the interest rate swap carve-in specifically is never mentioned."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M10",
+    "must_not_miss",
+    "gpt-luna-high",
+    "ungrounded",
+    "Same -- general prohibition stated, swap transactions never mentioned; the quietest mention is missed by all three arms."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M11",
+    "must_not_miss",
+    "gpt-luna-low",
+    "verbatim",
+    "States SGA designated non-applicant stay party despite not being an applicant."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M11",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "Same, stated directly."
+  ],
+  [
+    "initial-order-2021-02-01",
+    "M11",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "Same, with supporting quote."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F1",
+    "facts",
+    "gpt-luna-low",
+    "credited",
+    "Date (March 17, 2021) stated in summary; 'G.B. Morawetz' only appears as a bare entity name, never joined to a sentence saying he made the order."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F1",
+    "facts",
+    "gpt-luna-med",
+    "credited",
+    "Date field '2021-03-17' present on key_fact1; Morawetz only in entities list, not stated as the order-maker."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F1",
+    "facts",
+    "gpt-luna-high",
+    "credited",
+    "Summary and key_fact1 state March 17, 2021; 'G.B. MORAWETZ' only in entities list, not connected to a stated fact."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F2",
+    "facts",
+    "gpt-luna-low",
+    "credited",
+    "Paraphrase: 'issued a pension order in ...CCAA proceeding' captures LU+CCAA link without stating 'motion brought by LU pursuant to CCAA'."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F2",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "key_fact1 quote field reproduces 'THIS MOTION, brought by Laurentian University of Sudbury (\"LU\") pursuant to the Companies' Creditors Arrangement Act' near-verbatim."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F2",
+    "facts",
+    "gpt-luna-high",
+    "credited",
+    "key_fact1 paraphrases LU+CCAA proceeding without the 'motion ... pursuant to CCAA' phrasing."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F3",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention anywhere of videoconference, Zoom, Toronto, or COVID-19."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F3",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "key_fact1 quote reproduces 'heard this day by videoconference via Zoom in Toronto, Ontario due to the COVID-19 pandemic' verbatim."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F3",
+    "facts",
+    "gpt-luna-high",
+    "credited",
+    "key_fact1 says 'by videoconference in Toronto, Ontario' \u2014 captures venue/mode but drops 'Zoom' and the COVID-19 reason."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F4",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "key_fact3 states the 65.8% transfer ratio authorization directly."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F4",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "key_fact2 quote matches source exactly: 'transfer ratio equal to 65.8%'."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F4",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "key_fact3 states the 65.8% transfer ratio authorization directly."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F5",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "key_fact4 states the Jan 1 2020 valuation / Dec 2020 FSRA filing origin of 65.8%."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F5",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "key_fact3 quote matches source exactly."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F5",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "key_fact4 states the Jan 1 2020 valuation / Dec 2020 FSRA filing origin of 65.8%."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F6",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "X never defines what qualifies someone as an 'Interim CV Applicant' (no mention of the retirement/termination statement + 100% election form criterion) anywhere in its key_facts."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F6",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "key_fact4 states the definition near-verbatim: received retirement/termination statement + election form indicating 100% CV transfer + not yet transferred."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F6",
+    "facts",
+    "gpt-luna-high",
+    "credited",
+    "key_fact3 says forms 'indicated they could elect a 100% transfer' and transfer 'not yet been made' but drops the specific 'retirement or termination statement' document type."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F7",
+    "facts",
+    "gpt-luna-low",
+    "credited",
+    "key_fact5 states re-election required within 30 days of notice, but omits 'in writing' and the 're-election form' detail."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F7",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "key_fact5 states receipt of re-election form and written election due within 30 days after notice."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F7",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "key_fact5 states receipt of re-election form and written election within 30 days after notice."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F8",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "key_fact6 states deemed withdrawal + retained deferred pension entitlement directly."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F8",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "key_fact6 states deemed withdrawal + retained deferred pension entitlement directly."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F8",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "key_fact6 states deemed withdrawal + retained deferred pension entitlement directly."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F10",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "key_fact7 states the payment 'stayed and suspended'."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F10",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "key_fact9 states 'stayed and suspended'."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F10",
+    "facts",
+    "gpt-luna-high",
+    "credited",
+    "key_fact8 says only 'stayed', omitting 'suspended' \u2014 same substance, less precise wording."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F11",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "key_fact8 states the second incremental payment for July 2018-June 2019, triggered by the Dec 2020 valuation, with no amount given."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F11",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "key_fact9 states the incremental assessment for the same period and trigger, no amount given."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F11",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "key_fact9 states the incremental assessment for the same period and trigger, no amount given."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F12",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "key_fact10 states the stay operates under paragraph 12 of the Amended and Restated Initial Order dated February 11, 2021."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F12",
+    "facts",
+    "gpt-luna-med",
+    "ungrounded",
+    "No key_fact, summary, or entity mentions paragraph 12 or the Feb 11, 2021 Amended and Restated Initial Order."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F12",
+    "facts",
+    "gpt-luna-high",
+    "ungrounded",
+    "No key_fact, summary, or entity mentions paragraph 12 or the Feb 11, 2021 Amended and Restated Initial Order."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F13",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "No key_fact states directors/officers/etc. incur no obligation or liability from the stay."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F13",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "key_fact10 states LU and its directors/officers/employees/agents/advisers/consultants incur no obligation or liability from the stay."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F13",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "key_fact10 states the same no-liability protection directly."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F14",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "key_fact9 states FSRA is not prevented from asserting a claim against LU for the assessment amounts."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F14",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "key_fact10 quote reproduces the FSRA carve-out near-verbatim."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F14",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "key_fact10 states FSRA's ability to assert a claim for the stayed amounts is preserved."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F15",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention anywhere of the Pension Benefits Act or future adjustments to the transfer ratio."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F15",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "key_fact7 states future adjustments must be made under the PBA/regulations or further court order."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F15",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "key_fact7 states future adjustments must be made under the PBA/regulations or further court order."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F16",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention anywhere of the court requesting aid/recognition from Canadian or U.S. courts/tribunals/bodies."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F16",
+    "facts",
+    "gpt-luna-med",
+    "ungrounded",
+    "No mention anywhere of the court requesting aid/recognition from Canadian or U.S. courts/tribunals/bodies."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F16",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "key_fact11 states the court requested recognition/assistance from courts, tribunals, and regulatory/administrative bodies in Canada and the U.S."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F17",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "key_fact11 names all five Interim CV Applicants and states no one appeared for the rest."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F17",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "key_fact11 names all five and states no one else appeared."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F17",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "key_fact10 names all five and states no one else appeared."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F18",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "Hach\u00e9 and Brinkman appear only as bare entity names; no key_fact states the reading list (Notice of Motion, affidavit dates, Second Report of the Monitor)."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F18",
+    "facts",
+    "gpt-luna-med",
+    "ungrounded",
+    "Same \u2014 Hach\u00e9/Brinkman only in entities list, no statement of the specific documents read or their dates."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F18",
+    "facts",
+    "gpt-luna-high",
+    "ungrounded",
+    "Same \u2014 Hach\u00e9/Brinkman/Monitor only named as entities, no statement of the specific documents read or their dates."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F19",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "key_fact2 states LU is sponsor and administrator of the Pension Plan."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F19",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "key_fact2 states LU is sponsor and administrator of the Pension Plan."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "F19",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "key_fact3 states LU as sponsor and administrator of the Pension Plan."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M1",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "Morawetz appears only as a bare entity name (likely sourced from the page-1 caption); no arm states a page-4 signature block."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M1",
+    "must_not_miss",
+    "gpt-luna-med",
+    "ungrounded",
+    "Same \u2014 entity-only presence, no signature-block statement."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M1",
+    "must_not_miss",
+    "gpt-luna-high",
+    "ungrounded",
+    "Same \u2014 entity-only presence, no signature-block statement."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M3",
+    "must_not_miss",
+    "gpt-luna-low",
+    "verbatim",
+    "key_fact8 captures the second, unquantified incremental PBGF payment distinctly from the $842,018.34 figure."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M3",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "key_fact9 captures the second, unquantified incremental payment distinctly."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M3",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "key_fact9 captures the second, unquantified incremental payment distinctly."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M4",
+    "must_not_miss",
+    "gpt-luna-low",
+    "verbatim",
+    "key_fact9 states the FSRA carve-out clearly."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M4",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "key_fact10 quotes the FSRA carve-out verbatim."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M4",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "key_fact10 states the FSRA carve-out clearly."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M5",
+    "must_not_miss",
+    "gpt-luna-low",
+    "verbatim",
+    "key_fact6 states the 30-day deemed-withdrawal consequence in full."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M5",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "key_fact6 states the 30-day deemed-withdrawal consequence in full."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M5",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "key_fact6 states the 30-day deemed-withdrawal consequence in full."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M6",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "Derek Harland appears once as a bare entity name; no fact ties him to either the Affidavit of Service or TGF counsel role."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M6",
+    "must_not_miss",
+    "gpt-luna-med",
+    "ungrounded",
+    "Same \u2014 bare entity name only, no dual-capacity statement."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M6",
+    "must_not_miss",
+    "gpt-luna-high",
+    "ungrounded",
+    "Same \u2014 bare entity name only, no dual-capacity statement."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M7",
+    "must_not_miss",
+    "gpt-luna-low",
+    "verbatim",
+    "key_fact11 names all five pensioners in the recital context."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M7",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "key_fact11 names all five pensioners in the recital context."
+  ],
+  [
+    "pension-order-2021-03-17",
+    "M7",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "key_fact10 names all five pensioners in the recital context."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F1",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "States insolvency and inability to meet February payroll absent relief, matching quote almost exactly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F1",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "Same substance stated directly: insolvent, would lack liquidity for February payroll without relief."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F1",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Directly states insolvency and inability to meet February payroll without relief."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F2",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "Attributes crisis to enrolment/tuition/Barrie/pandemic-driven remote learning \u2014 never states the Monitor's specific 'recurring deficits over a number of years' framing or its explicit non-pandemic attribution."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F2",
+    "facts",
+    "gpt-luna-med",
+    "ungrounded",
+    "No mention of the 'pattern of recurring deficits over a number of years' framing or the explicit exclusion of the pandemic as cause."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F2",
+    "facts",
+    "gpt-luna-high",
+    "ungrounded",
+    "Summary explicitly lists COVID-19 among the pressures on revenue, the opposite framing from the fact's point that the Monitor blamed years of deficits, NOT the pandemic; the specific quote/framing is absent."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F3",
+    "facts",
+    "gpt-luna-low",
+    "credited",
+    "States funds were 'co-mingled in operating accounts' \u2014 captures the core substance but not the specific 'no separate bank accounts were set up' language."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F3",
+    "facts",
+    "gpt-luna-med",
+    "credited",
+    "States 'historical commingling of operating, donated and restricted funds' \u2014 paraphrase of the same substance, no explicit 'no separate accounts' statement."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F3",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "States no separate accounts were maintained to hold restricted funds and quotes the source directly, plus describes the mechanics of commingling."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F4",
+    "facts",
+    "gpt-luna-low",
+    "credited",
+    "States 'no funds had been set aside to satisfy the deferred-contribution obligations' \u2014 same substance (insufficient funds to cover restricted/deferred obligations) via the deferred-contributions framing rather than the page-32 restricted-funds sentence."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F4",
+    "facts",
+    "gpt-luna-med",
+    "credited",
+    "Same 'no funds had been set aside or were available to satisfy those obligations' statement re: deferred contributions \u2014 equivalent substance, different framing/location."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F4",
+    "facts",
+    "gpt-luna-high",
+    "credited",
+    "States 'no funds had been set aside or were then available to satisfy Laurentian's deferred-contribution obligations' \u2014 equivalent substance to the fact, via deferred-contributions language rather than the specific page-32 restricted-funds line."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F5",
+    "facts",
+    "gpt-luna-low",
+    "credited",
+    "States accounts were created for unspent research grants, restricted funds, and RHBP contributions in Dec 2020, but doesn't name the three accounts or mention it was brought to the President's attention."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F5",
+    "facts",
+    "gpt-luna-med",
+    "credited",
+    "States Board instructed creation of accounts in Dec 2020 for the same three purposes, implemented by Dec 21, 2020 \u2014 no account names or President mention."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F5",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Names all three accounts (Unspent Research Grant Account, Restricted Funds Account, RHBP Account) and states practices were brought to the President and Board."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F6",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "States $13.3 million operating and $3.3 million segregated accounts as of Jan 29, 2021, matching the quote."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F6",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "Same figures stated directly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F6",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Same figures stated directly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F7",
+    "facts",
+    "gpt-luna-low",
+    "credited",
+    "States insufficient cash to fund operations through Feb or beyond, but never states the lines of credit are no longer available (its LOC fact only covers the April 2020 draw/undrawn status, not later unavailability)."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F7",
+    "facts",
+    "gpt-luna-med",
+    "credited",
+    "Same insufficient-cash statement; no mention that the lines of credit are no longer available."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F7",
+    "facts",
+    "gpt-luna-high",
+    "credited",
+    "States insufficient cash for Feb/beyond, and separately notes RBC cancelled its line and Laurentian agreed not to draw on Desjardins \u2014 captures both halves of the fact but as two separate, non-adjacent statements rather than a single direct one."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F8",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "States $29.5M receipts, $58.5M disbursements, ~$29M net outflow, matching the quote."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F8",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "Same figures stated directly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F8",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Same figures stated directly (with additional net-of detail)."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F9",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "States $54.7M investment accounts and $52.8M endowments directly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F9",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "Same figures stated directly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F9",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Same figures stated directly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F10",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "States $2.6M cash and $1.9M short-term investments as of April 30, 2020 directly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F10",
+    "facts",
+    "gpt-luna-med",
+    "ungrounded",
+    "Never states the $2.6M cash / $1.9M short-term investments breakdown; only gives a different consolidated balance-sheet figure ($4.544M cash and short-term investments)."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F10",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "States $2.6M cash and $1.9M short-term investments directly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F11",
+    "facts",
+    "gpt-luna-low",
+    "credited",
+    "States both endpoint figures ($69.6M to $36.7M) from which the $32.9M decline is directly computable, but never states the $32.9M figure itself."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F11",
+    "facts",
+    "gpt-luna-med",
+    "credited",
+    "Same \u2014 states both endpoints, not the $32.9M decline figure."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F11",
+    "facts",
+    "gpt-luna-high",
+    "credited",
+    "Same \u2014 states both endpoints, not the $32.9M decline figure."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F12",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "States 85.4% solvency ratio and ~$4.5M going-concern deficiency, per Jan 1 2020 valuation updated Dec 2020."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F12",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "Same figures and valuation dates stated directly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F12",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Same figures and valuation dates stated directly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F13",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention of the 406/981/~500 membership breakdown anywhere in X's facts."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F13",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "States '406 pensioners, 981 active contributing members and approximately 500 deferred members' directly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F13",
+    "facts",
+    "gpt-luna-high",
+    "ungrounded",
+    "No mention of the 406/981/~500 membership breakdown anywhere in Z's facts."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F15",
+    "facts",
+    "gpt-luna-low",
+    "credited",
+    "Lists 'defined-benefit pension plan, supplemental retirement plan and retirement health benefits plan' together in one fact, but never labels the supplemental plan as 'unfunded' or as the SuRP by name."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F15",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "Explicitly states 'the unfunded supplementary retirement plan' plus DB Pension Plan and RHBP elsewhere."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F15",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Explicitly states 'the unfunded SuRP' plus DB Pension Plan and RHBP elsewhere."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F17",
+    "facts",
+    "gpt-luna-low",
+    "credited",
+    "States the $14.4M draw correctly but names the lender 'Caisse Populaire Voyageurs Inc.' rather than 'Desjardins' anywhere in its text \u2014 a normalized/legal name rather than the commonly used alias in the fact."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F17",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "States '$14.4 million on its ... Desjardins line of credit' directly, matching the fact's naming and figure."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F17",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "States '$14.4 million on the Desjardins line of credit' directly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F18",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "States the ~$14M endowment for NOSM student scholarships directly, matching the quote."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F18",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "Same statement, matching quote."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F18",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Same statement, matching quote."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F19",
+    "facts",
+    "gpt-luna-low",
+    "verbatim",
+    "States both the 15% service-fee formula and the May 1, 2019 amendment that reduced funding to the Federated Universities, in separate facts."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F19",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "Same \u2014 states both the 15% fee and the May 2019 amendment reducing funding."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F19",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "Same \u2014 states both the 15% fee and the May 2019 amendment reducing funding."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F20",
+    "facts",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention of Board or Senate voting/non-voting membership counts or vacancies anywhere in X."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F20",
+    "facts",
+    "gpt-luna-med",
+    "ungrounded",
+    "No mention of Board or Senate voting/non-voting membership counts or vacancies anywhere in Y."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F20",
+    "facts",
+    "gpt-luna-high",
+    "verbatim",
+    "States Board has 21 voting/9 non-voting members with four vacancies, and Senate has 77 voting/6 non-voting members, directly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F21",
+    "facts",
+    "gpt-luna-low",
+    "credited",
+    "States the LU-LUFA relationship is 'strained' but never states the Monitor's recommendation of a court-appointed mediator on an urgent basis or the preference for a sitting/retired judge \u2014 only a generic mention of 'a court-appointed mediator' in the proposed order."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F21",
+    "facts",
+    "gpt-luna-med",
+    "verbatim",
+    "States both halves directly: relationship described as strained, and the Monitor recommended urgent appointment of a mediator, preferably a sitting or recently retired judge."
+  ],
+  [
+    "prefiling-report-monitor",
+    "F21",
+    "facts",
+    "gpt-luna-high",
+    "ungrounded",
+    "No mention of a mediator recommendation or the strained LU-LUFA relationship anywhere in Z."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M1",
+    "must_not_miss",
+    "gpt-luna-low",
+    "credited",
+    "Quotes the Hach\u00e9 affidavit language about limited Finance department resources verbatim, but frames it as facing 'additional demands' rather than drawing the Monitor's explicit conclusion that the Information relied upon may be limited by these challenges."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M1",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "States the conclusion directly: the challenges were 'potentially limiting the information on which the proposed monitor relied' \u2014 captures the actual reliability caveat, not just the underlying quote."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M1",
+    "must_not_miss",
+    "gpt-luna-high",
+    "credited",
+    "Quotes the same affidavit language and records management's concerns, but does not state the Monitor's explicit conclusion that the Report's information may be limited by these challenges."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M2",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "Mentions the Hach\u00e9 affidavit but never states its sworn date at all."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M2",
+    "must_not_miss",
+    "gpt-luna-med",
+    "ungrounded",
+    "Mentions Hach\u00e9's affidavit content but never states a sworn date."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M2",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "States the affidavit was 'sworn January 30, 2020' \u2014 faithfully reproduces the source's (erroneous) date without silently correcting it, exactly the correct extraction behaviour this item is designed to reward."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M3",
+    "must_not_miss",
+    "gpt-luna-low",
+    "credited",
+    "Captures co-mingling and the creation of segregated accounts for the three purposes in Dec 2020, but not the account names or that no separate bank accounts existed."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M3",
+    "must_not_miss",
+    "gpt-luna-med",
+    "credited",
+    "Same \u2014 captures commingling and Dec 2020 account creation without account names."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M3",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "Names all three new accounts, states no separate bank accounts existed, and gives the December 2020 Board-direction narrative in full."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M4",
+    "must_not_miss",
+    "gpt-luna-low",
+    "verbatim",
+    "States the 20% proportionate share directly, matching the quote."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M4",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "Same statement, matching quote."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M4",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "Same statement, matching quote."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M5",
+    "must_not_miss",
+    "gpt-luna-low",
+    "verbatim",
+    "States Dr. Hach\u00e9 chaired NOSM's board directly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M5",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "Same statement."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M5",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "Same statement."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M8",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "Never uses the word 'unfunded' (or an equivalent) anywhere for the SuRP; only lists 'supplemental retirement plan' generically alongside the other two plans in a liability-figure context."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M8",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "States 'the unfunded supplementary retirement plan' directly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M8",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "States 'the unfunded SuRP' directly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M9",
+    "must_not_miss",
+    "gpt-luna-low",
+    "verbatim",
+    "States Stikeman Elliott LLP was retained as independent counsel directly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M9",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "Same statement."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M9",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "Same statement."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M10",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention of the 406/981/~500 pension membership figures anywhere."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M10",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "States all three membership figures (406/981/~500) directly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M10",
+    "must_not_miss",
+    "gpt-luna-high",
+    "ungrounded",
+    "No mention of the 406/981/~500 pension membership figures anywhere."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M11",
+    "must_not_miss",
+    "gpt-luna-low",
+    "credited",
+    "States the Barrie campus closure in 2019, but never states LU is one of twenty public universities in Ontario."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M11",
+    "must_not_miss",
+    "gpt-luna-med",
+    "ungrounded",
+    "Never mentions the Barrie campus closure or the 'one of twenty public universities' framing anywhere in Y's text."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M11",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "States both: Barrie campus closed by 2019, and Laurentian is one of 20 public universities in Ontario."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M13",
+    "must_not_miss",
+    "gpt-luna-low",
+    "verbatim",
+    "States both the 15% service fee and the May 1, 2019 amendment that decreased Federated University funding."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M13",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "Same \u2014 both elements stated directly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M13",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "Same \u2014 both elements stated directly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M14",
+    "must_not_miss",
+    "gpt-luna-low",
+    "ungrounded",
+    "No mention of the Provost's program-suspension decision, the unfair labour practice complaint, or the judicial review anywhere in X."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M14",
+    "must_not_miss",
+    "gpt-luna-med",
+    "credited",
+    "Mentions an unresolved 'unfair labour practice complaint and a judicial review' tied to LUFA, but never connects them to the Provost's 2020 decision to suspend enrolment in 17 low-enrolment programs \u2014 the specific subject matter is missing."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M14",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "States the judicial review and unfair labour practice complaint concern 'the Provost's 2020 decision to suspend enrolment in 17 low-enrolment academic programs' directly."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M16",
+    "must_not_miss",
+    "gpt-luna-low",
+    "verbatim",
+    "States MIRARCO's financial difficulties caused reimbursement delays to LU, matching the quote."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M16",
+    "must_not_miss",
+    "gpt-luna-med",
+    "verbatim",
+    "Same \u2014 reimbursement delays attributed to MIRARCO's financial difficulties."
+  ],
+  [
+    "prefiling-report-monitor",
+    "M16",
+    "must_not_miss",
+    "gpt-luna-high",
+    "verbatim",
+    "Same \u2014 reimbursement delays attributed to MIRARCO's financial difficulties."
+  ]
+]

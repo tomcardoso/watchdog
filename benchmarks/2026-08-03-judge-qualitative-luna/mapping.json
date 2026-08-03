@@ -1,0 +1,32 @@
+{
+  "annual-financial-report-19-20": {
+    "X": "gpt-luna-med",
+    "Y": "gpt-luna-high",
+    "Z": "gpt-luna-low"
+  },
+  "annual-financial-report-20-21": {
+    "X": "gpt-luna-low",
+    "Y": "gpt-luna-med",
+    "Z": "gpt-luna-high"
+  },
+  "first-report-monitor": {
+    "X": "gpt-luna-high",
+    "Y": "gpt-luna-med",
+    "Z": "gpt-luna-low"
+  },
+  "initial-order-2021-02-01": {
+    "X": "gpt-luna-low",
+    "Y": "gpt-luna-med",
+    "Z": "gpt-luna-high"
+  },
+  "pension-order-2021-03-17": {
+    "X": "gpt-luna-low",
+    "Y": "gpt-luna-med",
+    "Z": "gpt-luna-high"
+  },
+  "prefiling-report-monitor": {
+    "X": "gpt-luna-low",
+    "Y": "gpt-luna-med",
+    "Z": "gpt-luna-high"
+  }
+}

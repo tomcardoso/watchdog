@@ -1,0 +1,160 @@
+{
+  "document": "prefiling-report-monitor",
+  "judgments": {
+    "F1": {
+      "X": {"tier": "verbatim", "note": "States insolvency and inability to meet February payroll absent relief, matching quote almost exactly."},
+      "Y": {"tier": "verbatim", "note": "Same substance stated directly: insolvent, would lack liquidity for February payroll without relief."},
+      "Z": {"tier": "verbatim", "note": "Directly states insolvency and inability to meet February payroll without relief."}
+    },
+    "F2": {
+      "X": {"tier": "ungrounded", "note": "Attributes crisis to enrolment/tuition/Barrie/pandemic-driven remote learning — never states the Monitor's specific 'recurring deficits over a number of years' framing or its explicit non-pandemic attribution."},
+      "Y": {"tier": "ungrounded", "note": "No mention of the 'pattern of recurring deficits over a number of years' framing or the explicit exclusion of the pandemic as cause."},
+      "Z": {"tier": "ungrounded", "note": "Summary explicitly lists COVID-19 among the pressures on revenue, the opposite framing from the fact's point that the Monitor blamed years of deficits, NOT the pandemic; the specific quote/framing is absent."}
+    },
+    "F3": {
+      "X": {"tier": "credited", "note": "States funds were 'co-mingled in operating accounts' — captures the core substance but not the specific 'no separate bank accounts were set up' language."},
+      "Y": {"tier": "credited", "note": "States 'historical commingling of operating, donated and restricted funds' — paraphrase of the same substance, no explicit 'no separate accounts' statement."},
+      "Z": {"tier": "verbatim", "note": "States no separate accounts were maintained to hold restricted funds and quotes the source directly, plus describes the mechanics of commingling."}
+    },
+    "F4": {
+      "X": {"tier": "credited", "note": "States 'no funds had been set aside to satisfy the deferred-contribution obligations' — same substance (insufficient funds to cover restricted/deferred obligations) via the deferred-contributions framing rather than the page-32 restricted-funds sentence."},
+      "Y": {"tier": "credited", "note": "Same 'no funds had been set aside or were available to satisfy those obligations' statement re: deferred contributions — equivalent substance, different framing/location."},
+      "Z": {"tier": "credited", "note": "States 'no funds had been set aside or were then available to satisfy Laurentian's deferred-contribution obligations' — equivalent substance to the fact, via deferred-contributions language rather than the specific page-32 restricted-funds line."}
+    },
+    "F5": {
+      "X": {"tier": "credited", "note": "States accounts were created for unspent research grants, restricted funds, and RHBP contributions in Dec 2020, but doesn't name the three accounts or mention it was brought to the President's attention."},
+      "Y": {"tier": "credited", "note": "States Board instructed creation of accounts in Dec 2020 for the same three purposes, implemented by Dec 21, 2020 — no account names or President mention."},
+      "Z": {"tier": "verbatim", "note": "Names all three accounts (Unspent Research Grant Account, Restricted Funds Account, RHBP Account) and states practices were brought to the President and Board."}
+    },
+    "F6": {
+      "X": {"tier": "verbatim", "note": "States $13.3 million operating and $3.3 million segregated accounts as of Jan 29, 2021, matching the quote."},
+      "Y": {"tier": "verbatim", "note": "Same figures stated directly."},
+      "Z": {"tier": "verbatim", "note": "Same figures stated directly."}
+    },
+    "F7": {
+      "X": {"tier": "credited", "note": "States insufficient cash to fund operations through Feb or beyond, but never states the lines of credit are no longer available (its LOC fact only covers the April 2020 draw/undrawn status, not later unavailability)."},
+      "Y": {"tier": "credited", "note": "Same insufficient-cash statement; no mention that the lines of credit are no longer available."},
+      "Z": {"tier": "credited", "note": "States insufficient cash for Feb/beyond, and separately notes RBC cancelled its line and Laurentian agreed not to draw on Desjardins — captures both halves of the fact but as two separate, non-adjacent statements rather than a single direct one."}
+    },
+    "F8": {
+      "X": {"tier": "verbatim", "note": "States $29.5M receipts, $58.5M disbursements, ~$29M net outflow, matching the quote."},
+      "Y": {"tier": "verbatim", "note": "Same figures stated directly."},
+      "Z": {"tier": "verbatim", "note": "Same figures stated directly (with additional net-of detail)."}
+    },
+    "F9": {
+      "X": {"tier": "verbatim", "note": "States $54.7M investment accounts and $52.8M endowments directly."},
+      "Y": {"tier": "verbatim", "note": "Same figures stated directly."},
+      "Z": {"tier": "verbatim", "note": "Same figures stated directly."}
+    },
+    "F10": {
+      "X": {"tier": "verbatim", "note": "States $2.6M cash and $1.9M short-term investments as of April 30, 2020 directly."},
+      "Y": {"tier": "ungrounded", "note": "Never states the $2.6M cash / $1.9M short-term investments breakdown; only gives a different consolidated balance-sheet figure ($4.544M cash and short-term investments)."},
+      "Z": {"tier": "verbatim", "note": "States $2.6M cash and $1.9M short-term investments directly."}
+    },
+    "F11": {
+      "X": {"tier": "credited", "note": "States both endpoint figures ($69.6M to $36.7M) from which the $32.9M decline is directly computable, but never states the $32.9M figure itself."},
+      "Y": {"tier": "credited", "note": "Same — states both endpoints, not the $32.9M decline figure."},
+      "Z": {"tier": "credited", "note": "Same — states both endpoints, not the $32.9M decline figure."}
+    },
+    "F12": {
+      "X": {"tier": "verbatim", "note": "States 85.4% solvency ratio and ~$4.5M going-concern deficiency, per Jan 1 2020 valuation updated Dec 2020."},
+      "Y": {"tier": "verbatim", "note": "Same figures and valuation dates stated directly."},
+      "Z": {"tier": "verbatim", "note": "Same figures and valuation dates stated directly."}
+    },
+    "F13": {
+      "X": {"tier": "ungrounded", "note": "No mention of the 406/981/~500 membership breakdown anywhere in X's facts."},
+      "Y": {"tier": "verbatim", "note": "States '406 pensioners, 981 active contributing members and approximately 500 deferred members' directly."},
+      "Z": {"tier": "ungrounded", "note": "No mention of the 406/981/~500 membership breakdown anywhere in Z's facts."}
+    },
+    "F15": {
+      "X": {"tier": "credited", "note": "Lists 'defined-benefit pension plan, supplemental retirement plan and retirement health benefits plan' together in one fact, but never labels the supplemental plan as 'unfunded' or as the SuRP by name."},
+      "Y": {"tier": "verbatim", "note": "Explicitly states 'the unfunded supplementary retirement plan' plus DB Pension Plan and RHBP elsewhere."},
+      "Z": {"tier": "verbatim", "note": "Explicitly states 'the unfunded SuRP' plus DB Pension Plan and RHBP elsewhere."}
+    },
+    "F17": {
+      "X": {"tier": "credited", "note": "States the $14.4M draw correctly but names the lender 'Caisse Populaire Voyageurs Inc.' rather than 'Desjardins' anywhere in its text — a normalized/legal name rather than the commonly used alias in the fact."},
+      "Y": {"tier": "verbatim", "note": "States '$14.4 million on its ... Desjardins line of credit' directly, matching the fact's naming and figure."},
+      "Z": {"tier": "verbatim", "note": "States '$14.4 million on the Desjardins line of credit' directly."}
+    },
+    "F18": {
+      "X": {"tier": "verbatim", "note": "States the ~$14M endowment for NOSM student scholarships directly, matching the quote."},
+      "Y": {"tier": "verbatim", "note": "Same statement, matching quote."},
+      "Z": {"tier": "verbatim", "note": "Same statement, matching quote."}
+    },
+    "F19": {
+      "X": {"tier": "verbatim", "note": "States both the 15% service-fee formula and the May 1, 2019 amendment that reduced funding to the Federated Universities, in separate facts."},
+      "Y": {"tier": "verbatim", "note": "Same — states both the 15% fee and the May 2019 amendment reducing funding."},
+      "Z": {"tier": "verbatim", "note": "Same — states both the 15% fee and the May 2019 amendment reducing funding."}
+    },
+    "F20": {
+      "X": {"tier": "ungrounded", "note": "No mention of Board or Senate voting/non-voting membership counts or vacancies anywhere in X."},
+      "Y": {"tier": "ungrounded", "note": "No mention of Board or Senate voting/non-voting membership counts or vacancies anywhere in Y."},
+      "Z": {"tier": "verbatim", "note": "States Board has 21 voting/9 non-voting members with four vacancies, and Senate has 77 voting/6 non-voting members, directly."}
+    },
+    "F21": {
+      "X": {"tier": "credited", "note": "States the LU-LUFA relationship is 'strained' but never states the Monitor's recommendation of a court-appointed mediator on an urgent basis or the preference for a sitting/retired judge — only a generic mention of 'a court-appointed mediator' in the proposed order."},
+      "Y": {"tier": "verbatim", "note": "States both halves directly: relationship described as strained, and the Monitor recommended urgent appointment of a mediator, preferably a sitting or recently retired judge."},
+      "Z": {"tier": "ungrounded", "note": "No mention of a mediator recommendation or the strained LU-LUFA relationship anywhere in Z."}
+    },
+    "M1": {
+      "X": {"tier": "credited", "note": "Quotes the Haché affidavit language about limited Finance department resources verbatim, but frames it as facing 'additional demands' rather than drawing the Monitor's explicit conclusion that the Information relied upon may be limited by these challenges."},
+      "Y": {"tier": "verbatim", "note": "States the conclusion directly: the challenges were 'potentially limiting the information on which the proposed monitor relied' — captures the actual reliability caveat, not just the underlying quote."},
+      "Z": {"tier": "credited", "note": "Quotes the same affidavit language and records management's concerns, but does not state the Monitor's explicit conclusion that the Report's information may be limited by these challenges."}
+    },
+    "M2": {
+      "X": {"tier": "ungrounded", "note": "Mentions the Haché affidavit but never states its sworn date at all."},
+      "Y": {"tier": "ungrounded", "note": "Mentions Haché's affidavit content but never states a sworn date."},
+      "Z": {"tier": "verbatim", "note": "States the affidavit was 'sworn January 30, 2020' — faithfully reproduces the source's (erroneous) date without silently correcting it, exactly the correct extraction behaviour this item is designed to reward."}
+    },
+    "M3": {
+      "X": {"tier": "credited", "note": "Captures co-mingling and the creation of segregated accounts for the three purposes in Dec 2020, but not the account names or that no separate bank accounts existed."},
+      "Y": {"tier": "credited", "note": "Same — captures commingling and Dec 2020 account creation without account names."},
+      "Z": {"tier": "verbatim", "note": "Names all three new accounts, states no separate bank accounts existed, and gives the December 2020 Board-direction narrative in full."}
+    },
+    "M4": {
+      "X": {"tier": "verbatim", "note": "States the 20% proportionate share directly, matching the quote."},
+      "Y": {"tier": "verbatim", "note": "Same statement, matching quote."},
+      "Z": {"tier": "verbatim", "note": "Same statement, matching quote."}
+    },
+    "M5": {
+      "X": {"tier": "verbatim", "note": "States Dr. Haché chaired NOSM's board directly."},
+      "Y": {"tier": "verbatim", "note": "Same statement."},
+      "Z": {"tier": "verbatim", "note": "Same statement."}
+    },
+    "M8": {
+      "X": {"tier": "ungrounded", "note": "Never uses the word 'unfunded' (or an equivalent) anywhere for the SuRP; only lists 'supplemental retirement plan' generically alongside the other two plans in a liability-figure context."},
+      "Y": {"tier": "verbatim", "note": "States 'the unfunded supplementary retirement plan' directly."},
+      "Z": {"tier": "verbatim", "note": "States 'the unfunded SuRP' directly."}
+    },
+    "M9": {
+      "X": {"tier": "verbatim", "note": "States Stikeman Elliott LLP was retained as independent counsel directly."},
+      "Y": {"tier": "verbatim", "note": "Same statement."},
+      "Z": {"tier": "verbatim", "note": "Same statement."}
+    },
+    "M10": {
+      "X": {"tier": "ungrounded", "note": "No mention of the 406/981/~500 pension membership figures anywhere."},
+      "Y": {"tier": "verbatim", "note": "States all three membership figures (406/981/~500) directly."},
+      "Z": {"tier": "ungrounded", "note": "No mention of the 406/981/~500 pension membership figures anywhere."}
+    },
+    "M11": {
+      "X": {"tier": "credited", "note": "States the Barrie campus closure in 2019, but never states LU is one of twenty public universities in Ontario."},
+      "Y": {"tier": "ungrounded", "note": "Never mentions the Barrie campus closure or the 'one of twenty public universities' framing anywhere in Y's text."},
+      "Z": {"tier": "verbatim", "note": "States both: Barrie campus closed by 2019, and Laurentian is one of 20 public universities in Ontario."}
+    },
+    "M13": {
+      "X": {"tier": "verbatim", "note": "States both the 15% service fee and the May 1, 2019 amendment that decreased Federated University funding."},
+      "Y": {"tier": "verbatim", "note": "Same — both elements stated directly."},
+      "Z": {"tier": "verbatim", "note": "Same — both elements stated directly."}
+    },
+    "M14": {
+      "X": {"tier": "ungrounded", "note": "No mention of the Provost's program-suspension decision, the unfair labour practice complaint, or the judicial review anywhere in X."},
+      "Y": {"tier": "credited", "note": "Mentions an unresolved 'unfair labour practice complaint and a judicial review' tied to LUFA, but never connects them to the Provost's 2020 decision to suspend enrolment in 17 low-enrolment programs — the specific subject matter is missing."},
+      "Z": {"tier": "verbatim", "note": "States the judicial review and unfair labour practice complaint concern 'the Provost's 2020 decision to suspend enrolment in 17 low-enrolment academic programs' directly."}
+    },
+    "M16": {
+      "X": {"tier": "verbatim", "note": "States MIRARCO's financial difficulties caused reimbursement delays to LU, matching the quote."},
+      "Y": {"tier": "verbatim", "note": "Same — reimbursement delays attributed to MIRARCO's financial difficulties."},
+      "Z": {"tier": "verbatim", "note": "Same — reimbursement delays attributed to MIRARCO's financial difficulties."}
+    }
+  }
+}

@@ -1,0 +1,2736 @@
+{
+  "document": "prefiling-report-monitor",
+  "document_file": "Laurentian Pre-Filing Report of the Proposed Monitor.pdf",
+  "items": {
+    "facts": [
+      {
+        "id": "F1",
+        "text": "LU IS INSOLVENT and, absent the relief sought, will not have sufficient liquidity to meet payroll in February.",
+        "quote": "LU is insolvent and absent the relief sought in the Initial Order, will not have sufficient funding / liquidity to meet payroll in February.",
+        "page": 31
+      },
+      {
+        "id": "F2",
+        "text": "The Monitor attributes the crisis to \"the pattern of recurring deficits over a number of years\", exacerbated by recent revenue pressures — NOT to the pandemic.\n",
+        "quote": "the pattern of recurring deficits over a number of years, exacerbated by recent significant pressures on revenue described earlier in this report, has brought the Applicant to the point where it has an immediate and dramatic liquidity crisis",
+        "page": 39
+      },
+      {
+        "id": "F3",
+        "text": "Restricted funds were CO-MINGLED. All receipts — operating, research grants, restricted donations — flowed into the same Operating Accounts. There were no separate bank accounts set up to receive and hold restricted funds.\n",
+        "quote": "There were no separate bank accounts set up to receive and hold restricted funds. All funds available in the Operating Accounts were utilized prior to drawing on lines of credit.",
+        "page": 31
+      },
+      {
+        "id": "F4",
+        "text": "LU does not hold enough money to cover its restricted-fund obligations — it spent money it was holding for someone else.\n",
+        "quote": "the funds held by LU at the current time are insufficient to cover obligations in connection with these restricted funds",
+        "page": 32
+      },
+      {
+        "id": "F5",
+        "text": "In December 2020 the practice was brought to the President's attention and the Board ordered three new Segregated Accounts created (Unspent Research Grant Account, Restricted Funds Account, RHBP Account) — weeks before the CCAA filing.\n",
+        "quote": "In December 2020, LU's cash management practices were brought to the attention of LU's President and the matter was discussed with the Board. The Board instructed management to amend its practice and immediately create three new bank accounts",
+        "page": 32
+      },
+      {
+        "id": "F6",
+        "text": "As at 29 January 2021: ~$13.3M in operating accounts and ~$3.3M in the Segregated Accounts.",
+        "quote": "the Applicant has an estimated aggregate cash balance in its operating accounts of approximately $13.3 million. In addition, it has an estimated aggregate cash balance in the Segregated Accounts (described above) of $3.3 million.",
+        "page": 32
+      },
+      {
+        "id": "F7",
+        "text": "LU has insufficient cash to fund operations through February 2021 or beyond; the previously relied-upon lines of credit are no longer available.",
+        "quote": "the Applicant currently has insufficient cash to fund operations through the month of February or beyond",
+        "page": 33
+      },
+      {
+        "id": "F8",
+        "text": "13-week cash flow forecast (30 Jan – 30 Apr 2021): receipts ~$29.5M, disbursements ~$58.5M, net cash outflow ~$29.0M.\n",
+        "quote": "estimated total combined receipts of approximately $29.5 million … Estimated total combined disbursements are forecast to be approximately $58.5 million … This results in projected net cash outflow (net of Segregated Account activity) of approximately $29.0 million.",
+        "page": 34
+      },
+      {
+        "id": "F9",
+        "text": "At 30 April 2020 LU held ~$52.8 million in endowments; investment accounts totalled $54.7 million.",
+        "quote": "At April 30, 2020, the balance in these investment accounts was $54.7 million … The majority of this amount is designated to support the $52.8 million in endowments held by LU",
+        "page": 24
+      },
+      {
+        "id": "F10",
+        "text": "LU had minimal cash at 30 April 2020 — ~$2.6M cash and $1.9M short-term investments.",
+        "quote": "As at April 30, 2020, LU had minimal cash on hand – approximately $2.6 million in cash and $1.9 million in short-term investments.",
+        "page": 24
+      },
+      {
+        "id": "F11",
+        "text": "Net assets fell $32.9 million, from $69.6 million in FY2014-15.",
+        "quote": "Net assets have decreased by $32.9 million from $69.6 million in fiscal year 2014-2015",
+        "page": 29
+      },
+      {
+        "id": "F12",
+        "text": "DB Pension Plan: solvency ratio 85.4%, going-concern deficiency ~$4.5M, per the 1 January 2020 actuarial valuation (updated December 2020).\n",
+        "quote": "the DB Pension Plan had a solvency ratio of 85.4%, representing a going concern deficiency of approximately $4.5 million",
+        "page": 14
+      },
+      {
+        "id": "F13",
+        "text": "DB Pension Plan membership: 406 individuals collecting a lifetime pension, 981 active contributing members, ~500 with deferred status.\n",
+        "quote": "There are currently 406 individuals collecting a lifetime pension from the DB Pension Plan. There are 981 active members currently contributing to the DB Pension Plan but not yet collecting a benefit. In addition, approximately 500 members have deferred status",
+        "page": 14
+      },
+      {
+        "id": "F15",
+        "text": "LU administers three plans: the DB Pension Plan, the SuRP (supplementary, UNFUNDED), and the RHBP (retirement health benefits).",
+        "quote": "LU administers three employee pension and benefit plans: (i) a registered defined benefit pension plan (the \"DB Pension Plan\"); (ii) a supplementary unfunded retirement plan (the \"SuRP\") and (iii) a retirement health benefits plan (the \"RHBP\").",
+        "page": 14
+      },
+      {
+        "id": "F17",
+        "text": "LU drew $14.4 million on the Desjardins line of credit as at 30 April 2020.",
+        "quote": "As at April 30, 2020, LU had drawn $14.4 million against the Desjardins Line of Credit.",
+        "page": 26
+      },
+      {
+        "id": "F18",
+        "text": "LU holds approximately $14 million in endowments designated for future NOSM student scholarships.",
+        "quote": "LU holds approximately $14 million in endowments designated to fund future scholarships for qualifying NOSM students.",
+        "page": 7
+      },
+      {
+        "id": "F19",
+        "text": "Federated Funding Formula: LU distributes a share of provincial grants and tuition to the Federated Universities, less a service fee of 15% of the grant and tuition revenues distributed. Amended 1 May 2019 in a way that DECREASED funding to them.\n",
+        "quote": "an offsetting charge for service fees charged by LU to the Federated Universities … (calculated as 15% of grant and tuition revenues distributed to the Federated Universities)",
+        "page": 9
+      },
+      {
+        "id": "F20",
+        "text": "LU's Board has 21 voting and 9 non-voting members, with FOUR voting positions vacant. The Senate has 77 voting and 6 non-voting members.",
+        "quote": "The Board is currently comprised of 21 voting members and 9 non-voting members. Four voting member positions are vacant.",
+        "page": 5
+      },
+      {
+        "id": "F21",
+        "text": "The Monitor recommends a court-appointed mediator, preferably a sitting or recently retired judge, on an urgent basis; the LU–LUFA relationship is 'currently strained'.",
+        "quote": "The Proposed Monitor notes the relationship between the Applicant and LUFA is currently strained.",
+        "page": 39
+      }
+    ],
+    "must_not_miss": [
+      {
+        "id": "M1",
+        "text": "The Monitor's reliability caveat: it quotes Haché's own affidavit saying LU \"has experienced a number of challenges with the limited team and resources in the Finance department\", and concludes \"the Information relied upon for purposes of this Report may be limited by these challenges.\"\n",
+        "page": 3,
+        "why": "The Monitor is telling the Court, on page 3, that LU's own numbers may not be trustworthy. Buried in boilerplate disclaimer language that extractors are trained to skip.\n"
+      },
+      {
+        "id": "M2",
+        "text": "The Haché affidavit is described as \"sworn January 30, 2020\" — a year before the report's own date of January 30, 2021 (elsewhere, and in the Pension Order, it is 2021).\n",
+        "page": 3,
+        "why": "A DATE ERROR IN THE SOURCE. Recorded here so scoring can tell the difference between an extractor faithfully reporting the document's stated (wrong) date — which is CORRECT extraction — and one silently \"fixing\" it to 2021. Both behaviours are interesting; neither should be scored as a miss.\n"
+      },
+      {
+        "id": "M3",
+        "text": "The co-mingling of restricted funds, and the December 2020 creation of three Segregated Accounts.",
+        "page": null,
+        "why": "The core governance failure in the entire Laurentian story — restricted research grants and donations spent on operations. It appears in the middle of a procedural section titled \"Cash Management\", which reads like plumbing.\n"
+      },
+      {
+        "id": "M4",
+        "text": "LU's proportionate share of SNOLab's assets, liabilities and obligations is 20%.",
+        "page": 10,
+        "why": "A quantified off-balance-sheet exposure to a national physics facility, in one clause."
+      },
+      {
+        "id": "M5",
+        "text": "Dr. Haché, LU's President, serves as CHAIR of NOSM's board.",
+        "page": 7,
+        "why": "The president of the insolvent university chairs the board of the related party it owes money to and holds $14M of endowments for. Stated once, in passing.\n"
+      },
+      {
+        "id": "M8",
+        "text": "The SuRP is a supplementary retirement plan that is UNFUNDED.",
+        "page": 14,
+        "why": "One word — 'unfunded' — inside a list item. It is an entire unsecured liability class."
+      },
+      {
+        "id": "M9",
+        "text": "Stikeman Elliott LLP acts as independent counsel to the Proposed Monitor.",
+        "page": 4,
+        "why": "A one-sentence paragraph. The Monitor's own law firm, easy to drop."
+      },
+      {
+        "id": "M10",
+        "text": "Pension membership: 406 collecting, 981 active, ~500 deferred — roughly 1,900 people whose retirement depends on an 85.4%-solvent plan.\n",
+        "page": 14,
+        "why": "The human scale of the pension exposure, given only as three numbers in one paragraph."
+      },
+      {
+        "id": "M11",
+        "text": "The Barrie satellite campus has been closed since 2019; LU is one of twenty public universities in Ontario.\n",
+        "page": 6,
+        "why": "Prior retrenchment, mentioned once in a scene-setting paragraph."
+      },
+      {
+        "id": "M13",
+        "text": "The Federated Funding Formula's 15% service fee, and its 1 May 2019 amendment that decreased funding to the Federated Universities.\n",
+        "page": null,
+        "why": "LU was already squeezing the federated universities two years before disclaiming them entirely. Requires joining a definition on p. 9 with a cost-cutting list on p. 30.\n"
+      },
+      {
+        "id": "M14",
+        "text": "The Provost's 2020 decision to suspend enrolment in 17 academic programs with \"very low enrolment\" is the subject of an ongoing unfair labour practice complaint and a judicial review brought by LUFA.\n",
+        "page": 13,
+        "why": "Program suspensions a full year before the CCAA filing — the bridge between the FY2019-20 annual report's \"sustainable\" narrative (see C1) and the insolvency reality, and already contested in court before the restructuring even began.\n"
+      },
+      {
+        "id": "M16",
+        "text": "MIRARCO \"has experienced financial difficulties in the last several years, which has resulted in delays in reimbursements to LU\" for the payroll and benefits LU fronts on its behalf.\n",
+        "page": 10,
+        "why": "Explains part of LU's cash erosion: it was carrying the operating costs of its own mining-research affiliate on reimbursements that came back late, buried in a routine description of the payroll arrangement.\n"
+      }
+    ]
+  },
+  "arms": {
+    "X": {
+      "summary": "This 47-page Proposed Monitor’s Report, filed January 30, 2021 with Laurentian University of Sudbury’s CCAA application, explains why the university sought court protection and proposed Ernst & Young Inc. as monitor. Laurentian, a publicly funded bilingual and tricultural university serving about 9,300 undergraduate and graduate students, reported a $42.6 million combined unrestricted-fund and employee-liabilities deficit and said it was insolvent and unable to meet February payroll without CCAA relief. Its financial position had deteriorated despite $358.5 million in reported assets: net assets fell from $69.6 million in 2014-15 to $36.7 million in 2019-20, while fiscal 2019-20 expenses exceeded revenues by $3.12 million; it also carried about $91.7 million in long-term debt, $71.1 million outstanding to RBC, additional TD facilities, pension and retirement-benefit obligations, and approximately $340,000 in monthly interest-swap cash outflows.\n\nThe report attributes the crisis to declining and changing enrolment, Ontario’s tuition reduction and freeze, the 2019 closure of the Barrie campus, reduced ancillary revenue and higher costs after the March 2020 shift to remote learning, and the university’s funding and operating relationships with affiliated entities and federated universities. It notes unresolved labour issues, including an expired faculty agreement and about 102 LUFA grievances, a pension solvency ratio of 85.4%, historically unsegregated retirement-health-benefit contributions, and the December 2020 creation of segregated accounts after restricted and designated funds had been co-mingled in operating accounts.\n\nLaurentian projected $29.5 million in receipts against $58.5 million in disbursements from January 30 through April 30, 2021, with liquidity dependent on a proposed $25 million DIP facility from Firm Capital and a successful restructuring. The proposed initial order sought a stay, DIP financing, a court-appointed mediator, an Administration Charge of up to $400,000, and a Directors’ Charge of up to $2 million, while preserving transfers of student-association and restricted funds; the report said the financing was expected to carry operations through the academic term but warned that a financial and operational restructuring would still be necessary. Ernst & Young stated that its analysis relied primarily on unaudited management information and did not provide audit or GAAS assurance.",
+      "key_facts": [
+        {
+          "basis": "stated",
+          "date": "",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ernst-young-inc",
+            "ontario-superior-court-of-justice-commercial-list",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "Laurentian University of Sudbury applied to the Ontario Superior Court of Justice Commercial List for an initial order under the Companies' Creditors Arrangement Act to obtain a stay of proceedings and restructure financially and operationally; it proposed Ernst & Young Inc. as monitor.",
+          "page": 1,
+          "quote": "The Applicant proposes that EY be appointed as Monitor in the CCAA proceedings."
+        },
+        {
+          "basis": "stated",
+          "date": "",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Ernst & Young Inc. prepared the report before its proposed appointment as monitor and relied primarily on unaudited information, books and records, forecasts, and discussions with Laurentian management; it did not audit or provide GAAS assurance on the information.",
+          "page": 2,
+          "quote": "the Proposed Monitor has not audited or otherwise attempted to verify the accuracy or completeness of the Information"
+        },
+        {
+          "basis": "stated",
+          "date": "",
+          "entities": [
+            "robert-hache",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Dr. Robert Haché's affidavit stated that financial information was supplied through Laurentian's vice-president administration and finance department, whose limited team and resources faced additional demands preparing for the CCAA proceeding.",
+          "page": 3,
+          "quote": "LU has experienced a number of challenges with the limited team and resources in the Finance department"
+        },
+        {
+          "basis": "stated",
+          "date": "",
+          "entities": [
+            "ernst-young-inc",
+            "stikeman-elliott-llp"
+          ],
+          "fact": "Ernst & Young Inc. retained Stikeman Elliott LLP as its independent counsel for the proposed CCAA mandate.",
+          "page": 4,
+          "quote": "The Proposed Monitor has retained Stikeman Elliott LLP to act as its independent counsel."
+        },
+        {
+          "basis": "stated",
+          "date": "",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-act"
+          ],
+          "fact": "Laurentian University of Sudbury was incorporated under An Act to Incorporate Laurentian University of Sudbury, S.O. 1960, c. 151 C. 154.",
+          "page": 4,
+          "quote": "On March 28, 1960, LU was incorporated"
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ontario-superior-court-of-justice-commercial-list"
+          ],
+          "fact": "Laurentian is a publicly funded, bilingual and tricultural, non-share-capital post-secondary institution and registered charity operating in the City of Greater Sudbury, Ontario.",
+          "page": 4,
+          "quote": "LU is a non-share capital corporation and a registered charity"
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-board-of-governors",
+            "laurentian-senate"
+          ],
+          "fact": "Laurentian has bicameral governance: its Board of Governors generally controls governance, financial management and operations, while its Senate is responsible for educational policy subject to the Board's approval regarding expenditures and facilities.",
+          "page": 5,
+          "quote": "The Board, and the President and Vice-Chancellor generally have powers over the operational and financial management of LU"
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian enrolled approximately 8,200 undergraduate students and 1,100 graduate students in the 2020-2021 fall semester, including approximately 6,250 and 830 full-time equivalents respectively.",
+          "page": 6,
+          "quote": "with approximately 8,200 domestic and international undergraduate students"
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "northern-ontario-school-of-medicine",
+            "university-of-sudbury",
+            "university-of-thorneloe",
+            "huntington-university",
+            "snolab",
+            "mirarco",
+            "cemi"
+          ],
+          "fact": "Laurentian identified NOSM, the University of Sudbury, the University of Thorneloe, Huntington University, SNOLab, MIRARCO and CEMI as affiliated entities that were not proposed applicants in the CCAA proceedings.",
+          "page": 6,
+          "quote": "none of which are proposed to be applicants in the CCAA proceedings"
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "northern-ontario-school-of-medicine",
+            "laurentian-university-of-sudbury",
+            "lakehead-university"
+          ],
+          "fact": "NOSM is an independent not-for-profit corporation whose two members are Laurentian and Lakehead University; Laurentian's president, Dr. Robert Haché, chaired NOSM's board at the time of the report.",
+          "page": 7,
+          "quote": "LU and Lakehead University ('Lakehead') are the two members of NOSM."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "northern-ontario-school-of-medicine"
+          ],
+          "fact": "Laurentian owned the two buildings occupied by NOSM on the Sudbury campus and leased them to NOSM, while also providing NOSM various facilities, support, registration, fee-collection and research-administration services.",
+          "page": 7,
+          "quote": "LU owns the two buildings that NOSM occupies on the Sudbury campus and leases the buildings to NOSM."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "northern-ontario-school-of-medicine"
+          ],
+          "fact": "Laurentian held approximately $14 million in endowments designated for future scholarships for qualifying NOSM students.",
+          "page": 7,
+          "quote": "LU holds approximately $14 million in endowments designated to fund future scholarships"
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "university-of-sudbury",
+            "university-of-thorneloe",
+            "huntington-university"
+          ],
+          "fact": "The three Federated Universities are separate legal entities with independent boards, but Laurentian provides them services, allocates provincial grants and tuition under a funding formula, and charges a service fee calculated as 15% of distributed grant and tuition revenue.",
+          "page": 8,
+          "quote": "the Federated Universities are integrated into LU"
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "snolab",
+            "laurentian-university-of-sudbury",
+            "carleton-university",
+            "queens-university",
+            "university-of-alberta",
+            "universite-de-montreal"
+          ],
+          "fact": "SNOLab operates under a trust agreement among Laurentian, Carleton University, Queen's University, the University of Alberta and Université de Montréal, with Laurentian holding a 20% proportionate share of SNOLab's assets, liabilities and obligations.",
+          "page": 9,
+          "quote": "LU's proportionate share of the assets, liabilities and obligations of SNOLab is 20%.",
+          "quote_verified": true,
+          "quote_found_page": 10
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "mirarco",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "MIRARCO is a Sudbury-based not-for-profit mining research corporation of which Laurentian is the sole member; Laurentian consolidates MIRARCO in its financial statements, processes payroll for its 19 employees and has experienced delayed reimbursements because of MIRARCO's financial difficulties.",
+          "page": 10,
+          "quote": "MIRARCO has experienced financial difficulties in the last several years, which has resulted in delays in reimbursements to LU."
+        },
+        {
+          "basis": "stated",
+          "date": "",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian employed approximately 1,751 people, including approximately 758 full-time and 993 fixed-term, part-time and student employees.",
+          "page": 12,
+          "quote": "LU employed approximately 1,751 people."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-faculty-association",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian's faculty collective agreement expired June 30, 2020 but continued automatically during bargaining; despite extensive negotiations since April 2020, including mediation, no material progress had been made on a new agreement, and approximately 102 LUFA grievances remained unresolved.",
+          "page": 13,
+          "quote": "no material progress has been made on a new collective agreement."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-db-pension-plan"
+          ],
+          "fact": "The defined-benefit pension plan had a solvency ratio of 85.4% and a going-concern deficiency of approximately $4.5 million under a valuation as of January 1, 2020 updated in December 2020.",
+          "page": 14,
+          "quote": "the DB Pension Plan had a solvency ratio of 85.4%"
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-rhbp"
+          ],
+          "fact": "Laurentian historically recorded employee and employer retirement health benefit contributions as a balance-sheet liability rather than placing them in the separate trust account described in the RHBP policy; it began segregating contributions in December 2020 following a Board direction.",
+          "page": 16,
+          "quote": "neither contributions by employees nor LU contributions to the RHBP were set aside in a separate bank account."
+        },
+        {
+          "basis": "stated",
+          "date": "",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian's consolidated financial statements showed total revenues of $198.397 million, total expenses of $201.517 million and a deficiency of revenues over expenses of $3.120 million for fiscal 2019-2020.",
+          "page": 17,
+          "quote": "Excess / (deficiency) of revenues over expenses (3,120)",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "date": "",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "At April 30, 2020, Laurentian reported total assets of $358.520 million, including $4.544 million in cash and short-term investments, against current liabilities of $43.679 million and long-term obligations of $109.761 million.",
+          "page": 19,
+          "quote": "TOTAL ASSETS 358,520",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "date": "",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Salaries and benefits were approximately 67% of Laurentian's fiscal 2019-2020 total expenses; $16 million related to research, MIRARCO and SNOLab employees and the remaining $119 million related to academic teaching and ancillary services.",
+          "page": 19,
+          "quote": "Salaries and benefits represent LU's most significant expense at approximately 67% of total expenses",
+          "quote_verified": true,
+          "quote_found_page": 18
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University reported total assets of $358.520 million and total liabilities, deferred contributions and net assets of the same amount for the fiscal year ended April 30, 2020, including $272.267 million in capital assets and $91.711 million in long-term debt.",
+          "page": 19
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "As of April 30, 2020, Laurentian University had approximately $2.6 million in cash, $1.9 million in short-term investments and $54.7 million in total investment accounts, most of which supported $52.8 million in endowments.",
+          "page": 20
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "caisse-populaire-voyageurs"
+          ],
+          "fact": "Laurentian University had historically available unsecured revolving facilities of up to $26 million from Caisse Populaire Voyageurs Inc. and $5 million from Royal Bank of Canada; it had drawn $14.4 million from the former as of April 30, 2020, while the latter was undrawn.",
+          "page": 21
+        },
+        {
+          "basis": "stated",
+          "date": "2021-01-29",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "toronto-dominion-bank"
+          ],
+          "fact": "As of January 29, 2021, Laurentian University owed $1,323,626 under a Toronto-Dominion Bank term facility originally used to fund construction of its student recreation centre.",
+          "page": 21
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "royal-bank-of-canada"
+          ],
+          "fact": "Royal Bank of Canada provided Laurentian University with four unsecured term facilities totaling approximately $75.7 million in original principal, plus a $250,000 revolving facility for letters of guarantee; the facilities financed campus buildings, a residence, campus modernization and a residence renovation.",
+          "page": 22
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "royal-bank-of-canada"
+          ],
+          "fact": "Laurentian University stated that approximately $71.1 million was outstanding under its Royal Bank of Canada credit facilities and that the agreement barred it from creating or permitting encumbrances over its assets without RBC's written consent.",
+          "page": 23
+        },
+        {
+          "basis": "stated",
+          "date": "2021-01-29",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "toronto-dominion-bank"
+          ],
+          "fact": "As of January 29, 2021, Laurentian University owed $10,575,875 under one TD facility and $6,570,917 under another, whose original principal was increased from $6.15 million to $10 million.",
+          "page": 23
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "toronto-dominion-bank",
+            "student-governments-association"
+          ],
+          "fact": "Laurentian University guaranteed up to $8.5 million of the Students' General Association's indebtedness to TD for funding a new student centre.",
+          "page": 24
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University's interest-rate swaps generated a net cash outflow of approximately $340,000 per month.",
+          "page": 24
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-db-pension-plan",
+            "laurentian-rhbp"
+          ],
+          "fact": "The $20.8 million employee-future-benefits liability reported at April 30, 2020 represented an actuarial estimated obligation less plan assets for the defined-benefit pension plan, supplemental retirement plan and retirement health benefits plan, and was not the actual wind-up deficit.",
+          "page": 24
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-rhbp"
+          ],
+          "fact": "Laurentian University's deferred contributions liability included employee and employer contributions to the retirement health benefits plan, and the Proposed Monitor reported that no funds had been set aside to satisfy the deferred-contribution obligations.",
+          "page": 25
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University's net assets declined from $69.6 million in fiscal 2014-2015 to $36.7 million in fiscal 2019-2020, including a $20 million unrestricted deficit and a $22.6 million vacation and employee-future-benefits deficit.",
+          "page": 26
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "northern-ontario-school-of-medicine"
+          ],
+          "fact": "Approximately $14 million of Laurentian University's $52.8 million in endowments was intended for Northern Ontario School of Medicine student scholarships.",
+          "page": 26
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "Laurentian University reported a combined accumulated unrestricted-fund and employee-liabilities deficit of approximately $42.6 million and stated that it was insolvent and would be unable to meet February payroll without relief sought in the initial CCAA order.",
+          "page": 27,
+          "quote": "LU is insolvent and absent the relief sought in the Initial Order, will not have sufficient funding / liquidity to meet payroll in February.",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "date": "2019-01-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "province-of-ontario"
+          ],
+          "fact": "The Province of Ontario required universities to reduce domestic tuition fees by 10% for fiscal 2019-2020 and freeze them for fiscal 2020-2021.",
+          "page": 27
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University's total fall enrolment declined from 7,246 full-time equivalents in 2015-2016 to 6,834 in 2019-2020, before increasing to 7,090 in 2020-2021; the 2020-2021 increase was attributed primarily to a 36.7% rise in online enrolment, while first-year enrolment fell 2.3%.",
+          "page": 27
+        },
+        {
+          "basis": "stated",
+          "date": "2019-05-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-faculty-association"
+          ],
+          "fact": "Laurentian University's Barrie campus ultimately closed in May 2019 after its arrangement with Georgian College expired, while the university remained obligated under its faculty collective agreement to retain faculty previously associated with the campus.",
+          "page": 29
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "public-health-ontario"
+          ],
+          "fact": "Laurentian University halted in-person activity and moved to remote delivery in March 2020 based on recommendations from Public Health Ontario, resulting in reduced ancillary revenue and increased protective and post-retirement-benefit costs.",
+          "page": 29
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University reduced its non-faculty workforce by approximately 20 full-time equivalents and its faculty workforce, excluding the Barrie closure, by approximately 14 full-time equivalents, and implemented hiring controls and freezes.",
+          "page": 30
+        },
+        {
+          "basis": "stated",
+          "date": "2019-05-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "federated-universities"
+          ],
+          "fact": "Laurentian University amended and restated its Federated Funding Formula on May 1, 2019, reducing the funding distributed to the Federated Universities.",
+          "page": 31
+        },
+        {
+          "basis": "stated",
+          "date": "2020-12-21",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-rhbp"
+          ],
+          "fact": "After the Board was alerted in December 2020 that restricted and designated funds had historically been co-mingled in operating accounts, Laurentian University created segregated accounts for unspent research grants, other restricted funds and RHBP contributions.",
+          "page": 32
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "As of January 29, 2021, Laurentian University estimated cash of $13.3 million in operating accounts and $3.3 million in segregated accounts, but said it lacked sufficient cash to fund operations through February or beyond.",
+          "page": 32
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceeding",
+            "ernst-young-inc"
+          ],
+          "fact": "Laurentian University's 13-week cash-flow forecast projected $29.5 million in receipts, $58.5 million in disbursements and a net cash outflow of approximately $29 million, with sufficient liquidity dependent on court approval of debtor-in-possession financing.",
+          "page": 34
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "firm-capital-mortgage-fund"
+          ],
+          "fact": "Laurentian University executed a DIP term sheet with Firm Capital Corporation, which assigned its interest to Firm Capital Mortgage Fund Inc.; the parties intended to finalize a definitive DIP agreement for court approval at the comeback hearing.",
+          "page": 35
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "student-governments-association",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "The proposed initial order sought to give the Students' General Association limited stay protection because Laurentian University guaranteed approximately $8.5 million of its long-term debt and the association depended on Laurentian's continued operations and collection of student fees.",
+          "page": 36
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "student-governments-association"
+          ],
+          "fact": "The proposed cash-flow forecast included approximately $1.6 million in remittances of student-association fees, which Laurentian University and the Proposed Monitor treated as funds belonging to the associations rather than to the university.",
+          "page": 37
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "The proposed initial order provided for an Administration Charge of up to $400,000 and a Directors' Charge of up to $2 million against Laurentian University's assets, ranking in that order.",
+          "page": 37
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "student-governments-association",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University forecast remitting approximately $1.6 million in student fees to the Students' Associations during the cash-flow period, including a substantial portion collected before the proposed CCAA commencement date.",
+          "page": 37
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The proposed initial order provides an Administration Charge of up to $400,000 ranking first among the proposed super-priority charges.",
+          "page": 37
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The proposed initial order provides a Directors' Charge of up to $2 million ranking second among the proposed super-priority charges.",
+          "page": 37
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "firm-capital-corporation"
+          ],
+          "fact": "The proposed charges are secured against Laurentian University's current and future assets, undertakings and properties wherever located, including proceeds, and were sized for the first 10 days of the CCAA proceedings; Laurentian intends to seek increases at the comeback hearing.",
+          "page": 37
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University's secured creditors are primarily subcontractors holding construction liens against certain university real property and limited equipment lessors; the proposed charges initially do not purport to rank ahead of secured creditors without notice, but Laurentian intends to seek priority over potential claims at the comeback hearing after notice is provided.",
+          "page": 37
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ernst-young-inc"
+          ],
+          "fact": "The Administration Charge would secure professional fees and disbursements of counsel and advisors to Laurentian University, the proposed monitor, the monitor's independent counsel and independent counsel to the Board, with obligations paid in the ordinary course from funding including the DIP Agreement.",
+          "page": 37
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The Directors' Charge would indemnify current and future directors and officers for post-commencement obligations and liabilities, except those arising from gross negligence or wilful misconduct, and would apply only where directors' and officers' insurance is unavailable or insufficient.",
+          "page": 38
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-db-pension-plan"
+          ],
+          "fact": "Laurentian University's approximate monthly payroll is $11 million, monthly defined-benefit pension-plan contributions are $1.2 million, and monthly vacation-pay accrual is $800,000; the proposed $2 million Directors' Charge is less than those amounts accruing during the first 10 days.",
+          "page": 38
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University intended to seek approval at the comeback hearing for a DIP Lender's Charge matching the maximum borrowing amount under its DIP Term Sheet.",
+          "page": 38
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-ccaa-proceeding",
+            "laurentian-university-of-sudbury",
+            "laurentian-university-faculty-association"
+          ],
+          "fact": "The application sought appointment of a court-appointed mediator to oversee negotiations concerning restructuring the Federated Universities model, academic programs, and employee headcount reductions.",
+          "page": 39
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The proposed monitor reported that Laurentian University lacked sufficient liquidity to meet February payroll or continue through the academic term without the CCAA filing and DIP financing, and faced an immediate shutdown.",
+          "page": 39
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The DIP Term Sheet was expected to provide sufficient liquidity for Laurentian University to operate through the end of the academic term, but the university would be unable to fund continued operations without a successful financial and operational restructuring during that period.",
+          "page": 39
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-faculty-association"
+          ],
+          "fact": "The proposed monitor described the relationship between Laurentian University and the Laurentian University Faculty Association as strained and said achieving concessions on academic programs and faculty and employee headcount would be difficult.",
+          "page": 39
+        },
+        {
+          "basis": "stated",
+          "date": "2021-01-30",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-ccaa-proceeding",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Ernst & Young Inc. consented to act as monitor of Laurentian University if appointed by the court and submitted the report in its capacity as proposed monitor on January 30, 2021.",
+          "page": 41
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The 13-week cash-flow forecast covers January 30 through April 30, 2021 and projects total receipts of $29.514 million, total operating disbursements of $54.004 million, total disbursements of $58.553 million and net cash receipts or disbursements of negative $29.039 million.",
+          "page": 43
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The cash-flow forecast assumes DIP financing and shows a proposed DIP facility with a $25 million ending balance and $24.076 million of total financing draws during the forecast period.",
+          "page": 43
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The forecast shows an ending cash balance of $8.328 million and available liquidity of $8.328 million at April 30, 2021.",
+          "page": 43
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The forecast shows an endowment-fund ending balance of $54.876 million and segregated-account ending balance of $6.817 million.",
+          "page": 43
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "province-of-ontario"
+          ],
+          "fact": "The forecast assumes operating grants primarily determined by the Province of Ontario's grant-funding framework and received semi-monthly.",
+          "page": 44
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "snolab",
+            "cemi",
+            "mirarco"
+          ],
+          "fact": "Laurentian University's forecast includes reimbursements for costs it funds on behalf of associated organizations including Sudbury Neutrino Observatory Laboratory, Centre for Excellence in Mining Innovation and Mining Innovation Rehabilitation and Applied Research Corporation.",
+          "page": 44
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "canada-pension-plan",
+            "quebec-pension-plan"
+          ],
+          "fact": "The forecast provides for remittance of statutory deemed-trust deductions from employee wages, including employment insurance, Canada Pension Plan, Quebec Pension Plan and income taxes.",
+          "page": 45
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-db-pension-plan"
+          ],
+          "fact": "The forecast provides for required employee contributions and current-service employer payments to Laurentian University's defined-benefit pension plan, including pre-filing employee contributions.",
+          "page": 45
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "northern-ontario-school-of-medicine"
+          ],
+          "fact": "The forecast treats student fees collected before filing for Northern Ontario School of Medicine as stayed, while forecasting transfers based on post-filing collection of NOSM student fees.",
+          "page": 46
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Restricted donations and research grants are described as being held in segregated accounts and available only for their restricted use.",
+          "page": 46
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The forecast assumes the proposed DIP facility will be advanced in two tranches under the DIP Term Sheet.",
+          "page": 47
+        }
+      ],
+      "coverage_gap": null,
+      "entities": [
+        "Laurentian University of Sudbury",
+        "Ernst & Young Inc.",
+        "Ontario Superior Court of Justice Commercial List",
+        "Laurentian University of Sudbury CCAA proceeding",
+        "Dr. Robert Haché",
+        "Northern Ontario School of Medicine",
+        "Lakehead University",
+        "University of Sudbury",
+        "University of Thorneloe",
+        "Huntington University",
+        "Sudbury Neutrino Observatory Laboratory",
+        "Mining Innovation Rehabilitation and Applied Research Corporation",
+        "Centre for Excellence in Mining Innovation",
+        "Laurentian University Faculty Association",
+        "Laurentian University defined benefit pension plan",
+        "Laurentian University Retirement Health Benefits Plan",
+        "Stikeman Elliott LLP",
+        "Laurentian University Board of Governors",
+        "Laurentian University Senate",
+        "An Act to Incorporate Laurentian University of Sudbury, S.O. 1960, c. 151 C. 154",
+        "Royal Bank of Canada",
+        "Toronto-Dominion Bank",
+        "Caisse Populaire Voyageurs Inc.",
+        "Bank of Montreal",
+        "Students' General Association",
+        "Firm Capital Corporation",
+        "Firm Capital Mortgage Fund Inc.",
+        "Province of Ontario",
+        "Public Health Ontario",
+        "Canada Pension Plan",
+        "Quebec Pension Plan"
+      ]
+    },
+    "Y": {
+      "summary": "This 47-page proposed monitor’s report, filed January 30, 2021 as part of Laurentian University’s CCAA application, sets out why the Sudbury university sought court protection, a stay of proceedings and Ernst & Young Inc.’s appointment as monitor to restructure its finances and operations. Laurentian reported approximately $321.8 million in liabilities against $358.5 million in assets as of April 30, 2020, but its net assets had fallen from $69.6 million in 2014-15 to $36.7 million in 2019-20, including a $20 million unrestricted deficit and a $22.6 million vacation and employee-benefits deficit. Management estimated deferred contributions liabilities of $36.5 million at December 31, 2020, while cash on January 29, 2021 was about $16.6 million across operating and segregated accounts—insufficient to fund operations through February; Laurentian said it was insolvent and could not meet February payroll without relief. The report also describes unresolved labour issues, including about 102 LUFA grievances, an unfair-labour-practice complaint and stalled bargaining, alongside pressure from tuition reductions and freezes and reduced funding to the Federated Universities.\n\nThe 13-week forecast projected $29.5 million in receipts against $58.6 million in disbursements, a net cash outflow of roughly $29 million, and liquidity dependent on debtor-in-possession financing from Firm Capital and court approval of related charges. The proposed initial order sought a $400,000 administration charge and a $2 million directors’ charge, with increases and a DIP lender’s charge to be addressed at the comeback hearing; it also sought authority to continue ordinary-course remittances of approximately $1.6 million in student-association fees and protection for the Students’ General Association, which had about $8.5 million in TD-guaranteed debt. Laurentian proposed mediation over the Federated Universities model, academic programs and employee headcount, while the proposed monitor recommended an urgent independent mediator and warned that without CCAA protection and DIP financing the university faced an immediate shutdown.\n\nThe report emphasizes that its financial analysis relied primarily on unaudited information, management discussions and forecasts supplied by Laurentian, which Ernst & Young did not audit or independently verify; the university’s limited finance staff further constrained preparation of the CCAA materials. It also details Laurentian’s operational dependence on affiliated entities, including NOSM, the Federated Universities, SNOLab and MIRARCO, and its historical commingling of operating, donated and restricted funds before the Board directed segregation in December 2020.",
+      "key_facts": [
+        {
+          "basis": "stated",
+          "date": "",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ernst-young-inc",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "Laurentian University of Sudbury applied for an initial order under the Companies' Creditors Arrangement Act to obtain a stay of proceedings and financially and operationally restructure, proposing Ernst & Young Inc. as monitor.",
+          "page": 1,
+          "quote": "The Applicant proposes that EY be appointed as Monitor in the CCAA proceedings."
+        },
+        {
+          "basis": "stated",
+          "date": "",
+          "entities": [
+            "ernst-young-inc",
+            "stikeman-elliott-llp"
+          ],
+          "fact": "Ernst & Young Inc. retained Stikeman Elliott LLP as its independent counsel for the proposed CCAA appointment.",
+          "page": 4
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The proposed monitor relied primarily on unaudited financial information, books and records, management discussions, forecasts and projections prepared or supplied by Laurentian University, and did not audit or independently verify that information under generally accepted assurance standards.",
+          "page": 2,
+          "quote": "the Proposed Monitor expresses no opinion or other form of assurance contemplated under GAAS in respect of the Information"
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "robert-hache"
+          ],
+          "fact": "The report says Laurentian's finance department had limited staff and resources, creating difficulties in preparing the CCAA materials and potentially limiting the information on which the proposed monitor relied.",
+          "page": 3
+        },
+        {
+          "basis": "stated",
+          "date": "",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University of Sudbury was incorporated under the Laurentian University of Sudbury Act, S.O. 1960, c. 151 C. 154.",
+          "page": 4
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-act"
+          ],
+          "fact": "Laurentian is a publicly funded, bilingual and tricultural, non-share-capital corporation and registered charity operating in the City of Greater Sudbury, Ontario.",
+          "page": 4
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "board-of-governors-of-laurentian-university",
+            "senate-of-laurentian-university"
+          ],
+          "fact": "Laurentian has bicameral governance: its Board of Governors generally controls governance, finances, property and business affairs, while its Senate is responsible for educational policy subject to the Board's approval concerning expenditures and facilities.",
+          "page": 4
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian had approximately 8,200 undergraduate students and 1,100 graduate students enrolled in fall 2020-2021, including approximately 6,250 and 830 full-time equivalents respectively.",
+          "page": 6
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "northern-ontario-school-of-medicine",
+            "university-of-sudbury",
+            "university-of-thorneloe",
+            "huntington-university",
+            "snolab",
+            "mirarco",
+            "cemi",
+            "students-general-association",
+            "graduate-students-association",
+            "association-des-etudiantes-et-etudiants-francophones",
+            "indigenous-students-circle"
+          ],
+          "fact": "Laurentian identified NOSM, the Federated Universities, SNOLab, MIRARCO, CEMI and four student associations as affiliated entities that were not proposed applicants in the CCAA proceedings.",
+          "page": 6
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "northern-ontario-school-of-medicine",
+            "laurentian-university-of-sudbury",
+            "lakehead-university"
+          ],
+          "fact": "NOSM is an independent not-for-profit corporation whose two members are Laurentian University and Lakehead University; Laurentian's president, Dr. Robert Haché, served as NOSM's board chair.",
+          "page": 7
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "northern-ontario-school-of-medicine"
+          ],
+          "fact": "Laurentian owns two buildings occupied by NOSM on the Sudbury campus and leases them to NOSM, while providing NOSM facilities, support services, registration, fee collection and research-grant administration.",
+          "page": 7
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "northern-ontario-school-of-medicine"
+          ],
+          "fact": "Laurentian held approximately $14 million in endowments designated for future scholarships for qualifying NOSM students.",
+          "page": 7
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "university-of-sudbury",
+            "university-of-thorneloe",
+            "huntington-university"
+          ],
+          "fact": "The Federated Universities are separate legal entities with independent boards but are integrated operationally with Laurentian: they use Laurentian's campus and services, do not recruit or register their own students, and generally do not confer degrees.",
+          "page": 8,
+          "quote": "To students, there is virtually no distinction between LU and the Federated Universities."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "university-of-sudbury",
+            "university-of-thorneloe",
+            "huntington-university"
+          ],
+          "fact": "Laurentian distributes portions of provincial grants and tuition fees to the Federated Universities under a funding formula and charges service fees equal to 15% of the grant and tuition revenues distributed.",
+          "page": 9
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "snolab",
+            "laurentian-university-of-sudbury",
+            "carleton-university",
+            "queens-university",
+            "university-of-alberta",
+            "universite-de-montreal"
+          ],
+          "fact": "SNOLab operates under a trust agreement among Laurentian, Carleton University, Queen's University, the University of Alberta and Université de Montréal, with Laurentian holding a 20% proportionate share of SNOLab assets, liabilities and obligations.",
+          "page": 9
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "mirarco",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "MIRARCO is a Sudbury-based not-for-profit mining research corporation of which Laurentian is the sole member; Laurentian consolidates MIRARCO in its financial statements and reported delays in MIRARCO's reimbursement of payroll, benefit and pension costs because of MIRARCO's financial difficulties.",
+          "page": 10
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-faculty-association"
+          ],
+          "fact": "The LUFA collective agreement expired June 30, 2020 but continued automatically during negotiations; Laurentian and LUFA had bargained since April 2020 without material progress, while approximately 102 LUFA grievances, an unfair labour practice complaint and a judicial review remained unresolved.",
+          "page": 13
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-staff-union"
+          ],
+          "fact": "An amended LUSU collective agreement provided for a 1.0% salary reduction in its first year, unpaid furlough days in 2020, staffing flexibility and a retirement incentive; the furloughs generated a one-time $450,000 cash benefit and staffing changes generated approximately $800,000 in annual savings.",
+          "page": 13
+        },
+        {
+          "basis": "stated",
+          "date": "",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian employed approximately 1,751 people, including approximately 758 full-time and 993 fixed-term, part-time and student employees.",
+          "page": 12
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "defined-benefit-pension-plan"
+          ],
+          "fact": "Laurentian administers a defined-benefit pension plan covering eligible employees of Laurentian, the Federated Universities, SNOLab, MIRARCO and CEMI; the plan had 406 pensioners, 981 active contributing members and approximately 500 deferred members.",
+          "page": 14
+        },
+        {
+          "basis": "stated",
+          "date": "",
+          "entities": [
+            "defined-benefit-pension-plan"
+          ],
+          "fact": "The DB Pension Plan's actuarial valuation, updated in December 2020, reported an 85.4% solvency ratio and an approximately $4.5 million going-concern deficiency.",
+          "page": 14
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "defined-benefit-pension-plan",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "Laurentian intended to seek CCAA relief staying pre-filing and post-filing special payments to the DB Pension Plan to address its liquidity crisis and support restructuring.",
+          "page": 15
+        },
+        {
+          "basis": "stated",
+          "date": "",
+          "entities": [
+            "supplementary-unfunded-retirement-plan",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The unfunded supplementary retirement plan had an accrued benefit obligation estimated at $3,063,000, with approximately $260,000 forecast to be payable to 32 eligible retirees in July 2021.",
+          "page": 15
+        },
+        {
+          "basis": "stated",
+          "date": "",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "retirement-health-benefits-plan",
+            "board-of-governors-of-laurentian-university"
+          ],
+          "fact": "Laurentian began segregating retirement health benefits plan contributions in December 2020 pursuant to a direction of its Board of Governors, after historically recording the contributions as a balance-sheet liability without setting them aside in a separate bank account.",
+          "page": 16
+        },
+        {
+          "basis": "stated",
+          "date": "",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian's audited consolidated financial statements reported total assets of $358.520 million, total liabilities and deferred obligations of at least $153.440 million, and current cash and short-term investments of $4.544 million.",
+          "page": 19
+        },
+        {
+          "basis": "stated",
+          "date": "",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "For fiscal 2019-2020, Laurentian reported $198.397 million in revenue, $201.517 million in expenses and a $3.120 million deficiency of revenues over expenses.",
+          "page": 17
+        },
+        {
+          "basis": "stated",
+          "date": "",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Salaries and benefits represented approximately 67% of Laurentian's total expenses in fiscal 2020; $16 million related to research, MIRARCO and SNOLab employees and the remaining $119 million related to academic teaching and ancillary services.",
+          "page": 18
+        },
+        {
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University reported total assets of approximately $358.5 million, including $272.3 million in capital assets and $52.8 million in investments, against approximately $321.8 million in liabilities.",
+          "page": 19
+        },
+        {
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "sei-private-trust-company"
+          ],
+          "fact": "Laurentian University held approximately $54.7 million in investment accounts with SEI Private Trust Company and RBC Dominion Securities Inc., most of it designated to support $52.8 million in endowments.",
+          "page": 20
+        },
+        {
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University's capital assets included buildings valued at approximately $249.6 million, equipment at $7.3 million, site improvements at $1.9 million and land at $13.4 million, including properties at 251 John Street and 85 Elm Street in Sudbury.",
+          "page": 20
+        },
+        {
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "caisse-populaire-voyageurs"
+          ],
+          "fact": "Laurentian University had drawn approximately $14.4 million on its $26 million unsecured Desjardins line of credit, while its $5 million RBC line of credit was undrawn.",
+          "page": 21
+        },
+        {
+          "basis": "stated",
+          "date": "2021-01-29",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "toronto-dominion-bank"
+          ],
+          "fact": "Laurentian University owed Toronto-Dominion Bank $1,323,626 under a $2 million term facility used to fund construction of its student recreation centre; the facility matured on April 3, 2021 and permitted no further draws.",
+          "page": 21
+        },
+        {
+          "basis": "stated",
+          "date": "2020-06-16",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "bank-of-montreal"
+          ],
+          "fact": "On June 16, 2020, Bank of Montreal agreed to defer principal payments for several months under Laurentian University's BMO Credit Facility; approximately $1.3 million remained outstanding at the report date.",
+          "page": 22
+        },
+        {
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "bank-of-montreal",
+            "royal-bank-of-canada",
+            "toronto-dominion-bank"
+          ],
+          "fact": "Laurentian University's unsecured long-term debt outstanding at April 30, 2020 totaled approximately $91.7 million, consisting of obligations to BMO, RBC and TD with maturities ranging from 2023 to 2043.",
+          "page": 22
+        },
+        {
+          "basis": "stated",
+          "date": "2020-06-25",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "royal-bank-of-canada"
+          ],
+          "fact": "On or about June 25, 2020, RBC agreed to defer principal payments for several months on Laurentian University's Residence Takeout Facility and Renovation Takeout Facility; approximately $71.1 million was outstanding under the RBC credit facilities at the report date.",
+          "page": 23
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "royal-bank-of-canada"
+          ],
+          "fact": "The RBC Credit Facilities Agreement required Laurentian University not to grant, create, assume or allow any charge, security interest or encumbrance over its property or assets without RBC's written consent.",
+          "page": 23
+        },
+        {
+          "basis": "stated",
+          "date": "2021-01-29",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "toronto-dominion-bank"
+          ],
+          "fact": "As of January 29, 2021, Laurentian University owed TD $10,575,875 under one term facility and $6,570,917 under another, for aggregate TD credit-facility debt of approximately $18.5 million at the report date.",
+          "page": 23
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "toronto-dominion-bank",
+            "students-general-association"
+          ],
+          "fact": "Laurentian University guaranteed up to $8.5 million of the Students' General Association's debt to TD for financing a new student centre.",
+          "page": 24
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University's interest-rate swaps generated a net cash outflow of approximately $340,000 per month.",
+          "page": 24
+        },
+        {
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "defined-benefit-pension-plan",
+            "supplementary-unfunded-retirement-plan",
+            "retirement-health-benefits-plan"
+          ],
+          "fact": "Laurentian University reported $20.8 million in employee future benefit liabilities, representing an actuarial estimated obligation less plan assets for its defined benefit pension, supplementary unfunded retirement and retirement health benefits plans; the figure was not the actual deficit that would apply on a wind-up.",
+          "page": 24
+        },
+        {
+          "basis": "stated",
+          "date": "2020-12-31",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ernst-young-inc"
+          ],
+          "fact": "Management advised the Proposed Monitor that Laurentian University's deferred contributions liability was estimated at approximately $36.5 million as of December 31, 2020, and the report states that no funds had been set aside or were available to satisfy those obligations.",
+          "page": 25
+        },
+        {
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University had approximately $129.9 million in deferred capital contributions as of April 30, 2020, of which $0.6 million was unspent and $129.3 million was unamortized; no funds were set aside for the unspent portion.",
+          "page": 25
+        },
+        {
+          "basis": "stated",
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "northern-ontario-school-of-medicine"
+          ],
+          "fact": "Laurentian University's net assets had declined from $69.6 million in fiscal 2014-15 to $36.7 million in fiscal 2019-20, including a $20 million unrestricted deficit and a $22.6 million vacation and employee future benefits deficit; approximately $14 million of its endowments were intended for NOSM student scholarships.",
+          "page": 26
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "province-of-ontario"
+          ],
+          "fact": "Laurentian University attributed its financial difficulties in part to Ontario's January 2019 requirement for a 10% domestic tuition reduction for 2019-20 and a domestic tuition freeze for 2020-21.",
+          "page": 27
+        },
+        {
+          "basis": "stated",
+          "date": "2019-05-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-faculty-association"
+          ],
+          "fact": "Laurentian University amended and restated its Federated Funding Formula on May 1, 2019, reducing funding distributed to the Federated Universities under Ontario's new funding model.",
+          "page": 31
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University reported that its combined accumulated unrestricted fund deficit and employee-liabilities deficit had grown to approximately $42.6 million and stated that it was insolvent and would lack sufficient liquidity to meet February payroll without relief under the proposed Initial Order.",
+          "page": 27
+        },
+        {
+          "basis": "stated",
+          "date": "2020-12-21",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "board-of-governors-of-laurentian-university"
+          ],
+          "fact": "After Laurentian University's historical practice of commingling operating receipts, donations and restricted funds, the Board instructed management in December 2020 to create separate accounts for unspent research grants, restricted funds and RHBP contributions; the new segregation process was to be implemented by December 21, 2020.",
+          "page": 32
+        },
+        {
+          "basis": "stated",
+          "date": "2021-01-29",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "As of January 29, 2021, Laurentian University estimated cash of approximately $13.3 million in operating accounts and $3.3 million in segregated accounts, but the report stated that it lacked sufficient cash to fund operations through February or beyond.",
+          "page": 32
+        },
+        {
+          "basis": "stated",
+          "date": "2021-01-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ernst-young-inc",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "The 13-week cash-flow forecast for January 30 through April 30, 2021 projected approximately $29.5 million in receipts, $58.5 million in disbursements and a net cash outflow of approximately $29 million, with sufficient liquidity dependent on court approval of debtor-in-possession financing and a DIP charge.",
+          "page": 34
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "firm-capital-corporation",
+            "firm-capital-mortgage-fund-inc"
+          ],
+          "fact": "Laurentian University executed a DIP term sheet with Firm Capital Corporation, which assigned its interest to Firm Capital Mortgage Fund Inc.; the parties planned to finalize a definitive DIP agreement for approval at the comeback hearing.",
+          "page": 35
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "students-general-association",
+            "laurentian-university-of-sudbury",
+            "toronto-dominion-bank"
+          ],
+          "fact": "The proposed CCAA stay would protect the Students' General Association from proceedings or contractual changes triggered by Laurentian University's insolvency, because the association depended on Laurentian's continued operation and student-fee collections and had approximately $8.5 million in TD-guaranteed debt.",
+          "page": 36
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "students-general-association"
+          ],
+          "fact": "The proposed Initial Order sought permission for Laurentian University to remit Students' Associations fees in the ordinary course because the fees were collected on the associations' behalf and were not Laurentian's income; approximately $1.6 million was forecast to be remitted during the cash-flow period.",
+          "page": 37
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ernst-young-inc"
+          ],
+          "fact": "The proposed Initial Order contemplated an Administration Charge of up to $400,000 for counsel and advisors, the Proposed Monitor and independent counsel, followed by a Directors' Charge of up to $2 million, ranking against Laurentian University's current and future assets.",
+          "page": 37
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "students-general-association"
+          ],
+          "fact": "Laurentian University forecast approximately $1.6 million in student-fee remittances to Students' Associations during the cash-flow period, much of it collected before the proposed CCAA commencement date.",
+          "page": 37
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-ccaa-proceeding",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The proposed Initial Order provides two super-priority charges over Laurentian University's current and future assets: an Administration Charge of up to $400,000 first, followed by a Directors' Charge of up to $2 million.",
+          "page": 37
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The proposed charges were calculated based on amounts considered necessary for the first 10 days of the CCAA proceedings, and Laurentian intends to seek increases at the comeback hearing.",
+          "page": 37
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "firm-capital-corporation"
+          ],
+          "fact": "Laurentian's secured creditors are described as primarily subcontractors holding construction liens against certain Laurentian real property and limited equipment lessors; the proposed charges were not initially intended to rank ahead of secured claims from creditors without notice, but Laurentian expected to seek that priority at the comeback hearing.",
+          "page": 37
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ernst-young-inc"
+          ],
+          "fact": "The proposed $400,000 Administration Charge would secure professional fees and disbursements of Laurentian's counsel and advisors, the Proposed Monitor, the Monitor's independent counsel and independent counsel to the Board.",
+          "page": 37
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "board-of-governors-of-laurentian-university"
+          ],
+          "fact": "The proposed $2 million Directors' Charge would indemnify current and future Laurentian directors and officers for post-commencement obligations and liabilities, except those arising from gross negligence or wilful misconduct, and would apply only where directors' and officers' insurance is unavailable, insufficient or denied.",
+          "page": 38
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "defined-benefit-pension-plan"
+          ],
+          "fact": "Laurentian's monthly payroll was approximately $11 million, monthly defined-benefit pension contributions approximately $1.2 million and monthly accrued vacation pay approximately $800,000; the Proposed Monitor noted that the $2 million Directors' Charge was less than these amounts expected to accrue during the first 10 days.",
+          "page": 38
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "Laurentian intended to seek approval of the DIP Term Sheet and a corresponding DIP Lender's Charge at the comeback hearing, with the charge matching the maximum permitted borrowing under the term sheet.",
+          "page": 38
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-ccaa-proceeding",
+            "laurentian-university-faculty-association",
+            "laurentian-university-of-sudbury",
+            "federated-universities"
+          ],
+          "fact": "The proposed mediation was intended to address restructuring of Laurentian's Federated Universities model, academic programs and employee headcount.",
+          "page": 39
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "The Proposed Monitor reported that without the CCAA filing and DIP financing Laurentian would not have sufficient liquidity to meet February payroll, continue through the academic term or avoid an immediate shutdown.",
+          "page": 39
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-faculty-association"
+          ],
+          "fact": "The Proposed Monitor described the relationship between Laurentian and LUFA as strained and said that obtaining stakeholder concessions on academic programs and faculty and employee headcount would be difficult.",
+          "page": 39
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "ontario-superior-court-of-justice-commercial-list",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "The Proposed Monitor recommended urgent appointment by the Court of an independent, objective and neutral mediator with insolvency and collective-agreement experience, preferably a sitting or recently retired judge.",
+          "page": 40
+        },
+        {
+          "basis": "stated",
+          "date": "2021-01-30",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "Ernst & Young Inc., acting as Proposed Monitor, consented to act as Monitor of Laurentian University if the Court granted the requested relief and submitted the report on January 30, 2021.",
+          "page": 41
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The unaudited cash-flow forecast prepared by Laurentian with assistance from the Proposed Monitor projected total receipts of $29.514 million, operating disbursements of $54.004 million, total disbursements of $58.553 million and net cash receipts/(disbursements) of negative $29.039 million for January 30 through April 30, 2021.",
+          "page": 43
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The cash-flow forecast showed an ending cash balance of $8.328 million for the forecast period.",
+          "page": 43
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The forecast assumed that financing under the DIP Term Sheet would be available, that COVID-19 would affect Laurentian's operations, and that pre-filing amounts owed to third-party suppliers and service providers would be stayed while post-filing goods and services would be paid in the ordinary course.",
+          "page": 44
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "province-of-ontario"
+          ],
+          "fact": "Operating grants in the forecast were primarily based on Ontario's grant-funding framework and were expected to continue arriving semi-monthly.",
+          "page": 44
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "snolab",
+            "cemi",
+            "mirarco"
+          ],
+          "fact": "The forecast included reimbursements for costs Laurentian funded on behalf of associated organizations including SNOLab, CEMI and MIRARCO, based on anticipated costs, billing and collection timing.",
+          "page": 44
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "canada-pension-plan",
+            "quebec-pension-plan"
+          ],
+          "fact": "The forecast provided for remittance of statutory payroll deductions, including employment insurance, Canada Pension Plan, Quebec Pension Plan and income taxes, to the applicable taxing authorities.",
+          "page": 45
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "defined-benefit-pension-plan",
+            "supplementary-unfunded-retirement-plan",
+            "retirement-health-benefits-plan"
+          ],
+          "fact": "The forecast provided for required employee contributions and current-service payments under the defined-benefit pension plan, while payments to former employees or retirees under the supplementary unfunded retirement plan and retirement health benefits plan were stayed.",
+          "page": 45
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "students-general-association"
+          ],
+          "fact": "The forecast provided for ordinary-course payment of current-year and future student refunds, scholarships, bursaries and grants, and for transfers of student fees collected on behalf of Students' Associations.",
+          "page": 46
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "northern-ontario-school-of-medicine",
+            "federated-universities"
+          ],
+          "fact": "The forecast included transfers to Federated Universities under Laurentian's post-filing Federated Funding Formula obligations and transfers to NOSM for student fees collected on NOSM's behalf; pre-filing NOSM student fees were stayed.",
+          "page": 46
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Restricted donations and research grants were forecast to remain in segregated accounts and be available only for their restricted uses.",
+          "page": 46
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "The forecast assumed the proposed DIP facility would be advanced in two tranches under the DIP Term Sheet.",
+          "page": 47
+        }
+      ],
+      "coverage_gap": null,
+      "entities": [
+        "Laurentian University of Sudbury",
+        "Ernst & Young Inc.",
+        "Laurentian University CCAA proceeding",
+        "Ontario Superior Court of Justice Commercial List",
+        "Stikeman Elliott LLP",
+        "Dr. Robert Haché",
+        "Northern Ontario School of Medicine",
+        "Lakehead University",
+        "University of Sudbury",
+        "University of Thorneloe",
+        "Huntington University",
+        "Sudbury Neutrino Observatory Laboratory",
+        "Mining Innovation Rehabilitation and Applied Research Corporation",
+        "Centre for Excellence in Mining Innovation",
+        "Laurentian University Faculty Association",
+        "Laurentian University Staff Union",
+        "Canadian Union of Public Employees",
+        "Laurentian University Administrative and Professional Staff Association",
+        "registered defined benefit pension plan",
+        "supplementary unfunded retirement plan",
+        "retirement health benefits plan",
+        "Board of Governors of Laurentian University",
+        "Senate of Laurentian University",
+        "An Act to Incorporate Laurentian University of Sudbury, S.O. 1960, c. 151 C. 154",
+        "City of Greater Sudbury",
+        "Province of Ontario",
+        "Bank of Montreal",
+        "Royal Bank of Canada",
+        "Toronto-Dominion Bank",
+        "Caisse Populaire Voyageurs Inc.",
+        "SEI Private Trust Company",
+        "SGA",
+        "Firm Capital Corporation",
+        "Firm Capital Mortgage Fund Inc.",
+        "Ontario Ministry of Finance",
+        "Public Health Ontario",
+        "Georgian College",
+        "Bank of Canada",
+        "Higher Education Quality Council of Ontario",
+        "Federated Universities",
+        "Sharon S. Hamilton",
+        "Canada Pension Plan",
+        "Quebec Pension Plan"
+      ]
+    },
+    "Z": {
+      "summary": "This 47-page Proposed Monitor's Report, prepared by Ernst & Young Inc. for Laurentian University's contemplated Companies' Creditors Arrangement Act filing, assesses the university's financial condition and the relief sought in an initial order. Laurentian, a publicly funded bilingual and tricultural university in Sudbury, reported approximately $358.5 million in assets and $321.8 million in liabilities as of April 30, 2020, including $91.7 million in long-term unsecured debt, a $20.0 million unrestricted-fund deficit and a combined unrestricted-fund and employee-liability deficit of about $42.6 million. Tuition and operating grants supplied about 70% of revenue, while domestic tuition cuts and freezes, declining or persistently low-enrolment programs, the 2019 Barrie campus closure and COVID-19 reduced or pressured revenue; salaries and benefits accounted for about 67% of fiscal 2020 expenses.\n\nThe report states that Laurentian was insolvent and, without the requested relief, lacked the liquidity to meet February payroll. As of January 29, 2021, it estimated $13.3 million in operating cash and $3.3 million in segregated accounts, but projected a net cash outflow of approximately $29 million from January 30 through April 30 against $58.5 million in disbursements and $29.5 million in receipts. Laurentian had discussed additional financing with the Province, executed a DIP term sheet with Firm Capital, and proposed a stay, continuation of operations and charges of up to $400,000 for administration and $2 million for directors; the proposed order also addressed student refunds and benefits, student-association fees and protections for the Students General Association, which had approximately $8.5 million in debt guaranteed by Laurentian.\n\nThe report, based on unaudited information and not independently verified to assurance standards, also describes material financial-management and pension obligations. Historically, Laurentian commingled operating and restricted receipts and paid restricted-fund expenses from shared accounts; in December 2020 the Board directed management to establish segregated accounts for research grants, restricted funds and retirement-health contributions. Deferred contributions were approximately $38.5 million, with no funds set aside to satisfy those obligations, while the defined-benefit pension plan had an 85.4% solvency ratio and an estimated $4.5 million going-concern deficiency; Laurentian also intended to seek a stay of certain pension payments.",
+      "key_facts": [
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings",
+            "ernst-young-inc",
+            "ontario-superior-court-of-justice"
+          ],
+          "fact": "Laurentian University of Sudbury applied for an initial order under the Companies' Creditors Arrangement Act seeking, among other relief, a stay of proceedings to allow financial and operational restructuring, and proposed Ernst & Young Inc. as Monitor.",
+          "page": 1
+        },
+        {
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-ccaa-proceedings"
+          ],
+          "fact": "Ernst & Young Inc. prepared the report before and in contemplation of its appointment as Monitor for the CCAA proceedings.",
+          "page": 1
+        },
+        {
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The Proposed Monitor relied on unaudited financial information, books and records, and discussions with Laurentian management, and did not audit or otherwise verify the information to assurance standards.",
+          "page": 2
+        },
+        {
+          "date": "2020-01-30",
+          "entities": [
+            "robert-hache",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The report identifies an affidavit of Dr. Robert Haché as sworn January 30, 2020 and says it relied on information supplied through the Vice-President Administration, the Finance department, and Laurentian's books and records; it also records management's concerns about limited Finance department resources during preparation for the CCAA proceeding.",
+          "page": 3,
+          "quote": "LU has experienced a number of challenges with the limited team and resources in the Finance department."
+        },
+        {
+          "entities": [
+            "ernst-young-inc",
+            "stikeman-elliott-llp",
+            "laurentian-university-ccaa-proceedings"
+          ],
+          "fact": "Ernst & Young Inc. is a licensed insolvency trustee and retained Stikeman Elliott LLP as its independent counsel for the proposed CCAA proceeding.",
+          "page": 3
+        },
+        {
+          "date": "1960-03-28",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University of Sudbury was incorporated on March 28, 1960 under the Laurentian Act.",
+          "page": 4
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "city-of-greater-sudbury",
+            "ontario"
+          ],
+          "fact": "Laurentian is a publicly funded, bilingual and tricultural post-secondary institution operating in the City of Greater Sudbury, Ontario, and is a non-share capital corporation and registered charity exempt from income tax under the Income Tax Act.",
+          "page": 4
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "board-of-governors",
+            "senate"
+          ],
+          "fact": "Laurentian has a bicameral governance structure: its Board of Governors generally controls operational and financial matters, while its Senate is responsible for educational policy subject to the Board's approval of expenditures and facilities.",
+          "page": 4
+        },
+        {
+          "entities": [
+            "board-of-governors",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The Board of Governors has 21 voting members and nine non-voting members; four voting positions were vacant, and the voting members other than the President and two student representatives were independent of Laurentian.",
+          "page": 5
+        },
+        {
+          "entities": [
+            "senate",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian's Senate has 77 voting members and six non-voting members; two elected student voting positions were vacant.",
+          "page": 5
+        },
+        {
+          "date": "2019-01-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "barrie-ontario"
+          ],
+          "fact": "Laurentian's satellite campus in Barrie, Ontario had closed by 2019, and Laurentian is one of 20 public universities in Ontario.",
+          "page": 5
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "During the 2020-2021 fall semester, Laurentian had approximately 8,200 domestic and international undergraduate students, equivalent to about 6,250 full-time equivalents, and approximately 1,100 graduate students, equivalent to about 830 full-time equivalents.",
+          "page": 6
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "northern-ontario-school-of-medicine",
+            "university-of-sudbury",
+            "huntington-university",
+            "university-of-thorneloe",
+            "snolab",
+            "mirarco",
+            "cemi",
+            "students-general-association",
+            "graduate-students-association",
+            "association-des-etudiantes-et-etudiants-francophones",
+            "indigenous-students-circle"
+          ],
+          "fact": "Laurentian reported material relationships with NOSM, the Federated Universities, SNOLab, MIRARCO, CEMI and four student associations, none of which was proposed as an applicant in the CCAA proceedings.",
+          "page": 6
+        },
+        {
+          "entities": [
+            "northern-ontario-school-of-medicine",
+            "laurentian-university-of-sudbury",
+            "lakehead-university"
+          ],
+          "fact": "NOSM is an independent not-for-profit corporation whose two members are Laurentian and Lakehead University; Laurentian's President, Dr. Robert Haché, was serving as NOSM's Board chair.",
+          "page": 7
+        },
+        {
+          "entities": [
+            "northern-ontario-school-of-medicine",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian owns the two buildings occupied by NOSM on the Sudbury campus and leases them to NOSM; Laurentian and Lakehead provide NOSM with facilities, support services, registration, fee collection and research administration.",
+          "page": 7
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "northern-ontario-school-of-medicine"
+          ],
+          "fact": "Laurentian held approximately $14 million in endowments designated for future scholarships for qualifying NOSM students.",
+          "page": 7
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "university-of-sudbury",
+            "huntington-university",
+            "university-of-thorneloe"
+          ],
+          "fact": "The Federated Universities are separate legal entities with independent boards, but their programs and courses are offered through Laurentian, their students generally remain Laurentian students, and Laurentian has the sole authority to confer their degrees except for Huntington's Theology program.",
+          "page": 8,
+          "quote": "For all intents and purposes, the Federated Universities are integrated into LU."
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "university-of-sudbury",
+            "huntington-university",
+            "university-of-thorneloe",
+            "ontario-ministry-of-colleges-and-universities"
+          ],
+          "fact": "The Federated Universities lease buildings located on Laurentian-owned land, receive no direct provincial operating funding, and historically receive portions of Laurentian's provincial funding under a formula that also allocates tuition and service charges.",
+          "page": 8
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "university-of-sudbury",
+            "huntington-university",
+            "university-of-thorneloe"
+          ],
+          "fact": "Under the Federated Funding Formula, Laurentian charges the Federated Universities a service fee equal to 15% of the grant and tuition revenue distributed to them.",
+          "page": 9
+        },
+        {
+          "entities": [
+            "snolab",
+            "laurentian-university-of-sudbury",
+            "carleton-university",
+            "queens-university",
+            "university-of-alberta",
+            "universite-de-montreal",
+            "vale",
+            "creighton-mine"
+          ],
+          "fact": "SNOLab operates under a trust agreement among Laurentian, Carleton University, Queen's University, the University of Alberta and Université de Montréal, with the facility located in Vale's Creighton mine; Laurentian's proportionate share of SNOLab's assets, liabilities and obligations is 20%.",
+          "page": 9
+        },
+        {
+          "date": "2020-12-01",
+          "entities": [
+            "snolab",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "As of December 2020, Laurentian processed payroll for approximately 128 SNOLab employees, funded their payroll, benefits and pension contributions, and invoiced SNOLab for reimbursement.",
+          "page": 10
+        },
+        {
+          "entities": [
+            "mirarco",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "MIRARCO is a corporation without share capital for which Laurentian is the sole member, and Laurentian consolidates MIRARCO in its financial statements.",
+          "page": 10
+        },
+        {
+          "entities": [
+            "mirarco",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian processed payroll and provided benefits and pension contributions for MIRARCO's 19 employees, but MIRARCO's financial difficulties had caused delays in reimbursing Laurentian.",
+          "page": 10
+        },
+        {
+          "entities": [
+            "cemi",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian processed payroll and provided benefits and pension contributions for CEMI's five employees, with CEMI required to reimburse Laurentian for the total cost.",
+          "page": 10
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "students-general-association",
+            "graduate-students-association",
+            "association-des-etudiantes-et-etudiants-francophones",
+            "indigenous-students-circle"
+          ],
+          "fact": "Laurentian collected certain student-association fees through its regular billing process and subsequently distributed the amounts to the respective student organizations.",
+          "page": 11
+        },
+        {
+          "date": "2020-12-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-faculty-association",
+            "laurentian-university-staff-union",
+            "canadian-union-of-public-employees",
+            "laurentian-university-administrative-and-professional-staff-association"
+          ],
+          "fact": "As of December 30, 2020, Laurentian employed approximately 1,751 people: about 612 LUFA employees, 268 LUSU employees, 305 CUPE employees, 134 LUAPSA employees and 432 non-unionized part-time and student employees.",
+          "page": 12
+        },
+        {
+          "date": "2020-11-01",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian had approximately 200 student employees in November 2020, compared with approximately 470 in November 2019, amid the shift to remote study during COVID-19.",
+          "page": 12
+        },
+        {
+          "date": "2020-06-30",
+          "entities": [
+            "laurentian-university-faculty-association",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The three-year LUFA collective agreement expired on June 30, 2020 but automatically continued year-to-year under its terms unless either party gave notice to terminate or amend it.",
+          "page": 12
+        },
+        {
+          "date": "2020-02-01",
+          "entities": [
+            "laurentian-university-faculty-association",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "LUFA gave Laurentian notice to bargain in February 2020.",
+          "page": 12
+        },
+        {
+          "date": "2020-04-01",
+          "entities": [
+            "laurentian-university-faculty-association",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian and LUFA had been bargaining for a new collective agreement since April 2020, but despite extensive negotiations and mediation no material progress had been made.",
+          "page": 13
+        },
+        {
+          "entities": [
+            "laurentian-university-faculty-association",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The report records approximately 102 active unresolved LUFA grievances, an ongoing unfair labour practice complaint, and a judicial review concerning the Provost's 2020 decision to suspend enrolment in 17 low-enrolment academic programs.",
+          "page": 13
+        },
+        {
+          "date": "2018-07-01",
+          "entities": [
+            "laurentian-university-staff-union",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "LUSU and Laurentian entered a collective agreement on July 1, 2018, originally set to expire June 30, 2021; an amended agreement reduced salaries by 1.0% in its first year, provided 0.5% increases at specified dates in years two and three, required six unpaid furlough days in 2020, and included transfer and retirement-incentive provisions.",
+          "page": 13
+        },
+        {
+          "entities": [
+            "laurentian-university-staff-union",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The LUSU furloughs produced a one-time cash benefit of $450,000 for Laurentian, while reassignment, transfer and retirement provisions produced 11.5 position redundancies and approximately $800,000 in annual savings in 2020.",
+          "page": 14
+        },
+        {
+          "date": "2019-09-01",
+          "entities": [
+            "canadian-union-of-public-employees",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "CUPE and Laurentian entered a collective agreement on September 1, 2019 under which a 1% total compensation increase was allocated entirely to scholarships, resulting in no salary increase during the two-year term.",
+          "page": 14
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "db-pension-plan",
+            "university-of-sudbury",
+            "huntington-university",
+            "university-of-thorneloe",
+            "snolab",
+            "mirarco",
+            "cemi"
+          ],
+          "fact": "Laurentian administers a registered defined benefit pension plan open to eligible employees of Laurentian, the Federated Universities, SNOLab, MIRARCO and CEMI, with Laurentian designated as the primary employer.",
+          "page": 14
+        },
+        {
+          "date": "2020-01-01",
+          "entities": [
+            "db-pension-plan",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The DB Pension Plan's actuarial valuation as of January 1, 2020, updated in December 2020, reported an 85.4% solvency ratio and an approximately $4.5 million going-concern deficiency.",
+          "page": 14
+        },
+        {
+          "entities": [
+            "db-pension-plan",
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings"
+          ],
+          "fact": "The valuation set current-service contributions for the next three years at $16,188,000 annually, plus annual special payments of $505,000 toward the deficiency; Laurentian intended to seek a CCAA stay of prefiling and post-filing special payments to the plan.",
+          "page": 15
+        },
+        {
+          "entities": [
+            "surp",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The unfunded SuRP had 32 retired employees eligible for payments, with approximately $260,000 forecast to be payable in July 2021 and an accrued benefit obligation estimated at $3,063,000 as of April 30, 2020.",
+          "page": 15
+        },
+        {
+          "entities": [
+            "rhbp",
+            "laurentian-university-of-sudbury",
+            "university-of-sudbury",
+            "huntington-university",
+            "university-of-thorneloe",
+            "snolab",
+            "mirarco",
+            "cemi"
+          ],
+          "fact": "The RHBP had 866 active employees contributing but not yet collecting benefits and 358 eligible retirees; it was available to employees of Laurentian, the Federated Universities, SNOLab, MIRARCO and CEMI.",
+          "page": 15
+        },
+        {
+          "entities": [
+            "rhbp",
+            "laurentian-university-of-sudbury",
+            "university-of-sudbury",
+            "huntington-university",
+            "university-of-thorneloe"
+          ],
+          "fact": "The RHBP policy contemplated a trust account receiving employee contributions, an annual $25,000 Laurentian contribution and proportionate Federated University contributions, but Laurentian instead recorded the contributions as a liability and did not place them in a separate bank account.",
+          "page": 16
+        },
+        {
+          "date": "2020-12-01",
+          "entities": [
+            "rhbp",
+            "laurentian-university-of-sudbury",
+            "board-of-governors"
+          ],
+          "fact": "In December 2020, acting under a Board of Governors direction, Laurentian began segregating RHBP contributions.",
+          "page": 16
+        },
+        {
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian did not prepare interim monthly or quarterly financial statements; its most recent available financial statements were audited statements for the year ended April 30, 2020.",
+          "page": 16
+        },
+        {
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "For the fiscal year ended April 30, 2020, Laurentian reported total revenues of $198.397 million, total expenses of $201.517 million and a deficiency of revenues over expenses of $3.120 million.",
+          "page": 17
+        },
+        {
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ontario"
+          ],
+          "fact": "Operating grants and tuition fees accounted for approximately 70% of Laurentian's total revenue for the fiscal year ended April 30, 2020.",
+          "page": 17
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ontario"
+          ],
+          "fact": "Ontario required universities to reduce domestic tuition fees by 10% in January 2019 and subsequently imposed a tuition freeze; international tuition was not subject to the reduction or freeze and was much higher than domestic tuition.",
+          "page": 17
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Research grants generally restricted their funds to specified research work and allowable incremental costs, and usually could not be used for faculty salaries or university operating overhead.",
+          "page": 18
+        },
+        {
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Salaries and benefits represented approximately 67% of Laurentian's total expenses for fiscal 2020; $16 million related to research, MIRARCO and SNOLab employees, while the remaining $119 million related to academic teaching and ancillary services.",
+          "page": 19
+        },
+        {
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "As of April 30, 2020, Laurentian reported total assets of $358.520 million, including $4.544 million in cash and short-term investments, $27.045 million in current accounts receivable and $272.267 million in capital assets.",
+          "page": 19
+        },
+        {
+          "date": "2020-04-30",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "As of April 30, 2020, Laurentian reported current liabilities of $43.679 million, including a $14.400 million line of credit, a $1.367 million short-term loan, $22.319 million in accounts payable and accrued liabilities, and a $2.738 million current portion of long-term debt; long-term obligations totaled $109.761 million, including $88.973 million in long-term debt and $20.788 million in employee future-benefit liabilities.",
+          "page": 19
+        },
+        {
+          "entities": [
+            "ontario-superior-court-of-justice",
+            "laurentian-university-ccaa-proceedings"
+          ],
+          "fact": "The Court File No. field on the report's first page is blank.",
+          "page": 1
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University's consolidated financial position at April 30, 2020 showed total assets of approximately $358.5 million, including $33.2 million in current assets, $52.8 million in investments and $272.3 million in capital assets.",
+          "page": 19
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian reported approximately $321.8 million in liabilities, $168.4 million in deferred contributions and net assets of $36.7 million at April 30, 2020.",
+          "page": 20
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "At April 30, 2020, Laurentian had approximately $2.6 million in cash and $1.9 million in short-term investments and relied on an unsecured line of credit to fund operations.",
+          "page": 20
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "sei-private-trust-company",
+            "rbc-dominion-securities-inc"
+          ],
+          "fact": "Laurentian held approximately $54.7 million in investment accounts at SEI Private Trust Company and RBC Dominion Securities Inc., most of which was designated to support $52.8 million in endowments.",
+          "page": 20
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "art-centre-251-john-street",
+            "presidents-house",
+            "mcewen-school-of-architecture",
+            "mcewen-school-of-architecture-85-elm-street"
+          ],
+          "fact": "Laurentian's capital assets included buildings, equipment, site improvements and land, including the Art Centre at 251 John Street, the President's House and the McEwen School of Architecture at 85 Elm Street in downtown Sudbury.",
+          "page": 20
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "caisse-populaire-voyageurs-inc",
+            "royal-bank-of-canada"
+          ],
+          "fact": "Laurentian historically had unsecured revolving demand facilities of up to $26 million with Caisse Populaire Voyageurs Inc., also called Desjardins, and up to $5 million with Royal Bank of Canada.",
+          "page": 21
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "caisse-populaire-voyageurs-inc",
+            "royal-bank-of-canada"
+          ],
+          "fact": "Laurentian had drawn $14.4 million on the Desjardins line of credit and nothing on the RBC line at April 30, 2020; later Desjardins draws were repaid in August and September 2020, RBC cancelled its line, and Laurentian agreed not to draw on the Desjardins facility because of its financial difficulties.",
+          "page": 21
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "toronto-dominion-bank"
+          ],
+          "fact": "Under a TD facility used to fund Laurentian's student recreation centre, the outstanding principal was $1,323,626 as of January 29, 2021, with maturity on April 3, 2021 and no ability for Laurentian to draw further amounts.",
+          "page": 21
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "bank-of-montreal",
+            "royal-bank-of-canada",
+            "toronto-dominion-bank"
+          ],
+          "fact": "Laurentian's long-term unsecured debt at April 30, 2020 totalled approximately $91.7 million, comprising obligations to Bank of Montreal, Royal Bank of Canada and Toronto-Dominion Bank with maturities ranging from 2023 to 2043.",
+          "page": 22
+        },
+        {
+          "date": "2020-06-16",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "bank-of-montreal"
+          ],
+          "fact": "On June 16, 2020, Bank of Montreal agreed to defer principal payments for several months under Laurentian's BMO Credit Facility; approximately $1.3 million remained outstanding under the facility at the time of the report.",
+          "page": 22
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "royal-bank-of-canada"
+          ],
+          "fact": "Laurentian's RBC facilities comprised four fully advanced term loans of $13.547 million, $17.994 million, $40.509 million and $3.616 million, plus a $250,000 revolving facility for letters of guarantee; the loans financed campus construction, a residence, campus modernization and a student-residence renovation.",
+          "page": 22
+        },
+        {
+          "date": "2020-06-25",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "royal-bank-of-canada"
+          ],
+          "fact": "On or about June 25, 2020, RBC agreed to defer principal payments for several months on Laurentian's Residence Takeout Facility and Renovation Takeout Facility; approximately $71.1 million was owing under the RBC Credit Facilities Agreement at the report date.",
+          "page": 23
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "royal-bank-of-canada"
+          ],
+          "fact": "Laurentian covenanted under its RBC facilities not to grant, create, assume or permit any charge, security interest or encumbrance over its property or assets without RBC's written consent.",
+          "page": 23
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "toronto-dominion-bank",
+            "infrastructure-ontario"
+          ],
+          "fact": "Laurentian's TD facilities included a $14.8 million loan with $10,575,875 outstanding as of January 29, 2021 and a facility increased from $6.15 million to $10 million with $6,570,917 outstanding; the latter had been used to finance an athletic facility and convert long-term debt, including debt advanced by TD and Infrastructure Ontario.",
+          "page": 23
+        },
+        {
+          "date": "2020-06-25",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "toronto-dominion-bank"
+          ],
+          "fact": "On or about June 25, 2020, TD agreed to defer principal payments for several months under Laurentian's TD Credit Facility Agreement; approximately $18.5 million was owing under the TD facilities at the report date.",
+          "page": 24
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "students-general-association",
+            "toronto-dominion-bank"
+          ],
+          "fact": "Laurentian guaranteed up to $8.5 million of the Students General Association's debt to TD, incurred to fund a new student centre.",
+          "page": 24
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian's interest-rate swaps produced a net cash outflow of approximately $340,000 per month.",
+          "page": 24
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "db-pension-plan",
+            "surp",
+            "rhbp"
+          ],
+          "fact": "The $20.8 million employee-future-benefits liability reported at April 30, 2020 was an actuarial estimate based on the DB Pension Plan, Supplementary unfunded retirement plan and Retirement health benefits plan, and did not represent the actual deficit that would apply if the plans were wound up.",
+          "page": 24
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian reported $38.5 million in deferred contributions at April 30, 2020, consisting of restricted research grants, donations, scholarships and RHBP contributions; management estimated the balance at approximately $36.5 million as of December 31, 2020.",
+          "page": 25
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ernst-young-inc"
+          ],
+          "fact": "The Proposed Monitor reported that no funds had been set aside or were then available to satisfy Laurentian's deferred-contribution obligations.",
+          "page": 25
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian's deferred capital contributions were approximately $129.9 million at April 30, 2020, of which $0.6 million was unspent and $129.3 million was unamortized; no funds had been set aside for the unspent portion.",
+          "page": 25
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian's net assets fell from $69.6 million in fiscal 2014-15 to $36.7 million in fiscal 2019-20, including a $20.0 million unrestricted-fund deficit and a $22.6 million vacation and employee-future-benefits deficit.",
+          "page": 26
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "mirarco",
+            "mcewen-school-of-architecture"
+          ],
+          "fact": "Laurentian's internally restricted fund balance included $1.1 million attributed to MIRARCO, $2.6 million in carried-forward budget surpluses, a negative $0.7 million accumulated loss from the McEwen School of Architecture and a $0.9 million surplus from ancillary operations; the Proposed Monitor said these amounts were not funded by segregated cash.",
+          "page": 26
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "northern-ontario-school-of-medicine"
+          ],
+          "fact": "Of Laurentian's $52.8 million in endowments, approximately $14 million related to scholarships for Northern Ontario School of Medicine students, with most of those amounts received before NOSM was incorporated.",
+          "page": 26
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian's combined accumulated unrestricted-fund and employee-liability deficit had grown to approximately $42.6 million.",
+          "page": 27
+        },
+        {
+          "basis": "stated",
+          "date": "2019-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ontario"
+          ],
+          "fact": "In January 2019, the Province of Ontario required universities to reduce domestic tuition fees by 10% for fiscal 2019-20 and freeze them for fiscal 2020-21, reducing Laurentian's recent and projected tuition revenue.",
+          "page": 27
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian's total fall-semester enrolment declined from 7,246 full-time equivalents in 2015-16 to 6,834 in 2019-20; it increased to 7,090 in 2020-21, largely because online-course enrolment grew 36.7%, while first-year enrolment fell 2.3%.",
+          "page": 27
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ontario-ministry-of-finance"
+          ],
+          "fact": "The report said Ontario Ministry of Finance demographic projections indicated a relatively flat future student pool in Northern Ontario, no significant increases in Central, Eastern or Southwestern Ontario and a stronger recovery in Toronto and the GTA; Laurentian therefore expected relatively flat domestic enrolment growth.",
+          "page": 28
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian had 175 academic programs, comprising 132 undergraduate and 43 graduate programs, while a large number of programs had persistently low enrolment and were described as financially unsustainable.",
+          "page": 28
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "georgian-college",
+            "barrie-ontario",
+            "laurentian-university-faculty-association"
+          ],
+          "fact": "Laurentian's arrangement with Georgian College for a Barrie satellite campus expired in 2014; Laurentian decided in 2016 to close the campus, which ultimately closed in May 2019, causing an enrolment decline and leaving Laurentian subject to an obligation under its faculty-association collective agreement to retain associated faculty.",
+          "page": 29
+        },
+        {
+          "date": "2020-03",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "public-health-ontario"
+          ],
+          "fact": "After the pandemic was declared, Laurentian halted in-person activity and moved to remote delivery in March 2020 based on recommendations from Public Health Ontario; the Spring and Summer semesters and most of Fall 2020 were delivered online.",
+          "page": 29
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "bank-of-canada"
+          ],
+          "fact": "The pandemic reduced Laurentian's ancillary revenue and international enrolment, increased protective-measure costs and increased its post-retirement-benefit liability after the Bank of Canada's overnight-rate reduction lowered the actuarial discount rate.",
+          "page": 30
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Through attrition and deferred hiring, Laurentian reduced its non-faculty workforce by approximately 20 full-time equivalents and its faculty workforce, excluding the Barrie closure, by approximately 14 full-time equivalents.",
+          "page": 30
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-staff-union"
+          ],
+          "fact": "In summer 2020, Laurentian negotiated a 1% salary reduction, one-time furlough days and other concessions with Laurentian University Staff Union employees, while also reducing salaries for non-union employees and freezing or reducing pay for some executives.",
+          "page": 31
+        },
+        {
+          "date": "2019-05-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "federated-universities",
+            "ontario"
+          ],
+          "fact": "On May 1, 2019, Laurentian amended and restated its Federated Funding Formula to align its relationship with the Federated Universities to Ontario's new funding model; the amendment reduced funding distributed to the Federated Universities.",
+          "page": 31
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The report stated that Laurentian was insolvent and, absent the relief sought in the proposed Initial Order, would not have enough funding or liquidity to meet February payroll.",
+          "page": 31
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "royal-bank-of-canada",
+            "bank-of-montreal",
+            "toronto-dominion-bank"
+          ],
+          "fact": "RBC was Laurentian's primary banking relationship and handled operating receipts and disbursements, while blocked accounts at Bank of Montreal and TD Canada Trust were used for debt-service payments.",
+          "page": 31
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "operating-accounts",
+            "donation-account"
+          ],
+          "fact": "Historically, Laurentian deposited operating and restricted receipts into the same operating accounts, transferred restricted donations from a separate Donation Account into those accounts, and paid both operating and restricted-fund expenses from the commingled funds; no separate accounts were maintained to hold restricted funds.",
+          "page": 31,
+          "quote": "There were no separate bank accounts set up to receive and hold restricted funds."
+        },
+        {
+          "date": "2020-12",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "board-of-governors",
+            "unspent-research-grant-account",
+            "restricted-funds-account",
+            "rhbp-account"
+          ],
+          "fact": "In December 2020, after Laurentian's cash-management practices were brought to the President and Board, the Board directed management to create an Unspent Research Grant Account, Restricted Funds Account and RHBP Account for newly received research grants, restricted funds and RHBP contributions.",
+          "page": 32
+        },
+        {
+          "date": "2020-12-21",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "unspent-research-grant-account",
+            "restricted-funds-account",
+            "rhbp-account"
+          ],
+          "fact": "Beginning December 21, 2020, Laurentian was to monitor operating accounts daily, transfer research grants immediately to the Unspent Research Grant Account, transfer restricted donations to the Restricted Funds Account and move employee and employer RHBP contributions to the RHBP Account on each payroll date.",
+          "page": 32
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "As of January 29, 2021, Laurentian estimated approximately $13.3 million in its operating accounts and $3.3 million in its segregated accounts, but the report said its cash was insufficient to fund operations through February or beyond.",
+          "page": 32
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ontario"
+          ],
+          "fact": "Laurentian discussed its liquidity crisis and need for additional financing with the Province, but lacked sufficient funding commitments to avoid commencing CCAA proceedings.",
+          "page": 33
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ernst-young-inc"
+          ],
+          "fact": "Laurentian and the Proposed Monitor prepared a 13-week cash-flow forecast covering January 30 through April 30, 2021, and the Proposed Monitor reviewed it under section 23(1)(b) of the CCAA.",
+          "page": 33
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The forecast projected approximately $29.5 million in total receipts, net of $4.9 million in restricted-fund receipts, approximately $58.5 million in disbursements, net of $1.3 million in segregated-account reimbursements, and a net cash outflow of approximately $29 million.",
+          "page": 34
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ernst-young-inc"
+          ],
+          "fact": "The Proposed Monitor reported that its review found no material basis to conclude that the forecast assumptions were inconsistent with the forecast's purpose, unsupported by Laurentian's plans or that the forecast failed to reflect those assumptions.",
+          "page": 34
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "firm-capital-corporation",
+            "firm-capital-mortgage-fund-inc"
+          ],
+          "fact": "Laurentian executed a DIP term sheet with Firm Capital Corporation, which later assigned its interest to Firm Capital Mortgage Fund Inc.; the parties planned to finalize a definitive DIP Agreement before the comeback hearing.",
+          "page": 35
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "students-general-association",
+            "laurentian-university-ccaa-proceedings"
+          ],
+          "fact": "The proposed Initial Order would give the Students General Association, although not an applicant in the CCAA proceedings, a limited stay protecting it from proceedings, contract terminations and defaults arising from Laurentian's insolvency and CCAA filing.",
+          "page": 35
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "students-general-association",
+            "toronto-dominion-bank"
+          ],
+          "fact": "The report said the Students General Association was vulnerable because it had approximately $8.5 million in long-term debt guaranteed by Laurentian and depended on Laurentian's continued operation and collection of student fees.",
+          "page": 36
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "students-general-association"
+          ],
+          "fact": "The proposed Initial Order would permit Laurentian to continue ordinary-course payments to students, including refunds, scholarships, bursaries and grants, regardless of whether the obligations arose before or after the proposed order.",
+          "page": 36
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "students-associations"
+          ],
+          "fact": "The proposed Initial Order would permit Laurentian to remit Students' Associations fees in the ordinary course because the report characterized those funds as belonging to the associations rather than Laurentian; approximately $1.6 million was forecast to be remitted during the cash-flow period.",
+          "page": 37
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings"
+          ],
+          "fact": "The proposed Initial Order provided for an Administration Charge of up to $400,000 ranking first and a Directors' Charge of up to $2 million ranking second against Laurentian's current and future assets, undertakings and properties; the amounts were calculated for the first 10 days of the CCAA proceedings and Laurentian intended to seek increases at the comeback hearing.",
+          "page": 37
+        },
+        {
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian's secured creditors were described as primarily subcontractors with construction liens against certain real property and limited equipment lessors; the proposed charges initially did not purport to rank ahead of secured creditors who lacked notice of the application.",
+          "page": 37
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "students-associations",
+            "laurentian-university-ccaa-proceedings"
+          ],
+          "fact": "The Applicant states that student fees collected on behalf of the Students' Associations do not belong to Laurentian University and should be remitted in the ordinary course whether received before or after the proposed CCAA commencement; approximately $1.6 million was forecast to be remitted during the Cash Flow Period.",
+          "page": 37,
+          "quote": "since these funds do not belong to LU"
+        }
+      ],
+      "coverage_gap": null,
+      "entities": [
+        "Laurentian University of Sudbury",
+        "Ernst & Young Inc.",
+        "Ontario Superior Court of Justice",
+        "Laurentian University of Sudbury CCAA proceedings",
+        "Dr. Robert Haché",
+        "Stikeman Elliott LLP",
+        "Chartered Professional Accountants Canada",
+        "City of Greater Sudbury",
+        "Province of Ontario",
+        "Board of Governors",
+        "Senate",
+        "Northern Ontario School of Medicine",
+        "Lakehead University",
+        "University of Sudbury",
+        "Huntington University",
+        "University of Thorneloe",
+        "Ontario Ministry of Colleges and Universities",
+        "Anglican Church of Canada",
+        "Sudbury Neutrino Observatory Laboratory",
+        "Carleton University",
+        "Queen's University",
+        "University of Alberta",
+        "Université de Montréal",
+        "Vale",
+        "Creighton mine",
+        "Mining Innovation Rehabilitation and Applied Research Corporation",
+        "Centre for Excellence in Mining Innovation",
+        "Students General Association",
+        "Graduate Students Association",
+        "Association des étudiantes et étudiants francophones",
+        "Indigenous Students Circle",
+        "Laurentian University Faculty Association",
+        "Laurentian University Staff Union",
+        "Canadian Union of Public Employees",
+        "Laurentian University Administrative and Professional Staff Association",
+        "DB Pension Plan",
+        "Supplementary unfunded retirement plan",
+        "Retirement health benefits plan",
+        "Thunder Bay, Ontario",
+        "Barrie, Ontario",
+        "SEI Private Trust Company",
+        "RBC Dominion Securities Inc.",
+        "Caisse Populaire Voyageurs Inc.",
+        "Royal Bank of Canada",
+        "Bank of Montreal",
+        "Toronto-Dominion Bank",
+        "Infrastructure Ontario",
+        "McEwen School of Architecture",
+        "Georgian College",
+        "Ontario Ministry of Finance",
+        "Public Health Ontario",
+        "Bank of Canada",
+        "Students' Associations",
+        "Firm Capital Corporation",
+        "Firm Capital Mortgage Fund Inc.",
+        "Federated Universities",
+        "Art Centre, 251 John Street",
+        "President's House",
+        "McEwen School of Architecture, 85 Elm Street",
+        "Operating Accounts",
+        "Donation Account",
+        "Unspent Research Grant Account",
+        "Restricted Funds Account",
+        "RHBP Account",
+        "Canada Pension Plan",
+        "Quebec Pension Plan",
+        "Segregated Accounts",
+        "Endowment Fund",
+        "Sharon S. Hamilton"
+      ]
+    }
+  }
+}

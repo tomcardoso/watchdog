@@ -1,0 +1,125 @@
+{
+  "document": "pension-order-2021-03-17",
+  "judgments": {
+    "F1": {
+      "X": {"tier": "credited", "note": "Date (March 17, 2021) stated in summary; 'G.B. Morawetz' only appears as a bare entity name, never joined to a sentence saying he made the order."},
+      "Y": {"tier": "credited", "note": "Date field '2021-03-17' present on key_fact1; Morawetz only in entities list, not stated as the order-maker."},
+      "Z": {"tier": "credited", "note": "Summary and key_fact1 state March 17, 2021; 'G.B. MORAWETZ' only in entities list, not connected to a stated fact."}
+    },
+    "F2": {
+      "X": {"tier": "credited", "note": "Paraphrase: 'issued a pension order in ...CCAA proceeding' captures LU+CCAA link without stating 'motion brought by LU pursuant to CCAA'."},
+      "Y": {"tier": "verbatim", "note": "key_fact1 quote field reproduces 'THIS MOTION, brought by Laurentian University of Sudbury (\"LU\") pursuant to the Companies' Creditors Arrangement Act' near-verbatim."},
+      "Z": {"tier": "credited", "note": "key_fact1 paraphrases LU+CCAA proceeding without the 'motion ... pursuant to CCAA' phrasing."}
+    },
+    "F3": {
+      "X": {"tier": "ungrounded", "note": "No mention anywhere of videoconference, Zoom, Toronto, or COVID-19."},
+      "Y": {"tier": "verbatim", "note": "key_fact1 quote reproduces 'heard this day by videoconference via Zoom in Toronto, Ontario due to the COVID-19 pandemic' verbatim."},
+      "Z": {"tier": "credited", "note": "key_fact1 says 'by videoconference in Toronto, Ontario' — captures venue/mode but drops 'Zoom' and the COVID-19 reason."}
+    },
+    "F4": {
+      "X": {"tier": "verbatim", "note": "key_fact3 states the 65.8% transfer ratio authorization directly."},
+      "Y": {"tier": "verbatim", "note": "key_fact2 quote matches source exactly: 'transfer ratio equal to 65.8%'."},
+      "Z": {"tier": "verbatim", "note": "key_fact3 states the 65.8% transfer ratio authorization directly."}
+    },
+    "F5": {
+      "X": {"tier": "verbatim", "note": "key_fact4 states the Jan 1 2020 valuation / Dec 2020 FSRA filing origin of 65.8%."},
+      "Y": {"tier": "verbatim", "note": "key_fact3 quote matches source exactly."},
+      "Z": {"tier": "verbatim", "note": "key_fact4 states the Jan 1 2020 valuation / Dec 2020 FSRA filing origin of 65.8%."}
+    },
+    "F6": {
+      "X": {"tier": "ungrounded", "note": "X never defines what qualifies someone as an 'Interim CV Applicant' (no mention of the retirement/termination statement + 100% election form criterion) anywhere in its key_facts."},
+      "Y": {"tier": "verbatim", "note": "key_fact4 states the definition near-verbatim: received retirement/termination statement + election form indicating 100% CV transfer + not yet transferred."},
+      "Z": {"tier": "credited", "note": "key_fact3 says forms 'indicated they could elect a 100% transfer' and transfer 'not yet been made' but drops the specific 'retirement or termination statement' document type."}
+    },
+    "F7": {
+      "X": {"tier": "credited", "note": "key_fact5 states re-election required within 30 days of notice, but omits 'in writing' and the 're-election form' detail."},
+      "Y": {"tier": "verbatim", "note": "key_fact5 states receipt of re-election form and written election due within 30 days after notice."},
+      "Z": {"tier": "verbatim", "note": "key_fact5 states receipt of re-election form and written election within 30 days after notice."}
+    },
+    "F8": {
+      "X": {"tier": "verbatim", "note": "key_fact6 states deemed withdrawal + retained deferred pension entitlement directly."},
+      "Y": {"tier": "verbatim", "note": "key_fact6 states deemed withdrawal + retained deferred pension entitlement directly."},
+      "Z": {"tier": "verbatim", "note": "key_fact6 states deemed withdrawal + retained deferred pension entitlement directly."}
+    },
+    "F10": {
+      "X": {"tier": "verbatim", "note": "key_fact7 states the payment 'stayed and suspended'."},
+      "Y": {"tier": "verbatim", "note": "key_fact9 states 'stayed and suspended'."},
+      "Z": {"tier": "credited", "note": "key_fact8 says only 'stayed', omitting 'suspended' — same substance, less precise wording."}
+    },
+    "F11": {
+      "X": {"tier": "verbatim", "note": "key_fact8 states the second incremental payment for July 2018-June 2019, triggered by the Dec 2020 valuation, with no amount given."},
+      "Y": {"tier": "verbatim", "note": "key_fact9 states the incremental assessment for the same period and trigger, no amount given."},
+      "Z": {"tier": "verbatim", "note": "key_fact9 states the incremental assessment for the same period and trigger, no amount given."}
+    },
+    "F12": {
+      "X": {"tier": "verbatim", "note": "key_fact10 states the stay operates under paragraph 12 of the Amended and Restated Initial Order dated February 11, 2021."},
+      "Y": {"tier": "ungrounded", "note": "No key_fact, summary, or entity mentions paragraph 12 or the Feb 11, 2021 Amended and Restated Initial Order."},
+      "Z": {"tier": "ungrounded", "note": "No key_fact, summary, or entity mentions paragraph 12 or the Feb 11, 2021 Amended and Restated Initial Order."}
+    },
+    "F13": {
+      "X": {"tier": "ungrounded", "note": "No key_fact states directors/officers/etc. incur no obligation or liability from the stay."},
+      "Y": {"tier": "verbatim", "note": "key_fact10 states LU and its directors/officers/employees/agents/advisers/consultants incur no obligation or liability from the stay."},
+      "Z": {"tier": "verbatim", "note": "key_fact10 states the same no-liability protection directly."}
+    },
+    "F14": {
+      "X": {"tier": "verbatim", "note": "key_fact9 states FSRA is not prevented from asserting a claim against LU for the assessment amounts."},
+      "Y": {"tier": "verbatim", "note": "key_fact10 quote reproduces the FSRA carve-out near-verbatim."},
+      "Z": {"tier": "verbatim", "note": "key_fact10 states FSRA's ability to assert a claim for the stayed amounts is preserved."}
+    },
+    "F15": {
+      "X": {"tier": "ungrounded", "note": "No mention anywhere of the Pension Benefits Act or future adjustments to the transfer ratio."},
+      "Y": {"tier": "verbatim", "note": "key_fact7 states future adjustments must be made under the PBA/regulations or further court order."},
+      "Z": {"tier": "verbatim", "note": "key_fact7 states future adjustments must be made under the PBA/regulations or further court order."}
+    },
+    "F16": {
+      "X": {"tier": "ungrounded", "note": "No mention anywhere of the court requesting aid/recognition from Canadian or U.S. courts/tribunals/bodies."},
+      "Y": {"tier": "ungrounded", "note": "No mention anywhere of the court requesting aid/recognition from Canadian or U.S. courts/tribunals/bodies."},
+      "Z": {"tier": "verbatim", "note": "key_fact11 states the court requested recognition/assistance from courts, tribunals, and regulatory/administrative bodies in Canada and the U.S."}
+    },
+    "F17": {
+      "X": {"tier": "verbatim", "note": "key_fact11 names all five Interim CV Applicants and states no one appeared for the rest."},
+      "Y": {"tier": "verbatim", "note": "key_fact11 names all five and states no one else appeared."},
+      "Z": {"tier": "verbatim", "note": "key_fact10 names all five and states no one else appeared."}
+    },
+    "F18": {
+      "X": {"tier": "ungrounded", "note": "Haché and Brinkman appear only as bare entity names; no key_fact states the reading list (Notice of Motion, affidavit dates, Second Report of the Monitor)."},
+      "Y": {"tier": "ungrounded", "note": "Same — Haché/Brinkman only in entities list, no statement of the specific documents read or their dates."},
+      "Z": {"tier": "ungrounded", "note": "Same — Haché/Brinkman/Monitor only named as entities, no statement of the specific documents read or their dates."}
+    },
+    "F19": {
+      "X": {"tier": "verbatim", "note": "key_fact2 states LU is sponsor and administrator of the Pension Plan."},
+      "Y": {"tier": "verbatim", "note": "key_fact2 states LU is sponsor and administrator of the Pension Plan."},
+      "Z": {"tier": "verbatim", "note": "key_fact3 states LU as sponsor and administrator of the Pension Plan."}
+    },
+    "M1": {
+      "X": {"tier": "ungrounded", "note": "Morawetz appears only as a bare entity name (likely sourced from the page-1 caption); no arm states a page-4 signature block."},
+      "Y": {"tier": "ungrounded", "note": "Same — entity-only presence, no signature-block statement."},
+      "Z": {"tier": "ungrounded", "note": "Same — entity-only presence, no signature-block statement."}
+    },
+    "M3": {
+      "X": {"tier": "verbatim", "note": "key_fact8 captures the second, unquantified incremental PBGF payment distinctly from the $842,018.34 figure."},
+      "Y": {"tier": "verbatim", "note": "key_fact9 captures the second, unquantified incremental payment distinctly."},
+      "Z": {"tier": "verbatim", "note": "key_fact9 captures the second, unquantified incremental payment distinctly."}
+    },
+    "M4": {
+      "X": {"tier": "verbatim", "note": "key_fact9 states the FSRA carve-out clearly."},
+      "Y": {"tier": "verbatim", "note": "key_fact10 quotes the FSRA carve-out verbatim."},
+      "Z": {"tier": "verbatim", "note": "key_fact10 states the FSRA carve-out clearly."}
+    },
+    "M5": {
+      "X": {"tier": "verbatim", "note": "key_fact6 states the 30-day deemed-withdrawal consequence in full."},
+      "Y": {"tier": "verbatim", "note": "key_fact6 states the 30-day deemed-withdrawal consequence in full."},
+      "Z": {"tier": "verbatim", "note": "key_fact6 states the 30-day deemed-withdrawal consequence in full."}
+    },
+    "M6": {
+      "X": {"tier": "ungrounded", "note": "Derek Harland appears once as a bare entity name; no fact ties him to either the Affidavit of Service or TGF counsel role."},
+      "Y": {"tier": "ungrounded", "note": "Same — bare entity name only, no dual-capacity statement."},
+      "Z": {"tier": "ungrounded", "note": "Same — bare entity name only, no dual-capacity statement."}
+    },
+    "M7": {
+      "X": {"tier": "verbatim", "note": "key_fact11 names all five pensioners in the recital context."},
+      "Y": {"tier": "verbatim", "note": "key_fact11 names all five pensioners in the recital context."},
+      "Z": {"tier": "verbatim", "note": "key_fact10 names all five pensioners in the recital context."}
+    }
+  }
+}

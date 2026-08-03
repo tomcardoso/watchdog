@@ -1,0 +1,80 @@
+{
+  "document": "annual-financial-report-20-21",
+  "judgments": {
+    "F12": {
+      "X": {"tier": "verbatim", "note": "States MU-going-concern heading, CCAA stay extended to May 31, 2022, and unmodified opinion (across two linked key_facts); does not cite 'Note 2' by number but substance is fully present."},
+      "Y": {"tier": "verbatim", "note": "States CCAA stay extended to May 31, 2022 tied to going-concern MU, plus a separate unmodified-opinion fact; Note 2 not cited by number but substance present."},
+      "Z": {"tier": "verbatim", "note": "Quotes the auditor's report directly, explicitly naming Note 2, the Feb 1 2021 stay extended to May 31 2022, and 'Our opinion is not modified in respect of this matter.'"}
+    },
+    "F16": {
+      "X": {"tier": "ungrounded", "note": "No mention anywhere of the $42.2M combined deficit, multi-year operating losses, enrolment decline 2015-16 to 2019-20, or the 10% tuition cut/freeze; X frames the crisis solely around the CCAA filing and restructuring."},
+      "Y": {"tier": "credited", "note": "Captures the $42.2M combined deficit figure verbatim (with quote) but omits the 'many years of recurring deficits' framing, the enrolment-decline years, and the 10% tuition cut/freeze detail — only a fraction of the long-run causal narrative."},
+      "Z": {"tier": "verbatim", "note": "States 'many years of recurring operating deficits,' the 2015-16 to 2019-20 enrolment decrease, the mandated 10% tuition cut for 2019-20 plus the 2020-21 freeze, and the $42.2M combined deficit — full match to the long-run-causes framing."}
+    },
+    "F17": {
+      "X": {"tier": "verbatim", "note": "States 39 English-language and 27 French-language program closures under the CCAA process."},
+      "Y": {"tier": "verbatim", "note": "States the same closure counts as part of CCAA restructuring."},
+      "Z": {"tier": "verbatim", "note": "States the same closure counts as part of the CCAA process."}
+    },
+    "F18": {
+      "X": {"tier": "verbatim", "note": "States $40 million/year, 25% reduction from restructuring."},
+      "Y": {"tier": "verbatim", "note": "States $40 million/year, 25% reduction."},
+      "Z": {"tier": "verbatim", "note": "States $40 million/year, 25% reduction."}
+    },
+    "F20": {
+      "X": {"tier": "verbatim", "note": "States distribution cut from 3.5% (2020) to 2.0%, and $590,000 administrative fee charged in 2021."},
+      "Y": {"tier": "verbatim", "note": "States distribution cut from 3.5% (2020) to 2.0%, and $590,000 fee recognized during the year."},
+      "Z": {"tier": "verbatim", "note": "States distribution cut from 3.5% (2020) to 2.0%, and $590,000 fee recognized for managing the endowment during the year."}
+    },
+    "M1": {
+      "X": {"tier": "verbatim", "note": "Direct quote of the dual date: March 7, 2022, except Note 27, as of April 22, 2022."},
+      "Y": {"tier": "verbatim", "note": "Same dual-date fact stated with quote."},
+      "Z": {"tier": "verbatim", "note": "Same dual-date fact stated with quote."}
+    },
+    "M2": {
+      "X": {"tier": "ungrounded", "note": "No mention of the Board of Governors signature block or blank signature lines anywhere in key_facts or entities."},
+      "Y": {"tier": "ungrounded", "note": "'Board of Governors' appears only regarding renewal/governance conditions, never the balance-sheet signature block."},
+      "Z": {"tier": "ungrounded", "note": "'Board of Governors' appears only regarding renewal/governance conditions, never the balance-sheet signature block."}
+    },
+    "M3": {
+      "X": {"tier": "verbatim", "note": "States Note 27 addresses the post-issuance amendment and covers its content (interfund transfers, RHBP termination accounting) at page 68."},
+      "Y": {"tier": "verbatim", "note": "States the statements were amended post-issuance for errors identified after publication, tied to Note 27 via the dual-date fact and page-68 detail."},
+      "Z": {"tier": "verbatim", "note": "States Note 27 describes the amendment, quotes 'financial statements...have been amended for errors identified after their issuance,' and details the restatement's effects."}
+    },
+    "M6": {
+      "X": {"tier": "ungrounded", "note": "No mention of a data breach or related uncertified class-action claims anywhere in key_facts."},
+      "Y": {"tier": "verbatim", "note": "Explicitly states uncertified class-action claims relating to a data breach, plus employee claims and CCAA-related contract claims."},
+      "Z": {"tier": "verbatim", "note": "Explicitly states uncertified class-action claims related to a data breach, employee claims, and CCAA claims, with supporting quote."}
+    },
+    "M8": {
+      "X": {"tier": "verbatim", "note": "States Firm Capital rate (higher of 8.50% or TD prime + 6.05%) at page 46 and the Replacement DIP Facility's 1.11% rate at page 67 — both notes joined."},
+      "Y": {"tier": "verbatim", "note": "States both rates: Firm Capital's 8.50%/TD prime+6.05% and the Replacement Facility's 1.11%."},
+      "Z": {"tier": "verbatim", "note": "States both rates: Firm Capital's 8.50%/TD prime+6.05% and the Replacement Facility's 1.11%."}
+    },
+    "M9": {
+      "X": {"tier": "verbatim", "note": "Same as F20 — states the 3.5%-to-2.0% policy cut alongside the new $590,000 administrative fee."},
+      "Y": {"tier": "verbatim", "note": "Same as F20 — states the 3.5%-to-2.0% policy cut alongside the new $590,000 fee."},
+      "Z": {"tier": "verbatim", "note": "Same as F20 — states the 3.5%-to-2.0% policy cut alongside the new $590,000 fee."}
+    },
+    "M12": {
+      "X": {"tier": "credited", "note": "States LU is 'principal employer' of the pension plan and gives both dates (Huntington ceasing accrual June 30 2021; U of Sudbury/Thorneloe suspended after Dec 31 2021), but never states the plan also covers SNOLAB, CEMI, or MIRARCO — misses the four-institution 'blast radius' breadth."},
+      "Y": {"tier": "credited", "note": "States both specific dates correctly (Huntington June 30 2021; U of Sudbury/Thorneloe Dec 31 2021) but never uses 'principal employer' framing or mentions SNOLAB/CEMI/MIRARCO coverage at all."},
+      "Z": {"tier": "verbatim", "note": "States explicitly that LU is 'the principal employer for the Pension Plan, which included the Federated Universities, SNOLAB, the Centre for Excellence in Mining and Innovation and MIRARCO,' plus both specific dates — full match."}
+    },
+    "M15": {
+      "X": {"tier": "ungrounded", "note": "No mention anywhere of a reciprocal insurance exchange or shared liability with other universities."},
+      "Y": {"tier": "ungrounded", "note": "No mention anywhere of a reciprocal insurance exchange or the 40-university risk pool."},
+      "Z": {"tier": "ungrounded", "note": "No mention anywhere of a reciprocal insurance exchange or the 40-university risk pool."}
+    },
+    "M17": {
+      "X": {"tier": "verbatim", "note": "States the TD Canada Trust loan financed the Student Recreation Centre and became due on demand after the CCAA default."},
+      "Y": {"tier": "credited", "note": "States the TD Canada Trust loan, amount, and due-on-demand CCAA default, but never ties this specific loan to the Student Recreation Centre (mentions the recreation centre only generically among capital projects elsewhere)."},
+      "Z": {"tier": "verbatim", "note": "States the TD Canada Trust loan 'financed the Student Recreation Centre' and was triggered due on demand by the CCAA default — full match."}
+    },
+    "M19": {
+      "X": {"tier": "ungrounded", "note": "Only says the support package was 'subject to conditions' without ever specifying Board of Governors renewal, the strategic plan, or the December 16, 2021 start date — the specific detail required is absent."},
+      "Y": {"tier": "verbatim", "note": "States support was conditional on Board of Governors renewal and a long-term strategic plan, with the first phase of Board renewal beginning December 16, 2021."},
+      "Z": {"tier": "verbatim", "note": "States support was conditional on Board of Governors renewal and a long-term strategic plan, with the first phase of Board renewal commencing December 16, 2021."}
+    }
+  }
+}

@@ -1,0 +1,122 @@
+{
+  "tally": {
+    "gpt-luna-low": {
+      "facts": {
+        "verbatim": 34,
+        "credited": 21,
+        "ungrounded": 32
+      },
+      "must_not_miss": {
+        "verbatim": 19,
+        "credited": 9,
+        "ungrounded": 25
+      }
+    },
+    "gpt-luna-med": {
+      "facts": {
+        "verbatim": 49,
+        "credited": 18,
+        "ungrounded": 20
+      },
+      "must_not_miss": {
+        "verbatim": 24,
+        "credited": 10,
+        "ungrounded": 19
+      }
+    },
+    "gpt-luna-high": {
+      "facts": {
+        "verbatim": 52,
+        "credited": 20,
+        "ungrounded": 15
+      },
+      "must_not_miss": {
+        "verbatim": 29,
+        "credited": 5,
+        "ungrounded": 19
+      }
+    }
+  },
+  "summary": {
+    "gpt-luna-low": {
+      "facts": {
+        "verbatim": 34,
+        "credited": 21,
+        "ungrounded": 32,
+        "hit": 55,
+        "total": 87,
+        "pct": 63
+      },
+      "must_not_miss": {
+        "verbatim": 19,
+        "credited": 9,
+        "ungrounded": 25,
+        "hit": 28,
+        "total": 53,
+        "pct": 53
+      }
+    },
+    "gpt-luna-med": {
+      "facts": {
+        "verbatim": 49,
+        "credited": 18,
+        "ungrounded": 20,
+        "hit": 67,
+        "total": 87,
+        "pct": 77
+      },
+      "must_not_miss": {
+        "verbatim": 24,
+        "credited": 10,
+        "ungrounded": 19,
+        "hit": 34,
+        "total": 53,
+        "pct": 64
+      }
+    },
+    "gpt-luna-high": {
+      "facts": {
+        "verbatim": 52,
+        "credited": 20,
+        "ungrounded": 15,
+        "hit": 72,
+        "total": 87,
+        "pct": 83
+      },
+      "must_not_miss": {
+        "verbatim": 29,
+        "credited": 5,
+        "ungrounded": 19,
+        "hit": 34,
+        "total": 53,
+        "pct": 64
+      }
+    }
+  },
+  "per_doc_pct": {
+    "gpt-luna-low": {
+      "annual-financial-report-19-20": 57,
+      "annual-financial-report-20-21": 67,
+      "first-report-monitor": 43,
+      "initial-order-2021-02-01": 42,
+      "pension-order-2021-03-17": 67,
+      "prefiling-report-monitor": 77
+    },
+    "gpt-luna-med": {
+      "annual-financial-report-19-20": 48,
+      "annual-financial-report-20-21": 87,
+      "first-report-monitor": 65,
+      "initial-order-2021-02-01": 69,
+      "pension-order-2021-03-17": 79,
+      "prefiling-report-monitor": 84
+    },
+    "gpt-luna-high": {
+      "annual-financial-report-19-20": 62,
+      "annual-financial-report-20-21": 87,
+      "first-report-monitor": 70,
+      "initial-order-2021-02-01": 65,
+      "pension-order-2021-03-17": 83,
+      "prefiling-report-monitor": 87
+    }
+  }
+}

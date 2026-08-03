@@ -1,0 +1,110 @@
+{
+  "document": "annual-financial-report-19-20",
+  "judgments": {
+    "F1": {
+      "X": {"tier": "ungrounded", "note": "No mention anywhere of the approved budget expecting balanced results, being 'on track', or the $0.9M anticipated deficit."},
+      "Y": {"tier": "ungrounded", "note": "Same omission; Y goes straight to actual operating-fund figures ($159,041K rev / $164,483K exp / $5,442K deficit) with no budgeted-expectation baseline."},
+      "Z": {"tier": "ungrounded", "note": "No mention of the pre-COVID budget expectation or the $0.9M anticipated deficit anywhere in summary or key_facts."}
+    },
+    "F2": {
+      "X": {"tier": "verbatim", "note": "States '$5.4 million' deficit 'of which $5.2 million' COVID-related, matching the quote exactly (page 5 key_fact)."},
+      "Y": {"tier": "credited", "note": "States the $5,442K/$5,149K reconciliation-table figures (~$5.1M attributed to COVID, both in key_facts and summary) but never states the '$5.2 million' narrative figure the fact quotes — a related but distinct number from the same document."},
+      "Z": {"tier": "verbatim", "note": "States '$5.2 million' COVID-attributed within a '$5.4 million' total operating deficit, matching the quote."}
+    },
+    "F3": {
+      "X": {"tier": "ungrounded", "note": "No trace of the 'unwavering commitment' / 'trace its path to sustainability' language."},
+      "Y": {"tier": "ungrounded", "note": "No trace of this framing language anywhere in summary or key_facts."},
+      "Z": {"tier": "ungrounded", "note": "No trace of this framing language anywhere in summary or key_facts."}
+    },
+    "F4": {
+      "X": {"tier": "credited", "note": "States '$52.8 million in endowment' (matching part of the quote) but never states the '$1 million increase over 2018-19' or the '3.5% spending rate' — both absent."},
+      "Y": {"tier": "credited", "note": "Same partial match: '$52.8 million in endowment' stated, but the $1M increase and 3.5% spending rate are never mentioned."},
+      "Z": {"tier": "credited", "note": "Same partial match: '$52.8 million in endowment' stated, but the $1M increase and 3.5% spending rate are never mentioned."}
+    },
+    "F5": {
+      "X": {"tier": "verbatim", "note": "States the unqualified opinion ('presented fairly, in all material respects') with date 2020-10-30 attached to the key_fact."},
+      "Y": {"tier": "verbatim", "note": "Quotes the opinion in full and carries the 2020-10-30 date on the key_fact."},
+      "Z": {"tier": "credited", "note": "States the unqualified/'fairly presented' opinion but the key_fact has no date field and no mention of October 30, 2020 anywhere in Z's output — misses the date element the scoring note calls out as essential."}
+    },
+    "F11": {
+      "X": {"tier": "ungrounded", "note": "States the $14.4M line-of-credit draw (twice, pages 7 and 33) but never connects it to capital spending — no arm text ties the draw to a capital-spending purpose."},
+      "Y": {"tier": "credited", "note": "Doesn't state 'capital spending' directly, but page-32 key_fact folds the $14.400M line-of-credit draw into the calculation of 'investment in capital assets,' implying the capital-financing purpose indirectly."},
+      "Z": {"tier": "credited", "note": "Page 7 key_fact: lines of credit exist 'to support internal capital funding,' and $14.4M was utilized — a paraphrase of 'used for capital spending,' though 'funding' stands in for 'spending.'"}
+    },
+    "F12": {
+      "X": {"tier": "credited", "note": "States the solvency ratio numbers (85.4%/87.8%) but never states the 85% mandatory-funding threshold — the fact's second half is missing."},
+      "Y": {"tier": "credited", "note": "Same: solvency ratio numbers stated (85.4%/87.8%) but the 85%-funding-threshold rule is never mentioned."},
+      "Z": {"tier": "verbatim", "note": "States both: solvency ratio deficit 85.4% (2019: 87.8%) AND that the University is 'required to fund solvency deficits only up to an 85% level.'"}
+    },
+    "F13": {
+      "X": {"tier": "verbatim", "note": "States PfAD rate '10.3%, up from 7.94%' exactly matching the quote."},
+      "Y": {"tier": "verbatim", "note": "States PfAD rate '10.3% compared with 7.94% in 2019' exactly matching the quote."},
+      "Z": {"tier": "credited", "note": "States '10.29% provision for adverse deviation... up from 7.94%' — same direction and near-identical figure, but not the '10.3%' specifically quoted; treated as a close but distinct precision/citation."}
+    },
+    "F14": {
+      "X": {"tier": "ungrounded", "note": "No mention of the $20M pre-COVID / ~$10M post-COVID / $30M total savings figures anywhere."},
+      "Y": {"tier": "verbatim", "note": "Page-4 key_fact states '$20 million in pre-COVID savings and approximately $10 million in additional post-COVID savings, for more than $30 million in savings since 2018 as of August 2020' — matches the quote closely."},
+      "Z": {"tier": "ungrounded", "note": "No mention of the $20M/$10M/$30M savings figures anywhere in summary or key_facts."}
+    },
+    "F16": {
+      "X": {"tier": "ungrounded", "note": "No mention of the 7.6% tuition-revenue decline or the 10% domestic tuition-fee reduction."},
+      "Y": {"tier": "ungrounded", "note": "Page-11 key_fact references the Sustainability Plan addressing 'the tuition-rate reduction' in passing, but states no percentages and no causal revenue-decline figure — too thin to credit."},
+      "Z": {"tier": "ungrounded", "note": "No mention of the 7.6% tuition-revenue decline or the 10% domestic tuition-fee reduction."}
+    },
+    "F17": {
+      "X": {"tier": "ungrounded", "note": "No mention of the 7.7% operating-grants rise or the one-time Northern Sustainability grant anywhere."},
+      "Y": {"tier": "ungrounded", "note": "Mentions a 'Northern Tuition Sustainability Fund' but in the opposite direction (a $1.4M shortfall, not a one-time grant boosting revenue) and no 7.7% figure — this is a different item, not a match."},
+      "Z": {"tier": "ungrounded", "note": "No mention of the 7.7% operating-grants rise or the one-time Northern Sustainability grant anywhere."}
+    },
+    "F19": {
+      "X": {"tier": "verbatim", "note": "States endowment return was negative and '$1.8 million of scholarship spending' was 'charged to the operating fund' — matches the quote's substance."},
+      "Y": {"tier": "verbatim", "note": "Same statement: negative endowment return, $1.8 million charged to the operating fund."},
+      "Z": {"tier": "verbatim", "note": "Same statement: negative endowment return, $1.8 million charged to the operating fund."}
+    },
+    "M1": {
+      "X": {"tier": "verbatim", "note": "Unqualified opinion stated with date 2020-10-30 attached."},
+      "Y": {"tier": "verbatim", "note": "Unqualified/unmodified opinion quoted in full with date 2020-10-30 attached."},
+      "Z": {"tier": "credited", "note": "States the unqualified, 'fairly presented' opinion, but no date (2020-10-30 or 'October 30') appears anywhere in Z's output — misses the date element the scoring note singles out."}
+    },
+    "M2": {
+      "X": {"tier": "ungrounded", "note": "Neither Lorella Hayes nor Normand Lavallée appear anywhere in X's entities or key_facts."},
+      "Y": {"tier": "ungrounded", "note": "Both names appear in Y's top-level entities list, but no key_fact or summary text states their titles, credentials, or that they signed the Statement of Administrative Responsibility — a bare name-drop with no asserted substance doesn't convey the item."},
+      "Z": {"tier": "ungrounded", "note": "Neither Lorella Hayes nor Normand Lavallée appear anywhere in Z's entities or key_facts."}
+    },
+    "M3": {
+      "X": {"tier": "verbatim", "note": "Key_fact directly quotes: 'Eckler Ltd. has been retained by the University in order to provide an estimate of the University's liability for pension and other employee future benefits.'"},
+      "Y": {"tier": "verbatim", "note": "Key_fact states 'Eckler Ltd. estimated pension and other employee-future-benefit liabilities.'"},
+      "Z": {"tier": "ungrounded", "note": "'Eckler Ltd.' appears only in Z's top-level entities list; no key_fact or summary text states what Eckler does or its actuarial role."}
+    },
+    "M4": {
+      "X": {"tier": "ungrounded", "note": "States the $14.4M line-of-credit draw twice but never ties it to capital spending anywhere in X's output."},
+      "Y": {"tier": "credited", "note": "Page-32 key_fact folds the $14.4M line-of-credit draw into the 'investment in capital assets' calculation, indirectly conveying the capital-financing link without stating it plainly."},
+      "Z": {"tier": "credited", "note": "Page-7 key_fact: lines of credit exist 'to support internal capital funding,' with $14.4M utilized — a paraphrase of the same relationship."}
+    },
+    "M5": {
+      "X": {"tier": "ungrounded", "note": "No mention of the 7.7% operating-grants rise or the one-time Northern Sustainability grant."},
+      "Y": {"tier": "ungrounded", "note": "Mentions a 'Northern Tuition Sustainability Fund' shortfall (opposite direction, no 7.7% figure) — not the same item as the one-time grant driving the rise."},
+      "Z": {"tier": "ungrounded", "note": "No mention of the 7.7% operating-grants rise or the one-time Northern Sustainability grant."}
+    },
+    "M6": {
+      "X": {"tier": "ungrounded", "note": "States the 85.4%/87.8% solvency ratio numbers but never states the 85% mandatory-funding threshold or the relationship between the two figures."},
+      "Y": {"tier": "ungrounded", "note": "Same: solvency ratio numbers given, but the 85%-threshold relationship is never stated."},
+      "Z": {"tier": "verbatim", "note": "Explicitly states the University 'was required to fund solvency deficits only up to an 85% level' alongside the 85.4% ratio — the specific relationship M6 tests for."}
+    },
+    "M7": {
+      "X": {"tier": "verbatim", "note": "States negative endowment return and the $1.8M cost charged to the operating fund."},
+      "Y": {"tier": "verbatim", "note": "States negative endowment return and the $1.8M cost charged to the operating fund."},
+      "Z": {"tier": "verbatim", "note": "States negative endowment return and the $1.8M cost charged to the operating fund."}
+    },
+    "M10": {
+      "X": {"tier": "ungrounded", "note": "'Audit Committee' appears as an entity, but no key_fact states its members are non-officers/non-employees or that auditors have full committee access with/without administration present."},
+      "Y": {"tier": "ungrounded", "note": "Audit Committee is mentioned as the Board's review channel (page 14) but the specific independence/full-access safeguard is never stated."},
+      "Z": {"tier": "ungrounded", "note": "'Audit Committee' does not even appear in Z's entities list or key_facts; the governance safeguard is entirely absent."}
+    },
+    "M12": {
+      "X": {"tier": "credited", "note": "States the six-month deferral of residence-debt repayments after year-end, but never mentions the specific detail of 'four loans.'"},
+      "Y": {"tier": "verbatim", "note": "Page-30 key_fact states 'principal repayments on four loans were deferred for six months after year-end' — matches the specific detail exactly."},
+      "Z": {"tier": "credited", "note": "States the six-month deferral of residence-debt principal repayments after year-end, but never mentions the specific 'four loans' detail."}
+    }
+  }
+}

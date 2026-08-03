@@ -1,0 +1,120 @@
+{
+  "document": "first-report-monitor",
+  "judgments": {
+    "F1": {
+      "X": {"tier": "verbatim", "note": "States Feb 1 2021 order, E&Y monitor, and explicitly 'initial 10-day stay'."},
+      "Y": {"tier": "verbatim", "note": "Explicitly states 'granted an initial 10-day stay of proceedings' with date and monitor."},
+      "Z": {"tier": "credited", "note": "Gives Feb 1 order/E&Y monitor and separately the Feb 11 stay-end date, from which 10 days is derivable, but never states '10-day' directly."}
+    },
+    "F2": {
+      "X": {"tier": "verbatim", "note": "Exact quote: comeback motion 9:00am Feb 10, 2021."},
+      "Y": {"tier": "verbatim", "note": "Exact quote: comeback motion 9:00am Feb 10, 2021."},
+      "Z": {"tier": "ungrounded", "note": "No mention of a comeback motion anywhere in Z's facts or summary."}
+    },
+    "F5": {
+      "X": {"tier": "credited", "note": "States the charges 'rank ahead of' secured creditors' claims (subcontractors/lessors) rather than using the formal 'all other secured creditors as defined in the CCAA' phrasing, but the priority relationship is captured."},
+      "Y": {"tier": "credited", "note": "Same paraphrase: secured creditors' claims 'rank behind the proposed charges.'"},
+      "Z": {"tier": "ungrounded", "note": "Z lists the charge amounts/order but never states they rank ahead of other secured creditors at all."}
+    },
+    "F6": {
+      "X": {"tier": "verbatim", "note": "Separately states stay through Feb 11 2021 and extension requested/supported to April 30, 2021."},
+      "Y": {"tier": "verbatim", "note": "States stay extended 'from February 11 through April 30, 2021' explicitly."},
+      "Z": {"tier": "verbatim", "note": "States stay through Feb 11 2021 and extension supported through April 30, 2021."}
+    },
+    "F7": {
+      "X": {"tier": "verbatim", "note": "States Court appointed Dunphy after Feb 5 case conference with parties confirming no objections (near-exact quote match)."},
+      "Y": {"tier": "verbatim", "note": "Same appointment + no-objection statement, quote matches."},
+      "Z": {"tier": "verbatim", "note": "Same appointment + no-objection statement, quote matches."}
+    },
+    "F8": {
+      "X": {"tier": "ungrounded", "note": "No mention anywhere of Dunphy's prior insolvency-law career, labour experience, or bilingualism."},
+      "Y": {"tier": "ungrounded", "note": "Same gap — Dunphy's background/bilingualism never mentioned."},
+      "Z": {"tier": "ungrounded", "note": "Same gap — Dunphy's background/bilingualism never mentioned."}
+    },
+    "F9": {
+      "X": {"tier": "verbatim", "note": "States four lenders approached, three non-binding term sheets received, narrowed to two — matches fact closely."},
+      "Y": {"tier": "ungrounded", "note": "No mention anywhere of the four-lender search, three term sheets, or two-party shortlist."},
+      "Z": {"tier": "ungrounded", "note": "No mention anywhere of the four-lender search, three term sheets, or two-party shortlist — only the eventual Firm Capital outcome is stated."}
+    },
+    "F10": {
+      "X": {"tier": "verbatim", "note": "Exact quote: Firm Capital Corporation executed term sheet, assigned interest to Firm Capital Mortgage Fund Inc."},
+      "Y": {"tier": "verbatim", "note": "Same exact statement and quote."},
+      "Z": {"tier": "verbatim", "note": "Same exact statement and quote."}
+    },
+    "F11": {
+      "X": {"tier": "verbatim", "note": "Secured, non-revolving, $25M max, May 1 2021 maturity, 90-day extension on milestones — all present."},
+      "Y": {"tier": "verbatim", "note": "Same terms all present."},
+      "Z": {"tier": "verbatim", "note": "Same terms all present."}
+    },
+    "F12": {
+      "X": {"tier": "verbatim", "note": "States greater of 8.50%/prime+6.05% and 'payable monthly' — closest match to the compounding/monthly-arrears detail."},
+      "Y": {"tier": "credited", "note": "States the rate figures correctly but omits the monthly/compounding payment detail entirely."},
+      "Z": {"tier": "credited", "note": "States the rate figures correctly but omits the monthly/compounding payment detail entirely."}
+    },
+    "F14": {
+      "X": {"tier": "credited", "note": "Paraphrases as milestones assessed 'to the DIP lender's satisfaction' — captures the lender's judgment call but not the emphatic 'sole and unfettered discretion' language."},
+      "Y": {"tier": "credited", "note": "Same 'to the lender's satisfaction' paraphrase, missing the emphatic discretion phrase."},
+      "Z": {"tier": "ungrounded", "note": "Lists the milestone topics but never mentions the lender's satisfaction/discretion at all."}
+    },
+    "F15": {
+      "X": {"tier": "credited", "note": "Captures the three milestone categories (academic restructuring, LUFA settlement, sustainable multi-year budget) but not the granular LUFA detail (terminations, grievances, new collective agreement)."},
+      "Y": {"tier": "credited", "note": "Vaguer paraphrase ('academic, labour and financial-sustainability milestones') capturing the same three-part structure without detail."},
+      "Z": {"tier": "credited", "note": "Same as X — three categories captured, granular LUFA detail absent."}
+    },
+    "F16": {
+      "X": {"tier": "ungrounded", "note": "No mention anywhere of competing DIP expressions of interest or LU declining them."},
+      "Y": {"tier": "ungrounded", "note": "No mention anywhere of competing DIP expressions of interest or LU declining them."},
+      "Z": {"tier": "ungrounded", "note": "No mention anywhere of competing DIP expressions of interest or LU declining them."}
+    },
+    "F17": {
+      "X": {"tier": "verbatim", "note": "Exact quote match on Finance department's limited team/resources caveat."},
+      "Y": {"tier": "verbatim", "note": "Exact quote match on Finance department's limited team/resources caveat."},
+      "Z": {"tier": "ungrounded", "note": "Only has the general unaudited/GAAS caveat; never mentions the specific Finance-department limited-resources caveat."}
+    },
+    "F20": {
+      "X": {"tier": "credited", "note": "Fiscal-restraint policy stated verbatim to source quote, but the stakeholder websites (laurentianu.info/ulaurentienne.info) are never mentioned at all."},
+      "Y": {"tier": "credited", "note": "Mentions 'launched public information websites' generically plus fiscal restraint, but no specific URLs — best partial match of the three."},
+      "Z": {"tier": "credited", "note": "Fiscal-restraint policy stated, but no mention of the stakeholder websites at all."}
+    },
+    "F21": {
+      "X": {"tier": "verbatim", "note": "Exact quote: classes continuing virtually with no disruption."},
+      "Y": {"tier": "verbatim", "note": "Exact quote: classes continuing virtually with no disruption."},
+      "Z": {"tier": "credited", "note": "States classes/operations continued as ordinary/virtual but never explicitly asserts 'no disruption.'"}
+    },
+    "M2": {
+      "X": {"tier": "verbatim", "note": "Same as F10 — assignment relationship between the two distinct Firm Capital entities is explicit."},
+      "Y": {"tier": "verbatim", "note": "Same as F10."},
+      "Z": {"tier": "verbatim", "note": "Same as F10."}
+    },
+    "M4": {
+      "X": {"tier": "ungrounded", "note": "Same gap as F16 — no mention of the two declined competing DIP expressions of interest."},
+      "Y": {"tier": "ungrounded", "note": "Same gap as F16."},
+      "Z": {"tier": "ungrounded", "note": "Same gap as F16."}
+    },
+    "M5": {
+      "X": {"tier": "credited", "note": "Uses 'to the DIP lender's satisfaction' rather than the emphatic 'sole and unfettered discretion' phrase, and doesn't note it recurs twice or ties explicitly to LU's sustainability question."},
+      "Y": {"tier": "credited", "note": "Same 'lender's satisfaction' paraphrase, same omissions."},
+      "Z": {"tier": "ungrounded", "note": "No mention of lender discretion/satisfaction over the milestones at all."}
+    },
+    "M6": {
+      "X": {"tier": "ungrounded", "note": "States the current charge amounts ($1.25M admin, $5M total directors) but never states these are increases from prior $400K/$2M figures — the 'triples/doubles' comparison is entirely absent."},
+      "Y": {"tier": "ungrounded", "note": "Same — current amounts only, no comparison to prior charge levels."},
+      "Z": {"tier": "ungrounded", "note": "Same — current amounts only, no comparison to prior charge levels."}
+    },
+    "M7": {
+      "X": {"tier": "ungrounded", "note": "No mention of Dunphy's prior insolvency-lawyer career, that the Court (not the parties) proposed him, or the bilingualism-as-new-criterion drift versus the Pre-Filing Report."},
+      "Y": {"tier": "ungrounded", "note": "Same — none of these three sub-points appear."},
+      "Z": {"tier": "ungrounded", "note": "Same — none of these three sub-points appear."}
+    },
+    "M8": {
+      "X": {"tier": "ungrounded", "note": "Has the Finance-department caveat but cites the affidavit as 'sworn January 30, 2021' (the correct date) — it does not reproduce or flag the erroneous 'January 30, 2020' date or the copy-paste-from-Pre-Filing-Report point."},
+      "Y": {"tier": "ungrounded", "note": "No affidavit date mentioned at all, so the specific date-error fact is absent."},
+      "Z": {"tier": "ungrounded", "note": "No affidavit date mentioned at all, and no Finance-department caveat either."}
+    },
+    "M10": {
+      "X": {"tier": "ungrounded", "note": "No mention anywhere of NDAs or LU's identity being withheld during the lender search."},
+      "Y": {"tier": "ungrounded", "note": "No mention anywhere of NDAs or LU's identity being withheld."},
+      "Z": {"tier": "ungrounded", "note": "No mention anywhere of NDAs or LU's identity being withheld."}
+    }
+  }
+}

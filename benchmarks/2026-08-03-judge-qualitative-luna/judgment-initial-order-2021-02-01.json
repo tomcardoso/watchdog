@@ -1,0 +1,135 @@
+{
+  "document": "initial-order-2021-02-01",
+  "judgments": {
+    "F1": {
+      "X": {"tier": "verbatim", "note": "States Court declared Laurentian insolvent and subject to CCAA, matching quote."},
+      "Y": {"tier": "verbatim", "note": "Includes the exact quote 'ORDERS AND DECLARES that the Applicant is insolvent and is a company to which the CCAA applies.'"},
+      "Z": {"tier": "verbatim", "note": "States declaration with matching quote."}
+    },
+    "F2": {
+      "X": {"tier": "ungrounded", "note": "No mention of Zoom/videoconference, Toronto hearing, COVID-19, or who made the order; Morawetz appears only as a bare entity name."},
+      "Y": {"tier": "ungrounded", "note": "Page-16 fact gives effective date/Toronto/Morawetz signature but frames it as registry entry, not the hearing; no mention of Zoom or COVID-19 anywhere."},
+      "Z": {"tier": "credited", "note": "Quote attached to the page-1 fact directly includes 'heard this day by videoconference via Zoom in Toronto, Ontario' -- captures the hearing method/location but the quote stops short of the COVID-19 clause and doesn't name Monday or Morawetz as maker."}
+    },
+    "F3": {
+      "X": {"tier": "ungrounded", "note": "Haché appears only in the entity list; no key_fact states the affidavit or pre-filing report or their Jan 30, 2021 dates."},
+      "Y": {"tier": "verbatim", "note": "States court considered Haché's affidavit and EY's pre-filing report, both dated January 30, 2021."},
+      "Z": {"tier": "verbatim", "note": "States both documents and dates, with a quote matching the source almost verbatim, plus the EY consent detail."}
+    },
+    "F4": {
+      "X": {"tier": "verbatim", "note": "States SGA designated non-applicant stay party, despite not being an applicant, with stay protections."},
+      "Y": {"tier": "verbatim", "note": "Same substance stated directly."},
+      "Z": {"tier": "verbatim", "note": "States designation plus quotes the 'Although not an applicant...' clause directly."}
+    },
+    "F5": {
+      "X": {"tier": "verbatim", "note": "States segregated accounts from December 1, 2020 for research/donations/endowments/benefit contributions, excluded from Property -- includes the specific date."},
+      "Y": {"tier": "credited", "note": "Captures fund types and exclusion from estate property, but never states the December 1, 2020 establishment date."},
+      "Z": {"tier": "credited", "note": "Captures fund types, exclusion from Property, and quotes the operative sentence, but omits the December 1, 2020 date."}
+    },
+    "F6": {
+      "X": {"tier": "ungrounded", "note": "No statement that Property subject to the Charges specifically excludes the Segregated Accounts (the page-13 restatement); only the page-3 general exclusion is present."},
+      "Y": {"tier": "ungrounded", "note": "Same gap -- no second, charges-specific exclusion statement anywhere."},
+      "Z": {"tier": "ungrounded", "note": "Same gap -- only the general page-3 property exclusion is stated, not the charges-specific restatement."}
+    },
+    "F7": {
+      "X": {"tier": "ungrounded", "note": "Says wages/benefits payable 'subject to stated exclusions' but never names the SuRP/RHBP/severance carve-out or that those are stayed."},
+      "Y": {"tier": "ungrounded", "note": "Lists payable items with no exclusion or stay language at all for retiree/SuRP/RHBP/severance payments."},
+      "Z": {"tier": "ungrounded", "note": "Lists 'employee and retiree benefits' as payable with no carve-out or stay for former employees/SuRP/RHBP/severance -- the parenthetical stay is missed entirely."}
+    },
+    "F8": {
+      "X": {"tier": "credited", "note": "States pension contributions must be remitted, but omits the 'until further order of the Court' qualifier."},
+      "Y": {"tier": "credited", "note": "States 'ordinary-course pension contributions' must be remitted; same missing qualifier."},
+      "Z": {"tier": "credited", "note": "States 'normal-course pension-plan payments' remitted, with quote; missing the 'until further order' qualifier."}
+    },
+    "F9": {
+      "X": {"tier": "ungrounded", "note": "No statement anywhere that Laurentian is directed to make no payments to pre-filing creditors, and no mention of interest rate swaps."},
+      "Y": {"tier": "credited", "note": "States the general prohibition on paying pre-order creditor claims, but never mentions the interest rate swap carve-in."},
+      "Z": {"tier": "credited", "note": "Same general prohibition on pre-order payments; swap transactions are not mentioned."}
+    },
+    "F10": {
+      "X": {"tier": "verbatim", "note": "States stay imposed until and including February 11, 2021."},
+      "Y": {"tier": "verbatim", "note": "Same, matches directly."},
+      "Z": {"tier": "verbatim", "note": "Same, with matching quote."}
+    },
+    "F15": {
+      "X": {"tier": "verbatim", "note": "States charge secures indemnification 'subject to exceptions for gross negligence or wilful misconduct.'"},
+      "Y": {"tier": "verbatim", "note": "States indemnity 'except liabilities caused by gross negligence or wilful misconduct.'"},
+      "Z": {"tier": "verbatim", "note": "Same exception stated directly."}
+    },
+    "F16": {
+      "X": {"tier": "ungrounded", "note": "Directors' Charge fact covers the $2M cap and negligence exception only; no mention of the insurance-sufficiency limitation or the no-subrogation rule."},
+      "Y": {"tier": "ungrounded", "note": "Same -- charge amount stated, no insurance/subrogation limitation."},
+      "Z": {"tier": "ungrounded", "note": "Same gap -- insurance-coverage limitation and subrogation bar are not stated."}
+    },
+    "F18": {
+      "X": {"tier": "verbatim", "note": "States Exhibits EEE and FFF sealed, excluded from public record."},
+      "Y": {"tier": "verbatim", "note": "Same, stated directly."},
+      "Z": {"tier": "verbatim", "note": "Same, with an exact matching quote."}
+    },
+    "F19": {
+      "X": {"tier": "ungrounded", "note": "Monitor's role is described (oversight, access to records) but there is no statement that it will not take possession of Property or take part in managing the Business."},
+      "Y": {"tier": "verbatim", "note": "States monitor 'was not placed in possession or management of Laurentian's property or business.'"},
+      "Z": {"tier": "verbatim", "note": "States monitor 'was not to take possession... or participate in management or supervision,' with matching quote."}
+    },
+    "F20": {
+      "X": {"tier": "ungrounded", "note": "No fact about a case website anywhere in X's extraction (page 14 content appears skipped)."},
+      "Y": {"tier": "verbatim", "note": "States case website ordered at www.ey.com/ca/Laurentian."},
+      "Z": {"tier": "verbatim", "note": "Same, with matching quote."}
+    },
+    "F21": {
+      "X": {"tier": "ungrounded", "note": "No statement of the order's effective time/date or its enforceability without entry and filing anywhere in X's extraction."},
+      "Y": {"tier": "credited", "note": "States effective 12:01 a.m. ET Feb 1, 2021, but frames it around registry entry/signature rather than the 'enforceable without entry and filing' point, which is not stated."},
+      "Z": {"tier": "verbatim", "note": "States both the effective time and 'enforceable without entry and filing,' with matching quote."}
+    },
+    "F22": {
+      "X": {"tier": "ungrounded", "note": "No mention anywhere of environmental-liability protection for the Monitor or the named statutes."},
+      "Y": {"tier": "ungrounded", "note": "Same -- entirely absent."},
+      "Z": {"tier": "ungrounded", "note": "Same -- entirely absent; missed by all three arms."}
+    },
+    "M2": {
+      "X": {"tier": "ungrounded", "note": "No mention of any registry entry stamp or handwritten initials."},
+      "Y": {"tier": "credited", "note": "States order 'was entered in Toronto,' capturing the entry-at-Toronto substance, but conflates it with the judge's signature and omits the bilingual stamp text, date, and handwritten initials."},
+      "Z": {"tier": "ungrounded", "note": "No mention of a registry entry stamp; only the effective-time clause is stated."}
+    },
+    "M3": {
+      "X": {"tier": "ungrounded", "note": "Morawetz appears only as a bare entity name; no fact states he signed the order or that a signature block exists."},
+      "Y": {"tier": "credited", "note": "States the order 'was entered in Toronto under the signature of Chief Justice G.B. Morawetz' -- captures that Morawetz signed, without the wet-signature/printed-name detail."},
+      "Z": {"tier": "ungrounded", "note": "Morawetz appears only in the entity list; no key_fact states he signed the order."}
+    },
+    "M4": {
+      "X": {"tier": "credited", "note": "Captures segregated funds excluded from Property with the tell-tale December 1, 2020 date, but never restates that the Charges specifically cannot reach them."},
+      "Y": {"tier": "credited", "note": "Captures general exclusion of segregated funds from estate property but omits both the December 1, 2020 date and the charges-specific restatement."},
+      "Z": {"tier": "credited", "note": "Same as Y -- general exclusion stated, December 1, 2020 date and charges-specific restatement both missing."}
+    },
+    "M5": {
+      "X": {"tier": "ungrounded", "note": "Only a vague 'subject to stated exclusions' with no naming of SuRP/RHBP/severance stay."},
+      "Y": {"tier": "ungrounded", "note": "No exclusion or stay language for retirees/SuRP/RHBP/severance at all."},
+      "Z": {"tier": "ungrounded", "note": "Lists retiree benefits as payable with no stay carve-out for former employees/SuRP/RHBP/severance -- the parenthetical is missed."}
+    },
+    "M6": {
+      "X": {"tier": "ungrounded", "note": "'Subject to stated exclusions and privacy restrictions' is too vague -- doesn't name employees/pensioned former employees/retirees as excluded from creditor notice."},
+      "Y": {"tier": "ungrounded", "note": "Same vague 'stated exclusions' language, no specifics named."},
+      "Z": {"tier": "ungrounded", "note": "Describes the notice/publication mechanics in detail but never names the employee/retiree carve-out from the creditor list."}
+    },
+    "M7": {
+      "X": {"tier": "verbatim", "note": "States Exhibits EEE/FFF sealed, excluded from public record."},
+      "Y": {"tier": "verbatim", "note": "Same, stated directly."},
+      "Z": {"tier": "verbatim", "note": "Same, with exact quote."}
+    },
+    "M9": {
+      "X": {"tier": "credited", "note": "Captures the gross-negligence/wilful-misconduct exception to the Directors' Charge, but not the insurance-sufficiency limitation on when directors get its benefit."},
+      "Y": {"tier": "credited", "note": "Same -- negligence exception present, insurance-only-benefit limitation absent."},
+      "Z": {"tier": "credited", "note": "Same -- negligence exception present, insurance-only-benefit limitation absent."}
+    },
+    "M10": {
+      "X": {"tier": "ungrounded", "note": "No mention of interest rate swap transactions anywhere."},
+      "Y": {"tier": "ungrounded", "note": "General pre-order-payment prohibition stated, but the interest rate swap carve-in specifically is never mentioned."},
+      "Z": {"tier": "ungrounded", "note": "Same -- general prohibition stated, swap transactions never mentioned; the quietest mention is missed by all three arms."}
+    },
+    "M11": {
+      "X": {"tier": "verbatim", "note": "States SGA designated non-applicant stay party despite not being an applicant."},
+      "Y": {"tier": "verbatim", "note": "Same, stated directly."},
+      "Z": {"tier": "verbatim", "note": "Same, with supporting quote."}
+    }
+  }
+}

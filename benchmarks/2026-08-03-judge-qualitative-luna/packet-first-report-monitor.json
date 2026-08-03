@@ -1,0 +1,1591 @@
+{
+  "document": "first-report-monitor",
+  "document_file": "Laurentian First Report of the Monitor.pdf",
+  "items": {
+    "facts": [
+      {
+        "id": "F1",
+        "text": "The Initial Order was granted 1 February 2021, appointing E&Y as Monitor with a 10-day stay period.",
+        "quote": "On February 1, 2021, the Court granted an initial order (the \"Initial Order\") that, among other things, appointed Ernst & Young Inc. as monitor of the Applicant in these CCAA proceedings … and approved a stay of proceedings for the initial 10-day period",
+        "page": 1
+      },
+      {
+        "id": "F2",
+        "text": "The comeback motion was scheduled for 9:00am on 10 February 2021.",
+        "quote": "The Court scheduled a comeback motion for 9:00am on February 10, 2021",
+        "page": 1
+      },
+      {
+        "id": "F5",
+        "text": "The Administration Charge, Directors' Charge and DIP Lender's Charge are to rank in priority to ALL other secured creditors as defined in the CCAA.\n",
+        "quote": "the granting of the Administration Charge, the Directors' Charge and the DIP Lender's Charge in priority to all other \"secured creditors\" as defined in the CCAA",
+        "page": 2
+      },
+      {
+        "id": "F6",
+        "text": "The Stay Period, set to expire 11 February 2021, is to be extended to 30 April 2021.",
+        "quote": "The Stay Period is currently set to expire on February 11, 2021. The Applicant requests an extension of the Stay Period up to and including April 30, 2021.",
+        "page": 10
+      },
+      {
+        "id": "F7",
+        "text": "Justice Sean Dunphy of the Ontario Superior Court of Justice was appointed Court-Appointed Mediator. The Court proposed him; all parties confirmed no objection.\n",
+        "quote": "the Court proposed to appoint the Honourable Justice Sean Dunphy of the Ontario Superior Court of Justice as the Court-Appointed Mediator … All parties at the case conference confirmed that there were no objections to Justice Dunphy's appointment as mediator.",
+        "page": 7
+      },
+      {
+        "id": "F8",
+        "text": "Dunphy was previously a leading insolvency lawyer with CCAA and complex labour experience, and is bilingual.",
+        "quote": "During his career, Justice Dunphy was a leading insolvency lawyer with extensive experience in CCAA restructurings, including complex labour negotiations, and is bilingual.",
+        "page": 7
+      },
+      {
+        "id": "F9",
+        "text": "LU approached FOUR external lenders specializing in real-estate and infrastructure lending; three submitted non-binding draft term sheets; two were shortlisted; one term sheet was executed.\n",
+        "quote": "These discussions resulted in the Applicant receiving non-binding draft term sheets from three potential lenders … determined that of the three initial proposals, two were sufficiently preferable to merit narrowing ongoing negotiations to these two parties.",
+        "page": null
+      },
+      {
+        "id": "F10",
+        "text": "LU executed the DIP Term Sheet with Firm Capital Corporation, which then ASSIGNED its interest to Firm Capital Mortgage Fund Inc. — the entity that is the actual DIP Lender.\n",
+        "quote": "the Applicant executed a term sheet (the \"DIP Term Sheet\") with Firm Capital Corporation. Subsequent to the execution of the DIP Term Sheet, Firm Capital Corporation assigned its interest to Firm Capital Mortgage Fund Inc. (the \"DIP Lender\").",
+        "page": 8
+      },
+      {
+        "id": "F11",
+        "text": "DIP facility: secured, non-revolving, maximum principal $25 million, maturity 1 May 2021, extendable by 90 days on milestones.\n",
+        "quote": "the maximum principal amount is $25 million with a maturity date of May 1, 2021. The maturity date may be extended for an additional 90 days if LU achieves the following milestones",
+        "page": 8
+      },
+      {
+        "id": "F12",
+        "text": "DIP interest: the greater of 8.50% per annum or the TD Canada Trust posted prime rate plus 6.05% per annum, compounded and payable monthly in arrears.\n",
+        "quote": "at a rate that is the greater of 8.50% per annum or the TD Canada Trust Posted Bank Prime Rate of Interest from time to time plus 6.05% per annum",
+        "page": 9
+      },
+      {
+        "id": "F14",
+        "text": "The DIP extension milestones are judged by the DIP Lender \"in its sole and unfettered discretion\" — including whether LU is financially sustainable.\n",
+        "quote": "to the satisfaction of the DIP Lender in its sole and unfettered discretion",
+        "page": 8
+      },
+      {
+        "id": "F15",
+        "text": "The milestones require LU to reach consensus on academic restructuring, to settle with LUFA (terminations, grievances, a new collective agreement), and to deliver a multi-year budget showing sustainability.\n",
+        "quote": "LU enters into a negotiated settlement with LUFA with respect to terminations to be effected, resolution of outstanding grievances, and the terms of a new collective agreement",
+        "page": 8
+      },
+      {
+        "id": "F16",
+        "text": "TWO parties expressed interest in submitting COMPETING DIP proposals (a law firm on 4 Feb 2021 and another party on 5 Feb 2021). LU DECLINED both.\n",
+        "quote": "the Applicant determined that given the number of weeks it took other potential lenders to conduct their due diligence … it was highly unlikely that a new party could negotiate and execute a non-disclosure agreement, conduct its due diligence and be in a position to submit a binding offer … Accordingly, the Applicant declined the request from the law firm to proceed with any due diligence process",
+        "page": 9
+      },
+      {
+        "id": "F17",
+        "text": "The Monitor repeats the reliability caveat: LU's Finance department \"has experienced certain challenges as a result of its limited team and resources\", so the Information may be limited.\n",
+        "quote": "Dr. Haché Notes that he has relied upon information provided by LU's Finance department which has experienced certain challenges as a result of its limited team and resources. As a result, the Monitor notes that the Information relied upon for purposes of this First Report may be limited by these challenges.",
+        "page": 3
+      },
+      {
+        "id": "F20",
+        "text": "LU launched stakeholder websites at laurentianu.info and ulaurentienne.info, and implemented new fiscal restraint policies authorizing only necessary expenses.\n",
+        "quote": "the Applicant has drafted and implemented new fiscal restraint policies to monitor and authorize only necessary expenses during the pendency of this CCAA proceeding.",
+        "page": 4
+      },
+      {
+        "id": "F21",
+        "text": "Classes continued virtually with no disruption following the Initial Order.",
+        "quote": "Student classes are continuing (virtually due to the Pandemic) with no disruption.",
+        "page": 4
+      }
+    ],
+    "must_not_miss": [
+      {
+        "id": "M2",
+        "text": "Firm Capital Corporation executed the term sheet, then ASSIGNED its interest to Firm Capital Mortgage Fund Inc., which is the actual DIP Lender. These are two distinct entities.\n",
+        "page": 8,
+        "why": "Document 3 names only \"Firm Capital Corporation\". An extractor that collapses these into one entity has lost the assignment; one that creates two unlinked entities has lost the relationship. Both failure modes are worth catching, and this is the only place the distinction is stated.\n"
+      },
+      {
+        "id": "M4",
+        "text": "LU declined TWO expressions of interest in competing DIP financing, received 4 and 5 February 2021, days before the comeback motion.\n",
+        "page": 9,
+        "why": "The insolvent institution turned away potential competing lenders while locked into an 8.5% facility with a $500K fee. The paragraph reads as procedural housekeeping and is easy to skim.\n"
+      },
+      {
+        "id": "M5",
+        "text": "The DIP extension milestones rest on the lender's \"sole and unfettered discretion\" — the phrase appears twice, including on the question of whether LU is financially sustainable.\n",
+        "page": 8,
+        "why": "A private lender holds unilateral judgment over whether a public university continues. Buried in sub-sub-clauses.\n"
+      },
+      {
+        "id": "M6",
+        "text": "The Administration Charge triples ($400K → $1.25M) and the Directors' Charge more than doubles ($2M → $5M), all ranking ahead of every other secured creditor.\n",
+        "page": 2,
+        "why": "$6.25M of super-priority charges jumping the queue ahead of existing secured lenders, listed as roman-numeral sub-items on page 2 in a purpose statement.\n"
+      },
+      {
+        "id": "M7",
+        "text": "Justice Sean Dunphy — the mediator — was himself a leading insolvency lawyer before the bench, and the Court proposed him rather than the parties.\n",
+        "page": 7,
+        "why": "The mediator's identity and provenance, given once. Note also that bilingualism was added as a criterion here that was NOT in the Pre-Filing Report's list — a small drift worth catching.\n"
+      },
+      {
+        "id": "M8",
+        "text": "The Monitor's reliability caveat about LU's Finance department, repeated from the Pre-Filing Report — including the same erroneous affidavit date (\"sworn January 30, 2020\").\n",
+        "page": 3,
+        "why": "Buried in disclaimer boilerplate. The repetition of the date error across two documents is itself a fact: it is a copy-paste, not a fresh statement.\n"
+      },
+      {
+        "id": "M10",
+        "text": "The DIP process ran under two successive NDAs, with LU's identity withheld until the first was signed.\n",
+        "page": 7,
+        "why": "How an insolvent public university shopped for money in secret. Procedural, and routinely dropped."
+      }
+    ]
+  },
+  "arms": {
+    "X": {
+      "summary": "The First Report of the Monitor, filed in the Laurentian First Report of the Monitor.pdf, sets out Ernst & Young Inc.'s recommendations and financial analysis for Laurentian University's initial CCAA restructuring after the Ontario Superior Court granted protection on February 1, 2021. The court-appointed Monitor supported extending the stay through April 30, 2021, appointing Justice Sean Dunphy to mediate restructuring of academic programs, faculty and collective-bargaining issues, and approving a secured debtor-in-possession facility with Firm Capital Mortgage Fund of up to $25 million. The proposed financing carried interest at the greater of 8.50% or prime plus 6.05%, a $500,000 commitment fee and a May 1, 2021 maturity, with any extension dependent on academic restructuring, a settlement with the Laurentian University Faculty Association and a sustainable revised budget; the proposed super-priority charges included up to $1.25 million for administration, $25 million for the DIP lender and up to $5 million for directors and officers.\n\nThe cash-flow forecast for January 30 through April 30, 2021 projected $29.514 million in receipts against $58.553 million in total disbursements, with $24.076 million in DIP financing and an ending cash balance of $8.328 million. Monthly payroll was approximately $11 million, while pension contributions and accrued vacation pay were approximately $1.2 million and $800,000 respectively; the Monitor supported staying special pension payments during the restructuring, while ordinary-course wages, benefits, pension contributions and statutory deductions were forecast to continue. Laurentian's defined-benefit pension plan had an 85.4% solvency ratio and an approximately $4.5 million going-concern deficiency as of January 1, 2020. The report relied on unaudited management information and forecasts that were not independently verified, and it noted limited Finance department resources; classes nevertheless continued virtually, fiscal restraints were imposed and creditors were notified, although no claims process had yet been approved.",
+      "key_facts": [
+        {
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings-cv-21-656040-00cl",
+            "ontario-superior-court-of-justice"
+          ],
+          "fact": "Laurentian University of Sudbury applied to the Ontario Superior Court of Justice for an initial order under the Companies' Creditors Arrangement Act to obtain a stay of proceedings and pursue financial and operational restructuring.",
+          "page": 1,
+          "quote": "Laurentian University of Sudbury ('LU' or the 'Applicant') brought an application ... seeking an initial order pursuant to the Companies' Creditors Arrangement Act ... to ... obtain a stay of proceedings to allow the Applicant an opportunity to financially and operationally restructure itself.",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ernst-young-inc",
+            "laurentian-university-ccaa-proceedings-cv-21-656040-00cl",
+            "ontario-superior-court-of-justice"
+          ],
+          "fact": "The Court granted the initial order, appointed Ernst & Young Inc. as monitor, approved an initial 10-day stay, and authorized certain court-ordered super-priority charges.",
+          "page": 1,
+          "quote": "On February 1, 2021, the Court granted an initial order ... that, among other things, appointed Ernst & Young Inc. as monitor of the Applicant in these CCAA proceedings.",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-10",
+          "entities": [
+            "laurentian-university-ccaa-proceedings-cv-21-656040-00cl",
+            "ontario-superior-court-of-justice"
+          ],
+          "fact": "The Court scheduled a comeback motion for February 10, 2021.",
+          "page": 1,
+          "quote": "The Court scheduled a comeback motion for 9:00am on February 10, 2021."
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-07",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The Monitor's report relied on unaudited financial information, books and records, and information prepared by Laurentian University and its management; the Monitor reviewed the information for reasonableness and consistency but did not audit or otherwise verify it under generally accepted assurance standards and expressed no assurance opinion.",
+          "page": 2,
+          "quote": "The Monitor has not audited or otherwise attempted to verify the accuracy or completeness of the Information in a manner that would wholly or partially comply with Generally Accepted Assurance Standards ('GAAS') ... and, accordingly, the Monitor expresses no opinion or other form of assurance contemplated under GAAS in respect of the Information.",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-07",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The Monitor said the report included forecasts and projections that had not been examined or reviewed under the applicable professional standards and were based on management estimates and assumptions.",
+          "page": 3,
+          "quote": "An examination or review of the financial forecasts and projections ... has not been performed.",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "date": "2021-01-30",
+          "entities": [
+            "dr-robert-hache",
+            "laurentian-university-of-sudbury",
+            "lu-finance-department"
+          ],
+          "fact": "The Monitor cited Dr. Robert Haché's affidavit as stating that Laurentian University's Finance department faced challenges because of its limited team and resources, potentially limiting the information used in the report.",
+          "page": 3,
+          "quote": "Dr. Haché Notes that he has relied upon information provided by LU's Finance department which has experienced certain challenges as a result of its limited team and resources."
+        },
+        {
+          "basis": "stated",
+          "date": "1960-03-28",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University of Sudbury was incorporated on March 28, 1960 under the Laurentian Act.",
+          "page": 3,
+          "quote": "On March 28, 1960, LU was incorporated under An Act to Incorporate Laurentian University of Sudbury."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "city-of-greater-sudbury"
+          ],
+          "fact": "Laurentian University is a publicly funded, bilingual and tricultural, non-share-capital post-secondary institution and registered charity operating in the City of Greater Sudbury, Ontario.",
+          "page": 4,
+          "quote": "LU is a publicly funded, bilingual and tricultural post-secondary institution."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "As a registered charity, Laurentian University is exempt from income tax under the Income Tax Act, receives donations, and issues tax receipts to donors.",
+          "page": 4,
+          "quote": "As a registered charity, LU also receives donations and issues tax receipts to donors."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Since the initial order, Laurentian University reported that classes continued virtually during the pandemic without disruption and that it communicated with students, faculty, employees, suppliers, research-granting agencies and donors.",
+          "page": 4,
+          "quote": "Student classes are continuing (virtually due to the Pandemic) with no disruption."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University implemented fiscal-restraint policies intended to limit and authorize only necessary expenses during the CCAA proceeding.",
+          "page": 4,
+          "quote": "The Applicant has drafted and implemented new fiscal restraint policies to monitor and authorize only necessary expenses during the pendency of this CCAA proceeding."
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-04",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings-cv-21-656040-00cl"
+          ],
+          "fact": "The Monitor mailed a notice about the CCAA proceedings to all known creditors whose claims exceeded $1,000 according to Laurentian University's records, posted a list of those creditors and amounts owing, and published the notice in the Globe and Mail and the Sudbury Star.",
+          "page": 5,
+          "quote": "On February 4, 2021, the Monitor sent a notice ... to all known creditors who have a claim against the Applicant of more than $1,000.",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-05",
+          "entities": [
+            "honourable-justice-sean-dunphy",
+            "laurentian-university-faculty-association",
+            "laurentian-university-of-sudbury",
+            "ontario-superior-court-of-justice",
+            "laurentian-university-ccaa-proceedings-cv-21-656040-00cl"
+          ],
+          "fact": "Following a February 5, 2021 case conference, the Court appointed Honourable Justice Sean Dunphy as mediator for restructuring negotiations involving Laurentian University, LUFA and other stakeholders; the parties raised no objections.",
+          "page": 7,
+          "quote": "All parties at the case conference confirmed that there were no objections to Justice Dunphy's appointment as mediator."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University approached four external lenders specializing in real-estate and infrastructure-based lending, received three non-binding draft DIP term sheets, and narrowed negotiations to two proposals.",
+          "page": 7,
+          "quote": "These discussions resulted in the Applicant receiving non-binding draft term sheets from three potential lenders.",
+          "quote_verified": true,
+          "quote_found_page": 8
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "firm-capital-corporation",
+            "firm-capital-mortgage-fund-inc"
+          ],
+          "fact": "Laurentian University executed a DIP term sheet with Firm Capital Corporation, which subsequently assigned its interest to Firm Capital Mortgage Fund Inc.; the parties were still negotiating the definitive DIP Agreement when the report was prepared.",
+          "page": 8,
+          "quote": "Subsequent to the execution of the DIP Term Sheet, Firm Capital Corporation assigned its interest to Firm Capital Mortgage Fund Inc."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "firm-capital-mortgage-fund-inc",
+            "laurentian-university-faculty-association"
+          ],
+          "fact": "The proposed DIP facility is a secured, non-revolving credit facility with a maximum principal amount of $25 million and a maturity date of May 1, 2021; a 90-day extension would depend on academic restructuring, a negotiated settlement with LUFA, and a revised cash-flow forecast and multiyear budget demonstrating financial sustainability to the DIP lender's satisfaction.",
+          "page": 8,
+          "quote": "The maximum principal amount is $25 million with a maturity date of May 1, 2021."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "firm-capital-mortgage-fund-inc",
+            "ernst-young-inc"
+          ],
+          "fact": "The DIP facility contemplated two advances: an initial advance after court approval of the amended and restated initial order and the DIP charge, and a second advance requiring five calendar days' written notice and Monitor approval.",
+          "page": 8,
+          "quote": "The second advance shall be made upon five calendar days' prior written request to the DIP Lender and approved by the Monitor.",
+          "quote_verified": true,
+          "quote_found_page": 9
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "firm-capital-mortgage-fund-inc"
+          ],
+          "fact": "DIP interest would be payable monthly at the greater of 8.50% per annum or the TD Canada Trust posted bank prime rate plus 6.05% per annum, and a $500,000 commitment fee would become fully earned and payable when the Court approved the amended and restated initial order and DIP financing.",
+          "page": 9,
+          "quote": "A commitment fee of $500,000 shall be deemed to have been fully earned and payable to the DIP Lender on the date that the Court approves the Amended and Restated Initial Order approving the DIP financing."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ernst-young-inc"
+          ],
+          "fact": "The Monitor concluded that Laurentian University had a critical and immediate need for DIP financing to maintain operations through the end of the academic term and supported approval of the DIP term sheet.",
+          "page": 9,
+          "quote": "Without access to DIP financing, the Applicant will be unable to maintain operations and address its operational and financial restructuring needs."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ernst-young-inc",
+            "laurentian-university-ccaa-proceedings-cv-21-656040-00cl"
+          ],
+          "fact": "Laurentian University requested an extension of the stay period through April 30, 2021, and the Monitor supported the request on the basis of liquidity, stakeholder mediation and restructuring needs.",
+          "page": 10,
+          "quote": "The Monitor supports the Applicant's request for an order extending the Stay Period to April 30, 2021."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "db-pension-plan",
+            "supplementary-unfunded-retirement-plan",
+            "retirement-health-benefits-plan"
+          ],
+          "fact": "Laurentian University administers a registered defined-benefit pension plan, a supplementary unfunded retirement plan and a retirement health benefits plan.",
+          "page": 10,
+          "quote": "The Applicant administers three employee pension and benefit plans."
+        },
+        {
+          "basis": "stated",
+          "date": "2020-01-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "db-pension-plan"
+          ],
+          "fact": "The DB Pension Plan's most recent actuarial valuation, as of January 1, 2020 and updated in December 2020, reported an 85.4% solvency ratio and an approximately $4.5 million going-concern deficiency to be addressed over no more than 10 years beginning January 1, 2021.",
+          "page": 11,
+          "quote": "The DB Pension Plan had a solvency ratio of 85.4%, representing a going concern deficiency of approximately $4.5 million."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "db-pension-plan"
+          ],
+          "fact": "The actuarial valuation set annual DB Pension Plan current-service contributions at $16,188,000 for the next three years, payable monthly at approximately $1,349,000, plus annual special payments of $505,000 payable monthly at approximately $42,083.",
+          "page": 11,
+          "quote": "The actuary concluded that an annual special payment contribution of $505,000 must be made, payable in monthly instalments of approximately $42,083."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "db-pension-plan",
+            "ernst-young-inc"
+          ],
+          "fact": "Laurentian University sought, and the Monitor supported, a stay of pre-filing and post-filing special payments to the DB Pension Plan during the stay period because of the university's liquidity constraints.",
+          "page": 11,
+          "quote": "The Monitor is of the view that permitting a stay of special payments to the DB Pension Plan during the Stay Period is appropriate and reasonable."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ernst-young-inc"
+          ],
+          "fact": "The proposed amended and restated order sought to stay existing, pending and future information requests to Laurentian University under the Freedom of Information and Protection of Privacy Act because the university said it lacked resources to handle an expected increase in requests during restructuring.",
+          "page": 11,
+          "quote": "The Applicant simply does not have the resources to deal with the increased volume."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ernst-young-inc",
+            "firm-capital-mortgage-fund-inc"
+          ],
+          "fact": "The proposed super-priority charges on Laurentian University's current and future assets were ranked as follows: an Administration Charge of up to $1.25 million; $2 million of the Directors' Charge; a DIP Lender's Charge of up to $25 million; and an additional $3 million of the Directors' Charge, for a total Directors' Charge of up to $5 million.",
+          "page": 12,
+          "quote": "The proposed Amended and Restated Initial Order provides for the following super-priority charges ... that rank in the following order.",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University's secured creditors were described as primarily subcontractors with construction liens against university real property and limited equipment lessors, whose potential claims the proposed charges would rank ahead of.",
+          "page": 12,
+          "quote": "The Applicant's secured creditors are primarily comprised of subcontractors who have registered construction liens against certain real property owned by the Applicant and limited equipment lessors."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ernst-young-inc"
+          ],
+          "fact": "The proposed Administration Charge of up to $1.25 million would secure professional fees and disbursements of counsel and advisors to Laurentian University, the Monitor, the Monitor's independent counsel and independent counsel to the Board.",
+          "page": 12,
+          "quote": "The proposed Amended and Restated Initial Order provides for a charge of up to $1.25 million ... in favour of counsel and advisors to the Applicant, the Monitor, the Monitor's independent counsel and independent counsel to the Board.",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "firm-capital-mortgage-fund-inc"
+          ],
+          "fact": "The proposed $25 million DIP Lender's Charge would be secured against all of Laurentian University's property and was described as a condition of the DIP financing.",
+          "page": 13,
+          "quote": "The DIP Lender's Charge will be secured by all Property ... of the Applicant.",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The proposed Directors' Charge of up to $5 million would indemnify current and future directors and officers for post-filing obligations and liabilities, except those arising from gross negligence or wilful misconduct, subject to available directors' and officers' insurance coverage.",
+          "page": 13,
+          "quote": "The Directors and Officers shall only be entitled to the benefit of the Directors' Charge to the extent that they do not have coverage under any director's and officer's insurance policy."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "db-pension-plan"
+          ],
+          "fact": "Laurentian University's monthly payroll was approximately $11 million, monthly DB Pension Plan contributions approximately $1.2 million, and monthly accrued vacation pay approximately $800,000; the Monitor said the proposed Directors' Charge was smaller than these amounts accruing during the proceedings.",
+          "page": 14,
+          "quote": "Aggregate monthly payroll is approximately $11 million, monthly DB Pension Plan contributions are approximately $1.2 million and vacation pay accrued on a monthly basis is approximately $800,000."
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-07",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings-cv-21-656040-00cl"
+          ],
+          "fact": "In its report submitted February 7, 2021, the Monitor recommended that the Court grant the proposed amended and restated initial order, including the stay extension, FIPPA stay, pension-payment stay, DIP financing, DIP charge and elevated court-ordered charges.",
+          "page": 14,
+          "quote": "The Monitor supports the relief sought by the Applicant in the proposed Amended and Restated Initial Order ... and recommends that the Court grant the proposed Amended and Restated Initial Order.",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "firm-capital-mortgage-fund-inc"
+          ],
+          "fact": "The Applicant's cash-flow forecast for January 30 through April 30, 2021, presented in thousands of Canadian dollars, lists total receipts of $29,514, total operating disbursements of $54,004, total disbursements of $58,553, net cash receipts/(disbursements) of $(29,039), DIP financing of $24,076, and an ending cash balance of $8,328.",
+          "page": 16,
+          "quote": "Total Receipts ... 29,514 ... Total Disbursements ... (58,553) ... Net Cash Receipts/(Disbursements) ... (29,039).",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "supplementary-unfunded-retirement-plan",
+            "retirement-health-benefits-plan",
+            "db-pension-plan"
+          ],
+          "fact": "The forecast assumes payment in the ordinary course of wages, benefits, ordinary-course pension contributions and vacation pay, while payments to former employees or retirees under the SuRP and RHBP and termination or severance payments are stayed.",
+          "page": 18,
+          "quote": "All outstanding and future wages, salaries, employee and retiree benefits ... ordinary course pension benefits or contributions ... and vacation pay ... will be paid in the ordinary course.",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "federated-universities",
+            "nosm",
+            "students-associations"
+          ],
+          "fact": "The forecast includes transfers to Federated Universities under Laurentian University's post-filing funding obligations, transfers to NOSM for student fees collected on its behalf, and transfers of student fees collected for Students' Associations.",
+          "page": 19,
+          "quote": "Transfers to Federated Universities are forecast based on LU's post-filing obligations with respect to its Federated Funding Formula to the Federated Universities."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "canada",
+            "canada-pension-plan",
+            "quebec-pension-plan"
+          ],
+          "fact": "The forecast assumes statutory deductions from employee wages, including Canada Pension Plan, Quebec Pension Plan and income-tax amounts payable to the Crown, will be remitted.",
+          "page": 18,
+          "quote": "All statutory deemed trust amounts in favour of the Crown in right of Canada or of any Province ... including ... Canada Pension Plan, Quebec Pension Plan and income taxes will be remitted.",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings-cv-21-656040-00cl"
+          ],
+          "fact": "The creditor notice states that the initial order stayed proceedings and suspended remedies against Laurentian University and its assets, business, officers and directors through February 11, 2021, subject to consent or court leave, and barred payment of pre-filing principal, interest and other amounts except as permitted by the order.",
+          "page": 22,
+          "quote": "During the Stay Period, all persons are prohibited from commencing or continuing any legal proceedings against or in respect of Laurentian University."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings-cv-21-656040-00cl"
+          ],
+          "fact": "The creditor notice states that no claims procedure had been submitted to or approved by the Court and that creditors were not required to file proofs of claim at that time.",
+          "page": 22,
+          "quote": "No claims procedure has yet been submitted to or approved by the Court and creditors are therefore not required to file proofs of claim at this time."
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings-cv-21-656040-00cl",
+            "ernst-young-inc",
+            "ontario-superior-court-of-justice"
+          ],
+          "fact": "On February 1, 2021, Laurentian University of Sudbury commenced court-supervised restructuring proceedings under the CCAA, and Ernst & Young Inc. was appointed Monitor under the Ontario Superior Court of Justice's Initial Order.",
+          "page": 22
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings-cv-21-656040-00cl",
+            "ontario-superior-court-of-justice"
+          ],
+          "fact": "The Initial Order imposed a stay of proceedings through February 11, 2021, subject to extension by further court order, barring legal proceedings and enforcement of rights or remedies against Laurentian University, its assets, business, current officers or directors except with consent or court permission.",
+          "page": 22
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings-cv-21-656040-00cl"
+          ],
+          "fact": "Except as permitted by the Initial Order, Laurentian University was directed not to pay principal, interest or other amounts owed to creditors as of February 1, 2021.",
+          "page": 22
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings-cv-21-656040-00cl"
+          ],
+          "fact": "No claims procedure had been submitted to or approved by the Court, so creditors were not required to file proofs of claim at that time.",
+          "page": 22
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-05",
+          "entities": [
+            "honourable-justice-sean-dunphy",
+            "ontario-superior-court-of-justice",
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings-cv-21-656040-00cl"
+          ],
+          "fact": "On February 5, 2021, the Court appointed Justice Sean Dunphy as an officer of the Court and neutral Court-Appointed Mediator to assist Laurentian University and relevant stakeholders in the CCAA restructuring.",
+          "page": 26
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-05",
+          "entities": [
+            "honourable-justice-sean-dunphy",
+            "laurentian-university-of-sudbury",
+            "laurentian-university-faculty-association",
+            "federated-universities"
+          ],
+          "fact": "The mediation objectives covered restructuring Laurentian University's academic programs and faculty, negotiating a new collective agreement with the Laurentian University Faculty Association including outstanding grievances, reviewing the Federated Universities model, developing the framework for restructuring and future operations, and addressing other matters referred to the mediator.",
+          "page": 26
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-05",
+          "entities": [
+            "honourable-justice-sean-dunphy",
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury",
+            "senate-of-laurentian-university"
+          ],
+          "fact": "The order authorized Justice Dunphy to set mediation procedures and timelines and consult parties, creditors, stakeholders and other appropriate persons, including the Senate of Laurentian University; it directed the Monitor to provide assistance he reasonably requested.",
+          "page": 27
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-05",
+          "entities": [
+            "honourable-justice-sean-dunphy",
+            "laurentian-university-ccaa-proceedings-cv-21-656040-00cl"
+          ],
+          "fact": "The Court approved a Mediation Confidentiality Protocol under which mediation communications were without-prejudice and confidential, no stenographic, visual or audio recordings could be made, and communications and the mediator's notes were generally protected from discovery, admissibility and disclosure.",
+          "page": 29
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-05",
+          "entities": [
+            "honourable-justice-sean-dunphy",
+            "ontario-superior-court-of-justice",
+            "laurentian-university-ccaa-proceedings-cv-21-656040-00cl"
+          ],
+          "fact": "The Court and the mediator were authorized to communicate directly about the conduct and coordination of the mediation with the CCAA proceedings, while the Court could not disclose how it would decide pending matters and the mediator could not disclose parties' negotiating positions or confidential information to the Court.",
+          "page": 27
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-05",
+          "entities": [
+            "honourable-justice-sean-dunphy",
+            "chief-justice-morawetz",
+            "laurentian-university-faculty-association",
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury",
+            "commercial-list-office"
+          ],
+          "fact": "At a February 5 case conference arranged through the Commercial List Office, all attending parties supported the immediate appointment of a mediator and agreed to Justice Sean F. Dunphy; Chief Justice G.B. Morawetz signed the Mediator Appointment Order.",
+          "page": 33,
+          "quote": "The parties in attendance all support the immediate appointment of a mediator and are agreeable to the appointment of the Honourable Justice Sean F. Dunphy as Court-Appointed Mediator."
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-05",
+          "entities": [
+            "ontario-superior-court-of-justice",
+            "laurentian-university-ccaa-proceedings-cv-21-656040-00cl"
+          ],
+          "fact": "The Mediator Appointment Order took effect at 12:01 a.m. Eastern Time on February 5, 2021 and was enforceable without entry and filing.",
+          "page": 28
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-05",
+          "entities": [
+            "laurentian-university-ccaa-proceedings-cv-21-656040-00cl",
+            "thornton-grout-finnigan-llp",
+            "d-j-miller",
+            "mitchell-w-grossell",
+            "andrew-hanrahan",
+            "derek-harland",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The appointment materials list Thornton Grout Finnigan LLP as lawyers for the Applicant and name D.J. Miller, Mitchell W. Grossell, Andrew Hanrahan and Derek Harland.",
+          "page": 31
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-05",
+          "entities": [
+            "d-j-miller",
+            "michael-kennedy",
+            "charles-sinclair",
+            "susan-philpott",
+            "david-wright",
+            "ashley-taylor",
+            "ben-muller",
+            "sharon-hamilton",
+            "laurentian-university-of-sudbury",
+            "laurentian-university-faculty-association",
+            "ernst-young-inc"
+          ],
+          "fact": "The endorsement identifies D.J. Miller and labour counsel Michael Kennedy for Laurentian University; Charles Sinclair, Susan Philpott and David Wright for LUFA; Ashley Taylor and Ben Muller for the Monitor; and Sharon Hamilton of Ernst & Young Inc. in connection with the Court-appointed Monitor.",
+          "page": 33
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-05",
+          "entities": [
+            "dr-robert-hache",
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings-cv-21-656040-00cl"
+          ],
+          "fact": "In making the appointment, the Court read Laurentian University's Notice of Application dated February 1, 2021, Dr. Robert Haché's affidavit sworn January 30, 2021 and exhibits, and Ernst & Young Inc.'s Monitor's Report dated January 30, 2021.",
+          "page": 25
+        },
+        {
+          "basis": "inferred",
+          "entities": [
+            "laurentian-university-ccaa-proceedings-cv-21-656040-00cl"
+          ],
+          "fact": "The appointment materials use inconsistent court-file identifiers: pages 25 and 31 show CV-21-00656040-00CL, page 29 shows 21-CV-00656040-00CL, while the notice and endorsement show CV-21-656040-00CL.",
+          "page": 25
+        }
+      ],
+      "coverage_gap": null,
+      "entities": [
+        "Laurentian University of Sudbury",
+        "CCAA proceedings concerning Laurentian University of Sudbury",
+        "Ontario Superior Court of Justice",
+        "Ernst & Young Inc.",
+        "City of Greater Sudbury",
+        "Ontario",
+        "Dr. Robert Haché",
+        "LU's Finance department",
+        "Ministry of Colleges and Universities",
+        "Laurentian University Faculty Association",
+        "Honourable Justice Sean Dunphy",
+        "Chief Justice Morawetz",
+        "Firm Capital Corporation",
+        "Firm Capital Mortgage Fund Inc.",
+        "DB Pension Plan",
+        "supplementary unfunded retirement plan",
+        "retirement health benefits plan",
+        "Federated Universities",
+        "NOSM",
+        "Students' Associations",
+        "SNOLab",
+        "CEMI",
+        "MIRARCO",
+        "Chartered Professional Accountants Canada",
+        "Globe and Mail",
+        "Sudbury Star",
+        "Canada",
+        "Canada Pension Plan",
+        "Quebec Pension Plan",
+        "Senate of Laurentian University",
+        "Commercial List Office",
+        "Thornton Grout Finnigan LLP",
+        "D.J. Miller",
+        "Mitchell W. Grossell",
+        "Andrew Hanrahan",
+        "Derek Harland",
+        "Michael Kennedy",
+        "Charles Sinclair",
+        "Susan Philpott",
+        "David Wright",
+        "Ashley Taylor",
+        "Ben Muller",
+        "Sharon Hamilton"
+      ]
+    },
+    "Y": {
+      "summary": "This 34-page First Report of the Monitor, filed in Laurentian University of Sudbury’s CCAA restructuring, explains the university’s initial need for court protection, financing and a framework for continued operations. Laurentian commenced proceedings before the Ontario Superior Court of Justice on February 1, 2021, when Ernst & Young Inc. was appointed monitor and an initial stay was granted through February 11; classes continued virtually and day-to-day operations remained active. The Court appointed Justice Sean Dunphy as mediator on February 5 to address academic and faculty restructuring, collective-bargaining issues, grievances, the Federated Universities model and future operations, with a comeback motion scheduled for February 10.\n\nThe Monitor reported an immediate liquidity crisis and supported extending the stay through April 30. An unaudited forecast projected $29.514 million in receipts against $58.553 million in disbursements, for a net shortfall of about $29.039 million, while proposed DIP financing from Firm Capital provided for a secured facility of up to $25 million, at interest of the greater of 8.5% or prime plus 6.05%, with a $500,000 commitment fee and maturity on May 1. The forecast assumed $24.076 million in DIP advances and an ending cash balance of $8.328 million; the Monitor said Laurentian could not maintain operations or undertake restructuring without the financing.\n\nThe proposed amended order would impose super-priority charges of up to $1.25 million for administration, $2 million for directors, $25 million for the DIP lender and a further $3 million directors’ charge, while seeking to defer pension special payments and temporarily stay FIPPA requests. Laurentian’s defined-benefit pension plan had an 85.4% solvency ratio and an approximately $4.5 million going-concern deficiency, with annual current-service contributions forecast at $16.188 million. The Monitor cautioned that its analysis relied on unaudited information supplied by Laurentian, whose limited Finance department resources constrained the information available and prevented independent verification.",
+      "key_facts": [
+        {
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ontario-superior-court-of-justice",
+            "laurentian-university-ccaa-proceeding",
+            "ernst-young-inc"
+          ],
+          "fact": "Laurentian University of Sudbury applied to the Ontario Superior Court of Justice for protection under the Companies' Creditors Arrangement Act, and the Court appointed Ernst & Young Inc. as monitor and granted an initial 10-day stay of proceedings.",
+          "page": 1,
+          "quote": "On February 1, 2021, the Court granted an initial order ... that, among other things, appointed Ernst & Young Inc. as monitor of the Applicant in these CCAA proceedings.",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-10",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ontario-superior-court-of-justice",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "The Court scheduled a comeback motion for February 10, 2021.",
+          "page": 1,
+          "quote": "The Court scheduled a comeback motion for 9:00am on February 10, 2021."
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-07",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The Monitor reported that it relied on unaudited financial information, books and records prepared by Laurentian and discussions with management, and did not audit or otherwise verify the information in accordance with GAAS.",
+          "page": 2,
+          "quote": "However, the Monitor has not audited or otherwise attempted to verify the accuracy or completeness of the Information ... in a manner that would wholly or partially comply with Generally Accepted Assurance Standards."
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-07",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The Monitor stated that its factual understanding of Laurentian and its business was generally based on information supplied by Laurentian rather than independent factual determinations.",
+          "page": 3,
+          "quote": "Unless otherwise indicated, the Monitor's understanding of factual matters expressed in this First Report concerning the Applicant and its business is based on the Information, and not independent factual determinations made by the Monitor."
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-07",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "robert-hache"
+          ],
+          "fact": "The report identified challenges in Laurentian's Finance department caused by its limited team and resources, and cautioned that this could limit information relied upon by the Monitor.",
+          "page": 3,
+          "quote": "Dr. Haché Notes that he has relied upon information provided by LU's Finance department which has experienced certain challenges as a result of its limited team and resources."
+        },
+        {
+          "basis": "stated",
+          "date": "1960-03-28",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University was incorporated under the Laurentian University of Sudbury Act, 1960.",
+          "page": 3,
+          "quote": "On March 28, 1960, LU was incorporated under An Act to Incorporate Laurentian University of Sudbury."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "sudbury-ontario"
+          ],
+          "fact": "Laurentian is a publicly funded, bilingual and tricultural, non-share-capital post-secondary institution and registered charity operating in Greater Sudbury, Ontario.",
+          "page": 4,
+          "quote": "LU is a publicly funded, bilingual and tricultural post-secondary institution."
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-07",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian continued normal day-to-day operations after the initial order, with student classes continuing virtually without disruption.",
+          "page": 4,
+          "quote": "Student classes are continuing (virtually due to the Pandemic) with no disruption."
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-07",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian communicated with students, faculty, employees, suppliers, research-granting agencies and donors about the CCAA proceedings, launched public information websites, and implemented fiscal-restraint policies limiting expenses to those considered necessary.",
+          "page": 4,
+          "quote": "Finally, the Applicant has drafted and implemented new fiscal restraint policies to monitor and authorize only necessary expenses during the pendency of this CCAA proceeding."
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-05",
+          "entities": [
+            "ontario-superior-court-of-justice",
+            "sean-dunphy",
+            "laurentian-university-faculty-association",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Following a February 5 case conference, the Court appointed Ontario Superior Court Justice Sean Dunphy as mediator for restructuring negotiations involving Laurentian, LUFA and other stakeholders; the parties reported no objection.",
+          "page": 7,
+          "quote": "All parties at the case conference confirmed that there were no objections to Justice Dunphy's appointment as mediator."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "firm-capital-corporation",
+            "firm-capital-mortgage-fund-inc"
+          ],
+          "fact": "Laurentian executed a DIP term sheet with Firm Capital Corporation, which subsequently assigned its interest to Firm Capital Mortgage Fund Inc.; the parties were still negotiating the definitive DIP agreement.",
+          "page": 8,
+          "quote": "Subsequent to the execution of the DIP Term Sheet, Firm Capital Corporation assigned its interest to Firm Capital Mortgage Fund Inc."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "firm-capital-mortgage-fund-inc"
+          ],
+          "fact": "The proposed DIP facility is a secured, non-revolving credit facility with a maximum principal amount of $25 million and a maturity date of May 1, 2021, potentially extendable by 90 days if specified academic, labour and financial-sustainability milestones are met to the lender's satisfaction.",
+          "page": 8,
+          "quote": "the maximum principal amount is $25 million with a maturity date of May 1, 2021."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "firm-capital-mortgage-fund-inc"
+          ],
+          "fact": "The DIP facility was to be advanced in two tranches: an initial advance after Court approval of the amended and restated initial order and the lender's charge, followed by a second advance requiring five calendar days' written notice and Monitor approval.",
+          "page": 8,
+          "quote": "the DIP facility contemplates two advances to be made as follows."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "firm-capital-mortgage-fund-inc"
+          ],
+          "fact": "DIP interest was set at the greater of 8.50% annually or TD Canada Trust's posted prime rate plus 6.05% annually, and a $500,000 commitment fee would become fully earned and payable when the Court approved the DIP financing.",
+          "page": 9,
+          "quote": "a commitment fee of $500,000 shall be deemed to have been fully earned and payable to the DIP Lender on the date that the Court approves the Amended and Restated Initial Order approving the DIP financing."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ernst-young-inc"
+          ],
+          "fact": "The Monitor reported that Laurentian had an immediate need for DIP financing and said that without it Laurentian would be unable to maintain operations and address its restructuring needs.",
+          "page": 9,
+          "quote": "Without access to DIP financing, the Applicant will be unable to maintain operations and address its operational and financial restructuring needs."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The Monitor supported extending the stay period from February 11 through April 30, 2021, stating that the cash-flow forecast and proposed DIP financing should provide sufficient liquidity through April 30.",
+          "page": 10,
+          "quote": "The Monitor is of the view that the Applicant should have sufficient liquidity to fund its operations until April 30, 2021."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "db-pension-plan"
+          ],
+          "fact": "Laurentian administered a defined-benefit pension plan, an unfunded supplementary retirement plan and a retirement health benefits plan; the latter two were described as unfunded contractual obligations to former or retired employees.",
+          "page": 10,
+          "quote": "the Applicant administers three employee pension and benefit plans."
+        },
+        {
+          "basis": "stated",
+          "date": "2020-01-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "db-pension-plan"
+          ],
+          "fact": "The DB Pension Plan's actuarial valuation, dated January 1, 2020 and updated in December 2020, reported an 85.4% solvency ratio and an approximately $4.5 million going-concern deficiency.",
+          "page": 11,
+          "quote": "the DB Pension Plan had a solvency ratio of 85.4%, representing a going concern deficiency of approximately $4.5 million."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "db-pension-plan"
+          ],
+          "fact": "The DB Pension Plan's required current-service contributions were forecast at $16.188 million annually, payable in monthly instalments of approximately $1.349 million, plus annual special payments of $505,000 payable monthly at approximately $42,083.",
+          "page": 11,
+          "quote": "the DB Pension Plan current service contributions for the next three years would be set at $16,188,000, annually."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The proposed amended order sought to stay pre-filing and post-filing special payments to the DB Pension Plan during the stay period because of Laurentian's liquidity crisis.",
+          "page": 11,
+          "quote": "the proposed Amended and Restated Order requests relief from this Court to stay the payment of any pre-filing or post-filing special payments to the DB Pension Plan."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The proposed amended order sought to stay existing, pending and future FIPPA information requests to Laurentian, which the report said the university lacked resources to process during restructuring.",
+          "page": 11,
+          "quote": "The proposed Amended and Restated Order provides for relief from this Court to stay any existing, pending or future information requests to the Applicant pursuant to the Freedom of Information and Protection of Privacy Act."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "firm-capital-mortgage-fund-inc"
+          ],
+          "fact": "The proposed super-priority charges would rank against Laurentian's current and future assets, undertakings and properties in this order: Administration Charge up to $1.25 million; Directors' Charge up to $2 million; DIP Lender's Charge up to $25 million; and a further Directors' Charge of up to $3 million, for a total Directors' Charge of $5 million.",
+          "page": 12,
+          "quote": "the following super-priority charges ... rank in the following order.",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian's secured creditors were described primarily as subcontractors with construction liens against university real property and limited equipment lessors, whose potential claims would rank behind the proposed charges.",
+          "page": 12,
+          "quote": "The Applicant's secured creditors are primarily comprised of subcontractors who have registered construction liens against certain real property owned by the Applicant and limited equipment lessors."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The proposed $5 million Directors' Charge would secure indemnities for current and future directors and officers for post-filing obligations, subject to exclusions for gross negligence or wilful misconduct and limits based on available insurance.",
+          "page": 13,
+          "quote": "The proposed Amended and Restated Initial Order provides for a charge in an amount not to exceed $5 million."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian's monthly payroll was approximately $11 million, monthly DB Pension Plan contributions approximately $1.2 million, and monthly accrued vacation pay approximately $800,000.",
+          "page": 14,
+          "quote": "aggregate monthly payroll is approximately $11 million, monthly DB Pension Plan contributions are approximately $1.2 million and vacation pay accrued on a monthly basis is approximately $800,000."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The unaudited cash-flow forecast for January 30 through April 30, 2021 projected total receipts of $29.514 million, total disbursements of $58.553 million and net cash receipts/(disbursements) of approximately negative $29.039 million.",
+          "page": 16,
+          "quote": "Total Disbursements ... (58,553)",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The cash-flow forecast projected $24.076 million of DIP financing and an ending cash balance of $8.328 million by April 30, 2021.",
+          "page": 16,
+          "quote": "Ending cash balance ... 8,328",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ernst-young-inc",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "The notice to creditors stated that Laurentian's CCAA proceedings began February 1, 2021, that the initial stay ran through February 11, 2021, and that no claims procedure had yet been submitted or approved, so creditors were not required to file proofs of claim at that time.",
+          "page": 22,
+          "quote": "No claims procedure has yet been submitted to or approved by the Court and creditors are therefore not required to file proofs of claim at this time."
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "Laurentian University of Sudbury commenced court-supervised restructuring proceedings under the Companies' Creditors Arrangement Act on February 1, 2021.",
+          "page": 22
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "Ernst & Young Inc. was appointed monitor of Laurentian University by the Ontario Superior Court of Justice on February 1, 2021.",
+          "page": 22
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "The Initial Order stayed proceedings against Laurentian University and its assets, business, current officers and directors through February 11, 2021, subject to extension by court order.",
+          "page": 22
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "Except as permitted by the Initial Order, Laurentian University was directed not to pay principal, interest or other amounts owed to creditors as of February 1, 2021.",
+          "page": 22
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "No claims procedure had been submitted to or approved by the court, so creditors were not required to file proofs of claim at that time.",
+          "page": 22
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-05",
+          "entities": [
+            "ontario-superior-court-of-justice",
+            "sean-dunphy",
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "On February 5, 2021, the Ontario Superior Court of Justice appointed Justice Sean Dunphy as a court officer and neutral third-party mediator in Laurentian University's CCAA proceeding.",
+          "page": 25
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "sean-dunphy",
+            "laurentian-university-of-sudbury",
+            "laurentian-university-faculty-association",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "The mediator's objectives included restructuring Laurentian University's academic programs and faculty, negotiating a new collective agreement with the Laurentian University Faculty Association and resolving outstanding grievances, reviewing the Federated Universities model, and developing a framework for restructuring and future operations.",
+          "page": 26
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "sean-dunphy",
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "The mediator was authorized to establish mediation procedures and timelines, consult relevant parties and stakeholders, and request assistance from the Monitor.",
+          "page": 27
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "sean-dunphy",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "The mediation confidentiality protocol designated written and oral mediation communications as without-prejudice settlement discussions, barred recording, and generally made those communications and the mediator's notes and recollections undiscoverable and inadmissible.",
+          "page": 29
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-05",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-faculty-association",
+            "ernst-young-inc",
+            "sean-dunphy",
+            "laurentian-university-ccaa-proceeding"
+          ],
+          "fact": "At a February 5, 2021 case conference, Laurentian University, the Laurentian University Faculty Association and the Monitor supported the immediate appointment of Sean Dunphy as mediator and agreed to the draft appointment order.",
+          "page": 33
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-05",
+          "entities": [
+            "sean-dunphy",
+            "senate-of-laurentian-university",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The appointment order authorized Justice Sean Dunphy to consult parties he considered appropriate, including the Senate of Laurentian University.",
+          "page": 34
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-05",
+          "entities": [
+            "laurentian-university-ccaa-proceeding",
+            "ontario-superior-court-of-justice"
+          ],
+          "fact": "The mediator appointment order was signed by Chief Justice G.B. Morawetz on February 5, 2021 and cited as Laurentian University of Sudbury, 2021 ONSC 951.",
+          "page": 33
+        }
+      ],
+      "coverage_gap": null,
+      "entities": [
+        "Laurentian University of Sudbury",
+        "Ernst & Young Inc.",
+        "Ontario Superior Court of Justice",
+        "CCAA proceeding of Laurentian University of Sudbury, Court File No. CV-21-656040-00CL",
+        "Sean Dunphy",
+        "Laurentian University Faculty Association",
+        "Firm Capital Corporation",
+        "Firm Capital Mortgage Fund Inc.",
+        "Robert Haché",
+        "Sharon S. Hamilton",
+        "registered defined benefit pension plan",
+        "City of Greater Sudbury, Ontario",
+        "100 Adelaide Street West, Toronto, Ontario M5H 0B3, Canada",
+        "Thornton Grout Finnigan LLP",
+        "D.J. Miller",
+        "Mitchell W. Grossell",
+        "Andrew Hanrahan",
+        "Derek Harland",
+        "Michael Kennedy",
+        "Charles Sinclair",
+        "Susan Philpott",
+        "David Wright",
+        "Ashley Taylor",
+        "Ben Muller",
+        "G.B. Morawetz",
+        "Senate of Laurentian University",
+        "Federated Universities"
+      ]
+    },
+    "Z": {
+      "summary": "This 34-page First Report of the Monitor, filed by Ernst & Young Inc. in Laurentian University’s CCAA restructuring, outlines the court-supervised process, immediate financing needs and proposed steps to keep the university operating. Laurentian entered proceedings on February 1, 2021, with an initial stay through February 11 and Ernst & Young appointed monitor; the monitor supported extending the stay through April 30 on the basis that proposed DIP financing would fund operations. The university continued virtual classes and day-to-day operations while implementing fiscal restraint, and Justice Sean Dunphy was appointed mediator on February 5 to address academic restructuring, negotiations with the Laurentian University Faculty Association, grievances, the Federated Universities model and a framework for future operations.\n\nLaurentian negotiated a secured, non-revolving DIP facility of up to $25 million with Firm Capital Mortgage Fund Inc., maturing May 1, 2021, at the greater of 8.50% or TD’s posted prime rate plus 6.05%, plus a $500,000 commitment fee upon court approval. Proposed super-priority charges included up to $1.25 million for administration, $2 million and an additional $3 million for directors, and $25 million for the DIP lender. The cash-flow forecast for January 30 through April 30 projected $29.514 million in receipts against $58.553 million in disbursements, for net cash disbursements of $29.039 million; monthly payroll was about $11 million, with pension contributions of about $1.2 million and vacation-pay accrual of about $800,000.\n\nThe university’s defined-benefit pension plan had an 85.4% solvency ratio and an approximately $4.5 million going-concern deficiency as of the January 1, 2020 valuation, updated in December 2020; required annual current-service contributions were $16.188 million, alongside $505,000 in annual special payments. No claims procedure had yet been approved, so creditors were not required to file proofs of claim. The monitor cautioned that it relied principally on unaudited information supplied by Laurentian and management and had not independently verified it or provided GAAS assurance.",
+      "key_facts": [
+        {
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ontario-superior-court-of-justice",
+            "laurentian-university-ccaa-proceedings",
+            "ernst-young-inc"
+          ],
+          "fact": "Laurentian University commenced CCAA restructuring proceedings in the Ontario Superior Court of Justice, which appointed Ernst & Young Inc. as monitor and granted an initial stay of proceedings.",
+          "page": 1,
+          "quote": "On February 1, 2021, the Court granted an initial order that, among other things, appointed Ernst & Young Inc. as monitor of the Applicant in these CCAA proceedings.",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-07",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Ernst & Young Inc., acting as monitor, filed its First Report in the Laurentian University CCAA proceedings.",
+          "page": 1,
+          "quote": "FIRST REPORT OF THE MONITOR February 7, 2021"
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings"
+          ],
+          "fact": "The initial order imposed a stay of proceedings through February 11, 2021, subject to extension by further court order.",
+          "page": 22,
+          "quote": "The Initial Order grants, among other things, a stay of proceedings up to and including February 11, 2021."
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-05",
+          "entities": [
+            "ontario-superior-court-of-justice",
+            "sean-dunphy",
+            "laurentian-university-faculty-association",
+            "ernst-young-inc"
+          ],
+          "fact": "Following a February 5 case conference, the court appointed Ontario Superior Court Justice Sean Dunphy as mediator for restructuring negotiations involving Laurentian University, LUFA and other stakeholders, without objection from the parties.",
+          "page": 7,
+          "quote": "All parties at the case conference confirmed that there were no objections to Justice Dunphy's appointment as mediator."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University continued its ordinary day-to-day operations, including virtual student classes, and implemented fiscal-restraint policies during the CCAA proceeding.",
+          "page": 4,
+          "quote": "Student classes are continuing (virtually due to the Pandemic) with no disruption."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The monitor relied principally on unaudited financial information and records prepared by Laurentian University and management, did not audit or independently verify the information under GAAS, and stated that its report provides no GAAS assurance.",
+          "page": 2,
+          "quote": "The Monitor has not audited or otherwise attempted to verify the accuracy or completeness of the Information in a manner that would wholly or partially comply with Generally Accepted Assurance Standards."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings"
+          ],
+          "fact": "Laurentian University is a publicly funded, bilingual, tricultural, non-share-capital corporation and registered charity operating in Greater Sudbury, Ontario.",
+          "page": 4,
+          "quote": "LU is a non-share capital corporation and a registered charity pursuant to the Income Tax Act."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "firm-capital-mortgage-fund-inc"
+          ],
+          "fact": "Laurentian University executed a DIP term sheet initially with Firm Capital Corporation, which assigned its interest to Firm Capital Mortgage Fund Inc.; the parties were negotiating the definitive DIP agreement.",
+          "page": 8,
+          "quote": "Subsequent to the execution of the DIP Term Sheet, Firm Capital Corporation assigned its interest to Firm Capital Mortgage Fund Inc."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "firm-capital-mortgage-fund-inc"
+          ],
+          "fact": "The proposed secured, non-revolving DIP facility had a maximum principal amount of $25 million, a maturity date of May 1, 2021, and potential 90-day extension milestones tied to academic restructuring, a settlement with LUFA and a sustainable revised budget.",
+          "page": 8,
+          "quote": "the maximum principal amount is $25 million with a maturity date of May 1, 2021."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "firm-capital-mortgage-fund-inc",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The DIP facility's interest rate was the greater of 8.50% annually or TD Canada Trust's posted prime rate plus 6.05%, and it included a $500,000 commitment fee payable upon court approval of the amended initial order.",
+          "page": 9,
+          "quote": "a commitment fee of $500,000 shall be deemed to have been fully earned and payable to the DIP Lender on the date that the Court approves the Amended and Restated Initial Order."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The monitor supported extending the stay period through April 30, 2021, stating that projected liquidity under the DIP term sheet would fund operations through that date.",
+          "page": 10,
+          "quote": "the Monitor supports the Applicant's request for an order extending the Stay Period to April 30, 2021."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "db-pension-plan"
+          ],
+          "fact": "Laurentian University's defined-benefit pension plan had an 85.4% solvency ratio and an approximately $4.5 million going-concern deficiency based on an actuarial valuation as of January 1, 2020, updated in December 2020.",
+          "page": 11,
+          "quote": "the DB Pension Plan had a solvency ratio of 85.4%, representing a going concern deficiency of approximately $4.5 million."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "db-pension-plan"
+          ],
+          "fact": "The pension valuation required annual current-service contributions of $16.188 million, payable monthly at approximately $1.349 million, plus annual special payments of $505,000, payable monthly at approximately $42,083.",
+          "page": 11,
+          "quote": "the DB Pension Plan current service contributions for the next three years would be set at $16,188,000, annually."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "ernst-young-inc",
+            "firm-capital-mortgage-fund-inc"
+          ],
+          "fact": "The proposed super-priority charges were an administration charge of up to $1.25 million, a directors' charge of up to $2 million, a DIP lender's charge of up to $25 million, and an additional directors' charge of up to $3 million, ranking in that order.",
+          "page": 12,
+          "quote": "the Administration Charge ... $1.25 million; ... the Directors' Charge ... $2 million; ... the DIP Lender's Charge ... $25 million; and ... an additional $3 million.",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Laurentian University's monthly payroll was approximately $11 million, monthly defined-benefit pension contributions approximately $1.2 million, and monthly vacation-pay accrual approximately $800,000.",
+          "page": 14,
+          "quote": "aggregate monthly payroll is approximately $11 million, monthly DB Pension Plan contributions are approximately $1.2 million and vacation pay accrued on a monthly basis is approximately $800,000."
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "The unaudited cash-flow forecast projected total receipts of $29.514 million, total disbursements of $58.553 million and net cash disbursements of $29.039 million for January 30 through April 30, 2021.",
+          "page": 16,
+          "quote": "Total Receipts 29,514 ... Total Disbursements (58,553) ... Net Cash Receipts/(Disbursements) (29,039).",
+          "quote_verified": false
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings"
+          ],
+          "fact": "The notice to creditors stated that no claims procedure had yet been submitted to or approved by the court, so creditors were not required to file proofs of claim at that time.",
+          "page": 22,
+          "quote": "No claims procedure has yet been submitted to or approved by the Court and creditors are therefore not required to file proofs of claim at this time."
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings"
+          ],
+          "fact": "Laurentian University commenced court-supervised restructuring proceedings under the CCAA.",
+          "page": 22
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-01",
+          "entities": [
+            "ernst-young-inc",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Ernst & Young Inc. was appointed monitor of Laurentian University under the Ontario Superior Court's Initial Order.",
+          "page": 22
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings"
+          ],
+          "fact": "The Initial Order stayed proceedings against Laurentian University through February 11, 2021, subject to extension by further court order.",
+          "page": 22
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings"
+          ],
+          "fact": "During the stay period, legal proceedings and rights or remedies against Laurentian University, its assets, business, and current officers and directors were stayed unless authorized by Laurentian and the monitor in writing or permitted by the Court.",
+          "page": 22
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings"
+          ],
+          "fact": "Except as permitted by the Initial Order, Laurentian University was directed not to pay principal, interest, or other amounts owing to creditors as of February 1, 2021.",
+          "page": 22
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings"
+          ],
+          "fact": "No claims procedure had been submitted to or approved by the Court, so creditors were not yet required to file proofs of claim.",
+          "page": 22
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-05",
+          "entities": [
+            "sean-dunphy",
+            "laurentian-university-of-sudbury",
+            "laurentian-university-ccaa-proceedings"
+          ],
+          "fact": "The Ontario Superior Court appointed Justice Sean Dunphy as a neutral, court-appointed mediator and officer of the Court in Laurentian University's CCAA proceeding.",
+          "page": 25
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "sean-dunphy",
+            "laurentian-university-of-sudbury",
+            "laurentian-university-faculty-association"
+          ],
+          "fact": "The mediator's mandate covered restructuring Laurentian's academic programs and faculty, negotiating a new collective agreement with LUFA and resolving outstanding grievances, reviewing the Federated Universities model, and developing a framework for restructuring and future operations.",
+          "page": 26
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "ernst-young-inc",
+            "sean-dunphy",
+            "laurentian-university-ccaa-proceedings"
+          ],
+          "fact": "The order required Ernst & Young Inc. to provide the mediator with assistance reasonably requested.",
+          "page": 27
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "sean-dunphy",
+            "laurentian-university-ccaa-proceedings"
+          ],
+          "fact": "The mediation confidentiality protocol classified mediation communications as without-prejudice settlement discussions and generally barred their discovery, admission, or disclosure in court.",
+          "page": 29
+        },
+        {
+          "basis": "stated",
+          "entities": [
+            "sean-dunphy",
+            "laurentian-university-ccaa-proceedings"
+          ],
+          "fact": "The mediator's notes, records, statements, discussions, and recollections were designated confidential and protected from disclosure, subject to specified exceptions.",
+          "page": 30
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-05",
+          "entities": [
+            "laurentian-university-of-sudbury",
+            "laurentian-university-faculty-association",
+            "ernst-young-inc",
+            "sean-dunphy"
+          ],
+          "fact": "At a February 5, 2021 case conference, Laurentian University, LUFA, and the monitor supported the immediate appointment of Sean Dunphy as mediator and agreed to the draft Mediator Appointment Order.",
+          "page": 33
+        },
+        {
+          "basis": "stated",
+          "date": "2021-02-05",
+          "entities": [
+            "sean-dunphy",
+            "laurentian-university-of-sudbury"
+          ],
+          "fact": "Chief Justice G.B. Morawetz stated that Justice Dunphy could consult parties he considered appropriate, including Laurentian University's Senate.",
+          "page": 34
+        }
+      ],
+      "coverage_gap": null,
+      "entities": [
+        "Laurentian University of Sudbury",
+        "CCAA proceedings of Laurentian University of Sudbury",
+        "Ernst & Young Inc.",
+        "Firm Capital Mortgage Fund Inc.",
+        "Firm Capital Corporation",
+        "Laurentian University Faculty Association",
+        "Ontario Superior Court of Justice",
+        "Honourable Justice Sean Dunphy",
+        "Laurentian University's registered defined benefit pension plan",
+        "City of Greater Sudbury, Ontario",
+        "Dr. Robert Haché",
+        "Chief Justice G.B. Morawetz",
+        "D.J. Miller",
+        "Michael Kennedy",
+        "Charles Sinclair",
+        "Susan Philpott",
+        "David Wright",
+        "Ashley Taylor",
+        "Ben Muller",
+        "Senate of Laurentian University",
+        "Thornton Grout Finnigan LLP"
+      ]
+    }
+  }
+}
