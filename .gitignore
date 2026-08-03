@@ -5,6 +5,7 @@ __pycache__/
 .claude/settings.local.json
 .claude/worktrees/
 benchmarks/.vaults/
+benchmarks/.fixture-capture/
 dev/batch_results.json
 *.egg-info/
 dist/

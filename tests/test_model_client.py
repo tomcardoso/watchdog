@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from watchdog import fixture_capture as fc
 from watchdog import model_client as mc
 
 
@@ -1150,6 +1151,81 @@ def test_natural_stop_is_not_paginated(api_key_auth, monkeypatch):
     r = mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="claude-api")
     assert r.parsed == {"name": "Acme"}
     assert len(be.calls) == 1                            # no continuation for a natural stop
+
+
+# ── fixture capture (#352) ────────────────────────────────────────────────────
+# `acomplete_json`/`_complete_with_pagination` call `fixture_capture.capture` at each condition
+# it observes; capture is a no-op unless a benchmark run has called `fixture_capture.enable`, so
+# these tests enable it explicitly to assert the hooks actually fire with the right condition.
+
+@pytest.fixture
+def capture_dir(tmp_path):
+    fc.enable(tmp_path)
+    yield tmp_path
+    fc.disable()
+
+
+def _captured(directory, condition):
+    import json
+    return [json.loads(f.read_text(encoding="utf-8")) for f in directory.glob(f"{condition}-*.json")]
+
+
+def test_truncation_is_captured(openai_key, monkeypatch, capture_dir):
+    be = PagingBackend(('{"name": "Acme"}', "length"))
+    monkeypatch.setitem(mc._ABACKENDS, "openai", be)
+    with pytest.raises(mc.ModelError):
+        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
+    records = _captured(capture_dir, "truncation")
+    assert len(records) == 1
+    assert records[0]["backend"] == "openai"
+    assert records[0]["task"] == "extract"
+
+
+def test_malformed_json_is_captured(api_key_auth, monkeypatch, capture_dir):
+    api = FakeBackend(_out("not json"), _out("still not json"))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    with pytest.raises(mc.ModelError):
+        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, max_retries=1)
+    records = _captured(capture_dir, "malformed_json")
+    assert len(records) == 2                      # one per failed attempt
+    assert {r["text"] for r in records} == {"not json", "still not json"}
+
+
+def test_schema_drift_is_captured(api_key_auth, monkeypatch, capture_dir):
+    api = FakeBackend(_out('{"name": "Acme", "extra": 1}'))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    r = mc.complete_json(task="extract", prompt="p", schema=SCHEMA)
+    assert r.parsed == {"name": "Acme"}
+    records = _captured(capture_dir, "schema_drift")
+    assert len(records) == 1
+    assert records[0]["removed"] == ["extra"]
+
+
+def test_no_capture_when_response_is_clean(api_key_auth, monkeypatch, capture_dir):
+    api = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    mc.complete_json(task="extract", prompt="p", schema=SCHEMA)
+    assert list(capture_dir.glob("*.json")) == []
+
+
+def test_continuation_is_captured(api_key_auth, monkeypatch, capture_dir):
+    be = PagingBackend(('{"name": "Ac', "max_tokens"), ('me"}', "end_turn"))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", be)
+    mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="claude-api")
+    records = _captured(capture_dir, "continuation")
+    assert len(records) == 1
+    assert records[0]["prefix"] == '{"name": "Ac'
+    assert records[0]["continuation_text"] == 'me"}'
+    assert records[0]["round"] == 1
+
+
+def test_capture_disabled_by_default(api_key_auth, monkeypatch, tmp_path):
+    # No capture_dir fixture here — fixture_capture must stay off unless explicitly enabled.
+    api = FakeBackend(_out("not json"))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    with pytest.raises(mc.ModelError):
+        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, max_retries=0)
+    assert not fc.enabled()
 
 
 def test_merge_usage_sums_numeric_counts():

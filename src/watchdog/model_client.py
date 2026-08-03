@@ -34,6 +34,7 @@ import time
 from dataclasses import dataclass
 from functools import lru_cache, partial
 
+from watchdog import fixture_capture
 from watchdog.cmd import auth
 from watchdog.model_catalog import (
     _MODEL_IDS,  # noqa: F401 — re-exported for cmd/setup.py's interactive picker
@@ -992,7 +993,8 @@ def output_ceiling_for_sectioning(task: str, backend: str | None, model: str | N
 
 
 async def _complete_with_pagination(backend_fn, backend: str, prompt, model_id: str, schema: dict,
-                                    api_key: str | None, max_tokens: int, effort_arg) -> dict:
+                                    api_key: str | None, max_tokens: int, effort_arg,
+                                    task: str | None = None) -> dict:
     """Call the backend, then continue a max-token-truncated response by prefilling its partial
     output and concatenating, until a natural stop or the continuation guard (#343). Returns the
     assembled `{text, usage, cost_usd, truncated}`; `truncated` is True only if the output was
@@ -1006,8 +1008,11 @@ async def _complete_with_pagination(backend_fn, backend: str, prompt, model_id: 
     while (_is_truncated(out.get("finish_reason")) and _BACKEND_META[backend].supports_continuation
            and rounds < _MAX_CONTINUATIONS):
         rounds += 1
+        prefix = text
         out = await backend_fn(prompt, model_id, schema, api_key, max_tokens, effort_arg,
-                               prefix=text)
+                               prefix=prefix)
+        fixture_capture.capture("continuation", backend=backend, model_id=model_id, task=task,
+                                round=rounds, prefix=prefix, continuation_text=out.get("text"))
         text += out.get("text") or ""
         usage = _merge_usage(usage, out.get("usage"))
         cost += out.get("cost_usd") or 0.0
@@ -1053,7 +1058,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
         attempts += 1
         try:
             out = await _complete_with_pagination(backend_fn, chosen, prompt, model_id, schema,
-                                                  api_key, max_tokens, effort_arg)
+                                                  api_key, max_tokens, effort_arg, task)
         except (RateLimitError, ModelError):
             raise
         except Exception as e:                  # any backend/transport failure → typed error
@@ -1073,13 +1078,21 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
             # retrying and report it — the orchestrator falls back to sectioning, which bounds each
             # call's output.
             last_err = "output truncated at the model's max-token ceiling"
+            fixture_capture.capture("truncation", backend=chosen, model_id=model_id, task=task,
+                                    text=out.get("text"), usage=out.get("usage"))
             break
 
         parsed = _extract_json(out["text"])
         if parsed is None:
             last_err = "response was not valid JSON"
+            fixture_capture.capture("malformed_json", backend=chosen, model_id=model_id,
+                                    task=task, text=out["text"])
         else:
-            pruned_all += _prune_unknown(parsed, schema)
+            removed = _prune_unknown(parsed, schema)
+            if removed:
+                fixture_capture.capture("schema_drift", backend=chosen, model_id=model_id,
+                                        task=task, removed=removed, text=out["text"])
+            pruned_all += removed
             errors = _validate(parsed, schema)
             if not errors:
                 return ModelResult(
