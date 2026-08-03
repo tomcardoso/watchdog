@@ -510,6 +510,7 @@ def setup_auth_interactive(interactive: bool | None = None) -> None:
         else:
             _maybe_tune_concurrency_for_subscription()
     else:
+        _maybe_restore_concurrency_from_subscription()
         _offer_extra_providers(state)
 
     print(f"\n  {_DIM}Tune which model runs each stage anytime with{_RESET} {_CYAN}watchdog configure{_RESET} "
@@ -520,14 +521,14 @@ _SUBSCRIPTION_CONCURRENCY = 3
 
 
 def _maybe_tune_concurrency_for_subscription() -> bool:
-    """Lower `extract_concurrency` when `watchdog setup` lands on Claude subscription auth and
-    ingestion stays on it (issue #400): every concurrent extraction on that path shares one
-    Claude Code session, and the built-in default of 5 reliably throttles it — one call in a
-    5-way batch was observed running at ~1/5 the normal token rate. Only touches the setting
-    when it has never been explicitly configured — a prior `watchdog configure
-    extract_concurrency` (including an earlier auto-tune) is left alone, since that's a
-    deliberate choice this shouldn't silently overwrite. Returns whether anything was printed,
-    for the caller's blank-line bookkeeping."""
+    """Lower `extract_concurrency` when Claude subscription auth is chosen and ingestion stays
+    on it — from `watchdog setup` (issue #400) or a later mode switch via `watchdog auth`
+    (#493): every concurrent extraction on that path shares one Claude Code session, and the
+    built-in default of 5 reliably throttles it — one call in a 5-way batch was observed
+    running at ~1/5 the normal token rate. Only touches the setting when it has never been
+    explicitly configured — a prior `watchdog configure extract_concurrency` (including an
+    earlier auto-tune) is left alone, since that's a deliberate choice this shouldn't silently
+    overwrite. Returns whether anything was printed, for the caller's blank-line bookkeeping."""
     config: dict = {}
     if base.CONFIG_FILE.exists():
         try:
@@ -541,10 +542,31 @@ def _maybe_tune_concurrency_for_subscription() -> bool:
     base.WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
     base.CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")
     os.chmod(base.CONFIG_FILE, stat.S_IRUSR | stat.S_IWUSR)
-    print(f"\n  {_GREEN}✓{_RESET}  Detected Claude subscription auth — set {_BOLD}extract_concurrency{_RESET} "
-          f"to {_BOLD}{_SUBSCRIPTION_CONCURRENCY}{_RESET}.")
+    print(f"\n  {_GREEN}✓{_RESET}  Detected Claude subscription auth — {_BOLD}extract_concurrency{_RESET} "
+          f"automatically set to {_BOLD}{_SUBSCRIPTION_CONCURRENCY}{_RESET}.")
     print(f"  {_DIM}Concurrent extractions share one Claude Code session's rate limit; raise it back "
           f"with{_RESET} {_CYAN}watchdog configure extract_concurrency{_RESET}{_DIM}.{_RESET}")
+    return True
+
+
+def _maybe_restore_concurrency_from_subscription() -> bool:
+    """Undo the tune above when switching away from subscription auth (#493 follow-up): once
+    ingestion is on a metered key, extraction no longer shares one Claude Code session's rate
+    limit, so a still-active auto-tuned `extract_concurrency: 3` would otherwise silently cap
+    throughput forever — the "never overwrite a deliberate value" guard above means nothing else
+    would ever raise it back on its own. Only clears the setting when it's still exactly
+    `_SUBSCRIPTION_CONCURRENCY`; a coincidentally-matching manual `watchdog configure` value of 3
+    is indistinguishable from the auto-tune and is left alone, same as the tune itself never
+    overwrites a pre-existing value."""
+    config = _load_config()
+    if config.get("extract_concurrency") != _SUBSCRIPTION_CONCURRENCY:
+        return False
+
+    del config["extract_concurrency"]
+    _save_config(config)
+    from watchdog.cmd.ingest import _DEFAULT_EXTRACT_CONCURRENCY
+    print(f"\n  {_GREEN}✓{_RESET}  {_BOLD}extract_concurrency{_RESET} reset to the metered default "
+          f"({_BOLD}{_DEFAULT_EXTRACT_CONCURRENCY}{_RESET}).")
     return True
 
 
@@ -640,6 +662,15 @@ def _pick_anthropic_mode_interactive(state: dict) -> None:
         print()
         return
     _apply_anthropic_choice(state, choice)
+    if choice == "1" and _ingest_stage_provider(_load_config().get("extractor_model")) == "anthropic":
+        # Switching to subscription here (#493) needs the same auto-tune `watchdog setup`
+        # applies (#400) — extraction stays on subscription far more often via this later
+        # `watchdog auth` switch than via the initial setup wizard.
+        _maybe_tune_concurrency_for_subscription()
+    elif choice == "2":
+        # Mirror image (#493 follow-up): switching back off subscription should undo a still-
+        # active auto-tune, or it silently caps a metered key at 3 forever.
+        _maybe_restore_concurrency_from_subscription()
     print()
 
 

@@ -218,6 +218,18 @@ def test_setup_api_key_does_not_tune_concurrency(home, monkeypatch):
     assert "extract_concurrency" not in config
 
 
+def test_setup_api_key_restores_stale_subscription_tune(home, monkeypatch, capsys):
+    # #493 follow-up — re-running `watchdog setup` and picking api-key this time must not leave
+    # a stale auto-tuned extract_concurrency=3 from a prior subscription run capping a metered key.
+    base.CONFIG_FILE.write_text(json.dumps({"extract_concurrency": 3}))
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-setupkey-123456")
+    _answers(monkeypatch, "2", "n", "n", "n", "n", "n")
+    auth.setup_auth_interactive(interactive=True)
+    config = json.loads(base.CONFIG_FILE.read_text())
+    assert "extract_concurrency" not in config
+    assert "reset to the metered default" in capsys.readouterr().out
+
+
 # ── `watchdog auth` (bare) — status + interactive wizard ─────────────────────
 
 def test_bare_auth_unconfigured_points_to_setup(home, monkeypatch, capsys):
@@ -268,6 +280,78 @@ def test_bare_auth_interactive_switch_to_subscription(home, monkeypatch):
     _answers(monkeypatch, _provider_choice("anthropic"), "1")
     auth.cmd_auth(object())
     assert auth._load_state()["mode"] == "subscription"
+
+
+def test_bare_auth_interactive_switch_to_subscription_tunes_concurrency(home, monkeypatch, capsys):
+    # #493 — a later mode switch via `watchdog auth` needs the same auto-tune (#400) that
+    # `watchdog setup` applies, since in practice mode switches happen through `watchdog auth`
+    # far more often than through the initial setup wizard.
+    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-old"}})
+    _tty(monkeypatch, True)
+    _answers(monkeypatch, _provider_choice("anthropic"), "1")
+    auth.cmd_auth(object())
+    config = json.loads(base.CONFIG_FILE.read_text())
+    assert config["extract_concurrency"] == 3
+    assert "Detected Claude subscription auth" in capsys.readouterr().out
+
+
+def test_bare_auth_interactive_switch_to_subscription_leaves_custom_concurrency(home, monkeypatch):
+    base.CONFIG_FILE.write_text(json.dumps({"extract_concurrency": 8}))
+    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-old"}})
+    _tty(monkeypatch, True)
+    _answers(monkeypatch, _provider_choice("anthropic"), "1")
+    auth.cmd_auth(object())
+    config = json.loads(base.CONFIG_FILE.read_text())
+    assert config["extract_concurrency"] == 8
+
+
+def test_bare_auth_interactive_switch_to_subscription_skips_tune_when_extraction_routed_elsewhere(home, monkeypatch):
+    # Extraction already routed to another provider (#325) — nothing on the subscription
+    # session would be throttled, so the auto-tune shouldn't fire.
+    base.CONFIG_FILE.write_text(json.dumps({"extractor_model": "gemini:gemini-2.5-flash"}))
+    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-old"}})
+    _tty(monkeypatch, True)
+    _answers(monkeypatch, _provider_choice("anthropic"), "1")
+    auth.cmd_auth(object())
+    config = json.loads(base.CONFIG_FILE.read_text())
+    assert "extract_concurrency" not in config
+
+
+def test_bare_auth_interactive_switch_to_api_key_does_not_tune_concurrency(home, monkeypatch):
+    _tty(monkeypatch, True)
+    _answers(monkeypatch, _provider_choice("anthropic"), "2")
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-wizard-123456")
+    auth.cmd_auth(object())
+    config = json.loads(base.CONFIG_FILE.read_text()) if base.CONFIG_FILE.exists() else {}
+    assert "extract_concurrency" not in config
+
+
+def test_bare_auth_interactive_switch_to_api_key_restores_stale_subscription_tune(home, monkeypatch, capsys):
+    # #493 follow-up — a still-active auto-tuned extract_concurrency=3 must not silently cap a
+    # metered key forever once the user switches off subscription auth via `watchdog auth`.
+    base.CONFIG_FILE.write_text(json.dumps({"extract_concurrency": 3}))
+    auth._save_state({"mode": "subscription", "keys": {}})
+    _tty(monkeypatch, True)
+    _answers(monkeypatch, _provider_choice("anthropic"), "2")
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-wizard-123456")
+    auth.cmd_auth(object())
+    config = json.loads(base.CONFIG_FILE.read_text())
+    assert "extract_concurrency" not in config
+    assert "reset to the metered default" in capsys.readouterr().out
+
+
+def test_bare_auth_interactive_switch_to_api_key_leaves_non_auto_tuned_concurrency(home, monkeypatch):
+    # A value the user set deliberately (anything other than the exact auto-tuned 3) is left
+    # alone — the restore can't tell a deliberate choice from a stale tune, so it only ever
+    # touches the one value it knows it wrote itself.
+    base.CONFIG_FILE.write_text(json.dumps({"extract_concurrency": 8}))
+    auth._save_state({"mode": "subscription", "keys": {}})
+    _tty(monkeypatch, True)
+    _answers(monkeypatch, _provider_choice("anthropic"), "2")
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-wizard-123456")
+    auth.cmd_auth(object())
+    config = json.loads(base.CONFIG_FILE.read_text())
+    assert config["extract_concurrency"] == 8
 
 
 def test_bare_auth_interactive_store_openai_key(home, monkeypatch):
