@@ -541,8 +541,8 @@ def _maybe_tune_concurrency_for_subscription() -> bool:
     base.WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
     base.CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")
     os.chmod(base.CONFIG_FILE, stat.S_IRUSR | stat.S_IWUSR)
-    print(f"\n  {_GREEN}✓{_RESET}  Detected Claude subscription auth — set {_BOLD}extract_concurrency{_RESET} "
-          f"to {_BOLD}{_SUBSCRIPTION_CONCURRENCY}{_RESET}.")
+    print(f"\n  {_GREEN}✓{_RESET}  Detected Claude subscription auth — {_BOLD}extract_concurrency{_RESET} "
+          f"automatically set to {_BOLD}{_SUBSCRIPTION_CONCURRENCY}{_RESET}.")
     print(f"  {_DIM}Concurrent extractions share one Claude Code session's rate limit; raise it back "
           f"with{_RESET} {_CYAN}watchdog configure extract_concurrency{_RESET}{_DIM}.{_RESET}")
     return True
