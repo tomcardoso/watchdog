@@ -18,8 +18,17 @@ def _load() -> dict:
 _CATALOG = _load()
 _MODELS = {m["id"]: m for m in _CATALOG["models"]}
 
-# Tier name (haiku/sonnet/opus) -> API model id.
-_MODEL_IDS = {m["tier"]: m["id"] for m in _CATALOG["models"] if "tier" in m}
+# Tier name -> API model id. `tier` in the YAML is either a scalar (one alias) or a list (a model
+# with more than one selectable name, e.g. Sonnet 4.6's `[sonnet, sonnet-4.6]`) — normalize both
+# shapes to a list of aliases before building the lookup.
+def _tier_aliases(entry: dict) -> list[str]:
+    tier = entry.get("tier")
+    if tier is None:
+        return []
+    return [tier] if isinstance(tier, str) else list(tier)
+
+
+_MODEL_IDS = {alias: m["id"] for m in _CATALOG["models"] for alias in _tier_aliases(m)}
 
 # Claude pricing, USD/token: (input, output, cache_write_5m, cache_read).
 _PRICING = {
