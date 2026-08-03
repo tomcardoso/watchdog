@@ -19,6 +19,11 @@ already uses to exercise these functions directly.
 Every real (non-`--estimate-only`) run needs your explicit go-ahead — this tool computes and
 prints the full cost preview for every arm up front and asks ONE confirmation for the whole
 matrix; it never spends money silently and has no flag that bypasses the ask.
+
+A real run also auto-captures any truncation/malformed-JSON/schema-drift/pagination-continuation
+response it hits to a local gitignored `benchmarks/.fixture-capture/` directory (#352, D164) — a
+source to hand-promote curated examples from into `tests/fixtures/model_responses/`. Safe here
+specifically because `corpus-v1` is public court filings, not a real investigation vault.
 """
 from __future__ import annotations
 
@@ -764,8 +769,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     from watchdog.cmd.ingest import _caffeinate
+    from watchdog import fixture_capture
     total = len(plan)
     print(f"\nRunning {total} arm(s)…\n")
+    # Auto-captures real responses that hit truncation/malformed-JSON/schema-drift/pagination
+    # conditions (#352) — a curated subset gets hand-promoted into tests/fixtures/model_responses/
+    # later. Safe here specifically because corpus-v1 is public court filings, not a real
+    # investigation vault; this must never be enabled from production ingest code (see
+    # fixture_capture.py's module docstring and DECISIONS.md D164).
+    fixture_capture.enable(HERE / ".fixture-capture")
     # Only `result.cancelled` (SIGINT trapped inside async extraction, see orchestrate.py) is the
     # *designed* early-stop path — it breaks the loop normally and falls straight through to
     # scoring/write_run below. Anything else that interrupts the loop (a Ctrl+C outside that
@@ -806,6 +818,8 @@ def main(argv: list[str] | None = None) -> int:
         interrupted = e
         print(f"\n\n{type(e).__name__}: {e}\n{len(results)} of {total} arm(s) completed. "
               f"Writing a report for what finished…")
+    finally:
+        fixture_capture.disable()
 
     import bench_report
     vaults_to_score = [str(r.vault) for r in results

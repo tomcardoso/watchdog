@@ -1019,6 +1019,70 @@ def test_cancelled_arm_stops_the_run_before_the_next_arm(tmp_path, monkeypatch, 
     assert "extractor:sonnet-med-sdk" in out and "running" in out
 
 
+# ── fixture capture is scoped to a real run, never left on afterward (#352) ────────────────────
+
+def test_fixture_capture_enabled_only_during_the_run(tmp_path, monkeypatch):
+    """`fixture_capture.enable` must fire only around a confirmed real run — never during
+    --estimate-only, and never left on once main() returns, since a benchmark process could go
+    on to do other things in the same interpreter (e.g. a test suite)."""
+    from watchdog import fixture_capture as fc
+    cfg = _matrix_config(tmp_path)
+    monkeypatch.setattr(rb, "verify_freeze", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "corpus_documents", lambda d: [Path("a.pdf")])
+    monkeypatch.setattr(rb, "ensure_master_vault", lambda *a, **k: tmp_path / "master")
+    monkeypatch.setattr(rb, "seed_arm_vault", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "arm_vault", lambda prefix, aid, root: tmp_path / f"{prefix}-{aid}")
+    monkeypatch.setattr(rb, "preview_extractor_arm", lambda v, m: {"cost_low": 1.0, "cost_high": 2.0})
+    monkeypatch.setattr(rb, "arm_backend", lambda m, default: "claude-api")
+    monkeypatch.setattr(rb, "_auth_mode", lambda: "api-key")
+    # Isolate the capture directory to tmp_path — enable() would otherwise create a real
+    # (gitignored, but real) benchmarks/.fixture-capture/ directory in the repo checkout.
+    monkeypatch.setattr(rb, "HERE", tmp_path)
+
+    seen_enabled = []
+
+    def _fake_run_extractor_arm(arm, vault):
+        seen_enabled.append(fc.enabled())
+        return rb.ArmResult(arm_id=arm["id"], stage="extractor", vault=vault, ok=True)
+
+    monkeypatch.setattr(rb, "run_extractor_arm", _fake_run_extractor_arm)
+    monkeypatch.setattr(br, "write_run", lambda *a, **k: tmp_path)
+
+    assert not fc.enabled()
+
+    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: False)
+    rb.main(["--config", str(cfg), "--stages", "extractor", "--estimate-only"])
+    assert seen_enabled == []          # estimate-only never reaches the run loop
+    assert not fc.enabled()
+    assert not (tmp_path / ".fixture-capture").exists()
+
+    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: True)
+    rb.main(["--config", str(cfg), "--stages", "extractor"])
+
+    assert seen_enabled and all(seen_enabled)   # capture was on for every real arm
+    assert not fc.enabled()                     # and off again once the run finished
+    assert (tmp_path / ".fixture-capture").is_dir()
+
+
+def test_fixture_capture_disabled_even_if_the_run_crashes(tmp_path, monkeypatch):
+    """A crash mid-sweep (#494's existing resilience concern) must not leave capture on for
+    whatever runs next in the same process."""
+    from watchdog import fixture_capture as fc
+    cfg = _matrix_config(tmp_path)
+    _stub_common_arm_plumbing(monkeypatch, tmp_path)
+    monkeypatch.setattr(rb, "HERE", tmp_path)
+
+    def _boom(arm, vault):
+        raise RuntimeError("simulated crash")
+
+    monkeypatch.setattr(rb, "run_extractor_arm", _boom)
+    monkeypatch.setattr(br, "write_run", lambda *a, **k: tmp_path)
+
+    rb.main(["--config", str(cfg), "--stages", "extractor"])
+
+    assert not fc.enabled()
+
+
 # ── the report survives an interrupt or crash mid-sweep, not just the designed cancel (#494) ───
 
 def _stub_common_arm_plumbing(monkeypatch, tmp_path):
