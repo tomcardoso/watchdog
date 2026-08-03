@@ -25,7 +25,7 @@ _STAGE = {
     "classify": "classifier",
     "extract": "extractor", "extract-section": "extractor",
     "reconcile": "finalizer", "entity-synthesis": "finalizer", "timeline-dedup": "finalizer",
-    "timeline-precision": "finalizer", "briefing": "finalizer",
+    "timeline-precision": "finalizer", "briefing": "finalizer", "request-dedup": "finalizer",
 }
 _STAGE_ORDER = ("classifier", "extractor", "finalizer")
 

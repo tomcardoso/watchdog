@@ -1526,6 +1526,31 @@ def _select_kept(events: list[dict], groups) -> list[dict]:
     return kept or events
 
 
+def _apply_request_dedup(vault: Path, open_: list[dict], groups) -> int:
+    """Map the request-dedup model's `groups` (indices into `open_`, keep/duplicates like
+    TIMELINE_DEDUP) onto rids and fold each group's duplicates into its `keep` via
+    `requests.merge_duplicates` — same index-validation discipline as `_select_kept`: an index
+    the model gets wrong (out of range, self-referential, already folded away by an earlier
+    group in this same pass) is dropped rather than guessed at. Returns the total folded."""
+    if not isinstance(groups, list):
+        return 0
+    n = len(open_)
+    folded = 0
+    for g in groups:
+        if not isinstance(g, dict):
+            continue
+        ki = g.get("keep")
+        if not _valid_index(ki, n):
+            continue
+        dups = g.get("duplicates")
+        if not isinstance(dups, list):
+            continue
+        dup_rids = [open_[di]["rid"] for di in dups if _valid_index(di, n) and di != ki]
+        if dup_rids:
+            folded += requests.merge_duplicates(vault, open_[ki]["rid"], dup_rids)
+    return folded
+
+
 async def _post_ingest(vault: Path, results: list, brief: str | None, post_model: str,
                        post_effort: str | None = None, post_backend: str | None = None,
                        rec_result: dict | None = None, skip_briefing: bool = False,
@@ -1542,6 +1567,8 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     timeline_backend = fo.get("timeline_backend", post_backend)
     briefing_model = fo.get("briefing_model", post_model)
     briefing_backend = fo.get("briefing_backend", post_backend)
+    request_dedup_model = fo.get("request_dedup_model", post_model)
+    request_dedup_backend = fo.get("request_dedup_backend", post_backend)
     out: dict = {"synthesized": 0, "timeline_collisions": 0, "briefing": None,
                  "merged": [], "contradictions": []}
     print()
@@ -1646,6 +1673,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
 
     # 3. Briefing + hot.md + log.md (model writes prose; Python writes the files).
     ok = [r for r in results if r.get("status") == "ok"]
+    ok_shas = {r["sha256"] for r in ok}   # this run's committed documents (also used by 5b below)
     if skip_briefing:
         # #410: an intentional skip, not a failure — leave `briefing`/`briefing_error` alone so
         # this doesn't trip the "post-processing didn't finish" path (that's for a briefing that
@@ -1670,8 +1698,10 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         # requests (recorded per-document into the ledger by write_vault, at extraction time) so
         # the briefing can point at requests.md without the requests themselves ever entering a
         # prompt.
-        ok_shas = {r["sha256"] for r in ok}
-        n_new_requests = len([r for r in requests.open_requests(vault) if r.get("source_sha256") in ok_shas])
+        n_new_requests = len([
+            r for r in requests.open_requests(vault)
+            if any(s.get("sha256") in ok_shas for s in r.get("sources") or [])
+        ])
         try:
             r = await _call_model(
                 task="briefing", model=briefing_model, backend=briefing_backend, schema=schemas.BRIEFING,
@@ -1723,9 +1753,32 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
              f"{_DIM}(named-but-unprofiled, isolated, contradictions){_RESET} — "
              f"{_CYAN}{leads_relpath}{_RESET}")
 
-    # 6. Document requests (deterministic, no model; #365). Re-render requests.md from the
-    # ledger write_vault populated per-document at extraction time — requests are never re-fed
-    # into a model prompt.
+    # 5b. Document-request dedup (#416, D159). Exact-string matching at record time only
+    # converges identical wording — a citation of the same real document phrased differently
+    # stays a separate open entry. Skipped unless this run actually recorded a new request, so
+    # most ingests make zero extra calls (same discipline as 2b's timeline-precision gate); when
+    # it does run, the model sees every currently-open request (not just this run's), so an
+    # older near-duplicate gets a chance to fold too.
+    open_ = requests.open_requests(vault)
+    added_new_requests = any(
+        s.get("sha256") in ok_shas for r in open_ for s in r.get("sources") or [])
+    if added_new_requests and len(open_) > 1:
+        try:
+            r = await _call_model(
+                task="request-dedup", model=request_dedup_model, backend=request_dedup_backend,
+                schema=schemas.REQUEST_DEDUP,
+                prompt=prompts.build_request_dedup_prompt(open_), effort=post_effort, vault=vault)
+            n_folded = _apply_request_dedup(vault, open_, r.parsed.get("groups"))
+        except (model_client.ModelError, model_client.RateLimitError):
+            n_folded = 0   # leave requests unmerged; a later run with new activity retries
+        if n_folded:
+            out["requests_folded"] = n_folded
+            _say(f"   {_DIM}consolidated {n_folded} duplicate document request"
+                 f"{'s' if n_folded != 1 else ''}{_RESET}")
+
+    # 6. Document requests (deterministic Python from here — #365). Re-render requests.md from
+    # the ledger write_vault populated per-document at extraction time and 5b's dedup pass just
+    # folded; requests are never re-fed into any *other* model prompt.
     requests_relpath = requests.write_requests(vault)
     if requests_relpath:
         n = len(requests.open_requests(vault))

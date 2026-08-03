@@ -31,15 +31,15 @@ def test_record_stamps_id_and_provenance(tmp_path):
     vault = _vault(tmp_path)
     added = _record(vault, [_req()])
 
-    assert added == [resolutions.request_id(SHA, "Hearing transcript, 14 March 2024")]
+    assert added == [resolutions.request_id("Hearing transcript, 14 March 2024")]
     entry = requests.load(vault)["requests"][added[0]]
     assert entry["what"] == "Hearing transcript, 14 March 2024"
     assert entry["type"] == "Hearing transcript"
     assert entry["likely_source"] == "Court registry"
     # Provenance is Python's to stamp, not the model's (§I1).
-    assert entry["source_sha256"] == SHA
-    assert entry["source_filename"] == "order.pdf"
-    assert entry["document_note"] == "documents/order"
+    assert entry["sources"] == [
+        {"sha256": SHA, "filename": "order.pdf", "document_note": "documents/order"}
+    ]
     assert entry["added"]
 
 
@@ -63,12 +63,24 @@ def test_record_skips_malformed_entries_without_raising(tmp_path):
     assert len(requests.load(vault)["requests"]) == 1
 
 
-def test_record_of_the_same_text_from_two_documents_keeps_both(tmp_path):
-    """Requests are keyed on the source document too — two orders each citing the transcript
-    are two separate to-get items, each traceable to the document that named it."""
+def test_record_of_the_same_text_from_two_documents_merges_sources(tmp_path):
+    """Requests are keyed on content vault-wide (#416) — two orders each citing the transcript
+    are one to-get item, traceable to every document that named it."""
     vault = _vault(tmp_path)
     _record(vault, [_req()])
-    _record(vault, [_req()], sha="f" * 64)
+    added = _record(vault, [_req()], sha="f" * 64)
+
+    assert added == []   # not a newly-created entry — it gained a source
+    stored = requests.load(vault)["requests"]
+    assert len(stored) == 1
+    entry = next(iter(stored.values()))
+    assert {s["sha256"] for s in entry["sources"]} == {SHA, "f" * 64}
+
+
+def test_record_of_different_text_from_two_documents_keeps_both(tmp_path):
+    vault = _vault(tmp_path)
+    _record(vault, [_req()])
+    _record(vault, [_req(what="Docket sheet, case CV-2024-118")], sha="f" * 64)
 
     assert len(requests.load(vault)["requests"]) == 2
 
@@ -76,7 +88,60 @@ def test_record_of_the_same_text_from_two_documents_keeps_both(tmp_path):
 def test_load_tolerates_a_corrupt_ledger(tmp_path):
     vault = _vault(tmp_path)
     (vault / ".watchdog" / "registry" / "requests.json").write_text("{not json", encoding="utf-8")
-    assert requests.load(vault) == {"schema_version": 1, "requests": {}}
+    assert requests.load(vault) == {"schema_version": 2, "requests": {}}
+
+
+# ── Model-judged dedup merge (#416) ──────────────────────────────────────────────
+
+def test_merge_duplicates_folds_sources_and_drops_the_loser(tmp_path):
+    """The exact-string dedup in `record` can't catch paraphrased wording — that's what the
+    request-dedup model pass (orchestrate._post_ingest) identifies; this is the Python side
+    that applies its verdict."""
+    vault = _vault(tmp_path)
+    _record(vault, [_req(what="Affidavit of Dr. Robert Haché sworn January 30, 2021")])
+    _record(vault, [_req(what="Haché Affidavit, sworn January 30, 2021, with exhibits")],
+            sha="f" * 64)
+    keep_rid = resolutions.request_id("Affidavit of Dr. Robert Haché sworn January 30, 2021")
+    dup_rid = resolutions.request_id("Haché Affidavit, sworn January 30, 2021, with exhibits")
+
+    folded = requests.merge_duplicates(vault, keep_rid, [dup_rid])
+
+    assert folded == 1
+    stored = requests.load(vault)["requests"]
+    assert dup_rid not in stored
+    assert {s["sha256"] for s in stored[keep_rid]["sources"]} == {SHA, "f" * 64}
+
+
+def test_merge_duplicates_carries_forward_the_losers_resolution(tmp_path):
+    """A request the journalist already resolved under its old (paraphrased) wording must not
+    reappear as newly open once the dedup pass folds it into the survivor."""
+    vault = _vault(tmp_path)
+    _record(vault, [_req(what="Affidavit of Dr. Robert Haché sworn January 30, 2021")])
+    _record(vault, [_req(what="Haché Affidavit, sworn January 30, 2021, with exhibits")],
+            sha="f" * 64)
+    keep_rid = resolutions.request_id("Affidavit of Dr. Robert Haché sworn January 30, 2021")
+    dup_rid = resolutions.request_id("Haché Affidavit, sworn January 30, 2021, with exhibits")
+    resolutions.resolve(vault, [dup_rid], label="manual")
+
+    requests.merge_duplicates(vault, keep_rid, [dup_rid])
+
+    assert requests.open_requests(vault) == []   # the survivor reads as resolved too
+
+
+def test_merge_duplicates_skips_a_dup_rid_no_longer_present(tmp_path):
+    """Defensive: the model's verdict is applied a moment after it was formed — a rid it named
+    that's already gone (e.g. folded by an earlier group in the same pass) must not raise."""
+    vault = _vault(tmp_path)
+    _record(vault, [_req()])
+    keep_rid = resolutions.request_id(_req()["what"])
+
+    assert requests.merge_duplicates(vault, keep_rid, ["request:doesnotexist"]) == 0
+    assert len(requests.load(vault)["requests"]) == 1
+
+
+def test_merge_duplicates_noop_when_keep_rid_is_missing(tmp_path):
+    vault = _vault(tmp_path)
+    assert requests.merge_duplicates(vault, "request:missing", ["request:alsomissing"]) == 0
 
 
 # ── Open set (resolution overlay) ───────────────────────────────────────────────
@@ -84,7 +149,7 @@ def test_load_tolerates_a_corrupt_ledger(tmp_path):
 def test_open_requests_drops_resolved_ones(tmp_path):
     vault = _vault(tmp_path)
     _record(vault, [_req(), _req(what="Docket sheet, case CV-2024-118")])
-    rid = resolutions.request_id(SHA, "Hearing transcript, 14 March 2024")
+    rid = resolutions.request_id("Hearing transcript, 14 March 2024")
 
     resolutions.resolve(vault, [rid], label="manual")
 
@@ -108,7 +173,7 @@ def test_write_requests_renders_groups_and_checkbox_markers(tmp_path):
     assert relpath == "requests.md"
     body = (vault / "requests.md").read_text(encoding="utf-8")
     assert "## Hearing transcript" in body and "## Regulation" in body
-    rid = resolutions.request_id(SHA, "Hearing transcript, 14 March 2024")
+    rid = resolutions.request_id("Hearing transcript, 14 March 2024")
     assert f"- [ ] **Hearing transcript, 14 March 2024** <!--wid:{rid}-->" in body
     assert "  - Why: The order relies on testimony" in body
     assert "  - Likely source: Court registry" in body
@@ -130,7 +195,7 @@ def test_write_requests_removes_the_file_once_everything_is_resolved(tmp_path):
     requests.write_requests(vault)
     assert (vault / "requests.md").exists()
 
-    resolutions.resolve(vault, [resolutions.request_id(SHA, _req()["what"])], label="manual")
+    resolutions.resolve(vault, [resolutions.request_id(_req()["what"])], label="manual")
 
     assert requests.write_requests(vault) is None
     assert not (vault / "requests.md").exists()
@@ -142,7 +207,7 @@ def test_sync_picks_up_a_ticked_request_checkbox(tmp_path):
     vault = _vault(tmp_path)
     _record(vault, [_req()])
     requests.write_requests(vault)
-    rid = resolutions.request_id(SHA, _req()["what"])
+    rid = resolutions.request_id(_req()["what"])
 
     # The journalist obtained the transcript and ticked the box.
     md = vault / "requests.md"
@@ -156,7 +221,7 @@ def test_sync_picks_up_a_ticked_request_checkbox(tmp_path):
 def test_sync_unticking_a_request_reopens_it(tmp_path):
     vault = _vault(tmp_path)
     _record(vault, [_req()])
-    rid = resolutions.request_id(SHA, _req()["what"])
+    rid = resolutions.request_id(_req()["what"])
     resolutions.resolve(vault, [rid], label="manual")
     # requests.md still renders it only if unresolved, so write the un-ticked line by hand —
     # exactly what a journalist undoing a resolution in the file does.
@@ -213,9 +278,9 @@ def test_write_vault_records_requests_from_an_extraction(tmp_path):
 
     open_ = requests.open_requests(vault)
     assert len(open_) == 1
-    assert open_[0]["source_filename"] == "order.pdf"
+    assert open_[0]["sources"][0]["filename"] == "order.pdf"
     # Provenance points at the document note the same run wrote.
-    assert (vault / f"{open_[0]['document_note']}.md").exists()
+    assert (vault / f"{open_[0]['sources'][0]['document_note']}.md").exists()
 
 
 # ── Briefing pointer (deterministic, never a model input) ───────────────────────

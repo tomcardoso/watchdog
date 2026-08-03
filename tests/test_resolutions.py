@@ -72,6 +72,34 @@ def test_remap_entity_noop_when_nothing_matches(tmp_path):
     assert resolutions.remap_entity(v, "dupe", "survivor") == 0
 
 
+# ── request dedup remap (#416) ───────────────────────────────────────────────────
+
+def test_remap_rid_moves_a_resolved_entry(tmp_path):
+    v = _vault(tmp_path)
+    resolutions.resolve(v, ["request:oldhash1234"], label="manual")
+
+    assert resolutions.remap_rid(v, "request:oldhash1234", "request:newhash5678") is True
+    ids = resolutions.resolved_ids(v)
+    assert "request:newhash5678" in ids and "request:oldhash1234" not in ids
+
+
+def test_remap_rid_noop_when_old_was_never_resolved(tmp_path):
+    v = _vault(tmp_path)
+    assert resolutions.remap_rid(v, "request:oldhash1234", "request:newhash5678") is False
+    assert resolutions.resolved_ids(v) == frozenset()
+
+
+def test_remap_rid_noop_when_new_is_already_resolved(tmp_path):
+    """Both sides of a merge were independently resolved — don't clobber the survivor's own
+    resolution with the loser's (order-independent; whichever remap runs first wins)."""
+    v = _vault(tmp_path)
+    resolutions.resolve(v, ["request:oldhash1234", "request:newhash5678"], label="manual")
+
+    assert resolutions.remap_rid(v, "request:oldhash1234", "request:newhash5678") is False
+    ids = resolutions.resolved_ids(v)
+    assert ids == {"request:oldhash1234", "request:newhash5678"}
+
+
 # ── checkbox sync ────────────────────────────────────────────────────────────────
 
 def test_sync_from_briefings_imports_ticked_and_reopens_cleared(tmp_path):

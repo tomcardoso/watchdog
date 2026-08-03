@@ -287,3 +287,14 @@ def build_timeline_precision_prompt(month: str, coarse: list[dict], precise: lis
     return (f"{_render('timeline_precision', month=month)}\n\n"
             f"MONTH-DATED events (dated only to {month}):\n{coarse_listed}\n\n"
             f"DAY-DATED events (specific days in {month}):\n{precise_listed}")
+
+
+def build_request_dedup_prompt(open_requests: list[dict]) -> str:
+    # Document-request dedup (#416): each open request shown by index with the fields a
+    # journalist would compare by eye — type, wording, likely source. sources/added/rid stay
+    # in Python; the model returns indices only.
+    listed = "\n".join(
+        f"[{i}] ({r.get('type') or 'Other'}) {r.get('what', '')}"
+        + (f" — likely source: {r['likely_source']}" if r.get("likely_source") else "")
+        for i, r in enumerate(open_requests))
+    return f"{_render('request_dedup')}\n\nOpen document requests:\n{listed}"
