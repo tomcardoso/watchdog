@@ -99,7 +99,7 @@ Along the way it asks three questions:
 
 If you choose the subscription, setup also warns that ingesting more than a few documents at once can be token-heavy for a Pro plan's session limits, and offers to route ingestion to a cheaper metered provider (OpenAI, DeepSeek, or Gemini) instead — walking you through picking that provider, pasting its key, and choosing a model for each ingest stage. This is entirely optional; declining leaves everything on your Claude Code subscription, same as before. See [Model backends](configuration.md#model-backends) for the full picture, including changing this later with `watchdog auth` or `watchdog configure`.
 
-If you decline and stay on the subscription, setup also lowers `extract_concurrency` from its default of 5 to 3 and tells you it's doing so: concurrent extractions on a subscription share one Claude Code session's rate limit, and 5 reliably throttles it. Raise it back anytime with `watchdog configure extract_concurrency` if your plan tolerates more.
+If you decline and stay on the subscription, setup also lowers `extract_concurrency` from its default of 20 to 3 and tells you it's doing so: concurrent extractions on a subscription share one Claude Code session's rate limit, and 20 reliably throttles it. Raise it back anytime with `watchdog configure extract_concurrency` if your plan tolerates more. (`watchdog auth` applies the same tune-down if you switch to subscription auth later.)
 
 When setup finishes, reload your shell so tab completion takes effect:
 

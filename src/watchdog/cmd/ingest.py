@@ -34,6 +34,12 @@ _PICK_SKILL = "\x00pick"
 # unsupported one loudly — at any level, not just xhigh/max (D158).
 _EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 
+# Metered-provider default (#493) — clears the lowest published paid-tier RPM floor across
+# Anthropic/OpenAI/DeepSeek with margin, given how long an extraction call actually takes (D162).
+# `watchdog setup`/`watchdog auth` override this to `auth._SUBSCRIPTION_CONCURRENCY` (3) in
+# config when ingestion stays on a Claude subscription, which throttles well below this value.
+_DEFAULT_EXTRACT_CONCURRENCY = 20
+
 # --wait (#271): cushion past the provider's reported reset time, since a resume attempted
 # right at the boundary can still land inside the window.
 _WAIT_BUFFER_SECONDS = 30
@@ -801,9 +807,10 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                              default="medium", backend=extract_backend, model=extract_model)
     post_effort    = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
     try:
-        concurrency = int(getattr(args, "concurrency", None) or config.get("extract_concurrency") or 5)
+        concurrency = int(getattr(args, "concurrency", None) or config.get("extract_concurrency")
+                          or _DEFAULT_EXTRACT_CONCURRENCY)
     except (TypeError, ValueError):
-        concurrency = 5
+        concurrency = _DEFAULT_EXTRACT_CONCURRENCY
     try:
         classify_pages = int(getattr(args, "classify_pages", None) or config.get("classify_pages") or 5)
     except (TypeError, ValueError):
