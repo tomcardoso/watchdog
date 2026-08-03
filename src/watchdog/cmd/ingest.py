@@ -29,7 +29,10 @@ _PICK_SKILL = "\x00pick"
 
 # Reasoning-effort levels for the per-stage effort knobs (D36). `high` is the model
 # default, so an unset knob behaves as before (the orchestrator sends no effort param).
-_EFFORT_LEVELS = ("low", "medium", "high")
+# `xhigh`/`max` (#518) are accepted here syntactically; `model_client._resolve_effort` is the
+# source of truth for which provider/model actually supports which level, and rejects an
+# unsupported one loudly — at any level, not just xhigh/max (D158).
+_EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 
 # --wait (#271): cushion past the provider's reported reset time, since a resume attempted
 # right at the boundary can still land inside the window.
@@ -42,14 +45,24 @@ _WAIT_FALLBACK_SECONDS = 15 * 60
 _WAIT_REFRESH_SECONDS = 20 * 60
 
 
-def _effort(flag_val, config_val):
-    """Resolve a per-stage effort knob (flag > config > unset). None when unset; validated."""
+def _effort(flag_val, config_val, *, default=None, backend=None, model=None):
+    """Resolve a per-stage effort knob (flag > config > model-aware default > unset); validated.
+
+    `flag_val`/`config_val` are explicit choices — the user typed `--extractor-effort` or ran
+    `watchdog configure`, so an unsupported level for the resolved model fails loud downstream in
+    `model_client._resolve_effort`, correctly, since it's exactly what was asked for. `default`
+    (extractor_effort's `medium`, D26) is different: nothing the user touched, so it's applied
+    only when `backend`/`model` actually supports it — otherwise routing a stage to a model with
+    no effort control (e.g. Haiku) would turn a setting nobody set into a hard failure (#518)."""
     e = flag_val or config_val
-    if e is None:
+    if e is not None:
+        if e not in _EFFORT_LEVELS:
+            sys.exit(f"Error: unknown effort '{e}' — choose {', '.join(_EFFORT_LEVELS)}")
+        return e
+    if default is None:
         return None
-    if e not in _EFFORT_LEVELS:
-        sys.exit(f"Error: unknown effort '{e}' — choose {', '.join(_EFFORT_LEVELS)}")
-    return e
+    from watchdog.model_client import effort_supported
+    return default if effort_supported(backend, model, default) else None
 
 
 # Per-stage finalizer overrides (#433): each key pair below routes just that post-ingest stage
@@ -235,8 +248,8 @@ def _preview_ingest(vault: Path, args) -> tuple[str, str] | None:
         getattr(args, "finalizer_model", None), config.get("finalizer_model"), default="haiku")
     classify_backend, classify_model = _resolve_stage(
         getattr(args, "classifier_model", None), config.get("classifier_model"), default="haiku")
-    extract_effort = _effort(getattr(args, "extractor_effort", None),
-                             config.get("extractor_effort", "medium"))
+    extract_effort = _effort(getattr(args, "extractor_effort", None), config.get("extractor_effort"),
+                             default="medium", backend=extract_backend, model=extract_model)
     post_effort = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
     finalizer_overrides = _resolve_finalizer_overrides(args, config, post_backend, post_model)
 
@@ -784,8 +797,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
     else:
         a = {"mode": None}
 
-    extract_effort = _effort(getattr(args, "extractor_effort", None),
-                             config.get("extractor_effort", "medium"))
+    extract_effort = _effort(getattr(args, "extractor_effort", None), config.get("extractor_effort"),
+                             default="medium", backend=extract_backend, model=extract_model)
     post_effort    = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
     try:
         concurrency = int(getattr(args, "concurrency", None) or config.get("extract_concurrency") or 5)

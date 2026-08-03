@@ -81,6 +81,16 @@ def fallback_is_reasoning(model_id: str) -> bool:
     return False
 
 
+def catalog_effort_levels(model_id: str) -> set[str] | None:
+    """Explicit set of `effort` levels a known catalog model id accepts (#518), or None if
+    uncatalogued. Source of truth for effort capability across every provider — real per-model
+    coverage (e.g. Claude Sonnet 4.6 takes `max` but not `xhigh`), not a per-provider flag. A
+    catalogued model with no `effort_levels` field (Claude Haiku, DeepSeek) has none at all,
+    which `entry.get(..., [])` already expresses without a special case."""
+    entry = _MODELS.get(model_id.lower())
+    return set(entry.get("effort_levels", [])) if entry else None
+
+
 def all_models() -> list[dict]:
     """Every catalog model's id/name/provider/input/output list price, USD per token — for
     projecting a cost estimate across the whole catalog (#469) rather than a single resolved

@@ -66,9 +66,9 @@ It's shown every time, not just once per vault — the risk is per-document, not
 
 - `--extractor-model MODEL` — the model that extracts each document (default: `sonnet`).
 - `--classifier-model MODEL` — the model that reads a document's first pages and picks its record skill (default: `haiku`).
-- `--extractor-effort low|medium|high` — how hard the extractor thinks; lower spends fewer tokens (default: `medium`).
+- `--extractor-effort low|medium|high|xhigh|max` — how hard the extractor thinks; lower spends fewer tokens (default: `medium`). `xhigh`/`max` need a model that supports them — see [Controlling cost](configuration.md#controlling-cost).
 
-Each model flag takes a Claude tier (`haiku`, `sonnet`, `opus`) or a `backend:model` value that routes the stage to another provider — see [Model backends](configuration.md#model-backends). The effort flag is ignored when the stage runs on Haiku, which has no effort control.
+Each model flag takes a Claude tier (`haiku`, `sonnet`, `opus`) or a `backend:model` value that routes the stage to another provider — see [Model backends](configuration.md#model-backends). Left unset, `--extractor-effort` defaults to `medium` only when the extractor supports it, and is skipped automatically for one that doesn't (Haiku); set explicitly, a level the resolved model doesn't support — including `xhigh`/`max` on a model that doesn't reach them — fails with a clear error rather than running silently at a different effort than you asked for.
 
 The "which model runs each stage" line printed before extraction starts shows only classifier and extractor for `dig` — no finalizer row, since `dig` never finalizes in the run it's invoked from; that row appears for `watchdog bark` and the bare guided walk instead, both of which do finalize inline.
 
@@ -94,9 +94,9 @@ If a previous batch is still pending finalization when you start `watchdog dig`,
 **Model and effort flags.** Each takes effect for this run only; the persistent defaults live in [Configuration](configuration.md).
 
 - `--finalizer-model MODEL` — the model for this step: merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline reconciliation, and the briefing (default: `haiku`).
-- `--finalizer-effort low|medium|high` — how hard the finalizer thinks; lower spends fewer tokens (default: `high`).
+- `--finalizer-effort low|medium|high|xhigh|max` — how hard the finalizer thinks; lower spends fewer tokens (default: `high`). `xhigh`/`max` need a model that supports them — see [Controlling cost](configuration.md#controlling-cost).
 
-Takes a Claude tier (`haiku`, `sonnet`, `opus`) or a `backend:model` value routing to another provider — see [Model backends](configuration.md#model-backends). The effort flag is ignored when the stage runs on Haiku.
+Takes a Claude tier (`haiku`, `sonnet`, `opus`) or a `backend:model` value routing to another provider — see [Model backends](configuration.md#model-backends). Left unset, `--finalizer-effort` sends nothing regardless of model — safe on Haiku, the finalizer default. Set explicitly, a level the resolved model doesn't support — including `xhigh`/`max` on a model that doesn't reach them — fails with a clear error rather than running silently at a different effort than you asked for.
 
 **Per-stage finalizer overrides.** `--finalizer-model` sets one model for all of post-ingest, but the step is really four separate model calls — reconciliation, synthesis, timeline, and the briefing — and any one of them can be routed to a different model without touching the other three:
 

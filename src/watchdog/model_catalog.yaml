@@ -8,6 +8,13 @@
 # marks an OpenAI model that accepts `reasoning_effort` and requires
 # `max_completion_tokens` instead of `max_tokens`; omit it (defaults false) for every
 # non-reasoning OpenAI model, and for every non-OpenAI provider (never consulted there).
+# `effort_levels` (#518) is the source of truth for which `low`/`medium`/`high`/`xhigh`/`max`
+# values of the abstract per-stage `effort` knob (D36) a model actually accepts — real coverage
+# per model, not a per-provider flag: it varies within a provider (Claude Sonnet 4.6 takes `max`
+# but not `xhigh`; Opus 4.8 takes both) as much as it does across providers. Omit it (defaults to
+# none) for a model with no effort control at all (Claude Haiku, DeepSeek). `model_client.py`'s
+# `_resolve_effort` rejects a request for a level outside this list with a clear error rather
+# than silently dropping it or sending a request the API would reject.
 models:
   # Order matches the old _MODEL_IDS table (haiku, sonnet, opus) — cmd/setup.py's interactive
   # picker lists Claude tiers in this insertion order, so preserving it keeps picker behavior
@@ -30,6 +37,7 @@ models:
     cache_write: 3.75e-6
     cache_read: 0.30e-6
     context_window: 200_000
+    effort_levels: [low, medium, high, max]
   - id: claude-opus-4-8
     name: Claude Opus 4.8
     provider: anthropic
@@ -39,6 +47,7 @@ models:
     cache_write: 6.25e-6
     cache_read: 0.50e-6
     context_window: 200_000
+    effort_levels: [low, medium, high, xhigh, max]
 
   # DeepSeek V4 (1M-token window; cache-hit input is a ~50x discount on the miss rate)
   - id: deepseek-v4-flash
@@ -66,6 +75,7 @@ models:
     cached_input: 0.50e-6
     context_window: 400_000
     reasoning: true
+    effort_levels: [low, medium, high]
   - id: gpt-5.4
     name: GPT-5.4
     provider: openai
@@ -74,6 +84,7 @@ models:
     cached_input: 0.25e-6
     context_window: 400_000
     reasoning: true
+    effort_levels: [low, medium, high]
   - id: gpt-5.4-mini
     name: GPT-5.4 Mini
     provider: openai
@@ -82,6 +93,7 @@ models:
     cached_input: 0.075e-6
     context_window: 400_000
     reasoning: true
+    effort_levels: [low, medium, high]
   - id: gpt-5.4-nano
     name: GPT-5.4 Nano
     provider: openai
@@ -90,6 +102,7 @@ models:
     cached_input: 0.02e-6
     context_window: 400_000
     reasoning: true
+    effort_levels: [low, medium, high]
   # GPT-5.6 family (Sol/Terra/Luna) — 1.05M window, wider than gpt-5.4/5.5. Sol (the
   # flagship, same price as gpt-5.5) isn't added — not asked for; add the same way if wanted.
   - id: gpt-5.6-terra
@@ -100,6 +113,7 @@ models:
     cached_input: 0.25e-6
     context_window: 1_050_000
     reasoning: true
+    effort_levels: [low, medium, high, xhigh, max]
   - id: gpt-5.6-luna
     name: GPT-5.6 Luna
     provider: openai
@@ -108,6 +122,7 @@ models:
     cached_input: 0.10e-6
     context_window: 1_050_000
     reasoning: true
+    effort_levels: [low, medium, high, xhigh, max]
 
   # Gemini 2.5, standard tier at the <=200k-token rate (Pro's >200k rate is double — not
   # modeled here, same simplification as elsewhere in this catalog).
@@ -118,6 +133,7 @@ models:
     output: 2.50e-6
     cached_input: 0.03e-6
     context_window: 1_000_000
+    effort_levels: [low, medium, high]
   - id: gemini-2.5-flash-lite
     name: Gemini 2.5 Flash-Lite
     provider: gemini
@@ -125,6 +141,7 @@ models:
     output: 0.40e-6
     cached_input: 0.01e-6
     context_window: 1_000_000
+    effort_levels: [low, medium, high]
   - id: gemini-2.5-pro
     name: Gemini 2.5 Pro
     provider: gemini
@@ -132,6 +149,7 @@ models:
     output: 10.0e-6
     cached_input: 0.125e-6
     context_window: 1_000_000
+    effort_levels: [low, medium, high]
   # Gemini 3.x, standard tier. 3.5 Flash and 3.1 Flash-Lite are stable; 3.1 Pro Preview is
   # a preview release (Google may deprecate it on two weeks' notice) and its >200k-token
   # rate is double — not modeled here, same simplification as 2.5 Pro above.
@@ -142,6 +160,7 @@ models:
     output: 9.00e-6
     cached_input: 0.15e-6
     context_window: 1_000_000
+    effort_levels: [low, medium, high]
   - id: gemini-3.1-flash-lite
     name: Gemini 3.1 Flash-Lite
     provider: gemini
@@ -149,6 +168,7 @@ models:
     output: 1.50e-6
     cached_input: 0.025e-6
     context_window: 1_000_000
+    effort_levels: [low, medium, high]
   - id: gemini-3.1-pro-preview
     name: Gemini 3.1 Pro Preview
     provider: gemini
@@ -156,6 +176,7 @@ models:
     output: 12.0e-6
     cached_input: 0.20e-6
     context_window: 1_000_000
+    effort_levels: [low, medium, high]
 
 # Context-window fallback, consulted by model_client.py's context_window() only when a model
 # isn't an exact match in the `models` catalog above — an unpriced local/OpenRouter model (whose
@@ -183,18 +204,19 @@ context_window_fallback:
 
 # Reasoning-model fallback, consulted by model_client.py's _openai_is_reasoning() only when a
 # model isn't an exact match in the `models` catalog above (same uncatalogued-model cases as
-# context_window_fallback). Decides two things about an OpenAI-compatible request: whether to
-# send the `reasoning_effort` parameter at all, and whether to send `max_completion_tokens`
-# (reasoning models) or the classic `max_tokens` (chat models) — sending the wrong one gets the
-# request rejected outright by the provider. Matched by PREFIX only (model id startswith, not
-# substring), MOST SPECIFIC FIRST. No two prefixes here can actually collide today (a `gpt-4...`
-# id can't also start with `gpt-5`), so ordering isn't load-bearing yet the way it is in
-# context_window_fallback — but keep declaring a chat-family override (like `gpt-4`/`chatgpt`)
-# above any broader family row it should take priority over, so that stays true if a future
-# addition ever does overlap. A model matching nothing here defaults to `false` (chat) — the safe
-# direction, since sending a reasoning-only parameter to a chat model risks a 400, while
-# withholding it from an actual reasoning model merely gives up the effort knob. Verbatim from the
-# old `_OPENAI_MODEL_CAPS` table, unchanged.
+# context_window_fallback). Decides whether to send `max_completion_tokens` (reasoning models) or
+# the classic `max_tokens` (chat models) — sending the wrong one gets the request rejected
+# outright by the provider — and, since an uncatalogued id has no `effort_levels` entry either,
+# doubles as the effort fallback: a reasoning model gets the conservative `low`/`medium`/`high`
+# (never `xhigh`/`max` — unconfirmed for an id not explicitly catalogued), a chat model gets none.
+# Matched by PREFIX only (model id startswith, not substring), MOST SPECIFIC FIRST. No two
+# prefixes here can actually collide today (a `gpt-4...` id can't also start with `gpt-5`), so
+# ordering isn't load-bearing yet the way it is in context_window_fallback — but keep declaring a
+# chat-family override (like `gpt-4`/`chatgpt`) above any broader family row it should take
+# priority over, so that stays true if a future addition ever does overlap. A model matching
+# nothing here defaults to `false` (chat) — the safe direction, since sending a reasoning-only
+# parameter to a chat model risks a 400, while withholding it from an actual reasoning model
+# merely gives up the effort knob. Verbatim from the old `_OPENAI_MODEL_CAPS` table, unchanged.
 reasoning_fallback:
   - [gpt-4, false]    # gpt-4o / gpt-4.1 / gpt-4-turbo — chat
   - [chatgpt, false]  # chat-latest — chat

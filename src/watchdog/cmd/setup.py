@@ -339,27 +339,36 @@ _CONFIGURE_KEYS = {
             "  effort spends fewer tokens per document — the main cost lever for an extraction run.\n"
             "  'medium' is the default: benchmark testing found it ties 'high' on recall while\n"
             "  cutting extraction output/cost substantially. Try 'high' if quality on a specific\n"
-            "  corpus seems to need it, or 'low' to cut cost further. Ignored when the extractor\n"
-            "  is Haiku (which has no effort control).\n"
-            "  Valid values: low, medium, high. Default: medium.\n"
+            "  corpus seems to need it, or 'low' to cut cost further. Left unset, this default is\n"
+            "  skipped automatically for an extractor with no effort control at all (Haiku) —\n"
+            "  but setting it explicitly on a model that doesn't support that exact level errors\n"
+            "  rather than silently doing something else. 'xhigh'/'max' need a model that supports\n"
+            "  them specifically — OpenAI reasoning models (e.g. GPT-5.6) support both; Claude\n"
+            "  support varies by model (Sonnet 4.6 takes 'max' but not 'xhigh'; Opus 4.8 takes both).\n"
+            "  Valid values: low, medium, high, xhigh, max. Default: medium.\n"
             "  Override for a single run with: watchdog dig --extractor-effort E"
         ),
         "type": "enum",
         "default": "medium",
-        "choices": ["low", "medium", "high"],
+        "choices": ["low", "medium", "high", "xhigh", "max"],
     },
     "finalizer_effort": {
         "short": "Reasoning effort for the post-ingest step (default: high)",
         "help": (
             "How hard the finalizer model thinks during post-ingest. Reasoning helps the prose\n"
             "  steps, so keep this higher than the extractor unless cost-trimming; lower it to spend\n"
-            "  fewer tokens. Ignored when the finalizer is Haiku (which has no effort control).\n"
-            "  Valid values: low, medium, high. Default: high.\n"
+            "  fewer tokens. Left unset, nothing is sent regardless of model — safe on Haiku, the\n"
+            "  finalizer default. Setting it explicitly on a model that doesn't support that exact\n"
+            "  level errors rather than silently doing something else. 'xhigh'/'max' need a model\n"
+            "  that supports them specifically — OpenAI reasoning models (e.g. GPT-5.6) support\n"
+            "  both; Claude support varies by model (Sonnet 4.6 takes 'max' but not 'xhigh'; Opus\n"
+            "  4.8 takes both).\n"
+            "  Valid values: low, medium, high, xhigh, max. Default: high.\n"
             "  Override for a single run with: watchdog bark --finalizer-effort E"
         ),
         "type": "enum",
         "default": "high",
-        "choices": ["low", "medium", "high"],
+        "choices": ["low", "medium", "high", "xhigh", "max"],
     },
     # ── Local / self-hosted models (#380) ───────────────────────────────────────
     "local_base_url": {
