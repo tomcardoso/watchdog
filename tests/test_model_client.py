@@ -264,6 +264,10 @@ def test_effort_omitted_when_unset(api_key_auth, monkeypatch):
     ("anthropic", "claude-sonnet-4-6", "max", "max"),
     ("anthropic", "claude-opus-4-8", "max", "max"),
     ("anthropic", "claude-opus-4-8", "xhigh", "xhigh"),
+    # Sonnet 5 (#361/#509, D165) accepts xhigh unlike Sonnet 4.6 — additive catalog entry, not a
+    # tier-wide capability change.
+    ("anthropic", "claude-sonnet-5", "xhigh", "xhigh"),
+    ("anthropic", "claude-sonnet-5", "high", None),   # Claude: high ≡ default, same as any model
 ])
 def test_resolve_effort(provider, model_id, effort, expected):
     assert mc._resolve_effort(provider, model_id, effort) == expected
@@ -326,6 +330,17 @@ def test_claude_opus_accepts_xhigh(api_key_auth, monkeypatch):
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
     mc.complete_json(task="extract", prompt="p", schema=SCHEMA, model="opus", effort="xhigh")
     assert api.calls[0]["effort"] == "xhigh"
+
+
+def test_claude_sonnet5_accepts_xhigh_via_tier_name(api_key_auth, monkeypatch):
+    # End-to-end through the `sonnet-5` tier alias (#361/#509, D165) — not just _resolve_effort
+    # in isolation. Sonnet 4.6 rejects xhigh (test_claude_sonnet_rejects_xhigh above); Sonnet 5
+    # accepts it, confirming the new catalog entry resolves and its effort_levels take effect.
+    api = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    mc.complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet-5", effort="xhigh")
+    assert api.calls[0]["effort"] == "xhigh"
+    assert api.calls[0]["model_id"] == "claude-sonnet-5"
 
 
 def test_gemini_rejects_max(gemini_key, monkeypatch):
@@ -1040,6 +1055,11 @@ def test_batch_cost_none_for_unknown_model():
 @pytest.mark.parametrize("tier, expected", [
     ("haiku", "claude-haiku-4-5"), ("sonnet", "claude-sonnet-4-6"),
     ("opus", "claude-opus-4-8"), ("claude-sonnet-4-6", "claude-sonnet-4-6"),
+    # Sonnet 5 tier-alias groundwork (#361/#509, D165): `sonnet-4.6` is the new explicit,
+    # version-pinned alias to the same id `sonnet` already resolves to; `sonnet-5` selects the
+    # new Claude Sonnet 5 entry. Bare `sonnet` must keep resolving to 4.6 — regression check that
+    # adding the new tier didn't silently move the default.
+    ("sonnet-4.6", "claude-sonnet-4-6"), ("sonnet-5", "claude-sonnet-5"),
 ])
 def test_resolve_model_id(tier, expected):
     assert mc.resolve_model_id(tier) == expected
