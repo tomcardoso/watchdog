@@ -424,13 +424,27 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
                        effort: str | None = None) -> dict:
     from claude_agent_sdk import query, ClaudeAgentOptions
 
+    # This is a headless, single-turn completion call — claude.ai connectors are irrelevant
+    # here regardless of auth mode. Opting out via this env var (rather than API-key auth
+    # merely taking precedence over them) skips the CLI's connectors-eligibility check
+    # entirely, which avoids the "connectors are disabled" stderr warning it otherwise prints
+    # once per call under api-key auth (#491). The same reasoning extends to the CLI's own
+    # telemetry/error-reporting/other-non-essential network traffic: none of it serves a
+    # one-shot subprocess call over documents that are often privileged or confidential (#491).
+    call_env = {
+        "ENABLE_CLAUDEAI_MCP_SERVERS": "false",
+        "DISABLE_TELEMETRY": "1",
+        "DISABLE_ERROR_REPORTING": "1",
+        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+        **(env or {}),
+    }
     opts = dict(
         model=model,
         system_prompt=_SYSTEM_PROMPT,
         allowed_tools=[],       # nothing is auto-approved (see `tools` below — not the same knob)
         setting_sources=[],     # don't load .claude configs; trims the preamble
         max_turns=1,            # single completion, no agent loop
-        env=env or {},
+        env=call_env,
     )
     # `tools=[]` is what actually keeps the built-in tool suite out of the request. `allowed_tools`
     # only governs *auto-approval*: with it empty the model never calls a tool, but every Claude
