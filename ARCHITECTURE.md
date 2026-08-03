@@ -768,16 +768,28 @@ callouts) drop resolved ids from the active list. The store is populated by `wat
 by `- [x]` checkbox sync from the briefing files (`<!--wid:<id>-->` markers), and undone by
 `watchdog unresolve`; `merge-entities` remaps lead ids onto the survivor (§I1, D54).
 
-**Document requests (`pipeline/requests.py`, D111).** A **document request** is a concrete
-artifact to acquire — a document type, the specific thing, why it matters, and often where to
-get it — distinct from a lead's open-ended thread. The model emits `document_requests` on
-`EXTRACTION`/`SECTION` (moved out of `scratchpad`/`observations`, never duplicated); Python
-stamps each into `.watchdog/registry/requests.json` with an id (`request:<sha7>:<hash>`) and
-provenance (§I1), inside `write_vault`'s registry lock. `write_requests` renders the still-open
-entries to the vault-root `requests.md` (overwrite, current-state, same `<!--wid:...-->`
-checkbox convention as leads/alerts) and `sync_from_briefings` reads it alongside the briefing
-files. Resolution is manual only — no fuzzy auto-close — and a resolved or rendered request is
-never re-fed into any later model prompt.
+**Document requests (`pipeline/requests.py`, D111, D158, D159).** A **document request** is a
+concrete artifact to acquire — a document type, the specific thing, why it matters, and often
+where to get it — distinct from a lead's open-ended thread. The model emits `document_requests`
+on `EXTRACTION`/`SECTION` (moved out of `scratchpad`/`observations`, never duplicated); Python
+stamps each into `.watchdog/registry/requests.json` with an id (`request:<hash>`, content-keyed
+on the normalized `what` text vault-wide rather than per source document) and provenance (§I1),
+inside `write_vault`'s registry lock. A second document citing the same artifact under the same
+wording converges onto the existing entry and is appended to its `sources` list rather than
+spawning a duplicate — but that only catches identical wording; a paraphrase of the same real
+document still lands as a separate entry, since the exact-match check is deterministic Python
+with no judgement. `orchestrate._post_ingest`'s document-request dedup pass closes that gap: when
+a run adds a new open request and more than one is open, a model call judges which currently-open
+requests name the same real-world document (§I1's usual split — the model answers only *which*
+entries are the same, `requests.merge_duplicates` performs the fold, carrying the loser's
+`sources` and any prior resolution onto the survivor via `resolutions.remap_rid`). This is a
+narrow, bounded exception to D111's "never re-fed into a model prompt": the *content* of open
+requests is shown to a model again, but solely to judge sameness among requests themselves — not
+as context for generating new prose or reopening extraction. `write_requests` renders the
+still-open entries to the vault-root `requests.md` (overwrite, current-state, same
+`<!--wid:...-->` checkbox convention as leads/alerts, "Referenced in" listing every citing
+document) and `sync_from_briefings` reads it alongside the briefing files. Resolution is
+otherwise manual only — no fuzzy auto-close triggered by a newly-ingested document.
 
 **Promoting a surface-found contradiction (`watchdog contradiction-add`, D82, D83).**
 `/watchdog-surface` reports cross-document contradictions as labelled *candidates* rather than

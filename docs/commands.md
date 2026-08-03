@@ -89,7 +89,7 @@ If a previous batch is still pending finalization when you start `watchdog dig`,
 
 ### watchdog bark
 
-`watchdog bark` completes post-ingest — merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline reconciliation, and the briefing — for a batch `watchdog dig` staged, or one an interruption (a rate limit mid-run, a Ctrl+C) left half-done. `watchdog status` flags a batch as pending finalization; `bark` completes it without re-extracting anything. Documents land in the vault — entity and document notes, the registry — at the start of this step, not progressively as each one extracted; extraction only stages its output durably.
+`watchdog bark` completes post-ingest — merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline reconciliation, the briefing, and (only when the run adds a new document request while others are already open) folding differently-worded document requests that name the same real document — for a batch `watchdog dig` staged, or one an interruption (a rate limit mid-run, a Ctrl+C) left half-done. `watchdog status` flags a batch as pending finalization; `bark` completes it without re-extracting anything. Documents land in the vault — entity and document notes, the registry — at the start of this step, not progressively as each one extracted; extraction only stages its output durably.
 
 **Model and effort flags.** Each takes effect for this run only; the persistent defaults live in [Configuration](configuration.md).
 
@@ -117,7 +117,7 @@ A Ctrl+C during `bark`'s sequential post-processing stops it cleanly too; re-run
 
 #### Comparing finalizer models
 
-Extraction is the expensive part of an ingest — the finalizer's few calls (reconciliation, synthesis, timeline, briefing) cost little by comparison. To try more than one finalizer model or effort level against the *same* extraction, without paying for extraction again each time:
+Extraction is the expensive part of an ingest — the finalizer's few calls (reconciliation, synthesis, timeline, briefing, and the occasional document-request dedup pass) cost little by comparison. To try more than one finalizer model or effort level against the *same* extraction, without paying for extraction again each time:
 
 1. Run `watchdog dig`. Documents extract and stage durably, but nothing is written to the vault and post-processing does not run — `watchdog status` will show the batch as pending finalization.
 2. Run `watchdog bark --finalizer-model <model>` to try one candidate. Do this from inside the vault, or from a copy of the vault folder if you want to test several candidates against the identical extraction — each copy still has the same staged inputs, so pointing a different `--finalizer-model` at each copy compares them fairly.
@@ -239,7 +239,7 @@ Prints the deterministic lead sweep over the vault's entity graph — no model c
 
 ### watchdog resolve and unresolve
 
-Every item in the leads, alerts, and document-request reports carries a short resolution id (for example `lead:isolated:acme`, or `request:1a2b3c4:9f8e7d6c` for a document request). Run `watchdog resolve <id…>` from inside the vault to acknowledge items so the deterministic reports stop re-surfacing them. Two flags change the mode: `--sync` imports any `- [x]` checkboxes you have ticked in the `briefings/` files or the vault-root `requests.md` instead of taking ids, and `--list` shows what is currently acknowledged. `watchdog unresolve <id…>` is the inverse, bringing items back into the active list. Acknowledgments are stored in the vault's registry and follow an entity through `watchdog merge-entities`.
+Every item in the leads, alerts, and document-request reports carries a short resolution id (for example `lead:isolated:acme`, or `request:9f8e7d6c1a2b` for a document request). Run `watchdog resolve <id…>` from inside the vault to acknowledge items so the deterministic reports stop re-surfacing them. Two flags change the mode: `--sync` imports any `- [x]` checkboxes you have ticked in the `briefings/` files or the vault-root `requests.md` instead of taking ids, and `--list` shows what is currently acknowledged. `watchdog unresolve <id…>` is the inverse, bringing items back into the active list. Acknowledgments are stored in the vault's registry and follow an entity through `watchdog merge-entities`.
 
 ### watchdog merge-entities
 
