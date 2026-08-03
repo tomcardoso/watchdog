@@ -520,14 +520,14 @@ _SUBSCRIPTION_CONCURRENCY = 3
 
 
 def _maybe_tune_concurrency_for_subscription() -> bool:
-    """Lower `extract_concurrency` when `watchdog setup` lands on Claude subscription auth and
-    ingestion stays on it (issue #400): every concurrent extraction on that path shares one
-    Claude Code session, and the built-in default of 5 reliably throttles it — one call in a
-    5-way batch was observed running at ~1/5 the normal token rate. Only touches the setting
-    when it has never been explicitly configured — a prior `watchdog configure
-    extract_concurrency` (including an earlier auto-tune) is left alone, since that's a
-    deliberate choice this shouldn't silently overwrite. Returns whether anything was printed,
-    for the caller's blank-line bookkeeping."""
+    """Lower `extract_concurrency` when Claude subscription auth is chosen and ingestion stays
+    on it — from `watchdog setup` (issue #400) or a later mode switch via `watchdog auth`
+    (#493): every concurrent extraction on that path shares one Claude Code session, and the
+    built-in default of 5 reliably throttles it — one call in a 5-way batch was observed
+    running at ~1/5 the normal token rate. Only touches the setting when it has never been
+    explicitly configured — a prior `watchdog configure extract_concurrency` (including an
+    earlier auto-tune) is left alone, since that's a deliberate choice this shouldn't silently
+    overwrite. Returns whether anything was printed, for the caller's blank-line bookkeeping."""
     config: dict = {}
     if base.CONFIG_FILE.exists():
         try:
@@ -640,6 +640,11 @@ def _pick_anthropic_mode_interactive(state: dict) -> None:
         print()
         return
     _apply_anthropic_choice(state, choice)
+    if choice == "1" and _ingest_stage_provider(_load_config().get("extractor_model")) == "anthropic":
+        # Switching to subscription here (#493) needs the same auto-tune `watchdog setup`
+        # applies (#400) — extraction stays on subscription far more often via this later
+        # `watchdog auth` switch than via the initial setup wizard.
+        _maybe_tune_concurrency_for_subscription()
     print()
 
 

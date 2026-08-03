@@ -270,6 +270,50 @@ def test_bare_auth_interactive_switch_to_subscription(home, monkeypatch):
     assert auth._load_state()["mode"] == "subscription"
 
 
+def test_bare_auth_interactive_switch_to_subscription_tunes_concurrency(home, monkeypatch, capsys):
+    # #493 — a later mode switch via `watchdog auth` needs the same auto-tune (#400) that
+    # `watchdog setup` applies, since in practice mode switches happen through `watchdog auth`
+    # far more often than through the initial setup wizard.
+    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-old"}})
+    _tty(monkeypatch, True)
+    _answers(monkeypatch, _provider_choice("anthropic"), "1")
+    auth.cmd_auth(object())
+    config = json.loads(base.CONFIG_FILE.read_text())
+    assert config["extract_concurrency"] == 3
+    assert "Detected Claude subscription auth" in capsys.readouterr().out
+
+
+def test_bare_auth_interactive_switch_to_subscription_leaves_custom_concurrency(home, monkeypatch):
+    base.CONFIG_FILE.write_text(json.dumps({"extract_concurrency": 8}))
+    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-old"}})
+    _tty(monkeypatch, True)
+    _answers(monkeypatch, _provider_choice("anthropic"), "1")
+    auth.cmd_auth(object())
+    config = json.loads(base.CONFIG_FILE.read_text())
+    assert config["extract_concurrency"] == 8
+
+
+def test_bare_auth_interactive_switch_to_subscription_skips_tune_when_extraction_routed_elsewhere(home, monkeypatch):
+    # Extraction already routed to another provider (#325) — nothing on the subscription
+    # session would be throttled, so the auto-tune shouldn't fire.
+    base.CONFIG_FILE.write_text(json.dumps({"extractor_model": "gemini:gemini-2.5-flash"}))
+    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-old"}})
+    _tty(monkeypatch, True)
+    _answers(monkeypatch, _provider_choice("anthropic"), "1")
+    auth.cmd_auth(object())
+    config = json.loads(base.CONFIG_FILE.read_text())
+    assert "extract_concurrency" not in config
+
+
+def test_bare_auth_interactive_switch_to_api_key_does_not_tune_concurrency(home, monkeypatch):
+    _tty(monkeypatch, True)
+    _answers(monkeypatch, _provider_choice("anthropic"), "2")
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-wizard-123456")
+    auth.cmd_auth(object())
+    config = json.loads(base.CONFIG_FILE.read_text()) if base.CONFIG_FILE.exists() else {}
+    assert "extract_concurrency" not in config
+
+
 def test_bare_auth_interactive_store_openai_key(home, monkeypatch):
     _tty(monkeypatch, True)
     _answers(monkeypatch, _provider_choice("openai"))
