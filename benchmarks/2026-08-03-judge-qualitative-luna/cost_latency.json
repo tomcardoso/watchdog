@@ -1,0 +1,43 @@
+{
+  "_note": "Full six-document corpus-v1 run, api-key auth mode throughout, so directly comparable. wall_time_s from each vault's .watchdog/registry/ingest.log (first START to final INGEST complete line).",
+  "sonnet-high": {
+    "total_cost_usd": 1.1932,
+    "total_input_tokens": 182381,
+    "total_output_tokens": 38866,
+    "max_single_call_output_tokens": 10624,
+    "num_calls": 6,
+    "wall_time_s": 247
+  },
+  "gpt-mini": {
+    "total_cost_usd": 0.5435,
+    "total_input_tokens": 308316,
+    "total_output_tokens": 77993,
+    "max_single_call_output_tokens": 7487,
+    "num_calls": 19,
+    "wall_time_s": 183
+  },
+  "gpt-luna-low": {
+    "total_cost_usd": 0.6009,
+    "total_input_tokens": 298137,
+    "total_output_tokens": 50454,
+    "max_single_call_output_tokens": 4320,
+    "num_calls": 19,
+    "wall_time_s": 170
+  },
+  "gpt-luna-med": {
+    "total_cost_usd": 0.7442,
+    "total_input_tokens": 302240,
+    "total_output_tokens": 73661,
+    "max_single_call_output_tokens": 5799,
+    "num_calls": 19,
+    "wall_time_s": 206
+  },
+  "gpt-luna-high": {
+    "total_cost_usd": 1.5938,
+    "total_input_tokens": 312750,
+    "total_output_tokens": 213501,
+    "max_single_call_output_tokens": 18207,
+    "num_calls": 19,
+    "wall_time_s": 647
+  }
+}
