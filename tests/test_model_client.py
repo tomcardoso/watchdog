@@ -1417,6 +1417,34 @@ def test_agent_query_omits_tools_on_an_older_sdk(monkeypatch):
     assert "tools" not in captured
 
 
+def test_agent_query_opts_out_of_claude_ai_connectors_and_nonessential_traffic(monkeypatch):
+    """These are headless, tools-disabled single-turn calls over documents that are often
+    privileged or confidential — claude.ai connectors are never reachable from them, and
+    telemetry/error-reporting/other non-essential traffic serves no purpose here. Opting out
+    via env var (#491) avoids the CLI's per-call "connectors are disabled" stderr warning
+    under api-key auth, and keeps subprocess network chatter to just the model call."""
+    captured = _patch_agent_query_capturing(monkeypatch, with_tools_field=True)
+    asyncio.run(mc._agent_query("p", "model", None))
+    assert captured["env"]["ENABLE_CLAUDEAI_MCP_SERVERS"] == "false"
+    assert captured["env"]["DISABLE_TELEMETRY"] == "1"
+    assert captured["env"]["DISABLE_ERROR_REPORTING"] == "1"
+    assert captured["env"]["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
+
+
+def test_agent_query_env_opt_outs_do_not_clobber_caller_env(monkeypatch):
+    """The api-key auth mode passes `env={"ANTHROPIC_API_KEY": ...}` through — the opt-outs
+    above must be additive, not a replacement for it."""
+    captured = _patch_agent_query_capturing(monkeypatch, with_tools_field=True)
+    asyncio.run(mc._agent_query("p", "model", {"ANTHROPIC_API_KEY": "sk-test"}))
+    assert captured["env"] == {
+        "ENABLE_CLAUDEAI_MCP_SERVERS": "false",
+        "DISABLE_TELEMETRY": "1",
+        "DISABLE_ERROR_REPORTING": "1",
+        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+        "ANTHROPIC_API_KEY": "sk-test",
+    }
+
+
 def test_agent_supports_tools_detects_the_real_sdk_dataclass(monkeypatch):
     """The guard reads the installed dataclass's fields rather than a version string."""
     import sys
