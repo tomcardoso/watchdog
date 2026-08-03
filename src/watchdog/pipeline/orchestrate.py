@@ -1780,6 +1780,12 @@ def _batch_exact_fold(vault: Path, shas: list[str]) -> None:
     `_add_reverse_role` is deliberately not simulated — it only appends roles onto entities
     already in the registry copy and never mints a new id, so it cannot affect name/type/alias
     matching for any later document.
+
+    Also rewrites `morgue_entity_id` and every `document.key_facts[].entities` tag through the
+    same remap (#513) — both name an entity id by the same convention as `entities[].id` but sit
+    outside `_reconcile_entity_ids`'s own view, so without this they'd go stale whenever the
+    entity a document is filed under (or a fact is tagged against) gets folded into a different
+    canonical id later in the same batch.
     """
     from watchdog.pipeline.write_vault import _merge_entity, _new_entity, _reconcile_entity_ids
 
@@ -1796,7 +1802,14 @@ def _batch_exact_fold(vault: Path, shas: list[str]) -> None:
         artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
         entities = artifact.get("entities") or []
 
-        _reconcile_entity_ids(entities, pseudo_reg)
+        remap = _reconcile_entity_ids(entities, pseudo_reg)
+        if remap:
+            if artifact.get("morgue_entity_id") in remap:
+                artifact["morgue_entity_id"] = remap[artifact["morgue_entity_id"]]
+            for fact in artifact.get("document", {}).get("key_facts", []):
+                tags = fact.get("entities")
+                if tags:
+                    fact["entities"] = [remap.get(t, t) for t in tags]
 
         for entity in entities:
             eid = entity["id"]

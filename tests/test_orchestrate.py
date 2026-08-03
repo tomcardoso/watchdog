@@ -3686,6 +3686,35 @@ def test_batch_fold_collapses_staged_duplicates_before_commit(tmp_path):
     assert "Ernst and Young Inc" in staged_b["entities"][0]["aliases"]   # variant name preserved
 
 
+def test_batch_fold_remaps_morgue_entity_id_and_key_facts_entities(tmp_path):
+    """#513: the losing entity's id doesn't only live in `entities[].id` — a document can also be
+    filed under it (`morgue_entity_id`) or have a fact tagged against it
+    (`document.key_facts[].entities`). Both must follow the same remap the exact-name fold applies
+    to `entities[].id`, or doc-b ends up filed at `morgue/ernst-young-inc/...` even though that
+    entity's note now lives under the winning id."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
+    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+
+    _stage_company(vault, tmp_path / "a", "sha-a", "doc-a.pdf",
+                   "ernst-and-young-inc", "Ernst & Young Inc.")
+    _stage_extracted(vault, tmp_path / "b", "sha-b", "doc-b.pdf", overrides={
+        "entities": [{"id": "ernst-young-inc", "name": "Ernst and Young Inc", "type": "Company",
+                      "aliases": [], "summary": None, "timeline_events": [], "roles": []}],
+        "morgue_entity_id": "ernst-young-inc", "morgue_document_type": "annual-report",
+        "document": {"key_facts": [
+            {"fact": "Audited the accounts.", "page": 1, "basis": "stated",
+             "entities": ["ernst-young-inc"]},
+        ]},
+    })
+
+    orchestrate._batch_exact_fold(vault, ["sha-a", "sha-b"])
+
+    staged_b = json.loads((vault / ".watchdog" / "extracted" / "sha-b.json").read_text())
+    assert staged_b["morgue_entity_id"] == "ernst-and-young-inc"
+    assert staged_b["document"]["key_facts"][0]["entities"] == ["ernst-and-young-inc"]
+
+
 def test_submit_batch_classifies_unpinned_docs_but_not_pinned_ones(tmp_path, monkeypatch):
     """D144's cost note, made checkable: an unpinned document costs one classify call before the
     batch is built; a sidecar-pinned one costs none. That is what makes `--skill` still worth

@@ -1,5 +1,21 @@
 # Watchdog — developer notes
 
+## Concurrent sessions & worktrees
+
+Tom runs multiple Claude Code sessions against this repo at once. **Before starting any
+non-trivial change, use `EnterWorktree` (or `git worktree add`) instead of editing directly in
+the shared main checkout.** A shared checkout can have another session's in-progress work sitting
+in it — a different branch, an uncommitted fix — invisible until you check.
+
+If you discover mid-session that the checkout's branch or state doesn't match what you expected,
+stop and surface it to Tom rather than assuming it's your own doing or working around it silently.
+
+**Never run a bare `git stash`** (or any command that touches the whole working tree state) in
+the shared checkout — it can silently sweep up another session's uncommitted work along with
+yours. If you need to isolate your own changes from unrelated ones already present, scope it:
+`git stash push -- <your paths>` (add `-u -- <paths>` to include new files). This applies even for
+a quick "let me test this in isolation" step — do that in a worktree, not by stashing in place.
+
 ## Definition of done
 
 Check every non-trivial change against this list in one pass before calling it finished. Each item's full rule lives in the linked section — this checklist is the single source; the sections carry the detail, not a restatement of the obligation.
