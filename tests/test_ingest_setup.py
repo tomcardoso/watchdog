@@ -371,6 +371,29 @@ def test_cost_estimate_only_uses_last_n_runs(tmp_path):
     assert est["cost_low"] == est["cost_high"] == 1.0  # the $100 outlier was dropped
 
 
+def test_cost_estimate_usage_files_param_overrides_vault_history(tmp_path):
+    """issue #478: a caller (the benchmark harness) can supply usage files from elsewhere in
+    place of this vault's own history — needed because every benchmark arm vault is fresh by
+    design and so never has usage history of its own to derive a ratio from."""
+    vault = _make_vault(tmp_path)
+    qf = vault / ".watchdog" / "queue" / "abc123.json"
+    qf.write_text(json.dumps({"filename": "x.pdf", "pages": [{"page": 1, "markdown": "a" * 4000}]}))
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=1000, cost_usd=100.0)  # ignored
+
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    uf = other / "usage-20260102T000000Z.json"
+    uf.write_text(json.dumps({"calls": [], "totals": {
+        "input_tokens": 1000, "output_tokens": 0, "cache_read_tokens": 0,
+        "cache_write_tokens": 0, "cost_usd": 1.5,
+    }}))
+
+    est = cost_estimate(vault, scan_queue(vault), backend="claude-api", usage_files=[uf])
+
+    assert est["cost_low"] == est["cost_high"] == 1.5
+    assert est["runs_used"] == 1
+
+
 def test_cost_estimate_skips_usage_files_with_no_cost(tmp_path):
     """Subscription-mode usage files (no real cost_usd) shouldn't poison a metered-key ratio."""
     vault = _make_vault(tmp_path)
@@ -526,6 +549,28 @@ def test_finalize_cost_estimate_excludes_runs_with_extraction_calls(tmp_path):
     est = finalize_cost_estimate(vault, backend="claude-api")
 
     assert est["runs_used"] == 1   # only the standalone run counted
+    assert est["cost_low"] == est["cost_high"] == 2.008
+
+
+def test_finalize_cost_estimate_usage_files_param_overrides_vault_history(tmp_path):
+    """Same override as `cost_estimate`'s own (issue #478), for the standalone-`bark` path."""
+    vault = _make_vault(tmp_path)
+    _stage_finalize_corpus(vault, {"sha1": "a" * 4000})
+    standalone_calls = [{"task": "reconcile"}]
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=999999, cost_usd=999.0,
+                      calls=standalone_calls)  # ignored
+
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    uf = other / "usage-20260102T000000Z.json"
+    uf.write_text(json.dumps({"calls": standalone_calls, "totals": {
+        "input_tokens": 1000, "output_tokens": 0, "cache_read_tokens": 0,
+        "cache_write_tokens": 0, "cost_usd": 1.0,
+    }}))
+
+    est = finalize_cost_estimate(vault, backend="claude-api", usage_files=[uf])
+
+    assert est["runs_used"] == 1
     assert est["cost_low"] == est["cost_high"] == 2.008
 
 

@@ -23,6 +23,7 @@ if str(BENCHMARKS_DIR) not in sys.path:
     sys.path.insert(0, str(BENCHMARKS_DIR))
 
 import bench_report as br  # noqa: E402
+import cost_reference as cr  # noqa: E402
 import run_benchmark as rb  # noqa: E402
 import score_arms as sa  # noqa: E402
 
@@ -958,7 +959,7 @@ def test_arms_filter_runs_only_the_named_arms(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(rb, "ensure_master_vault", lambda *a, **k: tmp_path / "master")
     monkeypatch.setattr(rb, "seed_arm_vault", lambda *a, **k: None)
     monkeypatch.setattr(rb, "arm_vault", lambda prefix, aid, root: tmp_path / f"{prefix}-{aid}")
-    monkeypatch.setattr(rb, "preview_extractor_arm", lambda v, m: {"cost_low": 1.0, "cost_high": 2.0})
+    monkeypatch.setattr(rb, "preview_extractor_arm", lambda v, m, *a, **k: {"cost_low": 1.0, "cost_high": 2.0})
     monkeypatch.setattr(rb, "arm_backend", lambda m, default: "claude-api")
     monkeypatch.setattr(rb, "_auth_mode", lambda: "api-key")
     monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: False)
@@ -993,7 +994,7 @@ def test_cancelled_arm_stops_the_run_before_the_next_arm(tmp_path, monkeypatch, 
     monkeypatch.setattr(rb, "ensure_master_vault", lambda *a, **k: tmp_path / "master")
     monkeypatch.setattr(rb, "seed_arm_vault", lambda *a, **k: None)
     monkeypatch.setattr(rb, "arm_vault", lambda prefix, aid, root: tmp_path / f"{prefix}-{aid}")
-    monkeypatch.setattr(rb, "preview_extractor_arm", lambda v, m: {"cost_low": 1.0, "cost_high": 2.0})
+    monkeypatch.setattr(rb, "preview_extractor_arm", lambda v, m, *a, **k: {"cost_low": 1.0, "cost_high": 2.0})
     monkeypatch.setattr(rb, "arm_backend", lambda m, default: "claude-api")
     monkeypatch.setattr(rb, "_auth_mode", lambda: "api-key")
     monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: True)
@@ -1032,7 +1033,7 @@ def test_fixture_capture_enabled_only_during_the_run(tmp_path, monkeypatch):
     monkeypatch.setattr(rb, "ensure_master_vault", lambda *a, **k: tmp_path / "master")
     monkeypatch.setattr(rb, "seed_arm_vault", lambda *a, **k: None)
     monkeypatch.setattr(rb, "arm_vault", lambda prefix, aid, root: tmp_path / f"{prefix}-{aid}")
-    monkeypatch.setattr(rb, "preview_extractor_arm", lambda v, m: {"cost_low": 1.0, "cost_high": 2.0})
+    monkeypatch.setattr(rb, "preview_extractor_arm", lambda v, m, *a, **k: {"cost_low": 1.0, "cost_high": 2.0})
     monkeypatch.setattr(rb, "arm_backend", lambda m, default: "claude-api")
     monkeypatch.setattr(rb, "_auth_mode", lambda: "api-key")
     # Isolate the capture directory to tmp_path — enable() would otherwise create a real
@@ -1091,7 +1092,7 @@ def _stub_common_arm_plumbing(monkeypatch, tmp_path):
     monkeypatch.setattr(rb, "ensure_master_vault", lambda *a, **k: tmp_path / "master")
     monkeypatch.setattr(rb, "seed_arm_vault", lambda *a, **k: None)
     monkeypatch.setattr(rb, "arm_vault", lambda prefix, aid, root: tmp_path / f"{prefix}-{aid}")
-    monkeypatch.setattr(rb, "preview_extractor_arm", lambda v, m: {"cost_low": 1.0, "cost_high": 2.0})
+    monkeypatch.setattr(rb, "preview_extractor_arm", lambda v, m, *a, **k: {"cost_low": 1.0, "cost_high": 2.0})
     monkeypatch.setattr(rb, "arm_backend", lambda m, default: "claude-api")
     monkeypatch.setattr(rb, "_auth_mode", lambda: "api-key")
     monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: True)
@@ -1197,7 +1198,7 @@ def test_sdk_check_arm_relabeled_and_excluded_from_recall_scoring(tmp_path, monk
     monkeypatch.setattr(rb, "ensure_master_vault", lambda *a, **k: tmp_path / "master")
     monkeypatch.setattr(rb, "seed_arm_vault", lambda *a, **k: None)
     monkeypatch.setattr(rb, "arm_vault", lambda prefix, aid, root: tmp_path / f"{prefix}-{aid}")
-    monkeypatch.setattr(rb, "preview_extractor_arm", lambda v, m: {"cost_low": None, "cost_high": None})
+    monkeypatch.setattr(rb, "preview_extractor_arm", lambda v, m, *a, **k: {"cost_low": None, "cost_high": None})
     monkeypatch.setattr(rb, "arm_backend", lambda m, default: "claude-agent-sdk")
     monkeypatch.setattr(rb, "_auth_mode", lambda: "subscription")
     monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: True)
@@ -1225,3 +1226,153 @@ def test_sdk_check_arm_relabeled_and_excluded_from_recall_scoring(tmp_path, monk
     # An empty vaults_to_score (no "extractor"-staged result) short-circuits score_vaults —
     # confirms the relabel actually took effect before scoring, not just in the final object.
     assert captured["scores"]["vaults"] == []
+
+
+# ── cost preview from archived benchmark history, since every arm vault is fresh (#478) ────────
+
+def _write_archived_usage(root: Path, run_id: str, vault_name: str, ts: str, calls: list,
+                          cost_usd: float = 1.0, input_tokens: int = 1000) -> Path:
+    usage_dir = root / run_id / "artifacts" / vault_name / "usage"
+    usage_dir.mkdir(parents=True, exist_ok=True)
+    p = usage_dir / f"usage-{ts}.json"
+    p.write_text(json.dumps({
+        "calls": calls,
+        "totals": {"input_tokens": input_tokens, "output_tokens": 0, "cache_read_tokens": 0,
+                  "cache_write_tokens": 0, "cost_usd": cost_usd},
+    }))
+    return p
+
+
+def _call(model="deepseek-v4-flash", effort=None, backend="deepseek", task="extract"):
+    return {"model": model, "effort": effort, "backend": backend, "task": task}
+
+
+def test_reference_usage_files_matches_model_effort_backend(tmp_path):
+    match = _write_archived_usage(tmp_path, "2026-01-01-0000", "bench-ex-ds-flash",
+                                  "20260101T000000Z", [_call()])
+    _write_archived_usage(tmp_path, "2026-01-01-0000", "bench-ex-ds-flash-think",
+                          "20260101T000001Z", [_call(model="deepseek-v4-flash-thinking")])
+    _write_archived_usage(tmp_path, "2026-01-01-0000", "bench-ex-sonnet-med",
+                          "20260101T000002Z", [_call(model="sonnet", effort="medium", backend="claude-api")])
+
+    found = cr.reference_usage_files(tmp_path, "deepseek-v4-flash", None, "deepseek")
+
+    assert found == [match]
+
+
+def test_reference_usage_files_respects_effort_and_backend_distinctly(tmp_path):
+    """Same model, different effort or backend, must not be treated as the same reference —
+    output verbosity swings hard with effort alone (issue #478's follow-up comment), and the
+    same model metered through a different backend (e.g. claude-batch's 50% discount) prices
+    completely differently."""
+    _write_archived_usage(tmp_path, "2026-01-01-0000", "bench-ex-sonnet-low",
+                          "20260101T000000Z", [_call(model="sonnet", effort="low", backend="claude-api")])
+    match = _write_archived_usage(tmp_path, "2026-01-01-0000", "bench-ex-sonnet-high",
+                                  "20260101T000001Z",
+                                  [_call(model="sonnet", effort="high", backend="claude-api")])
+    _write_archived_usage(tmp_path, "2026-01-01-0000", "bench-batch-sonnet-high",
+                          "20260101T000002Z", [_call(model="sonnet", effort="high", backend="claude-batch")])
+
+    found = cr.reference_usage_files(tmp_path, "sonnet", "high", "claude-api")
+
+    assert found == [match]
+
+
+def test_reference_usage_files_finalize_only_excludes_extraction_calls(tmp_path):
+    mixed = [_call(task="extract"), _call(task="reconcile")]
+    standalone = [_call(task="reconcile"), _call(task="briefing")]
+    _write_archived_usage(tmp_path, "2026-01-01-0000", "bench-fn-mixed", "20260101T000000Z", mixed)
+    match = _write_archived_usage(tmp_path, "2026-01-01-0000", "bench-fn-standalone",
+                                  "20260101T000001Z", standalone)
+
+    found = cr.reference_usage_files(tmp_path, "deepseek-v4-flash", None, "deepseek",
+                                     finalize_only=True)
+
+    assert found == [match]
+
+
+def test_reference_usage_files_caps_to_most_recent_max_runs(tmp_path):
+    for i in range(4):
+        _write_archived_usage(tmp_path, "2026-01-01-0000", f"bench-ex-ds-flash-{i}",
+                              f"2026010{i+1}T000000Z", [_call()])
+
+    found = cr.reference_usage_files(tmp_path, "deepseek-v4-flash", None, "deepseek", max_runs=2)
+
+    assert len(found) == 2
+    assert [p.name for p in found] == ["usage-20260103T000000Z.json", "usage-20260104T000000Z.json"]
+
+
+def test_reference_usage_files_no_match_returns_empty(tmp_path):
+    _write_archived_usage(tmp_path, "2026-01-01-0000", "bench-ex-haiku", "20260101T000000Z",
+                          [_call(model="haiku", backend="claude-api")])
+    assert cr.reference_usage_files(tmp_path, "deepseek-v4-flash", None, "deepseek") == []
+
+
+def test_fallback_estimate_prices_against_catalog_scaled_by_effort_ratio():
+    """No archived run anywhere yet: price directly against the catalog's own published rate for
+    this exact model, scaled by the documented per-effort ratio — not a fabricated dollar figure,
+    and clearly flagged (`projected: True`) as a rough placeholder rather than a calibrated one."""
+    est = cr.fallback_estimate(1_000_000, "deepseek-v4-flash", "low")
+    ratio = cr.DEFAULT_OUTPUT_RATIO_BY_EFFORT["low"]
+    expected = 1_000_000 * 0.14e-6 + 1_000_000 * ratio * 0.28e-6
+    assert est["cost_low"] == est["cost_high"] == pytest.approx(expected)
+    assert est["runs_used"] == 0
+    assert est["projected"] is True
+
+
+def test_fallback_estimate_unknown_model_returns_none():
+    assert cr.fallback_estimate(1000, "not-a-real-model-id", "low") is None
+
+
+def test_confirm_run_labels_projected_estimates_as_rough_projection(monkeypatch, capsys):
+    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: False)
+    previews = [("extractor:gpt-luna", {"cost_low": 5.0, "cost_high": 5.0, "projected": True}, {}),
+                ("extractor:ds-flash", {"cost_low": 0.01, "cost_high": 0.02}, {})]
+    rb.confirm_run(previews, estimate_only=True)
+    out = capsys.readouterr().out
+    assert "extractor:gpt-luna: ~$5.00  (rough projection, no matching run history yet)" in out
+    assert "extractor:ds-flash: ~$0.01-0.02" in out
+    assert "(includes rough projection(s)" in out
+
+
+def test_confirm_run_omits_projection_note_when_nothing_is_projected(monkeypatch, capsys):
+    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: False)
+    previews = [("extractor:ds-flash", {"cost_low": 0.01, "cost_high": 0.02}, {})]
+    rb.confirm_run(previews, estimate_only=True)
+    out = capsys.readouterr().out
+    assert "rough projection" not in out
+
+
+def test_preview_extractor_arm_borrows_reference_usage_when_vault_is_fresh(tmp_path):
+    """The vault passed in has no usage history at all (every benchmark arm vault is fresh by
+    design) — the preview must still produce a dollar figure by borrowing a matching archived
+    run instead, and must not mark it as a rough projection since it's real measured usage."""
+    vault = tmp_path / "vault"
+    (vault / ".watchdog" / "queue").mkdir(parents=True)
+    (vault / ".watchdog" / "registry").mkdir(parents=True)
+    (vault / ".watchdog" / "queue" / "abc.json").write_text(json.dumps({
+        "filename": "x.pdf", "pages": [{"page": 1, "markdown": "a" * 4000}],
+    }))
+    _write_archived_usage(tmp_path, "2026-01-01-0000", "bench-ex-ds-flash", "20260101T000000Z",
+                          [_call()], cost_usd=1.5, input_tokens=1000)
+
+    est = rb.preview_extractor_arm(vault, "deepseek:deepseek-v4-flash", None, tmp_path)
+
+    assert est["cost_low"] == est["cost_high"] == 1.5
+    assert est["runs_used"] == 1
+    assert not est.get("projected")
+
+
+def test_preview_extractor_arm_falls_back_to_catalog_projection_when_nothing_matches(tmp_path):
+    vault = tmp_path / "vault"
+    (vault / ".watchdog" / "queue").mkdir(parents=True)
+    (vault / ".watchdog" / "registry").mkdir(parents=True)
+    (vault / ".watchdog" / "queue" / "abc.json").write_text(json.dumps({
+        "filename": "x.pdf", "pages": [{"page": 1, "markdown": "a" * 4000}],
+    }))
+
+    est = rb.preview_extractor_arm(vault, "deepseek:deepseek-v4-flash", "low", tmp_path)
+
+    assert est["cost_low"] is not None
+    assert est["cost_low"] == est["cost_high"]
+    assert est["projected"] is True
