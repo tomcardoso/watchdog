@@ -18,8 +18,9 @@ synced back into the store):
   * ``lead:<signal>:<entity_id>`` — ``signal`` ∈ ``unprofiled`` | ``isolated`` | ``inferred``
   * ``contradiction:<hash>``      — ``sha1[:12]`` of the normalized callout text
   * ``alert:<sha7>:<hash>``       — document ``sha256[:7]`` + ``sha1[:8]`` of the watch term
-  * ``request:<sha7>:<hash>``     — document ``sha256[:7]`` + ``sha1[:8]`` of the normalized
-    ``what`` text (#365)
+  * ``request:<hash>``            — ``sha1[:12]`` of the normalized ``what`` text (#365), keyed
+    vault-wide (not per source document, #416) so the same artifact cited by several documents
+    is one request carrying every citing document, not one per citation
 
 Three ways to acknowledge, all landing in the same JSON: ``watchdog resolve <id> …``,
 ``watchdog resolve --sync`` (import ``- [x]`` checkboxes from the briefing files), and
@@ -66,9 +67,9 @@ def alert_id(sha256: str, term: str) -> str:
     return f"alert:{sha256[:7]}:{_short(term, 8)}"
 
 
-def request_id(sha256: str, what: str) -> str:
+def request_id(what: str) -> str:
     normalized = re.sub(r"\s+", " ", what).strip().lower()
-    return f"request:{sha256[:7]}:{_short(normalized, 8)}"
+    return f"request:{_short(normalized, 12)}"
 
 
 def split_callouts(contradictions: str) -> list[str]:
@@ -179,6 +180,23 @@ def remap_entity(vault: Path, old_id: str, new_id: str) -> int:
         resolved.setdefault(new_rid, resolved.pop(rid))
     save(vault, data)
     return len(to_move)
+
+
+def remap_rid(vault: Path, old_rid: str, new_rid: str) -> bool:
+    """Move a resolved-state entry from ``old_rid`` to ``new_rid`` wholesale (#416) — used when
+    the document-request dedup pass folds one rid's entry into another's, so a request the
+    journalist already resolved under its old id doesn't reappear as newly open under the
+    survivor's id. A no-op (and returns ``False``) if ``old_rid`` was never resolved or
+    ``new_rid`` is already resolved."""
+    if old_rid == new_rid:
+        return False
+    data = load(vault)
+    resolved = data.get("resolved", {})
+    if old_rid not in resolved or new_rid in resolved:
+        return False
+    resolved[new_rid] = resolved.pop(old_rid)
+    save(vault, data)
+    return True
 
 
 # ── Checkbox sync ────────────────────────────────────────────────────────────────

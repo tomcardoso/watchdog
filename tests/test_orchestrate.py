@@ -351,6 +351,56 @@ def test_select_kept_never_empties_a_date_on_all_invalid_groups(tmp_path):
     assert kept == events   # nothing placed → nothing dropped → all survive
 
 
+# ── Document-request dedup (#416): model groups indices, Python performs the merge ────────────
+
+def _seed_open_requests(vault, whats):
+    """Record one open request per `what` string, each from its own document, and return the
+    `open_requests`-shaped list `_apply_request_dedup` expects (rid + what, index-aligned)."""
+    from watchdog.pipeline import requests as requests_module
+    for i, what in enumerate(whats):
+        requests_module.record(
+            vault, [{"type": "Affidavit", "what": what}],
+            sha256=f"{i:064d}", filename=f"doc-{i}.pdf", document_note=f"documents/doc-{i}")
+    return requests_module.open_requests(vault)
+
+
+def test_apply_request_dedup_folds_the_named_duplicates(tmp_path):
+    vault = make_vault(tmp_path)
+    open_ = _seed_open_requests(vault, [
+        "Affidavit of Dr. Robert Haché sworn January 30, 2021",
+        "Haché Affidavit, sworn January 30, 2021, with exhibits",
+        "Second Report of the Monitor dated March 11, 2021",
+    ])
+    # open_requests() sorts newest-added-first, so pin indices by `what` rather than assuming order.
+    by_what = {r["what"]: i for i, r in enumerate(open_)}
+    hache_a = by_what["Affidavit of Dr. Robert Haché sworn January 30, 2021"]
+    hache_b = by_what["Haché Affidavit, sworn January 30, 2021, with exhibits"]
+    monitor = by_what["Second Report of the Monitor dated March 11, 2021"]
+
+    from watchdog.pipeline import requests as requests_module
+    folded = orchestrate._apply_request_dedup(vault, open_, [
+        {"keep": hache_a, "duplicates": [hache_b]},
+        {"keep": monitor, "duplicates": []},
+    ])
+
+    assert folded == 1
+    still_open = {r["what"] for r in requests_module.open_requests(vault)}
+    assert still_open == {
+        "Affidavit of Dr. Robert Haché sworn January 30, 2021",
+        "Second Report of the Monitor dated March 11, 2021",
+    }
+
+
+def test_apply_request_dedup_falls_back_to_nothing_on_bad_input(tmp_path):
+    vault = make_vault(tmp_path)
+    open_ = _seed_open_requests(vault, ["Affidavit of Dr. Robert Haché sworn January 30, 2021"])
+
+    assert orchestrate._apply_request_dedup(vault, open_, None) == 0
+    assert orchestrate._apply_request_dedup(vault, open_, []) == 0
+    # out-of-range keep → group skipped, nothing folded
+    assert orchestrate._apply_request_dedup(vault, open_, [{"keep": 9, "duplicates": [0]}]) == 0
+
+
 def test_stamp_document_overwrites_model_identity():
     """Identity fields are stamped from Python, overriding whatever the model emitted."""
     pf = {"filename": "real.pdf", "original_path": "_INCOMING/real.pdf",
@@ -940,6 +990,109 @@ def test_post_ingest_stage_overrides_route_synthesis_timeline_briefing(tmp_path,
     assert by_task["entity-synthesis"] == ("opus", "claude-api")
     assert by_task["timeline-dedup"] == ("gpt-5-mini", "openai")
     assert by_task["briefing"] == ("gemini-2.5-flash", "gemini")
+
+
+def _fake_model(seen, extra_parsed=None):
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        seen.append((task, model, backend))
+        parsed = {
+            "briefing": {"investigation_status": "x", "what_was_ingested": []},
+            **(extra_parsed or {}),
+        }.get(task, {})
+        return model_client.ModelResult(parsed=parsed, text="", model=model or "?",
+                                        backend=backend or "b", auth_mode="subscription", cost_usd=0.0)
+    return fake
+
+
+def test_post_ingest_folds_duplicate_requests_via_model_pass(tmp_path, monkeypatch):
+    """5b (#416): this run adds a request that paraphrases an already-open one. The dedup call
+    fires, and its `groups` verdict is what actually merges the ledger entries — Python performs
+    no text comparison of its own."""
+    vault = make_vault(tmp_path)
+    from watchdog.pipeline import requests as requests_module
+    requests_module.record(vault, [{"type": "Affidavit", "what": "Haché Affidavit, sworn Jan 30"}],
+                           sha256="sha1", filename="doc.pdf", document_note="documents/doc")
+    requests_module.record(
+        vault, [{"type": "Affidavit", "what": "Affidavit of Dr. Robert Haché sworn January 30"}],
+        sha256="preexisting" + "0" * 52, filename="other.pdf", document_note="documents/other")
+    open_ = requests_module.open_requests(vault)
+    by_what = {r["what"]: i for i, r in enumerate(open_)}
+    new_idx = by_what["Haché Affidavit, sworn Jan 30"]
+    old_idx = by_what["Affidavit of Dr. Robert Haché sworn January 30"]
+
+    seen = []
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", _fake_model(
+        seen, {"request-dedup": {"groups": [{"keep": old_idx, "duplicates": [new_idx]}]}}))
+
+    results = [orchestrate._compact_result(
+        "sha1", "doc.pdf", {"document": {"key_facts": []}, "entities": []}, {}, 0.0, {})]
+    out = asyncio.run(orchestrate._post_ingest(vault, results, None, "haiku"))
+
+    assert ("request-dedup", "haiku", None) in seen
+    assert out["requests_folded"] == 1
+    still_open = {r["what"] for r in requests_module.open_requests(vault)}
+    assert still_open == {"Affidavit of Dr. Robert Haché sworn January 30"}
+
+
+def test_post_ingest_skips_request_dedup_when_this_run_added_nothing_new(tmp_path, monkeypatch):
+    """Two open requests already exist, but neither's source is in this run's committed shas —
+    nothing changed, so the (paid) dedup call must not fire."""
+    vault = make_vault(tmp_path)
+    from watchdog.pipeline import requests as requests_module
+    requests_module.record(vault, [{"type": "Affidavit", "what": "Request A"}],
+                           sha256="old1" + "0" * 60, filename="a.pdf", document_note="documents/a")
+    requests_module.record(vault, [{"type": "Affidavit", "what": "Request B"}],
+                           sha256="old2" + "0" * 60, filename="b.pdf", document_note="documents/b")
+
+    seen = []
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", _fake_model(seen))
+
+    results = [orchestrate._compact_result(
+        "sha1", "doc.pdf", {"document": {"key_facts": []}, "entities": []}, {}, 0.0, {})]
+    out = asyncio.run(orchestrate._post_ingest(vault, results, None, "haiku"))
+
+    assert not any(t == "request-dedup" for t, _, _ in seen)
+    assert "requests_folded" not in out
+
+
+def test_post_ingest_skips_request_dedup_with_only_one_open_request(tmp_path, monkeypatch):
+    """Nothing to compare against — must not fire even though this run's request is new."""
+    vault = make_vault(tmp_path)
+    from watchdog.pipeline import requests as requests_module
+    requests_module.record(vault, [{"type": "Affidavit", "what": "Request A"}],
+                           sha256="sha1", filename="doc.pdf", document_note="documents/doc")
+
+    seen = []
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", _fake_model(seen))
+
+    results = [orchestrate._compact_result(
+        "sha1", "doc.pdf", {"document": {"key_facts": []}, "entities": []}, {}, 0.0, {})]
+    out = asyncio.run(orchestrate._post_ingest(vault, results, None, "haiku"))
+
+    assert not any(t == "request-dedup" for t, _, _ in seen)
+    assert "requests_folded" not in out
+
+
+def test_post_ingest_stage_override_routes_request_dedup_call(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    from watchdog.pipeline import requests as requests_module
+    requests_module.record(vault, [{"type": "Affidavit", "what": "Request A"}],
+                           sha256="sha1", filename="doc.pdf", document_note="documents/doc")
+    requests_module.record(vault, [{"type": "Affidavit", "what": "Request B"}],
+                           sha256="old" + "0" * 61, filename="b.pdf", document_note="documents/b")
+
+    seen = []
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", _fake_model(
+        seen, {"request-dedup": {"groups": []}}))
+
+    results = [orchestrate._compact_result(
+        "sha1", "doc.pdf", {"document": {"key_facts": []}, "entities": []}, {}, 0.0, {})]
+    asyncio.run(orchestrate._post_ingest(
+        vault, results, None, "haiku",
+        finalizer_overrides={"request_dedup_model": "opus", "request_dedup_backend": "claude-api"}))
+
+    by_task = {t: (m, b) for t, m, b in seen}
+    assert by_task["request-dedup"] == ("opus", "claude-api")
 
 
 def test_orchestrator_updates_graph_colours(tmp_path, monkeypatch):

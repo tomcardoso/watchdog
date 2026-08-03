@@ -104,15 +104,15 @@ A bare `watchdog` with nothing pending also nudges you when leads are open.
 
 Some documents refer to other documents you don't have yet — the transcript a hearing order cites, the regulation it enforces, an exhibit that was filed but never attached. Watchdog surfaces these as document requests: a concrete artifact to go and get, filed apart from the open-ended leads described above because it names a specific known-to-exist thing rather than a thread to chase.
 
-Requests are written to `requests.md` in the vault root, grouped by document type, each carrying the reason it matters, where it can plausibly be obtained, and a link back to the document that named it. The file is regenerated after every ingest, so it always reflects what is still outstanding — a routine document that names nothing worth chasing simply adds nothing to it.
+Requests are written to `requests.md` in the vault root, grouped by document type, each carrying the reason it matters, where it can plausibly be obtained, and a link back to the document (or documents) that named it — if two different documents refer to the same artifact in the same words, that's one entry with both links, not two to resolve separately. The file is regenerated after every ingest, so it always reflects what is still outstanding — a routine document that names nothing worth chasing simply adds nothing to it.
+
+Two filings rarely cite the same document in identical words, though — a court order and an affidavit both naming "the Monitor's Pre-Filing Report" and "the Pre-Filing Report of Ernst & Young Inc." are the same thing to go and get, described differently. When an ingest adds a new request and other requests are already open, Watchdog runs one extra check: a model reviews the currently open requests and consolidates any it judges to be the same real document into one entry. This is the one exception to requests never being read back into a later model call — it only ever compares requests against each other to decide what is duplicate, never reads them as context for anything else. It is deliberately cautious about it (a genuinely different document sharing a date, a person's name, or a document type is kept separate, not merged), but it can occasionally be wrong; if a request you were expecting to see seems to be missing, check whether it was consolidated into a differently-worded entry still open in `requests.md`.
 
 Resolve a request the same way as a lead, once you have the document in hand:
 
 ```bash
 watchdog resolve --sync
 ```
-
-A document request is written once, from what the model read at extraction time, and is never read back into a later model call — checking `requests.md` costs no tokens.
 
 ## The watchlist
 
