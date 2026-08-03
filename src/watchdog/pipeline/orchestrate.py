@@ -120,6 +120,13 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
     than returning — every attempt still spent real tokens, so it's recorded like any other call
     (and counted in the same subtotals) rather than vanishing from telemetry.
 
+    `reasoning_tokens` (#354), read from `usage["completion_tokens_details"]["reasoning_tokens"]`
+    when present (OpenAI reasoning models only), is copied onto the record — the chain-of-thought
+    share of `output_tokens`, which had been arriving on every such call since D108 and thrown
+    away; it's the field that diagnosed the reasoning-starvation failure. Only added when it's
+    non-zero — OpenAI reports a 0 here for its *chat* models, which carries no more information
+    than the key's absence does — so every other backend's record shape is untouched.
+
     `usage["stop_reason"]`, when present (currently only `batch_extract.collect`'s items carry
     it), is copied to the record — a batch call's only truncation signal, since it has no
     continuation/repair path a live call gets. `batch_meta`
@@ -151,6 +158,9 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         record["api_ms"] = u["duration_api_ms"]
     if u.get("num_turns") is not None:
         record["num_turns"] = u["num_turns"]
+    reasoning_tokens = (u.get("completion_tokens_details") or {}).get("reasoning_tokens")
+    if reasoning_tokens:      # truthy, not `is not None`: OpenAI reports 0 here for chat models
+        record["reasoning_tokens"] = reasoning_tokens
     if u.get("stop_reason"):
         record["stop_reason"] = u["stop_reason"]
     if pruned:
@@ -210,6 +220,10 @@ def _usage_totals(records: list[dict]) -> dict:
         "output_tokens": sum(r["output_tokens"] for r in records),
         "cache_read_tokens": sum(r["cache_read_tokens"] for r in records),
         "cache_write_tokens": sum(r["cache_write_tokens"] for r in records),
+        # `reasoning_tokens` (#354) only appears on OpenAI reasoning-model records — `r.get(...)`
+        # with a 0 default, not `r[...]`, so older records and every non-reasoning backend still
+        # sum cleanly.
+        "reasoning_tokens": sum(r.get("reasoning_tokens", 0) for r in records),
         "cost_usd": round(sum(r["cost_usd"] or 0.0 for r in records), 6) if records else None,
         "latency_s": round(sum(r.get("latency_s") or 0.0 for r in records), 3),
     }

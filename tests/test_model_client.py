@@ -1152,6 +1152,36 @@ def test_truncated_result_rejected_even_when_parseable(openai_key, monkeypatch):
     assert be.calls[0]["prefix"] is None                # never attempted to continue
 
 
+def test_truncated_empty_text_reports_reasoning_starvation(openai_key, monkeypatch):
+    # #354: the model spent its whole output budget on chain-of-thought and returned zero
+    # visible characters — a different failure from an ordinary partial truncation ("the
+    # document was too dense"), so it gets its own message naming the reasoning-token count and
+    # pointing at the actual fix (a lower extractor_effort).
+    async def backend(prompt, model_id, schema, api_key, max_tokens, effort=None, prefix=None):
+        return {"text": "", "usage": {"completion_tokens": 48000,
+                                      "completion_tokens_details": {"reasoning_tokens": 48000}},
+                "cost_usd": 0.01, "finish_reason": "length"}
+    monkeypatch.setitem(mc._ABACKENDS, "openai", backend)
+    with pytest.raises(mc.ModelError,
+                       match="entire 48,000-token output budget on internal reasoning"):
+        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
+
+
+def test_truncated_partial_text_keeps_ordinary_message_despite_reasoning_tokens(openai_key,
+                                                                                monkeypatch):
+    # Empty text is the gate, not merely the presence of a reasoning-token count — a response
+    # that did produce visible text keeps the plain truncation message even when the provider
+    # also reported reasoning tokens.
+    async def backend(prompt, model_id, schema, api_key, max_tokens, effort=None, prefix=None):
+        return {"text": '{"name": "Ac', "usage": {"completion_tokens": 48000,
+                                                   "completion_tokens_details":
+                                                       {"reasoning_tokens": 40000}},
+                "cost_usd": 0.01, "finish_reason": "length"}
+    monkeypatch.setitem(mc._ABACKENDS, "openai", backend)
+    with pytest.raises(mc.ModelError, match="truncated at the model's max-token ceiling"):
+        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
+
+
 def test_continuation_stops_at_the_guard(api_key_auth, monkeypatch):
     # A backend that never stops naturally is capped at _MAX_CONTINUATIONS and reported truncated,
     # so a pathological run falls back to sectioning instead of looping forever.
@@ -1345,20 +1375,39 @@ def test_agent_query_usage_stays_none_when_nothing_present(monkeypatch):
     assert out["usage"] is None
 
 
-@pytest.mark.parametrize("task, backend, model, expected", [
-    ("extract", "deepseek", "deepseek-v4-flash-thinking", mc._DEEPSEEK_THINKING_MAX_TOKENS),
-    ("extract", "deepseek", "deepseek-v4-flash", 16000),     # non-thinking → normal task ceiling
-    ("extract", "claude-api", "claude-sonnet-4-6", 16000),   # CoT bump never applies to Claude
-    ("classify", "claude-api", "claude-haiku-4-5", mc._API_MAX_TOKENS),  # default ceiling
-    ("briefing", "openai", "gpt-4o", 16000),
-    # OpenAI reasoning models share max_completion_tokens between CoT and answer (#354) —
-    # large-output tasks get the raised ceiling; chat models and small tasks don't.
-    ("extract", "openai", "gpt-5.4", mc._OPENAI_REASONING_MAX_TOKENS),
-    ("briefing", "openai", "o3", mc._OPENAI_REASONING_MAX_TOKENS),
-    ("classify", "openai", "gpt-5.4", mc._API_MAX_TOKENS),   # not a large-output task
+@pytest.mark.parametrize("task, backend, model, effort, expected", [
+    ("extract", "deepseek", "deepseek-v4-flash-thinking", None, mc._DEEPSEEK_THINKING_MAX_TOKENS),
+    ("extract", "deepseek", "deepseek-v4-flash", None, 16000),     # non-thinking → normal ceiling
+    ("extract", "claude-api", "claude-sonnet-4-6", None, 16000),   # CoT bump never applies to Claude
+    ("classify", "claude-api", "claude-haiku-4-5", None, mc._API_MAX_TOKENS),  # default ceiling
+    ("briefing", "openai", "gpt-4o", None, 16000),
+    ("classify", "openai", "gpt-5.4", None, mc._API_MAX_TOKENS),   # not a large-output task
+    # OpenAI reasoning models share max_completion_tokens between CoT and answer (#354). The
+    # reserve added on top of the 16K visible-answer budget scales with `effort` — reasoning
+    # volume is a function of effort, not task — so each tier gets its own headroom instead of
+    # one flat number that starves `high` and wastes budget at `low`.
+    ("extract", "openai", "gpt-5.4", "low", 32000),
+    ("extract", "openai", "gpt-5.4", "medium", 64000),
+    ("extract", "openai", "gpt-5.4", "high", 96000),
+    ("briefing", "openai", "o3", "high", 96000),
+    ("briefing", "openai", "gpt-5.6-terra", "xhigh", 116000),
+    ("briefing", "openai", "gpt-5.6-luna", "max", 116000),
+    ("extract", "openai", "gpt-5.4", None, 64000),   # effort unspecified -> treated as medium
 ])
-def test_task_max_tokens(task, backend, model, expected):
-    assert mc._task_max_tokens(task, backend, model) == expected
+def test_task_max_tokens(task, backend, model, effort, expected):
+    assert mc._task_max_tokens(task, backend, model, effort) == expected
+
+
+@pytest.mark.parametrize("task, backend, model", [
+    ("extract", "openai", "gpt-4o"),                  # chat model, not a reasoning model
+    ("extract", "claude-api", "claude-sonnet-4-6"),   # non-OpenAI backend
+])
+def test_task_max_tokens_unaffected_by_effort_outside_openai_reasoning(task, backend, model):
+    # The effort-scaled reserve only applies to OpenAI reasoning models — a chat model or a
+    # different backend must return the same ceiling regardless of what `effort` is passed.
+    ceilings = {mc._task_max_tokens(task, backend, model, effort)
+               for effort in (None, "low", "medium", "high", "xhigh", "max")}
+    assert len(ceilings) == 1
 
 
 @pytest.mark.parametrize("backend, model", [
