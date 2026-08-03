@@ -338,3 +338,16 @@ TIMELINE_PRECISION_MATCH = _obj(
     )}},
     ["matches"],
 )
+
+# Document-request dedup (#416): exact-string matching at record time only converges identical
+# wording, so paraphrased citations of the same real document stay as separate open requests.
+# Same shape and code/model split as TIMELINE_DEDUP — the model groups by sameness, Python
+# performs the merge.
+REQUEST_DEDUP = _obj(
+    {"groups": {"type": "array", "items": _obj(
+        {"keep": {"type": "integer"},
+         "duplicates": {"type": "array", "items": {"type": "integer"}}},
+        ["keep", "duplicates"],
+    )}},
+    ["groups"],
+)

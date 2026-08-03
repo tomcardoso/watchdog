@@ -328,6 +328,12 @@ def _rewrite_staged_ids(vault: Path, shas: list[str], merge_id: str, keep_id: st
     `merge_entities.run` when the loser was already committed (that surgery only touches the
     registry/notes on disk, not this batch's still-staged JSON).
 
+    Also rewrites `morgue_entity_id` and every `document.key_facts[].entities` tag that names
+    `merge_id` (#513) — both name an entity id by the same convention as `entities[].id` /
+    `role.target_id` but sit outside this remap's original scope, so without this a document
+    filed under (or a fact tagged against) the merged-away id would go stale once the survivor
+    takes over.
+
     Returns the merged-away entity's display name as it appeared in the batch (for the caller's
     reporting), or None if the batch never staged it at all.
     """
@@ -358,6 +364,14 @@ def _rewrite_staged_ids(vault: Path, shas: list[str], merge_id: str, keep_id: st
                 if role.get("target_id") == merge_id:
                     role["target_id"] = keep_id
                     changed = True
+        if artifact.get("morgue_entity_id") == merge_id:
+            artifact["morgue_entity_id"] = keep_id
+            changed = True
+        for fact in artifact.get("document", {}).get("key_facts", []):
+            tags = fact.get("entities")
+            if tags and merge_id in tags:
+                fact["entities"] = [keep_id if t == merge_id else t for t in tags]
+                changed = True
         if changed:
             artifact_path.write_text(
                 json.dumps(artifact, ensure_ascii=False, indent=2), encoding="utf-8")

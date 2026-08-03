@@ -179,6 +179,34 @@ def test_build_bundle_empty_when_nothing_staged(tmp_path):
     assert bundle == {"entities": [], "pairs": []}
 
 
+# ── _rewrite_staged_ids: remap scope beyond entities[].id / role.target_id ────
+
+def test_rewrite_staged_ids_remaps_morgue_entity_id_and_key_facts_entities(tmp_path):
+    """#513: `_rewrite_staged_ids` — the staged half of a confirmed cross-document merge — must
+    also follow `morgue_entity_id` and `document.key_facts[].entities` through the remap, not just
+    `entities[].id`/`role.target_id`, or a document filed under the merged-away id (or a fact
+    tagged against it) goes stale once the survivor takes over."""
+    vault = make_vault(tmp_path)
+    (vault / ".watchdog" / "extracted").mkdir(parents=True, exist_ok=True)
+    artifact = {
+        "document": {"sha256": "sha-c", "filename": "doc-c.pdf", "title": "Doc C",
+                     "key_facts": [{"fact": "Signed the filing.", "page": 1, "basis": "stated",
+                                    "entities": ["a-smith-duplicate"]}]},
+        "entities": [_touch("a-smith-duplicate", "A Smith Duplicate", "Person")],
+        "morgue_entity_id": "a-smith-duplicate",
+        "morgue_document_type": "filing",
+    }
+    (vault / ".watchdog" / "extracted" / "sha-c.json").write_text(json.dumps(artifact))
+
+    name = reconcile._rewrite_staged_ids(vault, ["sha-c"], "a-smith-duplicate", "alice-smith")
+    assert name == "A Smith Duplicate"
+
+    staged = json.loads((vault / ".watchdog" / "extracted" / "sha-c.json").read_text())
+    assert staged["morgue_entity_id"] == "alice-smith"
+    assert staged["document"]["key_facts"][0]["entities"] == ["alice-smith"]
+    assert staged["entities"][0]["id"] == "alice-smith"
+
+
 # ── apply_merges: driving merge_entities / the staged rewrite safely ──────────
 #
 # `apply_merges(vault, shas, parsed, bundle, warn)` replaces `_apply_merges` — these tests drive
