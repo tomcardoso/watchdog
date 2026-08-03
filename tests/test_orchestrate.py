@@ -2189,6 +2189,66 @@ def test_record_usage_omits_pruned_key_when_absent():
         orchestrate._usage = None
 
 
+def test_record_usage_includes_reasoning_tokens_from_openai_usage_shape():
+    """#354: `completion_tokens_details.reasoning_tokens` had been arriving on every OpenAI
+    reasoning-model call since D108 and thrown away — it's the field that diagnosed the
+    reasoning-starvation failure, so it now rides onto the record."""
+    orchestrate._usage = []
+    try:
+        orchestrate._record_usage(
+            "extract-section", model="gpt-5.4-mini", backend="openai",
+            usage={"prompt_tokens": 21058, "completion_tokens": 48000,
+                  "completion_tokens_details": {"reasoning_tokens": 48000}},
+            cost_usd=0.01, latency_s=1.0)
+        assert orchestrate._usage[0]["reasoning_tokens"] == 48000
+    finally:
+        orchestrate._usage = None
+
+
+def test_record_usage_omits_reasoning_tokens_key_for_anthropic_shaped_usage():
+    """An Anthropic-shaped usage dict has no `completion_tokens_details` — the persisted record
+    must not grow a `reasoning_tokens` key (even as null) for it, matching the `api_ms`/
+    `num_turns` convention of only adding fields the provider actually reports."""
+    orchestrate._usage = []
+    try:
+        orchestrate._record_usage(
+            "extract", model="claude-sonnet-4-6", backend="claude-api",
+            usage={"input_tokens": 100, "output_tokens": 20}, cost_usd=0.01)
+        assert "reasoning_tokens" not in orchestrate._usage[0]
+    finally:
+        orchestrate._usage = None
+
+
+def test_record_usage_omits_reasoning_tokens_key_when_provider_reports_zero():
+    """OpenAI sends `completion_tokens_details.reasoning_tokens: 0` for its chat models. A 0
+    says nothing the key's absence doesn't, so it must not land on the record — otherwise every
+    gpt-4o row in `watchdog usage` grows a "· reasoning 0" note."""
+    orchestrate._usage = []
+    try:
+        orchestrate._record_usage(
+            "extract", model="gpt-4o", backend="openai",
+            usage={"prompt_tokens": 100, "completion_tokens": 20,
+                  "completion_tokens_details": {"reasoning_tokens": 0}},
+            cost_usd=0.01)
+        assert "reasoning_tokens" not in orchestrate._usage[0]
+    finally:
+        orchestrate._usage = None
+
+
+def test_usage_totals_sums_reasoning_tokens_and_tolerates_missing_key():
+    """`_usage_totals` sums `reasoning_tokens` across records, using a 0 default so older
+    records and non-reasoning backends (which never carry the key at all) don't raise a
+    KeyError."""
+    records = [
+        {"input_tokens": 100, "output_tokens": 20, "cache_read_tokens": 0,
+         "cache_write_tokens": 0, "cost_usd": 0.01, "reasoning_tokens": 48000},
+        {"input_tokens": 100, "output_tokens": 20, "cache_read_tokens": 0,
+         "cache_write_tokens": 0, "cost_usd": 0.01},   # no reasoning_tokens key at all
+    ]
+    totals = orchestrate._usage_totals(records)
+    assert totals["reasoning_tokens"] == 48000
+
+
 def test_log_md_ingest_entry_includes_usage_line(tmp_path, monkeypatch):
     """F5/#222: the log.md entry for an ingest carries the run's token/cost totals, the
     user-facing half of A2's telemetry."""

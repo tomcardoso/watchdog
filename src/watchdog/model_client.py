@@ -644,13 +644,25 @@ _DEEPSEEK_THINKING_SUFFIX = "-thinking"
 _DEEPSEEK_THINKING_MAX_TOKENS = 48000
 
 # OpenAI reasoning models have the same starvation mode (#354): reasoning tokens and the visible
-# answer share the one `max_completion_tokens` budget, so at the flat 16K ceiling heavy reasoning
-# can leave the JSON truncated — the exact failure #337 fixed for DeepSeek thinking. Applied only
-# to reasoning models (per `_openai_is_reasoning`) on the large-output tasks; chat models keep the
-# normal ceiling. Note this is the *wire* ceiling only — sectioning still plans against the base
-# task budget, since the JSON itself can't count on the reasoning share (see
-# `output_ceiling_for_sectioning`).
-_OPENAI_REASONING_MAX_TOKENS = 48000
+# answer share the one `max_completion_tokens` budget, so a ceiling too tight for the reasoning
+# volume leaves the JSON truncated with zero visible output — the exact failure #337 fixed for
+# DeepSeek thinking, confirmed live (benchmark 2026-08-03-1459): 0 visible characters, reasoning
+# tokens == the entire completion. Applied only to reasoning models (per `_openai_is_reasoning`)
+# on the large-output tasks; chat models keep the normal ceiling. Note this is the *wire* ceiling
+# only — sectioning still plans against the base task budget, since the JSON itself can't count
+# on the reasoning share (see `output_ceiling_for_sectioning`).
+#
+# Reasoning volume is almost entirely a function of `effort`, not a flat constant (same document,
+# same task: ~3.8K tokens at low, ~12.6K at medium, 48K+ at high) — so the reserve added on top of
+# the visible-answer budget (`_TASK_MAX_TOKENS`, 16K) scales with it. All five levels are listed
+# explicitly rather than falling back past `high`: gpt-5.6-terra/luna genuinely accept
+# `xhigh`/`max` (model_catalog.yaml), and a silent fallback to the medium reserve there would
+# under-provision exactly the deepest-reasoning configurations. 128K is the gpt-5-mini class's
+# documented output-token limit; every level below stays under it.
+_OPENAI_REASONING_RESERVE = {
+    "low": 16_000, "medium": 48_000, "high": 80_000, "xhigh": 100_000, "max": 100_000,
+}
+_OPENAI_REASONING_RESERVE_DEFAULT = 48_000   # effort unspecified -> treat as medium
 
 # Transient-failure retry for the OpenAI-compatible backends (#354). The Anthropic SDK retries
 # 429/5xx internally (2 attempts, backoff); this httpx path had none, so a single transient
@@ -959,16 +971,20 @@ def _merge_usage(a: dict | None, b: dict | None) -> dict | None:
     return merged
 
 
-def _task_max_tokens(task: str, backend: str, model_id: str) -> int:
+def _task_max_tokens(task: str, backend: str, model_id: str, effort: str | None = None) -> int:
     """The output-token ceiling sent to the provider for a task/backend/model. Models whose
     chain-of-thought shares the output budget — DeepSeek thinking (#337), OpenAI reasoning
     models (#354) — get a higher ceiling on the large-output tasks so reasoning can't starve
-    the JSON."""
+    the JSON. For an OpenAI reasoning model the extra reserve scales with `effort`
+    (`_OPENAI_REASONING_RESERVE`), since reasoning volume is a function of effort, not task.
+    `effort` defaults to None (treated as medium) so existing call sites — DeepSeek's own
+    ceiling, `output_ceiling_for_sectioning` — keep working unchanged."""
     if task in _TASK_MAX_TOKENS:
         if backend == "deepseek" and model_id.endswith(_DEEPSEEK_THINKING_SUFFIX):
             return _DEEPSEEK_THINKING_MAX_TOKENS
         if backend == "openai" and _openai_is_reasoning(model_id):
-            return _OPENAI_REASONING_MAX_TOKENS
+            reserve = _OPENAI_REASONING_RESERVE.get(effort, _OPENAI_REASONING_RESERVE_DEFAULT)
+            return _TASK_MAX_TOKENS[task] + reserve
     return _TASK_MAX_TOKENS.get(task, _API_MAX_TOKENS)
 
 
@@ -1046,7 +1062,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
     model_id = resolve_model_id(requested)
     effort_arg = _resolve_effort(provider, model_id, effort)   # provider-native value or None
 
-    max_tokens = _task_max_tokens(task, chosen, model_id)
+    max_tokens = _task_max_tokens(task, chosen, model_id, effort_arg)
 
     start = time.monotonic()
     total_cost = 0.0
@@ -1077,7 +1093,20 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
             # call would only truncate again (truncation is deterministic in the prompt), so stop
             # retrying and report it — the orchestrator falls back to sectioning, which bounds each
             # call's output.
-            last_err = "output truncated at the model's max-token ceiling"
+            #
+            # Empty text (#354) is a different failure from a partial response: the whole output
+            # budget went to invisible reasoning and nothing was ever written, so "the document
+            # was too dense" is the wrong diagnosis — the fix is a lower extractor_effort or a
+            # raised ceiling, not re-sectioning. Empty text is the signal (provider-agnostic,
+            # always available); the reasoning-token count is folded in only when reported.
+            if out.get("text"):
+                last_err = "output truncated at the model's max-token ceiling"
+            else:
+                reasoning = ((out.get("usage") or {}).get("completion_tokens_details") or {}).get(
+                    "reasoning_tokens")
+                budget = f"{reasoning:,}-token " if reasoning else ""
+                last_err = (f"the model used its entire {budget}output budget on internal "
+                            "reasoning and returned no answer — try a lower extractor_effort")
             fixture_capture.capture("truncation", backend=chosen, model_id=model_id, task=task,
                                     text=out.get("text"), usage=out.get("usage"))
             break
