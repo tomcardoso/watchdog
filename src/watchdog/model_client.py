@@ -40,6 +40,7 @@ from watchdog.model_catalog import (
     _OPENAI_PRICING,
     _PRICING,
     catalog_context_window,
+    catalog_effort_levels,
     catalog_is_reasoning,
     fallback_context_window,
     fallback_is_reasoning,
@@ -61,11 +62,12 @@ _SYSTEM_PROMPT = (
 )
 
 # Reasoning-effort levels for the per-stage `effort` knob (D36) — an abstract intent the
-# pipeline passes down. Each provider maps it to its own native control or ignores it; the
-# shared call path stays provider-agnostic so new backends (#125, D37) slot in without touching it.
-_EFFORT_LEVELS = ("low", "medium", "high")
-# Claude models that reject `output_config.effort` with a 400 (Haiku-tier).
-_EFFORT_UNSUPPORTED = {"claude-haiku-4-5"}
+# pipeline passes down. `model_catalog.yaml`'s `effort_levels` is the single source of truth for
+# which of these a given model actually accepts (#518, D158) — real per-model coverage, not a
+# per-provider flag: it varies within a provider (Claude Sonnet 4.6 takes `max` but not `xhigh`)
+# as much as across providers. `_resolve_effort` below rejects an unsupported request loudly
+# rather than silently dropping it or sending a request the API would reject.
+_EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 # OpenAI-provider model capabilities (#170). A *reasoning* model accepts `reasoning_effort` and
 # requires the newer `max_completion_tokens` field — it 400s on `max_tokens`; a *chat* model is the
 # exact reverse. Resolved from the model catalog (model_catalog.yaml's `reasoning` field, or the
@@ -80,57 +82,50 @@ def _openai_is_reasoning(model_id: str) -> bool:
     return known if known is not None else fallback_is_reasoning(model_id)
 
 
-def _claude_effort(model_id: str, effort: str) -> str | None:
-    """Claude: `high` ≡ the model default (omit it), and Haiku-tier rejects effort entirely."""
-    if effort == "high" or model_id in _EFFORT_UNSUPPORTED:
-        return None
-    return effort
-
-
-def _openai_effort(model_id: str, effort: str) -> str | None:
-    """OpenAI-compatible: `reasoning_effort` is accepted only by reasoning models — drop it
-    elsewhere. Unlike Claude, `high` is not the default, so it is passed through."""
-    return effort if _openai_is_reasoning(model_id) else None
-
-
-def _no_effort(model_id: str, effort: str) -> str | None:
-    """DeepSeek exposes thinking per-model (the reasoner thinks by default), not via a portable
-    knob — so the abstract effort intent maps to nothing here."""
-    return None
-
-
-def _gemini_effort(model_id: str, effort: str) -> str | None:
-    """Gemini: `reasoning_effort` is accepted by every current model via the OpenAI-compatible
-    endpoint and mapped internally to that model's own thinking level/budget — low/medium/high
-    all have a direct mapping there — so the abstract intent passes through unconditionally
-    (unlike OpenAI, no model-capability gate is needed). See
-    https://ai.google.dev/gemini-api/docs/openai#thinking"""
-    return effort
-
-
-# provider → the function mapping the abstract effort intent to that provider's native value.
-# `local` and `openrouter` (#380) map to `_no_effort`: an arbitrary self-hosted or
-# OpenRouter-routed model has no capability table the way OpenAI's does, so the safe default is
-# to never send a reasoning-control param a given model might reject, rather than guess.
-_EFFORT_POLICY = {
-    "anthropic":  _claude_effort,
-    "openai":     _openai_effort,
-    "deepseek":   _no_effort,
-    "gemini":     _gemini_effort,
-    "local":      _no_effort,
-    "openrouter": _no_effort,
-}
+def _effort_levels(provider: str, model_id: str) -> set[str]:
+    """Which effort levels `provider`/`model_id` actually accepts. The catalog is authoritative
+    for a known id; an uncatalogued id (a raw id typed past the CLI's tier validation, or a
+    local/OpenRouter model with no catalog entry at all, #380) falls back to a conservative,
+    provider-wide default rather than guessing per-model capability we don't have."""
+    known = catalog_effort_levels(model_id)
+    if known is not None:
+        return known
+    if provider == "openai":
+        # low/medium/high only — xhigh/max aren't assumed for a reasoning model we don't
+        # otherwise recognize, since only the catalogued GPT-5.6 family is confirmed for them.
+        return {"low", "medium", "high"} if _openai_is_reasoning(model_id) else set()
+    if provider == "gemini":
+        return {"low", "medium", "high"}   # every current Gemini model, catalogued or not
+    return set()   # anthropic (unreachable uncatalogued via the CLI), deepseek, local, openrouter
 
 
 def _resolve_effort(provider: str, model_id: str, effort: str | None) -> str | None:
     """Translate the abstract effort intent into the provider's native value, or None to omit.
 
-    Each provider's policy owns its own semantics — which models accept a knob, and whether a
-    level is a no-op default — so the shared call path never hard-codes one provider (#125)."""
+    `model_catalog.yaml`'s `effort_levels` (via `_effort_levels` above) is the single source of
+    truth for whether `provider`/`model_id` accepts `effort` at all (#518, D158) — a request for
+    an unsupported level fails loud with a clear error rather than being silently dropped or sent
+    as a request the API would reject."""
     if not effort:
         return None
-    policy = _EFFORT_POLICY.get(provider)
-    return policy(model_id, effort) if policy else None
+    if effort not in _effort_levels(provider, model_id):
+        raise ModelError(f"effort '{effort}' is not supported for '{model_id}' on provider '{provider}'")
+    if provider == "anthropic" and effort == "high":
+        return None   # ≡ the model's own default (D36) — omit the param rather than send it
+    return effort
+
+
+def effort_supported(backend: str | None, model: str | None, effort: str) -> bool:
+    """Whether `effort` is a level `backend`/`model` actually accepts (#518) — for a caller that
+    wants to check support *before* calling, rather than let `acomplete_json` raise. Exists for
+    exactly one case: `cmd/ingest.py` applies `medium` as `extractor_effort`'s implicit default
+    (D26) only when the resolved extractor model supports it, so routing extraction to a model
+    with no effort control (e.g. Haiku) doesn't turn a setting the user never touched into a hard
+    failure — an *explicit* `--extractor-effort`/`finalizer_effort` request still goes straight to
+    `_resolve_effort` and fails loud exactly as before if unsupported."""
+    provider = provider_for_backend(backend)
+    model_id = resolve_model_id(model or DEFAULT_TIER)
+    return effort in _effort_levels(provider, model_id)
 
 
 # Model context windows in tokens, for provider-aware sectioning (#321): the larger a model's

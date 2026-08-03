@@ -417,7 +417,7 @@ def main() -> None:
     p_describe.set_defaults(func=cmd_describe)
 
     _model_choices = ["sonnet", "opus", "haiku"]
-    _effort_choices = ["low", "medium", "high"]
+    _effort_choices = ["low", "medium", "high", "xhigh", "max"]
     _model_help = ("a Claude tier (sonnet/opus/haiku) or a backend:model form "
                    "(claude-api:opus, openai:gpt-5-mini, deepseek:deepseek-v4-flash, "
                    "gemini:gemini-2.5-flash, local:llama-3.3-70b, "
@@ -452,11 +452,13 @@ def main() -> None:
     p_ingest.add_argument("--extractor-effort", choices=_effort_choices, default=None,
                           dest="extractor_effort",
                           help="Reasoning effort for extraction — lower spends fewer tokens; "
+                               "xhigh/max need a supporting model, OpenAI or Claude — "
                                "overrides watchdog configure (default: medium)")
     p_ingest.add_argument("--finalizer-effort", choices=_effort_choices, default=None,
                           dest="finalizer_effort",
                           help="Reasoning effort for the post-ingest step — entity reconciliation, "
                                "contradiction flagging, synthesis, timeline, briefing — "
+                               "xhigh/max need a supporting model, OpenAI or Claude — "
                                "overrides watchdog configure (default: high)")
     _add_finalizer_stage_flags(p_ingest)
     p_ingest.add_argument("--concurrency", type=int, default=None,
@@ -503,6 +505,7 @@ def main() -> None:
     p_extract.add_argument("--extractor-effort", choices=_effort_choices, default=None,
                            dest="extractor_effort",
                            help="Reasoning effort for extraction — lower spends fewer tokens; "
+                                "xhigh/max need a supporting model, OpenAI or Claude — "
                                 "overrides watchdog configure (default: medium)")
     p_extract.add_argument("--concurrency", type=int, default=None,
                            help="Documents extracted in parallel — overrides watchdog configure (default: 5)")
@@ -541,6 +544,7 @@ def main() -> None:
                             dest="finalizer_effort",
                             help="Reasoning effort for the post-ingest step — entity reconciliation, "
                                  "contradiction flagging, synthesis, timeline, briefing — "
+                                 "xhigh/max need a supporting model, OpenAI or Claude — "
                                  "overrides watchdog configure (default: high)")
     _add_finalizer_stage_flags(p_finalize)
     p_finalize.add_argument("--estimate", action="store_true",

@@ -2129,6 +2129,45 @@ def test_resolve_stage_bare_non_tier_is_treated_as_claude_and_rejected():
         _resolve_stage("gpt-5-mini", None)
 
 
+# ── _effort: flag > config > model-aware default (#518, D158) ──────────────────
+
+def test_effort_flag_beats_config():
+    from watchdog.cmd.ingest import _effort
+    assert _effort("low", "high") == "low"
+
+
+def test_effort_explicit_choice_passes_through_even_if_model_unknown():
+    """An explicit --extractor-effort/config choice is the user's own call — it's returned as-is
+    regardless of backend/model, and model_client._resolve_effort is what fails loud downstream
+    if the resolved model can't actually take it (unlike the model-aware `default` below)."""
+    from watchdog.cmd.ingest import _effort
+    assert _effort(None, "xhigh", backend=None, model="haiku") == "xhigh"
+
+
+def test_effort_unknown_value_exits():
+    from watchdog.cmd.ingest import _effort
+    with pytest.raises(SystemExit, match="unknown effort"):
+        _effort("ludicrous", None)
+
+
+def test_effort_default_applied_when_model_supports_it():
+    from watchdog.cmd.ingest import _effort
+    assert _effort(None, None, default="medium", backend=None, model="sonnet") == "medium"
+
+
+def test_effort_default_skipped_when_model_does_not_support_it():
+    """Regression guard (#518): routing `extractor_model` to Haiku must not turn the implicit
+    `extractor_effort=medium` default (D26) into a hard failure for a stage nobody configured —
+    only an *explicit* effort choice should ever hit model_client's loud-fail path."""
+    from watchdog.cmd.ingest import _effort
+    assert _effort(None, None, default="medium", backend=None, model="haiku") is None
+
+
+def test_effort_no_default_stays_unset():
+    from watchdog.cmd.ingest import _effort
+    assert _effort(None, None, backend=None, model="haiku") is None
+
+
 # ── _resolve_finalizer_overrides: per-stage --finalizer-<stage>-model (#433) ───
 
 def test_resolve_finalizer_overrides_falls_back_to_finalizer_model_when_unset():

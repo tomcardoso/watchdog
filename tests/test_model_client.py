@@ -230,12 +230,13 @@ def test_effort_high_is_treated_as_no_override(api_key_auth, monkeypatch):
     assert api.calls[0]["effort"] is None
 
 
-def test_effort_dropped_for_haiku(api_key_auth, monkeypatch):
-    # Haiku rejects output_config.effort (400) — it must never be sent there.
+def test_effort_rejected_for_haiku(api_key_auth, monkeypatch):
+    # Haiku rejects output_config.effort (400) — requesting any level errors rather than
+    # silently sending nothing, so a misconfigured stage is caught instead of running unnoticed.
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    mc.complete_json(task="classify", prompt="p", schema=SCHEMA, model="haiku", effort="low")
-    assert api.calls[0]["effort"] is None
+    with pytest.raises(mc.ModelError, match="low"):
+        mc.complete_json(task="classify", prompt="p", schema=SCHEMA, model="haiku", effort="low")
 
 
 def test_effort_omitted_when_unset(api_key_auth, monkeypatch):
@@ -249,18 +250,98 @@ def test_effort_omitted_when_unset(api_key_auth, monkeypatch):
     ("anthropic", "claude-sonnet-4-6", "low", "low"),
     ("anthropic", "claude-opus-4-8", "medium", "medium"),
     ("anthropic", "claude-sonnet-4-6", "high", None),    # Claude: high ≡ default
-    ("anthropic", "claude-haiku-4-5", "low", None),      # Claude: Haiku rejects effort
     ("anthropic", "claude-sonnet-4-6", None, None),      # unset
     ("openai", "gpt-5-mini", "low", "low"),              # OpenAI reasoning model → pass through
     ("openai", "gpt-5", "high", "high"),                 # OpenAI: high is NOT a no-op default
-    ("openai", "gpt-4o", "low", None),                   # OpenAI chat model → dropped
-    ("deepseek", "deepseek-v4-pro", "high", None),     # DeepSeek: no portable knob
-    ("deepseek", "deepseek-v4-flash", "low", None),
     ("gemini", "gemini-2.5-flash", "low", "low"),     # Gemini: every model passes through
     ("gemini", "gemini-2.5-pro", "high", "high"),
+    # xhigh/max (#518): OpenAI reasoning models pass them through like any other level.
+    ("openai", "gpt-5.6-luna", "xhigh", "xhigh"),
+    ("openai", "gpt-5.6-terra", "max", "max"),
+    # Claude coverage is per-model (Anthropic's own effort docs), not a flat yes/no: Sonnet 4.6
+    # takes `max` but not `xhigh`; Opus 4.8 takes both.
+    ("anthropic", "claude-sonnet-4-6", "max", "max"),
+    ("anthropic", "claude-opus-4-8", "max", "max"),
+    ("anthropic", "claude-opus-4-8", "xhigh", "xhigh"),
 ])
 def test_resolve_effort(provider, model_id, effort, expected):
     assert mc._resolve_effort(provider, model_id, effort) == expected
+
+
+# ── unsupported effort requests fail loud, at any level (#518, D158) ──────────
+# `model_catalog.yaml`'s `effort_levels` is authoritative for every provider now, not just a
+# per-provider "supports effort at all" flag — so a request for a level a model doesn't accept
+# always raises, whether that's a brand-new level (xhigh/max) or one of the original three.
+
+@pytest.mark.parametrize("provider,model_id,effort", [
+    ("anthropic", "claude-sonnet-4-6", "xhigh"),   # Sonnet 4.6 takes max, not xhigh
+    ("anthropic", "claude-haiku-4-5", "max"),      # Haiku has no effort control at all
+    ("anthropic", "claude-haiku-4-5", "low"),      # ...at any level, not just xhigh/max
+    ("gemini", "gemini-2.5-pro", "xhigh"),
+    ("deepseek", "deepseek-v4-pro", "max"),
+    ("deepseek", "deepseek-v4-pro", "high"),       # DeepSeek has no portable knob at all
+    ("local", "llama-3.3-70b", "xhigh"),
+    ("local", "llama-3.3-70b", "low"),             # local/openrouter: no capability info, ever
+    ("openrouter", "anthropic/claude-3.5-sonnet", "max"),
+    ("openai", "gpt-4o", "xhigh"),       # OpenAI, but a chat model, not a reasoning one
+    ("openai", "gpt-4o", "low"),         # ...at any level
+])
+def test_resolve_effort_rejects_unsupported_levels(provider, model_id, effort):
+    with pytest.raises(mc.ModelError, match=effort):
+        mc._resolve_effort(provider, model_id, effort)
+
+
+def test_openai_reasoning_model_accepts_xhigh(openai_key, monkeypatch):
+    be = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "openai", be)
+    mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai", model="gpt-5.6-luna", effort="xhigh")
+    assert be.calls[0]["effort"] == "xhigh"
+
+
+def test_openai_chat_model_rejects_max(openai_key, monkeypatch):
+    be = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "openai", be)
+    with pytest.raises(mc.ModelError, match="max"):
+        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o", effort="max")
+
+
+def test_claude_sonnet_rejects_xhigh(api_key_auth, monkeypatch):
+    # Sonnet 4.6 takes `max` but Anthropic hasn't extended `xhigh` coverage to it yet.
+    api = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    with pytest.raises(mc.ModelError, match="xhigh"):
+        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet", effort="xhigh")
+
+
+def test_claude_sonnet_accepts_max(api_key_auth, monkeypatch):
+    api = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    mc.complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet", effort="max")
+    assert api.calls[0]["effort"] == "max"
+
+
+def test_claude_opus_accepts_xhigh(api_key_auth, monkeypatch):
+    api = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
+    mc.complete_json(task="extract", prompt="p", schema=SCHEMA, model="opus", effort="xhigh")
+    assert api.calls[0]["effort"] == "xhigh"
+
+
+def test_gemini_rejects_max(gemini_key, monkeypatch):
+    be = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "gemini", be)
+    with pytest.raises(mc.ModelError, match="max"):
+        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="gemini", model="gemini-2.5-pro", effort="max")
+
+
+def test_deepseek_rejects_xhigh(monkeypatch):
+    monkeypatch.setattr(mc.auth, "get_api_key",
+                        lambda provider="anthropic": "sk-ds" if provider == "deepseek" else None)
+    be = FakeBackend(_out('{"name": "Acme"}'))
+    monkeypatch.setitem(mc._ABACKENDS, "deepseek", be)
+    with pytest.raises(mc.ModelError, match="xhigh"):
+        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="deepseek",
+                         model="deepseek-reasoner", effort="xhigh")
 
 
 # ── context windows (provider-aware sectioning, #321) ─────────────────────────
@@ -317,22 +398,22 @@ def test_openai_effort_passed_for_reasoning_model(openai_key, monkeypatch):
     assert be.calls[0]["effort"] == "low"
 
 
-def test_openai_effort_dropped_for_chat_model(openai_key, monkeypatch):
+def test_openai_effort_rejected_for_chat_model(openai_key, monkeypatch):
     be = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "openai", be)
-    # high is not a no-op default on OpenAI, but a chat model can't take reasoning_effort → dropped
-    mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o", effort="high")
-    assert be.calls[0]["effort"] is None
+    # a chat model can't take reasoning_effort at all → errors rather than running silently
+    with pytest.raises(mc.ModelError, match="high"):
+        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o", effort="high")
 
 
-def test_deepseek_drops_effort(monkeypatch):
+def test_deepseek_rejects_effort(monkeypatch):
     monkeypatch.setattr(mc.auth, "get_api_key",
                         lambda provider="anthropic": "sk-ds" if provider == "deepseek" else None)
     be = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "deepseek", be)
-    mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="deepseek",
-                     model="deepseek-reasoner", effort="high")
-    assert be.calls[0]["effort"] is None               # no portable knob on DeepSeek
+    with pytest.raises(mc.ModelError, match="high"):     # no portable knob on DeepSeek at all
+        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="deepseek",
+                         model="deepseek-reasoner", effort="high")
 
 
 @pytest.fixture
@@ -390,12 +471,14 @@ def test_local_backend_missing_base_url_errors(monkeypatch):
         mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="local", model="llama-3.3-70b")
 
 
-def test_local_effort_is_always_dropped(local_configured, monkeypatch):
+def test_local_effort_is_always_rejected(local_configured, monkeypatch):
+    # No capability table for an arbitrary self-hosted model — effort always errors rather than
+    # guessing it's supported (or silently doing nothing if it isn't).
     be = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "local", be)
-    mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="local",
-                     model="llama-3.3-70b", effort="high")
-    assert be.calls[0]["effort"] is None
+    with pytest.raises(mc.ModelError, match="high"):
+        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="local",
+                         model="llama-3.3-70b", effort="high")
 
 
 def test_openrouter_backend_uses_default_base_url(monkeypatch):
