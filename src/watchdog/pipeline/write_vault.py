@@ -132,7 +132,7 @@ def _assert_in_vault(path: Path, vault_path: Path, label: str) -> Path:
     return path
 
 
-def _reconcile_entity_ids(incoming_entities: list[dict], entities_reg: dict) -> None:
+def _reconcile_entity_ids(incoming_entities: list[dict], entities_reg: dict) -> dict[str, str]:
     """
     Remap incoming entities that name an existing entity under a different slug.
 
@@ -152,6 +152,11 @@ def _reconcile_entity_ids(incoming_entities: list[dict], entities_reg: dict) -> 
     registry copy that accumulates as the pass walks the batch. The original cross-worker-race
     rationale for reconciling inside the lock no longer applies — the batch pass runs serially,
     before any commit. The function itself is unchanged and still used, just called from there.
+
+    Returns the id remap applied (old id -> surviving id), so the caller can also rewrite any
+    other field that names an entity id by the same convention but lives outside this function's
+    view — ``morgue_entity_id`` and ``document.key_facts[].entities`` (#513) — rather than only
+    the fields (``entities[].id``, ``roles[].target_id``) reconciled here.
     """
     norm_index: dict[tuple[str, str], str] = {}
     for eid, entry in entities_reg.items():
@@ -176,6 +181,8 @@ def _reconcile_entity_ids(incoming_entities: list[dict], entities_reg: dict) -> 
             for role in entity.get("roles", []):
                 if role.get("target_id") in remap:
                     role["target_id"] = remap[role["target_id"]]
+
+    return remap
 
 
 def _resolve_role_targets(incoming_entities: list[dict], entities_reg: dict) -> None:
