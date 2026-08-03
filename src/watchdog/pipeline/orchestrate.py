@@ -134,7 +134,15 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         "task": task, "model": model, "backend": backend,
         "input_tokens": u.get("input_tokens", u.get("prompt_tokens", 0)) or 0,
         "output_tokens": u.get("output_tokens", u.get("completion_tokens", 0)) or 0,
-        "cache_read_tokens": u.get("cache_read_input_tokens", 0) or 0,
+        # Cache-read count, normalised across provider usage shapes: Anthropic reports
+        # `cache_read_input_tokens`; OpenAI nests it under `prompt_tokens_details.cached_tokens`;
+        # DeepSeek reports `prompt_cache_hit_tokens` (mirrors model_client._cached_input_tokens,
+        # which does the same normalisation for cost calculation — this one was missed when the
+        # OpenAI-compatible backends were added, so their real cache hits were logged as 0 even
+        # though `cost_usd` already billed the discount correctly, issue #495).
+        "cache_read_tokens": (u.get("cache_read_input_tokens")
+                              or (u.get("prompt_tokens_details") or {}).get("cached_tokens")
+                              or u.get("prompt_cache_hit_tokens") or 0),
         "cache_write_tokens": u.get("cache_creation_input_tokens", 0) or 0,
         "cost_usd": cost_usd, "attempts": attempts, "latency_s": latency_s, "effort": effort,
         "auth_mode": auth_mode, "filename": filename, "detail": detail, "end_ts": time.time(),
