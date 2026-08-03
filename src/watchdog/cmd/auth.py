@@ -510,6 +510,7 @@ def setup_auth_interactive(interactive: bool | None = None) -> None:
         else:
             _maybe_tune_concurrency_for_subscription()
     else:
+        _maybe_restore_concurrency_from_subscription()
         _offer_extra_providers(state)
 
     print(f"\n  {_DIM}Tune which model runs each stage anytime with{_RESET} {_CYAN}watchdog configure{_RESET} "
@@ -545,6 +546,27 @@ def _maybe_tune_concurrency_for_subscription() -> bool:
           f"automatically set to {_BOLD}{_SUBSCRIPTION_CONCURRENCY}{_RESET}.")
     print(f"  {_DIM}Concurrent extractions share one Claude Code session's rate limit; raise it back "
           f"with{_RESET} {_CYAN}watchdog configure extract_concurrency{_RESET}{_DIM}.{_RESET}")
+    return True
+
+
+def _maybe_restore_concurrency_from_subscription() -> bool:
+    """Undo the tune above when switching away from subscription auth (#493 follow-up): once
+    ingestion is on a metered key, extraction no longer shares one Claude Code session's rate
+    limit, so a still-active auto-tuned `extract_concurrency: 3` would otherwise silently cap
+    throughput forever — the "never overwrite a deliberate value" guard above means nothing else
+    would ever raise it back on its own. Only clears the setting when it's still exactly
+    `_SUBSCRIPTION_CONCURRENCY`; a coincidentally-matching manual `watchdog configure` value of 3
+    is indistinguishable from the auto-tune and is left alone, same as the tune itself never
+    overwrites a pre-existing value."""
+    config = _load_config()
+    if config.get("extract_concurrency") != _SUBSCRIPTION_CONCURRENCY:
+        return False
+
+    del config["extract_concurrency"]
+    _save_config(config)
+    from watchdog.cmd.ingest import _DEFAULT_EXTRACT_CONCURRENCY
+    print(f"\n  {_GREEN}✓{_RESET}  {_BOLD}extract_concurrency{_RESET} reset to the metered default "
+          f"({_BOLD}{_DEFAULT_EXTRACT_CONCURRENCY}{_RESET}).")
     return True
 
 
@@ -645,6 +667,10 @@ def _pick_anthropic_mode_interactive(state: dict) -> None:
         # applies (#400) — extraction stays on subscription far more often via this later
         # `watchdog auth` switch than via the initial setup wizard.
         _maybe_tune_concurrency_for_subscription()
+    elif choice == "2":
+        # Mirror image (#493 follow-up): switching back off subscription should undo a still-
+        # active auto-tune, or it silently caps a metered key at 3 forever.
+        _maybe_restore_concurrency_from_subscription()
     print()
 
 

@@ -90,10 +90,11 @@ _CONFIGURE_KEYS = {
             "How many documents `watchdog dig` extracts simultaneously. Each runs a model\n"
             "  call, so this is bounded by your model rate limits — lower it if you hit throttling,\n"
             "  raise it for throughput. Override for one run with `watchdog dig --concurrency N`.\n"
-            "  Default: 20, minimum: 1 (sequential). `watchdog setup` sets this to 3 automatically if\n"
-            "  it detects Claude subscription auth and ingestion stays on it — concurrent extractions\n"
+            "  Default: 20, minimum: 1 (sequential). `watchdog setup`/`watchdog auth` set this to 3\n"
+            "  automatically on Claude subscription auth that keeps ingestion — concurrent extractions\n"
             "  there share one Claude Code session's rate limit, and the higher metered-path default\n"
-            "  reliably throttles it."
+            "  reliably throttles it — and restore it to 20 automatically on switching back to an\n"
+            "  API key, unless you've set your own value."
         ),
         "type": "int",
         "default": 5,
