@@ -2132,6 +2132,38 @@ def test_record_usage_omits_harness_timing_keys_for_other_backends():
         orchestrate._usage = None
 
 
+def test_record_usage_reads_cache_read_tokens_from_openai_usage_shape():
+    """#495: OpenAI nests its cache-hit count under `prompt_tokens_details.cached_tokens`
+    rather than Anthropic's flat `cache_read_input_tokens` — before this fix, an OpenAI call's
+    real cache hits (already billed at the discounted rate in `cost_usd`) were silently logged
+    as `cache_read_tokens: 0`."""
+    orchestrate._usage = []
+    try:
+        orchestrate._record_usage(
+            "extract-section", model="gpt-5.4-nano", backend="openai",
+            usage={"prompt_tokens": 20000, "completion_tokens": 5000,
+                  "prompt_tokens_details": {"cached_tokens": 5900}},
+            cost_usd=0.01, latency_s=1.0)
+        assert orchestrate._usage[0]["cache_read_tokens"] == 5900
+    finally:
+        orchestrate._usage = None
+
+
+def test_record_usage_reads_cache_read_tokens_from_deepseek_usage_shape():
+    """#495: DeepSeek reports its cache-hit count as a flat `prompt_cache_hit_tokens` field —
+    a third shape distinct from both Anthropic's and OpenAI's."""
+    orchestrate._usage = []
+    try:
+        orchestrate._record_usage(
+            "extract-section", model="deepseek-v4-flash", backend="deepseek",
+            usage={"prompt_tokens": 20000, "completion_tokens": 5000,
+                  "prompt_cache_hit_tokens": 3200},
+            cost_usd=0.01, latency_s=1.0)
+        assert orchestrate._usage[0]["cache_read_tokens"] == 3200
+    finally:
+        orchestrate._usage = None
+
+
 def test_record_usage_includes_pruned_keys_when_present():
     """#412/D124: pruned key paths ride along on the usage record so schema drift stays
     visible in `watchdog usage`, not just ingest.log."""
