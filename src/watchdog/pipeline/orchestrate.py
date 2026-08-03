@@ -1753,7 +1753,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
              f"{_DIM}(named-but-unprofiled, isolated, contradictions){_RESET} — "
              f"{_CYAN}{leads_relpath}{_RESET}")
 
-    # 5b. Document-request dedup (#416, D157). Exact-string matching at record time only
+    # 5b. Document-request dedup (#416, D159). Exact-string matching at record time only
     # converges identical wording — a citation of the same real document phrased differently
     # stays a separate open entry. Skipped unless this run actually recorded a new request, so
     # most ingests make zero extra calls (same discipline as 2b's timeline-precision gate); when
