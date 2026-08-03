@@ -164,6 +164,18 @@ def test_extract_prompt_handles_no_known_types():
     assert "none yet" in _flat(p)
 
 
+def test_extract_prompt_forbids_silent_date_correction():
+    """#534: the extractor was silently "correcting" an implausible printed date (an affidavit
+    dated a year before the report citing it) to the year it judged intended, destroying the
+    evidence that the source itself carried the error. The prompt must instruct transcription
+    as printed, plus flagging the inconsistency, rather than resolving it."""
+    p = prompts.build_extract_prompt(
+        pages_text="x", skill_text="", sidecar=None, brief=None, known_document_types=[])
+    text = _flat(p)
+    assert "TRANSCRIBE, DON'T CORRECT" in text
+    assert "never quietly swap in the date you infer was intended" in text
+
+
 def test_extract_prompt_carries_no_vault_state():
     """Extraction is stateless (#381/D118): no EXISTING_ENTITIES / EXISTING_TIMELINE block in
     any content block — entity resolution and the contradiction check moved to the finalizer."""
