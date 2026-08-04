@@ -576,6 +576,17 @@ def test_openai_cost_openai_cache_hit():
     assert cost == pytest.approx(600_000 * 2.5e-6 + 400_000 * 0.25e-6)
 
 
+def test_openai_batch_cost_is_half_the_openai_cost():
+    usage = {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}
+    live = mc._openai_cost("gpt-5.4", usage)
+    assert mc._openai_batch_cost("gpt-5.4", usage) == pytest.approx(live * 0.5)
+
+
+def test_openai_batch_cost_none_for_unknown_model_or_usage():
+    assert mc._openai_batch_cost("not-a-real-model", {"prompt_tokens": 100}) is None
+    assert mc._openai_batch_cost("gpt-5.4", None) is None
+
+
 def test_openai_cost_prices_gemini_models():
     # gemini-2.5-flash: $0.30/1M input, $2.50/1M output.
     assert mc._openai_cost("gemini-2.5-flash",
@@ -1070,6 +1081,22 @@ def test_claude_batch_rejected_as_a_single_call_backend(api_key_auth):
     it must fail clearly, not silently misbehave or read as 'unknown backend'."""
     with pytest.raises(mc.ModelError, match="batch-mode-only"):
         mc.complete_json(task="classify", prompt="p", schema=SCHEMA, backend="claude-batch")
+
+
+def test_openai_batch_rejected_as_a_single_call_backend(api_key_auth):
+    """openai-batch (#530) gets the same batch-mode-only guard as claude-batch."""
+    with pytest.raises(mc.ModelError, match="batch-mode-only"):
+        mc.complete_json(task="classify", prompt="p", schema=SCHEMA, backend="openai-batch")
+
+
+def test_openai_batch_registered_alongside_claude_batch():
+    assert "openai-batch" in mc.BACKENDS
+    assert "openai-batch" in mc.BATCH_BACKENDS
+    assert "claude-batch" in mc.BATCH_BACKENDS
+    assert mc.provider_for_backend("openai-batch") == "openai"
+    # openai-batch takes a raw OpenAI model id, not a Claude tier name — unlike claude-batch,
+    # which is provider="anthropic" and so does belong in CLAUDE_BACKENDS.
+    assert "openai-batch" not in mc.CLAUDE_BACKENDS
 
 
 def test_looks_like_rate_limit_detects_429_and_text():

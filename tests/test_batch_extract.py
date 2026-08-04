@@ -1,6 +1,9 @@
-"""Tests for the Message Batches API integration (#214) — state persistence, submit/status/
-collect. The Anthropic SDK client is mocked at the `_client` boundary, matching how
-test_model_client.py mocks _ABACKENDS rather than the real (uninstalled) anthropic package."""
+"""Tests for the Batch API integrations (#214, #530) — state persistence, submit/status/collect,
+and the per-provider dispatch between them. The Anthropic SDK client is mocked at the `_client`
+boundary (matching how test_model_client.py mocks _ABACKENDS rather than the real, uninstalled
+`anthropic` package); the OpenAI path is mocked at `httpx.AsyncClient` (matching
+test_model_client.py's own OpenAI-compatible-backend tests), since it speaks raw HTTP rather than
+using an SDK."""
 
 import asyncio
 import datetime
@@ -8,7 +11,9 @@ import json
 
 import pytest
 
+from watchdog import model_client
 from watchdog.pipeline import batch_extract as be
+from watchdog.pipeline import schemas
 
 
 def make_vault(tmp_path):
@@ -274,3 +279,268 @@ def test_collect_flags_schema_invalid_json_without_crashing(monkeypatch):
     assert out["sha1"]["ok"] is False
     assert out["sha1"]["parsed"] is not None   # kept for the caller's repair-retry context
     assert out["sha1"]["error"]
+
+
+# ── dispatch (#530) ───────────────────────────────────────────────────────────
+
+def test_submit_dispatches_to_anthropic_by_default(tmp_path, monkeypatch):
+    """No `backend` kwarg — the pre-#530 call shape — still routes to the Anthropic path."""
+    vault = make_vault(tmp_path)
+    fake = FakeBatches(batch_id="batch_default")
+    monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
+    docs = [{"sha": "sha1", "prompt": [{"type": "text", "text": "p"}]}]
+    batch_id = asyncio.run(be.submit(vault, docs, model="sonnet", effort=None,
+                                     skills={"sha1": "s"}, api_key="sk-x"))
+    assert batch_id == "batch_default"
+    assert be.read_state(vault)["backend"] == "claude-batch"
+
+
+def test_submit_dispatches_to_openai_for_openai_batch_backend(tmp_path, monkeypatch):
+    """Passing backend="openai-batch" must never touch the Anthropic `_client` boundary — a
+    user with only an OpenAI key configured must not need Anthropic credentials at all (D37)."""
+    vault = make_vault(tmp_path)
+
+    def _unexpected_anthropic_client(api_key):
+        raise AssertionError("openai-batch must not use the Anthropic client")
+    monkeypatch.setattr(be, "_client", _unexpected_anthropic_client)
+
+    import httpx
+    fake = _FakeOpenAIHttp(batch_response={"id": "batch_oai_dispatch"})
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: fake)
+
+    docs = [{"sha": "sha1", "prompt": [{"type": "text", "text": "p"}]}]
+    batch_id = asyncio.run(be.submit(vault, docs, model="gpt-5.6-luna", effort=None,
+                                     skills={"sha1": "s"}, api_key="sk-oai", backend="openai-batch"))
+    assert batch_id == "batch_oai_dispatch"
+    assert be.read_state(vault)["backend"] == "openai-batch"
+
+
+# ── OpenAI Batch API (#530) ────────────────────────────────────────────────────
+
+class _FakeResp:
+    def __init__(self, status_code=200, json_data=None, text=""):
+        self.status_code = status_code
+        self._json = json_data or {}
+        self.text = text
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise Exception(f"HTTP {self.status_code}")
+
+    def json(self):
+        return self._json
+
+
+class _FakeOpenAIHttp:
+    """Stands in for `httpx.AsyncClient` against the four calls the OpenAI Batch path makes:
+    upload (`POST .../files`), create (`POST .../batches`), poll (`GET .../batches/{id}`), and
+    download (`GET .../files/{id}/content`) — routed by URL suffix, same fake instance reused
+    across the `async with` block a real call opens once per `submit`/`status`/`collect`."""
+    def __init__(self, *, batch_response=None, file_contents=None):
+        self.calls = []
+        self._batch_response = batch_response or {}
+        self._file_contents = file_contents or {}   # file_id -> jsonl text
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def post(self, url, headers=None, data=None, json=None, files=None):
+        self.calls.append({"method": "POST", "url": url, "headers": headers, "data": data,
+                           "json": json, "files": files})
+        if url.endswith("/files"):
+            return _FakeResp(200, {"id": "file-in-1"})
+        if url.endswith("/batches"):
+            return _FakeResp(200, self._batch_response)
+        raise AssertionError(f"unexpected POST {url}")
+
+    async def get(self, url, headers=None):
+        self.calls.append({"method": "GET", "url": url, "headers": headers})
+        if url.endswith("/content"):
+            file_id = url.rsplit("/files/", 1)[1].rsplit("/content", 1)[0]
+            return _FakeResp(200, text=self._file_contents.get(file_id, ""))
+        return _FakeResp(200, self._batch_response)
+
+
+def test_openai_submit_uploads_jsonl_and_creates_batch(tmp_path, monkeypatch):
+    import httpx
+    vault = make_vault(tmp_path)
+    fake = _FakeOpenAIHttp(batch_response={"id": "batch_oai_1"})
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: fake)
+
+    docs = [{"sha": "sha1", "prompt": [{"type": "text", "text": "p1"}]},
+           {"sha": "sha2", "prompt": [{"type": "text", "text": "p2"}]}]
+    batch_id = asyncio.run(be.submit(vault, docs, model="gpt-5.6-luna", effort=None,
+                                     skills={"sha1": "annual-report", "sha2": "bankruptcy"},
+                                     api_key="sk-oai", backend="openai-batch"))
+    assert batch_id == "batch_oai_1"
+
+    upload, create = fake.calls[0], fake.calls[1]
+    assert upload["url"].endswith("/files")
+    assert upload["data"] == {"purpose": "batch"}
+    assert upload["headers"]["Authorization"] == "Bearer sk-oai"
+    lines = [json.loads(line) for line in upload["files"]["file"][1].decode("utf-8").splitlines()]
+    assert [line["custom_id"] for line in lines] == ["sha1", "sha2"]
+    assert lines[0]["method"] == "POST"
+    assert lines[0]["url"] == "/v1/chat/completions"
+    # gpt-5.6-luna is a catalogued reasoning model — max_completion_tokens, not max_tokens.
+    assert lines[0]["body"]["model"] == "gpt-5.6-luna"
+    assert "max_completion_tokens" in lines[0]["body"]
+    assert "max_tokens" not in lines[0]["body"]
+
+    assert create["url"].endswith("/batches")
+    assert create["json"] == {"input_file_id": "file-in-1", "endpoint": "/v1/chat/completions",
+                              "completion_window": "24h"}
+
+    state = be.read_state(vault)
+    assert state["batch_id"] == "batch_oai_1"
+    assert state["backend"] == "openai-batch"
+    assert state["model"] == "gpt-5.6-luna"
+    assert state["shas"] == ["sha1", "sha2"]
+    assert state["skills"] == {"sha1": "annual-report", "sha2": "bankruptcy"}
+
+
+def test_openai_submit_passes_resolved_effort(tmp_path, monkeypatch):
+    import httpx
+    vault = make_vault(tmp_path)
+    fake = _FakeOpenAIHttp(batch_response={"id": "batch_oai_2"})
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: fake)
+    docs = [{"sha": "sha1", "prompt": [{"type": "text", "text": "p"}]}]
+    asyncio.run(be.submit(vault, docs, model="gpt-5.6-luna", effort="high", skills={"sha1": "s"},
+                          api_key="sk-oai", backend="openai-batch"))
+    upload = fake.calls[0]
+    line = json.loads(upload["files"]["file"][1].decode("utf-8").splitlines()[0])
+    assert line["body"]["reasoning_effort"] == "high"
+
+
+def test_openai_request_body_chat_model_uses_max_tokens():
+    """An uncatalogued chat-family id (fallback_is_reasoning's `gpt-4` prefix -> chat) gets the
+    classic `max_tokens` field, not `max_completion_tokens` — mirrors the live single-call path's
+    same is_reasoning branch (#354)."""
+    response_format = model_client._openai_response_format(
+        model_client._OPENAI_BASE["openai"], schemas.EXTRACTION)
+    body = be._openai_request_body("gpt-4o-mini", "prompt text", 9000, None, response_format)
+    assert body["max_tokens"] == 9000
+    assert "max_completion_tokens" not in body
+    assert "reasoning_effort" not in body
+
+
+def test_openai_status_normalizes_terminal_state_and_counts(monkeypatch):
+    import httpx
+    fake = _FakeOpenAIHttp(batch_response={
+        "status": "completed", "request_counts": {"total": 3, "completed": 2, "failed": 1},
+        "created_at": 1700000000, "completed_at": 1700003600,
+    })
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: fake)
+    s = asyncio.run(be.status("batch_oai_1", "sk-oai", backend="openai-batch"))
+    assert s["processing_status"] == "ended"
+    assert s["request_counts"] == {"processing": 0, "succeeded": 2, "errored": 1}
+    assert s["created_at"] == datetime.datetime.fromtimestamp(
+        1700000000, tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    assert s["ended_at"] == datetime.datetime.fromtimestamp(
+        1700003600, tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def test_openai_status_in_progress_before_terminal(monkeypatch):
+    import httpx
+    fake = _FakeOpenAIHttp(batch_response={
+        "status": "in_progress", "request_counts": {"total": 5, "completed": 2, "failed": 0}})
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: fake)
+    s = asyncio.run(be.status("batch_oai_1", "sk-oai", backend="openai-batch"))
+    assert s["processing_status"] == "in_progress"
+    assert s["request_counts"] == {"processing": 3, "succeeded": 2, "errored": 0}
+    assert s["ended_at"] is None
+
+
+@pytest.mark.parametrize("terminal_status", ["failed", "expired", "cancelled"])
+def test_openai_status_treats_every_terminal_state_as_ended(monkeypatch, terminal_status):
+    """A failed/expired/cancelled OpenAI batch still needs collecting — each document can carry
+    a real failure reason via error_file_id rather than being silently dropped."""
+    import httpx
+    fake = _FakeOpenAIHttp(batch_response={"status": terminal_status, "request_counts": {}})
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: fake)
+    s = asyncio.run(be.status("batch_oai_1", "sk-oai", backend="openai-batch"))
+    assert s["processing_status"] == "ended"
+
+
+def test_openai_collect_maps_succeeded_result_by_sha(monkeypatch):
+    import httpx
+    output_line = json.dumps({
+        "custom_id": "sha1",
+        "response": {"status_code": 200, "body": {
+            "choices": [{"message": {"content": json.dumps(VALID_EXTRACTION)},
+                        "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 1000, "completion_tokens": 200},
+        }},
+        "error": None,
+    })
+    fake = _FakeOpenAIHttp(
+        batch_response={"status": "completed", "output_file_id": "file-out-1"},
+        file_contents={"file-out-1": output_line + "\n"})
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: fake)
+
+    out = asyncio.run(be.collect("batch_oai_1", "sk-oai", "gpt-5.6-luna", backend="openai-batch"))
+    assert out["sha1"]["ok"] is True
+    assert out["sha1"]["parsed"]["morgue_entity_id"] == "acme-corp"
+    assert out["sha1"]["usage"]["stop_reason"] == "stop"
+    assert out["sha1"]["error"] is None
+
+
+def test_openai_collect_prices_at_half_the_standard_rate(monkeypatch):
+    import httpx
+    output_line = json.dumps({
+        "custom_id": "sha1",
+        "response": {"status_code": 200, "body": {
+            "choices": [{"message": {"content": json.dumps(VALID_EXTRACTION)},
+                        "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 1_000_000, "completion_tokens": 0},
+        }},
+        "error": None,
+    })
+    fake = _FakeOpenAIHttp(
+        batch_response={"status": "completed", "output_file_id": "file-out-1"},
+        file_contents={"file-out-1": output_line})
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: fake)
+
+    out = asyncio.run(be.collect("batch_oai_1", "sk-oai", "gpt-5.4", backend="openai-batch"))
+    # gpt-5.4: $2.50/1M input, halved by the batch discount.
+    assert out["sha1"]["cost_usd"] == pytest.approx(1.25)
+
+
+def test_openai_collect_surfaces_error_file_reason(monkeypatch):
+    """A request OpenAI rejected before it ever reached the model (validation failure) is
+    collected from `error_file_id` with the real reason, not silently dropped."""
+    import httpx
+    error_line = json.dumps({"custom_id": "sha2", "response": None,
+                             "error": {"code": "invalid_request", "message": "prompt too long"}})
+    fake = _FakeOpenAIHttp(
+        batch_response={"status": "failed", "error_file_id": "file-err-1"},
+        file_contents={"file-err-1": error_line})
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: fake)
+
+    out = asyncio.run(be.collect("batch_oai_1", "sk-oai", "gpt-5.6-luna", backend="openai-batch"))
+    assert out["sha2"]["ok"] is False
+    assert out["sha2"]["parsed"] is None
+    assert "prompt too long" in out["sha2"]["error"]
+
+
+def test_openai_collect_flags_unparseable_text_without_crashing(monkeypatch):
+    import httpx
+    output_line = json.dumps({
+        "custom_id": "sha1",
+        "response": {"status_code": 200, "body": {
+            "choices": [{"message": {"content": "not json at all"}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+        }},
+        "error": None,
+    })
+    fake = _FakeOpenAIHttp(
+        batch_response={"status": "completed", "output_file_id": "file-out-1"},
+        file_contents={"file-out-1": output_line})
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: fake)
+
+    out = asyncio.run(be.collect("batch_oai_1", "sk-oai", "gpt-5.6-luna", backend="openai-batch"))
+    assert out["sha1"]["ok"] is False
+    assert out["sha1"]["parsed"] is None

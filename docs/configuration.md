@@ -183,17 +183,23 @@ Most self-hosted runners don't check for an API key at all, so `local` doesn't a
 
 OpenRouter (`openrouter:anthropic/claude-3.5-sonnet`, or any model id [OpenRouter](https://openrouter.ai) lists) is the same mechanism with a fixed, hosted endpoint and a required key — useful for reaching a model Watchdog has no dedicated backend for, but it does send document text off-machine to OpenRouter and whichever model it routes to, same as any other hosted provider above.
 
-### claude-batch: bulk extraction at half price
+### Batch mode: bulk extraction at half price
 
-If you run on a metered API key (not a subscription) and are ingesting a large dump — say, 200 pages — setting `extractor_model` to `claude-batch:sonnet` submits every whole-document extraction as one bulk batch at 50 per cent off every token. The tradeoff is latency, not cost: a batch typically finishes within an hour but can take up to 24, so `watchdog dig` submits it and exits rather than waiting. Run `watchdog dig` again later (or check `watchdog status`) to collect the results.
+If you're ingesting a large dump — say, 200 pages — a batch-mode `extractor_model` submits every whole-document extraction as one bulk batch at 50 per cent off every token. The tradeoff is latency, not cost: a batch typically finishes within an hour but can take up to 24, so `watchdog dig` submits it and exits rather than waiting. Run `watchdog dig` again later (or check `watchdog status`) to collect the results.
+
+Two batch backends are available, one per provider:
+
+- `claude-batch:sonnet` (or any Claude tier) — Anthropic's Message Batches API. Requires `api-key` auth mode (switch to it with `watchdog auth`) — batching is not available on a Claude subscription.
+- `openai-batch:gpt-5.6-luna` (or any OpenAI model id) — OpenAI's Batch API. OpenAI has no subscription mode in Watchdog at all, so this just needs a stored OpenAI key (`watchdog auth`), the same as the plain `openai` backend.
+
+Each needs only that provider's own key — an `openai-batch` extractor needs no Anthropic key, and vice versa.
 
 The documents do not have to be the same type. Each one works out its own record skill before the batch is built — from its own `.yml` sidecar if it has one, otherwise the run-wide `--skill` if you set one, otherwise a quick classification — so a mixed drop of court filings and financial statements batches fine, each read with the right skill.
 
-Three constraints, each enforced with a clear error:
+Two constraints, each enforced with a clear error:
 
-1. It requires `api-key` auth mode (switch to it with `watchdog auth`) — batching is not available on a subscription.
-2. It is valid only as `extractor_model`, not `classifier_model` or `finalizer_model`.
-3. A document large enough to need sectioned extraction can't go through the batch, so those extract via the regular API instead, automatically — announced in the run's output, not silent.
+1. A batch backend is valid only as `extractor_model`, not `classifier_model` or `finalizer_model`.
+2. A document large enough to need sectioned extraction can't go through the batch, so those extract via that provider's regular single-call backend instead (`claude-api` or `openai`), automatically — announced in the run's output, not silent.
 
 Classification itself is not batched — it stays one quick call per document, at the classifier model's price. That is deliberate: it's a cheap call on a short excerpt, and paying it is what removes the requirement to sort your documents by type before ingesting them.
 
@@ -208,6 +214,8 @@ watchdog dig                                              # submits the batch, e
 watchdog dig                                              # later: collects it once ready
 ```
 
+The same recipe works with `openai-batch:gpt-5.6-luna` in place of `claude-batch:sonnet` on the third line, for a corpus already routed to OpenAI — no `watchdog auth` switch needed first, since OpenAI has no subscription mode to switch from.
+
 ## Controlling cost
 
 Watchdog is built to keep token costs predictable. Everything mechanical runs locally and costs nothing: OCR, document conversion, search indexing, reranking, the lead sweep, the watchlist scan. The model is called only for the reasoning steps of ingest — classify, extract, reconcile entities and contradictions, synthesize, reconcile the timeline, write the briefing — and each document's classification loads only the single matching domain skill, not all of them.
@@ -216,7 +224,7 @@ The main levers, roughly in order of impact:
 
 - **Effort.** Thinking tokens bill as output, so `extractor_effort` is the biggest per-run lever. It already defaults to `medium` — benchmark testing found no recall difference against `high`, at meaningfully lower cost — but `low` is worth trying on a test batch if you want to cut cost further. That default is skipped automatically if `extractor_model` is routed to a model with no effort control at all (Haiku); `finalizer_effort` has no such default (nothing is sent unless you set it), which is why the finalizer's default model, Haiku, needs no special case. `xhigh` and `max` push past `high` for the hardest documents, at a further cost premium — support for them isn't universal: OpenAI's GPT-5.6 family takes both, and Claude's coverage varies by model (Sonnet 4.6 takes `max` but not `xhigh`; Sonnet 5 and Opus 4.8 take both). Setting either `extractor_effort`/`finalizer_effort` key explicitly to a level the resolved model doesn't support fails with a clear error rather than running silently at a different effort than you asked for — model and effort are configured together, so changing one is worth a second look at the other. (See [Benchmarks](benchmarks.md) for the methodology behind the `medium`/`high` defaults.)
 - **Models.** `extractor_model haiku` is cheaper and faster for large batches of straightforward documents; Sonnet handles complex or ambiguous ones better. The classifier and finalizer already default to Haiku. If just one post-ingest stage needs a stronger model — the briefing reads thin, or duplicate entities keep slipping through reconciliation — `finalizer_reconciliation_model`/`finalizer_synthesis_model`/`finalizer_timeline_model`/`finalizer_briefing_model` raise that one stage without paying a stronger model's cost on the other three. Each falls back to `finalizer_model` when left unset.
-- **claude-batch.** On a metered key, the [claude-batch recipe](#claude-batch-bulk-extraction-at-half-price) above halves the cost of a bulk ingest.
+- **Batch mode.** The [batch-mode recipe](#batch-mode-bulk-extraction-at-half-price) above halves the cost of a bulk ingest, on either Claude (metered key) or OpenAI.
 - **Which Claude backend you're on.** A plain `sonnet` (or `haiku`/`opus`) reaches Claude one of two ways, chosen by your auth mode: a subscription goes through Claude Code's own harness, a metered key goes straight to the API. The two bill different numbers of input tokens for identical documents, so it is worth knowing which one you are on — `watchdog usage` names the backend for every stage. The API path also caches the reusable part of the prompt (the instructions and the record skill) properly, which the subscription path cannot be told to do.
 - **Concurrency.** `extract_concurrency` doesn't change total cost, but lowering it — persistently, or with `--concurrency` per run — is the fix when you hit model rate limits. Both `watchdog setup` and `watchdog auth` already lower the default from 20 to 3 when they detect Claude subscription auth and you keep ingestion on it: concurrent extractions on that path share one Claude Code session's rate limit, and the metered-path default of 20 reliably throttles it. Switching back to an API key later restores it to 20 automatically, as long as you never set your own value — `watchdog configure extract_concurrency` always overrides both directions if your plan needs something else.
 
