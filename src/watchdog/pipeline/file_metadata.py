@@ -16,7 +16,7 @@ arbitrary text into the prompt.
 
 Also home to ``check_date_mismatch``, the deterministic post-flight annotation that flags a
 document whose embedded creation date postdates its claimed date by a suspicious margin —
-modeled directly on ``quote_verify.verify_quotes``.
+modeled directly on ``quote_verify.resolve_quotes``.
 """
 
 import json
@@ -366,7 +366,7 @@ def check_date_mismatch(extraction: dict, processing: dict) -> list[str]:
     """Flag a document whose embedded file creation date postdates its claimed
     ``date_of_document`` by ``DATE_MISMATCH_THRESHOLD_DAYS`` or more — e.g. a "2019 board
     resolution" whose PDF was actually created in 2023. Modeled on
-    ``quote_verify.verify_quotes``: an annotation only, never blocks the document.
+    ``quote_verify.resolve_quotes``: an annotation only, never blocks the document.
 
     Suppressed entirely when ``processing.ocr_used`` is true — a scanned document's file
     carries the scanner's creation date, so the "mismatch" is expected and meaningless there;

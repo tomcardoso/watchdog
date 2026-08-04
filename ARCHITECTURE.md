@@ -247,9 +247,10 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    document, saving a model call per doc on known-homogeneous batches.
 3. **Extract** — one model call against the `EXTRACTION` schema. The model emits two layers
    (D26): a **fact layer** — `document.key_facts`, each a single material fact written once,
-   carrying an optional `date` (when the fact *is* a datable occurrence) and an optional
-   `entities` list (the ids the fact is about) plus an optional verbatim `quote`; and a **graph
-   layer** — the entities *this document* names, with aliases and roles. It carries **no
+   carrying an optional `date` (when the fact *is* a datable occurrence), an optional
+   `entities` list (the ids the fact is about), and an optional `quote_locator` — the first
+   several words of a source sentence worth quoting, not the sentence itself (D170); and a
+   **graph layer** — the entities *this document* names, with aliases and roles. It carries **no
    `match_id` and no contradictions** (D118): resolving entities against the vault and comparing
    claims across documents both need a whole-vault view extraction doesn't have, so both moved to
    the finalizer (§8.5). It no longer restates the document as per-entity summaries, evidence
@@ -264,11 +265,12 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    instructions, stating the trust caveat (forgeable, often machine-generated) plus the
    `ocr_used`/`source_type` processing facts, so the model can judge whether a creation date
    plausibly describes the original or just a scan/template.
-4. **Post-flight** (`postflight.run`, a function call) — validates the JSON, **explodes** the
-   unified key_facts into the per-entity `evidence_fragments` + `timeline_events` that the
-   writers consume (`explode_key_facts`, D26), **verifies** each `key_facts[].quote` against
-   the cited page's text from the chew-time queue descriptor (`quote_verify.verify_quotes`,
-   D75), **checks each stated fact's numeric figures** against the cited page's text
+4. **Post-flight** (`postflight.run`, a function call) — validates the JSON, **resolves** each
+   `key_facts[].quote_locator` against the cited page's text from the chew-time queue
+   descriptor into a full `quote` (`quote_verify.resolve_quotes`, D75, D170), then **explodes**
+   the unified key_facts into the per-entity `evidence_fragments` + `timeline_events` that the
+   writers consume (`explode_key_facts`, D26) — carrying the resolved `quote` along with each
+   fragment, **checks each stated fact's numeric figures** against the cited page's text
    (`figure_verify.verify_figures`, D112), **flags a file-metadata date mismatch** —
    `document.file_metadata.created` postdating `date_of_document` by a year or more
    (`file_metadata.check_date_mismatch`, #369), deterministic and suppressed whenever
@@ -1271,7 +1273,7 @@ These are the **governing rules of the pipeline** — the canonical statement of
 
 Mechanically-checkable postconditions are guarded by named tests in `tests/test_invariants.py` (#349), one per invariant (or checkable part). Parts flagged below as prompt-relied — e.g. I1's summary grounding — are deliberately unguarded, since there's nothing mechanical for a test to assert.
 
-- **I1 — Deterministic code writes; the model only reasons.** Anything derivable in Python (document identity, provenance, slugs, role targets, timeline fan-out) is stamped in code, never paid for in model output — and the model is not asked to restate as prose what it already emitted structurally. Carve-out: `document.summary` (#279) is a bounded, deliberate exception — a whole-document digest synthesized from `key_facts`, capped at three paragraphs and grounded (every claim in it must also exist in `key_facts`). That grounding is a **prompt instruction, not a verified postcondition** — unlike quote verification, no code checks the digest against `key_facts`, so a hallucinated claim would not be caught. *History: D2, D18, D24–D26, D29–D31, D33, D34, D75, D77, D78.*
+- **I1 — Deterministic code writes; the model only reasons.** Anything derivable in Python (document identity, provenance, slugs, role targets, timeline fan-out) is stamped in code, never paid for in model output — and the model is not asked to restate as prose what it already emitted structurally. Carve-out: `document.summary` (#279) is a bounded, deliberate exception — a whole-document digest synthesized from `key_facts`, capped at three paragraphs and grounded (every claim in it must also exist in `key_facts`). That grounding is a **prompt instruction, not a verified postcondition** — unlike quote resolution, no code checks the digest against `key_facts`, so a hallucinated claim would not be caught. *History: D2, D18, D24–D26, D29–D31, D33, D34, D75, D77, D78, D170.*
 - **I2 — Local-first preprocessing.** The *source documents you were given* never leave the machine, and chew costs no API tokens. This is a boundary on **source-doc egress**, not a vow of web abstinence — the investigation layer runs as agentic Claude Code sessions and web research (§14, I5) is allowed, since anything on the open web is already public. *History: D1, D45.*
 - **I3 — Skills and prompt templates are global package resources** — read directly, never copied per-vault — and prompt templates live in their own directory so they never leak into the classifier index. *History: D21, D28.*
 - **I4 — Configured model and effort only; no automatic escalation.** Each stage's model *and* its reasoning effort are explicit knobs with stable defaults; a failed call retries on the *same* model at the *same* effort — the pipeline never silently bumps either to recover. Response pagination (D104) is not an exception: continuing a truncated response prefills the same model's partial output at the same effort to finish one reply, changing neither knob. `finalizer_model` is itself an aggregate over four sub-stages (reconciliation, synthesis, timeline, briefing) each independently overridable (D137) — the "stage" this invariant guards is the finest-grained one actually configured, aggregate or per-stage. *History: D20, D36, D104, D137.*
