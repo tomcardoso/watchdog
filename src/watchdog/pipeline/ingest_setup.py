@@ -295,9 +295,9 @@ def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "so
     ingest *merges* into that batch (both finalize together) instead of discarding it.
 
     ``force_lock=True`` acquires the lock even with an empty queue (#214) — a pending
-    claude-batch extraction still needs mutual exclusion (so two concurrent `watchdog
-    ingest` invocations can't both try to collect the same batch) even when there's
-    nothing new to chew.
+    batch extraction (claude-batch or openai-batch, #530) still needs mutual exclusion
+    (so two concurrent `watchdog ingest` invocations can't both try to collect the same
+    batch) even when there's nothing new to chew.
     """
     lock_file = vault / ".watchdog" / "registry" / ".ingest-lock"
     state_file = vault / ".watchdog" / "ingest-state.json"

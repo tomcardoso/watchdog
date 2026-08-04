@@ -175,3 +175,21 @@ def test_key_fact_tolerates_explicit_null_date():
     key_fact = {"fact": "something happened", "date": None}
     errors = list(jsonschema.Draft202012Validator(schemas._KEY_FACT).iter_errors(key_fact))
     assert not errors, [e.message for e in errors]
+
+
+def test_key_fact_accepts_quote_locator():
+    """#529: the model emits a short `quote_locator`, resolved to a full quote in Python."""
+    import jsonschema
+    key_fact = {"fact": "something happened", "quote_locator": "The first several words"}
+    errors = list(jsonschema.Draft202012Validator(schemas._KEY_FACT).iter_errors(key_fact))
+    assert not errors, [e.message for e in errors]
+
+
+def test_key_fact_rejects_quote():
+    """`quote` was dropped from the schema in favour of `quote_locator` (#529/D170):
+    `additionalProperties: False` means a model that still emits `quote` fails validation and
+    retries, rather than the two fields coexisting."""
+    import jsonschema
+    key_fact = {"fact": "something happened", "quote": "A full verbatim sentence."}
+    errors = list(jsonschema.Draft202012Validator(schemas._KEY_FACT).iter_errors(key_fact))
+    assert errors

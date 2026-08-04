@@ -63,6 +63,37 @@ def test_explode_ignores_unknown_tags():
     assert "evidence_fragments" not in extraction["entities"][0]
 
 
+def test_explode_propagates_resolved_quote_fields_to_fragments():
+    """#529: `resolve_quotes` runs before `explode_key_facts` and annotates the key_fact with
+    `quote`/`quote_verified`/`quote_found_page` — the fan-out must copy all three onto the
+    fanned-out evidence fragment, not just `quote`."""
+    extraction = {
+        "document": {"key_facts": [
+            {"fact": "x", "page": 3, "entities": ["a"],
+             "quote": "The resolved sentence.", "quote_found_page": 4},
+        ]},
+        "entities": [{"id": "a", "name": "A", "type": "Person"}],
+    }
+    explode_key_facts(extraction)
+    frag = extraction["entities"][0]["evidence_fragments"][0]
+    assert frag["quote"] == "The resolved sentence."
+    assert frag["quote_found_page"] == 4
+    assert "quote_verified" not in frag   # only propagated when explicitly False
+
+
+def test_explode_propagates_quote_verified_false_to_fragments():
+    extraction = {
+        "document": {"key_facts": [
+            {"fact": "x", "page": 3, "entities": ["a"],
+             "quote": "the locator", "quote_verified": False},
+        ]},
+        "entities": [{"id": "a", "name": "A", "type": "Person"}],
+    }
+    explode_key_facts(extraction)
+    frag = extraction["entities"][0]["evidence_fragments"][0]
+    assert frag["quote_verified"] is False
+
+
 # ── _sanitize_dates (#262: non-ISO dates must not reach timeline.py's filenames) ────────────
 
 def test_sanitize_dates_drops_non_iso_date_and_warns():
@@ -455,6 +486,34 @@ def test_postflight_verifies_exact_quote_without_warning(tmp_path, capsys):
     lu = next(e for e in _staged(vault, "sha777aaa")["entities"] if e["id"] == "lu")
     frag = next(f for f in lu["evidence_fragments"] if f["claim"] == "Transfer ratio set at 65.8%.")
     assert frag.get("quote_verified") is not False
+
+    err = capsys.readouterr().err
+    assert "not found on page" not in err
+
+
+# ── Quote locator resolution (#529) ──────────────────────────────────────────
+
+def test_postflight_resolves_quote_locator_into_full_quote(tmp_path, capsys):
+    """End-to-end: a `quote_locator` on a key_fact, plus the chew-time queue descriptor's page
+    text, produces a resolved `quote` on the staged extraction."""
+    vault = _full_vault(tmp_path)
+    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
+        "pages": [{"page": 2, "markdown": "The transfer ratio set at 65.8% was confirmed by the board."},
+                  {"page": 3, "markdown": "A $842,018.34 payment was stayed."}],
+    }))
+    ext = _extraction()   # key_facts[0] is already page 2 ("Transfer ratio set at 65.8%.")
+    ext["document"]["key_facts"][0]["quote_locator"] = "The transfer ratio set at"
+    ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
+    ext_path.write_text(json.dumps(ext), encoding="utf-8")
+
+    result = postflight_run(vault, ext_path)
+    assert result.get("ok"), result
+
+    staged = _staged(vault, "sha777aaa")
+    fact = staged["document"]["key_facts"][0]
+    assert fact["quote"] == "The transfer ratio set at 65.8% was confirmed by the board."
+    assert fact["quote_locator"] == "The transfer ratio set at"   # left in place, not consumed
 
     err = capsys.readouterr().err
     assert "not found on page" not in err

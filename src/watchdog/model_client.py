@@ -626,6 +626,14 @@ def _openai_cost(model_id: str, usage: dict | None) -> float | None:
             + (usage.get("completion_tokens", 0) or 0) * outp)
 
 
+def _openai_batch_cost(model_id: str, usage: dict | None) -> float | None:
+    """OpenAI's Batch API is 50% off every token — the same flat discount `_batch_cost` applies
+    for Anthropic's Message Batches API (#530). No separate batch pricing table, and no
+    cache-token modelling beyond what `_openai_cost` already does for a live call."""
+    cost = _openai_cost(model_id, usage)
+    return cost * 0.5 if cost is not None else None
+
+
 # DeepSeek V4 collapsed thinking/non-thinking into a single model id switched by a request param
 # (the old deepseek-chat/deepseek-reasoner split is deprecated). Watchdog keeps the choice inside
 # the model token — `deepseek-v4-flash` (non-thinking) vs `deepseek-v4-flash-thinking` — so it rides
@@ -861,14 +869,16 @@ _BACKEND_META: dict[str, _BackendMeta] = {
     "claude-api":       _BackendMeta(provider="anthropic", supports_continuation=True,
                                       enforces_max_tokens=True),
     "claude-agent-sdk": _BackendMeta(provider="anthropic"),
-    # claude-batch is a real, selectable backend (CLI validation, auth resolution) but is never
-    # dispatched through the single-call acomplete_json path — the Message Batches API is
-    # submit-many/poll/collect, handled entirely by orchestrate._run_batch + pipeline.batch_extract
-    # (#214). `batch_only` exists only to turn a misrouted call (e.g. a classifier/finalizer stage
-    # accidentally set to claude-batch) into a clear error instead of the generic "unknown backend" one.
+    # claude-batch/openai-batch are real, selectable backends (CLI validation, auth resolution)
+    # but are never dispatched through the single-call acomplete_json path — each provider's
+    # Batch API is submit-many/poll/collect, handled entirely by orchestrate._run_batch +
+    # pipeline.batch_extract (#214, #530). `batch_only` exists only to turn a misrouted call (e.g.
+    # a classifier/finalizer stage accidentally set to a batch backend) into a clear error instead
+    # of the generic "unknown backend" one.
     "claude-batch":     _BackendMeta(provider="anthropic", batch_only=True),
     "openai":     _BackendMeta(provider="openai",   base_url=_OPENAI_BASE["openai"],
                                 enforces_max_tokens=True),
+    "openai-batch":     _BackendMeta(provider="openai", batch_only=True),
     "deepseek":   _BackendMeta(provider="deepseek", base_url=_OPENAI_BASE["deepseek"],
                                 supports_continuation=True, enforces_max_tokens=True),
     "gemini":     _BackendMeta(provider="gemini",   base_url=_OPENAI_BASE["gemini"],
@@ -881,8 +891,12 @@ _BACKEND_META: dict[str, _BackendMeta] = {
 BACKENDS = tuple(_BACKEND_META)
 # Backends that take a Claude tier name (haiku/sonnet/opus); the rest take a raw provider id.
 CLAUDE_BACKENDS = tuple(name for name, m in _BACKEND_META.items() if m.provider == "anthropic")
+# Batch-mode-only backends (submit-many/poll/collect, valid only as extractor_model) — one per
+# provider that offers a Batch API (#214, #530).
+BATCH_BACKENDS = tuple(name for name, m in _BACKEND_META.items() if m.batch_only)
 
-# claude-batch is excluded here (batch_only, no dispatch function) — see _BackendMeta above.
+# claude-batch/openai-batch are excluded here (batch_only, no dispatch function) — see
+# _BackendMeta above.
 _ABACKENDS = {
     "claude-api":       _api_complete_async,
     "claude-agent-sdk": _agent_complete_async,
@@ -918,7 +932,7 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
     meta = _BACKEND_META.get(chosen) if chosen is not None else None
     if meta and meta.batch_only:
         raise ModelError(f"'{chosen}' is a batch-mode-only backend — it cannot be used for a "
-                         "single-call task; it's only valid as extractor_model (#214)")
+                         "single-call task; it's only valid as extractor_model (#214, #530)")
     if chosen is not None and meta is None:
         raise ModelError(f"unknown backend '{chosen}'")
     provider = meta.provider if chosen else "anthropic"
