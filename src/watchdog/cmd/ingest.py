@@ -952,6 +952,24 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                      f"(it needs a metered key) — switch to it with {_CYAN}watchdog auth{_RESET}.\n")
     # openai-batch (#530) needs no equivalent check — OpenAI has no subscription auth mode in
     # this codebase, so it's already covered by the ordinary api-key resolution above.
+    # The verification pass (#535): flag beats config, config beats off. Off is the default
+    # because the pass has not yet been measured for precision on the benchmark corpus — it
+    # reliably adds facts, and whether those facts are worth a reporter's attention is exactly
+    # the open question (D172).
+    verify_flag = getattr(args, "verify", None)
+    verify = bool(config.get("verify_extraction", False)) if verify_flag is None else verify_flag
+    if verify and extract_backend in BATCH_BACKENDS:
+        # Every batch backend, not just claude-batch: the pass re-reads a document immediately
+        # after extracting it, out of the prompt cache that extraction call just wrote, and a
+        # batch's results come back hours later in a different run with neither of those left.
+        # Name whichever turned it on, so the fix the message implies is the one that works —
+        # "--verify isn't supported" is unhelpful advice to someone who never typed it.
+        source = ("--verify" if verify_flag else f"{_CYAN}verify_extraction{_RESET}")
+        sys.exit(f"\n  {_YELLOW}Error:{_RESET} {source} isn't supported with {extract_backend} — "
+                 f"the verification pass re-reads a document immediately after extracting it, and "
+                 f"a batch's results come back hours later in a separate run.\n"
+                 + ("" if verify_flag else
+                    f"  Pass {_CYAN}--no-verify{_RESET} for this run, or turn the setting off.\n"))
     wait = getattr(args, "wait", False)
     if wait and extract_backend in BATCH_BACKENDS:
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} --wait isn't supported with {extract_backend} — a "
@@ -1029,7 +1047,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                     extract_backend=extract_backend, post_backend=post_backend,
                     classify_backend=classify_backend, wait=wait, skip_finalize=run_skip_finalize,
                     force=force, skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides,
-                    resume_hint=pipeline_hint))
+                    resume_hint=pipeline_hint, verify=verify))
                 summary = _merge_summary(summary, iter_summary)
                 if not (wait and iter_summary.get("rate_limited")):
                     break

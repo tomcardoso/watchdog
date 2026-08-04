@@ -440,6 +440,21 @@ def main() -> None:
                                 f"this stage — {_model_help}; falls back to --finalizer-model "
                                 f"(or finalizer_model) when unset")
 
+    def _add_verify_flag(p) -> None:
+        # Three states, not two: --verify and --no-verify are explicit answers that beat the
+        # `verify_extraction` config key, and the default None means "whatever configure says".
+        # Same shape the model/effort flags use, expressed with a paired store_true/store_false
+        # since there is nothing to type after it.
+        g = p.add_mutually_exclusive_group()
+        g.add_argument("--verify", action="store_true", default=None, dest="verify",
+                       help="After extracting each document, re-read it with a cheap second "
+                            "call that lists material facts the extraction missed, and add "
+                            "them. Costs roughly 15%% more per run; not with a batch extractor "
+                            "model. Overrides watchdog configure (default: off).")
+        g.add_argument("--no-verify", action="store_false", default=None, dest="verify",
+                       help="Skip the second-read verification pass even when watchdog "
+                            "configure turns it on.")
+
     p_ingest = sub.add_parser("ingest", help="Extract queued documents (runs the Python pipeline)")
     p_ingest.add_argument("--extractor-model", default=None, dest="extractor_model", metavar="MODEL",
                           help=f"Model for extraction — {_model_help}; overrides watchdog configure (default: sonnet)")
@@ -461,6 +476,7 @@ def main() -> None:
                                "xhigh/max need a supporting model, OpenAI or Claude — "
                                "overrides watchdog configure (default: high)")
     _add_finalizer_stage_flags(p_ingest)
+    _add_verify_flag(p_ingest)
     p_ingest.add_argument("--concurrency", type=int, default=None,
                           help="Documents extracted in parallel — overrides watchdog configure (default: 5)")
     p_ingest.add_argument("--classify-pages", type=int, default=None, dest="classify_pages",
@@ -507,6 +523,7 @@ def main() -> None:
                            help="Reasoning effort for extraction — lower spends fewer tokens; "
                                 "xhigh/max need a supporting model, OpenAI or Claude — "
                                 "overrides watchdog configure (default: medium)")
+    _add_verify_flag(p_extract)
     p_extract.add_argument("--concurrency", type=int, default=None,
                            help="Documents extracted in parallel — overrides watchdog configure (default: 5)")
     p_extract.add_argument("--classify-pages", type=int, default=None, dest="classify_pages",

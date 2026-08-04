@@ -54,7 +54,17 @@ _API_MAX_TOKENS = 8000
 # arrays (what_was_ingested/connections/leads/anomalies/emerging_patterns/open_questions) scale
 # with batch size, so it gets the same higher ceiling as extraction — a truncated briefing is a
 # JSON parse failure, not a partial result (#296).
-_TASK_MAX_TOKENS = {"extract": 16000, "extract-section": 16000, "briefing": 16000}
+# `verify` (#535) keeps the plain 8000 base rather than extraction's raised one: the verification
+# pass emits only the facts an extraction missed, so its *answer* is short by construction and a
+# bigger visible-output budget would buy nothing. It is listed here at all — rather than falling
+# through to the same 8000 via `.get`'s default — because membership in this dict is what gates
+# the reasoning reserve (#337/#354/#541, D168/D171): the pass runs at low effort precisely to hold
+# reasoning tokens down, but "low" is not "none", and a CoT sharing 8000 tokens with the answer is
+# exactly how that JSON gets truncated. Since the reserve is added to the base and scales with
+# effort, `verify` on a reasoning model resolves to 8000 + the low-effort reserve — a short answer
+# with room to think, not extraction's headroom for a long one.
+_TASK_MAX_TOKENS = {"extract": 16000, "extract-section": 16000, "briefing": 16000,
+                    "verify": _API_MAX_TOKENS}
 
 _SYSTEM_PROMPT = (
     "You are a precise extraction engine for an investigative-records pipeline. "

@@ -37,6 +37,11 @@ A few things this benchmark doesn't cover yet:
 - **OpenAI models.** Left out of the current comparison while Watchdog's approach to talking to
   model providers is under review (issue #453) — no point freezing a comparison against model
   names that might not be how it's done shortly.
+- **Whether the verification pass earns its keep.** The optional second read
+  (`verify_extraction`, see [Configuration](configuration.md#the-verification-pass)) reliably adds
+  facts; what has not been measured is how many of those facts are worth a reporter's attention
+  rather than restatements or trivia. Until that number exists, the pass stays off by default —
+  a recall gain that quietly fills your fact lists with noise is not an improvement.
 - **Running this automatically.** Right now a maintainer runs the benchmark by hand when a new
   model or effort combination is worth checking. Wiring it into a scheduled or on-demand GitHub
   Actions run is a reasonable next step, once it's clear how often that's actually useful.

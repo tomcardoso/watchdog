@@ -190,6 +190,16 @@ SECTION = _obj(
     ["document"],
 )
 
+# The verification pass (#535): a second, cheap read of the *same* document text asking only
+# "what material fact is on the page and absent from this fact list". `missing_facts` reuses
+# `_KEY_FACT` unchanged, so a candidate that survives `verify.merge_candidates` is shape-identical
+# to a fact the extractor emitted and every downstream reader sees no new shape. Nothing else is
+# asked for — no entities, no document metadata, no summary: the extractor already produced those,
+# and the whole point of running this on a cheap model at low effort is that its output stays
+# short (D172).
+VERIFY = _obj({"missing_facts": {"type": "array", "items": _KEY_FACT}}, ["missing_facts"])
+
+
 # Classify a document to a domain-skill filename (records/<name>.md).
 CLASSIFY = _obj(
     {"skill": {"type": "string"}},

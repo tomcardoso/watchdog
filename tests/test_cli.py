@@ -4520,3 +4520,113 @@ def test_search_everywhere_requires_query(configured):
     _register_projects(configured, [("shell-co", "Shell Co", None)])
     with pytest.raises(SystemExit):
         cli.cmd_search(args(project=None, query=None, everywhere=True, top_n=5, json=False))
+
+
+# ── the verification pass's flag/config resolution (#535) ─────────────────────
+
+def _dig_run_kwargs(tmp_path, monkeypatch, capsys, **arg_overrides):
+    """Run `watchdog dig` with the orchestrator stubbed, returning the kwargs it was called with."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+    monkeypatch.setattr(ing.interactive, "pick", lambda *a, **k: 0)
+
+    calls = []
+
+    async def fake_run(*a, **k):
+        calls.append(k)
+        return {"results": [], "extracted": 0, "skipped": 0, "failed": 0, "cancelled": False,
+                "rate_limited": False, "stop_message": None, "rate_limit_resets_at": None,
+                "quarantined": 0, "finalize_skipped": True}
+    monkeypatch.setattr(orch_module, "run", fake_run)
+
+    ing.cmd_extract(args(**arg_overrides))
+    capsys.readouterr()
+    return calls[0]
+
+
+def test_verification_pass_is_off_unless_asked_for(wdg_home, tmp_path, monkeypatch, capsys):
+    assert _dig_run_kwargs(tmp_path, monkeypatch, capsys)["verify"] is False
+
+
+def test_verify_flag_turns_the_pass_on(wdg_home, tmp_path, monkeypatch, capsys):
+    assert _dig_run_kwargs(tmp_path, monkeypatch, capsys, verify=True)["verify"] is True
+
+
+def test_verify_extraction_config_key_turns_the_pass_on(wdg_home, tmp_path, monkeypatch, capsys):
+    (wdg_home / "config.json").write_text(json.dumps({"verify_extraction": True}))
+    assert _dig_run_kwargs(tmp_path, monkeypatch, capsys)["verify"] is True
+
+
+def test_no_verify_flag_beats_the_config_key(wdg_home, tmp_path, monkeypatch, capsys):
+    (wdg_home / "config.json").write_text(json.dumps({"verify_extraction": True}))
+    assert _dig_run_kwargs(tmp_path, monkeypatch, capsys, verify=False)["verify"] is False
+
+
+@pytest.mark.parametrize("argv, expected", [
+    (["watchdog", "dig", "--verify"], True),
+    (["watchdog", "dig", "--no-verify"], False),
+    (["watchdog", "dig"], None),
+    (["watchdog", "ingest", "--verify"], True),
+])
+def test_verify_flag_parses_to_three_states(monkeypatch, argv, expected):
+    """None (not typed) is a real third state — it's what lets the config key decide."""
+    import sys
+    seen = {}
+    monkeypatch.setattr(sys, "argv", argv)
+    monkeypatch.setattr(cli, "cmd_extract", lambda a: seen.update(verify=a.verify))
+    monkeypatch.setattr(cli, "cmd_ingest", lambda a: seen.update(verify=a.verify))
+    cli.main()
+    assert seen["verify"] is expected
+
+
+def test_verify_and_no_verify_are_mutually_exclusive(monkeypatch, capsys):
+    import sys
+    monkeypatch.setattr(sys, "argv", ["watchdog", "dig", "--verify", "--no-verify"])
+    with pytest.raises(SystemExit):
+        cli.main()
+    assert "not allowed with" in capsys.readouterr().err
+
+
+def test_verify_is_refused_with_a_claude_batch_extractor(wdg_home, tmp_path, monkeypatch, capsys):
+    """A batch's results come back hours later in a separate process — there is no extraction to
+    verify at the time the pass would run, and no cached prefix left to read."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+    monkeypatch.setattr(ing.interactive, "pick", lambda *a, **k: 0)
+
+    with pytest.raises(SystemExit) as e:
+        ing.cmd_extract(args(verify=True, extractor_model="claude-batch:sonnet"))
+    assert "--verify isn't supported with claude-batch" in _strip_ansi(str(e.value))
+
+
+def test_the_batch_refusal_names_the_config_key_when_that_is_what_turned_it_on(
+        wdg_home, tmp_path, monkeypatch, capsys):
+    """Telling someone "--verify isn't supported" is unhelpful advice if they never typed it."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    (wdg_home / "config.json").write_text(json.dumps({"verify_extraction": True}))
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+    monkeypatch.setattr(ing.interactive, "pick", lambda *a, **k: 0)
+
+    with pytest.raises(SystemExit) as e:
+        ing.cmd_extract(args(extractor_model="claude-batch:sonnet"))
+    message = _strip_ansi(str(e.value))
+    assert "verify_extraction isn't supported with claude-batch" in message
+    assert "--no-verify" in message
