@@ -449,8 +449,8 @@ def main() -> None:
         g.add_argument("--verify", action="store_true", default=None, dest="verify",
                        help="After extracting each document, re-read it with a cheap second "
                             "call that lists material facts the extraction missed, and add "
-                            "them. Costs roughly 15%% more per run; not with a claude-batch "
-                            "extractor model. Overrides watchdog configure (default: off).")
+                            "them. Costs roughly 15%% more per run; not with a batch extractor "
+                            "model. Overrides watchdog configure (default: off).")
         g.add_argument("--no-verify", action="store_false", default=None, dest="verify",
                        help="Skip the second-read verification pass even when watchdog "
                             "configure turns it on.")
@@ -489,7 +489,7 @@ def main() -> None:
     p_ingest.add_argument("--wait", action="store_true", default=False,
                           help="On a rate limit, sleep until it resets and resume automatically "
                                "instead of stopping for you to re-run ingest. Not with a "
-                               "claude-batch extractor model.")
+                               "batch-mode extractor model (claude-batch/openai-batch).")
     p_ingest.add_argument("--estimate", action="store_true",
                           help="Print a token/cost estimate for the queue and exit — no lock, no confirm, no extraction")
     p_ingest.add_argument("--estimate-all", action="store_true", dest="estimate_all",
@@ -535,7 +535,7 @@ def main() -> None:
     p_extract.add_argument("--wait", action="store_true", default=False,
                            help="On a rate limit, sleep until it resets and resume automatically "
                                 "instead of stopping for you to re-run dig. Not with a "
-                                "claude-batch extractor model.")
+                                "batch-mode extractor model (claude-batch/openai-batch).")
     p_extract.add_argument("--estimate", action="store_true",
                            help="Print a token/cost estimate for the queue and exit — no lock, no confirm, no extraction")
     p_extract.add_argument("--estimate-all", action="store_true", dest="estimate_all",

@@ -333,11 +333,18 @@ def _print_stage(calls: list[dict]) -> dict:
             turns = c.get("num_turns")
             turns_note = f", {turns} turns" if turns and turns != 1 else ""
             api_note = f"  {_DIM}· api {_fmt_secs(c['api_ms'] / 1000)}{turns_note}{_RESET}"
+        # `reasoning_tokens` (#354) is the chain-of-thought share of this row's own Output figure
+        # — only present for an OpenAI reasoning model, so it trails as a note rather than
+        # widening Output for every row the way `api_note` handles harness timing.
+        reasoning_note = ""
+        if c.get("reasoning_tokens") is not None:
+            reasoning_note = f"  {_DIM}· reasoning {_fmt(c['reasoning_tokens'])}{_RESET}"
         print(
             f"  {trunc_name:<{name_w}}  {trunc_detail:<{detail_w}}  "
             f"{effort:<{effort_w}}  {auth:<{auth_w}}  "
             f"{_fmt(c['input_tokens']):>8}  {_fmt(c['cache_read_tokens']):>8}  {_fmt(c['cache_write_tokens']):>8}  "
-            f"{_fmt(c['output_tokens']):>7}  {_fmt_secs(latency):>8}  ${cost:>6.4f}  {per_page:>7}{retry_note}{api_note}"
+            f"{_fmt(c['output_tokens']):>7}  {_fmt_secs(latency):>8}  ${cost:>6.4f}  {per_page:>7}"
+            f"{retry_note}{api_note}{reasoning_note}"
         )
         totals["input_tokens"] += c["input_tokens"]
         totals["output_tokens"] += c["output_tokens"]

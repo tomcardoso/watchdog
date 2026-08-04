@@ -116,8 +116,9 @@ def _defang(text: str) -> str:
     """Defang ``[[``/``]]`` in model-supplied text before it is written into a vault note (#305,
     #508) — otherwise a hostile value can close a wikilink early and forge a second one pointing
     elsewhere in the vault. Covers wikilink display text/headings (name, title) as well as free
-    text bodies (claim, reason, quote, relationship) since a quote in particular is meant to be
-    verbatim source text, giving a document author direct control over its contents."""
+    text bodies (claim, reason, quote, relationship) since a quote in particular is resolved
+    verbatim from the page text at post-flight (#529), giving a document author direct control
+    over its contents."""
     from watchdog.pipeline.research import neutralize
     return neutralize(text or "")
 
@@ -622,9 +623,10 @@ def _quote_verification_note(f: dict) -> str:
 def _render_evidence_fragments(fragments: list, morgue_path: str = "") -> str:
     """Render evidence-fragment claims as Markdown bullets.
 
-    Each claim becomes a bullet with an optional page link and `— reason`; an optional
-    verbatim quote renders as a blockquote beneath it. With no morgue_path, pages render
-    as plain "p. N" (used for the finalizer digest, which needs no clickable links).
+    Each claim becomes a bullet with an optional page link and `— reason`; an optional quote —
+    resolved from the page text at post-flight (#529), not model-supplied — renders as a
+    blockquote beneath it. With no morgue_path, pages render as plain "p. N" (used for the
+    finalizer digest, which needs no clickable links).
     """
     lines = []
     for f in fragments:

@@ -27,8 +27,9 @@ def _obj(properties: dict, required: list[str]) -> dict:
 # dimensions — the entity notes (`entities`: which entities the fact is about) and the timeline
 # (`date`: the date of the occurrence, set only when the fact IS a datable event). This replaces
 # the former separate per-entity `evidence_fragments` and `timeline_events`, which postflight now
-# reconstructs from these tags. `quote` is an optional verbatim source sentence (only when wording
-# matters).
+# reconstructs from these tags. `quote_locator` is the first several words of the source sentence,
+# which Python resolves against the page text into a full `quote` at post-flight (#529,
+# `quote_verify.resolve_quotes`) — the model is never asked to retype the sentence itself.
 _KEY_FACT = _obj(
     {
         "fact": {"type": "string"},
@@ -41,7 +42,8 @@ _KEY_FACT = _obj(
         # `(fact.get("date") or "").strip()`, merge.py's `f.get("date")` truthiness check).
         "date": _NULLABLE_STR,                                        # set ⇒ also a timeline event
         "entities": {"type": "array", "items": {"type": "string"}},   # entity ids the fact is about
-        "quote": {"type": "string"},   # optional verbatim source sentence (only when wording matters)
+        "quote_locator": {"type": "string"},   # first ~6-12 words of the source sentence (only when
+                                                # wording matters); resolved to a full quote in Python
     },
     ["fact"],   # basis omitted ⇒ stated (the overwhelming default)
 )

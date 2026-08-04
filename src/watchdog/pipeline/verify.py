@@ -102,9 +102,13 @@ def _sanitize(candidate: dict, known_ids: set[str]) -> dict | None:
     if isinstance(date, str) and date.strip():
         fact["date"] = date.strip()
 
-    quote = candidate.get("quote")
-    if isinstance(quote, str) and quote.strip():
-        fact["quote"] = quote.strip()
+    # `quote_locator`, not `quote` (#529/D170): the model emits the first several words and
+    # post-flight expands them against the page text — which runs after this merge, over every
+    # key fact, so a verified fact's locator is resolved by exactly the same code path as an
+    # extracted one's.
+    locator = candidate.get("quote_locator")
+    if isinstance(locator, str) and locator.strip():
+        fact["quote_locator"] = locator.strip()
 
     entities = candidate.get("entities")
     if isinstance(entities, list):

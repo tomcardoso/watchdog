@@ -54,12 +54,15 @@ _API_MAX_TOKENS = 8000
 # arrays (what_was_ingested/connections/leads/anomalies/emerging_patterns/open_questions) scale
 # with batch size, so it gets the same higher ceiling as extraction — a truncated briefing is a
 # JSON parse failure, not a partial result (#296).
-# `verify` (#535) is listed at the plain default rather than raised: the verification pass emits
-# only the facts an extraction missed, so its answer is short by construction and a bigger ceiling
-# would buy nothing. It is listed at all — rather than falling through to the same 8000 — so a
-# reasoning model gets the #337/#354 starvation protection, which keys off membership here: the
-# pass runs at low effort precisely to keep reasoning tokens down, but "low" is not "none", and a
-# CoT sharing an 8000-token budget with the answer is exactly how that JSON gets truncated.
+# `verify` (#535) keeps the plain 8000 base rather than extraction's raised one: the verification
+# pass emits only the facts an extraction missed, so its *answer* is short by construction and a
+# bigger visible-output budget would buy nothing. It is listed here at all — rather than falling
+# through to the same 8000 via `.get`'s default — because membership in this dict is what gates
+# the reasoning reserve (#337/#354/#541, D168/D171): the pass runs at low effort precisely to hold
+# reasoning tokens down, but "low" is not "none", and a CoT sharing 8000 tokens with the answer is
+# exactly how that JSON gets truncated. Since the reserve is added to the base and scales with
+# effort, `verify` on a reasoning model resolves to 8000 + the low-effort reserve — a short answer
+# with room to think, not extraction's headroom for a long one.
 _TASK_MAX_TOKENS = {"extract": 16000, "extract-section": 16000, "briefing": 16000,
                     "verify": _API_MAX_TOKENS}
 
@@ -633,6 +636,14 @@ def _openai_cost(model_id: str, usage: dict | None) -> float | None:
             + (usage.get("completion_tokens", 0) or 0) * outp)
 
 
+def _openai_batch_cost(model_id: str, usage: dict | None) -> float | None:
+    """OpenAI's Batch API is 50% off every token — the same flat discount `_batch_cost` applies
+    for Anthropic's Message Batches API (#530). No separate batch pricing table, and no
+    cache-token modelling beyond what `_openai_cost` already does for a live call."""
+    cost = _openai_cost(model_id, usage)
+    return cost * 0.5 if cost is not None else None
+
+
 # DeepSeek V4 collapsed thinking/non-thinking into a single model id switched by a request param
 # (the old deepseek-chat/deepseek-reasoner split is deprecated). Watchdog keeps the choice inside
 # the model token — `deepseek-v4-flash` (non-thinking) vs `deepseek-v4-flash-thinking` — so it rides
@@ -651,13 +662,50 @@ _DEEPSEEK_THINKING_SUFFIX = "-thinking"
 _DEEPSEEK_THINKING_MAX_TOKENS = 48000
 
 # OpenAI reasoning models have the same starvation mode (#354): reasoning tokens and the visible
-# answer share the one `max_completion_tokens` budget, so at the flat 16K ceiling heavy reasoning
-# can leave the JSON truncated — the exact failure #337 fixed for DeepSeek thinking. Applied only
-# to reasoning models (per `_openai_is_reasoning`) on the large-output tasks; chat models keep the
-# normal ceiling. Note this is the *wire* ceiling only — sectioning still plans against the base
-# task budget, since the JSON itself can't count on the reasoning share (see
+# answer share the one `max_completion_tokens` budget, so a ceiling too tight for the reasoning
+# volume leaves the JSON truncated with zero visible output — the exact failure #337 fixed for
+# DeepSeek thinking, confirmed live (benchmark 2026-08-03-1459): 0 visible characters, reasoning
+# tokens == the entire completion. Applied only to reasoning models (per `_openai_is_reasoning`)
+# on the large-output tasks; chat models keep the normal ceiling. Note this is the *wire* ceiling
+# only — sectioning still plans against the base task budget, since the JSON itself can't count
+# on the reasoning share (see `output_ceiling_for_sectioning`).
+#
+# Reasoning volume is almost entirely a function of `effort`, not a flat constant (same document,
+# same task: ~3.8K tokens at low, ~12.6K at medium, 48K+ at high) — so the reserve added on top of
+# the visible-answer budget (`_TASK_MAX_TOKENS`, 16K) scales with it. All five levels are listed
+# explicitly rather than falling back past `high`: gpt-5.6-terra/luna genuinely accept
+# `xhigh`/`max` (model_catalog.yaml), and a silent fallback to the medium reserve there would
+# under-provision exactly the deepest-reasoning configurations. 128K is the gpt-5-mini class's
+# documented output-token limit; every level below stays under it.
+_OPENAI_REASONING_RESERVE = {
+    "low": 16_000, "medium": 48_000, "high": 80_000, "xhigh": 100_000, "max": 100_000,
+}
+_OPENAI_REASONING_RESERVE_DEFAULT = 48_000   # effort unspecified -> treat as medium
+
+# Gemini has the same starvation mode (#541, follow-up to #354/D167). Its OpenAI-compatibility
+# endpoint maps `reasoning_effort` onto the native API's internal thinking budget, and that
+# budget is deducted from the same `max_tokens` envelope as the visible answer — confirmed
+# against Google's own thinking-model docs (ai.google.dev/gemini-api/docs/thinking) and
+# corroborated by third-party reports of the resulting failure (a `MAX_TOKENS` finish reason with
+# empty text once the budget is spent mid-thought, e.g. googleapis/python-genai#782,
+# discuss.ai.google.dev's "finishReason: MAX_TOKENS - But Text is Empty"). Unlike OpenAI, every
+# current Gemini model always gets an effort value (`_effort_levels` returns low/medium/high
+# unconditionally — no chat-vs-reasoning split to gate on), and several models (2.5+ Flash/Pro)
+# think by default even when `reasoning_effort` is omitted — so the reserve applies
+# unconditionally on the large-output tasks, not behind an is-reasoning check. Sectioning still
+# plans against the base task budget for the same reason as the OpenAI case (see
 # `output_ceiling_for_sectioning`).
-_OPENAI_REASONING_MAX_TOKENS = 48000
+#
+# The per-level split is a reasoned placeholder, not a measured one — #354's OpenAI numbers came
+# from a real benchmark sweep at each effort level; #541 has no equivalent Gemini sweep yet (the
+# only runs so far, `benchmarks/FINDINGS.md`'s gemini-flash/-flash-lite arms, were at `low`
+# effort or no effort pinned, so they never exercised this path). Scaled down from the OpenAI
+# reserve's low/medium/high shape to fit Gemini's documented output-token ceiling (65,536 for the
+# 2.5/3.x families) rather than OpenAI's 128K-class limit. Re-tune with real per-effort reasoning-
+# token counts the first time a high-effort Gemini sweep runs, the same way D108's original flat
+# 48K guess for OpenAI got replaced by measured figures in D167.
+_GEMINI_REASONING_RESERVE = {"low": 16_000, "medium": 32_000, "high": 48_000}
+_GEMINI_REASONING_RESERVE_DEFAULT = 32_000   # effort unspecified -> treat as medium
 
 # Transient-failure retry for the OpenAI-compatible backends (#354). The Anthropic SDK retries
 # 429/5xx internally (2 attempts, backoff); this httpx path had none, so a single transient
@@ -831,14 +879,16 @@ _BACKEND_META: dict[str, _BackendMeta] = {
     "claude-api":       _BackendMeta(provider="anthropic", supports_continuation=True,
                                       enforces_max_tokens=True),
     "claude-agent-sdk": _BackendMeta(provider="anthropic"),
-    # claude-batch is a real, selectable backend (CLI validation, auth resolution) but is never
-    # dispatched through the single-call acomplete_json path — the Message Batches API is
-    # submit-many/poll/collect, handled entirely by orchestrate._run_batch + pipeline.batch_extract
-    # (#214). `batch_only` exists only to turn a misrouted call (e.g. a classifier/finalizer stage
-    # accidentally set to claude-batch) into a clear error instead of the generic "unknown backend" one.
+    # claude-batch/openai-batch are real, selectable backends (CLI validation, auth resolution)
+    # but are never dispatched through the single-call acomplete_json path — each provider's
+    # Batch API is submit-many/poll/collect, handled entirely by orchestrate._run_batch +
+    # pipeline.batch_extract (#214, #530). `batch_only` exists only to turn a misrouted call (e.g.
+    # a classifier/finalizer stage accidentally set to a batch backend) into a clear error instead
+    # of the generic "unknown backend" one.
     "claude-batch":     _BackendMeta(provider="anthropic", batch_only=True),
     "openai":     _BackendMeta(provider="openai",   base_url=_OPENAI_BASE["openai"],
                                 enforces_max_tokens=True),
+    "openai-batch":     _BackendMeta(provider="openai", batch_only=True),
     "deepseek":   _BackendMeta(provider="deepseek", base_url=_OPENAI_BASE["deepseek"],
                                 supports_continuation=True, enforces_max_tokens=True),
     "gemini":     _BackendMeta(provider="gemini",   base_url=_OPENAI_BASE["gemini"],
@@ -851,8 +901,12 @@ _BACKEND_META: dict[str, _BackendMeta] = {
 BACKENDS = tuple(_BACKEND_META)
 # Backends that take a Claude tier name (haiku/sonnet/opus); the rest take a raw provider id.
 CLAUDE_BACKENDS = tuple(name for name, m in _BACKEND_META.items() if m.provider == "anthropic")
+# Batch-mode-only backends (submit-many/poll/collect, valid only as extractor_model) — one per
+# provider that offers a Batch API (#214, #530).
+BATCH_BACKENDS = tuple(name for name, m in _BACKEND_META.items() if m.batch_only)
 
-# claude-batch is excluded here (batch_only, no dispatch function) — see _BackendMeta above.
+# claude-batch/openai-batch are excluded here (batch_only, no dispatch function) — see
+# _BackendMeta above.
 _ABACKENDS = {
     "claude-api":       _api_complete_async,
     "claude-agent-sdk": _agent_complete_async,
@@ -888,7 +942,7 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
     meta = _BACKEND_META.get(chosen) if chosen is not None else None
     if meta and meta.batch_only:
         raise ModelError(f"'{chosen}' is a batch-mode-only backend — it cannot be used for a "
-                         "single-call task; it's only valid as extractor_model (#214)")
+                         "single-call task; it's only valid as extractor_model (#214, #530)")
     if chosen is not None and meta is None:
         raise ModelError(f"unknown backend '{chosen}'")
     provider = meta.provider if chosen else "anthropic"
@@ -966,16 +1020,23 @@ def _merge_usage(a: dict | None, b: dict | None) -> dict | None:
     return merged
 
 
-def _task_max_tokens(task: str, backend: str, model_id: str) -> int:
+def _task_max_tokens(task: str, backend: str, model_id: str, effort: str | None = None) -> int:
     """The output-token ceiling sent to the provider for a task/backend/model. Models whose
     chain-of-thought shares the output budget — DeepSeek thinking (#337), OpenAI reasoning
-    models (#354) — get a higher ceiling on the large-output tasks so reasoning can't starve
-    the JSON."""
+    models (#354), Gemini (#541) — get a higher ceiling on the large-output tasks so reasoning
+    can't starve the JSON. For OpenAI and Gemini the extra reserve scales with `effort`
+    (`_OPENAI_REASONING_RESERVE`/`_GEMINI_REASONING_RESERVE`), since reasoning volume is a
+    function of effort, not task. `effort` defaults to None (treated as medium) so existing call
+    sites — DeepSeek's own ceiling, `output_ceiling_for_sectioning` — keep working unchanged."""
     if task in _TASK_MAX_TOKENS:
         if backend == "deepseek" and model_id.endswith(_DEEPSEEK_THINKING_SUFFIX):
             return _DEEPSEEK_THINKING_MAX_TOKENS
         if backend == "openai" and _openai_is_reasoning(model_id):
-            return _OPENAI_REASONING_MAX_TOKENS
+            reserve = _OPENAI_REASONING_RESERVE.get(effort, _OPENAI_REASONING_RESERVE_DEFAULT)
+            return _TASK_MAX_TOKENS[task] + reserve
+        if backend == "gemini":
+            reserve = _GEMINI_REASONING_RESERVE.get(effort, _GEMINI_REASONING_RESERVE_DEFAULT)
+            return _TASK_MAX_TOKENS[task] + reserve
     return _TASK_MAX_TOKENS.get(task, _API_MAX_TOKENS)
 
 
@@ -992,9 +1053,9 @@ def output_ceiling_for_sectioning(task: str, backend: str | None, model: str | N
     if meta is None or not meta.enforces_max_tokens or meta.supports_continuation:
         return None
     model_id = resolve_model_id(model or DEFAULT_TIER)
-    if backend == "openai" and _openai_is_reasoning(model_id):
-        # The raised wire ceiling (#354) is shared with chain-of-thought, so the JSON itself
-        # can't count on more than the base task budget — plan sectioning against that.
+    if (backend == "openai" and _openai_is_reasoning(model_id)) or backend == "gemini":
+        # The raised wire ceiling (#354, #541) is shared with chain-of-thought/thinking, so the
+        # JSON itself can't count on more than the base task budget — plan sectioning against that.
         return _TASK_MAX_TOKENS.get(task, _API_MAX_TOKENS)
     return _task_max_tokens(task, backend, model_id)
 
@@ -1053,7 +1114,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
     model_id = resolve_model_id(requested)
     effort_arg = _resolve_effort(provider, model_id, effort)   # provider-native value or None
 
-    max_tokens = _task_max_tokens(task, chosen, model_id)
+    max_tokens = _task_max_tokens(task, chosen, model_id, effort_arg)
 
     start = time.monotonic()
     total_cost = 0.0
@@ -1084,7 +1145,20 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
             # call would only truncate again (truncation is deterministic in the prompt), so stop
             # retrying and report it — the orchestrator falls back to sectioning, which bounds each
             # call's output.
-            last_err = "output truncated at the model's max-token ceiling"
+            #
+            # Empty text (#354) is a different failure from a partial response: the whole output
+            # budget went to invisible reasoning and nothing was ever written, so "the document
+            # was too dense" is the wrong diagnosis — the fix is a lower extractor_effort or a
+            # raised ceiling, not re-sectioning. Empty text is the signal (provider-agnostic,
+            # always available); the reasoning-token count is folded in only when reported.
+            if out.get("text"):
+                last_err = "output truncated at the model's max-token ceiling"
+            else:
+                reasoning = ((out.get("usage") or {}).get("completion_tokens_details") or {}).get(
+                    "reasoning_tokens")
+                budget = f"{reasoning:,}-token " if reasoning else ""
+                last_err = (f"the model used its entire {budget}output budget on internal "
+                            "reasoning and returned no answer — try a lower extractor_effort")
             fixture_capture.capture("truncation", backend=chosen, model_id=model_id, task=task,
                                     text=out.get("text"), usage=out.get("usage"))
             break

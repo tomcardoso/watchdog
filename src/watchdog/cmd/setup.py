@@ -249,7 +249,8 @@ _CONFIGURE_KEYS = {
             "  reasoning — see verifier_effort.\n"
             "  Trade-off: it raises how much gets captured, and it can also add restatements and\n"
             "  true-but-minor detail to your fact lists. Off by default until that noise has been\n"
-            "  measured. Not available with a claude-batch extractor model.\n"
+            "  measured. Not available with a batch extractor model (claude-batch,\n"
+            "  openai-batch) — those return their results hours later, in a separate run.\n"
             "  Default: false.\n"
             "  Override for a single run with: watchdog dig --verify / --no-verify"
         ),

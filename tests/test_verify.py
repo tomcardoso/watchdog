@@ -88,16 +88,19 @@ def test_only_a_declared_inferred_basis_survives():
     assert [f.get("basis") for f in _facts(ext)[1:]] == ["inferred", None, None]
 
 
-def test_date_and_quote_are_carried_through_when_non_empty():
+def test_date_and_quote_locator_are_carried_through_when_non_empty():
+    """`quote_locator`, not `quote` (#529/D170) — post-flight expands it against the page text
+    after this merge, so a verified fact is resolved by the same path as an extracted one."""
     ext = _extraction([{"fact": "Existing."}])
     verify.merge_candidates(ext, [
-        {"fact": "The order was issued.", "date": "2021-02-01", "quote": "IT IS ORDERED"},
-        {"fact": "Undated.", "date": "  ", "quote": ""},
+        {"fact": "The order was issued.", "date": "2021-02-01",
+         "quote_locator": "THIS COURT ORDERS that the"},
+        {"fact": "Undated.", "date": "  ", "quote_locator": ""},
     ])
 
     assert _facts(ext)[1]["date"] == "2021-02-01"
-    assert _facts(ext)[1]["quote"] == "IT IS ORDERED"
-    assert "date" not in _facts(ext)[2] and "quote" not in _facts(ext)[2]
+    assert _facts(ext)[1]["quote_locator"] == "THIS COURT ORDERS that the"
+    assert "date" not in _facts(ext)[2] and "quote_locator" not in _facts(ext)[2]
 
 
 # ── restatement suppression ───────────────────────────────────────────────────

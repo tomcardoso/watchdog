@@ -2367,6 +2367,64 @@ def test_cmd_ingest_rejects_claude_batch_for_classifier_or_finalizer(wdg_home, t
         cmd_ingest(args(), confirm=False)
 
 
+# ── cmd_ingest: openai-batch validation guards (#530) ───────────────────────────
+
+def test_cmd_ingest_openai_batch_needs_no_pinned_skill(wdg_home, tmp_path, monkeypatch):
+    """openai-batch (#530) gets the same D144 treatment as claude-batch: no run-wide --skill
+    required, each document resolves its own before the batch is built."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    from watchdog.pipeline import orchestrate as orch_module
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    # classifier_model/finalizer_model stay on their Claude default (unset) even though the
+    # extractor is routed to openai-batch — D37's "Claude by default, other providers opt-in per
+    # stage" — so Claude auth is still resolved for those two stages.
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(auth_module, "get_api_key", lambda provider: "sk-oai" if provider == "openai" else None)
+    (wdg_home / "config.json").write_text(json.dumps({"extractor_model": "openai-batch:gpt-5.6-luna"}))
+
+    seen = {}
+
+    async def _fake_run(vault, **kwargs):
+        seen.update(kwargs)
+        return {"results": [], "extracted": 0, "skipped": 0, "failed": 0, "batch_pending": True}
+
+    monkeypatch.setattr(orch_module, "run", _fake_run)
+    cmd_ingest(args(), confirm=False)
+    assert seen, "orchestrate.run was never reached — an earlier guard rejected the run"
+    assert seen.get("pinned_skill") is None
+    assert seen.get("extract_backend") == "openai-batch"
+
+
+def test_cmd_ingest_rejects_openai_batch_for_classifier_or_finalizer(wdg_home, tmp_path, monkeypatch):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(auth_module, "get_api_key", lambda provider: "sk-oai")
+    (wdg_home / "config.json").write_text(json.dumps({"classifier_model": "openai-batch:gpt-5.6-luna"}))
+
+    with pytest.raises(SystemExit, match="only valid for extractor_model"):
+        cmd_ingest(args(), confirm=False)
+
+
+def test_cmd_ingest_wait_rejects_openai_batch(wdg_home, tmp_path, monkeypatch):
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd.ingest import cmd_ingest
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(auth_module, "get_api_key", lambda provider: "sk-oai" if provider == "openai" else None)
+    (wdg_home / "config.json").write_text(json.dumps({"extractor_model": "openai-batch:gpt-5.6-luna"}))
+    skill_file = tmp_path / "pinned.md"
+    skill_file.write_text("SKILL")
+
+    with pytest.raises(SystemExit, match="isn't supported with openai-batch"):
+        cmd_ingest(args(skill=str(skill_file), wait=True), confirm=False)
+
+
 # ── cmd_ingest --wait (#271) ────────────────────────────────────────────────
 
 def test_wait_seconds_uses_resets_at_plus_buffer(monkeypatch):

@@ -120,6 +120,13 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
     than returning — every attempt still spent real tokens, so it's recorded like any other call
     (and counted in the same subtotals) rather than vanishing from telemetry.
 
+    `reasoning_tokens` (#354), read from `usage["completion_tokens_details"]["reasoning_tokens"]`
+    when present (OpenAI reasoning models only), is copied onto the record — the chain-of-thought
+    share of `output_tokens`, which had been arriving on every such call since D108 and thrown
+    away; it's the field that diagnosed the reasoning-starvation failure. Only added when it's
+    non-zero — OpenAI reports a 0 here for its *chat* models, which carries no more information
+    than the key's absence does — so every other backend's record shape is untouched.
+
     `usage["stop_reason"]`, when present (currently only `batch_extract.collect`'s items carry
     it), is copied to the record — a batch call's only truncation signal, since it has no
     continuation/repair path a live call gets. `batch_meta`
@@ -151,6 +158,9 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         record["api_ms"] = u["duration_api_ms"]
     if u.get("num_turns") is not None:
         record["num_turns"] = u["num_turns"]
+    reasoning_tokens = (u.get("completion_tokens_details") or {}).get("reasoning_tokens")
+    if reasoning_tokens:      # truthy, not `is not None`: OpenAI reports 0 here for chat models
+        record["reasoning_tokens"] = reasoning_tokens
     if u.get("stop_reason"):
         record["stop_reason"] = u["stop_reason"]
     if pruned:
@@ -210,6 +220,10 @@ def _usage_totals(records: list[dict]) -> dict:
         "output_tokens": sum(r["output_tokens"] for r in records),
         "cache_read_tokens": sum(r["cache_read_tokens"] for r in records),
         "cache_write_tokens": sum(r["cache_write_tokens"] for r in records),
+        # `reasoning_tokens` (#354) only appears on OpenAI reasoning-model records — `r.get(...)`
+        # with a 0 default, not `r[...]`, so older records and every non-reasoning backend still
+        # sum cleanly.
+        "reasoning_tokens": sum(r.get("reasoning_tokens", 0) for r in records),
         "cost_usd": round(sum(r["cost_usd"] or 0.0 for r in records), 6) if records else None,
         "latency_s": round(sum(r.get("latency_s") or 0.0 for r in records), 3),
     }
@@ -1152,12 +1166,16 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
 async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_text: str,
                              skill_label: str, brief: str | None, api_key: str,
                              model: str | None = None, effort: str | None = None,
-                             force: bool = False, batch_meta: dict | None = None) -> dict:
+                             force: bool = False, batch_meta: dict | None = None,
+                             backend: str = "claude-batch") -> dict:
     """Turn one collected batch result into a finished document. `item` is `batch_extract.collect`'s
     per-sha entry (or None if the batch has no result for this sha at all). A batch response that
-    didn't pass schema validation gets exactly one synchronous claude-api repair attempt — not a
-    whole new batch submission for a single document — mirroring `_simple_extract`'s own
-    single-repair-attempt semantics.
+    didn't pass schema validation gets exactly one synchronous single-call repair attempt, on the
+    same provider the batch itself ran on (`claude-api` for `claude-batch`, `openai` for
+    `openai-batch`, #530) — not a whole new batch submission for a single document — mirroring
+    `_simple_extract`'s own single-repair-attempt semantics. An OpenAI repair passes the batch's
+    own model id through explicitly (an OpenAI backend has no tier-name default to fall back to
+    the way `claude-api`'s `model=None` resolves to Claude's own default tier).
 
     `model` (the batch's resolved model id) is used both to attribute the batch-collected item's
     own usage (D64) — unlike every other extraction path, this one never calls `_call_model`
@@ -1191,9 +1209,10 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
 
     extraction, cost = item["parsed"], item.get("cost_usd") or 0.0
     if item.get("usage") is not None:
-        # The Batches API requires api-key auth (D52) — never subscription — so this is the
-        # one _record_usage call site where auth_mode is a known constant, not a live result field.
-        _record_usage("extract", model=model, backend="claude-batch", usage=item["usage"],
+        # Every batch backend requires api-key auth (D52, #530) — never subscription — so this
+        # is the one _record_usage call site where auth_mode is a known constant, not a live
+        # result field.
+        _record_usage("extract", model=model, backend=backend, usage=item["usage"],
                       cost_usd=item.get("cost_usd"), effort=effort, auth_mode="api-key",
                       filename=filename, detail=f"pages 1–{page_count}", batch_meta=batch_meta)
     if not item["ok"]:
@@ -1208,8 +1227,11 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
             candidates=candidates)
         if item.get("error"):
             prompt = _append_repair_note(prompt, [item["error"]])
+        is_anthropic = model_client.provider_for_backend(backend) == "anthropic"
+        repair_backend = "claude-api" if is_anthropic else "openai"
+        repair_model = None if is_anthropic else model
         try:
-            r = await _call_model(task="extract", model=None, backend="claude-api",
+            r = await _call_model(task="extract", model=repair_model, backend=repair_backend,
                                   prompt=prompt, schema=schemas.EXTRACTION,
                                   filename=filename, detail=f"pages 1–{page_count} (repair)",
                                   vault=vault)
@@ -1292,8 +1314,13 @@ def _batch_log_line(state: dict, st: dict, collected_at: str) -> str:
 async def _resume_batch(vault: Path, state: dict, pinned_skill: str | None, brief: str | None,
                         api_key: str, force: bool = False) -> dict:
     """Check a pending batch's status; collect and write it if `ended`, otherwise report
-    progress and return without touching the vault."""
-    st = await batch_extract.status(state["batch_id"], api_key)
+    progress and return without touching the vault.
+
+    `state["backend"]` names which provider's batch this is (#530) — defaults to `claude-batch`
+    for state persisted before that field existed, so a batch already in flight across an
+    upgrade still resumes correctly."""
+    backend = state.get("backend", "claude-batch")
+    st = await batch_extract.status(state["batch_id"], api_key, backend=backend)
     if st["processing_status"] != "ended":
         counts = st.get("request_counts", {})
         done = sum(v for k, v in counts.items() if k != "processing")
@@ -1304,7 +1331,7 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str | None, brie
 
     _say(f"{_DIM}→  batch {state['batch_id']} finished — collecting {len(state['shas'])} "
          f"document{'s' if len(state['shas']) != 1 else ''}…{_RESET}")
-    collected = await batch_extract.collect(state["batch_id"], api_key, state["model"])
+    collected = await batch_extract.collect(state["batch_id"], api_key, state["model"], backend=backend)
     collected_at = datetime.datetime.now(datetime.timezone.utc).strftime(_BATCH_TS_FMT)
     batch_meta = {"batch_id": state["batch_id"], "submitted_at": state.get("submitted_at"),
                  "ended_at": st.get("ended_at"), "collected_at": collected_at}
@@ -1316,7 +1343,8 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str | None, brie
             results.append(await _finish_batch_item(vault, sha, collected.get(sha), skill_text,
                                                      skill_label, brief, api_key,
                                                      model=state["model"], effort=state.get("effort"),
-                                                     force=force, batch_meta=batch_meta))
+                                                     force=force, batch_meta=batch_meta,
+                                                     backend=backend))
     except model_client.RateLimitError as e:
         # A repair-retry call (claude-api) hit a rate limit partway through collection. Leave
         # the batch state in place — already-written documents are safe (preflight's
@@ -1334,8 +1362,8 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str | None, brie
 async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract_model: str,
                         pinned_skill: str | None, extract_effort: str | None, concurrency: int,
                         classify_model: str, classify_pages: int, classify_backend: str | None,
-                        api_key: str, force: bool = False) -> dict:
-    """Split the queue into sectioned (→ synchronous claude-api, via the normal
+                        api_key: str, force: bool = False, backend: str = "claude-batch") -> dict:
+    """Split the queue into sectioned (→ synchronous single-call backend, via the normal
     `_extract_document`) and whole-document (→ one batch submission) shas, run the former, then
     submit the latter and return — submit-and-exit, not blocking-poll (a batch can take up to
     24h; a *later* `watchdog dig` invocation collects it, see `_resume_batch`).
@@ -1400,16 +1428,21 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
         skills[sha] = skill_label
 
     if sectioned_shas:
+        # A section's carry-forward depends on the previous section's result, so sectioned
+        # extraction can't be an independent batch request on either provider — it always falls
+        # back to that same provider's single-call backend (#530).
+        sectioned_backend = ("claude-api" if model_client.provider_for_backend(backend) == "anthropic"
+                             else "openai")
         _say(f"{_DIM}→  {len(sectioned_shas)} large document"
              f"{'s' if len(sectioned_shas) != 1 else ''} need sectioning — not batchable, "
-             f"extracting via claude-api{_RESET}")
+             f"extracting via {sectioned_backend}{_RESET}")
         sem = asyncio.Semaphore(max(1, concurrency))
 
         async def _sectioned(sha: str) -> dict:
             async with sem:
                 return await _extract_document(vault, sha, brief, extract_model, classify_model,
                                                classify_pages, pinned_skill, extract_effort,
-                                               extract_backend="claude-api",
+                                               extract_backend=sectioned_backend,
                                                classify_backend=classify_backend, force=force)
         results.extend(await asyncio.gather(*[_sectioned(s) for s in sectioned_shas]))
 
@@ -1426,7 +1459,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
          f"{'s' if len(batch_docs) != 1 else ''} as one batch ({labels})…{_RESET}")
     batch_id = await batch_extract.submit(vault, batch_docs, model=extract_model,
                                           effort=extract_effort, skills=skills,
-                                          api_key=api_key)
+                                          api_key=api_key, backend=backend)
     _say(f"{_GREEN}Batch submitted{_RESET}  {_CYAN}{batch_id}{_RESET}{_DIM} — this can take up "
          f"to a few hours (max 24h); re-run {_RESET}{_CYAN}{_resume_hint}{_RESET}{_DIM} later "
          f"to collect it.{_RESET}")
@@ -1436,26 +1469,40 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
 async def _run_batch(vault: Path, shas: list[str], brief: str | None, extract_model: str,
                      pinned_skill: str | None, extract_effort: str | None, concurrency: int,
                      classify_model: str, classify_pages: int,
-                     classify_backend: str | None, force: bool = False) -> dict:
-    """Entry point for `run` when `extract_backend == "claude-batch"`. Defense-in-depth guard
-    beyond `cmd_ingest`'s own check — a programmatic caller that skips CLI validation still
-    gets a clear error rather than a confusing downstream failure.
+                     classify_backend: str | None, backend: str = "claude-batch",
+                     force: bool = False) -> dict:
+    """Entry point for `run` when `extract_backend` is a batch-mode backend
+    (`model_client.BATCH_BACKENDS`). Defense-in-depth guard beyond `cmd_ingest`'s own check — a
+    programmatic caller that skips CLI validation still gets a clear error rather than a
+    confusing downstream failure.
 
     A pinned skill is **not** required (D144): each document resolves its own skill before the
     batch is built, so a mixed-type drop batches fine. `pinned_skill` is still honoured as the
-    run-wide default when a document has no sidecar pin of its own."""
+    run-wide default when a document has no sidecar pin of its own.
+
+    Auth resolution branches by provider (#530): a Claude batch needs the subscription/api-key
+    mode explicitly checked (the Batches API isn't available on subscription, D52) — every other
+    provider in this codebase has no subscription mode at all, so it just needs its own stored
+    key, the same resolution `_resolve_backend_auth` uses for a live call."""
     from watchdog.cmd import auth
-    api_key = auth.resolve_auth().get("key")
-    if not api_key:
-        raise model_client.ModelError(
-            "claude-batch requires api-key auth mode — switch to it with `watchdog auth`")
+    provider = model_client.provider_for_backend(backend)
+    if provider == "anthropic":
+        api_key = auth.resolve_auth().get("key")
+        if not api_key:
+            raise model_client.ModelError(
+                "claude-batch requires api-key auth mode — switch to it with `watchdog auth`")
+    else:
+        api_key = auth.get_api_key(provider)
+        if not api_key:
+            raise model_client.ModelError(
+                f"the {backend} backend needs an API key — run `watchdog auth` to add one")
 
     state = batch_extract.read_state(vault)
     if state is not None:
         return await _resume_batch(vault, state, pinned_skill, brief, api_key, force=force)
     return await _submit_batch(vault, shas, brief, extract_model, pinned_skill, extract_effort,
                                concurrency, classify_model, classify_pages, classify_backend,
-                               api_key, force=force)
+                               api_key, force=force, backend=backend)
 
 
 def _nudge_skill_pin(results: list) -> None:
@@ -2311,16 +2358,24 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     global _board, _usage, _resume_hint
     _resume_hint = resume_hint
 
-    # claude-batch (#214): submit-many/poll/collect, not one-await-per-document, so it's a
-    # genuinely different flow — handled entirely by _run_batch (which also covers a resumed
-    # pending batch even when `shas` is empty). Both branches converge on `results` /
+    # claude-batch/openai-batch (#214, #530): submit-many/poll/collect, not one-await-per-document,
+    # so it's a genuinely different flow — handled entirely by _run_batch (which also covers a
+    # resumed pending batch even when `shas` is empty). Both branches converge on `results` /
     # `cancelled_flag` / `rate_limit_msg` / `extra_summary` and rejoin the shared tail below.
-    if extract_backend == "claude-batch":
+    if extract_backend in model_client.BATCH_BACKENDS:
+        # Same defense-in-depth posture as `_run_batch`'s own auth guard: `cmd_ingest` already
+        # refuses this combination, but a programmatic caller that skips CLI validation (a
+        # benchmark arm pinning both) must not silently get an unverified run labelled as a
+        # verified one — the whole point of the arm is that the label is true.
+        if verify:
+            raise ValueError(f"the verification pass is not supported with {extract_backend}: it "
+                             f"re-reads a document immediately after extracting it, and a batch's "
+                             f"results arrive hours later in a separate run")
         _begin_usage_run(vault)
         brief = _read_brief(vault)
         batch_out = await _run_batch(vault, shas, brief, extract_model, pinned_skill,
                                      extract_effort, concurrency, classify_model, classify_pages,
-                                     classify_backend, force=force)
+                                     classify_backend, backend=extract_backend, force=force)
         results = batch_out["results"]
         cancelled_flag = False
         rate_limit_msg = None

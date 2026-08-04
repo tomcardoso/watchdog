@@ -247,9 +247,10 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    document, saving a model call per doc on known-homogeneous batches.
 3. **Extract** — one model call against the `EXTRACTION` schema. The model emits two layers
    (D26): a **fact layer** — `document.key_facts`, each a single material fact written once,
-   carrying an optional `date` (when the fact *is* a datable occurrence) and an optional
-   `entities` list (the ids the fact is about) plus an optional verbatim `quote`; and a **graph
-   layer** — the entities *this document* names, with aliases and roles. It carries **no
+   carrying an optional `date` (when the fact *is* a datable occurrence), an optional
+   `entities` list (the ids the fact is about), and an optional `quote_locator` — the first
+   several words of a source sentence worth quoting, not the sentence itself (D170); and a
+   **graph layer** — the entities *this document* names, with aliases and roles. It carries **no
    `match_id` and no contradictions** (D118): resolving entities against the vault and comparing
    claims across documents both need a whole-vault view extraction doesn't have, so both moved to
    the finalizer (§8.5). It no longer restates the document as per-entity summaries, evidence
@@ -278,13 +279,15 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    candidate carrying a figure the matched fact lacks. Survivors are appended to
    `document.key_facts` tagged `added_by: "verify"` and go through post-flight like any other
    fact — there is no second class of fact downstream. A failed verification call is logged and
-   the extraction proceeds unchanged. Not available on `claude-batch` (its results arrive hours
-   later, in another process, with no live extraction to verify and no cache left to read).
-5. **Post-flight** (`postflight.run`, a function call) — validates the JSON, **explodes** the
-   unified key_facts into the per-entity `evidence_fragments` + `timeline_events` that the
-   writers consume (`explode_key_facts`, D26), **verifies** each `key_facts[].quote` against
-   the cited page's text from the chew-time queue descriptor (`quote_verify.verify_quotes`,
-   D75), **checks each stated fact's numeric figures** against the cited page's text
+   the extraction proceeds unchanged. Not available on a batch backend (`claude-batch`/
+   `openai-batch`, D52/D169): their results arrive hours later, in another process, with no live
+   extraction to verify and no prompt cache left to read.
+5. **Post-flight** (`postflight.run`, a function call) — validates the JSON, **resolves** each
+   `key_facts[].quote_locator` against the cited page's text from the chew-time queue
+   descriptor into a full `quote` (`quote_verify.resolve_quotes`, D75, D170), then **explodes**
+   the unified key_facts into the per-entity `evidence_fragments` + `timeline_events` that the
+   writers consume (`explode_key_facts`, D26) — carrying the resolved `quote` along with each
+   fragment, **checks each stated fact's numeric figures** against the cited page's text
    (`figure_verify.verify_figures`, D112), **flags a file-metadata date mismatch** —
    `document.file_metadata.created` postdating `date_of_document` by a year or more
    (`file_metadata.check_date_mismatch`, #369), deterministic and suppressed whenever
@@ -983,8 +986,9 @@ registry/
   usage/usage-<ts>.partial.jsonl  in-progress run's calls, one JSON line per completed call —
                             folded into a real usage-<ts>.json and removed at the *next* run's
                             start if the run that wrote it never reached a clean exit (D132)
-  batch-pending.json        pending claude-batch extraction state (D52) — incl. the per-sha
-                            skill map a later collection pass rebuilds prompts from (D144)
+  batch-pending.json        pending claude-batch/openai-batch extraction state (D52/D169) — incl.
+                            the per-sha skill map a later collection pass rebuilds prompts from
+                            (D144) and which provider (`backend`) to resume against
   .ingest-lock / .write-lock  run lock / write serialization
 backups/<ts>-<operation>/   pre-mutation snapshots for irreversible operations (D71)
 ingest-state.json           present while a run is in progress; stale ⇒ interrupted ingest, resume with `watchdog dig`
@@ -1129,30 +1133,38 @@ completed purge, and the CLI hint says so.
   document type, date range) before reading notes, driven entirely off metadata already
   captured at ingest — manifest `type`, document-note `document_type`/`date_of_document`
   frontmatter, and `timeline.md`'s year grouping — no new index (#111).
-- **`claude-batch` — bulk extraction via the Message Batches API** (`pipeline/batch_extract.py`,
-  D52): a fundamentally different flow from the other backends — submit-many/poll/collect over
-  minutes-to-24h rather than one call per document — so it isn't in `model_client._ABACKENDS`
-  and is never dispatched through `acomplete_json`; `orchestrate._run_batch` handles it
-  entirely, called from `run` instead of the concurrent per-document loop. It requires
-  `api-key` auth (a metered key; not available on subscription). It does **not** require a
-  pinned skill (D144): each document resolves its own through the shared `_resolve_skill`
-  helper — sidecar pin → run-wide pin → one classify call, D120's precedence, the same
-  implementation the synchronous path uses — before the batch is assembled, so a mixed-type
-  drop batches fine. The skill lives inside each request's own prompt blocks, which the
-  Batches API treats independently, so one submission carries several skills; requests are
-  sorted by skill label so adjacent same-skill ones still share the cached prefix. The per-sha
-  skill map is persisted in `batch-pending.json`, since collection runs in a later process.
-  Classification itself is not batched — it stays one cheap synchronous call per document, the
-  cost deliberately accepted to remove the pre-sort-by-type requirement. Documents needing
-  **sectioned** extraction fall back to
-  `claude-api` — a section's carry-forward depends on the previous section's result, so it
-  can't be an independent batch request. `watchdog dig` submits and exits rather than
-  blocking; state persists to `.watchdog/registry/batch-pending.json` (one batch in flight
+- **`claude-batch`/`openai-batch` — bulk extraction via a provider's Batch API**
+  (`pipeline/batch_extract.py`, D52/D169): a fundamentally different flow from the other
+  backends — submit-many/poll/collect over minutes-to-24h rather than one call per document —
+  so neither is in `model_client._ABACKENDS` and neither is ever dispatched through
+  `acomplete_json`; `orchestrate._run_batch` handles both entirely, called from `run` instead
+  of the concurrent per-document loop, dispatching to the right provider by the persisted
+  state's `backend` field. Both need only that provider's own API key — Anthropic's needs
+  `api-key` auth mode specifically (not available on a Claude subscription); OpenAI has no
+  subscription mode in this codebase, so `openai-batch` just needs a stored OpenAI key. Neither
+  requires a pinned skill (D144): each document resolves its own through the shared
+  `_resolve_skill` helper — sidecar pin → run-wide pin → one classify call, D120's precedence,
+  the same implementation the synchronous path uses — before the batch is assembled, so a
+  mixed-type drop batches fine. The skill lives inside each request's own prompt blocks, which
+  each Batches API treats independently, so one submission carries several skills; requests are
+  sorted by skill label so adjacent same-skill ones still share the cached prefix (Anthropic
+  only — OpenAI's Batch API has no equivalent prompt-cache knob). The per-sha skill map is
+  persisted in `batch-pending.json`, since collection runs in a later process. Classification
+  itself is not batched — it stays one cheap synchronous call per document, the cost
+  deliberately accepted to remove the pre-sort-by-type requirement. Documents needing
+  **sectioned** extraction fall back to that same provider's single-call backend (`claude-api`
+  or `openai`) — a section's carry-forward depends on the previous section's result, so it
+  can't be an independent batch request either way. `watchdog dig` submits and exits rather
+  than blocking; state persists to `.watchdog/registry/batch-pending.json` (one batch in flight
   per vault, mirroring `has_pending_finalization`'s precedent), and a *later* `watchdog
   dig` invocation checks it — collecting and writing to the vault if `ended`, or reporting
-  progress and exiting if still processing. 50% off every token, stacking with the A1 prompt
-  caching above (batch requests use the 1-hour cache TTL, since a batch routinely outlives
-  the default 5-minute window).
+  progress and exiting if still processing. 50% off every token on both providers; Anthropic's
+  additionally stacks with the A1 prompt caching above (batch requests use the 1-hour cache
+  TTL, since a batch routinely outlives the default 5-minute window). Mechanically, the two
+  APIs differ enough to be genuinely separate implementations behind one dispatcher: Anthropic
+  takes inline requests via the `anthropic` SDK, OpenAI takes a JSONL file uploaded to
+  `/v1/files` and referenced by `/v1/batches`, spoken over raw httpx (no new SDK dependency,
+  matching D37's choice for the live OpenAI-compatible path).
 - **Domain (record) skills are global** (`watchdog.skills_catalog`, see D21): the
   package's `src/watchdog/skills/records/` plus the user's `~/.watchdog/skills/records/`
   (a user skill overrides a package skill of the same name). The ingest orchestrator
@@ -1282,13 +1294,14 @@ These are the **governing rules of the pipeline** — the canonical statement of
 
 Mechanically-checkable postconditions are guarded by named tests in `tests/test_invariants.py` (#349), one per invariant (or checkable part). Parts flagged below as prompt-relied — e.g. I1's summary grounding — are deliberately unguarded, since there's nothing mechanical for a test to assert.
 
-- **I1 — Deterministic code writes; the model only reasons.** Anything derivable in Python (document identity, provenance, slugs, role targets, timeline fan-out) is stamped in code, never paid for in model output — and the model is not asked to restate as prose what it already emitted structurally. Carve-out: `document.summary` (#279) is a bounded, deliberate exception — a whole-document digest synthesized from `key_facts`, capped at three paragraphs and grounded (every claim in it must also exist in `key_facts`). That grounding is a **prompt instruction, not a verified postcondition** — unlike quote verification, no code checks the digest against `key_facts`, so a hallucinated claim would not be caught. *History: D2, D18, D24–D26, D29–D31, D33, D34, D75, D77, D78.*
+- **I1 — Deterministic code writes; the model only reasons.** Anything derivable in Python (document identity, provenance, slugs, role targets, timeline fan-out) is stamped in code, never paid for in model output — and the model is not asked to restate as prose what it already emitted structurally. Carve-out: `document.summary` (#279) is a bounded, deliberate exception — a whole-document digest synthesized from `key_facts`, capped at three paragraphs and grounded (every claim in it must also exist in `key_facts`). That grounding is a **prompt instruction, not a verified postcondition** — unlike quote resolution, no code checks the digest against `key_facts`, so a hallucinated claim would not be caught. *History: D2, D18, D24–D26, D29–D31, D33, D34, D75, D77, D78, D170.*
 - **I2 — Local-first preprocessing.** The *source documents you were given* never leave the machine, and chew costs no API tokens. This is a boundary on **source-doc egress**, not a vow of web abstinence — the investigation layer runs as agentic Claude Code sessions and web research (§14, I5) is allowed, since anything on the open web is already public. *History: D1, D45.*
 - **I3 — Skills and prompt templates are global package resources** — read directly, never copied per-vault — and prompt templates live in their own directory so they never leak into the classifier index. *History: D21, D28.*
 - **I4 — Configured model and effort only; no automatic escalation.** Each stage's model *and* its reasoning effort are explicit knobs with stable defaults; a failed call retries on the *same* model at the *same* effort — the pipeline never silently bumps either to recover. Response pagination (D104) is not an exception: continuing a truncated response prefills the same model's partial output at the same effort to finish one reply, changing neither knob. `finalizer_model` is itself an aggregate over four sub-stages (reconciliation, synthesis, timeline, briefing) each independently overridable (D137) — the "stage" this invariant guards is the finest-grained one actually configured, aggregate or per-stage. The optional verification pass (§5, D172) is the one stage whose *model* is deliberately not a knob: it always runs on `extractor_model`, because it exists to re-read a document out of the prefix cache the extraction call just wrote and a cache belongs to one model — pinning it elsewhere would silently cost the thing the pass is for. Its effort is a knob (`verifier_effort`) like every other stage's. *History: D20, D36, D104, D137, D172.*
 - **I5 — Research output re-enters through `_INCOMING/`, never as a direct vault write.** Web research deposits findings as documents that flow through `chew → ingest`, keeping the deterministic pipeline the single writer (dedup, provenance, registry bookkeeping). Per-doc rationale rides the `.yml` sidecar; batch rationale goes to a `briefings/research-<date>.md` memo — never `context.md`. *History: D45, D46.*
 - **I6 — Anything parsed out of a source document is untrusted input.** Source documents are adversarial by assumption — they arrive from leaks, FOI releases, and hostile parties. Content read *from* a document (its embedded metadata, its XML parts) is data to be defanged before use — never a directive, and never a payload the parser can be exploded by: XML goes through `defusedxml`, never the stdlib `xml.etree` (which expands internal entities, making a crafted `.docx` a billion-laughs bomb); metadata values are allowlisted and length-capped before they can reach a prompt; a reader that fails degrades to an empty dict rather than taking chew down. *History: D78, D110, D154.*
 - **I7 — The vault mutates only at the finalize commit.** Extraction is a pure function of a document: it stages a durable `.watchdog/extracted/<sha>.json` and touches no committed vault state. Every write to that state — entity and document notes, the morgue, the registries, the timeline and search indexes — happens in one serial, sha-sorted commit pass at the top of `finalize` (`_commit_pending` replaying `write_vault.run`), after the pre-commit resolution steps (exact-name fold, entity-merge reconciliation) have run over the staged batch. Nothing before that pass writes a vault path, which is what makes the batch atomic: a reconcile failure leaves it wholly uncommitted and retriable, and `watchdog dig` (extraction with finalize held off) leaves the vault untouched by construction, not by convention. *History: D126, D127, D128, D129.*
+- **I8 — Transcribe source values as printed; never correct them against plausibility.** Dates, dollar figures, case/file numbers, and proper-name spellings are extracted exactly as they appear in the document, even when they look wrong — an implausible or internally inconsistent value (a backdated affidavit, a total that doesn't sum) is itself evidence, and a silent "correction" toward the plausible value erases it. Where a transcribed value looks inconsistent, the extractor records the inconsistency in the fact's own text rather than resolving it. This is a prompt instruction (`extract_instructions.md`'s "TRANSCRIBE, DON'T CORRECT" paragraph), not a verified postcondition — like I1's `document.summary` carve-out, nothing in postflight checks a fact's transcribed date/figure/name against the source to catch a quiet substitution; a second verification pass doesn't help either, since it is as prone to the same plausibility correction as the first extraction. *History: D167.*
 
 ### Decision log
 

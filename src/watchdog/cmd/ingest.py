@@ -394,7 +394,7 @@ def _confirm_public_records(n_docs: int, *, skip_warning: bool = False) -> bool:
     'Ingest now?' pick at both call sites rather than stacking a second prompt.
 
     `n_docs == 0` means this run makes no new model call (e.g. only checking on a pending
-    claude-batch extraction) — nothing to warn about, so it's a silent no-op.
+    batch extraction) — nothing to warn about, so it's a silent no-op.
 
     `--skip-warning` (for repeated/scripted runs on an already-vetted corpus) suppresses the
     interactive pause but still prints a one-line notice, so a skipped run is never silent
@@ -885,11 +885,12 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
             print(f"  {_DIM}Merging the pending batch into this ingest.{_RESET}")
 
     from watchdog.pipeline import batch_extract
-    # A pending batch (#214) must still be checked even with nothing newly queued — mirrors the
-    # has_pending_finalization precedent above ("resolve the pending thing first"). force_lock
+    from watchdog.model_client import BATCH_BACKENDS
+    # A pending batch (#214, #530) must still be checked even with nothing newly queued — mirrors
+    # the has_pending_finalization precedent above ("resolve the pending thing first"). force_lock
     # so two concurrent runs can't both try to collect the same batch —
     # is_run normally only acquires the lock when the queue is non-empty.
-    batch_pending = extract_backend == "claude-batch" and batch_extract.read_state(vault) is not None
+    batch_pending = extract_backend in BATCH_BACKENDS and batch_extract.read_state(vault) is not None
 
     result = is_run(vault, wipe_pending=wipe_pending, force_lock=batch_pending)
     if "error" in result:
@@ -937,10 +938,10 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
     if pinned_skill:
         print(f"  {_DIM}Skill pinned:{_RESET} {_CYAN}{Path(pinned_skill).stem}{_RESET}{_DIM} — classification skipped.{_RESET}")
 
-    if (classify_backend == "claude-batch" or post_backend == "claude-batch"
-            or any(finalizer_overrides.get(f"{s}_backend") == "claude-batch" for s in _FINALIZER_STAGES)):
-        sys.exit(f"\n  {_YELLOW}Error:{_RESET} claude-batch is only valid for extractor_model, "
-                 f"not classifier_model/finalizer_model.\n")
+    if (classify_backend in BATCH_BACKENDS or post_backend in BATCH_BACKENDS
+            or any(finalizer_overrides.get(f"{s}_backend") in BATCH_BACKENDS for s in _FINALIZER_STAGES)):
+        sys.exit(f"\n  {_YELLOW}Error:{_RESET} a batch backend ({', '.join(BATCH_BACKENDS)}) is "
+                 f"only valid for extractor_model, not classifier_model/finalizer_model.\n")
     if extract_backend == "claude-batch":
         # No pinned-skill requirement (D144): each document resolves its own skill — sidecar pin,
         # run-wide pin, else one cheap classify call — before the batch is built, so a mixed-type
@@ -949,26 +950,31 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         if a["mode"] != "api-key":
             sys.exit(f"\n  {_YELLOW}Error:{_RESET} claude-batch requires api-key auth mode "
                      f"(it needs a metered key) — switch to it with {_CYAN}watchdog auth{_RESET}.\n")
+    # openai-batch (#530) needs no equivalent check — OpenAI has no subscription auth mode in
+    # this codebase, so it's already covered by the ordinary api-key resolution above.
     # The verification pass (#535): flag beats config, config beats off. Off is the default
     # because the pass has not yet been measured for precision on the benchmark corpus — it
     # reliably adds facts, and whether those facts are worth a reporter's attention is exactly
     # the open question (D172).
     verify_flag = getattr(args, "verify", None)
     verify = bool(config.get("verify_extraction", False)) if verify_flag is None else verify_flag
-    if verify and extract_backend == "claude-batch":
+    if verify and extract_backend in BATCH_BACKENDS:
+        # Every batch backend, not just claude-batch: the pass re-reads a document immediately
+        # after extracting it, out of the prompt cache that extraction call just wrote, and a
+        # batch's results come back hours later in a different run with neither of those left.
         # Name whichever turned it on, so the fix the message implies is the one that works —
         # "--verify isn't supported" is unhelpful advice to someone who never typed it.
         source = ("--verify" if verify_flag else f"{_CYAN}verify_extraction{_RESET}")
-        sys.exit(f"\n  {_YELLOW}Error:{_RESET} {source} isn't supported with claude-batch — the "
-                 f"verification pass re-reads a document immediately after extracting it, and a "
-                 f"batch's results come back hours later in a separate run.\n"
+        sys.exit(f"\n  {_YELLOW}Error:{_RESET} {source} isn't supported with {extract_backend} — "
+                 f"the verification pass re-reads a document immediately after extracting it, and "
+                 f"a batch's results come back hours later in a separate run.\n"
                  + ("" if verify_flag else
                     f"  Pass {_CYAN}--no-verify{_RESET} for this run, or turn the setting off.\n"))
     wait = getattr(args, "wait", False)
-    if wait and extract_backend == "claude-batch":
-        sys.exit(f"\n  {_YELLOW}Error:{_RESET} --wait isn't supported with claude-batch — a batch "
-                 f"already runs in the background; re-run {_CYAN}{pipeline_hint}{_RESET} later to "
-                 f"collect it.\n")
+    if wait and extract_backend in BATCH_BACKENDS:
+        sys.exit(f"\n  {_YELLOW}Error:{_RESET} --wait isn't supported with {extract_backend} — a "
+                 f"batch already runs in the background; re-run {_CYAN}{pipeline_hint}{_RESET} "
+                 f"later to collect it.\n")
     no_finalize = getattr(args, "no_finalize", False)
     # `force`/`force_selectors` were already resolved at the top of this function (before the
     # re-queue-from-morgue step, which must run ahead of everything else here). `ingest --force`
@@ -1015,9 +1021,10 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         _say_since_pick(f"  {_DIM}Running {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM} and stopping "
                         f"after extraction — run {_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} later "
                         f"to complete the batch.{_RESET}")
-    if extract_backend == "claude-batch":
-        _say_since_pick(f"  {_DIM}claude-batch: sectioned documents (if any) extract via claude-api now; "
-                        f"the rest submit as one batch and finish later.{_RESET}")
+    if extract_backend in BATCH_BACKENDS:
+        sync_backend = "claude-api" if extract_backend == "claude-batch" else "openai"
+        _say_since_pick(f"  {_DIM}{extract_backend}: sectioned documents (if any) extract via "
+                        f"{sync_backend} now; the rest submit as one batch and finish later.{_RESET}")
     else:
         _say_since_pick(f"  {_DIM}Extracting (≤{concurrency} parallel) — the model is called only for "
                         f"reasoning; the pipeline runs in Python.{_RESET}")
