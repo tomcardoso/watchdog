@@ -95,16 +95,25 @@ why sub-item is the one to trust. Cost is the full 209-page corpus, real billed 
 | `sonnet-med` | 90% (72/80) | 91% (43/47) | $1.115 | 601s | none |
 | `sonnet-low` | 89% (71/80) | 83% (39/47) | $1.041 | 499s | none |
 | `gpt-luna` (low) | 85% (68/80) | 83% (39/47) | $0.602 | 262s | none |
-| `gemini-flash` (low) | 84% (67/80) | 74% (35/47) | $0.762 | 251s | none |
+| `gemini-flash` (low) | 84% (67/80) | 74% (35/47) | $0.762† | 251s | none |
 | `haiku` | 82% (66/80) | 70% (33/47) | $0.343 | 258s | none |
 | `ds-pro` | 79% (63/80) | 74% (35/47) | $0.117 | 490s | none |
 | `ds-flash-think` | 68% (54/80) | 55% (26/47) | $0.010 | 248s | none |
 | `ds-pro-think` | 68% (54/80) | 68% (32/47) | $0.083 | 1225s | none |
 | `ds-flash` | 62% (50/80) | 47% (22/47) | $0.031 | 120s | none |
-| `gemini-flash-lite` | 57% (46/80) | 45% (21/47) | $0.099 | 107s | none |
+| `gemini-flash-lite` | 57% (46/80) | 45% (21/47) | $0.099† | 107s | none |
 
 *gpt-nano's numbers include full credit for a document it never extracted — see the scoring
 artifact below. Every other row is a clean 6/6.
+
+†Both Gemini costs are **understated floors**, not billed dollars. Gemini's OpenAI-compatibility
+endpoint omits its thinking tokens from `completion_tokens`, so until #547 they were never priced
+— even though Google bills them at the output rate. The gap scales with how hard the model thought
+(on one high-effort call it was 15,137 unpriced tokens against 847 priced ones), so these
+low-effort rows are the least-affected case and still wrong. Re-run both arms on post-#547 code
+before using either figure to compare Gemini against another backend — the `gemini-flash` arm is
+now `gemini-flash-low` in `benchmark.yaml` (same model, same pinned effort, renamed when the
+effort ladder made the bare id ambiguous).
 
 **gpt-mini (low effort) matches Sonnet-high's must_not_miss recall (94%) at 46% of the cost
 ($0.543 vs $1.193), full 6/6 coverage, zero failures.** Every cheaper-than-Sonnet arm tried before

@@ -598,6 +598,83 @@ def test_openai_cost_prices_gemini_models():
         == pytest.approx(1.50 + 9.00)
 
 
+# ── hidden reasoning tokens (#547) ────────────────────────────────────────────
+
+def test_fold_in_hidden_reasoning_recovers_the_total_tokens_gap():
+    # The real shape from the failing benchmark call: Gemini leaves thinking tokens out of
+    # completion_tokens entirely, so the only evidence they were spent (and billed) is that
+    # total_tokens exceeds prompt + completion. Folding the gap in must land it in *both*
+    # places — completion_tokens (what _openai_cost charges) and the reasoning_tokens detail
+    # (what telemetry and the truncation diagnostic read).
+    out = mc._fold_in_hidden_reasoning(
+        {"prompt_tokens": 27147, "completion_tokens": 847, "total_tokens": 43131})
+    assert out["completion_tokens"] == 15984                      # 847 visible + 15,137 thinking
+    assert out["completion_tokens_details"]["reasoning_tokens"] == 15137
+    assert out["prompt_tokens"] == 27147                          # input side untouched
+
+
+@pytest.mark.parametrize("usage", [
+    None,
+    {},
+    # No gap: total accounts for exactly prompt + completion, so nothing was hidden.
+    {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
+    # No total_tokens at all — nothing to reconstruct from.
+    {"prompt_tokens": 100, "completion_tokens": 50},
+    # Provider already reported its own reasoning count (OpenAI's shape, where reasoning is
+    # already a subset of completion_tokens) — folding again would double-count it.
+    {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 200,
+     "completion_tokens_details": {"reasoning_tokens": 30}},
+])
+def test_fold_in_hidden_reasoning_leaves_other_usage_shapes_alone(usage):
+    assert mc._fold_in_hidden_reasoning(usage) == usage
+
+
+def _fake_usage_response(monkeypatch, usage):
+    """Point httpx at a fixed JSON body carrying `usage`, for the wire-level usage tests."""
+    import httpx
+
+    class FakeResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self):
+            return {"choices": [{"message": {"content": '{"name": "Acme"}'},
+                                 "finish_reason": "stop"}], "usage": usage}
+
+    class FakeClient:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, headers=None, json=None): return FakeResp()
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+
+
+def test_gemini_hidden_reasoning_is_billed_as_output(monkeypatch):
+    # The bug this fixes: Gemini bills thinking tokens at the output rate, but they never appear
+    # in completion_tokens, so cost was charged on the visible answer alone — understating every
+    # Gemini call in proportion to how hard the model thought.
+    _fake_usage_response(monkeypatch, {"prompt_tokens": 27147, "completion_tokens": 847,
+                                       "total_tokens": 43131})
+    out = asyncio.run(mc._openai_complete_async("p", "gemini-3.5-flash", SCHEMA, "AIza-x", 64000,
+                                                "high", base_url=mc._OPENAI_BASE["gemini"]))
+    assert out["usage"]["completion_tokens"] == 15984
+    assert out["cost_usd"] == pytest.approx(27147 * 1.5e-6 + 15984 * 9e-6)
+    # …and not the 19x-understated figure the visible answer alone would have produced.
+    assert out["cost_usd"] > mc._openai_cost("gemini-3.5-flash",
+                                             {"prompt_tokens": 27147, "completion_tokens": 847})
+
+
+def test_non_gemini_backends_keep_their_reported_usage(monkeypatch):
+    # Gated to Gemini's endpoint: DeepSeek's total_tokens legitimately equals prompt + completion,
+    # and no other provider's gap has been shown to mean hidden reasoning — reconstructing one
+    # everywhere would invent tokens.
+    usage = {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 200}
+    _fake_usage_response(monkeypatch, usage)
+    out = asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+                                                base_url="https://api.deepseek.com"))
+    assert out["usage"] == usage
+
+
 def test_openai_backend_request_shape(monkeypatch):
     import httpx
     captured = {}
@@ -1194,16 +1271,44 @@ def test_truncated_empty_text_reports_reasoning_starvation(openai_key, monkeypat
         mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
 
 
-def test_truncated_partial_text_keeps_ordinary_message_despite_reasoning_tokens(openai_key,
-                                                                                monkeypatch):
-    # Empty text is the gate, not merely the presence of a reasoning-token count — a response
-    # that did produce visible text keeps the plain truncation message even when the provider
-    # also reported reasoning tokens.
+def test_truncated_partial_text_keeps_ordinary_message_when_the_answer_dominated(openai_key,
+                                                                                 monkeypatch):
+    # A response whose visible answer outweighs its chain-of-thought really did run out of room
+    # writing the answer — that one is a density problem, and re-sectioning is the right fix, so
+    # it keeps the plain truncation message even though reasoning tokens were reported.
     async def backend(prompt, model_id, schema, api_key, max_tokens, effort=None, prefix=None):
         return {"text": '{"name": "Ac', "usage": {"completion_tokens": 48000,
                                                    "completion_tokens_details":
-                                                       {"reasoning_tokens": 40000}},
+                                                       {"reasoning_tokens": 8000}},
                 "cost_usd": 0.01, "finish_reason": "length"}
+    monkeypatch.setitem(mc._ABACKENDS, "openai", backend)
+    with pytest.raises(mc.ModelError, match="truncated at the model's max-token ceiling"):
+        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
+
+
+def test_truncated_partial_text_reports_starvation_when_reasoning_dominated(openai_key,
+                                                                           monkeypatch):
+    # #547: starvation also has a partial-text shape — reasoning eats most of the envelope, the
+    # model starts writing, and the ceiling cuts it a few hundred tokens in. Non-empty text, so
+    # #354's empty-text branch misses it and the caller was told to re-section sections that were
+    # already small enough. The counts here are the real ones from the failing Gemini call.
+    async def backend(prompt, model_id, schema, api_key, max_tokens, effort=None, prefix=None):
+        return {"text": '{"document": {"key_facts": [{"fact": "On April 22, 2022, the aud',
+                "usage": {"completion_tokens": 15984,
+                          "completion_tokens_details": {"reasoning_tokens": 15137}},
+                "cost_usd": 0.01, "finish_reason": "length"}
+    monkeypatch.setitem(mc._ABACKENDS, "openai", backend)
+    with pytest.raises(mc.ModelError,
+                       match="spent 15,137 of its output budget on internal reasoning, leaving "
+                             "only 847 tokens of answer"):
+        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
+
+
+def test_truncated_partial_text_without_usage_keeps_ordinary_message(openai_key, monkeypatch):
+    # No reasoning count reported at all (any non-thinking backend) — the starvation branch must
+    # not fire on a zero, or every ordinary truncation would be misdiagnosed as starvation.
+    async def backend(prompt, model_id, schema, api_key, max_tokens, effort=None, prefix=None):
+        return {"text": '{"name": "Ac', "usage": None, "cost_usd": 0.01, "finish_reason": "length"}
     monkeypatch.setitem(mc._ABACKENDS, "openai", backend)
     with pytest.raises(mc.ModelError, match="truncated at the model's max-token ceiling"):
         mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
