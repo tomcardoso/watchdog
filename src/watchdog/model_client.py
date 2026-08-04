@@ -672,6 +672,31 @@ _OPENAI_REASONING_RESERVE = {
 }
 _OPENAI_REASONING_RESERVE_DEFAULT = 48_000   # effort unspecified -> treat as medium
 
+# Gemini has the same starvation mode (#541, follow-up to #354/D167). Its OpenAI-compatibility
+# endpoint maps `reasoning_effort` onto the native API's internal thinking budget, and that
+# budget is deducted from the same `max_tokens` envelope as the visible answer — confirmed
+# against Google's own thinking-model docs (ai.google.dev/gemini-api/docs/thinking) and
+# corroborated by third-party reports of the resulting failure (a `MAX_TOKENS` finish reason with
+# empty text once the budget is spent mid-thought, e.g. googleapis/python-genai#782,
+# discuss.ai.google.dev's "finishReason: MAX_TOKENS - But Text is Empty"). Unlike OpenAI, every
+# current Gemini model always gets an effort value (`_effort_levels` returns low/medium/high
+# unconditionally — no chat-vs-reasoning split to gate on), and several models (2.5+ Flash/Pro)
+# think by default even when `reasoning_effort` is omitted — so the reserve applies
+# unconditionally on the large-output tasks, not behind an is-reasoning check. Sectioning still
+# plans against the base task budget for the same reason as the OpenAI case (see
+# `output_ceiling_for_sectioning`).
+#
+# The per-level split is a reasoned placeholder, not a measured one — #354's OpenAI numbers came
+# from a real benchmark sweep at each effort level; #541 has no equivalent Gemini sweep yet (the
+# only runs so far, `benchmarks/FINDINGS.md`'s gemini-flash/-flash-lite arms, were at `low`
+# effort or no effort pinned, so they never exercised this path). Scaled down from the OpenAI
+# reserve's low/medium/high shape to fit Gemini's documented output-token ceiling (65,536 for the
+# 2.5/3.x families) rather than OpenAI's 128K-class limit. Re-tune with real per-effort reasoning-
+# token counts the first time a high-effort Gemini sweep runs, the same way D108's original flat
+# 48K guess for OpenAI got replaced by measured figures in D167.
+_GEMINI_REASONING_RESERVE = {"low": 16_000, "medium": 32_000, "high": 48_000}
+_GEMINI_REASONING_RESERVE_DEFAULT = 32_000   # effort unspecified -> treat as medium
+
 # Transient-failure retry for the OpenAI-compatible backends (#354). The Anthropic SDK retries
 # 429/5xx internally (2 attempts, backoff); this httpx path had none, so a single transient
 # 502/529 from a provider failed the document outright — `acomplete_json` retries only on invalid
@@ -988,16 +1013,19 @@ def _merge_usage(a: dict | None, b: dict | None) -> dict | None:
 def _task_max_tokens(task: str, backend: str, model_id: str, effort: str | None = None) -> int:
     """The output-token ceiling sent to the provider for a task/backend/model. Models whose
     chain-of-thought shares the output budget — DeepSeek thinking (#337), OpenAI reasoning
-    models (#354) — get a higher ceiling on the large-output tasks so reasoning can't starve
-    the JSON. For an OpenAI reasoning model the extra reserve scales with `effort`
-    (`_OPENAI_REASONING_RESERVE`), since reasoning volume is a function of effort, not task.
-    `effort` defaults to None (treated as medium) so existing call sites — DeepSeek's own
-    ceiling, `output_ceiling_for_sectioning` — keep working unchanged."""
+    models (#354), Gemini (#541) — get a higher ceiling on the large-output tasks so reasoning
+    can't starve the JSON. For OpenAI and Gemini the extra reserve scales with `effort`
+    (`_OPENAI_REASONING_RESERVE`/`_GEMINI_REASONING_RESERVE`), since reasoning volume is a
+    function of effort, not task. `effort` defaults to None (treated as medium) so existing call
+    sites — DeepSeek's own ceiling, `output_ceiling_for_sectioning` — keep working unchanged."""
     if task in _TASK_MAX_TOKENS:
         if backend == "deepseek" and model_id.endswith(_DEEPSEEK_THINKING_SUFFIX):
             return _DEEPSEEK_THINKING_MAX_TOKENS
         if backend == "openai" and _openai_is_reasoning(model_id):
             reserve = _OPENAI_REASONING_RESERVE.get(effort, _OPENAI_REASONING_RESERVE_DEFAULT)
+            return _TASK_MAX_TOKENS[task] + reserve
+        if backend == "gemini":
+            reserve = _GEMINI_REASONING_RESERVE.get(effort, _GEMINI_REASONING_RESERVE_DEFAULT)
             return _TASK_MAX_TOKENS[task] + reserve
     return _TASK_MAX_TOKENS.get(task, _API_MAX_TOKENS)
 
@@ -1015,9 +1043,9 @@ def output_ceiling_for_sectioning(task: str, backend: str | None, model: str | N
     if meta is None or not meta.enforces_max_tokens or meta.supports_continuation:
         return None
     model_id = resolve_model_id(model or DEFAULT_TIER)
-    if backend == "openai" and _openai_is_reasoning(model_id):
-        # The raised wire ceiling (#354) is shared with chain-of-thought, so the JSON itself
-        # can't count on more than the base task budget — plan sectioning against that.
+    if (backend == "openai" and _openai_is_reasoning(model_id)) or backend == "gemini":
+        # The raised wire ceiling (#354, #541) is shared with chain-of-thought/thinking, so the
+        # JSON itself can't count on more than the base task budget — plan sectioning against that.
         return _TASK_MAX_TOKENS.get(task, _API_MAX_TOKENS)
     return _task_max_tokens(task, backend, model_id)
 

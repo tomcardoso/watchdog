@@ -1420,6 +1420,15 @@ def test_agent_query_usage_stays_none_when_nothing_present(monkeypatch):
     ("briefing", "openai", "gpt-5.6-terra", "xhigh", 116000),
     ("briefing", "openai", "gpt-5.6-luna", "max", 116000),
     ("extract", "openai", "gpt-5.4", None, 64000),   # effort unspecified -> treated as medium
+    # Gemini shares the starvation mode (#541) — every current Gemini model always gets an
+    # effort value (no chat-vs-reasoning split like OpenAI), so the reserve applies
+    # unconditionally on the large-output tasks, scaled to the smaller low/medium/high ladder.
+    ("extract", "gemini", "gemini-3.5-flash", "low", 32000),
+    ("extract", "gemini", "gemini-3.5-flash", "medium", 48000),
+    ("extract", "gemini", "gemini-3.5-flash", "high", 64000),
+    ("briefing", "gemini", "gemini-2.5-pro", "high", 64000),
+    ("classify", "gemini", "gemini-3.5-flash", "high", mc._API_MAX_TOKENS),  # not a large-output task
+    ("extract", "gemini", "gemini-3.5-flash", None, 48000),   # effort unspecified -> treated as medium
 ])
 def test_task_max_tokens(task, backend, model, effort, expected):
     assert mc._task_max_tokens(task, backend, model, effort) == expected
@@ -1430,8 +1439,8 @@ def test_task_max_tokens(task, backend, model, effort, expected):
     ("extract", "claude-api", "claude-sonnet-4-6"),   # non-OpenAI backend
 ])
 def test_task_max_tokens_unaffected_by_effort_outside_openai_reasoning(task, backend, model):
-    # The effort-scaled reserve only applies to OpenAI reasoning models — a chat model or a
-    # different backend must return the same ceiling regardless of what `effort` is passed.
+    # The effort-scaled reserve only applies to OpenAI reasoning models and Gemini — a chat
+    # model or a different backend must return the same ceiling regardless of `effort`.
     ceilings = {mc._task_max_tokens(task, backend, model, effort)
                for effort in (None, "low", "medium", "high", "xhigh", "max")}
     assert len(ceilings) == 1
@@ -1449,9 +1458,10 @@ def test_output_ceiling_is_none_when_nothing_to_protect(backend, model):
 
 @pytest.mark.parametrize("backend, model, expected", [
     ("openai", "gpt-4o", 16000),        # enforces max_tokens but can't continue → must be sized
+    # An OpenAI reasoning model's raised wire ceiling (#354), and Gemini's (#541), is shared with
+    # chain-of-thought/thinking, so sectioning still plans against the base task budget, not the
+    # raised one — true for Gemini regardless of effort, since it always gets a reserve.
     ("gemini", "gemini-2.5-flash", 16000),
-    # An OpenAI reasoning model's raised wire ceiling (#354) is shared with chain-of-thought,
-    # so sectioning still plans against the base task budget, not the raised one.
     ("openai", "gpt-5.4", 16000),
 ])
 def test_output_ceiling_returned_for_non_continuation_capped_backends(backend, model, expected):
