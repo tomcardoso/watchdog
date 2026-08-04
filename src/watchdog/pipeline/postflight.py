@@ -245,6 +245,8 @@ def explode_key_facts(extraction: dict) -> None:
         page = fact.get("page")
         basis = fact.get("basis")
         quote = fact.get("quote")
+        quote_verified = fact.get("quote_verified")
+        quote_found_page = fact.get("quote_found_page")
         date = (fact.get("date") or "").strip()
         for eid in fact.get("entities", []) or []:
             ent = by_id.get(eid)
@@ -257,6 +259,10 @@ def explode_key_facts(extraction: dict) -> None:
                 frag["basis"] = basis
             if quote:
                 frag["quote"] = quote
+            if quote_verified is False:
+                frag["quote_verified"] = quote_verified
+            if quote_found_page is not None:
+                frag["quote_found_page"] = quote_found_page
             ent.setdefault("evidence_fragments", []).append(frag)
             if date:
                 event = {"date": date, "event": text}
@@ -325,16 +331,18 @@ def run(vault: Path, extraction_path: Path, warn=None) -> dict:
     for warning in _sanitize_dates(extraction):
         _warn(warning)
 
+    # Deterministic quote resolution against the morgue text (#267/#529): resolves each
+    # key_facts.quote_locator (the first several words of a source sentence) against the
+    # cited page's text into a full quote, flagging any that can't be matched on (or near) that
+    # page — annotation only, never blocks the document. Runs before explode_key_facts so the
+    # fan-out below copies an already-resolved quote onto each entity's evidence fragment.
+    from watchdog.pipeline.quote_verify import resolve_quotes
+    for warning in resolve_quotes(extraction, page_texts):
+        _warn(warning)
+
     # Fan the unified key_facts out into the per-entity evidence_fragments / timeline_events that
     # write_vault and timeline staging consume (#140).
     explode_key_facts(extraction)
-
-    # Deterministic quote verification against the morgue text (#267): flags any
-    # key_facts.quote that can't be matched on (or near) its cited page — annotation only,
-    # never blocks the document.
-    from watchdog.pipeline.quote_verify import verify_quotes
-    for warning in verify_quotes(extraction, page_texts):
-        _warn(warning)
 
     # Deterministic figure grounding against the morgue text (#363): flags any stated
     # key_fact whose numeric figures can't all be found on (or near) the cited page —
