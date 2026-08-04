@@ -112,10 +112,10 @@ around `run_benchmark.py` so you don't have to remember the pipx venv's interpre
 full flag set every time:
 
 ```
-benchmarks/bench estimate --stages extractor --arms haiku,gemini-flash   # --estimate-only
-benchmarks/bench run --stages extractor --arms haiku                    # the real thing
-benchmarks/bench arms                                                    # list arm ids per stage
-benchmarks/bench clean                                                   # wipe the shadow vault root
+benchmarks/bench estimate --stages extractor --arms haiku,gemini-flash-low   # --estimate-only
+benchmarks/bench run --stages extractor --arms haiku                         # the real thing
+benchmarks/bench arms                                                        # list arm ids per stage
+benchmarks/bench clean                                                       # wipe the shadow vault root
 ```
 
 Run `benchmarks/bench --help` for the full list. It is dev tooling for whoever is running the

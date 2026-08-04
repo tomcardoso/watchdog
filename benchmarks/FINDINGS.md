@@ -111,7 +111,9 @@ endpoint omits its thinking tokens from `completion_tokens`, so until #547 they 
 — even though Google bills them at the output rate. The gap scales with how hard the model thought
 (on one high-effort call it was 15,137 unpriced tokens against 847 priced ones), so these
 low-effort rows are the least-affected case and still wrong. Re-run both arms on post-#547 code
-before using either figure to compare Gemini against another backend.
+before using either figure to compare Gemini against another backend — the `gemini-flash` arm is
+now `gemini-flash-low` in `benchmark.yaml` (same model, same pinned effort, renamed when the
+effort ladder made the bare id ambiguous).
 
 **gpt-mini (low effort) matches Sonnet-high's must_not_miss recall (94%) at 46% of the cost
 ($0.543 vs $1.193), full 6/6 coverage, zero failures.** Every cheaper-than-Sonnet arm tried before
