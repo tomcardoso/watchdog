@@ -34,6 +34,14 @@ extractor_sweep:
     # pure section-count overhead, not runaway reasoning tokens. Pinned low for the same reason as
     # the OpenAI arms: measure the model's real minimum-effort cost, not an unstated default.
     - {id: gemini-flash,      extractor_model: "gemini:gemini-3.5-flash", extractor_effort: low}   # middle tier
+    # Gemini effort ladder (#541/#547). D171's reserve table is a reasoned placeholder — no
+    # high-effort Gemini run existed to measure it against. These three are that run: same model,
+    # effort the only variable, so the per-effort reasoning volume can be read straight off
+    # `watchdog usage` (which reports Gemini's reasoning tokens only as of #547 — before that they
+    # were invisible *and* unbilled, so any pre-#547 Gemini cost is a floor, not a measurement).
+    - {id: gemini-flash-low,  extractor_model: "gemini:gemini-3.5-flash", extractor_effort: low}
+    - {id: gemini-flash-med,  extractor_model: "gemini:gemini-3.5-flash", extractor_effort: medium}
+    - {id: gemini-flash-high, extractor_model: "gemini:gemini-3.5-flash", extractor_effort: high}
     # Opus dropped (not worth testing this round).
     #
     # Backend A/B (#475). The arms above name a bare Claude tier, which resolves to
