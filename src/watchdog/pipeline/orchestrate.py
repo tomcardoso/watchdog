@@ -121,8 +121,10 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
     (and counted in the same subtotals) rather than vanishing from telemetry.
 
     `reasoning_tokens` (#354), read from `usage["completion_tokens_details"]["reasoning_tokens"]`
-    when present (OpenAI reasoning models only), is copied onto the record — the chain-of-thought
-    share of `output_tokens`, which had been arriving on every such call since D108 and thrown
+    when present (OpenAI reasoning models report it directly; Gemini's is reconstructed from its
+    token counts by `model_client._fold_in_hidden_reasoning`, #547), is copied onto the record —
+    the chain-of-thought share
+    of `output_tokens`, which had been arriving on every such call since D108 and thrown
     away; it's the field that diagnosed the reasoning-starvation failure. Only added when it's
     non-zero — OpenAI reports a 0 here for its *chat* models, which carries no more information
     than the key's absence does — so every other backend's record shape is untouched.

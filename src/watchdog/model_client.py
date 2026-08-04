@@ -614,6 +614,37 @@ def _cached_input_tokens(usage: dict) -> int:
     return cached or 0
 
 
+def _fold_in_hidden_reasoning(usage: dict | None) -> dict | None:
+    """Normalise a usage dict that reports thinking tokens only as a gap in `total_tokens`.
+
+    Gemini's OpenAI-compatibility endpoint leaves its thinking tokens out of `completion_tokens`
+    and reports no `completion_tokens_details.reasoning_tokens` at all — the only trace they were
+    spent is `total_tokens` exceeding `prompt_tokens + completion_tokens` (#547; D171 flagged this
+    as unconfirmed, a high-effort benchmark run then confirmed it: 27,147 prompt + 847 completion
+    against a 43,131 total). Google bills those tokens at the output rate, so leaving them out
+    under-charged every Gemini call in proportion to how hard the model thought.
+
+    Folding the gap into `completion_tokens` is what makes `_openai_cost` charge for them, and
+    recording it under `completion_tokens_details.reasoning_tokens` matches OpenAI's shape — where
+    reasoning is a *subset* of `completion_tokens`, not a sibling of it — so `_record_usage`, the
+    `watchdog usage` reasoning note, and `acomplete_json`'s truncation diagnostic all read it with
+    no provider-specific branch. Returns `usage` untouched when there's no gap or the provider
+    already reported a reasoning count."""
+    if not usage:
+        return usage
+    details = usage.get("completion_tokens_details") or {}
+    if details.get("reasoning_tokens"):
+        return usage
+    hidden = ((usage.get("total_tokens") or 0)
+              - (usage.get("prompt_tokens") or 0)
+              - (usage.get("completion_tokens") or 0))
+    if hidden <= 0:
+        return usage
+    return {**usage,
+            "completion_tokens": (usage.get("completion_tokens") or 0) + hidden,
+            "completion_tokens_details": {**details, "reasoning_tokens": hidden}}
+
+
 def _openai_cost(model_id: str, usage: dict | None) -> float | None:
     rates = _OPENAI_PRICING.get(model_id)
     if not rates or not usage:
@@ -772,6 +803,7 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
 
     is_deepseek = "deepseek" in base_url
     is_openai = base_url.rstrip("/") == _OPENAI_BASE["openai"]
+    is_gemini = base_url.rstrip("/") == _OPENAI_BASE["gemini"].rstrip("/")
     thinking: bool | None = None
     if is_deepseek:
         model_id, thinking = _split_deepseek_thinking(model_id)
@@ -837,6 +869,8 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
         text = _denormalize_strict_json(text)
     finish = choices[0].get("finish_reason") if choices else None
     usage = data.get("usage")
+    if is_gemini:   # thinking tokens arrive only as a total_tokens gap (#547) — fold them in
+        usage = _fold_in_hidden_reasoning(usage)
     return {"text": text, "usage": usage, "cost_usd": _openai_cost(model_id, usage),
             "finish_reason": finish}
 
@@ -1141,14 +1175,26 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
             # was too dense" is the wrong diagnosis — the fix is a lower extractor_effort or a
             # raised ceiling, not re-sectioning. Empty text is the signal (provider-agnostic,
             # always available); the reasoning-token count is folded in only when reported.
-            if out.get("text"):
-                last_err = "output truncated at the model's max-token ceiling"
-            else:
-                reasoning = ((out.get("usage") or {}).get("completion_tokens_details") or {}).get(
-                    "reasoning_tokens")
+            #
+            # Starvation also has a *partial*-text shape (#547): reasoning eats most of the
+            # envelope, the model starts writing, and the ceiling cuts it a few hundred tokens in.
+            # Text is non-empty, so the empty-text branch misses it and the caller was told to
+            # re-section a document whose sections were already small enough. When the reported
+            # reasoning share exceeds the visible answer, the ceiling was spent thinking however
+            # much text made it out — say so rather than blaming the document's density.
+            usage = out.get("usage") or {}
+            reasoning = (usage.get("completion_tokens_details") or {}).get("reasoning_tokens") or 0
+            visible = (usage.get("completion_tokens") or 0) - reasoning
+            if not out.get("text"):
                 budget = f"{reasoning:,}-token " if reasoning else ""
                 last_err = (f"the model used its entire {budget}output budget on internal "
                             "reasoning and returned no answer — try a lower extractor_effort")
+            elif reasoning > visible:
+                last_err = (f"the model spent {reasoning:,} of its output budget on internal "
+                            f"reasoning, leaving only {visible:,} tokens of answer before the "
+                            "max-token ceiling cut it off — try a lower extractor_effort")
+            else:
+                last_err = "output truncated at the model's max-token ceiling"
             fixture_capture.capture("truncation", backend=chosen, model_id=model_id, task=task,
                                     text=out.get("text"), usage=out.get("usage"))
             break
