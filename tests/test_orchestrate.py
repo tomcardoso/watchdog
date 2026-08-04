@@ -3253,7 +3253,7 @@ def test_submit_batch_resolves_skill_per_document(tmp_path, monkeypatch):
 
     captured = {}
 
-    async def _fake_submit(vault, docs, *, model, effort, skills, api_key):
+    async def _fake_submit(vault, docs, *, model, effort, skills, api_key, backend=None):
         captured["docs"] = docs
         captured["skills"] = skills
         return "batch_x"
@@ -3278,6 +3278,134 @@ def test_run_batch_requires_api_key_auth(tmp_path, monkeypatch):
                                            "haiku", 5, None))
 
 
+# ── openai-batch (#530) ───────────────────────────────────────────────────────
+
+def test_run_batch_openai_uses_stored_openai_key_not_claude_auth(tmp_path, monkeypatch):
+    """openai-batch has no subscription/api-key split to check (OpenAI has no subscription mode
+    in this codebase at all) — it just needs its own stored key, the same resolution a live
+    `openai` call uses."""
+    vault = make_vault(tmp_path)
+
+    def _unexpected_resolve_auth():
+        raise AssertionError("openai-batch must not consult Claude's own auth mode")
+    monkeypatch.setattr(auth_module, "resolve_auth", _unexpected_resolve_auth)
+    monkeypatch.setattr(auth_module, "get_api_key", lambda provider: "sk-oai" if provider == "openai" else None)
+
+    out = asyncio.run(orchestrate._run_batch(vault, [], None, "gpt-5.6-luna", None, None, 5,
+                                             "haiku", 5, None, backend="openai-batch"))
+    assert out == {"results": [], "batch_pending": False}
+
+
+def test_run_batch_openai_requires_an_api_key(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    monkeypatch.setattr(auth_module, "get_api_key", lambda provider: None)
+    with pytest.raises(model_client.ModelError, match="openai-batch backend needs an API key"):
+        asyncio.run(orchestrate._run_batch(vault, [], None, "gpt-5.6-luna", None, None, 5,
+                                           "haiku", 5, None, backend="openai-batch"))
+
+
+def test_submit_batch_openai_sections_via_openai_not_claude_api(tmp_path, monkeypatch):
+    """A sectioned document under an openai-batch run must fall back to the `openai` single-call
+    backend, not `claude-api` — a vault routed entirely to OpenAI must never need Claude
+    credentials for this to work (D37)."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="big", filename="big.pdf", text="a very long document ...")
+    monkeypatch.setattr(orchestrate.section, "run", lambda v, s, **kw: {"sectioned": True})
+
+    sectioned_calls = []
+    async def fake_extract_document(vault, sha, brief, extract_model, classify_model,
+                                    classify_pages, pinned_skill, extract_effort,
+                                    extract_backend, classify_backend, force=False):
+        sectioned_calls.append(extract_backend)
+        return {"sha256": sha, "filename": "big.pdf", "status": "ok", "record_skill": "s"}
+    monkeypatch.setattr(orchestrate, "_extract_document", fake_extract_document)
+
+    out = asyncio.run(orchestrate._submit_batch(
+        vault, ["big"], None, "gpt-5.6-luna", None, None, 5, "haiku", 5, None,
+        api_key="sk-oai", backend="openai-batch"))
+
+    assert sectioned_calls == ["openai"]
+    assert out["batch_pending"] is False   # nothing left to submit — the only doc was sectioned
+
+
+def test_finish_batch_item_repairs_invalid_result_via_openai_with_the_batch_model(tmp_path, monkeypatch):
+    """The repair call for an openai-batch item must stay on the `openai` backend with the
+    batch's own model — `backend=None` (claude-batch's repair default) would resolve to Claude's
+    default tier, which is meaningless routed through the `openai` backend."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+
+    seen = []
+    async def fake_acomplete(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        seen.append((backend, model))
+        return model_client.ModelResult(parsed=_extraction(sha="sha1", filename="a.pdf"),
+                                        text="", model="gpt-5.6-luna", backend="openai",
+                                        auth_mode="api-key", cost_usd=0.03)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake_acomplete)
+
+    item = {"ok": False, "parsed": None, "usage": None, "cost_usd": None,
+           "error": "batch response was not valid JSON"}
+    result = asyncio.run(orchestrate._finish_batch_item(
+        vault, "sha1", item, "SKILL BODY", "annual-report", None, "sk-oai",
+        model="gpt-5.6-luna", backend="openai-batch"))
+
+    assert result["status"] == "ok"
+    assert seen == [("openai", "gpt-5.6-luna")]
+
+
+def test_resume_batch_threads_backend_to_status_and_collect(tmp_path, monkeypatch):
+    """A state file persisted by an openai-batch submit must resume against the OpenAI path,
+    not silently default back to Anthropic."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+    state = {"batch_id": "b1", "shas": ["sha1"], "model": "gpt-5.6-luna",
+            "skill_label": "financial-statements", "effort": None, "backend": "openai-batch"}
+    batch_extract.write_state(vault, state)
+
+    seen_backends = []
+
+    async def fake_status(batch_id, api_key, backend=None):
+        seen_backends.append(("status", backend))
+        return {"processing_status": "ended", "request_counts": {"succeeded": 1}}
+    monkeypatch.setattr(orchestrate.batch_extract, "status", fake_status)
+
+    async def fake_collect(batch_id, api_key, model_id, backend=None):
+        seen_backends.append(("collect", backend))
+        return {"sha1": {"ok": True, "parsed": _extraction(sha="sha1", filename="a.pdf"),
+                         "usage": {}, "cost_usd": 0.02, "error": None}}
+    monkeypatch.setattr(orchestrate.batch_extract, "collect", fake_collect)
+
+    skill_file = tmp_path / "pinned.md"
+    skill_file.write_text("SKILL")
+    out = asyncio.run(orchestrate._resume_batch(vault, state, str(skill_file), None, "sk-oai"))
+
+    assert out["batch_pending"] is False
+    assert seen_backends == [("status", "openai-batch"), ("collect", "openai-batch")]
+
+
+def test_resume_batch_defaults_missing_backend_to_claude_batch(tmp_path, monkeypatch):
+    """State persisted before #530 (no `backend` field at all) must still resume against
+    Anthropic — an in-flight batch across an upgrade shouldn't strand."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+    state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-4-6",
+            "skill_label": "financial-statements", "effort": None}   # no "backend" key
+    batch_extract.write_state(vault, state)
+
+    seen_backends = []
+
+    async def fake_status(batch_id, api_key, backend=None):
+        seen_backends.append(backend)
+        return {"processing_status": "in_progress", "request_counts": {}}
+    monkeypatch.setattr(orchestrate.batch_extract, "status", fake_status)
+
+    skill_file = tmp_path / "pinned.md"
+    skill_file.write_text("SKILL")
+    asyncio.run(orchestrate._resume_batch(vault, state, str(skill_file), None, "sk-x"))
+
+    assert seen_backends == ["claude-batch"]
+
+
 def test_submit_batch_splits_sectioned_and_whole_doc(tmp_path, monkeypatch):
     """A sectioned doc is routed to the normal synchronous _extract_document (forced onto
     claude-api — a batch request can't carry sequential section carry-forward); a non-sectioned
@@ -3296,7 +3424,7 @@ def test_submit_batch_splits_sectioned_and_whole_doc(tmp_path, monkeypatch):
     monkeypatch.setattr(orchestrate, "_extract_document", fake_extract_document)
 
     submitted = {}
-    async def fake_submit(vault, docs, *, model, effort, skills, api_key):
+    async def fake_submit(vault, docs, *, model, effort, skills, api_key, backend=None):
         submitted["docs"] = docs
         submitted["skills"] = skills
         return "batch_xyz"
@@ -3354,7 +3482,7 @@ def test_resume_batch_reports_progress_when_not_ended(tmp_path, monkeypatch, cap
     state = {"batch_id": "b1", "shas": ["a", "b"], "model": "claude-sonnet-4-6",
             "skill_label": "s", "effort": None}
 
-    async def fake_status(batch_id, api_key):
+    async def fake_status(batch_id, api_key, backend=None):
         return {"processing_status": "in_progress", "request_counts": {"processing": 1, "succeeded": 1}}
     monkeypatch.setattr(orchestrate.batch_extract, "status", fake_status)
 
@@ -3371,11 +3499,11 @@ def test_resume_batch_collects_and_clears_state_when_ended(tmp_path, monkeypatch
             "skill_label": "financial-statements", "effort": None}
     batch_extract.write_state(vault, state)
 
-    async def fake_status(batch_id, api_key):
+    async def fake_status(batch_id, api_key, backend=None):
         return {"processing_status": "ended", "request_counts": {"succeeded": 1}}
     monkeypatch.setattr(orchestrate.batch_extract, "status", fake_status)
 
-    async def fake_collect(batch_id, api_key, model_id):
+    async def fake_collect(batch_id, api_key, model_id, backend=None):
         return {"sha1": {"ok": True, "parsed": _extraction(sha="sha1", filename="a.pdf"),
                          "usage": {}, "cost_usd": 0.02, "error": None}}
     monkeypatch.setattr(orchestrate.batch_extract, "collect", fake_collect)
@@ -3411,12 +3539,12 @@ def test_resume_batch_logs_lifecycle_line_to_ingest_log(tmp_path, monkeypatch):
             "submitted_at": "2026-07-29T02:54:46Z"}
     batch_extract.write_state(vault, state)
 
-    async def fake_status(batch_id, api_key):
+    async def fake_status(batch_id, api_key, backend=None):
         return {"processing_status": "ended", "request_counts": {"succeeded": 1, "errored": 0},
                "ended_at": "2026-07-29T03:36:02Z"}
     monkeypatch.setattr(orchestrate.batch_extract, "status", fake_status)
 
-    async def fake_collect(batch_id, api_key, model_id):
+    async def fake_collect(batch_id, api_key, model_id, backend=None):
         return {"sha1": {"ok": True, "parsed": _extraction(sha="sha1", filename="a.pdf"),
                          "usage": {}, "cost_usd": 0.02, "error": None}}
     monkeypatch.setattr(orchestrate.batch_extract, "collect", fake_collect)
@@ -3592,7 +3720,7 @@ def test_run_resumes_pending_batch_even_with_empty_queue(tmp_path, monkeypatch):
         return "should-not-be-called"
     monkeypatch.setattr(orchestrate.batch_extract, "submit", fake_submit)
 
-    async def fake_status(batch_id, api_key):
+    async def fake_status(batch_id, api_key, backend=None):
         return {"processing_status": "in_progress", "request_counts": {}}
     monkeypatch.setattr(orchestrate.batch_extract, "status", fake_status)
 
@@ -3976,7 +4104,7 @@ def test_submit_batch_classifies_unpinned_docs_but_not_pinned_ones(tmp_path, mon
 
     monkeypatch.setattr(orchestrate, "_classify", _fake_classify)
 
-    async def _fake_submit(vault, docs, *, model, effort, skills, api_key):
+    async def _fake_submit(vault, docs, *, model, effort, skills, api_key, backend=None):
         return "batch_x"
     monkeypatch.setattr(orchestrate.batch_extract, "submit", _fake_submit)
 

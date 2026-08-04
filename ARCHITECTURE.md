@@ -967,8 +967,9 @@ registry/
   usage/usage-<ts>.partial.jsonl  in-progress run's calls, one JSON line per completed call —
                             folded into a real usage-<ts>.json and removed at the *next* run's
                             start if the run that wrote it never reached a clean exit (D132)
-  batch-pending.json        pending claude-batch extraction state (D52) — incl. the per-sha
-                            skill map a later collection pass rebuilds prompts from (D144)
+  batch-pending.json        pending claude-batch/openai-batch extraction state (D52/D169) — incl.
+                            the per-sha skill map a later collection pass rebuilds prompts from
+                            (D144) and which provider (`backend`) to resume against
   .ingest-lock / .write-lock  run lock / write serialization
 backups/<ts>-<operation>/   pre-mutation snapshots for irreversible operations (D71)
 ingest-state.json           present while a run is in progress; stale ⇒ interrupted ingest, resume with `watchdog dig`
@@ -1109,30 +1110,38 @@ completed purge, and the CLI hint says so.
   document type, date range) before reading notes, driven entirely off metadata already
   captured at ingest — manifest `type`, document-note `document_type`/`date_of_document`
   frontmatter, and `timeline.md`'s year grouping — no new index (#111).
-- **`claude-batch` — bulk extraction via the Message Batches API** (`pipeline/batch_extract.py`,
-  D52): a fundamentally different flow from the other backends — submit-many/poll/collect over
-  minutes-to-24h rather than one call per document — so it isn't in `model_client._ABACKENDS`
-  and is never dispatched through `acomplete_json`; `orchestrate._run_batch` handles it
-  entirely, called from `run` instead of the concurrent per-document loop. It requires
-  `api-key` auth (a metered key; not available on subscription). It does **not** require a
-  pinned skill (D144): each document resolves its own through the shared `_resolve_skill`
-  helper — sidecar pin → run-wide pin → one classify call, D120's precedence, the same
-  implementation the synchronous path uses — before the batch is assembled, so a mixed-type
-  drop batches fine. The skill lives inside each request's own prompt blocks, which the
-  Batches API treats independently, so one submission carries several skills; requests are
-  sorted by skill label so adjacent same-skill ones still share the cached prefix. The per-sha
-  skill map is persisted in `batch-pending.json`, since collection runs in a later process.
-  Classification itself is not batched — it stays one cheap synchronous call per document, the
-  cost deliberately accepted to remove the pre-sort-by-type requirement. Documents needing
-  **sectioned** extraction fall back to
-  `claude-api` — a section's carry-forward depends on the previous section's result, so it
-  can't be an independent batch request. `watchdog dig` submits and exits rather than
-  blocking; state persists to `.watchdog/registry/batch-pending.json` (one batch in flight
+- **`claude-batch`/`openai-batch` — bulk extraction via a provider's Batch API**
+  (`pipeline/batch_extract.py`, D52/D169): a fundamentally different flow from the other
+  backends — submit-many/poll/collect over minutes-to-24h rather than one call per document —
+  so neither is in `model_client._ABACKENDS` and neither is ever dispatched through
+  `acomplete_json`; `orchestrate._run_batch` handles both entirely, called from `run` instead
+  of the concurrent per-document loop, dispatching to the right provider by the persisted
+  state's `backend` field. Both need only that provider's own API key — Anthropic's needs
+  `api-key` auth mode specifically (not available on a Claude subscription); OpenAI has no
+  subscription mode in this codebase, so `openai-batch` just needs a stored OpenAI key. Neither
+  requires a pinned skill (D144): each document resolves its own through the shared
+  `_resolve_skill` helper — sidecar pin → run-wide pin → one classify call, D120's precedence,
+  the same implementation the synchronous path uses — before the batch is assembled, so a
+  mixed-type drop batches fine. The skill lives inside each request's own prompt blocks, which
+  each Batches API treats independently, so one submission carries several skills; requests are
+  sorted by skill label so adjacent same-skill ones still share the cached prefix (Anthropic
+  only — OpenAI's Batch API has no equivalent prompt-cache knob). The per-sha skill map is
+  persisted in `batch-pending.json`, since collection runs in a later process. Classification
+  itself is not batched — it stays one cheap synchronous call per document, the cost
+  deliberately accepted to remove the pre-sort-by-type requirement. Documents needing
+  **sectioned** extraction fall back to that same provider's single-call backend (`claude-api`
+  or `openai`) — a section's carry-forward depends on the previous section's result, so it
+  can't be an independent batch request either way. `watchdog dig` submits and exits rather
+  than blocking; state persists to `.watchdog/registry/batch-pending.json` (one batch in flight
   per vault, mirroring `has_pending_finalization`'s precedent), and a *later* `watchdog
   dig` invocation checks it — collecting and writing to the vault if `ended`, or reporting
-  progress and exiting if still processing. 50% off every token, stacking with the A1 prompt
-  caching above (batch requests use the 1-hour cache TTL, since a batch routinely outlives
-  the default 5-minute window).
+  progress and exiting if still processing. 50% off every token on both providers; Anthropic's
+  additionally stacks with the A1 prompt caching above (batch requests use the 1-hour cache
+  TTL, since a batch routinely outlives the default 5-minute window). Mechanically, the two
+  APIs differ enough to be genuinely separate implementations behind one dispatcher: Anthropic
+  takes inline requests via the `anthropic` SDK, OpenAI takes a JSONL file uploaded to
+  `/v1/files` and referenced by `/v1/batches`, spoken over raw httpx (no new SDK dependency,
+  matching D37's choice for the live OpenAI-compatible path).
 - **Domain (record) skills are global** (`watchdog.skills_catalog`, see D21): the
   package's `src/watchdog/skills/records/` plus the user's `~/.watchdog/skills/records/`
   (a user skill overrides a package skill of the same name). The ingest orchestrator

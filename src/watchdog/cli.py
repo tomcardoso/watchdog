@@ -473,7 +473,7 @@ def main() -> None:
     p_ingest.add_argument("--wait", action="store_true", default=False,
                           help="On a rate limit, sleep until it resets and resume automatically "
                                "instead of stopping for you to re-run ingest. Not with a "
-                               "claude-batch extractor model.")
+                               "batch-mode extractor model (claude-batch/openai-batch).")
     p_ingest.add_argument("--estimate", action="store_true",
                           help="Print a token/cost estimate for the queue and exit — no lock, no confirm, no extraction")
     p_ingest.add_argument("--estimate-all", action="store_true", dest="estimate_all",
@@ -518,7 +518,7 @@ def main() -> None:
     p_extract.add_argument("--wait", action="store_true", default=False,
                            help="On a rate limit, sleep until it resets and resume automatically "
                                 "instead of stopping for you to re-run dig. Not with a "
-                                "claude-batch extractor model.")
+                                "batch-mode extractor model (claude-batch/openai-batch).")
     p_extract.add_argument("--estimate", action="store_true",
                            help="Print a token/cost estimate for the queue and exit — no lock, no confirm, no extraction")
     p_extract.add_argument("--estimate-all", action="store_true", dest="estimate_all",
