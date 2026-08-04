@@ -66,6 +66,44 @@ def _cache_block(text: str, *, ttl: str = "5m") -> dict:
     return {"type": "text", "text": text, "cache_control": cache_control}
 
 
+def _document_block(text: str, cache_document: bool, ttl: str) -> dict:
+    """The per-document volatile block — normally uncached (its text is unique to one document,
+    so nothing would ever read the cache back), but carrying a second cache breakpoint when the
+    verification pass (#535) is going to re-read the same document moments later. That second
+    call sends blocks 1–3 byte-identically and diverges only in a block appended after them, so
+    it reads at the 0.1x cache rate what extraction just wrote at 1.25x — the only reason to pay
+    the write premium on a document's own text at all. Off by default: with no verifier to read
+    it, the premium is pure loss (D172)."""
+    return _cache_block(text, ttl=ttl) if cache_document else {"type": "text", "text": text}
+
+
+def build_verify_prompt(base: list[dict], *, key_facts: list[dict],
+                        entities: list[dict]) -> list[dict]:
+    """The verification call's prompt: the extraction call's own blocks, unchanged, plus one
+    appended block (#535).
+
+    Taking `base` rather than rebuilding from the same inputs is the mechanism, not a
+    convenience — a shared prompt prefix only pays off if it is byte-identical, and the surest
+    way to guarantee that is to send the identical objects. It also means neither builder can
+    drift out of prefix-compatibility with this one: whatever the extractor was shown, the
+    verifier is shown too, including the extraction instructions themselves (the verifier needs
+    to know what "material fact" was defined to mean before it can say what is missing).
+
+    `key_facts` is what the extractor produced; `entities` (id + name only) bounds the ids a
+    candidate fact may tag, so the verifier picks from the extraction's own graph rather than
+    coining ids that resolve to nothing. Only `basis`/`page`/`date`/`entities`/`fact`/`quote`
+    are carried through — the facts are sent as-is, since the verifier has to compare against
+    exactly what was recorded.
+    """
+    known_ids = "\n".join(f"- {e.get('id')} | {e.get('name')}" for e in entities if e.get("id"))
+    return base + [{"type": "text", "text": (
+        f"\n{_text('verify')}\n\n"
+        f"KNOWN_ENTITY_IDS (the only ids a fact may tag):\n{known_ids or '(none)'}\n\n"
+        f"EXTRACTED_FACTS (what the first reader recorded — find what is missing, "
+        f"never restate these):\n{json.dumps(key_facts, ensure_ascii=False)}"
+    )}]
+
+
 def _file_metadata_block(file_metadata: dict, processing: dict) -> str:
     """Rendered as data, not instructions — same posture as the SIDECAR block. States the
     trust caveat explicitly (#369): embedded file metadata is trivially forgeable and often
@@ -90,7 +128,8 @@ def build_extract_prompt(*, pages_text: str, skill_text: str, sidecar: str | Non
                          brief: str | None, known_document_types: list, cache_ttl: str = "5m",
                          file_metadata: dict | None = None,
                          processing: dict | None = None,
-                         candidates: str | None = None) -> list[dict]:
+                         candidates: str | None = None,
+                         cache_document: bool = False) -> list[dict]:
     # Document identity (sha256/filename/original_path/page_count) and provenance
     # (source/obtained) are stamped onto the result by Python — see
     # orchestrate._stamp_document — so they are deliberately not asked of the model here.
@@ -125,7 +164,7 @@ def build_extract_prompt(*, pages_text: str, skill_text: str, sidecar: str | Non
         {"type": "text", "text": "\n".join(stable)},
         _cache_block(f"\nDOMAIN SKILL ({'matched' if skill_text else 'none'}):\n{skill_text or '(none)'}",
                     ttl=cache_ttl),
-        {"type": "text", "text": "\n".join(volatile)},
+        _document_block("\n".join(volatile), cache_document, cache_ttl),
     ]
 
 
@@ -134,7 +173,8 @@ def build_section_prompt(*, pages_text: str, skill_text: str, carry_forward: str
                          known_document_types: list, brief: str | None = None,
                          file_metadata: dict | None = None,
                          processing: dict | None = None,
-                         candidates: str | None = None, cache_ttl: str = "1h") -> list[dict]:
+                         candidates: str | None = None, cache_ttl: str = "1h",
+                         cache_document: bool = False) -> list[dict]:
     # Same cache-block split as build_extract_prompt (A1): instructions + brief + skill lead,
     # since those are the only parts stable across every section of one run — the section
     # label/metadata-mode note, carry-forward, and section text change on every call, so they
@@ -183,7 +223,7 @@ def build_section_prompt(*, pages_text: str, skill_text: str, carry_forward: str
     return [
         {"type": "text", "text": "\n".join(stable)},
         _cache_block(f"\nDOMAIN SKILL:\n{skill_text or '(none)'}", ttl=cache_ttl),
-        {"type": "text", "text": "\n".join(volatile)},
+        _document_block("\n".join(volatile), cache_document, cache_ttl),
     ]
 
 

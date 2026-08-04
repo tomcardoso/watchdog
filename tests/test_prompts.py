@@ -326,6 +326,63 @@ def test_section_prompt_omits_candidates_block_when_none():
     assert "CANDIDATE CHECKLIST" not in _flat(p)
 
 
+# ── the verification pass's shared prefix (#535) ──────────────────────────────
+
+def test_verify_prompt_prefix_is_byte_identical_to_the_extraction_call():
+    """The whole cost case for the pass: the verifier re-reads the document at the cached-input
+    rate rather than paying for it a second time. That only happens if every block the extraction
+    call sent is sent again unchanged, so the verify prompt is the extract prompt plus a tail."""
+    base = prompts.build_extract_prompt(
+        pages_text="DOCUMENT TEXT HERE", skill_text="SKILL", sidecar=None,
+        brief="Investigate the fraud", known_document_types=[], cache_document=True)
+    p = prompts.build_verify_prompt(base, key_facts=[{"fact": "Filed in 2024"}],
+                                    entities=[{"id": "acme-corp", "name": "Acme Corp"}])
+
+    assert p[:len(base)] == base
+    assert len(p) == len(base) + 1
+
+
+def test_verify_prompt_carries_the_facts_and_bounds_the_entity_ids():
+    p = prompts.build_verify_prompt(
+        [{"type": "text", "text": "BASE"}],
+        key_facts=[{"fact": "Filed in 2024", "page": 3}],
+        entities=[{"id": "acme-corp", "name": "Acme Corp"}, {"name": "no id here"}])
+    tail = p[-1]["text"]
+
+    assert "Filed in 2024" in tail
+    assert "- acme-corp | Acme Corp" in tail
+    assert "no id here" not in tail          # an entity with no id can't be tagged, so it's not offered
+
+
+def test_verify_prompt_handles_an_extraction_that_named_no_entities():
+    p = prompts.build_verify_prompt([{"type": "text", "text": "BASE"}], key_facts=[], entities=[])
+    assert "(none)" in p[-1]["text"]
+
+
+def test_document_block_is_cached_only_when_the_verifier_will_reread_it():
+    """Off by default: with no verification pass to read the cache back, marking a document's own
+    text — unique to that one call — would pay the cache-write premium for nothing."""
+    plain = prompts.build_extract_prompt(pages_text="x", skill_text="SKILL", sidecar=None,
+                                         brief=None, known_document_types=[])
+    cached = prompts.build_extract_prompt(pages_text="x", skill_text="SKILL", sidecar=None,
+                                          brief=None, known_document_types=[], cache_document=True)
+
+    assert "cache_control" not in plain[2]
+    assert cached[2]["cache_control"] == {"type": "ephemeral"}
+    assert plain[2]["text"] == cached[2]["text"]
+
+
+def test_section_document_block_is_cached_only_when_the_verifier_will_reread_it():
+    kwargs = dict(skill_text="SKILL", carry_forward="", section_label="pp.1-10",
+                  is_first=True, known_document_types=[])
+    plain = prompts.build_section_prompt(pages_text="x", **kwargs)
+    cached = prompts.build_section_prompt(pages_text="x", cache_document=True, **kwargs)
+
+    assert "cache_control" not in plain[2]
+    # "1h" here, matching the skill block's section default (#498)
+    assert cached[2]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+
+
 def test_prompt_templates_not_in_skills_catalog():
     """The user-facing guarantee: prompt templates are invisible to the classifier."""
     catalog = set(skills_catalog.catalog())

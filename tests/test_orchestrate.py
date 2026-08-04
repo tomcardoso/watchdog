@@ -3924,3 +3924,231 @@ def test_submit_batch_classifies_unpinned_docs_but_not_pinned_ones(tmp_path, mon
         vault, ["pinned", "loose"], None, "sonnet", None, None, 5, "haiku", 5, None, "sk-x"))
 
     assert classified == ["l.pdf"]   # only the unpinned document paid for a classify call
+
+
+# ── the verification pass (#535) ──────────────────────────────────────────────
+
+def _verify_mock(monkeypatch, *, extraction, missing_facts, fail_verify=None, calls=None):
+    """Mock every model call, capturing the extract/verify prompts so a test can assert on the
+    shared prefix. `calls` collects `(task, prompt)` pairs in order."""
+    seen = calls if calls is not None else []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        seen.append((task, prompt, effort))
+        if task == "verify":
+            if fail_verify is not None:
+                raise fail_verify
+            parsed = {"missing_facts": missing_facts}
+        else:
+            parsed = {
+                "classify": {"skill": "general-records.md"},
+                "entity-synthesis": {"entity_syntheses": []},
+                "timeline-dedup": {"groups": []},
+                "briefing": {"investigation_status": "x", "what_was_ingested": [],
+                             "new_entities": []},
+            }.get(task, extraction)
+        return model_client.ModelResult(parsed=parsed, text="", model="m", backend="b",
+                                        auth_mode="subscription", cost_usd=0.01)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+    return seen
+
+
+def _staged(vault, sha="abc123"):
+    return json.loads((vault / ".watchdog" / "extracted" / f"{sha}.json").read_text())
+
+
+def test_no_verify_call_is_made_unless_the_pass_is_turned_on(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    calls = _verify_mock(monkeypatch, extraction=_extraction(),
+                         missing_facts=[{"fact": "Should never be asked for."}])
+
+    asyncio.run(orchestrate.run(vault))
+
+    assert not [t for t, _, _ in calls if t == "verify"]
+    assert len(_staged(vault)["document"]["key_facts"]) == 1
+
+
+def test_verified_facts_are_staged_alongside_the_extractors_own(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    _verify_mock(monkeypatch, extraction=_extraction(), missing_facts=[
+        {"fact": "The auditor issued its opinion on 30 June 2024.", "page": 1,
+         "entities": ["acme-corp"]},
+        {"fact": "Filed in 2024"},                       # restatement — suppressed in code
+    ])
+
+    summary = asyncio.run(orchestrate.run(vault, verify=True))
+
+    assert summary["extracted"] == 1
+    facts = _staged(vault)["document"]["key_facts"]
+    assert [f["fact"] for f in facts] == ["Filed in 2024",
+                                          "The auditor issued its opinion on 30 June 2024."]
+    assert facts[1]["added_by"] == "verify"
+    # The added fact went through the same entity fan-out every other fact does — there is no
+    # second class of fact downstream.
+    assert facts[1]["entities"] == ["acme-corp"]
+
+
+def test_the_verify_call_resends_the_extraction_prompt_unchanged(tmp_path, monkeypatch):
+    """The cost case for the pass, asserted end-to-end: the verifier's prompt is the extraction
+    call's own blocks plus a tail, so the document text is re-read at the cached rate."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    calls = _verify_mock(monkeypatch, extraction=_extraction(), missing_facts=[])
+
+    asyncio.run(orchestrate.run(vault, verify=True))
+
+    extract_prompt = next(p for t, p, _ in calls if t == "extract")
+    verify_prompt = next(p for t, p, _ in calls if t == "verify")
+    assert verify_prompt[:len(extract_prompt)] == extract_prompt
+    assert len(verify_prompt) == len(extract_prompt) + 1
+    # ...and the document block carries a cache breakpoint, which it doesn't without the pass.
+    assert "cache_control" in extract_prompt[2]
+
+
+def test_the_verify_call_runs_at_low_effort_by_default(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    calls = _verify_mock(monkeypatch, extraction=_extraction(), missing_facts=[])
+
+    asyncio.run(orchestrate.run(vault, verify=True, extract_effort="high"))
+
+    assert next(e for t, _, e in calls if t == "extract") == "high"
+    assert next(e for t, _, e in calls if t == "verify") == "low"
+
+
+def test_verifier_effort_is_configurable(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"verifier_effort": "medium"}))
+    monkeypatch.setattr("watchdog.cmd.base.CONFIG_FILE", config)
+    calls = _verify_mock(monkeypatch, extraction=_extraction(), missing_facts=[])
+
+    asyncio.run(orchestrate.run(vault, verify=True))
+
+    assert next(e for t, _, e in calls if t == "verify") == "medium"
+
+
+@pytest.mark.parametrize("failure", [
+    model_client.ModelError("verifier returned no valid JSON"),
+    TimeoutError("read timed out"),            # not a ModelError — the catch is broad on purpose
+])
+def test_a_failed_verification_leaves_the_document_extracted_and_intact(tmp_path, monkeypatch,
+                                                                        failure):
+    """The pass adds recall to a result that is already complete — letting a new optional call
+    fail a document that already extracted cleanly would trade the thing being measured for the
+    thing that already works."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    _verify_mock(monkeypatch, extraction=_extraction(), missing_facts=[], fail_verify=failure)
+
+    summary = asyncio.run(orchestrate.run(vault, verify=True))
+
+    assert summary["extracted"] == 1 and summary["failed"] == 0
+    assert [f["fact"] for f in _staged(vault)["document"]["key_facts"]] == ["Filed in 2024"]
+    assert "verification pass failed" in (vault / ".watchdog" / "registry" / "ingest.log").read_text()
+
+
+def test_a_rate_limit_during_verification_stops_the_run(tmp_path, monkeypatch):
+    """The one failure the pass must not swallow: a session-wide limit has to stop the batch
+    cleanly, exactly as it would from any other call."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "verify":
+            raise model_client.RateLimitError("session limit reached")
+        parsed = {"classify": {"skill": "general-records.md"}}.get(task, _extraction())
+        return model_client.ModelResult(parsed=parsed, text="", model="m", backend="b",
+                                        auth_mode="subscription", cost_usd=0.01)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault, verify=True))
+
+    assert summary.get("rate_limited")
+    assert summary["extracted"] == 0
+
+
+def test_the_verify_calls_cost_is_billed_to_the_document(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    _verify_mock(monkeypatch, extraction=_extraction(), missing_facts=[])
+
+    with_verify = asyncio.run(orchestrate.run(vault, verify=True))
+
+    _queue_doc(vault)
+    _verify_mock(monkeypatch, extraction=_extraction(), missing_facts=[])
+    without = asyncio.run(orchestrate.run(vault, verify=False, force=True))
+
+    assert (with_verify["results"][0]["cost_usd"]
+            == pytest.approx(without["results"][0]["cost_usd"] + 0.01))
+
+
+def test_each_section_is_verified_against_its_own_text(tmp_path, monkeypatch):
+    """Sectioned documents verify per section, not once over the merged result: a section's text
+    is the only thing the verifier can be handed a byte-identical prefix for."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    plan, pf = _checkpoint_plan_and_pf(vault, n=2)
+    outs = {1: _checkpoint_section_out(1), 2: _checkpoint_section_out(2)}
+    seen = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        seen.append((task, _flat(prompt)))
+        if task == "verify":
+            n = sum(1 for t, _ in seen if t == "verify")
+            parsed = {"missing_facts": [{"fact": f"Missed in section {n}."}]}
+        elif task == "extract-section":
+            parsed = outs[sum(1 for t, _ in seen if t == "extract-section")]
+        else:
+            parsed = {"summary": "digest"}
+        return model_client.ModelResult(parsed=parsed, text="", model="m", backend="b",
+                                        auth_mode="subscription", cost_usd=0.02)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    extraction, _, cost, ok, errors, _ = asyncio.run(
+        orchestrate._extract_sectioned(vault, "abc123", pf, "SKILL", plan, "sonnet",
+                                       "annual-report", verify_pass=True))
+
+    assert ok, errors
+    assert [t for t, _ in seen] == ["extract-section", "verify", "extract-section", "verify",
+                                    "digest"]
+    # Each verify call saw only its own section's text.
+    assert "Section 1 text." in seen[1][1] and "Section 2 text." not in seen[1][1]
+    assert "Section 2 text." in seen[3][1] and "Section 1 text." not in seen[3][1]
+    assert {f["fact"] for f in extraction["document"]["key_facts"]} == {
+        "Fact 1", "Fact 2", "Missed in section 1.", "Missed in section 2."}
+    assert cost == pytest.approx(0.02 * 5)
+
+
+def test_a_resumed_section_is_not_verified_again(tmp_path, monkeypatch):
+    """Verification cost is folded into the section's checkpoint, so replaying a checkpointed
+    section replays its verified facts rather than paying for a second look."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    plan, pf = _checkpoint_plan_and_pf(vault, n=2)
+    checkpointed = _checkpoint_section_out(1)
+    checkpointed["document"]["key_facts"].append(
+        {"fact": "Missed in section 1.", "added_by": "verify"})
+    orchestrate._write_section_checkpoint(vault, "abc123", plan["sections"][0], checkpointed, 0.05)
+    seen = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        seen.append(task)
+        parsed = ({"missing_facts": []} if task == "verify"
+                  else _checkpoint_section_out(2) if task == "extract-section"
+                  else {"summary": "digest"})
+        return model_client.ModelResult(parsed=parsed, text="", model="m", backend="b",
+                                        auth_mode="subscription", cost_usd=0.02)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    extraction, _, cost, ok, errors, _ = asyncio.run(
+        orchestrate._extract_sectioned(vault, "abc123", pf, "SKILL", plan, "sonnet",
+                                       "annual-report", verify_pass=True))
+
+    assert ok, errors
+    assert seen == ["extract-section", "verify", "digest"]     # section 1 not re-called or re-verified
+    assert "Missed in section 1." in {f["fact"] for f in extraction["document"]["key_facts"]}
+    assert cost == pytest.approx(0.05 + 0.02 * 3)

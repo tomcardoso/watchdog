@@ -264,7 +264,23 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    instructions, stating the trust caveat (forgeable, often machine-generated) plus the
    `ocr_used`/`source_type` processing facts, so the model can judge whether a creation date
    plausibly describes the original or just a scan/template.
-4. **Post-flight** (`postflight.run`, a function call) — validates the JSON, **explodes** the
+4. **Verify** *(optional, off by default — `verify_extraction` / `--verify`, D172)* — one
+   second, cheap model call over the *same* document (or, on a sectioned document, the same
+   section), asking only what material fact is on the page and absent from the fact list just
+   produced. Its prompt is the extraction call's own content blocks plus one appended block
+   (`prompts.build_verify_prompt`), so the re-read hits the prefix cache the extraction call
+   wrote rather than paying full price for the document twice; it runs on `extractor_model` at
+   `verifier_effort` (default `low`), since a cache belongs to one model and output tokens are
+   where this pass's cost lives. What it returns is merged **in code**
+   (`pipeline/verify.merge_candidates`), never by a second model call: candidates are sanitized
+   (entity tags filtered to ids the extraction actually produced, page coerced, basis bounded)
+   and near-duplicates of existing facts suppressed by token-set overlap, with a carve-out for a
+   candidate carrying a figure the matched fact lacks. Survivors are appended to
+   `document.key_facts` tagged `added_by: "verify"` and go through post-flight like any other
+   fact — there is no second class of fact downstream. A failed verification call is logged and
+   the extraction proceeds unchanged. Not available on `claude-batch` (its results arrive hours
+   later, in another process, with no live extraction to verify and no cache left to read).
+5. **Post-flight** (`postflight.run`, a function call) — validates the JSON, **explodes** the
    unified key_facts into the per-entity `evidence_fragments` + `timeline_events` that the
    writers consume (`explode_key_facts`, D26), **verifies** each `key_facts[].quote` against
    the cited page's text from the chew-time queue descriptor (`quote_verify.verify_quotes`,
@@ -1042,7 +1058,11 @@ completed purge, and the CLI hint says so.
   the corpus-v1 benchmark found it ties `high` on recall at meaningfully lower cost (D140).
   `finalizer_effort` still defaults to `high` ≡ the model default (unbenchmarked; entity
   reconciliation is judgement-heavy cross-document reasoning, a different quality/cost
-  shape than extraction). `model_client` maps a configured effort to each backend's native
+  shape than extraction). `verifier_effort` (default `low`) is the third: the optional
+  verification pass (§5, D172) runs on `extractor_model` — deliberately not independently
+  configurable, since its whole cost case is re-reading the document out of the cache the
+  extraction call wrote, and a cache belongs to one model — so effort is the only knob it has,
+  and low is where it is meant to live. `model_client` maps a configured effort to each backend's native
   control (`output_config.effort` / `ClaudeAgentOptions.effort`) and drops it on Haiku-tier
   stages (classify; any Haiku model), which reject `effort`. Overridable per run via
   `--extractor-effort` / `--finalizer-effort`.
@@ -1265,7 +1285,7 @@ Mechanically-checkable postconditions are guarded by named tests in `tests/test_
 - **I1 — Deterministic code writes; the model only reasons.** Anything derivable in Python (document identity, provenance, slugs, role targets, timeline fan-out) is stamped in code, never paid for in model output — and the model is not asked to restate as prose what it already emitted structurally. Carve-out: `document.summary` (#279) is a bounded, deliberate exception — a whole-document digest synthesized from `key_facts`, capped at three paragraphs and grounded (every claim in it must also exist in `key_facts`). That grounding is a **prompt instruction, not a verified postcondition** — unlike quote verification, no code checks the digest against `key_facts`, so a hallucinated claim would not be caught. *History: D2, D18, D24–D26, D29–D31, D33, D34, D75, D77, D78.*
 - **I2 — Local-first preprocessing.** The *source documents you were given* never leave the machine, and chew costs no API tokens. This is a boundary on **source-doc egress**, not a vow of web abstinence — the investigation layer runs as agentic Claude Code sessions and web research (§14, I5) is allowed, since anything on the open web is already public. *History: D1, D45.*
 - **I3 — Skills and prompt templates are global package resources** — read directly, never copied per-vault — and prompt templates live in their own directory so they never leak into the classifier index. *History: D21, D28.*
-- **I4 — Configured model and effort only; no automatic escalation.** Each stage's model *and* its reasoning effort are explicit knobs with stable defaults; a failed call retries on the *same* model at the *same* effort — the pipeline never silently bumps either to recover. Response pagination (D104) is not an exception: continuing a truncated response prefills the same model's partial output at the same effort to finish one reply, changing neither knob. `finalizer_model` is itself an aggregate over four sub-stages (reconciliation, synthesis, timeline, briefing) each independently overridable (D137) — the "stage" this invariant guards is the finest-grained one actually configured, aggregate or per-stage. *History: D20, D36, D104, D137.*
+- **I4 — Configured model and effort only; no automatic escalation.** Each stage's model *and* its reasoning effort are explicit knobs with stable defaults; a failed call retries on the *same* model at the *same* effort — the pipeline never silently bumps either to recover. Response pagination (D104) is not an exception: continuing a truncated response prefills the same model's partial output at the same effort to finish one reply, changing neither knob. `finalizer_model` is itself an aggregate over four sub-stages (reconciliation, synthesis, timeline, briefing) each independently overridable (D137) — the "stage" this invariant guards is the finest-grained one actually configured, aggregate or per-stage. The optional verification pass (§5, D172) is the one stage whose *model* is deliberately not a knob: it always runs on `extractor_model`, because it exists to re-read a document out of the prefix cache the extraction call just wrote and a cache belongs to one model — pinning it elsewhere would silently cost the thing the pass is for. Its effort is a knob (`verifier_effort`) like every other stage's. *History: D20, D36, D104, D137, D172.*
 - **I5 — Research output re-enters through `_INCOMING/`, never as a direct vault write.** Web research deposits findings as documents that flow through `chew → ingest`, keeping the deterministic pipeline the single writer (dedup, provenance, registry bookkeeping). Per-doc rationale rides the `.yml` sidecar; batch rationale goes to a `briefings/research-<date>.md` memo — never `context.md`. *History: D45, D46.*
 - **I6 — Anything parsed out of a source document is untrusted input.** Source documents are adversarial by assumption — they arrive from leaks, FOI releases, and hostile parties. Content read *from* a document (its embedded metadata, its XML parts) is data to be defanged before use — never a directive, and never a payload the parser can be exploded by: XML goes through `defusedxml`, never the stdlib `xml.etree` (which expands internal entities, making a crafted `.docx` a billion-laughs bomb); metadata values are allowlisted and length-capped before they can reach a prompt; a reader that fails degrades to an empty dict rather than taking chew down. *History: D78, D110, D154.*
 - **I7 — The vault mutates only at the finalize commit.** Extraction is a pure function of a document: it stages a durable `.watchdog/extracted/<sha>.json` and touches no committed vault state. Every write to that state — entity and document notes, the morgue, the registries, the timeline and search indexes — happens in one serial, sha-sorted commit pass at the top of `finalize` (`_commit_pending` replaying `write_vault.run`), after the pre-commit resolution steps (exact-name fold, entity-merge reconciliation) have run over the staged batch. Nothing before that pass writes a vault path, which is what makes the batch atomic: a reconcile failure leaves it wholly uncommitted and retriable, and `watchdog dig` (extraction with finalize held off) leaves the vault untouched by construction, not by convention. *History: D126, D127, D128, D129.*

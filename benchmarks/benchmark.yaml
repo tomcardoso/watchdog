@@ -83,6 +83,23 @@ extractor_sweep:
     - {id: gpt-nano,          extractor_model: "openai:gpt-5.4-nano", extractor_effort: low}   # cheap tier
     - {id: gpt-mini,          extractor_model: "openai:gpt-5.4-mini", extractor_effort: low}   # middle tier
     - {id: gpt-luna,          extractor_model: "openai:gpt-5.6-luna", extractor_effort: low}   # middle tier, 1.05M window
+    # Verification pass A/B (#535). `verify: true` adds a second, cheap read of each document (or
+    # section) that lists only the material facts the extraction missed; the two arms below are
+    # the *same* extractor otherwise, so the difference between them is the pass and nothing else.
+    # Run them as a pair, on their own:
+    #     run_benchmark.py --stages extractor --arms gpt-mini-verify,gpt-mini-noverify
+    # gpt-mini is the arm to test it on: #535's root-cause classification put 10 of the 23
+    # must_not_miss misses on gpt-mini alone, every one of them present in the text the model was
+    # given and schema-compatible — recoverable omissions rather than comprehension, which is the
+    # case for "cheap extractor + verifier" rather than a bigger extractor. Score recall with
+    # score_arms.py / the qualitative judge as usual, then score the ADDED facts for precision
+    # with verifier_precision.py — a recall win alone does not settle whether this ships (D172).
+    # Note on the cost preview: cost_reference._matches requires every call in an archived usage
+    # file to share one effort, so a verify arm's own history is only reusable as a reference when
+    # extractor_effort equals verifier_effort (both `low` here — keep them equal, or expect the
+    # preview to fall back to the static projection and say so).
+    - {id: gpt-mini-verify,   extractor_model: "openai:gpt-5.4-mini", extractor_effort: low, verify: true}
+    - {id: gpt-mini-noverify, extractor_model: "openai:gpt-5.4-mini", extractor_effort: low, verify: false}
 
 finalizer_sweep:
   vault_prefix: bench-fn

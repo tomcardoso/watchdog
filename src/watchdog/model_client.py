@@ -54,7 +54,14 @@ _API_MAX_TOKENS = 8000
 # arrays (what_was_ingested/connections/leads/anomalies/emerging_patterns/open_questions) scale
 # with batch size, so it gets the same higher ceiling as extraction — a truncated briefing is a
 # JSON parse failure, not a partial result (#296).
-_TASK_MAX_TOKENS = {"extract": 16000, "extract-section": 16000, "briefing": 16000}
+# `verify` (#535) is listed at the plain default rather than raised: the verification pass emits
+# only the facts an extraction missed, so its answer is short by construction and a bigger ceiling
+# would buy nothing. It is listed at all — rather than falling through to the same 8000 — so a
+# reasoning model gets the #337/#354 starvation protection, which keys off membership here: the
+# pass runs at low effort precisely to keep reasoning tokens down, but "low" is not "none", and a
+# CoT sharing an 8000-token budget with the answer is exactly how that JSON gets truncated.
+_TASK_MAX_TOKENS = {"extract": 16000, "extract-section": 16000, "briefing": 16000,
+                    "verify": _API_MAX_TOKENS}
 
 _SYSTEM_PROMPT = (
     "You are a precise extraction engine for an investigative-records pipeline. "

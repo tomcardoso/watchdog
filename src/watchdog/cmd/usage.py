@@ -23,7 +23,10 @@ from watchdog.pipeline.orchestrate import usage_files
 # task name -> stage bucket, matching --classifier-model/--extractor-model/--finalizer-model.
 _STAGE = {
     "classify": "classifier",
-    "extract": "extractor", "extract-section": "extractor",
+    # `verify` (#535) buckets with the extractor because that is what it is: the same model, on
+    # the same document, at the same stage — a `watchdog dig` run's spend has to read as one
+    # number whether or not the pass ran.
+    "extract": "extractor", "extract-section": "extractor", "verify": "extractor",
     "reconcile": "finalizer", "entity-synthesis": "finalizer", "timeline-dedup": "finalizer",
     "timeline-precision": "finalizer", "briefing": "finalizer", "request-dedup": "finalizer",
 }

@@ -232,6 +232,47 @@ _CONFIGURE_KEYS = {
         "default": 500,
         "min": 0,
     },
+    "verify_extraction": {
+        "short": "Re-read each document to catch facts the extraction missed (default: false)",
+        "help": (
+            "When enabled, every document gets a second, cheap read straight after it is\n"
+            "  extracted. That second call sees the same document text and the facts just pulled\n"
+            "  from it, and answers one question: what material fact is on the page and missing\n"
+            "  from the list? Anything it finds is checked against the existing facts in code and\n"
+            "  added if it is genuinely new.\n"
+            "  It exists because the misses that matter are rarely things the model couldn't see —\n"
+            "  they are things it read and judged unimportant, most often an obligation buried in\n"
+            "  standard-form wording, a one-line disclosure under a table, or something in a\n"
+            "  schedule at the back.\n"
+            "  Cost: roughly 15% more per run. The re-read itself is cheap (it reuses the first\n"
+            "  call's prompt, which providers cache), so most of that is the second call's own\n"
+            "  reasoning — see verifier_effort.\n"
+            "  Trade-off: it raises how much gets captured, and it can also add restatements and\n"
+            "  true-but-minor detail to your fact lists. Off by default until that noise has been\n"
+            "  measured. Not available with a claude-batch extractor model.\n"
+            "  Default: false.\n"
+            "  Override for a single run with: watchdog dig --verify / --no-verify"
+        ),
+        "type": "bool",
+        "default": False,
+    },
+    "verifier_effort": {
+        "short": "Reasoning effort for the verification pass (default: low)",
+        "help": (
+            "How hard the model thinks during the second-read pass enabled by verify_extraction.\n"
+            "  Low is the default and is where this pass is meant to live: comparing a fact list\n"
+            "  against a document it has in front of it is a lookup, not a judgment call, and the\n"
+            "  pass's cost is almost entirely its own thinking tokens. Raise it only if the pass\n"
+            "  is demonstrably missing things on your corpus, and expect the extra spend to show\n"
+            "  up immediately.\n"
+            "  The pass always runs on extractor_model — it re-uses the extraction call's prompt\n"
+            "  to get the cached-input discount, and a cache belongs to one model.\n"
+            "  Valid values: low, medium, high, xhigh, max. Default: low."
+        ),
+        "type": "enum",
+        "default": "low",
+        "choices": ["low", "medium", "high", "xhigh", "max"],
+    },
     # ── Models ───────────────────────────────────────────────────────────────
     "classifier_model": {
         "short": "Model that picks each document's record skill (default: haiku)",
@@ -556,12 +597,12 @@ _CONFIGURE_SECTIONS = [
     ("Ingest", "Extraction run — parallelism, classification, skill pinning, sectioning.",
      ["extract_concurrency", "classify_pages", "default_skill",
       "section_token_threshold", "section_token_budget", "section_overlap_tokens",
-      "empty_extraction_min_words"]),
+      "empty_extraction_min_words", "verify_extraction"]),
     ("Models", "Which Claude model runs each step, and how hard it thinks.",
      ["classifier_model", "extractor_model", "finalizer_model",
       "finalizer_reconciliation_model", "finalizer_synthesis_model",
       "finalizer_timeline_model", "finalizer_briefing_model",
-      "extractor_effort", "finalizer_effort",
+      "extractor_effort", "finalizer_effort", "verifier_effort",
       "local_base_url", "local_context_window", "openrouter_base_url"]),
     ("Deduplication", "Near-duplicate detection.",
      ["dup_threshold", "shingle_size"]),

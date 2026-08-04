@@ -81,11 +81,24 @@ The "which model runs each stage" line printed before extraction starts shows on
 - `--estimate` — print the token and cost estimate for the queue and exit; no lock, no confirmation, no extraction.
 - `--estimate-all` — like `--estimate`, but also projects the queue's cost against every model in the catalog (`model_catalog.yaml`), cheapest first — see [Comparing model cost across the catalog](#comparing-model-cost-across-the-catalog) below.
 - `--force` — re-extract even when a cached extraction already exists — see [Re-extracting with --force](#re-extracting-with---force) below. Costs full extraction spend on every queued document, cache or no. Nothing is committed to the vault by `dig`, so this needs no overwrite warning and takes no document names (unlike the deprecated `watchdog ingest --force`).
+- `--verify` / `--no-verify` — turn the second-read verification pass on or off for this run, overriding the `verify_extraction` setting either way — see [Catching what the extractor missed](#catching-what-the-extractor-missed) below.
 - `--skip-warning` — skip the public-records acknowledgement pause described above; still prints a one-line notice of what was sent.
 
 **Resumability.** Pressing Ctrl+C, or hitting a rate limit without `--wait`, stops the batch cleanly: finished documents are saved and unfinished ones stay queued, so re-running `watchdog dig` picks up where it left off. A document that genuinely fails extraction is set aside in `queue/_failed/`; the run reports how many, and `watchdog requeue` moves them back to retry — this is surfaced everywhere the queue's state matters: the normal run summary, `--estimate`, and a bare `watchdog dig` with nothing new to read, which offers to requeue and retry right there instead of just reporting an empty queue. On macOS or Linux, dig also keeps the machine from sleeping for the run's duration — see [Troubleshooting](troubleshooting.md#ingest-prevents-the-machine-from-sleeping-during-a-run).
 
 If a previous batch is still pending finalization when you start `watchdog dig`, it asks what to do: **merge** the pending batch into this run (a following `watchdog bark` finalizes both together), or **discard** it. `dig` never finalizes in the run it's invoked from, so it doesn't offer to finalize inline — the bare guided walk (which does finalize inline) offers that as a third option, **finalize** it first and stop.
+
+#### Catching what the extractor missed
+
+Most of what a first read misses is not something it couldn't see. Checked against the exact text the model was given, effectively every missed fact in our test corpus was right there on the page — read, and judged not worth writing down. The pattern repeats: an obligation phrased in standard contract wording, a one-line note under a table, something in a schedule at the back.
+
+The verification pass is a second, cheap read aimed at exactly that. Straight after a document is extracted, it goes back to the same text with the facts just pulled from it in hand, and answers one question: what material fact is here and not on that list? Anything it finds is compared against the existing facts by the program — not by the model a second time — and added if it is genuinely new. Added facts look like any other fact in your notes and are marked so you can tell where they came from.
+
+Turn it on for a single run with `--verify`, or for good with `watchdog configure verify_extraction true`. `--no-verify` turns it off again for one run.
+
+**What it costs.** Roughly 15% more per run. The re-read itself is cheap — it reuses the first call's prompt, which the model providers charge a fraction for the second time — so most of the extra is the second call's own thinking. It runs at low effort by default to keep that down; `verifier_effort` raises it if you need to. Not available with a `claude-batch` extractor model, which returns its results hours later, long after there is anything to check them against.
+
+**What to watch for.** It is tuned to over-list rather than under-list, so it will occasionally add a restatement of something you already had, or a true detail too minor to be worth a line. Whether that trade is worth it on your material is the reason it is off by default. If you turn it on, read a document's fact list once with fresh eyes before deciding to leave it on.
 
 ### watchdog bark
 
