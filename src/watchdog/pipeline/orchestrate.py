@@ -24,7 +24,7 @@ from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 from watchdog.cmd.live import LiveRegion
 from watchdog.pipeline import (
     abort, batch_extract, harvest, leads, merge, preflight, postflight, prompts, reconcile,
-    requests, schemas, section, sidecar, synthesis_bundle, timeline, watchlist,
+    requests, schemas, section, sidecar, synthesis_bundle, timeline, verify, watchlist,
 )
 from watchdog.pipeline.write_vault import _doc_slug
 
@@ -597,9 +597,67 @@ def _append_repair_note(base, errors: list[str]):
     return base + note
 
 
+def _verifier_effort() -> str | None:
+    """The reasoning effort the verification pass runs at (#535) — `low` unless a vault has
+    pinned `verifier_effort` in config. Read here rather than threaded from the CLI because
+    there is no flag for it: the pass is turned on and off by `--verify`, and its effort is an
+    advanced knob in the same family as `empty_extraction_min_words` (D153). Low is the default
+    for a cost reason, not a quality one — gap-finding against a supplied list is a comparison,
+    and output tokens are where the pass's cost actually lives (D172)."""
+    from watchdog.cmd import base
+    try:
+        cfg = json.loads(base.CONFIG_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        cfg = {}
+    effort = cfg.get("verifier_effort", "low")
+    return effort if effort in model_client._EFFORT_LEVELS else "low"
+
+
+async def _verify_facts(vault, sha, base, extraction, *, model, backend, filename, detail):
+    """One verification call over the document just extracted, then a deterministic merge of
+    whatever it returns (#535). Returns the call's cost; `extraction` is mutated in place.
+
+    `base` is the *extraction call's own prompt blocks*, unmodified — see
+    `prompts.build_verify_prompt` for why the identical objects rather than a rebuild. The two
+    calls are back-to-back on the same model, which is what makes the shared prefix a cache hit
+    rather than a second full-price read of the document.
+
+    Failure is never fatal, and the catch is deliberately broad: a verifier that errors, times
+    out, or returns nothing usable leaves the extraction exactly as it was. This pass exists to
+    add recall to a result that is already complete and about to be staged — letting a *new*
+    optional call fail a document that already extracted cleanly would trade the thing being
+    measured for the thing that already works. Two things still propagate: a rate limit, which
+    is session-wide and has to stop the run as it would from any other call, and cancellation
+    (a `BaseException`, so `except Exception` never sees it)."""
+    doc = extraction.get("document", {})
+    if _board is not None:
+        _board.update(sha, f"  {_DIM}→  {filename}  {detail} · verifying…{_RESET}",
+                      f"  {_DIM}→  {filename}  verifying…{_RESET}")
+    prompt = prompts.build_verify_prompt(
+        base, key_facts=doc.get("key_facts") or [], entities=extraction.get("entities") or [])
+    try:
+        r = await _call_model(task="verify", model=model, backend=backend, prompt=prompt,
+                              schema=schemas.VERIFY, effort=_verifier_effort(),
+                              filename=filename, detail=f"{detail} (verify)", vault=vault)
+    except model_client.RateLimitError:
+        raise
+    except Exception as e:
+        _log(vault, f"WARN {filename}: verification pass failed, keeping extraction as-is ({e})")
+        return 0.0
+    stats = verify.merge_candidates(extraction, r.parsed.get("missing_facts") or [])
+    if stats["added"] or stats["suppressed"]:
+        _log(vault, f"VERIFY {filename} [{detail}]: {stats['added']} fact(s) added, "
+                    f"{stats['suppressed']} suppressed as duplicate or unusable")
+    return r.cost_usd or 0.0
+
+
 async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
-                          effort=None, backend=None):
-    """Whole-document extraction, with one repair attempt if post-flight rejects."""
+                          effort=None, backend=None, verify_pass=False):
+    """Whole-document extraction, with one repair attempt if post-flight rejects.
+
+    `verify_pass` (#535) adds the verification call between the model's answer and post-flight,
+    so the facts it recovers go through the same validation, quote/figure grounding, and
+    entity fan-out as any other fact — there is no second class of fact downstream."""
     text = _pages_text(pf["pages"])
     page_count = pf.get("page_count") or len(pf["pages"])
     filename = pf["filename"]
@@ -617,7 +675,7 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
         skill_text=skill_text, sidecar=pf.get("sidecar"), brief=brief,
         known_document_types=pf.get("known_document_types", []),
         file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
-        candidates=candidates,
+        candidates=candidates, cache_document=verify_pass,
     )
     cost, errors, extraction, scratchpad = 0.0, [], {}, ""
     for _ in range(2):
@@ -636,6 +694,13 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
         scratchpad = extraction.pop("scratchpad", "")
         _stamp_document(extraction, sha=sha, pf=pf, skill_label=skill_label,
                         skill_text=skill_text, extract_model=model, extract_effort=effort)
+        if verify_pass:
+            # Runs on the repair attempt too: the repaired extraction is the one being staged,
+            # so it is the one whose gaps matter. The verify prompt is built from `base`
+            # regardless, never the repair-noted prompt, so its prefix stays byte-identical to
+            # the original extraction call's.
+            cost += await _verify_facts(vault, sha, base, extraction, model=model, backend=backend,
+                                        filename=pf["filename"], detail=f"pages 1–{page_count}")
         ok, errors, warnings = _write_postflight(vault, sha, extraction)
         if ok:
             return extraction, scratchpad, cost, True, [], warnings
@@ -702,10 +767,18 @@ async def _compose_digest(doc: dict, page_count: int | None, model: str, backend
 
 
 async def _extract_one_section(vault, sha, pf, skill_text, sec, *, is_first, carry, brief,
-                               model, effort, backend, repair_errors=None):
+                               model, effort, backend, repair_errors=None, verify_pass=False):
     """One section's extract-section call. `repair_errors`, when given, appends the post-flight
     repair note to the prompt (#505) — used only for a targeted section-1 retry, never the
-    normal per-section loop."""
+    normal per-section loop.
+
+    `verify_pass` (#535) verifies each section against its own text, right after that section's
+    call — not the merged document at the end. A section's text is the only thing the verifier
+    can be given a byte-identical prefix for, and it is also the right unit: the misses this pass
+    recovers are page-local, and a whole-document re-read would cost what sectioning exists to
+    avoid. The section's cost is folded into the returned result so the checkpoint written by the
+    caller records what the section actually cost, and a resumed run replays it without paying
+    for verification again."""
     sec_text = (vault / sec["pages_path"]).read_text(encoding="utf-8")
     # Off the event loop — see the comment in `_simple_extract`.
     candidates = await asyncio.to_thread(
@@ -715,21 +788,26 @@ async def _extract_one_section(vault, sha, pf, skill_text, sec, *, is_first, car
     if _board is not None:
         _board.update(sha, f"  {_DIM}→  {pf['filename']}  {sec['label']} · extracting…{_RESET}",
                       f"  {_DIM}→  {pf['filename']}  extracting…{_RESET}")
-    prompt = prompts.build_section_prompt(
+    base = prompts.build_section_prompt(
         pages_text=sec_text,
         skill_text=skill_text, carry_forward=carry, section_label=sec["label"],
         is_first=is_first, brief=brief,
         known_document_types=pf.get("known_document_types", []),
         file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
-        candidates=candidates,
+        candidates=candidates, cache_document=verify_pass,
     )
-    detail = sec["label"]
+    prompt, detail = base, sec["label"]
     if repair_errors:
-        prompt = _append_repair_note(prompt, repair_errors)
+        prompt = _append_repair_note(base, repair_errors)
         detail += " (repair)"
-    return await _call_model(task="extract-section", model=model, backend=backend,
-                             prompt=prompt, schema=schemas.SECTION, effort=effort,
-                             filename=pf["filename"], detail=detail, vault=vault)
+    r = await _call_model(task="extract-section", model=model, backend=backend,
+                          prompt=prompt, schema=schemas.SECTION, effort=effort,
+                          filename=pf["filename"], detail=detail, vault=vault)
+    if verify_pass:
+        r.cost_usd = (r.cost_usd or 0.0) + await _verify_facts(
+            vault, sha, base, r.parsed, model=model, backend=backend,
+            filename=pf["filename"], detail=sec["label"])
+    return r
 
 
 async def _merge_sectioned(parts, pf, sha, skill_label, skill_text, model, effort, backend, brief,
@@ -805,7 +883,7 @@ def _clear_section_checkpoints(vault: Path, sha: str) -> None:
 
 
 async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_label,
-                             effort=None, backend=None, brief=None):
+                             effort=None, backend=None, brief=None, verify_pass=False):
     """Sequential per-section extraction with carry-forward, then deterministic merge.
 
     Each section's result is checkpointed to disk as it completes (#498) and replayed on a retry
@@ -832,7 +910,8 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
     for sec in sections[len(checkpoints):]:
         r = await _extract_one_section(vault, sha, pf, skill_text, sec,
                                        is_first=(sec["index"] == 1), carry=carry, brief=brief,
-                                       model=model, effort=effort, backend=backend)
+                                       model=model, effort=effort, backend=backend,
+                                       verify_pass=verify_pass)
         section_cost[sec["index"]] = r.cost_usd or 0.0
         parts.append(r.parsed)
         _write_section_checkpoint(vault, sha, sec, r.parsed, section_cost[sec["index"]])
@@ -850,7 +929,7 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
         r = await _extract_one_section(vault, sha, pf, skill_text, sections[0],
                                        is_first=True, carry="", brief=brief,
                                        model=model, effort=effort, backend=backend,
-                                       repair_errors=errors)
+                                       repair_errors=errors, verify_pass=verify_pass)
         idx = sections[0]["index"]
         section_cost[idx] = section_cost.get(idx, 0.0) + (r.cost_usd or 0.0)
         parts[0] = r.parsed
@@ -923,7 +1002,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
                             extract_effort: str | None = None,
                             extract_backend: str | None = None,
                             classify_backend: str | None = None,
-                            force: bool = False) -> dict:
+                            force: bool = False, verify_pass: bool = False) -> dict:
     pf = preflight.run(vault, sha)
     if pf.get("error"):
         return _fail(vault, sha, "", pf["error"])
@@ -990,12 +1069,14 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         _step(f"{_DIM}→  {filename}  {flow} · extracting · {n_sections} sections…{_RESET}",
               f"{_DIM}→  {filename}  extracting · {n_sections} sections…{_RESET}")
         extraction, scratchpad, cost, ok, errors, warnings = await _extract_sectioned(
-            vault, sha, pf, skill_text, plan, extract_model, skill_label, extract_effort, extract_backend, brief)
+            vault, sha, pf, skill_text, plan, extract_model, skill_label, extract_effort,
+            extract_backend, brief, verify_pass=verify_pass)
     else:
         _step(f"{_DIM}→  {filename}  {flow} · extracting…{_RESET}",
               f"{_DIM}→  {filename}  extracting…{_RESET}")
         extraction, scratchpad, cost, ok, errors, warnings = await _simple_extract(
-            vault, sha, pf, skill_text, brief, extract_model, skill_label, extract_effort, extract_backend)
+            vault, sha, pf, skill_text, brief, extract_model, skill_label, extract_effort,
+            extract_backend, verify_pass=verify_pass)
         # Whole-document extraction can overrun the model's output ceiling on entity-dense docs and
         # get authoritatively rejected as truncated (#343) — pagination handles the continuation-
         # capable backends, and openai/gemini are sized to fit up front, but a dense doc can still
@@ -1011,7 +1092,8 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
                       f"re-extracting in {n_sections} sections…{_RESET}")
                 whole_cost = cost
                 extraction, scratchpad, cost, ok, errors, warnings = await _extract_sectioned(
-                    vault, sha, pf, skill_text, fb, extract_model, skill_label, extract_effort, extract_backend, brief)
+                    vault, sha, pf, skill_text, fb, extract_model, skill_label, extract_effort,
+                    extract_backend, brief, verify_pass=verify_pass)
                 cost += whole_cost   # account for the failed whole-doc attempt
 
     if not ok:
@@ -2236,7 +2318,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
               classify_backend: str | None = None, wait: bool = False,
               skip_finalize: bool = False, force: bool = False,
               skip_briefing: bool = False, finalizer_overrides: dict | None = None,
-              resume_hint: str = "watchdog dig") -> dict:
+              resume_hint: str = "watchdog dig", verify: bool = False) -> dict:
     """Extract every queued document (bounded by `concurrency`), then post-ingest.
 
     `extract_model` drives extraction (whole-doc + section, and the sectioned-doc digest); `post_model` drives
@@ -2266,6 +2348,11 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     `resume_hint` (#441, D138) is the command a "re-run to resume/collect later" notice names —
     `cmd_ingest` passes `watchdog dig` for a `dig` run and bare `watchdog` for the guided walk or
     the deprecated `ingest`, so the extraction-side notices point back at the right entry point.
+    `verify` (#535) adds a second, cheap read of each document (or section) that lists the
+    material facts the extraction missed, merged deterministically by `pipeline.verify`. Off by
+    default and unsupported on `claude-batch`, which is asynchronous by construction — a
+    verification call needs the extraction it is verifying to already exist, and a batch's
+    results arrive in a later process, hours later, with no cached prefix left to read.
     """
     queue_dir = vault / ".watchdog" / "queue"
     shas = [f.stem for f in sorted(queue_dir.glob("*.json"))] if queue_dir.exists() else []
@@ -2278,6 +2365,14 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     # resumed pending batch even when `shas` is empty). Both branches converge on `results` /
     # `cancelled_flag` / `rate_limit_msg` / `extra_summary` and rejoin the shared tail below.
     if extract_backend in model_client.BATCH_BACKENDS:
+        # Same defense-in-depth posture as `_run_batch`'s own auth guard: `cmd_ingest` already
+        # refuses this combination, but a programmatic caller that skips CLI validation (a
+        # benchmark arm pinning both) must not silently get an unverified run labelled as a
+        # verified one — the whole point of the arm is that the label is true.
+        if verify:
+            raise ValueError(f"the verification pass is not supported with {extract_backend}: it "
+                             f"re-reads a document immediately after extracting it, and a batch's "
+                             f"results arrive hours later in a separate run")
         _begin_usage_run(vault)
         brief = _read_brief(vault)
         batch_out = await _run_batch(vault, shas, brief, extract_model, pinned_skill,
@@ -2323,7 +2418,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                 try:
                     return await _extract_document(vault, sha, brief, extract_model, classify_model,
                                                    classify_pages, pinned_skill, extract_effort,
-                                                   extract_backend, classify_backend, force=force)
+                                                   extract_backend, classify_backend, force=force,
+                                                   verify_pass=verify)
                 except model_client.RateLimitError as e:  # session-wide — stop, leave queued for resume
                     if not cancelled.is_set():
                         print()

@@ -462,9 +462,13 @@ def _doc_errors(summary: dict | None) -> list[str]:
 
 def run_extractor_arm(arm: dict, vault: Path) -> ArmResult:
     from watchdog.cmd import ingest as ing
+    # `verify` (#535) is an explicit True/False per arm, never None: an arm must not inherit the
+    # verification pass from whatever `verify_extraction` the machine running the sweep happens
+    # to have configured — an arm's spend and its recall both change with it.
     ns = SimpleNamespace(command="dig", extractor_model=arm["extractor_model"],
                         extractor_effort=arm.get("extractor_effort"), estimate=False,
-                        force=False, skip_warning=True, wait=False, no_finalize=True)
+                        force=False, skip_warning=True, wait=False, no_finalize=True,
+                        verify=bool(arm.get("verify", False)))
     try:
         with _in_vault(vault):
             summary = _quiet(ing.cmd_extract, ns, non_interactive=True)
@@ -513,7 +517,7 @@ def run_classifier_smoke(arm: dict, vault: Path, expected: dict[str, str]) -> Ar
     from watchdog.cmd import ingest as ing
     ex_ns = SimpleNamespace(command="dig", extractor_model=arm["extractor_model"],
                             extractor_effort=None, estimate=False, force=False,
-                            skip_warning=True, wait=False, no_finalize=True)
+                            skip_warning=True, wait=False, no_finalize=True, verify=False)
     try:
         with _in_vault(vault):
             ex_summary = _quiet(ing.cmd_extract, ex_ns, non_interactive=True)
@@ -535,7 +539,7 @@ def run_classifier_sweep_arm(arm: dict, vault: Path, fixed: dict, expected: dict
     ex_ns = SimpleNamespace(command="dig", extractor_model=fixed["extractor_model"],
                             classifier_model=arm["classifier_model"], extractor_effort=None,
                             estimate=False, force=False, skip_warning=True, wait=False,
-                            no_finalize=True)
+                            no_finalize=True, verify=False)
     try:
         with _in_vault(vault):
             ex_summary = _quiet(ing.cmd_extract, ex_ns, non_interactive=True)

@@ -392,6 +392,39 @@ citation provenance, so sibling documents can cross-credit; hand-adjudicate the 
 paired arms diverge. Items with no numeric anchor are listed as unscorable for the judge pass.
 First used for the Tier 0 checklist A/B (#412).
 
+## Step 8 — the verification pass A/B (#535)
+
+The `gpt-mini-verify` / `gpt-mini-noverify` arm pair in `benchmark.yaml` is the same extractor with
+and without the second-read verification pass, so the difference between them is the pass and
+nothing else. Run the pair on its own:
+
+```
+~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/run_benchmark.py \
+    --stages extractor --arms gpt-mini-verify,gpt-mini-noverify
+```
+
+Score **recall** with `score_arms.py` and the judge pass, exactly as for any other arm pair — the
+question is whether `must_not_miss` closes the gap it has never closed by raising effort.
+
+Then score **precision** on the added facts, which is the gating requirement (D172): a
+recall-biased gap-finder produces restatements and true-but-worthless detail, and the recall
+scorers cannot see that at all, because those additions are *true*. `verifier_precision.py` builds
+one self-contained judging packet per document — the added facts, the extractor's own facts as the
+restatement reference, the page text as the grounding reference — and tallies the grades:
+
+```
+~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/verifier_precision.py build \
+    benchmarks/.vaults/bench-ex-gpt-mini-verify --out /tmp/verifier-judge
+# a judge grades each fact grounded_material / grounded_trivial / unsupported,
+# writing judgment-<document>.json beside each packet, then:
+~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/verifier_precision.py aggregate \
+    /tmp/verifier-judge
+```
+
+Same judge discipline as Step 7: the judge model must not be the model under test. Read the
+`unsupported` rows first — a fact the source doesn't support is a different and worse failure than
+a trivial one, and the two should not be averaged together when deciding.
+
 ## Rough cost
 
 Order-of-magnitude, from the per-token pricing (extraction is output-dominated). The full corpus on

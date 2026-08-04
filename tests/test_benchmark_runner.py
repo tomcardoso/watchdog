@@ -508,6 +508,22 @@ def test_run_extractor_arm_calls_cmd_extract_non_interactively(monkeypatch, tmp_
     assert captured.get("non_interactive") is True
 
 
+@pytest.mark.parametrize("arm, expected", [
+    ({"id": "a", "extractor_model": "haiku", "verify": True}, True),
+    ({"id": "a", "extractor_model": "haiku", "verify": False}, False),
+    ({"id": "a", "extractor_model": "haiku"}, False),
+])
+def test_run_extractor_arm_pins_the_verification_pass_per_arm(monkeypatch, tmp_path, arm, expected):
+    """#535: an arm must never inherit `verify_extraction` from the machine running the sweep —
+    the pass changes both the arm's spend and its recall, so an unset arm means off, explicitly."""
+    captured = {}
+    monkeypatch.setattr(wd_ingest, "cmd_extract",
+                        lambda ns, **kw: captured.update(verify=ns.verify) or
+                        {"cancelled": False, "results": []})
+    rb.run_extractor_arm(arm, tmp_path)
+    assert captured["verify"] is expected
+
+
 def test_run_extractor_arm_chdirs_into_the_target_vault(monkeypatch, tmp_path):
     """`cmd_extract` (via `cmd_ingest`) resolves its vault from the current working directory
     only — no explicit-path argument exists (`ingest.py`'s `Path(".").resolve()`). Without a
