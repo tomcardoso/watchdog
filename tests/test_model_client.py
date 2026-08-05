@@ -1256,6 +1256,28 @@ def test_truncated_result_rejected_even_when_parseable(openai_key, monkeypatch):
     assert be.calls[0]["prefix"] is None                # never attempted to continue
 
 
+def test_truncated_error_carries_a_structured_truncated_flag(openai_key, monkeypatch):
+    # #540: the orchestrator's section-level re-split fallback needs a structured way to tell "this
+    # ModelError was a truncation" apart from any other failure — matching on last_err's message
+    # text would be brittle (#547 already changed one of those strings once).
+    be = PagingBackend(('{"name": "Acme"}', "length"))
+    monkeypatch.setitem(mc._ABACKENDS, "openai", be)
+    with pytest.raises(mc.ModelError) as exc_info:
+        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
+    assert exc_info.value.truncated is True
+
+
+def test_json_validation_failure_is_not_flagged_truncated(api_key_auth, monkeypatch):
+    # A schema-validation failure is a different failure from a truncation (#540) — `.truncated`
+    # must stay False so a caller can't mistake one for the other.
+    be = PagingBackend(("not json", "end_turn"))
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", be)
+    with pytest.raises(mc.ModelError) as exc_info:
+        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="claude-api",
+                         max_retries=0)
+    assert exc_info.value.truncated is False
+
+
 def test_truncated_empty_text_reports_reasoning_starvation(openai_key, monkeypatch):
     # #354: the model spent its whole output budget on chain-of-thought and returned zero
     # visible characters — a different failure from an ordinary partial truncation ("the

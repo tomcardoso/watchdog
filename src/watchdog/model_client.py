@@ -194,11 +194,17 @@ class ModelError(RuntimeError):
     `usage`/`cost_usd`/`attempts`/`model`/`backend`/`auth_mode` (D125) are set only when the
     failure happened after at least one attempt actually called the model — the JSON-validation-
     failure path and the truncation path in `acomplete_json` — so the real spend on a failed call
-    isn't lost. A backend/transport exception (raised before any usage exists) leaves these None."""
+    isn't lost. A backend/transport exception (raised before any usage exists) leaves these None.
+
+    `truncated` (#540) flags the specific case of an authoritative max-token cut (see the
+    `out.get("truncated")` branch below) — a structured signal a caller can act on (e.g. the
+    orchestrator's section-level re-split fallback) instead of matching on `last_err`'s message
+    text, which is prose meant for a human and free to change (#547 already changed one of these
+    strings once)."""
 
     def __init__(self, message: str, *, usage: dict | None = None, cost_usd: float | None = None,
                 attempts: int = 0, model: str | None = None, backend: str | None = None,
-                auth_mode: str | None = None):
+                auth_mode: str | None = None, truncated: bool = False):
         super().__init__(message)
         self.usage = usage
         self.cost_usd = cost_usd
@@ -206,6 +212,7 @@ class ModelError(RuntimeError):
         self.model = model
         self.backend = backend
         self.auth_mode = auth_mode
+        self.truncated = truncated
 
 
 class RateLimitError(RuntimeError):
@@ -1156,6 +1163,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
     attempts = 0
     pruned_all: list[str] = []
     agg_usage: dict | None = None
+    was_truncated = False   # #540: whether the final failure was a truncation specifically
     for _ in range(max_retries + 1):
         attempts += 1
         try:
@@ -1205,6 +1213,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
                             "max-token ceiling cut it off — try a lower extractor_effort")
             else:
                 last_err = "output truncated at the model's max-token ceiling"
+            was_truncated = True
             fixture_capture.capture("truncation", backend=chosen, model_id=model_id, task=task,
                                     text=out.get("text"), usage=out.get("usage"))
             break
@@ -1239,7 +1248,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
         f"task '{task}' failed JSON validation after {attempts} attempt(s) "
         f"on {chosen}: {last_err}",
         usage=agg_usage, cost_usd=round(total_cost, 6) or None, attempts=attempts,
-        model=model_id, backend=chosen, auth_mode=auth_mode)
+        model=model_id, backend=chosen, auth_mode=auth_mode, truncated=was_truncated)
 
 
 def complete_json(**kwargs) -> ModelResult:
