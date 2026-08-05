@@ -14,6 +14,7 @@ import asyncio
 import datetime
 import hashlib
 import json
+import re
 import signal
 import sys
 import time
@@ -869,11 +870,74 @@ def _load_section_checkpoints(vault: Path, sha: str, sections: list[dict]) -> li
     return checkpoints
 
 
-def _write_section_checkpoint(vault: Path, sha: str, sec: dict, parsed: dict, cost_usd: float) -> None:
+def _write_section_checkpoint(vault: Path, sha: str, sec: dict, parsed: dict, cost_usd: float,
+                              parts: list[dict] | None = None) -> None:
+    """`parts` (#540), when given, holds 2+ results from a single planned section that truncated
+    and was re-split in half (see `_extract_sectioned`'s main loop) — checkpointed together under
+    this ORIGINAL section's `index`/dict, so there is still exactly one checkpoint per planned
+    section and `_load_section_checkpoints`' identity check (and the `len(checkpoints)` indexing
+    into `sections` it enables, #498) keeps working. `parsed` is always the first (or only)
+    result, kept so a checkpoint written before #540 still replays."""
+    record = {"section": sec, "parsed": parsed, "cost_usd": cost_usd}
+    if parts:
+        record["parts"] = parts
     path = _section_checkpoint_path(vault, sha, sec["index"])
-    path.write_text(
-        json.dumps({"section": sec, "parsed": parsed, "cost_usd": cost_usd}, ensure_ascii=False),
-        encoding="utf-8")
+    path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+
+
+def _split_section_text(text: str, paginated: bool) -> list[str]:
+    """Split one section's own text into two roughly-equal halves for the truncation re-split
+    (#540, see `_extract_sectioned`). A multi-page section splits on a page boundary — reusing
+    `section.run`'s own `"\\n\\n---\\n\\n"` join separator between per-page chunks, so no page is
+    ever cut mid-markdown — falling back to a character midpoint for a single-page or
+    non-paginated section (character windows have no page boundary to split on)."""
+    if paginated:
+        pages = text.split("\n\n---\n\n")
+        if len(pages) > 1:
+            mid = len(pages) // 2
+            return ["\n\n---\n\n".join(pages[:mid]), "\n\n---\n\n".join(pages[mid:])]
+    mid = len(text) // 2
+    return [text[:mid], text[mid:]]
+
+
+def _half_label(text: str, parent_label: str, i: int, n: int) -> str:
+    """The section label for one half of a re-split section (#540). A paginated half names the
+    pages it actually holds, read back off the `<!-- PAGE n -->` markers `section.run` embeds —
+    inheriting the parent's "pages 27–40" would overstate each half's range in three places that
+    matter: the prompt's own `section_label`, the candidate-harvest flow label, and the `detail`
+    field on the usage row, which is what a later cost or truncation investigation reads. Falls
+    back to the parent label plus a part number when there are no markers to read (a
+    character-split, non-paginated section)."""
+    pages = re.findall(r"<!-- PAGE (\d+) -->", text)
+    if pages:
+        return f"pages {pages[0]}–{pages[-1]}" if pages[0] != pages[-1] else f"page {pages[0]}"
+    return f"{parent_label} (part {i}/{n})"
+
+
+def _ordered_parts(section_parts: dict[int, list[dict]]) -> list[dict]:
+    """Per-section results flattened into the reading order `_merge_sectioned` expects. Sections
+    are keyed by their planned index (#540), so sorting by it restores document order regardless
+    of how many parts each section contributed or which order they were filled in."""
+    return [p for idx in sorted(section_parts) for p in section_parts[idx]]
+
+
+def _resplit_section(vault: Path, sha: str, sec: dict) -> list[dict]:
+    """On a truncated `extract-section` call (#540), split just this ONE section's page range in
+    half rather than re-sectioning the whole document — the plan (`sections`) never changes, so
+    checkpoint identity (#498) is unaffected; only this one section's execution is. Returns two
+    synthetic section dicts, each pointing at its own half's text file, for the caller to run
+    through `_extract_one_section` exactly as it would a planned section."""
+    text = (vault / sec["pages_path"]).read_text(encoding="utf-8")
+    halves = _split_section_text(text, sec.get("paginated", False))
+    out = []
+    for i, half in enumerate(halves, start=1):
+        path = vault / ".watchdog" / "tmp" / f"section_{sha}_{sec['index']:02d}_{i}.md"
+        path.write_text(half, encoding="utf-8")
+        out.append({"index": sec["index"],
+                    "label": _half_label(half, sec["label"], i, len(halves)),
+                    "paginated": sec.get("paginated", False),
+                    "pages_path": str(path.relative_to(vault))})
+    return out
 
 
 def _clear_section_checkpoints(vault: Path, sha: str) -> None:
@@ -893,33 +957,77 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
     One repair attempt if post-flight rejects on morgue_entity_id/morgue_document_type — the
     fields only section 1 is ever asked to supply. Mirrors _simple_extract's repair loop, but
     re-calls just section 1 rather than re-running the whole document, since a later section's
-    output could never have fixed these anyway (#505)."""
+    output could never have fixed these anyway (#505).
+
+    A truncated extract-section call gets one re-split retry (#540): the whole-document fallback
+    below `_extract_document`'s whole-doc branch never reached this already-sectioned path, so a
+    truncation here used to fail the document outright with no recovery at all. `parts`/
+    `entities_seen`/`carry` are rebuilt with `c.get("parts") or [c["parsed"]]` so a checkpoint
+    written before #540 (single `parsed`, no `parts`) still replays unchanged."""
     sections = plan["sections"]
     checkpoints = _load_section_checkpoints(vault, sha, sections)
-    parts: list[dict] = [c["parsed"] for c in checkpoints]
+    # Keyed by planned-section index rather than a flat list (#540): a re-split section contributes
+    # 2 results instead of 1, and the #505 repair below replaces one *section's* worth of output —
+    # which a flat list can't express, since `parts[0] = …` would leave a re-split section 1's
+    # second half behind, merging its content twice. Flattened in section order at merge time.
+    section_parts: dict[int, list[dict]] = {
+        c["section"]["index"]: (c.get("parts") or [c["parsed"]]) for c in checkpoints}
     section_cost: dict[int, float] = {
         c["section"]["index"]: c.get("cost_usd") or 0.0 for c in checkpoints}
     entities_seen: dict[str, dict] = {}
     for c in checkpoints:
-        for e in c["parsed"].get("entities") or []:
-            if e.get("id"):
-                entities_seen[e["id"]] = {"name": e.get("name"), "type": e.get("type")}
-    carry = (_carry_text(entities_seen, checkpoints[-1]["parsed"].get("observations") or "")
-             if checkpoints else "")
+        for parsed in c.get("parts") or [c["parsed"]]:
+            for e in parsed.get("entities") or []:
+                if e.get("id"):
+                    entities_seen[e["id"]] = {"name": e.get("name"), "type": e.get("type")}
+    carry = ""
+    if checkpoints:
+        last_parts = checkpoints[-1].get("parts") or [checkpoints[-1]["parsed"]]
+        carry = _carry_text(entities_seen, last_parts[-1].get("observations") or "")
 
     for sec in sections[len(checkpoints):]:
-        r = await _extract_one_section(vault, sha, pf, skill_text, sec,
-                                       is_first=(sec["index"] == 1), carry=carry, brief=brief,
-                                       model=model, effort=effort, backend=backend,
-                                       verify_pass=verify_pass)
+        try:
+            r = await _extract_one_section(vault, sha, pf, skill_text, sec,
+                                           is_first=(sec["index"] == 1), carry=carry, brief=brief,
+                                           model=model, effort=effort, backend=backend,
+                                           verify_pass=verify_pass)
+        except model_client.ModelError as e:
+            if not e.truncated:
+                raise   # a rate limit, auth failure, or genuine schema failure — not ours to fix
+            # Split just this section's page range in half and run both halves through the same
+            # call, in order, threading carry/entities exactly as the loop above does. Both
+            # results are checkpointed together under the ORIGINAL section (`sec`) below, so the
+            # plan never changes and #498's checkpoint identity keeps matching. Bounded to one
+            # re-split: a half that also truncates raises here uncaught, failing the document
+            # exactly as before #540.
+            halves = _resplit_section(vault, sha, sec)
+            half_parts: list[dict] = []
+            half_cost = 0.0
+            for i, half in enumerate(halves):
+                hr = await _extract_one_section(
+                    vault, sha, pf, skill_text, half,
+                    is_first=(sec["index"] == 1 and i == 0), carry=carry, brief=brief,
+                    model=model, effort=effort, backend=backend, verify_pass=verify_pass)
+                half_cost += hr.cost_usd or 0.0
+                half_parts.append(hr.parsed)
+                for e2 in hr.parsed.get("entities") or []:
+                    if e2.get("id"):
+                        entities_seen[e2["id"]] = {"name": e2.get("name"), "type": e2.get("type")}
+                carry = _carry_text(entities_seen, hr.parsed.get("observations") or "")
+            section_cost[sec["index"]] = half_cost
+            section_parts[sec["index"]] = half_parts
+            _write_section_checkpoint(vault, sha, sec, half_parts[0], half_cost, parts=half_parts)
+            continue
+
         section_cost[sec["index"]] = r.cost_usd or 0.0
-        parts.append(r.parsed)
+        section_parts[sec["index"]] = [r.parsed]
         _write_section_checkpoint(vault, sha, sec, r.parsed, section_cost[sec["index"]])
         for e in r.parsed.get("entities") or []:
             if e.get("id"):
                 entities_seen[e["id"]] = {"name": e.get("name"), "type": e.get("type")}
         carry = _carry_text(entities_seen, r.parsed.get("observations") or "")
 
+    parts = _ordered_parts(section_parts)
     extraction, scratchpad, digest_cost = await _merge_sectioned(
         parts, pf, sha, skill_label, skill_text, model, effort, backend, brief, vault)
     cost = sum(section_cost.values()) + digest_cost
@@ -932,8 +1040,11 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
                                        repair_errors=errors, verify_pass=verify_pass)
         idx = sections[0]["index"]
         section_cost[idx] = section_cost.get(idx, 0.0) + (r.cost_usd or 0.0)
-        parts[0] = r.parsed
+        # Replaces every part section 1 contributed, not just the first: the repair re-ran the
+        # whole section, so a re-split section 1's second half is now superseded, not still due.
+        section_parts[idx] = [r.parsed]
         _write_section_checkpoint(vault, sha, sections[0], r.parsed, section_cost[idx])
+        parts = _ordered_parts(section_parts)
         extraction, scratchpad, digest_cost = await _merge_sectioned(
             parts, pf, sha, skill_label, skill_text, model, effort, backend, brief, vault)
         cost = sum(section_cost.values()) + digest_cost
