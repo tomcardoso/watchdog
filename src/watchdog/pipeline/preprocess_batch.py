@@ -15,6 +15,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 from watchdog.cmd.live import LiveRegion
 from watchdog.pipeline import sidecar
 from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
@@ -78,13 +79,6 @@ SKIP_NAMES    = {".ds_store", ".ingest-lock", "thumbs.db", "desktop.ini"}
 SKIP_SUFFIXES = {".yml"}
 SKIP_DIRS     = {"_failed", "_FAILED", "_skipped", "_SKIPPED"}
 _OS_JUNK      = {".ds_store", "thumbs.db", "desktop.ini"}
-
-_BOLD   = "\033[1m"
-_DIM    = "\033[2m"
-_CYAN   = "\033[0;36m"
-_GREEN  = "\033[0;32m"
-_YELLOW = "\033[0;33m"
-_RESET  = "\033[0m"
 
 _BAR_WIDTH = 28
 

@@ -1218,7 +1218,12 @@ def _build_search_json(query: str, passages: list[dict], notes: list[dict],
     """Shape `watchdog search` results for `--json` consumers (the watchdog-query semantic
     lane, scripts). Each passage carries the citable span (`text`) + its page; `score` is the
     cosine similarity (ordering already reflects fusion + rerank). ``exact`` is the full-text
-    (FTS5) lane (#109) — every hit for the exact term/phrase, no relevance score."""
+    (FTS5) lane (#109) — every hit for the exact term/phrase, no relevance score.
+
+    This JSON shape is a stable contract for machine consumers (the `watchdog-query` skill,
+    src/watchdog/skills/watchdog-query.md, and any other script parsing `--json` output) — unlike
+    the human-readable text output, which may change freely, a field rename or removal here is a
+    breaking change and should not be made casually (#499)."""
     return {
         "query": query,
         "passages": [
@@ -1498,8 +1503,7 @@ def cmd_search(args) -> None:
         exact = fulltext.search(vault, args.query, limit=args.top_n)
     except Exception as e:
         exact = []
-        if not as_json:
-            print(f"  {_YELLOW}Warning: exact-match search unavailable: {e}{_RESET}", file=sys.stderr)
+        print(f"  {_YELLOW}Warning: exact-match search unavailable: {e}{_RESET}", file=sys.stderr)
 
     if as_json:
         print(json.dumps(_build_search_json(args.query, passages, notes, exact), ensure_ascii=False))

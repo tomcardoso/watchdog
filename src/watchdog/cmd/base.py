@@ -14,12 +14,32 @@ WATCHDOG_HOME = Path.home() / ".watchdog"
 PROJECTS_FILE = WATCHDOG_HOME / "projects.json"
 CONFIG_FILE   = WATCHDOG_HOME / "config.json"
 
-_BOLD   = "\033[1m"
-_DIM    = "\033[2m"
-_CYAN   = "\033[0;36m"
-_YELLOW = "\033[0;33m"
-_GREEN  = "\033[0;32m"
-_RESET  = "\033[0m"
+def _color_enabled() -> bool:
+    """Whether to emit ANSI colour codes at all (#499). `NO_COLOR` (any non-empty value) forces
+    them off; otherwise follow whether stdout is a real terminal. Gated on stdout specifically,
+    not stderr — the standard simplification, and it means a piped stdout also de-colours the few
+    warnings this module prints to stderr (see D174).
+
+    `FORCE_COLOR` is deliberately *not* honoured: Claude Code sets `FORCE_COLOR=3` in the
+    environment it hands to shell commands, so honouring it would force colour back on for the
+    exact reader this gate exists to protect — a session piping `watchdog status` into its own
+    context and paying tokens for the escape bytes (D174)."""
+    if os.environ.get("NO_COLOR"):
+        return False
+    try:
+        return sys.stdout.isatty()
+    except Exception:
+        return False
+
+
+_COLOR = _color_enabled()
+
+_BOLD   = "\033[1m" if _COLOR else ""
+_DIM    = "\033[2m" if _COLOR else ""
+_CYAN   = "\033[0;36m" if _COLOR else ""
+_YELLOW = "\033[0;33m" if _COLOR else ""
+_GREEN  = "\033[0;32m" if _COLOR else ""
+_RESET  = "\033[0m" if _COLOR else ""
 
 VAULT_SCHEMA_VERSION = "1"
 
