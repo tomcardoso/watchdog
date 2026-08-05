@@ -13,104 +13,58 @@ master_vault:
 
 extractor_sweep:
   vault_prefix: bench-ex
+  # Grouped by provider, then model, then effort. Haiku and DeepSeek have no effort control —
+  # asking for one errors. Everything else pins its effort explicitly. See BENCHMARKING.md for
+  # how to run these and FINDINGS.md for what past runs measured.
   arms:
-    - {id: sonnet-high,       extractor_model: sonnet, extractor_effort: high}
-    - {id: sonnet-med,        extractor_model: sonnet, extractor_effort: medium}
-    # Thinking tokens bill as output and were measured at ~70-80% of Sonnet's own output tokens
-    # at medium effort (#475) — the largest untested cost lever left. D140 already found medium
-    # ties high on recall at meaningfully lower cost; low has never been benchmarked.
-    - {id: sonnet-low,        extractor_model: sonnet, extractor_effort: low}
+    # ── Anthropic ──
     - {id: haiku,             extractor_model: haiku}
+    - {id: sonnet-4.6-low,    extractor_model: sonnet-4.6, extractor_effort: low}
+    - {id: sonnet-4.6-med,    extractor_model: sonnet-4.6, extractor_effort: medium}
+    - {id: sonnet-4.6-high,   extractor_model: sonnet-4.6, extractor_effort: high}
+    - {id: sonnet-5-low,      extractor_model: sonnet-5, extractor_effort: low}
+    - {id: sonnet-5-med,      extractor_model: sonnet-5, extractor_effort: medium}
+    - {id: sonnet-5-high,     extractor_model: sonnet-5, extractor_effort: high}
+
+    # ── OpenAI ──
+    - {id: gpt-nano-low,      extractor_model: "openai:gpt-5.4-nano", extractor_effort: low}
+    - {id: gpt-nano-med,      extractor_model: "openai:gpt-5.4-nano", extractor_effort: medium}
+    - {id: gpt-nano-high,     extractor_model: "openai:gpt-5.4-nano", extractor_effort: high}
+    - {id: gpt-mini-low,      extractor_model: "openai:gpt-5.4-mini", extractor_effort: low}
+    - {id: gpt-mini-med,      extractor_model: "openai:gpt-5.4-mini", extractor_effort: medium}
+    - {id: gpt-mini-high,     extractor_model: "openai:gpt-5.4-mini", extractor_effort: high}
+    - {id: gpt-luna-low,      extractor_model: "openai:gpt-5.6-luna", extractor_effort: low}
+    - {id: gpt-luna-med,      extractor_model: "openai:gpt-5.6-luna", extractor_effort: medium}
+    - {id: gpt-luna-high,     extractor_model: "openai:gpt-5.6-luna", extractor_effort: high}
+
+    # ── Gemini ──
+    - {id: gemini-flash-lite, extractor_model: "gemini:gemini-3.1-flash-lite", extractor_effort: low}
+    - {id: gemini-flash-low,  extractor_model: "gemini:gemini-3.5-flash", extractor_effort: low}
+    - {id: gemini-flash-med,  extractor_model: "gemini:gemini-3.5-flash", extractor_effort: medium}
+    - {id: gemini-flash-high, extractor_model: "gemini:gemini-3.5-flash", extractor_effort: high}
+
+    # ── DeepSeek ── (the `-thinking` suffix is the only knob)
     - {id: ds-flash,          extractor_model: "deepseek:deepseek-v4-flash"}
     - {id: ds-flash-think,    extractor_model: "deepseek:deepseek-v4-flash-thinking"}
     - {id: ds-pro,            extractor_model: "deepseek:deepseek-v4-pro"}
     - {id: ds-pro-think,      extractor_model: "deepseek:deepseek-v4-pro-thinking"}
-    - {id: gemini-flash-lite, extractor_model: "gemini:gemini-3.1-flash-lite"}   # cheap tier
-    # No effort pinned above means no `reasoning_effort` is sent at all — Gemini accepts the knob
-    # unconditionally (unlike OpenAI, no reasoning-capability gate), so this ran on whatever
-    # implicit thinking budget Google defaults to. Measured at 15m21s for this corpus, the same
-    # ~51-call section split every enforces-max-tokens backend gets (see the gpt-* comment below)
-    # even though its output tokens stayed well under the per-call ceiling — the time cost here is
-    # pure section-count overhead, not runaway reasoning tokens.
+
+    # ── Paired comparisons ──
+    # Each group isolates one variable and is meant to be run on its own with --arms, not as part
+    # of a full sweep. Read BENCHMARKING.md before running either — both have setup requirements.
     #
-    # Gemini effort ladder (#541/#547, middle tier). D171's reserve table is a reasoned placeholder
-    # — no high-effort Gemini run existed to measure it against. These three are that run: same
-    # model, effort the only variable, so the per-effort reasoning volume can be read straight off
-    # `watchdog usage` (which reports Gemini's reasoning tokens only as of #547 — before that they
-    # were invisible *and* unbilled, so any pre-#547 Gemini cost is a floor, not a measurement).
-    # `-low` also stands in for the arm FINDINGS.md still lists as plain `gemini-flash`, which was
-    # this same model pinned low and is dropped here as an exact duplicate: pinned rather than left
-    # unset for the same reason as the OpenAI arms — measure the model's real minimum-effort cost,
-    # not an unstated default.
-    - {id: gemini-flash-low,  extractor_model: "gemini:gemini-3.5-flash", extractor_effort: low}
-    - {id: gemini-flash-med,  extractor_model: "gemini:gemini-3.5-flash", extractor_effort: medium}
-    - {id: gemini-flash-high, extractor_model: "gemini:gemini-3.5-flash", extractor_effort: high}
-    # Opus dropped (not worth testing this round).
-    #
-    # Backend A/B (#475). The arms above name a bare Claude tier, which resolves to
-    # claude-agent-sdk or claude-api by whatever auth mode the machine is in — so their cost is
-    # only interpretable alongside the backend the report now records. These two pin it
-    # explicitly and are the *only* way to measure the difference, which telemetry puts at ~2.4x
-    # actual/estimated input tokens on the agent SDK vs ~1.24x elsewhere, plus a cache-write
-    # premium the SDK pays and never reads back. Run them as a pair, on their own:
-    #     run_benchmark.py --stages extractor --arms sonnet-med-sdk,sonnet-med-api
-    # Both need api-key auth to be comparable — claude-api cannot run on a subscription.
+    # Backend A/B (#475) — needs api-key auth.
     - {id: sonnet-med-sdk,    extractor_model: "claude-agent-sdk:sonnet", extractor_effort: medium}
     - {id: sonnet-med-api,    extractor_model: "claude-api:sonnet",       extractor_effort: medium}
-    # sdk_check (below) adds the third leg once this pair's metered numbers are in: the same
-    # claude-agent-sdk pin, run later under subscription auth.
-    # Batch API: 50% off every token, stacking with prompt caching. Needs no `skill:` pin — since
-    # D144 each document resolves its own skill, so corpus-v1's per-document sidecar pins (D120)
-    # carry through and the two-skill corpus batches correctly. Submit-and-exit: the arm returns
-    # once submitted, and a later run collects it (see BENCHMARKING.md).
     - {id: batch-sonnet-med,  extractor_model: "claude-batch:sonnet",     extractor_effort: medium}
-    # OpenAI arms (#453 closed, adapter unchanged — the deferral that used to sit here no longer
-    # applies). Cheap/middle tier only, mirroring the Gemini split above: #475's goal is finding
-    # something cheaper than Sonnet, and gpt-5.5/gpt-5.4/gpt-5.6-terra price at $15-30/Mtok
-    # output — the same league as Sonnet, which is already the quality reference in this sweep,
-    # so spending real money to benchmark them would answer a question nobody asked. Needs a
-    # stored OpenAI key (`watchdog auth`).
     #
-    # D98 caveat: OpenAI does support real Structured Outputs, but Watchdog doesn't use them here
-    # — strict mode requires every property in `required`, and our schema deliberately isn't
-    # all-required (optional fields are meant to be omitted, not nulled; post-flight relies on
-    # that). So an OpenAI arm measures the model plus our weaker prompt-only enforcement, not the
-    # model alone — a poor result here is genuinely ambiguous in a way a Gemini arm's isn't, by
-    # our own schema-design choice rather than a model or provider defect. See D98.
-    #
-    # All three are reasoning models (model_catalog.yaml's `reasoning: true`) and, unlike every
-    # Claude arm above, none pinned `extractor_effort` — so `reasoning_effort` was omitted from
-    # the request entirely and OpenAI applied its own default. Measured on this corpus, that
-    # default burned a median 12K-24K *output* tokens per section call (`gpt-mini` peaked at 46K,
-    # against a 48K hard ceiling) — reasoning tokens dwarfing the actual JSON, on section inputs
-    # capped at ~7K estimated tokens by the same conservative sectioning ceiling. That drove
-    # gpt-nano to 26min/$0.89 and gpt-mini to 43min/$5.71 for a 6-document corpus — see the
-    # investigation notes for the full numbers. Pinned to `low` so these arms measure each model's
-    # real minimum controllable cost instead of an unbounded implicit default. The section-count
-    # side of this (51 calls, ~22 of them for the 70-page report alone) is a separate, deeper
-    # issue in `output_ceiling_for_sectioning` shared with production `watchdog dig` — tracked
-    # separately rather than fixed here, since it needs real data on how much `low` effort alone
-    # changes the picture before touching sectioning math every ingest relies on.
-    - {id: gpt-nano,          extractor_model: "openai:gpt-5.4-nano", extractor_effort: low}   # cheap tier
-    - {id: gpt-mini,          extractor_model: "openai:gpt-5.4-mini", extractor_effort: low}   # middle tier
-    - {id: gpt-luna,          extractor_model: "openai:gpt-5.6-luna", extractor_effort: low}   # middle tier, 1.05M window
-    # Verification pass A/B (#535). `verify: true` adds a second, cheap read of each document (or
-    # section) that lists only the material facts the extraction missed; the two arms below are
-    # the *same* extractor otherwise, so the difference between them is the pass and nothing else.
-    # Run them as a pair, on their own:
-    #     run_benchmark.py --stages extractor --arms gpt-mini-verify,gpt-mini-noverify
-    # gpt-mini is the arm to test it on: #535's root-cause classification put 10 of the 23
-    # must_not_miss misses on gpt-mini alone, every one of them present in the text the model was
-    # given and schema-compatible — recoverable omissions rather than comprehension, which is the
-    # case for "cheap extractor + verifier" rather than a bigger extractor. Score recall with
-    # score_arms.py / the qualitative judge as usual, then score the ADDED facts for precision
-    # with verifier_precision.py — a recall win alone does not settle whether this ships (D172).
-    # Note on the cost preview: cost_reference._matches requires every call in an archived usage
-    # file to share one effort, so a verify arm's own history is only reusable as a reference when
-    # extractor_effort equals verifier_effort (both `low` here — keep them equal, or expect the
-    # preview to fall back to the static projection and say so).
-    - {id: gpt-mini-verify,   extractor_model: "openai:gpt-5.4-mini", extractor_effort: low, verify: true}
-    - {id: gpt-mini-noverify, extractor_model: "openai:gpt-5.4-mini", extractor_effort: low, verify: false}
+    # Verification pass A/B (#535), on the three candidate models.
+    - {id: sonnet-4.6-med-verify,   extractor_model: sonnet-4.6, extractor_effort: medium, verify: true}
+    - {id: sonnet-4.6-med-noverify, extractor_model: sonnet-4.6, extractor_effort: medium, verify: false}
+    - {id: gpt-mini-low-verify,     extractor_model: "openai:gpt-5.4-mini", extractor_effort: low, verify: true}
+    - {id: gpt-mini-low-noverify,   extractor_model: "openai:gpt-5.4-mini", extractor_effort: low, verify: false}
+    - {id: gpt-luna-low-verify,     extractor_model: "openai:gpt-5.6-luna", extractor_effort: low, verify: true}
+    - {id: gpt-luna-low-noverify,   extractor_model: "openai:gpt-5.6-luna", extractor_effort: low, verify: false}
 
 finalizer_sweep:
   vault_prefix: bench-fn
