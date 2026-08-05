@@ -8,6 +8,12 @@ Watchdog colours some of its terminal output — project names in bold, file pat
 
 If you'd rather never see colour, set the standard `NO_COLOR` environment variable to any non-empty value and Watchdog will leave it off everywhere, including in the terminal.
 
+## Exit codes
+
+If you're running Watchdog from a script or a scheduled job, the process exit code tells you how a run went without parsing any text: `0` means it completed and there's nothing left to do; `1` marks a genuine error, such as bad input or a setting that still needs configuring; `130` means it was interrupted with Ctrl+C.
+
+`watchdog dig` and `watchdog bark` use one more code: `2` means the run stopped partway through in a way a re-run picks up automatically — a rate limit paused it, a submitted batch is still waiting on results, some documents were never started, or `bark`'s own post-processing (entity reconciliation, synthesis, the briefing) didn't finish. Running the same command again continues from where it left off. A document that failed extraction and was set aside in `queue/_failed/` doesn't trigger this — that's a completed run with an outcome worth reviewing, not a stalled one. `watchdog requeue` is the fix, and the exit code for that run stays `0`.
+
 ## Investigation management
 
 | Command | What it does |

@@ -4738,3 +4738,123 @@ def test_the_batch_refusal_names_the_config_key_when_that_is_what_turned_it_on(
     message = _strip_ansi(str(e.value))
     assert "verify_extraction isn't supported with claude-batch" in message
     assert "--no-verify" in message
+
+
+# ── exit codes (#499 follow-up) ─────────────────────────────────────────────
+
+@pytest.mark.parametrize("result, expected", [
+    (None, 0),
+    ("not a dict", 0),
+    ([], 0),
+    ({"extracted": 1, "skipped": 0, "failed": 0, "results": []}, 0),
+    ({"extracted": 1, "results": [], "rate_limited": True}, 2),
+    ({"extracted": 0, "results": [], "batch_pending": True}, 2),
+    ({"extracted": 1, "results": [], "cancelled": True}, 2),
+    ({"extracted": 1, "results": [{"sha256": "a", "status": "cancelled"}]}, 2),
+    ({"extracted": 1, "results": [], "post_ingest_error": "rate limited"}, 2),
+    ({"extracted": 1, "results": [], "post_ingest": {"error": "rate limited"}}, 2),
+    ({"synthesized": 0, "error": "rate limited"}, 2),
+    ({"synthesized": 0, "briefing_error": "rate limited"}, 2),
+    ({"extracted": 1, "results": [], "quarantined": 3, "failed": 2}, 0),
+])
+def test_exit_code_for(result, expected):
+    from watchdog.cmd import ingest as ing
+    assert ing.exit_code_for(result) == expected
+
+
+def test_dispatch_exits_2_on_resumable_summary(configured, monkeypatch):
+    """`main()` maps a resumable `cmd_extract`/`cmd_finalize` return value to exit code 2."""
+    import sys
+    monkeypatch.setattr(cli, "cmd_extract",
+                        lambda a: {"extracted": 0, "results": [], "rate_limited": True})
+    monkeypatch.setattr(sys, "argv", ["watchdog", "dig"])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert exc.value.code == 2
+
+
+def test_dispatch_does_not_exit_on_clean_summary(configured, monkeypatch):
+    import sys
+    monkeypatch.setattr(cli, "cmd_extract",
+                        lambda a: {"extracted": 1, "skipped": 0, "failed": 0, "results": []})
+    monkeypatch.setattr(sys, "argv", ["watchdog", "dig"])
+    cli.main()   # must not raise SystemExit
+
+
+def test_offer_ingest_propagates_summary_to_caller(monkeypatch, tmp_path):
+    """`_offer_ingest` returns the ingest summary rather than swallowing it, so a rate limit
+    reached from the guided walk or `watchdog chew` still exits 2 (#499). Without this the most
+    common invocation — bare `watchdog` — would report success on a half-finished batch."""
+    import watchdog.cmd.ingest as ing
+    summary = {"extracted": 2, "results": [], "rate_limited": True}
+    monkeypatch.setattr(ing, "_preview_ingest", lambda vault, args: None)
+    monkeypatch.setattr(ing, "_count_queued", lambda vault: 3)
+    monkeypatch.setattr(ing, "_confirm_public_records", lambda n, skip_warning=False: True)
+    monkeypatch.setattr(ing, "cmd_ingest", lambda a, **kw: summary)
+    out = ing._offer_ingest(args(skip_warning=True), tmp_path)
+    assert out is summary
+    assert ing.exit_code_for(out) == 2
+
+
+def test_guided_walk_returns_resumable_summary(monkeypatch, tmp_path):
+    """The guided `watchdog` walk must hand its summary back to dispatch too, not just `dig` —
+    bare `watchdog` is the most common invocation, so a rate limit there has to exit 2 as well."""
+    import watchdog.cmd.ingest as ing
+    summary = {"extracted": 1, "results": [], "rate_limited": True}
+    (tmp_path / ".watchdog").mkdir()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("watchdog.pipeline.research.pending_count", lambda v: 0)
+    monkeypatch.setattr(ing, "_count_queued", lambda vault: 3)
+    monkeypatch.setattr(ing, "_offer_ingest", lambda a, v: summary)
+    out = ing.cmd_guided(args())
+    assert out is summary
+    assert ing.exit_code_for(out) == 2
+
+
+def test_dispatch_does_not_exit_when_command_returns_none(configured, monkeypatch):
+    import sys
+    monkeypatch.setattr(sys, "argv", ["watchdog", "list"])
+    cli.main()   # cmd_list returns None — must not raise SystemExit
+
+
+def test_dispatch_exits_2_on_finalize_error(configured, monkeypatch):
+    import sys
+    monkeypatch.setattr(cli, "cmd_finalize", lambda a: {"synthesized": 0, "error": "rate limited"})
+    monkeypatch.setattr(sys, "argv", ["watchdog", "bark"])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert exc.value.code == 2
+
+
+def test_cmd_extract_called_directly_returns_dict_without_exiting(wdg_home, tmp_path, monkeypatch):
+    """A programmatic caller (e.g. the benchmark runner) calls `cmd_extract` directly, not
+    through `main()`'s dispatch — it must keep getting the dict back, never a `SystemExit`,
+    even for a resumable outcome like a rate limit."""
+    from watchdog.cmd import ingest as ing
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    resumable = {"extracted": 0, "skipped": 0, "failed": 0, "results": [], "rate_limited": True}
+    monkeypatch.setattr(ing, "cmd_ingest", lambda a, **kw: resumable)
+
+    result = ing.cmd_extract(args())
+
+    assert result is resumable
+
+
+def test_cmd_finalize_called_directly_returns_dict_without_exiting(wdg_home, tmp_path, monkeypatch):
+    """Same guarantee for `cmd_finalize`: a caller invoking it as a plain Python function must
+    get the `_run_finalize` dict back, even when it carries an `error`."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: True)
+    errored = {"synthesized": 0, "error": "rate limited"}
+    monkeypatch.setattr(ing, "_run_finalize", lambda *a, **k: errored)
+
+    result = ing.cmd_finalize(args())
+
+    assert result is errored
