@@ -21,8 +21,8 @@ touched, naming which vault(s) and the `rm -rf` to clear them (#494) — this co
 arm's config changes after it already ran once (an `extractor_effort` pin, a corrected model id):
 
 ```
-rm -rf benchmarks/.vaults/bench-ex-gpt-nano benchmarks/.vaults/bench-ex-gpt-mini
-run_benchmark.py --stages extractor --arms gpt-nano,gpt-mini
+rm -rf benchmarks/.vaults/bench-ex-gpt-nano-low benchmarks/.vaults/bench-ex-gpt-mini-low
+run_benchmark.py --stages extractor --arms gpt-nano-low,gpt-mini-low
 ```
 
 No separate deregistration step needed — shadow vaults under `benchmarks/.vaults/` are never
@@ -263,6 +263,13 @@ cp -r .watchdog/extracted ../captures/<vault>-extracted/   # what score_arms.py 
 
 ## Step 4 — extractor sweep (the spend)
 
+**Every arm pins an explicit effort, and that is deliberate.** An unpinned arm runs at whatever
+the provider defaults to, which is neither reproducible nor comparable across providers. On OpenAI
+that default was measured burning a median 12K-24K *output* tokens per section call on this corpus
+(`gpt-mini` peaked at 46K against a 48K ceiling) — reasoning tokens dwarfing the JSON, on sections
+capped at ~7K estimated input tokens. Haiku and DeepSeek are the exceptions: they have no effort
+control at all (no `effort_levels` in `model_catalog.yaml`), and asking for one errors.
+
 `watchdog dig` only — **no `bark`**. Everything this step scores (material-fact recall,
 `must_not_miss`, coverage warnings) is in the staged extraction artifacts before any finalizer
 call runs, so finalizing here would just spend money and time on a stage this step doesn't
@@ -394,14 +401,21 @@ First used for the Tier 0 checklist A/B (#412).
 
 ## Step 8 — the verification pass A/B (#535)
 
-The `gpt-mini-verify` / `gpt-mini-noverify` arm pair in `benchmark.yaml` is the same extractor with
-and without the second-read verification pass, so the difference between them is the pass and
-nothing else. Run the pair on its own:
+`benchmark.yaml` carries a verify/noverify pair for each of the three candidate models — Sonnet
+4.6, `gpt-mini` and Luna. Each pair is the same extractor with and without the second-read
+verification pass, so the difference within a pair is the pass and nothing else. Run **one pair at
+a time**, on its own:
 
 ```
 ~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/run_benchmark.py \
-    --stages extractor --arms gpt-mini-verify,gpt-mini-noverify
+    --stages extractor --arms gpt-mini-low-verify,gpt-mini-low-noverify
 ```
+
+**On the cost preview.** `cost_reference._matches` only reuses an archived usage file when every
+call in it shares one effort, so a verify arm's own history is reusable as a reference only when
+`extractor_effort` equals the `verifier_effort` config value (default `low`). The `gpt-mini` and
+Luna pairs satisfy that. The Sonnet pair is pinned `medium` — the judged candidate config, not
+`low` — so expect its preview to fall back to the static projection and say so.
 
 Score **recall** with `score_arms.py` and the judge pass, exactly as for any other arm pair — the
 question is whether `must_not_miss` closes the gap it has never closed by raising effort.

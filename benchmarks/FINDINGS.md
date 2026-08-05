@@ -239,3 +239,16 @@ Per-document win pattern (hit % of that document's qualitative items): `sonnet-h
   (DeepSeek/Gemini/OpenAI backends were never affected). Do not compare a pre-D145 Claude cost
   against a post-D145 one. The recall figures above are unaffected — this changed the bill, not
   the output.
+- 2026-08-05: `extractor_sweep` was regrouped by provider and every arm's effort pinned
+  explicitly, which **renamed most arm ids**. Historical rows above use the old names; the
+  mapping is `sonnet-{high,med,low}` → `sonnet-4.6-{high,med,low}` (bare `sonnet` already
+  resolved to 4.6, so the model is unchanged), `gpt-{nano,mini,luna}` → `gpt-{nano,mini,luna}-low`
+  (all three were pinned low), `gemini-flash` → `gemini-flash-low`, and
+  `gpt-mini-{verify,noverify}` → `gpt-mini-low-{verify,noverify}`. Nothing was dropped and the
+  model/effort combinations behind those rows are unchanged, so the figures remain comparable —
+  only the labels moved. One genuine change: `gemini-flash-lite` now pins `low` instead of
+  leaving effort unset, so its historical row measured Google's implicit default and a fresh run
+  will not. Tooling is unaffected either way — `cost_reference` matches archived runs on
+  model/effort/backend, never on arm id. BENCHMARKING.md's Step 3 walkthrough is the
+  pre-#466 hand-run protocol and keeps its own older vault names throughout — it documents
+  a different workflow, not these arms.
