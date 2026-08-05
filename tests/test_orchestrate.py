@@ -1705,6 +1705,283 @@ def test_extract_sectioned_ignores_a_checkpoint_whose_section_metadata_no_longer
     assert cost == pytest.approx(0.03)            # no leftover 0.05 from the stale checkpoint
 
 
+# ── section-level truncation re-split (#540) ─────────────────────────────────
+
+def _resplit_plan_and_pf(vault, sha="abc123", filename="test-doc.pdf"):
+    """A 2-section paginated plan — section 1 spans 4 pages (so it can itself be split in half on
+    a page boundary), section 2 is a single page."""
+    tmpd = vault / ".watchdog" / "tmp"
+    tmpd.mkdir(parents=True, exist_ok=True)
+    sec1_text = "\n\n---\n\n".join(
+        f"<!-- PAGE {n} -->\n\nSection one page {n} text." for n in range(1, 5))
+    (tmpd / f"section_{sha}_01.md").write_text(sec1_text, encoding="utf-8")
+    (tmpd / f"section_{sha}_02.md").write_text(
+        "<!-- PAGE 5 -->\n\nSection two text.", encoding="utf-8")
+    plan = {"sectioned": True, "page_count": 5, "sections": [
+        {"index": 1, "label": "pages 1-4", "paginated": True,
+         "pages_path": f".watchdog/tmp/section_{sha}_01.md"},
+        {"index": 2, "label": "pages 5", "paginated": True,
+         "pages_path": f".watchdog/tmp/section_{sha}_02.md"},
+    ]}
+    pf = {"filename": filename, "existing_entities": [], "known_document_types": [],
+         "page_count": 5, "original_path": f"_INCOMING/{filename}"}
+    return plan, pf
+
+
+_RESPLIT_ENTITY = {"id": "acme-corp", "name": "Acme Corp", "type": "Company", "roles": []}
+
+
+def _resplit_section_out(label, *, first=False):
+    out = {"entities": [_RESPLIT_ENTITY], "observations": f"obs {label}",
+          "document": {"key_facts": [{"fact": f"Fact {label}", "basis": "stated"}]}}
+    if first:
+        out["document"].update({"sha256": "abc123", "filename": "test-doc.pdf",
+                                "title": "Acme AR", "document_type": "Annual Report"})
+        out["morgue_entity_id"] = "acme-corp"
+        out["morgue_document_type"] = "annual-report"
+    return out
+
+
+def test_split_section_text_splits_multi_page_section_on_a_page_boundary():
+    """A paginated section splits on its own `"\\n\\n---\\n\\n"` page separator, so a page is
+    never cut mid-markdown — the two halves rejoin to exactly the original text."""
+    text = "\n\n---\n\n".join(f"<!-- PAGE {n} -->\n\ntext {n}" for n in range(1, 5))
+    half1, half2 = orchestrate._split_section_text(text, paginated=True)
+    assert half1 == "\n\n---\n\n".join(f"<!-- PAGE {n} -->\n\ntext {n}" for n in (1, 2))
+    assert half2 == "\n\n---\n\n".join(f"<!-- PAGE {n} -->\n\ntext {n}" for n in (3, 4))
+    assert half1 + "\n\n---\n\n" + half2 == text
+
+
+def test_split_section_text_falls_back_to_character_midpoint_for_a_single_page_section():
+    """A single-page section has no page boundary to split on — falls back to a character
+    midpoint rather than yielding one empty half."""
+    text = "<!-- PAGE 1 -->\n\n" + ("x" * 100)
+    half1, half2 = orchestrate._split_section_text(text, paginated=True)
+    assert half1 + half2 == text
+    assert half1 and half2
+
+
+def test_split_section_text_splits_non_paginated_text_on_a_character_midpoint():
+    text = "a" * 50 + "b" * 50
+    half1, half2 = orchestrate._split_section_text(text, paginated=False)
+    assert half1 == "a" * 50 and half2 == "b" * 50
+
+
+def test_truncated_section_call_resplits_and_document_succeeds(tmp_path, monkeypatch):
+    """A truncated `extract-section` call on an already-sectioned document used to fail the whole
+    document outright — the pre-#540 truncation fallback only lived on `_extract_document`'s
+    whole-document branch. Now the truncated section is split in half and both halves retried
+    in order; the document still succeeds, both halves' facts land in the merged output in
+    order, and the section's checkpointed cost is the sum of both halves."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    plan, pf = _resplit_plan_and_pf(vault)
+    calls = []
+    prompts = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        calls.append(task)
+        if task == "extract-section":
+            prompts.append(prompt)
+            n = sum(1 for t in calls if t == "extract-section")
+            if n == 1:
+                # Section 1's whole (unsplit) attempt truncates.
+                raise model_client.ModelError(
+                    "output truncated at the model's max-token ceiling", truncated=True)
+            outs = {2: _resplit_section_out("half1", first=True),
+                   3: _resplit_section_out("half2"),
+                   4: _resplit_section_out("sec2")}
+            return model_client.ModelResult(parsed=outs[n], text="", model="m", backend="b",
+                                            auth_mode="subscription", cost_usd=0.02)
+        return model_client.ModelResult(parsed={"summary": "digest"}, text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.01)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    # The checkpoint is cleared once post-flight succeeds (existing behaviour), so spy on the
+    # write itself to inspect what was checkpointed for section 1 mid-run rather than racing the
+    # cleanup — mirrors how a resumed run would have found it, before success wipes it away.
+    written = []
+    real_write = orchestrate._write_section_checkpoint
+
+    def spy_write(vault, sha, sec, parsed, cost_usd, parts=None):
+        written.append({"sec": sec, "cost_usd": cost_usd, "parts": parts})
+        return real_write(vault, sha, sec, parsed, cost_usd, parts=parts)
+    monkeypatch.setattr(orchestrate, "_write_section_checkpoint", spy_write)
+
+    extraction, scratchpad, cost, ok, errors, warnings = asyncio.run(
+        orchestrate._extract_sectioned(vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
+
+    assert ok, errors
+    facts = [f["fact"] for f in extraction["document"]["key_facts"]]
+    assert facts == ["Fact half1", "Fact half2", "Fact sec2"]   # merge order == halves-then-section-2
+    assert cost == pytest.approx(0.02 + 0.02 + 0.02 + 0.01)     # 2 halves + section 2 + digest
+
+    # Both halves checkpointed together under the ORIGINAL section 1 dict — plan identity (#498)
+    # must stay byte-identical so a later resume's `data.get("section") != sec` check still matches.
+    assert written[0]["sec"] == plan["sections"][0]
+    assert len(written[0]["parts"]) == 2
+    assert written[0]["cost_usd"] == pytest.approx(0.04)
+
+    # Carry-forward threads through both halves in order: section 2's prompt carries only the
+    # immediately preceding half's observations, not the first half's (mirrors the normal
+    # per-section loop's own carry-forward rule).
+    section2_prompt = _flat(prompts[-1])
+    assert "obs half2" in section2_prompt
+    assert "obs half1" not in section2_prompt
+
+
+def test_resume_after_resplit_replays_both_parts_without_recalling_the_model(tmp_path, monkeypatch):
+    """A resumed run finds section 1's re-split checkpoint (both halves under `parts`) and replays
+    it outright — only section 2 and the digest are still called."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    plan, pf = _resplit_plan_and_pf(vault)
+    parts = [_resplit_section_out("half1", first=True), _resplit_section_out("half2")]
+    orchestrate._write_section_checkpoint(vault, "abc123", plan["sections"][0],
+                                          parts[0], 0.04, parts=parts)
+
+    seen = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        seen.append(task)
+        if task == "extract-section":
+            return model_client.ModelResult(parsed=_resplit_section_out("sec2"), text="",
+                                            model="m", backend="b", auth_mode="subscription",
+                                            cost_usd=0.02)
+        return model_client.ModelResult(parsed={"summary": "digest"}, text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.01)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    extraction, scratchpad, cost, ok, errors, warnings = asyncio.run(
+        orchestrate._extract_sectioned(vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
+
+    assert ok, errors
+    assert seen == ["extract-section", "digest"]      # section 1's 2 parts replayed for free
+    facts = [f["fact"] for f in extraction["document"]["key_facts"]]
+    assert facts == ["Fact half1", "Fact half2", "Fact sec2"]
+    assert cost == pytest.approx(0.04 + 0.02 + 0.01)
+
+
+def test_old_format_checkpoint_without_parts_still_replays(tmp_path, monkeypatch):
+    """A checkpoint written before #540 (single `parsed`, no `parts` key) must still replay —
+    `_extract_sectioned` rebuilds `parts`/`entities_seen`/`carry` with `c.get("parts") or
+    [c["parsed"]]`, which degrades to the pre-#540 single-part shape when `parts` is absent."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    plan, pf = _resplit_plan_and_pf(vault)
+    orchestrate._write_section_checkpoint(vault, "abc123", plan["sections"][0],
+                                          _resplit_section_out("sec1", first=True), 0.05)
+
+    seen = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        seen.append(task)
+        if task == "extract-section":
+            return model_client.ModelResult(parsed=_resplit_section_out("sec2"), text="",
+                                            model="m", backend="b", auth_mode="subscription",
+                                            cost_usd=0.02)
+        return model_client.ModelResult(parsed={"summary": "digest"}, text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.01)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    extraction, scratchpad, cost, ok, errors, warnings = asyncio.run(
+        orchestrate._extract_sectioned(vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
+
+    assert ok, errors
+    assert seen == ["extract-section", "digest"]
+    facts = [f["fact"] for f in extraction["document"]["key_facts"]]
+    assert facts == ["Fact sec1", "Fact sec2"]
+    assert cost == pytest.approx(0.05 + 0.02 + 0.01)
+
+
+def test_non_truncation_model_error_on_a_section_still_propagates(tmp_path, monkeypatch):
+    """#540's re-split is scoped to `ModelError.truncated` specifically — a rate limit, auth
+    failure, or genuine schema-validation failure on a section call must still fail the document
+    outright, exactly as before this fix."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    plan, pf = _resplit_plan_and_pf(vault)
+    calls = {"n": 0}
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "extract-section":
+            calls["n"] += 1
+            raise model_client.ModelError("task 'extract-section' failed JSON validation",
+                                          truncated=False)
+        return model_client.ModelResult(parsed={"summary": "digest"}, text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    with pytest.raises(model_client.ModelError, match="failed JSON validation"):
+        asyncio.run(orchestrate._extract_sectioned(
+            vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
+
+    assert calls["n"] == 1   # no re-split attempted — it propagated on the very first section call
+
+
+def test_a_half_that_also_truncates_fails_the_document(tmp_path, monkeypatch):
+    """Bounded to a single re-split (#540): if one of the two halves also truncates, it fails the
+    document exactly as before this fix — no recursive re-splitting, and no partial checkpoint is
+    left behind for the section that never finished."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    plan, pf = _resplit_plan_and_pf(vault)
+    calls = {"n": 0}
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "extract-section":
+            calls["n"] += 1
+            raise model_client.ModelError("output truncated at the model's max-token ceiling",
+                                          truncated=True)
+        return model_client.ModelResult(parsed={"summary": "digest"}, text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    with pytest.raises(model_client.ModelError):
+        asyncio.run(orchestrate._extract_sectioned(
+            vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
+
+    assert calls["n"] == 2   # the whole-section-1 attempt + one half attempt — no further recursion
+    assert not orchestrate._section_checkpoint_path(vault, "abc123", 1).exists()
+
+
+def test_run_end_to_end_recovers_a_truncated_section_via_orchestrate_run(tmp_path, monkeypatch):
+    """End-to-end through `orchestrate.run`: a document whose up-front plan already sections it
+    (not the whole-doc-overrun fallback path) recovers from a section-level truncation and the
+    document is extracted, not failed."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, text="a very long document ...")
+    plan, _ = _resplit_plan_and_pf(vault)
+    monkeypatch.setattr(orchestrate.section, "run", lambda v, s, **kw: plan)
+    calls = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        calls.append(task)
+        if task == "extract-section":
+            n = sum(1 for t in calls if t == "extract-section")
+            if n == 1:
+                raise model_client.ModelError(
+                    "output truncated at the model's max-token ceiling", truncated=True)
+            outs = {2: _resplit_section_out("half1", first=True),
+                   3: _resplit_section_out("half2"),
+                   4: _resplit_section_out("sec2")}
+            return model_client.ModelResult(parsed=outs[n], text="", model="m", backend="b",
+                                            auth_mode="subscription", cost_usd=0.02)
+        parsed = {
+            "classify": {"skill": "general-records.md"},
+            "digest": {"summary": "digest text"},
+            "entity-synthesis": {"entity_syntheses": []},
+            "timeline-dedup": {"groups": []},
+            "briefing": {"investigation_status": "x", "what_was_ingested": []},
+        }.get(task, {})
+        return model_client.ModelResult(parsed=parsed, text="", model="m", backend="b",
+                                        auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault))
+    assert summary["extracted"] == 1 and summary["failed"] == 0
+
+
 def test_ingest_retry_resumes_sectioned_extraction_after_a_crash(tmp_path, monkeypatch):
     """End-to-end: a document that crashes mid-sectioned-extraction fails the run but keeps its
     completed sections' checkpoints (the automatic-failure path preserves them, #498); moving the
@@ -4351,3 +4628,63 @@ def test_a_resumed_section_is_not_verified_again(tmp_path, monkeypatch):
     assert seen == ["extract-section", "verify", "digest"]     # section 1 not re-called or re-verified
     assert "Missed in section 1." in {f["fact"] for f in extraction["document"]["key_facts"]}
     assert cost == pytest.approx(0.05 + 0.02 * 3)
+
+
+def test_section1_repair_after_a_resplit_replaces_both_halves(tmp_path, monkeypatch):
+    """The #505 section-1 repair re-runs the *whole* of section 1, so its result supersedes every
+    part that section contributed — including the second half, when section 1 had been re-split by
+    #540. Tracking results per planned section (rather than as a flat list where `parts[0] = …`
+    replaces only the first) is what makes that expressible: otherwise the superseded half stays
+    in the merge and section 1's tail is extracted twice into the same document."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    plan, pf = _resplit_plan_and_pf(vault)
+    calls = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        calls.append(task)
+        if task != "extract-section":
+            return model_client.ModelResult(parsed={"summary": "digest"}, text="", model="m",
+                                            backend="b", auth_mode="subscription", cost_usd=0.01)
+        n = sum(1 for t in calls if t == "extract-section")
+        if n == 1:
+            raise model_client.ModelError("output truncated", truncated=True)
+        if n in (2, 3, 4):
+            # No section supplies morgue_entity_id, and no entities either — merge's #505 fallback
+            # derives one from the entity list when it can, so the list has to be empty for
+            # post-flight to reject on the morgue id alone and the repair path to be reached.
+            label = {2: "half1", 3: "half2", 4: "sec2"}[n]
+            out = _resplit_section_out(label, first=(n == 2))
+            out["entities"] = []
+            out.pop("morgue_entity_id", None)
+        else:                                       # the repair call, re-running all of section 1
+            out = _resplit_section_out("repaired", first=True)
+        return model_client.ModelResult(parsed=out, text="", model="m", backend="b",
+                                        auth_mode="subscription", cost_usd=0.02)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    extraction, scratchpad, cost, ok, errors, warnings = asyncio.run(
+        orchestrate._extract_sectioned(vault, "abc123", pf, "SKILL", plan, "sonnet",
+                                       "annual-report"))
+
+    assert ok, errors
+    facts = [f["fact"] for f in extraction["document"]["key_facts"]]
+    # The repaired whole-section result stands in for both halves; "Fact half2" must not survive
+    # alongside it, and "Fact half1" is superseded too.
+    assert facts == ["Fact repaired", "Fact sec2"]
+
+
+def test_half_label_names_the_pages_a_half_actually_holds():
+    """A re-split half inherits nothing from its parent's label: "pages 1–4" split in two must
+    report "pages 1–2" and "pages 3–4", not the parent range twice. The label reaches the prompt's
+    own section_label, the candidate-harvest flow label, and the usage row's `detail` field — the
+    last is what a later cost or truncation investigation reads, so an overstated range there is a
+    diagnostic trap of exactly the kind #547 cost time on."""
+    first = "\n\n---\n\n".join(f"<!-- PAGE {n} -->\n\ntext {n}" for n in (1, 2))
+    second = "\n\n---\n\n".join(f"<!-- PAGE {n} -->\n\ntext {n}" for n in (3, 4))
+    assert orchestrate._half_label(first, "pages 1–4", 1, 2) == "pages 1–2"
+    assert orchestrate._half_label(second, "pages 1–4", 2, 2) == "pages 3–4"
+    # A half holding one page says "page", not a degenerate "pages 3–3".
+    assert orchestrate._half_label("<!-- PAGE 3 -->\n\ntext", "pages 3–4", 1, 2) == "page 3"
+    # No markers to read (a character-split, non-paginated section) — fall back to the parent.
+    assert orchestrate._half_label("plain text", "part 2 of 5", 1, 2) == "part 2 of 5 (part 1/2)"

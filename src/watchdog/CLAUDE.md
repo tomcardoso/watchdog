@@ -2,6 +2,8 @@
 
 All terminal output in `cli.py` follows a consistent visual language. The colour constants are defined at the top of the file — use them, never raw ANSI codes.
 
+The constants are gated on terminal detection (`cmd.base._color_enabled`, #499): each one is a real escape code when stdout is a terminal, and `""` otherwise (`NO_COLOR` forces them off; `FORCE_COLOR` is deliberately ignored — see D174). Code must never assume a constant carries escape bytes, and must never measure display width with `len()` of a string built from these constants — `len(f"{_BOLD}{name}{_RESET}")` is wrong whether or not colour is active in the current run, since it counts the escape bytes as visible columns when they are present. Compute width from the plain text instead.
+
 ## Colour semantics
 
 | Constant | Use for |

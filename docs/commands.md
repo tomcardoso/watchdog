@@ -2,6 +2,12 @@
 
 This page lists every Watchdog command, what it does, and every option it takes. Use it as a lookup — the guided walkthroughs live in [Getting started](getting-started.md) and [Investigating](investigating.md). Every command here runs in your terminal, except the slash commands at the end, which run inside a Claude Code session. Add `--help` after any command (for example `watchdog dig --help`) to see its usage in the terminal.
 
+## Colour output
+
+Watchdog colours some of its terminal output — project names in bold, file paths and commands in cyan, warnings in yellow — to make status easier to scan. This turns on automatically when you're looking at a real terminal, and off automatically when you're not: redirecting output to a file (`watchdog list > projects.txt`) or piping it into another program never includes colour codes, so the text you get stays clean either way.
+
+If you'd rather never see colour, set the standard `NO_COLOR` environment variable to any non-empty value and Watchdog will leave it off everywhere, including in the terminal.
+
 ## Investigation management
 
 | Command | What it does |
