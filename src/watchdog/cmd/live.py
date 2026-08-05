@@ -21,6 +21,9 @@ import sys
 import threading
 
 _ANSI = re.compile(r"\033\[[0-9;]*m")
+# Deliberately independent of cmd.base's colour gate (#499): this closes clipped colour spans
+# inside the live-progress region itself, whose own cursor escapes are already gated separately
+# on `self.stream.isatty()` below — and tests/test_live.py asserts the literal escape byte.
 _RESET = "\033[0m"
 
 

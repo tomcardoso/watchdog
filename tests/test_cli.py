@@ -72,6 +72,75 @@ def test_fmt_date_extracts_date_portion():
     assert cli._fmt_date("2026-06-07T02:22:15Z") == "2026-06-07"
 
 
+# ── _color_enabled (#499) ────────────────────────────────────────────────────
+
+class _FakeStdout:
+    """A stand-in for sys.stdout used to test the tty branch directly, without touching the
+    real stream (which pytest itself may have replaced with something un-isatty-able)."""
+    def __init__(self, is_tty):
+        self._is_tty = is_tty
+
+    def isatty(self):
+        return self._is_tty
+
+
+class _NoIsattyStdout:
+    """A stream that doesn't implement isatty() at all — e.g. some replaced/wrapped stream."""
+
+
+class _RaisingIsattyStdout:
+    """A stream whose isatty() raises — must be treated as not-a-terminal, not propagate."""
+    def isatty(self):
+        raise OSError("not a real stream")
+
+
+def test_color_enabled_true_on_tty(monkeypatch):
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setattr(_base.sys, "stdout", _FakeStdout(True))
+    assert _base._color_enabled() is True
+
+
+def test_color_enabled_false_off_tty(monkeypatch):
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setattr(_base.sys, "stdout", _FakeStdout(False))
+    assert _base._color_enabled() is False
+
+
+def test_color_enabled_no_color_wins_on_tty(monkeypatch):
+    monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.setattr(_base.sys, "stdout", _FakeStdout(True))
+    assert _base._color_enabled() is False
+
+
+def test_color_enabled_ignores_force_color_off_tty(monkeypatch):
+    # FORCE_COLOR is deliberately not honoured (D174): Claude Code sets FORCE_COLOR=3 in the
+    # environment it gives shell commands, so honouring it would force escape bytes back into
+    # the output of the very reader this gate protects. Off a terminal, colour stays off.
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("FORCE_COLOR", "3")
+    monkeypatch.setattr(_base.sys, "stdout", _FakeStdout(False))
+    assert _base._color_enabled() is False
+
+
+def test_color_enabled_empty_no_color_does_not_disable(monkeypatch):
+    # An empty-string NO_COLOR is not "set" per the spec's "non-empty value" rule.
+    monkeypatch.setenv("NO_COLOR", "")
+    monkeypatch.setattr(_base.sys, "stdout", _FakeStdout(True))
+    assert _base._color_enabled() is True
+
+
+def test_color_enabled_stream_with_no_isatty_method(monkeypatch):
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setattr(_base.sys, "stdout", _NoIsattyStdout())
+    assert _base._color_enabled() is False
+
+
+def test_color_enabled_stream_whose_isatty_raises(monkeypatch):
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setattr(_base.sys, "stdout", _RaisingIsattyStdout())
+    assert _base._color_enabled() is False
+
+
 # ── _count_incoming ───────────────────────────────────────────────────────────
 
 def test_count_incoming_empty_dir(tmp_path):
@@ -494,6 +563,20 @@ def test_cmd_list_shows_project(configured, wdg_home, capsys):
     cli.cmd_new(args(name="Shell Co Probe", dir=str(configured)))
     cli.cmd_list(args())
     out = capsys.readouterr().out
+    assert "Shell Co Probe" in out
+
+
+def test_cmd_list_output_has_no_ansi_off_tty(configured, wdg_home, monkeypatch, capsys):
+    # Simulates the colour constants as `_color_enabled()` computes them off a terminal (#499)
+    # — regression test for the bug: piping `watchdog list` to a file used to write raw escape
+    # bytes into it. Patches the already-imported-by-value constants directly rather than
+    # reloading the module (see test_color_enabled_* above for the gating logic itself).
+    for name in ("_BOLD", "_DIM", "_CYAN", "_YELLOW", "_GREEN", "_RESET"):
+        monkeypatch.setattr(_vault, name, "")
+    cli.cmd_new(args(name="Shell Co Probe", dir=str(configured)))
+    cli.cmd_list(args())
+    out = capsys.readouterr().out
+    assert "\x1b[" not in out
     assert "Shell Co Probe" in out
 
 
@@ -4091,8 +4174,12 @@ def test_highlight_snippet_no_terms_returns_unchanged():
 
 
 def test_highlight_snippet_respects_word_boundaries():
-    out = _vault._highlight_snippet("shellfish market", ["shell"])
-    assert _vault._BOLD not in out
+    text = "shellfish market"
+    out = _vault._highlight_snippet(text, ["shell"])
+    # "shell" doesn't match as a whole word inside "shellfish", so nothing is highlighted and
+    # the text passes through unchanged (asserting on the colour constant directly is unreliable
+    # since it may be "" when stdout isn't a terminal — see cmd.base._color_enabled, #499).
+    assert out == text
 
 
 def test_windowed_snippet_returns_full_text_when_short():
@@ -4172,6 +4259,27 @@ def test_search_json_output_has_no_ansi_and_full_text(configured, monkeypatch, c
     payload = json.loads(out)
     assert payload["passages"][0]["text"] == "shell company filed"
     assert "\x1b[" not in out
+
+
+def test_search_json_mode_still_warns_on_stderr_when_fulltext_fails(configured, monkeypatch, capsys):
+    # #499: the exact-match-unavailable diagnostic used to be wrapped in `if not as_json`, so it
+    # vanished entirely under --json. stdout must stay pure JSON; the warning must still reach
+    # the user, on stderr, in every output mode.
+    _register_search_project(configured)
+    monkeypatch.setattr("watchdog.pipeline.embed.index_stats", lambda vault: {"total": 1})
+    monkeypatch.setattr("watchdog.pipeline.embed.search", _stub_search(
+        passage={"filename": "doc.pdf", "page": 1, "text": "shell company filed", "score": 0.5}))
+
+    def _broken_fts(vault, query, **kw):
+        raise RuntimeError("index corrupt")
+    monkeypatch.setattr("watchdog.pipeline.fulltext.search", _broken_fts)
+
+    cli.cmd_search(args(project="test-proj", query="shell", top_n=5,
+                         threshold=None, no_rerank=False, json=True, full=False))
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["passages"][0]["text"] == "shell company filed"
+    assert "exact-match search unavailable" in captured.err
 
 
 # ── cmd_search: exact-match (FTS) section (#109) ───────────────────────────────
