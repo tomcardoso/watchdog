@@ -168,7 +168,7 @@ def classifier_table_md(results: list) -> str:
 def classifier_sweep_table_md(results: list) -> str:
     sweep_results = [r for r in results if r.stage == "classifier-sweep"]
     if any(r.skipped for r in sweep_results):
-        return "Skipped — `benchmarks/classify-corpus/` has no documents yet, see its README."
+        return "Skipped — `benchmarks/corpora/classify/` has no documents yet, see its README."
     lines = ["| Arm (classifier model) | Correct / total |", "|---|---|"]
     for r in sweep_results:
         if not r.ok:
