@@ -73,6 +73,7 @@ from watchdog.cmd.ingest import (
     cmd_preflight,
     cmd_queue_status,
     cmd_requeue,
+    exit_code_for,
 )
 from watchdog.cmd.registry import (
     cmd_entity_index,
@@ -623,7 +624,9 @@ def main() -> None:
               f"{_CYAN}watchdog dig{_RESET}{_DIM} then {_RESET}{_CYAN}watchdog bark{_RESET}"
               f"{_DIM} for manual control.{_RESET}")
 
-    args.func(args)
+    code = exit_code_for(args.func(args))
+    if code:
+        sys.exit(code)
 
 
 if __name__ == "__main__":

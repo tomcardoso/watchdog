@@ -340,7 +340,7 @@ def _run_preprocess(
     run_ingest(vault, workers=workers, chunk_workers=chunk_workers, show_ingest_hint=show_ingest_hint)
 
 
-def cmd_chew(args) -> None:
+def cmd_chew(args) -> dict | None:
     vault = Path(".").resolve()
     if not (vault / ".watchdog").is_dir():
         sys.exit("Error: not inside a Watchdog project folder. cd into your investigation first.")
@@ -364,7 +364,8 @@ def cmd_chew(args) -> None:
     new_queued = _count_queued(vault) - queued_before
     if new_queued > 0:
         _notify("Watchdog", f"{new_queued} file{'s' if new_queued != 1 else ''} chewed — run watchdog dig.")
-        _offer_ingest(args, vault)
+        return _offer_ingest(args, vault)
+    return None
 
 
 def _public_records_warning(n_docs: int) -> str:
@@ -410,8 +411,12 @@ def _confirm_public_records(n_docs: int, *, skip_warning: bool = False) -> bool:
     return interactive.pick(["Acknowledge and ingest", "Cancel"], 0) == 0
 
 
-def _offer_ingest(args, vault: Path) -> None:
-    """After chew, offer to run ingest right away; print the command hint if declined."""
+def _offer_ingest(args, vault: Path) -> dict | None:
+    """After chew, offer to run ingest right away; print the command hint if declined.
+
+    Returns the ingest summary (or None when declined) so callers can propagate it to
+    `exit_code_for` — a rate limit that pauses the run reached from `watchdog` or `watchdog
+    chew` has to surface as exit 2 the same way a bare `watchdog dig` does (#499)."""
     preview = _preview_ingest(vault, args)
     if preview:
         estimate_line, models_line = preview
@@ -419,7 +424,7 @@ def _offer_ingest(args, vault: Path) -> None:
         print(models_line)
     n_docs = _count_queued(vault)
     if _confirm_public_records(n_docs, skip_warning=getattr(args, "skip_warning", False)):
-        cmd_ingest(args, confirm=False, skip_preview=True)
+        return cmd_ingest(args, confirm=False, skip_preview=True)
     else:
         # No leading blank line here — pick()'s own close-out already leaves one (#411).
         # Reached from `watchdog chew` (manual control) or the guided `watchdog` walk (bare) —
@@ -1149,6 +1154,33 @@ def _print_ingest_summary(summary: dict, pipeline_hint: str = "watchdog") -> Non
         print(f"\n  {_DIM}Open a fresh Claude Code session to ask investigation questions.{_RESET}\n")
 
 
+def exit_code_for(result) -> int:
+    """Map a `cmd_extract`/`cmd_finalize` return value to a process exit code (#499 follow-up).
+
+    2 means incomplete but resumable: the run stopped partway, vault state is consistent, and
+    re-running continues the work — a rate limit, a pending batch, documents left cancelled/
+    unstarted, or post-processing (`bark`) that didn't finish. Quarantined/failed documents
+    alone stay 0: the run completed and set them aside for `watchdog requeue`, which is a
+    reported outcome, not an incomplete one. Anything that isn't a dict carrying one of these
+    keys — `None`, or some other return value — is 0, so this is a no-op for every command that
+    doesn't build this summary shape.
+
+    Applied only at the CLI dispatch site (`main()`), never inside `cmd_extract`/`cmd_finalize`
+    themselves — programmatic callers (e.g. the benchmark runner) call those directly and must
+    keep getting the dict back, not a `SystemExit`."""
+    if not isinstance(result, dict):
+        return 0
+    if result.get("rate_limited") or result.get("batch_pending"):
+        return 2
+    if result.get("cancelled") or any(r.get("status") == "cancelled" for r in result.get("results", [])):
+        return 2
+    if result.get("post_ingest_error") or (result.get("post_ingest") or {}).get("error"):
+        return 2
+    if result.get("error") or result.get("briefing_error"):
+        return 2
+    return 0
+
+
 def cmd_extract(args, *, non_interactive: bool = False) -> dict | None:
     """`watchdog dig` (#425, renamed from `extract` in #441/D138) — classify + extract queued
     documents, staging the artifacts, and stop before finalize. A thin wrapper around
@@ -1335,7 +1367,7 @@ def cmd_context(args) -> None:
         print(f"\n  When ready, open Claude Code and run:  {_CYAN}/watchdog-context{_RESET}\n")
 
 
-def cmd_guided(args) -> None:
+def cmd_guided(args) -> dict | None:
     """Bare `watchdog` inside a project: walk the pipeline in order — context → chew → ingest —
     offering each stage that has pending work and falling through to the next when declined (#132).
 
@@ -1373,8 +1405,7 @@ def cmd_guided(args) -> None:
     # 3. Ingest — when the queue has documents ready.
     if _count_queued(vault):
         did_offer = True
-        _offer_ingest(args, vault)
-        return
+        return _offer_ingest(args, vault)
 
     if not did_offer:
         print(f"\n  {_DIM}Nothing pending — drop files in {_RESET}{_CYAN}_INCOMING/{_RESET}{_DIM} "
