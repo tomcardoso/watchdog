@@ -1392,3 +1392,17 @@ def test_preview_extractor_arm_falls_back_to_catalog_projection_when_nothing_mat
     assert est["cost_low"] is not None
     assert est["cost_low"] == est["cost_high"]
     assert est["projected"] is True
+
+
+def test_reference_usage_files_reads_both_the_runs_dir_and_the_legacy_layout(tmp_path):
+    """Runs moved to `benchmarks/runs/<id>/` (#550), but runs archived before that move sit
+    directly under the benchmarks root. Both are valid history for the cost preview, and missing
+    the legacy ones would degrade silently — the preview would just fall back to its static
+    projection with no signal that it had lost every reference it used to have."""
+    legacy = _write_archived_usage(tmp_path, "2026-01-01-0000", "bench-ex-a", "20260101T000000Z",
+                                   [_call()])
+    moved = _write_archived_usage(tmp_path / "runs", "2026-02-02-0000", "bench-ex-b",
+                                  "20260202T000000Z", [_call()])
+    found = cr.reference_usage_files(tmp_path, "deepseek-v4-flash", None, "deepseek")
+    assert set(found) == {legacy, moved}
+

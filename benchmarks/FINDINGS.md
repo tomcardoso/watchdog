@@ -189,7 +189,7 @@ sensitive to the exact floor value — moving it to 91% drops `gpt-luna`/`sonnet
 same winner. It *is* sensitive to gating on must_not_miss rather than facts, and to trusting the
 numeric-anchor slice at all — the judge-pass caveat above still applies on top of this.
 
-**2026-07-29 — the qualitative judge pass (the 140 numeric-anchor-free items) is done, judged in-session by Sonnet rather than a separate paid Opus/Gemini pass — and it surfaced a silent extraction failure in `sonnet-high` that the numeric scorer never caught.** Artifacts: `benchmarks/2026-07-29-judge-qualitative/` (blinded packets, per-document judgments, the label mapping, and the aggregated tally).
+**2026-07-29 — the qualitative judge pass (the 140 numeric-anchor-free items) is done, judged in-session by Sonnet rather than a separate paid Opus/Gemini pass — and it surfaced a silent extraction failure in `sonnet-high` that the numeric scorer never caught.** Artifacts: `benchmarks/qualitative/` (blinded packets, per-document judgments, the label mapping, and the aggregated tally).
 
 **Methodology, and a deliberate deviation from the written protocol.** BENCHMARKING.md/`keys/README.md` call for an Opus judge (fine for the Claude-vs-Claude leg) plus a non-Anthropic cross-check (Gemini) for the `gpt-mini`-vs-Claude legs. Before spending anything, Tom was given a concrete estimate — ~810K input tokens across 12 Opus+Gemini calls, roughly $4-8 — and asked to approve it. His answer was to skip the paid judge calls entirely and have this session (Sonnet) do the judging directly instead: "I'm not concerned about the bias effect that much. Just be honest... keep it blind for them (no information on model name)." So: six subagents (one per corpus document, inheriting Sonnet, no model override) each read that document's unscorable key items plus the three arms' extracted JSON blinded as X/Y/Z — the real arm names were withheld, and the X/Y/Z-to-arm mapping was randomized independently per document — and returned a three-tier verdict (verbatim / credited normalization / ungrounded) per item per arm. No Opus or Gemini API spend occurred. The first document's verdicts were hand-checked against the raw vault files before trusting the rest (#362's required sanity check) — that check is what surfaced the finding below.
 
@@ -252,3 +252,12 @@ Per-document win pattern (hit % of that document's qualitative items): `sonnet-h
   model/effort/backend, never on arm id. BENCHMARKING.md's Step 3 walkthrough is the
   pre-#466 hand-run protocol and keeps its own older vault names throughout — it documents
   a different workflow, not these arms.
+- 2026-08-05: `benchmarks/` was reorganised. The three corpora moved under one parent
+  (`corpus/` → `corpora/extract/`, `classify-corpus/` → `corpora/classify/`,
+  `sdk-check-corpus/` → `corpora/sdk-check/`); the judge pass moved to `qualitative/`; and run
+  directories now land in the gitignored `benchmarks/runs/`. **Individual runs are no longer
+  committed** — a run's figures are only valid against the commit that produced them, and a
+  committed run keeps looking authoritative long after it stops being true (every correction in
+  this list is an instance of that). This file is the durable record. Archived runs sitting
+  directly under `benchmarks/` from before the move are still found by the cost preview, which
+  reads both layouts.

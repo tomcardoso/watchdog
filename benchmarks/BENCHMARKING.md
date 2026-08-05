@@ -81,7 +81,7 @@ pair's run.** Once `sonnet-med-sdk`/`sonnet-med-api` have metered numbers, `sdk_
 section in `benchmark.yaml`) re-runs the same `claude-agent-sdk:sonnet` pin under subscription
 auth, giving a clean three-way read at the same effort level without conflating auth mode and
 harness overhead into one variable. It uses its own small two-document corpus
-(`sdk-check-corpus/`, not the frozen six-document `corpus-v1`) — a harness/backend spot-check
+(`corpora/sdk-check/`, not the frozen six-document `corpus-v1`) — a harness/backend spot-check
 doesn't need the full corpus, and keeping it small matters here since subscription mode spends
 session time, not dollars. Not part of the default `--stages` list — switch `watchdog auth` back
 to subscription, then run it on its own:

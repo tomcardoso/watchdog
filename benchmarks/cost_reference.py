@@ -62,7 +62,13 @@ def reference_usage_files(benchmarks_root: Path, model: str, effort: str | None,
     `finalize_cost_estimate` in place of that function's own vault scan.
     """
     candidates = []
-    for usage_dir in sorted(Path(benchmarks_root).glob("*/artifacts/*/usage")):
+    # Both layouts: runs now land in `runs/<id>/` (#550), but runs archived before that move sit
+    # directly under the benchmarks root and are still perfectly good references. The two patterns
+    # sit at different depths and so never match the same directory.
+    root = Path(benchmarks_root)
+    usage_dirs = sorted([*root.glob("runs/*/artifacts/*/usage"),
+                         *root.glob("*/artifacts/*/usage")])
+    for usage_dir in usage_dirs:
         for uf in sorted(usage_dir.glob("usage-*.json")):
             try:
                 data = json.loads(uf.read_text(encoding="utf-8"))

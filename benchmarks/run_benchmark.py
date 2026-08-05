@@ -559,7 +559,7 @@ def run_classifier_sweep_arm(arm: dict, vault: Path, fixed: dict, expected: dict
 
 def classify_corpus_ready(corpus_dir: Path) -> bool:
     """True iff the classifier-model sweep has a document set to run against — at least one
-    PDF and an `expected.yaml` labelling it. See classify-corpus/README.md."""
+    PDF and an `expected.yaml` labelling it. See corpora/classify/README.md."""
     if not corpus_dir.is_dir():
         return False
     return bool(corpus_documents(corpus_dir)) and (corpus_dir / "expected.yaml").exists()
@@ -653,7 +653,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="comma-separated arm ids to run (default: every arm in the "
                              "selected stages). Lets one comparison run without paying for the "
                              "whole sweep, e.g. --arms sonnet-med-sdk,sonnet-med-api")
-    parser.add_argument("--out", type=Path, default=HERE)
+    parser.add_argument("--out", type=Path, default=HERE / "runs",
+                        help="Where run directories are written (default: benchmarks/runs/, gitignored)")
     parser.add_argument("--vault-root", type=Path, default=None,
                         help="Where benchmark vaults are created (default: benchmarks/.vaults/, "
                              "or benchmark.yaml's 'vault_root:' key) — always a shadow tree, "
@@ -782,7 +783,7 @@ def main(argv: list[str] | None = None) -> int:
                             {"arm": arm, "vault": vault, "fixed": sweep["fixed"],
                              "expected": cc_expected}))
         else:
-            print("\nclassifier sweep skipped — benchmarks/classify-corpus/ has no documents "
+            print("\nclassifier sweep skipped — benchmarks/corpora/classify/ has no documents "
                  "yet, see its README.")
             results.append(ArmResult(arm_id="classifier-sweep", stage="classifier-sweep",
                                      vault=None, ok=True, skipped=True))
