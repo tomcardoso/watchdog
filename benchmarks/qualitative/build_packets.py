@@ -40,6 +40,8 @@ def _parse_args():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--arms", required=True,
                     help="comma-separated extractor_sweep arm ids to judge (blinded as X/Y/Z)")
+    ap.add_argument("--run", help="a kept run directory (benchmarks/runs/<id>/) to judge "
+                                  "instead of the live vaults, which get reset on re-run")
     ap.add_argument("--config", default=os.path.join(BENCH, "benchmark.yaml"))
     ap.add_argument("--out", default=os.path.dirname(os.path.abspath(__file__)),
                     help="where packets and mapping.json are written (default: beside this script)")
@@ -57,10 +59,18 @@ _known = {a["id"] for a in config["extractor_sweep"]["arms"]}
 _unknown = [a for a in _arm_ids if a not in _known]
 if _unknown:
     sys.exit(f"Unknown arm id(s): {', '.join(_unknown)}")
-VAULTS = {a: os.path.join(VAULT_ROOT, f"{_prefix}-{a}") for a in _arm_ids}
+# --run points at a kept run directory; without it, the live (disposable) vaults are used. A
+# vault is reset the next time that arm runs, so judging an older run is only possible from the
+# run directory — which is the normal case once you have run anything twice.
+if args.run:
+    VAULTS = {a: os.path.join(args.run, "artifacts", f"{_prefix}-{a}") for a in _arm_ids}
+else:
+    VAULTS = {a: os.path.join(VAULT_ROOT, f"{_prefix}-{a}") for a in _arm_ids}
 _missing = [v for v in VAULTS.values() if not os.path.isdir(v)]
 if _missing:
-    sys.exit("No vault for: " + ", ".join(_missing) + "\nRun those arms first.")
+    sys.exit("Not found: " + ", ".join(_missing)
+             + ("\nCheck --run names the right run directory." if args.run
+                else "\nRun those arms first, or pass --run <run-dir> to judge a kept run."))
 OUT_DIR = args.out
 os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -74,8 +84,13 @@ def unscorable(items, text_key):
 
 
 def load_extraction(vault_dir, sha256):
-    path = os.path.join(vault_dir, ".watchdog", "extracted", f"{sha256}.json")
-    if not os.path.exists(path):
+    # A run directory's arm folder holds `extracted/` directly; a live vault nests it under
+    # `.watchdog/`. Both are accepted so an in-flight run can be judged before it is archived.
+    for path in (os.path.join(vault_dir, "extracted", f"{sha256}.json"),
+                 os.path.join(vault_dir, ".watchdog", "extracted", f"{sha256}.json")):
+        if os.path.exists(path):
+            break
+    else:
         return None
     with open(path, encoding="utf-8") as f:
         return json.load(f)

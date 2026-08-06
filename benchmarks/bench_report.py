@@ -315,6 +315,27 @@ def run_json(rid: str, results: list, scores: dict, config: dict, prov: dict) ->
     }
 
 
+def _copy_page_text(vault: Path, dest: Path) -> None:
+    """Preserve the chewed page text a run was extracted from, so a judge pass can still be run
+    against this run later.
+
+    Arm vaults are disposable and are reset the next time that arm runs, which used to mean the
+    page text vanished with them — and page text is not a nice-to-have here: it is the grounding
+    reference `verifier_precision.py` grades an added fact against. Without this, running four
+    arms today and re-running them tomorrow silently destroys the ability to judge today's run.
+
+    Stored once per run, not once per arm: every arm in a run extracts the same corpus from the
+    same chew, so the files are identical across arms and keyed by document sha256 already."""
+    src = vault / ".watchdog" / "queue"
+    if not src.is_dir():
+        return
+    dest.mkdir(parents=True, exist_ok=True)
+    for f in src.glob("*.json"):
+        target = dest / f.name
+        if not target.exists():
+            shutil.copy2(f, target)
+
+
 def write_run(out_root: Path, results: list, scores: dict, config: dict,
               provenance: dict | None = None) -> Path:
     # Captured at run *start* by the caller and passed in — a sweep runs for tens of minutes and
@@ -378,5 +399,6 @@ def write_run(out_root: Path, results: list, scores: dict, config: dict,
                 fp = registry_src / f
                 if fp.exists():
                     shutil.copy2(fp, dest / "registry" / f)
+        _copy_page_text(vault, run_dir / "pages")
 
     return run_dir

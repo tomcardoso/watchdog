@@ -28,6 +28,7 @@ import bench_report as br  # noqa: E402
 import cost_reference as cr  # noqa: E402
 import run_benchmark as rb  # noqa: E402
 import score_arms as sa  # noqa: E402
+import verifier_precision as vp  # noqa: E402
 
 import watchdog.cmd.ingest as wd_ingest  # noqa: E402
 import watchdog.interactive as wd_interactive  # noqa: E402
@@ -1609,3 +1610,66 @@ def test_reset_vaults_ignores_a_vault_that_does_not_exist(tmp_path):
     root = tmp_path / ".vaults"
     root.mkdir()
     assert rb.reset_vaults([root / "bench-ex-gone"], root) == []
+
+
+# ── page text survives a vault reset (#554) ────────────────────────────────────
+
+def test_write_run_keeps_the_page_text_the_run_was_extracted_from(tmp_path):
+    """Run four arms today, re-run them tomorrow, then try to judge today's run: the vaults are
+    gone, and with them the page text a verifier-precision judge grades against. The run keeps
+    its own copy so an old run stays judgeable."""
+    vault = tmp_path / "bench-ex-a"
+    (vault / ".watchdog" / "queue").mkdir(parents=True)
+    (vault / ".watchdog" / "queue" / "abc.json").write_text(
+        json.dumps({"pages": [{"page": 1, "markdown": "page one text"}]}))
+    (vault / ".watchdog" / "extracted").mkdir(parents=True)
+    (vault / ".watchdog" / "extracted" / "abc.json").write_text("{}")
+    results = [_arm_result(arm_id="a", vault=str(vault))]
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+
+    run_dir = br.write_run(tmp_path / "out", results, {}, config, {"commit": None})
+
+    kept = json.loads((run_dir / "pages" / "abc.json").read_text())
+    assert kept["pages"][0]["markdown"] == "page one text"
+
+    shutil.rmtree(vault)                               # tomorrow's re-run resets it
+    assert (run_dir / "pages" / "abc.json").exists()   # today's run is still judgeable
+
+
+def test_page_text_is_stored_once_per_run_not_once_per_arm(tmp_path):
+    """Every arm in a run extracts the same corpus from the same chew, so the page text is
+    identical across them — storing it per arm would multiply it by the arm count for nothing."""
+    results = []
+    for name in ("bench-ex-a", "bench-ex-b"):
+        v = tmp_path / name
+        (v / ".watchdog" / "queue").mkdir(parents=True)
+        (v / ".watchdog" / "queue" / "abc.json").write_text(json.dumps({"pages": []}))
+        results.append(_arm_result(arm_id=name, vault=str(v)))
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+
+    run_dir = br.write_run(tmp_path / "out", results, {}, config, {"commit": None})
+    assert [p.name for p in sorted((run_dir / "pages").glob("*.json"))] == ["abc.json"]
+
+
+def test_verifier_precision_reads_a_run_directory(tmp_path):
+    """The judge tooling has to be able to read what write_run kept, or keeping it is pointless."""
+    run = tmp_path / "2026-01-01-0000"
+    arm = run / "artifacts" / "bench-ex-a" / "extracted"
+    arm.mkdir(parents=True)
+    (run / "pages").mkdir()
+    (run / "pages" / "abc.json").write_text(
+        json.dumps({"pages": [{"page": 1, "markdown": "grounding text"}]}))
+
+    extracted_dir, pages_dir = vp._source_dirs(str(run))
+    assert Path(extracted_dir) == arm
+    assert vp.doc_pages(pages_dir, "abc")[0]["text"] == "grounding text"
+
+
+def test_verifier_precision_still_reads_a_live_vault(tmp_path):
+    """An in-flight run should still be judgeable straight from its vault, before it is archived."""
+    vault = tmp_path / "bench-ex-a"
+    (vault / ".watchdog" / "extracted").mkdir(parents=True)
+    (vault / ".watchdog" / "queue").mkdir(parents=True)
+    extracted_dir, pages_dir = vp._source_dirs(str(vault))
+    assert Path(extracted_dir) == vault / ".watchdog" / "extracted"
+    assert Path(pages_dir) == vault / ".watchdog" / "queue"

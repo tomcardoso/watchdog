@@ -61,6 +61,8 @@ because a run's figures are only valid against the commit that produced them.
 
 Read in this order:
 
+0. Keep the run directory. It holds the extractions, the usage, and the page text the run was
+   extracted from — vaults are reset on the next run of that arm, so this is the only copy.
 1. **`errors.log`** — first, always. An arm that rate-limited or failed partway scores as a *bad
    arm*, and nothing in the summary distinguishes the two.
 2. **`REPORT.md`** — the tables, and the code version the run came from.
@@ -90,9 +92,12 @@ because the judgments are opinions and the prompt is what constrains them.
     --arms sonnet-4.6-high,sonnet-4.6-med,gpt-mini-low
 ```
 
-Arms are ids from `benchmark.yaml`; their vaults resolve the same way the runner resolves
-them. It writes one blinded packet per document plus a `mapping.json` that is
-**judge-eyes-only** — never show it to whoever or whatever is judging.
+Arms are ids from `benchmark.yaml`. It writes one blinded packet per document plus a
+`mapping.json` that is **judge-eyes-only** — never show it to whoever or whatever is judging.
+
+**To judge an earlier run, add `--run benchmarks/runs/<run-id>/`.** Without it the live vaults are
+read, and those are reset the next time that arm runs — so once you have run anything twice, the
+run directory is the only place the earlier run still exists.
 
 Rules that make one pass comparable to the next:
 
@@ -138,7 +143,7 @@ mode is triviality and restatement, which no recall scorer can see (D172).
 
 ```
 ~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/verifier_precision.py build \
-    benchmarks/.vaults/bench-ex-<arm> --out <out-dir>
+    benchmarks/runs/<run-id>/artifacts/bench-ex-<arm> --out <out-dir>
 # judge grades each added fact grounded_material / grounded_trivial / unsupported, then:
 ~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/verifier_precision.py aggregate <out-dir>
 ```

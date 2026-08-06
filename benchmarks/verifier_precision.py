@@ -60,11 +60,35 @@ def added_facts(extraction):
             if isinstance(f, dict) and f.get("added_by") == "verify"]
 
 
-def doc_pages(vault, sha256):
+def _source_dirs(target):
+    """(extracted-dir, page-text-dir) for either input shape.
+
+    A live benchmark vault works, but a vault is disposable — it is reset the next time that arm
+    runs, taking its page text with it. A **run directory** (`benchmarks/runs/<id>/`) keeps both
+    for as long as the run is kept, which is what makes a judge pass on last week's run possible
+    at all. Both shapes are accepted so an in-flight run can still be judged straight from its
+    vault."""
+    artifacts = os.path.join(target, "artifacts")
+    if os.path.isdir(artifacts):
+        arm_dirs = sorted(d for d in glob.glob(os.path.join(artifacts, "*"))
+                          if os.path.isdir(os.path.join(d, "extracted")))
+        if len(arm_dirs) != 1:
+            sys.exit(f"{target} holds {len(arm_dirs)} arm(s) — name one arm's directory under "
+                     f"artifacts/ instead, e.g. {os.path.join(artifacts, '<vault-name>')}")
+        return os.path.join(arm_dirs[0], "extracted"), os.path.join(target, "pages")
+    if os.path.isdir(os.path.join(target, "extracted")):
+        # An arm directory inside a run: page text sits one level up, shared across arms.
+        return (os.path.join(target, "extracted"),
+                os.path.join(os.path.dirname(os.path.dirname(target)), "pages"))
+    return (os.path.join(target, ".watchdog", "extracted"),
+            os.path.join(target, ".watchdog", "queue"))
+
+
+def doc_pages(pages_dir, sha256):
     """The document's chewed page text, from the queue descriptor the extractor itself read.
-    Missing (a vault whose queue files were cleared by a commit) is not fatal — the packet is
-    still judgeable against the source PDF, just not self-contained, and `build` says so."""
-    path = os.path.join(vault, ".watchdog", "queue", f"{sha256}.json")
+    Missing is not fatal — the packet is still judgeable against the source PDF, just not
+    self-contained, and `build` says so."""
+    path = os.path.join(pages_dir, f"{sha256}.json")
     if not os.path.exists(path):
         return None
     return [{"page": p.get("page"), "text": p.get("markdown", "")}
@@ -72,9 +96,10 @@ def doc_pages(vault, sha256):
 
 
 def build(vault, out_dir):
+    extracted_dir, pages_dir = _source_dirs(vault)
     os.makedirs(out_dir, exist_ok=True)
     written, total_added, missing_pages = [], 0, []
-    for path in sorted(glob.glob(os.path.join(vault, ".watchdog", "extracted", "*.json"))):
+    for path in sorted(glob.glob(os.path.join(extracted_dir, "*.json"))):
         extraction = _load(path)
         document = extraction.get("document", {})
         sha256 = document.get("sha256") or os.path.basename(path).removesuffix(".json")
@@ -84,7 +109,7 @@ def build(vault, out_dir):
         total_added += len(added)
 
         slug = os.path.splitext(document.get("filename") or sha256[:12])[0]
-        pages = doc_pages(vault, sha256)
+        pages = doc_pages(pages_dir, sha256)
         if pages is None:
             missing_pages.append(slug)
 
@@ -198,7 +223,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
     p_build = sub.add_parser("build", help="write judging packets from a --verify benchmark vault")
-    p_build.add_argument("vault")
+    p_build.add_argument("vault", metavar="TARGET",
+                         help="a benchmark run directory (benchmarks/runs/<id>/), one arm directory inside it, or a live vault")
     p_build.add_argument("--out", required=True, help="directory to write packet-<doc>.json into")
     p_aggregate = sub.add_parser("aggregate", help="tally judgment-<doc>.json files into precision")
     p_aggregate.add_argument("judge_dir")
