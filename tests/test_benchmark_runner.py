@@ -12,6 +12,8 @@ calls) is not unit-tested here, matching `score_arms.py`'s own convention — th
 actually running the tool under the live-approval rule, same as any other real ingest.
 """
 import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -1132,7 +1134,7 @@ def test_keyboard_interrupt_mid_arm_still_writes_a_report(tmp_path, monkeypatch,
     monkeypatch.setattr(rb, "run_extractor_arm", _fake_run_extractor_arm)
     captured = {}
     monkeypatch.setattr(br, "write_run",
-                        lambda out_root, results, scores, config: (
+                        lambda out_root, results, scores, config, provenance=None: (
                             captured.__setitem__("results", results), tmp_path)[1])
 
     rc = rb.main(["--config", str(cfg), "--stages", "extractor"])
@@ -1159,7 +1161,7 @@ def test_unhandled_exception_mid_arm_still_writes_a_report(tmp_path, monkeypatch
     monkeypatch.setattr(rb, "run_extractor_arm", _fake_run_extractor_arm)
     captured = {}
     monkeypatch.setattr(br, "write_run",
-                        lambda out_root, results, scores, config: (
+                        lambda out_root, results, scores, config, provenance=None: (
                             captured.__setitem__("results", results), tmp_path)[1])
 
     rc = rb.main(["--config", str(cfg), "--stages", "extractor"])
@@ -1225,7 +1227,7 @@ def test_sdk_check_arm_relabeled_and_excluded_from_recall_scoring(tmp_path, monk
 
     captured = {}
 
-    def fake_write_run(out_root, results, scores, config):
+    def fake_write_run(out_root, results, scores, config, provenance=None):
         captured["results"] = results
         captured["scores"] = scores
         return tmp_path / "run-out"
@@ -1406,3 +1408,109 @@ def test_reference_usage_files_reads_both_the_runs_dir_and_the_legacy_layout(tmp
     found = cr.reference_usage_files(tmp_path, "deepseek-v4-flash", None, "deepseek")
     assert set(found) == {legacy, moved}
 
+
+
+# ── run provenance and run.json (#550 follow-up) ────────────────────────────────
+
+def test_git_provenance_records_commit_and_dirty_state(tmp_path):
+    """A run's figures are only valid against the code that produced them, so the commit is
+    recorded — and `dirty` alongside it, because with uncommitted changes the hash does not
+    describe what ran."""
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "T"], cwd=tmp_path, check=True)
+    (tmp_path / "a.txt").write_text("one")
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-qm", "first"], cwd=tmp_path, check=True)
+
+    clean = br.git_provenance(tmp_path)
+    assert clean["dirty"] is False
+    assert len(clean["commit"]) == 40
+    assert clean["commit_short"] == clean["commit"][:9]
+
+    (tmp_path / "a.txt").write_text("two")             # uncommitted edit
+    assert br.git_provenance(tmp_path)["dirty"] is True
+
+
+def test_git_provenance_outside_a_repo_records_unknown_not_clean(tmp_path):
+    """"Unknown" and "clean" are different claims and only one of them justifies trusting the
+    commit — a checkout without git must not report a clean tree by default."""
+    prov = br.git_provenance(tmp_path)
+    assert prov["commit"] is None
+    assert prov["dirty"] is None                       # not False
+    assert "unknown" in br._provenance_note(prov)
+
+
+def test_provenance_note_flags_a_dirty_tree_as_unreproducible():
+    note = br._provenance_note({"commit": "a" * 40, "commit_short": "aaaaaaaaa",
+                                "branch": "main", "dirty": True})
+    assert "uncommitted changes" in note and "not reproducible" in note
+
+
+def test_write_run_emits_run_json_with_provenance_and_per_arm_metrics(tmp_path):
+    """#551's composite score needs the run's numbers as data, not as markdown to re-parse."""
+    results = [_arm_result(arm_id="gpt-mini-low", vault=str(tmp_path / "bench-ex-gpt-mini-low"),
+                           usage={"calls": [{"cost_usd": 0.5, "latency_s": 10.0,
+                                             "task": "extract-section", "attempts": 2,
+                                             "backend": "openai"}]})]
+    scores = {"totals": {"facts": {"bench-ex-gpt-mini-low": {"hit": 7, "of": 10}},
+                        "must_not_miss": {"bench-ex-gpt-mini-low": {"hit": 4, "of": 5}}}}
+    config = {"corpus": {"sha256": "corpora/extract/corpus-v1.sha256"},
+              "keys": {"sha256": "keys/keys-v1.sha256"}}
+    prov = {"commit": "b" * 40, "commit_short": "bbbbbbbbb", "branch": "main", "dirty": False,
+            "captured_at": "2026-08-05T00:00:00+00:00"}
+
+    run_dir = br.write_run(tmp_path / "out", results, scores, config, prov)
+    data = json.loads((run_dir / "run.json").read_text())
+
+    assert data["provenance"] == prov
+    assert data["frozen_refs"]["corpus"] == "corpora/extract/corpus-v1.sha256"
+    arm = data["arms"][0]
+    assert arm["arm_id"] == "gpt-mini-low"
+    assert arm["cost_usd"] == pytest.approx(0.5)
+    assert arm["retries"] == 1 and arm["sectioned_calls"] == 1
+    assert arm["facts"] == {"hit": 7, "of": 10}
+    assert arm["must_not_miss"] == {"hit": 4, "of": 5}
+    # The same figures the human report renders — one calculation, two renderings.
+    assert "b" * 9 in (run_dir / "REPORT.md").read_text()
+
+
+def test_run_json_cost_matches_the_report_table(tmp_path):
+    """run.json and REPORT.md must never disagree: they read the same helper, and a consumer
+    that trusts one over the other would be picking a winner between two truths."""
+    results = [_arm_result(arm_id="a", vault=str(tmp_path / "bench-ex-a"),
+                           usage={"calls": [{"cost_usd": 1.25, "latency_s": 3.0,
+                                             "task": "extract", "backend": "openai"}]})]
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    data = br.run_json("rid", results, {}, config, {"commit": None})
+    assert data["arms"][0]["cost_usd"] == pytest.approx(
+        br._usage_totals(results[0].usage)["cost_usd"])
+
+
+def test_qualitative_aggregate_reproduces_the_committed_pass(tmp_path):
+    """The judge protocol is kept tracked so the next pass is comparable to the last. That only
+    holds if the aggregator keeps producing the same numbers from the same judgments, so this
+    pins it against the one committed pass (2026-07-29).
+
+    Denominators come from the answer keys, not from the judgments that came back: a keyed item
+    nobody graded is a miss, not an item that never existed. Counting only what returned shrinks
+    the denominator and inflates every percentage — and it means adding documents or key items
+    silently fails to raise the bar for later runs."""
+    qual = Path(__file__).resolve().parents[1] / "benchmarks" / "qualitative"
+    expected = json.loads((qual / "summary.json").read_text())["summary"]
+    # Run against a copy: aggregate.py writes summary.json/detail_rows.json into the directory it
+    # reads, so pointing it at the repo would have the test overwrite the very artifacts it pins.
+    work = tmp_path / "pass"
+    work.mkdir()
+    for f in qual.glob("*.json"):
+        shutil.copy(f, work / f.name)
+    proc = subprocess.run([sys.executable, str(qual / "aggregate.py"), str(work)],
+                          capture_output=True, text=True, cwd=qual.parents[1])
+    assert proc.returncode == 0, proc.stderr
+    out = proc.stdout
+    for arm, per_arm in expected.items():
+        f, m = per_arm["facts"], per_arm["must_not_miss"]
+        assert f"{arm:14} {f['hit']:>8}/{f['total']:<8}" in out, f"{arm} facts drifted:\n{out}"
+        assert f"{m['hit']:>7}/{m['total']:<7}" in out, f"{arm} must_not_miss drifted:\n{out}"
+    # Every keyed item was graded in this pass, so nothing should be reported as an ungraded miss.
+    assert "had no judgment" not in out

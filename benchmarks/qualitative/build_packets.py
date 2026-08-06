@@ -11,19 +11,26 @@ import os
 import random
 import sys
 
-sys.path.insert(0, "benchmarks")
+sys.path.insert(0, os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from score_arms import anchors_from  # noqa: E402
 
 import yaml
 
-REPO = "/Users/tcardoso/Dropbox/code/Personal/watchdog"
+# Derived from this file's own location, not hardcoded: the whole point of keeping this script
+# tracked is that the next pass runs the same protocol, and a path into one person's home
+# directory means nobody else (and no agent on a fresh checkout) can run it at all.
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 KEYS_DIR = os.path.join(REPO, "benchmarks/keys")
+# Arms under judgment. Edit for the pass being run — these are the three #361/#215 candidates.
+_VAULT_ROOT = os.path.join(REPO, "benchmarks/.vaults")
 VAULTS = {
-    "sonnet-high": os.path.join(REPO, "benchmarks/.vaults/bench-ex-sonnet-high"),
-    "sonnet-med": os.path.join(REPO, "benchmarks/.vaults/bench-ex-sonnet-med"),
-    "gpt-mini": os.path.join(REPO, "benchmarks/.vaults/bench-ex-gpt-mini"),
+    "sonnet-4.6-high": os.path.join(_VAULT_ROOT, "bench-ex-sonnet-4.6-high"),
+    "sonnet-4.6-med": os.path.join(_VAULT_ROOT, "bench-ex-sonnet-4.6-med"),
+    "gpt-mini-low": os.path.join(_VAULT_ROOT, "bench-ex-gpt-mini-low"),
 }
-OUT_DIR = "/private/tmp/claude-502/-Users-tcardoso-Dropbox-code-Personal-watchdog/6237d463-bda5-4ca0-abb0-38603ec5971f/scratchpad/judge"
+# Defaults beside this script (gitignored — see .gitignore); override with argv[1].
+OUT_DIR = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.abspath(__file__))
 
 random.seed(20260729)
 

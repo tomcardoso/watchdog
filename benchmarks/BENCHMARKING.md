@@ -129,6 +129,9 @@ preview first.
 real money and share his subscription session window — `--estimate` first, always, but the
 estimate is a preview, not the ask.
 
+**Running a pass?** Follow [RUNBOOK.md](RUNBOOK.md) — the steps, in order, including the
+pinned judge prompt. This file is the reasoning behind those steps, not the procedure.
+
 ## What we are deciding
 
 Watchdog makes three kinds of model call during ingest. This benchmark picks the right-size default

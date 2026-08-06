@@ -616,6 +616,11 @@ def _arm_idx(i: int, total: int) -> str:
     return f"[{i:>{len(str(total))}}/{total}]"
 
 
+def bench_report_provenance() -> dict:
+    import bench_report
+    return bench_report.git_provenance()
+
+
 def _arm_starting_line(i: int, total: int, label: str) -> str:
     """Printed the moment an arm begins, before its own line in the run loop. A real extraction
     arm can run for several minutes (a 209-page document at high effort), and `_quiet` suppresses
@@ -821,6 +826,9 @@ def main(argv: list[str] | None = None) -> int:
 
     from watchdog.cmd.ingest import _caffeinate
     from watchdog import fixture_capture
+    # Stamped now, not at report time: a sweep runs for tens of minutes and the working
+    # tree can change under it, so this records the code the run actually started against.
+    provenance = bench_report_provenance()
     total = len(plan)
     print(f"\nRunning {total} arm(s)…\n")
     # Auto-captures real responses that hit truncation/malformed-JSON/schema-drift/pagination
@@ -878,7 +886,7 @@ def main(argv: list[str] | None = None) -> int:
     from score_arms import score as score_vaults
     scores = score_vaults(vaults_to_score) if vaults_to_score else {
         "vaults": [], "detail": [], "totals": {"facts": {}, "must_not_miss": {}}, "unscorable": []}
-    out_dir = bench_report.write_run(args.out, results, scores, config)
+    out_dir = bench_report.write_run(args.out, results, scores, config, provenance)
     n_failed = sum(1 for r in results if not r.ok or r.doc_errors)
     tail = f" — {n_failed} arm(s) had failures, see errors.log" if n_failed else ""
     print(f"\nReport written to {out_dir}{tail}")

@@ -261,3 +261,16 @@ Per-document win pattern (hit % of that document's qualitative items): `sonnet-h
   this list is an instance of that). This file is the durable record. Archived runs sitting
   directly under `benchmarks/` from before the move are still found by the cost preview, which
   reads both layouts.
+- 2026-08-05: **the qualitative table above does not reconcile with its own artifacts.** Re-running
+  `qualitative/aggregate.py` over the committed judgments reproduces `summary.json` exactly — 87
+  fact items and 53 `must_not_miss` items, 140 judgments total, which is the "~140 numeric-anchor-
+  free items" the entry describes. But the table reports denominators of 70 and 44 (114 items), so
+  26 judged items are excluded by some rule that was never written down. The numerators match
+  (58 and 30 for `sonnet-high`), so this changes the percentages, not the ranking: `sonnet-high`'s
+  facts figure is 83% against the table's denominator and 67% against the tool's. **Trust neither
+  percentage until the exclusion is identified**; the tool's is at least reproducible from
+  committed files, which the table's is not. The ordering of the three arms is unaffected either
+  way, so the conclusions drawn from it still stand. `aggregate.py` now takes its denominator
+  from the answer keys rather than from the judgments that came back, so a keyed item nobody
+  graded counts as a miss and is reported by id — adding documents or key items raises the bar
+  for later passes automatically, and a shortfall like this one can no longer pass unremarked.

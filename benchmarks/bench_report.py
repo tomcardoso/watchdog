@@ -7,8 +7,9 @@ call involved.
 """
 from __future__ import annotations
 
+import json
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -243,7 +244,82 @@ def _errors_log_text(results: list) -> str:
     return "\n\n".join(blocks)
 
 
-def write_run(out_root: Path, results: list, scores: dict, config: dict) -> Path:
+# ─── run provenance (#550 follow-up) ─────────────────────────────────────────────────────────
+# A run's figures are only valid against the code that produced them, and this has bitten
+# repeatedly: pre-D145 Claude costs were inflated by ~11.2K tokens/call, pre-#547 Gemini costs
+# omitted billed thinking tokens entirely, and the #541 starvation failure was diagnosed for
+# hours before anyone noticed the run predated the fix. Nothing in the run recorded which commit
+# it came from. `dirty` matters as much as the hash: with uncommitted changes in the tree, the
+# commit does not describe what actually ran, and the run should be treated as unreproducible.
+
+
+def git_provenance(repo_dir: Path | None = None) -> dict:
+    """The commit a run was made from, plus whether the working tree was clean. Best-effort —
+    a checkout without git (an export, a container) records nulls rather than failing a run
+    that has already been paid for."""
+    import subprocess
+    cwd = str(repo_dir or Path(__file__).resolve().parent)
+    def _git(*args):
+        try:
+            r = subprocess.run(("git", *args), cwd=cwd, capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return r.stdout.strip() if r.returncode == 0 else None
+    commit = _git("rev-parse", "HEAD")
+    status = _git("status", "--porcelain")
+    return {
+        "commit": commit,
+        "commit_short": commit[:9] if commit else None,
+        "branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
+        # None (not False) when git itself was unavailable — "unknown" and "clean" are different
+        # claims, and only one of them justifies trusting the commit hash above.
+        "dirty": None if status is None else bool(status),
+        "captured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+
+
+def _provenance_note(prov: dict) -> str:
+    if not prov.get("commit"):
+        return "Code version: **unknown** (no git metadata available)."
+    dirty = prov.get("dirty")
+    state = ("with **uncommitted changes** — this run is not reproducible from the commit alone"
+             if dirty else "clean tree" if dirty is False else "tree state unknown")
+    return f"Code version: `{prov['commit_short']}` on `{prov.get('branch') or '?'}` ({state})."
+
+
+def run_json(rid: str, results: list, scores: dict, config: dict, prov: dict) -> dict:
+    """The run's numbers in a machine-readable shape, so a consumer (the composite score index,
+    #551) reads structured data instead of re-parsing REPORT.md's markdown tables. Every figure
+    here is the same one the tables render, from the same helpers — this is a second rendering of
+    the run, never a second calculation of it."""
+    facts = scores.get("totals", {}).get("facts", {})
+    mnm = scores.get("totals", {}).get("must_not_miss", {})
+    arms = []
+    for r in results:
+        vb = Path(r.vault).name if r.vault else r.arm_id
+        u = _usage_totals(r.usage)
+        arms.append({
+            "arm_id": r.arm_id, "stage": r.stage, "vault": vb,
+            "ok": bool(r.ok), "skipped": bool(r.skipped), "cancelled": bool(r.cancelled),
+            "error": r.error, "doc_errors": list(r.doc_errors),
+            "backends": _backends(r.usage) or None,
+            "cost_usd": round(u["cost_usd"], 6), "latency_s": round(u["latency_s"], 3),
+            "retries": u["retries"], "sectioned_calls": u["sectioned_calls"],
+            "facts": facts.get(vb), "must_not_miss": mnm.get(vb),
+        })
+    return {
+        "run_id": rid,
+        "provenance": prov,
+        "frozen_refs": {"corpus": config["corpus"]["sha256"], "keys": config["keys"]["sha256"]},
+        "arms": arms,
+    }
+
+
+def write_run(out_root: Path, results: list, scores: dict, config: dict,
+              provenance: dict | None = None) -> Path:
+    # Captured at run *start* by the caller and passed in — a sweep runs for tens of minutes and
+    # the tree can change under it, so capturing at write time would record the wrong commit.
+    prov = provenance or git_provenance()
     out_root = Path(out_root)
     existing = {p.name for p in out_root.iterdir()} if out_root.is_dir() else set()
     rid = run_id(existing=existing)
@@ -254,6 +330,7 @@ def write_run(out_root: Path, results: list, scores: dict, config: dict) -> Path
     report = [
         f"# Benchmark run {rid}", "",
         "Verified frozen references: " + ", ".join(f"`{v}`" for v in verified), "",
+        _provenance_note(prov), "",
         "## Extractor sweep", "", extractor_table_md(results, scores),
         *_notional_note([r for r in results if r.stage == "extractor"]), "",
         "## SDK backend check", "", sdk_check_table_md(results),
@@ -273,6 +350,9 @@ def write_run(out_root: Path, results: list, scores: dict, config: dict) -> Path
     (run_dir / "REPORT.md").write_text("\n".join(report), encoding="utf-8")
     (run_dir / "docs-summary.md").write_text(docs_summary_md(results, scores), encoding="utf-8")
     (run_dir / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    (run_dir / "run.json").write_text(
+        json.dumps(run_json(rid, results, scores, config, prov), indent=2) + "\n",
+        encoding="utf-8")
 
     errors_text = _errors_log_text(results)
     if errors_text:
