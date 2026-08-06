@@ -82,6 +82,21 @@ def test_explode_propagates_resolved_quote_fields_to_fragments():
     assert "quote_verified" not in frag   # only propagated when explicitly False
 
 
+def test_explode_propagates_quote_spans_pages_to_fragments():
+    """#560: `resolve_quotes` sets `quote_spans_pages` when a quote is only found by joining two
+    adjacent pages — the fan-out must copy it onto the fragment too, same as `quote_found_page`."""
+    extraction = {
+        "document": {"key_facts": [
+            {"fact": "x", "page": 2, "entities": ["a"],
+             "quote": "The joined sentence.", "quote_spans_pages": [2, 3]},
+        ]},
+        "entities": [{"id": "a", "name": "A", "type": "Person"}],
+    }
+    explode_key_facts(extraction)
+    frag = extraction["entities"][0]["evidence_fragments"][0]
+    assert frag["quote_spans_pages"] == [2, 3]
+
+
 def test_explode_propagates_quote_verified_false_to_fragments():
     extraction = {
         "document": {"key_facts": [

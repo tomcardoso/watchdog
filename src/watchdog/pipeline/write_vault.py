@@ -608,14 +608,22 @@ def _quote_verification_note(f: dict) -> str:
     """Suffix for a rendered quote, from the deterministic post-flight check (#267).
 
     ``quote_verified is False`` means the quote couldn't be matched on or near its cited
-    page; ``quote_found_page`` means it was only found (via a normalized match) on a
-    different page than cited. Neither key present means either verification wasn't run
-    (e.g. no page text available) or the quote matched exactly — nothing to flag.
+    page. ``quote_found_page`` means it was only found (via a normalized match) on a
+    different page than cited — checked against `f["page"]` itself, not assumed to still
+    differ, since post-flight corrects the citation to `quote_found_page` when that page is
+    unique across the whole document (#560); after a correction the two agree and there is
+    nothing left to flag. ``quote_spans_pages`` means the source sentence crosses a page break
+    and no single page contains it, so the citation is left as the model wrote it. None of these
+    keys present means either verification wasn't run (e.g. no page text available) or the quote
+    matched exactly — nothing to flag.
     """
     if f.get("quote_verified") is False:
         return " *(quote not found on cited page — verify against source)*"
+    spans_pages = f.get("quote_spans_pages")
+    if spans_pages:
+        return f" *(quote spans pages {spans_pages[0]}–{spans_pages[1]})*"
     found_page = f.get("quote_found_page")
-    if found_page is not None:
+    if found_page is not None and found_page != f.get("page"):
         return f" *(found on p. {found_page}, not the cited page)*"
     return ""
 

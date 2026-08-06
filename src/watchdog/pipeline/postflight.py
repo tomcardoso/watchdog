@@ -312,6 +312,7 @@ def explode_key_facts(extraction: dict) -> None:
         quote = fact.get("quote")
         quote_verified = fact.get("quote_verified")
         quote_found_page = fact.get("quote_found_page")
+        quote_spans_pages = fact.get("quote_spans_pages")
         date = (fact.get("date") or "").strip()
         for eid in fact.get("entities", []) or []:
             ent = by_id.get(eid)
@@ -328,6 +329,8 @@ def explode_key_facts(extraction: dict) -> None:
                 frag["quote_verified"] = quote_verified
             if quote_found_page is not None:
                 frag["quote_found_page"] = quote_found_page
+            if quote_spans_pages:
+                frag["quote_spans_pages"] = quote_spans_pages
             ent.setdefault("evidence_fragments", []).append(frag)
             if date:
                 event = {"date": date, "event": text}
