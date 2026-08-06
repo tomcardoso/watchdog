@@ -18,7 +18,6 @@ Annotation only, never a gate (same posture as the D32 coverage warning): a loca
 be resolved is flagged in the rendered note and logged as a WARN, but never blocks the document.
 """
 
-import html
 import re
 import unicodedata
 
@@ -132,11 +131,7 @@ def verify_quote(page_texts: dict[int, str], page: int | None, quote: str) -> di
 
     for candidate in (page, page - 1, page + 1):
         text = page_texts.get(candidate)
-        # Docling's markdown export HTML-escapes "&" to "&amp;" in some cells/paragraphs even
-        # though markdown doesn't require it; a model transcribing the page naturally reads
-        # that as a plain "&" (#560), so decode before comparing or every quote spanning an
-        # "X & Y" would falsely fail to verify.
-        if text and norm_quote in _normalize(html.unescape(text)):
+        if text and norm_quote in _normalize(text):
             result = {"verified": True}
             if candidate != page:
                 result["found_page"] = candidate
@@ -358,12 +353,6 @@ def resolve_quote(page_texts: dict[int, str], page: int | None, locator: str) ->
         text = page_texts.get(candidate)
         if not text:
             continue
-        # Decode Docling's HTML-escaped "&amp;" (etc.) before matching or expanding — a model
-        # transcribing the page naturally writes the decoded "&", so the raw markdown's escaped
-        # form would otherwise never match (#560). Unescaping `text` itself, not just the
-        # comparison, keeps it consistent with `idx_map`'s origin indices and means the rendered
-        # quote below is clean too, rather than showing "&amp;" to a reader.
-        text = html.unescape(text)
         norm_text, idx_map = _normalize_with_map(text)
         match = _find_match(norm_text, idx_map, norm_locator)
         if match is None:

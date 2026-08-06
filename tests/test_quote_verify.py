@@ -250,17 +250,6 @@ def test_resolve_quote_adjacent_page_resolves_with_found_page():
     assert result["quote"] == "Total revenue for the year was strong."
 
 
-def test_resolve_quote_decodes_html_entities_before_matching():
-    """Docling HTML-escapes "&" to "&amp;" in some cells/paragraphs even though markdown
-    doesn't require it (#560) — a model transcribing the page naturally writes the decoded "&",
-    so the raw escaped form must not block the match, and the rendered quote must come back
-    clean rather than showing "&amp;" to a reader."""
-    pages = {3: "Ernst &amp; Young Inc. is hereby appointed pursuant to the CCAA as the Monitor."}
-    result = resolve_quote(pages, 3, "Ernst & Young Inc. is hereby appointed")
-    assert result["quote"] == "Ernst & Young Inc. is hereby appointed pursuant to the CCAA as the Monitor."
-    assert "verified" not in result   # resolved cleanly, not flagged unverified
-
-
 def test_resolve_quote_whitespace_blind_fallback_recovers_ocr_dropped_spaces():
     """OCR/table extraction can fuse or drop a word boundary ("DEFERREDCONTRIBUTIONS ANDNET
     ASSETS" for "DEFERRED CONTRIBUTIONS AND NET ASSETS", #560) — the model transcribes the
