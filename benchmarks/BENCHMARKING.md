@@ -107,16 +107,24 @@ Override the location with `--vault-root PATH` or a top-level `vault_root:` key 
 `benchmark.yaml` (relative paths resolve against the config file, like `corpus.dir`). The shadow
 root is gitignored; delete it any time with `bench clean` (below) or `rm -rf benchmarks/.vaults`.
 
-**The `bench` wrapper (dev convenience, not shipped).** `benchmarks/bench` is a thin shell script
-around `run_benchmark.py` so you don't have to remember the pipx venv's interpreter path or the
-full flag set every time:
+**The `bench` wrapper (dev convenience, not shipped).** `benchmarks/bench` fronts every step of a
+pass — the runner, the scorers and the judge tooling — so you don't have to remember the pipx
+venv's interpreter path or where each script lives. `bench -h` is the full list:
 
 ```
 benchmarks/bench estimate --stages extractor --arms haiku,gemini-flash-low   # --estimate-only
 benchmarks/bench run --stages extractor --arms haiku                         # the real thing
 benchmarks/bench arms                                                        # list arm ids per stage
+benchmarks/bench runs                                                        # kept runs + their commit
+benchmarks/bench score <vault> ...                                           # numeric-anchor recall
+benchmarks/bench packets --arms a,b,c                                        # qualitative packets
+benchmarks/bench judge                                                       # tally judgments
+benchmarks/bench precision build <run> --arm <id> --out <dir>                # verifier precision
 benchmarks/bench clean                                                       # wipe the shadow vault root
 ```
+
+`clean` reclaims disk; it is no longer needed to make a re-run possible, since stale arm vaults
+are reset at the start of a run. [RUNBOOK.md](RUNBOOK.md) is the step-by-step.
 
 Run `benchmarks/bench --help` for the full list. It is dev tooling for whoever is running the
 benchmark, not part of the shipped `watchdog` CLI — see `docs/benchmarks.md` for that boundary.

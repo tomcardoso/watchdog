@@ -7,6 +7,9 @@ file makes it.
 For *why* any of it is shaped this way, see [BENCHMARKING.md](BENCHMARKING.md). For what past runs
 measured, see [FINDINGS.md](FINDINGS.md). This file is the procedure only.
 
+Everything here goes through `benchmarks/bench` — `bench -h` lists the commands, and
+`bench runs` lists what is already on disk with the commit each run came from.
+
 **Never start a real run without the operator's explicit go-ahead.** Every run spends real money
 or real subscription session time. `--estimate-only` is free and always safe.
 
@@ -30,8 +33,7 @@ The paired comparisons are run **on their own**, never inside a full sweep.
 
 ```
 git status --short                 # must be clean — see step 6
-~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/run_benchmark.py \
-    --stages extractor --arms <ids> --estimate-only
+benchmarks/bench estimate --stages extractor --arms <ids>
 ```
 
 Check before spending:
@@ -50,8 +52,7 @@ Check before spending:
 ## 3. Run
 
 ```
-~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/run_benchmark.py \
-    --stages extractor --arms <ids>
+benchmarks/bench run --stages extractor --arms <ids>
 ```
 
 One confirmation covers the whole matrix. Output lands in `benchmarks/runs/<run-id>/` — gitignored,
@@ -61,8 +62,9 @@ because a run's figures are only valid against the commit that produced them.
 
 Read in this order:
 
-0. Keep the run directory. It holds the extractions, the usage, and the page text the run was
-   extracted from — vaults are reset on the next run of that arm, so this is the only copy.
+0. `bench runs` to find it. Keep the directory: it holds the extractions, the usage, and the
+   page text the run was extracted from. Vaults are reset on the next run of that arm, so this
+   is the only copy.
 1. **`errors.log`** — first, always. An arm that rate-limited or failed partway scores as a *bad
    arm*, and nothing in the summary distinguishes the two.
 2. **`REPORT.md`** — the tables, and the code version the run came from.
@@ -75,7 +77,7 @@ extracted gets **credited from its siblings** — a silent failure that looks li
 ## 5. Score
 
 ```
-~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/score_arms.py <vault> [<vault> ...]
+benchmarks/bench score <vault> [<vault> ...]
 ```
 
 Use the **sub-item** aggregation, not the binary per-item count, which flatters cheap arms. This
@@ -88,8 +90,7 @@ qualitative pass below; the two slices have disagreed on the winner before.
 because the judgments are opinions and the prompt is what constrains them.
 
 ```
-~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/qualitative/build_packets.py \
-    --arms sonnet-4.6-high,sonnet-4.6-med,gpt-mini-low
+benchmarks/bench packets --arms sonnet-4.6-high,sonnet-4.6-med,gpt-mini-low
 ```
 
 Arms are ids from `benchmark.yaml`. It writes one blinded packet per document plus a
@@ -131,7 +132,7 @@ Give the judge exactly this prompt, with nothing added:
 Judgments go in `judgment-<document>.json` beside each packet, then:
 
 ```
-~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/qualitative/aggregate.py [out-dir]
+benchmarks/bench judge [out-dir]
 ```
 
 `verbatim` + `credited` count as a hit; `ungrounded` does not.
@@ -142,10 +143,10 @@ Recall alone cannot settle the verification pass, because its additions are *tru
 mode is triviality and restatement, which no recall scorer can see (D172).
 
 ```
-~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/verifier_precision.py build \
-    benchmarks/runs/<run-id> --arm gpt-mini-low-verify --out <out-dir>
+benchmarks/bench precision build benchmarks/runs/<run-id> \
+    --arm gpt-mini-low-verify --out <out-dir>
 # judge grades each added fact grounded_material / grounded_trivial / unsupported, then:
-~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/verifier_precision.py aggregate <out-dir>
+benchmarks/bench precision aggregate <out-dir>
 ```
 
 Read the `unsupported` rows first. An unsupported fact is a different and worse failure than a

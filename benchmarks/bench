@@ -9,6 +9,8 @@ RUNNER="$HERE/run_benchmark.py"
 VENV_PY="$HOME/.local/pipx/venvs/watchdog-intel/bin/python"
 # Default shadow vault root (run_benchmark.py's own default) — `clean` targets this unless
 # the config or --vault-root sends vaults somewhere else, in which case remove that path by hand.
+# Stale vaults are reset automatically at the start of a run, so this is for reclaiming disk
+# rather than for unblocking a re-run.
 VAULT_ROOT="$HERE/.vaults"
 
 usage() {
@@ -19,10 +21,19 @@ Commands:
   estimate [--arms ID,...] [--stages S,...]   Free cost preview (--estimate-only)
   run      [--arms ID,...] [--stages S,...]   The real run — spends money, asks first
   arms                                        List arm ids from benchmark.yaml, by stage
+  runs                                        List kept runs, newest first, with their commit
+  score    <vault|dir> [...]                  Numeric-anchor recall scoring
+  packets  --arms ID,... [--run DIR]          Build blinded qualitative judging packets
+  judge    [DIR]                              Tally judgments into per-arm recall
+  precision build|aggregate [...]             Verifier-added-fact precision (verify arms only)
   clean                                       Remove the shadow vault root (asks first)
 
-Extra arguments are passed straight through to run_benchmark.py, e.g.:
+Extra arguments are passed straight through, e.g.:
   bench estimate --stages extractor --arms haiku,gemini-flash-lite
+  bench precision build benchmarks/runs/<id> --arm gpt-mini-low-verify --out /tmp/j
+
+Stale arm vaults are reset automatically at the start of a run (after the confirmation), so
+`clean` is for reclaiming disk, not for making a re-run possible. See RUNBOOK.md.
 
   -h, --help   Show this help
 USAGE
@@ -48,6 +59,52 @@ case "$cmd" in
         ;;
     run)
         exec "$VENV_PY" "$RUNNER" "$@"
+        ;;
+    runs)
+        exec "$VENV_PY" - "$HERE/runs" <<'PYEOF'
+# Kept runs, newest first, with the commit each came from — runs are gitignored, so this is the
+# only index of what is on disk. A run whose tree was dirty is flagged: its commit does not
+# describe what actually ran.
+import json
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+if not root.is_dir():
+    print(f"No runs yet ({root} does not exist).")
+    raise SystemExit(0)
+rows = sorted((d for d in root.iterdir() if d.is_dir()), reverse=True)
+if not rows:
+    print(f"No runs yet in {root}.")
+    raise SystemExit(0)
+for d in rows:
+    meta = d / "run.json"
+    note = ""
+    if meta.exists():
+        try:
+            prov = json.loads(meta.read_text()).get("provenance") or {}
+        except (OSError, json.JSONDecodeError):
+            prov = {}
+        commit = prov.get("commit_short") or "unknown"
+        dirty = prov.get("dirty")
+        state = " DIRTY" if dirty else "" if dirty is False else " (tree state unknown)"
+        note = f"  {commit}{state}"
+    else:
+        note = "  (pre-provenance run)"
+    print(f"  {d.name}{note}")
+PYEOF
+        ;;
+    score)
+        exec "$VENV_PY" "$HERE/score_arms.py" "$@"
+        ;;
+    packets)
+        exec "$VENV_PY" "$HERE/qualitative/build_packets.py" "$@"
+        ;;
+    judge)
+        exec "$VENV_PY" "$HERE/qualitative/aggregate.py" "$@"
+        ;;
+    precision)
+        exec "$VENV_PY" "$HERE/verifier_precision.py" "$@"
         ;;
     arms)
         exec "$VENV_PY" - "$HERE/benchmark.yaml" <<'PYEOF'
