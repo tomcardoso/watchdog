@@ -28,6 +28,15 @@ _WORD_CHAR_RE = re.compile(r"\w", re.UNICODE)
 _SPACE_CHAR_RE = re.compile(r"\s", re.UNICODE)
 _SENTENCE_END_CHARS = ".!?"
 
+# A lone page-number stamp ("- 3 -", "9") on its own line at the very start or end of a page's
+# text — chew furniture, not sentence content. Left alone it sits literally between two halves
+# of a page-spanning sentence when they're joined for matching (#560: "...application for" +
+# "3" + "a transfer..."), breaking the very match the join exists to recover. Requires nothing
+# but whitespace/dashes around the digits on that line, so a genuine numbered clause ("1. Some
+# clause...") is never touched — real content always has more than a number on the line.
+_PAGE_FURNITURE_LEAD_RE = re.compile(r"^[\s\-–—]*\d{1,4}[\s\-–—]*\n+")
+_PAGE_FURNITURE_TAIL_RE = re.compile(r"\n+[\s\-–—]*\d{1,4}[\s\-–—]*$")
+
 # A next line opening with one of these is a new markdown block (table row, heading, blockquote,
 # list bullet), never the continuation of a wrapped sentence.
 _BLOCK_MARKER_RE = re.compile(r"[|#>*+\-]|\d+[.)]")
@@ -325,6 +334,17 @@ def _find_match(norm_text: str, idx_map: list[int], norm_locator: str) -> tuple[
     return sp_idx[start], sp_idx[end - 1] + 1, sp_count
 
 
+def _sanity_checked_quote(norm_locator: str, quote: str, locator: str) -> str:
+    """`_expand_sentence`'s output should still contain the matched locator — checked
+    space-insensitively too, since a whitespace-blind match (`_find_match`) can legitimately
+    expand to a quote that still carries the source's own missing/fused word boundary (#560).
+    Falls back to the raw locator if expansion produced something unrelated to the match."""
+    norm_quote = _normalize(quote)
+    if norm_locator in norm_quote or norm_locator.replace(" ", "") in norm_quote.replace(" ", ""):
+        return quote
+    return locator
+
+
 def resolve_quote(page_texts: dict[int, str], page: int | None, locator: str) -> dict:
     """Resolve a model-emitted ``quote_locator`` — the first several words of a source
     sentence — against the real page text, and expand it to the full sentence.
@@ -336,7 +356,17 @@ def resolve_quote(page_texts: dict[int, str], page: int | None, locator: str) ->
     drift). The first candidate page whose normalized text contains the normalized locator wins;
     if the locator occurs more than once on that page, the first occurrence is used and
     ``"ambiguous": True`` (plus ``"occurrences"``) is set. ``"found_page"`` is set when the
-    winning candidate isn't the cited page. When no candidate matches at all, returns
+    winning candidate isn't the cited page.
+
+    If none of the three single-page candidates match at all, falls back to joining two
+    adjacent pages' text into one and searching that (#560) — a hard-wrapped sentence split
+    across a page break can never be found on either page alone, since each page's text is
+    searched independently. Tried in natural reading order (the cited page's tail continuing
+    into the next page), then the mirror direction, each only when both halves are on hand. A
+    match found this way sets ``"spans_pages": (a, b)`` instead of ``"found_page"`` — the quote
+    genuinely isn't contained by any single page, so nothing here claims one.
+
+    When no candidate matches at all — single-page or joined — returns
     ``{"quote": locator, "verified": False}``.
     """
     locator = (locator or "").strip()
@@ -359,14 +389,7 @@ def resolve_quote(page_texts: dict[int, str], page: int | None, locator: str) ->
             continue
         a, b, count = match
 
-        quote = _expand_sentence(text, a, b)
-        norm_quote = _normalize(quote)
-        # Sanity guard: the expansion logic produced something unrelated to the match. Checked
-        # space-insensitively too — a whitespace-blind match (above) can legitimately expand to
-        # a quote that still carries the source's own missing/fused word boundary, which would
-        # otherwise trip this guard on the very case it exists to recover (#560).
-        if norm_locator not in norm_quote and norm_locator.replace(" ", "") not in norm_quote.replace(" ", ""):
-            quote = locator
+        quote = _sanity_checked_quote(norm_locator, _expand_sentence(text, a, b), locator)
 
         result = {"quote": quote}
         if candidate != page:
@@ -376,14 +399,57 @@ def resolve_quote(page_texts: dict[int, str], page: int | None, locator: str) ->
             result["occurrences"] = count
         return result
 
+    for a_page, b_page in ((page, page + 1), (page - 1, page)):
+        text_a, text_b = page_texts.get(a_page), page_texts.get(b_page)
+        if not text_a or not text_b:
+            continue
+        # Strip a lone page-number stamp right at the join point — left in, it would sit
+        # between the two true halves of the sentence. A single "\n" for the join itself, not a
+        # blank line: `_is_soft_wrap` treats more than one embedded newline as a hard block
+        # break, so sentence expansion scans straight through this exactly as it already does
+        # for a same-page hard-wrapped line.
+        text_a_clean = _PAGE_FURNITURE_TAIL_RE.sub("", text_a.rstrip())
+        text_b_clean = _PAGE_FURNITURE_LEAD_RE.sub("", text_b.lstrip())
+        joined = text_a_clean + "\n" + text_b_clean
+        norm_joined, idx_map_j = _normalize_with_map(joined)
+        match = _find_match(norm_joined, idx_map_j, norm_locator)
+        if match is None:
+            continue
+        a, b, count = match
+
+        quote = _sanity_checked_quote(norm_locator, _expand_sentence(joined, a, b), locator)
+
+        result = {"quote": quote, "spans_pages": (a_page, b_page)}
+        if count > 1:
+            result["ambiguous"] = True
+            result["occurrences"] = count
+        return result
+
     return {"quote": locator, "verified": False}
+
+
+def _document_occurrence_count(page_texts: dict[int, str], locator: str) -> int:
+    """How many times `locator` occurs across the WHOLE document, not just the ±1 window
+    `resolve_quote` checks (#560). `resolve_quote` itself deliberately stays scoped to that
+    narrow window for ordinary quote resolution — a document-wide search there would flag too
+    many harmless recurring labels as unsafe to even display. But correcting `fact["page"]`
+    itself, not merely resolving a display quote, is a stronger action and needs a stronger
+    guarantee than "unique among the three pages we happened to check": a locator unique within
+    that window could still collide with an unrelated occurrence on page 40 of a 70-page
+    document that resolve_quote never looks at.
+    """
+    norm_locator = _normalize(locator)
+    if not norm_locator:
+        return 0
+    return sum(_normalize(text).count(norm_locator) for text in page_texts.values() if text)
 
 
 def resolve_quotes(extraction: dict, page_texts: dict[int, str]) -> list[str]:
     """Resolve every ``document.key_facts[].quote_locator`` into a full ``quote`` (#529), and
     verify any legacy ``quote`` (a pre-#529 extraction re-run through post-flight with no
     locator). Mutates ``extraction`` in place; returns a WARN line per locator that couldn't be
-    resolved and per ambiguous (page-collided) match.
+    resolved, per ambiguous (page-collided) match, per page-spanning match, and per corrected or
+    uncorrectable page citation.
 
     Runs BEFORE `explode_key_facts` — the fan-out copies an already-resolved ``quote`` onto
     each entity's fanned-out evidence fragment, so it no longer walks
@@ -398,31 +464,51 @@ def resolve_quotes(extraction: dict, page_texts: dict[int, str]) -> list[str]:
                 fact["quote"] = result["quote"]
             if result.get("found_page") is not None:
                 fact["quote_found_page"] = result["found_page"]
+            if result.get("spans_pages"):
+                fact["quote_spans_pages"] = list(result["spans_pages"])
+
             if result.get("verified") is False:
                 fact["quote_verified"] = False
                 warnings.append(
                     f"document.key_facts[{i}].quote_locator not found on page {fact.get('page')} "
                     f"(or adjacent pages) — flagged as unverified: {locator!r}"
                 )
-            if result.get("ambiguous"):
+            elif result.get("spans_pages"):
+                a_page, b_page = result["spans_pages"]
+                warnings.append(
+                    f"document.key_facts[{i}].quote_locator only resolved by joining pages "
+                    f"{a_page} and {b_page} — the source sentence crosses a page break, so no "
+                    f"single page fully contains it: {locator!r}"
+                )
+            elif result.get("ambiguous"):
                 warnings.append(
                     f"document.key_facts[{i}].quote_locator matched {result['occurrences']} times "
                     f"on page {result.get('found_page', fact.get('page'))} — used the first match: "
                     f"{locator!r}"
                 )
             elif result.get("found_page") is not None:
-                # A single, unambiguous match — but not on the page the model cited (#560). This
-                # used to be silent unless also ambiguous: `fact["page"]` (what every downstream
-                # reader — the document note, entity evidence, timeline — actually displays)
-                # still carries the model's original, wrong citation even though the quote text
-                # itself was quietly resolved from the real page. Warn rather than silently
-                # correct: the citation may be genuinely off by one (a real, if minor, model
-                # error worth a reporter's attention), not a matching artifact to paper over.
-                warnings.append(
-                    f"document.key_facts[{i}].quote_locator was cited to page {fact.get('page')} "
-                    f"but only found on page {result['found_page']} — the fact's page citation "
-                    f"may be off by one: {locator!r}"
-                )
+                # A single match within the ±1 window — but not on the page the model cited
+                # (#560). Trusting `fact["page"]` to it needs more than "unique among the three
+                # pages resolve_quote checked": confirm it's unique across the WHOLE document
+                # before correcting the citation a reporter will actually see, rather than just
+                # the quote text resolve_quote already resolves regardless.
+                if _document_occurrence_count(page_texts, locator) == 1:
+                    old_page = fact.get("page")
+                    fact["page"] = result["found_page"]
+                    warnings.append(
+                        f"document.key_facts[{i}].page corrected from {old_page} to "
+                        f"{result['found_page']} — quote_locator was cited to page {old_page} "
+                        f"but uniquely found (document-wide) on page {result['found_page']}: "
+                        f"{locator!r}"
+                    )
+                else:
+                    warnings.append(
+                        f"document.key_facts[{i}].quote_locator was cited to page "
+                        f"{fact.get('page')} but only found on page {result['found_page']} — "
+                        f"the fact's page citation may be off by one, but the phrase also "
+                        f"recurs elsewhere in the document, so it was not auto-corrected: "
+                        f"{locator!r}"
+                    )
             continue
 
         quote = (fact.get("quote") or "").strip()
