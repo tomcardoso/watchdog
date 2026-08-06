@@ -43,7 +43,9 @@ Check before spending:
   backend and auth mode per arm — read it.
 - **The estimate is plausible.** For a model with no post-#547 history the preview falls back to a
   static projection and says so. Treat that number as an order of magnitude, not a budget.
-- **Target vaults are fresh.** The runner refuses to start on stale ones and names the `rm -rf`.
+- **Read the reset list.** Vaults holding an earlier run's results are named before the
+  prompt and reset when you confirm. Nothing is deleted if you decline, and
+  `--estimate-only` never deletes anything.
 
 ## 3. Run
 
@@ -84,12 +86,13 @@ qualitative pass below; the two slices have disagreed on the winner before.
 because the judgments are opinions and the prompt is what constrains them.
 
 ```
-~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/qualitative/build_packets.py [out-dir]
+~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/qualitative/build_packets.py \
+    --arms sonnet-4.6-high,sonnet-4.6-med,gpt-mini-low
 ```
 
-Edit `VAULTS` in that script first so it names the arms under judgment. It writes one blinded
-packet per document plus a `mapping.json` that is **judge-eyes-only** — never show it to whoever
-or whatever is judging.
+Arms are ids from `benchmark.yaml`; their vaults resolve the same way the runner resolves
+them. It writes one blinded packet per document plus a `mapping.json` that is
+**judge-eyes-only** — never show it to whoever or whatever is judging.
 
 Rules that make one pass comparable to the next:
 

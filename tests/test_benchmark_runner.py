@@ -228,28 +228,54 @@ def test_planned_arm_vaults_respects_arms_filter_and_unselected_stages(tmp_path)
     assert vaults == [tmp_path / "bench-ex-a"]   # b excluded, finalizer stage not requested
 
 
-def test_main_refuses_the_whole_run_when_one_target_vault_is_stale(tmp_path, monkeypatch, capsys):
-    """A stale vault on arm 3 must stop the run before arm 1 or 2 ever gets a preview printed or
-    a dollar spent — not be discovered mid-sweep after earlier arms already ran (#494)."""
+def test_main_lists_a_stale_vault_before_the_prompt_and_resets_it_after(tmp_path, monkeypatch,
+                                                                        capsys):
+    """#494 made a stale vault a hard refusal, which was safe but meant hand-running `rm -rf`
+    before every re-run. It is reset automatically now — but only after the operator confirms,
+    and only after being named in the same breath as the cost, because a recursive delete must
+    never be a surprise consequence of agreeing to spend money."""
     cfg = _matrix_config(tmp_path)   # sonnet-med-sdk, sonnet-med-api, haiku
     monkeypatch.setattr(rb, "verify_freeze", lambda *a, **k: None)
     monkeypatch.setattr(rb, "corpus_documents", lambda d: [Path("a.pdf")])
-    stale_vault = tmp_path / "bench-ex3-haiku"
+    root = tmp_path / ".vaults"
+    stale_vault = root / "bench-ex3-haiku"
     (stale_vault / ".watchdog" / "queue").mkdir(parents=True)
     (stale_vault / ".watchdog" / "queue" / "abc.json").write_text("{}")
-    monkeypatch.setattr(rb, "arm_vault", lambda prefix, aid, root: tmp_path / f"{prefix}-{aid}")
+    monkeypatch.setattr(rb, "arm_vault", lambda prefix, aid, r: root / f"{prefix}-{aid}")
+    monkeypatch.setattr(rb, "vault_root", lambda *a, **k: root)
+    monkeypatch.setattr(rb, "ensure_master_vault", lambda *a, **k: tmp_path / "master")
+    monkeypatch.setattr(rb, "seed_arm_vault", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "preview_extractor_arm", lambda *a, **k: {"cost_low": 0.0,
+                                                                     "cost_high": 0.0})
+    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: False)   # decline
 
-    def _boom(*a, **k):
-        raise AssertionError("must not reach preview/confirm once a stale vault is found")
-    monkeypatch.setattr(rb, "ensure_master_vault", _boom)
-    monkeypatch.setattr(rb, "preview_extractor_arm", _boom)
-    monkeypatch.setattr(wd_interactive, "confirm", _boom)
-
-    with pytest.raises(SystemExit, match="aren't fresh"):
-        rb.main(["--config", str(cfg), "--stages", "extractor"])
+    rb.main(["--config", str(cfg), "--stages", "extractor"])
 
     out = capsys.readouterr().out
-    assert "extractor:sonnet-med-sdk" not in out
+    assert "will be RESET" in out
+    assert "bench-ex3-haiku" in out
+    # Declined, so nothing was deleted — the reset is on the far side of the confirmation.
+    assert stale_vault.exists()
+
+
+def test_main_does_not_reset_anything_on_an_estimate_only_run(tmp_path, monkeypatch):
+    """`--estimate-only` is the free, always-safe path; it must stay side-effect free."""
+    cfg = _matrix_config(tmp_path)
+    monkeypatch.setattr(rb, "verify_freeze", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "corpus_documents", lambda d: [Path("a.pdf")])
+    root = tmp_path / ".vaults"
+    stale_vault = root / "bench-ex3-haiku"
+    (stale_vault / ".watchdog" / "extracted").mkdir(parents=True)
+    (stale_vault / ".watchdog" / "extracted" / "a.json").write_text("{}")
+    monkeypatch.setattr(rb, "arm_vault", lambda prefix, aid, r: root / f"{prefix}-{aid}")
+    monkeypatch.setattr(rb, "vault_root", lambda *a, **k: root)
+    monkeypatch.setattr(rb, "ensure_master_vault", lambda *a, **k: tmp_path / "master")
+    monkeypatch.setattr(rb, "seed_arm_vault", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "preview_extractor_arm", lambda *a, **k: {"cost_low": 0.0,
+                                                                     "cost_high": 0.0})
+
+    rb.main(["--config", str(cfg), "--stages", "extractor", "--estimate-only"])
+    assert stale_vault.exists()
 
 
 # ── vault_root: shadow vault isolation (#475 follow-up, D146) ──────────────────
@@ -1514,3 +1540,72 @@ def test_qualitative_aggregate_reproduces_the_committed_pass(tmp_path):
         assert f"{m['hit']:>7}/{m['total']:<7}" in out, f"{arm} must_not_miss drifted:\n{out}"
     # Every keyed item was graded in this pass, so nothing should be reported as an ungraded miss.
     assert "had no judgment" not in out
+
+
+# ── vault auto-reset (#494 follow-up) ───────────────────────────────────────────
+
+def _fake_vault(root: Path, name: str) -> Path:
+    v = root / name
+    (v / ".watchdog" / "extracted").mkdir(parents=True)
+    (v / ".watchdog" / "extracted" / "a.json").write_text("{}")
+    return v
+
+
+def test_reset_vaults_clears_stale_vaults_under_the_root(tmp_path):
+    """Re-running an arm used to mean hand-running `rm -rf` first. The runner resets the vault
+    itself now — after the operator confirms, never before."""
+    root = tmp_path / ".vaults"
+    v1, v2 = _fake_vault(root, "bench-ex-a"), _fake_vault(root, "bench-ex-b")
+    assert rb.reset_vaults([v1, v2], root) == [v1.resolve(), v2.resolve()]
+    assert not v1.exists() and not v2.exists()
+
+
+def test_reset_vaults_refuses_a_path_outside_the_vault_root(tmp_path):
+    """The guard that matters: this is a recursive delete of paths built from config, and the
+    config could name anything. A target outside the disposable shadow tree raises rather than
+    being skipped — config and code disagreeing about what is disposable is a stop condition."""
+    root = tmp_path / ".vaults"
+    root.mkdir()
+    outside = _fake_vault(tmp_path / "real-investigations", "important")
+    with pytest.raises(RuntimeError, match="outside the benchmark vault root"):
+        rb.reset_vaults([outside], root)
+    assert outside.exists()
+
+
+def test_reset_vaults_refuses_the_root_itself(tmp_path):
+    root = tmp_path / ".vaults"
+    (root / ".watchdog").mkdir(parents=True)
+    with pytest.raises(RuntimeError, match="outside the benchmark vault root"):
+        rb.reset_vaults([root], root)
+    assert root.exists()
+
+
+def test_reset_vaults_refuses_a_directory_that_is_not_a_vault(tmp_path):
+    """No `.watchdog/` means this isn't a vault, whatever the config called it — deleting it
+    would be destroying something the benchmark never created."""
+    root = tmp_path / ".vaults"
+    stray = root / "notes"
+    stray.mkdir(parents=True)
+    (stray / "keep.txt").write_text("hand-written")
+    with pytest.raises(RuntimeError, match="not a vault"):
+        rb.reset_vaults([stray], root)
+    assert (stray / "keep.txt").exists()
+
+
+def test_reset_vaults_refuses_a_symlink(tmp_path):
+    """A symlink inside the root can point anywhere; resolving it would smuggle a delete past
+    the containment check."""
+    root = tmp_path / ".vaults"
+    root.mkdir()
+    target = _fake_vault(tmp_path / "elsewhere", "real")
+    link = root / "bench-ex-link"
+    link.symlink_to(target)
+    with pytest.raises(RuntimeError):
+        rb.reset_vaults([link], root)
+    assert target.exists()
+
+
+def test_reset_vaults_ignores_a_vault_that_does_not_exist(tmp_path):
+    root = tmp_path / ".vaults"
+    root.mkdir()
+    assert rb.reset_vaults([root / "bench-ex-gone"], root) == []

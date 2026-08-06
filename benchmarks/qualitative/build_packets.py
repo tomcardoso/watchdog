@@ -2,10 +2,16 @@
 
 For each corpus document, finds the key items (facts + must_not_miss) that have NO
 numeric anchor (score_arms.py already can't score these — see its `anchors_from`), then
-writes a packet file containing those items plus the three arms' extracted content,
-blinded as X/Y/Z with a per-document random mapping. The mapping is written to a
-judge-only file (mapping.json) that is NOT given to the scoring subagents.
+writes a packet file containing those items plus each arm's extracted content, blinded
+as X/Y/Z with a per-document random mapping. The mapping is written to a judge-only file
+(mapping.json) that is NOT given to the judges.
+
+    build_packets.py --arms sonnet-4.6-high,sonnet-4.6-med,gpt-mini-low
+
+Arms are ids from benchmark.yaml's extractor_sweep; their vaults are resolved the same way
+run_benchmark.py resolves them. See RUNBOOK.md step 6 for the full procedure.
 """
+import argparse
 import json
 import os
 import random
@@ -17,23 +23,46 @@ from score_arms import anchors_from  # noqa: E402
 
 import yaml
 
-# Derived from this file's own location, not hardcoded: the whole point of keeping this script
-# tracked is that the next pass runs the same protocol, and a path into one person's home
-# directory means nobody else (and no agent on a fresh checkout) can run it at all.
+# Configuration comes from the command line and benchmark.yaml, never from edits to this file:
+# the point of keeping the protocol tracked is that the next pass runs the identical procedure,
+# and a pass whose arm list lives in a Python literal drifts every time someone re-points it.
+#
+#     build_packets.py --arms sonnet-4.6-high,sonnet-4.6-med,gpt-mini-low [--out DIR]
+#
+# Vault paths are resolved the same way run_benchmark.py resolves them (benchmark.yaml's
+# vault_root + the sweep's vault_prefix), so the arms named here are the arm ids from that file.
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-KEYS_DIR = os.path.join(REPO, "benchmarks/keys")
-# Arms under judgment. Edit for the pass being run — these are the three #361/#215 candidates.
-_VAULT_ROOT = os.path.join(REPO, "benchmarks/.vaults")
-VAULTS = {
-    "sonnet-4.6-high": os.path.join(_VAULT_ROOT, "bench-ex-sonnet-4.6-high"),
-    "sonnet-4.6-med": os.path.join(_VAULT_ROOT, "bench-ex-sonnet-4.6-med"),
-    "gpt-mini-low": os.path.join(_VAULT_ROOT, "bench-ex-gpt-mini-low"),
-}
-# Defaults beside this script (gitignored — see .gitignore); override with argv[1].
-OUT_DIR = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.abspath(__file__))
+BENCH = os.path.join(REPO, "benchmarks")
+KEYS_DIR = os.path.join(BENCH, "keys")
 
-random.seed(20260729)
 
+def _parse_args():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--arms", required=True,
+                    help="comma-separated extractor_sweep arm ids to judge (blinded as X/Y/Z)")
+    ap.add_argument("--config", default=os.path.join(BENCH, "benchmark.yaml"))
+    ap.add_argument("--out", default=os.path.dirname(os.path.abspath(__file__)),
+                    help="where packets and mapping.json are written (default: beside this script)")
+    return ap.parse_args()
+
+
+args = _parse_args()
+config = yaml.safe_load(open(args.config, encoding="utf-8"))
+_root = config.get("vault_root")
+VAULT_ROOT = (os.path.join(BENCH, ".vaults") if not _root
+              else _root if os.path.isabs(_root) else os.path.join(BENCH, _root))
+_prefix = config["extractor_sweep"]["vault_prefix"]
+_arm_ids = [a.strip() for a in args.arms.split(",") if a.strip()]
+_known = {a["id"] for a in config["extractor_sweep"]["arms"]}
+_unknown = [a for a in _arm_ids if a not in _known]
+if _unknown:
+    sys.exit(f"Unknown arm id(s): {', '.join(_unknown)}")
+VAULTS = {a: os.path.join(VAULT_ROOT, f"{_prefix}-{a}") for a in _arm_ids}
+_missing = [v for v in VAULTS.values() if not os.path.isdir(v)]
+if _missing:
+    sys.exit("No vault for: " + ", ".join(_missing) + "\nRun those arms first.")
+OUT_DIR = args.out
+os.makedirs(OUT_DIR, exist_ok=True)
 
 def unscorable(items, text_key):
     out = []
@@ -81,7 +110,7 @@ for key_file in sorted(os.listdir(KEYS_DIR)):
     arm_names = list(VAULTS.keys())
     shuffled = arm_names[:]
     random.shuffle(shuffled)
-    labels = ["X", "Y", "Z"]
+    labels = [chr(ord("X") + i) if i < 3 else f"A{i}" for i in range(len(arm_names))]
     label_to_arm = dict(zip(labels, shuffled))
     mapping_all[doc_name] = label_to_arm
 
