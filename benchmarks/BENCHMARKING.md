@@ -37,7 +37,20 @@ and tallies internally rather than raising, which an `ok`-only summary would mis
 to `errors.log` in the run's report folder, not the terminal; a failed or partially-failed arm's
 terse line just says `(see errors.log)`. Report folders are named to the minute
 (`benchmarks/2026-07-29-1432/`), not just the date, so more than one session in a day gets its
-own folder without a manual `-2`/`-3` disambiguation.
+own folder without a manual `-2`/`-3` disambiguation. A rate limit gets its own line rather than
+reading as an interrupt: `⚠ rate-limited after 2/6 docs  4m12s  (see errors.log)` — distinct from
+a plain Ctrl-C, which now carries the same document count (`interrupted after 3/6 docs`) but no
+`⚠` and no errors.log pointer, since stopping it was a deliberate choice, not a failure (#559).
+
+**Under `_quiet`, an arm can pause silently for up to ~15 minutes without anything being wrong
+(#559).** `run_extractor_arm` runs every extractor arm with `--wait` and a bounded
+`max_rate_limit_waits` (default 2, see `benchmark.yaml`'s `extractor_sweep.defaults`), so a rate
+limit mid-arm doesn't just stop it — it sleeps until the provider's reported reset time (or a
+15-minute fallback when none is reported) and resumes automatically. `_quiet` suppresses the
+underlying pipeline's own "Rate limit — resuming at HH:MM" notice along with everything else it
+prints, so that wait is invisible at the terminal: an arm that seems to be hanging on the
+`running…` line for several minutes may simply be waiting out a rate limit, not stuck. It gives
+up and reports a partial arm once `max_rate_limit_waits` is exhausted, rather than waiting forever.
 
 **Ctrl+C stops the whole run, not just the current arm.** `cmd_extract`/`cmd_finalize` trap a
 SIGINT internally and return normally (finishing in-flight writes first) rather than raising —

@@ -17,6 +17,17 @@ extractor_sweep:
   # Grouped by provider, then model, then effort. Haiku and DeepSeek have no effort control —
   # asking for one errors. Everything else pins its effort explicitly. See BENCHMARKING.md for
   # how to run these and FINDINGS.md for what past runs measured.
+  #
+  # `defaults:` (#559) — every arm here runs concurrently against the whole 6-document corpus
+  # (`extract_concurrency` otherwise defaults to 20, which never binds on a 6-document run), and
+  # the diagnosis behind #559 measured `gpt-luna-low-verify` sustaining ~55.6K tokens/min per
+  # concurrent document slot with the verification pass on, ~39.4K without — so 5-way concurrency
+  # already sits at ~198-278K tokens/min depending on the arm, and the account's TPM limit is
+  # bracketed between a 236,608 tok/min peak that succeeded and a 291,841 peak that got rate-
+  # limited. `concurrency: 5` keeps every plain arm under ~200K tok/min, roughly 20% below the
+  # observed limit. `max_rate_limit_waits` bounds `--wait`'s resume loop so a rate-limited arm
+  # surfaces as a partial result within a few waits instead of stalling the sweep.
+  defaults: {concurrency: 5, max_rate_limit_waits: 2}
   arms:
     # ── Anthropic ──
     - {id: haiku,             extractor_model: haiku}
@@ -59,13 +70,16 @@ extractor_sweep:
     - {id: sonnet-med-api,    extractor_model: "claude-api:sonnet",       extractor_effort: medium}
     - {id: batch-sonnet-med,  extractor_model: "claude-batch:sonnet",     extractor_effort: medium}
     #
-    # Verification pass A/B (#535), on the three candidate models.
-    - {id: sonnet-4.6-med-verify,   extractor_model: sonnet-4.6, extractor_effort: medium, verify: true}
-    - {id: sonnet-4.6-med-noverify, extractor_model: sonnet-4.6, extractor_effort: medium, verify: false}
-    - {id: gpt-mini-low-verify,     extractor_model: "openai:gpt-5.4-mini", extractor_effort: low, verify: true}
-    - {id: gpt-mini-low-noverify,   extractor_model: "openai:gpt-5.4-mini", extractor_effort: low, verify: false}
-    - {id: gpt-luna-low-verify,     extractor_model: "openai:gpt-5.6-luna", extractor_effort: low, verify: true}
-    - {id: gpt-luna-low-noverify,   extractor_model: "openai:gpt-5.6-luna", extractor_effort: low, verify: false}
+    # Verification pass A/B (#535), on the three candidate models. `concurrency: 3` on both halves
+    # of each pair (#559) — verify re-sends full-size section input and returns fast, so its
+    # tokens/minute runs ~2.7x the same model without it; matching concurrency on the noverify
+    # twin keeps the pair comparable rather than giving one side a wider rate-limit margin.
+    - {id: sonnet-4.6-med-verify,   extractor_model: sonnet-4.6, extractor_effort: medium, verify: true, concurrency: 3}
+    - {id: sonnet-4.6-med-noverify, extractor_model: sonnet-4.6, extractor_effort: medium, verify: false, concurrency: 3}
+    - {id: gpt-mini-low-verify,     extractor_model: "openai:gpt-5.4-mini", extractor_effort: low, verify: true, concurrency: 3}
+    - {id: gpt-mini-low-noverify,   extractor_model: "openai:gpt-5.4-mini", extractor_effort: low, verify: false, concurrency: 3}
+    - {id: gpt-luna-low-verify,     extractor_model: "openai:gpt-5.6-luna", extractor_effort: low, verify: true, concurrency: 3}
+    - {id: gpt-luna-low-noverify,   extractor_model: "openai:gpt-5.6-luna", extractor_effort: low, verify: false, concurrency: 3}
 
 finalizer_sweep:
   vault_prefix: bench-fn
