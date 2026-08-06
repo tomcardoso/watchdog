@@ -1637,6 +1637,36 @@ def test_extract_sectioned_writes_a_checkpoint_per_section(tmp_path, monkeypatch
         assert orchestrate._section_checkpoint_path(vault, "abc123", i).exists()
 
 
+def test_extract_sectioned_logs_a_section_line_before_each_model_call(tmp_path, monkeypatch):
+    """#556: ingest.log used to go straight from a section's HARVEST line to the next
+    section's, so the model call's multi-minute latency read as though the (sub-second)
+    harvest caused it. A SECTION line, logged right before the call, attributes the gap to
+    the call that actually owns it — one per section, each preceded by that section's own
+    HARVEST line."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    plan, pf = _checkpoint_plan_and_pf(vault, n=2)
+    outs = [_checkpoint_section_out(1), _checkpoint_section_out(2), {"summary": "digest"}]
+    seen = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        seen.append(task)
+        return model_client.ModelResult(parsed=outs[len(seen) - 1], text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.01)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    _, _, _, ok, errors, _ = asyncio.run(
+        orchestrate._extract_sectioned(vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
+
+    assert ok, errors
+    log = (vault / ".watchdog" / "registry" / "ingest.log").read_text(encoding="utf-8")
+    assert "SECTION test-doc.pdf [part 1 of 2]: extracting…" in log
+    assert "SECTION test-doc.pdf [part 2 of 2]: extracting…" in log
+    # each section's HARVEST line lands before that section's SECTION line, not after
+    assert (log.index("HARVEST test-doc.pdf") < log.index("SECTION test-doc.pdf [part 1 of 2]")
+           < log.index("SECTION test-doc.pdf [part 2 of 2]"))
+
+
 def test_extract_sectioned_clears_checkpoints_once_postflight_succeeds(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault)
