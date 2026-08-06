@@ -60,7 +60,30 @@ def added_facts(extraction):
             if isinstance(f, dict) and f.get("added_by") == "verify"]
 
 
-def _source_dirs(target):
+def _pick_arm(arm_dirs, arm, target):
+    """The one arm directory to judge. `arm` matches either the vault directory name outright or
+    the bare arm id (`gpt-mini-low-verify` for `bench-ex-gpt-mini-low-verify`) — a run's normal
+    shape is a verify/noverify *pair*, so naming the arm is the common case, not an escape hatch
+    from an error."""
+    names = [os.path.basename(d) for d in arm_dirs]
+    if arm:
+        matches = [d for d in arm_dirs
+                   if os.path.basename(d) == arm or os.path.basename(d).endswith(f"-{arm}")]
+        if len(matches) == 1:
+            return matches[0]
+        if not matches:
+            sys.exit(f"No arm matching {arm!r} in {target}. Available: {', '.join(names)}")
+        sys.exit(f"{arm!r} matches more than one arm in {target}: "
+                 f"{', '.join(os.path.basename(d) for d in matches)} — name one exactly.")
+    if len(arm_dirs) == 1:
+        return arm_dirs[0]
+    if not arm_dirs:
+        sys.exit(f"No extracted arms found under {target}.")
+    sys.exit(f"{target} holds {len(arm_dirs)} arms — pass --arm to pick one. "
+             f"Available: {', '.join(names)}")
+
+
+def _source_dirs(target, arm=None):
     """(extracted-dir, page-text-dir) for either input shape.
 
     A live benchmark vault works, but a vault is disposable — it is reset the next time that arm
@@ -72,10 +95,10 @@ def _source_dirs(target):
     if os.path.isdir(artifacts):
         arm_dirs = sorted(d for d in glob.glob(os.path.join(artifacts, "*"))
                           if os.path.isdir(os.path.join(d, "extracted")))
-        if len(arm_dirs) != 1:
-            sys.exit(f"{target} holds {len(arm_dirs)} arm(s) — name one arm's directory under "
-                     f"artifacts/ instead, e.g. {os.path.join(artifacts, '<vault-name>')}")
-        return os.path.join(arm_dirs[0], "extracted"), os.path.join(target, "pages")
+        return (os.path.join(_pick_arm(arm_dirs, arm, target), "extracted"),
+                os.path.join(target, "pages"))
+    if arm:
+        sys.exit(f"--arm only applies to a run directory; {target} is not one.")
     if os.path.isdir(os.path.join(target, "extracted")):
         # An arm directory inside a run: page text sits one level up, shared across arms.
         return (os.path.join(target, "extracted"),
@@ -95,8 +118,8 @@ def doc_pages(pages_dir, sha256):
             for p in _load(path).get("pages", [])]
 
 
-def build(vault, out_dir):
-    extracted_dir, pages_dir = _source_dirs(vault)
+def build(vault, out_dir, arm=None):
+    extracted_dir, pages_dir = _source_dirs(vault, arm)
     os.makedirs(out_dir, exist_ok=True)
     written, total_added, missing_pages = [], 0, []
     for path in sorted(glob.glob(os.path.join(extracted_dir, "*.json"))):
@@ -225,13 +248,15 @@ def main(argv=None):
     p_build = sub.add_parser("build", help="write judging packets from a --verify benchmark vault")
     p_build.add_argument("vault", metavar="TARGET",
                          help="a benchmark run directory (benchmarks/runs/<id>/), one arm directory inside it, or a live vault")
+    p_build.add_argument("--arm", help="which arm to judge, when the run directory holds "
+                                       "more than one (e.g. gpt-mini-low-verify)")
     p_build.add_argument("--out", required=True, help="directory to write packet-<doc>.json into")
     p_aggregate = sub.add_parser("aggregate", help="tally judgment-<doc>.json files into precision")
     p_aggregate.add_argument("judge_dir")
 
     args = parser.parse_args(argv)
     if args.command == "build":
-        build(args.vault, args.out)
+        build(args.vault, args.out, args.arm)
     else:
         aggregate(args.judge_dir)
 

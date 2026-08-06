@@ -1673,3 +1673,42 @@ def test_verifier_precision_still_reads_a_live_vault(tmp_path):
     extracted_dir, pages_dir = vp._source_dirs(str(vault))
     assert Path(extracted_dir) == vault / ".watchdog" / "extracted"
     assert Path(pages_dir) == vault / ".watchdog" / "queue"
+
+
+def test_verifier_precision_picks_an_arm_from_a_multi_arm_run(tmp_path):
+    """A run's normal shape for this tool is a verify/noverify pair, so naming the arm is the
+    common path — not an escape hatch from an error. Matches the bare arm id as well as the full
+    vault directory name."""
+    run = tmp_path / "2026-01-01-0000"
+    for name in ("bench-ex-gpt-mini-low-verify", "bench-ex-gpt-mini-low-noverify"):
+        (run / "artifacts" / name / "extracted").mkdir(parents=True)
+    (run / "pages").mkdir()
+
+    extracted, pages = vp._source_dirs(str(run), "gpt-mini-low-verify")
+    assert Path(extracted) == run / "artifacts" / "bench-ex-gpt-mini-low-verify" / "extracted"
+    assert Path(pages) == run / "pages"
+    # The full vault directory name works too.
+    assert vp._source_dirs(str(run), "bench-ex-gpt-mini-low-noverify")[0].endswith(
+        "bench-ex-gpt-mini-low-noverify/extracted")
+
+
+def test_verifier_precision_multi_arm_run_without_arm_lists_the_options(tmp_path):
+    run = tmp_path / "run"
+    for name in ("bench-ex-a", "bench-ex-b"):
+        (run / "artifacts" / name / "extracted").mkdir(parents=True)
+    with pytest.raises(SystemExit) as e:
+        vp._source_dirs(str(run))
+    assert "pass --arm" in str(e.value) and "bench-ex-a" in str(e.value)
+
+
+def test_verifier_precision_rejects_an_unknown_arm(tmp_path):
+    run = tmp_path / "run"
+    (run / "artifacts" / "bench-ex-a" / "extracted").mkdir(parents=True)
+    with pytest.raises(SystemExit, match="No arm matching"):
+        vp._source_dirs(str(run), "nope")
+
+
+def test_verifier_precision_single_arm_run_still_needs_no_arm(tmp_path):
+    run = tmp_path / "run"
+    (run / "artifacts" / "bench-ex-a" / "extracted").mkdir(parents=True)
+    assert vp._source_dirs(str(run))[0].endswith("bench-ex-a/extracted")

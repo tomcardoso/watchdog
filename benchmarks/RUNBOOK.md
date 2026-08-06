@@ -143,7 +143,7 @@ mode is triviality and restatement, which no recall scorer can see (D172).
 
 ```
 ~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/verifier_precision.py build \
-    benchmarks/runs/<run-id>/artifacts/bench-ex-<arm> --out <out-dir>
+    benchmarks/runs/<run-id> --arm gpt-mini-low-verify --out <out-dir>
 # judge grades each added fact grounded_material / grounded_trivial / unsupported, then:
 ~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/verifier_precision.py aggregate <out-dir>
 ```
