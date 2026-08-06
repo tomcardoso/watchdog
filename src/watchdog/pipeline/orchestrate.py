@@ -801,6 +801,10 @@ async def _extract_one_section(vault, sha, pf, skill_text, sec, *, is_first, car
     if repair_errors:
         prompt = _append_repair_note(base, repair_errors)
         detail += " (repair)"
+    # Marks where the section's model call — the thing that can silently run for minutes —
+    # actually begins, so ingest.log doesn't read as though the HARVEST line just above it
+    # (which finishes in seconds) is what the elapsed time belongs to (#556).
+    _log(vault, f"SECTION {pf['filename']} [{detail}]: extracting…")
     r = await _call_model(task="extract-section", model=model, backend=backend,
                           prompt=prompt, schema=schemas.SECTION, effort=effort,
                           filename=pf["filename"], detail=detail, vault=vault)
