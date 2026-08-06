@@ -1078,6 +1078,36 @@ def test_document_note_notes_quote_found_on_different_page(tmp_path):
     assert "  > Total revenue for the year was $1,000,000. *(found on p. 4, not the cited page)*" in content
 
 
+def test_document_note_omits_found_page_note_once_citation_is_corrected(tmp_path):
+    """#560: post-flight corrects `page` to `quote_found_page` when the match is unique
+    document-wide, leaving the two equal. The "not the cited page" note must not fire once
+    they agree — it would otherwise contradict the citation shown right next to it."""
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    run(make_extraction(tmp_path, {"document": {
+        "key_facts": [{"fact": "Revenue was $1M.", "page": 4, "basis": "stated",
+                       "quote": "Total revenue for the year was $1,000,000.",
+                       "quote_found_page": 4}],
+    }}), vault)
+
+    content = (vault / "documents" / "test-doc.md").read_text()
+    assert "Total revenue for the year was $1,000,000." in content
+    assert "not the cited page" not in content
+
+
+def test_document_note_notes_quote_spans_pages(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    run(make_extraction(tmp_path, {"document": {
+        "key_facts": [{"fact": "Revenue was $1M.", "page": 2, "basis": "stated",
+                       "quote": "Total revenue for the year, spanning the page break, was $1,000,000.",
+                       "quote_spans_pages": [2, 3]}],
+    }}), vault)
+
+    content = (vault / "documents" / "test-doc.md").read_text()
+    assert "*(quote spans pages 2–3)*" in content
+
+
 def test_entity_analysis_renders_claim_reason_and_quote(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")

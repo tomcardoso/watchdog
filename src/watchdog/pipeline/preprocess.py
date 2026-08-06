@@ -28,6 +28,7 @@ Exits non-zero on unrecoverable error; writes error JSON to stdout:
 
 import argparse
 import hashlib
+import html
 import json
 import os
 import subprocess
@@ -385,7 +386,12 @@ def _markdown_pages(doc) -> list[dict]:
     if image_mode is not None:
         kwargs["image_mode"] = image_mode
 
-    md = doc.export_to_markdown(**kwargs)
+    # Docling HTML-escapes "&" to "&amp;" in some cells/paragraphs even though markdown doesn't
+    # require it there — a converter artifact, not something the source document actually
+    # contains (#560: it broke quote-locator matching on any "X & Y" phrase, and would otherwise
+    # show up verbatim in both the model's extraction input and the rendered morgue note).
+    # Neither `_PAGE_BREAK` nor the `[image]` placeholder contain "&", so this can't touch them.
+    md = html.unescape(doc.export_to_markdown(**kwargs))
 
     parts = [p.strip() for p in md.split(_PAGE_BREAK)]
     pages = [

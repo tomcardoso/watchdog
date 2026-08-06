@@ -250,6 +250,69 @@ def test_resolve_quote_adjacent_page_resolves_with_found_page():
     assert result["quote"] == "Total revenue for the year was strong."
 
 
+def test_resolve_quote_whitespace_blind_fallback_recovers_ocr_dropped_spaces():
+    """OCR/table extraction can fuse or drop a word boundary ("DEFERREDCONTRIBUTIONS ANDNET
+    ASSETS" for "DEFERRED CONTRIBUTIONS AND NET ASSETS", #560) — the model transcribes the
+    words correctly spaced, so the space-preserving match fails; a whitespace-blind fallback
+    recovers it without needing to guess where the missing spaces belong."""
+    pages = {3: "LIABILITIES, DEFERREDCONTRIBUTIONS ANDNET ASSETS"}
+    result = resolve_quote(pages, 3, "LIABILITIES, DEFERRED CONTRIBUTIONS AND NET ASSETS")
+    assert result["quote"] == "LIABILITIES, DEFERREDCONTRIBUTIONS ANDNET ASSETS"
+    assert "verified" not in result
+
+
+def test_resolve_quote_whitespace_blind_fallback_requires_a_minimum_length():
+    """A short locator matched only space-insensitively is too easy to collide with an
+    unrelated span — below `_MIN_SPACELESS_LOCATOR` the fallback must not fire at all."""
+    pages = {3: "The cat sat on the mat."}
+    result = resolve_quote(pages, 3, "cats at")   # "cat s at" spaceless == "cats at" spaceless
+    assert result == {"quote": "cats at", "verified": False}
+
+
+def test_resolve_quote_joins_pages_when_sentence_spans_a_page_break():
+    """A sentence hard-wrapped across a page break can never be found on either page alone —
+    each page's text is searched independently — so `resolve_quote` falls back to joining two
+    adjacent pages' text together (#560)."""
+    pages = {2: "Any applicant who does not respond within 30 days shall be deemed to have "
+                "withdrawn their application for",
+             3: "a transfer of their commuted value and shall retain their entitlement."}
+    result = resolve_quote(pages, 2, "shall be deemed to have withdrawn their application for a transfer")
+    assert result["spans_pages"] == (2, 3)
+    assert result["quote"] == (
+        "Any applicant who does not respond within 30 days shall be deemed to have withdrawn "
+        "their application for a transfer of their commuted value and shall retain their "
+        "entitlement."
+    )
+    assert "found_page" not in result   # neither single page fully contains the quote
+
+
+def test_resolve_quote_join_strips_page_number_furniture_at_the_boundary():
+    """A lone page-number stamp at a page's edge (chew furniture, not sentence content) sits
+    literally between the two true halves of a page-spanning sentence if left in — breaking the
+    very match the join exists to recover (#560, found via the real corpus)."""
+    pages = {2: "shall be deemed to have withdrawn their application for",
+             3: "- 3 -\n\na transfer of their commuted value."}
+    result = resolve_quote(pages, 2, "shall be deemed to have withdrawn their application for a transfer")
+    assert result["spans_pages"] == (2, 3)
+    assert "- 3 -" not in result["quote"]
+
+
+def test_resolve_quote_join_tries_mirror_direction():
+    """The sentence can also open on the page BEFORE the one cited, continuing onto the cited
+    page — the mirror of the forward-join case, tried when the forward join fails."""
+    pages = {2: "As of January 29, 2021, the outstanding principal balance owing under",
+             3: "this facility is $10,575,875, exclusive of accrued interest and costs."}
+    result = resolve_quote(pages, 3, "balance owing under this facility is $10,575,875")
+    assert result["spans_pages"] == (2, 3)
+    assert "outstanding principal balance" in result["quote"]
+
+
+def test_resolve_quote_join_not_used_when_a_single_page_already_matches():
+    pages = {3: "Revenue rose sharply this year.", 4: "Unrelated content."}
+    result = resolve_quote(pages, 3, "Revenue rose sharply")
+    assert "spans_pages" not in result
+
+
 def test_resolve_quote_caps_long_quote_at_500_chars_on_word_boundary():
     tokens = [f"tok{i:04d}" for i in range(200)]
     text = " ".join(tokens)   # one giant run-on with no punctuation anywhere
@@ -296,6 +359,70 @@ def test_resolve_quotes_warns_on_ambiguous_locator():
     assert len(warnings) == 1
     assert "matched 2 times on page 3" in warnings[0]
     assert extraction["document"]["key_facts"][0]["quote"] == "Total revenue was strong this quarter."
+
+
+def test_resolve_quotes_corrects_page_when_locator_is_unique_document_wide():
+    """A locator that resolves to exactly one match — on a page other than the one the model
+    cited — used to be completely silent (#560): `fact["page"]` (what every downstream reader
+    displays) kept the model's wrong citation even though the quote text itself was quietly
+    recovered. When the locator is unique across the WHOLE document, not just within
+    `resolve_quote`'s ±1 window, it's safe to correct the citation itself, not just warn."""
+    extraction = {"document": {"key_facts": [
+        {"fact": "x", "page": 3, "quote_locator": "Total revenue for the year"},
+    ]}, "entities": []}
+    pages = {3: "Irrelevant content here.",
+             4: "Total revenue for the year was strong. Next sentence."}
+    warnings = resolve_quotes(extraction, pages)
+    assert len(warnings) == 1
+    assert "page corrected from 3 to 4" in warnings[0]
+    fact = extraction["document"]["key_facts"][0]
+    assert fact["quote_found_page"] == 4
+    assert fact["page"] == 4   # corrected — the match is unique across the whole document
+
+
+def test_resolve_quotes_does_not_correct_page_when_locator_recurs_elsewhere():
+    """The same single, non-ambiguous match within the ±1 window — but the locator ALSO appears
+    on a page well outside that window. `resolve_quote` itself never sees that other occurrence
+    (by design, to avoid flagging every harmless recurring label), so `resolve_quotes` must check
+    document-wide before trusting the match enough to overwrite the citation a reporter reads."""
+    extraction = {"document": {"key_facts": [
+        {"fact": "x", "page": 3, "quote_locator": "Total revenue for the year"},
+    ]}, "entities": []}
+    pages = {3: "Irrelevant content here.",
+             4: "Total revenue for the year was strong. Next sentence.",
+             40: "Elsewhere, Total revenue for the year came in lower than expected."}
+    warnings = resolve_quotes(extraction, pages)
+    assert len(warnings) == 1
+    assert "not auto-corrected" in warnings[0]
+    fact = extraction["document"]["key_facts"][0]
+    assert fact["quote_found_page"] == 4
+    assert fact["page"] == 3   # left as the model wrote it — not safe to trust as unique
+
+
+def test_resolve_quotes_warns_on_page_spanning_match():
+    extraction = {"document": {"key_facts": [
+        {"fact": "x", "page": 2, "quote_locator": "shall be deemed to have withdrawn their application"},
+    ]}, "entities": []}
+    pages = {2: "Any applicant who does not respond shall be deemed to have withdrawn",
+             3: "their application for a transfer of their commuted value."}
+    warnings = resolve_quotes(extraction, pages)
+    assert len(warnings) == 1
+    assert "crosses a page break" in warnings[0]
+    fact = extraction["document"]["key_facts"][0]
+    assert fact["quote_spans_pages"] == [2, 3]
+    assert fact["page"] == 2   # left as-is — no single page fully contains the quote
+
+
+def test_resolve_quotes_ambiguous_and_page_mismatch_warns_once_not_twice():
+    """When a match is both ambiguous AND on a different page than cited, the ambiguous warning
+    already names the found page — a second, separate page-mismatch warning would be redundant."""
+    extraction = {"document": {"key_facts": [
+        {"fact": "x", "page": 3, "quote_locator": "Total revenue was strong"},
+    ]}, "entities": []}
+    pages = {4: "Total revenue was strong this quarter. Total revenue was strong again next year."}
+    warnings = resolve_quotes(extraction, pages)
+    assert len(warnings) == 1
+    assert "matched 2 times on page 4" in warnings[0]
 
 
 def test_resolve_quotes_skips_facts_without_a_locator_or_quote():

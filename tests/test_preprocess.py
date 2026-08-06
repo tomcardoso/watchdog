@@ -144,6 +144,26 @@ def test_markdown_pages_empty_doc_fallback():
     assert pages == [{"page": 1, "markdown": ""}]
 
 
+def test_markdown_pages_decodes_html_entities():
+    """Docling HTML-escapes "&" to "&amp;" in some cells/paragraphs even though markdown
+    doesn't require it there (#560) — decode it once here, at the chew/canonicalization
+    boundary, so every downstream consumer (the model's own extraction input, the rendered
+    morgue note, quote/figure matching) sees the real character rather than the escaped form."""
+    doc = _FakeDoc("Ernst &amp; Young Inc. &lt;the Monitor&gt;")
+    pages = _markdown_pages(doc)
+    assert pages == [{"page": 1, "markdown": "Ernst & Young Inc. <the Monitor>"}]
+
+
+def test_markdown_pages_entity_decoding_does_not_disturb_page_break_or_image_placeholder():
+    sep = "\n\n<!-- page-break -->\n\n"
+    doc = _FakeDoc(f"Ernst &amp; Young{sep}[image] on page two")
+    pages = _markdown_pages(doc)
+    assert pages == [
+        {"page": 1, "markdown": "Ernst & Young"},
+        {"page": 2, "markdown": "[image] on page two"},
+    ]
+
+
 # ── process_large_pdf ────────────────────────────────────────────────────────
 
 def _fake_extract(tmp_path):
