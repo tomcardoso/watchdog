@@ -6,6 +6,22 @@ __pycache__/
 .claude/worktrees/
 benchmarks/.vaults/
 benchmarks/.fixture-capture/
+# Individual benchmark runs. A run's numbers are only valid against the commit that produced
+# them, so a committed run reads as authoritative long after it stopped being true (pre-D145
+# Claude costs, pre-#547 Gemini costs, the #542 section counts). FINDINGS.md is the durable
+# record; it states what a run meant *and* carries the caveats.
+benchmarks/runs/
+benchmarks/20[0-9][0-9]-[0-9][0-9]-*/
+# Qualitative judge output — generated per pass, meaningful only against the (ignored) run it
+# judged. The protocol beside it (build_packets.py, aggregate.py) stays tracked: that is what
+# makes one pass comparable to the next. The 2026-07-29 pass predates this rule and remains
+# tracked as the worked example FINDINGS.md cites.
+benchmarks/qualitative/packet-*.json
+benchmarks/qualitative/judgment-*.json
+benchmarks/qualitative/mapping.json
+benchmarks/qualitative/summary.json
+benchmarks/qualitative/detail_rows.json
+benchmarks/qualitative/classification.*
 dev/batch_results.json
 *.egg-info/
 dist/
