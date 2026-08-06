@@ -490,6 +490,25 @@ def test_arm_line_cancelled():
     assert "✓" not in text and "✗" not in text
 
 
+def test_arm_line_rate_limited_is_distinguishable_from_plain_interrupted():
+    """#559: a rate limit used to print identically to a Ctrl-C (`interrupted`, no further
+    detail) — the one distinction that mattered most, since a rate limit means the harness
+    itself decided to stop for a reason worth seeing, not the operator stopping it."""
+    rate_limited = rb._arm_line(1, 6, "extractor:gpt-luna-low-verify",
+                                _arm_result(cancelled=True, rate_limited=True,
+                                           documents_done=2, documents_total=6), 252.0)
+    interrupted = rb._arm_line(2, 6, "extractor:haiku",
+                               _arm_result(cancelled=True, documents_done=3,
+                                          documents_total=6), 72.0)
+    assert rate_limited != interrupted
+    assert "rate-limited" in rate_limited and "⚠" in rate_limited
+    assert "errors.log" in rate_limited
+    assert "2/6" in rate_limited
+    assert "interrupted" in interrupted and "3/6" in interrupted
+    assert "rate-limited" not in interrupted and "⚠" not in interrupted
+    assert "errors.log" not in interrupted
+
+
 def test_arm_starting_line_shares_index_and_label_with_the_completion_line():
     """Printed before a (possibly minutes-long) arm begins, so there is something on screen
     while it's running — without it, a real extraction call leaves the terminal silent for as
@@ -613,6 +632,67 @@ def test_run_extractor_arm_captures_per_document_failures(monkeypatch, tmp_path)
     assert result.doc_errors == ["doc1.pdf: 400: bad schema"]
 
 
+def test_run_extractor_arm_reports_rate_limited_and_document_counts(monkeypatch, tmp_path):
+    """#559: `orchestrate._extract` already computes `rate_limited`/`stop_message` — this is the
+    read that used to be dropped entirely (only `cancelled` reached the old ArmResult). The
+    corpus size comes from the queue, counted before `cmd_extract` runs (a real run consumes/
+    moves queue files as it goes, so counting after would undercount)."""
+    queue = tmp_path / ".watchdog" / "queue"
+    queue.mkdir(parents=True)
+    for i in range(6):
+        (queue / f"doc{i}.json").write_text("{}")
+
+    summary = {"cancelled": True, "rate_limited": True, "stop_message": "rate_limit_error",
+              "extracted": 2, "skipped": 0, "failed": 0, "wait_count": 2, "results": []}
+    monkeypatch.setattr(wd_ingest, "cmd_extract", lambda ns, **kw: summary)
+
+    result = rb.run_extractor_arm({"id": "gpt-luna-low-verify",
+                                   "extractor_model": "openai:gpt-5.6-luna"}, tmp_path)
+
+    assert result.ok is True
+    assert result.rate_limited is True
+    assert result.stop_message == "rate_limit_error"
+    assert result.wait_count == 2
+    assert result.documents_done == 2
+    assert result.documents_total == 6
+
+
+def test_run_extractor_arm_passes_concurrency_and_wait_bound_through(monkeypatch, tmp_path):
+    """`concurrency`/`max_rate_limit_waits` come from the arm dict (merged from
+    `extractor_sweep.defaults` by `main()`, #559) and `wait=True` is the default so a rate limit
+    gets a bounded chance to resume instead of stopping the arm cold."""
+    captured = {}
+
+    def _capture(ns, **kw):
+        captured["wait"] = ns.wait
+        captured["max_rate_limit_waits"] = ns.max_rate_limit_waits
+        captured["concurrency"] = ns.concurrency
+        return {"cancelled": False, "results": []}
+    monkeypatch.setattr(wd_ingest, "cmd_extract", _capture)
+
+    rb.run_extractor_arm({"id": "gpt-mini-low-verify", "extractor_model": "openai:gpt-5.4-mini",
+                          "concurrency": 3, "max_rate_limit_waits": 4}, tmp_path)
+
+    assert captured == {"wait": True, "max_rate_limit_waits": 4, "concurrency": 3}
+
+
+def test_run_extractor_arm_never_waits_on_a_batch_backend(monkeypatch, tmp_path):
+    """A batch backend already refuses `--wait` outright (`cmd_ingest`'s own guard) — its results
+    come back hours later in a separate process, so there is nothing to wait *for* here. Passing
+    `wait=True` anyway would just sys.exit the arm."""
+    captured = {}
+
+    def _capture(ns, **kw):
+        captured["wait"] = ns.wait
+        return {"cancelled": False, "results": []}
+    monkeypatch.setattr(wd_ingest, "cmd_extract", _capture)
+
+    rb.run_extractor_arm({"id": "batch-sonnet-med", "extractor_model": "claude-batch:sonnet"},
+                         tmp_path)
+
+    assert captured["wait"] is False
+
+
 # ── run_finalizer_arm delegates correctly ──────────────────────────────────────
 
 def test_run_finalizer_arm_passes_arm_knobs_through(monkeypatch, tmp_path):
@@ -700,6 +780,62 @@ def test_extractor_table_renders_scores_and_usage():
     assert "50% (10/20)" in table
     assert "$1.000" in table
     assert "1 retries" in table
+
+
+def test_is_partial_true_for_rate_limited_arm():
+    r = _arm_result(rate_limited=True, cancelled=True, documents_done=2, documents_total=6)
+    assert br.is_partial(r) is True
+
+
+def test_is_partial_true_for_per_document_failures_alone(tmp_path):
+    """#559: an arm can fall short of the whole corpus purely from per-document failures — no
+    rate limit, no Ctrl-C — and that must be treated as partial too, not just the rate-limited
+    case. `is_partial` has no `reason` input at all; it only compares document counts."""
+    r = _arm_result(ok=True, documents_done=4, documents_total=6,
+                    doc_errors=["doc5.pdf: 400 bad schema", "doc6.pdf: 400 bad schema"])
+    assert br.is_partial(r) is True
+
+
+def test_is_partial_false_for_a_complete_arm():
+    assert br.is_partial(_arm_result(documents_done=6, documents_total=6)) is False
+    assert br.is_partial(_arm_result()) is False    # no document-count info at all -> not partial
+
+
+def test_is_partial_false_for_non_extractor_stages():
+    """The partial concept only applies to the extractor sweep's whole-corpus recall figure —
+    finalizer/classifier arms have no comparable per-corpus denominator."""
+    r = _arm_result(stage="finalizer", rate_limited=True, documents_done=1, documents_total=2)
+    assert br.is_partial(r) is False
+
+
+def test_extractor_table_never_shows_a_bare_percentage_for_a_partial_arm():
+    """#559: a partial arm's recall cell must carry the partial caveat every time, whether the
+    cause was a rate limit or plain per-document failures — never a bare percentage that reads
+    as directly comparable to a complete arm's."""
+    results = [
+        _arm_result(arm_id="gpt-luna-low-verify", vault="/tmp/bench-ex-gpt-luna-low-verify",
+                    rate_limited=True, cancelled=True, documents_done=2, documents_total=6,
+                    usage={"calls": []}),
+        _arm_result(arm_id="sonnet-med", vault="/tmp/bench-ex-sonnet-med",
+                    documents_done=4, documents_total=6,
+                    doc_errors=["doc5.pdf: x", "doc6.pdf: x"], usage={"calls": []}),
+    ]
+    scores = {"totals": {
+        "facts": {"bench-ex-gpt-luna-low-verify": {"hit": 6, "of": 6},
+                 "bench-ex-sonnet-med": {"hit": 30, "of": 32}},
+        "must_not_miss": {"bench-ex-gpt-luna-low-verify": {"hit": 1, "of": 3},
+                          "bench-ex-sonnet-med": {"hit": 14, "of": 18}},
+    }}
+    table = br.extractor_table_md(results, scores)
+    assert "100% (6/6) — partial, 2/6 docs" in table
+    assert "33% (1/3) — partial, 2/6 docs" in table
+    assert "94% (30/32) — partial, 4/6 docs" in table
+    # A bare "100% (6/6)" with no trailing caveat would also match "100% (6/6) — partial…" as a
+    # substring, so check there's no line where the percentage cell is followed straight by the
+    # table's own next `|` delimiter instead of the " — partial" suffix.
+    for line in table.splitlines():
+        if "(6/6)" in line or "(30/32)" in line:
+            assert "partial" in line
 
 
 def test_sdk_check_table_renders_failed_arm():
@@ -817,6 +953,108 @@ def test_write_run_omits_errors_log_when_nothing_failed(tmp_path):
     assert not (run_dir / "errors.log").exists()
 
 
+def test_write_run_writes_errors_log_for_a_rate_limited_arm(tmp_path):
+    """The regression #559 mainly targets: a rate limit's in-flight documents get status
+    `cancelled`, which `doc_errors` correctly excludes as not-a-failure, so a rate-limited arm had
+    neither `error` nor `doc_errors` and — before this fix — wrote nothing to errors.log at all,
+    even though the arm plainly didn't complete."""
+    results = [_arm_result(arm_id="gpt-luna-low-verify", ok=True, cancelled=True,
+                          rate_limited=True, stop_message="rate_limit_error",
+                          documents_done=2, documents_total=6)]
+    scores = {"totals": {"facts": {}, "must_not_miss": {}}, "detail": [], "unscorable": [],
+             "vaults": []}
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    run_dir = br.write_run(tmp_path / "benchmarks", results, scores, config)
+    log = (run_dir / "errors.log").read_text()
+    assert "extractor:gpt-luna-low-verify" in log
+    assert "rate-limited" in log
+    assert "rate_limit_error" in log
+    assert "2/6" in log
+    report = (run_dir / "REPORT.md").read_text()
+    assert "Failed or incomplete arms" in report
+    assert "rate-limited after 2/6 docs" in report
+
+
+def test_write_run_errors_log_reports_both_rate_limit_and_doc_errors_for_one_arm(tmp_path):
+    """The old `_errors_log_text` was an if/elif — an arm could only ever produce one kind of
+    block. A rate-limited arm that also had per-document failures on the documents it did reach
+    must report both (#559)."""
+    results = [_arm_result(arm_id="gpt-luna-low-verify", ok=True, cancelled=True,
+                          rate_limited=True, stop_message="rate_limit_error",
+                          documents_done=2, documents_total=6,
+                          doc_errors=["doc1.pdf: 400 bad schema"])]
+    scores = {"totals": {"facts": {}, "must_not_miss": {}}, "detail": [], "unscorable": [],
+             "vaults": []}
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    run_dir = br.write_run(tmp_path / "benchmarks", results, scores, config)
+    log = (run_dir / "errors.log").read_text()
+    assert "rate-limited" in log
+    assert "doc1.pdf: 400 bad schema" in log
+
+
+def test_write_run_lists_a_partial_arm_under_failed_or_incomplete_even_without_doc_errors(tmp_path):
+    """A partial arm (rate-limited or short a document with no doc_errors recorded) must still
+    show up in the "Failed or incomplete arms" section — `ok=True` and empty `doc_errors` used to
+    make it invisible there."""
+    results = [_arm_result(arm_id="gpt-luna-low-verify", ok=True, cancelled=True,
+                          rate_limited=True, documents_done=2, documents_total=6)]
+    scores = {"totals": {"facts": {}, "must_not_miss": {}}, "detail": [], "unscorable": [],
+             "vaults": []}
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    run_dir = br.write_run(tmp_path / "benchmarks", results, scores, config)
+    report = (run_dir / "REPORT.md").read_text()
+    assert "gpt-luna-low-verify" in report
+    assert "not a quality signal" in report
+
+
+def test_write_run_lists_a_rate_limited_non_extractor_arm_too(tmp_path):
+    """`is_partial` is deliberately gated to the extractor stage (only it has a recall cell for
+    `_partial_suffix` to annotate), but a rate limit is a real stop regardless of stage. Before
+    this fix, a rate-limited `sdk-check`/`classifier` arm got an `errors.log` block — written
+    unconditionally on `r.rate_limited` — with no corresponding line in "Failed or incomplete
+    arms", so REPORT.md's own "Full detail in `errors.log`" pointer named a file that never
+    mentioned the arm at all."""
+    results = [_arm_result(arm_id="sonnet-med-sdk", stage="sdk-check", ok=True,
+                          rate_limited=True, stop_message="rate_limit_error",
+                          documents_done=1, documents_total=2)]
+    assert br.is_partial(results[0]) is False   # confirms the stage gate is intentionally kept
+    scores = {"totals": {"facts": {}, "must_not_miss": {}}, "detail": [], "unscorable": [],
+             "vaults": []}
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    run_dir = br.write_run(tmp_path / "benchmarks", results, scores, config)
+    assert "rate-limited" in (run_dir / "errors.log").read_text()
+    report = (run_dir / "REPORT.md").read_text()
+    assert "Failed or incomplete arms" in report
+    assert "sonnet-med-sdk" in report
+
+
+def test_run_json_carries_partial_flag_and_document_counts():
+    results = [_arm_result(arm_id="gpt-luna-low-verify", ok=True, cancelled=True,
+                          rate_limited=True, stop_message="rate_limit_error",
+                          documents_done=2, documents_total=6)]
+    scores = {"totals": {"facts": {}, "must_not_miss": {}}}
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    data = br.run_json("2026-01-01-0000", results, scores, config, {"commit": None})
+    arm = data["arms"][0]
+    assert arm["partial"] is True
+    assert arm["rate_limited"] is True
+    assert arm["stop_message"] == "rate_limit_error"
+    assert arm["documents_extracted"] == 2
+    assert arm["documents_total"] == 6
+
+
+def test_run_json_partial_false_and_document_counts_none_for_a_complete_arm():
+    results = [_arm_result(arm_id="gpt-luna-med", ok=True)]
+    scores = {"totals": {"facts": {}, "must_not_miss": {}}}
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    data = br.run_json("2026-01-01-0000", results, scores, config, {"commit": None})
+    arm = data["arms"][0]
+    assert arm["partial"] is False
+    assert arm["rate_limited"] is False
+    assert arm["documents_extracted"] is None
+    assert arm["documents_total"] is None
+
+
 # ── score_arms.py refactor regression ──────────────────────────────────────────
 
 def _write_key(tmp_path, name, facts, must_not_miss=None):
@@ -887,6 +1125,130 @@ def test_score_main_reports_na_instead_of_crashing_on_zero_item_category(tmp_pat
 
     out = capsys.readouterr().out
     assert "0/0  (n/a)" in out
+
+
+# ── score_arms.py restricted-denominator scoring (#559) ────────────────────────
+
+def _write_key_with_document(tmp_path, name, sha256, facts, must_not_miss=None):
+    """Like `_write_key`, but with a `document.sha256` — the field the restricted-denominator
+    filter matches against `.watchdog/extracted/<sha>.json`."""
+    if must_not_miss is None:
+        must_not_miss = []
+    keys_dir = tmp_path / "keys"
+    keys_dir.mkdir(exist_ok=True)
+    (keys_dir / f"{name}.yaml").write_text(yaml.safe_dump({
+        "document": {"file": f"{name}.pdf", "sha256": sha256},
+        "facts": facts, "must_not_miss": must_not_miss,
+    }))
+    return keys_dir
+
+
+def test_score_skips_a_key_item_for_a_vault_that_never_extracted_its_document(tmp_path):
+    """The core fix (#559): a vault that never staged an extraction for a key's document must not
+    be charged a miss for that document's items — gated on `.watchdog/extracted/<sha>.json`
+    presence, an exact match against the key's own `document.sha256`, not on any cancelled/
+    rate_limited flag the caller passes in (there is no such input to `score()` at all)."""
+    keys_dir = _write_key_with_document(
+        tmp_path, "doc1", "aaa111",
+        [{"id": "F1", "fact": "Revenue was $1,234,567 in 2024."}])
+
+    complete = tmp_path / "vault-complete"
+    (complete / ".watchdog" / "extracted").mkdir(parents=True)
+    (complete / ".watchdog" / "extracted" / "aaa111.json").write_text(
+        json.dumps({"document": {"note": "Revenue $1,234,567"}}))
+
+    partial = tmp_path / "vault-partial"
+    (partial / ".watchdog" / "extracted").mkdir(parents=True)
+    # Never extracted aaa111 — only some other, unrelated document.
+    (partial / ".watchdog" / "extracted" / "bbb222.json").write_text(
+        json.dumps({"document": {"note": "unrelated"}}))
+
+    result = sa.score([str(complete), str(partial)], keys_dir=keys_dir)
+
+    assert result["totals"]["facts"]["vault-complete"] == {"hit": 1, "of": 1}
+    # The denominator falls to 0, not "1 of 1 missed" — the item was never a fair test for a
+    # vault that never opened the document it's about.
+    assert result["totals"]["facts"]["vault-partial"] == {"hit": 0, "of": 0}
+    cell = next(d for d in result["detail"] if d["qid"] == "doc1:F1")["cells"]["vault-partial"]
+    assert cell["hit"] == "not_extracted"
+    # The complete vault could still score it, so it must not be reported as unscorable — that
+    # label is reserved for items with no numeric anchor at all, a different kind of "can't score."
+    assert result["unscorable"] == []
+
+
+def test_score_complete_vaults_totals_are_unchanged_by_a_partial_sibling(tmp_path):
+    """Scoring a complete vault alongside a partial one must not change the complete vault's own
+    numbers — the restricted-denominator filter is per-vault, never a side effect on the others
+    in the same call."""
+    keys_dir = _write_key_with_document(
+        tmp_path, "doc1", "aaa111",
+        [{"id": "F1", "fact": "Revenue was $1,234,567 in 2024."}],
+        must_not_miss=[{"id": "M1", "item": "a buried liability of $9,876,543."}])
+
+    complete = tmp_path / "vault-complete"
+    (complete / ".watchdog" / "extracted").mkdir(parents=True)
+    (complete / ".watchdog" / "extracted" / "aaa111.json").write_text(json.dumps(
+        {"document": {"note": "Revenue $1,234,567 and a liability of $9,876,543"}}))
+
+    partial = tmp_path / "vault-partial"
+    (partial / ".watchdog" / "extracted").mkdir(parents=True)
+
+    alone = sa.score([str(complete)], keys_dir=keys_dir)
+    with_partial = sa.score([str(complete), str(partial)], keys_dir=keys_dir)
+
+    assert alone["totals"]["facts"]["vault-complete"] == \
+        with_partial["totals"]["facts"]["vault-complete"] == {"hit": 1, "of": 1}
+    assert alone["totals"]["must_not_miss"]["vault-complete"] == \
+        with_partial["totals"]["must_not_miss"]["vault-complete"] == {"hit": 1, "of": 1}
+
+
+def test_score_a_key_with_no_document_sha256_is_never_filtered(tmp_path):
+    """Backward compatibility: a key without `document.sha256` (older or synthetic fixtures, like
+    `_write_key` above) has nothing to match against, so it must score exactly as it always did —
+    never silently excluded from every vault's denominator."""
+    keys_dir = _write_key(tmp_path, "doc1",
+                          [{"id": "F1", "fact": "Revenue was $1,234,567 in 2024."}],
+                          must_not_miss=[])
+    vault = tmp_path / "vault-a"
+    extracted = vault / ".watchdog" / "extracted"
+    extracted.mkdir(parents=True)
+    (extracted / "some-other-sha.json").write_text(
+        json.dumps({"document": {"note": "Revenue $1,234,567"}}))
+
+    result = sa.score([str(vault)], keys_dir=keys_dir)
+
+    assert result["totals"]["facts"]["vault-a"] == {"hit": 1, "of": 1}
+
+
+def test_score_a_fully_filtered_item_lands_in_detail_not_unscorable(tmp_path):
+    """A key item whose document *no* vault in this call extracted has a numeric anchor — it's
+    simply never been attempted — so it must land in `detail` (every cell `"not_extracted"`), not
+    in `unscorable`, which means "no numeric anchor, needs hand check" and is printed under
+    exactly that heading by `main()`. Scoring a single partial vault alone (a real single-arm
+    run, e.g. one where the only arm that ran was rate-limited) must report the *same* detail/
+    unscorable counts as scoring a vault that extracted everything — not a large chunk of
+    genuinely-anchored items relabelled as anchor-less."""
+    keys_dir = _write_key_with_document(
+        tmp_path, "doc1", "aaa111",
+        [{"id": "F1", "fact": "Revenue was $1,234,567 in 2024."}],
+        must_not_miss=[{"id": "M1", "item": "a buried liability of $9,876,543."}])
+
+    complete = tmp_path / "vault-complete"
+    (complete / ".watchdog" / "extracted").mkdir(parents=True)
+    (complete / ".watchdog" / "extracted" / "aaa111.json").write_text(json.dumps(
+        {"document": {"note": "Revenue $1,234,567 and a liability of $9,876,543"}}))
+
+    partial = tmp_path / "vault-partial"
+    (partial / ".watchdog" / "extracted").mkdir(parents=True)   # never extracted aaa111 at all
+
+    complete_only = sa.score([str(complete)], keys_dir=keys_dir)
+    partial_only = sa.score([str(partial)], keys_dir=keys_dir)
+
+    assert len(complete_only["detail"]) == len(partial_only["detail"]) == 2
+    assert len(complete_only["unscorable"]) == len(partial_only["unscorable"]) == 0
+    fact_cell = next(d for d in partial_only["detail"] if d["qid"] == "doc1:F1")["cells"]["vault-partial"]
+    assert fact_cell["hit"] == "not_extracted"
+    assert partial_only["totals"]["facts"]["vault-partial"] == {"hit": 0, "of": 0}
 
 
 # ── backend + auth reporting (#475) ────────────────────────────────────────────

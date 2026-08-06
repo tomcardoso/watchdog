@@ -352,6 +352,16 @@ class ArmResult:
     estimate: dict | None = None
     usage: dict | None = None
     extra: dict = field(default_factory=dict)
+    # #559: a rate limit during extraction used to surface identically to a Ctrl-C
+    # (`cancelled` alone, indistinguishable) and left no errors.log entry at all, and the arm's
+    # partial vault was then scored over the whole corpus as if every document had been tried —
+    # a catastrophic-looking recall figure that was really just "2 of 6 documents, both good."
+    # These carry what `orchestrate._extract` already computes through to the report/scorer.
+    rate_limited: bool = False
+    stop_message: str | None = None
+    wait_count: int = 0
+    documents_done: int | None = None
+    documents_total: int | None = None
 
 
 def _resolve(model_str: str | None, default: str):
@@ -460,14 +470,58 @@ def _doc_errors(summary: dict | None) -> list[str]:
            for r in summary.get("results", []) if r.get("status") not in ("ok", "skipped", "cancelled")]
 
 
+def _queue_doc_count(vault: Path) -> int:
+    """The corpus size an extractor arm is about to run, counted from `.watchdog/queue/*.json`
+    *before* `cmd_extract` is called (#559). Arm vaults are seeded fresh from a chewed master and
+    never reused (`_stale_reason`), so this is exactly the corpus size — but only if read before
+    extraction starts: `cmd_extract` moves/consumes queue files as it goes, so counting afterward
+    would read a completed run as 0 documents. Top-level `*.json` only (not `_failed/`), matching
+    how a fresh arm vault's queue is actually laid out."""
+    queue = vault / ".watchdog" / "queue"
+    return len(list(queue.glob("*.json"))) if queue.is_dir() else 0
+
+
+def _extraction_outcome(summary: dict | None, documents_total: int) -> dict:
+    """The ArmResult kwargs that tell a rate-limited or otherwise-partial arm from a clean
+    completion (#559) — `orchestrate._extract` already computes `rate_limited`/`stop_message`
+    (a session-wide provider rate limit, not a per-document failure), and `cmd_ingest`'s
+    bounded-wait loop adds `wait_count`. Shared by every caller of `cmd_extract` in this module so
+    none of them keep the old cancelled-only blind spot that let a rate limit print as a plain
+    Ctrl-C with no errors.log entry and get scored as if every document had been tried."""
+    summary = summary or {}
+    return {
+        "cancelled": bool(summary.get("cancelled")),
+        "rate_limited": bool(summary.get("rate_limited")),
+        "stop_message": summary.get("stop_message"),
+        "wait_count": summary.get("wait_count", 0),
+        "documents_done": summary.get("extracted", 0) + summary.get("skipped", 0),
+        "documents_total": documents_total,
+    }
+
+
 def run_extractor_arm(arm: dict, vault: Path) -> ArmResult:
     from watchdog.cmd import ingest as ing
+    from watchdog.model_client import BATCH_BACKENDS
+    documents_total = _queue_doc_count(vault)
     # `verify` (#535) is an explicit True/False per arm, never None: an arm must not inherit the
     # verification pass from whatever `verify_extraction` the machine running the sweep happens
     # to have configured — an arm's spend and its recall both change with it.
+    #
+    # `wait=True` + a bounded `max_rate_limit_waits` (#559): the diagnosis behind this issue found
+    # every arm on this corpus runs close to the account's TPM limit (see benchmark.yaml's
+    # `extractor_sweep.defaults` comment), so a rate limit mid-arm is a real possibility, not an
+    # edge case worth leaving to stop the arm cold. Bounded (default 2 waits) rather than
+    # unbounded so a sweep that keeps getting limited still terminates and reports a partial arm
+    # instead of stalling the whole run. A batch backend already refuses `--wait` outright
+    # (`cmd_ingest`'s own guard, since a batch's results come back hours later in a separate
+    # process with nothing to wait *for* here) — skip it rather than let that guard sys.exit
+    # the arm.
+    backend = arm_backend(arm["extractor_model"], default="sonnet")
     ns = SimpleNamespace(command="dig", extractor_model=arm["extractor_model"],
                         extractor_effort=arm.get("extractor_effort"), estimate=False,
-                        force=False, skip_warning=True, wait=False, no_finalize=True,
+                        force=False, skip_warning=True, wait=backend not in BATCH_BACKENDS,
+                        max_rate_limit_waits=arm.get("max_rate_limit_waits", 2),
+                        concurrency=arm.get("concurrency"), no_finalize=True,
                         verify=bool(arm.get("verify", False)))
     try:
         with _in_vault(vault):
@@ -475,8 +529,8 @@ def run_extractor_arm(arm: dict, vault: Path) -> ArmResult:
     except SystemExit as e:
         return ArmResult(arm_id=arm["id"], stage="extractor", vault=vault, ok=False, error=str(e))
     return ArmResult(arm_id=arm["id"], stage="extractor", vault=vault, ok=True,
-                     cancelled=bool((summary or {}).get("cancelled")),
-                     doc_errors=_doc_errors(summary), usage=_latest_usage(vault))
+                     doc_errors=_doc_errors(summary), usage=_latest_usage(vault),
+                     **_extraction_outcome(summary, documents_total))
 
 
 def run_finalizer_arm(arm: dict, vault: Path) -> ArmResult:
@@ -515,27 +569,30 @@ def _classify_results(vault: Path, expected: dict[str, str]) -> dict:
 
 def run_classifier_smoke(arm: dict, vault: Path, expected: dict[str, str]) -> ArmResult:
     from watchdog.cmd import ingest as ing
+    documents_total = _queue_doc_count(vault)
     ex_ns = SimpleNamespace(command="dig", extractor_model=arm["extractor_model"],
                             extractor_effort=None, estimate=False, force=False,
                             skip_warning=True, wait=False, no_finalize=True, verify=False)
     try:
         with _in_vault(vault):
             ex_summary = _quiet(ing.cmd_extract, ex_ns, non_interactive=True)
-            if (ex_summary or {}).get("cancelled"):
+            outcome = _extraction_outcome(ex_summary, documents_total)
+            if outcome["cancelled"] or outcome["rate_limited"]:
                 return ArmResult(arm_id=arm["id"], stage="classifier", vault=vault, ok=True,
-                                 cancelled=True, doc_errors=_doc_errors(ex_summary))
+                                 doc_errors=_doc_errors(ex_summary), **outcome)
             fn_ns = SimpleNamespace(finalizer_model=arm["finalizer_model"], finalizer_effort=None,
                                     estimate=False, skip_briefing=True)
             _quiet(ing.cmd_finalize, fn_ns)
     except SystemExit as e:
         return ArmResult(arm_id=arm["id"], stage="classifier", vault=vault, ok=False, error=str(e))
     return ArmResult(arm_id=arm["id"], stage="classifier", vault=vault, ok=True,
-                     doc_errors=_doc_errors(ex_summary),
+                     doc_errors=_doc_errors(ex_summary), **outcome,
                      extra={"classification": _classify_results(vault, expected)})
 
 
 def run_classifier_sweep_arm(arm: dict, vault: Path, fixed: dict, expected: dict[str, str]) -> ArmResult:
     from watchdog.cmd import ingest as ing
+    documents_total = _queue_doc_count(vault)
     ex_ns = SimpleNamespace(command="dig", extractor_model=fixed["extractor_model"],
                             classifier_model=arm["classifier_model"], extractor_effort=None,
                             estimate=False, force=False, skip_warning=True, wait=False,
@@ -543,9 +600,10 @@ def run_classifier_sweep_arm(arm: dict, vault: Path, fixed: dict, expected: dict
     try:
         with _in_vault(vault):
             ex_summary = _quiet(ing.cmd_extract, ex_ns, non_interactive=True)
-            if (ex_summary or {}).get("cancelled"):
+            outcome = _extraction_outcome(ex_summary, documents_total)
+            if outcome["cancelled"] or outcome["rate_limited"]:
                 return ArmResult(arm_id=arm["id"], stage="classifier-sweep", vault=vault, ok=True,
-                                 cancelled=True, doc_errors=_doc_errors(ex_summary))
+                                 doc_errors=_doc_errors(ex_summary), **outcome)
             fn_ns = SimpleNamespace(finalizer_model=fixed["finalizer_model"], finalizer_effort=None,
                                     estimate=False, skip_briefing=True)
             _quiet(ing.cmd_finalize, fn_ns)
@@ -553,7 +611,7 @@ def run_classifier_sweep_arm(arm: dict, vault: Path, fixed: dict, expected: dict
         return ArmResult(arm_id=arm["id"], stage="classifier-sweep", vault=vault, ok=False,
                          error=str(e))
     return ArmResult(arm_id=arm["id"], stage="classifier-sweep", vault=vault, ok=True,
-                     doc_errors=_doc_errors(ex_summary),
+                     doc_errors=_doc_errors(ex_summary), **outcome,
                      extra={"classification": _classify_results(vault, expected)})
 
 
@@ -673,12 +731,22 @@ def _arm_line(i: int, total: int, label: str, result: ArmResult, elapsed: float)
     tool — the underlying pipeline's own verbose per-document output (progress rows, warnings, an
     elapsed ticker) is suppressed (`_quiet`) during a real run in favour of this; full failure
     detail goes to errors.log, not the terminal, so a bad arm doesn't have to be read off a
-    scrolling wall of text."""
+    scrolling wall of text.
+
+    A rate limit and a Ctrl-C used to print identically (`interrupted`) — the one distinction
+    that actually mattered (#559): a rate limit means the harness itself decided to stop, with a
+    reason and a document count worth seeing at a glance, where a plain interrupt is the operator
+    stopping it. Both now carry the `documents_done/documents_total` split so a partial arm reads
+    as partial right in the scrolling log, not just in the report."""
     secs = int(elapsed)
     dur = f"{secs // 60}m{secs % 60:02d}s"
     idx = _arm_idx(i, total)
+    docs = (f" after {result.documents_done}/{result.documents_total} docs"
+           if result.documents_total is not None else "")
+    if result.rate_limited:
+        return f"  {idx} {label:<28} ⚠ rate-limited{docs}  {dur}  (see errors.log)"
     if result.cancelled:
-        return f"  {idx} {label:<28} interrupted"
+        return f"  {idx} {label:<28} interrupted{docs}"
     if not result.ok or result.doc_errors:
         n = len(result.doc_errors)
         detail = f"{n} failed" if n else "failed"
@@ -745,11 +813,16 @@ def main(argv: list[str] | None = None) -> int:
 
     if "extractor" in stages and config.get("extractor_sweep"):
         sweep = config["extractor_sweep"]
+        # `defaults:` (#559) supplies `concurrency`/`max_rate_limit_waits` for every arm that
+        # doesn't set its own — merged in per-arm here (arm keys win) so `run_extractor_arm`
+        # itself stays a plain per-arm function that just reads `arm.get(...)`.
+        defaults = sweep.get("defaults") or {}
         master = ensure_master_vault(config["master_vault"]["name"], docs, with_sidecars=True,
                                      root=root)
         for arm in sweep["arms"]:
             if not _selected(arm):
                 continue
+            arm = {**defaults, **arm}
             vault = arm_vault(sweep["vault_prefix"], arm["id"], root)
             if not vault.exists():
                 seed_arm_vault(master, vault)

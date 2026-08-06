@@ -87,12 +87,37 @@ def _cost_cell(usage: dict | None) -> str:
     return f"{'~' if _is_notional(usage) else ''}${total:.3f}"
 
 
-def _pct_cell(totals: dict, vault_basename: str) -> str:
+def _pct_cell(totals: dict, vault_basename: str, *, partial_suffix: str | None = None) -> str:
     t = totals.get(vault_basename)
     if not t or not t.get("of"):
         return "—"
     h, n = t["hit"], t["of"]
-    return f"{h / n * 100:.0f}% ({h}/{n})"
+    cell = f"{h / n * 100:.0f}% ({h}/{n})"
+    return f"{cell} — {partial_suffix}" if partial_suffix else cell
+
+
+def is_partial(r) -> bool:
+    """True when an extractor arm didn't get through the whole corpus — a rate limit, a Ctrl-C,
+    or per-document failures that left fewer staged extractions than the corpus had documents
+    (#559). Distinct from `r.ok`, which stays True for all three (`cmd_extract` catches and
+    returns a summary, never raises), and from `r.doc_errors`, which is only the third case —
+    without this, a partial arm's recall figure reads as a real (catastrophic) quality result
+    instead of the different, smaller question it actually answers."""
+    if r.stage != "extractor" or not r.ok:
+        return False
+    if r.rate_limited or r.cancelled:
+        return True
+    if r.documents_total is not None and r.documents_done is not None:
+        return r.documents_done < r.documents_total
+    return False
+
+
+def _partial_suffix(r) -> str | None:
+    if not is_partial(r):
+        return None
+    if r.documents_total is not None:
+        return f"partial, {r.documents_done}/{r.documents_total} docs"
+    return "partial"
 
 
 def extractor_table_md(results: list, scores: dict) -> str:
@@ -109,8 +134,12 @@ def extractor_table_md(results: list, scores: dict) -> str:
             continue
         vb = Path(r.vault).name if r.vault else r.arm_id
         u = _usage_totals(r.usage)
-        lines.append(f"| `{vb}` | {_backends(r.usage)} | {_pct_cell(facts, vb)} | "
-                     f"{_pct_cell(mnm, vb)} | {_cost_cell(r.usage)} | {u['latency_s']:.0f}s | "
+        # A partial arm answered a different (smaller) question than a complete one — never show
+        # its recall as a bare percentage, which would read as a real, comparable score (#559).
+        suffix = _partial_suffix(r)
+        lines.append(f"| `{vb}` | {_backends(r.usage)} | {_pct_cell(facts, vb, partial_suffix=suffix)} | "
+                     f"{_pct_cell(mnm, vb, partial_suffix=suffix)} | {_cost_cell(r.usage)} | "
+                     f"{u['latency_s']:.0f}s | "
                      f"{u['retries']} retries, {u['sectioned_calls']} sectioned calls |")
     return "\n".join(lines)
 
@@ -228,19 +257,58 @@ def docs_summary_md(results: list, scores: dict) -> str:
     return "\n".join(lines)
 
 
+def _failed_line(r) -> str:
+    """The one-line summary of why an arm landed in write_run's "Failed or incomplete arms"
+    section — priority order matches how informative each cause is: a hard failure's own message,
+    then a rate limit's document count, then a plain interrupt's, then a per-document-failure
+    count, all only reachable when `is_partial`/doc_errors put the arm on this list at all."""
+    if r.error:
+        return r.error
+    if r.rate_limited:
+        done = r.documents_done if r.documents_done is not None else "?"
+        total = r.documents_total if r.documents_total is not None else "?"
+        return f"rate-limited after {done}/{total} docs"
+    if r.cancelled:
+        return (f"interrupted after {r.documents_done}/{r.documents_total} docs"
+               if r.documents_total is not None else "interrupted")
+    if is_partial(r):
+        return f"incomplete — {r.documents_done}/{r.documents_total} docs extracted"
+    return f"{len(r.doc_errors)} document(s) failed"
+
+
 def _errors_log_text(results: list) -> str:
-    """Full failure detail for every arm that had any — a hard failure (`error`, arm-level) or
+    """Full failure detail for every arm that had any — a hard failure (`error`, arm-level),
     per-document failures caught and tallied internally by cmd_extract/cmd_finalize (`doc_errors`
-    — these never raise, so `ok` alone misses them). Kept out of the terminal (run_benchmark.py's
-    terse per-arm line just says "see errors.log") and out of REPORT.md's tables, which are
-    read as much for their shape as their content."""
+    — these never raise, so `ok` alone misses them), or a rate limit / partial completion (#559).
+    That third case used to write nothing at all: a rate limit's documents get `status: cancelled`
+    on the in-flight ones, which `doc_errors` correctly excludes as not-a-failure, so the arm had
+    neither `error` nor `doc_errors` and produced no errors.log entry — the exact regression this
+    fix targets. Each arm gets at most one block, but that block can carry more than one kind of
+    detail (a rate-limited arm can also have had per-document failures on top), unlike the old
+    if/elif that could only ever report one. Kept out of the terminal (run_benchmark.py's terse
+    per-arm line just says "see errors.log") and out of REPORT.md's tables, which are read as
+    much for their shape as their content."""
     blocks = []
     for r in results:
+        parts = []
         if r.error:
-            blocks.append(f"{r.stage}:{r.arm_id}\n  {r.error}")
-        elif r.doc_errors:
-            body = "\n".join(f"  {e}" for e in r.doc_errors)
-            blocks.append(f"{r.stage}:{r.arm_id}\n{body}")
+            parts.append(f"  {r.error}")
+        if r.rate_limited:
+            done = r.documents_done if r.documents_done is not None else "?"
+            total = r.documents_total if r.documents_total is not None else "?"
+            reason = r.stop_message or "rate limit"
+            parts.append(f"  rate-limited: {reason} — {done}/{total} documents extracted before "
+                        f"this arm stopped.")
+        elif is_partial(r):
+            done = r.documents_done if r.documents_done is not None else "?"
+            total = r.documents_total if r.documents_total is not None else "?"
+            cause = "interrupted" if r.cancelled else "per-document failures"
+            parts.append(f"  incomplete ({cause}) — {done}/{total} documents extracted before "
+                        f"this arm stopped.")
+        if r.doc_errors:
+            parts.append("\n".join(f"  {e}" for e in r.doc_errors))
+        if parts:
+            blocks.append(f"{r.stage}:{r.arm_id}\n" + "\n".join(parts))
     return "\n\n".join(blocks)
 
 
@@ -287,6 +355,18 @@ def _provenance_note(prov: dict) -> str:
     return f"Code version: `{prov['commit_short']}` on `{prov.get('branch') or '?'}` ({state})."
 
 
+def _scored_document_count(vault) -> int | None:
+    """How many documents this arm actually staged an extraction for, counted straight off
+    `.watchdog/extracted/*.json` rather than trusted from the run summary's self-reported
+    counts — the same ground truth `score_arms.vault_extracted_shas` restricts its denominator
+    to (#559), so a consumer of run.json can cross-check `documents_extracted` against what was
+    really scored instead of taking it on faith."""
+    if not vault:
+        return None
+    d = Path(vault) / ".watchdog" / "extracted"
+    return len(list(d.glob("*.json"))) if d.is_dir() else None
+
+
 def run_json(rid: str, results: list, scores: dict, config: dict, prov: dict) -> dict:
     """The run's numbers in a machine-readable shape, so a consumer (the composite score index,
     #551) reads structured data instead of re-parsing REPORT.md's markdown tables. Every figure
@@ -306,6 +386,16 @@ def run_json(rid: str, results: list, scores: dict, config: dict, prov: dict) ->
             "cost_usd": round(u["cost_usd"], 6), "latency_s": round(u["latency_s"], 3),
             "retries": u["retries"], "sectioned_calls": u["sectioned_calls"],
             "facts": facts.get(vb), "must_not_miss": mnm.get(vb),
+            # #559: a rate limit, a Ctrl-C, or per-document failures can all leave an extractor
+            # arm short of the whole corpus while `ok` stays True — `partial` is the one flag a
+            # consumer needs to know the `facts`/`must_not_miss` figures above answer a smaller
+            # question than a complete arm's.
+            "partial": is_partial(r),
+            "rate_limited": bool(r.rate_limited),
+            "stop_message": r.stop_message,
+            "documents_extracted": r.documents_done,
+            "documents_total": r.documents_total,
+            "scored_documents": _scored_document_count(r.vault),
         })
     return {
         "run_id": rid,
@@ -361,12 +451,19 @@ def write_run(out_root: Path, results: list, scores: dict, config: dict,
         "## Classifier smoke test", "", classifier_table_md(results), "",
         "## Classifier model sweep", "", classifier_sweep_table_md(results), "",
     ]
-    failed = [r for r in results if not r.ok or r.doc_errors]
+    # `is_partial` is gated to the extractor stage (only it has a recall cell for
+    # `_partial_suffix` to annotate) — but `r.rate_limited` is a real stop regardless of stage, so
+    # it needs its own clause here or a rate-limited sdk-check/classifier arm gets an errors.log
+    # block ("Full detail in `errors.log`") with no corresponding line in the report naming it.
+    failed = [r for r in results if not r.ok or r.doc_errors or is_partial(r) or r.rate_limited]
     if failed:
-        report += ["## Failed arms", "", "Full detail in `errors.log`.", ""]
-        report += [f"- `{r.stage}:{r.arm_id}` — "
-                  + (r.error if r.error else f"{len(r.doc_errors)} document(s) failed")
-                  for r in failed]
+        report += ["## Failed or incomplete arms", "", "Full detail in `errors.log`.", "",
+                   "A partial arm (rate-limited, interrupted, or missing individual documents) "
+                   "answered a different, smaller question than a complete arm did — its recall "
+                   "figure above is not a quality signal comparable to a complete arm's, and "
+                   "its `cost_usd` still includes spend on any document that never produced an "
+                   "extraction at all.", ""]
+        report += [f"- `{r.stage}:{r.arm_id}` — " + _failed_line(r) for r in failed]
         report.append("")
     (run_dir / "REPORT.md").write_text("\n".join(report), encoding="utf-8")
     (run_dir / "docs-summary.md").write_text(docs_summary_md(results, scores), encoding="utf-8")

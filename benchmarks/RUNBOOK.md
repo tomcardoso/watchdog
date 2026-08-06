@@ -65,14 +65,21 @@ Read in this order:
 0. `bench runs` to find it. Keep the directory: it holds the extractions, the usage, and the
    page text the run was extracted from. Vaults are reset on the next run of that arm, so this
    is the only copy.
-1. **`errors.log`** — first, always. An arm that rate-limited or failed partway scores as a *bad
-   arm*, and nothing in the summary distinguishes the two.
-2. **`REPORT.md`** — the tables, and the code version the run came from.
+1. **`errors.log`** — first, always. A rate-limited or partway-failed arm now has its own entry
+   here (#559) — `_arm_line`'s terse output and `run.json`'s `partial`/`rate_limited` fields tell
+   the two apart from a hard failure and from each other, so you no longer have to infer which
+   happened from a bare `ok=True`/`ok=False`.
+2. **`REPORT.md`** — the tables, and the code version the run came from. A partial arm's recall
+   cell reads `100% (6/6) — partial, 2/6 docs` rather than a bare percentage, and it gets its own
+   line under "Failed or incomplete arms" alongside hard failures — its figure answers a smaller
+   question than a complete arm's and is not a quality signal against the full corpus.
 3. **`run.json`** — the same numbers as data, for the composite score index.
 
-Then check each arm extracted every document: compare `.watchdog/extracted/*.json` against the
-corpus size. `score_arms.py` is blob-level, so on this single-case corpus a document a model never
-extracted gets **credited from its siblings** — a silent failure that looks like a good score.
+Checking that each arm extracted every document — comparing `.watchdog/extracted/*.json` against
+the corpus size — used to be a manual step here. `score_arms.py` now does it automatically
+(#559): scoring is gated on which documents a vault actually extracted, so a document a model
+never opened is excluded from that vault's denominator rather than **credited from its
+siblings** (the old blob-level failure mode) or counted as a miss.
 
 ## 5. Score
 
