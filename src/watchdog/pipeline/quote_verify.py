@@ -18,6 +18,7 @@ Annotation only, never a gate (same posture as the D32 coverage warning): a loca
 be resolved is flagged in the rendered note and logged as a WARN, but never blocks the document.
 """
 
+import html
 import re
 import unicodedata
 
@@ -131,7 +132,11 @@ def verify_quote(page_texts: dict[int, str], page: int | None, quote: str) -> di
 
     for candidate in (page, page - 1, page + 1):
         text = page_texts.get(candidate)
-        if text and norm_quote in _normalize(text):
+        # Docling's markdown export HTML-escapes "&" to "&amp;" in some cells/paragraphs even
+        # though markdown doesn't require it; a model transcribing the page naturally reads
+        # that as a plain "&" (#560), so decode before comparing or every quote spanning an
+        # "X & Y" would falsely fail to verify.
+        if text and norm_quote in _normalize(html.unescape(text)):
             result = {"verified": True}
             if candidate != page:
                 result["found_page"] = candidate
@@ -285,6 +290,46 @@ def _expand_sentence(text: str, a: int, b: int) -> str:
     return _cap(quote)
 
 
+_MIN_SPACELESS_LOCATOR = 8   # normalized chars, spaces removed — below this a whitespace-blind
+                             # match risks colliding on an unrelated span (#560)
+
+
+def _find_match(norm_text: str, idx_map: list[int], norm_locator: str) -> tuple[int, int, int] | None:
+    """Find `norm_locator` in `norm_text`, first with whitespace intact, then — only if that
+    fails — with ALL whitespace stripped from both sides, to recover a match that OCR broke by
+    fusing or dropping a word boundary (#560: e.g. "DEFERREDCONTRIBUTIONS ANDNET ASSETS" in the
+    source vs. the model's correctly-spaced "DEFERRED CONTRIBUTIONS AND NET ASSETS"). The
+    whitespace-blind fallback only ever runs after the normal match comes up empty, so it can
+    only recover an otherwise-lost match, never override a real one; `_MIN_SPACELESS_LOCATOR`
+    keeps a short locator from being trusted to match without any word-boundary signal at all.
+
+    Returns ``(origin_start, origin_end, occurrence_count)`` in the original text's index space
+    (via `idx_map`), or ``None`` if neither variant matches.
+    """
+    count = norm_text.count(norm_locator)
+    if count > 0:
+        start = norm_text.index(norm_locator)
+        end = start + len(norm_locator)
+        return idx_map[start], idx_map[end - 1] + 1, count
+
+    sp_locator = norm_locator.replace(" ", "")
+    if len(sp_locator) < _MIN_SPACELESS_LOCATOR:
+        return None
+    sp_chars: list[str] = []
+    sp_idx: list[int] = []
+    for ch, oi in zip(norm_text, idx_map):
+        if ch != " ":
+            sp_chars.append(ch)
+            sp_idx.append(oi)
+    sp_text = "".join(sp_chars)
+    sp_count = sp_text.count(sp_locator)
+    if sp_count == 0:
+        return None
+    start = sp_text.index(sp_locator)
+    end = start + len(sp_locator)
+    return sp_idx[start], sp_idx[end - 1] + 1, sp_count
+
+
 def resolve_quote(page_texts: dict[int, str], page: int | None, locator: str) -> dict:
     """Resolve a model-emitted ``quote_locator`` — the first several words of a source
     sentence — against the real page text, and expand it to the full sentence.
@@ -313,18 +358,25 @@ def resolve_quote(page_texts: dict[int, str], page: int | None, locator: str) ->
         text = page_texts.get(candidate)
         if not text:
             continue
+        # Decode Docling's HTML-escaped "&amp;" (etc.) before matching or expanding — a model
+        # transcribing the page naturally writes the decoded "&", so the raw markdown's escaped
+        # form would otherwise never match (#560). Unescaping `text` itself, not just the
+        # comparison, keeps it consistent with `idx_map`'s origin indices and means the rendered
+        # quote below is clean too, rather than showing "&amp;" to a reader.
+        text = html.unescape(text)
         norm_text, idx_map = _normalize_with_map(text)
-        count = norm_text.count(norm_locator)
-        if count == 0:
+        match = _find_match(norm_text, idx_map, norm_locator)
+        if match is None:
             continue
-
-        start = norm_text.index(norm_locator)
-        end = start + len(norm_locator)
-        a, b = idx_map[start], idx_map[end - 1] + 1
+        a, b, count = match
 
         quote = _expand_sentence(text, a, b)
-        if norm_locator not in _normalize(quote):
-            # Sanity guard: the expansion logic produced something unrelated to the match.
+        norm_quote = _normalize(quote)
+        # Sanity guard: the expansion logic produced something unrelated to the match. Checked
+        # space-insensitively too — a whitespace-blind match (above) can legitimately expand to
+        # a quote that still carries the source's own missing/fused word boundary, which would
+        # otherwise trip this guard on the very case it exists to recover (#560).
+        if norm_locator not in norm_quote and norm_locator.replace(" ", "") not in norm_quote.replace(" ", ""):
             quote = locator
 
         result = {"quote": quote}
@@ -368,6 +420,19 @@ def resolve_quotes(extraction: dict, page_texts: dict[int, str]) -> list[str]:
                     f"document.key_facts[{i}].quote_locator matched {result['occurrences']} times "
                     f"on page {result.get('found_page', fact.get('page'))} — used the first match: "
                     f"{locator!r}"
+                )
+            elif result.get("found_page") is not None:
+                # A single, unambiguous match — but not on the page the model cited (#560). This
+                # used to be silent unless also ambiguous: `fact["page"]` (what every downstream
+                # reader — the document note, entity evidence, timeline — actually displays)
+                # still carries the model's original, wrong citation even though the quote text
+                # itself was quietly resolved from the real page. Warn rather than silently
+                # correct: the citation may be genuinely off by one (a real, if minor, model
+                # error worth a reporter's attention), not a matching artifact to paper over.
+                warnings.append(
+                    f"document.key_facts[{i}].quote_locator was cited to page {fact.get('page')} "
+                    f"but only found on page {result['found_page']} — the fact's page citation "
+                    f"may be off by one: {locator!r}"
                 )
             continue
 
