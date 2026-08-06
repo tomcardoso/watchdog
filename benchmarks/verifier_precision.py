@@ -60,21 +60,69 @@ def added_facts(extraction):
             if isinstance(f, dict) and f.get("added_by") == "verify"]
 
 
-def doc_pages(vault, sha256):
+def _pick_arm(arm_dirs, arm, target):
+    """The one arm directory to judge. `arm` matches either the vault directory name outright or
+    the bare arm id (`gpt-mini-low-verify` for `bench-ex-gpt-mini-low-verify`) — a run's normal
+    shape is a verify/noverify *pair*, so naming the arm is the common case, not an escape hatch
+    from an error."""
+    names = [os.path.basename(d) for d in arm_dirs]
+    if arm:
+        matches = [d for d in arm_dirs
+                   if os.path.basename(d) == arm or os.path.basename(d).endswith(f"-{arm}")]
+        if len(matches) == 1:
+            return matches[0]
+        if not matches:
+            sys.exit(f"No arm matching {arm!r} in {target}. Available: {', '.join(names)}")
+        sys.exit(f"{arm!r} matches more than one arm in {target}: "
+                 f"{', '.join(os.path.basename(d) for d in matches)} — name one exactly.")
+    if len(arm_dirs) == 1:
+        return arm_dirs[0]
+    if not arm_dirs:
+        sys.exit(f"No extracted arms found under {target}.")
+    sys.exit(f"{target} holds {len(arm_dirs)} arms — pass --arm to pick one. "
+             f"Available: {', '.join(names)}")
+
+
+def _source_dirs(target, arm=None):
+    """(extracted-dir, page-text-dir) for either input shape.
+
+    A live benchmark vault works, but a vault is disposable — it is reset the next time that arm
+    runs, taking its page text with it. A **run directory** (`benchmarks/runs/<id>/`) keeps both
+    for as long as the run is kept, which is what makes a judge pass on last week's run possible
+    at all. Both shapes are accepted so an in-flight run can still be judged straight from its
+    vault."""
+    artifacts = os.path.join(target, "artifacts")
+    if os.path.isdir(artifacts):
+        arm_dirs = sorted(d for d in glob.glob(os.path.join(artifacts, "*"))
+                          if os.path.isdir(os.path.join(d, "extracted")))
+        return (os.path.join(_pick_arm(arm_dirs, arm, target), "extracted"),
+                os.path.join(target, "pages"))
+    if arm:
+        sys.exit(f"--arm only applies to a run directory; {target} is not one.")
+    if os.path.isdir(os.path.join(target, "extracted")):
+        # An arm directory inside a run: page text sits one level up, shared across arms.
+        return (os.path.join(target, "extracted"),
+                os.path.join(os.path.dirname(os.path.dirname(target)), "pages"))
+    return (os.path.join(target, ".watchdog", "extracted"),
+            os.path.join(target, ".watchdog", "queue"))
+
+
+def doc_pages(pages_dir, sha256):
     """The document's chewed page text, from the queue descriptor the extractor itself read.
-    Missing (a vault whose queue files were cleared by a commit) is not fatal — the packet is
-    still judgeable against the source PDF, just not self-contained, and `build` says so."""
-    path = os.path.join(vault, ".watchdog", "queue", f"{sha256}.json")
+    Missing is not fatal — the packet is still judgeable against the source PDF, just not
+    self-contained, and `build` says so."""
+    path = os.path.join(pages_dir, f"{sha256}.json")
     if not os.path.exists(path):
         return None
     return [{"page": p.get("page"), "text": p.get("markdown", "")}
             for p in _load(path).get("pages", [])]
 
 
-def build(vault, out_dir):
+def build(vault, out_dir, arm=None):
+    extracted_dir, pages_dir = _source_dirs(vault, arm)
     os.makedirs(out_dir, exist_ok=True)
     written, total_added, missing_pages = [], 0, []
-    for path in sorted(glob.glob(os.path.join(vault, ".watchdog", "extracted", "*.json"))):
+    for path in sorted(glob.glob(os.path.join(extracted_dir, "*.json"))):
         extraction = _load(path)
         document = extraction.get("document", {})
         sha256 = document.get("sha256") or os.path.basename(path).removesuffix(".json")
@@ -84,7 +132,7 @@ def build(vault, out_dir):
         total_added += len(added)
 
         slug = os.path.splitext(document.get("filename") or sha256[:12])[0]
-        pages = doc_pages(vault, sha256)
+        pages = doc_pages(pages_dir, sha256)
         if pages is None:
             missing_pages.append(slug)
 
@@ -198,14 +246,17 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
     p_build = sub.add_parser("build", help="write judging packets from a --verify benchmark vault")
-    p_build.add_argument("vault")
+    p_build.add_argument("vault", metavar="TARGET",
+                         help="a benchmark run directory (benchmarks/runs/<id>/), one arm directory inside it, or a live vault")
+    p_build.add_argument("--arm", help="which arm to judge, when the run directory holds "
+                                       "more than one (e.g. gpt-mini-low-verify)")
     p_build.add_argument("--out", required=True, help="directory to write packet-<doc>.json into")
     p_aggregate = sub.add_parser("aggregate", help="tally judgment-<doc>.json files into precision")
     p_aggregate.add_argument("judge_dir")
 
     args = parser.parse_args(argv)
     if args.command == "build":
-        build(args.vault, args.out)
+        build(args.vault, args.out, args.arm)
     else:
         aggregate(args.judge_dir)
 

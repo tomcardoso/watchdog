@@ -559,7 +559,7 @@ def run_classifier_sweep_arm(arm: dict, vault: Path, fixed: dict, expected: dict
 
 def classify_corpus_ready(corpus_dir: Path) -> bool:
     """True iff the classifier-model sweep has a document set to run against — at least one
-    PDF and an `expected.yaml` labelling it. See classify-corpus/README.md."""
+    PDF and an `expected.yaml` labelling it. See corpora/classify/README.md."""
     if not corpus_dir.is_dir():
         return False
     return bool(corpus_documents(corpus_dir)) and (corpus_dir / "expected.yaml").exists()
@@ -572,12 +572,49 @@ def _corpus_expected_skills(keys: list[dict]) -> dict[str, str]:
            if k.get("document", {}).get("expected_skill")}
 
 
-def confirm_run(previews: list[tuple[str, dict, dict]], *, estimate_only: bool) -> bool:
+def reset_vaults(vaults: list[Path], root: Path) -> list[Path]:
+    """Delete stale benchmark vaults so a re-run starts fresh, instead of making the operator
+    hand-run `rm -rf` for every arm they want to re-measure (#494 made staleness a hard refusal,
+    which was safe but made an ordinary re-run tedious).
+
+    This is a recursive delete of paths built from config, so it is guarded rather than trusted.
+    Every path must sit strictly inside the resolved benchmark vault root — itself already a
+    disposable shadow tree, never `~/investigations` (see `vault_root`) — must be a real
+    directory rather than a symlink, and must actually look like a vault (a `.watchdog/` inside).
+    Anything failing a guard raises instead of being skipped quietly: a target that isn't where
+    it should be means the config and this function disagree about what is disposable, and the
+    safe response to that is to stop, not to delete the next one along."""
+    root = root.resolve()
+    removed = []
+    for v in vaults:
+        rv = v.resolve()
+        if rv == root or not rv.is_relative_to(root):
+            raise RuntimeError(f"refusing to reset {v}: outside the benchmark vault root {root}")
+        if v.is_symlink():
+            raise RuntimeError(f"refusing to reset {v}: it is a symlink")
+        if not rv.is_dir():
+            continue
+        if not (rv / ".watchdog").is_dir():
+            raise RuntimeError(f"refusing to reset {v}: no .watchdog/ — this is not a vault")
+        shutil.rmtree(rv)
+        removed.append(rv)
+    return removed
+
+
+def confirm_run(previews: list[tuple[str, dict, dict]], *, estimate_only: bool,
+                stale: list[tuple[Path, str]] | None = None) -> bool:
     """`previews` is a list of (arm_label, estimate_dict, meta) tuples, already computed (free).
-    Prints a per-arm breakdown plus a grand total, then one confirmation for the whole run."""
+    Prints a per-arm breakdown plus a grand total, then one confirmation for the whole run.
+
+    `stale` vaults are listed before the prompt: confirming the run also resets them, and a
+    recursive delete should never be a surprise consequence of agreeing to a cost."""
     from watchdog import interactive
     total_low = total_high = 0.0
     any_priced = any_projected = False
+    if stale:
+        print("\nThese vaults hold results from an earlier run and will be RESET first:")
+        for v, reason in stale:
+            print(f"  {v} — {reason}")
     print("\nCost preview:")
     for label, est, meta in previews:
         low, high = est.get("cost_low"), est.get("cost_high")
@@ -614,6 +651,11 @@ def confirm_run(previews: list[tuple[str, dict, dict]], *, estimate_only: bool) 
 
 def _arm_idx(i: int, total: int) -> str:
     return f"[{i:>{len(str(total))}}/{total}]"
+
+
+def bench_report_provenance() -> dict:
+    import bench_report
+    return bench_report.git_provenance()
 
 
 def _arm_starting_line(i: int, total: int, label: str) -> str:
@@ -653,7 +695,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="comma-separated arm ids to run (default: every arm in the "
                              "selected stages). Lets one comparison run without paying for the "
                              "whole sweep, e.g. --arms sonnet-med-sdk,sonnet-med-api")
-    parser.add_argument("--out", type=Path, default=HERE)
+    parser.add_argument("--out", type=Path, default=HERE / "runs",
+                        help="Where run directories are written (default: benchmarks/runs/, gitignored)")
     parser.add_argument("--vault-root", type=Path, default=None,
                         help="Where benchmark vaults are created (default: benchmarks/.vaults/, "
                              "or benchmark.yaml's 'vault_root:' key) — always a shadow tree, "
@@ -695,11 +738,6 @@ def main(argv: list[str] | None = None) -> int:
     # has stale state (#494).
     stale = [(v, r) for v in planned_arm_vaults(config, config_dir, stages, root, _selected)
             if (r := _stale_reason(v))]
-    if stale:
-        lines = "\n".join(f"  {v} — {r}" for v, r in stale)
-        rm = "\n".join(f"  rm -rf {v}" for v, _ in stale)
-        sys.exit(f"Error: {len(stale)} target vault(s) aren't fresh — refusing to start the "
-                 f"run:\n{lines}\n\nRemove them first, then re-run, e.g.:\n{rm}")
 
     results: list[ArmResult] = []
     previews: list[tuple[str, dict, dict]] = []
@@ -782,7 +820,7 @@ def main(argv: list[str] | None = None) -> int:
                             {"arm": arm, "vault": vault, "fixed": sweep["fixed"],
                              "expected": cc_expected}))
         else:
-            print("\nclassifier sweep skipped — benchmarks/classify-corpus/ has no documents "
+            print("\nclassifier sweep skipped — benchmarks/corpora/classify/ has no documents "
                  "yet, see its README.")
             results.append(ArmResult(arm_id="classifier-sweep", stage="classifier-sweep",
                                      vault=None, ok=True, skipped=True))
@@ -814,12 +852,20 @@ def main(argv: list[str] | None = None) -> int:
         print("Nothing to run for the requested stage(s).")
         return 0
 
-    proceed = confirm_run(previews, estimate_only=args.estimate_only)
+    proceed = confirm_run(previews, estimate_only=args.estimate_only, stale=stale)
     if not proceed:
         return 0
 
+    # After the go-ahead, before anything is seeded or spent.
+    if stale:
+        for v in reset_vaults([v for v, _ in stale], root):
+            print(f"  reset {v}")
+
     from watchdog.cmd.ingest import _caffeinate
     from watchdog import fixture_capture
+    # Stamped now, not at report time: a sweep runs for tens of minutes and the working
+    # tree can change under it, so this records the code the run actually started against.
+    provenance = bench_report_provenance()
     total = len(plan)
     print(f"\nRunning {total} arm(s)…\n")
     # Auto-captures real responses that hit truncation/malformed-JSON/schema-drift/pagination
@@ -877,7 +923,7 @@ def main(argv: list[str] | None = None) -> int:
     from score_arms import score as score_vaults
     scores = score_vaults(vaults_to_score) if vaults_to_score else {
         "vaults": [], "detail": [], "totals": {"facts": {}, "must_not_miss": {}}, "unscorable": []}
-    out_dir = bench_report.write_run(args.out, results, scores, config)
+    out_dir = bench_report.write_run(args.out, results, scores, config, provenance)
     n_failed = sum(1 for r in results if not r.ok or r.doc_errors)
     tail = f" — {n_failed} arm(s) had failures, see errors.log" if n_failed else ""
     print(f"\nReport written to {out_dir}{tail}")

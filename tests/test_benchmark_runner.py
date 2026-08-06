@@ -12,6 +12,8 @@ calls) is not unit-tested here, matching `score_arms.py`'s own convention — th
 actually running the tool under the live-approval rule, same as any other real ingest.
 """
 import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -26,6 +28,7 @@ import bench_report as br  # noqa: E402
 import cost_reference as cr  # noqa: E402
 import run_benchmark as rb  # noqa: E402
 import score_arms as sa  # noqa: E402
+import verifier_precision as vp  # noqa: E402
 
 import watchdog.cmd.ingest as wd_ingest  # noqa: E402
 import watchdog.interactive as wd_interactive  # noqa: E402
@@ -226,28 +229,54 @@ def test_planned_arm_vaults_respects_arms_filter_and_unselected_stages(tmp_path)
     assert vaults == [tmp_path / "bench-ex-a"]   # b excluded, finalizer stage not requested
 
 
-def test_main_refuses_the_whole_run_when_one_target_vault_is_stale(tmp_path, monkeypatch, capsys):
-    """A stale vault on arm 3 must stop the run before arm 1 or 2 ever gets a preview printed or
-    a dollar spent — not be discovered mid-sweep after earlier arms already ran (#494)."""
+def test_main_lists_a_stale_vault_before_the_prompt_and_resets_it_after(tmp_path, monkeypatch,
+                                                                        capsys):
+    """#494 made a stale vault a hard refusal, which was safe but meant hand-running `rm -rf`
+    before every re-run. It is reset automatically now — but only after the operator confirms,
+    and only after being named in the same breath as the cost, because a recursive delete must
+    never be a surprise consequence of agreeing to spend money."""
     cfg = _matrix_config(tmp_path)   # sonnet-med-sdk, sonnet-med-api, haiku
     monkeypatch.setattr(rb, "verify_freeze", lambda *a, **k: None)
     monkeypatch.setattr(rb, "corpus_documents", lambda d: [Path("a.pdf")])
-    stale_vault = tmp_path / "bench-ex3-haiku"
+    root = tmp_path / ".vaults"
+    stale_vault = root / "bench-ex3-haiku"
     (stale_vault / ".watchdog" / "queue").mkdir(parents=True)
     (stale_vault / ".watchdog" / "queue" / "abc.json").write_text("{}")
-    monkeypatch.setattr(rb, "arm_vault", lambda prefix, aid, root: tmp_path / f"{prefix}-{aid}")
+    monkeypatch.setattr(rb, "arm_vault", lambda prefix, aid, r: root / f"{prefix}-{aid}")
+    monkeypatch.setattr(rb, "vault_root", lambda *a, **k: root)
+    monkeypatch.setattr(rb, "ensure_master_vault", lambda *a, **k: tmp_path / "master")
+    monkeypatch.setattr(rb, "seed_arm_vault", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "preview_extractor_arm", lambda *a, **k: {"cost_low": 0.0,
+                                                                     "cost_high": 0.0})
+    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: False)   # decline
 
-    def _boom(*a, **k):
-        raise AssertionError("must not reach preview/confirm once a stale vault is found")
-    monkeypatch.setattr(rb, "ensure_master_vault", _boom)
-    monkeypatch.setattr(rb, "preview_extractor_arm", _boom)
-    monkeypatch.setattr(wd_interactive, "confirm", _boom)
-
-    with pytest.raises(SystemExit, match="aren't fresh"):
-        rb.main(["--config", str(cfg), "--stages", "extractor"])
+    rb.main(["--config", str(cfg), "--stages", "extractor"])
 
     out = capsys.readouterr().out
-    assert "extractor:sonnet-med-sdk" not in out
+    assert "will be RESET" in out
+    assert "bench-ex3-haiku" in out
+    # Declined, so nothing was deleted — the reset is on the far side of the confirmation.
+    assert stale_vault.exists()
+
+
+def test_main_does_not_reset_anything_on_an_estimate_only_run(tmp_path, monkeypatch):
+    """`--estimate-only` is the free, always-safe path; it must stay side-effect free."""
+    cfg = _matrix_config(tmp_path)
+    monkeypatch.setattr(rb, "verify_freeze", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "corpus_documents", lambda d: [Path("a.pdf")])
+    root = tmp_path / ".vaults"
+    stale_vault = root / "bench-ex3-haiku"
+    (stale_vault / ".watchdog" / "extracted").mkdir(parents=True)
+    (stale_vault / ".watchdog" / "extracted" / "a.json").write_text("{}")
+    monkeypatch.setattr(rb, "arm_vault", lambda prefix, aid, r: root / f"{prefix}-{aid}")
+    monkeypatch.setattr(rb, "vault_root", lambda *a, **k: root)
+    monkeypatch.setattr(rb, "ensure_master_vault", lambda *a, **k: tmp_path / "master")
+    monkeypatch.setattr(rb, "seed_arm_vault", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "preview_extractor_arm", lambda *a, **k: {"cost_low": 0.0,
+                                                                     "cost_high": 0.0})
+
+    rb.main(["--config", str(cfg), "--stages", "extractor", "--estimate-only"])
+    assert stale_vault.exists()
 
 
 # ── vault_root: shadow vault isolation (#475 follow-up, D146) ──────────────────
@@ -1132,7 +1161,7 @@ def test_keyboard_interrupt_mid_arm_still_writes_a_report(tmp_path, monkeypatch,
     monkeypatch.setattr(rb, "run_extractor_arm", _fake_run_extractor_arm)
     captured = {}
     monkeypatch.setattr(br, "write_run",
-                        lambda out_root, results, scores, config: (
+                        lambda out_root, results, scores, config, provenance=None: (
                             captured.__setitem__("results", results), tmp_path)[1])
 
     rc = rb.main(["--config", str(cfg), "--stages", "extractor"])
@@ -1159,7 +1188,7 @@ def test_unhandled_exception_mid_arm_still_writes_a_report(tmp_path, monkeypatch
     monkeypatch.setattr(rb, "run_extractor_arm", _fake_run_extractor_arm)
     captured = {}
     monkeypatch.setattr(br, "write_run",
-                        lambda out_root, results, scores, config: (
+                        lambda out_root, results, scores, config, provenance=None: (
                             captured.__setitem__("results", results), tmp_path)[1])
 
     rc = rb.main(["--config", str(cfg), "--stages", "extractor"])
@@ -1225,7 +1254,7 @@ def test_sdk_check_arm_relabeled_and_excluded_from_recall_scoring(tmp_path, monk
 
     captured = {}
 
-    def fake_write_run(out_root, results, scores, config):
+    def fake_write_run(out_root, results, scores, config, provenance=None):
         captured["results"] = results
         captured["scores"] = scores
         return tmp_path / "run-out"
@@ -1392,3 +1421,294 @@ def test_preview_extractor_arm_falls_back_to_catalog_projection_when_nothing_mat
     assert est["cost_low"] is not None
     assert est["cost_low"] == est["cost_high"]
     assert est["projected"] is True
+
+
+def test_reference_usage_files_reads_both_the_runs_dir_and_the_legacy_layout(tmp_path):
+    """Runs moved to `benchmarks/runs/<id>/` (#550), but runs archived before that move sit
+    directly under the benchmarks root. Both are valid history for the cost preview, and missing
+    the legacy ones would degrade silently — the preview would just fall back to its static
+    projection with no signal that it had lost every reference it used to have."""
+    legacy = _write_archived_usage(tmp_path, "2026-01-01-0000", "bench-ex-a", "20260101T000000Z",
+                                   [_call()])
+    moved = _write_archived_usage(tmp_path / "runs", "2026-02-02-0000", "bench-ex-b",
+                                  "20260202T000000Z", [_call()])
+    found = cr.reference_usage_files(tmp_path, "deepseek-v4-flash", None, "deepseek")
+    assert set(found) == {legacy, moved}
+
+
+
+# ── run provenance and run.json (#550 follow-up) ────────────────────────────────
+
+def test_git_provenance_records_commit_and_dirty_state(tmp_path):
+    """A run's figures are only valid against the code that produced them, so the commit is
+    recorded — and `dirty` alongside it, because with uncommitted changes the hash does not
+    describe what ran."""
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "T"], cwd=tmp_path, check=True)
+    (tmp_path / "a.txt").write_text("one")
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-qm", "first"], cwd=tmp_path, check=True)
+
+    clean = br.git_provenance(tmp_path)
+    assert clean["dirty"] is False
+    assert len(clean["commit"]) == 40
+    assert clean["commit_short"] == clean["commit"][:9]
+
+    (tmp_path / "a.txt").write_text("two")             # uncommitted edit
+    assert br.git_provenance(tmp_path)["dirty"] is True
+
+
+def test_git_provenance_outside_a_repo_records_unknown_not_clean(tmp_path):
+    """"Unknown" and "clean" are different claims and only one of them justifies trusting the
+    commit — a checkout without git must not report a clean tree by default."""
+    prov = br.git_provenance(tmp_path)
+    assert prov["commit"] is None
+    assert prov["dirty"] is None                       # not False
+    assert "unknown" in br._provenance_note(prov)
+
+
+def test_provenance_note_flags_a_dirty_tree_as_unreproducible():
+    note = br._provenance_note({"commit": "a" * 40, "commit_short": "aaaaaaaaa",
+                                "branch": "main", "dirty": True})
+    assert "uncommitted changes" in note and "not reproducible" in note
+
+
+def test_write_run_emits_run_json_with_provenance_and_per_arm_metrics(tmp_path):
+    """#551's composite score needs the run's numbers as data, not as markdown to re-parse."""
+    results = [_arm_result(arm_id="gpt-mini-low", vault=str(tmp_path / "bench-ex-gpt-mini-low"),
+                           usage={"calls": [{"cost_usd": 0.5, "latency_s": 10.0,
+                                             "task": "extract-section", "attempts": 2,
+                                             "backend": "openai"}]})]
+    scores = {"totals": {"facts": {"bench-ex-gpt-mini-low": {"hit": 7, "of": 10}},
+                        "must_not_miss": {"bench-ex-gpt-mini-low": {"hit": 4, "of": 5}}}}
+    config = {"corpus": {"sha256": "corpora/extract/corpus-v1.sha256"},
+              "keys": {"sha256": "keys/keys-v1.sha256"}}
+    prov = {"commit": "b" * 40, "commit_short": "bbbbbbbbb", "branch": "main", "dirty": False,
+            "captured_at": "2026-08-05T00:00:00+00:00"}
+
+    run_dir = br.write_run(tmp_path / "out", results, scores, config, prov)
+    data = json.loads((run_dir / "run.json").read_text())
+
+    assert data["provenance"] == prov
+    assert data["frozen_refs"]["corpus"] == "corpora/extract/corpus-v1.sha256"
+    arm = data["arms"][0]
+    assert arm["arm_id"] == "gpt-mini-low"
+    assert arm["cost_usd"] == pytest.approx(0.5)
+    assert arm["retries"] == 1 and arm["sectioned_calls"] == 1
+    assert arm["facts"] == {"hit": 7, "of": 10}
+    assert arm["must_not_miss"] == {"hit": 4, "of": 5}
+    # The same figures the human report renders — one calculation, two renderings.
+    assert "b" * 9 in (run_dir / "REPORT.md").read_text()
+
+
+def test_run_json_cost_matches_the_report_table(tmp_path):
+    """run.json and REPORT.md must never disagree: they read the same helper, and a consumer
+    that trusts one over the other would be picking a winner between two truths."""
+    results = [_arm_result(arm_id="a", vault=str(tmp_path / "bench-ex-a"),
+                           usage={"calls": [{"cost_usd": 1.25, "latency_s": 3.0,
+                                             "task": "extract", "backend": "openai"}]})]
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    data = br.run_json("rid", results, {}, config, {"commit": None})
+    assert data["arms"][0]["cost_usd"] == pytest.approx(
+        br._usage_totals(results[0].usage)["cost_usd"])
+
+
+def test_qualitative_aggregate_reproduces_the_committed_pass(tmp_path):
+    """The judge protocol is kept tracked so the next pass is comparable to the last. That only
+    holds if the aggregator keeps producing the same numbers from the same judgments, so this
+    pins it against the one committed pass (2026-07-29).
+
+    Denominators come from the answer keys, not from the judgments that came back: a keyed item
+    nobody graded is a miss, not an item that never existed. Counting only what returned shrinks
+    the denominator and inflates every percentage — and it means adding documents or key items
+    silently fails to raise the bar for later runs."""
+    qual = Path(__file__).resolve().parents[1] / "benchmarks" / "qualitative"
+    expected = json.loads((qual / "summary.json").read_text())["summary"]
+    # Run against a copy: aggregate.py writes summary.json/detail_rows.json into the directory it
+    # reads, so pointing it at the repo would have the test overwrite the very artifacts it pins.
+    work = tmp_path / "pass"
+    work.mkdir()
+    for f in qual.glob("*.json"):
+        shutil.copy(f, work / f.name)
+    proc = subprocess.run([sys.executable, str(qual / "aggregate.py"), str(work)],
+                          capture_output=True, text=True, cwd=qual.parents[1])
+    assert proc.returncode == 0, proc.stderr
+    out = proc.stdout
+    for arm, per_arm in expected.items():
+        f, m = per_arm["facts"], per_arm["must_not_miss"]
+        assert f"{arm:14} {f['hit']:>8}/{f['total']:<8}" in out, f"{arm} facts drifted:\n{out}"
+        assert f"{m['hit']:>7}/{m['total']:<7}" in out, f"{arm} must_not_miss drifted:\n{out}"
+    # Every keyed item was graded in this pass, so nothing should be reported as an ungraded miss.
+    assert "had no judgment" not in out
+
+
+# ── vault auto-reset (#494 follow-up) ───────────────────────────────────────────
+
+def _fake_vault(root: Path, name: str) -> Path:
+    v = root / name
+    (v / ".watchdog" / "extracted").mkdir(parents=True)
+    (v / ".watchdog" / "extracted" / "a.json").write_text("{}")
+    return v
+
+
+def test_reset_vaults_clears_stale_vaults_under_the_root(tmp_path):
+    """Re-running an arm used to mean hand-running `rm -rf` first. The runner resets the vault
+    itself now — after the operator confirms, never before."""
+    root = tmp_path / ".vaults"
+    v1, v2 = _fake_vault(root, "bench-ex-a"), _fake_vault(root, "bench-ex-b")
+    assert rb.reset_vaults([v1, v2], root) == [v1.resolve(), v2.resolve()]
+    assert not v1.exists() and not v2.exists()
+
+
+def test_reset_vaults_refuses_a_path_outside_the_vault_root(tmp_path):
+    """The guard that matters: this is a recursive delete of paths built from config, and the
+    config could name anything. A target outside the disposable shadow tree raises rather than
+    being skipped — config and code disagreeing about what is disposable is a stop condition."""
+    root = tmp_path / ".vaults"
+    root.mkdir()
+    outside = _fake_vault(tmp_path / "real-investigations", "important")
+    with pytest.raises(RuntimeError, match="outside the benchmark vault root"):
+        rb.reset_vaults([outside], root)
+    assert outside.exists()
+
+
+def test_reset_vaults_refuses_the_root_itself(tmp_path):
+    root = tmp_path / ".vaults"
+    (root / ".watchdog").mkdir(parents=True)
+    with pytest.raises(RuntimeError, match="outside the benchmark vault root"):
+        rb.reset_vaults([root], root)
+    assert root.exists()
+
+
+def test_reset_vaults_refuses_a_directory_that_is_not_a_vault(tmp_path):
+    """No `.watchdog/` means this isn't a vault, whatever the config called it — deleting it
+    would be destroying something the benchmark never created."""
+    root = tmp_path / ".vaults"
+    stray = root / "notes"
+    stray.mkdir(parents=True)
+    (stray / "keep.txt").write_text("hand-written")
+    with pytest.raises(RuntimeError, match="not a vault"):
+        rb.reset_vaults([stray], root)
+    assert (stray / "keep.txt").exists()
+
+
+def test_reset_vaults_refuses_a_symlink(tmp_path):
+    """A symlink inside the root can point anywhere; resolving it would smuggle a delete past
+    the containment check."""
+    root = tmp_path / ".vaults"
+    root.mkdir()
+    target = _fake_vault(tmp_path / "elsewhere", "real")
+    link = root / "bench-ex-link"
+    link.symlink_to(target)
+    with pytest.raises(RuntimeError):
+        rb.reset_vaults([link], root)
+    assert target.exists()
+
+
+def test_reset_vaults_ignores_a_vault_that_does_not_exist(tmp_path):
+    root = tmp_path / ".vaults"
+    root.mkdir()
+    assert rb.reset_vaults([root / "bench-ex-gone"], root) == []
+
+
+# ── page text survives a vault reset (#554) ────────────────────────────────────
+
+def test_write_run_keeps_the_page_text_the_run_was_extracted_from(tmp_path):
+    """Run four arms today, re-run them tomorrow, then try to judge today's run: the vaults are
+    gone, and with them the page text a verifier-precision judge grades against. The run keeps
+    its own copy so an old run stays judgeable."""
+    vault = tmp_path / "bench-ex-a"
+    (vault / ".watchdog" / "queue").mkdir(parents=True)
+    (vault / ".watchdog" / "queue" / "abc.json").write_text(
+        json.dumps({"pages": [{"page": 1, "markdown": "page one text"}]}))
+    (vault / ".watchdog" / "extracted").mkdir(parents=True)
+    (vault / ".watchdog" / "extracted" / "abc.json").write_text("{}")
+    results = [_arm_result(arm_id="a", vault=str(vault))]
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+
+    run_dir = br.write_run(tmp_path / "out", results, {}, config, {"commit": None})
+
+    kept = json.loads((run_dir / "pages" / "abc.json").read_text())
+    assert kept["pages"][0]["markdown"] == "page one text"
+
+    shutil.rmtree(vault)                               # tomorrow's re-run resets it
+    assert (run_dir / "pages" / "abc.json").exists()   # today's run is still judgeable
+
+
+def test_page_text_is_stored_once_per_run_not_once_per_arm(tmp_path):
+    """Every arm in a run extracts the same corpus from the same chew, so the page text is
+    identical across them — storing it per arm would multiply it by the arm count for nothing."""
+    results = []
+    for name in ("bench-ex-a", "bench-ex-b"):
+        v = tmp_path / name
+        (v / ".watchdog" / "queue").mkdir(parents=True)
+        (v / ".watchdog" / "queue" / "abc.json").write_text(json.dumps({"pages": []}))
+        results.append(_arm_result(arm_id=name, vault=str(v)))
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+
+    run_dir = br.write_run(tmp_path / "out", results, {}, config, {"commit": None})
+    assert [p.name for p in sorted((run_dir / "pages").glob("*.json"))] == ["abc.json"]
+
+
+def test_verifier_precision_reads_a_run_directory(tmp_path):
+    """The judge tooling has to be able to read what write_run kept, or keeping it is pointless."""
+    run = tmp_path / "2026-01-01-0000"
+    arm = run / "artifacts" / "bench-ex-a" / "extracted"
+    arm.mkdir(parents=True)
+    (run / "pages").mkdir()
+    (run / "pages" / "abc.json").write_text(
+        json.dumps({"pages": [{"page": 1, "markdown": "grounding text"}]}))
+
+    extracted_dir, pages_dir = vp._source_dirs(str(run))
+    assert Path(extracted_dir) == arm
+    assert vp.doc_pages(pages_dir, "abc")[0]["text"] == "grounding text"
+
+
+def test_verifier_precision_still_reads_a_live_vault(tmp_path):
+    """An in-flight run should still be judgeable straight from its vault, before it is archived."""
+    vault = tmp_path / "bench-ex-a"
+    (vault / ".watchdog" / "extracted").mkdir(parents=True)
+    (vault / ".watchdog" / "queue").mkdir(parents=True)
+    extracted_dir, pages_dir = vp._source_dirs(str(vault))
+    assert Path(extracted_dir) == vault / ".watchdog" / "extracted"
+    assert Path(pages_dir) == vault / ".watchdog" / "queue"
+
+
+def test_verifier_precision_picks_an_arm_from_a_multi_arm_run(tmp_path):
+    """A run's normal shape for this tool is a verify/noverify pair, so naming the arm is the
+    common path — not an escape hatch from an error. Matches the bare arm id as well as the full
+    vault directory name."""
+    run = tmp_path / "2026-01-01-0000"
+    for name in ("bench-ex-gpt-mini-low-verify", "bench-ex-gpt-mini-low-noverify"):
+        (run / "artifacts" / name / "extracted").mkdir(parents=True)
+    (run / "pages").mkdir()
+
+    extracted, pages = vp._source_dirs(str(run), "gpt-mini-low-verify")
+    assert Path(extracted) == run / "artifacts" / "bench-ex-gpt-mini-low-verify" / "extracted"
+    assert Path(pages) == run / "pages"
+    # The full vault directory name works too.
+    assert vp._source_dirs(str(run), "bench-ex-gpt-mini-low-noverify")[0].endswith(
+        "bench-ex-gpt-mini-low-noverify/extracted")
+
+
+def test_verifier_precision_multi_arm_run_without_arm_lists_the_options(tmp_path):
+    run = tmp_path / "run"
+    for name in ("bench-ex-a", "bench-ex-b"):
+        (run / "artifacts" / name / "extracted").mkdir(parents=True)
+    with pytest.raises(SystemExit) as e:
+        vp._source_dirs(str(run))
+    assert "pass --arm" in str(e.value) and "bench-ex-a" in str(e.value)
+
+
+def test_verifier_precision_rejects_an_unknown_arm(tmp_path):
+    run = tmp_path / "run"
+    (run / "artifacts" / "bench-ex-a" / "extracted").mkdir(parents=True)
+    with pytest.raises(SystemExit, match="No arm matching"):
+        vp._source_dirs(str(run), "nope")
+
+
+def test_verifier_precision_single_arm_run_still_needs_no_arm(tmp_path):
+    run = tmp_path / "run"
+    (run / "artifacts" / "bench-ex-a" / "extracted").mkdir(parents=True)
+    assert vp._source_dirs(str(run))[0].endswith("bench-ex-a/extracted")
