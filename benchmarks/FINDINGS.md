@@ -215,6 +215,55 @@ Per-document win pattern (hit % of that document's qualitative items): `sonnet-h
 
 **What this does and doesn't settle for #361/#215.** It does not hand `sonnet-high` a clean win the way the numeric-slice table implied it might — on the honest, full accounting (which is what a customer would actually receive), `gpt-mini` and `sonnet-med` both edge it out on at least one qualitative metric, and the gap that briefly favoured `sonnet-high` on `must_not_miss` (94% vs 94%, see the entry above) does not carry over to the qualitative slice at all. `gpt-mini` remains the standout on cost (46% of `sonnet-high`'s price) with no qualitative-slice quality collapse to justify ruling it out. What's newly **not** settled: `sonnet-high`'s silent Initial-Order failure needs investigation (is it a one-off, or does it reproduce?) before treating `sonnet-high`/`sonnet` as a safe default at all, independent of the `gpt-mini` question. Recommend opening a tracked issue for that before closing #361/#215 outright.
 
+---
+
+**2026-08-06 — reasoning effort above `low` does not buy extraction quality on this corpus, and
+costs up to 10× more.** First run with `reasoning_tokens` recorded per call (#354/#547), so
+chain-of-thought could finally be separated from the visible answer. `gpt-5.4-mini`, corpus-v1,
+three arms differing only in `extractor_effort`:
+
+| effort | facts | must_not_miss | cost | failures |
+|---|---|---|---|---|
+| `low` | **39/39 (100%)** | **23/24 (96%)** | **$0.53** | 0 |
+| `medium` | 36/39 (92%) | 20/24 (83%) | $2.47 | 0 |
+| `high` | 38/39 (97%)\* | 21/24 (88%)\* | $5.17 | 2 calls, 1 document lost |
+
+\* **`high`'s figures are inflated by the same cross-crediting artifact recorded above for
+`gpt-nano` and `sonnet-high`.** It aborted *Laurentian Pre-Filing Report* outright (reasoning
+starvation — the full 96,000-token envelope spent thinking, zero visible output, twice, including
+after #540's re-split retry) and has only 5 extracted artifacts against the others' 6. Yet all six
+`prefiling-report-monitor` key items still score as hits, credited from the five sibling documents
+that share the same figures. On a corpus without that redundancy those items would simply be lost.
+
+**`medium` placing last on both metrics is the load-bearing result**, because it cannot be
+explained away as a failure artifact — it completed all six documents. More thinking produced less
+complete extraction, not more.
+
+**Why the visible answer doesn't change with effort.** Fitting visible output (`output_tokens −
+reasoning_tokens`) against input gives a marginal rate of **0.199 / 0.213 / 0.200** at low/medium/
+high — flat. What scales is reasoning alone: 4% → 87% → 94% of all output tokens, reaching
+`19,837 + 2.490 × input` at high, i.e. a ~$0.09-per-call thinking floor before any document text is
+read. (That floor is also why any "split the work into more calls" strategy is the wrong direction
+on a reasoning model, and why schema-partitioning is the worst of them — it repeats the whole input
+per pass, so reasoning grows *linearly* in passes where sectioning only re-pays the floor.)
+
+**How much to trust this.** The quality ranking is soft: only ~⅓ of key items carry a numeric
+anchor (140 unscorable, judge pass not run for these arms), and low-vs-medium is 3 items out of 39
+— not enough to claim `low` is genuinely *better* than `medium`. The decision is robust anyway,
+because it doesn't rest on the ranking: `low` is 10× cheaper than `high`, 5× cheaper than `medium`,
+and the only arm that never failed. It wins whether or not the quality gap is real.
+
+**Scope — one model, one corpus, six documents.** `extractor_effort`'s shipped default is `medium`
+(D26), and `setup.py`'s help text justifies it with "benchmark testing found it ties `high` on
+recall while cutting extraction output/cost substantially." That specific claim does not hold here:
+`medium` didn't tie `high`, it came last. But the default is cross-backend and the reasoning-cost
+curve measured here is very OpenAI-shaped, so this is **not** on its own grounds to change it — a
+Claude effort ladder would be needed first. Treat it for now as: do not pin `high` on an OpenAI
+reasoning extractor, and treat the help text's recall claim as unverified for OpenAI.
+
+Related: #542 (the section-size constant, measured from the same run), #558 (starvation is a
+distinct failure from truncation and the re-split recovery cannot fix it).
+
 ## Corrections logged along the way
 
 - The original `bench-ex-sonnet-high`/`bench-ex-sonnet-med` vaults (run 2026-07-15, before #403's

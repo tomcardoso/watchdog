@@ -27,10 +27,62 @@ every document's entities in view.
 import json
 import re
 import sys
+from datetime import date as _date
 from pathlib import Path
 
 _VALID_BASIS = {"stated", "inferred"}
 _DATE_RE = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
+
+# A *precise* non-ISO date — full day-month-year, or (deliberately, per the extraction prompt)
+# month-year when the source itself gave no day — spelled with a named month, so the word order
+# resolves the day/month ambiguity a numeric date (03/04/2020) can't. Deliberately does NOT
+# attempt to parse numeric or slash-separated dates ("2024/03", "03/04/2020"): those are
+# genuinely ambiguous (DD/MM vs MM/YY vs YY/MM) and guessing would silently substitute a value
+# the source didn't unambiguously state — exactly what TRANSCRIBE, DON'T CORRECT forbids.
+_MONTHS = {
+    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6, "jul": 7, "aug": 8,
+    "sep": 9, "sept": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+_ORDINAL_SUFFIX = r"(?:\s*(?:st|nd|rd|th))?"
+_MONTH_DAY_YEAR_RE = re.compile(
+    rf"^(?P<month>[A-Za-z]+)\.?\s+(?P<day>\d{{1,2}}){_ORDINAL_SUFFIX},?\s+(?P<year>\d{{4}})$"
+)
+_DAY_MONTH_YEAR_RE = re.compile(
+    rf"^(?P<day>\d{{1,2}}){_ORDINAL_SUFFIX}\s+(?:day\s+of\s+)?(?P<month>[A-Za-z]+)\.?,?\s+(?P<year>\d{{4}})$"
+)
+_MONTH_YEAR_RE = re.compile(r"^(?P<month>[A-Za-z]+)\.?,?\s+(?P<year>\d{4})$")
+
+
+def _parse_precise_date(raw: str) -> str | None:
+    """Parse `raw` into ISO shape when — and only when — it is a *precise* date rather than an
+    imprecise one the extractor was always going to hand back with less-than-day granularity
+    (a bare year, a month-year, per extract_instructions.md's `date` field). A fully-qualified
+    date in ordinary prose ("April 30, 2020", "17th day of March, 2021") is precise, just not
+    ISO-shaped, and converting it loses nothing. A fiscal-year range ("2020-2021"), a quarter
+    ("Q1 2020"), or a bare numeric date is genuinely imprecise or ambiguous and must stay
+    dropped rather than have this guess at what it means — this function returns None for those,
+    and the caller's existing drop+warn behaviour is unchanged. Named-month forms only (see
+    `_MONTHS`); returns None on no match or an invalid day-of-month (e.g. "February 30")."""
+    text = raw.strip()
+    for rx, has_day in ((_MONTH_DAY_YEAR_RE, True), (_DAY_MONTH_YEAR_RE, True), (_MONTH_YEAR_RE, False)):
+        m = rx.match(text)
+        if not m:
+            continue
+        month = _MONTHS.get(m.group("month").lower())
+        if month is None:
+            continue
+        year = int(m.group("year"))
+        if not has_day:
+            return f"{year:04d}-{month:02d}"
+        day = int(m.group("day"))
+        try:
+            _date(year, month, day)   # validates day-in-month (rejects "February 30, 2020")
+        except ValueError:
+            return None
+        return f"{year:04d}-{month:02d}-{day:02d}"
+    return None
 
 # Page-coverage heuristic (skim detection). Advisory only — emits a warning, never a failure.
 _COVERAGE_MIN_PAGES = 8         # don't flag short documents
@@ -210,20 +262,33 @@ def _sanitize_entity_ids(extraction: dict) -> list[str]:
 
 
 def _sanitize_dates(extraction: dict) -> list[str]:
-    """Drop ``key_facts.date`` values that aren't ISO-shaped (``YYYY``, ``YYYY-MM``, or
-    ``YYYY-MM-DD``) before they can reach timeline.py's ``{date}_{sha7}.ndjson`` filename
-    construction — a value like ``"2024/03"`` or free text would otherwise produce a broken or
-    nested file write. Mutates ``key_facts`` in place; returns a warning per dropped date so the
-    loss is visible rather than silent."""
+    """Normalize or drop ``key_facts.date`` values that aren't already ISO-shaped (``YYYY``,
+    ``YYYY-MM``, or ``YYYY-MM-DD``) before they can reach timeline.py's ``{date}_{sha7}.ndjson``
+    filename construction — a value like ``"2024/03"`` or free text would otherwise produce a
+    broken or nested file write.
+
+    The extraction prompt deliberately transcribes dates as printed rather than reformatting
+    them (TRANSCRIBE, DON'T CORRECT), so a non-ISO value here is routinely a *precise* date the
+    source just didn't print in ISO form ("April 30, 2020") rather than an imprecise one — the
+    prompt already tells the model to omit the day when the source doesn't give one, so a bare
+    "May 2019" is doing that correctly, just not ISO-shaped either (#560). ``_parse_precise_date``
+    converts either shape losslessly; only a value it can't parse as unambiguous — a fiscal-year
+    range, a quarter, free text — is dropped. Mutates ``key_facts`` in place; returns a warning
+    only for an actual drop, so a silent, lossless reformat doesn't add warning noise."""
     warnings: list[str] = []
     for i, fact in enumerate(extraction.get("document", {}).get("key_facts", [])):
         date = fact.get("date")
-        if date and not _DATE_RE.match(date):
-            warnings.append(
-                f"document.key_facts[{i}].date '{date}' is not ISO-shaped (YYYY, YYYY-MM, or "
-                "YYYY-MM-DD) — dropped from timeline placement"
-            )
-            fact["date"] = ""
+        if not date or _DATE_RE.match(date):
+            continue
+        parsed = _parse_precise_date(date)
+        if parsed is not None:
+            fact["date"] = parsed
+            continue
+        warnings.append(
+            f"document.key_facts[{i}].date '{date}' is not a recognizable ISO or precise "
+            "calendar date — dropped from timeline placement"
+        )
+        fact["date"] = ""
     return warnings
 
 

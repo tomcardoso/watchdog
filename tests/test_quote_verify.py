@@ -250,6 +250,25 @@ def test_resolve_quote_adjacent_page_resolves_with_found_page():
     assert result["quote"] == "Total revenue for the year was strong."
 
 
+def test_resolve_quote_whitespace_blind_fallback_recovers_ocr_dropped_spaces():
+    """OCR/table extraction can fuse or drop a word boundary ("DEFERREDCONTRIBUTIONS ANDNET
+    ASSETS" for "DEFERRED CONTRIBUTIONS AND NET ASSETS", #560) — the model transcribes the
+    words correctly spaced, so the space-preserving match fails; a whitespace-blind fallback
+    recovers it without needing to guess where the missing spaces belong."""
+    pages = {3: "LIABILITIES, DEFERREDCONTRIBUTIONS ANDNET ASSETS"}
+    result = resolve_quote(pages, 3, "LIABILITIES, DEFERRED CONTRIBUTIONS AND NET ASSETS")
+    assert result["quote"] == "LIABILITIES, DEFERREDCONTRIBUTIONS ANDNET ASSETS"
+    assert "verified" not in result
+
+
+def test_resolve_quote_whitespace_blind_fallback_requires_a_minimum_length():
+    """A short locator matched only space-insensitively is too easy to collide with an
+    unrelated span — below `_MIN_SPACELESS_LOCATOR` the fallback must not fire at all."""
+    pages = {3: "The cat sat on the mat."}
+    result = resolve_quote(pages, 3, "cats at")   # "cat s at" spaceless == "cats at" spaceless
+    assert result == {"quote": "cats at", "verified": False}
+
+
 def test_resolve_quote_caps_long_quote_at_500_chars_on_word_boundary():
     tokens = [f"tok{i:04d}" for i in range(200)]
     text = " ".join(tokens)   # one giant run-on with no punctuation anywhere
@@ -296,6 +315,36 @@ def test_resolve_quotes_warns_on_ambiguous_locator():
     assert len(warnings) == 1
     assert "matched 2 times on page 3" in warnings[0]
     assert extraction["document"]["key_facts"][0]["quote"] == "Total revenue was strong this quarter."
+
+
+def test_resolve_quotes_warns_on_unambiguous_page_mismatch():
+    """A locator that resolves to exactly one match — but not on the page the model cited — used
+    to be completely silent (#560): `fact["page"]` (what every downstream reader displays) still
+    carries the model's wrong citation even though the quote text itself was quietly recovered.
+    Must warn even though there's nothing ambiguous about the match itself."""
+    extraction = {"document": {"key_facts": [
+        {"fact": "x", "page": 3, "quote_locator": "Total revenue for the year"},
+    ]}, "entities": []}
+    pages = {3: "Irrelevant content here.",
+             4: "Total revenue for the year was strong. Next sentence."}
+    warnings = resolve_quotes(extraction, pages)
+    assert len(warnings) == 1
+    assert "cited to page 3 but only found on page 4" in warnings[0]
+    fact = extraction["document"]["key_facts"][0]
+    assert fact["quote_found_page"] == 4
+    assert fact["page"] == 3   # citation itself is left untouched — warn, don't silently repair
+
+
+def test_resolve_quotes_ambiguous_and_page_mismatch_warns_once_not_twice():
+    """When a match is both ambiguous AND on a different page than cited, the ambiguous warning
+    already names the found page — a second, separate page-mismatch warning would be redundant."""
+    extraction = {"document": {"key_facts": [
+        {"fact": "x", "page": 3, "quote_locator": "Total revenue was strong"},
+    ]}, "entities": []}
+    pages = {4: "Total revenue was strong this quarter. Total revenue was strong again next year."}
+    warnings = resolve_quotes(extraction, pages)
+    assert len(warnings) == 1
+    assert "matched 2 times on page 4" in warnings[0]
 
 
 def test_resolve_quotes_skips_facts_without_a_locator_or_quote():

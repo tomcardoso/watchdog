@@ -4,6 +4,7 @@ from pathlib import Path
 from watchdog.pipeline import postflight
 from watchdog.pipeline.postflight import (
     _find_coverage_gap,
+    _parse_precise_date,
     _render_coverage_warning,
     _sanitize_dates,
     _sanitize_entity_ids,
@@ -123,8 +124,58 @@ def test_sanitize_dates_keeps_valid_iso_shapes():
         {"fact": "d", "entities": []},   # no date at all — untouched
     ]}}
     assert _sanitize_dates(extraction) == []
-    dates = [f.get("date") for f in extraction["document"]["key_facts"]]
-    assert dates == ["2021", "2021-03", "2021-03-30", None]
+
+
+# ── _parse_precise_date (#560: a precise date printed in prose isn't an imprecise one) ──────
+
+def test_parse_precise_date_full_month_day_year():
+    assert _parse_precise_date("April 30, 2020") == "2020-04-30"
+    assert _parse_precise_date("January 29 2021") == "2021-01-29"   # no comma
+    assert _parse_precise_date("Feb. 1, 2021") == "2021-02-01"      # abbreviated + period
+
+
+def test_parse_precise_date_month_year_stays_month_precision():
+    """The extraction prompt tells the model to omit the day when the source doesn't give one
+    (a genuinely month-precision date) — that must convert to YYYY-MM, not be treated as if a
+    day were missing by mistake."""
+    assert _parse_precise_date("May 2019") == "2019-05"
+    assert _parse_precise_date("December 2020") == "2020-12"
+
+
+def test_parse_precise_date_day_of_month_legal_phrasing():
+    assert _parse_precise_date("17th day of March, 2021") == "2021-03-17"
+    assert _parse_precise_date("17 th day of March, 2021") == "2021-03-17"
+    assert _parse_precise_date("1st day of February, 2021") == "2021-02-01"
+
+
+def test_parse_precise_date_rejects_ambiguous_or_invalid():
+    assert _parse_precise_date("2020-2021") is None       # fiscal-year range, not a date
+    assert _parse_precise_date("2018-2019") is None
+    assert _parse_precise_date("Q1 2020") is None          # quarter, not a date
+    assert _parse_precise_date("2024/03") is None          # numeric — day/month order ambiguous
+    assert _parse_precise_date("sometime last year") is None
+    assert _parse_precise_date("February 30, 2020") is None   # no such day
+
+
+def test_sanitize_dates_normalizes_precise_prose_date_without_warning():
+    extraction = {"document": {"key_facts": [
+        {"fact": "x", "date": "April 30, 2020", "entities": ["a"]},
+        {"fact": "y", "date": "May 2019", "entities": ["a"]},
+    ]}}
+    warnings = _sanitize_dates(extraction)
+    assert warnings == []
+    dates = [f["date"] for f in extraction["document"]["key_facts"]]
+    assert dates == ["2020-04-30", "2019-05"]
+
+
+def test_sanitize_dates_still_drops_and_warns_on_fiscal_year_range():
+    extraction = {"document": {"key_facts": [
+        {"fact": "x", "date": "2020-2021", "entities": ["a"]},
+    ]}}
+    warnings = _sanitize_dates(extraction)
+    assert extraction["document"]["key_facts"][0]["date"] == ""
+    assert len(warnings) == 1
+    assert "2020-2021" in warnings[0]
 
 
 # ── _sanitize_entity_ids (#303: path-traversal / vault-escape via unslugified entity id) ────
