@@ -215,6 +215,36 @@ Per-document win pattern (hit % of that document's qualitative items): `sonnet-h
 
 **What this does and doesn't settle for #361/#215.** It does not hand `sonnet-high` a clean win the way the numeric-slice table implied it might — on the honest, full accounting (which is what a customer would actually receive), `gpt-mini` and `sonnet-med` both edge it out on at least one qualitative metric, and the gap that briefly favoured `sonnet-high` on `must_not_miss` (94% vs 94%, see the entry above) does not carry over to the qualitative slice at all. `gpt-mini` remains the standout on cost (46% of `sonnet-high`'s price) with no qualitative-slice quality collapse to justify ruling it out. What's newly **not** settled: `sonnet-high`'s silent Initial-Order failure needs investigation (is it a one-off, or does it reproduce?) before treating `sonnet-high`/`sonnet` as a safe default at all, independent of the `gpt-mini` question. Recommend opening a tracked issue for that before closing #361/#215 outright.
 
+**2026-08-03 (#509) — the qualitative judge pass on the three re-run `gpt-luna` effort tiers (low/med/high) shows a large, monotonic effort-vs-recall curve, but `gpt-luna-high` does NOT clearly beat `sonnet-high` once cost, latency, and the known `sonnet-high` outlier are accounted for.** Artifacts: `benchmarks/2026-08-03-judge-qualitative-luna/` (blinded packets, per-document judgments, mapping, aggregated tally) — same protocol as `benchmarks/2026-07-29-judge-qualitative/`: six subagents (one per corpus document, inheriting Sonnet, no model override) each judged that document's numeric-anchor-free key items against the three arms blinded as X/Y/Z, with the label mapping randomized independently per document and withheld from the judging subagents. Extraction sizes scaled sensibly with effort (30/40/53 `key_facts` for low/med/high on the Initial Order document, checked directly against the vault files) — no repeat of the silent-empty-extraction artifact found in `sonnet-high` on 2026-07-29.
+
+| Arm | Facts (hit/total) | must_not_miss (hit/total) |
+|---|---|---|
+| `gpt-luna-low` | 63% (55/87) | 53% (28/53) |
+| `gpt-luna-med` | 77% (67/87) | 64% (34/53) |
+| `gpt-luna-high` | 83% (72/87) | 64% (34/53) |
+
+Excluding the Initial Order document (same isolation the 2026-07-29 table used, since low effort was noticeably sparser there — 14 `key_facts` vs. 24/26 for med/high — though not a silent-failure artifact, just less thorough):
+
+| Arm | Facts (hit/total) | must_not_miss (hit/total) |
+|---|---|---|
+| `gpt-luna-low` | 69% (48/70) | 55% (24/44) |
+| `gpt-luna-med` | 79% (55/70) | 64% (28/44) |
+| `gpt-luna-high` | 84% (59/70) | 68% (30/44) |
+
+**Cost and latency, pulled from each vault's `usage` registry (full six-document corpus, api-key auth, so directly comparable):**
+
+| Arm | Cost | Wall time |
+|---|---|---|
+| `gpt-mini` | $0.54 | 183s |
+| `gpt-luna-low` | $0.60 | 170s |
+| `sonnet-high` | $1.19 | 247s |
+| `gpt-luna-med` | $0.74 | 206s |
+| `gpt-luna-high` | $1.59 | 647s |
+
+**Putting quality and cost together changes the conclusion.** On the raw numbers `gpt-luna-high` looks like the new leader — ahead of `gpt-mini` (75%/57%), `sonnet-med` (70%/62%), and `sonnet-high` (67%/57%) on both metrics. But `sonnet-high`'s 67%/57% includes its own known silent-failure document (0/26 on Initial Order, logged above on 2026-07-29); the honest, outlier-corrected comparison over the same five documents is `sonnet-high` 83%/68% vs. `gpt-luna-high` 84%/68% — a **tie** on quality, while `gpt-luna-high` costs 34% more ($1.59 vs. $1.19) and takes 2.6x longer (647s vs. 247s). That is not a win for `gpt-luna-high`. `gpt-luna-med` is the more interesting result: cheaper than `sonnet-high` at $0.74, and ahead of `gpt-mini` on must_not_miss (64% vs. 57%) for about 37% more cost than `gpt-mini`'s $0.54. `gpt-mini` remains the cost floor with quality comparable to `sonnet-high`'s honest number. **This does not settle #361/#215 in `gpt-luna`'s favour** — it reopens the question for `gpt-luna-med` specifically (cheaper than Sonnet, a real must_not_miss edge over `gpt-mini`) but rules out `gpt-luna-high` as a clear pick on the numbers gathered so far. `xhigh`/`max` are not yet run (prerequisite #518).
+
+One correction to the #509 planning comment: the shared-output-ceiling truncation risk it flagged for `high`/`xhigh`/`max` (the extractor's 16K `_TASK_MAX_TOKENS` ceiling shared between reasoning and JSON) did not materialize here, and checking why turned up a wrinkle in that risk assessment — `output_ceiling_for_sectioning` (`model_client.py`) resolves OpenAI reasoning models to a separately raised 48K wire ceiling (`_OPENAI_REASONING_MAX_TOKENS`, D354), not the flat 16K; several `gpt-luna-high` section calls logged 16-18K output tokens with zero retries or truncated `finish_reason`s, consistent with running comfortably inside the real 48K ceiling. The 16K figure only bounds what sectioning plans the visible JSON against, not the actual wire limit.
+
 ---
 
 **2026-08-06 — reasoning effort above `low` does not buy extraction quality on this corpus, and
