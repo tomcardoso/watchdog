@@ -265,3 +265,34 @@ def test_run_sections_openai_doc_that_claude_would_extract_whole(tmp_path, monke
     assert section.run(vault, "doc1", model="gpt-5-mini", backend="claude-api")["sectioned"] is False
     assert section.run(vault, "doc1", model="gpt-5-mini", backend="openai")["sectioned"] is True
 
+
+# ── tokenizer-aware thresholds (#574) ────────────────────────────────────────
+
+def test_model_defaults_shrinks_for_new_tokenizer_claude_model():
+    # Sonnet 5 / Opus 4.8 use a newer tokenizer producing ~30% more real tokens for the same
+    # text than the chars/4 est_tokens heuristic assumes — threshold/budget shrink by that same
+    # ratio so the real tokens a call sends still respect the 200K context window.
+    assert section.model_defaults("sonnet-5") == (int(120_000 / 1.3), int(60_000 / 1.3))
+    assert section.model_defaults("opus") == (int(120_000 / 1.3), int(60_000 / 1.3))
+
+
+def test_model_defaults_unchanged_for_old_tokenizer_and_non_claude_models():
+    # No behaviour change for anyone on the old tokenizer or a non-Anthropic provider (#574) —
+    # same historical figures as before this fix.
+    assert section.model_defaults("sonnet") == (120_000, 60_000)
+    assert section.model_defaults("haiku") == (120_000, 60_000)
+    assert section.model_defaults("deepseek-v4-flash") == (600_000, 300_000)
+    assert section.model_defaults("gpt-5-mini") == (240_000, 120_000)
+
+
+def test_run_sections_earlier_on_new_tokenizer_claude_model(tmp_path, monkeypatch):
+    # A document that fits comfortably under Sonnet 4.6's threshold must section under Sonnet 5's
+    # tokenizer-adjusted, smaller threshold for the exact same est-token count.
+    monkeypatch.setattr(section, "_config_get", lambda k, d: d)   # no config override
+    vault = _vault(tmp_path)
+    # 100_000 est tokens: under Sonnet 4.6's 120K threshold, over Sonnet 5's ~92.3K one.
+    pages = [{"page": n, "markdown": "x" * 4000} for n in range(1, 101)]
+    _write_queue(vault, "doc1", pages, 100)
+    assert section.run(vault, "doc1", model="sonnet")["sectioned"] is False
+    assert section.run(vault, "doc1", model="sonnet-5")["sectioned"] is True
+

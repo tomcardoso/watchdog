@@ -100,6 +100,17 @@ def catalog_effort_levels(model_id: str) -> set[str] | None:
     return set(entry.get("effort_levels", [])) if entry else None
 
 
+def catalog_tokenizer_ratio(model_id: str) -> float | None:
+    """Explicit tokenizer-ratio multiplier for a known catalog model id (#574), or None if
+    uncatalogued or the model doesn't declare one — the vast majority, which behave exactly as
+    the chars/4 `est_tokens` heuristic (`pipeline/section.py`) already assumes. Only Claude 4.7+
+    models (Opus 4.8, Sonnet 5) currently declare a value; see `model_catalog.yaml`'s
+    `tokenizer_ratio` field comment for the source and rationale. Callers wanting a safe default
+    for "no declared ratio" should treat None as 1.0 (`model_client.tokenizer_ratio` does this)."""
+    entry = _MODELS.get(model_id.lower())
+    return float(entry["tokenizer_ratio"]) if entry and "tokenizer_ratio" in entry else None
+
+
 def all_models() -> list[dict]:
     """Every catalog model's id/name/provider/input/output list price, USD per token — for
     projecting a cost estimate across the whole catalog (#469) rather than a single resolved

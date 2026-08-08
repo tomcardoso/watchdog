@@ -43,6 +43,7 @@ from watchdog.model_catalog import (
     catalog_context_window,
     catalog_effort_levels,
     catalog_is_reasoning,
+    catalog_tokenizer_ratio,
     fallback_context_window,
     fallback_is_reasoning,
     resolve_model_id,
@@ -186,6 +187,25 @@ def context_window(model: str | None, backend: str | None = None) -> int:
     if known is not None:
         return known
     return fallback_context_window(model_id) or _DEFAULT_CONTEXT_WINDOW
+
+
+def tokenizer_ratio(model: str | None, backend: str | None = None) -> float:
+    """Actual-tokens-per-estimated-token multiplier for a stage's model, for provider-aware
+    sectioning (#574). Claude 4.7+ models (Opus 4.8, Sonnet 5) use a newer tokenizer that
+    produces ~30% more tokens than earlier Claude models for the same text (see
+    `model_catalog.yaml`'s `tokenizer_ratio` field). `pipeline/section.py`'s chars/4 `est_tokens`
+    heuristic was calibrated against the *old* tokenizer, so on a new-tokenizer model it
+    undercounts a document's real token footprint by roughly this ratio; `section.model_defaults`
+    divides its window-derived threshold/budget by it so sectioning still respects the model's
+    real context window rather than the heuristic's optimistic count.
+
+    1.0 (no correction) for any model that doesn't declare a ratio — every non-Anthropic
+    provider and every Claude model through Sonnet 4.6 — and for `backend == "local"`, whose
+    self-hosted id carries no catalog entry to declare one."""
+    if backend == "local":
+        return 1.0
+    model_id = resolve_model_id(model or DEFAULT_TIER)
+    return catalog_tokenizer_ratio(model_id) or 1.0
 
 
 class ModelError(RuntimeError):

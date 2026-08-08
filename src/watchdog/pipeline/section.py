@@ -84,12 +84,21 @@ def _resolve_override(key: str, model_default: int) -> int:
 
 
 def model_defaults(model: str | None, backend: str | None = None) -> tuple[int, int]:
-    """(threshold, budget) est-token sectioning defaults for the extraction stage (#321, #343).
+    """(threshold, budget) est-token sectioning defaults for the extraction stage (#321, #343,
+    #574).
 
     Derived from `model`'s context window (the input side); then, for a backend that enforces a
     fixed output ceiling it can't paginate past (openai/gemini — #343), additionally capped so a
     call's expected output stays under that ceiling. `model`/`backend` are the extraction stage's
     tier/id and backend (None ⇒ default tier / auth-routed Claude backend).
+
+    Finally divided by `model_client.tokenizer_ratio` (#574): `est_tokens`'s chars/4 heuristic is
+    calibrated against Claude's *old* tokenizer, so on a model whose tokenizer produces more real
+    tokens per character (Claude 4.7+ — Opus 4.8, Sonnet 5) an est-token count undercounts the
+    real tokens a call will spend. Shrinking the est-token threshold/budget by that same ratio
+    keeps the real tokens sectioning actually sends under the model's real context window. A
+    1.0 ratio (every model through Sonnet 4.6, and every non-Anthropic provider) leaves this a
+    no-op — the historical 120K/60K Claude defaults are unchanged.
 
     `threshold` and `budget` are checked against *different* tasks' ceilings — a document at or
     under threshold runs whole-document (`extract`); once sectioned, each section runs as its own
@@ -115,6 +124,9 @@ def model_defaults(model: str | None, backend: str | None = None) -> tuple[int, 
     section_ceiling = model_client.output_ceiling_for_sectioning("extract-section", backend, model)
     if section_ceiling is not None:
         budget = min(budget, max(1, int(section_ceiling * _OUTPUT_SAFE_FRACTION / _OUTPUT_PER_INPUT_RATIO)))
+    ratio = model_client.tokenizer_ratio(model, backend)
+    threshold = int(threshold / ratio)
+    budget = max(1, int(budget / ratio))
     return threshold, budget
 
 

@@ -626,6 +626,28 @@ def test_cost_estimate_all_models_ignores_runs_with_no_output_tokens(tmp_path):
     assert by_id["claude-haiku-4-5"] == pytest.approx(1000 * haiku["input"] + 1000 * haiku["output"])
 
 
+def test_cost_estimate_all_models_scales_new_tokenizer_claude_models(tmp_path):
+    # Sonnet 5 / Opus 4.8 (#574, new tokenizer) get their own tokenizer_ratio applied to the
+    # projected input AND output tokens, so they're priced against their own higher real token
+    # count for the same text rather than the old-tokenizer figure other catalog models use as-is.
+    from watchdog.model_catalog import all_models
+    vault = _make_vault(tmp_path)
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=1000, cost_usd=1.0, output_tokens=500)
+
+    rows = cost_estimate_all_models(vault, est_tokens=2000)
+
+    by_id = {r["id"]: r["cost"] for r in rows}
+    catalog = {m["id"]: m for m in all_models()}
+    sonnet5 = catalog["claude-sonnet-5"]
+    scaled_in = 2000 * 1.3       # tokenizer_ratio
+    scaled_out = scaled_in * 0.5  # output_ratio (500/1000) applied after scaling
+    assert by_id["claude-sonnet-5"] == pytest.approx(
+        scaled_in * sonnet5["input"] + scaled_out * sonnet5["output"])
+    # Old-tokenizer Sonnet 4.6 is unaffected (ratio 1.0) — same figure as before this fix.
+    sonnet46 = catalog["claude-sonnet-4-6"]
+    assert by_id["claude-sonnet-4-6"] == pytest.approx(2000 * sonnet46["input"] + 1000 * sonnet46["output"])
+
+
 def test_finalize_cost_estimate_all_models_no_standalone_history_returns_empty(tmp_path):
     """A usage file exists, but only from a mixed dig+bark run — not a standalone finalize —
     so there's still no ratio to project from, mirroring `finalize_cost_estimate`'s own gate."""

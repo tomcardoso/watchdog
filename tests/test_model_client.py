@@ -539,6 +539,28 @@ def test_context_window_ignores_backend_for_hosted_models():
     assert mc.context_window("deepseek-v4-flash", "deepseek") == 1_000_000
 
 
+# ── tokenizer ratio (#574) ──────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("model, ratio", [
+    ("sonnet", 1.0),             # old tokenizer (Sonnet 4.6)
+    ("haiku", 1.0),              # old tokenizer
+    (None, 1.0),                 # default tier (sonnet)
+    ("sonnet-5", 1.3),           # new tokenizer
+    ("opus", 1.3),               # new tokenizer (Opus 4.8)
+    ("deepseek-v4-flash", 1.0),  # non-Anthropic, unaffected
+    ("gpt-5-mini", 1.0),
+    ("gemini-2.5-flash", 1.0),
+    ("some-unknown-model", 1.0),  # uncatalogued → no correction
+])
+def test_tokenizer_ratio(model, ratio):
+    assert mc.tokenizer_ratio(model) == ratio
+
+
+def test_tokenizer_ratio_local_backend_always_one():
+    # A self-hosted model's id carries no catalog entry to declare a ratio.
+    assert mc.tokenizer_ratio("claude-sonnet-5", backend="local") == 1.0
+
+
 def test_output_ceiling_applies_to_local_and_openrouter():
     # local/openrouter enforce max_tokens and can't paginate (#380) — same treatment as openai/gemini.
     assert mc.output_ceiling_for_sectioning("extract", "local", "llama-3.3-70b") == 16000

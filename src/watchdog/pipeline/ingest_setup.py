@@ -86,6 +86,16 @@ def _tokens_calibration(vault: Path, max_runs: int = 3) -> float | None:
     rather than fabricate a correction. Not backend-aware: a queue about to extract on a different
     provider than produced this history gets the same correction as any other — consistent with
     `cost_estimate`'s own $/token ratio, which has never been backend-filtered either.
+
+    Not model-tokenizer-aware either (#574): this ratio already absorbs whatever tokenizer the
+    extraction model(s) behind the last `max_runs` history files actually used, since it's derived
+    empirically from their real `input_tokens`. That only stays correct while the extractor
+    doesn't cross the Claude tokenizer boundary (old tokenizer through Sonnet 4.6, new tokenizer
+    from Opus 4.8/Sonnet 5 on, #574) between the history and the upcoming run — a vault that
+    switches its extractor model across that boundary gets a calibration ratio computed against
+    the *other* tokenizer for one run's worth of history, same as switching providers already
+    does. Not scoped to the extractor model per history file to correct for this — would need
+    grouping calibration runs by model, a bigger change than this fix's scope.
     """
     from watchdog.pipeline import orchestrate
     ratios = []
@@ -141,14 +151,25 @@ def _catalog_cost_projection(est_tokens: int, output_ratio: float | None) -> lis
     model and usage pattern. Every catalog model is included, including Claude tiers, regardless
     of whether this vault is on subscription auth: this is list price for comparison, not a
     projection of what you would actually be billed. Returns `[]` when there's no usage history
-    yet to derive `output_ratio` from — no dollar figure is invented from nothing."""
+    yet to derive `output_ratio` from — no dollar figure is invented from nothing.
+
+    `est_tokens` is a single figure projected uniformly across every catalog model (#469's own
+    design), which crosses the Claude tokenizer boundary (#574): it is calibrated (D135) against
+    whichever model actually produced this vault's usage history, on the old tokenizer by default
+    (the flat chars/4 heuristic itself, and Sonnet 4.6 remaining the default extractor). Each
+    row's own `tokenizer_ratio` is applied here so a new-tokenizer model (Opus 4.8, Sonnet 5) is
+    priced against its own higher real token count rather than the old-tokenizer figure verbatim
+    — accurate as long as the calibration source stayed on the old tokenizer, same caveat
+    `_tokens_calibration` documents for the single-model estimate."""
     if output_ratio is None:
         return []
-    from watchdog.model_catalog import all_models
-    est_output = est_tokens * output_ratio
-    rows = [{"id": m["id"], "name": m["name"], "provider": m["provider"],
-             "cost": est_tokens * m["input"] + est_output * m["output"]}
-            for m in all_models()]
+    from watchdog.model_catalog import all_models, catalog_tokenizer_ratio
+    rows = []
+    for m in all_models():
+        model_tokens = est_tokens * (catalog_tokenizer_ratio(m["id"]) or 1.0)
+        model_output = model_tokens * output_ratio
+        rows.append({"id": m["id"], "name": m["name"], "provider": m["provider"],
+                      "cost": model_tokens * m["input"] + model_output * m["output"]})
     rows.sort(key=lambda r: r["cost"])
     return rows
 
