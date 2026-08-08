@@ -980,6 +980,12 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} --wait isn't supported with {extract_backend} — a "
                  f"batch already runs in the background; re-run {_CYAN}{pipeline_hint}{_RESET} "
                  f"later to collect it.\n")
+    # `max_rate_limit_waits` is an internal knob, not a user-facing flag or `configure` key
+    # (#559) — like `no_finalize` above, it exists only for the benchmark harness, which needs
+    # `--wait`'s resume loop bounded so a rate-limited arm surfaces as a partial result instead
+    # of stalling the sweep. `None` (the only value a real `--wait` run ever has) means unbounded,
+    # preserving today's behaviour exactly.
+    max_rate_limit_waits = getattr(args, "max_rate_limit_waits", None)
     no_finalize = getattr(args, "no_finalize", False)
     # `force`/`force_selectors` were already resolved at the top of this function (before the
     # re-queue-from-morgue step, which must run ahead of everything else here). `ingest --force`
@@ -1039,10 +1045,15 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
     lock_file = vault / ".watchdog" / "registry" / ".ingest-lock"
     try:
         summary = None
+        wait_count = 0
         # This loop's only exit condition is `iter_summary["rate_limited"]`, which reflects a
         # rate limit hit *during extraction* — finalize (skipped entirely when no_finalize is
         # set) never sets it, so --wait + --no-finalize already stops as soon as the queue
-        # drains, with no special-casing needed here (#384).
+        # drains, with no special-casing needed here (#384). `max_rate_limit_waits` adds a second
+        # exit condition on top, for callers that can't tolerate an unbounded stall (#559): once
+        # the count of waits taken reaches the bound, break with the last iteration's summary as
+        # merged — its `rate_limited: True` is left intact, so the caller can tell the run stopped
+        # short rather than completed. `None` never triggers this, matching plain `--wait` exactly.
         with _caffeinate():
             while True:
                 iter_summary = asyncio.run(orchestrate.run(
@@ -1056,6 +1067,9 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                 summary = _merge_summary(summary, iter_summary)
                 if not (wait and iter_summary.get("rate_limited")):
                     break
+                if max_rate_limit_waits is not None and wait_count >= max_rate_limit_waits:
+                    break
+                wait_count += 1
                 _wait_for_rate_limit(lock_file, iter_summary.get("rate_limit_resets_at"))
     except KeyboardInterrupt:
         # Fallback only — orchestrate.run normally traps SIGINT itself and returns a
@@ -1078,6 +1092,9 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         sys.exit(130)
     finally:
         _release_lock()
+    # Surfaced for callers that pass a bound (the benchmark harness, #559) so it can report how
+    # many waits a partial arm actually took; always present, 0 on a run that never rate-limited.
+    summary["wait_count"] = wait_count
     if force and not no_finalize and summary.get("finalize_skipped") and not summary.get("batch_pending"):
         _handle_force_gate(vault, summary, post_model, post_effort, post_backend,
                            skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides)

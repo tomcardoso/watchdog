@@ -2672,6 +2672,80 @@ def test_cmd_ingest_no_wait_stops_on_rate_limit_without_looping(wdg_home, tmp_pa
     assert calls[0].get("wait") is False
 
 
+def test_cmd_ingest_wait_stops_after_max_rate_limit_waits(wdg_home, tmp_path, monkeypatch):
+    """`max_rate_limit_waits` (#559) bounds --wait's resume loop — an internal-only knob (no
+    user-facing flag or configure key) for a caller that can't tolerate an unbounded stall, e.g.
+    the benchmark harness. A run that keeps getting rate-limited must give up after N waits
+    rather than loop forever, and the returned summary must still say `rate_limited: True` so the
+    caller can tell it stopped short rather than completed."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+
+    calls = []
+
+    async def fake_run(*a, **k):
+        calls.append(k)
+        # Never clears — every cycle comes back rate-limited, so the only thing that can stop
+        # this loop is the bound itself.
+        return {"results": [], "extracted": 0, "skipped": 0, "failed": 0, "cancelled": True,
+                "rate_limited": True, "stop_message": "limit", "rate_limit_resets_at": None,
+                "quarantined": 0}
+    monkeypatch.setattr(orch_module, "run", fake_run)
+
+    waited = []
+    monkeypatch.setattr(ing, "_wait_for_rate_limit",
+                        lambda lock_file, resets_at: waited.append(resets_at))
+
+    summary = ing.cmd_ingest(args(wait=True, max_rate_limit_waits=2), confirm=False)
+
+    assert len(calls) == 3           # the initial attempt plus exactly 2 resumed waits
+    assert len(waited) == 2
+    assert summary["rate_limited"] is True
+    assert summary["wait_count"] == 2
+
+
+def test_cmd_ingest_wait_without_max_rate_limit_waits_is_unbounded(wdg_home, tmp_path, monkeypatch):
+    """`max_rate_limit_waits` is never set on a real --wait run (no CLI flag reaches it) — `args()`
+    here carries no such attribute, so `getattr(..., None)` must resolve to None and the loop must
+    keep resuming past however many waits `test_cmd_ingest_wait_stops_after_max_rate_limit_waits`
+    bounds at, exactly like `--wait` behaved before this knob existed."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+
+    limited = {"results": [], "extracted": 0, "skipped": 0, "failed": 0, "cancelled": True,
+              "rate_limited": True, "stop_message": "limit", "rate_limit_resets_at": None,
+              "quarantined": 0}
+    cleared = {"results": [], "extracted": 0, "skipped": 0, "failed": 0, "cancelled": False,
+              "rate_limited": False, "stop_message": None, "rate_limit_resets_at": None,
+              "quarantined": 0}
+    calls = []
+
+    async def fake_run(*a, **k):
+        calls.append(k)
+        # Clears on the 4th attempt — past the bound the sibling test above would stop at (2
+        # waits, 3 attempts), proving nothing implicitly capped this loop.
+        return limited if len(calls) < 4 else cleared
+    monkeypatch.setattr(orch_module, "run", fake_run)
+    monkeypatch.setattr(ing, "_wait_for_rate_limit", lambda *a, **k: None)
+
+    summary = ing.cmd_ingest(args(wait=True), confirm=False)   # no max_rate_limit_waits attribute
+
+    assert len(calls) == 4
+    assert summary["rate_limited"] is False
+
+
 # ── cmd_ingest no_finalize plumbing (#384; the CLI surface is now `watchdog dig`, #425/#441) ──
 
 def test_cmd_ingest_no_finalize_threads_skip_finalize_to_orchestrate_run(wdg_home, tmp_path, monkeypatch, capsys):

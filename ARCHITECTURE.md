@@ -219,6 +219,13 @@ abandoned. Opt-in only — without the flag, a rate limit stops the batch exactl
 loop's only exit condition is a rate limit *during extraction*; with `watchdog dig` (§5)
 finalize never runs at all, so `--wait` simply stops once the queue drains, same as normal.
 
+`cmd_ingest` also accepts an internal `max_rate_limit_waits` (D178, #559) — no user-facing flag or
+`configure` key, resolved only via `getattr(args, ...)` like `no_finalize`. `None` (the only value
+a real `--wait` run ever has) preserves the unbounded behaviour above exactly; a bound caps how
+many waits the loop takes before giving up and returning with `rate_limited: True` still set, so a
+caller that can't tolerate an open-ended stall — `benchmarks/run_benchmark.py`, which needs a
+rate-limited arm to surface as a partial result rather than stall a sweep — gets a hard stop.
+
 ---
 
 ## 5. Ingest (extraction)
