@@ -683,9 +683,21 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
         p = base if not errors else _append_repair_note(base, errors)
         detail = f"pages 1–{page_count}" + (" (repair)" if errors else "")
         try:
-            r = await _call_model(task="extract", model=model, backend=backend,
-                                  prompt=p, schema=schemas.EXTRACTION, effort=effort,
-                                  filename=pf["filename"], detail=detail, vault=vault)
+            try:
+                r = await _call_model(task="extract", model=model, backend=backend,
+                                      prompt=p, schema=schemas.EXTRACTION, effort=effort,
+                                      filename=pf["filename"], detail=detail, vault=vault)
+            except model_client.ModelError as e:
+                # Reasoning starvation isn't fixed by the caller's usual recovery — sectioning
+                # bounds a section's own *input*, and starvation isn't input-driven (#558) — so
+                # retry once here at the next effort level down before giving up on this attempt.
+                # `_lower_effort` returns None (no retry) once there's nowhere lower to go.
+                lower = _lower_effort(effort) if e.starved else None
+                if lower is None:
+                    raise
+                r = await _call_model(task="extract", model=model, backend=backend,
+                                      prompt=p, schema=schemas.EXTRACTION, effort=lower,
+                                      filename=pf["filename"], detail=detail, vault=vault)
         except model_client.ModelError as e:
             # No valid JSON after the client's own retries — often output truncated on a
             # dense doc. Report failure so the caller can fall back to sectioning.
@@ -950,6 +962,18 @@ def _clear_section_checkpoints(vault: Path, sha: str) -> None:
         p.unlink(missing_ok=True)
 
 
+def _lower_effort(effort: str | None) -> str | None:
+    """The effort level one step below `effort` in `model_client._EFFORT_LEVELS`, or `None` if
+    there's nowhere lower to go (#558) — `effort` is already `"low"`, or the call was made with
+    no effort at all, which is how a model with no effort knob (e.g. Haiku, DeepSeek) always
+    reaches here. Either way the caller should give up rather than retry with the same effort."""
+    levels = model_client._EFFORT_LEVELS
+    if effort not in levels:
+        return None
+    idx = levels.index(effort)
+    return levels[idx - 1] if idx > 0 else None
+
+
 async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_label,
                              effort=None, backend=None, brief=None, verify_pass=False):
     """Sequential per-section extraction with carry-forward, then deterministic merge.
@@ -967,7 +991,14 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
     below `_extract_document`'s whole-doc branch never reached this already-sectioned path, so a
     truncation here used to fail the document outright with no recovery at all. `parts`/
     `entities_seen`/`carry` are rebuilt with `c.get("parts") or [c["parsed"]]` so a checkpoint
-    written before #540 (single `parsed`, no `parts`) still replays unchanged."""
+    written before #540 (single `parsed`, no `parts`) still replays unchanged.
+
+    A *starved* extract-section call (#558) — reasoning ate the whole output budget, an input-size
+    problem the re-split above can't fix — gets a different one-shot retry instead: the same
+    section, re-run one effort level down via `_lower_effort`. Before #558 this shared the
+    re-split's bound: `ModelError.truncated` alone couldn't tell the two failures apart, so a
+    starved section was "recovered" by re-splitting into halves that starved again, and the
+    document failed outright exactly as it would with no recovery at all."""
     sections = plan["sections"]
     checkpoints = _load_section_checkpoints(vault, sha, sections)
     # Keyed by planned-section index rather than a flat list (#540): a re-split section contributes
@@ -998,6 +1029,28 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
         except model_client.ModelError as e:
             if not e.truncated:
                 raise   # a rate limit, auth failure, or genuine schema failure — not ours to fix
+            if e.starved:
+                # Reasoning consumed the whole output budget before an answer, not the section's
+                # own input — re-splitting would just repeat the same failure on a smaller input
+                # (#558), so retry once at the next effort level down instead, which is the
+                # actual lever for reasoning volume. `_lower_effort` returns None when there's
+                # nowhere lower to go (already `"low"`, or the model has no effort knob at all),
+                # in which case this falls through and raises exactly as it would with no retry.
+                lower = _lower_effort(effort)
+                if lower is not None:
+                    r = await _extract_one_section(vault, sha, pf, skill_text, sec,
+                                                   is_first=(sec["index"] == 1), carry=carry,
+                                                   brief=brief, model=model, effort=lower,
+                                                   backend=backend, verify_pass=verify_pass)
+                    section_cost[sec["index"]] = r.cost_usd or 0.0
+                    section_parts[sec["index"]] = [r.parsed]
+                    _write_section_checkpoint(vault, sha, sec, r.parsed, section_cost[sec["index"]])
+                    for e2 in r.parsed.get("entities") or []:
+                        if e2.get("id"):
+                            entities_seen[e2["id"]] = {"name": e2.get("name"), "type": e2.get("type")}
+                    carry = _carry_text(entities_seen, r.parsed.get("observations") or "")
+                    continue
+                raise
             # Split just this section's page range in half and run both halves through the same
             # call, in order, threading carry/entities exactly as the loop above does. Both
             # results are checkpointed together under the ORIGINAL section (`sec`) below, so the

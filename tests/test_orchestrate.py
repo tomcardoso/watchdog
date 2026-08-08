@@ -2012,6 +2012,116 @@ def test_run_end_to_end_recovers_a_truncated_section_via_orchestrate_run(tmp_pat
     assert summary["extracted"] == 1 and summary["failed"] == 0
 
 
+# ── reasoning-starvation recovery (#558) ──────────────────────────────────────
+
+def test_lower_effort_steps_down_one_level():
+    assert orchestrate._lower_effort("high") == "medium"
+    assert orchestrate._lower_effort("medium") == "low"
+
+
+def test_lower_effort_returns_none_at_the_bottom_or_with_no_effort_knob():
+    # "low" has nowhere lower to go; a model with no effort control at all (Haiku, DeepSeek)
+    # always calls in with effort=None — neither should trigger a retry.
+    assert orchestrate._lower_effort("low") is None
+    assert orchestrate._lower_effort(None) is None
+
+
+def test_starved_section_call_retries_at_lower_effort_and_document_succeeds(tmp_path, monkeypatch):
+    """A starved (not truncated-by-density) `extract-section` call must not go through #540's
+    re-split — re-splitting the input does nothing for a failure that isn't input-driven (#558).
+    Instead the SAME section is retried once at the next effort level down, and the document
+    still succeeds without ever being split in two."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    plan, pf = _resplit_plan_and_pf(vault)
+    efforts_seen = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "extract-section":
+            efforts_seen.append(effort)
+            n = len(efforts_seen)
+            if n == 1:
+                raise model_client.ModelError(
+                    "the model used its entire 96,000-token output budget on internal "
+                    "reasoning and returned no answer — try a lower extractor_effort",
+                    truncated=True, starved=True)
+            outs = {2: _resplit_section_out("sec1", first=True), 3: _resplit_section_out("sec2")}
+            return model_client.ModelResult(parsed=outs[n], text="", model="m", backend="b",
+                                            auth_mode="subscription", cost_usd=0.02)
+        return model_client.ModelResult(parsed={"summary": "digest"}, text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.01)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    extraction, scratchpad, cost, ok, errors, warnings = asyncio.run(
+        orchestrate._extract_sectioned(vault, "abc123", pf, "SKILL", plan, "sonnet",
+                                       "annual-report", effort="high"))
+
+    assert ok, errors
+    facts = [f["fact"] for f in extraction["document"]["key_facts"]]
+    assert facts == ["Fact sec1", "Fact sec2"]                # never split into halves
+    # Section 1: failed at "high", retried and succeeded at "medium". Section 2 is a fresh loop
+    # iteration and runs at the original "high" — only the retried section drops effort.
+    assert efforts_seen == ["high", "medium", "high"]
+    assert cost == pytest.approx(0.02 + 0.02 + 0.01)          # section-1 retry + section 2 + digest
+
+
+def test_starved_section_call_at_lowest_effort_fails_like_no_recovery_existed(tmp_path, monkeypatch):
+    """Bounded exactly like #540's re-split: with nowhere lower to retry (`effort="low"`), a
+    starved section call fails the document outright rather than looping."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    plan, pf = _resplit_plan_and_pf(vault)
+    calls = {"n": 0}
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "extract-section":
+            calls["n"] += 1
+            raise model_client.ModelError(
+                "the model used its entire output budget on internal reasoning",
+                truncated=True, starved=True)
+        return model_client.ModelResult(parsed={"summary": "digest"}, text="", model="m",
+                                        backend="b", auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    with pytest.raises(model_client.ModelError, match="internal reasoning"):
+        asyncio.run(orchestrate._extract_sectioned(
+            vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report", effort="low"))
+
+    assert calls["n"] == 1   # no retry attempted — "low" has nowhere lower to go
+
+
+def test_starved_whole_doc_extraction_retries_at_lower_effort_and_succeeds(tmp_path, monkeypatch):
+    """The whole-document path (`_simple_extract`) gets the same starvation recovery as sectioned
+    extraction (#558) — falling back to sectioning would only repeat the starvation on smaller
+    input, since the failure was never about input size."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    ext = _extraction()
+    efforts_seen = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "extract":
+            efforts_seen.append(effort)
+            if len(efforts_seen) == 1:
+                raise model_client.ModelError(
+                    "the model used its entire output budget on internal reasoning",
+                    truncated=True, starved=True)
+            return model_client.ModelResult(parsed=ext, text="", model="m", backend="b",
+                                            auth_mode="subscription", cost_usd=0.02)
+        parsed = {"classify": {"skill": "general-records.md"},
+                 "entity-synthesis": {"entity_syntheses": []},
+                 "timeline-dedup": {"groups": []},
+                 "briefing": {"investigation_status": "x", "what_was_ingested": []}}.get(task, {})
+        return model_client.ModelResult(parsed=parsed, text="", model="m", backend="b",
+                                        auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault, extract_effort="high"))
+
+    assert summary["extracted"] == 1 and summary["failed"] == 0
+    assert efforts_seen == ["high", "medium"]
+
+
 def test_ingest_retry_resumes_sectioned_extraction_after_a_crash(tmp_path, monkeypatch):
     """End-to-end: a document that crashes mid-sectioned-extraction fails the run but keeps its
     completed sections' checkpoints (the automatic-failure path preserves them, #498); moving the

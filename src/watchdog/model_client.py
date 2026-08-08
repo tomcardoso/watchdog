@@ -200,11 +200,18 @@ class ModelError(RuntimeError):
     `out.get("truncated")` branch below) — a structured signal a caller can act on (e.g. the
     orchestrator's section-level re-split fallback) instead of matching on `last_err`'s message
     text, which is prose meant for a human and free to change (#547 already changed one of these
-    strings once)."""
+    strings once).
+
+    `starved` (#558) is set only alongside `truncated` and narrows it further: the max-token cut
+    happened because reasoning consumed the whole output budget before an answer was written (or
+    outweighed it), not because the answer itself overflowed. The two need different recovery —
+    re-splitting the input helps truncation but does nothing for starvation, since a smaller
+    input still gets the same reasoning envelope — so a caller must be able to tell them apart
+    rather than applying one recovery to both."""
 
     def __init__(self, message: str, *, usage: dict | None = None, cost_usd: float | None = None,
                 attempts: int = 0, model: str | None = None, backend: str | None = None,
-                auth_mode: str | None = None, truncated: bool = False):
+                auth_mode: str | None = None, truncated: bool = False, starved: bool = False):
         super().__init__(message)
         self.usage = usage
         self.cost_usd = cost_usd
@@ -213,6 +220,7 @@ class ModelError(RuntimeError):
         self.backend = backend
         self.auth_mode = auth_mode
         self.truncated = truncated
+        self.starved = starved
 
 
 class RateLimitError(RuntimeError):
@@ -1164,6 +1172,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
     pruned_all: list[str] = []
     agg_usage: dict | None = None
     was_truncated = False   # #540: whether the final failure was a truncation specifically
+    was_starved = False     # #558: narrows was_truncated to the reasoning-starvation shape
     for _ in range(max_retries + 1):
         attempts += 1
         try:
@@ -1207,10 +1216,12 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
                 budget = f"{reasoning:,}-token " if reasoning else ""
                 last_err = (f"the model used its entire {budget}output budget on internal "
                             "reasoning and returned no answer — try a lower extractor_effort")
+                was_starved = True
             elif reasoning > visible:
                 last_err = (f"the model spent {reasoning:,} of its output budget on internal "
                             f"reasoning, leaving only {visible:,} tokens of answer before the "
                             "max-token ceiling cut it off — try a lower extractor_effort")
+                was_starved = True
             else:
                 last_err = "output truncated at the model's max-token ceiling"
             was_truncated = True
@@ -1248,7 +1259,8 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
         f"task '{task}' failed JSON validation after {attempts} attempt(s) "
         f"on {chosen}: {last_err}",
         usage=agg_usage, cost_usd=round(total_cost, 6) or None, attempts=attempts,
-        model=model_id, backend=chosen, auth_mode=auth_mode, truncated=was_truncated)
+        model=model_id, backend=chosen, auth_mode=auth_mode, truncated=was_truncated,
+        starved=was_starved)
 
 
 def complete_json(**kwargs) -> ModelResult:
