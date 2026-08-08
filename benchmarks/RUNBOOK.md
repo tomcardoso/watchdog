@@ -97,11 +97,18 @@ qualitative pass below; the two slices have disagreed on the winner before.
 because the judgments are opinions and the prompt is what constrains them.
 
 ```
-benchmarks/bench packets --arms sonnet-4.6-high,sonnet-4.6-med,gpt-mini-low
+benchmarks/bench packets --arms sonnet-4.6-high,sonnet-4.6-med,gpt-mini-low \
+    --out benchmarks/<date>-judge-qualitative-<what>
 ```
 
 Arms are ids from `benchmark.yaml`. It writes one blinded packet per document plus a
 `mapping.json` that is **judge-eyes-only** — never show it to whoever or whatever is judging.
+
+**Always pass `--out`.** It defaults to `benchmarks/qualitative/`, which is where the *last*
+pass's packets and judgments already sit — so the default silently overwrites the previous
+comparison, and those files are the only durable record of it (`FINDINGS.md` carries the totals
+but not the per-item verdicts). Name the directory for the date and the question, as the
+`2026-07-29-judge-qualitative` and `2026-08-03-judge-qualitative-luna` directories do.
 
 **To judge an earlier run, add `--run benchmarks/runs/<run-id>/`.** Without it the live vaults are
 read, and those are reset the next time that arm runs — so once you have run anything twice, the
@@ -134,7 +141,24 @@ Give the judge exactly this prompt, with nothing added:
 > extraction seems generally good, and do not penalise an extraction for including extra material
 > beyond the key items. If an extraction is empty for this document, every item is `ungrounded`.
 >
-> Return JSON: `{"<item id>": {"X": "<tier>", "Y": "<tier>", "Z": "<tier>"}, ...}`.
+> Return JSON in exactly this shape, with one short `note` per verdict saying what in the
+> extraction you graded against:
+>
+> ```json
+> {"document": "<the packet's document id>",
+>  "judgments": {
+>    "<item id>": {"X": {"tier": "<tier>", "note": "<one clause>"},
+>                  "Y": {"tier": "<tier>", "note": "<one clause>"},
+>                  "Z": {"tier": "<tier>", "note": "<one clause>"}}
+>  }}
+> ```
+
+Grade every id from both `items.facts` and `items.must_not_miss`; they go in one flat
+`judgments` object.
+
+**The shape is not cosmetic** — `aggregate.py` reads `["judgments"][id][label]["tier"]` and
+raises `KeyError: 'judgments'` on anything flatter. The `note` is what makes the mandatory
+hand-check cheap: without it you re-derive every verdict from the vaults by hand.
 
 Judgments go in `judgment-<document>.json` beside each packet, then:
 
@@ -143,6 +167,13 @@ benchmarks/bench judge [out-dir]
 ```
 
 `verbatim` + `credited` count as a hit; `ungrounded` does not.
+
+**If any arm lost a document, report the totals twice** — whole corpus, and again excluding that
+document. The two answer different questions and can rank the arms differently: the whole-corpus
+figure is what a user would actually receive (a lost document is a real loss, and unlike
+`score_arms.py` this pass charges it to the right arm instead of crediting it from siblings),
+while the excluding figure is the only one that isolates extraction *quality* from reliability. A
+single lost document is worth tens of items and will otherwise silently drive the entire ranking.
 
 ## 7. Verifier precision (only for a verify/noverify pair)
 

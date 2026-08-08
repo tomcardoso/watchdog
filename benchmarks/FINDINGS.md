@@ -303,6 +303,120 @@ reasoning extractor, and treat the help text's recall claim as unverified for Op
 Related: #542 (the section-size constant, measured from the same run), #558 (starvation is a
 distinct failure from truncation and the re-split recovery cannot fix it).
 
+---
+
+**2026-08-08 — the qualitative judge pass on the three `gpt-mini` effort tiers reverses the entry
+above: on the judged slice `medium` wins both metrics, not `low`. But once the document `high`
+lost is set aside, all three arms are within noise of each other — what separates them is
+reliability, not comprehension.** Artifacts:
+`benchmarks/2026-08-08-judge-qualitative-mini/` (blinded packets, per-document judgments, mapping,
+raw pre-conversion judgments in `raw-flat/`). Same protocol and same key items as the 2026-07-29
+and 2026-08-03 passes — six Sonnet subagents, one per document, arms blinded X/Y/Z with the
+mapping randomized independently per document. **This is the qualitative slice; the entry above is
+the numeric-anchored slice of the same extractions.** No new extraction was run: the judging reads
+the vaults the 2026-08-06 arms left behind.
+
+| Arm | Facts (hit/total) | must_not_miss (hit/total) | Cost |
+|---|---|---|---|
+| `gpt-mini-low` | 75% (65/87) | 57% (30/53) | $0.53 |
+| `gpt-mini-med` | **77% (67/87)** | **68% (36/53)** | $2.47 |
+| `gpt-mini-high` | 51% (44/87) | 47% (25/53) | $5.17 |
+
+Excluding *Laurentian Pre-Filing Report* — the document `high` lost to reasoning starvation, and
+the single largest item block in the corpus (31 of 140):
+
+| Arm | Facts (hit/total) | must_not_miss (hit/total) |
+|---|---|---|
+| `gpt-mini-low` | 69% (47/68) | 54% (22/41) |
+| `gpt-mini-med` | 71% (48/68) | 59% (24/41) |
+| `gpt-mini-high` | 65% (44/68) | **61% (25/41)** |
+
+**Read the second table for quality and the first for what a user receives.** `high` is last
+overall only because it lost a document; on the five it completed it leads `must_not_miss`. Unlike
+`score_arms.py`, this pass charges a lost document to the arm that lost it rather than crediting
+the items from siblings — which is why `high`'s honest figures here (51%/47%) are so much worse
+than the numeric slice's (97%/88%).
+
+**The low-vs-medium gap is real but half of it is one document.** Medium's 11-point
+`must_not_miss` lead shrinks to 5 points once the pre-filing report is excluded (it scored 12/12
+there against low's 8/12). The direction replicates the 2026-08-03 `gpt-luna` pass, which found
+the same +11 low→med move on `must_not_miss` — two models, two independent passes, same sign — so
+the effect is probably real, but at 4.7x the cost it is not obviously worth buying.
+
+**Extraction volume is not coverage.** On the pre-filing report `low` emitted 159 `key_facts` to
+`medium`'s 90 and still scored worse on the keyed items (8/12 vs 12/12). Fact count is not a proxy
+for recall and should not be used as one.
+
+### What the misses actually are — and why model choice will not fix them
+
+`must_not_miss` items caught by **at least one** arm: 43/53 (81%). Missed by **every** arm:
+**10/53 (19%)**. That 19% is the current pipeline's ceiling: no effort level and no backend
+reaches it, so the low/medium/high argument is a fight over the ~13-point band between 68% and
+81% while a fifth of the keyed items sits off the table for reasons unrelated to model capability.
+**Model selection is not where the remaining recall is.**
+
+Reading the missed items individually (rather than counting them) gives three causes, none of
+which is reasoning effort:
+
+**1. The extraction records end-states and discards transitions.** `first-report-monitor` M6 asks
+for the Administration Charge tripling ($400K → $1.25M) and the Directors' Charge more than
+doubling ($2M → $5M). The document states this in one clause — *"an increase in the Administration
+Charge from $400,000 to $1,250,000; ... the Directors' Charge from $2,000,000 to $5,000,000"* — so
+no arithmetic and no cross-document lookup is involved. All three arms captured the **new** figure
+and dropped the **prior** one ("increase the administration charge to $1,250,000"). A `key_fact` is
+naturally written as a current-state assertion, so the *change* — which is the newsworthy part —
+is normalised away. Any keyed item phrased as a delta is systematically exposed to this.
+(`medium` additionally recorded the Directors' Charge as "$2 million", the DIP-priority sub-cap,
+rather than the $5M total; `high` got the split right. A substantive error, not just an omission.)
+
+**2. Salience, not context or linkage.** `pension-order` M6 asks that Derek Harland be noticed in
+two capacities — deponent of the Affidavit of Service (p. 1) and counsel at TGF (p. 5). The
+document is five pages and ran as a **single whole-document call** (8,751 input tokens): both
+mentions were in the same prompt, with no sectioning and no context pressure. The extraction
+mentions Harland **zero times** — not in `key_facts`, not in `entities`. This is not a cross-page
+reasoning failure; the name was simply never judged worth recording. Procedural boilerplate that
+carries a signal to a reporter is invisible to a salience judgment tuned for operative content.
+
+**3. Curator's angle vs. stated content.** Several items encode a characterisation the document
+never uses ("triples" appears nowhere in the First Report) or reach across documents (M8's caveat
+"repeated from the Pre-Filing Report" cannot be satisfied by a single-document pass, though the
+erroneous affidavit date it hinges on *is* in the document).
+
+All three point at the skill/schema and the salience instruction, not at the model. Worth weighing
+against #551 and #555, which both assume the extraction-benchmark axis is where the headroom is.
+
+### The `must_not_miss` key items are weaker instruments than the `facts` items
+
+Found while reading the misses, and it bears on every figure in the qualitative column of this
+file, including the 2026-07-29 and 2026-08-03 passes:
+
+- **No quotes.** In `benchmarks/keys/*.yaml`, every `facts` entry carries a verbatim `quote`
+  (21/21 in `first-report-monitor.yaml`); **no `must_not_miss` entry carries one** (0/10). They
+  have `id`, `item`, `page`, `paragraph` and a `why`, but nothing anchoring the assertion to
+  document text. A `facts` item is self-verifying; a `must_not_miss` item can only be checked by
+  going back to the PDF by hand, so a mis-keyed one is invisible.
+- **Bundled sub-facts, graded all-or-nothing.** M6 bundles three claims (admin charge triples,
+  directors' charge more than doubles, both rank ahead of every secured creditor). An arm holding
+  two of three lands on the judge's discretion, and judges in this pass flagged exactly that
+  ("credited for capturing half a two-part item"). This makes `must_not_miss` both noisier and
+  more pessimistic than the facts column, and the two are not on the same footing.
+
+Neither defect explains away the misses above — the dropped "$400,000" and the absent Harland are
+real regardless of how the key is written. But the `must_not_miss` percentages should be read as
+a stress test with a soft denominator, not as a calibrated recall figure. Adding quotes and
+splitting bundled items would make the next pass measurably sharper.
+
+**Caveats.** One model, one corpus, six documents; the excluding-table differences (2–7 points on
+n=68/41) are within noise and should not be used to rank the arms. The arms' extraction predates
+the provenance stamping added in #554 (merged 22:58 on 2026-08-05, after all three arms ran at
+21:45–22:45), so the exact extraction commit is not recorded — only the date. The judging ran at
+`5819dfa`.
+
+**Bearing on #361.** `low` remains defensible on cost and `high` is ruled out on this backend
+(cost plus the starvation loss), but the earlier reading that effort above `low` buys nothing does
+not survive the judged slice. The open question is whether medium's small edge is worth 4.7x, and
+that is a product call rather than a measurement gap.
+
 ## Corrections logged along the way
 
 - The original `bench-ex-sonnet-high`/`bench-ex-sonnet-med` vaults (run 2026-07-15, before #403's
@@ -362,3 +476,18 @@ distinct failure from truncation and the re-split recovery cannot fix it).
   from the answer keys rather than from the judgments that came back, so a keyed item nobody
   graded counts as a miss and is reported by id — adding documents or key items raises the bar
   for later passes automatically, and a shortfall like this one can no longer pass unremarked.
+- 2026-08-08: **the 2026-08-06 entry's headline — "reasoning effort above `low` does not buy
+  extraction quality" — is not supported.** It rests on the numeric-anchored slice alone, where
+  `low` scored 39/39 and the metric is saturated: an arm cannot be ranked above a ceiling its
+  rival already hit. The judged slice run on the same extractions two days later puts `medium`
+  ahead on both metrics. The entry's *cost* argument is unaffected and still stands — `low` is 5x
+  cheaper than `medium` and was the only arm that never failed — but that is a
+  price-and-reliability case, not a quality one. **General lesson: do not draw a quality
+  conclusion from the numeric slice alone when the leading arm is at or near 100% on it.** It
+  covers roughly a third of the key items, and they are the anchored, easy ones.
+- 2026-08-08: `RUNBOOK.md`'s judge prompt specified a return shape (`{id: {X: "tier"}}`) that
+  `aggregate.py` cannot read — it reads `["judgments"][id][label]["tier"]` and raises
+  `KeyError: 'judgments'`. Any judgments produced by following the runbook literally before this
+  date need converting before they will tally. Fixed in the runbook, along with two related traps:
+  `bench packets --out` defaults to `qualitative/` and silently overwrites the previous pass's
+  artifacts, and the prompt did not ask judges for the per-verdict `note` the hand-check relies on.
