@@ -1289,8 +1289,12 @@ def test_truncated_empty_text_reports_reasoning_starvation(openai_key, monkeypat
                 "cost_usd": 0.01, "finish_reason": "length"}
     monkeypatch.setitem(mc._ABACKENDS, "openai", backend)
     with pytest.raises(mc.ModelError,
-                       match="entire 48,000-token output budget on internal reasoning"):
+                       match="entire 48,000-token output budget on internal reasoning") as exc_info:
         mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
+    # #558: a caller needs to tell starvation apart from an ordinary truncation structurally, not
+    # by matching this message's text — re-splitting the input doesn't fix a starved call.
+    assert exc_info.value.truncated is True
+    assert exc_info.value.starved is True
 
 
 def test_truncated_partial_text_keeps_ordinary_message_when_the_answer_dominated(openai_key,
@@ -1304,8 +1308,12 @@ def test_truncated_partial_text_keeps_ordinary_message_when_the_answer_dominated
                                                        {"reasoning_tokens": 8000}},
                 "cost_usd": 0.01, "finish_reason": "length"}
     monkeypatch.setitem(mc._ABACKENDS, "openai", backend)
-    with pytest.raises(mc.ModelError, match="truncated at the model's max-token ceiling"):
+    with pytest.raises(mc.ModelError,
+                       match="truncated at the model's max-token ceiling") as exc_info:
         mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
+    # #558: an ordinary truncation (answer outweighed reasoning) must not be flagged starved —
+    # re-splitting the input is the right recovery here, not an effort-level retry.
+    assert exc_info.value.starved is False
 
 
 def test_truncated_partial_text_reports_starvation_when_reasoning_dominated(openai_key,
@@ -1322,8 +1330,9 @@ def test_truncated_partial_text_reports_starvation_when_reasoning_dominated(open
     monkeypatch.setitem(mc._ABACKENDS, "openai", backend)
     with pytest.raises(mc.ModelError,
                        match="spent 15,137 of its output budget on internal reasoning, leaving "
-                             "only 847 tokens of answer"):
+                             "only 847 tokens of answer") as exc_info:
         mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
+    assert exc_info.value.starved is True   # #558: the partial-text starvation shape too
 
 
 def test_truncated_partial_text_without_usage_keeps_ordinary_message(openai_key, monkeypatch):

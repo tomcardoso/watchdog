@@ -43,6 +43,15 @@ was an artifact of a truncated run.** (Corrected 2026-07-27, #475.)
 table credited Sonnet zero on two documents it never attempted. That produced the earlier
 headline of ds-pro 92% vs Sonnet 90% on facts, which is not a real result.
 
+**As of #559, this class of mistake is caught automatically** rather than needing a human to
+notice a suspiciously bad score and go check `ingest.log`. A rate limit now surfaces distinctly
+from a plain Ctrl-C (`⚠ rate-limited after 4/6 docs`, an `errors.log` entry, `run.json`'s
+`rate_limited`/`partial` fields), and `score_arms.py` restricts each vault's denominator to the
+documents it actually extracted instead of scoring a missing one as a miss — so a table built
+today from an arm like `bench-ex2-sonnet-med` would report its real 4-document recall rather than
+a corpus-wide figure dragged down by two documents it never opened. The hand-restricted table
+below is the manual version of what the harness now does by construction.
+
 Restricted to the **four documents every arm completed** (pension order, first report of the
 monitor, both annual financial reports):
 
