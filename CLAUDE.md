@@ -58,7 +58,7 @@ Write tests for new features and any non-trivial function. The suite lives in `t
 pipx inject watchdog-intel pytest numpy
 ```
 
-**Run the suite:**
+**To run the suite:**
 
 ```
 ~/.local/pipx/venvs/watchdog-intel/bin/pytest
@@ -81,6 +81,10 @@ pipx run ruff check src tests
 ```
 
 The rule set is deliberately conservative — pyflakes (`F`) plus the pycodestyle logical-error subsets `E4`/`E7`/`E9`. It catches unused imports/variables and real logical errors, **not** formatting: line-length (`E501`) and import-sorting (`I`) are intentionally not enforced, and there is no autoformatter. `cli.py` is exempt from `F401` because it deliberately re-exports a wide surface for test monkeypatching (see the `# noqa` on `import sys` there); a genuine unused import anywhere else will still fail CI. See DECISIONS D106.
+
+## Note on running tests and linters
+
+For a change that only touches comments, docstrings, or documentation — not any runnable code path — skip running the test suite and `ruff check` afterward. They can't catch anything for a change like that, so running them is pure overhead. Before running the suite/lint, ask: does this diff change anything that executes? A comment, a docstring, a `DECISIONS.md`/`ARCHITECTURE.md`/`docs/*.md` edit, a string that's never parsed — skip verification, just make the edit. Still run tests/lint for anything that touches actual logic, even a small tweak — this carve-out is specifically for non-executing text.
 
 ---
 
