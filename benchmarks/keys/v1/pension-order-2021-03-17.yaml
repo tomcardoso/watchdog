@@ -307,120 +307,52 @@ contradictions: []
 # Scored separately from `facts`: this is where cheap conditions degrade first.
 must_not_miss:
   - id: M1
-    item: >
-      The signature block: CHIEF JUSTICE G.B. MORAWETZ.
-    quote:
-      - "CHIEF JUSTICE G.B. MORAWETZ"
+    item: "The signature block: CHIEF JUSTICE G.B. MORAWETZ."
     page: 4
     location: signature block
-    why: >
-      Page 4 is a 252-character orphan page. Easy to skip entirely.
+    why: "Page 4 is a 252-character orphan page. Easy to skip entirely."
 
-  - id: M2.1
+  - id: M2
     item: >
-      Thornton Grout Finnigan LLP, 3200-100 Wellington Street West, Toronto, is named as counsel
-      on the backsheet.
-    quote:
-      - "THORNTON GROUT FINNIGAN LLP"
-      - "3200 - 100 Wellington Street West TD West Tower, Toronto-Dominion Centre Toronto, ON   M5K 1K7"
+      The backsheet naming counsel: Thornton Grout Finnigan LLP, 3200–100 Wellington Street West,
+      Toronto; D.J. Miller (LSO# 344393P), Mitchell W. Grossell (LSO# 69993I), Andrew Hanrahan
+      (LSO# 78003K), Derek Harland (LSO# 79504N).
     page: 5
     location: backsheet (final page)
     why: >
-      Last page, no prose, pure metadata — the classic dropped page. It is also the only place
-      the applicant's law firm is named.
-
-  - id: M2.2
-    item: >
-      D.J. Miller (LSO# 344393P) is named as counsel on the backsheet.
-    quote:
-      - "D.J. Miller (LSO# 344393P)"
-    page: 5
-    location: backsheet (final page)
-    why: >
-      Last page, no prose, pure metadata — the classic dropped page. It is also the only place
-      the applicant's law firm is named.
-
-  - id: M2.3
-    item: >
-      Mitchell W. Grossell (LSO# 69993I) is named as counsel on the backsheet.
-    quote:
-      - "Mitchell W. Grossell (LSO# 69993I)"
-    page: 5
-    location: backsheet (final page)
-    why: >
-      Last page, no prose, pure metadata — the classic dropped page. It is also the only place
-      the applicant's law firm is named.
-
-  - id: M2.4
-    item: >
-      Andrew Hanrahan (LSO# 78003K) is named as counsel on the backsheet.
-    quote:
-      - "Andrew Hanrahan (LSO# 78003K)"
-    page: 5
-    location: backsheet (final page)
-    why: >
-      Last page, no prose, pure metadata — the classic dropped page. It is also the only place
-      the applicant's law firm is named.
-
-  - id: M2.5
-    item: >
-      Derek Harland (LSO# 79504N) is named as counsel on the backsheet.
-    quote:
-      - "Derek Harland (LSO# 79504N)"
-    page: 5
-    location: backsheet (final page)
-    why: >
-      Last page, no prose, pure metadata — the classic dropped page. It is also the only place
-      the applicant's law firm is named.
+      Last page, no prose, pure metadata — the classic dropped page. It is also the only place the
+      applicant's law firm is named.
 
   - id: M3
-    item: >
-      The Incremental PBGF Assessment Payment — a second stayed payment, amount not stated.
-    quote:
-      - "and  any  incremental  amount  owing  by  LU  in  respect  of  its pro  rata portion of assessment fees payable to the Pension Benefits Guarantee Fund relating to the Pension Plan for the pre-filing period of July 1, 2018 to June 30, 2019 due to the filing in December 2020 of a new actuarial valuation report for the Pension Plan, plus any interest and penalties thereon (the ' Incremental PBGF Assessment Payment '), is stayed and suspended"
+    item: "The Incremental PBGF Assessment Payment — a second stayed payment, amount not stated."
     page: 3
     location: body of paragraph 6, after the quantified figure
     why: >
-      Sits behind the $842,018.34 in the same sentence. Extractions reliably capture the number
-      and drop the unquantified second payment.
+      Sits behind the $842,018.34 in the same sentence. Extractions reliably capture the number and
+      drop the unquantified second payment.
 
   - id: M4
     item: >
       The FSRA carve-out: the stay does not preclude FSRA from asserting a claim.
-    quote:
-      - "nothing in this Order shall preclude the Financial Services Regulatory Authority from asserting a claim against LU in respect of the PBGF Assessment Payment or the Incremental PBGF Assessment Payment."
     page: 3
     location: final sentence of paragraph 7
-    why: >
-      Reverses the paragraph it sits in. Dropping it inverts the meaning of the order.
+    why: "Reverses the paragraph it sits in. Dropping it inverts the meaning of the order."
 
   - id: M5
     item: >
-      The 30-day deemed-withdrawal rule: an Interim CV Applicant who does not re-elect in
-      writing loses the commuted value transfer and keeps only a deferred pension.
-    quote:
-      - "Any such  Interim CV Applicant who does not make an election in writing to LU within 30 days of the date upon which notice of this Order is provided to them, shall be deemed to have withdrawn their application for"
-      - "a transfer of their commuted value and shall retain their entitlement to a deferred pension from the Pension Plan."
+      The 30-day deemed-withdrawal rule: an Interim CV Applicant who does not re-elect in writing
+      loses the commuted value transfer and keeps only a deferred pension.
     page: 2
     location: end of paragraph 4, crossing the page 2/3 boundary
     why: >
-      The consequence clause runs across a page break — precisely where section-chunked
-      extraction loses text.
+      The consequence clause runs across a page break — precisely where section-chunked extraction
+      loses text.
 
   - id: M6
     item: >
       Derek Harland appears in two capacities: deponent of the Affidavit of Service (p. 2) and
       counsel at TGF (p. 5).
-    basis: inferred
-    why_inferred: >
-      The document never states Derek Harland's two roles together. It requires joining a
-      mention on page 1 ("the Affidavit of Service of Derek Harland sworn March 10, 2021") with
-      a separate mention on page 5, where he is listed on the backsheet as counsel ("Derek
-      Harland (LSO# 79504N)") at Thornton Grout Finnigan LLP. Recognizing these as the same
-      person in two capacities requires combining front and back matter.
-    pages:
-      - 2
-      - 5
+    pages: [2, 5]
     location: recital + backsheet
     why: >
       Requires joining the front and back of the document. A per-section extractor sees the two
@@ -430,8 +362,6 @@ must_not_miss:
     item: >
       The five named Interim CV Applicants (Leduc, Zapalski, Pegoraro, Oxley, McGillis) — real
       pensioners, named in the recital.
-    quote:
-      - "the following Interim CV Applicants, Caleb Leduc, Brady Zapalski, Ann Pegoraro, William Oxley and Sheila McGillis"
     page: 1
     location: recital, mid-sentence
     why: >

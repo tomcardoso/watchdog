@@ -299,69 +299,12 @@ ocr_hazards:
     risk: "Alphanumeric strings with punctuation, rotated. Compounding H5. Expect character-level errors even if rotation is handled."
 
 must_not_miss:
-  # `item` below carries the TRUE backsheet values read from the source PDF; `quote`
-  # carries what the OCR text layer actually produced, which corrupts two of them
-  # (M5K->MSK, 69993I->699931) exactly as ocr_hazards H5/H6 predict. The divergence is
-  # deliberate — do NOT reconcile them. Per README, faithfully extracting the wrong
-  # value is correct extraction and is not scored as a miss.
-  - id: M1.1
+  - id: M1
     item: >
-      Thornton Grout Finnigan LLP is located at 3200-100 Wellington Street West, TD West Tower,
-      Toronto-Dominion Centre, Toronto ON M5K 1K7, and is lawyers for the Applicant.
-    quote:
-      - "Thornton Grout Finnigan LLP"
-      - "3200 - 100 Wellington Street West"
-      - "TD West Tower, Toronto-Dominion Centre"
-      - "Toronto, ON MSK 1K7"
-      - "Lawyers for the Applicant"
-    page: 17
-    location: backsheet — ROTATED 90°
-    why: >
-      Last page, rotated, and the only place the applicant's counsel is named. This is the
-      highest-value must-not-miss item in the corpus precisely because it sits behind an OCR
-      rotation failure. See ocr_hazards H5.
-
-  - id: M1.2
-    item: >
-      D.J. Miller (LSO# 344393P) is lawyer for the Applicant.
-    quote:
-      - "D.J. Miller (LSO# 344393P)"
-    page: 17
-    location: backsheet — ROTATED 90°
-    why: >
-      Last page, rotated, and the only place the applicant's counsel is named. This is the
-      highest-value must-not-miss item in the corpus precisely because it sits behind an OCR
-      rotation failure. See ocr_hazards H5.
-
-  - id: M1.3
-    item: >
-      Mitchell W. Grossell (LSO# 69993I) is lawyer for the Applicant.
-    quote:
-      - "Mitchell W. Grossell (LSO# 699931)"
-    page: 17
-    location: backsheet — ROTATED 90°
-    why: >
-      Last page, rotated, and the only place the applicant's counsel is named. This is the
-      highest-value must-not-miss item in the corpus precisely because it sits behind an OCR
-      rotation failure. See ocr_hazards H5.
-
-  - id: M1.4
-    item: >
-      Andrew Hanrahan (LSO# 78003K) is lawyer for the Applicant.
-    quote:
-      - "Andrew Hanrahan (LSO# 78003K)"
-    page: 17
-    location: backsheet — ROTATED 90°
-    why: >
-      Last page, rotated, and the only place the applicant's counsel is named. This is the
-      highest-value must-not-miss item in the corpus precisely because it sits behind an OCR
-      rotation failure. See ocr_hazards H5.
-
-  - id: M1.5
-    item: >
-      Derek Harland (LSO# 79504N) is lawyer for the Applicant.
-    quote:
-      - "Derek Harland (LSO# 79504N)"
+      The backsheet: Thornton Grout Finnigan LLP, 3200–100 Wellington Street West, TD West Tower,
+      Toronto-Dominion Centre, Toronto ON M5K 1K7 — D.J. Miller (LSO# 344393P), Mitchell W.
+      Grossell (LSO# 69993I), Andrew Hanrahan (LSO# 78003K), Derek Harland (LSO# 79504N).
+      Lawyers for the Applicant.
     page: 17
     location: backsheet — ROTATED 90°
     why: >
@@ -371,74 +314,35 @@ must_not_miss:
 
   - id: M2
     item: >
-      The order carries a Toronto court registry entry stamp — "ENTERED AT / INSCRIT À TORONTO"
-      — dated FEB 0 1 2021, proving entry.
-    quote:
-      - "ENTERED AT / INSCRIT À TORONTO ON / BOOK NO: LE / DANS LE REGISTRE NO: FEB 0 1 2021"
+      The registry stamp proving entry: "ENTERED AT / INSCRIT À TORONTO", "FEB 0 1 2021", with
+      handwritten registrar initials.
     page: 16
     location: court registry stamp, below the signature
-    why: >
-      Bilingual, handwritten, stamped. The evidence the order took effect. See H4.
+    why: "Bilingual, handwritten, stamped. The evidence the order took effect. See H4."
 
   - id: M3
-    item: >
-      The order is signed by Chief Justice G.B. Morawetz, whose printed name appears in the
-      signature block.
-    quote:
-      - "CHIEF JUSTICE G.B. MORAWETZ"
+    item: "The signature block: CHIEF JUSTICE G.B. MORAWETZ, with a wet signature above the printed name."
     page: 16
     location: signature block
-    why: >
-      Signature blocks are the first casualty of both extraction and OCR.
+    why: "Signature blocks are the first casualty of both extraction and OCR."
 
-  - id: M4.1
+  - id: M4
     item: >
-      Segregated Funds established by the Applicant from and after December 1, 2020 do not form
-      part of the Applicant's Property (para 7).
-    basis: inferred
-    why_inferred: >
-      The compound claim needs two non-adjacent paragraphs combined: paragraph 7 (page 3)
-      establishes the Segregated Funds (from and after December 1, 2020) and states they 'shall
-      not form part of the Applicant's Property'; paragraph 38 (page 13), ten pages later,
-      separately excludes the Segregated Accounts from the Charges. No single passage states
-      both halves together.
-    pages:
-      - 3
-      - 13
-    paragraph: 7, 38
+      Segregated Funds — established from and after 1 DECEMBER 2020 — do not form part of the
+      Applicant's Property, and the Charges cannot reach them.
+    pages: [3, 13]
+    paragraph: "7, 38"
     why: >
-      Stated in two places 10 pages apart, and it is the court's answer to the co-mingling
-      problem. The 1 December 2020 date is the tell: LU only began segregating restricted money
-      two months before filing.
-
-  - id: M4.2
-    item: >
-      The Property subject to the Charges does not include the Segregated Accounts (para 38).
-    basis: inferred
-    why_inferred: >
-      The compound claim needs two non-adjacent paragraphs combined: paragraph 7 (page 3)
-      establishes the Segregated Funds (from and after December 1, 2020) and states they 'shall
-      not form part of the Applicant's Property'; paragraph 38 (page 13), ten pages later,
-      separately excludes the Segregated Accounts from the Charges. No single passage states
-      both halves together.
-    pages:
-      - 3
-      - 13
-    paragraph: 7, 38
-    why: >
-      Stated in two places 10 pages apart, and it is the court's answer to the co-mingling
-      problem. The 1 December 2020 date is the tell: LU only began segregating restricted money
-      two months before filing.
+      Stated in two places 10 pages apart, and it is the court's answer to the co-mingling problem.
+      The 1 December 2020 date is the tell: LU only began segregating restricted money two months
+      before filing.
 
   - id: M5
     item: >
       Payments to retirees and former employees under the SuRP and RHBP, and all termination and
-      severance payments, are STAYED — inside a parenthesis in a paragraph about paying
-      employees.
-    quote:
-      - "(but not including any payments to former employees or retirees in respect of the SuRP and the RHBP, as such terms are defined in the Haché Affidavit, or termination or severance payments, which are hereby stayed)"
+      severance payments, are STAYED — inside a parenthesis in a paragraph about paying employees.
     page: 4
-    paragraph: 8(a)
+    paragraph: "8(a)"
     why: >
       The paragraph reads as "we will keep paying everyone"; the parenthesis says retirees and
       severance are cut off. Inverting this inverts the meaning of the order.
@@ -447,20 +351,14 @@ must_not_miss:
     item: >
       The creditor-notice carve-out: employees, former employees with pension entitlements and
       retirees are EXCLUDED from the notice to known creditors.
-    quote:
-      - "(excluding any individual employees, former employees with pension and/or retirement savings or benefits plan entitlements, and retirees and other beneficiaries who have entitlements under any pension or retirement savings plan)"
     page: 13
     paragraph: 39
     why: >
-      A parenthetical exclusion determining who was told they were a creditor. Buried mid-
-      sentence in a service-and-notice paragraph.
+      A parenthetical exclusion determining who was told they were a creditor. Buried mid-sentence
+      in a service-and-notice paragraph.
 
   - id: M7
-    item: >
-      Confidential Exhibits 'EEE' and 'FFF' of the Haché Affidavit are sealed from the public
-      record.
-    quote:
-      - "Confidential Exhibits \"EEE\" and \"FFF\" of the Haché Affidavit are hereby sealed pending further order of the Court, and shall not form part of the public record."
+    item: "Confidential Exhibits 'EEE' and 'FFF' of the Haché Affidavit are sealed from the public record."
     page: 15
     paragraph: 44
     why: >
@@ -468,76 +366,33 @@ must_not_miss:
       the single most actionable line in the document for a reporter.
 
   - id: M8
-    item: >
-      Board Counsel's fees are capped at $250,000 plus HST.
-    quote:
-      - "the fees and disbursement of Board Counsel paid by the Applicant from and after the date of this Order shall not exceed the aggregate amount of $250,000, plus HST, pending further Order of the Court."
+    item: "Board Counsel's fees are capped at $250,000 plus HST."
     page: 12
     paragraph: 29
-    why: >
-      A discrete dollar cap at the end of a long paragraph about professional fees.
+    why: "A discrete dollar cap at the end of a long paragraph about professional fees."
 
-  - id: M9.1
+  - id: M9
     item: >
-      The Directors' Charge, as security for the paragraph 20 indemnity, does not extend to
-      obligations arising from gross negligence or wilful misconduct.
-    basis: inferred
-    why_inferred: >
-      Para 22 (page 9) directly states directors get the Charge's benefit only to the extent
-      they lack insurance coverage or coverage is insufficient. But 'the Directors' Charge does
-      not cover gross negligence or wilful misconduct' is never said of the Charge itself: para
-      20 excludes gross negligence/wilful misconduct only from the underlying indemnity, and
-      para 21 says the Charge is granted 'as security for the indemnity provided in paragraph
-      20'. Concluding the Charge inherits that exclusion requires bridging two separate
-      paragraphs (20 and 21), not a direct statement.
+      The Directors' Charge does not cover gross negligence or wilful misconduct, and directors get
+      its benefit only where insurance does not respond.
     page: 9
-    paragraph: 20, 22
-    why: >
-      The limits on the indemnity — the part that would matter if anyone were later found at
-      fault.
-
-  - id: M9.2
-    item: >
-      Directors, officers and the Board are entitled to the benefit of the Directors' Charge
-      only to the extent they lack applicable insurance coverage, or that coverage is
-      insufficient.
-    basis: inferred
-    why_inferred: >
-      Para 22 (page 9) directly states directors get the Charge's benefit only to the extent
-      they lack insurance coverage or coverage is insufficient. But 'the Directors' Charge does
-      not cover gross negligence or wilful misconduct' is never said of the Charge itself: para
-      20 excludes gross negligence/wilful misconduct only from the underlying indemnity, and
-      para 21 says the Charge is granted 'as security for the indemnity provided in paragraph
-      20'. Concluding the Charge inherits that exclusion requires bridging two separate
-      paragraphs (20 and 21), not a direct statement.
-    page: 9
-    paragraph: 20, 22
-    why: >
-      The limits on the indemnity — the part that would matter if anyone were later found at
-      fault.
+    paragraph: "20, 22"
+    why: "The limits on the indemnity — the part that would matter if anyone were later found at fault."
 
   - id: M10
     item: >
       The stay expressly captures the INTEREST RATE SWAP transactions ("for greater certainty").
-    quote:
-      - "(including for greater certainty in respect of the interest rate swap transactions)"
     page: 6
-    paragraph: 11(a)
+    paragraph: "11(a)"
     why: >
       A parenthetical that connects to the $24.7M swap termination obligation in doc 3 and the
-      $340K/month outflow in doc 2. Three documents, one thread, and this is the quietest
-      mention.
+      $340K/month outflow in doc 2. Three documents, one thread, and this is the quietest mention.
 
   - id: M11
-    item: >
-      The SGA is a 'Non-Applicant Stay Party' — protected by the stay without being an
-      applicant.
-    quote:
-      - "THIS COURT ORDERS that the Laurentian University Students General Association (the \"SGA\") shall be referred to herein as a \"Non-Applicant Stay Party\"."
-      - "Although not an applicant under the CCAA, the Non-Applicant Stay Party shall enjoy certain of the benefits and protections provided herein and be subject to the restrictions as expressly hereunder set out."
+    item: "The SGA is a 'Non-Applicant Stay Party' — protected by the stay without being an applicant."
     page: 2
     paragraph: 3
     why: >
       An unusual CCAA device, and the reason the students' association and its $8.5M loan sit
-      inside the proceeding. A short paragraph under its own heading, early, where extractors
-      are still processing boilerplate.
+      inside the proceeding. A short paragraph under its own heading, early, where extractors are
+      still processing boilerplate.

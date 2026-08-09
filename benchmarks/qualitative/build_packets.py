@@ -19,7 +19,7 @@ import sys
 
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from score_arms import anchors_from  # noqa: E402
+from score_arms import anchors_from, quote_text  # noqa: E402
 
 import yaml
 
@@ -77,7 +77,7 @@ os.makedirs(OUT_DIR, exist_ok=True)
 def unscorable(items, text_key):
     out = []
     for it in items:
-        text = (it.get(text_key) or "") + " " + (it.get("quote") or "")
+        text = (it.get(text_key) or "") + " " + quote_text(it)
         if not anchors_from(text):
             out.append(it)
     return out

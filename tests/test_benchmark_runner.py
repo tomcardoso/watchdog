@@ -1884,8 +1884,14 @@ def test_qualitative_aggregate_reproduces_the_committed_pass(tmp_path):
     Denominators come from the answer keys, not from the judgments that came back: a keyed item
     nobody graded is a miss, not an item that never existed. Counting only what returned shrinks
     the denominator and inflates every percentage — and it means adding documents or key items
-    silently fails to raise the bar for later runs."""
+    silently fails to raise the bar for later runs.
+
+    Scored against `keys/v1/`, the version this pass was judged under. Item ids belong to a key
+    version — #573's de-bundling turned `M6` into `M6.1`/`M6.2`/`M6.3` — so replaying it against
+    the live keys matches nothing and reports every keyed item as an ungraded miss. Pinning the
+    key version here is what keeps the archived pass reproducible across later key revisions."""
     qual = Path(__file__).resolve().parents[1] / "benchmarks" / "qualitative"
+    keys_v1 = Path(__file__).resolve().parents[1] / "benchmarks" / "keys" / "v1"
     expected = json.loads((qual / "summary.json").read_text())["summary"]
     # Run against a copy: aggregate.py writes summary.json/detail_rows.json into the directory it
     # reads, so pointing it at the repo would have the test overwrite the very artifacts it pins.
@@ -1893,7 +1899,8 @@ def test_qualitative_aggregate_reproduces_the_committed_pass(tmp_path):
     work.mkdir()
     for f in qual.glob("*.json"):
         shutil.copy(f, work / f.name)
-    proc = subprocess.run([sys.executable, str(qual / "aggregate.py"), str(work)],
+    proc = subprocess.run([sys.executable, str(qual / "aggregate.py"), str(work),
+                           f"--keys={keys_v1}"],
                           capture_output=True, text=True, cwd=qual.parents[1])
     assert proc.returncode == 0, proc.stderr
     out = proc.stdout
@@ -1903,6 +1910,46 @@ def test_qualitative_aggregate_reproduces_the_committed_pass(tmp_path):
         assert f"{m['hit']:>7}/{m['total']:<7}" in out, f"{arm} must_not_miss drifted:\n{out}"
     # Every keyed item was graded in this pass, so nothing should be reported as an ungraded miss.
     assert "had no judgment" not in out
+
+
+def test_quote_text_accepts_both_key_shapes():
+    """#573: `facts` carry a single quote string, `must_not_miss` a list of verbatim spans — a
+    de-bundled claim is often supported by two adjacent spans, or by several lines of a backsheet.
+    Callers only scan the result for numeric anchors, so joining is lossless for them; what matters
+    is that a list no longer raises (it used to concatenate str + list and TypeError)."""
+    import score_arms
+    assert score_arms.quote_text({"quote": "one span"}) == "one span"
+    assert score_arms.quote_text({"quote": ["a", "b"]}) == "a b"
+    assert score_arms.quote_text({}) == ""
+    assert score_arms.quote_text({"quote": None}) == ""
+
+
+def test_must_not_miss_items_are_anchored_and_singular():
+    """#573's invariant on the live keys: every `must_not_miss` entry is one independently
+    checkable claim carrying either a verbatim `quote` or `basis: inferred` — never both, never
+    neither. Bundled entries used to make an extraction holding two of three claims depend on a
+    judge's discretion, which depressed this column across every pass before 2026-08-09.
+
+    Ids must also be unique per document: `aggregate.py` keys judgments by id, so a duplicate
+    silently overwrites a verdict rather than failing."""
+    import yaml
+    keys = Path(__file__).resolve().parents[1] / "benchmarks" / "keys"
+    seen_any = False
+    for kf in sorted(keys.glob("*.yaml")):        # v1/ is a subdirectory and is deliberately excluded
+        items = yaml.safe_load(kf.read_text()).get("must_not_miss") or []
+        ids = [it["id"] for it in items]
+        assert len(ids) == len(set(ids)), f"{kf.name}: duplicate must_not_miss ids"
+        for it in items:
+            seen_any = True
+            quoted, inferred = bool(it.get("quote")), it.get("basis") == "inferred"
+            assert quoted != inferred, f"{kf.name}:{it['id']} must be quoted xor inferred"
+            if quoted:
+                assert isinstance(it["quote"], list), f"{kf.name}:{it['id']} quote must be a list"
+                assert all(isinstance(q, str) and q.strip() for q in it["quote"])
+            else:
+                assert (it.get("why_inferred") or "").strip(), \
+                    f"{kf.name}:{it['id']} inferred without why_inferred"
+    assert seen_any, "no must_not_miss items found — key glob is wrong"
 
 
 # ── vault auto-reset (#494 follow-up) ───────────────────────────────────────────

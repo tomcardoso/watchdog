@@ -35,12 +35,33 @@ reference." That limitation is recorded in #361 and is not negotiable.
 | `relationships` | subject / predicate / object / page |
 | `facts` | 19–22 material facts, each with `page` and a **verbatim `quote`** |
 | `contradictions` | Cross-document conflicts, with both sides quoted. **An empty list is meaningful** — it means an invented contradiction scores as a false positive |
-| `must_not_miss` | Buried items, **scored separately**. This is where cheap conditions degrade first |
+| `must_not_miss` | Buried items, **scored separately**. This is where cheap conditions degrade first. One claim per entry, each with a **verbatim `quote`** or `basis: inferred` (#573) |
 | `ocr_hazards` | Initial Order only — scanned-page features OCR can mangle |
 
 `quote` and `aliases` exist to support the **three grounding tiers** (verbatim / credited
 normalization / ungrounded) rather than exact match. "LU" for "Laurentian University of Sudbury" is
 a credited normalization, not a miss.
+
+### `must_not_miss` anchoring (#573)
+
+Every entry now carries either a `quote` — one or more spans copied verbatim from the document's
+**OCR text layer**, not retyped from the PDF — or `basis: inferred` with a `why_inferred`
+explaining what the claim needs beyond stated text (combining facts from different parts of the
+document, arithmetic, noticing an absence, reading a visual feature). Three rules keep this
+honest:
+
+- **One independently checkable claim per entry.** Entries that bundled several were split into
+  `M6.1`, `M6.2`, … — dotted ids so a judgment recorded against `M6` in an archived pass can
+  still be traced to its descendants. Bundling was the larger defect: an extraction holding two
+  of three claims used to land on a judge's discretion, which depressed this column across every
+  pass before 2026-08-09.
+- **`inferred` is scored separately from quoted, never dropped.** An inferred item is a real
+  thing a reporter must not miss; it just cannot be graded as recall of stated text.
+- **`quote` mirrors the OCR; `item` carries the truth.** Where the text layer is corrupt these
+  diverge on purpose — see the comment above `M1.1` in `initial-order-2021-02-01.yaml`, where
+  `item` has the true `LSO# 69993I` and `quote` has the OCR's `699931`. Do not reconcile them.
+  Faithfully extracting the wrong value is correct extraction (see the errors note below), and
+  the divergence is the only durable record that the text layer is damaged there.
 
 ## Scoring notes that are easy to get wrong
 
@@ -126,7 +147,25 @@ The split of labour across models changed, so the attribution of each metric cha
 Once reviewed, hash the keys the way the corpus is hashed and do not touch them again:
 
 ```
-cd benchmarks/keys && shasum -a 256 *.yaml > keys-v1.sha256
+cd benchmarks/keys && shasum -a 256 *.yaml > keys-v<n>.sha256
 ```
 
 A key that drifts between conditions invalidates every comparison made with it.
+
+**When a revision is unavoidable, cut a new version rather than re-hashing the old one.** The
+previous `.sha256` stays in the tree as the pin for figures already published against it, and
+`FINDINGS.md` says which version produced which numbers. Silently re-freezing would leave every
+archived comparison claiming to be scored against a key that no longer exists.
+
+| Version | Frozen | Covers |
+|---|---|---|
+| `keys-v1.sha256` | before the first sweep | every figure in `FINDINGS.md` up to and including 2026-08-08 |
+| `keys-v2.sha256` | 2026-08-09 | `must_not_miss` anchoring and de-bundling (#573) — 77 entries became 131 |
+
+**Archived judgments do not survive a key version bump, and must not be made to.** De-bundling
+changed ids (`M6` became `M6.1`/`M6.2`/`M6.3`), so a judgment recorded against `M6` no longer
+matches anything; `aggregate.py` counts each unmatched keyed item as a miss, which turns an
+archived pass into a meaningless number rather than a wrong one. Do not remap old verdicts onto
+split ids — a `credited` on a bundled item says nothing about which of its claims was captured,
+so distributing it would be inventing data. A pass scored under v1 stays reported under v1; a
+new comparison needs new judging.
