@@ -1177,9 +1177,9 @@ def test_pick_model_interactive_only_provider_filters_to_one_group(monkeypatch):
 
 
 def test_pick_model_interactive_custom_free_text(monkeypatch):
-    # "20" is "Type my own…" — shifted from 18 by the two new Claude aliases (sonnet-4.6,
-    # sonnet-5; #361/#509, D165) added ahead of it in the flattened numbered list.
-    answers = iter(["20", "openai:my-custom-model"])
+    # "17" is "Type my own…" — shifted down by 3 when gemini-2.5-flash/-flash-lite/-pro were
+    # dropped from the catalog (#583, D182).
+    answers = iter(["17", "openai:my-custom-model"])
     monkeypatch.setattr("builtins.input", lambda *a: next(answers))
     assert _setup._pick_model_interactive(None) == "openai:my-custom-model"
 

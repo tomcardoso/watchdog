@@ -611,10 +611,10 @@ def test_openai_batch_cost_none_for_unknown_model_or_usage():
 
 
 def test_openai_cost_prices_gemini_models():
-    # gemini-2.5-flash: $0.30/1M input, $2.50/1M output.
-    assert mc._openai_cost("gemini-2.5-flash",
+    # gemini-3.1-flash-lite: $0.25/1M input, $1.50/1M output.
+    assert mc._openai_cost("gemini-3.1-flash-lite",
                            {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
-        == pytest.approx(0.30 + 2.50)
+        == pytest.approx(0.25 + 1.50)
     # gemini-3.5-flash: $1.50/1M input, $9.00/1M output.
     assert mc._openai_cost("gemini-3.5-flash",
                            {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
@@ -892,15 +892,15 @@ def test_openrouter_uses_max_tokens_even_for_an_openai_reasoning_style_id(monkey
 def test_gemini_backend_request_shape(monkeypatch):
     captured = {}
     _fake_httpx(monkeypatch, captured)
-    out = asyncio.run(mc._openai_complete_async("prompt", "gemini-2.5-flash", SCHEMA, "AIza-x", 8000,
+    out = asyncio.run(mc._openai_complete_async("prompt", "gemini-3.1-flash-lite", SCHEMA, "AIza-x", 8000,
                                                 "low",
                                                 base_url="https://generativelanguage.googleapis.com/v1beta/openai"))
     assert captured["url"] == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     assert captured["headers"]["Authorization"] == "Bearer AIza-x"
-    assert captured["body"]["model"] == "gemini-2.5-flash"        # no marker-stripping (DeepSeek-only)
+    assert captured["body"]["model"] == "gemini-3.1-flash-lite"   # no marker-stripping (DeepSeek-only)
     assert captured["body"]["reasoning_effort"] == "low"
     assert "thinking" not in captured["body"]                      # DeepSeek-only toggle
-    assert out["cost_usd"] == pytest.approx(10 * 0.30e-6 + 5 * 2.50e-6)
+    assert out["cost_usd"] == pytest.approx(10 * 0.25e-6 + 5 * 1.50e-6)
 
 
 # ── response_format: real json_schema on Gemini and OpenAI, json_object elsewhere (D98/D151) ────
