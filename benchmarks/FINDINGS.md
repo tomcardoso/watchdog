@@ -417,6 +417,49 @@ the provenance stamping added in #554 (merged 22:58 on 2026-08-05, after all thr
 not survive the judged slice. The open question is whether medium's small edge is worth 4.7x, and
 that is a product call rather than a measurement gap.
 
+### The verification pass doubles cost and adds 220 facts without moving `must_not_miss` (2026-08-09)
+
+The A/B D172 shipped `verify_extraction` off by default pending. Run `2026-08-09-1523`,
+`gpt-5.6-luna` at `low`, full six-document corpus, **scored under `keys-v2`** (#573) — so these
+figures are not comparable with the v1-scored rows above:
+
+| Arm | facts | `must_not_miss` | `key_facts` staged | Cost | Latency |
+|---|---|---|---|---|---|
+| `gpt-luna-low-noverify` | 97% (38/39) | **81% (38/47)** | 311 | $0.110 | 287s |
+| `gpt-luna-low-verify` | 100% (39/39) | **79% (37/47)** | 537 | $0.220 | 415s |
+
+The pass added **220 facts** — a 71% larger ledger — for **exactly double the cost** and 45% more
+wall-clock, and `must_not_miss` recall did not improve. Do not read the −1 as the pass making
+recall worse: these are independent runs of a non-deterministic model, so the underlying
+extractions differ, and ±1 on 47 items sits inside the sample-to-sample variation measured in
+#581. The defensible claim is **no detectable recall gain at 2× cost**.
+
+**The suppression thresholds are too loose.** Across 12 verify calls: 220 candidates added, **1**
+suppressed as a duplicate. D172 picked Jaccard 0.75 / containment 0.9 by hand and flagged that
+"only a real run will say which way they are wrong" — a 0.5% suppression rate is the answer.
+
+**This converges with #581.** Five independent samples produced 3× the distinct facts and
+recovered none of the hard items; the verifier produced 220 extra facts and recovered none
+either. Two unrelated mechanisms for generating more candidates, both yielding volume and neither
+yielding the items that matter. Consistent with the `annual-financial-report-19-20:M9` dissection
+(#580): the binding constraint is the materiality criterion, and the verifier inherits it — its
+prompt deliberately reuses `extract_instructions.md`, so it applies the same bar that caused the
+miss.
+
+**Still unmeasured on Anthropic.** `sonnet-4.6-med-verify` has never run. D172's cost case rests
+on the prompt cache, which per D181 works on `claude-api` and cannot work on OpenAI — so the
+economics there are a genuinely different product and this result should not decide that default.
+
+**Cache behaviour, flagged not concluded.** First full-corpus run since #577. The noverify arm
+read 100% cached on `extract` and 32.2% on `extract-section`; the verify arm read **0% on every
+task**, including its own 15 `verify` calls, which share a ~4,000-token instructions+skill prefix
+and a stable `prompt_cache_key` and should have warmed up internally. Arm ordering confounds it —
+the verify arm ran first and cold, the noverify arm second and warm — so this cannot be
+attributed to the verification pass. But one mechanism is worth checking: #577 derives the cache
+key from the *first* breakpoint, so `extract` and `verify` share a key while their differing
+`response_format` schemas mean they can never share a cache entry. Same routing slot, mutually
+unusable contents. See #586 for the related unexplained `digest` zero.
+
 ## Corrections logged along the way
 
 - The original `bench-ex-sonnet-high`/`bench-ex-sonnet-med` vaults (run 2026-07-15, before #403's
