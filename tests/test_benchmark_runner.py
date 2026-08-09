@@ -259,6 +259,49 @@ def test_main_lists_a_stale_vault_before_the_prompt_and_resets_it_after(tmp_path
     assert stale_vault.exists()
 
 
+def test_main_reseeds_a_vault_it_reset(tmp_path, monkeypatch, capsys):
+    """A reset vault must be put back before its arm runs.
+
+    Seeding happens in the plan phase (previewing an arm needs its queue) but `reset_vaults`
+    runs after the go-ahead, so a *stale* vault was skipped by the seed (it existed), deleted by
+    the reset, and never re-created — the arm then ran against a path that was gone. Because
+    `--estimate-only` also seeds, the documented estimate-then-run workflow hit this every time.
+    """
+    cfg = _matrix_config(tmp_path)   # sonnet-med-sdk, sonnet-med-api, haiku
+    monkeypatch.setattr(rb, "verify_freeze", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "corpus_documents", lambda d: [Path("a.pdf")])
+    root = tmp_path / ".vaults"
+    stale_vault = root / "bench-ex3-haiku"
+    (stale_vault / ".watchdog" / "queue").mkdir(parents=True)
+    (stale_vault / ".watchdog" / "queue" / "abc.json").write_text("{}")
+
+    seeded: list[Path] = []
+
+    def fake_seed(master, dest):
+        seeded.append(dest)
+        (dest / ".watchdog" / "queue").mkdir(parents=True, exist_ok=True)
+        return 1
+
+    monkeypatch.setattr(rb, "arm_vault", lambda prefix, aid, r: root / f"{prefix}-{aid}")
+    monkeypatch.setattr(rb, "vault_root", lambda *a, **k: root)
+    monkeypatch.setattr(rb, "ensure_master_vault", lambda *a, **k: tmp_path / "master")
+    monkeypatch.setattr(rb, "seed_arm_vault", fake_seed)
+    monkeypatch.setattr(rb, "preview_extractor_arm", lambda *a, **k: {"cost_low": 0.0,
+                                                                     "cost_high": 0.0})
+    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: True)   # accept
+    monkeypatch.setattr(rb, "run_extractor_arm",
+                        lambda arm, vault: rb.ArmResult(arm_id=arm["id"], stage="extractor",
+                                                        vault=vault, ok=True))
+    import bench_report
+    monkeypatch.setattr(bench_report, "write_run", lambda *a, **k: tmp_path / "run")
+
+    rb.main(["--config", str(cfg), "--stages", "extractor"])
+
+    # It was deleted (so the arm started clean) *and* put back (so the arm had a vault at all).
+    assert stale_vault.exists(), "reset vault was never re-seeded — the arm would run on nothing"
+    assert stale_vault in seeded
+
+
 def test_main_does_not_reset_anything_on_an_estimate_only_run(tmp_path, monkeypatch):
     """`--estimate-only` is the free, always-safe path; it must stay side-effect free."""
     cfg = _matrix_config(tmp_path)
