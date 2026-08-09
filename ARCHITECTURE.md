@@ -469,7 +469,10 @@ extraction call sharing a skill within a run re-pays only the 0.1× cache-read r
 stable+skill prefix instead of full price. Only `_api_complete_async` (the metered-key
 backend) understands blocks; `claude-agent-sdk` and the OpenAI-compatible backends flatten
 them to plain text (`model_client._flatten_prompt`) since neither exposes a cache knob to us
-(D51). On the real OpenAI endpoint, the flattened call still sends a `prompt_cache_key`
+(D51). Gemini's own implicit cache, confirmed separately (D183), keys on exact-request
+identity rather than shared-prefix identity — the flattened design has no lever to pull there
+even in principle, not just for lack of a `cache_control` equivalent. On the real OpenAI
+endpoint, the flattened call still sends a `prompt_cache_key`
 (`model_client._prompt_cache_key`, D181/#562) derived from the position of the first
 `cache_control` breakpoint — a routing hint OpenAI's own caching docs say is required for
 reliable matching on newer model families, not a `cache_control`-equivalent guarantee.
