@@ -159,35 +159,13 @@ models:
     reasoning: true
     effort_levels: [low, medium, high, xhigh, max]
 
-  # Gemini 2.5, standard tier at the <=200k-token rate (Pro's >200k rate is double — not
-  # modeled here, same simplification as elsewhere in this catalog).
-  - id: gemini-2.5-flash
-    name: Gemini 2.5 Flash
-    provider: gemini
-    input: 0.30e-6
-    output: 2.50e-6
-    cached_input: 0.03e-6
-    context_window: 1_000_000
-    effort_levels: [low, medium, high]
-  - id: gemini-2.5-flash-lite
-    name: Gemini 2.5 Flash-Lite
-    provider: gemini
-    input: 0.10e-6
-    output: 0.40e-6
-    cached_input: 0.01e-6
-    context_window: 1_000_000
-    effort_levels: [low, medium, high]
-  - id: gemini-2.5-pro
-    name: Gemini 2.5 Pro
-    provider: gemini
-    input: 1.25e-6
-    output: 10.0e-6
-    cached_input: 0.125e-6
-    context_window: 1_000_000
-    effort_levels: [low, medium, high]
-  # Gemini 3.x, standard tier. 3.5 Flash and 3.1 Flash-Lite are stable; 3.1 Pro Preview is
-  # a preview release (Google may deprecate it on two weeks' notice) and its >200k-token
-  # rate is double — not modeled here, same simplification as 2.5 Pro above.
+  # Gemini 3.x, standard tier at the <=200k-token rate (Pro's >200k rate is double — not
+  # modeled here, same simplification as elsewhere in this catalog). 3.5 Flash and 3.1
+  # Flash-Lite are stable; 3.1 Pro Preview is a preview release (Google may deprecate it on
+  # two weeks' notice). Gemini 2.5 (Flash/Flash-Lite/Pro) is deliberately not catalogued
+  # (#583, D182): Google now 404s all three for API keys without prior usage of them,
+  # ahead of their own Oct 16 2026 shutdown date, and its own migration guidance points at
+  # 3.1 Flash-Lite / 3.5 Flash — the two rows below already cover that.
   - id: gemini-3.5-flash
     name: Gemini 3.5 Flash
     provider: gemini

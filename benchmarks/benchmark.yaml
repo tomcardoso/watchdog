@@ -1,12 +1,12 @@
 # Benchmark arm matrix (#361 / #215 / #466), consumed by run_benchmark.py.
 #
 # Frozen references this run verifies before spending anything:
-# corpora/extract/corpus-v1.sha256 (the extractor/finalizer corpus) and keys/keys-v1.sha256
+# corpora/extract/corpus-v1.sha256 (the extractor/finalizer corpus) and keys/keys-v2.sha256
 # (the answer keys). See BENCHMARKING.md for the protocol this file and run_benchmark.py
 # automate; runs are written to the gitignored benchmarks/runs/.
 
 corpus: {dir: corpora/extract, sha256: corpora/extract/corpus-v1.sha256}
-keys: {dir: keys, sha256: keys/keys-v1.sha256}
+keys: {dir: keys, sha256: keys/keys-v2.sha256}
 
 master_vault:
   name: bench-master                     # sidecar'd, reused by extractor + finalizer-base arms
