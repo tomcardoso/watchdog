@@ -1,0 +1,63 @@
+# Self-consistency benchmark — do repeated samples recover the facts one pass misses? (#562 f/u)
+#
+# A separate config rather than arms in benchmark.yaml: the corpus is a three-document subset
+# (corpora/selfconsistency), so these arms are not comparable to the six-document sweep and must
+# never be pooled into its recall table — the same reason sdk_check carries its own corpus_dir.
+#
+# Run it on its own:
+#     ~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/run_benchmark.py \
+#         --config benchmarks/selfconsistency.yaml --stages extractor --estimate-only
+#     # then, once the estimate is approved, drop --estimate-only
+#
+# Then read the union curve (this is the actual measurement — the per-arm REPORT.md is not):
+#     ~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/union_recall.py \
+#         benchmarks/runs/<run>/artifacts/bench-sc-luna-low-r*
+#
+# WHAT IT MEASURES
+#
+# Five identical arms. Nothing pins `temperature` anywhere in model_client, so every arm runs at
+# the provider default and the five samples genuinely differ. Scoring the union of the first N
+# arms, for N = 1..5, gives a recall curve:
+#
+#   - Curve rises steeply    -> misses are independent draws. Union-of-N is the cheapest recall
+#                               lever available, and cheap-model-times-N beats one strong model.
+#   - Curve is flat          -> misses are correlated (the same salience judgment fails every
+#                               time). The whole ensembling family is dead; build the anchored
+#                               verifier instead (Tier 0 anchors differenced against extracted
+#                               facts in Python, so the second call answers a lookup rather than
+#                               re-running the judgment that just failed).
+#
+# The flat case is the one archived data already hints at: `annual-financial-report-19-20:M9` has
+# never been extracted by any arm ever run (0/40). But those 40 are different models and efforts,
+# not repeated samples of one config, so they cannot settle within-config variance. That is
+# exactly the gap this file closes.
+#
+# WHY LUNA LOW
+#
+# Cheapest arm in the catalog that is still a real reasoning model, ~$0.15 per pass over this
+# subset. If resampling works anywhere it should work here: a low-effort cheap model has the most
+# recall headroom to recover, so this is the friendliest possible test of the hypothesis. A null
+# result on Luna low is therefore strong evidence against ensembling generally, while a positive
+# result still needs re-checking on a stronger model before it becomes a default.
+
+corpus: {dir: corpora/selfconsistency, sha256: corpora/selfconsistency/corpus.sha256}
+keys: {dir: keys, sha256: keys/keys-v1.sha256}
+
+master_vault:
+  name: bench-sc-master
+  classify_name: bench-sc-classify-master
+
+extractor_sweep:
+  vault_prefix: bench-sc
+  # concurrency 3 = one slot per document, so the run is one wave and finishes in ~30s. Well
+  # under the TPM ceiling #559 bracketed (a 236,608 tok/min peak succeeded); this subset is a
+  # third of the corpus and carries no verification pass.
+  defaults: {concurrency: 3, max_rate_limit_waits: 2}
+  arms:
+    # Five identical arms. The ids differ only by suffix — that is the point; any config
+    # difference between them would confound sampling variance with the thing that differs.
+    - {id: luna-low-r1, extractor_model: "openai:gpt-5.6-luna", extractor_effort: low}
+    - {id: luna-low-r2, extractor_model: "openai:gpt-5.6-luna", extractor_effort: low}
+    - {id: luna-low-r3, extractor_model: "openai:gpt-5.6-luna", extractor_effort: low}
+    - {id: luna-low-r4, extractor_model: "openai:gpt-5.6-luna", extractor_effort: low}
+    - {id: luna-low-r5, extractor_model: "openai:gpt-5.6-luna", extractor_effort: low}
