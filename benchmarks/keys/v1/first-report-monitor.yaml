@@ -243,27 +243,10 @@ facts:
 contradictions: []
 
 must_not_miss:
-  - id: M1.1
+  - id: M1
     item: >
-      The court file number is printed on page 1 as "CV-21-656040-00CL".
-    quote:
-      - "Court File No. CV-21-656040-00CL"
-    page: 1
-    location: cover page header
-    why: >
-      A formatting discrepancy in the source, recorded so scoring can distinguish faithful
-      extraction of what the page says from silent normalization to the other documents' format.
-      Both behaviours are informative; neither is a miss. It also tests whether the extractor
-      resolves this to the SAME court file entity as the other documents rather than creating a
-      duplicate.
-
-  - id: M1.2
-    item: >
-      This format lacks the leading zeros that appear in the other corpus documents' rendering
-      ("CV-21-00656040-00CL").
-    basis: inferred
-    why_inferred: >
-      No span in this document states this claim.
+      The court file number is printed as "CV-21-656040-00CL" — WITHOUT the leading zeros that
+      appear in the other corpus documents ("CV-21-00656040-00CL").
     page: 1
     location: cover page header
     why: >
@@ -275,136 +258,69 @@ must_not_miss:
 
   - id: M2
     item: >
-      Firm Capital Corporation executed the term sheet, then ASSIGNED its interest to Firm
-      Capital Mortgage Fund Inc., which is the actual DIP Lender. These are two distinct
-      entities.
-    quote:
-      - "the Applicant executed a term sheet (the ' DIP Term Sheet ') with Firm Capital Corporation."
-      - "Subsequent to the execution of the DIP Term Sheet, Firm Capital Corporation assigned its interest to Firm Capital Mortgage Fund Inc. (the ' DIP Lender ')."
+      Firm Capital Corporation executed the term sheet, then ASSIGNED its interest to Firm Capital
+      Mortgage Fund Inc., which is the actual DIP Lender. These are two distinct entities.
     page: 8
     paragraph: 33
     why: >
-      Document 3 names only "Firm Capital Corporation". An extractor that collapses these into
-      one entity has lost the assignment; one that creates two unlinked entities has lost the
+      Document 3 names only "Firm Capital Corporation". An extractor that collapses these into one
+      entity has lost the assignment; one that creates two unlinked entities has lost the
       relationship. Both failure modes are worth catching, and this is the only place the
       distinction is stated.
 
   - id: M3
-    item: >
-      The $500,000 DIP commitment fee, deemed FULLY EARNED on the date of court approval.
-    quote:
-      - "a  commitment  fee  of  $500,000  shall  be  deemed  to  have  been  fully  earned  and payable to the DIP Lender on the date that the Court approves the Amended and Restated Initial Order approving the DIP financing."
+    item: "The $500,000 DIP commitment fee, deemed FULLY EARNED on the date of court approval."
     page: 9
-    paragraph: 34(f)
+    paragraph: "34(f)"
     why: >
       Half a million dollars payable simply for the court signing — earned before a dollar is
-      advanced. It is the last item in a lettered list of facility terms, exactly where
-      attention runs out.
+      advanced. It is the last item in a lettered list of facility terms, exactly where attention
+      runs out.
 
   - id: M4
     item: >
-      LU declined TWO expressions of interest in competing DIP financing, received 4 and 5
-      February 2021, days before the comeback motion.
-    quote:
-      - "The Monitor notes that on February 4, 2021, counsel to the Applicant and counsel to the Monitor were contacted by a law firm indicating the firm had a client that was potentially interested in submitting a competing proposal for DIP financing."
-      - "On February 5, 2021, the Monitor was contacted by another party expressing similar interest."
-      - "Accordingly, the Applicant declined the request from the law firm to proceed with any due diligence process and the Monitor communicated the same message to the other party."
+      LU declined TWO expressions of interest in competing DIP financing, received 4 and 5 February
+      2021, days before the comeback motion.
     page: 9
     paragraph: 36
     why: >
-      The insolvent institution turned away potential competing lenders while locked into an
-      8.5% facility with a $500K fee. The paragraph reads as procedural housekeeping and is easy
-      to skim.
+      The insolvent institution turned away potential competing lenders while locked into an 8.5%
+      facility with a $500K fee. The paragraph reads as procedural housekeeping and is easy to skim.
 
   - id: M5
     item: >
       The DIP extension milestones rest on the lender's "sole and unfettered discretion" — the
       phrase appears twice, including on the question of whether LU is financially sustainable.
-    quote:
-      - "to the satisfaction of the DIP Lender in its sole and unfettered discretion:"
-      - "LU provides the DIP Lender with a revised cash flow forecast and a multiyear  budget  demonstrating  to  the  DIP  Lender,  in  its  sole  and  unfettered discretion, that LU is financially sustainable."
     page: 8
-    paragraph: 34(b)
+    paragraph: "34(b)"
     why: >
-      A private lender holds unilateral judgment over whether a public university continues.
-      Buried in sub-sub-clauses.
+      A private lender holds unilateral judgment over whether a public university continues. Buried
+      in sub-sub-clauses.
 
-  - id: M6.1
+  - id: M6
     item: >
-      The Administration Charge increases from $400,000 to $1,250,000.
-    quote:
-      - "an increase in the Administration Charge from $400,000 to $1,250,000;"
+      The Administration Charge triples ($400K → $1.25M) and the Directors' Charge more than
+      doubles ($2M → $5M), all ranking ahead of every other secured creditor.
     page: 2
-    paragraph: 4(d)
+    paragraph: "4(d)"
     why: >
-      $6.25M of super-priority charges jumping the queue ahead of existing secured lenders,
-      listed as roman-numeral sub-items on page 2 in a purpose statement.
+      $6.25M of super-priority charges jumping the queue ahead of existing secured lenders, listed
+      as roman-numeral sub-items on page 2 in a purpose statement.
 
-  - id: M6.2
+  - id: M7
     item: >
-      The Directors' Charge increases from $2,000,000 to $5,000,000.
-    quote:
-      - "an  increase  in  the  Directors'  Charge  from  $2,000,000  to  $5,000,000,  in accordance with the priority set out in the Amended and Restated Initial Order; and"
-    page: 2
-    paragraph: 4(d)
-    why: >
-      $6.25M of super-priority charges jumping the queue ahead of existing secured lenders,
-      listed as roman-numeral sub-items on page 2 in a purpose statement.
-
-  - id: M6.3
-    item: >
-      The Administration Charge, the Directors' Charge, and the DIP Lender's Charge rank in
-      priority ahead of all other secured creditors.
-    quote:
-      - "the granting of the Administration Charge, the Directors' Charge and the DIP Lender's Charge in priority to all other 'secured creditors' as defined in the CCAA,"
-    page: 2
-    paragraph: 4(d)
-    why: >
-      $6.25M of super-priority charges jumping the queue ahead of existing secured lenders,
-      listed as roman-numeral sub-items on page 2 in a purpose statement.
-
-  - id: M7.1
-    item: >
-      Justice Sean Dunphy was a leading insolvency lawyer before joining the bench.
-    quote:
-      - "the  Court  proposed  to  appoint  the Honourable Justice Sean Dunphy of the Ontario Superior Court of Justice as the CourtAppointed Mediator."
+      Justice Sean Dunphy — the mediator — was himself a leading insolvency lawyer before the
+      bench, and the Court proposed him rather than the parties.
     page: 7
     paragraph: 28
     why: >
-      The mediator's identity and provenance, given once. Note also that bilingualism was added
-      as a criterion here that was NOT in the Pre-Filing Report's list — a small drift worth
-      catching.
+      The mediator's identity and provenance, given once. Note also that bilingualism was added as
+      a criterion here that was NOT in the Pre-Filing Report's list — a small drift worth catching.
 
-  - id: M7.2
+  - id: M8
     item: >
-      The Court proposed Justice Dunphy as mediator; the parties only confirmed no objections
-      rather than proposing him.
-    quote:
-      - "During his career, Justice Dunphy was a leading insolvency lawyer with extensive experience in CCAA restructurings, including complex labour negotiations, and is bilingual."
-    page: 7
-    paragraph: 28
-    why: >
-      The mediator's identity and provenance, given once. Note also that bilingualism was added
-      as a criterion here that was NOT in the Pre-Filing Report's list — a small drift worth
-      catching.
-
-  - id: M8.1
-    item: >
-      The First Report includes a reliability caveat about LU's Finance department, citing the
-      Haché Affidavit as "sworn January 30, 2020".
-    quote:
-      - "The Monitor also brings this Court's attention to paragraph 5 of the Affidavit of Dr. Robert Haché (the ' Haché Affidavit ') sworn January 30, 2020 (the ' Initial Order Affidavit ') in which Dr. Haché Notes that he has relied upon information provided by LU's Finance department which has experienced certain challenges as a result of its limited team and resources."
-    page: 3
-    paragraph: 9
-    why: >
-      Buried in disclaimer boilerplate. The repetition of the date error across two documents is
-      itself a fact: it is a copy-paste, not a fresh statement.
-
-  - id: M8.2
-    item: >
-      This caveat, including the same affidavit date, is repeated from the Pre-Filing Report.
-    quote:
-      - "As a result, the Monitor notes that the Information relied upon for purposes of this First Report may be limited by these challenges."
+      The Monitor's reliability caveat about LU's Finance department, repeated from the Pre-Filing
+      Report — including the same erroneous affidavit date ("sworn January 30, 2020").
     page: 3
     paragraph: 9
     why: >
@@ -415,13 +331,8 @@ must_not_miss:
     item: >
       Creditors were notified only if owed more than $1,000, by ordinary mail, based on contact
       information supplied by LU itself.
-    quote:
-      - "to all known creditors who have a claim against the Applicant of more than $1,000, based on the contact information of such known"
-      - "creditors provided by the Applicant (the ' Known Creditors '), by prepaid ordinary mail."
-    pages:
-      - 5
-      - 6
-    paragraph: 23(b)
+    pages: [5, 6]
+    paragraph: "23(b)"
     why: >
       The notice threshold and its dependence on the debtor's own records — a due-process detail
       that determines who found out. One clause in a list of postings.
@@ -430,11 +341,6 @@ must_not_miss:
     item: >
       The DIP process ran under two successive NDAs, with LU's identity withheld until the first
       was signed.
-    quote:
-      - "each of the third parties was asked to sign a non-disclosure agreement (' NDA ') prior to LU's identity being disclosed."
-      - "Once executed, LU's identity was disclosed and a further form of NDA was obtained from each  party,  at  which  time  the  overall  financial  circumstances  were  shared  with  the prospective  lenders  and  they  were  given  access  to  a  virtual  data  room  of  relevant information."
     page: 7
     paragraph: 30
-    why: >
-      How an insolvent public university shopped for money in secret. Procedural, and routinely
-      dropped.
+    why: "How an insolvent public university shopped for money in secret. Procedural, and routinely dropped."

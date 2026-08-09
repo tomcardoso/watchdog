@@ -41,6 +41,19 @@ KEYS = _keys_glob()
 NUM_RE = re.compile(r"\$?\d[\d,]*(?:\.\d+)?%?")
 
 
+def quote_text(it):
+    """A key item's supporting quote, flattened to one string.
+
+    `facts` entries carry a single string; `must_not_miss` entries carry a list of one or more
+    verbatim spans (#573), because a de-bundled claim is often supported by two adjacent spans or
+    by several lines of a backsheet. Callers only ever scan this for numeric anchors, so joining
+    is lossless for their purposes — nothing downstream needs the spans kept apart."""
+    q = it.get("quote")
+    if isinstance(q, (list, tuple)):
+        return " ".join(str(x) for x in q)
+    return q or ""
+
+
 def anchors_from(text):
     """Distinctive numeric anchors: digit-strings with >=4 digits, or >=3 with a decimal."""
     out = []
@@ -156,7 +169,7 @@ def score(vaults, keys_dir=None):
                                  ("M", k.get("must_not_miss") or [], mnm_totals)):
             for it in items:
                 text = it.get("fact") or it.get("item") or ""
-                full_text = text + " " + (it.get("quote") or "")
+                full_text = text + " " + quote_text(it)
                 qid = f"{name}:{it.get('id')}"
                 # Whether an item carries a numeric anchor depends only on its own text — never
                 # on which vault is looking (`score_item` derives it the same way for every

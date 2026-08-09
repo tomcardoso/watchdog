@@ -252,102 +252,23 @@ contradictions:
       restatement is a self-declared contradiction with a prior published document.
 
 must_not_miss:
-  - id: M1.1
+  - id: M1
     item: >
-      The auditors' report expresses an unqualified (clean) opinion on the financial statements.
-    basis: inferred
-    why_inferred: >
-      The unqualified opinion and its 30 October 2020 date are directly stated (the Opinion
-      section presents fair-presentation language with no qualifying/adverse language, and the
-      report is signed 'Sudbury, Canada October 30, 2020'). But 'no going-concern material
-      uncertainty and no emphasis of matter' requires noticing the ABSENCE of a Material
-      Uncertainty Related to Going Concern section and an Emphasis of Matter section in the
-      auditors' report -- an absence cannot be proven by quoting text that isn't there.
-    pages:
-      - 16
-      - 18
+      The auditors' report is CLEAN — an unqualified opinion, dated 30 October 2020, with no
+      going-concern material uncertainty and no emphasis of matter.
+    pages: [16, 18]
     location: Independent Auditors' Report, opinion paragraph and signature block
     why: >
       Three months before EY told the court LU was insolvent, KPMG said the statements presented
       fairly with no going-concern flag. The FY20-21 audit report DOES carry that flag. Scoring
-      note — an extractor cannot prove an absence, so score the PRESENCE of the unqualified
-      opinion and its date; the significance of what is missing is for the human reading the
-      scorecard.
-
-  - id: M1.2
-    item: >
-      The auditors' report is dated 30 October 2020.
-    basis: inferred
-    why_inferred: >
-      The unqualified opinion and its 30 October 2020 date are directly stated (the Opinion
-      section presents fair-presentation language with no qualifying/adverse language, and the
-      report is signed 'Sudbury, Canada October 30, 2020'). But 'no going-concern material
-      uncertainty and no emphasis of matter' requires noticing the ABSENCE of a Material
-      Uncertainty Related to Going Concern section and an Emphasis of Matter section in the
-      auditors' report -- an absence cannot be proven by quoting text that isn't there.
-    pages:
-      - 16
-      - 18
-    location: Independent Auditors' Report, opinion paragraph and signature block
-    why: >
-      Three months before EY told the court LU was insolvent, KPMG said the statements presented
-      fairly with no going-concern flag. The FY20-21 audit report DOES carry that flag. Scoring
-      note — an extractor cannot prove an absence, so score the PRESENCE of the unqualified
-      opinion and its date; the significance of what is missing is for the human reading the
-      scorecard.
-
-  - id: M1.3
-    item: >
-      The auditors' report does not include a going-concern material uncertainty paragraph.
-    basis: inferred
-    why_inferred: >
-      The unqualified opinion and its 30 October 2020 date are directly stated (the Opinion
-      section presents fair-presentation language with no qualifying/adverse language, and the
-      report is signed 'Sudbury, Canada October 30, 2020'). But 'no going-concern material
-      uncertainty and no emphasis of matter' requires noticing the ABSENCE of a Material
-      Uncertainty Related to Going Concern section and an Emphasis of Matter section in the
-      auditors' report -- an absence cannot be proven by quoting text that isn't there.
-    pages:
-      - 16
-      - 18
-    location: Independent Auditors' Report, opinion paragraph and signature block
-    why: >
-      Three months before EY told the court LU was insolvent, KPMG said the statements presented
-      fairly with no going-concern flag. The FY20-21 audit report DOES carry that flag. Scoring
-      note — an extractor cannot prove an absence, so score the PRESENCE of the unqualified
-      opinion and its date; the significance of what is missing is for the human reading the
-      scorecard.
-
-  - id: M1.4
-    item: >
-      The auditors' report does not include an emphasis-of-matter paragraph.
-    basis: inferred
-    why_inferred: >
-      The unqualified opinion and its 30 October 2020 date are directly stated (the Opinion
-      section presents fair-presentation language with no qualifying/adverse language, and the
-      report is signed 'Sudbury, Canada October 30, 2020'). But 'no going-concern material
-      uncertainty and no emphasis of matter' requires noticing the ABSENCE of a Material
-      Uncertainty Related to Going Concern section and an Emphasis of Matter section in the
-      auditors' report -- an absence cannot be proven by quoting text that isn't there.
-    pages:
-      - 16
-      - 18
-    location: Independent Auditors' Report, opinion paragraph and signature block
-    why: >
-      Three months before EY told the court LU was insolvent, KPMG said the statements presented
-      fairly with no going-concern flag. The FY20-21 audit report DOES carry that flag. Scoring
-      note — an extractor cannot prove an absence, so score the PRESENCE of the unqualified
-      opinion and its date; the significance of what is missing is for the human reading the
-      scorecard.
+      note — an extractor cannot prove an absence, so score the PRESENCE of the unqualified opinion
+      and its date; the significance of what is missing is for the human reading the scorecard.
 
   - id: M2
     item: >
-      The Statement of Administrative Responsibility is signed by Lorella Hayes (CPA, CA), Vice-
-      President Administration, and Normand Lavallée (FCPA, FCMA, FCA), Associate Vice-President
-      Financial Services.
-    quote:
-      - "Lorella Hayes, CPA, CA Vice-President, Administration"
-      - "Normand Lavallée, FCPA, FCMA, FCA Associate Vice-President, Financial Services"
+      The Statement of Administrative Responsibility is signed by Lorella Hayes (CPA, CA),
+      Vice-President Administration, and Normand Lavallée (FCPA, FCMA, FCA), Associate
+      Vice-President Financial Services.
     page: 14
     location: signature block, Statement of Administrative Responsibility
     why: >
@@ -355,11 +276,7 @@ must_not_miss:
       numbers, by name. Signature blocks are the first thing an extractor drops.
 
   - id: M3
-    item: >
-      Eckler Ltd. is the actuary retained to estimate the pension and employee future benefit
-      liabilities.
-    quote:
-      - "Eckler Ltd. has been retained by the University in order to provide an estimate of the University's liability for pension and other employee future benefits."
+    item: "Eckler Ltd. is the actuary retained to estimate the pension and employee future benefit liabilities."
     page: 14
     location: Statement of Administrative Responsibility, second paragraph
     why: >
@@ -369,109 +286,54 @@ must_not_miss:
   - id: M4
     item: >
       The line of credit was used for CAPITAL SPENDING — $14.4M drawn at 30 April 2020.
-    quote:
-      - "At April 30, 2020, $14.4M of the University's line of credit was utilized for capital spending, a decrease of $3.2M."
     page: 12
     location: Financial Statement Highlights commentary
     why: >
       Funding long-lived capital assets with a revolving short-term facility is a liquidity red
-      flag. It is stated plainly, in a caption-like commentary block beside a chart, and reads
-      as routine.
+      flag. It is stated plainly, in a caption-like commentary block beside a chart, and reads as
+      routine.
 
   - id: M5
     item: >
       The 7.7% rise in operating grants was driven by a ONE-TIME Northern Sustainability grant.
-    quote:
-      - "Operating grants increased 7.7% mainly due to a onetime Northern Sustainability grant received in 2020."
     page: 13
     location: Financial Statement Highlights, revenue commentary
     why: >
       The year's single biggest revenue improvement was non-recurring. Without it the picture is
-      materially worse — and the FY20-21 report duly shows operating grants falling back to
-      $79.3M.
+      materially worse — and the FY20-21 report duly shows operating grants falling back to $79.3M.
 
-  - id: M6.1
+  - id: M6
     item: >
-      LU is only required to fund solvency deficits up to an 85% level.
-    quote:
-      - "The University is only required to fund solvency deficits up to an 85% level with a 5-year amortization period."
+      LU is only required to fund solvency deficits up to an 85% level — and the plan sits at 85.4%.
     page: 8
     location: Employee Future Benefits section
     why: >
-      The plan is 0.4 percentage points above the threshold that would trigger mandatory
-      solvency funding. Two numbers in adjacent sentences; the relationship between them is
-      never stated.
+      The plan is 0.4 percentage points above the threshold that would trigger mandatory solvency
+      funding. Two numbers in adjacent sentences; the relationship between them is never stated.
 
-  - id: M6.2
+  - id: M7
     item: >
-      The plan's solvency ratio deficit stood at 85.4% as of January 1, 2020.
-    quote:
-      - "The solvency ratio deficit for the January 1, 2020 was 85.4% (2019, 87.8%)."
-    page: 8
-    location: Employee Future Benefits section
-    why: >
-      The plan is 0.4 percentage points above the threshold that would trigger mandatory
-      solvency funding. Two numbers in adjacent sentences; the relationship between them is
-      never stated.
-
-  - id: M7.1
-    item: >
-      Endowment returns were negative for the year.
-    quote:
-      - "Due to COVID-19 the fund had returned a negative value for the year."
+      Endowment returns were NEGATIVE, and the 3.5% distribution was paid out of the operating fund
+      at a cost of $1.8 million.
     page: 9
     location: Endowments section
     why: >
-      LU borrowed from operations to keep paying scholarships when the endowment lost money —
-      while simultaneously reporting the endowment as having "increased $1 million". Both claims
-      sit in the same short section.
+      LU borrowed from operations to keep paying scholarships when the endowment lost money — while
+      simultaneously reporting the endowment as having "increased $1 million". Both claims sit in
+      the same short section.
 
-  - id: M7.2
+  - id: M8
     item: >
-      The cost to the operating fund of covering the 3.5% endowment spending rate was $1.8
-      million.
-    quote:
-      - "For 201920, the University assigned a spending rate of 3.5% towards the scholarships and other commitments supported by the funds."
-      - "As a result, the amounts spent to cover the spending rate were a cost of the operating fund in the amount of $1.8 million."
-    page: 9
-    location: Endowments section
-    why: >
-      LU borrowed from operations to keep paying scholarships when the endowment lost money —
-      while simultaneously reporting the endowment as having "increased $1 million". Both claims
-      sit in the same short section.
-
-  - id: M8.1
-    item: >
-      Enrolment-based funding is projected to fall from $2,903 per WGU to $1,173 per WGU.
-    basis: inferred
-    why_inferred: >
-      The two per-WGU figures ($2,903 and $1,173) are stated directly. The '~60% cut' is not
-      stated anywhere in the document -- it is a computation from those two figures
-      ((2,903-1,173)/2,903 is approximately 60%).
+      Enrolment-based funding is projected to fall from $2,903 per WGU to $1,173 per WGU — a ~60%
+      cut in the core funding rate.
     page: 9
     location: Funding Formula and Strategic Mandate Agreement section
-    why: >
-      The most consequential forward-looking number in the document, given as a bare comparison.
-
-  - id: M8.2
-    item: >
-      This decrease represents an approximately 60% cut in the core funding rate.
-    basis: inferred
-    why_inferred: >
-      The two per-WGU figures ($2,903 and $1,173) are stated directly. The '~60% cut' is not
-      stated anywhere in the document -- it is a computation from those two figures
-      ((2,903-1,173)/2,903 is approximately 60%).
-    page: 9
-    location: Funding Formula and Strategic Mandate Agreement section
-    why: >
-      The most consequential forward-looking number in the document, given as a bare comparison.
+    why: "The most consequential forward-looking number in the document, given as a bare comparison."
 
   - id: M9
     item: >
-      The 2019-20 budget was presented as exactly balanced: revenues $160,983 = expenses
-      $160,983, net (0.0).
-    quote:
-      - "| Per 2019-20 Budget                                                     | 160,983 | 160,983             | (0.0)   |"
+      The 2019-20 budget was presented as exactly balanced: revenues $160,983 = expenses $160,983,
+      net (0.0).
     page: 5
     location: budget-to-actual reconciliation table
     why: >
@@ -479,121 +341,35 @@ must_not_miss:
       year over year, while publicly saying it was presenting balanced budgets" — this table is
       that practice, on the page.
 
-  - id: M10.1
+  - id: M10
     item: >
-      The Audit Committee's members are not officers or full-time employees of the University.
-    quote:
-      - "The members of the Audit Committee are not officers or full-time employees of the University."
+      The Audit Committee's members are not officers or full-time employees, and the auditors have
+      full access to it with and without administration present.
     page: 14
     location: Statement of Administrative Responsibility, third paragraph
     why: >
-      A governance safeguard asserted in the document. Worth capturing because the Auditor
-      General later concluded the oversight did not work.
+      A governance safeguard asserted in the document. Worth capturing because the Auditor General
+      later concluded the oversight did not work.
 
-  - id: M10.2
+  - id: M11
     item: >
-      The auditors have full access to the Audit Committee with and without administration
-      present.
-    quote:
-      - "The auditors have full access to the Audit Committee with and without the presence of the administration."
-    page: 14
-    location: Statement of Administrative Responsibility, third paragraph
-    why: >
-      A governance safeguard asserted in the document. Worth capturing because the Auditor
-      General later concluded the oversight did not work.
-
-  - id: M11.1
-    item: >
-      The employee future benefit position swung from a $1,929 thousand asset (2019) to a
-      $20,788 thousand liability (2020), an $11.5 million increase.
-    basis: inferred
-    why_inferred: >
-      The $11.5M liability increase and the fact that the prior-year asset became a current-year
-      liability are stated in commentary on page 12 ('Employee future benefit assets were $1.9M
-      in the prior year and are now a liability in 2020, based on actuarial valuation.' /
-      'Employee future benefits liabilities increased $11.5M based on actuarial valuation.'),
-      and the exact $1,929/$20,788 figures appear only in the statement-of-financial-position
-      tables (pages 19, 29). Both commentary sentences attribute the change to 'actuarial
-      valuation' generally, not specifically to a discount-rate change -- that causal link is
-      stated only in a separate paragraph on page 8 ('The reduction of the discount rate has
-      increased the liability component to the plan...'), which discusses the pension plan in
-      general, not this specific $11.5M line item. Tying the swing specifically to the discount
-      rate requires combining page 8 with page 12 and the tables.
-    pages:
-      - 12
-      - 19
+      The prior year's $1,929 thousand employee future benefit ASSET flipped to a $20,788 thousand
+      liability — an $11.5M swing driven by a discount-rate change.
+    pages: [12, 19]
     location: balance sheet line + highlights commentary
     why: >
-      An asset became a liability. It is presented as a routine actuarial remeasurement in a
-      single commentary sentence.
+      An asset became a liability. It is presented as a routine actuarial remeasurement in a single
+      commentary sentence.
 
-  - id: M11.2
-    item: >
-      This swing was driven by a change in the discount rate.
-    basis: inferred
-    why_inferred: >
-      The $11.5M liability increase and the fact that the prior-year asset became a current-year
-      liability are stated in commentary on page 12 ('Employee future benefit assets were $1.9M
-      in the prior year and are now a liability in 2020, based on actuarial valuation.' /
-      'Employee future benefits liabilities increased $11.5M based on actuarial valuation.'),
-      and the exact $1,929/$20,788 figures appear only in the statement-of-financial-position
-      tables (pages 19, 29). Both commentary sentences attribute the change to 'actuarial
-      valuation' generally, not specifically to a discount-rate change -- that causal link is
-      stated only in a separate paragraph on page 8 ('The reduction of the discount rate has
-      increased the liability component to the plan...'), which discusses the pension plan in
-      general, not this specific $11.5M line item. Tying the swing specifically to the discount
-      rate requires combining page 8 with page 12 and the tables.
-    pages:
-      - 12
-      - 19
-    location: balance sheet line + highlights commentary
-    why: >
-      An asset became a liability. It is presented as a routine actuarial remeasurement in a
-      single commentary sentence.
-
-  - id: M12.1
+  - id: M12
     item: >
       "Subsequent to year-end, principal repayments on four loans relating to the operations of
-      the residences were deferred for six months."
-    basis: inferred
-    why_inferred: >
-      The core sentence is quoted verbatim and appears on page 7 (and again, with slightly
-      different wording, in note 8 on page 29). But nothing in the document explicitly frames
-      this deferral as occurring 'before the 30 October 2020 report date' -- that date is stated
-      only in the auditors' report signature block on page 18. Connecting 'subsequent to year-
-      end' (page 7) to the report date (page 18) requires combining two different parts of the
-      document.
-    pages:
-      - 7
-      - 11
-      - 30
-      - 35
-    location: Financial Statement Highlights (Capital financing), MD&A "Future Impact of COVID-19", Note 8 (Long-term debt), and Note 17 (Effects of COVID-19) — stated four times
-
-    why: >
-      A subtle cash-crunch signal that survived into the final report despite the clean audit
-      opinion (M1) and the "on track" narrative (F1) — LU was already deferring debt service
-      before this report was even issued.
-
-  - id: M12.2
-    item: >
-      This deferral was negotiated after the fiscal year-end (April 30, 2020) but before the
-      auditors' report date (30 October 2020).
-    basis: inferred
-    why_inferred: >
-      The core sentence is quoted verbatim and appears on page 7 (and again, with slightly
-      different wording, in note 8 on page 29). But nothing in the document explicitly frames
-      this deferral as occurring 'before the 30 October 2020 report date' -- that date is stated
-      only in the auditors' report signature block on page 18. Connecting 'subsequent to year-
-      end' (page 7) to the report date (page 18) requires combining two different parts of the
-      document.
-    pages:
-      - 7
-      - 11
-      - 30
-      - 35
-    location: Financial Statement Highlights (Capital financing), MD&A "Future Impact of COVID-19", Note 8 (Long-term debt), and Note 17 (Effects of COVID-19) — stated four times
-
+      the residences were deferred for six months" — a cash-flow accommodation negotiated after
+      the audit period but before the 30 October 2020 report date.
+    pages: [7, 11, 30, 35]
+    location: >
+      Financial Statement Highlights (Capital financing), MD&A "Future Impact of COVID-19",
+      Note 8 (Long-term debt), and Note 17 (Effects of COVID-19) — stated four times
     why: >
       A subtle cash-crunch signal that survived into the final report despite the clean audit
       opinion (M1) and the "on track" narrative (F1) — LU was already deferring debt service

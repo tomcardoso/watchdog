@@ -349,6 +349,8 @@ must_not_miss:
     item: >
       The auditors' report is DUAL-DATED: "March 7, 2022, except as to Note 27, which is as of
       April 22, 2022."
+    quote:
+      - "March 7, 2022, except as to Note 27, which is as of April 22, 2022"
     page: 27
     location: auditors' signature block, final line
     why: >
@@ -357,17 +359,30 @@ must_not_miss:
       strongest single signal in the document that something went wrong after publication.
 
   - id: M2
-    item: "The Board of Governors signature block on the balance sheet has TWO BLANK 'Governor' lines."
+    item: >
+      The Board of Governors signature block on the balance sheet has TWO BLANK 'Governor'
+      lines.
+    quote:
+      - "\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_  Governor"
+      - "\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_  Governor"
     page: 28
     location: foot of the Consolidated Statement of Financial Position
     why: >
-      The statements are presented "On behalf of the Board of Governors" over two unsigned lines.
-      Extractors reliably drop signature blocks entirely.
+      The statements are presented "On behalf of the Board of Governors" over two unsigned
+      lines. Extractors reliably drop signature blocks entirely.
 
   - id: M3
     item: >
-      Note 27 exists at all — a restatement OF the already-restated statements, made after issuance
-      for errors discovered post-publication.
+      Note 27 exists at all — a restatement OF the already-restated statements, made after
+      issuance for errors discovered post-publication.
+    basis: inferred
+    why_inferred: >
+      Note 27's heading and opening sentence state that the already-issued financial statements
+      were amended for errors found after issuance, but the text never itself characterizes this
+      as a restatement OF the already-restated statements. That characterization requires
+      knowing (from the separate Note 25) that the same figures had already been restated once
+      before, then noticing Note 27 restates the 2021 figures again -- a cross-note comparison,
+      not a stated fact.
     page: 68
     location: final substantive note, page 68 of 70
     why: >
@@ -376,25 +391,33 @@ must_not_miss:
 
   - id: M4
     item: >
-      Total claims asserted by creditors of $360,291 thousand versus $186,820 thousand recognized —
-      a $173.5M gap deliberately not recognized.
+      Total claims asserted by creditors of $360,291 thousand versus $186,820 thousand
+      recognized — a $173.5M gap deliberately not recognized.
+    quote:
+      - "Total claims asserted by creditors are $360,291 pursuant to the claim procedures approved by the Court."
+      - "The difference between the total claims asserted and the amount recognized as subject to compromise  of  $186,820  is  not  recognized  in  these  financial  statements  as  the  University  is assessing  the  claims  and  cannot  estimate  an  amount  subject  to  compromise  based  on  the information available at this time."
     page: 49
     location: Note 12, prose paragraph AFTER the table
     why: >
-      Sits below a table. Extractors that parse the table capture $186,820 and stop reading before
-      the sentence that says the real number may be nearly twice that.
+      Sits below a table. Extractors that parse the table capture $186,820 and stop reading
+      before the sentence that says the real number may be nearly twice that.
 
   - id: M5
-    item: "Interest rate swap termination obligation of $24,700 thousand."
+    item: >
+      Interest rate swap termination obligation of $24,700 thousand.
+    quote:
+      - "| Interest rate swap termination obligation (note 11)                                        | 24,700                 |"
     page: 48
     location: Note 12 table row; repeated in Note 21 (p. 58)
     why: >
-      A derivative unwind buried as a single table row. Nothing in the MD&A mentions that LU held
-      interest rate swaps at all.
+      A derivative unwind buried as a single table row. Nothing in the MD&A mentions that LU
+      held interest rate swaps at all.
 
   - id: M6
     item: >
       Uncertified class action claims relating to a DATA BREACH, plus claims from employees.
+    quote:
+      - "Legal proceedings involve uncertified class action claims related to a data  breach  and  claims  from  employees."
     page: 56
     location: Note 18(d), commitments and contingencies
     why: >
@@ -403,26 +426,54 @@ must_not_miss:
 
   - id: M7
     item: >
-      LU guaranteed the Students' General Association loan for $8,500 thousand, and "No amount has
-      been recorded in these financial statements relating to the University's guarantee."
-    pages: [55, 62]
+      LU guaranteed the Students' General Association loan for $8,500 thousand, and "No amount
+      has been recorded in these financial statements relating to the University's guarantee."
+    quote:
+      - "the  University  guaranteed  the  Student  General  Association  Loan  for  an amount of $8,500."
+      - "No amount has been recorded in these financial statements relating to the University's guarantee."
+    pages:
+      - 55
+      - 62
     location: Note 18(c) and Note 24(c)
-    why: "An $8.5M off-balance-sheet guarantee, explicitly unrecorded. Stated twice, capture-rate still low."
+    why: >
+      An $8.5M off-balance-sheet guarantee, explicitly unrecorded. Stated twice, capture-rate
+      still low.
 
   - id: M8
     item: >
       Firm Capital Corporation lent at the higher of 8.50% or TD prime + 6.05%; the province's
       replacement facility charged 1.11%.
-    pages: [46, 67]
+    quote:
+      - "The DIP Loan provided for an aggregate commitment of up to $25,000, with interest at the higher of  8.50%  or  the  TD  Canada  Trust  Posted  Bank  Prime  Interest  Rate  plus  a  margin  of  6.05%,"
+      - "As at the advance of funds on January 28, 2022 the rate of interest was 1.11%."
+    pages:
+      - 46
+      - 67
     location: Note 10 and Note 26 — two notes, 21 pages apart
     why: >
       Neither rate is remarkable alone; the pair is the story. Requires joining two notes at
-      opposite ends of the document, which is exactly what section-chunked extraction does badly.
+      opposite ends of the document, which is exactly what section-chunked extraction does
+      badly.
 
-  - id: M9
+  - id: M9.1
     item: >
-      A new $590 thousand administrative fee charged against endowment investment income
-      (2020 – nil), alongside the distribution policy cut from 3.5% to 2.0%.
+      During the year, the University recognized a new administrative fee against endowment
+      investment income of $590 thousand (2020 -- nil).
+    quote:
+      - "The University has established a distribution policy that constrains the amount of investment income available for distribution to 2.0% (2020 - 3.5%) of the last 12 months fair value of the endowment investment pool."
+    page: 52
+    location: Note 14, closing sentence of the opening paragraph
+    why: >
+      LU began charging the endowment a fee it had never charged, in the year it went insolvent.
+      One sentence, end of a dense policy paragraph.
+
+  - id: M9.2
+    item: >
+      The University's endowment distribution policy constrains investment income available for
+      distribution to 2.0% of the last 12 months' fair value of the endowment investment pool,
+      down from 3.5% in 2020.
+    quote:
+      - "During the year, the University recognized an administrative fee of $590 (2020 - nil)."
     page: 52
     location: Note 14, closing sentence of the opening paragraph
     why: >
@@ -430,7 +481,10 @@ must_not_miss:
       One sentence, end of a dense policy paragraph.
 
   - id: M10
-    item: "Stayed payables of $1,412 thousand owed to NOSM, up from $28 thousand."
+    item: >
+      Stayed payables of $1,412 thousand owed to NOSM, up from $28 thousand.
+    quote:
+      - "At April 30, 2021 the University had $393 (2020 - $119) receivable from NOSM and had stayed payables of $1,412 (2020 - $28) to NOSM."
     page: 61
     location: Note 24(a), prose after the transactions table
     why: >
@@ -441,67 +495,221 @@ must_not_miss:
     item: >
       Note 25's cash restatement: cash at the beginning of FY2020 was corrected from $7,505
       thousand to $5,185 thousand — a $2,320 thousand error in previously reported cash.
+    quote:
+      - "| Cash and short-term investments, beginning of year          | 7,505                                                       | (2,320)                                                     | -                                                           | 5,185 (b) CCAA Due to ongoing                               |"
     page: 67
     location: Note 25 continuation table, top of page
-    why: "An error in *cash* — the least estimable line on the statements. Buried in a restatement table."
+    why: >
+      An error in *cash* — the least estimable line on the statements. Buried in a restatement
+      table.
 
   - id: M12
     item: >
       LU is principal employer of a Pension Plan that also covers the Federated Universities,
       SNOLAB, CEMI and MIRARCO. Huntington employees ceased accruing 30 June 2021; University of
       Sudbury and Thorneloe employees became suspended members after 31 December 2021.
+    quote:
+      - "The  University  is  the  principal  employer  for  the  Pension  Plan  (note  6)  which  included  the Federated Universities, SNOLAB, Centre for Excellence in Mining Innovation and MIRARCO."
+      - "Effective June 30, 2021, all Huntington University active employees ceased to accrue any further entitlement in the Pension Plan."
+      - "Active employees of the University of Sudbury and Thorneloe University who continue to be employed after December 31, 2021 will become suspended members of the Pension Plan."
     page: 56
     location: Note 18(e)
     why: >
       The blast radius of the pension problem extends to four other institutions. Buried in the
       fifth subclause of the contingencies note.
 
-  - id: M13
+  - id: M13.1
     item: >
-      The Royal Bank ($5,000 thousand) and Desjardins ($26,000 thousand) lines of credit were
-      withdrawn — "At April 30, 2021 these lines of credit are no longer available to the University."
+      The Royal Bank $5,000 thousand unsecured line of credit was no longer available to the
+      University at April 30, 2021.
+    quote:
+      - "In 2020, the University had access to a Royal Bank unsecured line of credit of $5,000 and a Desjardins unsecured line of credit of $26,000."
     page: 55
     location: Note 18(a)
-    why: "$31M of committed liquidity vanished. One clause at the end of a subsection."
+    why: >
+      $31M of committed liquidity vanished. One clause at the end of a subsection.
 
-  - id: M14
+  - id: M13.2
     item: >
-      Professional fees inside restructuring costs: legal $4,903, Monitor $2,800, consulting $223,
-      interest and finance $881 — $8,807 thousand of "Legal, Monitor, consulting, interest and
-      finance costs".
+      The Desjardins $26,000 thousand unsecured line of credit was no longer available to the
+      University at April 30, 2021.
+    quote:
+      - "At April 30, 2021 these lines of credit are no longer available to the University."
+    page: 55
+    location: Note 18(a)
+    why: >
+      $31M of committed liquidity vanished. One clause at the end of a subsection.
+
+  - id: M14.1
+    item: >
+      Legal fees of $4,903 thousand were recognized within restructuring costs.
+    quote:
+      - "| Legal fees                                             | 4,903 seeking to, |"
     page: 58
     location: Note 21 table, lower half
-    why: "What the insolvency cost in fees. A lower-table block, routinely truncated."
+    why: >
+      What the insolvency cost in fees. A lower-table block, routinely truncated.
+
+  - id: M14.2
+    item: >
+      Monitor fees of $2,800 thousand were recognized within restructuring costs.
+    quote:
+      - "| Monitor fees                                           | 2,800             |"
+    page: 58
+    location: Note 21 table, lower half
+    why: >
+      What the insolvency cost in fees. A lower-table block, routinely truncated.
+
+  - id: M14.3
+    item: >
+      Consulting fees of $223 thousand were recognized within restructuring costs.
+    quote:
+      - "| Consulting fees                                        | 223 order         |"
+    page: 58
+    location: Note 21 table, lower half
+    why: >
+      What the insolvency cost in fees. A lower-table block, routinely truncated.
+
+  - id: M14.4
+    item: >
+      Interest and finance costs of $881 thousand were recognized within restructuring costs.
+    quote:
+      - "| Interest and finance costs                             | 881 of            |"
+    page: 58
+    location: Note 21 table, lower half
+    why: >
+      What the insolvency cost in fees. A lower-table block, routinely truncated.
+
+  - id: M14.5
+    item: >
+      Legal, Monitor, consulting, interest and finance costs together totaled $8,807 thousand.
+    quote:
+      - "| Legal, Monitor, consulting, interest and finance costs | 8,807 The         |"
+    page: 58
+    location: Note 21 table, lower half
+    why: >
+      What the insolvency cost in fees. A lower-table block, routinely truncated.
 
   - id: M15
     item: >
-      LU participates in a reciprocal insurance exchange sharing property and liability risk with
-      forty other Canadian universities.
+      LU participates in a reciprocal insurance exchange sharing property and liability risk
+      with forty other Canadian universities.
+    quote:
+      - "The University participates in a reciprocal exchange of insurance risks in association with forty other Canadian universities."
     page: 55
     location: Note 18(b)
-    why: "A contingent, shared liability with 40 institutions. A single sentence, no dollar figure attached."
+    why: >
+      A contingent, shared liability with 40 institutions. A single sentence, no dollar figure
+      attached.
 
   - id: M16
     item: >
-      CEMI was created on 23 April 2007 with $10,000 thousand of provincial money that LU received
-      and contributed.
+      CEMI was created on 23 April 2007 with $10,000 thousand of provincial money that LU
+      received and contributed.
+    quote:
+      - "The Centre for Excellence in Mining and Innovation (CEMI) was created on April 23, 2007 to advance study, research, and innovation."
+      - "The University contributed $10,000 received from the Provincial Government to create and fund CEMI on its inception."
     page: 61
     location: Note 24(b)
-    why: "$10M of public money routed through LU into a separate entity LU does not consolidate."
+    why: >
+      $10M of public money routed through LU into a separate entity LU does not consolidate.
 
   - id: M17
     item: >
-      The TD Canada Trust short-term loan financed the Student Recreation Centre; the CCAA filing
-      was an event of default that made it due on demand.
+      The TD Canada Trust short-term loan financed the Student Recreation Centre; the CCAA
+      filing was an event of default that made it due on demand.
+    quote:
+      - "The short-term loan was used to finance the Student Recreation Centre."
+      - "The commencement of the CCAA proceedings on February 1, 2021 was considered an event of default, which resulted in the debt obligation and any accrued and unpaid interest to be due on demand, although any action to enforce such payment obligations is stayed as a result of the CCAA proceedings."
     page: 46
     location: Note 9
-    why: "Names both the lender and what the money built. Short note, sandwiched between two longer ones."
+    why: >
+      Names both the lender and what the money built. Short note, sandwiched between two longer
+      ones.
 
-  - id: M18
+  - id: M18.1
     item: >
-      Internally financed capital projects, itemized: Campus Modernization $14,739; Cardiovascular
-      Metabolic Research Lab $5,027; Great Hall renovations $1,146; Ancillaries $855; Cliff Fielding
-      Building $146; Parking Lot 4 $761; School of Education Building $341; DNA Lab $161.
+      LU internally financed $14,739 thousand of Campus Modernization capital spending.
+    quote:
+      - "| Campus Modernization                                         | $ 14,739 | $ 16,878 The            |"
+    page: 55
+    location: Note 17 table
+    why: >
+      A named, itemized schedule of what LU spent internal money on. Precisely the kind of table
+      that gets flattened or dropped — and it names the projects.
+
+  - id: M18.2
+    item: >
+      LU internally financed $5,027 thousand of Cardiovascular Metabolic Research Lab capital
+      spending.
+    quote:
+      - "| Cardiovascular Metabolic Research Lab                        | 5,027    | 5,268                   |"
+    page: 55
+    location: Note 17 table
+    why: >
+      A named, itemized schedule of what LU spent internal money on. Precisely the kind of table
+      that gets flattened or dropped — and it names the projects.
+
+  - id: M18.3
+    item: >
+      LU internally financed $1,146 thousand of Great Hall renovations.
+    quote:
+      - "| Great Hall renovations                                       | 1,146    | 1,402 The               |"
+    page: 55
+    location: Note 17 table
+    why: >
+      A named, itemized schedule of what LU spent internal money on. Precisely the kind of table
+      that gets flattened or dropped — and it names the projects.
+
+  - id: M18.4
+    item: >
+      LU internally financed $855 thousand of Ancillaries capital spending.
+    quote:
+      - "| Ancillaries                                                  | 855      | 1,126 dollars. (b) CCAA |"
+    page: 55
+    location: Note 17 table
+    why: >
+      A named, itemized schedule of what LU spent internal money on. Precisely the kind of table
+      that gets flattened or dropped — and it names the projects.
+
+  - id: M18.5
+    item: >
+      LU internally financed $146 thousand of the Cliff Fielding Building.
+    quote:
+      - "| Cliff Fielding Research, Innovation and Engineering Building | 146      | 729 Due to              |"
+    page: 55
+    location: Note 17 table
+    why: >
+      A named, itemized schedule of what LU spent internal money on. Precisely the kind of table
+      that gets flattened or dropped — and it names the projects.
+
+  - id: M18.6
+    item: >
+      LU internally financed $761 thousand of Parking Lot 4.
+    quote:
+      - "| Parking Lot 4                                                | 761      | 816 seeking             |"
+    page: 55
+    location: Note 17 table
+    why: >
+      A named, itemized schedule of what LU spent internal money on. Precisely the kind of table
+      that gets flattened or dropped — and it names the projects.
+
+  - id: M18.7
+    item: >
+      LU internally financed $341 thousand of the School of Education Building.
+    quote:
+      - "| School of Education Building                                 | 341      | 616 to,                 |"
+    page: 55
+    location: Note 17 table
+    why: >
+      A named, itemized schedule of what LU spent internal money on. Precisely the kind of table
+      that gets flattened or dropped — and it names the projects.
+
+  - id: M18.8
+    item: >
+      LU internally financed $161 thousand of the DNA Lab.
+    quote:
+      - "| DNA Lab                                                      | 161      | 184                     |"
     page: 55
     location: Note 17 table
     why: >
@@ -512,29 +720,208 @@ must_not_miss:
     item: >
       The government support package is CONDITIONAL on renewal of the Board of Governors and
       completion of a long-term strategic plan; first phase of Board renewal began 16 Dec 2021.
+    quote:
+      - "The Government support is subject to certain conditions, which include renewal at the Board of Governors and the completion of a long-term strategic plan for the University."
+      - "The first phase of Board renewal commenced on December 16, 2021"
     page: 67
     location: Note 26, final paragraph
-    why: "The province made governance change a condition of the money. Last paragraph of the subsequent-events note."
+    why: >
+      The province made governance change a condition of the money. Last paragraph of the
+      subsequent-events note.
 
-  - id: M20
+  - id: M20.1
     item: >
-      The "Laurentian by the Numbers" infographic (p. 3): total revenue $193.4M, total expenses
-      $260.1M, deficiency $66.7M, total net assets -$15.4M, available expendable resources -$85.9M,
-      capital spending $1.4M, endowment per FTE $8,672, FTE 7,090.
+      Total revenue was $193.4 million.
+    basis: inferred
+    why_inferred: >
+      The infographic's numbers and their labels sit on separate lines in the extracted text,
+      interleaved with unrelated captions and repeated '[image]' markers (e.g. the figure '$
+      193.4M' precedes, rather than sits beside, the words 'TOTAL' and 'REVENUE' several lines
+      later; '- $ 85.9M' sits directly above the 'Capital Spending' heading even though it is
+      actually the Available Expendable Resources figure). No contiguous span states any one of
+      these eight figures together with its correct label, so pairing each number to its label
+      requires reconstructing the original visual layout rather than reading stated text.
     page: 3
     location: page-3 infographic
     why: >
-      TEXT-EXTRACTION HAZARD, flagged deliberately. In the raw text layer the figures detach from
-      their labels and interleave (the "-$85.9M" appears adjacent to "Capital Spending", which is
-      wrong). Any condition that reports these numbers with the WRONG labels attached has been
-      caught by a table-flattening failure, not a reasoning failure — score it as such, and check
-      whether chew/Docling reproduces the same scrambling before blaming the extractor.
+      TEXT-EXTRACTION HAZARD, flagged deliberately. In the raw text layer the figures detach
+      from their labels and interleave (the "-$85.9M" appears adjacent to "Capital Spending",
+      which is wrong). Any condition that reports these numbers with the WRONG labels attached
+      has been caught by a table-flattening failure, not a reasoning failure — score it as such,
+      and check whether chew/Docling reproduces the same scrambling before blaming the
+      extractor.
 
-  - id: M21
+  - id: M20.2
     item: >
-      LU "continues to manage a considerable deferred maintenance backlog estimated at
-      $135.0 million" — against the $1.4 million it was actually able to invest in capital
-      projects that year.
+      Total expenses were $260.1 million.
+    basis: inferred
+    why_inferred: >
+      The infographic's numbers and their labels sit on separate lines in the extracted text,
+      interleaved with unrelated captions and repeated '[image]' markers (e.g. the figure '$
+      193.4M' precedes, rather than sits beside, the words 'TOTAL' and 'REVENUE' several lines
+      later; '- $ 85.9M' sits directly above the 'Capital Spending' heading even though it is
+      actually the Available Expendable Resources figure). No contiguous span states any one of
+      these eight figures together with its correct label, so pairing each number to its label
+      requires reconstructing the original visual layout rather than reading stated text.
+    page: 3
+    location: page-3 infographic
+    why: >
+      TEXT-EXTRACTION HAZARD, flagged deliberately. In the raw text layer the figures detach
+      from their labels and interleave (the "-$85.9M" appears adjacent to "Capital Spending",
+      which is wrong). Any condition that reports these numbers with the WRONG labels attached
+      has been caught by a table-flattening failure, not a reasoning failure — score it as such,
+      and check whether chew/Docling reproduces the same scrambling before blaming the
+      extractor.
+
+  - id: M20.3
+    item: >
+      Deficiency of revenues over expenses was $66.7 million.
+    basis: inferred
+    why_inferred: >
+      The infographic's numbers and their labels sit on separate lines in the extracted text,
+      interleaved with unrelated captions and repeated '[image]' markers (e.g. the figure '$
+      193.4M' precedes, rather than sits beside, the words 'TOTAL' and 'REVENUE' several lines
+      later; '- $ 85.9M' sits directly above the 'Capital Spending' heading even though it is
+      actually the Available Expendable Resources figure). No contiguous span states any one of
+      these eight figures together with its correct label, so pairing each number to its label
+      requires reconstructing the original visual layout rather than reading stated text.
+    page: 3
+    location: page-3 infographic
+    why: >
+      TEXT-EXTRACTION HAZARD, flagged deliberately. In the raw text layer the figures detach
+      from their labels and interleave (the "-$85.9M" appears adjacent to "Capital Spending",
+      which is wrong). Any condition that reports these numbers with the WRONG labels attached
+      has been caught by a table-flattening failure, not a reasoning failure — score it as such,
+      and check whether chew/Docling reproduces the same scrambling before blaming the
+      extractor.
+
+  - id: M20.4
+    item: >
+      Total net assets were -$15.4 million.
+    basis: inferred
+    why_inferred: >
+      The infographic's numbers and their labels sit on separate lines in the extracted text,
+      interleaved with unrelated captions and repeated '[image]' markers (e.g. the figure '$
+      193.4M' precedes, rather than sits beside, the words 'TOTAL' and 'REVENUE' several lines
+      later; '- $ 85.9M' sits directly above the 'Capital Spending' heading even though it is
+      actually the Available Expendable Resources figure). No contiguous span states any one of
+      these eight figures together with its correct label, so pairing each number to its label
+      requires reconstructing the original visual layout rather than reading stated text.
+    page: 3
+    location: page-3 infographic
+    why: >
+      TEXT-EXTRACTION HAZARD, flagged deliberately. In the raw text layer the figures detach
+      from their labels and interleave (the "-$85.9M" appears adjacent to "Capital Spending",
+      which is wrong). Any condition that reports these numbers with the WRONG labels attached
+      has been caught by a table-flattening failure, not a reasoning failure — score it as such,
+      and check whether chew/Docling reproduces the same scrambling before blaming the
+      extractor.
+
+  - id: M20.5
+    item: >
+      Available expendable resources were -$85.9 million.
+    basis: inferred
+    why_inferred: >
+      The infographic's numbers and their labels sit on separate lines in the extracted text,
+      interleaved with unrelated captions and repeated '[image]' markers (e.g. the figure '$
+      193.4M' precedes, rather than sits beside, the words 'TOTAL' and 'REVENUE' several lines
+      later; '- $ 85.9M' sits directly above the 'Capital Spending' heading even though it is
+      actually the Available Expendable Resources figure). No contiguous span states any one of
+      these eight figures together with its correct label, so pairing each number to its label
+      requires reconstructing the original visual layout rather than reading stated text.
+    page: 3
+    location: page-3 infographic
+    why: >
+      TEXT-EXTRACTION HAZARD, flagged deliberately. In the raw text layer the figures detach
+      from their labels and interleave (the "-$85.9M" appears adjacent to "Capital Spending",
+      which is wrong). Any condition that reports these numbers with the WRONG labels attached
+      has been caught by a table-flattening failure, not a reasoning failure — score it as such,
+      and check whether chew/Docling reproduces the same scrambling before blaming the
+      extractor.
+
+  - id: M20.6
+    item: >
+      Capital spending was $1.4 million.
+    basis: inferred
+    why_inferred: >
+      The infographic's numbers and their labels sit on separate lines in the extracted text,
+      interleaved with unrelated captions and repeated '[image]' markers (e.g. the figure '$
+      193.4M' precedes, rather than sits beside, the words 'TOTAL' and 'REVENUE' several lines
+      later; '- $ 85.9M' sits directly above the 'Capital Spending' heading even though it is
+      actually the Available Expendable Resources figure). No contiguous span states any one of
+      these eight figures together with its correct label, so pairing each number to its label
+      requires reconstructing the original visual layout rather than reading stated text.
+    page: 3
+    location: page-3 infographic
+    why: >
+      TEXT-EXTRACTION HAZARD, flagged deliberately. In the raw text layer the figures detach
+      from their labels and interleave (the "-$85.9M" appears adjacent to "Capital Spending",
+      which is wrong). Any condition that reports these numbers with the WRONG labels attached
+      has been caught by a table-flattening failure, not a reasoning failure — score it as such,
+      and check whether chew/Docling reproduces the same scrambling before blaming the
+      extractor.
+
+  - id: M20.7
+    item: >
+      Endowment per FTE student was $8,672.
+    basis: inferred
+    why_inferred: >
+      The infographic's numbers and their labels sit on separate lines in the extracted text,
+      interleaved with unrelated captions and repeated '[image]' markers (e.g. the figure '$
+      193.4M' precedes, rather than sits beside, the words 'TOTAL' and 'REVENUE' several lines
+      later; '- $ 85.9M' sits directly above the 'Capital Spending' heading even though it is
+      actually the Available Expendable Resources figure). No contiguous span states any one of
+      these eight figures together with its correct label, so pairing each number to its label
+      requires reconstructing the original visual layout rather than reading stated text.
+    page: 3
+    location: page-3 infographic
+    why: >
+      TEXT-EXTRACTION HAZARD, flagged deliberately. In the raw text layer the figures detach
+      from their labels and interleave (the "-$85.9M" appears adjacent to "Capital Spending",
+      which is wrong). Any condition that reports these numbers with the WRONG labels attached
+      has been caught by a table-flattening failure, not a reasoning failure — score it as such,
+      and check whether chew/Docling reproduces the same scrambling before blaming the
+      extractor.
+
+  - id: M20.8
+    item: >
+      Full-time equivalent enrolment was 7,090.
+    basis: inferred
+    why_inferred: >
+      The infographic's numbers and their labels sit on separate lines in the extracted text,
+      interleaved with unrelated captions and repeated '[image]' markers (e.g. the figure '$
+      193.4M' precedes, rather than sits beside, the words 'TOTAL' and 'REVENUE' several lines
+      later; '- $ 85.9M' sits directly above the 'Capital Spending' heading even though it is
+      actually the Available Expendable Resources figure). No contiguous span states any one of
+      these eight figures together with its correct label, so pairing each number to its label
+      requires reconstructing the original visual layout rather than reading stated text.
+    page: 3
+    location: page-3 infographic
+    why: >
+      TEXT-EXTRACTION HAZARD, flagged deliberately. In the raw text layer the figures detach
+      from their labels and interleave (the "-$85.9M" appears adjacent to "Capital Spending",
+      which is wrong). Any condition that reports these numbers with the WRONG labels attached
+      has been caught by a table-flattening failure, not a reasoning failure — score it as such,
+      and check whether chew/Docling reproduces the same scrambling before blaming the
+      extractor.
+
+  - id: M21.1
+    item: >
+      LU continues to manage a deferred maintenance backlog estimated at $135.0 million.
+    quote:
+      - "The University continues to manage a considerable deferred maintenance backlog estimated at $135.0 million"
+    page: 17
+    location: MD&A, Capital Investments section, closing paragraph
+    why: >
+      The largest figure in the capital section, dropped in the sentence right after the report
+      discloses its own $1.4 million spend — a 96x gap between the backlog and that year's
+      response to it.
+
+  - id: M21.2
+    item: >
+      LU invested $1.4 million in capital projects in 2020-21.
+    quote:
+      - "During that year, $1.4 million was invested in capital projects, mostly to address deferred maintenance projects."
     page: 17
     location: MD&A, Capital Investments section, closing paragraph
     why: >

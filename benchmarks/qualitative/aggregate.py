@@ -7,7 +7,7 @@ import yaml
 
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from score_arms import anchors_from  # noqa: E402
+from score_arms import anchors_from, quote_text  # noqa: E402
 
 # The denominator comes from the ANSWER KEYS, not from whatever a past pass happened to package
 # or a judge happened to return. A key item that exists and was never graded is a miss, not an
@@ -15,9 +15,18 @@ from score_arms import anchors_from  # noqa: E402
 # inflates every percentage, which is how the 2026-07-29 table ended up reporting 70/44 against
 # the tool's own 87/53 (see FINDINGS.md). Reading the keys also means adding documents or key
 # items raises the denominator for the next pass automatically, with nothing to remember.
-DIR = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-KEYS_DIR = os.path.join(REPO, "benchmarks/keys")
+
+# `--keys=DIR` scores a pass against the key VERSION it was judged under. Ids are part of a key
+# version — #573's de-bundling turned `M6` into `M6.1`/`M6.2`/`M6.3` — so replaying an archived
+# pass against newer keys matches nothing and reports every keyed item as an ungraded miss,
+# turning an old comparison into a meaningless number rather than a wrong one. The frozen v1
+# content lives in `benchmarks/keys/v1/`; see that directory's README section.
+_keys = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--keys=")), None)
+KEYS_DIR = os.path.abspath(_keys) if _keys else os.path.join(REPO, "benchmarks/keys")
+
+_positional = [a for a in sys.argv[1:] if not a.startswith("--")]
+DIR = _positional[0] if _positional else os.path.dirname(os.path.abspath(__file__))
 
 mapping = json.load(open(os.path.join(DIR, "mapping.json")))
 
@@ -35,7 +44,7 @@ def _unscorable_ids(items, text_key):
     """Key items with no numeric anchor — the ones score_arms.py cannot grade, which is exactly
     the slice this pass exists to cover. Mirrors build_packets.unscorable."""
     return [it["id"] for it in items
-            if not anchors_from((it.get(text_key) or "") + " " + (it.get("quote") or ""))]
+            if not anchors_from((it.get(text_key) or "") + " " + quote_text(it))]
 
 
 keyed = {}          # doc -> {"facts": [id, ...], "must_not_miss": [id, ...]}
