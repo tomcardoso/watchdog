@@ -69,11 +69,20 @@ def _cache_block(text: str, *, ttl: str = "5m") -> dict:
 def _document_block(text: str, cache_document: bool, ttl: str) -> dict:
     """The per-document volatile block — normally uncached (its text is unique to one document,
     so nothing would ever read the cache back), but carrying a second cache breakpoint when the
-    verification pass (#535) is going to re-read the same document moments later. That second
-    call sends blocks 1–3 byte-identically and diverges only in a block appended after them, so
-    it reads at the 0.1x cache rate what extraction just wrote at 1.25x — the only reason to pay
-    the write premium on a document's own text at all. Off by default: with no verifier to read
-    it, the premium is pure loss (D172)."""
+    verification pass (#535) is going to re-read the same document moments later. On the
+    Anthropic backend (`claude-api`, `cache_control` honoured on the wire), that second call
+    sends blocks 1–3 byte-identically and diverges only in a block appended after them, so it
+    reads at the 0.1x cache rate what extraction just wrote at 1.25x — the only reason to pay the
+    write premium on a document's own text at all.
+
+    On OpenAI-compatible backends this second breakpoint is inert: `model_client._flatten_prompt`
+    strips every `cache_control` block to plain text before the request is sent, so the flag has
+    no effect there. Even setting that aside, extraction and verification can never share a
+    prefix on OpenAI regardless — each sends its own structured-output schema
+    (`schemas.EXTRACTION` vs. `schemas.VERIFY`) as a prefix to the system message, so the two
+    calls' prefixes diverge before either document block is even reached (#562). Off by default:
+    with no verifier to read it (or on a backend where nothing ever will), the premium is pure
+    loss (D172)."""
     return _cache_block(text, ttl=ttl) if cache_document else {"type": "text", "text": text}
 
 
@@ -88,6 +97,15 @@ def build_verify_prompt(base: list[dict], *, key_facts: list[dict],
     drift out of prefix-compatibility with this one: whatever the extractor was shown, the
     verifier is shown too, including the extraction instructions themselves (the verifier needs
     to know what "material fact" was defined to mean before it can say what is missing).
+
+    What that byte-identical prefix is worth depends on the backend. On `claude-api` it is the
+    whole cost case: `cache_control` is honoured on the wire, so the verifier re-reads the
+    document at the 0.1x rate. On OpenAI it buys the run-stable head of the prompt
+    (instructions + brief + skill, routed by the same `prompt_cache_key` as every other call
+    sharing that skill — `model_client._prompt_cache_key`) but never the document, which is the
+    bulk of it: each call's own structured-output schema is serialized as a prefix to the system
+    message, so extraction's prefix and this one diverge before either reaches the document text
+    (#562, D181).
 
     `key_facts` is what the extractor produced; `entities` (id + name only) bounds the ids a
     candidate fact may tag, so the verifier picks from the extraction's own graph rather than

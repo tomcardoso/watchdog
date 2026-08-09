@@ -285,10 +285,13 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    second, cheap model call over the *same* document (or, on a sectioned document, the same
    section), asking only what material fact is on the page and absent from the fact list just
    produced. Its prompt is the extraction call's own content blocks plus one appended block
-   (`prompts.build_verify_prompt`), so the re-read hits the prefix cache the extraction call
-   wrote rather than paying full price for the document twice; it runs on `extractor_model` at
-   `verifier_effort` (default `low`), since a cache belongs to one model and output tokens are
-   where this pass's cost lives. What it returns is merged **in code**
+   (`prompts.build_verify_prompt`) — on the Anthropic backend (`claude-api`), so the re-read hits
+   the prefix cache the extraction call wrote rather than paying full price for the document
+   twice. On OpenAI-compatible backends this can't happen regardless: each call's structured-
+   output schema is serialized as its own prefix ahead of the system message, so extraction and
+   verification never share a prefix there even before the document text is reached (D181, #562).
+   It runs on `extractor_model` at `verifier_effort` (default `low`), since a cache belongs to one
+   model and output tokens are where this pass's cost lives. What it returns is merged **in code**
    (`pipeline/verify.merge_candidates`), never by a second model call: candidates are sanitized
    (entity tags filtered to ids the extraction actually produced, page coerced, basis bounded)
    and near-duplicates of existing facts suppressed by token-set overlap, with a carve-out for a
@@ -466,7 +469,11 @@ extraction call sharing a skill within a run re-pays only the 0.1× cache-read r
 stable+skill prefix instead of full price. Only `_api_complete_async` (the metered-key
 backend) understands blocks; `claude-agent-sdk` and the OpenAI-compatible backends flatten
 them to plain text (`model_client._flatten_prompt`) since neither exposes a cache knob to us
-(D51). `cache_read_input_tokens` is surfaced in the usage telemetry (§12) to verify hits.
+(D51). On the real OpenAI endpoint, the flattened call still sends a `prompt_cache_key`
+(`model_client._prompt_cache_key`, D181/#562) derived from the position of the first
+`cache_control` breakpoint — a routing hint OpenAI's own caching docs say is required for
+reliable matching on newer model families, not a `cache_control`-equivalent guarantee.
+`cache_read_input_tokens` is surfaced in the usage telemetry (§12) to verify hits.
 
 **Candidate harvest (Tier 0, #361/D123).** Benchmark hand-scoring found extraction misses
 "buried" facts — a lone sentence after a table, a table row, a one-line disclosure — even on
@@ -1172,8 +1179,9 @@ completed purge, and the CLI hint says so.
   the same implementation the synchronous path uses — before the batch is assembled, so a
   mixed-type drop batches fine. The skill lives inside each request's own prompt blocks, which
   each Batches API treats independently, so one submission carries several skills; requests are
-  sorted by skill label so adjacent same-skill ones still share the cached prefix (Anthropic
-  only — OpenAI's Batch API has no equivalent prompt-cache knob). The per-sha skill map is
+  sorted by skill label so adjacent same-skill ones still share the cached prefix — on Anthropic
+  via `cache_control`, on OpenAI's Batch API via the same `prompt_cache_key` the live path sends
+  (`batch_extract._openai_request_body`, D181/#562). The per-sha skill map is
   persisted in `batch-pending.json`, since collection runs in a later process. Classification
   itself is not batched — it stays one cheap synchronous call per document, the cost
   deliberately accepted to remove the pre-sort-by-type requirement. Documents needing
@@ -1322,7 +1330,7 @@ Mechanically-checkable postconditions are guarded by named tests in `tests/test_
 - **I1 — Deterministic code writes; the model only reasons.** Anything derivable in Python (document identity, provenance, slugs, role targets, timeline fan-out) is stamped in code, never paid for in model output — and the model is not asked to restate as prose what it already emitted structurally. Carve-out: `document.summary` (#279) is a bounded, deliberate exception — a whole-document digest synthesized from `key_facts`, capped at three paragraphs and grounded (every claim in it must also exist in `key_facts`). That grounding is a **prompt instruction, not a verified postcondition** — unlike quote resolution, no code checks the digest against `key_facts`, so a hallucinated claim would not be caught. *History: D2, D18, D24–D26, D29–D31, D33, D34, D75, D77, D78, D170.*
 - **I2 — Local-first preprocessing.** The *source documents you were given* never leave the machine, and chew costs no API tokens. This is a boundary on **source-doc egress**, not a vow of web abstinence — the investigation layer runs as agentic Claude Code sessions and web research (§14, I5) is allowed, since anything on the open web is already public. *History: D1, D45.*
 - **I3 — Skills and prompt templates are global package resources** — read directly, never copied per-vault — and prompt templates live in their own directory so they never leak into the classifier index. *History: D21, D28.*
-- **I4 — Configured model and effort only; no automatic escalation.** Each stage's model *and* its reasoning effort are explicit knobs with stable defaults; a failed call retries on the *same* model at the *same* effort — the pipeline never silently bumps either to recover. Response pagination (D104) is not an exception: continuing a truncated response prefills the same model's partial output at the same effort to finish one reply, changing neither knob. `finalizer_model` is itself an aggregate over four sub-stages (reconciliation, synthesis, timeline, briefing) each independently overridable (D137) — the "stage" this invariant guards is the finest-grained one actually configured, aggregate or per-stage. The optional verification pass (§5, D172) is the one stage whose *model* is deliberately not a knob: it always runs on `extractor_model`, because it exists to re-read a document out of the prefix cache the extraction call just wrote and a cache belongs to one model — pinning it elsewhere would silently cost the thing the pass is for. Its effort is a knob (`verifier_effort`) like every other stage's. *History: D20, D36, D104, D137, D172.*
+- **I4 — Configured model and effort only; no automatic escalation.** Each stage's model *and* its reasoning effort are explicit knobs with stable defaults; a failed call retries on the *same* model at the *same* effort — the pipeline never silently bumps either to recover. Response pagination (D104) is not an exception: continuing a truncated response prefills the same model's partial output at the same effort to finish one reply, changing neither knob. `finalizer_model` is itself an aggregate over four sub-stages (reconciliation, synthesis, timeline, briefing) each independently overridable (D137) — the "stage" this invariant guards is the finest-grained one actually configured, aggregate or per-stage. The optional verification pass (§5, D172) is the one stage whose *model* is deliberately not a knob: it always runs on `extractor_model`, because on the Anthropic backend it exists to re-read a document out of the prefix cache the extraction call just wrote and a cache belongs to one model — pinning it elsewhere would silently cost the thing the pass is for. (On OpenAI-compatible backends that prefix can never be shared regardless, D181/#562 — the rule itself still stands, since pinning to one model is also just the simpler, uniform default.) Its effort is a knob (`verifier_effort`) like every other stage's. *History: D20, D36, D104, D137, D172, D181.*
 - **I5 — Research output re-enters through `_INCOMING/`, never as a direct vault write.** Web research deposits findings as documents that flow through `chew → ingest`, keeping the deterministic pipeline the single writer (dedup, provenance, registry bookkeeping). Per-doc rationale rides the `.yml` sidecar; batch rationale goes to a `briefings/research-<date>.md` memo — never `context.md`. *History: D45, D46.*
 - **I6 — Anything parsed out of a source document is untrusted input.** Source documents are adversarial by assumption — they arrive from leaks, FOI releases, and hostile parties. Content read *from* a document (its embedded metadata, its XML parts) is data to be defanged before use — never a directive, and never a payload the parser can be exploded by: XML goes through `defusedxml`, never the stdlib `xml.etree` (which expands internal entities, making a crafted `.docx` a billion-laughs bomb); metadata values are allowlisted and length-capped before they can reach a prompt; a reader that fails degrades to an empty dict rather than taking chew down. *History: D78, D110, D154.*
 - **I7 — The vault mutates only at the finalize commit.** Extraction is a pure function of a document: it stages a durable `.watchdog/extracted/<sha>.json` and touches no committed vault state. Every write to that state — entity and document notes, the morgue, the registries, the timeline and search indexes — happens in one serial, sha-sorted commit pass at the top of `finalize` (`_commit_pending` replaying `write_vault.run`), after the pre-commit resolution steps (exact-name fold, entity-merge reconciliation) have run over the staged batch. Nothing before that pass writes a vault path, which is what makes the batch atomic: a reconcile failure leaves it wholly uncommitted and retriable, and `watchdog dig` (extraction with finalize held off) leaves the vault untouched by construction, not by convention. *History: D126, D127, D128, D129.*

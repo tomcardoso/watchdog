@@ -8,6 +8,7 @@ import pytest
 
 from watchdog import fixture_capture as fc
 from watchdog import model_client as mc
+from watchdog.pipeline import prompts
 
 
 SCHEMA = {
@@ -938,6 +939,102 @@ def test_deepseek_stays_on_json_object_mode(monkeypatch):
     asyncio.run(mc._openai_complete_async("prompt", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
                                           base_url="https://api.deepseek.com"))
     assert captured["body"]["response_format"] == {"type": "json_object"}
+
+
+# ── prompt_cache_key (#562): routing hint derived from the first cache_control breakpoint ──────
+
+_BLOCK_PROMPT = [
+    {"type": "text", "text": "instructions"},
+    {"type": "text", "text": "skill", "cache_control": {"type": "ephemeral"}},
+    {"type": "text", "text": "document text"},
+]
+
+
+def test_openai_sends_prompt_cache_key_for_a_block_prompt_with_a_breakpoint(monkeypatch):
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async(_BLOCK_PROMPT, "gpt-4o", SCHEMA, "sk-o", 8000,
+                                          base_url="https://api.openai.com/v1"))
+    assert captured["body"]["prompt_cache_key"] == mc._prompt_cache_key(_BLOCK_PROMPT)
+    assert captured["body"]["prompt_cache_key"].startswith("wd-")
+
+
+@pytest.mark.parametrize("base_url", [
+    "https://api.deepseek.com",
+    "https://generativelanguage.googleapis.com/v1beta/openai",
+    "http://localhost:11434/v1",
+])
+def test_non_openai_backends_never_get_a_prompt_cache_key(monkeypatch, base_url):
+    """Only the real OpenAI endpoint documents this parameter — DeepSeek/Gemini-compat/local
+    servers aren't guaranteed to ignore an unknown body field (#562)."""
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async(_BLOCK_PROMPT, "some-model", SCHEMA, "key", 8000,
+                                          base_url=base_url))
+    assert "prompt_cache_key" not in captured["body"]
+
+
+def test_openai_plain_string_prompt_gets_no_prompt_cache_key(monkeypatch):
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async("plain string prompt", "gpt-4o", SCHEMA, "sk-o", 8000,
+                                          base_url="https://api.openai.com/v1"))
+    assert "prompt_cache_key" not in captured["body"]
+
+
+def test_openai_block_prompt_with_no_cache_control_gets_no_prompt_cache_key(monkeypatch):
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    no_breakpoint = [{"type": "text", "text": "instructions"}, {"type": "text", "text": "document"}]
+    asyncio.run(mc._openai_complete_async(no_breakpoint, "gpt-4o", SCHEMA, "sk-o", 8000,
+                                          base_url="https://api.openai.com/v1"))
+    assert "prompt_cache_key" not in captured["body"]
+
+
+def test_prompt_cache_key_none_for_plain_string():
+    assert mc._prompt_cache_key("just a plain string") is None
+
+
+def test_prompt_cache_key_none_when_no_breakpoint():
+    assert mc._prompt_cache_key([{"type": "text", "text": "a"}, {"type": "text", "text": "b"}]) is None
+
+
+def test_prompt_cache_key_shared_across_documents_with_the_same_skill_and_by_the_derived_verify_prompt():
+    """The property #562 exists to fix: extract prompts for two different documents that share
+    the same run-stable prefix (instructions+brief+skill) must get the SAME cache key, and the
+    verify prompt built from one of them (which appends a block *after* the first breakpoint)
+    must get that same key too — that's the whole point of keying on the FIRST breakpoint rather
+    than the last."""
+    kwargs = dict(skill_text="SKILL TEXT", brief="Investigate the fraud", known_document_types=[])
+    doc1 = prompts.build_extract_prompt(pages_text="document one text", sidecar=None, **kwargs)
+    doc2 = prompts.build_extract_prompt(pages_text="a completely different document, much longer",
+                                        sidecar="unrelated sidecar", **kwargs)
+    verify = prompts.build_verify_prompt(doc1, key_facts=[{"fact": "Filed in 2024"}],
+                                         entities=[{"id": "acme", "name": "Acme"}])
+
+    key1 = mc._prompt_cache_key(doc1)
+    key2 = mc._prompt_cache_key(doc2)
+    key_verify = mc._prompt_cache_key(verify)
+
+    assert key1 is not None
+    assert key1 == key2 == key_verify
+
+
+def test_prompt_cache_key_differs_by_skill():
+    kwargs = dict(pages_text="x", sidecar=None, brief=None, known_document_types=[])
+    a = prompts.build_extract_prompt(skill_text="SKILL A", **kwargs)
+    b = prompts.build_extract_prompt(skill_text="SKILL B", **kwargs)
+    assert mc._prompt_cache_key(a) != mc._prompt_cache_key(b)
+
+
+def test_prompt_cache_key_unaffected_by_cache_document():
+    """`cache_document` (#535) adds a SECOND breakpoint after the per-document text — keying on
+    the first breakpoint means turning it on must not change the derived key."""
+    kwargs = dict(pages_text="x", skill_text="SKILL", sidecar=None, brief=None,
+                  known_document_types=[])
+    without = prompts.build_extract_prompt(cache_document=False, **kwargs)
+    with_doc_cache = prompts.build_extract_prompt(cache_document=True, **kwargs)
+    assert mc._prompt_cache_key(without) == mc._prompt_cache_key(with_doc_cache)
 
 
 # ── strict-mode schema derivation and response normalization (#479/D151) ───────────────────────
