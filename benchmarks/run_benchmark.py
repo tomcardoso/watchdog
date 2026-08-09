@@ -279,6 +279,27 @@ def arm_vault(prefix: str, arm_id: str, root: Path) -> Path:
     return root / f"{prefix}-{arm_id}"
 
 
+def _seed_if_absent(vault: Path, seed, reseed: dict) -> None:
+    """Seed `vault` if it isn't there yet, and record *how*, so the post-confirmation reset can
+    put it back.
+
+    Seeding has to happen in the plan phase, before the go-ahead: `preview_*_arm` reads the
+    seeded queue to size the arm, so there is nothing to preview until the vault exists. But
+    `reset_vaults` deliberately runs *after* the go-ahead — deleting a vault is a real action and
+    must not precede consent. Those two orderings together left a hole: a stale vault was
+    skipped here (it already existed), deleted by the reset, and then never re-created, so its
+    arm ran against a path that was gone and died in `_in_vault`'s chdir with a bare
+    FileNotFoundError. Recording the seed closure is what lets the reset restore each one.
+
+    This is not an edge case: `--estimate-only` runs the same plan phase, so it seeds every arm
+    vault it previews. The documented workflow — estimate first, then re-run for real — therefore
+    hit this every single time on a fresh config.
+    """
+    reseed[vault.resolve()] = seed
+    if not vault.exists():
+        seed()
+
+
 def _stale_reason(vault: Path) -> str | None:
     """Why `vault` isn't safe to start a fresh arm run against, or None if it's fresh (either
     absent, or present but untouched). Checked up front for every arm targeted by this run,
@@ -810,6 +831,10 @@ def main(argv: list[str] | None = None) -> int:
     results: list[ArmResult] = []
     previews: list[tuple[str, dict, dict]] = []
     plan: list[tuple[str, dict]] = []   # (kind, arm-plus-context) queued for real execution
+    # resolved vault path -> how to (re)seed it, populated as the plan is built. Insertion order
+    # is plan order, which matters on restore: a finalizer arm is copied from the base vault, so
+    # the base has to come back first. See _seed_if_absent.
+    reseed: dict[Path, object] = {}
 
     if "extractor" in stages and config.get("extractor_sweep"):
         sweep = config["extractor_sweep"]
@@ -824,8 +849,7 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             arm = {**defaults, **arm}
             vault = arm_vault(sweep["vault_prefix"], arm["id"], root)
-            if not vault.exists():
-                seed_arm_vault(master, vault)
+            _seed_if_absent(vault, lambda m=master, v=vault: seed_arm_vault(m, v), reseed)
             est = preview_extractor_arm(vault, arm["extractor_model"], arm.get("extractor_effort"),
                                         args.out)
             meta = {"backend": arm_backend(arm["extractor_model"], default="sonnet"),
@@ -847,8 +871,7 @@ def main(argv: list[str] | None = None) -> int:
             if not _selected(arm):
                 continue
             vault = arm_vault(sweep["vault_prefix"], arm["id"], root)
-            if not vault.exists():
-                shutil.copytree(base_vault, vault)
+            _seed_if_absent(vault, lambda b=base_vault, v=vault: shutil.copytree(b, v), reseed)
             est = preview_finalizer_arm(vault, arm["finalizer_model"], arm.get("finalizer_effort"),
                                         args.out)
             meta = {"backend": arm_backend(arm["finalizer_model"], default="haiku"),
@@ -862,8 +885,7 @@ def main(argv: list[str] | None = None) -> int:
                                      with_sidecars=False, root=root)
         if _selected(smoke["arm"]):
             vault = arm_vault(smoke["vault_prefix"], smoke["arm"]["id"], root)
-            if not vault.exists():
-                seed_arm_vault(master, vault)
+            _seed_if_absent(vault, lambda m=master, v=vault: seed_arm_vault(m, v), reseed)
             est = preview_extractor_arm(vault, smoke["arm"]["extractor_model"],
                                         smoke["arm"].get("extractor_effort"), args.out)
             meta = {"backend": arm_backend(smoke["arm"]["extractor_model"], default="sonnet"),
@@ -884,8 +906,7 @@ def main(argv: list[str] | None = None) -> int:
                 if not _selected(arm):
                     continue
                 vault = arm_vault(sweep["vault_prefix"], arm["id"], root)
-                if not vault.exists():
-                    seed_arm_vault(cc_master, vault)
+                _seed_if_absent(vault, lambda m=cc_master, v=vault: seed_arm_vault(m, v), reseed)
                 est = preview_extractor_arm(vault, sweep["fixed"]["extractor_model"],
                                             sweep["fixed"].get("extractor_effort"), args.out)
                 previews.append((f"classifier-sweep:{arm['id']}", est, {}))
@@ -912,8 +933,7 @@ def main(argv: list[str] | None = None) -> int:
             if not _selected(arm):
                 continue
             vault = arm_vault(sweep["vault_prefix"], arm["id"], root)
-            if not vault.exists():
-                seed_arm_vault(sc_master, vault)
+            _seed_if_absent(vault, lambda m=sc_master, v=vault: seed_arm_vault(m, v), reseed)
             est = preview_extractor_arm(vault, arm["extractor_model"], arm.get("extractor_effort"),
                                         args.out)
             meta = {"backend": arm_backend(arm["extractor_model"], default="sonnet"),
@@ -929,10 +949,16 @@ def main(argv: list[str] | None = None) -> int:
     if not proceed:
         return 0
 
-    # After the go-ahead, before anything is seeded or spent.
+    # After the go-ahead, before anything is spent. A reset vault must be re-seeded before its
+    # arm runs — see _seed_if_absent. Restored in plan order rather than deletion order, so a
+    # base vault is back before anything copied from it.
     if stale:
-        for v in reset_vaults([v for v, _ in stale], root):
+        removed = set(reset_vaults([v for v, _ in stale], root))
+        for v in removed:
             print(f"  reset {v}")
+        for v, restore in reseed.items():
+            if v in removed:
+                restore()
 
     from watchdog.cmd.ingest import _caffeinate
     from watchdog import fixture_capture
