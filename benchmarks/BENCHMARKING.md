@@ -219,8 +219,13 @@ invalidates every comparison made against the earlier version. Review them (see 
 then:
 
 ```
-cd benchmarks/keys && shasum -a 256 *.yaml > keys-v1.sha256
+cd benchmarks/keys && shasum -a 256 *.yaml > keys-v<next>.sha256
 ```
+
+Cut a **new** version rather than re-hashing the current one (`keys/README.md` explains why), and
+update the `keys:` line in `benchmark.yaml` *and* any other config that pins a manifest —
+`selfconsistency.yaml` today — in the same change. `verify_freeze` exits on a manifest it can't
+find, so a rename that misses a config takes every benchmark run down until it's caught.
 
 ## Step 1 — verify the corpus
 
