@@ -17,6 +17,16 @@
 # none) for a model with no effort control at all (Claude Haiku, DeepSeek). `model_client.py`'s
 # `_resolve_effort` rejects a request for a level outside this list with a clear error rather
 # than silently dropping it or sending a request the API would reject.
+# `tokenizer_ratio` (#574) is the actual-tokens-per-estimated-token multiplier for a model whose
+# tokenizer isn't the one `pipeline/section.py`'s chars/4 `est_tokens` heuristic was calibrated
+# against. Per Anthropic's pricing docs (platform.claude.com/docs/en/about-claude/pricing, fetched
+# 2026-08-08): "Claude 4.7 and later models ... use a newer tokenizer ... [that] produces
+# approximately 30% more tokens for the same text. ... Claude Sonnet 4.6 and earlier models use
+# the previous tokenizer." Omit it (defaults to 1.0, no correction) for every model on the old
+# tokenizer and for every non-Anthropic provider, which this Anthropic-specific finding says
+# nothing about. `model_client.tokenizer_ratio` resolves it; `section.model_defaults` divides its
+# window-derived threshold/budget by it so a document's real token footprint on a new-tokenizer
+# model still respects the model's real context window.
 models:
   # Order matches the old _MODEL_IDS table (haiku, sonnet, opus) — cmd/setup.py's interactive
   # picker lists Claude tiers in this insertion order, so preserving it keeps picker behavior
@@ -50,6 +60,7 @@ models:
     cache_read: 0.50e-6
     context_window: 200_000
     effort_levels: [low, medium, high, xhigh, max]
+    tokenizer_ratio: 1.3
   # Claude Sonnet 5 (#361/#509 benchmark groundwork, D165) — additive alongside 4.6; bare `sonnet`
   # keeps resolving to 4.6 above, `sonnet-5` is the only way to select this entry. Pricing below is
   # the INTRODUCTORY rate, in effect through 2026-08-31 (source: platform.claude.com/docs/en/
@@ -59,11 +70,8 @@ models:
   # Context window is pinned to 200K like every other Claude tier in this catalog (D89) even
   # though Anthropic's own docs list 1M as both the default and the max for this model — 200K is
   # this catalog's deliberately conservative *sectioning* window, not the vendor ceiling.
-  # Caveat: Sonnet 5 uses a new tokenizer producing ~30% MORE tokens than 4.6 for the same input
-  # text (source: platform.claude.com/docs/en/about-claude/models/whats-new-sonnet-5). The
-  # chars/4 `est_tokens` heuristic in pipeline/ingest_setup.py's scan_queue is flat across models,
-  # so its input-token cost estimate will run ~30% low for this model versus actual usage. Not
-  # corrected here — flagged as a caveat, not fixed (would need a per-model tokenizer-ratio knob).
+  # Sonnet 5 uses a new tokenizer producing ~30% MORE tokens than 4.6 for the same input text —
+  # see the `tokenizer_ratio` field comment above (#574) for the source and how it's applied.
   - id: claude-sonnet-5
     name: Claude Sonnet 5
     provider: anthropic
@@ -74,6 +82,7 @@ models:
     cache_read: 0.20e-6
     context_window: 200_000
     effort_levels: [low, medium, high, xhigh, max]
+    tokenizer_ratio: 1.3
 
   # DeepSeek V4 (1M-token window; cache-hit input is a ~50x discount on the miss rate)
   - id: deepseek-v4-flash

@@ -172,6 +172,11 @@ vault's own last 3 extraction runs and scale future `--estimate` output by it �
 only when there's no such history yet. Deliberately scoped to the *displayed* estimate, not to
 `section.py`'s sectioning threshold: recalibrating what actually gets sent to the model on a
 still-thin, self-reported history would be a pipeline-behaviour change dressed up as a display fix.
+Not model-tokenizer-scoped (D180, #574): the derived ratio already absorbs whichever tokenizer the
+extractor behind that history actually used, so it only stays accurate while the extractor doesn't
+cross the Claude tokenizer boundary (old tokenizer through Sonnet 4.6, new tokenizer from Opus
+4.8/Sonnet 5 on) between that history and the run being estimated — documented as a known gap
+rather than fixed, since correcting it needs grouping calibration runs by extractor model.
 
 **`watchdog bark --estimate` (D135).** Prices the batch already staged in `.watchdog/tmp/`
 (`result_<sha>.json` + `notes_<sha>.md`, chars/4) rather than a queue — `ingest_setup.
@@ -191,7 +196,11 @@ projected from this vault's own recent output:input *token* ratio (backend-agnos
 scoped the same way their own $/token ratios are), applied uniformly across every model. Every
 catalog model is shown, Claude tiers included, regardless of the vault's own auth mode — this is
 a list-price comparison across providers, not a projection of what this vault would actually be
-billed.
+billed. Each row additionally scales `est_tokens` by that model's own `tokenizer_ratio` (D180,
+#574) — otherwise a single tokens-in figure calibrated on the old tokenizer would price a
+new-tokenizer Claude model (Opus 4.8, Sonnet 5) as if it read the same text into fewer real
+tokens than it actually does. Accurate as long as the vault's own calibration history stayed on
+the old tokenizer, same caveat D135's calibration carries below.
 
 **Lock acquisition is atomic** (`pipeline/locks.py`, D66). All three run locks — the ingest
 lock, the shared finalize lock, and chew's `.watchdog/.chew-lock` — are taken with
@@ -415,6 +424,12 @@ safe output budget is converted back to an input-token cap
 expected *output* stays under the ceiling. Backends that paginate their output (claude-api,
 deepseek) or have no ceiling (claude-agent-sdk) return `None` and keep the pure input-window
 default.
+Finally, the threshold and budget are divided by `model_client.tokenizer_ratio` (D180, #574):
+Claude 4.7+ models (Opus 4.8, Sonnet 5) use a newer tokenizer that produces ~30% more real tokens
+for the same text than the chars/4 `est_tokens` heuristic assumes, so their est-token
+threshold/budget shrink by that ratio to keep the real tokens a call sends under the model's
+actual context window. `tokenizer_ratio` is a per-model `model_catalog.yaml` field, defaulting to
+1.0 (no change) for every model through Sonnet 4.6 and every non-Anthropic provider.
 The carry-forward is a deduplicated entity-id → name/type map accumulated across every
 section seen so far (rebuilt fresh each section, one line per entity, not a running
 concatenation) plus only the immediately preceding section's `observations` text; and,
