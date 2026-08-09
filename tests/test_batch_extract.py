@@ -427,6 +427,52 @@ def test_openai_request_body_chat_model_uses_max_tokens():
     assert "reasoning_effort" not in body
 
 
+def test_openai_request_body_includes_prompt_cache_key_when_prompt_has_a_breakpoint():
+    """#562: the same missing parameter as the live path — this is what makes the "sorted by
+    skill label" batch ordering actually pay off on OpenAI."""
+    response_format = model_client._openai_response_format(
+        model_client._OPENAI_BASE["openai"], schemas.EXTRACTION)
+    prompt = [{"type": "text", "text": "instructions"},
+              {"type": "text", "text": "skill", "cache_control": {"type": "ephemeral"}},
+              {"type": "text", "text": "document"}]
+    body = be._openai_request_body("gpt-5.6-luna", prompt, 9000, None, response_format)
+    assert body["prompt_cache_key"] == model_client._prompt_cache_key(prompt)
+
+
+def test_openai_request_body_omits_prompt_cache_key_with_no_breakpoint():
+    response_format = model_client._openai_response_format(
+        model_client._OPENAI_BASE["openai"], schemas.EXTRACTION)
+    body = be._openai_request_body("gpt-4o-mini", "plain string prompt", 9000, None,
+                                   response_format)
+    assert "prompt_cache_key" not in body
+
+
+def test_openai_submit_two_docs_sharing_a_skill_get_the_same_prompt_cache_key(tmp_path, monkeypatch):
+    import httpx
+
+    from watchdog.pipeline import prompts
+
+    vault = make_vault(tmp_path)
+    fake = _FakeOpenAIHttp(batch_response={"id": "batch_oai_cache"})
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: fake)
+
+    kwargs = dict(skill_text="SKILL", brief=None, known_document_types=[])
+    prompt1 = prompts.build_extract_prompt(pages_text="document one", sidecar=None, **kwargs)
+    prompt2 = prompts.build_extract_prompt(pages_text="a different, longer document",
+                                           sidecar="unrelated notes", **kwargs)
+    docs = [{"sha": "sha1", "prompt": prompt1}, {"sha": "sha2", "prompt": prompt2}]
+    asyncio.run(be.submit(vault, docs, model="gpt-5.6-luna", effort=None,
+                          skills={"sha1": "annual-report", "sha2": "annual-report"},
+                          api_key="sk-oai", backend="openai-batch"))
+
+    upload = fake.calls[0]
+    lines = [json.loads(line) for line in upload["files"]["file"][1].decode("utf-8").splitlines()]
+    key1 = lines[0]["body"]["prompt_cache_key"]
+    key2 = lines[1]["body"]["prompt_cache_key"]
+    assert key1 is not None
+    assert key1 == key2
+
+
 def test_openai_status_normalizes_terminal_state_and_counts(monkeypatch):
     import httpx
     fake = _FakeOpenAIHttp(batch_response={

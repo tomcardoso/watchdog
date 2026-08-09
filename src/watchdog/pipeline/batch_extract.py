@@ -266,6 +266,12 @@ def _openai_request_body(model_id: str, prompt, max_tokens: int, effort: str | N
         {"role": "user", "content": model_client._flatten_prompt(prompt)},
     ]
     body = {"model": model_id, "messages": messages, "response_format": response_format}
+    # Same missing parameter as the live path (#562) — this is what makes the "requests sorted
+    # by skill label so adjacent same-skill ones share the cached prefix" ordering actually pay
+    # off on OpenAI's Batch API.
+    cache_key = model_client._prompt_cache_key(prompt)
+    if cache_key is not None:
+        body["prompt_cache_key"] = cache_key
     if model_client._openai_is_reasoning(model_id):
         body["max_completion_tokens"] = max_tokens
     else:

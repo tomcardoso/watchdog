@@ -28,6 +28,7 @@ schema and get validated structured output back. Deterministic work stays in Pyt
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import re
 import time
@@ -449,6 +450,40 @@ def _flatten_prompt(prompt: str | list[dict]) -> str:
     return "\n".join(b.get("text", "") for b in prompt)
 
 
+def _prompt_cache_key(prompt: str | list[dict]) -> str | None:
+    """A `prompt_cache_key` for OpenAI's Chat Completions API (#562), derived from the FIRST
+    `cache_control` breakpoint in a content-block prompt — None for a plain string or a block
+    prompt with no breakpoint at all.
+
+    OpenAI's prompt-caching guide is explicit that this parameter matters: "On GPT-5.6 models
+    and later model families, you must set `prompt_cache_key` to use the more reliable matching
+    for both implicit and explicit caching," and it should be held "consistently across requests
+    that share long, common prefixes." Without it, routing falls back to a hash of roughly the
+    first 256 tokens, which is why cache_read_tokens measured 0 across every OpenAI call in a
+    fresh benchmark run despite extract/extract-section sharing a ~3,300-token prefix (#562).
+
+    First breakpoint, not last: `build_extract_prompt`/`build_section_prompt` place two
+    breakpoints — the first after the skill block (blocks 1+2: run-stable instructions + brief +
+    domain skill, genuinely shared across every call in a run that uses that skill), the second
+    (added by `prompts._document_block` only when the verification pass is on) after the
+    per-document text, which is unique to one call. Keying on the second would give nearly every
+    request its own key and scatter exactly the cross-document, same-skill routing that can
+    actually produce a hit; keying on the first groups calls by what they truly share.
+
+    This is only a routing hint, not a cache guarantee: OpenAI still matches on the actual prefix
+    hash first, so two prompts with the same key but different `response_format` schemas (e.g.
+    extract vs. verify, each with its own JSON schema serialized ahead of the system message)
+    still cannot share a cache entry — see D181."""
+    if not isinstance(prompt, list):
+        return None
+    for i, block in enumerate(prompt):
+        if "cache_control" in block:
+            prefix = "\n".join(b.get("text", "") for b in prompt[:i + 1])
+            digest = hashlib.sha256(prefix.encode("utf-8")).hexdigest()
+            return f"wd-{digest[:24]}"
+    return None
+
+
 @lru_cache(maxsize=1)
 def _agent_supports_tools() -> bool:
     """Whether the installed `claude-agent-sdk` accepts `ClaudeAgentOptions(tools=…)`. The option
@@ -830,7 +865,9 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     only guard, once the provider itself enforces the schema. `effort` arrives already resolved
     to the provider's native value (or None) and is sent as `reasoning_effort` (#125). No
     provider-agnostic cache_control equivalent is wired here (A1 is Claude-only), so a
-    content-block prompt is flattened to plain text.
+    content-block prompt is flattened to plain text — but the first breakpoint's position (before
+    flattening) is still reused to derive a `prompt_cache_key` for the real OpenAI endpoint, per
+    `_prompt_cache_key` (#562).
 
     DeepSeek carries an optional `-thinking` marker on the model id; it is stripped here and
     translated into DeepSeek's explicit thinking toggle (default off — see #320).
@@ -863,6 +900,13 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
         {"role": "user", "content": user_content},
     ]
     body = {"model": model_id, "messages": messages}
+    # Gated to the real OpenAI endpoint (#562): only OpenAI documents `prompt_cache_key`, and
+    # DeepSeek/Gemini-compat/local/OpenRouter servers aren't guaranteed to ignore an unknown
+    # body field.
+    if is_openai:
+        cache_key = _prompt_cache_key(prompt)
+        if cache_key is not None:
+            body["prompt_cache_key"] = cache_key
     path = "/chat/completions"
     if prefix is not None and is_deepseek:   # continuation via DeepSeek's prefix-completion beta
         messages.append({"role": "assistant", "content": prefix.rstrip(), "prefix": True})
