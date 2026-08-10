@@ -64,7 +64,7 @@ You don't have to remember to check: a bare `watchdog dig` with nothing new to r
 
 ## Hitting rate limits
 
-A rate limit is a cap on how much work the AI provider lets you do in a window of time. Large batches can hit it. Two levers help:
+A rate limit is a cap on how much work the AI provider lets you do in a window of time — specifically, tokens per minute, not documents per minute. A handful of large documents extracted at once can burn through that budget even when `extract_concurrency` looks conservative, since one document slot's token cost can differ from another's by an order of magnitude. Two levers help:
 
 Lower how many documents are extracted at once (the default is 5):
 
@@ -77,6 +77,8 @@ Or set it permanently:
 ```bash
 watchdog configure extract_concurrency 2
 ```
+
+When a rate limit stops a run, the notice reports the tokens-per-minute this run was actually sustaining, plus (when the provider sends it) how many tokens it had left before the stop — real numbers to size a lower `extract_concurrency` against, instead of guessing.
 
 For an unattended run — overnight, say — add `--wait`. Instead of stopping when it hits a limit, dig sleeps until the limit resets and resumes on its own, repeating until the whole queue is done:
 

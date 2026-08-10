@@ -88,7 +88,7 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
                   effort: str | None = None, auth_mode: str | None = None,
                   filename: str | None = None, detail: str | None = None,
                   pruned: list[str] | None = None, failed: bool = False,
-                  batch_meta: dict | None = None) -> None:
+                  batch_meta: dict | None = None, rate_limit: dict | None = None) -> None:
     """Append one call's usage to the run-scoped `_usage` accumulator, if one is active.
     Tolerates both Anthropic-style (`input_tokens`/`output_tokens`) and OpenAI-compatible
     (`prompt_tokens`/`completion_tokens`) usage dicts (D37) — the latter's cache-token fields
@@ -136,7 +136,12 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
     (`{batch_id, submitted_at, ended_at, collected_at}`, from `_resume_batch`) is copied onto the
     record when given, so a batch-collected item's usage row carries its own full lifecycle
     instead of that living only in the transient `batch-pending.json` state that's deleted once
-    collection succeeds."""
+    collection succeeds.
+
+    `rate_limit` (#563), when given, is the provider's own rate-limit response headers off this
+    call (`model_client._rate_limit_headers` — `limit_tokens`/`remaining_tokens`/`reset_tokens`),
+    copied onto the record so a run's usage file carries the provider's ground truth for what it
+    counted against the caller's per-minute budget alongside the tokens we ourselves logged."""
     if _usage is None:
         return
     u = usage or {}
@@ -175,6 +180,8 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         record["batch_submitted_at"] = batch_meta.get("submitted_at")
         record["batch_ended_at"] = batch_meta.get("ended_at")
         record["batch_collected_at"] = batch_meta.get("collected_at")
+    if rate_limit:
+        record["rate_limit"] = rate_limit
     _usage.append(record)
     if _usage_partial_path is not None:
         # Durable per-call persistence (#407): appended synchronously, so a crash or a hard
@@ -210,11 +217,24 @@ async def _call_model(*, task, prompt, schema, model=None, backend=None,
         raise
     _record_usage(task, model=r.model, backend=r.backend, usage=r.usage, cost_usd=r.cost_usd,
                  attempts=r.attempts, latency_s=r.latency_s, effort=effort, auth_mode=r.auth_mode,
-                 filename=filename, detail=detail, pruned=r.pruned)
+                 filename=filename, detail=detail, pruned=r.pruned, rate_limit=r.rate_limit)
     if r.pruned and vault is not None:
         _log(vault, f"WARN {filename or task}: pruned unexpected JSON key(s) from model "
                     f"output: {', '.join(r.pruned)}")
     return r
+
+
+def _recent_token_rate(records: list[dict], window_s: float = 60.0) -> int:
+    """Total input+output tokens across calls whose `end_ts` (#563) falls within the last
+    `window_s` seconds of the most recent record — a rolling-window tokens/min figure for
+    "what was actually happening right before this run hit a rate limit", reconstructed the same
+    way issue #563's own diagnosis was (from each call's completion time), not estimated from
+    `extract_concurrency`. 0 for an empty list."""
+    if not records:
+        return 0
+    latest = max(r["end_ts"] for r in records)
+    cutoff = latest - window_s
+    return sum(r["input_tokens"] + r["output_tokens"] for r in records if r["end_ts"] >= cutoff)
 
 
 def _usage_totals(records: list[dict]) -> dict:
@@ -2592,6 +2612,23 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                     if not cancelled.is_set():
                         print()
                         _say(f"{_YELLOW}Rate limit reached{_RESET}{_DIM} — {e}{_RESET}")
+                        # #563: ground the "lower extract_concurrency" advice below in the actual
+                        # numbers instead of leaving it a guess — the tokens/min this run was
+                        # sustaining right before the stop, and (when the provider sent them) the
+                        # last-seen remaining/limit off the 429 itself.
+                        detail_parts = []
+                        rate = _recent_token_rate(_usage) if _usage else 0
+                        if rate:
+                            detail_parts.append(f"~{rate:,} tokens/min observed")
+                        rl = e.rate_limit or {}
+                        remaining, limit = rl.get("remaining_tokens"), rl.get("limit_tokens")
+                        if remaining is not None and limit is not None:
+                            detail_parts.append(f"provider reported {remaining:,}/{limit:,} tokens remaining")
+                        elif limit is not None:
+                            detail_parts.append(f"provider token limit {limit:,}/min")
+                        if detail_parts:
+                            _say(f"{_DIM}{'; '.join(detail_parts)} — consider a lower "
+                                 f"{_RESET}{_CYAN}extract_concurrency{_RESET}{_DIM}.{_RESET}")
                         if wait:
                             _say(f"{_DIM}Stopping; finished documents are saved. "
                                  f"Waiting to resume automatically once it resets.{_RESET}")

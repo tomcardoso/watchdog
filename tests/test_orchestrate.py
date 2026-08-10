@@ -2606,6 +2606,32 @@ def test_record_usage_omits_pruned_key_when_absent():
         orchestrate._usage = None
 
 
+def test_record_usage_includes_rate_limit_when_present():
+    """#563: the provider's own rate-limit headers ride onto the record so a run's usage file
+    carries ground truth for what the provider counted, alongside the tokens we logged."""
+    orchestrate._usage = []
+    try:
+        orchestrate._record_usage(
+            "extract", model="gpt-5.4-mini", backend="openai",
+            usage={"prompt_tokens": 100, "completion_tokens": 20}, cost_usd=0.01,
+            rate_limit={"limit_tokens": 150000, "remaining_tokens": 149800, "reset_tokens": "6m0s"})
+        assert orchestrate._usage[0]["rate_limit"] == {
+            "limit_tokens": 150000, "remaining_tokens": 149800, "reset_tokens": "6m0s"}
+    finally:
+        orchestrate._usage = None
+
+
+def test_record_usage_omits_rate_limit_key_when_absent():
+    orchestrate._usage = []
+    try:
+        orchestrate._record_usage(
+            "extract", model="claude-sonnet-4-6", backend="claude-api",
+            usage={"input_tokens": 100, "output_tokens": 20}, cost_usd=0.01)
+        assert "rate_limit" not in orchestrate._usage[0]
+    finally:
+        orchestrate._usage = None
+
+
 def test_record_usage_includes_reasoning_tokens_from_openai_usage_shape():
     """#354: `completion_tokens_details.reasoning_tokens` had been arriving on every OpenAI
     reasoning-model call since D108 and thrown away — it's the field that diagnosed the
@@ -2664,6 +2690,21 @@ def test_usage_totals_sums_reasoning_tokens_and_tolerates_missing_key():
     ]
     totals = orchestrate._usage_totals(records)
     assert totals["reasoning_tokens"] == 48000
+
+
+def test_recent_token_rate_sums_only_calls_within_the_trailing_window():
+    """#563: a rolling-window tokens/min figure — calls outside the window (here, one call 90s
+    before the most recent) must not inflate the reported rate."""
+    records = [
+        {"input_tokens": 50_000, "output_tokens": 10_000, "end_ts": 1000.0},   # 90s before latest
+        {"input_tokens": 20_000, "output_tokens": 5_000, "end_ts": 1080.0},    # 10s before latest
+        {"input_tokens": 30_000, "output_tokens": 5_000, "end_ts": 1090.0},    # latest
+    ]
+    assert orchestrate._recent_token_rate(records, window_s=60.0) == (20_000 + 5_000 + 30_000 + 5_000)
+
+
+def test_recent_token_rate_empty_list_is_zero():
+    assert orchestrate._recent_token_rate([]) == 0
 
 
 def test_log_md_ingest_entry_includes_usage_line(tmp_path, monkeypatch):
@@ -2892,6 +2933,51 @@ def test_rate_limit_resume_message_uses_resume_hint(tmp_path, monkeypatch, capsy
     assert "Re-run" in out
     assert "once it resets to continue" in out
     assert "watchdog dig" not in out
+
+
+def test_rate_limit_stop_reports_observed_rate_and_provider_headers(tmp_path, monkeypatch, capsys):
+    """#563: the stop message grounds the "lower extract_concurrency" advice in real numbers —
+    this run's own observed tokens/min, plus the provider's last-seen remaining/limit off the
+    429 itself — rather than leaving the advice a guess."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="aaa111", filename="one.pdf")
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "classify":
+            return model_client.ModelResult(parsed={"skill": "general-records.md"}, text="",
+                                            model="m", backend="claude-agent-sdk",
+                                            auth_mode="subscription",
+                                            usage={"input_tokens": 500, "output_tokens": 50})
+        raise model_client.RateLimitError(
+            "session limit",
+            rate_limit={"limit_tokens": 150_000, "remaining_tokens": 200, "reset_tokens": "6m0s"})
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate.run(vault, concurrency=1))
+    out = capsys.readouterr().out
+    assert "550 tokens/min observed" in out
+    assert "200/150,000 tokens remaining" in out
+    assert "extract_concurrency" in out
+
+
+def test_rate_limit_stop_omits_provider_line_when_backend_sends_no_headers(tmp_path, monkeypatch, capsys):
+    """claude-agent-sdk's RateLimitError carries no `rate_limit` (its session-limit detection
+    reads a CLI transcript, not HTTP headers) — the stop message must not crash or print a
+    bogus "None/None tokens remaining" line for it."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="aaa111", filename="one.pdf")
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "classify":
+            return model_client.ModelResult(parsed={"skill": "general-records.md"}, text="",
+                                            model="m", backend="claude-agent-sdk",
+                                            auth_mode="subscription")
+        raise model_client.RateLimitError("session limit")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate.run(vault, concurrency=1))
+    out = capsys.readouterr().out
+    assert "tokens remaining" not in out
 
 
 def test_failed_doc_is_named_and_quarantine_surfaced(tmp_path, monkeypatch):

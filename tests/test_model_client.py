@@ -658,6 +658,7 @@ def _fake_usage_response(monkeypatch, usage):
 
     class FakeResp:
         status_code = 200
+        headers = {}
         def raise_for_status(self): pass
         def json(self):
             return {"choices": [{"message": {"content": '{"name": "Acme"}'},
@@ -698,12 +699,76 @@ def test_non_gemini_backends_keep_their_reported_usage(monkeypatch):
     assert out["usage"] == usage
 
 
+# ── rate-limit header capture (#563) ────────────────────────────────────────────
+
+def test_rate_limit_headers_normalizes_limit_and_remaining_to_int():
+    headers = {"x-ratelimit-limit-tokens": "150000", "x-ratelimit-remaining-tokens": "149800",
+              "x-ratelimit-reset-tokens": "6m0s"}
+    assert mc._rate_limit_headers(headers, mc._OPENAI_RATE_LIMIT_HEADERS) == {
+        "limit_tokens": 150000, "remaining_tokens": 149800, "reset_tokens": "6m0s"}
+
+
+def test_rate_limit_headers_none_when_none_present():
+    assert mc._rate_limit_headers({}, mc._OPENAI_RATE_LIMIT_HEADERS) is None
+
+
+def _fake_openai_resp(monkeypatch, *, status_code=200, headers=None):
+    """Point httpx at a canned response carrying `headers`, for rate-limit capture tests."""
+    import httpx
+
+    class FakeResp:
+        pass
+    FakeResp.status_code = status_code
+    FakeResp.headers = headers or {}
+    FakeResp.raise_for_status = lambda self: None
+    FakeResp.json = lambda self: {"choices": [{"message": {"content": '{"name": "Acme"}'}}],
+                                  "usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+
+    class FakeClient:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, headers=None, json=None): return FakeResp()
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+
+
+def test_openai_backend_captures_rate_limit_headers_on_success(monkeypatch):
+    _fake_openai_resp(monkeypatch, headers={"x-ratelimit-limit-tokens": "150000",
+                                            "x-ratelimit-remaining-tokens": "149800",
+                                            "x-ratelimit-reset-tokens": "6m0s"})
+    out = asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+                                                base_url="https://api.deepseek.com"))
+    assert out["rate_limit"] == {"limit_tokens": 150000, "remaining_tokens": 149800,
+                                 "reset_tokens": "6m0s"}
+
+
+def test_openai_backend_rate_limit_none_when_headers_absent(monkeypatch):
+    _fake_openai_resp(monkeypatch)
+    out = asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+                                                base_url="https://api.deepseek.com"))
+    assert out["rate_limit"] is None
+
+
+def test_openai_429_carries_rate_limit_headers_on_the_exception(monkeypatch):
+    _fake_openai_resp(monkeypatch, status_code=429,
+                      headers={"x-ratelimit-limit-tokens": "150000",
+                              "x-ratelimit-remaining-tokens": "0",
+                              "x-ratelimit-reset-tokens": "12s"})
+    with pytest.raises(mc.RateLimitError) as exc_info:
+        asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+                                              base_url="https://api.deepseek.com"))
+    assert exc_info.value.rate_limit == {"limit_tokens": 150000, "remaining_tokens": 0,
+                                         "reset_tokens": "12s"}
+
+
 def test_openai_backend_request_shape(monkeypatch):
     import httpx
     captured = {}
 
     class FakeResp:
         status_code = 200
+        headers = {}
         def raise_for_status(self): pass
         def json(self):
             return {"choices": [{"message": {"content": '{"name": "Acme"}'}}],
@@ -741,6 +806,7 @@ def test_openai_backend_verifies_via_os_trust_store(monkeypatch):
 
     class FakeResp:
         status_code = 200
+        headers = {}
         def raise_for_status(self): pass
         def json(self):
             return {"choices": [{"message": {"content": '{"name": "Acme"}'}}],
@@ -770,6 +836,7 @@ def _fake_httpx(monkeypatch, captured):
 
     class FakeResp:
         status_code = 200
+        headers = {}
         def raise_for_status(self): pass
         def json(self):
             return {"choices": [{"message": {"content": '{"name": "Acme"}'}}],
@@ -1140,6 +1207,7 @@ def test_openai_backend_denormalizes_nulls_before_returning_text(monkeypatch):
 
     class FakeResp:
         status_code = 200
+        headers = {}
         def raise_for_status(self): pass
         def json(self):
             return {"choices": [{"message": {"content": '{"name": "Acme", "extra": null}'}}],
@@ -1307,6 +1375,82 @@ def test_rate_limit_error_is_not_a_model_error():
     # Must NOT subclass ModelError, or extraction's retry + sectioning fallback would
     # swallow it instead of letting the orchestrator stop the batch.
     assert not issubclass(mc.RateLimitError, mc.ModelError)
+
+
+def _fake_anthropic_client(monkeypatch, *, raw=None, error=None):
+    """Patch `anthropic.AsyncAnthropic` so `.messages.with_raw_response.create` either returns
+    `raw` or raises `error` — for the Anthropic rate-limit header capture tests (#563)."""
+    import anthropic
+
+    class FakeWithRawResponse:
+        async def create(self, **kwargs):
+            if error is not None:
+                raise error
+            return raw
+
+    class FakeMessages:
+        with_raw_response = FakeWithRawResponse()
+
+    class FakeClient:
+        def __init__(self, api_key=None):
+            self.messages = FakeMessages()
+
+    monkeypatch.setattr(anthropic, "AsyncAnthropic", FakeClient)
+
+
+def test_anthropic_backend_captures_rate_limit_headers_on_success(monkeypatch):
+    class FakeUsage:
+        def model_dump(self):
+            return {"input_tokens": 10, "output_tokens": 5}
+
+    class FakeBlock:
+        type = "text"
+        text = '{"name": "Acme"}'
+
+    class FakeMessage:
+        content = [FakeBlock()]
+        usage = FakeUsage()
+        stop_reason = "end_turn"
+
+    class FakeRaw:
+        headers = {"anthropic-ratelimit-tokens-limit": "40000",
+                  "anthropic-ratelimit-tokens-remaining": "39000",
+                  "anthropic-ratelimit-tokens-reset": "2026-08-09T12:00:00Z"}
+        def parse(self):
+            return FakeMessage()
+
+    _fake_anthropic_client(monkeypatch, raw=FakeRaw())
+    out = asyncio.run(mc._api_complete_async("p", "claude-sonnet-4-6", SCHEMA, "sk-x", 8000))
+    assert out["text"] == '{"name": "Acme"}'
+    assert out["rate_limit"] == {"limit_tokens": 40000, "remaining_tokens": 39000,
+                                 "reset_tokens": "2026-08-09T12:00:00Z"}
+
+
+def test_anthropic_backend_429_carries_rate_limit_headers_on_the_exception(monkeypatch):
+    import anthropic
+    import httpx
+
+    resp = httpx.Response(
+        429,
+        headers={"anthropic-ratelimit-tokens-limit": "40000",
+                "anthropic-ratelimit-tokens-remaining": "0",
+                "anthropic-ratelimit-tokens-reset": "2026-08-09T12:01:00Z"},
+        request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"))
+    err = anthropic.RateLimitError("rate limited", response=resp, body=None)
+    _fake_anthropic_client(monkeypatch, error=err)
+    with pytest.raises(mc.RateLimitError) as exc_info:
+        asyncio.run(mc._api_complete_async("p", "claude-sonnet-4-6", SCHEMA, "sk-x", 8000))
+    assert exc_info.value.rate_limit == {"limit_tokens": 40000, "remaining_tokens": 0,
+                                         "reset_tokens": "2026-08-09T12:01:00Z"}
+
+
+def test_acomplete_json_carries_rate_limit_onto_model_result(api_key_auth, monkeypatch):
+    async def be(prompt, model_id, schema, api_key, max_tokens, effort=None, prefix=None):
+        return {"text": '{"name": "Acme"}', "usage": {"input_tokens": 10}, "cost_usd": 0.01,
+                "rate_limit": {"limit_tokens": 100, "remaining_tokens": 50, "reset_tokens": "1m0s"}}
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", be)
+    r = mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="claude-api")
+    assert r.rate_limit == {"limit_tokens": 100, "remaining_tokens": 50, "reset_tokens": "1m0s"}
 
 
 # ── response pagination / truncation guard (#343) ──────────────────────────────
@@ -1732,6 +1876,8 @@ def _fake_httpx_sequence(monkeypatch, status_codes):
     posts = []
 
     class FakeResp:
+        headers = {}
+
         def __init__(self, status_code):
             self.status_code = status_code
 
