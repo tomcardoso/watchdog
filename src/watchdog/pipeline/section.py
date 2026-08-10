@@ -59,11 +59,40 @@ _BUDGET_FRACTION = 0.3
 # `max_tokens` and can't paginate its output (openai, gemini) will truncate a document that fits
 # the input window comfortably but needs more output than the ceiling allows. So the threshold and
 # budget are additionally capped by an output-derived input ceiling: the safe output budget
-# converted back to input tokens via the observed output-per-input density. Backends that paginate
-# their output (claude-api, deepseek) or have no ceiling (claude-agent-sdk) return None from
-# `output_ceiling_for_sectioning` and keep the pure input-window defaults.
-_OUTPUT_PER_INPUT_RATIO = 0.8   # est. output tokens per input token (observed ~0.7; margin for dense docs)
-_OUTPUT_SAFE_FRACTION = 0.7     # fraction of the output ceiling to target, leaving headroom for variance/CoT
+# converted back to an input-token cap by inverting the measured *visible*-output relationship
+# (below). Backends that paginate their output (claude-api, deepseek) or have no ceiling
+# (claude-agent-sdk) return None from `output_ceiling_for_sectioning` and keep the pure
+# input-window defaults.
+#
+# Visible output (chain-of-thought reasoning excluded — #539's `reasoning_tokens` telemetry
+# separates them) is **affine** in input size, not proportional to it: a fixed per-call cost plus a
+# marginal rate, not a pure ratio. Fitted per reasoning effort on openai:gpt-5.4-mini (#542):
+#
+#   low:    1,112 + 0.199 × input tokens   (R²=0.23, reasoning 4% of total output)
+#   medium:   429 + 0.213 × input tokens   (R²=0.39, reasoning 87% of total output)
+#   high:   1,478 + 0.200 × input tokens   (R²=0.41, reasoning 94% of total output)
+#
+# The marginal rate is stable at ~0.20 across every effort level — that stability is the reliable
+# part of the fit, so it's the constant to trust. The fixed cost varies 429–1,478 across effort
+# levels; 1,000 is used here as a round, roughly-central estimate rather than the low end (which
+# would undersize the budget for higher-effort calls) or the high end (which would oversize it for
+# low-effort ones). A pure ratio (the pre-#542 model) divides by a shrinking effective density as
+# sections get smaller, which makes measured density appear to *rise* as sections shrink — that
+# artifact made over-sectioning self-justifying. Inverting the affine relation instead — solving
+# `ceiling × safe_fraction = fixed_cost + marginal_rate × input` for `input` — removes it.
+_OUTPUT_FIXED_COST = 1_000         # est. fixed visible-output tokens per call, independent of input size (#542)
+_OUTPUT_MARGINAL_RATE = 0.20       # est. marginal visible-output tokens per input token — stable across effort (#542)
+_MIN_OUTPUT_CAPPED_BUDGET = 1_000  # floor so a small/pathological ceiling can't invert to a zero or negative budget
+_OUTPUT_SAFE_FRACTION = 0.7        # fraction of the output ceiling to target, leaving headroom for variance/CoT
+
+
+def _invert_output_ceiling(ceiling: int) -> int:
+    """Max input tokens a call can take and still keep its visible output under `ceiling *
+    _OUTPUT_SAFE_FRACTION`, inverting the affine visible-output fit above. Floored at
+    `_MIN_OUTPUT_CAPPED_BUDGET` so a ceiling too small to clear the fixed cost doesn't invert to
+    <= 0."""
+    return max(_MIN_OUTPUT_CAPPED_BUDGET,
+               int((ceiling * _OUTPUT_SAFE_FRACTION - _OUTPUT_FIXED_COST) / _OUTPUT_MARGINAL_RATE))
 
 
 def _config_get(key: str, default):
@@ -120,10 +149,10 @@ def model_defaults(model: str | None, backend: str | None = None) -> tuple[int, 
     budget = int(window * _BUDGET_FRACTION)
     extract_ceiling = model_client.output_ceiling_for_sectioning("extract", backend, model)
     if extract_ceiling is not None:
-        threshold = min(threshold, int(extract_ceiling * _OUTPUT_SAFE_FRACTION / _OUTPUT_PER_INPUT_RATIO))
+        threshold = min(threshold, _invert_output_ceiling(extract_ceiling))
     section_ceiling = model_client.output_ceiling_for_sectioning("extract-section", backend, model)
     if section_ceiling is not None:
-        budget = min(budget, max(1, int(section_ceiling * _OUTPUT_SAFE_FRACTION / _OUTPUT_PER_INPUT_RATIO)))
+        budget = min(budget, _invert_output_ceiling(section_ceiling))
     ratio = model_client.tokenizer_ratio(model, backend)
     threshold = int(threshold / ratio)
     budget = max(1, int(budget / ratio))

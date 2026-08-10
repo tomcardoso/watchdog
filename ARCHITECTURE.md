@@ -434,11 +434,12 @@ accept an explicit `section_token_threshold`/`section_token_budget` integer as a
 escape hatch (a pinned integer does not rescale when the extraction model changes).
 The input-window default is **additionally capped by the output ceiling** for a backend that
 enforces a fixed `max_tokens` and can't paginate past it (openai, gemini — D104, #343): the
-safe output budget is converted back to an input-token cap
-(`model_client.output_ceiling_for_sectioning` × a density ratio) so a whole-document call's
-expected *output* stays under the ceiling. Backends that paginate their output (claude-api,
-deepseek) or have no ceiling (claude-agent-sdk) return `None` and keep the pure input-window
-default.
+safe output budget is converted back to an input-token cap by inverting an affine fit of
+*visible* output (chain-of-thought excluded) against input size — a fixed per-call cost plus
+a stable ~0.20 marginal rate, measured per reasoning effort (D185, #542) — rather than dividing
+by a flat ratio, since output isn't proportional to input. Backends that paginate their output
+(claude-api, deepseek) or have no ceiling (claude-agent-sdk) return `None` and keep the pure
+input-window default.
 Finally, the threshold and budget are divided by `model_client.tokenizer_ratio` (D180, #574):
 Claude 4.7+ models (Opus 4.8, Sonnet 5) use a newer tokenizer that produces ~30% more real tokens
 for the same text than the chars/4 `est_tokens` heuristic assumes, so their est-token
