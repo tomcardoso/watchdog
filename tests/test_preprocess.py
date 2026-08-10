@@ -1,6 +1,7 @@
 """Tests for preprocess helpers that don't require Docling to be installed."""
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -249,7 +250,7 @@ def test_large_pdf_fallback_retries_after_all_chunks_fail(tmp_path, monkeypatch)
     monkeypatch.setattr(preprocess_mod, "pdf_preprocess", lambda p: cleaned)
     monkeypatch.setattr(preprocess_mod, "sha256_file", lambda p: "original-hash")
     # Prevent docling import from being tried
-    monkeypatch.setattr(preprocess_mod, "pdf_sample_text", lambda p: "some text")
+    monkeypatch.setattr(preprocess_mod, "pdf_sample_pages", lambda p: ["some text"])
 
     from watchdog.pipeline.preprocess import process_with_docling
     result = process_with_docling(_Path("/fake/doc.pdf"), force_ocr=False)
@@ -270,7 +271,7 @@ def test_large_pdf_fallback_returns_original_error_if_preprocess_unavailable(tmp
     monkeypatch.setattr(preprocess_mod, "process_large_pdf",
                         lambda path, force_ocr, total_pages: {"error": "all chunks failed"})
     monkeypatch.setattr(preprocess_mod, "pdf_preprocess", lambda p: None)
-    monkeypatch.setattr(preprocess_mod, "pdf_sample_text", lambda p: "some text")
+    monkeypatch.setattr(preprocess_mod, "pdf_sample_pages", lambda p: ["some text"])
 
     from watchdog.pipeline.preprocess import process_with_docling
     result = process_with_docling(_Path("/fake/doc.pdf"), force_ocr=False)
@@ -326,6 +327,96 @@ def test_unknown_suffix_garbled_but_valid_text_gets_flagged(tmp_path, monkeypatc
     out = json.loads(capsys.readouterr().out)
     assert out["metadata"]["source_type"] == "direct_text"
     assert out["metadata"]["garbled_detected"] is True
+
+
+# ── pdf_garble_verdict — per-page combination, not a blended blob (#580) ──────
+
+def test_verdict_dot_leader_toc_page_does_not_force_ocr(monkeypatch):
+    """A dot-leader table-of-contents page sampled alongside clean body-text
+    pages must not push the whole-document verdict to garbled. Regression for
+    #580: a blended ratio over all sampled pages let one TOC page (heavy on
+    dot leaders) drag a born-digital document's score below threshold."""
+    import watchdog.pipeline.preprocess as preprocess_mod
+
+    toc_page = ("Overview ...................................................... 2\n"
+                "Review of fiscal 2019-2020 .................................... 4\n")
+    body_page = "This report reviews the fiscal year in clear, ordinary prose."
+
+    # Sanity: the TOC page alone would trip the per-page check on its own.
+    assert is_garbled(toc_page)
+    assert not is_garbled(body_page)
+
+    monkeypatch.setattr(preprocess_mod, "pdf_sample_pages",
+                         lambda p: [toc_page, body_page, body_page])
+
+    empty, garbled = preprocess_mod.pdf_garble_verdict("fake.pdf")
+    assert empty is False
+    assert garbled is False
+
+
+def test_verdict_symbol_soup_on_every_page_still_forces_ocr(monkeypatch):
+    """Genuinely garbled text across every sampled page must still be caught —
+    the fix must not make the detector toothless."""
+    import watchdog.pipeline.preprocess as preprocess_mod
+
+    soup = "©®™†‡§¶•∞≠≈∂∑∏√∫"
+    monkeypatch.setattr(preprocess_mod, "pdf_sample_pages", lambda p: [soup, soup, soup])
+
+    empty, garbled = preprocess_mod.pdf_garble_verdict("fake.pdf")
+    assert empty is False
+    assert garbled is True
+
+
+def test_verdict_all_sampled_pages_empty_is_reported_as_empty_not_garbled(monkeypatch):
+    """A fully scanned document (no text on any sampled page) must still force
+    OCR, but via the 'empty' path, not the 'garbled' one — the two have
+    different causes."""
+    import watchdog.pipeline.preprocess as preprocess_mod
+
+    monkeypatch.setattr(preprocess_mod, "pdf_sample_pages", lambda p: ["", "", ""])
+
+    empty, garbled = preprocess_mod.pdf_garble_verdict("fake.pdf")
+    assert empty is True
+    assert garbled is False
+
+
+def test_verdict_blank_pages_among_sampled_pages_are_ignored(monkeypatch):
+    """A blank page (e.g. an unlabelled cover) mixed with clean body pages must
+    not itself count toward the garbled verdict."""
+    import watchdog.pipeline.preprocess as preprocess_mod
+
+    body_page = "This report reviews the fiscal year in clear, ordinary prose."
+    monkeypatch.setattr(preprocess_mod, "pdf_sample_pages",
+                         lambda p: ["", body_page, body_page])
+
+    empty, garbled = preprocess_mod.pdf_garble_verdict("fake.pdf")
+    assert empty is False
+    assert garbled is False
+
+
+# ── pdf_garble_verdict — real corpus documents (#580) ──────────────────────────
+# Slow-ish (real pypdf extraction on real files) and skipped when the corpus
+# isn't present, so kept separate from the fast synthetic tests above.
+
+_CORPUS_DIR = Path(__file__).resolve().parent.parent / "benchmarks" / "corpora" / "extract"
+
+_CORPUS_EXPECTED = {
+    "Annual-Financial-Report-19-20.pdf": (False, False),
+    "Annual-Financial-Report-20-21.pdf": (False, False),
+    "Laurentian First Report of the Monitor.pdf": (False, False),
+    "Laurentian Pre-Filing Report of the Proposed Monitor.pdf": (False, False),
+    "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021.pdf": (True, False),
+    "Pension Order Morawetz CJ- March 17 2021(as stamped by Court).PDF": (False, False),
+}
+
+
+@pytest.mark.skipif(not _CORPUS_DIR.is_dir(), reason="benchmark corpus not present")
+@pytest.mark.parametrize("filename,expected", _CORPUS_EXPECTED.items())
+def test_corpus_garble_verdicts(filename, expected):
+    """Regression table from #580: the AFR 19-20 misfire must be fixed, and the
+    Initial Order's genuine empty-text-layer case must keep forcing OCR."""
+    result = preprocess.pdf_garble_verdict(_CORPUS_DIR / filename)
+    assert result == expected, f"{filename}: expected (empty, garbled)={expected}, got {result}"
 
 
 

@@ -100,15 +100,21 @@ def pdf_page_count(path: Path) -> int:
         return 0
 
 
-def pdf_sample_text(path: Path) -> str:
-    """Extract a small text sample from the first few PDF pages using pypdf."""
+def pdf_sample_pages(path: Path) -> list[str]:
+    """Extract text from the first few PDF pages using pypdf, one string per page.
+
+    Kept per-page rather than joined into one blob: front matter (a cover, a
+    dot-leader table of contents) is systematically unrepresentative of body
+    text, and blending it with clean pages before scoring lets one bad page
+    drag the whole sample below threshold (#580).
+    """
     try:
         import pypdf
         reader = pypdf.PdfReader(str(path))
         sample_pages = reader.pages[: min(3, len(reader.pages))]
-        return " ".join(p.extract_text() or "" for p in sample_pages)
+        return [p.extract_text() or "" for p in sample_pages]
     except Exception:
-        return ""
+        return []
 
 
 def pdf_extract_chunk(src: Path, start: int, end: int) -> Path:
@@ -402,16 +408,31 @@ def _markdown_pages(doc) -> list[dict]:
     return pages or [{"page": 1, "markdown": md.strip()}]
 
 
+def pdf_garble_verdict(path: Path) -> tuple[bool, bool]:
+    """Return (empty, garbled) for a PDF's sampled pages.
+
+    empty: none of the sampled pages have any extracted text (e.g. a fully
+    scanned document). garbled: every non-empty sampled page's text layer looks
+    like symbol soup — judged per page, with blank pages excluded, so one
+    unrepresentative page (a dot-leader table of contents, a cover) can't drag
+    a document whose body text is fine into a garbled verdict (#580).
+    """
+    sampled_pages = [t for t in pdf_sample_pages(path) if t.strip()]
+    if not sampled_pages:
+        return True, False
+    return False, all(is_garbled(t) for t in sampled_pages)
+
+
 def process_with_docling(path: Path, force_ocr: bool = False) -> dict:
     is_pdf = path.suffix.lower() == ".pdf"
     garbled_detected = False
 
-    # For PDFs: sample text layer to decide whether to force OCR
+    # For PDFs: sample text layer to decide whether to force OCR.
     if is_pdf and not force_ocr:
-        sample = pdf_sample_text(path)
-        if not sample.strip():
+        empty, garbled = pdf_garble_verdict(path)
+        if empty:
             force_ocr = True
-        elif is_garbled(sample):
+        elif garbled:
             garbled_detected = True
             force_ocr = True
 
