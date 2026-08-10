@@ -29,6 +29,7 @@ Absolute recall figures from before #591 landed are not comparable to figures af
 recorded in #412. `score()` (#466) is the pure, structured-data entry point `run_benchmark.py`
 builds its reports from; `main()` is unchanged for manual command-line use.
 """
+import decimal
 import glob
 import json
 import os
@@ -97,10 +98,41 @@ def variants(anchor):
         if "." in stripped and not stripped.endswith("."):
             v.add(stripped)                             # 4903 -> 4.90 -> 4.9 (kept: has a digit)
                                                           # 78003 -> 78.00 -> 78. (dropped: bare)
+        v |= millions_prose(anchor)                     # 5000000 -> "5 million" (whole-dollar $M)
     if "." in anchor:                                    # 66.671 -> 66671
         v.add(anchor.replace(".", ""))
         v.add(f"{float(anchor):.1f}")
     return v
+
+
+def millions_prose(anchor):
+    """"N million" prose forms for a whole-dollar anchor of at least $1,000,000.
+
+    `variants()`'s thousands-to-millions conversion above only covers an anchor already
+    denominated in thousands ($4,903 thousand -> "$4.9 million"). A plain-dollar anchor like
+    "$5,000,000" needs a different conversion (divide by 1,000,000, not 1,000) to match the way
+    extraction prose actually states it ("$5 million") — without this, that class of anchor can
+    never match prose at all. Tom's ruling: the benchmark scores on numeric *value*, not on
+    transcription format — "$5 million" is a hit against a $5,000,000 anchor because it is the
+    same number, not because it happens to share digits.
+
+    Every variant keeps the literal word "million" (or an "m" suffix, both seen in real
+    extractions, e.g. "$85.9M") directly adjacent to the digits. That word is what keeps this
+    safe: it cannot reintroduce the short bare-digit collisions #591 fixed, because a bare "5" is
+    never produced on its own — the shortest possible output is "2 million" or "5.0m" (#591
+    follow-up). Lowercase only: `variants()` is always matched against `norm()`-ed (lowercased)
+    extraction text, so an uppercase "M" candidate would never match and is pointless to generate.
+    """
+    if "." in anchor:
+        return set()
+    n = int(anchor)
+    if n < 1_000_000:
+        return set()
+    millions = decimal.Decimal(n) / decimal.Decimal(1_000_000)
+    exact = millions.normalize()                        # 5000000 -> 5 ; 1250000 -> 1.25
+    rounded = millions.quantize(decimal.Decimal("0.1"), rounding=decimal.ROUND_HALF_UP)
+    # 1250000 -> 1.3 (a "sensibly rounded" one-decimal form, not banker's-rounded 1.2)
+    return {f"{exact} million", f"{rounded} million", f"{rounded}m"}
 
 
 def norm(text):

@@ -1314,6 +1314,43 @@ def test_variants_always_includes_the_anchor_itself():
     assert "78003" in sa.variants("78003")
 
 
+def test_millions_prose_covers_a_whole_dollar_anchor():
+    """A plain-dollar anchor ($5,000,000, not a thousands-denominated figure) needs a different
+    conversion (/1,000,000, not /1,000) to match prose like "$5 million" — variants() alone
+    produces only nonsense ("5000.0") for this case without millions_prose()."""
+    assert sa.millions_prose("5000000") == {"5 million", "5.0 million", "5.0m"}
+
+
+def test_millions_prose_uses_sensible_not_bankers_rounding():
+    """1,250,000 -> 1.25 million exactly, and a sensibly-rounded "1.3 million" — not the
+    round-half-to-even "1.2" plain float formatting would give."""
+    assert sa.millions_prose("1250000") == {"1.25 million", "1.3 million", "1.3m"}
+
+
+def test_millions_prose_below_one_million_is_empty():
+    assert sa.millions_prose("400000") == set()
+
+
+def test_millions_prose_never_generates_a_bare_short_token():
+    """Every variant keeps "million"/"m" adjacent to the digits — the safety net that keeps this
+    from reintroducing the #591 bare-digit collisions. No variant is under 4 characters."""
+    for anchor in ("1000000", "5000000", "999999000"):
+        for v in sa.millions_prose(anchor):
+            assert len(v) >= 4, v
+
+
+def test_score_item_prose_million_hits_only_when_the_value_actually_matches():
+    """Tom's ruling: the benchmark scores on numeric value, not transcription format — "$5
+    million" is a hit against a 5,000,000 anchor because it's the same number, and "$4 million"
+    is not, because it isn't."""
+    text = "The Directors' Charge was capped at $5,000,000."
+    hit_blob = sa.norm("The Directors' Charge was capped at $5 million.")
+    assert sa.score_item(text, hit_blob)[0] is True
+
+    miss_blob = sa.norm("The Directors' Charge was capped at $4 million.")
+    assert sa.score_item(text, miss_blob)[0] is False
+
+
 def test_is_identifier_anchor_true_for_lso_number():
     text = "D.J. Miller (LSO# 344393P) is lawyer for the Applicant."
     assert sa.is_identifier_anchor("344393", text)
@@ -1352,9 +1389,10 @@ def test_score_item_identifier_only_anchor_stays_a_miss_without_the_name():
 
 def test_score_item_plain_dollar_figure_gets_no_identifier_fallback():
     """A missing quantity must not be rescued by the identifier fallback — only an item whose
-    anchor actually reads as a reference code gets the non-numeric escape hatch."""
+    anchor actually reads as a reference code gets the non-numeric escape hatch. (Not rescued by
+    the millions-prose match either — the blob's figure is unrelated to either anchor.)"""
     text = "The Directors' Charge increases from $2,000,000 to $5,000,000."
-    blob = sa.norm('{"fact": "The Directors\' Charge was capped at $5 million."}')  # prose, no digits
+    blob = sa.norm('{"fact": "The Administration Charge was capped at $400,000."}')
     hit, hits, total = sa.score_item(text, blob)
     assert hit is False
 
