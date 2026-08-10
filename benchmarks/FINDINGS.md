@@ -425,14 +425,44 @@ figures are not comparable with the v1-scored rows above:
 
 | Arm | facts | `must_not_miss` | `key_facts` staged | Cost | Latency |
 |---|---|---|---|---|---|
-| `gpt-luna-low-noverify` | 97% (38/39) | **81% (38/47)** | 311 | $0.110 | 287s |
-| `gpt-luna-low-verify` | 100% (39/39) | **79% (37/47)** | 537 | $0.220 | 415s |
+| `gpt-luna-low-noverify` | 90% (35/39) | **77% (36/47)** | 311 | $0.110 | 287s |
+| `gpt-luna-low-verify` | 95% (37/39) | **79% (37/47)** | 537 | $0.220 | 415s |
 
-The pass added **220 facts** — a 71% larger ledger — for **exactly double the cost** and 45% more
-wall-clock, and `must_not_miss` recall did not improve. Do not read the −1 as the pass making
-recall worse: these are independent runs of a non-deterministic model, so the underlying
-extractions differ, and ±1 on 47 items sits inside the sample-to-sample variation measured in
-#581. The defensible claim is **no detectable recall gain at 2× cost**.
+**Rescored under #591's fixed scorer, in two passes** (2026-08-10) — the original figures
+(97%/81% and 100%/79%) were inflated by pre-#591 bugs, and the first rescore pass undercounted
+before a second fix landed:
+
+1. A key item was matched against the whole vault's extraction text rather than its own
+   document, so an anchor absent from the right document could still be credited from an
+   unrelated one elsewhere in the corpus.
+2. A rounding chain in the thousands-to-millions variant generator could collapse a 5+ digit
+   anchor to a bare 1–3 character string that then matched almost any digit run in the corpus
+   (`78003` → `"78"`, `1000` → `"1"`).
+3. A plain-dollar anchor (a court order's `$5,000,000`, not a thousands-denominated financial
+   figure) had no matching conversion at all — `variants()`'s thousands-to-millions logic only
+   covers an anchor already denominated in thousands, so an extraction that correctly wrote
+   "$5 million" scored a miss purely on transcription format. Tom's ruling on this: the benchmark
+   scores on numeric *value*, not on transcription format — "$5 million" is a hit against a
+   $5,000,000 anchor because it is the same number. `millions_prose()` now generates the "N
+   million"/"N.Nm" forms for a whole-dollar anchor ≥ $1,000,000, always with the word "million" or
+   an "m" suffix directly adjacent to the digits so a bare short token is never produced.
+
+Bugs 1 and 2 inflated `noverify` more than `verify` — most of the ten counsel-of-record items
+across the two court orders round-tripped through it, and now resolve consistently instead of
+splitting on which arm's cross-document noise happened to line up. Bug 3 affected `noverify`
+only in this run — `first-report-monitor:F3/F4/M6.1/M6.2` (the Directors' Charge, independently
+confirmed captured as "$5 million"/"$2 million" by issue #572) and `prefiling-report-monitor:M7/
+M15.3` flip from miss to hit; `verify`'s own extraction phrased the same figures differently and
+was unaffected either way (see #591).
+
+The pass still added **220 facts** — a 71% larger ledger — for **exactly double the cost** and
+45% more wall-clock. Under the corrected scorer the `must_not_miss` gap between the two arms
+narrowed to +1 item — close to the original −1, just with the composition corrected (the
+counsel-of-record items no longer split on coincidence, and both arms' whole-dollar figures now
+score on value). This is still a single run of each arm, and #581 found up to a 3× spread in
+facts extracted between independent samples of the *same* arm, so a one-item gap between two
+single runs of *different* arms isn't enough on its own to call either way. The original
+conclusion stands: **no evidence of a recall gain that would justify 2× cost.**
 
 **The suppression thresholds are too loose.** Across 12 verify calls: 220 candidates added, **1**
 suppressed as a duplicate. D172 picked Jaccard 0.75 / containment 0.9 by hand and flagged that
@@ -534,3 +564,37 @@ unusable contents. See #586 for the related unexplained `digest` zero.
   date need converting before they will tally. Fixed in the runbook, along with two related traps:
   `bench packets --out` defaults to `qualitative/` and silently overwrites the previous pass's
   artifacts, and the prompt did not ask judges for the per-verdict `note` the hand-check relies on.
+- 2026-08-10 (#591): **`score_arms.py` had four compounding bugs that distorted absolute
+  `must_not_miss`/facts recall — three inflating it, one deflating it:**
+  1. Matching was against the whole vault's extraction text rather than the one document a key
+     item is actually about, so sibling documents could cross-credit an anchor. *(inflated)*
+  2. A rounding step in the thousands-to-millions variant generator could drop the decimal point
+     entirely and collapse a 5+ digit anchor to a bare 1–3 character string that then matched
+     almost any digit run in the corpus. *(inflated)*
+  3. An item whose only anchor is an identifier (an LSO/bar number) rather than a quantity scored
+     zero whenever the extractor reasonably omitted that number, even though the substance — the
+     person, correctly related — was captured. *(deflated)*
+  4. A plain-dollar anchor ($5,000,000, not a thousands-denominated financial figure) had no
+     matching millions-prose conversion at all, so an extraction that correctly wrote "$5 million"
+     scored a miss on transcription format alone. Tom's ruling: the benchmark scores on numeric
+     *value*, not transcription format — this is a governing rule for every future A/B read
+     through this scorer, not a one-off fix. *(deflated)*
+
+  All four are fixed: matching is per-document, the rounding chain no longer emits a variant that
+  lost its decimal point, an item whose every anchor reads as an identifier falls back to a
+  non-numeric name-presence test, and a whole-dollar anchor ≥ $1,000,000 also generates "N
+  million"/"N.Nm" variants (always with the word "million" or an "m" suffix directly touching the
+  digits, so this can't reintroduce bug 2's short-token collision). **Absolute recall figures from
+  before this fix are not comparable to figures after it** — only the D172 verify A/B above (run
+  `2026-08-09-1523`) has been rescored against the fixed instrument, using the archived
+  `.watchdog/extracted/*.json` artifacts under that run's `artifacts/` directory, which the fix
+  reads directly (no live model calls). Other `must_not_miss` tables in this file (the 13-arm
+  sub-item sweep and the earlier `gpt-luna` effort-tier passes) were produced by the same
+  pre-#591 scorer and likely carry the same class of distortion, but their archived vaults were
+  not available to re-score in the environment this fix was written in — treat their absolute
+  percentages as provisional until a fresh rescoring pass is done. The paired-arm *rankings* in
+  those tables are less affected than the absolute numbers, since the same instrument scored every
+  arm in a given table and shared bias partly cancels in a comparison — but "partly" is doing real
+  work in that sentence, and it does not cancel evenly (see the D172 rescore, where the two arms'
+  `must_not_miss` gap moved from −1 to +5 after bugs 1–3 alone, then settled at +1 once bug 4 was
+  also fixed).

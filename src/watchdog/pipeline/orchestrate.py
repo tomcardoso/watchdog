@@ -31,6 +31,20 @@ from watchdog.pipeline.write_vault import _doc_slug
 
 DEFAULT_CONCURRENCY = 5
 
+# Admission control (#563 step 2 — the observability half, #592, built the ground truth this
+# reads). A new document's dispatch is held back when it would push the run's recent tokens/min
+# over the known budget, rather than only reacting to a 429 by stopping the whole batch.
+# `_ADMISSION_SAFETY_MARGIN` leaves headroom for estimate error and for calls that have finished
+# but not yet landed in `_usage`; not user-configurable — no existing precedent in this codebase
+# for exposing a heuristic margin as its own knob. `_ADMISSION_MAX_WAIT_S` is the deadlock guard:
+# `_recent_token_rate`'s window is anchored to the latest *usage record's* `end_ts`, not
+# wall-clock time, so if every in-flight document is simultaneously waiting in `_admit` (nothing
+# running to produce a new record), the reported rate never advances on its own — a stuck-forever
+# possibility that this cap forecloses by force-admitting instead.
+_ADMISSION_SAFETY_MARGIN = 0.85
+_ADMISSION_POLL_INTERVAL_S = 0.25
+_ADMISSION_MAX_WAIT_S = 300.0
+
 # The finalizer stage's own `_call_model(task=...)` names (#417) — every call a *standalone*
 # `watchdog bark` makes belongs to this set, which is what `ingest_setup.finalize_cost_estimate`
 # uses to recognize a finalize-only usage-<ts>.json file: a `run()` ingest's own finalize tail
@@ -63,6 +77,19 @@ _usage: list[dict] | None = None
 # `_begin_usage_run`, mirrored into `_record_usage` so every call's record lands on disk the
 # moment it completes, not just in the end-of-run `usage-<ts>.json`. None whenever `_usage` is.
 _usage_partial_path: Path | None = None
+
+# Admission control's in-flight reservations (#563): sha -> estimated tokens, for a document that
+# has been admitted (or is mid-admission-check) but whose real usage hasn't landed in `_usage`
+# yet. Needed because `run()` fires every queued document's dispatch at once — `asyncio`'s
+# scheduler runs each one's synchronous prefix (including its first `_admit` check) back-to-back,
+# all before any of them completes a real model call, so a check against `_usage` alone would see
+# every concurrently-dispatched document as if it were the only one running. Set eagerly, *before*
+# `_admit` is even called, so a later document in the same dispatch burst sees an earlier one's
+# reservation already present when its own turn comes (ordinary synchronous dict mutation, so this
+# works correctly even though both documents' checks happen in the same event-loop tick). Cleared
+# per-document once that document's `_guarded` call finishes, in `finally` — success, failure, or
+# cancellation all release it the same way.
+_admission_reserved: dict[str, int] = {}
 
 
 def _say(msg: str) -> None:
@@ -237,6 +264,72 @@ def _recent_token_rate(records: list[dict], window_s: float = 60.0) -> int:
     return sum(r["input_tokens"] + r["output_tokens"] for r in records if r["end_ts"] >= cutoff)
 
 
+def _current_token_budget(config_override: int | None) -> int | None:
+    """The effective admission ceiling for `_admit` (#563): `config_override`
+    (`extract_token_budget`) when the user set one, else the most recent `rate_limit.limit_tokens`
+    seen on any call this run, else `None` (nothing known yet — `_admit` becomes a no-op, same as
+    before this feature existed). Reads `_usage` directly rather than tracking a separate
+    module-global, so it resets for free alongside `_begin_usage_run`/`_end_usage_run` with no
+    extra reset code to keep in sync.
+
+    Only `claude-api`/`openai`/`deepseek`/`gemini`/`local`/`openrouter` calls ever populate
+    `rate_limit` (#592) — `claude-agent-sdk` (Claude subscription auth) detects a rate limit from
+    a CLI transcript, not HTTP headers, so auto-discovery never engages on that path and
+    `config_override` is its only lever, not a fallback for it (see D185)."""
+    if config_override is not None:
+        return config_override
+    if not _usage:
+        return None
+    for record in reversed(_usage):
+        rl = record.get("rate_limit")
+        if rl and rl.get("limit_tokens") is not None:
+            return rl["limit_tokens"]
+    return None
+
+
+async def _admit(sha: str, est_tokens: int, budget: int | None, cancelled: asyncio.Event) -> None:
+    """Block dispatching `sha` (estimated at `est_tokens`) until the run's recent tokens/min
+    (`_recent_token_rate`) plus every *other* currently in-flight document's reservation
+    (`_admission_reserved`, excluding `sha` itself) plus this document's own estimate would stay
+    at or under `budget * _ADMISSION_SAFETY_MARGIN` (#563 admission control). The reservation term
+    matters because `run()` fires every queued document's dispatch at once: `_usage` alone only
+    reflects *completed* calls, and every document's first admission check happens before any of
+    them has completed one — checking `_usage` alone would let an entire concurrent burst through
+    regardless of budget, each one seeing the others as if they didn't exist. The caller (`run()`'s
+    `_guarded`) is responsible for adding/removing `sha`'s own entry in `_admission_reserved`; this
+    function only reads it.
+
+    A no-op — returns immediately — when `budget` is `None` (nothing known yet) or when
+    `est_tokens` alone already exceeds the margin (nothing to wait for; the reactive
+    `RateLimitError` stop is still the backstop for a single oversized document). Also returns
+    immediately once `cancelled` is set, so a batch stop elsewhere doesn't leave a waiting
+    document stuck.
+
+    Force-admits past `_ADMISSION_MAX_WAIT_S` regardless of the rate: `_recent_token_rate`'s
+    window only advances when a new call lands in `_usage`, so if every in-flight document were
+    ever simultaneously waiting here, nothing would ever produce that new record — an otherwise
+    real possibility of stalling forever that this cap forecloses."""
+    if budget is None:
+        return
+    ceiling = budget * _ADMISSION_SAFETY_MARGIN
+    if est_tokens >= ceiling:
+        return
+    told = False
+    started = time.monotonic()
+    while not cancelled.is_set():
+        reserved = sum(v for k, v in _admission_reserved.items() if k != sha)
+        if _recent_token_rate(_usage or []) + reserved + est_tokens <= ceiling:
+            return
+        if time.monotonic() - started >= _ADMISSION_MAX_WAIT_S:
+            _say(f"{_DIM}Proceeding past the token budget after "
+                 f"{_ADMISSION_MAX_WAIT_S:.0f}s waiting for headroom.{_RESET}")
+            return
+        if not told:
+            told = True
+            _say(f"{_DIM}Holding new documents — near the token budget, waiting for headroom…{_RESET}")
+        await asyncio.sleep(_ADMISSION_POLL_INTERVAL_S)
+
+
 def _usage_totals(records: list[dict]) -> dict:
     return {
         "input_tokens": sum(r["input_tokens"] for r in records),
@@ -336,6 +429,7 @@ def _begin_usage_run(vault: Path) -> None:
     global _usage, _usage_partial_path
     _consolidate_orphaned_usage(vault)
     _usage = []
+    _admission_reserved.clear()
     usage_dir = vault / ".watchdog" / "registry" / "usage"
     usage_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -1190,8 +1284,13 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
                             extract_effort: str | None = None,
                             extract_backend: str | None = None,
                             classify_backend: str | None = None,
-                            force: bool = False, verify_pass: bool = False) -> dict:
-    pf = preflight.run(vault, sha)
+                            force: bool = False, verify_pass: bool = False,
+                            pf: dict | None = None) -> dict:
+    # `pf` (#563): `run()`'s dispatch loop already calls `preflight.run` for every queued document
+    # up front, to size admission control's per-document token estimate — passed in here so it
+    # isn't read twice. `None` (every other call site) falls back to reading it fresh, unchanged.
+    if pf is None:
+        pf = preflight.run(vault, sha)
     if pf.get("error"):
         return _fail(vault, sha, "", pf["error"])
     if force and (pf.get("already_extracted") or pf.get("already_staged")):
@@ -2506,7 +2605,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
               classify_backend: str | None = None, wait: bool = False,
               skip_finalize: bool = False, force: bool = False,
               skip_briefing: bool = False, finalizer_overrides: dict | None = None,
-              resume_hint: str = "watchdog dig", verify: bool = False) -> dict:
+              resume_hint: str = "watchdog dig", verify: bool = False,
+              extract_token_budget: int | None = None) -> dict:
     """Extract every queued document (bounded by `concurrency`), then post-ingest.
 
     `extract_model` drives extraction (whole-doc + section, and the sectioned-doc digest); `post_model` drives
@@ -2541,6 +2641,12 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     default and unsupported on `claude-batch`, which is asynchronous by construction — a
     verification call needs the extraction it is verifying to already exist, and a batch's
     results arrive in a later process, hours later, with no cached prefix left to read.
+    `extract_token_budget` (#563 admission control, D185) pins the tokens-per-minute ceiling a new
+    document's dispatch is held back against; `None` (the default) auto-discovers it from the
+    most recent call's `rate_limit.limit_tokens` instead — real for every backend except
+    `claude-agent-sdk` (Claude subscription auth), which never reports it, making this the only
+    lever on that path. Not consulted on a batch backend, which has no per-document dispatch loop
+    to gate.
     """
     queue_dir = vault / ".watchdog" / "queue"
     shas = [f.stem for f in sorted(queue_dir.glob("*.json"))] if queue_dir.exists() else []
@@ -2581,6 +2687,18 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         # where it degrades to the previous append-only output.
         _board = LiveRegion()
         _begin_usage_run(vault)
+        # Admission control (#563): every queued document's pre-flight output is read once, up
+        # front — cheap (sync, local JSON only, no model call) — and reused for two things: the
+        # per-document token estimate `_admit` gates on (`section.est_tokens_from_pages`, the same
+        # heuristic `--estimate` already uses), and the already-extracted/already-staged skip
+        # check, so a resumed run's free "nothing to do" documents are never held up waiting for
+        # budget they don't need. `budget` is resolved once for the whole run, not per document —
+        # `_current_token_budget` already falls back to whatever `rate_limit` the most recent call
+        # reported, so it naturally sharpens as the run itself makes calls.
+        pf_by_sha = {s: preflight.run(vault, s) for s in shas}
+        est_by_sha = {s: section.est_tokens_from_pages(pf.get("pages", []))
+                      for s, pf in pf_by_sha.items() if not pf.get("error")}
+        budget = _current_token_budget(extract_token_budget)
         sem = asyncio.Semaphore(max(1, concurrency))
         cancelled = asyncio.Event()
         stop_reason: dict = {}      # {"rate_limit": "<notice>"} when a limit stopped the batch
@@ -2600,47 +2718,72 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         async def _guarded(sha: str) -> dict:
             if cancelled.is_set():                   # never started — leave queue file for resume
                 return {"sha256": sha, "filename": "", "status": "cancelled"}
-            async with sem:
+            pf = pf_by_sha.get(sha)
+            # A document that's about to be a free skip (already extracted/staged, and not
+            # forcing a re-extraction) must never sit in `_admit`'s wait for budget it doesn't
+            # need — that check reuses the exact condition `_extract_document` applies to `pf`
+            # below, over the same dict, so the two can't disagree.
+            skip_eligible = bool(pf) and not force and (pf.get("already_extracted") or pf.get("already_staged"))
+            if skip_eligible:
+                return await _extract_document(vault, sha, brief, extract_model, classify_model,
+                                               classify_pages, pinned_skill, extract_effort,
+                                               extract_backend, classify_backend, force=force,
+                                               verify_pass=verify, pf=pf)
+            # Reserved *before* calling `_admit` — and before this document has even been checked
+            # for admission — so a sibling document dispatched in the same burst (every queued
+            # document starts at once; see `_admission_reserved`'s own comment) sees this one
+            # accounted for the moment its own turn comes, not only once real usage lands.
+            _admission_reserved[sha] = est_by_sha.get(sha, 0)
+            try:
+                try:
+                    await _admit(sha, est_by_sha.get(sha, 0), budget, cancelled)
+                except asyncio.CancelledError:       # ctrl+c while waiting for token headroom
+                    return {"sha256": sha, "filename": "", "status": "cancelled"}
                 if cancelled.is_set():
                     return {"sha256": sha, "filename": "", "status": "cancelled"}
-                try:
-                    return await _extract_document(vault, sha, brief, extract_model, classify_model,
-                                                   classify_pages, pinned_skill, extract_effort,
-                                                   extract_backend, classify_backend, force=force,
-                                                   verify_pass=verify)
-                except model_client.RateLimitError as e:  # session-wide — stop, leave queued for resume
-                    if not cancelled.is_set():
-                        print()
-                        _say(f"{_YELLOW}Rate limit reached{_RESET}{_DIM} — {e}{_RESET}")
-                        # #563: ground the "lower extract_concurrency" advice below in the actual
-                        # numbers instead of leaving it a guess — the tokens/min this run was
-                        # sustaining right before the stop, and (when the provider sent them) the
-                        # last-seen remaining/limit off the 429 itself.
-                        detail_parts = []
-                        rate = _recent_token_rate(_usage) if _usage else 0
-                        if rate:
-                            detail_parts.append(f"~{rate:,} tokens/min observed")
-                        rl = e.rate_limit or {}
-                        remaining, limit = rl.get("remaining_tokens"), rl.get("limit_tokens")
-                        if remaining is not None and limit is not None:
-                            detail_parts.append(f"provider reported {remaining:,}/{limit:,} tokens remaining")
-                        elif limit is not None:
-                            detail_parts.append(f"provider token limit {limit:,}/min")
-                        if detail_parts:
-                            _say(f"{_DIM}{'; '.join(detail_parts)} — consider a lower "
-                                 f"{_RESET}{_CYAN}extract_concurrency{_RESET}{_DIM}.{_RESET}")
-                        if wait:
-                            _say(f"{_DIM}Stopping; finished documents are saved. "
-                                 f"Waiting to resume automatically once it resets.{_RESET}")
-                        else:
-                            _say(f"{_DIM}Stopping; finished documents are saved. Re-run "
-                                 f"{_RESET}{_CYAN}{_resume_hint}{_RESET}{_DIM} once it resets to continue.{_RESET}")
-                        _request_stop(rate_limit=str(e), resets_at=e.resets_at)
-                    return {"sha256": sha, "filename": "", "status": "cancelled"}
-                except asyncio.CancelledError:       # ctrl+c mid-document — queue file stays
-                    return {"sha256": sha, "filename": "", "status": "cancelled"}
-                except Exception as e:               # one bad doc must not sink the batch
-                    return _fail(vault, sha, "", f"unexpected error: {e}")
+                async with sem:
+                    if cancelled.is_set():
+                        return {"sha256": sha, "filename": "", "status": "cancelled"}
+                    try:
+                        return await _extract_document(vault, sha, brief, extract_model, classify_model,
+                                                       classify_pages, pinned_skill, extract_effort,
+                                                       extract_backend, classify_backend, force=force,
+                                                       verify_pass=verify, pf=pf)
+                    except model_client.RateLimitError as e:  # session-wide — stop, leave queued for resume
+                        if not cancelled.is_set():
+                            print()
+                            _say(f"{_YELLOW}Rate limit reached{_RESET}{_DIM} — {e}{_RESET}")
+                            # #563: ground the "lower extract_concurrency" advice below in the actual
+                            # numbers instead of leaving it a guess — the tokens/min this run was
+                            # sustaining right before the stop, and (when the provider sent them) the
+                            # last-seen remaining/limit off the 429 itself.
+                            detail_parts = []
+                            rate = _recent_token_rate(_usage) if _usage else 0
+                            if rate:
+                                detail_parts.append(f"~{rate:,} tokens/min observed")
+                            rl = e.rate_limit or {}
+                            remaining, limit = rl.get("remaining_tokens"), rl.get("limit_tokens")
+                            if remaining is not None and limit is not None:
+                                detail_parts.append(f"provider reported {remaining:,}/{limit:,} tokens remaining")
+                            elif limit is not None:
+                                detail_parts.append(f"provider token limit {limit:,}/min")
+                            if detail_parts:
+                                _say(f"{_DIM}{'; '.join(detail_parts)} — consider a lower "
+                                     f"{_RESET}{_CYAN}extract_concurrency{_RESET}{_DIM}.{_RESET}")
+                            if wait:
+                                _say(f"{_DIM}Stopping; finished documents are saved. "
+                                     f"Waiting to resume automatically once it resets.{_RESET}")
+                            else:
+                                _say(f"{_DIM}Stopping; finished documents are saved. Re-run "
+                                     f"{_RESET}{_CYAN}{_resume_hint}{_RESET}{_DIM} once it resets to continue.{_RESET}")
+                            _request_stop(rate_limit=str(e), resets_at=e.resets_at)
+                        return {"sha256": sha, "filename": "", "status": "cancelled"}
+                    except asyncio.CancelledError:       # ctrl+c mid-document — queue file stays
+                        return {"sha256": sha, "filename": "", "status": "cancelled"}
+                    except Exception as e:               # one bad doc must not sink the batch
+                        return _fail(vault, sha, "", f"unexpected error: {e}")
+            finally:
+                _admission_reserved.pop(sha, None)
 
         # On ctrl+c, cancel in-flight work once and shut down cleanly instead of letting
         # KeyboardInterrupt tear through the event loop with a traceback. Finished documents

@@ -1087,6 +1087,26 @@ def test_prompt_cache_key_shared_across_documents_with_the_same_skill_and_by_the
     assert key1 == key2 == key_verify
 
 
+def test_prompt_cache_key_shared_across_digest_calls_with_the_same_skill():
+    """Digest (#586) uses the same block layout as extract (A1) — the cacheable prefix is
+    instructions+brief then skill, with filename/title/type/page_count/sidecar/key_facts confined
+    to the volatile block after the breakpoint. Two digest prompts for different documents that
+    share a skill must derive the same cache key, same as extract's."""
+    kwargs = dict(skill_text="SKILL TEXT", brief="Investigate the fraud")
+    doc1 = prompts.build_digest_prompt(filename="doc-a.pdf", title="Doc A",
+                                       document_type="Annual Report", page_count=12,
+                                       sidecar="sidecar A", key_facts=[{"fact": "Fact about A"}],
+                                       **kwargs)
+    doc2 = prompts.build_digest_prompt(filename="doc-b.pdf", title="Doc B",
+                                       document_type="Affidavit", page_count=99,
+                                       sidecar="a different sidecar",
+                                       key_facts=[{"fact": "A different fact"}], **kwargs)
+    key1 = mc._prompt_cache_key(doc1)
+    key2 = mc._prompt_cache_key(doc2)
+    assert key1 is not None
+    assert key1 == key2
+
+
 def test_prompt_cache_key_differs_by_skill():
     kwargs = dict(pages_text="x", sidecar=None, brief=None, known_document_types=[])
     a = prompts.build_extract_prompt(skill_text="SKILL A", **kwargs)
