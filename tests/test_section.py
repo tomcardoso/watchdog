@@ -211,13 +211,28 @@ def test_run_threshold_follows_model_window(tmp_path, monkeypatch):
 
 def test_model_defaults_capped_by_output_ceiling_for_openai_gemini():
     # A fixed-output-ceiling backend that can't paginate caps threshold/budget by the output-
-    # derived input ceiling: inverting the affine visible-output fit (#542),
-    # (16000 * 0.7 - 1000) / 0.20 = 51000. Budget is NOT halved again on this path
-    # (#490) — the ceiling-derived value already represents the full safe amount a single call
-    # can handle, whether that call covers a whole document or one section. The large input
+    # derived input ceiling: inverting the affine *total*-output fit (#542 follow-up) against the
+    # real wire ceiling (base task budget + reasoning reserve). No effort given ⇒ medium row and
+    # medium reserve: openai ceiling 16000+48000=64000, (64000*0.7-1051)/0.989=44235; gemini
+    # ceiling 16000+32000=48000, (48000*0.7-1051)/0.989=32911. Budget is NOT halved again on this
+    # path (#490) — the ceiling-derived value already represents the full safe amount a single
+    # call can handle, whether that call covers a whole document or one section. The large input
     # window (400K/1M) is overridden by the much tighter output-driven cap either way.
-    assert section.model_defaults("gpt-5-mini", backend="openai") == (51_000, 51_000)
-    assert section.model_defaults("gemini-2.5-flash", backend="gemini") == (51_000, 51_000)
+    assert section.model_defaults("gpt-5-mini", backend="openai") == (44_235, 44_235)
+    assert section.model_defaults("gemini-2.5-flash", backend="gemini") == (32_911, 32_911)
+
+
+def test_model_defaults_output_capped_budget_varies_by_effort():
+    # Reasoning draws from the same wire-enforced envelope as the visible JSON, and scales with
+    # input far more steeply at some effort levels than others (#542 follow-up) — so the same
+    # model/backend must size very differently depending on effort. Low effort's raw formula
+    # (fixed=2509, marginal=0.103) extrapolates far past any measured input and is clamped to
+    # _MAX_OUTPUT_CAPPED_BUDGET; medium and high are both within the cap and land wherever their
+    # own fixed/marginal pair and effort-scaled envelope put them.
+    assert section.model_defaults("gpt-5-mini", backend="openai", effort="low") == \
+        (section._MAX_OUTPUT_CAPPED_BUDGET, section._MAX_OUTPUT_CAPPED_BUDGET)
+    assert section.model_defaults("gpt-5-mini", backend="openai", effort="medium") == (44_235, 44_235)
+    assert section.model_defaults("gpt-5-mini", backend="openai", effort="high") == (15_574, 15_574)
 
 
 def test_model_defaults_checks_extract_and_extract_section_ceilings_separately(monkeypatch):
@@ -227,22 +242,24 @@ def test_model_defaults_checks_extract_and_extract_section_ceilings_separately(m
     import watchdog.model_client as mc
     seen = []
 
-    def fake_ceiling(task, backend, model):
+    def fake_ceiling(task, backend, model, effort=None):
         seen.append(task)
         return {"extract": 32_000, "extract-section": 8_000}[task]
 
     monkeypatch.setattr(mc, "output_ceiling_for_sectioning", fake_ceiling)
     threshold, budget = section.model_defaults("gpt-5-mini", backend="openai")
     assert sorted(seen) == ["extract", "extract-section"]
-    assert threshold == int((32_000 * 0.7 - 1_000) / 0.20)   # capped by the "extract" ceiling
-    assert budget == int((8_000 * 0.7 - 1_000) / 0.20)        # capped by the "extract-section" ceiling
+    # No effort given ⇒ medium row (fixed=1051, marginal=0.989).
+    assert threshold == int((32_000 * 0.7 - 1_051) / 0.989)   # capped by the "extract" ceiling
+    assert budget == int((8_000 * 0.7 - 1_051) / 0.989)        # capped by the "extract-section" ceiling
 
 
 def test_model_defaults_floors_output_capped_budget_for_pathological_ceiling(monkeypatch):
     # A ceiling too small to clear the fixed per-call cost must not invert to zero or negative
-    # (#542): (100 * 0.7 - 1000) / 0.20 = -4,650 without a floor.
+    # (#542): with the medium row (fixed=1051, marginal=0.989), (100*0.7-1051)/0.989 is negative
+    # without a floor.
     import watchdog.model_client as mc
-    monkeypatch.setattr(mc, "output_ceiling_for_sectioning", lambda task, backend, model: 100)
+    monkeypatch.setattr(mc, "output_ceiling_for_sectioning", lambda task, backend, model, effort=None: 100)
     threshold, budget = section.model_defaults("gpt-5-mini", backend="openai")
     assert threshold == section._MIN_OUTPUT_CAPPED_BUDGET
     assert budget == section._MIN_OUTPUT_CAPPED_BUDGET
@@ -259,8 +276,9 @@ def test_model_defaults_uncapped_for_paginating_and_uncapped_backends():
 
 def test_section_token_threshold_capped_for_openai(monkeypatch):
     monkeypatch.setattr(section, "_config_get", lambda k, d: d)   # no config override
-    # gpt-5-mini's 400K window would give 240K, but the output ceiling caps it to 51K.
-    assert section.section_token_threshold("gpt-5-mini", backend="openai") == 51_000
+    # gpt-5-mini's 400K window would give 240K, but the output ceiling caps it to ~44K
+    # (no effort given ⇒ medium row).
+    assert section.section_token_threshold("gpt-5-mini", backend="openai") == 44_235
     # Same model, a paginating backend → uncapped input-window default.
     assert section.section_token_threshold("gpt-5-mini", backend="claude-api") == 240_000
 
@@ -272,9 +290,22 @@ def test_run_sections_openai_doc_that_claude_would_extract_whole(tmp_path, monke
     vault = _vault(tmp_path)
     pages = [{"page": n, "markdown": "x" * 400} for n in range(1, 601)]   # 60_000 est tokens
     _write_queue(vault, "doc1", pages, 600)
-    # 60K tokens < gpt-5-mini's 240K input threshold, but > its 51K output-capped threshold.
+    # 60K tokens < gpt-5-mini's 240K input threshold, but > its ~44K output-capped threshold
+    # (no effort given ⇒ medium row).
     assert section.run(vault, "doc1", model="gpt-5-mini", backend="claude-api")["sectioned"] is False
     assert section.run(vault, "doc1", model="gpt-5-mini", backend="openai")["sectioned"] is True
+
+
+def test_run_effort_flows_through_to_the_output_capped_threshold(tmp_path, monkeypatch):
+    # High reasoning effort draws more from the same wire-enforced output envelope than low effort
+    # does (#542 follow-up), so the same document sections at high effort but not at low.
+    monkeypatch.setattr(section, "_config_get", lambda k, d: d)   # no config override
+    vault = _vault(tmp_path)
+    pages = [{"page": n, "markdown": "x" * 400} for n in range(1, 201)]   # 20_000 est tokens
+    _write_queue(vault, "doc1", pages, 200)
+    # 20K tokens <= low's 50K (capped) threshold, but > high's ~15.6K threshold.
+    assert section.run(vault, "doc1", model="gpt-5-mini", backend="openai", effort="low")["sectioned"] is False
+    assert section.run(vault, "doc1", model="gpt-5-mini", backend="openai", effort="high")["sectioned"] is True
 
 
 # ── tokenizer-aware thresholds (#574) ────────────────────────────────────────

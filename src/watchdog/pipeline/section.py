@@ -59,40 +59,60 @@ _BUDGET_FRACTION = 0.3
 # `max_tokens` and can't paginate its output (openai, gemini) will truncate a document that fits
 # the input window comfortably but needs more output than the ceiling allows. So the threshold and
 # budget are additionally capped by an output-derived input ceiling: the safe output budget
-# converted back to an input-token cap by inverting the measured *visible*-output relationship
-# (below). Backends that paginate their output (claude-api, deepseek) or have no ceiling
+# converted back to an input-token cap by inverting the measured output relationship (below).
+# Backends that paginate their output (claude-api, deepseek) or have no ceiling
 # (claude-agent-sdk) return None from `output_ceiling_for_sectioning` and keep the pure
 # input-window defaults.
 #
-# Visible output (chain-of-thought reasoning excluded — #539's `reasoning_tokens` telemetry
-# separates them) is **affine** in input size, not proportional to it: a fixed per-call cost plus a
-# marginal rate, not a pure ratio. Fitted per reasoning effort on openai:gpt-5.4-mini (#542):
+# Output is **affine** in input size, not proportional to it: a fixed per-call cost plus a
+# marginal rate, not a pure ratio — and on a backend where chain-of-thought reasoning shares the
+# same wire-enforced `max_tokens` envelope as the visible JSON answer (openai, gemini), what has
+# to fit is *total* output, not the JSON alone. A first pass at this fix (#542) modelled the
+# *visible* answer only, on the reasoning that the JSON has never been observed to need more than
+# the base task budget — true, but beside the point once reasoning is drawn from the same pool: a
+# large reasoning share at high effort can starve or truncate the call even while the JSON itself
+# would have fit easily. Reasoning also scales with input far more steeply than the visible answer
+# does, and does so differently at every effort level, so a single flat rate can't represent it.
+# The fixed cost and marginal rate are now looked up per reasoning effort instead, fitted against
+# *total* (reasoning + visible) output, pooled across models, from archived telemetry (#542
+# follow-up):
 #
-#   low:    1,112 + 0.199 × input tokens   (R²=0.23, reasoning 4% of total output)
-#   medium:   429 + 0.213 × input tokens   (R²=0.39, reasoning 87% of total output)
-#   high:   1,478 + 0.200 × input tokens   (R²=0.41, reasoning 94% of total output)
+#   low:     2,509 + 0.103 × input tokens
+#   medium:  1,051 + 0.989 × input tokens
+#   high:   28,482 + 2.486 × input tokens
 #
-# The marginal rate is stable at ~0.20 across every effort level — that stability is the reliable
-# part of the fit, so it's the constant to trust. The fixed cost varies 429–1,478 across effort
-# levels; 1,000 is used here as a round, roughly-central estimate rather than the low end (which
-# would undersize the budget for higher-effort calls) or the high end (which would oversize it for
-# low-effort ones). A pure ratio (the pre-#542 model) divides by a shrinking effective density as
-# sections get smaller, which makes measured density appear to *rise* as sections shrink — that
-# artifact made over-sectioning self-justifying. Inverting the affine relation instead — solving
-# `ceiling × safe_fraction = fixed_cost + marginal_rate × input` for `input` — removes it.
-_OUTPUT_FIXED_COST = 1_000         # est. fixed visible-output tokens per call, independent of input size (#542)
-_OUTPUT_MARGINAL_RATE = 0.20       # est. marginal visible-output tokens per input token — stable across effort (#542)
-_MIN_OUTPUT_CAPPED_BUDGET = 1_000  # floor so a small/pathological ceiling can't invert to a zero or negative budget
-_OUTPUT_SAFE_FRACTION = 0.7        # fraction of the output ceiling to target, leaving headroom for variance/CoT
+# These fits are weak (R² 0.05–0.36, as few as 15 data points at the high-effort row) and the
+# largest input any archived call actually measured is 24,859 tokens — well inside what an
+# unclamped inversion can extrapolate to at low or medium effort's shallow marginal rate.
+# `_MAX_OUTPUT_CAPPED_BUDGET` caps the result at roughly 2x that measured range regardless of what
+# the formula returns, so a weak, extrapolated fit can't produce a budget the data doesn't
+# support. #598 is the follow-on that will derive the envelope itself from the model catalog's
+# `max_output_tokens` field with a proper per-model, per-effort sweep, rather than reasoning about
+# it from pooled archives the way this fix does.
+_OUTPUT_DENSITY_BY_EFFORT: dict[str, tuple[int, float]] = {
+    "low":    (2_509, 0.103),
+    "medium": (1_051, 0.989),
+    "high":   (28_482, 2.486),
+}
+_OUTPUT_DENSITY_DEFAULT = _OUTPUT_DENSITY_BY_EFFORT["medium"]  # unspecified/unrecognized effort -> medium,
+                                                                # matching model_client's own convention
+_MIN_OUTPUT_CAPPED_BUDGET = 1_000   # floor so a small/pathological ceiling can't invert to <= 0
+_MAX_OUTPUT_CAPPED_BUDGET = 50_000  # ~2x the largest input any archived call has measured (24,859) —
+                                     # a bound on how far a weak, extrapolated fit can be trusted (#542)
+_OUTPUT_SAFE_FRACTION = 0.7         # fraction of the output ceiling to target, leaving headroom for variance
 
 
-def _invert_output_ceiling(ceiling: int) -> int:
-    """Max input tokens a call can take and still keep its visible output under `ceiling *
-    _OUTPUT_SAFE_FRACTION`, inverting the affine visible-output fit above. Floored at
-    `_MIN_OUTPUT_CAPPED_BUDGET` so a ceiling too small to clear the fixed cost doesn't invert to
-    <= 0."""
-    return max(_MIN_OUTPUT_CAPPED_BUDGET,
-               int((ceiling * _OUTPUT_SAFE_FRACTION - _OUTPUT_FIXED_COST) / _OUTPUT_MARGINAL_RATE))
+def _invert_output_ceiling(ceiling: int, effort: str | None) -> int:
+    """Max input tokens a call can take and still keep its *total* (reasoning + visible) output
+    under `ceiling * _OUTPUT_SAFE_FRACTION`, inverting the affine total-output fit for `effort`
+    above (the medium row when `effort` is unset or not one of the three measured levels).
+    Clamped to `[_MIN_OUTPUT_CAPPED_BUDGET, _MAX_OUTPUT_CAPPED_BUDGET]` — the floor guards a
+    ceiling too small to clear the fixed cost from inverting to <= 0; the cap keeps the low/medium
+    rows' shallow marginal rate from extrapolating the budget far past any input size the
+    underlying fit was actually measured against."""
+    fixed, marginal = _OUTPUT_DENSITY_BY_EFFORT.get(effort, _OUTPUT_DENSITY_DEFAULT)
+    raw = (ceiling * _OUTPUT_SAFE_FRACTION - fixed) / marginal
+    return max(_MIN_OUTPUT_CAPPED_BUDGET, min(_MAX_OUTPUT_CAPPED_BUDGET, int(raw)))
 
 
 def _config_get(key: str, default):
@@ -112,14 +132,19 @@ def _resolve_override(key: str, model_default: int) -> int:
     return val if isinstance(val, int) and not isinstance(val, bool) else model_default
 
 
-def model_defaults(model: str | None, backend: str | None = None) -> tuple[int, int]:
+def model_defaults(model: str | None, backend: str | None = None,
+                   effort: str | None = None) -> tuple[int, int]:
     """(threshold, budget) est-token sectioning defaults for the extraction stage (#321, #343,
-    #574).
+    #574, #542).
 
     Derived from `model`'s context window (the input side); then, for a backend that enforces a
     fixed output ceiling it can't paginate past (openai/gemini — #343), additionally capped so a
     call's expected output stays under that ceiling. `model`/`backend` are the extraction stage's
-    tier/id and backend (None ⇒ default tier / auth-routed Claude backend).
+    tier/id and backend (None ⇒ default tier / auth-routed Claude backend). `effort` selects which
+    row of the per-effort output-density fit `_invert_output_ceiling` inverts against, and is
+    passed to `output_ceiling_for_sectioning` too, since a reasoning model's real wire ceiling
+    (base task budget + reasoning reserve) is itself effort-scaled (#542 follow-up); irrelevant
+    when the backend has no output ceiling to protect against.
 
     Finally divided by `model_client.tokenizer_ratio` (#574): `est_tokens`'s chars/4 heuristic is
     calibrated against Claude's *old* tokenizer, so on a model whose tokenizer produces more real
@@ -147,26 +172,28 @@ def model_defaults(model: str | None, backend: str | None = None) -> tuple[int, 
     window = model_client.context_window(model, backend)
     threshold = int(window * _THRESHOLD_FRACTION)
     budget = int(window * _BUDGET_FRACTION)
-    extract_ceiling = model_client.output_ceiling_for_sectioning("extract", backend, model)
+    extract_ceiling = model_client.output_ceiling_for_sectioning("extract", backend, model, effort)
     if extract_ceiling is not None:
-        threshold = min(threshold, _invert_output_ceiling(extract_ceiling))
-    section_ceiling = model_client.output_ceiling_for_sectioning("extract-section", backend, model)
+        threshold = min(threshold, _invert_output_ceiling(extract_ceiling, effort))
+    section_ceiling = model_client.output_ceiling_for_sectioning("extract-section", backend, model, effort)
     if section_ceiling is not None:
-        budget = min(budget, _invert_output_ceiling(section_ceiling))
+        budget = min(budget, _invert_output_ceiling(section_ceiling, effort))
     ratio = model_client.tokenizer_ratio(model, backend)
     threshold = int(threshold / ratio)
     budget = max(1, int(budget / ratio))
     return threshold, budget
 
 
-def section_token_threshold(model: str | None = None, backend: str | None = None) -> int:
+def section_token_threshold(model: str | None = None, backend: str | None = None,
+                            effort: str | None = None) -> int:
     """Estimated-token count at/under which a document is not sectioned.
 
     Model-aware by default: derived from the extraction model's context window (#321) and, for a
-    fixed-output-ceiling backend, its output cap (#343). An explicit integer
-    `section_token_threshold` in config overrides it, as an advanced escape hatch; the `"auto"`
-    sentinel (or an unset key) keeps the model-aware default."""
-    default_threshold, _ = model_defaults(model, backend)
+    fixed-output-ceiling backend, its output cap (#343), itself effort-scaled for a reasoning
+    model (#542 follow-up). An explicit integer `section_token_threshold` in config overrides it,
+    as an advanced escape hatch; the `"auto"` sentinel (or an unset key) keeps the model-aware
+    default."""
+    default_threshold, _ = model_defaults(model, backend, effort)
     return _resolve_override("section_token_threshold", default_threshold)
 
 
@@ -218,7 +245,7 @@ def char_windows(total: int, size: int, overlap: int) -> list[tuple[int, int]]:
 
 
 def run(vault: Path, sha256: str, *, force_budget: int | None = None,
-        model: str | None = None, backend: str | None = None) -> dict:
+        model: str | None = None, backend: str | None = None, effort: str | None = None) -> dict:
     """Plan sections for a document.
 
     Normally threshold-gated: documents at/under `section_token_threshold` are not
@@ -228,8 +255,9 @@ def run(vault: Path, sha256: str, *, force_budget: int | None = None,
 
     `model`/`backend` are the extraction stage's model (tier name or raw id) and backend, used to
     derive the context-window-aware threshold and budget (#321) and, for a fixed-output-ceiling
-    backend, the output-aware cap (#343); config values override the derived defaults. Both are
-    irrelevant on the `force_budget` path, which sets its own small budget.
+    backend, the output-aware cap (#343); config values override the derived defaults. `effort`
+    additionally scales that output-aware cap for a reasoning model (#542 follow-up). All three
+    are irrelevant on the `force_budget` path, which sets its own small budget.
     """
     queue_file = vault / ".watchdog" / "queue" / f"{sha256}.json"
     if not queue_file.exists():
@@ -240,7 +268,7 @@ def run(vault: Path, sha256: str, *, force_budget: int | None = None,
     page_count = queue.get("page_count") or len(pages)
     total_tokens = est_tokens_from_pages(pages)
 
-    default_threshold, default_budget = model_defaults(model, backend)
+    default_threshold, default_budget = model_defaults(model, backend, effort)
     threshold = _resolve_override("section_token_threshold", default_threshold)
     budget = _resolve_override("section_token_budget", default_budget)
     default_overlap = max(1, budget * _OVERLAP_NUMERATOR // _OVERLAP_DENOMINATOR)

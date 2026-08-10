@@ -1855,16 +1855,28 @@ def test_output_ceiling_is_none_when_nothing_to_protect(backend, model):
     assert mc.output_ceiling_for_sectioning("extract", backend, model) is None
 
 
-@pytest.mark.parametrize("backend, model, expected", [
-    ("openai", "gpt-4o", 16000),        # enforces max_tokens but can't continue → must be sized
+def test_output_ceiling_returned_for_non_continuation_capped_backends():
+    # A chat model enforces max_tokens but can't continue → must be sized, and (unlike a
+    # reasoning model) has no reserve to add regardless of effort.
+    assert mc.output_ceiling_for_sectioning("extract", "openai", "gpt-4o") == 16000
+    assert mc.output_ceiling_for_sectioning("extract", "openai", "gpt-4o", "high") == 16000
+
+
+@pytest.mark.parametrize("backend, model, effort, expected", [
     # An OpenAI reasoning model's raised wire ceiling (#354), and Gemini's (#541), is shared with
-    # chain-of-thought/thinking, so sectioning still plans against the base task budget, not the
-    # raised one — true for Gemini regardless of effort, since it always gets a reserve.
-    ("gemini", "gemini-2.5-flash", 16000),
-    ("openai", "gpt-5.4", 16000),
+    # chain-of-thought/thinking. Pre-#542-follow-up, sectioning planned only against the base task
+    # budget; now it plans against the real wire ceiling (base + the effort-scaled reserve)
+    # instead, since total (reasoning + visible) output is what the fixed `max_tokens` actually
+    # bounds — an unspecified effort resolves to the medium reserve, matching
+    # `_task_max_tokens`'s own convention.
+    ("openai", "gpt-5.4", None, 64000),      # 16000 + 48000 (medium, unspecified default)
+    ("openai", "gpt-5.4", "low", 32000),     # 16000 + 16000
+    ("openai", "gpt-5.4", "high", 96000),    # 16000 + 80000
+    ("gemini", "gemini-2.5-flash", None, 48000),    # 16000 + 32000 (medium default)
+    ("gemini", "gemini-2.5-flash", "high", 64000),  # 16000 + 48000
 ])
-def test_output_ceiling_returned_for_non_continuation_capped_backends(backend, model, expected):
-    assert mc.output_ceiling_for_sectioning("extract", backend, model) == expected
+def test_output_ceiling_scales_with_effort_for_reasoning_models(backend, model, effort, expected):
+    assert mc.output_ceiling_for_sectioning("extract", backend, model, effort) == expected
 
 
 def _fake_httpx_sequence(monkeypatch, status_codes):
