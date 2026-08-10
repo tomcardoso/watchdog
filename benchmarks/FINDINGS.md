@@ -425,14 +425,27 @@ figures are not comparable with the v1-scored rows above:
 
 | Arm | facts | `must_not_miss` | `key_facts` staged | Cost | Latency |
 |---|---|---|---|---|---|
-| `gpt-luna-low-noverify` | 97% (38/39) | **81% (38/47)** | 311 | $0.110 | 287s |
-| `gpt-luna-low-verify` | 100% (39/39) | **79% (37/47)** | 537 | $0.220 | 415s |
+| `gpt-luna-low-noverify` | 85% (33/39) | **68% (32/47)** | 311 | $0.110 | 287s |
+| `gpt-luna-low-verify` | 95% (37/39) | **79% (37/47)** | 537 | $0.220 | 415s |
 
-The pass added **220 facts** — a 71% larger ledger — for **exactly double the cost** and 45% more
-wall-clock, and `must_not_miss` recall did not improve. Do not read the −1 as the pass making
-recall worse: these are independent runs of a non-deterministic model, so the underlying
-extractions differ, and ±1 on 47 items sits inside the sample-to-sample variation measured in
-#581. The defensible claim is **no detectable recall gain at 2× cost**.
+**Rescored under #591's fixed scorer** (2026-08-10) — the original figures (97%/81% and
+100%/79%) were inflated by the pre-#591 bugs: a key item was matched against the whole vault's
+extraction text rather than its own document, so an anchor absent from the right document could
+still be credited from an unrelated one elsewhere in the corpus, and a rounding chain in the
+thousands-to-millions variant generator could collapse a 5+ digit anchor to a bare 1–3 character
+string that then matched almost any digit run in the corpus (`78003` → `"78"`, `1000` → `"1"`).
+Both bugs inflated `noverify` more than `verify` — most of the ten counsel-of-record items across
+the two court orders round-tripped through it, and now resolve consistently instead of splitting
+on which arm's cross-document noise happened to line up (see #591).
+
+The pass still added **220 facts** — a 71% larger ledger — for **exactly double the cost** and
+45% more wall-clock. Under the corrected scorer the `must_not_miss` gap between the two arms
+widened from −1 to +5 items; do not read that as proof the verify pass improves `must_not_miss`
+recall — this is a single run of each arm, and #581 found up to a 3× spread in facts extracted
+between independent samples of the *same* arm, so a five-item gap between two single runs of
+*different* arms isn't enough on its own to call. The original conclusion stands: **no evidence
+yet of a recall gain that would justify 2× cost**, now on a less noisy but still single-sample
+instrument.
 
 **The suppression thresholds are too loose.** Across 12 verify calls: 220 candidates added, **1**
 suppressed as a duplicate. D172 picked Jaccard 0.75 / containment 0.9 by hand and flagged that
@@ -534,3 +547,25 @@ unusable contents. See #586 for the related unexplained `digest` zero.
   date need converting before they will tally. Fixed in the runbook, along with two related traps:
   `bench packets --out` defaults to `qualitative/` and silently overwrites the previous pass's
   artifacts, and the prompt did not ask judges for the per-verdict `note` the hand-check relies on.
+- 2026-08-10 (#591): **`score_arms.py` had three compounding bugs that inflated absolute
+  `must_not_miss`/facts recall: matching was against the whole vault's extraction text rather than
+  the one document a key item is actually about (sibling documents could cross-credit an anchor),
+  a rounding step in the thousands-to-millions variant generator could drop the decimal point
+  entirely and collapse a 5+ digit anchor to a bare 1–3 character string that then matched almost
+  any digit run in the corpus, and an item whose only anchor is an identifier (an LSO/bar number)
+  rather than a quantity scored zero whenever the extractor reasonably omitted that number even
+  though the substance — the person, correctly related — was captured.** All three are fixed:
+  matching is now per-document, the rounding chain no longer emits a variant that lost its
+  decimal point, and an item whose every anchor reads as an identifier falls back to a non-numeric
+  name-presence test. **Absolute recall figures from before this fix are not comparable to figures
+  after it** — only the D172 verify A/B above (run `2026-08-09-1523`) has been rescored against
+  the fixed instrument, using the archived `.watchdog/extracted/*.json` artifacts under that run's
+  `artifacts/` directory, which the fix reads directly (no live model calls). Other `must_not_miss`
+  tables in this file (the 13-arm sub-item sweep and the earlier `gpt-luna` effort-tier passes)
+  were produced by the same pre-#591 scorer and likely carry the same class of inflation, but
+  their archived vaults were not available to re-score in the environment this fix was written in
+  — treat their absolute percentages as provisional until a fresh pass rescoring is done. The
+  paired-arm *rankings* in those tables are less affected than the absolute numbers, since the
+  same instrument scored every arm in a given table and shared bias partly cancels in a
+  comparison — but "partly" is doing real work in that sentence, and it does not cancel evenly
+  (see the D172 rescore, where the two arms' `must_not_miss` gap widened by 6 items once corrected).
