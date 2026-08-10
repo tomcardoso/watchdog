@@ -251,11 +251,17 @@ class RateLimitError(RuntimeError):
     condition, not a per-document failure. It must propagate past extraction's retry +
     sectioning fallback all the way to the orchestrator, which stops the batch cleanly and
     leaves unfinished documents queued for resume (rather than quarantining a good doc).
-    """
 
-    def __init__(self, message: str, *, resets_at=None):
+    `rate_limit` (#563) is the provider's own rate-limit headers off the 429 response itself
+    (`_rate_limit_headers`) — the last-seen limit/remaining/reset the provider actually enforced,
+    ground truth for the orchestrator's stop message rather than a number reconstructed from our
+    own usage records. None when the backend has no such headers (`claude-agent-sdk`'s
+    session-limit detection reads a CLI transcript, not an HTTP response)."""
+
+    def __init__(self, message: str, *, resets_at=None, rate_limit: dict | None = None):
         super().__init__(message)
         self.resets_at = resets_at
+        self.rate_limit = rate_limit
 
 
 # Substrings that mark a rate/usage-limit error in a result, notice, or exception text.
@@ -283,6 +289,7 @@ class ModelResult:
     latency_s: float = 0.0
     attempts: int = 1
     pruned: list[str] | None = None
+    rate_limit: dict | None = None
 
 
 # ── JSON handling ─────────────────────────────────────────────────────────────
@@ -606,6 +613,36 @@ async def _agent_complete_async(prompt: str | list[dict], model_id: str, schema:
     return await _agent_query(full, model_id, env, effort)
 
 
+# Response headers, per provider, that report a rate-limit window's ceiling/remaining/reset
+# (#563) — captured on every call (success or 429) as ground truth for what the provider
+# actually counted against its per-minute budget, rather than a figure reconstructed from our
+# own usage records. Both map to the same three-field shape (`limit_tokens`/`remaining_tokens`/
+# `reset_tokens`) since both providers expose a combined tokens-per-minute figure at these names
+# — OpenAI's `x-ratelimit-*-tokens` directly, Anthropic's `anthropic-ratelimit-tokens-*` as "the
+# most restrictive limit currently in effect" per its docs. `reset` is left as the provider's own
+# raw string (OpenAI: a duration like "6m0s"; Anthropic: an RFC 3339 timestamp) — the two formats
+# aren't reconciled into one shape, since nothing here needs to compute with it yet.
+_OPENAI_RATE_LIMIT_HEADERS = {"limit_tokens": "x-ratelimit-limit-tokens",
+                              "remaining_tokens": "x-ratelimit-remaining-tokens",
+                              "reset_tokens": "x-ratelimit-reset-tokens"}
+_ANTHROPIC_RATE_LIMIT_HEADERS = {"limit_tokens": "anthropic-ratelimit-tokens-limit",
+                                 "remaining_tokens": "anthropic-ratelimit-tokens-remaining",
+                                 "reset_tokens": "anthropic-ratelimit-tokens-reset"}
+
+
+def _rate_limit_headers(headers, mapping: dict) -> dict | None:
+    """Pull `mapping`'s header names out of a response's `headers` (case-insensitive on a real
+    httpx.Headers), normalising `limit_tokens`/`remaining_tokens` to int. None (not an empty
+    dict) when none of the three are present, so a caller can test truthiness uniformly."""
+    out: dict = {}
+    for key, header_name in mapping.items():
+        val = headers.get(header_name)
+        if val is None:
+            continue
+        out[key] = int(val) if key != "reset_tokens" else val
+    return out or None
+
+
 def _api_cost(model_id: str, usage) -> float | None:
     rates = _PRICING.get(model_id)
     if not rates:
@@ -658,7 +695,11 @@ async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: d
         if effort:
             kwargs["output_config"] = {"effort": effort}
     try:
-        resp = await anthropic.AsyncAnthropic(api_key=api_key).messages.create(
+        # `with_raw_response` (#563) rather than the plain `.create`, so the response's
+        # `anthropic-ratelimit-tokens-*` headers are reachable via `.headers` — `.parse()` then
+        # yields the exact same `Message` object the plain call would have returned, so nothing
+        # downstream of it changes.
+        raw = await anthropic.AsyncAnthropic(api_key=api_key).messages.with_raw_response.create(
             model=model_id,
             max_tokens=max_tokens,
             system=_SYSTEM_PROMPT,
@@ -666,12 +707,16 @@ async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: d
             **kwargs,
         )
     except anthropic.RateLimitError as e:   # 429 — surface as the shared typed error
-        raise RateLimitError(str(e) or "Claude API rate limit reached") from e
+        raise RateLimitError(str(e) or "Claude API rate limit reached",
+                             rate_limit=_rate_limit_headers(e.response.headers,
+                                                            _ANTHROPIC_RATE_LIMIT_HEADERS)) from e
+    resp = raw.parse()
     text = next((b.text for b in resp.content if getattr(b, "type", None) == "text"), "")
     usage = resp.usage
     usage_dict = usage.model_dump() if hasattr(usage, "model_dump") else dict(usage)
     return {"text": text, "usage": usage_dict, "cost_usd": _api_cost(model_id, usage),
-            "finish_reason": getattr(resp, "stop_reason", None)}
+            "finish_reason": getattr(resp, "stop_reason", None),
+            "rate_limit": _rate_limit_headers(raw.headers, _ANTHROPIC_RATE_LIMIT_HEADERS)}
 
 
 # OpenAI-compatible (Chat Completions) pricing: model id → (input, output, cached_input) $/tok,
@@ -948,8 +993,14 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
             if resp.status_code < 500 or attempt == _TRANSIENT_RETRIES:
                 break
             await asyncio.sleep(_TRANSIENT_BACKOFF_S * (attempt + 1))
+    # `x-ratelimit-*-tokens` (#563) — captured on every response regardless of backend, not just
+    # the real OpenAI endpoint: unlike `prompt_cache_key` (D181), sending these header *names*
+    # isn't provider-specific, and `_rate_limit_headers` already returns None when a backend
+    # doesn't send them, so a DeepSeek/Gemini/local/OpenRouter call just carries no rate_limit
+    # rather than a misattributed one.
+    rate_limit = _rate_limit_headers(resp.headers, _OPENAI_RATE_LIMIT_HEADERS)
     if resp.status_code == 429:
-        raise RateLimitError(f"{base_url} rate limit reached")
+        raise RateLimitError(f"{base_url} rate limit reached", rate_limit=rate_limit)
     resp.raise_for_status()
     data = resp.json()
     choices = data.get("choices") or []
@@ -961,7 +1012,7 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     if is_gemini:   # thinking tokens arrive only as a total_tokens gap (#547) — fold them in
         usage = _fold_in_hidden_reasoning(usage)
     return {"text": text, "usage": usage, "cost_usd": _openai_cost(model_id, usage),
-            "finish_reason": finish}
+            "finish_reason": finish, "rate_limit": rate_limit}
 
 
 # OpenAI-compatible base URLs (the `/chat/completions` path is appended per request).
@@ -1178,9 +1229,10 @@ async def _complete_with_pagination(backend_fn, backend: str, prompt, model_id: 
                                     task: str | None = None) -> dict:
     """Call the backend, then continue a max-token-truncated response by prefilling its partial
     output and concatenating, until a natural stop or the continuation guard (#343). Returns the
-    assembled `{text, usage, cost_usd, truncated}`; `truncated` is True only if the output was
-    still capped after the last allowed round (or the backend can't continue), so the caller
-    never accepts a partial extraction."""
+    assembled `{text, usage, cost_usd, truncated, rate_limit}`; `truncated` is True only if the
+    output was still capped after the last allowed round (or the backend can't continue), so the
+    caller never accepts a partial extraction. `rate_limit` (#563) isn't accumulated like `usage`
+    — it's a point-in-time snapshot off whichever call ran last, which is the freshest one."""
     out = await backend_fn(prompt, model_id, schema, api_key, max_tokens, effort_arg)
     text = out.get("text") or ""
     usage = out.get("usage")
@@ -1198,7 +1250,8 @@ async def _complete_with_pagination(backend_fn, backend: str, prompt, model_id: 
         usage = _merge_usage(usage, out.get("usage"))
         cost += out.get("cost_usd") or 0.0
     return {"text": text, "usage": usage, "cost_usd": cost,
-            "truncated": _is_truncated(out.get("finish_reason"))}
+            "truncated": _is_truncated(out.get("finish_reason")),
+            "rate_limit": out.get("rate_limit")}
 
 
 # ── public entry point ────────────────────────────────────────────────────────
@@ -1235,6 +1288,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
     attempts = 0
     pruned_all: list[str] = []
     agg_usage: dict | None = None
+    last_rate_limit: dict | None = None   # #563: freshest snapshot, not accumulated like usage
     was_truncated = False   # #540: whether the final failure was a truncation specifically
     was_starved = False     # #558: narrows was_truncated to the reasoning-starvation shape
     for _ in range(max_retries + 1):
@@ -1252,6 +1306,8 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
         # retried call's telemetry reflects everything actually spent (#412) — a failed attempt's
         # tokens were real spend, not free information.
         agg_usage = _merge_usage(agg_usage, out.get("usage"))
+        if out.get("rate_limit") is not None:
+            last_rate_limit = out["rate_limit"]
 
         if out.get("truncated"):
             # Authoritatively truncated at the provider's output ceiling and not recoverable by
@@ -1311,7 +1367,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
                     auth_mode=auth_mode, usage=agg_usage,
                     cost_usd=round(total_cost, 6) or None,
                     latency_s=round(time.monotonic() - start, 3), attempts=attempts,
-                    pruned=pruned_all or None,
+                    pruned=pruned_all or None, rate_limit=last_rate_limit,
                 )
             last_err = "; ".join(errors[:3])
             if len(errors) > 3:

@@ -235,6 +235,18 @@ many waits the loop takes before giving up and returning with `rate_limited: Tru
 caller that can't tolerate an open-ended stall — `benchmarks/run_benchmark.py`, which needs a
 rate-limited arm to surface as a partial result rather than stall a sweep — gets a hard stop.
 
+**Rate-limit observability (D184, #563).** `RateLimitError` also carries the provider's own
+rate-limit response headers (`rate_limit` — `limit_tokens`/`remaining_tokens`/`reset_tokens`,
+captured directly off the 429 response) when the backend sends them; every successful call's
+usage record carries the same fields when present. The extraction stop message reports the run's
+own observed tokens/min over a trailing 60-second window (`orchestrate._recent_token_rate`)
+alongside the provider's last-seen remaining/limit, so the "lower `extract_concurrency`"
+advice (§5, `docs/troubleshooting.md`) arrives with the number that justifies it rather than a
+guess. This is observability only — no admission control (a rolling token-rate budget gating new
+documents) is built yet; D184 also settled the premise that motivated this work: OpenAI counts
+prompt-cache-hit tokens toward its TPM limit, so the verify pass's OpenAI prompt-cache fix
+(D181/#577) bought cost savings but no rate-limit headroom.
+
 ---
 
 ## 5. Ingest (extraction)
