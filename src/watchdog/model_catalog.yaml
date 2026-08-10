@@ -27,6 +27,17 @@
 # nothing about. `model_client.tokenizer_ratio` resolves it; `section.model_defaults` divides its
 # window-derived threshold/budget by it so a document's real token footprint on a new-tokenizer
 # model still respects the model's real context window.
+# Price reference (#574): https://github.com/pydantic/genai-prices — Pydantic's maintained price
+# dataset (~34 providers). Consult it when adding or revising a model, but read the schema
+# carefully: a price can be a LIST of clauses gated by `constraint.start_date` (take the clause
+# whose date has passed, not the last one in the list), and an individual value can be a
+# `{base, tiers}` object rather than a scalar. Both have produced a false "our catalog is wrong"
+# reading before — resolve them before trusting a surface diff against this file.
+# Speaking of tiers: this catalog prices every model at one flat rate and does not model
+# context-length pricing tiers (several providers, incl. gpt-5.6-luna/-terra and gpt-5.4, roughly
+# double their rate above ~272K tokens). That's a deliberate omission, not an oversight — see
+# docs/commands.md's "Comparing model cost across the catalog" section for the user-facing
+# caveat this produces for `--estimate-all` on a large document.
 models:
   # Order matches the old _MODEL_IDS table (haiku, sonnet, opus) — cmd/setup.py's interactive
   # picker lists Claude tiers in this insertion order, so preserving it keeps picker behavior
