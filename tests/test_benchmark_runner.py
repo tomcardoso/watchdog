@@ -1294,6 +1294,177 @@ def test_score_a_fully_filtered_item_lands_in_detail_not_unscorable(tmp_path):
     assert partial_only["totals"]["facts"]["vault-partial"] == {"hit": 0, "of": 0}
 
 
+# ── score_arms.py per-document scoring + identifier fallback (#591) ────────────
+
+def test_variants_drops_the_bare_integer_collapse_but_keeps_the_decimal_restatement():
+    """The old `.rstrip("0").rstrip(".")` chain could strip the decimal point itself, turning a
+    5-digit anchor into a 2-character bare integer that matches almost any digit run ("78003" ->
+    "78.00" -> "78." -> "78"). The fix must drop that specific collapse while still keeping the
+    legitimate one-decimal restatement ("4903" thousand really does appear as "4.9" million) —
+    a blanket length floor would have discarded both, since they're the same three-character
+    shape ("78003" also legitimately renders as "78.0" via the `.1f` line, which stays)."""
+    assert "78" not in sa.variants("78003")
+    assert "78.0" in sa.variants("78003")           # the .1f line's output is untouched
+    assert "4.9" in sa.variants("4903")              # meaningful restatement, must survive
+    assert "1" not in sa.variants("1000")            # 1000/1000 == 1.00 -> would collapse to "1"
+    assert "260" not in sa.variants("260000")        # 260000/1000 == 260.00 -> would collapse to "260"
+
+
+def test_variants_always_includes_the_anchor_itself():
+    assert "78003" in sa.variants("78003")
+
+
+def test_millions_prose_covers_a_whole_dollar_anchor():
+    """A plain-dollar anchor ($5,000,000, not a thousands-denominated figure) needs a different
+    conversion (/1,000,000, not /1,000) to match prose like "$5 million" — variants() alone
+    produces only nonsense ("5000.0") for this case without millions_prose()."""
+    assert sa.millions_prose("5000000") == {"5 million", "5.0 million", "5.0m"}
+
+
+def test_millions_prose_uses_sensible_not_bankers_rounding():
+    """1,250,000 -> 1.25 million exactly, and a sensibly-rounded "1.3 million" — not the
+    round-half-to-even "1.2" plain float formatting would give."""
+    assert sa.millions_prose("1250000") == {"1.25 million", "1.3 million", "1.3m"}
+
+
+def test_millions_prose_formats_round_tens_without_scientific_notation():
+    """A round ten of millions must render as "10 million", not as Decimal.normalize()'s
+    "1E+1 million". These are the figures prose states most often ("$50 million"), so an
+    exponent here would silently miss the most common large-round-figure phrasing."""
+    assert sa.millions_prose("10000000") == {"10 million", "10.0 million", "10.0m"}
+    assert sa.millions_prose("50000000") == {"50 million", "50.0 million", "50.0m"}
+    assert sa.millions_prose("100000000") == {"100 million", "100.0 million", "100.0m"}
+    for anchor in ("10000000", "50000000", "100000000", "2000000000"):
+        assert not any("E" in v or "e+" in v for v in sa.millions_prose(anchor))
+
+
+def test_millions_prose_below_one_million_is_empty():
+    assert sa.millions_prose("400000") == set()
+
+
+def test_millions_prose_never_generates_a_bare_short_token():
+    """Every variant keeps "million"/"m" adjacent to the digits — the safety net that keeps this
+    from reintroducing the #591 bare-digit collisions. No variant is under 4 characters."""
+    for anchor in ("1000000", "5000000", "999999000"):
+        for v in sa.millions_prose(anchor):
+            assert len(v) >= 4, v
+
+
+def test_score_item_prose_million_hits_only_when_the_value_actually_matches():
+    """Tom's ruling: the benchmark scores on numeric value, not transcription format — "$5
+    million" is a hit against a 5,000,000 anchor because it's the same number, and "$4 million"
+    is not, because it isn't."""
+    text = "The Directors' Charge was capped at $5,000,000."
+    hit_blob = sa.norm("The Directors' Charge was capped at $5 million.")
+    assert sa.score_item(text, hit_blob)[0] is True
+
+    miss_blob = sa.norm("The Directors' Charge was capped at $4 million.")
+    assert sa.score_item(text, miss_blob)[0] is False
+
+
+def test_is_identifier_anchor_true_for_lso_number():
+    text = "D.J. Miller (LSO# 344393P) is lawyer for the Applicant."
+    assert sa.is_identifier_anchor("344393", text)
+
+
+def test_is_identifier_anchor_true_for_trailing_letter_suffix():
+    """A digit run immediately followed by a letter with no space ("78003K") is a reference-code
+    suffix a plain quantity never has, even without a nearby keyword."""
+    assert sa.is_identifier_anchor("78003", "Andrew Hanrahan (78003K)")
+
+
+def test_is_identifier_anchor_false_for_a_plain_dollar_figure():
+    assert not sa.is_identifier_anchor("2000000", "an increase from $2,000,000 to $5,000,000")
+
+
+def test_name_candidates_finds_a_multiword_proper_name():
+    assert "D.J. Miller" in sa.name_candidates("D.J. Miller (LSO# 344393P) is lawyer for the Applicant.")
+
+
+def test_score_item_identifier_only_anchor_falls_back_to_name_presence():
+    """A lawyer whose LSO number was never transcribed still scores a hit if their name and role
+    were captured — the substance, not an identifier the extractor had no reason to keep."""
+    text = "D.J. Miller (LSO# 344393P) is lawyer for the Applicant."
+    blob = sa.norm('{"name": "D.J. Miller", "relationship": "lawyer for Applicant"}')
+    hit, hits, total = sa.score_item(text, blob)
+    assert hit is True
+    assert hits == 0  # the numeric anchor itself never matched — only the name fallback did
+
+
+def test_score_item_identifier_only_anchor_stays_a_miss_without_the_name():
+    text = "D.J. Miller (LSO# 344393P) is lawyer for the Applicant."
+    blob = sa.norm('{"note": "no relevant entity captured here"}')
+    hit, hits, total = sa.score_item(text, blob)
+    assert hit is False
+
+
+def test_score_item_plain_dollar_figure_gets_no_identifier_fallback():
+    """A missing quantity must not be rescued by the identifier fallback — only an item whose
+    anchor actually reads as a reference code gets the non-numeric escape hatch. (Not rescued by
+    the millions-prose match either — the blob's figure is unrelated to either anchor.)"""
+    text = "The Directors' Charge increases from $2,000,000 to $5,000,000."
+    blob = sa.norm('{"fact": "The Administration Charge was capped at $400,000."}')
+    hit, hits, total = sa.score_item(text, blob)
+    assert hit is False
+
+
+def test_score_does_not_cross_credit_an_anchor_from_a_sibling_document(tmp_path):
+    """The core fix: a key item is matched only against its own document's extraction. An anchor
+    that appears only in a *different* document in the same vault must not count."""
+    keys_dir = _write_key_with_document(
+        tmp_path, "doc-a", "sha-a",
+        [{"id": "F1", "fact": "Legal fees of $4,903 thousand were recognized."}])
+    # A second key, for a different document, whose extraction happens to contain the figure.
+    (keys_dir / "doc-b.yaml").write_text(yaml.safe_dump({
+        "document": {"file": "doc-b.pdf", "sha256": "sha-b"},
+        "facts": [], "must_not_miss": [],
+    }))
+
+    vault = tmp_path / "vault"
+    extracted = vault / ".watchdog" / "extracted"
+    extracted.mkdir(parents=True)
+    # doc-a's own extraction never mentions the figure...
+    (extracted / "sha-a.json").write_text(json.dumps({"document": {"note": "nothing relevant here"}}))
+    # ...but a sibling document's extraction happens to contain "4.9" in an unrelated context.
+    (extracted / "sha-b.json").write_text(json.dumps({"document": {"note": "grew 4.9 percent"}}))
+
+    result = sa.score([str(vault)], keys_dir=keys_dir)
+
+    assert result["totals"]["facts"]["vault"] == {"hit": 0, "of": 1}
+
+
+def test_score_matches_an_anchor_within_its_own_document(tmp_path):
+    keys_dir = _write_key_with_document(
+        tmp_path, "doc-a", "sha-a",
+        [{"id": "F1", "fact": "Legal fees of $4,903 thousand were recognized."}])
+    vault = tmp_path / "vault"
+    extracted = vault / ".watchdog" / "extracted"
+    extracted.mkdir(parents=True)
+    (extracted / "sha-a.json").write_text(json.dumps({"document": {"note": "grew 4.9 percent"}}))
+
+    result = sa.score([str(vault)], keys_dir=keys_dir)
+
+    assert result["totals"]["facts"]["vault"] == {"hit": 1, "of": 1}
+
+
+def test_score_identifier_fallback_end_to_end(tmp_path):
+    """Full `score()` path: a counsel-of-record item whose LSO number was never transcribed still
+    scores a hit because the lawyer's name and relationship were captured, matching what the
+    archived-run rescore found for #591."""
+    keys_dir = _write_key_with_document(
+        tmp_path, "doc-a", "sha-a", facts=[],
+        must_not_miss=[{"id": "M1", "item": "D.J. Miller (LSO# 344393P) is lawyer for the Applicant."}])
+    vault = tmp_path / "vault"
+    extracted = vault / ".watchdog" / "extracted"
+    extracted.mkdir(parents=True)
+    (extracted / "sha-a.json").write_text(json.dumps({
+        "entities": [{"name": "D.J. Miller", "roles": [{"relationship": "lawyer for Applicant"}]}]}))
+
+    result = sa.score([str(vault)], keys_dir=keys_dir)
+
+    assert result["totals"]["must_not_miss"]["vault"] == {"hit": 1, "of": 1}
+
+
 # ── backend + auth reporting (#475) ────────────────────────────────────────────
 
 def _usage(backend="claude-api", auth_mode="api-key", cost=1.0):
