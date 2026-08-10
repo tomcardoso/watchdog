@@ -235,6 +235,45 @@ many waits the loop takes before giving up and returning with `rate_limited: Tru
 caller that can't tolerate an open-ended stall — `benchmarks/run_benchmark.py`, which needs a
 rate-limited arm to surface as a partial result rather than stall a sweep — gets a hard stop.
 
+**Rate-limit observability (D184, #563).** `RateLimitError` also carries the provider's own
+rate-limit response headers (`rate_limit` — `limit_tokens`/`remaining_tokens`/`reset_tokens`,
+captured directly off the 429 response) when the backend sends them; every successful call's
+usage record carries the same fields when present. The extraction stop message reports the run's
+own observed tokens/min over a trailing 60-second window (`orchestrate._recent_token_rate`)
+alongside the provider's last-seen remaining/limit, so the "lower `extract_concurrency`"
+advice (§5, `docs/troubleshooting.md`) arrives with the number that justifies it rather than a
+guess. D184 also settled the premise that motivated this work: OpenAI counts prompt-cache-hit
+tokens toward its TPM limit, so the verify pass's OpenAI prompt-cache fix (D181/#577) bought cost
+savings but no rate-limit headroom.
+
+**Admission control (D185, #563).** Built on the observability above: a new document's dispatch
+is held back (`orchestrate._admit`) when the run's recent tokens/min, plus every *other*
+currently in-flight document's reservation (`_admission_reserved`), plus that document's own
+estimate (`section.est_tokens_from_pages`, read from `preflight.run`'s already-fetched output —
+computed for the whole queue once, up front, and reused for the existing already-extracted/
+already-staged skip check too, so a resumed run's free skips are never held up or reserved)
+would exceed a budget — the `extract_token_budget` config override if set, else the most recent
+`rate_limit.limit_tokens` any call this run has reported (`orchestrate._current_token_budget`),
+else nothing is gated (unchanged pre-#563 behaviour). The gate sits before the concurrency
+semaphore, not after, so a slot isn't held idle while waiting.
+
+The reservation term is load-bearing: `run()` fires every queued document's dispatch at once, and
+asyncio runs each one's synchronous prefix — including its first `_admit` check — back to back in
+the same event-loop tick, before any of them has completed a real call. A check against recorded
+usage alone would see every concurrently-dispatched document as if it were the only one running,
+admitting an entire over-budget burst. `_guarded` sets `_admission_reserved[sha]` (via ordinary
+synchronous dict mutation) *before* calling `_admit`, so a later document in the same burst sees
+an earlier one's reservation the moment its own turn comes, and clears it in a `finally` once that
+document's whole `_guarded` call ends — `_admit` itself only reads the dict.
+
+Force-admits past a fixed wait cap regardless of the rate, since `_recent_token_rate`'s window
+only advances when a new call lands in `_usage` — if every in-flight document were ever
+simultaneously waiting on the gate, nothing would produce one, so the cap is what keeps that
+scenario from stalling a run forever rather than merely being unlikely. Auto-discovery never
+engages for `claude-agent-sdk` (Claude subscription auth): that backend's rate-limit detection
+reads a CLI transcript, not HTTP headers, so `rate_limit` is never populated on it —
+`extract_token_budget` is that path's only lever, not a fallback for it.
+
 ---
 
 ## 5. Ingest (extraction)

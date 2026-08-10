@@ -4,6 +4,7 @@ the REAL preflight/postflight/write_vault with the model mocked."""
 import asyncio
 import hashlib
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -2606,6 +2607,32 @@ def test_record_usage_omits_pruned_key_when_absent():
         orchestrate._usage = None
 
 
+def test_record_usage_includes_rate_limit_when_present():
+    """#563: the provider's own rate-limit headers ride onto the record so a run's usage file
+    carries ground truth for what the provider counted, alongside the tokens we logged."""
+    orchestrate._usage = []
+    try:
+        orchestrate._record_usage(
+            "extract", model="gpt-5.4-mini", backend="openai",
+            usage={"prompt_tokens": 100, "completion_tokens": 20}, cost_usd=0.01,
+            rate_limit={"limit_tokens": 150000, "remaining_tokens": 149800, "reset_tokens": "6m0s"})
+        assert orchestrate._usage[0]["rate_limit"] == {
+            "limit_tokens": 150000, "remaining_tokens": 149800, "reset_tokens": "6m0s"}
+    finally:
+        orchestrate._usage = None
+
+
+def test_record_usage_omits_rate_limit_key_when_absent():
+    orchestrate._usage = []
+    try:
+        orchestrate._record_usage(
+            "extract", model="claude-sonnet-4-6", backend="claude-api",
+            usage={"input_tokens": 100, "output_tokens": 20}, cost_usd=0.01)
+        assert "rate_limit" not in orchestrate._usage[0]
+    finally:
+        orchestrate._usage = None
+
+
 def test_record_usage_includes_reasoning_tokens_from_openai_usage_shape():
     """#354: `completion_tokens_details.reasoning_tokens` had been arriving on every OpenAI
     reasoning-model call since D108 and thrown away — it's the field that diagnosed the
@@ -2664,6 +2691,264 @@ def test_usage_totals_sums_reasoning_tokens_and_tolerates_missing_key():
     ]
     totals = orchestrate._usage_totals(records)
     assert totals["reasoning_tokens"] == 48000
+
+
+def test_recent_token_rate_sums_only_calls_within_the_trailing_window():
+    """#563: a rolling-window tokens/min figure — calls outside the window (here, one call 90s
+    before the most recent) must not inflate the reported rate."""
+    records = [
+        {"input_tokens": 50_000, "output_tokens": 10_000, "end_ts": 1000.0},   # 90s before latest
+        {"input_tokens": 20_000, "output_tokens": 5_000, "end_ts": 1080.0},    # 10s before latest
+        {"input_tokens": 30_000, "output_tokens": 5_000, "end_ts": 1090.0},    # latest
+    ]
+    assert orchestrate._recent_token_rate(records, window_s=60.0) == (20_000 + 5_000 + 30_000 + 5_000)
+
+
+def test_recent_token_rate_empty_list_is_zero():
+    assert orchestrate._recent_token_rate([]) == 0
+
+
+# ── admission control (#563) ────────────────────────────────────────────────────
+
+def test_current_token_budget_override_wins_over_discovered():
+    orchestrate._usage = [{"rate_limit": {"limit_tokens": 999}}]
+    try:
+        assert orchestrate._current_token_budget(500) == 500
+    finally:
+        orchestrate._usage = None
+
+
+def test_current_token_budget_discovers_from_most_recent_record_with_rate_limit():
+    orchestrate._usage = [
+        {"rate_limit": {"limit_tokens": 100}},
+        {"input_tokens": 10},               # no rate_limit key at all — must be skipped over
+        {"rate_limit": {"limit_tokens": 200}},
+    ]
+    try:
+        assert orchestrate._current_token_budget(None) == 200
+    finally:
+        orchestrate._usage = None
+
+
+def test_current_token_budget_none_when_usage_is_none():
+    orchestrate._usage = None
+    assert orchestrate._current_token_budget(None) is None
+
+
+def test_current_token_budget_none_when_usage_empty():
+    orchestrate._usage = []
+    try:
+        assert orchestrate._current_token_budget(None) is None
+    finally:
+        orchestrate._usage = None
+
+
+def test_current_token_budget_none_when_no_record_carries_rate_limit():
+    orchestrate._usage = [{"input_tokens": 10}, {"input_tokens": 20}]
+    try:
+        assert orchestrate._current_token_budget(None) is None
+    finally:
+        orchestrate._usage = None
+
+
+def test_admit_noop_when_budget_none():
+    # Would hang forever if this actually polled — budget=None must return immediately.
+    asyncio.run(orchestrate._admit("sha1", 1000, None, asyncio.Event()))
+
+
+def test_admit_noop_when_estimate_alone_exceeds_margin():
+    # 1000 >= 1000 * 0.85 — nothing to wait for; the reactive RateLimitError is the backstop.
+    orchestrate._usage = []
+    try:
+        asyncio.run(orchestrate._admit("sha1", 1000, 1000, asyncio.Event()))
+    finally:
+        orchestrate._usage = None
+
+
+def test_admit_returns_immediately_when_already_under_budget():
+    orchestrate._usage = []
+    try:
+        asyncio.run(orchestrate._admit("sha1", 10, 1000, asyncio.Event()))
+    finally:
+        orchestrate._usage = None
+
+
+def test_admit_counts_other_documents_reservations_not_just_own(monkeypatch):
+    """The property `_admission_reserved` exists for: two documents dispatched in the same burst
+    both see empty `_usage` on their first check (neither has completed a real call yet), so a
+    check against `_usage` alone would admit an entire over-budget burst. `_admit` must also add
+    in whatever *other* shas are already reserved."""
+    monkeypatch.setattr(orchestrate, "_ADMISSION_MAX_WAIT_S", 0.05)
+    monkeypatch.setattr(orchestrate, "_ADMISSION_POLL_INTERVAL_S", 0.01)
+    orchestrate._usage = []
+    orchestrate._admission_reserved["other-doc"] = 5000
+    try:
+        # budget=10000, margin=0.85 -> ceiling=8500. other's reservation (5000) + this doc's own
+        # estimate (4000) = 9000 > 8500 — must not pass immediately; only the max-wait force-admit
+        # lets it through, proving the other document's reservation was actually consulted.
+        start = time.monotonic()
+        asyncio.run(orchestrate._admit("this-doc", 4000, 10000, asyncio.Event()))
+        assert time.monotonic() - start >= 0.05
+    finally:
+        orchestrate._usage = None
+        orchestrate._admission_reserved.clear()
+
+
+def test_admit_polls_until_the_rate_drops_below_budget(monkeypatch):
+    monkeypatch.setattr(orchestrate, "_ADMISSION_POLL_INTERVAL_S", 0.01)
+    calls = {"n": 0}
+
+    def fake_rate(records):
+        calls["n"] += 1
+        return 900 if calls["n"] < 3 else 100   # over budget twice, then clears
+
+    monkeypatch.setattr(orchestrate, "_recent_token_rate", fake_rate)
+    orchestrate._usage = []
+    try:
+        asyncio.run(orchestrate._admit("sha1", 10, 1000, asyncio.Event()))
+    finally:
+        orchestrate._usage = None
+    assert calls["n"] >= 3
+
+
+def test_admit_force_admits_past_the_max_wait(monkeypatch, capsys):
+    # #563: `_recent_token_rate`'s window only advances when a new usage record lands — if
+    # every document were ever simultaneously waiting here, nothing would ever produce one, so
+    # a permanently-over-budget rate must not stall forever.
+    monkeypatch.setattr(orchestrate, "_ADMISSION_POLL_INTERVAL_S", 0.01)
+    monkeypatch.setattr(orchestrate, "_ADMISSION_MAX_WAIT_S", 0.03)
+    monkeypatch.setattr(orchestrate, "_recent_token_rate", lambda records: 999_999)
+    orchestrate._usage = []
+    try:
+        asyncio.run(orchestrate._admit("sha1", 10, 1000, asyncio.Event()))
+    finally:
+        orchestrate._usage = None
+    assert "Proceeding past the token budget" in capsys.readouterr().out
+
+
+def test_admit_returns_promptly_when_cancelled(monkeypatch):
+    monkeypatch.setattr(orchestrate, "_ADMISSION_POLL_INTERVAL_S", 0.01)
+    monkeypatch.setattr(orchestrate, "_recent_token_rate", lambda records: 999_999)
+    cancelled = asyncio.Event()
+    orchestrate._usage = []
+
+    async def _run():
+        task = asyncio.ensure_future(orchestrate._admit("sha1", 10, 1000, cancelled))
+        await asyncio.sleep(0.02)
+        cancelled.set()
+        await asyncio.wait_for(task, timeout=1.0)
+
+    try:
+        asyncio.run(_run())
+    finally:
+        orchestrate._usage = None
+
+
+def test_admit_not_called_for_an_already_extracted_document(tmp_path, monkeypatch):
+    """A free skip (already extracted, not --force) must never sit in `_admit`'s wait for
+    budget it doesn't need."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+    real_preflight_run = orchestrate.preflight.run
+
+    def fake_preflight(v, s):
+        if s == "sha1":
+            return {"already_extracted": True, "filename": "a.pdf", "pages": []}
+        return real_preflight_run(v, s)
+    monkeypatch.setattr(orchestrate.preflight, "run", fake_preflight)
+
+    admit_calls = []
+
+    async def spy_admit(sha, est_tokens, budget, cancelled):
+        admit_calls.append(sha)
+    monkeypatch.setattr(orchestrate, "_admit", spy_admit)
+    _mock(monkeypatch, extraction=_extraction())
+
+    summary = asyncio.run(orchestrate.run(vault, concurrency=1))
+    assert admit_calls == []
+    assert summary["skipped"] == 1
+
+
+def test_admission_budget_from_config_reaches_admit(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+    _mock(monkeypatch, extraction=_extraction())
+
+    admit_calls = []
+
+    async def spy_admit(sha, est_tokens, budget, cancelled):
+        admit_calls.append((sha, budget))
+    monkeypatch.setattr(orchestrate, "_admit", spy_admit)
+
+    asyncio.run(orchestrate.run(vault, concurrency=1, extract_token_budget=12345))
+    assert admit_calls == [("sha1", 12345)]
+
+
+def test_admission_budget_none_by_default(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+    _mock(monkeypatch, extraction=_extraction())
+
+    admit_calls = []
+
+    async def spy_admit(sha, est_tokens, budget, cancelled):
+        admit_calls.append((sha, budget))
+    monkeypatch.setattr(orchestrate, "_admit", spy_admit)
+
+    asyncio.run(orchestrate.run(vault, concurrency=1))
+    assert admit_calls == [("sha1", None)]
+
+
+def test_admission_reserves_in_flight_documents_not_just_recorded_usage(tmp_path, monkeypatch, capsys):
+    """Every queued document's dispatch fires at once in `run()`, and asyncio runs each one's
+    synchronous prefix — including its first `_admit` check — back to back, all before any of
+    them has completed a real model call. A budget check against `_usage` alone would therefore
+    see every concurrently-dispatched document as if it were the only one running, letting an
+    entire over-budget burst straight through. `_admission_reserved` is what makes a *second*
+    document in the same burst see the *first* one's estimated cost the moment its own turn
+    comes, forcing it to wait rather than passing for free."""
+    monkeypatch.setattr(orchestrate, "_ADMISSION_POLL_INTERVAL_S", 0.01)
+    monkeypatch.setattr(orchestrate, "_ADMISSION_MAX_WAIT_S", 0.5)
+    # `_candidates_checklist` runs local NER (GLiNER) on a real background thread
+    # (`asyncio.to_thread`) — genuine, variable-duration work between classify and extract that
+    # would otherwise make this test's timing nondeterministic. Stubbed to keep the only real
+    # `await` in the whole flow the one this test controls (extract's `asyncio.sleep` below).
+    monkeypatch.setattr(orchestrate, "_candidates_checklist", lambda text, **kw: "")
+    vault = make_vault(tmp_path)
+    # 8,500 est tokens each (chars/4) — individually under a 16,000*0.85=13,600 margin, but two
+    # together (17,000) clearly exceed it, so the second must wait on the first if — and only
+    # if — in-flight reservations are consulted, not just completed usage.
+    text = "Acme Corp filed an annual report. " * 1000
+    _queue_doc(vault, sha="doc0", filename="doc0.pdf", text=text)
+    _queue_doc(vault, sha="doc1", filename="doc1.pdf", text=text)
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "classify":
+            return model_client.ModelResult(parsed={"skill": "general-records.md"}, text="",
+                                            model="m", backend="openai", auth_mode="api-key")
+        if task == "extract":
+            await asyncio.sleep(0.05)   # a real gap between admission and this doc's usage landing
+            return model_client.ModelResult(
+                parsed=_extraction(sha="doc0"), text="", model="m", backend="openai",
+                auth_mode="api-key", usage={"input_tokens": 8200, "output_tokens": 300},
+                rate_limit={"limit_tokens": 16000, "remaining_tokens": 5000, "reset_tokens": "10s"})
+        return model_client.ModelResult(parsed={}, text="", model="m", backend="openai", auth_mode="api-key")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    summary = asyncio.run(orchestrate.run(vault, concurrency=2, extract_token_budget=16000,
+                                          skip_finalize=True))
+    assert "Holding new documents" in capsys.readouterr().out
+    assert summary["extracted"] == 2
+
+
+def test_admission_reserved_cleared_after_a_document_finishes(tmp_path, monkeypatch):
+    """A finished document's reservation must not linger and needlessly block a later one."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+    _mock(monkeypatch, extraction=_extraction())
+    orchestrate._admission_reserved.clear()
+    asyncio.run(orchestrate.run(vault, concurrency=1))
+    assert orchestrate._admission_reserved == {}
 
 
 def test_log_md_ingest_entry_includes_usage_line(tmp_path, monkeypatch):
@@ -2892,6 +3177,51 @@ def test_rate_limit_resume_message_uses_resume_hint(tmp_path, monkeypatch, capsy
     assert "Re-run" in out
     assert "once it resets to continue" in out
     assert "watchdog dig" not in out
+
+
+def test_rate_limit_stop_reports_observed_rate_and_provider_headers(tmp_path, monkeypatch, capsys):
+    """#563: the stop message grounds the "lower extract_concurrency" advice in real numbers —
+    this run's own observed tokens/min, plus the provider's last-seen remaining/limit off the
+    429 itself — rather than leaving the advice a guess."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="aaa111", filename="one.pdf")
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "classify":
+            return model_client.ModelResult(parsed={"skill": "general-records.md"}, text="",
+                                            model="m", backend="claude-agent-sdk",
+                                            auth_mode="subscription",
+                                            usage={"input_tokens": 500, "output_tokens": 50})
+        raise model_client.RateLimitError(
+            "session limit",
+            rate_limit={"limit_tokens": 150_000, "remaining_tokens": 200, "reset_tokens": "6m0s"})
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate.run(vault, concurrency=1))
+    out = capsys.readouterr().out
+    assert "550 tokens/min observed" in out
+    assert "200/150,000 tokens remaining" in out
+    assert "extract_concurrency" in out
+
+
+def test_rate_limit_stop_omits_provider_line_when_backend_sends_no_headers(tmp_path, monkeypatch, capsys):
+    """claude-agent-sdk's RateLimitError carries no `rate_limit` (its session-limit detection
+    reads a CLI transcript, not HTTP headers) — the stop message must not crash or print a
+    bogus "None/None tokens remaining" line for it."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="aaa111", filename="one.pdf")
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        if task == "classify":
+            return model_client.ModelResult(parsed={"skill": "general-records.md"}, text="",
+                                            model="m", backend="claude-agent-sdk",
+                                            auth_mode="subscription")
+        raise model_client.RateLimitError("session limit")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate.run(vault, concurrency=1))
+    out = capsys.readouterr().out
+    assert "tokens remaining" not in out
 
 
 def test_failed_doc_is_named_and_quarantine_surfaced(tmp_path, monkeypatch):
