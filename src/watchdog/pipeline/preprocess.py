@@ -31,13 +31,22 @@ import hashlib
 import html
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from pathlib import Path
 
-GARBLED_THRESHOLD = 0.75   # alphanumeric+space ratio below which text is considered garbled
+# alphanumeric+space ratio below which text is considered garbled by the character-class
+# signal alone. Lowered from 0.75 (#580/#597): 0.75 was too aggressive for tables and
+# financial documents — exactly what this tool reads most — and is now only one of three
+# signals combined by is_page_garbled(), not a standalone verdict, so a lower (more easily
+# tripped) value here no longer means a lower bar for forcing OCR. See DECISIONS D189.
+GARBLED_THRESHOLD = 0.6
+WORD_SHAPE_THRESHOLD = 0.3  # fraction of tokens that must look word-like, below which text reads as garbled
+PAGE_GARBLE_VOTES_REQUIRED = 2  # of the signals in page_garble_signals(), how many must fire
 CHUNK_SIZE = 40             # pages per chunk when splitting large PDFs
 CHUNK_TIMEOUT = 300         # seconds per chunk subprocess
 
@@ -84,11 +93,131 @@ def sha256_file(path: Path) -> str:
 
 
 def is_garbled(text: str) -> bool:
-    """Return True if the text layer is too symbol-heavy to be real prose."""
+    """Character-class signal: True if too few characters are alphanumeric or
+    whitespace to be real prose. One vote among several in page_garble_signals()
+    — see D189/#597 for why this alone is no longer enough to force OCR."""
     if not text.strip():
         return False
     readable = sum(1 for c in text if c.isalnum() or c.isspace())
     return (readable / len(text)) < _config_get("garbled_threshold", GARBLED_THRESHOLD)
+
+
+# Deliberately Unicode-aware (`\w`, not `[A-Za-z0-9]`): an accented or non-Latin script is
+# not evidence of garbling, and an ASCII-only class would score French, German, Japanese or
+# Arabic body text as symbol soup — turning this signal into a standing vote against every
+# document that isn't in English, which is exactly the #580 false positive in a new place.
+_WORD_TOKEN_RE = re.compile(r"^\w[\w'\-.,/]*$", re.UNICODE)
+# Stripped from each token's edges before matching, so ordinary sentence punctuation (including
+# CJK's full-width stops and the quotation marks Word substitutes) doesn't disqualify the word
+# it's attached to. A token that is *only* punctuation strips to empty and is not counted at all.
+_TOKEN_EDGE_PUNCT = ".,;:!?\"'()[]{}<>«»“”‘’。、—–"
+
+
+def word_shape_ratio(text: str) -> "float | None":
+    """Fraction of whitespace-delimited tokens that look like a real word or
+    number (starts with a letter or digit in any script, then letters/digits/-'./,
+    only) rather than a run of symbols or dot leaders. None when there are no
+    tokens at all — including a page of nothing but punctuation, where this
+    signal abstains rather than voting on no evidence."""
+    tokens = [t.strip(_TOKEN_EDGE_PUNCT) for t in text.split()]
+    tokens = [t for t in tokens if t]
+    if not tokens:
+        return None
+    word_like = sum(1 for tok in tokens if _WORD_TOKEN_RE.match(tok))
+    return word_like / len(tokens)
+
+
+def is_word_shape_garbled(text: str) -> bool:
+    """Word-shape signal: True if too few tokens look word-shaped to be real
+    prose. Catches genuine symbol soup while passing content that the
+    character-ratio signal alone misreads — a dot-leader table of contents is
+    heavy on '.' characters but its actual words ("Overview", "Review of
+    fiscal 2019-2020") still read as words (#580/#597)."""
+    if not text.strip():
+        return False
+    ratio = word_shape_ratio(text)
+    if ratio is None:
+        return False
+    return ratio < WORD_SHAPE_THRESHOLD
+
+
+# Icon/dingbat font families: their glyphs are symbols (bullets, checkmarks), not
+# characters, so an absent Unicode mapping there says nothing about whether the page's
+# actual body text is readable. Matched against /BaseFont with any subset-tag prefix
+# (e.g. "GFOLJD+SymbolMT") still intact.
+_DINGBAT_FONT_RE = re.compile(r"wingding|dingbat|symbol|webding", re.IGNORECASE)
+
+
+def pdf_page_missing_font_cmap(page) -> bool:
+    """Font-CMap signal: True if the page declares a composite (/Type0) font
+    with no /ToUnicode CMap — the extractor is recovering glyph codes with no
+    reliable path back to characters. Tests a cause rather than a symptom, so
+    when it fires it's close to authoritative; when it doesn't, it says
+    nothing (most documents' simple fonts rely on a named encoding like
+    WinAnsiEncoding instead, which needs no ToUnicode to decode reliably).
+
+    Takes a pypdf-style page object (duck-typed: anything with `.get()` on
+    itself and its nested "/Resources"/"/Font" entries works, so tests can
+    pass plain dicts without constructing a real PDF) rather than page text,
+    since this is a property of the page's font resources, not what was
+    extracted from them (#597).
+    """
+    try:
+        resources = page.get("/Resources")
+        fonts = resources.get("/Font") if resources else None
+        if not fonts:
+            return False
+        for font_ref in fonts.values():
+            font = font_ref.get_object() if hasattr(font_ref, "get_object") else font_ref
+            if font.get("/Subtype") != "/Type0":
+                continue
+            if "/ToUnicode" in font:
+                continue
+            if _DINGBAT_FONT_RE.search(str(font.get("/BaseFont", ""))):
+                continue
+            return True
+        return False
+    except Exception:
+        return False
+
+
+@dataclass
+class PageSample:
+    """One sampled PDF page's raw inputs to the garble ensemble.
+
+    `missing_font_cmap` is computed once, at extraction time, from the real
+    pypdf Page object — the ensemble itself (page_garble_signals, below) works
+    from this plain, serializable record instead, so it stays testable without
+    constructing a PDF (#597).
+    """
+    text: str
+    missing_font_cmap: bool
+
+
+def page_garble_signals(sample: PageSample) -> dict:
+    """Each independent garble signal's verdict for one sampled page, kept
+    separate from the combination rule (is_page_garbled) so each heuristic can
+    be reasoned about and tested on its own (#597)."""
+    return {
+        "char_ratio": is_garbled(sample.text),
+        "word_shape": is_word_shape_garbled(sample.text),
+        "font_cmap": sample.missing_font_cmap,
+    }
+
+
+def is_page_garbled(sample: PageSample) -> bool:
+    """Ensemble verdict for one page: garbled only if at least
+    PAGE_GARBLE_VOTES_REQUIRED of the independent signals agree.
+
+    Requiring agreement (not any-signal-fires) is deliberate: a false positive
+    here is silently destructive — #580 showed OCR flattening a clean
+    reconciliation table's headers into an unusable form, and nothing
+    downstream can tell that happened. A false negative feeds the model
+    imperfect text instead, which is also bad, but tends to be visible in the
+    output rather than silently destroying something that was fine. See D189.
+    """
+    signals = page_garble_signals(sample)
+    return sum(signals.values()) >= PAGE_GARBLE_VOTES_REQUIRED
 
 
 def pdf_page_count(path: Path) -> int:
@@ -100,15 +229,26 @@ def pdf_page_count(path: Path) -> int:
         return 0
 
 
-def pdf_sample_text(path: Path) -> str:
-    """Extract a small text sample from the first few PDF pages using pypdf."""
+def pdf_sample_pages(path: Path) -> list[PageSample]:
+    """Sample the first few PDF pages using pypdf, one PageSample per page.
+
+    Kept per-page rather than joined into one blob: front matter (a cover, a
+    dot-leader table of contents) is systematically unrepresentative of body
+    text, and blending it with clean pages before scoring lets one bad page
+    drag the whole sample below threshold (#580). The font-CMap signal is
+    computed here, against the real pypdf Page object, while it's available
+    (#597) — PageSample carries the result forward as a plain bool.
+    """
     try:
         import pypdf
         reader = pypdf.PdfReader(str(path))
         sample_pages = reader.pages[: min(3, len(reader.pages))]
-        return " ".join(p.extract_text() or "" for p in sample_pages)
+        return [
+            PageSample(text=p.extract_text() or "", missing_font_cmap=pdf_page_missing_font_cmap(p))
+            for p in sample_pages
+        ]
     except Exception:
-        return ""
+        return []
 
 
 def pdf_extract_chunk(src: Path, start: int, end: int) -> Path:
@@ -402,16 +542,35 @@ def _markdown_pages(doc) -> list[dict]:
     return pages or [{"page": 1, "markdown": md.strip()}]
 
 
+def pdf_garble_verdict(path: Path) -> tuple[bool, bool]:
+    """Return (empty, garbled) for a PDF's sampled pages.
+
+    Two levels of combination, kept distinct (#597): is_page_garbled() combines
+    several independent signals into a verdict for one page; this function
+    combines per-page verdicts into a verdict for the document.
+
+    empty: none of the sampled pages have any extracted text (e.g. a fully
+    scanned document). garbled: every non-empty sampled page reads as garbled
+    by the page-level ensemble — judged per page, with blank pages excluded, so
+    one unrepresentative page (a dot-leader table of contents, a cover) can't
+    drag a document whose body text is fine into a garbled verdict (#580).
+    """
+    sampled_pages = [s for s in pdf_sample_pages(path) if s.text.strip()]
+    if not sampled_pages:
+        return True, False
+    return False, all(is_page_garbled(s) for s in sampled_pages)
+
+
 def process_with_docling(path: Path, force_ocr: bool = False) -> dict:
     is_pdf = path.suffix.lower() == ".pdf"
     garbled_detected = False
 
-    # For PDFs: sample text layer to decide whether to force OCR
+    # For PDFs: sample text layer to decide whether to force OCR.
     if is_pdf and not force_ocr:
-        sample = pdf_sample_text(path)
-        if not sample.strip():
+        empty, garbled = pdf_garble_verdict(path)
+        if empty:
             force_ocr = True
-        elif is_garbled(sample):
+        elif garbled:
             garbled_detected = True
             force_ocr = True
 

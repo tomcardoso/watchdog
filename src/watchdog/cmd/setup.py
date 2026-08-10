@@ -57,16 +57,19 @@ _CONFIGURE_KEYS = {
         "type": "lang_list",
     },
     "garbled_threshold": {
-        "short": "OCR trigger threshold — alphanumeric ratio below which a PDF text layer is garbled (default: 0.75)",
+        "short": "One of three OCR-trigger signals — alphanumeric ratio below which a PDF page counts as unreadable (default: 0.6)",
         "help": (
-            "When reading a PDF, Watchdog samples the text layer and measures what fraction of\n"
-            "  characters are alphanumeric or whitespace. If the ratio falls below this threshold,\n"
-            "  the text layer is considered garbled and OCR is applied automatically.\n"
-            "  Lower = more aggressive OCR. Higher may miss subtly garbled pages.\n"
-            "  Valid range: 0.0–1.0. Default: 0.75."
+            "When reading a PDF, Watchdog samples each page's text layer and checks three\n"
+            "  independent signals of whether it's actually readable: this alphanumeric ratio, a\n"
+            "  word-shape check for tokens that look like language rather than symbol noise, and a\n"
+            "  check of the page's embedded font data. OCR is only applied when at least two of\n"
+            "  the three agree the page is unreadable — no single signal, including this one, can\n"
+            "  trigger it alone. This keeps a table-of-contents page (many dot leaders, low ratio,\n"
+            "  but still full of real words) from forcing OCR on an otherwise clean document.\n"
+            "  Lower = this signal fires more easily. Valid range: 0.0–1.0. Default: 0.6."
         ),
         "type": "float",
-        "default": 0.75,
+        "default": 0.6,
         "min": 0.0,
         "max": 1.0,
     },

@@ -1527,7 +1527,7 @@ def test_configure_show_all_includes_new_keys(wdg_home, capsys):
 def test_configure_new_key_shows_default_when_unset(wdg_home, capsys):
     cli.cmd_configure(args(key="garbled_threshold"))
     out = _strip_ansi(capsys.readouterr().out)
-    assert "0.75" in out
+    assert "0.6" in out
 
 
 # ── configure — interactive mode ─────────────────────────────────────────────
