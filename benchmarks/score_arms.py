@@ -132,7 +132,12 @@ def millions_prose(anchor):
     exact = millions.normalize()                        # 5000000 -> 5 ; 1250000 -> 1.25
     rounded = millions.quantize(decimal.Decimal("0.1"), rounding=decimal.ROUND_HALF_UP)
     # 1250000 -> 1.3 (a "sensibly rounded" one-decimal form, not banker's-rounded 1.2)
-    return {f"{exact} million", f"{rounded} million", f"{rounded}m"}
+    # `:f` forces fixed-point: `Decimal.normalize()` rewrites a round ten into scientific
+    # notation (Decimal("50") -> "5E+1"), so plain interpolation would emit "5E+1 million" for
+    # $50,000,000 and never match anything. `rounded` needs no such guard — `quantize` keeps its
+    # exponent — but round figures are exactly the ones prose states most often, so this is the
+    # case that matters most.
+    return {f"{exact:f} million", f"{rounded} million", f"{rounded}m"}
 
 
 def norm(text):

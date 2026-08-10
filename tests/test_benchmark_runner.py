@@ -1327,6 +1327,17 @@ def test_millions_prose_uses_sensible_not_bankers_rounding():
     assert sa.millions_prose("1250000") == {"1.25 million", "1.3 million", "1.3m"}
 
 
+def test_millions_prose_formats_round_tens_without_scientific_notation():
+    """A round ten of millions must render as "10 million", not as Decimal.normalize()'s
+    "1E+1 million". These are the figures prose states most often ("$50 million"), so an
+    exponent here would silently miss the most common large-round-figure phrasing."""
+    assert sa.millions_prose("10000000") == {"10 million", "10.0 million", "10.0m"}
+    assert sa.millions_prose("50000000") == {"50 million", "50.0 million", "50.0m"}
+    assert sa.millions_prose("100000000") == {"100 million", "100.0 million", "100.0m"}
+    for anchor in ("10000000", "50000000", "100000000", "2000000000"):
+        assert not any("E" in v or "e+" in v for v in sa.millions_prose(anchor))
+
+
 def test_millions_prose_below_one_million_is_empty():
     assert sa.millions_prose("400000") == set()
 
