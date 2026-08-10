@@ -1087,6 +1087,26 @@ def test_prompt_cache_key_shared_across_documents_with_the_same_skill_and_by_the
     assert key1 == key2 == key_verify
 
 
+def test_prompt_cache_key_shared_across_digest_calls_with_the_same_skill():
+    """Digest (#586) uses the same block layout as extract (A1) — the cacheable prefix is
+    instructions+brief then skill, with filename/title/type/page_count/sidecar/key_facts confined
+    to the volatile block after the breakpoint. Two digest prompts for different documents that
+    share a skill must derive the same cache key, same as extract's."""
+    kwargs = dict(skill_text="SKILL TEXT", brief="Investigate the fraud")
+    doc1 = prompts.build_digest_prompt(filename="doc-a.pdf", title="Doc A",
+                                       document_type="Annual Report", page_count=12,
+                                       sidecar="sidecar A", key_facts=[{"fact": "Fact about A"}],
+                                       **kwargs)
+    doc2 = prompts.build_digest_prompt(filename="doc-b.pdf", title="Doc B",
+                                       document_type="Affidavit", page_count=99,
+                                       sidecar="a different sidecar",
+                                       key_facts=[{"fact": "A different fact"}], **kwargs)
+    key1 = mc._prompt_cache_key(doc1)
+    key2 = mc._prompt_cache_key(doc2)
+    assert key1 is not None
+    assert key1 == key2
+
+
 def test_prompt_cache_key_differs_by_skill():
     kwargs = dict(pages_text="x", sidecar=None, brief=None, known_document_types=[])
     a = prompts.build_extract_prompt(skill_text="SKILL A", **kwargs)
@@ -1855,16 +1875,28 @@ def test_output_ceiling_is_none_when_nothing_to_protect(backend, model):
     assert mc.output_ceiling_for_sectioning("extract", backend, model) is None
 
 
-@pytest.mark.parametrize("backend, model, expected", [
-    ("openai", "gpt-4o", 16000),        # enforces max_tokens but can't continue → must be sized
+def test_output_ceiling_returned_for_non_continuation_capped_backends():
+    # A chat model enforces max_tokens but can't continue → must be sized, and (unlike a
+    # reasoning model) has no reserve to add regardless of effort.
+    assert mc.output_ceiling_for_sectioning("extract", "openai", "gpt-4o") == 16000
+    assert mc.output_ceiling_for_sectioning("extract", "openai", "gpt-4o", "high") == 16000
+
+
+@pytest.mark.parametrize("backend, model, effort, expected", [
     # An OpenAI reasoning model's raised wire ceiling (#354), and Gemini's (#541), is shared with
-    # chain-of-thought/thinking, so sectioning still plans against the base task budget, not the
-    # raised one — true for Gemini regardless of effort, since it always gets a reserve.
-    ("gemini", "gemini-2.5-flash", 16000),
-    ("openai", "gpt-5.4", 16000),
+    # chain-of-thought/thinking. Pre-#542-follow-up, sectioning planned only against the base task
+    # budget; now it plans against the real wire ceiling (base + the effort-scaled reserve)
+    # instead, since total (reasoning + visible) output is what the fixed `max_tokens` actually
+    # bounds — an unspecified effort resolves to the medium reserve, matching
+    # `_task_max_tokens`'s own convention.
+    ("openai", "gpt-5.4", None, 64000),      # 16000 + 48000 (medium, unspecified default)
+    ("openai", "gpt-5.4", "low", 32000),     # 16000 + 16000
+    ("openai", "gpt-5.4", "high", 96000),    # 16000 + 80000
+    ("gemini", "gemini-2.5-flash", None, 48000),    # 16000 + 32000 (medium default)
+    ("gemini", "gemini-2.5-flash", "high", 64000),  # 16000 + 48000
 ])
-def test_output_ceiling_returned_for_non_continuation_capped_backends(backend, model, expected):
-    assert mc.output_ceiling_for_sectioning("extract", backend, model) == expected
+def test_output_ceiling_scales_with_effort_for_reasoning_models(backend, model, effort, expected):
+    assert mc.output_ceiling_for_sectioning("extract", backend, model, effort) == expected
 
 
 def _fake_httpx_sequence(monkeypatch, status_codes):

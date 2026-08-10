@@ -362,6 +362,30 @@ def test_word_shape_ratio_none_for_no_tokens():
     assert preprocess.word_shape_ratio("") is None
 
 
+@pytest.mark.parametrize("label,text", [
+    ("accented French", "Réunion à Montréal avec Éric Thériault, chargé de l'équité."),
+    ("German", "Der Aufsichtsrat genehmigte die Überprüfung der Geschäftsjahresausgaben."),
+    ("Japanese", "取締役会は2019年度の営業費用の調整を承認した。"),
+    ("Arabic", "وافق مجلس الإدارة على تسوية نفقات التشغيل."),
+])
+def test_word_shape_does_not_penalize_non_ascii_scripts(label, text):
+    """A non-English script is not evidence of garbling. An ASCII-only token class
+    scored accented French at 0.31 and Japanese at 0.00 — i.e. a permanent vote
+    against every document not written in English, which combined with the
+    font-CMap signal (composite /Type0 fonts are the norm for CJK) could reach
+    the 2-of-3 threshold and force OCR on perfectly clean born-digital text."""
+    assert preprocess.word_shape_ratio(text) == 1.0
+    assert not preprocess.is_word_shape_garbled(text)
+
+
+def test_word_shape_punctuation_only_page_abstains():
+    """Nothing but dot leaders and brackets leaves no token to judge — the signal
+    returns None (abstains) rather than voting garbled on no evidence. The
+    character-ratio signal still fires on such a page."""
+    assert preprocess.word_shape_ratio(".... ...... ()") is None
+    assert not preprocess.is_word_shape_garbled(".... ...... ()")
+
+
 # ── pdf_page_missing_font_cmap — signal #3 (#597) ──────────────────────────────
 # Takes a duck-typed page object; plain nested dicts stand in for pypdf's
 # DictionaryObject (which also supports .get()), so these run with no real PDF.
@@ -414,7 +438,7 @@ def test_font_cmap_no_fonts_is_not_missing():
 
 def test_page_garbled_requires_at_least_two_signals():
     """One signal firing alone must not condemn a page — this is the
-    require-agreement combination rule chosen in D185 for #597."""
+    require-agreement combination rule chosen in D189 for #597."""
     PS = preprocess.PageSample
     # A dot-leader line: heavy on '.' (trips char_ratio) but its actual tokens
     # ("Overview", "2") still read as words (does not trip word_shape).

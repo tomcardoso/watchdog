@@ -27,6 +27,50 @@
 # nothing about. `model_client.tokenizer_ratio` resolves it; `section.model_defaults` divides its
 # window-derived threshold/budget by it so a document's real token footprint on a new-tokenizer
 # model still respects the model's real context window.
+# Price reference (#574): https://github.com/pydantic/genai-prices — Pydantic's maintained price
+# dataset (~34 providers). Consult it when adding or revising a model, but read the schema
+# carefully: a price can be a LIST of clauses gated by `constraint.start_date` (take the clause
+# whose date has passed, not the last one in the list), and an individual value can be a
+# `{base, tiers}` object rather than a scalar. Both have produced a false "our catalog is wrong"
+# reading before — resolve them before trusting a surface diff against this file.
+# Speaking of tiers: this catalog prices every model at one flat rate and does not model
+# context-length pricing tiers (several providers, incl. gpt-5.6-luna/-terra and gpt-5.4, roughly
+# double their rate above ~272K tokens). That's deliberate, and currently harmless: section.py
+# caps every real call's context far below that regardless — 14,000 est tokens today on the
+# output-ceiling-capped openai/gemini path (rising to ~51,000 once #542 lands), an order of
+# magnitude under the ~272K threshold where these tiers begin. It stops being harmless if a user
+# pins an absolute `section_token_threshold` in config: `_resolve_override` honours a literal int
+# as-is and does NOT rescale it against the model's real window (see its docstring), so a value
+# large enough could push a single call's context past a tier boundary — and then `--estimate-all`
+# would understate that model's real cost. No enforcement for this; re-check the margin if you
+# change sectioning defaults or add a tiered model.
+# `max_output_tokens` is the maximum tokens a model will emit in one non-batch response, per each
+# provider's own docs (all fetched 2026-08-10). Every provider catalogued here draws
+# reasoning/thinking tokens from this SAME budget when a model reasons — Claude's extended/adaptive
+# thinking, OpenAI's reasoning_effort, Gemini's thinking_level, DeepSeek's thinking mode all bill
+# that content as regular output, never additional to this ceiling. Anthropic
+# (platform.claude.com/docs/en/build-with-claude/thinking): "the tokens Claude spends reasoning are
+# billed as output tokens ... and they count toward max_tokens". OpenAI
+# (developers.openai.com/api/docs/guides/reasoning): "you can limit the total number of tokens the
+# model generates, including reasoning tokens ... by using the max_output_tokens parameter".
+# Gemini (ai.google.dev/gemini-api/docs/pricing) bills output "(including thinking tokens)".
+# DeepSeek publishes no separate figure for its thinking mode at all (see below) — its one
+# documented ceiling covers both modes. Per-provider figures: Anthropic
+# (platform.claude.com/docs/en/about-claude/models/overview) — 64,000 for Haiku 4.5, 128,000 for
+# Sonnet 4.6/Opus 4.8/Sonnet 5. `max_output_tokens_batch` (Anthropic only, 300,000) is the higher
+# ceiling reachable with the `output-300k-2026-03-24` beta header
+# (platform.claude.com/docs/en/build-with-claude/batch-processing#extended-output-beta) — Message
+# Batches API only, not the synchronous calls this client makes; omitted for Haiku 4.5 (not
+# eligible) and for every non-Anthropic model (no documented equivalent). OpenAI
+# (developers.openai.com/api/docs/models/<id>, e.g. .../gpt-5.5): a flat 128,000 across every
+# GPT-5.x model in this catalog. Gemini (ai.google.dev/gemini-api/docs/models/<id>): a flat 65,536
+# across every model in this catalog. DeepSeek (api-docs.deepseek.com/quick_start/pricing/):
+# 384,000 for both V4 Flash and Pro, thinking on or off — supersedes model_client.py's
+# `_DEEPSEEK_THINKING_MAX_TOKENS = 48000`, whose cited source page
+# (api-docs.deepseek.com/guides/reasoning_model) has since been repurposed to unrelated content and
+# no longer documents that 32K/64K figure (a design call on what to do about that constant is left
+# to a follow-up — not changed here). No provider catalogued here documents a separate streaming
+# ceiling (distinct from the Anthropic batch case above).
 models:
   # Order matches the old _MODEL_IDS table (haiku, sonnet, opus) — cmd/setup.py's interactive
   # picker lists Claude tiers in this insertion order, so preserving it keeps picker behavior
@@ -40,6 +84,7 @@ models:
     cache_write: 1.25e-6
     cache_read: 0.10e-6
     context_window: 200_000
+    max_output_tokens: 64_000
   - id: claude-sonnet-4-6
     name: Claude Sonnet 4.6
     provider: anthropic
@@ -49,6 +94,8 @@ models:
     cache_write: 3.75e-6
     cache_read: 0.30e-6
     context_window: 200_000
+    max_output_tokens: 128_000
+    max_output_tokens_batch: 300_000
     effort_levels: [low, medium, high, max]
   - id: claude-opus-4-8
     name: Claude Opus 4.8
@@ -59,6 +106,8 @@ models:
     cache_write: 6.25e-6
     cache_read: 0.50e-6
     context_window: 200_000
+    max_output_tokens: 128_000
+    max_output_tokens_batch: 300_000
     effort_levels: [low, medium, high, xhigh, max]
     tokenizer_ratio: 1.3
   # Claude Sonnet 5 (#361/#509 benchmark groundwork, D165) — additive alongside 4.6; bare `sonnet`
@@ -81,6 +130,8 @@ models:
     cache_write: 2.5e-6
     cache_read: 0.20e-6
     context_window: 200_000
+    max_output_tokens: 128_000
+    max_output_tokens_batch: 300_000
     effort_levels: [low, medium, high, xhigh, max]
     tokenizer_ratio: 1.3
 
@@ -92,6 +143,7 @@ models:
     output: 0.28e-6
     cached_input: 0.0028e-6
     context_window: 1_000_000
+    max_output_tokens: 384_000
   - id: deepseek-v4-pro
     name: DeepSeek V4 Pro
     provider: deepseek
@@ -99,6 +151,7 @@ models:
     output: 0.87e-6
     cached_input: 0.003625e-6
     context_window: 1_000_000
+    max_output_tokens: 384_000
 
   # OpenAI GPT-5 family, standard tier (the -pro variants are excluded: no discounted cache
   # rate, and a flat 6x price jump over these for no clear quality benefit — see #473)
@@ -108,7 +161,8 @@ models:
     input: 5.0e-6
     output: 30.0e-6
     cached_input: 0.50e-6
-    context_window: 400_000
+    context_window: 1_050_000
+    max_output_tokens: 128_000
     reasoning: true
     effort_levels: [low, medium, high]
   - id: gpt-5.4
@@ -117,7 +171,8 @@ models:
     input: 2.5e-6
     output: 15.0e-6
     cached_input: 0.25e-6
-    context_window: 400_000
+    context_window: 1_050_000
+    max_output_tokens: 128_000
     reasoning: true
     effort_levels: [low, medium, high]
   - id: gpt-5.4-mini
@@ -127,6 +182,7 @@ models:
     output: 4.5e-6
     cached_input: 0.075e-6
     context_window: 400_000
+    max_output_tokens: 128_000
     reasoning: true
     effort_levels: [low, medium, high]
   - id: gpt-5.4-nano
@@ -136,9 +192,10 @@ models:
     output: 1.25e-6
     cached_input: 0.02e-6
     context_window: 400_000
+    max_output_tokens: 128_000
     reasoning: true
     effort_levels: [low, medium, high]
-  # GPT-5.6 family (Sol/Terra/Luna) — 1.05M window, wider than gpt-5.4/5.5. Sol (the
+  # GPT-5.6 family (Sol/Terra/Luna) — same 1.05M window as gpt-5.4/5.5 (issue #599). Sol (the
   # flagship, same price as gpt-5.5) isn't added — not asked for; add the same way if wanted.
   - id: gpt-5.6-terra
     name: GPT-5.6 Terra
@@ -147,6 +204,7 @@ models:
     output: 15.0e-6
     cached_input: 0.25e-6
     context_window: 1_050_000
+    max_output_tokens: 128_000
     reasoning: true
     effort_levels: [low, medium, high, xhigh, max]
   - id: gpt-5.6-luna
@@ -156,6 +214,7 @@ models:
     output: 1.20e-6
     cached_input: 0.02e-6
     context_window: 1_050_000
+    max_output_tokens: 128_000
     reasoning: true
     effort_levels: [low, medium, high, xhigh, max]
 
@@ -173,6 +232,7 @@ models:
     output: 9.00e-6
     cached_input: 0.15e-6
     context_window: 1_000_000
+    max_output_tokens: 65_536
     effort_levels: [low, medium, high]
   - id: gemini-3.1-flash-lite
     name: Gemini 3.1 Flash-Lite
@@ -181,6 +241,7 @@ models:
     output: 1.50e-6
     cached_input: 0.025e-6
     context_window: 1_000_000
+    max_output_tokens: 65_536
     effort_levels: [low, medium, high]
   - id: gemini-3.1-pro-preview
     name: Gemini 3.1 Pro Preview
@@ -189,6 +250,7 @@ models:
     output: 12.0e-6
     cached_input: 0.20e-6
     context_window: 1_000_000
+    max_output_tokens: 65_536
     effort_levels: [low, medium, high]
 
 # Context-window fallback, consulted by model_client.py's context_window() only when a model

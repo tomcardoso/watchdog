@@ -1191,7 +1191,13 @@ def _task_max_tokens(task: str, backend: str, model_id: str, effort: str | None 
     can't starve the JSON. For OpenAI and Gemini the extra reserve scales with `effort`
     (`_OPENAI_REASONING_RESERVE`/`_GEMINI_REASONING_RESERVE`), since reasoning volume is a
     function of effort, not task. `effort` defaults to None (treated as medium) so existing call
-    sites — DeepSeek's own ceiling, `output_ceiling_for_sectioning` — keep working unchanged."""
+    sites — DeepSeek's own ceiling, `output_ceiling_for_sectioning` — keep working unchanged.
+
+    NOTE (2026-08-10, output-cap catalog research): "a function of effort, not task" above is
+    incomplete — archived telemetry fit against input length shows reasoning also scales steeply
+    with input (up to ~2.3 tokens of thinking per input token at high effort, ~12x the
+    visible-output rate), not just with the effort knob. Flagged here for whoever next revisits
+    these reserves; not addressed in this change."""
     if task in _TASK_MAX_TOKENS:
         if backend == "deepseek" and model_id.endswith(_DEEPSEEK_THINKING_SUFFIX):
             return _DEEPSEEK_THINKING_MAX_TOKENS
@@ -1204,7 +1210,8 @@ def _task_max_tokens(task: str, backend: str, model_id: str, effort: str | None 
     return _TASK_MAX_TOKENS.get(task, _API_MAX_TOKENS)
 
 
-def output_ceiling_for_sectioning(task: str, backend: str | None, model: str | None) -> int | None:
+def output_ceiling_for_sectioning(task: str, backend: str | None, model: str | None,
+                                  effort: str | None = None) -> int | None:
     """The per-call output-token ceiling that sectioning must keep a document under — or None
     when there is nothing to protect (#343). None is returned for the agent SDK (no enforced
     ceiling), for the prefill-continuation backends (claude-api, deepseek — pagination grows the
@@ -1212,16 +1219,22 @@ def output_ceiling_for_sectioning(task: str, backend: str | None, model: str | N
     of which are None-returning). openai, gemini, local, and openrouter (#380) return a real
     number: they enforce max_tokens yet can't continue, so a document whose estimated output
     would exceed the ceiling must be sectioned up front rather than truncating and relying on the
-    reactive fallback."""
+    reactive fallback.
+
+    For a reasoning model (openai reasoning models, every Gemini model), this now returns the
+    real wire `max_tokens` sent to the provider — the base task budget *plus* the effort-scaled
+    reasoning reserve (#542 follow-up) — rather than just the base budget. The base-only figure
+    was correct for bounding the *visible* JSON answer alone (still true — the JSON has never been
+    observed to need more than the base budget), but chain-of-thought and the JSON are drawn from
+    this SAME enforced envelope, so a caller sizing input against *total* predicted output (as
+    `section.model_defaults` now does) needs the envelope that output actually has to fit —
+    which does grow with `effort`. `effort` omitted falls back to `_task_max_tokens`'s own
+    "unspecified -> medium" convention."""
     meta = _BACKEND_META.get(backend)
     if meta is None or not meta.enforces_max_tokens or meta.supports_continuation:
         return None
     model_id = resolve_model_id(model or DEFAULT_TIER)
-    if (backend == "openai" and _openai_is_reasoning(model_id)) or backend == "gemini":
-        # The raised wire ceiling (#354, #541) is shared with chain-of-thought/thinking, so the
-        # JSON itself can't count on more than the base task budget — plan sectioning against that.
-        return _TASK_MAX_TOKENS.get(task, _API_MAX_TOKENS)
-    return _task_max_tokens(task, backend, model_id)
+    return _task_max_tokens(task, backend, model_id, effort)
 
 
 async def _complete_with_pagination(backend_fn, backend: str, prompt, model_id: str, schema: dict,

@@ -16,13 +16,20 @@ artifacts persist after `bark` too, so this reads the same regardless of whether
 been finalized.
 
 Caveats (same spirit as the #215 verbatim tier, see keys/README.md): this RANKS arms against
-the same fixed reference — it is not absolute recall. Scoring is blob-level (no citation
-provenance), so sibling documents can cross-credit; only ~a third of key items carry a
->=4-digit numeric anchor and the rest are reported as unscorable for hand or judge scoring.
-First used for the Tier 0 checklist A/B recorded in #412. `score()` (#466) is the pure,
-structured-data entry point `run_benchmark.py` builds its reports from; `main()` is unchanged
-for manual command-line use.
+the same fixed reference — it is not absolute recall. A key item is matched only against its
+own document's extraction, not the whole vault (#591) — no citation provenance beyond that,
+so within a document a match can still come from anywhere in it, not the specific span the key
+cites. Only ~a third of key items carry a >=4-digit numeric anchor; most of the rest are
+reported as unscorable for hand or judge scoring, and a handful whose only anchor is an
+identifier (an LSO number, say) rather than a quantity fall back to a non-numeric name test
+instead (#591) — see `score_item`.
+
+Absolute recall figures from before #591 landed are not comparable to figures after it —
+`FINDINGS.md` notes where a number was corrected. First used for the Tier 0 checklist A/B
+recorded in #412. `score()` (#466) is the pure, structured-data entry point `run_benchmark.py`
+builds its reports from; `main()` is unchanged for manual command-line use.
 """
+import decimal
 import glob
 import json
 import os
@@ -66,22 +73,101 @@ def anchors_from(text):
     return sorted(set(out), key=len, reverse=True)
 
 
+MIN_VARIANT_LEN = 4  # floor for name-candidate phrases (#591); numeric variants are guarded below
+
+
 def variants(anchor):
-    """Ways the same figure legitimately appears in extraction prose."""
+    """Ways the same figure legitimately appears in extraction prose.
+
+    The thousands-to-millions rounding is a legitimate restatement ($4,903 thousand really does
+    appear as "$4.9 million", and per-document scoring — see `score()` — means a short "X.Y"
+    token can now only match within the one document the item is actually about, not the whole
+    corpus). What isn't legitimate is the *old* second rounding step's failure mode: when the
+    two-decimal form rounds to a whole number ("78.00"), `.rstrip("0").rstrip(".")` used to strip
+    the decimal point too, collapsing the anchor to a bare, undifferentiated integer ("78003" ->
+    "78.00" -> "78." -> "78") that matches any substring in a 70-page corpus. Requiring the
+    stripped form to still contain a "." keeps the meaningful one-decimal restatements ("4.9",
+    "2.8") and drops only the ones that lost their fraction entirely (#591).
+    """
     v = {anchor}
     if "." not in anchor and len(anchor) > 3:
         v.add(anchor[:-3] + "." + anchor[-3:])          # 66671 -> 66.671  (thousands as $M)
         n = int(anchor)
         v.add(f"{n / 1000:.1f}")                        # 66671 -> 66.7
-        v.add(f"{n / 1000:.2f}".rstrip("0").rstrip("."))
+        stripped = f"{n / 1000:.2f}".rstrip("0")
+        if "." in stripped and not stripped.endswith("."):
+            v.add(stripped)                             # 4903 -> 4.90 -> 4.9 (kept: has a digit)
+                                                          # 78003 -> 78.00 -> 78. (dropped: bare)
+        v |= millions_prose(anchor)                     # 5000000 -> "5 million" (whole-dollar $M)
     if "." in anchor:                                    # 66.671 -> 66671
         v.add(anchor.replace(".", ""))
         v.add(f"{float(anchor):.1f}")
     return v
 
 
+def millions_prose(anchor):
+    """"N million" prose forms for a whole-dollar anchor of at least $1,000,000.
+
+    `variants()`'s thousands-to-millions conversion above only covers an anchor already
+    denominated in thousands ($4,903 thousand -> "$4.9 million"). A plain-dollar anchor like
+    "$5,000,000" needs a different conversion (divide by 1,000,000, not 1,000) to match the way
+    extraction prose actually states it ("$5 million") — without this, that class of anchor can
+    never match prose at all. Tom's ruling: the benchmark scores on numeric *value*, not on
+    transcription format — "$5 million" is a hit against a $5,000,000 anchor because it is the
+    same number, not because it happens to share digits.
+
+    Every variant keeps the literal word "million" (or an "m" suffix, both seen in real
+    extractions, e.g. "$85.9M") directly adjacent to the digits. That word is what keeps this
+    safe: it cannot reintroduce the short bare-digit collisions #591 fixed, because a bare "5" is
+    never produced on its own — the shortest possible output is "2 million" or "5.0m" (#591
+    follow-up). Lowercase only: `variants()` is always matched against `norm()`-ed (lowercased)
+    extraction text, so an uppercase "M" candidate would never match and is pointless to generate.
+    """
+    if "." in anchor:
+        return set()
+    n = int(anchor)
+    if n < 1_000_000:
+        return set()
+    millions = decimal.Decimal(n) / decimal.Decimal(1_000_000)
+    exact = millions.normalize()                        # 5000000 -> 5 ; 1250000 -> 1.25
+    rounded = millions.quantize(decimal.Decimal("0.1"), rounding=decimal.ROUND_HALF_UP)
+    # 1250000 -> 1.3 (a "sensibly rounded" one-decimal form, not banker's-rounded 1.2)
+    # `:f` forces fixed-point: `Decimal.normalize()` rewrites a round ten into scientific
+    # notation (Decimal("50") -> "5E+1"), so plain interpolation would emit "5E+1 million" for
+    # $50,000,000 and never match anything. `rounded` needs no such guard — `quantize` keeps its
+    # exponent — but round figures are exactly the ones prose states most often, so this is the
+    # case that matters most.
+    return {f"{exact:f} million", f"{rounded} million", f"{rounded}m"}
+
+
 def norm(text):
     return re.sub(r"(\d),(\d)", r"\1\2", text.lower())   # strip thousands commas
+
+
+IDENTIFIER_KEYWORD_RE = re.compile(r"\b(LSO|bar\s*(?:no\.?|number)|docket)\b", re.IGNORECASE)
+NAME_RE = re.compile(r"[A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*)+")
+
+
+def is_identifier_anchor(anchor, text):
+    """True when `anchor` reads as a reference code (LSO/bar number, docket suffix) rather than
+    a quantity — either a keyword like "LSO#" sits just before it, or the digits run straight
+    into a trailing letter ("78003K") with no space, a suffix pattern a quantity never has (#591).
+    """
+    for m in re.finditer(re.escape(anchor), text):
+        start, end = m.span()
+        if IDENTIFIER_KEYWORD_RE.search(text[max(0, start - 15):start]):
+            return True
+        if end < len(text) and text[end].isalpha():
+            return True
+    return False
+
+
+def name_candidates(text):
+    """Multi-word capitalized phrases (candidate person/entity names) in `text` — the non-numeric
+    fallback for an item whose only anchor is an identifier the extractor reasonably dropped
+    (an LSO number) while still capturing the substance (the lawyer's name, correctly related)
+    (#591)."""
+    return [m.group() for m in NAME_RE.finditer(text) if len(m.group()) >= MIN_VARIANT_LEN]
 
 
 def _strings(obj):
@@ -94,14 +180,25 @@ def _strings(obj):
     return ""
 
 
-def vault_text(vault):
-    parts = []
+def vault_doc_texts(vault):
+    """Per-document extraction text, keyed by the document's sha256 (the artifact's own
+    filename) — so a key item can be matched only against the extraction for the document it
+    belongs to, instead of any document in the vault (#591)."""
+    out = {}
     for f in glob.glob(os.path.join(vault, ".watchdog", "extracted", "*.json")):
+        sha = os.path.splitext(os.path.basename(f))[0]
         try:
-            parts.append(_strings(json.loads(open(f, encoding="utf-8").read())))
+            out[sha] = norm(_strings(json.loads(open(f, encoding="utf-8").read())))
         except (OSError, json.JSONDecodeError):
             pass
-    return norm("\n".join(parts))
+    return out
+
+
+def vault_text(vault):
+    """Whole-vault extraction text, concatenated across every document. Used only as a fallback
+    for a key item with no `document.sha256` to scope it to a single document (older or
+    synthetic fixtures) — every other item is matched via `vault_doc_texts` instead (#591)."""
+    return "\n".join(vault_doc_texts(vault).values())
 
 
 def vault_extracted_shas(vault):
@@ -119,6 +216,12 @@ def score_item(text, blob):
     if not anc:
         return None, 0, 0  # unscorable numerically
     hits = sum(1 for a in anc if any(v in blob for v in variants(a)))
+    if hits == 0 and all(is_identifier_anchor(a, text) for a in anc):
+        # Every anchor in this item is a reference code, not a quantity, and none of them
+        # matched — don't fail the whole item on a number the extractor had no reason to
+        # transcribe. Fall back to whether the item's substance (a name) was captured (#591).
+        if any(cand.lower() in blob for cand in name_candidates(text)):
+            return True, hits, len(anc)
     return (hits / len(anc)) >= 0.5, hits, len(anc)
 
 
@@ -132,7 +235,8 @@ def score(vaults, keys_dir=None):
     match against the key's own `document.sha256`, no heuristic), not on any cancelled/rate_limited
     flag the caller might pass, so a per-document failure gets the same treatment as a hard stop.
     A key with no `document.sha256` (older or synthetic fixtures) is never filtered — nothing to
-    match against, so it scores exactly as it always has.
+    match against, so it scores exactly as it always has (and, having no sha to scope a match to,
+    is matched against the whole-vault blob rather than one document's text — see `vault_text`).
 
     Returns:
         {"vaults": [<basename>, ...],
@@ -157,7 +261,8 @@ def score(vaults, keys_dir=None):
         k = yaml.safe_load(open(f, encoding="utf-8"))
         keys.append((os.path.basename(f).replace(".yaml", ""), k))
 
-    blobs = {v: vault_text(v) for v in vaults}
+    blobs = {v: vault_text(v) for v in vaults}          # fallback: keys with no document.sha256
+    doc_texts = {v: vault_doc_texts(v) for v in vaults}  # per-document text, keyed by sha256
     extracted_shas = {v: vault_extracted_shas(v) for v in vaults}
     totals = {v: [0, 0] for v in vaults}    # facts hit/of, keyed by full vault path
     mnm_totals = {v: [0, 0] for v in vaults}
@@ -186,9 +291,14 @@ def score(vaults, keys_dir=None):
                     if doc_sha and doc_sha not in extracted_shas[v]:
                         cells[vb] = {"hit": "not_extracted", "hits": 0, "total": 0}
                         continue
+                    # A key item is matched only against its own document's extraction, not the
+                    # whole vault (#591) — sibling documents can no longer cross-credit an anchor
+                    # that never appeared in the document the item is actually about. Falls back
+                    # to the whole-vault blob only for a key with no `document.sha256`.
+                    doc_blob = doc_texts[v].get(doc_sha, "") if doc_sha else blobs[v]
                     # `full_text` has an anchor (checked above), so `score_item` never returns
                     # `None` here.
-                    hit, h, n = score_item(full_text, blobs[v])
+                    hit, h, n = score_item(full_text, doc_blob)
                     tot[v][1] += 1
                     if hit:
                         tot[v][0] += 1

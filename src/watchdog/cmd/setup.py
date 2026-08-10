@@ -103,6 +103,22 @@ _CONFIGURE_KEYS = {
         "default": 5,
         "min": 1,
     },
+    "extract_token_budget": {
+        "short": "Cap on tokens/min during `watchdog dig`, overriding auto-discovery (default: auto)",
+        "help": (
+            "`watchdog dig` now holds back new documents when the run's own recent tokens/min\n"
+            "  gets close to your provider's limit, discovered automatically from the provider's own\n"
+            "  responses — no lookup needed on the claude-api, OpenAI, DeepSeek, Gemini, local, and\n"
+            "  OpenRouter routes. Claude subscription auth never reports this number, so if you're on\n"
+            "  that path and still see rate limits, set a number here yourself (check the Claude\n"
+            "  Console's rate-limits page for your account's tokens-per-minute figure).\n"
+            "  Default: auto (use whatever the provider reports, or don't hold documents back at all\n"
+            "  if it reports nothing)."
+        ),
+        "type": "int_or_auto",
+        "default": "auto",
+        "min": 1,
+    },
     "classify_pages": {
         "short": "Pages shown to the document classifier during `watchdog dig` (default: 5)",
         "help": (
@@ -599,7 +615,7 @@ _CONFIGURE_SECTIONS = [
     ("Chew", "Local preprocessing — parallelism and large-PDF handling.",
      ["chew_workers", "chunk_size", "chunk_workers", "chunk_timeout", "table_structure"]),
     ("Ingest", "Extraction run — parallelism, classification, skill pinning, sectioning.",
-     ["extract_concurrency", "classify_pages", "default_skill",
+     ["extract_concurrency", "extract_token_budget", "classify_pages", "default_skill",
       "section_token_threshold", "section_token_budget", "section_overlap_tokens",
       "empty_extraction_min_words", "verify_extraction"]),
     ("Models", "Which Claude model runs each step, and how hard it thinks.",

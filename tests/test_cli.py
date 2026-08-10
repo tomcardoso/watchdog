@@ -1387,6 +1387,28 @@ def test_configure_int_or_auto_invalid_exits(wdg_home):
         cli.cmd_configure(args(key="chunk_workers", value="fast"))
 
 
+def test_configure_extract_token_budget_accepts_auto(wdg_home):
+    cli.cmd_configure(args(key="extract_token_budget", value="auto"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["extract_token_budget"] == "auto"
+
+
+def test_configure_extract_token_budget_accepts_integer(wdg_home):
+    cli.cmd_configure(args(key="extract_token_budget", value="150000"))
+    config = json.loads((wdg_home / "config.json").read_text())
+    assert config["extract_token_budget"] == 150000
+
+
+def test_configure_extract_token_budget_invalid_exits(wdg_home):
+    with pytest.raises(SystemExit, match="'auto' or a whole number"):
+        cli.cmd_configure(args(key="extract_token_budget", value="lots"))
+
+
+def test_configure_extract_token_budget_below_min_exits(wdg_home):
+    with pytest.raises(SystemExit):
+        cli.cmd_configure(args(key="extract_token_budget", value="0"))
+
+
 def test_configure_chew_workers_accepts_auto(wdg_home):
     cli.cmd_configure(args(key="chew_workers", value="auto"))
     config = json.loads((wdg_home / "config.json").read_text())

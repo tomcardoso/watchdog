@@ -816,6 +816,16 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                           or _DEFAULT_EXTRACT_CONCURRENCY)
     except (TypeError, ValueError):
         concurrency = _DEFAULT_EXTRACT_CONCURRENCY
+    # extract_token_budget (#563): "auto" (default) leaves admission control to auto-discover the
+    # ceiling from the provider's own rate-limit headers; a pinned number overrides that — same
+    # `key: "auto"` idiom as chew_workers (preprocess_batch.py), not the 0-means-unset pattern
+    # extract_concurrency/classify_pages use, since this key's "unset" state is a real third value
+    # ("don't gate at all"), not just "fall back to a default number".
+    raw_token_budget = config.get("extract_token_budget", "auto")
+    try:
+        token_budget = None if raw_token_budget == "auto" else int(raw_token_budget)
+    except (TypeError, ValueError):
+        token_budget = None
     try:
         classify_pages = int(getattr(args, "classify_pages", None) or config.get("classify_pages") or 5)
     except (TypeError, ValueError):
@@ -1063,7 +1073,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                     extract_backend=extract_backend, post_backend=post_backend,
                     classify_backend=classify_backend, wait=wait, skip_finalize=run_skip_finalize,
                     force=force, skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides,
-                    resume_hint=pipeline_hint, verify=verify))
+                    resume_hint=pipeline_hint, verify=verify, extract_token_budget=token_budget))
                 summary = _merge_summary(summary, iter_summary)
                 if not (wait and iter_summary.get("rate_limited")):
                     break

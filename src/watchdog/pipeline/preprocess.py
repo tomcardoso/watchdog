@@ -43,7 +43,7 @@ from pathlib import Path
 # signal alone. Lowered from 0.75 (#580/#597): 0.75 was too aggressive for tables and
 # financial documents — exactly what this tool reads most — and is now only one of three
 # signals combined by is_page_garbled(), not a standalone verdict, so a lower (more easily
-# tripped) value here no longer means a lower bar for forcing OCR. See DECISIONS D185.
+# tripped) value here no longer means a lower bar for forcing OCR. See DECISIONS D189.
 GARBLED_THRESHOLD = 0.6
 WORD_SHAPE_THRESHOLD = 0.3  # fraction of tokens that must look word-like, below which text reads as garbled
 PAGE_GARBLE_VOTES_REQUIRED = 2  # of the signals in page_garble_signals(), how many must fire
@@ -95,21 +95,32 @@ def sha256_file(path: Path) -> str:
 def is_garbled(text: str) -> bool:
     """Character-class signal: True if too few characters are alphanumeric or
     whitespace to be real prose. One vote among several in page_garble_signals()
-    — see D185/#597 for why this alone is no longer enough to force OCR."""
+    — see D189/#597 for why this alone is no longer enough to force OCR."""
     if not text.strip():
         return False
     readable = sum(1 for c in text if c.isalnum() or c.isspace())
     return (readable / len(text)) < _config_get("garbled_threshold", GARBLED_THRESHOLD)
 
 
-_WORD_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9'\-.,/]*$")
+# Deliberately Unicode-aware (`\w`, not `[A-Za-z0-9]`): an accented or non-Latin script is
+# not evidence of garbling, and an ASCII-only class would score French, German, Japanese or
+# Arabic body text as symbol soup — turning this signal into a standing vote against every
+# document that isn't in English, which is exactly the #580 false positive in a new place.
+_WORD_TOKEN_RE = re.compile(r"^\w[\w'\-.,/]*$", re.UNICODE)
+# Stripped from each token's edges before matching, so ordinary sentence punctuation (including
+# CJK's full-width stops and the quotation marks Word substitutes) doesn't disqualify the word
+# it's attached to. A token that is *only* punctuation strips to empty and is not counted at all.
+_TOKEN_EDGE_PUNCT = ".,;:!?\"'()[]{}<>«»“”‘’。、—–"
 
 
 def word_shape_ratio(text: str) -> "float | None":
     """Fraction of whitespace-delimited tokens that look like a real word or
-    number (starts alphanumeric, then letters/digits/-'./, only) rather than a
-    run of symbols or dot leaders. None when there are no tokens at all."""
-    tokens = text.split()
+    number (starts with a letter or digit in any script, then letters/digits/-'./,
+    only) rather than a run of symbols or dot leaders. None when there are no
+    tokens at all — including a page of nothing but punctuation, where this
+    signal abstains rather than voting on no evidence."""
+    tokens = [t.strip(_TOKEN_EDGE_PUNCT) for t in text.split()]
+    tokens = [t for t in tokens if t]
     if not tokens:
         return None
     word_like = sum(1 for tok in tokens if _WORD_TOKEN_RE.match(tok))
@@ -203,7 +214,7 @@ def is_page_garbled(sample: PageSample) -> bool:
     reconciliation table's headers into an unusable form, and nothing
     downstream can tell that happened. A false negative feeds the model
     imperfect text instead, which is also bad, but tends to be visible in the
-    output rather than silently destroying something that was fine. See D185.
+    output rather than silently destroying something that was fine. See D189.
     """
     signals = page_garble_signals(sample)
     return sum(signals.values()) >= PAGE_GARBLE_VOTES_REQUIRED

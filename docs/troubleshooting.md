@@ -64,7 +64,11 @@ You don't have to remember to check: a bare `watchdog dig` with nothing new to r
 
 ## Hitting rate limits
 
-A rate limit is a cap on how much work the AI provider lets you do in a window of time — specifically, tokens per minute, not documents per minute. A handful of large documents extracted at once can burn through that budget even when `extract_concurrency` looks conservative, since one document slot's token cost can differ from another's by an order of magnitude. Two levers help:
+A rate limit is a cap on how much work the AI provider lets you do in a window of time — specifically, tokens per minute, not documents per minute. A handful of large documents extracted at once can burn through that budget even when `extract_concurrency` looks conservative, since one document slot's token cost can differ from another's by an order of magnitude.
+
+`watchdog dig` already holds new documents back on its own once it's close to your provider's real limit, discovered automatically from the provider's own responses — this works on the claude-api, OpenAI, DeepSeek, Gemini, local, and OpenRouter routes with nothing to configure, and often avoids a rate limit stop entirely. **Claude subscription auth is the one exception**: it never reports this number, so on that path this automatic backing-off never engages, and lowering concurrency (below) is still the fix.
+
+Two levers help when a rate limit stops a run anyway:
 
 Lower how many documents are extracted at once (the default is 5):
 
@@ -76,6 +80,12 @@ Or set it permanently:
 
 ```bash
 watchdog configure extract_concurrency 2
+```
+
+On Claude subscription auth specifically, you can also set a manual token budget — check the Claude Console's rate-limits page for your account's tokens-per-minute figure:
+
+```bash
+watchdog configure extract_token_budget 40000
 ```
 
 When a rate limit stops a run, the notice reports the tokens-per-minute this run was actually sustaining, plus (when the provider sends it) how many tokens it had left before the stop — real numbers to size a lower `extract_concurrency` against, instead of guessing.
