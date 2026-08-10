@@ -27,6 +27,23 @@
 # nothing about. `model_client.tokenizer_ratio` resolves it; `section.model_defaults` divides its
 # window-derived threshold/budget by it so a document's real token footprint on a new-tokenizer
 # model still respects the model's real context window.
+# Price reference (#574): https://github.com/pydantic/genai-prices — Pydantic's maintained price
+# dataset (~34 providers). Consult it when adding or revising a model, but read the schema
+# carefully: a price can be a LIST of clauses gated by `constraint.start_date` (take the clause
+# whose date has passed, not the last one in the list), and an individual value can be a
+# `{base, tiers}` object rather than a scalar. Both have produced a false "our catalog is wrong"
+# reading before — resolve them before trusting a surface diff against this file.
+# Speaking of tiers: this catalog prices every model at one flat rate and does not model
+# context-length pricing tiers (several providers, incl. gpt-5.6-luna/-terra and gpt-5.4, roughly
+# double their rate above ~272K tokens). That's deliberate, and currently harmless: section.py
+# caps every real call's context far below that regardless — 14,000 est tokens today on the
+# output-ceiling-capped openai/gemini path (rising to ~51,000 once #542 lands), an order of
+# magnitude under the ~272K threshold where these tiers begin. It stops being harmless if a user
+# pins an absolute `section_token_threshold` in config: `_resolve_override` honours a literal int
+# as-is and does NOT rescale it against the model's real window (see its docstring), so a value
+# large enough could push a single call's context past a tier boundary — and then `--estimate-all`
+# would understate that model's real cost. No enforcement for this; re-check the margin if you
+# change sectioning defaults or add a tiered model.
 models:
   # Order matches the old _MODEL_IDS table (haiku, sonnet, opus) — cmd/setup.py's interactive
   # picker lists Claude tiers in this insertion order, so preserving it keeps picker behavior
