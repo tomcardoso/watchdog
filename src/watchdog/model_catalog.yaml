@@ -161,7 +161,7 @@ models:
     input: 5.0e-6
     output: 30.0e-6
     cached_input: 0.50e-6
-    context_window: 400_000
+    context_window: 1_050_000
     max_output_tokens: 128_000
     reasoning: true
     effort_levels: [low, medium, high]
@@ -171,7 +171,7 @@ models:
     input: 2.5e-6
     output: 15.0e-6
     cached_input: 0.25e-6
-    context_window: 400_000
+    context_window: 1_050_000
     max_output_tokens: 128_000
     reasoning: true
     effort_levels: [low, medium, high]
@@ -195,7 +195,7 @@ models:
     max_output_tokens: 128_000
     reasoning: true
     effort_levels: [low, medium, high]
-  # GPT-5.6 family (Sol/Terra/Luna) — 1.05M window, wider than gpt-5.4/5.5. Sol (the
+  # GPT-5.6 family (Sol/Terra/Luna) — same 1.05M window as gpt-5.4/5.5 (issue #599). Sol (the
   # flagship, same price as gpt-5.5) isn't added — not asked for; add the same way if wanted.
   - id: gpt-5.6-terra
     name: GPT-5.6 Terra
