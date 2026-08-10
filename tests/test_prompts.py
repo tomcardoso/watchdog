@@ -137,6 +137,27 @@ def test_build_digest_prompt_caches_skill_ahead_of_volatile_data():
     assert text.index("THE DOMAIN SKILL") < text.index("acme-ar.pdf")
 
 
+def test_build_digest_prompt_cache_prefix_is_stable_across_documents():
+    """Mirrors test_extract_prompt_cache_prefix_is_stable_across_volatile_data and
+    test_section_prompt_cache_prefix_is_stable_across_sections (issue #586): the cacheable
+    prefix (instructions+brief, then skill) must be byte-identical for two different documents
+    that share a skill, with everything document-specific (filename/title/type/page_count/
+    sidecar/key_facts) confined to the volatile block after the breakpoint."""
+    kwargs = dict(skill_text="SKILL TEXT", brief="Investigate the fraud")
+    p1 = prompts.build_digest_prompt(filename="doc-a.pdf", title="Doc A",
+                                     document_type="Annual Report", page_count=12,
+                                     sidecar="sidecar A", key_facts=[{"fact": "Fact about A"}],
+                                     **kwargs)
+    p2 = prompts.build_digest_prompt(filename="doc-b.pdf", title="Doc B — a different filing",
+                                     document_type="Affidavit", page_count=99,
+                                     sidecar="a longer, unrelated sidecar for B",
+                                     key_facts=[{"fact": "A completely different fact about B"}],
+                                     **kwargs)
+    assert [b["text"] for b in p1[:2]] == [b["text"] for b in p2[:2]]
+    assert p1[2]["text"] != p2[2]["text"]         # volatile block does differ
+    assert model_client._prompt_cache_key(p1) == model_client._prompt_cache_key(p2)
+
+
 def test_extract_prompt_includes_instructions_and_data():
     p = prompts.build_extract_prompt(
         pages_text="DOCBODY", skill_text="SKILL", sidecar=None, brief=None, known_document_types=[])
