@@ -1191,7 +1191,13 @@ def _task_max_tokens(task: str, backend: str, model_id: str, effort: str | None 
     can't starve the JSON. For OpenAI and Gemini the extra reserve scales with `effort`
     (`_OPENAI_REASONING_RESERVE`/`_GEMINI_REASONING_RESERVE`), since reasoning volume is a
     function of effort, not task. `effort` defaults to None (treated as medium) so existing call
-    sites — DeepSeek's own ceiling, `output_ceiling_for_sectioning` — keep working unchanged."""
+    sites — DeepSeek's own ceiling, `output_ceiling_for_sectioning` — keep working unchanged.
+
+    NOTE (2026-08-10, output-cap catalog research): "a function of effort, not task" above is
+    incomplete — archived telemetry fit against input length shows reasoning also scales steeply
+    with input (up to ~2.3 tokens of thinking per input token at high effort, ~12x the
+    visible-output rate), not just with the effort knob. Flagged here for whoever next revisits
+    these reserves; not addressed in this change."""
     if task in _TASK_MAX_TOKENS:
         if backend == "deepseek" and model_id.endswith(_DEEPSEEK_THINKING_SUFFIX):
             return _DEEPSEEK_THINKING_MAX_TOKENS
