@@ -461,9 +461,15 @@ accept an explicit `section_token_threshold`/`section_token_budget` integer as a
 escape hatch (a pinned integer does not rescale when the extraction model changes).
 The input-window default is **additionally capped by the output ceiling** for a backend that
 enforces a fixed `max_tokens` and can't paginate past it (openai, gemini — D104, #343): the
-safe output budget is converted back to an input-token cap
-(`model_client.output_ceiling_for_sectioning` × a density ratio) so a whole-document call's
-expected *output* stays under the ceiling. Backends that paginate their output (claude-api,
+safe output budget is converted back to an input-token cap by inverting an affine fit of
+*total* output — chain-of-thought plus the visible JSON answer, since on these backends both
+share the same wire-enforced `max_tokens` envelope — against input size (D187, #542). The fixed
+cost and marginal rate are looked up per reasoning `effort`, since reasoning volume (and so total
+output) scales with input very differently at each effort level; the result is clamped to a
+measured-range-bounded cap, since the underlying fits are weak and easily extrapolated past what
+was actually observed. `output_ceiling_for_sectioning` itself is effort-aware for a reasoning
+model, returning the real wire ceiling (base task budget plus the effort-scaled reasoning
+reserve) rather than the base budget alone. Backends that paginate their output (claude-api,
 deepseek) or have no ceiling (claude-agent-sdk) return `None` and keep the pure input-window
 default.
 Finally, the threshold and budget are divided by `model_client.tokenizer_ratio` (D180, #574):
