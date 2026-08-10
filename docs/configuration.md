@@ -27,7 +27,7 @@ Or run `watchdog configure <key>` with no value to see that one key's help and c
 | `projects_dir` | `~/Investigations` | Where `watchdog new` creates investigation vaults; existing vaults are not moved. |
 | `ocr_engine` | `auto` | OCR engine for scanned documents: `auto`, `apple_vision`, `tesseract`, `easyocr`, or `rapidocr`. |
 | `ocr_languages` | *(auto-detect)* | Languages for Apple Vision OCR, as comma-separated codes (e.g. `en-US,fr-FR`). |
-| `garbled_threshold` | `0.75` | Fraction of readable characters below which a PDF's text layer is considered garbled and OCR is triggered (0.0–1.0). |
+| `garbled_threshold` | `0.6` | One of three signals used to decide a PDF page's text layer is garbled: the fraction of readable characters, which must fall below this value (0.0–1.0). See below — no single signal can trigger OCR by itself. |
 | `chew_workers` | `auto` | Files processed in parallel during chewing; `auto` adapts to the batch, or set a fixed number. |
 | `chunk_size` | `40` | Pages per chunk when splitting large PDFs for parallel processing. |
 | `chunk_workers` | `auto` | Parallel subprocesses for large-PDF chunks. |
@@ -66,7 +66,9 @@ Or run `watchdog configure <key>` with no value to see that one key's help and c
 
 ### OCR
 
-`auto` uses Apple Vision on macOS (fast, hardware-accelerated) and Tesseract elsewhere. `easyocr` and `rapidocr` need no system install but are generally less accurate on forms. `ocr_languages` applies to Apple Vision: leave it unset to auto-detect from the image, and set it explicitly only if detection produces poor results. `garbled_threshold` decides when a PDF that claims to have a text layer gets OCR anyway — lower means more aggressive OCR.
+`auto` uses Apple Vision on macOS (fast, hardware-accelerated) and Tesseract elsewhere. `easyocr` and `rapidocr` need no system install but are generally less accurate on forms. `ocr_languages` applies to Apple Vision: leave it unset to auto-detect from the image, and set it explicitly only if detection produces poor results.
+
+Watchdog decides whether a PDF's text layer is trustworthy, or needs OCR instead, by sampling a few pages and checking three independent signals: what fraction of characters are letters, digits, or whitespace (`garbled_threshold` sets this one); what fraction of whitespace-separated tokens look like real words or numbers rather than symbol noise; and whether the page's embedded fonts carry the data needed to map their glyphs back to characters at all. OCR is only triggered when at least two of the three signals agree the page is unreadable — no single signal, including `garbled_threshold`, can trigger it alone. This matters because a lot of what this tool reads is dense: financial tables, tables of contents with dot leaders, citation lists. Those can score badly on the character ratio alone while being perfectly readable, so a badly-behaved single check used to be able to send a whole document through OCR and needlessly break up otherwise-clean tables. If you had already tuned `garbled_threshold`, your value carries forward unchanged for the character-ratio signal — it just now needs at least one of the other two signals to agree before OCR actually fires. The default itself moved from `0.75` to `0.6` for the same reason: the old value was too easily tripped by exactly the dense, legitimate material this tool spends most of its time on.
 
 ### Chewing and large documents
 

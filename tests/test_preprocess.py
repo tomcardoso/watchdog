@@ -28,7 +28,7 @@ def test_garbled_symbol_heavy():
 
 
 def test_garbled_mixed_borderline():
-    # 50% alphanumeric — well below the 0.75 default threshold
+    # 50% alphanumeric — below the 0.6 default threshold
     assert is_garbled("abc©©©")
 
 
@@ -250,7 +250,8 @@ def test_large_pdf_fallback_retries_after_all_chunks_fail(tmp_path, monkeypatch)
     monkeypatch.setattr(preprocess_mod, "pdf_preprocess", lambda p: cleaned)
     monkeypatch.setattr(preprocess_mod, "sha256_file", lambda p: "original-hash")
     # Prevent docling import from being tried
-    monkeypatch.setattr(preprocess_mod, "pdf_sample_pages", lambda p: ["some text"])
+    monkeypatch.setattr(preprocess_mod, "pdf_sample_pages",
+                        lambda p: [preprocess_mod.PageSample("some text", False)])
 
     from watchdog.pipeline.preprocess import process_with_docling
     result = process_with_docling(_Path("/fake/doc.pdf"), force_ocr=False)
@@ -271,7 +272,8 @@ def test_large_pdf_fallback_returns_original_error_if_preprocess_unavailable(tmp
     monkeypatch.setattr(preprocess_mod, "process_large_pdf",
                         lambda path, force_ocr, total_pages: {"error": "all chunks failed"})
     monkeypatch.setattr(preprocess_mod, "pdf_preprocess", lambda p: None)
-    monkeypatch.setattr(preprocess_mod, "pdf_sample_pages", lambda p: ["some text"])
+    monkeypatch.setattr(preprocess_mod, "pdf_sample_pages",
+                        lambda p: [preprocess_mod.PageSample("some text", False)])
 
     from watchdog.pipeline.preprocess import process_with_docling
     result = process_with_docling(_Path("/fake/doc.pdf"), force_ocr=False)
@@ -329,22 +331,148 @@ def test_unknown_suffix_garbled_but_valid_text_gets_flagged(tmp_path, monkeypatc
     assert out["metadata"]["garbled_detected"] is True
 
 
-# ── pdf_garble_verdict — per-page combination, not a blended blob (#580) ──────
+# ── word_shape_ratio / is_word_shape_garbled — signal #2 (#597) ───────────────
+
+def test_word_shape_clean_prose_scores_high():
+    ratio = preprocess.word_shape_ratio("This is a normal sentence with words and spaces.")
+    assert ratio == 1.0
+    assert not preprocess.is_word_shape_garbled("This is a normal sentence with words and spaces.")
+
+
+def test_word_shape_dot_leader_toc_line_still_reads_as_words():
+    """A dot-leader table-of-contents line is heavy on '.' characters (tripping
+    the character-ratio signal) but its actual words still read as words —
+    this is the whole reason word-shape exists (#580/#597)."""
+    toc_line = "Overview .................................................... 2"
+    ratio = preprocess.word_shape_ratio(toc_line)
+    assert ratio is not None and ratio > 0.5   # "Overview" and "2" are words; the dot run isn't
+    assert not preprocess.is_word_shape_garbled(toc_line)
+
+
+def test_word_shape_symbol_soup_scores_zero():
+    assert preprocess.word_shape_ratio("©®™†‡§¶•∞≠≈∂∑∏√∫") == 0.0
+    assert preprocess.is_word_shape_garbled("©®™†‡§¶•∞≠≈∂∑∏√∫")
+
+
+def test_word_shape_empty_text_not_garbled():
+    assert not preprocess.is_word_shape_garbled("")
+
+
+def test_word_shape_ratio_none_for_no_tokens():
+    assert preprocess.word_shape_ratio("") is None
+
+
+# ── pdf_page_missing_font_cmap — signal #3 (#597) ──────────────────────────────
+# Takes a duck-typed page object; plain nested dicts stand in for pypdf's
+# DictionaryObject (which also supports .get()), so these run with no real PDF.
+
+def _fake_page(fonts: dict) -> dict:
+    return {"/Resources": {"/Font": fonts}}
+
+
+def test_font_cmap_type0_without_tounicode_is_missing():
+    page = _fake_page({
+        "/F1": {"/Subtype": "/Type0", "/BaseFont": "ABCDEF+CustomBodyFont"},
+    })
+    assert preprocess.pdf_page_missing_font_cmap(page)
+
+
+def test_font_cmap_type0_with_tounicode_is_not_missing():
+    page = _fake_page({
+        "/F1": {"/Subtype": "/Type0", "/BaseFont": "ABCDEF+CustomBodyFont", "/ToUnicode": object()},
+    })
+    assert not preprocess.pdf_page_missing_font_cmap(page)
+
+
+def test_font_cmap_simple_truetype_without_tounicode_is_not_missing():
+    """A simple font with a named encoding (WinAnsiEncoding etc.) decodes fine
+    without ToUnicode — only composite (/Type0) fonts are checked."""
+    page = _fake_page({
+        "/F1": {"/Subtype": "/TrueType", "/BaseFont": "ABCDEF+Arial", "/Encoding": "/WinAnsiEncoding"},
+    })
+    assert not preprocess.pdf_page_missing_font_cmap(page)
+
+
+def test_font_cmap_dingbat_font_without_tounicode_is_excluded():
+    """A Type0 Wingdings/Symbol font missing ToUnicode is a known, common case
+    (bullets/icons) that says nothing about body-text readability — this is
+    the exact false positive observed on the real #580 corpus document, where
+    a decorative Wingdings font appears on both a garbled TOC page and clean
+    body pages alike."""
+    page = _fake_page({
+        "/F1": {"/Subtype": "/Type0", "/BaseFont": "GFOLCA+Wingdings-Regular"},
+    })
+    assert not preprocess.pdf_page_missing_font_cmap(page)
+
+
+def test_font_cmap_no_fonts_is_not_missing():
+    assert not preprocess.pdf_page_missing_font_cmap({"/Resources": {}})
+    assert not preprocess.pdf_page_missing_font_cmap({})
+
+
+# ── page_garble_signals / is_page_garbled — level 1: signals -> page verdict ───
+
+def test_page_garbled_requires_at_least_two_signals():
+    """One signal firing alone must not condemn a page — this is the
+    require-agreement combination rule chosen in D185 for #597."""
+    PS = preprocess.PageSample
+    # A dot-leader line: heavy on '.' (trips char_ratio) but its actual tokens
+    # ("Overview", "2") still read as words (does not trip word_shape).
+    only_ratio = PS(text="Overview .......................................... 2", missing_font_cmap=False)
+    signals = preprocess.page_garble_signals(only_ratio)
+    assert signals == {"char_ratio": True, "word_shape": False, "font_cmap": False}
+    assert not preprocess.is_page_garbled(only_ratio)
+
+    only_cmap = PS(text="This is ordinary clean prose text.", missing_font_cmap=True)
+    assert sum(preprocess.page_garble_signals(only_cmap).values()) == 1
+    assert not preprocess.is_page_garbled(only_cmap)
+
+
+def test_page_garbled_two_signals_agreeing_is_enough():
+    PS = preprocess.PageSample
+    soup = PS(text="©®™†‡§¶•∞≠≈∂∑∏√∫", missing_font_cmap=False)  # char_ratio + word_shape fire
+    assert sum(preprocess.page_garble_signals(soup).values()) == 2
+    assert preprocess.is_page_garbled(soup)
+
+
+def test_page_garbled_all_three_signals_agreeing():
+    PS = preprocess.PageSample
+    worst = PS(text="©®™†‡§¶•∞≠≈∂∑∏√∫", missing_font_cmap=True)
+    assert sum(preprocess.page_garble_signals(worst).values()) == 3
+    assert preprocess.is_page_garbled(worst)
+
+
+def test_page_garbled_dot_leader_toc_page_not_garbled():
+    """The #580 case at the page-verdict level: char_ratio fires on the dot
+    leaders, but word_shape doesn't (real words present) and there's no font
+    signal — only 1 of 3 votes, so the page reads as clean."""
+    toc_page = preprocess.PageSample(
+        text=("Overview ...................................................... 2\n"
+              "Review of fiscal 2019-2020 .................................... 4\n"),
+        missing_font_cmap=False,
+    )
+    signals = preprocess.page_garble_signals(toc_page)
+    assert signals["char_ratio"] is True
+    assert signals["word_shape"] is False
+    assert not preprocess.is_page_garbled(toc_page)
+
+
+# ── pdf_garble_verdict — level 2: page verdicts -> document verdict (#580) ────
 
 def test_verdict_dot_leader_toc_page_does_not_force_ocr(monkeypatch):
     """A dot-leader table-of-contents page sampled alongside clean body-text
-    pages must not push the whole-document verdict to garbled. Regression for
-    #580: a blended ratio over all sampled pages let one TOC page (heavy on
-    dot leaders) drag a born-digital document's score below threshold."""
+    pages must not push the whole-document verdict to garbled."""
     import watchdog.pipeline.preprocess as preprocess_mod
 
-    toc_page = ("Overview ...................................................... 2\n"
-                "Review of fiscal 2019-2020 .................................... 4\n")
-    body_page = "This report reviews the fiscal year in clear, ordinary prose."
-
-    # Sanity: the TOC page alone would trip the per-page check on its own.
-    assert is_garbled(toc_page)
-    assert not is_garbled(body_page)
+    toc_page = preprocess_mod.PageSample(
+        text=("Overview ...................................................... 2\n"
+              "Review of fiscal 2019-2020 .................................... 4\n"),
+        missing_font_cmap=False,
+    )
+    body_page = preprocess_mod.PageSample(
+        text="This report reviews the fiscal year in clear, ordinary prose.",
+        missing_font_cmap=False,
+    )
 
     monkeypatch.setattr(preprocess_mod, "pdf_sample_pages",
                          lambda p: [toc_page, body_page, body_page])
@@ -359,7 +487,7 @@ def test_verdict_symbol_soup_on_every_page_still_forces_ocr(monkeypatch):
     the fix must not make the detector toothless."""
     import watchdog.pipeline.preprocess as preprocess_mod
 
-    soup = "©®™†‡§¶•∞≠≈∂∑∏√∫"
+    soup = preprocess_mod.PageSample(text="©®™†‡§¶•∞≠≈∂∑∏√∫", missing_font_cmap=False)
     monkeypatch.setattr(preprocess_mod, "pdf_sample_pages", lambda p: [soup, soup, soup])
 
     empty, garbled = preprocess_mod.pdf_garble_verdict("fake.pdf")
@@ -373,7 +501,8 @@ def test_verdict_all_sampled_pages_empty_is_reported_as_empty_not_garbled(monkey
     different causes."""
     import watchdog.pipeline.preprocess as preprocess_mod
 
-    monkeypatch.setattr(preprocess_mod, "pdf_sample_pages", lambda p: ["", "", ""])
+    blank = preprocess_mod.PageSample(text="", missing_font_cmap=False)
+    monkeypatch.setattr(preprocess_mod, "pdf_sample_pages", lambda p: [blank, blank, blank])
 
     empty, garbled = preprocess_mod.pdf_garble_verdict("fake.pdf")
     assert empty is True
@@ -385,9 +514,13 @@ def test_verdict_blank_pages_among_sampled_pages_are_ignored(monkeypatch):
     not itself count toward the garbled verdict."""
     import watchdog.pipeline.preprocess as preprocess_mod
 
-    body_page = "This report reviews the fiscal year in clear, ordinary prose."
+    blank = preprocess_mod.PageSample(text="", missing_font_cmap=False)
+    body_page = preprocess_mod.PageSample(
+        text="This report reviews the fiscal year in clear, ordinary prose.",
+        missing_font_cmap=False,
+    )
     monkeypatch.setattr(preprocess_mod, "pdf_sample_pages",
-                         lambda p: ["", body_page, body_page])
+                         lambda p: [blank, body_page, body_page])
 
     empty, garbled = preprocess_mod.pdf_garble_verdict("fake.pdf")
     assert empty is False
