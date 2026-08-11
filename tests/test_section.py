@@ -17,23 +17,58 @@ def test_est_tokens_from_pages_sums():
     assert est_tokens_from_pages(pages) == 30
 
 
-# ── plan_ranges (pages) ─────────────────────────────────────────────────────
+# ── plan_ranges (greedy page packing, #596) ─────────────────────────────────
 
-def test_plan_ranges_with_overlap_covers_every_page():
-    r = plan_ranges(120, 50, 3)
-    assert r[0] == (1, 50) and r[1] == (48, 97) and r[2] == (95, 120)
-    covered = set()
-    for s, e in r:
-        covered.update(range(s, e + 1))
-    assert covered == set(range(1, 121))
+def _covered(ranges):
+    seen = set()
+    for s, e in ranges:
+        seen.update(range(s, e + 1))
+    return seen
 
 
-def test_plan_ranges_overlap_capped_so_it_advances():
-    r = plan_ranges(10, 3, 5)
-    covered = set()
-    for s, e in r:
-        covered.update(range(s, e + 1))
-    assert covered == set(range(1, 11))
+def test_plan_ranges_uniform_density_packs_to_the_budget():
+    # 120 pages of 100 tokens, 5,000-token budget → 50 pages a section, no overlap.
+    assert plan_ranges([100] * 120, 5_000, 0) == [(1, 50), (51, 100), (101, 120)]
+
+
+def test_plan_ranges_packs_by_actual_density_not_the_average():
+    # Same document, same budget, but the density is lumpy: pages 3 and 4 are 5x the rest. The
+    # average (200 tok/page) would cut uniform 3-page ranges and put 1,200 tokens into pages 3–5,
+    # double the budget. Greedy packing gives the dense stretch its own smaller sections.
+    tokens = [100, 100, 500, 500, 100, 100, 100, 100]     # avg 200, budget 600
+    ranges = plan_ranges(tokens, 600, 0)
+    assert ranges == [(1, 2), (3, 3), (4, 5), (6, 8)]
+    for s, e in ranges:
+        assert sum(tokens[s - 1:e]) <= 600
+    assert _covered(ranges) == set(range(1, 9))
+
+
+def test_plan_ranges_page_bigger_than_the_budget_stands_alone():
+    # Sections split on page boundaries, so an oversized page has nothing smaller to cut — it must
+    # get its own section and the walk must still advance past it, not loop.
+    assert plan_ranges([100, 5_000, 100, 100], 600, 0) == [(1, 1), (2, 2), (3, 4)]
+
+
+def test_plan_ranges_overlap_replays_whole_trailing_pages_within_the_allowance():
+    # 400-token overlap allowance: page 3 (100) and page 2 (100) both fit and are replayed;
+    # page 1 would be a third 100 and fits too, but backing up that far would not advance.
+    assert plan_ranges([100] * 9, 300, 400) == [(1, 3), (2, 4), (3, 5), (4, 6),
+                                                (5, 7), (6, 8), (7, 9)]
+    # A dense trailing page eats most of the same allowance on its own, so only it is replayed —
+    # the page before it no longer fits, where a page-count overlap would have replayed it anyway.
+    assert plan_ranges([100, 100, 350, 100, 100], 550, 400) == [(1, 3), (3, 5)]
+
+
+def test_plan_ranges_overlap_never_stalls():
+    # An overlap allowance far larger than the budget still advances one page a section, and every
+    # page is still covered.
+    ranges = plan_ranges([100] * 10, 300, 100_000)
+    assert _covered(ranges) == set(range(1, 11))
+    assert [s for s, _ in ranges] == list(range(1, 9))     # strictly advancing starts
+
+
+def test_plan_ranges_empty_document():
+    assert plan_ranges([], 500, 0) == []
 
 
 # ── char_windows ────────────────────────────────────────────────────────────
@@ -95,6 +130,21 @@ def test_run_paginated_splits_on_pages(tmp_path, monkeypatch):
     first = (vault / secs[0]["pages_path"]).read_text()
     assert "<!-- PAGE 1 -->" in first and "<!-- PAGE 2 -->" in first
     assert "<!-- PAGE 3 -->" not in first
+
+
+def test_run_paginated_sections_follow_per_page_density(tmp_path, monkeypatch):
+    # Density varies inside the document (#596): page 3 is twice as dense as the rest. The old
+    # average-derived split (avg 120 tok/page → 2 pages a section) would have cut "pages 3–4" at
+    # 300 tokens, half again over the 200-token budget; per-page packing isolates the dense page.
+    monkeypatch.setattr(section, "_config_get", _config(threshold=100, budget=200, overlap=0))
+    vault = _vault(tmp_path)
+    pages = [{"page": n, "markdown": "x" * (800 if n == 3 else 400)} for n in range(1, 6)]
+    _write_queue(vault, "doc1", pages, 5)
+
+    result = section.run(vault, "doc1")
+    assert [s["label"] for s in result["sections"]] == ["pages 1–2", "pages 3–3", "pages 4–5"]
+    for sec in result["sections"]:
+        assert est_tokens((vault / sec["pages_path"]).read_text()) <= 200 + 50   # + page markers
 
 
 def test_run_non_paginated_splits_on_chars(tmp_path, monkeypatch):

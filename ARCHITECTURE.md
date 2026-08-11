@@ -463,6 +463,13 @@ bark` able to recommit it (its sha is already a registry key, and finalize's own
 into overlapping page-range sections, extracted **one at a time in reading order** with a
 carry-forward block in each section's prompt, then combined by `merge.merge_extractions`
 into a single extraction JSON that goes through the same post-flight / `write_vault` path.
+Pages are packed into those sections **greedily against their own estimated token counts**
+(`section.plan_ranges`, D196, #596) — walk the pages in order, close a section when the next page
+would exceed the budget — rather than cutting uniform page ranges sized from the document's
+average density, which overshoots the budget on dense stretches and under-fills on sparse ones.
+The overlap between consecutive sections is accounted the same way: whole trailing pages replayed
+up to `section_overlap_tokens`. A page denser than the whole budget stands alone (page boundaries
+are the smallest unit a section can cut on), and every section still advances at least one page.
 The threshold and per-section budget are **provider-aware** (D89, #321): rather than fixed
 numbers they default to fractions (0.6 / 0.3) of the extraction model's context window
 (`model_client.context_window` — Claude 200K, DeepSeek V4 1M, Gemini 2.5 1M, etc.), so a large-window model
