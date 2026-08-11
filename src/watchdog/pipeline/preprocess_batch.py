@@ -95,6 +95,19 @@ def _page_label(path: Path, count: int) -> str:
     return f"{count} {unit}{'s' if count != 1 else ''}"
 
 
+def _ocr_note(result: dict, is_garbled: bool) -> str:
+    """The OCR annotation for a finished file's row, or "" for nothing to say.
+
+    Names the page count when OCR was page-scoped (#605) — "garbled OCR" alone
+    would read as though the whole document had been re-read off its page images.
+    """
+    ocr_pages = result.get("metadata", {}).get("ocr_pages") or []
+    if ocr_pages:
+        scope = f"{len(ocr_pages)} of {result.get('page_count', 0)} pages"
+        return f"garbled OCR on {scope}" if is_garbled else f"OCR on {scope}"
+    return "garbled OCR" if is_garbled else ""
+
+
 def _count_pdf_pages(path: Path) -> int:
     if path.suffix.lower() != ".pdf":
         return 1
@@ -450,7 +463,8 @@ def _run_ingest_inner(
             rel       = _rel(path)
             label     = _page_label(path, result.get("page_count", 0))
             label_str = f"  {_DIM}{label}{_RESET}" if label else ""
-            garb_str  = f"  {_DIM}·  garbled OCR{_RESET}" if is_garbled else ""
+            ocr_note  = _ocr_note(result, is_garbled)
+            garb_str  = f"  {_DIM}·  {ocr_note}{_RESET}" if ocr_note else ""
 
             # Settle this file's row: print its result above the live region, clearing the in-flight row.
             live.finish(str(path), f"  {status}  {_BOLD}{rel}{_RESET}{label_str}{garb_str}")

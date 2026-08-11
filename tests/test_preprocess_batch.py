@@ -505,6 +505,46 @@ def test_garbled_doc_shows_annotation(tmp_path, monkeypatch, capsys):
     assert (queue / "gg99.json").exists()  # still queued
 
 
+def test_page_scoped_ocr_row_names_the_page_count(tmp_path, monkeypatch, capsys):
+    """When only some pages were OCR'd (#605), the row must say so — a bare
+    "garbled OCR" reads as though all 202 pages were re-read off page images."""
+    vault, incoming, queue, staging = _make_vault(tmp_path)
+    f = incoming / "filing.pdf"
+    f.write_bytes(b"")
+
+    monkeypatch.setattr(ppb, "preprocess_one", lambda path, *a, **kw: {
+        "sha256": "pp01", "pages": [{"markdown": "hello"}], "char_count": 5,
+        "page_count": 202, "source_path": str(path),
+        "metadata": {"garbled_detected": True, "ocr_used": True, "ocr_pages": [101, 102]},
+    })
+
+    _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
+
+    out = capsys.readouterr().out
+    assert "2 of 202 pages" in out
+
+
+def test_ocr_row_without_garble_reports_scope_not_garble(tmp_path, monkeypatch, capsys):
+    """Scanned inserts with no text layer are OCR'd but aren't garbled — the row
+    must not accuse the document of a broken text layer it never had."""
+    vault, incoming, queue, staging = _make_vault(tmp_path)
+    f = incoming / "report.pdf"
+    f.write_bytes(b"")
+
+    monkeypatch.setattr(ppb, "preprocess_one", lambda path, *a, **kw: {
+        "sha256": "pp02", "pages": [{"markdown": "hello"}], "char_count": 5,
+        "page_count": 34, "source_path": str(path),
+        "metadata": {"garbled_detected": False, "ocr_used": True,
+                     "ocr_pages": [25, 26, 27, 28, 29, 30, 31]},
+    })
+
+    _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
+
+    out = capsys.readouterr().out
+    assert "OCR on 7 of 34 pages" in out
+    assert "garbled" not in out
+
+
 def test_garbled_doc_still_queued(tmp_path, monkeypatch, capsys):
     vault, incoming, queue, staging = _make_vault(tmp_path)
     f = incoming / "scan.pdf"

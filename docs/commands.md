@@ -187,7 +187,7 @@ watchdog ingest --force report.pdf disclosure-2024.pdf
 
 ### watchdog chew
 
-`watchdog chew` does the local preprocessing: it converts each file in `_INCOMING/` to structured text, applies OCR to scanned documents, splits large PDFs into chunks processed in parallel, and checks for duplicates. The extracted text is queued in `.watchdog/queue/` and the original file moves to `.watchdog/staging/`. Nothing is sent to a model during chewing.
+`watchdog chew` does the local preprocessing: it converts each file in `_INCOMING/` to structured text, applies OCR to the pages that need it, splits large PDFs into chunks processed in parallel, and checks for duplicates. The extracted text is queued in `.watchdog/queue/` and the original file moves to `.watchdog/staging/`. Nothing is sent to a model during chewing.
 
 ```bash
 watchdog chew                        # everything in _INCOMING/

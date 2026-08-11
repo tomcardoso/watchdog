@@ -91,7 +91,18 @@ Two human-invoked phases, with a clean handoff via the queue:
 (batch orchestration), `pipeline/near_dup.py`.
 
 - **Text/layout extraction.** Direct text where the PDF has it; otherwise Docling
-  with OCR. Garbled-text detection can force OCR. Output is per-page markdown.
+  with OCR. Output is per-page markdown.
+- **Page-scoped OCR (D192).** Every page of a PDF is scored — not a sample — by the
+  three-signal ensemble (character ratio, word shape, font CMap; 2 of 3 must agree, D189).
+  A page is force-OCR'd when it has no text layer or a garbled one; the rest keep theirs.
+  Pages are then grouped **by verdict, not contiguity** into at most two classes, each split
+  at `chunk_size`, converted in parallel subprocesses and spliced back by page number. A
+  document whose pages all agree yields one class of contiguous pages — the existing
+  chunking, unchanged, and small uniform PDFs still take a single in-process conversion.
+  Slices are told the parent's verdict (`--force-ocr` / `--no-force-ocr`) rather than
+  re-deriving one from a pypdf-rewritten slice. `metadata.ocr_used` and
+  `garbled_detected` stay document-wide booleans; `metadata.ocr_pages` names the pages
+  when, and only when, OCR was page-scoped.
 - **Skip exact duplicates before OCR (D27).** Before the worker pool, each file's sha256 is
   checked against the document registry (already ingested), the pending queue (already chewed this
   round), and the shas seen earlier in the same batch. A match is moved to `_INCOMING/_SKIPPED/`

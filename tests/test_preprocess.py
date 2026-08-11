@@ -9,7 +9,8 @@ from watchdog.pipeline import preprocess
 from watchdog.pipeline.preprocess import (
     is_garbled,
     process_direct_text,
-    process_large_pdf,
+    process_pdf_slices,
+    _ocr_slices,
     _markdown_pages,
 )
 
@@ -165,55 +166,74 @@ def test_markdown_pages_entity_decoding_does_not_disturb_page_break_or_image_pla
     ]
 
 
-# ── process_large_pdf ────────────────────────────────────────────────────────
+# ── process_pdf_slices ───────────────────────────────────────────────────────
 
 def _fake_extract(tmp_path):
-    """Return a pdf_extract_chunk stub that creates real temp files (so unlink works)."""
-    def _extract(src, start, end):
-        f = tmp_path / f"chunk_{start}.pdf"
+    """Return a pdf_extract_pages stub that creates real temp files (so unlink works)."""
+    def _extract(src, indices):
+        f = tmp_path / f"slice_{indices[0]}.pdf"
         f.write_bytes(b"")
         return f
     return _extract
 
 
-def test_process_large_pdf_all_chunks_fail_returns_error(tmp_path, monkeypatch):
-    """When every chunk subprocess fails, return an error dict rather than empty pages."""
+def test_process_pdf_slices_all_slices_fail_returns_error(tmp_path, monkeypatch):
+    """When every slice subprocess fails, return an error dict rather than empty pages."""
     from pathlib import Path as _Path
     import watchdog.pipeline.preprocess as preprocess_mod
 
-    monkeypatch.setattr(preprocess_mod, "pdf_extract_chunk", _fake_extract(tmp_path))
-    monkeypatch.setattr(preprocess_mod, "_run_chunk_subprocess",
-                        lambda chunk_path, page_offset, force_ocr: {"error": "simulated failure"})
-    monkeypatch.setattr(preprocess_mod, "sha256_file", lambda p: "abc123")
+    monkeypatch.setattr(preprocess_mod, "pdf_extract_pages", _fake_extract(tmp_path))
+    monkeypatch.setattr(preprocess_mod, "_run_slice_subprocess",
+                        lambda slice_path, page_numbers, force_ocr: {"error": "simulated failure"})
 
-    result = process_large_pdf(_Path("/fake/doc.pdf"), force_ocr=False, total_pages=10)
+    result = process_pdf_slices(_Path("/fake/doc.pdf"), [(list(range(10)), False)])
     assert "error" in result
     assert "failed" in result["error"].lower()
 
 
-def test_process_large_pdf_partial_failure_returns_error(tmp_path, monkeypatch):
-    """A single failed chunk must fail the whole document, not queue it with a silent page gap (#251)."""
+def test_process_pdf_slices_partial_failure_returns_error(tmp_path, monkeypatch):
+    """A single failed slice must fail the whole document, not queue it with a silent page gap (#251)."""
     from pathlib import Path as _Path
     import watchdog.pipeline.preprocess as preprocess_mod
 
     call_count = {"n": 0}
 
-    def fake_chunk(chunk_path, page_offset, force_ocr):
+    def fake_slice(slice_path, page_numbers, force_ocr):
         call_count["n"] += 1
         if call_count["n"] == 1:
-            return {"error": "chunk 1 failed"}
-        return {
-            "pages": [{"page": page_offset + 1, "markdown": "ok page"}],
-            "metadata": {"ocr_used": False, "garbled_detected": False},
-        }
+            return {"error": "slice 1 failed"}
+        return {"pages": [{"page": page_numbers[0] + 1, "markdown": "ok page"}]}
 
-    monkeypatch.setattr(preprocess_mod, "pdf_extract_chunk", _fake_extract(tmp_path))
-    monkeypatch.setattr(preprocess_mod, "_run_chunk_subprocess", fake_chunk)
-    monkeypatch.setattr(preprocess_mod, "sha256_file", lambda p: "abc123")
+    monkeypatch.setattr(preprocess_mod, "pdf_extract_pages", _fake_extract(tmp_path))
+    monkeypatch.setattr(preprocess_mod, "_run_slice_subprocess", fake_slice)
 
-    result = process_large_pdf(_Path("/fake/doc.pdf"), force_ocr=False, total_pages=80)
+    slices = [(list(range(0, 40)), False), (list(range(40, 80)), False)]
+    result = process_pdf_slices(_Path("/fake/doc.pdf"), slices)
     assert "error" in result
-    assert "chunk 1 failed" in result["error"]
+    assert "slice 1 failed" in result["error"]
+
+
+def test_process_pdf_slices_merges_interleaved_pages_in_order(tmp_path, monkeypatch):
+    """Slices are grouped by OCR verdict, so their pages interleave in the
+    original document and must be sorted, not concatenated (#605)."""
+    from pathlib import Path as _Path
+    import watchdog.pipeline.preprocess as preprocess_mod
+
+    def fake_slice(slice_path, page_numbers, force_ocr):
+        tag = "ocr" if force_ocr else "text"
+        return {"pages": [{"page": n + 1, "markdown": f"{tag} {n + 1}"} for n in page_numbers]}
+
+    monkeypatch.setattr(preprocess_mod, "pdf_extract_pages", _fake_extract(tmp_path))
+    monkeypatch.setattr(preprocess_mod, "_run_slice_subprocess", fake_slice)
+
+    # Pages 2 and 4 need OCR; 1, 3, 5 keep their text layer.
+    slices = [([0, 2, 4], False), ([1, 3], True)]
+    result = process_pdf_slices(_Path("/fake/doc.pdf"), slices)
+
+    assert [p["page"] for p in result["pages"]] == [1, 2, 3, 4, 5]
+    assert [p["markdown"] for p in result["pages"]] == [
+        "text 1", "ocr 2", "text 3", "ocr 4", "text 5",
+    ]
 
 
 # ── process_with_docling large-PDF fallback ───────────────────────────────────
@@ -229,29 +249,21 @@ def test_large_pdf_fallback_retries_after_all_chunks_fail(tmp_path, monkeypatch)
     call_log = []
 
     def fake_page_count(path):
-        return 50  # always > CHUNK_SIZE so we go the large-PDF path
+        return 50  # always > CHUNK_SIZE so we go the sliced path
 
-    def fake_process_large(path, force_ocr, total_pages):
+    def fake_slices(path, slices):
         call_log.append(str(path))
         if "fake" in str(path):
             return {"error": "all chunks failed"}
-        # Second call (on cleaned file) succeeds
-        return {
-            "filename": path.name,
-            "sha256": "cleaned-hash",
-            "page_count": 50,
-            "pages": [{"page": 1, "markdown": "recovered text"}],
-            "metadata": {"ocr_used": True, "garbled_detected": False,
-                         "source_type": "docling", "chunked": True, "chunk_count": 2},
-        }
+        return {"pages": [{"page": 1, "markdown": "recovered text"}]}
 
     monkeypatch.setattr(preprocess_mod, "pdf_page_count", fake_page_count)
-    monkeypatch.setattr(preprocess_mod, "process_large_pdf", fake_process_large)
+    monkeypatch.setattr(preprocess_mod, "process_pdf_slices", fake_slices)
     monkeypatch.setattr(preprocess_mod, "pdf_preprocess", lambda p: cleaned)
     monkeypatch.setattr(preprocess_mod, "sha256_file", lambda p: "original-hash")
     # Prevent docling import from being tried
-    monkeypatch.setattr(preprocess_mod, "pdf_sample_pages",
-                        lambda p: [preprocess_mod.PageSample("some text", False)])
+    monkeypatch.setattr(preprocess_mod, "pdf_page_samples",
+                        lambda p: [preprocess_mod.PageSample("some text", False)] * 50)
 
     from watchdog.pipeline.preprocess import process_with_docling
     result = process_with_docling(_Path("/fake/doc.pdf"), force_ocr=False)
@@ -269,11 +281,11 @@ def test_large_pdf_fallback_returns_original_error_if_preprocess_unavailable(tmp
     import watchdog.pipeline.preprocess as preprocess_mod
 
     monkeypatch.setattr(preprocess_mod, "pdf_page_count", lambda p: 50)
-    monkeypatch.setattr(preprocess_mod, "process_large_pdf",
-                        lambda path, force_ocr, total_pages: {"error": "all chunks failed"})
+    monkeypatch.setattr(preprocess_mod, "process_pdf_slices",
+                        lambda path, slices: {"error": "all chunks failed"})
     monkeypatch.setattr(preprocess_mod, "pdf_preprocess", lambda p: None)
-    monkeypatch.setattr(preprocess_mod, "pdf_sample_pages",
-                        lambda p: [preprocess_mod.PageSample("some text", False)])
+    monkeypatch.setattr(preprocess_mod, "pdf_page_samples",
+                        lambda p: [preprocess_mod.PageSample("some text", False)] * 50)
 
     from watchdog.pipeline.preprocess import process_with_docling
     result = process_with_docling(_Path("/fake/doc.pdf"), force_ocr=False)
@@ -298,7 +310,7 @@ def test_unknown_suffix_binary_file_falls_back_to_docling_not_silent_ok(tmp_path
 
     docling_called = {}
 
-    def fake_docling(path, force_ocr=False):
+    def fake_docling(path, force_ocr=False, detect=True):
         docling_called["path"] = path
         return {"error": "Docling conversion failed: simulated"}
 
@@ -481,99 +493,300 @@ def test_page_garbled_dot_leader_toc_page_not_garbled():
     assert not preprocess.is_page_garbled(toc_page)
 
 
-# ── pdf_garble_verdict — level 2: page verdicts -> document verdict (#580) ────
+# ── pdf_ocr_plan — level 2: page verdicts -> a per-page plan (#580, #605) ─────
 
-def test_verdict_dot_leader_toc_page_does_not_force_ocr(monkeypatch):
-    """A dot-leader table-of-contents page sampled alongside clean body-text
-    pages must not push the whole-document verdict to garbled."""
+_BODY = "This report reviews the fiscal year in clear, ordinary prose."
+_TOC = ("Overview ...................................................... 2\n"
+        "Review of fiscal 2019-2020 .................................... 4\n")
+_SOUP = "©®™†‡§¶•∞≠≈∂∑∏√∫"
+
+
+def _plan(monkeypatch, samples):
     import watchdog.pipeline.preprocess as preprocess_mod
+    monkeypatch.setattr(preprocess_mod, "pdf_page_samples", lambda p: samples)
+    return preprocess_mod.pdf_ocr_plan("fake.pdf", len(samples))
 
-    toc_page = preprocess_mod.PageSample(
-        text=("Overview ...................................................... 2\n"
-              "Review of fiscal 2019-2020 .................................... 4\n"),
-        missing_font_cmap=False,
+
+def _sample(text, missing_font_cmap=False):
+    return preprocess.PageSample(text=text, missing_font_cmap=missing_font_cmap)
+
+
+def test_plan_dot_leader_toc_page_does_not_force_ocr(monkeypatch):
+    """A dot-leader table-of-contents page alongside clean body-text pages must
+    not be forced — nor drag its neighbours into OCR (#580)."""
+    force, garbled = _plan(monkeypatch, [_sample(_TOC), _sample(_BODY), _sample(_BODY)])
+    assert force == []
+    assert garbled == []
+
+
+def test_plan_symbol_soup_on_every_page_still_forces_ocr(monkeypatch):
+    """Genuinely garbled text across every page must still be caught — the fix
+    must not make the detector toothless."""
+    force, garbled = _plan(monkeypatch, [_sample(_SOUP)] * 3)
+    assert force == [0, 1, 2]
+    assert garbled == [0, 1, 2]
+
+
+def test_plan_all_pages_empty_forces_every_page_but_reports_no_garble(monkeypatch):
+    """A fully scanned document must still force OCR everywhere, but via the
+    no-text-layer path, not the garbled one — the two have different causes and
+    only the second is reported as garbled_detected."""
+    force, garbled = _plan(monkeypatch, [_sample("")] * 3)
+    assert force == [0, 1, 2]
+    assert garbled == []
+
+
+def test_plan_scopes_ocr_to_the_garbled_page_alone(monkeypatch):
+    """The point of #605: one bad page among clean ones is forced by itself,
+    instead of condemning every page in the document."""
+    force, garbled = _plan(
+        monkeypatch,
+        [_sample(_BODY), _sample(_SOUP, missing_font_cmap=True), _sample(_BODY)],
     )
-    body_page = preprocess_mod.PageSample(
-        text="This report reviews the fiscal year in clear, ordinary prose.",
-        missing_font_cmap=False,
-    )
-
-    monkeypatch.setattr(preprocess_mod, "pdf_sample_pages",
-                         lambda p: [toc_page, body_page, body_page])
-
-    empty, garbled = preprocess_mod.pdf_garble_verdict("fake.pdf")
-    assert empty is False
-    assert garbled is False
+    assert force == [1]
+    assert garbled == [1]
 
 
-def test_verdict_symbol_soup_on_every_page_still_forces_ocr(monkeypatch):
-    """Genuinely garbled text across every sampled page must still be caught —
-    the fix must not make the detector toothless."""
+def test_plan_forces_a_page_with_no_text_layer_among_clean_pages(monkeypatch):
+    """A scanned insert in a born-digital document is forced on its own — free
+    insurance, since a page with no text layer has nothing for OCR to destroy,
+    and it covers the case Docling's bitmap_area_threshold drops (D192)."""
+    force, garbled = _plan(monkeypatch, [_sample(_BODY), _sample(""), _sample(_BODY)])
+    assert force == [1]
+    assert garbled == []       # no text layer is not the same as a junk one
+
+
+def test_plan_forces_everything_when_the_text_layer_cannot_be_read(monkeypatch):
+    """If pypdf yields nothing at all, no page-level claim is possible — the
+    document-wide force is the same verdict the `empty` path reached before."""
+    import watchdog.pipeline.preprocess as preprocess_mod
+    monkeypatch.setattr(preprocess_mod, "pdf_page_samples", lambda p: [])
+
+    force, garbled = preprocess_mod.pdf_ocr_plan("fake.pdf", 12)
+    assert force == list(range(12))
+    assert garbled == []
+
+
+# ── _ocr_slices — grouping pages into conversion passes (#605) ────────────────
+
+def test_slices_clean_document_is_one_contiguous_group():
+    """A document whose pages all agree must chunk exactly as it did before
+    #605: contiguous runs of chunk_size, OCR off."""
+    assert _ocr_slices(90, [], chunk_size=40) == [
+        (list(range(0, 40)), False),
+        (list(range(40, 80)), False),
+        (list(range(80, 90)), False),
+    ]
+
+
+def test_slices_force_all_marks_the_single_group():
+    assert _ocr_slices(5, [], chunk_size=40, force_all=True) == [([0, 1, 2, 3, 4], True)]
+
+
+def test_slices_mixed_document_splits_into_two_groups_by_verdict():
+    """Pages are grouped by verdict, not contiguity — so two scanned inserts
+    cost two passes, not one pass per run of pages."""
+    assert _ocr_slices(6, [1, 3], chunk_size=40) == [
+        ([0, 2, 4, 5], False),
+        ([1, 3], True),
+    ]
+
+
+def test_slices_alternating_pages_still_cost_only_two_passes():
+    """The pathological case grouping exists to bound: every other page scanned
+    would be one slice per page if slices had to be contiguous."""
+    slices = _ocr_slices(40, list(range(1, 40, 2)), chunk_size=40)
+    assert len(slices) == 2
+    assert slices[0] == (list(range(0, 40, 2)), False)
+    assert slices[1] == (list(range(1, 40, 2)), True)
+
+
+def test_slices_each_group_is_split_at_chunk_size():
+    slices = _ocr_slices(100, list(range(50)), chunk_size=40)
+    assert [(len(pages), force) for pages, force in slices] == [
+        (40, False), (10, False), (40, True), (10, True),
+    ]
+
+
+def test_slices_of_a_small_mixed_document_are_not_padded():
+    """Every page appears exactly once across the slices, whatever the grouping."""
+    slices = _ocr_slices(7, [2, 5], chunk_size=40)
+    seen = sorted(p for pages, _ in slices for p in pages)
+    assert seen == list(range(7))
+
+
+# ── page renumbering across a slice boundary (#605) ───────────────────────────
+
+def _stub_subprocess_run(monkeypatch, payload):
+    """Stand in for the slice subprocess, returning payload as its stdout JSON."""
+    import subprocess as subprocess_mod
     import watchdog.pipeline.preprocess as preprocess_mod
 
-    soup = preprocess_mod.PageSample(text="©®™†‡§¶•∞≠≈∂∑∏√∫", missing_font_cmap=False)
-    monkeypatch.setattr(preprocess_mod, "pdf_sample_pages", lambda p: [soup, soup, soup])
+    class _Completed:
+        stdout = json.dumps(payload)
+        stderr = ""
 
-    empty, garbled = preprocess_mod.pdf_garble_verdict("fake.pdf")
-    assert empty is False
-    assert garbled is True
+    monkeypatch.setattr(preprocess_mod.subprocess, "run",
+                        lambda *a, **k: _Completed())
+    return subprocess_mod
 
 
-def test_verdict_all_sampled_pages_empty_is_reported_as_empty_not_garbled(monkeypatch):
-    """A fully scanned document (no text on any sampled page) must still force
-    OCR, but via the 'empty' path, not the 'garbled' one — the two have
-    different causes."""
+def test_slice_pages_are_renumbered_to_the_original_document(monkeypatch, tmp_path):
+    """A slice numbers its own pages from 1; they must come back as the pages
+    they actually were in the source document."""
+    _stub_subprocess_run(monkeypatch, {"pages": [
+        {"page": 1, "markdown": "first"},
+        {"page": 2, "markdown": "second"},
+    ]})
+    slice_path = tmp_path / "slice.pdf"
+    slice_path.write_bytes(b"")
+
+    result = preprocess._run_slice_subprocess(slice_path, [100, 148], force_ocr=True)
+    assert [p["page"] for p in result["pages"]] == [101, 149]
+
+
+def test_slice_page_outside_the_slice_is_an_error_not_a_guess(monkeypatch, tmp_path):
+    """A page number the slice can't account for means the mapping is wrong; a
+    silently misnumbered page is worse than a failed file, which gets retried."""
+    _stub_subprocess_run(monkeypatch, {"pages": [{"page": 4, "markdown": "?"}]})
+    slice_path = tmp_path / "slice.pdf"
+    slice_path.write_bytes(b"")
+
+    result = preprocess._run_slice_subprocess(slice_path, [0, 1], force_ocr=False)
+    assert "error" in result
+
+
+@pytest.mark.parametrize("force_ocr,expected_flag", [(True, "--force-ocr"),
+                                                     (False, "--no-force-ocr")])
+def test_slice_child_is_told_the_verdict_never_left_to_re_derive_it(
+        monkeypatch, tmp_path, force_ocr, expected_flag):
+    """pdf_extract_pages rewrites the slice through pypdf, which need not
+    preserve the font resources the CMap signal reads — so the child must be
+    handed the parent's decision, not score the slice for itself."""
+    captured = {}
+
+    class _Completed:
+        stdout = json.dumps({"pages": []})
+        stderr = ""
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return _Completed()
+
+    monkeypatch.setattr(preprocess.subprocess, "run", fake_run)
+    slice_path = tmp_path / "slice.pdf"
+    slice_path.write_bytes(b"")
+
+    preprocess._run_slice_subprocess(slice_path, [0], force_ocr=force_ocr)
+    assert expected_flag in captured["cmd"]
+
+
+def test_no_force_ocr_flag_skips_detection_entirely(monkeypatch, tmp_path):
+    """--no-force-ocr means the parent already decided: the child must not run
+    the garble ensemble again."""
     import watchdog.pipeline.preprocess as preprocess_mod
 
-    blank = preprocess_mod.PageSample(text="", missing_font_cmap=False)
-    monkeypatch.setattr(preprocess_mod, "pdf_sample_pages", lambda p: [blank, blank, blank])
+    def explode(*a, **k):
+        raise AssertionError("detection must not run when the parent has decided")
 
-    empty, garbled = preprocess_mod.pdf_garble_verdict("fake.pdf")
-    assert empty is True
-    assert garbled is False
+    monkeypatch.setattr(preprocess_mod, "pdf_ocr_plan", explode)
+    monkeypatch.setattr(preprocess_mod, "pdf_page_count", lambda p: 3)
+    monkeypatch.setattr(preprocess_mod, "sha256_file", lambda p: "abc")
+    monkeypatch.setattr(preprocess_mod, "build_converter",
+                        lambda force: (_ for _ in ()).throw(RuntimeError("stop here")))
+
+    pdf = tmp_path / "slice.pdf"
+    pdf.write_bytes(b"")
+    result = preprocess_mod.process_with_docling(pdf, detect=False)
+    assert "error" in result   # stopped at the converter, having skipped detection
 
 
-def test_verdict_blank_pages_among_sampled_pages_are_ignored(monkeypatch):
-    """A blank page (e.g. an unlabelled cover) mixed with clean body pages must
-    not itself count toward the garbled verdict."""
+# ── metadata: what the page-scoped decision reports (#605) ────────────────────
+
+def test_metadata_names_the_pages_when_ocr_was_page_scoped(monkeypatch, tmp_path):
     import watchdog.pipeline.preprocess as preprocess_mod
 
-    blank = preprocess_mod.PageSample(text="", missing_font_cmap=False)
-    body_page = preprocess_mod.PageSample(
-        text="This report reviews the fiscal year in clear, ordinary prose.",
-        missing_font_cmap=False,
-    )
-    monkeypatch.setattr(preprocess_mod, "pdf_sample_pages",
-                         lambda p: [blank, body_page, body_page])
+    monkeypatch.setattr(preprocess_mod, "pdf_page_count", lambda p: 6)
+    monkeypatch.setattr(preprocess_mod, "pdf_ocr_plan", lambda p, n: ([1, 3], [1]))
+    monkeypatch.setattr(preprocess_mod, "process_pdf_slices",
+                        lambda p, slices: {"pages": [{"page": 1, "markdown": "x"}]})
+    monkeypatch.setattr(preprocess_mod, "sha256_file", lambda p: "abc")
 
-    empty, garbled = preprocess_mod.pdf_garble_verdict("fake.pdf")
-    assert empty is False
-    assert garbled is False
+    result = preprocess_mod.process_with_docling(tmp_path / "doc.pdf")
+    assert result["metadata"]["ocr_pages"] == [2, 4]        # 1-indexed
+    assert result["metadata"]["ocr_used"] is True
+    assert result["metadata"]["garbled_detected"] is True
 
 
-# ── pdf_garble_verdict — real corpus documents (#580) ──────────────────────────
+def test_metadata_omits_ocr_pages_when_the_whole_document_was_ocred(monkeypatch, tmp_path):
+    """`ocr_used` already says it — a page list adds nothing when it's every page."""
+    import watchdog.pipeline.preprocess as preprocess_mod
+
+    monkeypatch.setattr(preprocess_mod, "pdf_page_count", lambda p: 60)
+    monkeypatch.setattr(preprocess_mod, "pdf_ocr_plan", lambda p, n: (list(range(60)), []))
+    monkeypatch.setattr(preprocess_mod, "process_pdf_slices",
+                        lambda p, slices: {"pages": [{"page": 1, "markdown": "x"}]})
+    monkeypatch.setattr(preprocess_mod, "sha256_file", lambda p: "abc")
+
+    result = preprocess_mod.process_with_docling(tmp_path / "doc.pdf")
+    assert "ocr_pages" not in result["metadata"]
+    assert result["metadata"]["ocr_used"] is True
+
+
+def test_a_clean_small_pdf_never_reaches_the_slicing_path(monkeypatch, tmp_path):
+    """No mixed verdict and under chunk_size: one in-process conversion, exactly
+    as before #605. Slicing a document that doesn't need it would cost a
+    subprocess and a Docling start-up for nothing."""
+    import watchdog.pipeline.preprocess as preprocess_mod
+
+    monkeypatch.setattr(preprocess_mod, "pdf_page_count", lambda p: 5)
+    monkeypatch.setattr(preprocess_mod, "pdf_ocr_plan", lambda p, n: ([], []))
+    monkeypatch.setattr(preprocess_mod, "process_pdf_slices",
+                        lambda p, slices: pytest.fail("must not slice a uniform small PDF"))
+    monkeypatch.setattr(preprocess_mod, "build_converter",
+                        lambda force: (_ for _ in ()).throw(RuntimeError("stop here")))
+
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"")
+    assert "error" in preprocess_mod.process_with_docling(pdf)
+
+
+# ── pdf_ocr_plan — real corpus documents (#580, #605) ─────────────────────────
 # Slow-ish (real pypdf extraction on real files) and skipped when the corpus
 # isn't present, so kept separate from the fast synthetic tests above.
 
 _CORPUS_DIR = Path(__file__).resolve().parent.parent / "benchmarks" / "corpora" / "extract"
 
+# (total_pages, force_pages, garbled_pages) — measured over every page, which is
+# strictly stronger than the three-page sample the #580 table was built from.
 _CORPUS_EXPECTED = {
-    "Annual-Financial-Report-19-20.pdf": (False, False),
-    "Annual-Financial-Report-20-21.pdf": (False, False),
-    "Laurentian First Report of the Monitor.pdf": (False, False),
-    "Laurentian Pre-Filing Report of the Proposed Monitor.pdf": (False, False),
-    "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021.pdf": (True, False),
-    "Pension Order Morawetz CJ- March 17 2021(as stamped by Court).PDF": (False, False),
+    # Page 1 is an image-only cover; the rest of the text layer is sound. Under
+    # the pre-#605 sample this document was the false positive that forced OCR
+    # over all 36 pages and flattened its reconciliation table.
+    "Annual-Financial-Report-19-20.pdf": (36, [0], []),
+    "Annual-Financial-Report-20-21.pdf": (70, [], []),
+    # Pages 25-31 are a scanned court order bound into a born-digital report —
+    # the mixed document this issue exists for.
+    "Laurentian First Report of the Monitor.pdf": (34, [24, 25, 26, 27, 28, 29, 30], []),
+    "Laurentian Pre-Filing Report of the Proposed Monitor.pdf": (47, [], []),
+    # Genuinely no text layer on any page: still forced, all 17.
+    "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021.pdf": (17, list(range(17)), []),
+    "Pension Order Morawetz CJ- March 17 2021(as stamped by Court).PDF": (5, [], []),
 }
 
 
 @pytest.mark.skipif(not _CORPUS_DIR.is_dir(), reason="benchmark corpus not present")
 @pytest.mark.parametrize("filename,expected", _CORPUS_EXPECTED.items())
-def test_corpus_garble_verdicts(filename, expected):
-    """Regression table from #580: the AFR 19-20 misfire must be fixed, and the
-    Initial Order's genuine empty-text-layer case must keep forcing OCR."""
-    result = preprocess.pdf_garble_verdict(_CORPUS_DIR / filename)
-    assert result == expected, f"{filename}: expected (empty, garbled)={expected}, got {result}"
+def test_corpus_ocr_plans(filename, expected):
+    """Regression table from #580/#597, now page by page: the AFR 19-20 misfire
+    must stay fixed, the Initial Order's genuine empty text layer must keep
+    forcing OCR, and no clean page in any of the six may read as garbled."""
+    total_pages, force_pages, garbled_pages = expected
+    assert preprocess.pdf_page_count(_CORPUS_DIR / filename) == total_pages
+    result = preprocess.pdf_ocr_plan(_CORPUS_DIR / filename, total_pages)
+    assert result == (force_pages, garbled_pages), (
+        f"{filename}: expected (force, garbled)={(force_pages, garbled_pages)}, got {result}"
+    )
 
 
 
