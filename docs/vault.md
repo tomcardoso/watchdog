@@ -114,7 +114,7 @@ When a new document contradicts a fact already in the vault — a different addr
 
 | Format | Extensions | Notes |
 |--------|-----------|-------|
-| PDF | `.pdf` | Text-based or scanned; OCR applied automatically when the text layer is missing or garbled |
+| PDF | `.pdf` | Text-based or scanned, or a mix of both; OCR applied automatically, page by page, wherever the text layer is missing or garbled |
 | Word document | `.docx` | Tables and formatting preserved |
 | Excel spreadsheet | `.xlsx` | |
 | Image | `.jpg`, `.jpeg`, `.png`, `.tiff`, `.tif` | OCR applied automatically |
