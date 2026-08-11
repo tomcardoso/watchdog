@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from watchdog import model_client
+from watchdog import model_client, telemetry_db
 from watchdog.cmd import auth as auth_module
 from watchdog.pipeline import batch_extract, orchestrate, schemas, timeline
 
@@ -161,6 +161,93 @@ def test_call_model_records_failed_usage_and_reraises(tmp_path, monkeypatch):
         assert record["filename"] == "broke.pdf"
     finally:
         orchestrate._usage = None
+
+
+def test_call_model_prompt_hash_stable_and_differs(tmp_path, monkeypatch):
+    """#611: `_call_model` hashes the actual prompt text sent — identical prompts hash
+    identically, and a changed prompt hashes differently, since that hash is what lets a later
+    telemetry query tell "the model changed" apart from "the prompt changed"."""
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        return model_client.ModelResult(
+            parsed={"name": "Acme"}, text="", model="m", backend="claude-api",
+            auth_mode="api-key", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    orchestrate._usage = []
+    try:
+        asyncio.run(orchestrate._call_model(task="extract", prompt="hello world",
+                                            schema=schemas.EXTRACTION))
+        asyncio.run(orchestrate._call_model(task="extract", prompt="hello world",
+                                            schema=schemas.EXTRACTION))
+        asyncio.run(orchestrate._call_model(task="extract", prompt="a different prompt",
+                                            schema=schemas.EXTRACTION))
+        hashes = [r["prompt_hash"] for r in orchestrate._usage]
+        assert hashes[0] == hashes[1]
+        assert hashes[0] != hashes[2]
+        assert hashes[0] == hashlib.sha256("hello world".encode("utf-8")).hexdigest()
+    finally:
+        orchestrate._usage = None
+
+
+def test_call_model_records_usage_to_telemetry_db(tmp_path, monkeypatch):
+    """#611: a real vault + an active run tags the call's telemetry row with this run's
+    benchmark id and config snapshot, in addition to the JSON usage file `_usage` already gets."""
+    from watchdog import telemetry_db
+    import sqlite3
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        return model_client.ModelResult(
+            parsed={"name": "Acme"}, text="", model="m", backend="claude-api",
+            auth_mode="api-key", cost_usd=0.0, usage={"input_tokens": 10, "output_tokens": 2})
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    orchestrate._begin_usage_run(vault, benchmark_arm_id="arm-7",
+                                 config_snapshot={"extract_model": "sonnet"})
+    try:
+        asyncio.run(orchestrate._call_model(task="extract", prompt="p", schema=schemas.EXTRACTION,
+                                            vault=vault))
+        conn = sqlite3.connect(telemetry_db.DB_PATH)
+        try:
+            row = conn.execute(
+                "SELECT benchmark_arm_id, config_json, run_id FROM calls").fetchone()
+        finally:
+            conn.close()
+        assert row[0] == "arm-7"
+        assert json.loads(row[1]) == {"extract_model": "sonnet"}
+        assert row[2] == orchestrate._run_id
+    finally:
+        orchestrate._end_usage_run(vault)
+
+
+def test_call_model_telemetry_db_failure_logged_not_raised(tmp_path, monkeypatch):
+    """#611: a telemetry write failure (locked db, disk full) must not break the ingest call
+    it's observing — `_record_usage` catches it and logs a WARN to the vault's own ingest.log,
+    same posture as every other side channel `_call_model`/`_record_usage` already has."""
+    from watchdog import telemetry_db as telemetry_db_mod
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        return model_client.ModelResult(
+            parsed={"name": "Acme"}, text="", model="m", backend="claude-api",
+            auth_mode="api-key", cost_usd=0.0, usage={"input_tokens": 10, "output_tokens": 2})
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    def boom(*args, **kwargs):
+        raise OSError("disk full")
+    monkeypatch.setattr(telemetry_db_mod, "record_call", boom)
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    orchestrate._begin_usage_run(vault)
+    try:
+        r = asyncio.run(orchestrate._call_model(task="extract", prompt="p", schema=schemas.EXTRACTION,
+                                                vault=vault))
+        assert r.parsed == {"name": "Acme"}   # the call itself still succeeded
+        log = (vault / ".watchdog" / "registry" / "ingest.log").read_text(encoding="utf-8")
+        assert "WARN telemetry_db write failed for task=extract" in log
+    finally:
+        orchestrate._end_usage_run(vault)
 
 
 def test_call_model_does_not_record_usage_for_error_without_usage(tmp_path, monkeypatch):
@@ -2413,6 +2500,26 @@ def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
     assert data["totals"]["output_tokens"] == 20 * n_calls
     assert summary["usage"]["input_tokens"] == 100 * n_calls
     assert round(summary["usage"]["cost_usd"], 4) == round(0.01 * n_calls, 4)
+
+    # #611: the same calls also land in the global telemetry store, tagged with this vault and
+    # carrying the provenance fields the JSON usage file doesn't (prompt hash, codebase version,
+    # config snapshot) — additive, not a replacement for the JSON file asserted on above.
+    import sqlite3
+    conn = sqlite3.connect(telemetry_db.DB_PATH)
+    try:
+        rows = conn.execute(
+            "SELECT task, vault_path, prompt_hash, codebase_version, config_json FROM calls"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert len(rows) == n_calls
+    db_tasks = [r[0] for r in rows]
+    assert "classify" in db_tasks and "extract" in db_tasks and "briefing" in db_tasks
+    for _task, vault_path, prompt_hash, codebase_version, config_json in rows:
+        assert vault_path == str(vault.resolve())
+        assert prompt_hash and len(prompt_hash) == 64   # sha256 hex digest
+        assert codebase_version
+        assert json.loads(config_json)["extract_model"] == "sonnet"
 
 
 def test_usage_totals_carry_est_input_tokens_for_extraction_runs(tmp_path, monkeypatch):

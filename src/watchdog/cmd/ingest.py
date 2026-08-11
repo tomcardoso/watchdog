@@ -1073,7 +1073,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                     extract_backend=extract_backend, post_backend=post_backend,
                     classify_backend=classify_backend, wait=wait, skip_finalize=run_skip_finalize,
                     force=force, skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides,
-                    resume_hint=pipeline_hint, verify=verify, extract_token_budget=token_budget))
+                    resume_hint=pipeline_hint, verify=verify, extract_token_budget=token_budget,
+                    benchmark_arm_id=getattr(args, "benchmark_arm_id", None)))
                 summary = _merge_summary(summary, iter_summary)
                 if not (wait and iter_summary.get("rate_limited")):
                     break
@@ -1281,12 +1282,14 @@ def cmd_finalize(args) -> dict | None:
 
     return _run_finalize(vault, post_model, post_effort, post_backend,
                  skip_briefing=getattr(args, "skip_briefing", False),
-                 finalizer_overrides=finalizer_overrides)
+                 finalizer_overrides=finalizer_overrides,
+                 benchmark_arm_id=getattr(args, "benchmark_arm_id", None))
 
 
 def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
                   post_backend: str | None = None, force_shas: list[str] | None = None,
-                  skip_briefing: bool = False, finalizer_overrides: dict | None = None) -> dict:
+                  skip_briefing: bool = False, finalizer_overrides: dict | None = None,
+                  benchmark_arm_id: str | None = None) -> dict:
     """Acquire the ingest lock, run post-ingest over the pending batch, print the outcome.
 
     `force_shas` (#424) are already-committed shas a forced re-extraction just re-staged —
@@ -1323,7 +1326,8 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
             out = asyncio.run(orchestrate.finalize(vault, post_model=post_model, post_effort=post_effort,
                                                    post_backend=post_backend, force_shas=force_shas,
                                                    skip_briefing=skip_briefing,
-                                                   finalizer_overrides=finalizer_overrides))
+                                                   finalizer_overrides=finalizer_overrides,
+                                                   benchmark_arm_id=benchmark_arm_id))
     finally:
         lock.unlink(missing_ok=True)
 
