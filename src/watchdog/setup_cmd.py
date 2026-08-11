@@ -16,6 +16,8 @@ from watchdog.cmd.base import (
     _YELLOW,
     _GREEN,
     _RESET,
+    _extra_install_cmd,
+    _venv_bin,
 )
 
 WATCHDOG_HOME = Path.home() / ".watchdog"
@@ -83,8 +85,8 @@ def _check_playwright() -> None:
           f"  Optional — everything else works without it. Adds ~150 MB (Chromium browser).{_RESET}")
     if not interactive.confirm("  Install web-capture support now?", default=False):
         print(f"  {_DIM}Skipped. Install later with:{_RESET}")
-        print(f"    {_CYAN}pipx inject watchdog-intel playwright{_RESET}")
-        print(f"    {_CYAN}~/.local/pipx/venvs/watchdog-intel/bin/playwright install chromium{_RESET}")
+        print(f"    {_CYAN}{_extra_install_cmd('playwright')}{_RESET}")
+        print(f"    {_CYAN}{_venv_bin('playwright')} install chromium{_RESET}")
         return
 
     print(f"\n  {_DIM}Installing playwright...{_RESET}")
@@ -156,10 +158,9 @@ _COMPLETION_MARKER = "register-python-argcomplete watchdog"
 
 def _install_completion(shell: str, profile: Path | None, force: bool = False) -> str | None:
     """Install completions. Returns description of what was done, or None if skipped."""
-    # Prefer the register-python-argcomplete binary from the same venv as this Python,
-    # since pipx installs it there but does not expose it on the user's PATH.
-    rpa = Path(sys.executable).parent / "register-python-argcomplete"
-    rpa_str = str(rpa) if rpa.exists() else "register-python-argcomplete"
+    # Prefer the register-python-argcomplete binary from the same venv as this Python — both
+    # pipx and uv tool install it there but don't expose it on the user's PATH.
+    rpa_str = _venv_bin("register-python-argcomplete")
 
     if shell == "fish":
         fish_dir = Path.home() / ".config" / "fish" / "completions"
@@ -234,7 +235,7 @@ def _ensure_gliner() -> None:
         if not gliner_ready:
             _warn("gliner not installed — the candidate harvest will skip name detection")
             print(f"      {_DIM}Install it later with:{_RESET}")
-            print(f"        {_CYAN}pipx inject watchdog-intel gliner{_RESET}")
+            print(f"        {_CYAN}{_extra_install_cmd('gliner')}{_RESET}")
     except Exception as e:
         _warn(f"GLiNER model download failed: {e}")
 
@@ -343,7 +344,7 @@ def run(force: bool = False) -> None:
         except Exception as e:
             _warn(f"Docling model download failed: {e}")
         # GLiNER (local named-entity recognition) is an optional extra, not installed by
-        # `pipx install watchdog-intel` — it feeds the extraction candidate harvest's
+        # a base `watchdog-intel` install — it feeds the extraction candidate harvest's
         # person/org/location detection (#361).
         _ensure_gliner()
 
