@@ -2,6 +2,7 @@
 tier escalation on retry, telemetry. The two SDK backends are mocked."""
 
 import asyncio
+import importlib.resources
 import json
 
 import pytest
@@ -1212,6 +1213,28 @@ def test_gpt56_prompt_with_nothing_to_mark_stays_implicit(monkeypatch, prompt):
                                           base_url="https://api.openai.com/v1"))
     assert _user_content(captured) == mc._flatten_prompt(prompt)
     assert "prompt_cache_options" not in captured["body"]
+
+
+@pytest.mark.parametrize("builder", ["extract", "digest"])
+def test_marked_prefix_clears_openais_1024_token_floor_for_a_real_skill(builder):
+    """GPT-5.6+ enforces a strict 1,024-token minimum on the marked prefix, so a breakpoint in
+    the right place still buys nothing if what precedes it is too short. Extract's prefix is
+    never in doubt (instructions alone are ~14K chars), but digest's own template is only ~1.5K —
+    it clears the floor because the skill sits inside the prefix with it. Shrink the digest
+    template, or move the skill out of the prefix, and this silently stops caching (D194)."""
+    skill = (importlib.resources.files("watchdog") / "skills" / "records"
+             / "court-documents.md").read_text(encoding="utf-8")
+    if builder == "extract":
+        prompt = prompts.build_extract_prompt(pages_text="doc", skill_text=skill, sidecar=None,
+                                              brief=None, known_document_types=[])
+    else:
+        prompt = prompts.build_digest_prompt(filename="f.pdf", title="T", document_type="Order",
+                                             page_count=3, skill_text=skill, brief=None,
+                                             sidecar=None, key_facts=[{"fact": "x"}])
+    blocks = mc._openai_cache_blocks(prompt)
+    marked = next(i for i, b in enumerate(blocks) if "prompt_cache_breakpoint" in b)
+    prefix_chars = sum(len(b["text"]) for b in blocks[:marked + 1])
+    assert prefix_chars // 4 > 1024, f"{builder} prefix is only ~{prefix_chars // 4} est tokens"
 
 
 def test_openai_cache_blocks_none_when_there_is_nothing_to_mark():
