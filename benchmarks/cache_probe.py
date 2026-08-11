@@ -62,11 +62,21 @@ async def arm(label, api_key):
     for tag, doc in (("call 1 (cold)", DOC_A), ("call 2 (shared prefix, new doc)", DOC_B)):
         rows.append((tag, await one(build(nonce, doc), api_key)))
         await asyncio.sleep(3)   # let the write land before the read
+    # Classify against the prefix call 1 actually wrote, NOT against a percentage of input.
+    # A ratio threshold is wrong here: these probe documents are ~80 tokens against a ~5,800-token
+    # prefix, so a perfectly ordinary prefix hit reads 98.6% of input and any "< 90% = partial"
+    # rule misreads it as a whole-prompt hit. The two are distinguished by what is left UNREAD:
+    # a whole-prompt match leaves ~3 tokens (the signature of every archived luna hit), a prefix
+    # match leaves the whole volatile block — and the documents differ, so call 2 has no
+    # whole-prompt entry to match in the first place.
+    prefix = rows[0][1]["write"]
     print(f"\n  {label}")
     for tag, m in rows:
         pct = (100.0 * m["read"] / m["input"]) if m["input"] else 0.0
-        kind = ("PARTIAL prefix hit" if 0 < m["read"] < m["input"] * 0.9
-                else "whole-prompt hit" if m["read"] else "no hit")
+        unread = m["input"] - m["read"]
+        kind = ("no hit" if not m["read"]
+                else "whole-prompt hit" if unread <= 5
+                else f"PREFIX hit (matches the {prefix}-token prefix, {unread} unread)")
         print(f"    {tag:34} in={m['input']:>6}  read={m['read']:>6} ({pct:5.1f}%)  "
               f"write={m['write']:>6}  out={m['output']:>5}  ${m['cost']:.5f}  {kind}")
     return rows
@@ -87,14 +97,23 @@ async def main():
     finally:
         mc.catalog_cache_breakpoints = real
 
-    f2, c2 = fixed[1][1], control[1][1]
+    (f1, f2), (c1, c2) = [r[1] for r in fixed], [r[1] for r in control]
     total = sum(m["cost"] for _t, m in fixed + control)
-    print(f"\n  Verdict (call 2 of each arm — the one that can only hit on a shared prefix):")
-    print(f"    fixed   read={f2['read']:>6} of {f2['input']:>6} input")
-    print(f"    control read={c2['read']:>6} of {c2['input']:>6} input")
-    ok = 0 < f2["read"] < f2["input"] * 0.9
+    print("\n  Verdict (call 2 of each arm — the one that can only hit on a shared prefix):")
+    print(f"    fixed   read={f2['read']:>6} of {f2['input']:>6} input, "
+          f"vs a {f1['write']}-token prefix written cold")
+    print(f"    control read={c2['read']:>6} of {c2['input']:>6} input, "
+          f"vs a {c1['write']}-token prefix written cold")
+    # The fixed arm passes when call 2 read back exactly the prefix call 1 wrote, on a prompt
+    # whose document differs — which no whole-prompt cache entry could serve.
+    ok = f2["read"] == f1["write"] > 0 and f2["input"] - f2["read"] > 5
     print(f"\n  {'PASS' if ok else 'FAIL'}: fixed arm "
-          f"{'produced' if ok else 'did NOT produce'} a partial prefix hit.")
+          f"{'read back exactly the prefix it wrote' if ok else 'did NOT produce a prefix hit'}"
+          f"; control got {c2['read']}.")
+    if f1["write"] and c1["write"]:
+        print(f"  Explicit mode also narrowed the cold write: {f1['write']} tokens (marked prefix "
+              f"only) vs {c1['write']} (whole prompt, implicit breakpoint) — at 1.25x, the "
+              f"control's extra write is pure loss.")
     print(f"  Total spend: ${total:.5f}\n")
 
 
