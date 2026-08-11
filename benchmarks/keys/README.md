@@ -36,7 +36,6 @@ reference." That limitation is recorded in #361 and is not negotiable.
 | `facts` | 19–22 material facts, each with `page` and a **verbatim `quote`** |
 | `contradictions` | Cross-document conflicts, with both sides quoted. **An empty list is meaningful** — it means an invented contradiction scores as a false positive |
 | `must_not_miss` | Buried items, **scored separately**. This is where cheap conditions degrade first. One claim per entry, each with a **verbatim `quote`** or `basis: inferred` (#573) |
-| `ocr_hazards` | Initial Order only — scanned-page features OCR can mangle |
 
 `quote` and `aliases` exist to support the **three grounding tiers** (verbatim / credited
 normalization / ungrounded) rather than exact match. "LU" for "Laurentian University of Sudbury" is
@@ -65,10 +64,21 @@ honest:
 
 ## Scoring notes that are easy to get wrong
 
-- **`ocr_hazards` are checked FIRST** on the Initial Order. Page 17 (the backsheet) is rotated 90°
-  and is the only place the applicant's counsel is named. A condition that returns no counsel has
-  probably hit a rotation failure, not a reasoning failure — look at the chew output before
-  charging it to the extractor.
+- **An OCR-caused miss is still a miss** — this benchmark measures the pipeline end to end, not
+  the extraction stage in isolation. That is the point of drafting the keys from the source PDFs
+  and of reading the scanned Initial Order visually: the extractor is scored on what the pipeline
+  drops, because a page the pipeline mangles is a page the reporter does not get. Do not discount
+  an item because it sits behind a scanning artifact. This costs nothing in *ranking* terms
+  either — every arm clones one chewed master vault (`ensure_master_vault` in
+  `../run_benchmark.py`), so the OCR text layer is byte-identical across arms and cannot move one
+  arm relative to another.
+- **The Initial Order's `ocr_hazards` block is gone as of `keys-v3`** (#579, D194). It predicted
+  where OCR would bite; the predictions have now been checked against the frozen chew, so it has
+  nothing left to tell a reader. The prediction that mattered — that page 17's 90° rotation would
+  yield "nothing or gibberish", losing the applicant's counsel entirely — **did not happen**: the
+  chew auto-rotates the backsheet and renders the firm, the address, all four lawyers and their
+  LSO numbers. The prediction that held was character-level damage on that page, and that is
+  recorded where it is actionable, in the `item`/`quote` divergence on `M1.1`–`M1.5`.
 - **The scored contradiction is C1** in `annual-financial-report-19-20.yaml` ↔
   `prefiling-report-monitor.yaml`. Neither document cites the other.
 - **The $52.8M endowment figure is NOT a contradiction** — documents 1 and 2 agree on it. Flagging
@@ -76,7 +86,9 @@ honest:
 - **Two source documents contain errors**, recorded deliberately: both Monitor's reports date the
   Haché affidavit to "January 30, 2020" (the Initial Order shows it is 2021), and the First Report
   prints the court file number without leading zeros. Faithfully extracting the wrong value is
-  *correct* extraction. Neither is a miss.
+  *correct* extraction. Neither is a miss — and noticing the date discrepancy is itself a scored
+  item, `prefiling-report-monitor:M2`, so the rule is already carried by the keys rather than
+  resting on a reader remembering this note.
 
 ## The run protocol these keys assume
 
@@ -161,6 +173,10 @@ archived comparison claiming to be scored against a key that no longer exists.
 |---|---|---|
 | `keys-v1.sha256` | before the first sweep | every figure in `FINDINGS.md` up to and including 2026-08-08 |
 | `keys-v2.sha256` | 2026-08-09 | `must_not_miss` anchoring and de-bundling (#573) — 77 entries became 131 |
+| `keys-v3.sha256` | 2026-08-11 | `ocr_hazards` removed from the Initial Order and its dangling `why` references rewritten (#579). **Ids and item text are unchanged from v2** — this bump is advisory prose only |
+
+Each version's key files are archived beside its manifest (`v1/`, `v2/`) so an archived figure can
+be read against the exact keys that produced it.
 
 **Archived judgments do not survive a key version bump, and must not be made to.** De-bundling
 changed ids (`M6` became `M6.1`/`M6.2`/`M6.3`), so a judgment recorded against `M6` no longer
@@ -169,3 +185,9 @@ archived pass into a meaningless number rather than a wrong one. Do not remap ol
 split ids — a `credited` on a bundled item says nothing about which of its claims was captured,
 so distributing it would be inventing data. A pass scored under v1 stays reported under v1; a
 new comparison needs new judging.
+
+That warning is about **id drift**, which v2 → v3 does not have — ids and item text are identical,
+so a v2 judgment still matches its item. One caveat if you compare across that bump anyway: a
+`must_not_miss` entry's `why` is shown to the judge by `../qualitative/build_packets.py`, and the
+v2 text for `M1.1`–`M1.5` asserted a rotation failure that did not occur. Judgments on those five
+may have been graded more leniently than the v3 text invites.

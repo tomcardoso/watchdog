@@ -1,0 +1,439 @@
+# Answer key — corpus-v1, document 6
+#
+# Drafted from the SOURCE PDF (not from a pipeline extraction, not from chewed text).
+# Frozen before any condition runs; reused unchanged across all four conditions.
+# See benchmarks/corpus/CORPUS-v1.md and issue #361.
+#
+# Scoring note: `quote` is the verbatim span supporting each fact, and exists so the judge can
+# award the three grounding tiers (verbatim / credited normalization / ungrounded) rather than
+# exact-match. `aliases` exist for the same reason — "LU" for "Laurentian University of Sudbury"
+# is a credited normalization, not a miss.
+
+document:
+  file: "Pension Order Morawetz CJ- March 17 2021(as stamped by Court).PDF"
+  sha256: 40df3314772023baee9c229d62d23336e99f08012a94ec3ca6c72418a94bc8df
+  pages: 5
+  text_layer: born-digital
+  doc_type: court order
+  date: 2021-03-17
+  court_file: CV-21-00656040-00CL
+  expected_skill: bankruptcy
+  expected_skill_rationale: >
+    A court order made within a court-supervised restructuring, which the `bankruptcy`
+    description covers; `court-documents` redirects insolvency orders away from itself.
+  role_in_benchmark: >
+    A short, sharp document for contrast. Low page count, high density of named parties and
+    two precise dollar/ratio figures — a condition that degrades here is degrading on easy mode.
+
+entities:
+  - name: Laurentian University of Sudbury
+    type: organization
+    aliases: ["LU", "Laurentian University", "Laurentian"]
+    role: Applicant; sponsor and administrator of the Pension Plan
+    page: 1
+
+  - name: G.B. Morawetz
+    type: person
+    aliases: ["Chief Justice Morawetz", "The Honourable Chief Justice Morawetz"]
+    role: Chief Justice; issued the order
+    page: 1
+
+  - name: Ontario Superior Court of Justice (Commercial List)
+    type: organization
+    role: issuing court
+    page: 1
+
+  - name: Robert Haché
+    type: person
+    aliases: ["Dr. Robert Haché"]
+    role: affiant; the "Initial Haché Affidavit" sworn 30 January 2021
+    page: 1
+
+  - name: Bobbie-Jo Brinkman
+    type: person
+    role: affiant; affidavit sworn 8 March 2021
+    page: 1
+
+  - name: Derek Harland
+    type: person
+    role: >
+      Appears twice in two capacities — deponent of the Affidavit of Service sworn 10 March 2021
+      (p. 2) AND counsel at Thornton Grout Finnigan LLP on the backsheet (p. 5).
+    page: 2
+
+  - name: Caleb Leduc
+    type: person
+    role: Interim CV Applicant; appeared
+    page: 1
+  - name: Brady Zapalski
+    type: person
+    role: Interim CV Applicant; appeared
+    page: 1
+  - name: Ann Pegoraro
+    type: person
+    role: Interim CV Applicant; appeared
+    page: 1
+  - name: William Oxley
+    type: person
+    role: Interim CV Applicant; appeared
+    page: 1
+  - name: Sheila McGillis
+    type: person
+    role: Interim CV Applicant; appeared
+    page: 1
+
+  - name: Thornton Grout Finnigan LLP
+    type: organization
+    aliases: ["TGF"]
+    role: Lawyers for the Applicant
+    page: 5
+
+  - name: D.J. Miller
+    type: person
+    role: counsel for LU (LSO# 344393P)
+    page: 5
+  - name: Mitchell W. Grossell
+    type: person
+    role: counsel for LU (LSO# 69993I)
+    page: 5
+  - name: Andrew Hanrahan
+    type: person
+    role: counsel for LU (LSO# 78003K)
+    page: 5
+
+  - name: Financial Services Regulatory Authority of Ontario
+    type: organization
+    aliases: ["FSRA", "Financial Services Regulatory Authority"]
+    role: pension regulator; actuarial valuation filed with it in December 2020
+    page: 2
+
+  - name: Pension Benefits Guarantee Fund
+    type: organization
+    aliases: ["PBGF"]
+    role: fund to which LU owes assessment fees
+    page: 3
+
+  - name: the Monitor
+    type: organization
+    role: >
+      Court-appointed monitor. NOTE — Ernst & Young is NOT named anywhere in this document; the
+      document says only "the Monitor". Under #381 the extractor reads each document in isolation,
+      so the CORRECT extraction here is "the Monitor" — resolving it to Ernst & Young is the
+      finalizer reconciliation pass's job, not the extractor's. An extraction that outputs
+      "Ernst & Young" for this document is therefore either a lucky guess or a hallucination (there
+      is no vault state feeding it), and should be scored as ungrounded, not as a credited match.
+    page: 3
+
+relationships:
+  - subject: Laurentian University of Sudbury
+    predicate: sponsor and administrator of
+    object: the Pension Plan
+    page: 2
+  - subject: G.B. Morawetz
+    predicate: issued
+    object: the Pension Order
+    page: 4
+  - subject: Thornton Grout Finnigan LLP
+    predicate: counsel for
+    object: Laurentian University of Sudbury
+    page: 5
+  - subject: Derek Harland
+    predicate: lawyer at
+    object: Thornton Grout Finnigan LLP
+    page: 5
+  - subject: Robert Haché
+    predicate: affiant for
+    object: Laurentian University of Sudbury
+    page: 1
+  - subject: Laurentian University of Sudbury
+    predicate: owes assessment fees to
+    object: Pension Benefits Guarantee Fund
+    page: 3
+  - subject: Laurentian University of Sudbury
+    predicate: filed actuarial valuation with
+    object: Financial Services Regulatory Authority of Ontario
+    page: 2
+
+# 10–20 material facts, each with page + verbatim support.
+facts:
+  - id: F1
+    fact: "The order was made Wednesday, 17 March 2021 by Chief Justice Morawetz."
+    page: 1
+    quote: "THE HONOURABLE CHIEF JUSTICE MORAWETZ ) WEDNESDAY, THE 17th DAY OF MARCH, 2021"
+
+  - id: F2
+    fact: "The motion was brought by LU under the Companies' Creditors Arrangement Act (CCAA)."
+    page: 1
+    quote: "THIS MOTION, brought by Laurentian University of Sudbury (\"LU\") pursuant to the Companies' Creditors Arrangement Act, R.S.C. 1985, c. C-36, as amended"
+
+  - id: F3
+    fact: "The motion was heard by videoconference via Zoom in Toronto because of the COVID-19 pandemic."
+    page: 1
+    quote: "was heard this day by videoconference via Zoom in Toronto, Ontario due to the COVID-19 pandemic"
+
+  - id: F4
+    fact: "The Transfer Ratio is set at 65.8%."
+    page: 2
+    quote: "shall be permitted to transfer commuted values from the Pension Plan based on a transfer ratio equal to 65.8% (the \"Transfer Ratio\")"
+    note: >
+      The headline number. 65.8% means a member taking a commuted value transfer receives roughly
+      two-thirds of it — the plan is badly underfunded. Any condition that misses this figure has
+      missed the point of the document.
+
+  - id: F5
+    fact: >
+      The 65.8% ratio comes from the most recently filed actuarial valuation report, effective
+      1 January 2020 and filed with FSRA in December 2020.
+    page: 2
+    quote: "being the transfer ratio contained in the most recently filed actuarial valuation report for the Pension Plan (effective as of January 1, 2020 and filed with the Financial Services Regulatory Authority of Ontario in December 2020)"
+
+  - id: F6
+    fact: >
+      Interim CV Applicants are those who received a retirement/termination statement and election
+      form indicating they may elect a 100% commuted value transfer, and for whom the transfer has
+      not yet been made.
+    page: 2
+    quote: "for any individual who has received a retirement or termination statement and election form from LU indicating that he or she may elect to receive a 100% commuted value transfer from the Pension Plan and for whom such transfers have not yet been made (the \"Interim CV Applicants\")"
+
+  - id: F7
+    fact: >
+      Interim CV Applicants get a re-election form and must elect in writing within 30 days of
+      notice of the order.
+    page: 2
+    quote: "shall be given a re-election form, which form must be submitted in writing to LU within 30 days of notice of this Order"
+
+  - id: F8
+    fact: >
+      An Interim CV Applicant who does not elect within 30 days is DEEMED TO HAVE WITHDRAWN the
+      transfer application and retains only a deferred pension.
+    page: 2
+    quote: "shall be deemed to have withdrawn their application for a transfer of their commuted value and shall retain their entitlement to a deferred pension from the Pension Plan"
+    note: "Silence forfeits the transfer. A consequential default rule, easy to skim past."
+
+  - id: F9
+    fact: >
+      The PBGF Assessment Payment is $842,018.34, due 30 March 2021, for the pre-filing period
+      1 July 2019 to 30 June 2020.
+    page: 3
+    quote: "the payment due on March 30, 2021 in the amount of $842,018.34 in respect of LU's pro rata portion of assessment fees payable to the Pension Benefits Guarantee Fund relating to the Pension Plan for the pre-filing period of July 1, 2019 to June 30, 2020"
+
+  - id: F10
+    fact: "The PBGF Assessment Payment is stayed and suspended."
+    page: 3
+    quote: "is stayed and suspended in accordance with paragraph 12 of the Amended and Restated Initial Order of this Court dated February 11, 2021"
+
+  - id: F11
+    fact: >
+      There is a SECOND, separate Incremental PBGF Assessment Payment covering the earlier
+      pre-filing period 1 July 2018 to 30 June 2019, triggered by the December 2020 filing of a new
+      actuarial valuation. It is also stayed. Its amount is NOT stated in the document.
+    page: 3
+    quote: "any incremental amount owing by LU in respect of its pro rata portion of assessment fees payable to the Pension Benefits Guarantee Fund relating to the Pension Plan for the pre-filing period of July 1, 2018 to June 30, 2019 due to the filing in December 2020 of a new actuarial valuation report"
+    note: >
+      Two payments, not one — and only the first is quantified. An extraction that reports a single
+      stayed PBGF payment of $842,018.34 has silently dropped the second.
+
+  - id: F12
+    fact: >
+      The stay flows from paragraph 12 of the Amended and Restated Initial Order dated
+      11 February 2021.
+    page: 3
+    quote: "in accordance with paragraph 12 of the Amended and Restated Initial Order of this Court dated February 11, 2021"
+    note: >
+      Dates the Amended and Restated Initial Order to 11 Feb 2021 — ten days after the 1 Feb 2021
+      Initial Order (corpus document 4). A cross-document link worth catching.
+
+  - id: F13
+    fact: >
+      No LU director, officer, employee, agent, advisor or consultant incurs any obligation or
+      liability as a result of the stay.
+    page: 3
+    quote: "none of LU or any of its directors, officers, employees, agents, advisors or consultants shall incur any obligation or liability as a result of the stay and suspension"
+
+  - id: F14
+    fact: >
+      Despite the stay, FSRA is expressly NOT precluded from asserting a claim against LU for
+      either PBGF payment.
+    page: 3
+    quote: "nothing in this Order shall preclude the Financial Services Regulatory Authority from asserting a claim against LU in respect of the PBGF Assessment Payment or the Incremental PBGF Assessment Payment"
+    note: >
+      The carve-out to F10/F13, and the last sentence of a paragraph that otherwise reads as
+      blanket protection. A model that reports "the payments are stayed and no claim can be made"
+      has inverted this.
+
+  - id: F15
+    fact: >
+      Future adjustments to the Transfer Ratio are to be made under the Pension Benefits Act (PBA)
+      or by further order of the court.
+    page: 3
+    quote: "any future adjustments to the applicable Transfer Ratio for the purpose of commuted value transfers shall be established in accordance with the PBA, or by further Order of this Court"
+
+  - id: F16
+    fact: >
+      The court requests the aid and recognition of any court, tribunal, regulatory or
+      administrative body in Canada or the United States.
+    page: 3
+    quote: "THIS COURT HEREBY REQUESTS the aid and recognition of any court, tribunal, regulatory or administrative body, having jurisdiction in Canada or in the United States of America"
+
+  - id: F17
+    fact: >
+      Five Interim CV Applicants appeared: Caleb Leduc, Brady Zapalski, Ann Pegoraro, William Oxley
+      and Sheila McGillis. No one appeared for the remaining Interim CV Applicants.
+    page: 1
+    quote: "the following Interim CV Applicants, Caleb Leduc, Brady Zapalski, Ann Pegoraro, William Oxley and Sheila McGillis, with no one appearing for any other person on the service list or the remaining Interim CV Applicants"
+
+  - id: F18
+    fact: >
+      The court read: the Notice of Motion dated 8 March 2021; the Initial Haché Affidavit sworn
+      30 January 2021; the Affidavit of Bobbie-Jo Brinkman sworn 8 March 2021; and the Second Report
+      of the Monitor dated 11 March 2021.
+    page: 1
+    quote: "ON READING the Notice of Motion of LU dated March 8, 2021, the affidavit of Dr. Robert Haché sworn January 30, 2021 and the Exhibits thereto (the \"Initial Haché Affidavit\") … the Affidavit of Bobbie-Jo Brinkman sworn March 8, 2021 and the Exhibits thereto and the Second Report of the Monitor dated March 11, 2021"
+
+  - id: F19
+    fact: "LU is both sponsor AND administrator of the Pension Plan."
+    page: 2
+    quote: "LU, in its capacity as an Applicant herein and as sponsor and administrator of the Pension Plan"
+    note: >
+      LU administers the plan whose transfer ratio it is asking the court to apply to its own
+      members. Not a conflict the document flags, but the dual role is stated.
+
+# No internal contradiction in this document. The scored contradiction pair is documents 1 and 2
+# (see CORPUS-v1.md). Recorded explicitly so a condition that INVENTS a contradiction here is
+# scored as a false positive rather than passing unnoticed.
+contradictions: []
+
+# Buried items — things a hurried reader (or a budget-constrained extractor) drops first.
+# Scored separately from `facts`: this is where cheap conditions degrade first.
+must_not_miss:
+  - id: M1
+    item: >
+      The signature block: CHIEF JUSTICE G.B. MORAWETZ.
+    quote:
+      - "CHIEF JUSTICE G.B. MORAWETZ"
+    page: 4
+    location: signature block
+    why: >
+      Page 4 is a 252-character orphan page. Easy to skip entirely.
+
+  - id: M2.1
+    item: >
+      Thornton Grout Finnigan LLP, 3200-100 Wellington Street West, Toronto, is named as counsel
+      on the backsheet.
+    quote:
+      - "THORNTON GROUT FINNIGAN LLP"
+      - "3200 - 100 Wellington Street West TD West Tower, Toronto-Dominion Centre Toronto, ON   M5K 1K7"
+    page: 5
+    location: backsheet (final page)
+    why: >
+      Last page, no prose, pure metadata — the classic dropped page. It is also the only place
+      the applicant's law firm is named.
+
+  - id: M2.2
+    item: >
+      D.J. Miller (LSO# 344393P) is named as counsel on the backsheet.
+    quote:
+      - "D.J. Miller (LSO# 344393P)"
+    page: 5
+    location: backsheet (final page)
+    why: >
+      Last page, no prose, pure metadata — the classic dropped page. It is also the only place
+      the applicant's law firm is named.
+
+  - id: M2.3
+    item: >
+      Mitchell W. Grossell (LSO# 69993I) is named as counsel on the backsheet.
+    quote:
+      - "Mitchell W. Grossell (LSO# 69993I)"
+    page: 5
+    location: backsheet (final page)
+    why: >
+      Last page, no prose, pure metadata — the classic dropped page. It is also the only place
+      the applicant's law firm is named.
+
+  - id: M2.4
+    item: >
+      Andrew Hanrahan (LSO# 78003K) is named as counsel on the backsheet.
+    quote:
+      - "Andrew Hanrahan (LSO# 78003K)"
+    page: 5
+    location: backsheet (final page)
+    why: >
+      Last page, no prose, pure metadata — the classic dropped page. It is also the only place
+      the applicant's law firm is named.
+
+  - id: M2.5
+    item: >
+      Derek Harland (LSO# 79504N) is named as counsel on the backsheet.
+    quote:
+      - "Derek Harland (LSO# 79504N)"
+    page: 5
+    location: backsheet (final page)
+    why: >
+      Last page, no prose, pure metadata — the classic dropped page. It is also the only place
+      the applicant's law firm is named.
+
+  - id: M3
+    item: >
+      The Incremental PBGF Assessment Payment — a second stayed payment, amount not stated.
+    quote:
+      - "and  any  incremental  amount  owing  by  LU  in  respect  of  its pro  rata portion of assessment fees payable to the Pension Benefits Guarantee Fund relating to the Pension Plan for the pre-filing period of July 1, 2018 to June 30, 2019 due to the filing in December 2020 of a new actuarial valuation report for the Pension Plan, plus any interest and penalties thereon (the ' Incremental PBGF Assessment Payment '), is stayed and suspended"
+    page: 3
+    location: body of paragraph 6, after the quantified figure
+    why: >
+      Sits behind the $842,018.34 in the same sentence. Extractions reliably capture the number
+      and drop the unquantified second payment.
+
+  - id: M4
+    item: >
+      The FSRA carve-out: the stay does not preclude FSRA from asserting a claim.
+    quote:
+      - "nothing in this Order shall preclude the Financial Services Regulatory Authority from asserting a claim against LU in respect of the PBGF Assessment Payment or the Incremental PBGF Assessment Payment."
+    page: 3
+    location: final sentence of paragraph 7
+    why: >
+      Reverses the paragraph it sits in. Dropping it inverts the meaning of the order.
+
+  - id: M5
+    item: >
+      The 30-day deemed-withdrawal rule: an Interim CV Applicant who does not re-elect in
+      writing loses the commuted value transfer and keeps only a deferred pension.
+    quote:
+      - "Any such  Interim CV Applicant who does not make an election in writing to LU within 30 days of the date upon which notice of this Order is provided to them, shall be deemed to have withdrawn their application for"
+      - "a transfer of their commuted value and shall retain their entitlement to a deferred pension from the Pension Plan."
+    page: 2
+    location: end of paragraph 4, crossing the page 2/3 boundary
+    why: >
+      The consequence clause runs across a page break — precisely where section-chunked
+      extraction loses text.
+
+  - id: M6
+    item: >
+      Derek Harland appears in two capacities: deponent of the Affidavit of Service (p. 2) and
+      counsel at TGF (p. 5).
+    basis: inferred
+    why_inferred: >
+      The document never states Derek Harland's two roles together. It requires joining a
+      mention on page 1 ("the Affidavit of Service of Derek Harland sworn March 10, 2021") with
+      a separate mention on page 5, where he is listed on the backsheet as counsel ("Derek
+      Harland (LSO# 79504N)") at Thornton Grout Finnigan LLP. Recognizing these as the same
+      person in two capacities requires combining front and back matter.
+    pages:
+      - 2
+      - 5
+    location: recital + backsheet
+    why: >
+      Requires joining the front and back of the document. A per-section extractor sees the two
+      mentions in different chunks and will usually emit two unlinked entities, or one.
+
+  - id: M7
+    item: >
+      The five named Interim CV Applicants (Leduc, Zapalski, Pegoraro, Oxley, McGillis) — real
+      pensioners, named in the recital.
+    quote:
+      - "the following Interim CV Applicants, Caleb Leduc, Brady Zapalski, Ann Pegoraro, William Oxley and Sheila McGillis"
+    page: 1
+    location: recital, mid-sentence
+    why: >
+      Buried in a long procedural sentence about service. These are the human beings the 65.8%
+      ratio is being applied to; an extractor tuned to institutions will drop them.
