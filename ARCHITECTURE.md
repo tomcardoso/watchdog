@@ -1081,7 +1081,10 @@ registry/
   usage/usage-<ts>.json     per-run model-call token/cost/latency telemetry (D50, D86, D102);
                             `totals.est_input_tokens` (D135), present only when the run actually
                             extracted documents, is the naive chars/4 estimate for them — the
-                            input tokens-in calibration compares against `totals.input_tokens`
+                            input tokens-in calibration compares against `totals.input_tokens`.
+                            Every call recorded here is also written to a global, cross-vault
+                            SQLite store at `~/.watchdog/telemetry.db` (`telemetry_db.py`, D193) —
+                            additive, not a replacement; the JSON files above stay authoritative
   usage/usage-<ts>.partial.jsonl  in-progress run's calls, one JSON line per completed call —
                             folded into a real usage-<ts>.json and removed at the *next* run's
                             start if the run that wrote it never reached a clean exit (D132)
