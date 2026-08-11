@@ -108,7 +108,7 @@ The verification pass is a second, cheap read aimed at exactly that. Straight af
 
 Turn it on for a single run with `--verify`, or for good with `watchdog configure verify_extraction true`. `--no-verify` turns it off again for one run.
 
-**What it costs.** Roughly 15% more per run. The re-read itself is cheap — it reuses the first call's prompt, which the model providers charge a fraction for the second time — so most of the extra is the second call's own thinking. It runs at low effort by default to keep that down; `verifier_effort` raises it if you need to. Not available with a batch extractor model (`claude-batch`, `openai-batch`), which returns its results hours later, long after there is anything to check them against.
+**What it costs.** Roughly 15% more per run on the Claude API path, where the re-read reuses the first call's cached prompt at a fraction of the price, so most of the extra is the second call's own thinking. On an OpenAI-compatible model the re-read doesn't get that discount, so expect a larger increase. It runs at low effort by default to keep the thinking cost down; `verifier_effort` raises it if you need to. Not available with a batch extractor model (`claude-batch`, `openai-batch`), which returns its results hours later, long after there is anything to check them against.
 
 **What to watch for.** It is tuned to over-list rather than under-list, so it will occasionally add a restatement of something you already had, or a true detail too minor to be worth a line. Whether that trade is worth it on your material is the reason it is off by default. If you turn it on, read a document's fact list once with fresh eyes before deciding to leave it on.
 

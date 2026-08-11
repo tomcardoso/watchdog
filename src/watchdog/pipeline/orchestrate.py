@@ -115,7 +115,8 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
                   effort: str | None = None, auth_mode: str | None = None,
                   filename: str | None = None, detail: str | None = None,
                   pruned: list[str] | None = None, failed: bool = False,
-                  batch_meta: dict | None = None, rate_limit: dict | None = None) -> None:
+                  batch_meta: dict | None = None, rate_limit: dict | None = None,
+                  est_input_tokens: int | None = None) -> None:
     """Append one call's usage to the run-scoped `_usage` accumulator, if one is active.
     Tolerates both Anthropic-style (`input_tokens`/`output_tokens`) and OpenAI-compatible
     (`prompt_tokens`/`completion_tokens`) usage dicts (D37) — the latter's cache-token fields
@@ -168,7 +169,16 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
     `rate_limit` (#563), when given, is the provider's own rate-limit response headers off this
     call (`model_client._rate_limit_headers` — `limit_tokens`/`remaining_tokens`/`reset_tokens`),
     copied onto the record so a run's usage file carries the provider's ground truth for what it
-    counted against the caller's per-minute budget alongside the tokens we ourselves logged."""
+    counted against the caller's per-minute budget alongside the tokens we ourselves logged.
+
+    `est_input_tokens` (#606 Part B), when given, is this call's own naive chars/4 estimate
+    (`section.est_tokens_from_pages`/`section.est_tokens`) for whatever text it sent — mirroring
+    how the *run-level* `totals.est_input_tokens` is already added in `_write_usage_file`/
+    `_end_usage_run`, but per call rather than summed once across a whole run. This is what makes
+    a per-model, per-call est/actual comparison possible at all
+    (`ingest_setup._model_tokenizer_calibration`) — the run-level total alone can't be scoped to
+    one model. Only set on `extract`/`extract-section` calls, the only tasks sectioning currently
+    cares about calibrating; every other task's record simply lacks the key, as before."""
     if _usage is None:
         return
     u = usage or {}
@@ -209,6 +219,8 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         record["batch_collected_at"] = batch_meta.get("collected_at")
     if rate_limit:
         record["rate_limit"] = rate_limit
+    if est_input_tokens is not None:
+        record["est_input_tokens"] = est_input_tokens
     _usage.append(record)
     if _usage_partial_path is not None:
         # Durable per-call persistence (#407): appended synchronously, so a crash or a hard
@@ -221,13 +233,16 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
 
 async def _call_model(*, task, prompt, schema, model=None, backend=None,
                       max_retries=1, effort=None, filename=None, detail=None,
-                      vault: Path | None = None) -> "model_client.ModelResult":
+                      vault: Path | None = None, est_input_tokens: int | None = None
+                      ) -> "model_client.ModelResult":
     """Thin wrapper around `model_client.acomplete_json` that also records this call's usage
     (A2) — every reasoning call in the orchestrator goes through here instead of the client
     directly, so telemetry can't silently miss a call site. `filename`/`detail` are passed
     through to `_record_usage` unchanged (#247). `vault` (D124) is used only to log a WARN
     line to `ingest.log` when the call's JSON carried unexpected keys that were pruned rather
-    than failing validation — pass it whenever a vault is in scope.
+    than failing validation — pass it whenever a vault is in scope. `est_input_tokens` (#606 Part
+    B) is likewise passed straight through to `_record_usage`, when the caller has one — see its
+    own docstring.
 
     A `ModelError` that carries usage/cost (D125 — the JSON-validation-failure and truncation
     paths in `acomplete_json`, the only ones where an attempt actually reached the model) is
@@ -240,11 +255,13 @@ async def _call_model(*, task, prompt, schema, model=None, backend=None,
         if e.usage is not None or e.cost_usd is not None:
             _record_usage(task, model=e.model, backend=e.backend, usage=e.usage, cost_usd=e.cost_usd,
                          attempts=e.attempts, effort=effort, auth_mode=e.auth_mode,
-                         filename=filename, detail=detail, failed=True)
+                         filename=filename, detail=detail, failed=True,
+                         est_input_tokens=est_input_tokens)
         raise
     _record_usage(task, model=r.model, backend=r.backend, usage=r.usage, cost_usd=r.cost_usd,
                  attempts=r.attempts, latency_s=r.latency_s, effort=effort, auth_mode=r.auth_mode,
-                 filename=filename, detail=detail, pruned=r.pruned, rate_limit=r.rate_limit)
+                 filename=filename, detail=detail, pruned=r.pruned, rate_limit=r.rate_limit,
+                 est_input_tokens=est_input_tokens)
     if r.pruned and vault is not None:
         _log(vault, f"WARN {filename or task}: pruned unexpected JSON key(s) from model "
                     f"output: {', '.join(r.pruned)}")
@@ -774,6 +791,7 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
     so the facts it recovers go through the same validation, quote/figure grounding, and
     entity fan-out as any other fact — there is no second class of fact downstream."""
     text = _pages_text(pf["pages"])
+    est_input_tokens = section.est_tokens_from_pages(pf["pages"])
     page_count = pf.get("page_count") or len(pf["pages"])
     filename = pf["filename"]
     flow = f"{page_count}p · {skill_label}"
@@ -800,7 +818,8 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
             try:
                 r = await _call_model(task="extract", model=model, backend=backend,
                                       prompt=p, schema=schemas.EXTRACTION, effort=effort,
-                                      filename=pf["filename"], detail=detail, vault=vault)
+                                      filename=pf["filename"], detail=detail, vault=vault,
+                                      est_input_tokens=est_input_tokens)
             except model_client.ModelError as e:
                 # Reasoning starvation isn't fixed by the caller's usual recovery — sectioning
                 # bounds a section's own *input*, and starvation isn't input-driven (#558) — so
@@ -811,7 +830,8 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
                     raise
                 r = await _call_model(task="extract", model=model, backend=backend,
                                       prompt=p, schema=schemas.EXTRACTION, effort=lower,
-                                      filename=pf["filename"], detail=detail, vault=vault)
+                                      filename=pf["filename"], detail=detail, vault=vault,
+                                      est_input_tokens=est_input_tokens)
         except model_client.ModelError as e:
             # No valid JSON after the client's own retries — often output truncated on a
             # dense doc. Report failure so the caller can fall back to sectioning.
@@ -933,7 +953,8 @@ async def _extract_one_section(vault, sha, pf, skill_text, sec, *, is_first, car
     _log(vault, f"SECTION {pf['filename']} [{detail}]: extracting…")
     r = await _call_model(task="extract-section", model=model, backend=backend,
                           prompt=prompt, schema=schemas.SECTION, effort=effort,
-                          filename=pf["filename"], detail=detail, vault=vault)
+                          filename=pf["filename"], detail=detail, vault=vault,
+                          est_input_tokens=section.est_tokens(sec_text))
     if verify_pass:
         r.cost_usd = (r.cost_usd or 0.0) + await _verify_facts(
             vault, sha, base, r.parsed, model=model, backend=backend,
@@ -1497,13 +1518,17 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
         return _fail(vault, sha, filename, "batch result missing for this document")
 
     extraction, cost = item["parsed"], item.get("cost_usd") or 0.0
+    # `pf["pages"]` is already in hand from the preflight run above (#606 Part B) — the same
+    # naive chars/4 estimate `_finish_extraction`'s synchronous path records for the same task.
+    est_input_tokens = section.est_tokens_from_pages(pf.get("pages", []))
     if item.get("usage") is not None:
         # Every batch backend requires api-key auth (D52, #530) — never subscription — so this
         # is the one _record_usage call site where auth_mode is a known constant, not a live
         # result field.
         _record_usage("extract", model=model, backend=backend, usage=item["usage"],
                       cost_usd=item.get("cost_usd"), effort=effort, auth_mode="api-key",
-                      filename=filename, detail=f"pages 1–{page_count}", batch_meta=batch_meta)
+                      filename=filename, detail=f"pages 1–{page_count}", batch_meta=batch_meta,
+                      est_input_tokens=est_input_tokens)
     if not item["ok"]:
         text = _pages_text(pf["pages"])
         # Off the event loop — see the comment in `_simple_extract`.
@@ -1523,7 +1548,7 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
             r = await _call_model(task="extract", model=repair_model, backend=repair_backend,
                                   prompt=prompt, schema=schemas.EXTRACTION,
                                   filename=filename, detail=f"pages 1–{page_count} (repair)",
-                                  vault=vault)
+                                  vault=vault, est_input_tokens=est_input_tokens)
         except model_client.ModelError as e:
             return _fail(vault, sha, filename, f"batch result invalid and repair failed: {e}")
         extraction = r.parsed

@@ -112,6 +112,74 @@ def _tokens_calibration(vault: Path, max_runs: int = 3) -> float | None:
     return sum(ratios) / len(ratios) if ratios else None
 
 
+def _model_tokenizer_calibration(vault: Path, model: str | None, backend: str | None,
+                                 max_records: int = 20, min_records: int = 3) -> float | None:
+    """Empirical, per-model correction factor for `model_client.tokenizer_ratio` (#606 Part B),
+    the same idea as `_tokens_calibration` above but scoped to one model/backend and pooled at
+    the individual-call level rather than the whole-run level.
+
+    `_tokens_calibration` compares a whole run's `totals.est_input_tokens` to its real input
+    tokens — one ratio per run, mixing every model that run happened to use. That's fine for a
+    single vault-wide "how far off is the naive heuristic" display, but the tokenizer ratio this
+    feeds (`model_client.tokenizer_ratio`) is a property of one specific model's tokenizer, not of
+    a run, so a run-level average would blend models with genuinely different tokenizers into one
+    number. Each individual usage record already carries its own `model`/`backend` (`orchestrate.
+    _record_usage`) — this scans those directly instead of `totals`.
+
+    `model`/`backend` are resolved to the catalog id the same way `tokenizer_ratio`/
+    `context_window` do (`resolve_model_id(model or DEFAULT_TIER)`), since that's what a record's
+    own `model` field stores (`ModelResult.model`/`r.model` — the resolved id, not a raw tier
+    name).
+
+    Pooled across records, not averaged per file: matching records for one model can be sparse —
+    a single file's extraction batch may contain only one or two calls to a given model — so
+    summing estimated and actual tokens across every matching record before dividing gives a
+    single stable ratio, rather than letting a file with few matches skew a per-file average as
+    much as a file with many. Scans `orchestrate.usage_files(vault)` most-recent-file-first (like
+    `_tokens_calibration`), stopping once `max_records` matching records have been collected —
+    recent history reflects the model's current tokenizer, and there's no reason to keep scanning
+    once there's enough to be stable.
+
+    Pools `extract` and `extract-section` calls together: the tokenizer ratio corrects for how
+    many real tokens a chunk of text turns into, a property of the model's tokenizer and the text
+    alone — not of which task sent that text — so a whole-document `extract` call and a single
+    section's `extract-section` call are equally valid evidence for the same ratio.
+
+    Returns `None` (not a noisy one-or-two-sample ratio) when fewer than `min_records` matching
+    records were found — a model tried once or twice in this vault shouldn't override the catalog
+    constant on a whim; callers fall back to it instead, exactly as `_tokens_calibration` falls
+    back to the raw chars/4 heuristic with no history at all. A model with no history yet trusts
+    the static catalog ratio until enough real calls accumulate to say otherwise."""
+    from watchdog.model_catalog import resolve_model_id
+    from watchdog.model_client import DEFAULT_TIER
+    from watchdog.pipeline import orchestrate
+    model_id = resolve_model_id(model or DEFAULT_TIER)
+    estimated: list[float] = []
+    actual: list[float] = []
+    for uf in reversed(orchestrate.usage_files(vault)):
+        try:
+            records = json.loads(uf.read_text(encoding="utf-8")).get("calls", [])
+        except (OSError, json.JSONDecodeError):
+            continue
+        for record in records:
+            if len(estimated) >= max_records:
+                break
+            if record.get("model") != model_id or record.get("backend") != backend:
+                continue
+            if record.get("task") not in ("extract", "extract-section"):
+                continue
+            est = record.get("est_input_tokens")
+            act = _real_input_tokens(record)
+            if est and act:
+                estimated.append(est)
+                actual.append(act)
+        if len(estimated) >= max_records:
+            break
+    if len(estimated) < min_records:
+        return None
+    return sum(actual) / sum(estimated)
+
+
 def _output_token_ratio(vault: Path, max_runs: int, finalize_only: bool = False) -> float | None:
     """Backend/model-agnostic output:input token ratio from this vault's own recent usage
     history (#469) — how much a run tends to write for how much it reads, treated as a property
@@ -381,7 +449,13 @@ def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "so
         "queue_files": queue_files,
         "extractor_model": extractor_model,
         "finalizer_model": finalizer_model,
-        "section_token_threshold": _section_token_threshold(extractor_model),
+        # `vault` is wired through so this benefits from #606 Part B's calibrated tokenizer
+        # ratio when available. `extractor_model` itself is NOT wired to backend/effort here
+        # (#606) — its only real caller (`cmd/ingest.py`'s `is_run(...)`) never passes
+        # extractor_model/backend/effort at all, so this always resolves against the "sonnet"
+        # default regardless of what's actually configured, a separate pre-existing gap nothing
+        # currently reads back (`state["section_token_threshold"]` has no reader) — out of scope.
+        "section_token_threshold": _section_token_threshold(extractor_model, vault=vault),
         "backup_dir": str(backup_dir) if backup_dir else None,
     }
     state_file.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
