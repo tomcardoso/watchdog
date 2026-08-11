@@ -35,6 +35,18 @@ decisions:
 **209 pages.** All are public court filings or published institutional financial reports — nothing
 source-sensitive, which matters because these get shipped to several model providers, repeatedly.
 
+### Where document 4 is hardest to chew
+
+Page 17 — the backsheet — is **rotated 90° in the source PDF**, and it is the only page naming the
+applicant's counsel. Docling auto-rotates it and renders the whole page, so this is not currently a
+hole in the corpus; what survives is character-level damage on that page (`M5K` → `MSK`,
+`69993I` → `699931`, `djmiller` → `dimiller`). Both facts are worth keeping because they are
+**properties of the current chew, not of the document**: if corpus-v1 is ever re-chewed with a
+different tool or a newer Docling, page 17 is the first place to look, and
+`keys/initial-order-2021-02-01.yaml` records the true values against the damaged ones so the
+comparison is possible. Pages 1 and 16 are the next-hardest — a seal overprinting the case title,
+a wet signature, and a bilingual registry stamp with handwriting.
+
 ## The contradiction pair (the thing being scored)
 
 Documents 1 and 2. **Neither document mentions the other**, so a model has to *notice* the conflict

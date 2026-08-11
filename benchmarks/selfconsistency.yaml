@@ -41,7 +41,7 @@
 # result still needs re-checking on a stronger model before it becomes a default.
 
 corpus: {dir: corpora/selfconsistency, sha256: corpora/selfconsistency/corpus.sha256}
-keys: {dir: keys, sha256: keys/keys-v2.sha256}
+keys: {dir: keys, sha256: keys/keys-v3.sha256}
 
 master_vault:
   name: bench-sc-master
