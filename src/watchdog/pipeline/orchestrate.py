@@ -218,7 +218,13 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         "cache_read_tokens": (u.get("cache_read_input_tokens")
                               or (u.get("prompt_tokens_details") or {}).get("cached_tokens")
                               or u.get("prompt_cache_hit_tokens") or 0),
-        "cache_write_tokens": u.get("cache_creation_input_tokens", 0) or 0,
+        # Cache-WRITE count, normalised the same way: Anthropic reports
+        # `cache_creation_input_tokens`; OpenAI's GPT-5.6 family and later nest it under
+        # `prompt_tokens_details.cache_write_tokens` (earlier families write for free and report
+        # nothing). Same lesson as the read count above (#495): read it here through the same
+        # helper `_openai_cost` bills from, so the log and the cost can't disagree (#586).
+        "cache_write_tokens": (u.get("cache_creation_input_tokens")
+                               or model_client.cache_write_tokens(u) or 0),
         "cost_usd": cost_usd, "attempts": attempts, "latency_s": latency_s, "effort": effort,
         "auth_mode": auth_mode, "filename": filename, "detail": detail, "end_ts": time.time(),
     }

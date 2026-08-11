@@ -628,6 +628,46 @@ def test_openai_cost_openai_cache_hit():
     assert cost == pytest.approx(600_000 * 2.5e-6 + 400_000 * 0.25e-6)
 
 
+def test_openai_cost_charges_gpt56_cache_writes_at_the_premium_rate():
+    """#586/D195: the GPT-5.6 family bills cache writes at 1.25x uncached input and reports them
+    under `prompt_tokens_details.cache_write_tokens`. Reads, writes, and plain input are three
+    disjoint slices of `prompt_tokens`."""
+    cost = mc._openai_cost("gpt-5.6-luna",
+                           {"prompt_tokens": 1_000_000, "completion_tokens": 0,
+                            "prompt_tokens_details": {"cached_tokens": 300_000,
+                                                      "cache_write_tokens": 200_000}})
+    assert cost == pytest.approx(500_000 * 0.20e-6      # uncached remainder
+                                 + 300_000 * 0.02e-6    # cache reads
+                                 + 200_000 * 0.25e-6)   # cache writes, 1.25x input
+
+
+def test_openai_cost_cache_writes_before_the_gpt56_family_stay_plain_input():
+    """Earlier families carry no additional fee for a write, which is NOT the same as free: those
+    tokens are still ordinary input at the full rate. Carving them out at a 0.0 write rate would
+    hand back a 40% discount that doesn't exist."""
+    usage = {"prompt_tokens": 1_000_000, "completion_tokens": 0,
+             "prompt_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 400_000}}
+    assert mc._openai_cost("gpt-5.4", usage) == pytest.approx(1_000_000 * 2.5e-6)
+
+
+def test_openai_cost_clamps_overlapping_cache_counters():
+    """A provider reporting reads + writes above `prompt_tokens` must never drive the uncached
+    remainder negative and under-charge the call."""
+    cost = mc._openai_cost("gpt-5.6-luna",
+                           {"prompt_tokens": 1000, "completion_tokens": 0,
+                            "prompt_tokens_details": {"cached_tokens": 900,
+                                                      "cache_write_tokens": 900}})
+    assert cost == pytest.approx(900 * 0.02e-6 + 100 * 0.25e-6)
+
+
+def test_cache_write_tokens_reads_the_openai_shape_and_defaults_to_zero():
+    assert mc.cache_write_tokens(
+        {"prompt_tokens_details": {"cache_write_tokens": 4352}}) == 4352
+    assert mc.cache_write_tokens({"prompt_tokens_details": {"cached_tokens": 10}}) == 0
+    assert mc.cache_write_tokens({"prompt_tokens": 10}) == 0
+    assert mc.cache_write_tokens(None) == 0
+
+
 def test_openai_batch_cost_is_half_the_openai_cost():
     usage = {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}
     live = mc._openai_cost("gpt-5.4", usage)
@@ -1085,6 +1125,119 @@ def test_openai_block_prompt_with_no_cache_control_gets_no_prompt_cache_key(monk
     asyncio.run(mc._openai_complete_async(no_breakpoint, "gpt-4o", SCHEMA, "sk-o", 8000,
                                           base_url="https://api.openai.com/v1"))
     assert "prompt_cache_key" not in captured["body"]
+
+
+# ── explicit cache breakpoints (#586, D195): GPT-5.6+ doesn't fall back to the longest prefix ──
+
+def _user_content(captured):
+    return captured["body"]["messages"][1]["content"]
+
+
+def test_gpt56_sends_an_explicit_breakpoint_on_the_first_cache_control_block(monkeypatch):
+    """The fix for #586. GPT-5.6 places one implicit breakpoint at the latest user message and
+    does NOT fall back to the longest matching unmarked prefix before it — so with the whole
+    prompt in one user message, an unmarked request can only hit on a byte-identical whole-prompt
+    repeat. Marking the end of the run-stable prefix is what makes a partial hit possible at all."""
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async(_BLOCK_PROMPT, "gpt-5.6-luna", SCHEMA, "sk-o", 8000,
+                                          base_url="https://api.openai.com/v1"))
+    content = _user_content(captured)
+    assert [b.get("prompt_cache_breakpoint") for b in content] == [
+        None, {"mode": "explicit"}, None]
+    # Explicit mode suppresses the implicit end-of-prompt breakpoint, which would otherwise keep
+    # writing the document text at 1.25x for a cache nothing reads back.
+    assert captured["body"]["prompt_cache_options"] == {"mode": "explicit"}
+
+
+def test_gpt56_cache_blocks_render_byte_identically_to_the_flattened_prompt(monkeypatch):
+    """This change is meant to alter the request's cache metadata and nothing the model reads.
+    Adjacent text parts concatenate with no separator, so each block but the last has to carry
+    the newline `_flatten_prompt`'s join would have put after it."""
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async(_BLOCK_PROMPT, "gpt-5.6-luna", SCHEMA, "sk-o", 8000,
+                                          base_url="https://api.openai.com/v1"))
+    rendered = "".join(b["text"] for b in _user_content(captured))
+    assert rendered == mc._flatten_prompt(_BLOCK_PROMPT)
+
+
+def test_gpt56_marks_only_the_first_breakpoint_even_with_a_document_breakpoint():
+    """`prompts._document_block`'s second breakpoint (#535) stays unmarked on OpenAI: extract and
+    verify each serialize their own structured-output schema ahead of the system message, so no
+    marking of the document block could make them share a prefix (D181) — and marking it would
+    pay the 1.25x write on document text nothing reads back."""
+    two_breakpoints = prompts.build_extract_prompt(
+        pages_text="document text", skill_text="SKILL", sidecar=None, brief=None,
+        known_document_types=[], cache_document=True)
+    assert sum("cache_control" in b for b in two_breakpoints) == 2
+    marked = [i for i, b in enumerate(mc._openai_cache_blocks(two_breakpoints))
+              if "prompt_cache_breakpoint" in b]
+    assert marked == [1]
+
+
+def test_earlier_openai_families_keep_the_flat_string_and_no_cache_options(monkeypatch):
+    """GPT-5.5 and earlier still do implicit longest-prefix matching, and don't accept these
+    fields — leave those requests exactly as they were."""
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async(_BLOCK_PROMPT, "gpt-5.4-mini", SCHEMA, "sk-o", 8000,
+                                          base_url="https://api.openai.com/v1"))
+    assert _user_content(captured) == mc._flatten_prompt(_BLOCK_PROMPT)
+    assert "prompt_cache_options" not in captured["body"]
+
+
+def test_non_openai_backends_never_get_cache_breakpoints(monkeypatch):
+    """Same gate as `prompt_cache_key` (#562): a DeepSeek/Gemini-compat/local server isn't
+    guaranteed to ignore body fields it doesn't recognize."""
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async(_BLOCK_PROMPT, "gpt-5.6-luna", SCHEMA, "k", 8000,
+                                          base_url="http://localhost:11434/v1"))
+    # Still one flat string (this endpoint also appends the schema-in-prompt tail, D98).
+    assert _user_content(captured).startswith(mc._flatten_prompt(_BLOCK_PROMPT))
+    assert "prompt_cache_options" not in captured["body"]
+
+
+@pytest.mark.parametrize("prompt", [
+    "a plain string prompt",
+    [{"type": "text", "text": "instructions"}, {"type": "text", "text": "document"}],
+])
+def test_gpt56_prompt_with_nothing_to_mark_stays_implicit(monkeypatch, prompt):
+    """With no breakpoint to mark, switching the request into explicit mode would disable the
+    implicit breakpoint and remove even the whole-prompt caching such a call has today."""
+    captured = {}
+    _fake_httpx(monkeypatch, captured)
+    asyncio.run(mc._openai_complete_async(prompt, "gpt-5.6-luna", SCHEMA, "sk-o", 8000,
+                                          base_url="https://api.openai.com/v1"))
+    assert _user_content(captured) == mc._flatten_prompt(prompt)
+    assert "prompt_cache_options" not in captured["body"]
+
+
+def test_openai_cache_blocks_none_when_there_is_nothing_to_mark():
+    assert mc._openai_cache_blocks("plain string") is None
+    assert mc._openai_cache_blocks([{"type": "text", "text": "a"}]) is None
+
+
+def test_catalog_cache_breakpoints_marks_only_the_gpt56_family():
+    from watchdog.model_catalog import catalog_cache_breakpoints
+    assert catalog_cache_breakpoints("gpt-5.6-luna") is True
+    assert catalog_cache_breakpoints("gpt-5.6-terra") is True
+    assert catalog_cache_breakpoints("gpt-5.5") is False
+    assert catalog_cache_breakpoints("gpt-5.4-mini") is False
+    assert catalog_cache_breakpoints("claude-sonnet-4-6") is False
+    # An uncatalogued id (a local/OpenRouter model behind an arbitrary runner) must never be sent
+    # a body field it might reject.
+    assert catalog_cache_breakpoints("some-self-hosted-model") is False
+
+
+def test_gpt56_cache_write_price_is_exactly_1_25x_input():
+    """OpenAI's rule, not a per-model quote — a drifting hand-typed rate would silently
+    mis-bill every cached call on the family."""
+    from watchdog.model_catalog import _OPENAI_PRICING
+    for model_id in ("gpt-5.6-luna", "gpt-5.6-terra"):
+        inp, _out, _cached, write = _OPENAI_PRICING[model_id]
+        assert write == pytest.approx(inp * 1.25)
 
 
 def test_prompt_cache_key_none_for_plain_string():

@@ -2674,6 +2674,37 @@ def test_record_usage_reads_cache_read_tokens_from_openai_usage_shape():
         orchestrate._usage = None
 
 
+def test_record_usage_reads_cache_write_tokens_from_openai_usage_shape():
+    """#586: the GPT-5.6 family bills cache writes (1.25x uncached input) and reports them under
+    `prompt_tokens_details.cache_write_tokens`. `cache_write_tokens` used to read only Anthropic's
+    `cache_creation_input_tokens`, so every OpenAI write was logged as 0 — the same shape of miss
+    #495 fixed for reads."""
+    orchestrate._usage = []
+    try:
+        orchestrate._record_usage(
+            "digest", model="gpt-5.6-luna", backend="openai",
+            usage={"prompt_tokens": 6000, "completion_tokens": 500,
+                  "prompt_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 4352}},
+            cost_usd=0.01, latency_s=1.0)
+        assert orchestrate._usage[0]["cache_write_tokens"] == 4352
+        assert orchestrate._usage[0]["cache_read_tokens"] == 0
+    finally:
+        orchestrate._usage = None
+
+
+def test_record_usage_still_reads_anthropic_cache_write_shape():
+    orchestrate._usage = []
+    try:
+        orchestrate._record_usage(
+            "extract", model="claude-sonnet-4-6", backend="claude-api",
+            usage={"input_tokens": 100, "output_tokens": 20,
+                  "cache_creation_input_tokens": 7700},
+            cost_usd=0.01, latency_s=1.0)
+        assert orchestrate._usage[0]["cache_write_tokens"] == 7700
+    finally:
+        orchestrate._usage = None
+
+
 def test_record_usage_reads_cache_read_tokens_from_deepseek_usage_shape():
     """#495: DeepSeek reports its cache-hit count as a flat `prompt_cache_hit_tokens` field —
     a third shape distinct from both Anthropic's and OpenAI's."""

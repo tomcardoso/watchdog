@@ -525,22 +525,36 @@ spec in `extract_instructions.md`) — zero extra model calls, full-text groundi
 thus write `document.summary` at the extractor tier; they differ only in grounding — full text
 inline vs. the merged `key_facts` post-merge — because no single call can hold a sectioned doc.
 
-**Prompt caching (`claude-api` only).** `build_extract_prompt`/`build_section_prompt` return a
-list of Anthropic content blocks instead of one string: a stable block (instructions + brief,
-constant for the whole run), a skill block (constant per document type, carrying the
-`cache_control` breakpoint), then a volatile block (per-document data, never cached). Every
-extraction call sharing a skill within a run re-pays only the 0.1× cache-read rate for the
-stable+skill prefix instead of full price. Only `_api_complete_async` (the metered-key
-backend) understands blocks; `claude-agent-sdk` and the OpenAI-compatible backends flatten
-them to plain text (`model_client._flatten_prompt`) since neither exposes a cache knob to us
-(D51). Gemini's own implicit cache, confirmed separately (D183), keys on exact-request
-identity rather than shared-prefix identity — the flattened design has no lever to pull there
-even in principle, not just for lack of a `cache_control` equivalent. On the real OpenAI
-endpoint, the flattened call still sends a `prompt_cache_key`
+**Prompt caching (`claude-api` and OpenAI GPT-5.6+).** `build_extract_prompt`/
+`build_section_prompt`/`build_digest_prompt` return a list of Anthropic content blocks instead of
+one string: a stable block (instructions + brief, constant for the whole run), a skill block
+(constant per document type, carrying the `cache_control` breakpoint), then a volatile block
+(per-document data, never cached). Every call sharing a skill within a run re-pays only the
+cache-read rate for the stable+skill prefix instead of full price.
+
+Two backends honour that breakpoint on the wire, by different mechanisms. `_api_complete_async`
+(the metered-key Claude backend) sends the blocks as-is, at the 0.1× cache-read rate. On the real
+OpenAI endpoint, a model the catalog marks `cache_breakpoints: true` — the GPT-5.6 family and
+later — gets the same blocks re-rendered as OpenAI text parts with `prompt_cache_breakpoint` on
+the first breakpoint's block, plus `prompt_cache_options: {"mode": "explicit"}`
+(`model_client._openai_cache_blocks`, D195/#586). That family places one implicit breakpoint at
+the latest user message and does *not* fall back to the longest matching unmarked prefix before
+it, so an unmarked request — the whole prompt being one user message — can only hit on a
+byte-identical whole-prompt repeat. Explicit mode also stops the implicit breakpoint from writing
+the document text at the family's 1.25× write rate for a cache nothing reads back; that write rate
+is priced from the catalog's `cache_write` field, and the count comes back as
+`prompt_tokens_details.cache_write_tokens`.
+
+Everything else flattens to plain text (`model_client._flatten_prompt`). `claude-agent-sdk`
+exposes no cache knob (D51). Earlier OpenAI families need no breakpoint — their longest-prefix
+fallback is still in effect — but they do get a `prompt_cache_key`
 (`model_client._prompt_cache_key`, D181/#562) derived from the position of the first
-`cache_control` breakpoint — a routing hint OpenAI's own caching docs say is required for
-reliable matching on newer model families, not a `cache_control`-equivalent guarantee.
-`cache_read_input_tokens` is surfaced in the usage telemetry (§12) to verify hits.
+`cache_control` breakpoint, as does GPT-5.6+; it is a routing hint OpenAI's docs say is required
+for reliable matching on newer families, not a `cache_control`-equivalent guarantee. Gemini's own
+implicit cache, confirmed separately (D183), keys on exact-request identity rather than
+shared-prefix identity — the flattened design has no lever to pull there even in principle.
+`cache_read_input_tokens`/`cache_write_tokens` are surfaced in the usage telemetry (§12) to verify
+hits.
 
 **Candidate harvest (Tier 0, #361/D123).** Benchmark hand-scoring found extraction misses
 "buried" facts — a lone sentence after a table, a table row, a one-line disclosure — even on
