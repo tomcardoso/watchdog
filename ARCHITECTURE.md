@@ -477,7 +477,15 @@ Claude 4.7+ models (Opus 4.8, Sonnet 5) use a newer tokenizer that produces ~30%
 for the same text than the chars/4 `est_tokens` heuristic assumes, so their est-token
 threshold/budget shrink by that ratio to keep the real tokens a call sends under the model's
 actual context window. `tokenizer_ratio` is a per-model `model_catalog.yaml` field, defaulting to
-1.0 (no change) for every model through Sonnet 4.6 and every non-Anthropic provider.
+1.0 (no change) for every model through Sonnet 4.6 and every non-Anthropic provider — a static
+constant that, per D180, was never actually measured against real Watchdog usage. When a `vault`
+is in scope (the real ingest path — `section.run` passes its own `vault` through automatically),
+`tokenizer_ratio` instead prefers an empirically-derived ratio from that vault's own usage
+history, pooled per model/backend from real per-call estimate-vs-actual token pairs
+(`ingest_setup._model_tokenizer_calibration`, D190, #606), falling back to the static catalog
+value until a model has accumulated enough matching calls to calibrate from. `watchdog
+configure`'s preview (`cmd/setup.py:_auto_resolved_hint`) has no vault context and always shows
+the catalog-based number, by design.
 The carry-forward is a deduplicated entity-id → name/type map accumulated across every
 section seen so far (rebuilt fresh each section, one line per entity, not a running
 concatenation) plus only the immediately preceding section's `observations` text; and,

@@ -489,6 +489,110 @@ def test_cost_estimate_calibration_still_applies_under_subscription_auth(tmp_pat
     assert est["cost_low"] is None and est["cost_high"] is None
 
 
+# ── model-scoped tokenizer calibration (#606 Part B) ────────────────────────────
+
+def _record(model, backend, task, est, act, **extra):
+    """One `usage-<ts>.json` `calls` entry — the fields `_model_tokenizer_calibration` and
+    `_real_input_tokens` actually read (`orchestrate._record_usage`'s own record shape)."""
+    return {"model": model, "backend": backend, "task": task,
+            "est_input_tokens": est, "input_tokens": act,
+            "cache_read_tokens": 0, "cache_write_tokens": 0, **extra}
+
+
+def test_model_tokenizer_calibration_no_history_returns_none(tmp_path):
+    from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
+    vault = _make_vault(tmp_path)
+    assert _model_tokenizer_calibration(vault, "sonnet-5", None) is None
+
+
+def test_model_tokenizer_calibration_below_min_records_returns_none(tmp_path):
+    """A model tried once or twice in this vault shouldn't override the catalog constant —
+    only 2 matching records, below the default min_records=3."""
+    from watchdog.model_catalog import resolve_model_id
+    from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
+    vault = _make_vault(tmp_path)
+    model_id = resolve_model_id("sonnet-5")
+    calls = [_record(model_id, None, "extract", 1000, 1300),
+             _record(model_id, None, "extract-section", 500, 650)]
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=0, cost_usd=None, calls=calls)
+
+    assert _model_tokenizer_calibration(vault, "sonnet-5", None) is None
+
+
+def test_model_tokenizer_calibration_pools_matching_records(tmp_path):
+    """Enough matching records (>= min_records) produce the pooled sum(actual)/sum(estimated)
+    ratio — not a per-file or per-record average — across both `extract` and `extract-section`
+    tasks, which the tokenizer ratio treats as equally valid evidence."""
+    from watchdog.model_catalog import resolve_model_id
+    from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
+    vault = _make_vault(tmp_path)
+    model_id = resolve_model_id("sonnet-5")
+    calls = [
+        _record(model_id, None, "extract", 1000, 1300),
+        _record(model_id, None, "extract-section", 2000, 2600),
+        _record(model_id, None, "extract-section", 500, 650),
+    ]
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=0, cost_usd=None, calls=calls)
+
+    # sum(actual)/sum(estimated) = (1300+2600+650) / (1000+2000+500) = 4550/3500 = 1.3
+    assert _model_tokenizer_calibration(vault, "sonnet-5", None) == pytest.approx(1.3)
+
+
+def test_model_tokenizer_calibration_ignores_non_matching_model_or_backend(tmp_path):
+    """Records for a different model, or the same model on a different backend, must not be
+    pooled into this model's ratio — each is a distinct tokenizer."""
+    from watchdog.model_catalog import resolve_model_id
+    from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
+    vault = _make_vault(tmp_path)
+    model_id = resolve_model_id("sonnet-5")
+    calls = [
+        _record(model_id, None, "extract", 1000, 1300),
+        _record(model_id, None, "extract-section", 2000, 2600),
+        _record(model_id, None, "extract-section", 500, 650),
+        # Noise: wrong model id, and the right model id on a different (hypothetical) backend.
+        _record("gpt-5-mini", "openai", "extract", 1000, 9999),
+        _record(model_id, "claude-api", "extract", 1000, 9999),
+    ]
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=0, cost_usd=None, calls=calls)
+
+    assert _model_tokenizer_calibration(vault, "sonnet-5", None) == pytest.approx(1.3)
+
+
+def test_model_tokenizer_calibration_ignores_non_extract_tasks(tmp_path):
+    """A `reconcile`/`briefing`/etc. record for the same model must not be pooled — only
+    `extract`/`extract-section` calls carry `est_input_tokens` at all in practice, but the task
+    filter is explicit rather than relying on that."""
+    from watchdog.model_catalog import resolve_model_id
+    from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
+    vault = _make_vault(tmp_path)
+    model_id = resolve_model_id("sonnet-5")
+    calls = [
+        _record(model_id, None, "extract", 1000, 1300),
+        _record(model_id, None, "extract-section", 2000, 2600),
+        _record(model_id, None, "extract-section", 500, 650),
+        _record(model_id, None, "briefing", 1000, 9999),
+    ]
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=0, cost_usd=None, calls=calls)
+
+    assert _model_tokenizer_calibration(vault, "sonnet-5", None) == pytest.approx(1.3)
+
+
+def test_model_tokenizer_calibration_stops_at_max_records(tmp_path):
+    """Once `max_records` matching records have been collected, scanning stops — a record that
+    would push the pool past the cap is never counted, so it can't skew the ratio."""
+    from watchdog.model_catalog import resolve_model_id
+    from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
+    vault = _make_vault(tmp_path)
+    model_id = resolve_model_id("sonnet-5")
+    # 4 identical 1.3-ratio records, then a 5th wildly different one — with max_records=4 the
+    # 5th must never be counted.
+    calls = [_record(model_id, None, "extract", 1000, 1300) for _ in range(4)]
+    calls.append(_record(model_id, None, "extract", 1000, 100000))
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=0, cost_usd=None, calls=calls)
+
+    assert _model_tokenizer_calibration(vault, "sonnet-5", None, max_records=4) == pytest.approx(1.3)
+
+
 # ── finalize --estimate (#417) ──────────────────────────────────────────────────
 
 def _stage_finalize_corpus(vault: Path, docs: dict[str, str]) -> None:

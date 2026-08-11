@@ -133,7 +133,7 @@ def _resolve_override(key: str, model_default: int) -> int:
 
 
 def model_defaults(model: str | None, backend: str | None = None,
-                   effort: str | None = None) -> tuple[int, int]:
+                   effort: str | None = None, vault: Path | None = None) -> tuple[int, int]:
     """(threshold, budget) est-token sectioning defaults for the extraction stage (#321, #343,
     #574, #542).
 
@@ -153,6 +153,13 @@ def model_defaults(model: str | None, backend: str | None = None,
     keeps the real tokens sectioning actually sends under the model's real context window. A
     1.0 ratio (every model through Sonnet 4.6, and every non-Anthropic provider) leaves this a
     no-op — the historical 120K/60K Claude defaults are unchanged.
+
+    `vault` (#606 Part B), when given, is passed straight through to `tokenizer_ratio` so it can
+    prefer this vault's own empirically-measured ratio over the static catalog constant once
+    enough matching history has accumulated — see `tokenizer_ratio`'s own docstring. `section.run`
+    passes its own `vault` argument here automatically, so the real ingest path benefits without
+    any caller change; a caller with no vault context (e.g. `watchdog configure`'s preview) leaves
+    this `None` and gets the catalog ratio, exactly as before.
 
     `threshold` and `budget` are checked against *different* tasks' ceilings — a document at or
     under threshold runs whole-document (`extract`); once sectioned, each section runs as its own
@@ -178,22 +185,24 @@ def model_defaults(model: str | None, backend: str | None = None,
     section_ceiling = model_client.output_ceiling_for_sectioning("extract-section", backend, model, effort)
     if section_ceiling is not None:
         budget = min(budget, _invert_output_ceiling(section_ceiling, effort))
-    ratio = model_client.tokenizer_ratio(model, backend)
+    ratio = model_client.tokenizer_ratio(model, backend, vault)
     threshold = int(threshold / ratio)
     budget = max(1, int(budget / ratio))
     return threshold, budget
 
 
 def section_token_threshold(model: str | None = None, backend: str | None = None,
-                            effort: str | None = None) -> int:
+                            effort: str | None = None, vault: Path | None = None) -> int:
     """Estimated-token count at/under which a document is not sectioned.
 
     Model-aware by default: derived from the extraction model's context window (#321) and, for a
     fixed-output-ceiling backend, its output cap (#343), itself effort-scaled for a reasoning
     model (#542 follow-up). An explicit integer `section_token_threshold` in config overrides it,
     as an advanced escape hatch; the `"auto"` sentinel (or an unset key) keeps the model-aware
-    default."""
-    default_threshold, _ = model_defaults(model, backend, effort)
+    default. `vault` (#606 Part B) is passed straight through to `model_defaults`, so a caller
+    with vault context benefits from this vault's own calibrated tokenizer ratio when one is
+    available."""
+    default_threshold, _ = model_defaults(model, backend, effort, vault)
     return _resolve_override("section_token_threshold", default_threshold)
 
 
@@ -257,7 +266,10 @@ def run(vault: Path, sha256: str, *, force_budget: int | None = None,
     derive the context-window-aware threshold and budget (#321) and, for a fixed-output-ceiling
     backend, the output-aware cap (#343); config values override the derived defaults. `effort`
     additionally scales that output-aware cap for a reasoning model (#542 follow-up). All three
-    are irrelevant on the `force_budget` path, which sets its own small budget.
+    are irrelevant on the `force_budget` path, which sets its own small budget. `vault` (already
+    this function's own first argument) is additionally passed to `model_defaults` so the
+    tokenizer-ratio correction can prefer this vault's own calibrated ratio over the static
+    catalog constant when enough history is available (#606 Part B).
     """
     queue_file = vault / ".watchdog" / "queue" / f"{sha256}.json"
     if not queue_file.exists():
@@ -268,7 +280,7 @@ def run(vault: Path, sha256: str, *, force_budget: int | None = None,
     page_count = queue.get("page_count") or len(pages)
     total_tokens = est_tokens_from_pages(pages)
 
-    default_threshold, default_budget = model_defaults(model, backend, effort)
+    default_threshold, default_budget = model_defaults(model, backend, effort, vault)
     threshold = _resolve_override("section_token_threshold", default_threshold)
     budget = _resolve_override("section_token_budget", default_budget)
     default_overlap = max(1, budget * _OVERLAP_NUMERATOR // _OVERLAP_DENOMINATOR)

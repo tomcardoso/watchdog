@@ -4399,6 +4399,10 @@ def test_finish_batch_item_records_usage_for_the_batch_call_itself(tmp_path):
             "input_tokens": 500, "output_tokens": 80, "cache_read_tokens": 0, "cache_write_tokens": 0,
             "cost_usd": 0.015, "attempts": 1, "latency_s": 0.0, "effort": None, "auth_mode": "api-key",
             "filename": "a.pdf", "detail": "pages 1–1",
+            # #606 Part B: the naive chars/4 estimate for _queue_doc's default text ("Acme Corp
+            # filed an annual report." — 34 chars // 4 = 8), now recorded per call so a
+            # model-scoped tokenizer calibration can compare estimate to actual.
+            "est_input_tokens": 8,
         }
     finally:
         orchestrate._usage = None

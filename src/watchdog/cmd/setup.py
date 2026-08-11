@@ -263,9 +263,10 @@ _CONFIGURE_KEYS = {
             "  they are things it read and judged unimportant, most often an obligation buried in\n"
             "  standard-form wording, a one-line disclosure under a table, or something in a\n"
             "  schedule at the back.\n"
-            "  Cost: roughly 15% more per run. The re-read itself is cheap (it reuses the first\n"
-            "  call's prompt, which providers cache), so most of that is the second call's own\n"
-            "  reasoning — see verifier_effort.\n"
+            "  Cost: roughly 15% more per run on the Claude API path, where the re-read reuses\n"
+            "  the first call's cached prompt at a fraction of the price, so most of that 15% is\n"
+            "  the second call's own reasoning — see verifier_effort. On an OpenAI-compatible\n"
+            "  model the re-read doesn't get that discount, so expect a larger increase.\n"
             "  Trade-off: it raises how much gets captured, and it can also add restatements and\n"
             "  true-but-minor detail to your fact lists. Off by default until that noise has been\n"
             "  measured. Not available with a batch extractor model (claude-batch,\n"
@@ -864,13 +865,47 @@ def _persist(config: dict) -> None:
 
 def _auto_resolved_hint(key: str, config: dict) -> str:
     """Render 'auto' for a model-aware section budget along with the concrete value it currently
-    resolves to for the configured extractor model, e.g. 'auto (120000 — sonnet)'."""
+    resolves to for the configured extractor model/backend/effort, e.g. 'auto (120000 — sonnet)'
+    for plain Claude, or 'auto (44235 — openai:gpt-5-mini, medium)' for a backend that enforces a
+    fixed output ceiling section.model_defaults caps against (#606) — a bare model name there
+    would be misleading, since the resolved number depends on backend and effort too, not just
+    the model. `extractor_model` is parsed the same tolerant `[backend:]model` way
+    `cmd/ingest.py:_resolve_stage` does (rpartition on the last ':'), but never exits on an
+    unrecognized value — this only previews an already-stored, already-validated config value, so
+    a hard error here would be the wrong failure mode. `extractor_effort` defaults the same way
+    `cmd/ingest.py:_effort` defaults `extractor_effort` — 'medium' only when the resolved
+    backend/model actually supports an effort knob, so a model with none (e.g. Haiku) doesn't get
+    a misleading effort suffix. Every Claude backend (`model_client.CLAUDE_BACKENDS` — including
+    an explicit `claude-api:`/`claude-agent-sdk:` prefix, not just a bare tier name) keeps the
+    plain pre-#606 format with no backend/effort suffix: none of them has an output ceiling for
+    effort to scale against, so naming the backend there would be technically accurate but inert
+    — it would never explain why the number is what it is, only add noise.
+
+    `watchdog configure` is a global, vault-independent command (`CONFIG_FILE` lives under
+    `~/.watchdog/`; `cmd_configure` never touches a vault path) — there is no usage history to
+    calibrate the tokenizer ratio against here (#574 follow-up), so this preview always reflects
+    the static catalog ratio. That's by design, not an oversight: only a real ingest run (which
+    has vault context) can benefit from the calibrated ratio — see `section.model_defaults`'s own
+    `vault` parameter."""
+    from watchdog import model_client
     from watchdog.pipeline import section
-    model = config.get("extractor_model")   # None ⇒ default tier
-    threshold, budget = section.model_defaults(model)
+    raw = config.get("extractor_model")   # None ⇒ default tier
+    backend, _, model = (raw or "").rpartition(":")
+    backend = backend or None
+    model = model or None
+    effort_val = config.get("extractor_effort")
+    if effort_val is not None:
+        effort = effort_val
+    else:
+        effort = "medium" if model_client.effort_supported(backend, model, "medium") else None
+    threshold, budget = section.model_defaults(model, backend=backend, effort=effort)
     resolved = threshold if key == "section_token_threshold" else budget
-    tier = model or "sonnet"
-    return f"{_CYAN}auto{_RESET} {_DIM}({resolved} — {tier}){_RESET}"
+    if backend and backend not in model_client.CLAUDE_BACKENDS:
+        label = f"{backend}:{model}"
+        suffix = f"{label}, {effort}" if effort else label
+    else:
+        suffix = model or "sonnet"
+    return f"{_CYAN}auto{_RESET} {_DIM}({resolved} — {suffix}){_RESET}"
 
 
 def _display_value(k, v, config=None):

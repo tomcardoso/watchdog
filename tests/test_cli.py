@@ -1430,6 +1430,84 @@ def test_display_value_section_auto_shows_resolved_number():
     assert "auto" in out_unset and "120000" in out_unset
 
 
+# ── configure — auto-resolved hint respects backend/effort (#606) ──────────────
+
+def test_auto_resolved_hint_plain_claude_unchanged():
+    # Plain Claude tier: backend/effort don't affect the number, so the hint keeps its old,
+    # bare-tier format — no ", medium" suffix even though sonnet nominally supports effort.
+    out = _setup._auto_resolved_hint("section_token_threshold", {"extractor_model": "sonnet"})
+    assert out.count("(") == 1
+    assert "120000 — sonnet)" in out
+    assert "medium" not in out
+
+
+def test_auto_resolved_hint_explicit_claude_backend_unchanged():
+    # An explicit "claude-api:sonnet"/"claude-agent-sdk:..." prefix still resolves to a Claude
+    # backend (model_client.CLAUDE_BACKENDS) — backend/effort don't move the number for any of
+    # them, so the hint stays in the plain bare-tier format rather than naming a backend that
+    # turns out to be inert, matching the plain "sonnet" case above. Uses the "sonnet" tier
+    # rather than "opus" so the resolved number (120000) isn't also shrunk by the unrelated
+    # tokenizer_ratio correction (opus/sonnet-5 carry a 1.3 ratio) — this test is about the
+    # backend/effort suffix, not the ratio.
+    out = _setup._auto_resolved_hint(
+        "section_token_threshold", {"extractor_model": "claude-api:sonnet"})
+    assert out.count("(") == 1
+    assert "120000 — sonnet)" in out
+    assert "claude-api" not in out
+    assert "medium" not in out
+
+
+def test_auto_resolved_hint_openai_medium_effort():
+    out = _setup._auto_resolved_hint(
+        "section_token_threshold",
+        {"extractor_model": "openai:gpt-5-mini", "extractor_effort": "medium"})
+    assert "44235 — openai:gpt-5-mini, medium" in out
+
+
+def test_auto_resolved_hint_openai_low_effort():
+    out = _setup._auto_resolved_hint(
+        "section_token_threshold",
+        {"extractor_model": "openai:gpt-5-mini", "extractor_effort": "low"})
+    assert "50000 — openai:gpt-5-mini, low" in out
+
+
+def test_auto_resolved_hint_openai_high_effort():
+    out = _setup._auto_resolved_hint(
+        "section_token_threshold",
+        {"extractor_model": "openai:gpt-5-mini", "extractor_effort": "high"})
+    assert "15574 — openai:gpt-5-mini, high" in out
+
+
+def test_auto_resolved_hint_gemini_medium_effort():
+    out = _setup._auto_resolved_hint(
+        "section_token_threshold",
+        {"extractor_model": "gemini:gemini-3.5-flash", "extractor_effort": "medium"})
+    assert "32911 — gemini:gemini-3.5-flash, medium" in out
+
+
+def test_auto_resolved_hint_openai_no_explicit_effort_defaults_medium():
+    # extractor_effort unset in config: defaults to medium, same convention cmd/ingest.py's
+    # _effort() applies for extractor_effort, since gpt-5-mini supports it.
+    out = _setup._auto_resolved_hint(
+        "section_token_threshold", {"extractor_model": "openai:gpt-5-mini"})
+    assert "44235 — openai:gpt-5-mini, medium" in out
+
+
+def test_auto_resolved_hint_section_token_budget_key():
+    # The other key (section_token_budget) resolves the budget half of the (threshold, budget)
+    # pair, not the threshold — plain Claude is where the two differ (120000 vs 60000), proving
+    # the key selects the right element of model_defaults's return.
+    threshold_out = _setup._auto_resolved_hint("section_token_threshold", {"extractor_model": "sonnet"})
+    budget_out = _setup._auto_resolved_hint("section_token_budget", {"extractor_model": "sonnet"})
+    assert "120000" in threshold_out
+    assert "60000" in budget_out
+    # Backend/effort labelling applies to the budget key too, same as the threshold key.
+    out = _setup._auto_resolved_hint(
+        "section_token_budget",
+        {"extractor_model": "openai:gpt-5-mini", "extractor_effort": "medium"})
+    assert "openai:gpt-5-mini, medium" in out
+
+
 # ── configure — bool keys ─────────────────────────────────────────────────────
 
 def test_configure_set_table_structure_false(wdg_home):

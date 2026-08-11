@@ -34,6 +34,7 @@ import re
 import time
 from dataclasses import dataclass
 from functools import lru_cache, partial
+from pathlib import Path
 
 from watchdog import fixture_capture
 from watchdog.cmd import auth
@@ -190,7 +191,8 @@ def context_window(model: str | None, backend: str | None = None) -> int:
     return fallback_context_window(model_id) or _DEFAULT_CONTEXT_WINDOW
 
 
-def tokenizer_ratio(model: str | None, backend: str | None = None) -> float:
+def tokenizer_ratio(model: str | None, backend: str | None = None,
+                    vault: Path | None = None) -> float:
     """Actual-tokens-per-estimated-token multiplier for a stage's model, for provider-aware
     sectioning (#574). Claude 4.7+ models (Opus 4.8, Sonnet 5) use a newer tokenizer that
     produces ~30% more tokens than earlier Claude models for the same text (see
@@ -202,10 +204,25 @@ def tokenizer_ratio(model: str | None, backend: str | None = None) -> float:
 
     1.0 (no correction) for any model that doesn't declare a ratio — every non-Anthropic
     provider and every Claude model through Sonnet 4.6 — and for `backend == "local"`, whose
-    self-hosted id carries no catalog entry to declare one."""
+    self-hosted id carries no catalog entry to declare one.
+
+    `vault` (#606 Part B), when given, prefers this vault's own empirically-measured ratio —
+    `pipeline.ingest_setup._model_tokenizer_calibration`, computed from real est/actual token
+    pairs already recorded per model in this vault's usage history — over the static catalog
+    constant, which per DECISIONS D180 rests entirely on Anthropic's stated figure rather than on
+    measurement. Falls back to the catalog value when `vault` is None or the vault doesn't yet
+    have enough matching history to calibrate from (a cold-start model, or any caller with no
+    vault context, e.g. `watchdog configure`'s preview). Imported locally (not at module level)
+    to avoid a circular import — `ingest_setup` already imports `pipeline.section`, which needs
+    to reach this function."""
     if backend == "local":
         return 1.0
     model_id = resolve_model_id(model or DEFAULT_TIER)
+    if vault is not None:
+        from watchdog.pipeline import ingest_setup
+        calibrated = ingest_setup._model_tokenizer_calibration(vault, model, backend)
+        if calibrated is not None:
+            return calibrated
     return catalog_tokenizer_ratio(model_id) or 1.0
 
 

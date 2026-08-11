@@ -562,6 +562,35 @@ def test_tokenizer_ratio_local_backend_always_one():
     assert mc.tokenizer_ratio("claude-sonnet-5", backend="local") == 1.0
 
 
+def test_tokenizer_ratio_no_vault_uses_catalog(tmp_path):
+    # No vault context (e.g. `watchdog configure`'s preview, #606 Part A) — plain catalog value.
+    assert mc.tokenizer_ratio("sonnet-5", backend=None, vault=None) == 1.3
+
+
+def test_tokenizer_ratio_uses_vault_calibration_when_available(tmp_path, monkeypatch):
+    from watchdog.pipeline import ingest_setup
+
+    calls = []
+
+    def fake_calibration(vault, model, backend, *a, **kw):
+        calls.append((vault, model, backend))
+        return 1.55
+
+    monkeypatch.setattr(ingest_setup, "_model_tokenizer_calibration", fake_calibration)
+    vault = tmp_path / "vault"
+    assert mc.tokenizer_ratio("sonnet-5", backend=None, vault=vault) == 1.55
+    assert calls == [(vault, "sonnet-5", None)]
+
+
+def test_tokenizer_ratio_falls_back_to_catalog_when_calibration_returns_none(tmp_path, monkeypatch):
+    from watchdog.pipeline import ingest_setup
+
+    monkeypatch.setattr(ingest_setup, "_model_tokenizer_calibration", lambda *a, **kw: None)
+    vault = tmp_path / "vault"
+    # sonnet-5's catalog ratio (1.3) is used when the vault has no matching calibration history.
+    assert mc.tokenizer_ratio("sonnet-5", backend=None, vault=vault) == 1.3
+
+
 def test_output_ceiling_applies_to_local_and_openrouter():
     # local/openrouter enforce max_tokens and can't paginate (#380) — same treatment as openai/gemini.
     assert mc.output_ceiling_for_sectioning("extract", "local", "llama-3.3-70b") == 16000
