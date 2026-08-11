@@ -10,6 +10,12 @@ The install didn't add `watchdog` to your path (the list of places your terminal
 pipx ensurepath
 ```
 
+If you installed with uv instead of pipx, the equivalent is:
+
+```bash
+uv tool update-shell
+```
+
 Then close and reopen your terminal.
 
 ## "Watchdog isn't set up yet"
@@ -140,7 +146,7 @@ You can omit the name when running from inside the vault directory.
 
 ## Skills look outdated after an upgrade
 
-When you upgrade Watchdog (`pipx upgrade watchdog-intel`), the record skills — the document-type knowledge — update automatically, because they are read straight from the package. But each vault's Claude Code command skills (the `/watchdog-*` commands) are copied into the vault and keep their old versions. Refresh them from inside the vault:
+When you upgrade Watchdog (`pipx upgrade watchdog-intel`, or `uv tool upgrade watchdog-intel` if you installed with uv), the record skills — the document-type knowledge — update automatically, because they are read straight from the package. But each vault's Claude Code command skills (the `/watchdog-*` commands) are copied into the vault and keep their old versions. Refresh them from inside the vault:
 
 ```bash
 cd ~/Investigations/your-investigation

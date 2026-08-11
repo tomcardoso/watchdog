@@ -45,6 +45,8 @@ Terminal is a built-in app that lets you type commands to your computer. You'll 
 
 Watchdog needs two tools for processing PDFs — **qpdf** and **Ghostscript** — and **pipx**, a tool for installing Python programs. On Linux and Windows it also needs **Tesseract**, which handles OCR (optical character recognition — turning scanned pages into searchable text).
 
+If you already use [uv](https://docs.astral.sh/uv/), Astral's Python package and tool manager, you can use it instead of pipx for this step and the next — see [Installing with uv instead of pipx](#optional-installing-with-uv-instead-of-pipx) below, then come back to Step 6.
+
 **macOS:**
 
 ```bash
@@ -165,6 +167,47 @@ pipx inject watchdog-intel playwright
 ```
 
 This adds about 150 MB (the browser itself). If it isn't installed, `watchdog research` and `watchdog fetch` fall back to the plain sanitized fetch automatically — nothing breaks either way.
+
+## Optional: installing with uv instead of pipx
+
+If you already use [uv](https://docs.astral.sh/uv/) — Astral's Python package and tool manager — you can use it instead of pipx for the whole install. Everything past this point (`watchdog setup`, day-to-day use, upgrades) works exactly the same either way; only the install and upgrade commands differ.
+
+Install uv, if you don't have it already:
+
+**macOS:**
+
+```bash
+brew install uv
+```
+
+**Linux:**
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+**Windows:**
+
+```powershell
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Then install Watchdog:
+
+```bash
+uv tool install watchdog-intel
+```
+
+If that prints a warning that its tool directory isn't on your `PATH`, run `uv tool update-shell`, then close and reopen Terminal. From here, skip Step 5 above and continue with Step 6 (`watchdog setup`).
+
+Wherever the rest of this page says a `pipx` command, use its `uv` equivalent instead:
+
+| pipx | uv |
+|------|-----|
+| `pipx install watchdog-intel` | `uv tool install watchdog-intel` |
+| `pipx install "watchdog-intel[asr]" --force` | `uv tool install "watchdog-intel[asr]"` |
+| `pipx inject watchdog-intel playwright` | `uv tool install watchdog-intel --with playwright` |
+| `pipx upgrade watchdog-intel` | `uv tool upgrade watchdog-intel` |
 
 ## Where next
 

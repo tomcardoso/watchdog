@@ -24,8 +24,10 @@ from watchdog.cmd.base import (
     _RESET,
     _YELLOW,
     CONFIG_FILE,
+    _extra_install_cmd,
     _find_project,
     _resolve_vault,
+    _venv_bin,
     load_projects,
 )
 from watchdog.pipeline import capture, research
@@ -85,8 +87,8 @@ def _report_deposits(results: list, *, wayback, requeued_failures: bool) -> int:
     if any(r.path.suffix in (".html", ".xhtml") for r in deposited) and not capture.render_available():
         print(f"\n  {_DIM}Tip: for full page snapshots (images, styles, client-rendered pages) "
               f"install the capture browser:{_RESET}")
-        print(f"    {_CYAN}pipx inject watchdog-intel playwright{_RESET}")
-        print(f"    {_CYAN}~/.local/pipx/venvs/watchdog-intel/bin/playwright install chromium{_RESET}")
+        print(f"    {_CYAN}{_extra_install_cmd('playwright')}{_RESET}")
+        print(f"    {_CYAN}{_venv_bin('playwright')} install chromium{_RESET}")
     if failed:
         note = (f" {_DIM}(left queued — retry with {_RESET}{_CYAN}watchdog research-fetch{_RESET}{_DIM}){_RESET}"
                 if requeued_failures else "")

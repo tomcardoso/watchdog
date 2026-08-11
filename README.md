@@ -59,6 +59,8 @@ pipx install watchdog-intel
 watchdog setup
 ```
 
+Prefer [uv](https://docs.astral.sh/uv/)? Use `uv tool install watchdog-intel` instead of the first line.
+
 Never used a terminal? The [install guide](https://github.com/tomcardoso/watchdog/blob/main/docs/install.md) walks through every step, starting from how to open one.
 
 ## Quick start
