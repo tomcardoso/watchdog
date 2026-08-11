@@ -6,7 +6,15 @@
 # `sonnet` keeps resolving to 4.6 as the default, `sonnet-4.6` is the explicit, version-pinned
 # alias to the same id — see D165) — the only place that mapping lives. `cache_write`/`cache_read` (Claude) vs `cached_input`
 # (everyone else) reflect the two providers' different cache-pricing shapes — see
-# model_client.py's _api_cost / _openai_cost for how each is applied. `reasoning: true`
+# model_client.py's _api_cost / _openai_cost for how each is applied. An OpenAI model may ALSO
+# carry `cache_write` (#586, D195): the GPT-5.6 family and later bill cache writes at 1.25x the
+# uncached input rate ("cache writes are billed at 1.25x the uncached input token rate and
+# reported in `cache_write_tokens`" — developers.openai.com/api/docs/guides/prompt-caching,
+# fetched 2026-08-11), where every earlier family carried no additional fee for a write. Omit it
+# there: `_openai_cost` then leaves those tokens in the plain uncached-input remainder, which is
+# what "no additional fee" means — not that they are free. `cache_breakpoints: true` marks that
+# same family as needing EXPLICIT cache breakpoints on the wire — see the field's own note on the
+# gpt-5.6 entries below. `reasoning: true`
 # marks an OpenAI model that accepts `reasoning_effort` and requires
 # `max_completion_tokens` instead of `max_tokens`; omit it (defaults false) for every
 # non-reasoning OpenAI model, and for every non-OpenAI provider (never consulted there).
@@ -197,12 +205,23 @@ models:
     effort_levels: [low, medium, high]
   # GPT-5.6 family (Sol/Terra/Luna) — same 1.05M window as gpt-5.4/5.5 (issue #599). Sol (the
   # flagship, same price as gpt-5.5) isn't added — not asked for; add the same way if wanted.
+  # `cache_breakpoints: true` and `cache_write` are the two fields that make prompt caching work
+  # on this family at all (#586, D195). GPT-5.6 changed the caching contract: it places one
+  # implicit breakpoint at the latest user message and, per OpenAI's guide, "unlike earlier
+  # models, it does not automatically fall back to the longest matching unmarked prefix before
+  # that breakpoint" — so an unmarked request only ever hits on a byte-identical whole-prompt
+  # repeat, which is why 440 archived luna calls produced not one partial prefix hit while
+  # gpt-5.4-mini (earlier family, longest-prefix fallback) cached normally. Both fields belong to
+  # the same family boundary, so both are set together on every GPT-5.6+ entry. `cache_write` is
+  # exactly 1.25x this entry's `input` rate.
   - id: gpt-5.6-terra
     name: GPT-5.6 Terra
     provider: openai
     input: 2.5e-6
     output: 15.0e-6
     cached_input: 0.25e-6
+    cache_write: 3.125e-6
+    cache_breakpoints: true
     context_window: 1_050_000
     max_output_tokens: 128_000
     reasoning: true
@@ -213,6 +232,8 @@ models:
     input: 0.20e-6
     output: 1.20e-6
     cached_input: 0.02e-6
+    cache_write: 0.25e-6
+    cache_breakpoints: true
     context_window: 1_050_000
     max_output_tokens: 128_000
     reasoning: true

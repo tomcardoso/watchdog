@@ -27,6 +27,7 @@ import json
 from pathlib import Path
 
 from watchdog import model_client
+from watchdog.model_catalog import catalog_cache_breakpoints
 from watchdog.pipeline import schemas
 
 STATE_REL = Path(".watchdog") / "registry" / "batch-pending.json"
@@ -261,11 +262,20 @@ def _openai_request_body(model_id: str, prompt, max_tokens: int, effort: str | N
     `model_client._openai_complete_async` does for a single call, minus the parts that don't
     apply to a batch line (no retry/pagination, no `prefix` continuation — OpenAI never supports
     that even live, `_BACKEND_META["openai"].supports_continuation` is False)."""
+    # Explicit cache breakpoints on the GPT-5.6 family and later (#586, D195), exactly as the live
+    # path does — without them that family never falls back to a longest matching prefix, so the
+    # skill-label ordering below has nothing to pay off against. Always the real OpenAI endpoint
+    # here (this builds an OpenAI Batch API line), so no base-url gate is needed.
+    cache_blocks = (model_client._openai_cache_blocks(prompt)
+                    if catalog_cache_breakpoints(model_id) else None)
     messages = [
         {"role": "system", "content": model_client._SYSTEM_PROMPT},
-        {"role": "user", "content": model_client._flatten_prompt(prompt)},
+        {"role": "user", "content": cache_blocks if cache_blocks is not None
+                                   else model_client._flatten_prompt(prompt)},
     ]
     body = {"model": model_id, "messages": messages, "response_format": response_format}
+    if cache_blocks is not None:
+        body["prompt_cache_options"] = {"mode": "explicit"}
     # Same missing parameter as the live path (#562) — this is what makes the "requests sorted
     # by skill label so adjacent same-skill ones share the cached prefix" ordering actually pay
     # off on OpenAI's Batch API.

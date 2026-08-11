@@ -42,6 +42,7 @@ from watchdog.model_catalog import (
     _MODEL_IDS,  # noqa: F401 — re-exported for cmd/setup.py's interactive picker
     _OPENAI_PRICING,
     _PRICING,
+    catalog_cache_breakpoints,
     catalog_context_window,
     catalog_effort_levels,
     catalog_is_reasoning,
@@ -508,6 +509,56 @@ def _prompt_cache_key(prompt: str | list[dict]) -> str | None:
     return None
 
 
+def _openai_cache_blocks(prompt: str | list[dict]) -> list[dict] | None:
+    """The user message's `content` as OpenAI text parts, with an explicit
+    `prompt_cache_breakpoint` on the block that ends the cacheable prefix (#586, D195) — or None
+    when this prompt has no breakpoint to mark and should be sent flattened, exactly as before.
+
+    Only for the GPT-5.6 family and later, which changed the caching contract: the service places
+    one implicit breakpoint at the latest user message and, per OpenAI's prompt-caching guide,
+    "unlike earlier models, it does not automatically fall back to the longest matching unmarked
+    prefix before that breakpoint." Since `_openai_complete_async` sends the whole prompt as a
+    single user message, that implicit breakpoint lands at the very end of it — so an unmarked
+    request can only hit on a byte-identical whole-prompt repeat, and never on the run-stable
+    instructions+skill head that `prompts.py` goes to such lengths to keep at the front. That is
+    exactly what the archives show: across 440 recorded `gpt-5.6-luna` calls, every hit had
+    `input - cache_read == 3` (a whole-prompt replay in a self-consistency benchmark) and not one
+    was a partial prefix hit, while `gpt-5.4-mini` — an earlier family, longest-prefix fallback
+    still in effect — cached partially all along, `digest` included (#586).
+
+    Marks the FIRST breakpoint only, matching `_prompt_cache_key`'s choice and for the same
+    reason: it is the boundary of what calls genuinely share. `prompts._document_block`'s second
+    breakpoint (the verification pass, #535) is deliberately left unmarked here — extraction and
+    verification each serialize their own structured-output schema ahead of the system message,
+    so their prefixes diverge before either reaches the document text and no marking of the
+    document block could make them share one (D181). Leaving it unmarked also avoids paying the
+    1.25x write on a document's text that nothing will read back.
+
+    A plain-string prompt, or a block prompt with no breakpoint at all, returns None: there is
+    nothing to mark, and the caller must not then switch the request into explicit mode — doing
+    so would disable the implicit breakpoint and remove even the whole-prompt caching such a call
+    has today.
+
+    The `"\\n"` appended to every block but the last is what `_flatten_prompt`'s `"\\n".join`
+    puts between them. Adjacent text parts are concatenated with no separator of their own, so
+    carrying the newline in the part's own text keeps the rendered prompt byte-identical to the
+    flattened form this replaces — this change is meant to alter the request's cache metadata and
+    nothing the model actually reads."""
+    if not isinstance(prompt, list):
+        return None
+    marked = None
+    for i, block in enumerate(prompt):
+        if "cache_control" in block:
+            marked = i
+            break
+    if marked is None:
+        return None
+    last = len(prompt) - 1
+    return [{"type": "text", "text": b.get("text", "") + ("" if i == last else "\n")}
+            | ({"prompt_cache_breakpoint": {"mode": "explicit"}} if i == marked else {})
+            for i, b in enumerate(prompt)]
+
+
 @lru_cache(maxsize=1)
 def _agent_supports_tools() -> bool:
     """Whether the installed `claude-agent-sdk` accepts `ClaudeAgentOptions(tools=…)`. The option
@@ -756,6 +807,21 @@ def _cached_input_tokens(usage: dict) -> int:
     return cached or 0
 
 
+def cache_write_tokens(usage: dict | None) -> int:
+    """Prompt tokens WRITTEN to the provider's context cache, billable (#586, D195). OpenAI
+    reports this alongside `cached_tokens` under `prompt_tokens_details`, as `cache_write_tokens`
+    — but only for the GPT-5.6 family and later, the only OpenAI models that charge for a write.
+    Every earlier family, and every other OpenAI-compatible provider, writes for free and reports
+    nothing here, which reads as 0.
+
+    Public (no leading underscore) because `pipeline/orchestrate._record_usage` needs the same
+    normalisation for the usage log that `_openai_cost` needs for billing — the two drifting
+    apart is exactly what left OpenAI cache reads logged as 0 while `cost_usd` already discounted
+    them (#495)."""
+    details = (usage or {}).get("prompt_tokens_details") or {}
+    return details.get("cache_write_tokens") or 0
+
+
 def _fold_in_hidden_reasoning(usage: dict | None) -> dict | None:
     """Normalise a usage dict that reports thinking tokens only as a gap in `total_tokens`.
 
@@ -788,14 +854,30 @@ def _fold_in_hidden_reasoning(usage: dict | None) -> dict | None:
 
 
 def _openai_cost(model_id: str, usage: dict | None) -> float | None:
+    """Cost of one OpenAI-compatible call. Prompt tokens split three ways — read from cache (the
+    discounted `cached_input` rate), written to cache, and plain uncached input. All three are
+    subsets of `prompt_tokens`, and reads and writes are disjoint: a token served from cache was
+    not written by this request.
+
+    A write is only carved out for a model that declares a `cache_write` rate — the GPT-5.6 family
+    and later, where the write REPLACES the normal input charge at 1.25x. Everywhere else a write
+    carries no additional fee, which is not the same as being free: those tokens are still
+    ordinary input and must stay in the uncached remainder at the full input rate. (No earlier
+    family reports a write count at all, so this is a guard against a provider that starts to,
+    not a live path.)
+
+    Clamping keeps a provider reporting an unexpected combination of counters from driving the
+    uncached remainder negative and under-charging the call."""
     rates = _OPENAI_PRICING.get(model_id)
     if not rates or not usage:
         return None
-    inp, outp, cached_rate = rates
+    inp, outp, cached_rate, write_rate = rates
     prompt = usage.get("prompt_tokens", 0) or 0
     cached = min(_cached_input_tokens(usage), prompt)   # cache hits are a subset of prompt tokens
-    return ((prompt - cached) * inp
+    written = min(cache_write_tokens(usage), prompt - cached) if write_rate else 0
+    return ((prompt - cached - written) * inp
             + cached * cached_rate
+            + written * write_rate
             + (usage.get("completion_tokens", 0) or 0) * outp)
 
 
@@ -957,11 +1039,23 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     if response_format["type"] != "json_schema":   # schema not enforced by the API — spell it out
         user_content += f"\n\nReturn JSON matching this schema:\n{json.dumps(schema)}"
 
+    # Explicit cache breakpoints, GPT-5.6 family and later only (#586, D195). `content` becomes an
+    # array of text parts so the prefix boundary can be marked on the wire; `prompt_cache_options.
+    # mode = "explicit"` then suppresses the implicit end-of-prompt breakpoint, which would
+    # otherwise keep writing the whole prompt — document text included — at 1.25x for a cache
+    # nothing ever reads back. Gated to the real OpenAI endpoint for the same reason
+    # `prompt_cache_key` is: a DeepSeek/Gemini-compat/local/OpenRouter server isn't guaranteed to
+    # ignore body fields it doesn't recognize. The schema-in-prompt append above can't collide with
+    # this — it only runs when `response_format` isn't `json_schema`, and the real OpenAI endpoint
+    # always uses `json_schema` (`_openai_response_format`).
+    cache_blocks = _openai_cache_blocks(prompt) if is_openai and catalog_cache_breakpoints(model_id) else None
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
-        {"role": "user", "content": user_content},
+        {"role": "user", "content": cache_blocks if cache_blocks is not None else user_content},
     ]
     body = {"model": model_id, "messages": messages}
+    if cache_blocks is not None:
+        body["prompt_cache_options"] = {"mode": "explicit"}
     # Gated to the real OpenAI endpoint (#562): only OpenAI documents `prompt_cache_key`, and
     # DeepSeek/Gemini-compat/local/OpenRouter servers aren't guaranteed to ignore an unknown
     # body field.
