@@ -543,7 +543,7 @@ def run_extractor_arm(arm: dict, vault: Path) -> ArmResult:
                         force=False, skip_warning=True, wait=backend not in BATCH_BACKENDS,
                         max_rate_limit_waits=arm.get("max_rate_limit_waits", 2),
                         concurrency=arm.get("concurrency"), no_finalize=True,
-                        verify=bool(arm.get("verify", False)))
+                        verify=bool(arm.get("verify", False)), benchmark_arm_id=arm["id"])
     try:
         with _in_vault(vault):
             summary = _quiet(ing.cmd_extract, ns, non_interactive=True)
@@ -558,7 +558,7 @@ def run_finalizer_arm(arm: dict, vault: Path) -> ArmResult:
     from watchdog.cmd import ingest as ing
     ns = SimpleNamespace(finalizer_model=arm["finalizer_model"],
                         finalizer_effort=arm.get("finalizer_effort"), estimate=False,
-                        skip_briefing=False)
+                        skip_briefing=False, benchmark_arm_id=arm["id"])
     try:
         with _in_vault(vault):
             out = _quiet(ing.cmd_finalize, ns)
@@ -593,7 +593,8 @@ def run_classifier_smoke(arm: dict, vault: Path, expected: dict[str, str]) -> Ar
     documents_total = _queue_doc_count(vault)
     ex_ns = SimpleNamespace(command="dig", extractor_model=arm["extractor_model"],
                             extractor_effort=None, estimate=False, force=False,
-                            skip_warning=True, wait=False, no_finalize=True, verify=False)
+                            skip_warning=True, wait=False, no_finalize=True, verify=False,
+                            benchmark_arm_id=arm["id"])
     try:
         with _in_vault(vault):
             ex_summary = _quiet(ing.cmd_extract, ex_ns, non_interactive=True)
@@ -602,7 +603,7 @@ def run_classifier_smoke(arm: dict, vault: Path, expected: dict[str, str]) -> Ar
                 return ArmResult(arm_id=arm["id"], stage="classifier", vault=vault, ok=True,
                                  doc_errors=_doc_errors(ex_summary), **outcome)
             fn_ns = SimpleNamespace(finalizer_model=arm["finalizer_model"], finalizer_effort=None,
-                                    estimate=False, skip_briefing=True)
+                                    estimate=False, skip_briefing=True, benchmark_arm_id=arm["id"])
             _quiet(ing.cmd_finalize, fn_ns)
     except SystemExit as e:
         return ArmResult(arm_id=arm["id"], stage="classifier", vault=vault, ok=False, error=str(e))
@@ -617,7 +618,7 @@ def run_classifier_sweep_arm(arm: dict, vault: Path, fixed: dict, expected: dict
     ex_ns = SimpleNamespace(command="dig", extractor_model=fixed["extractor_model"],
                             classifier_model=arm["classifier_model"], extractor_effort=None,
                             estimate=False, force=False, skip_warning=True, wait=False,
-                            no_finalize=True, verify=False)
+                            no_finalize=True, verify=False, benchmark_arm_id=arm["id"])
     try:
         with _in_vault(vault):
             ex_summary = _quiet(ing.cmd_extract, ex_ns, non_interactive=True)
@@ -626,7 +627,7 @@ def run_classifier_sweep_arm(arm: dict, vault: Path, fixed: dict, expected: dict
                 return ArmResult(arm_id=arm["id"], stage="classifier-sweep", vault=vault, ok=True,
                                  doc_errors=_doc_errors(ex_summary), **outcome)
             fn_ns = SimpleNamespace(finalizer_model=fixed["finalizer_model"], finalizer_effort=None,
-                                    estimate=False, skip_briefing=True)
+                                    estimate=False, skip_briefing=True, benchmark_arm_id=arm["id"])
             _quiet(ing.cmd_finalize, fn_ns)
     except SystemExit as e:
         return ArmResult(arm_id=arm["id"], stage="classifier-sweep", vault=vault, ok=False,

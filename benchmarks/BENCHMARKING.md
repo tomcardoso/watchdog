@@ -219,13 +219,21 @@ invalidates every comparison made against the earlier version. Review them (see 
 then:
 
 ```
-cd benchmarks/keys && shasum -a 256 *.yaml > keys-v<next>.sha256
+cd benchmarks/keys
+mkdir v<current> && cp *.yaml v<current>/ && git mv keys-v<current>.sha256 v<current>/
+# ...then edit the keys, and only then:
+shasum -a 256 *.yaml > keys-v<next>.sha256
 ```
 
 Cut a **new** version rather than re-hashing the current one (`keys/README.md` explains why), and
 update the `keys:` line in `benchmark.yaml` *and* any other config that pins a manifest —
 `selfconsistency.yaml` today — in the same change. `verify_freeze` exits on a manifest it can't
 find, so a rename that misses a config takes every benchmark run down until it's caught.
+
+Archive the outgoing version's **key files** alongside its manifest, as the first line above does
+(`v1/`, `v2/`). The manifest alone only proves an archived figure was scored against keys that
+hashed to some value; it can't show what those keys said. Add the new row to the version table in
+`keys/README.md` while you're there.
 
 ## Step 1 — verify the corpus
 

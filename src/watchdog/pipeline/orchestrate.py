@@ -20,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-from watchdog import model_client, skills_catalog
+from watchdog import model_client, skills_catalog, telemetry_db
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 from watchdog.cmd.live import LiveRegion
 from watchdog.pipeline import (
@@ -78,6 +78,20 @@ _usage: list[dict] | None = None
 # moment it completes, not just in the end-of-run `usage-<ts>.json`. None whenever `_usage` is.
 _usage_partial_path: Path | None = None
 
+# This run's id for the global telemetry store (#611) — the same `<ts>` used for
+# `usage-<ts>.partial.jsonl`, so a `calls` row is trivially joinable back to its JSON file. Set
+# by `_begin_usage_run` alongside `_usage_partial_path`; None whenever `_usage` is.
+_run_id: str | None = None
+
+# `benchmark_arm_id`/`config_snapshot` for the current run's telemetry rows (#611) — set by
+# `_begin_usage_run`, read by `_record_usage`. `_benchmark_arm_id` is None for an ordinary ingest
+# run and the arm id (e.g. from `benchmark.yaml`) for a `run_benchmark.py`-driven one, letting a
+# later query filter benchmark noise out of production estimates or drill into one arm's calls.
+# `_run_config_snapshot` is a small dict of the model/effort/budget knobs `run()`/`finalize()`
+# were called with — the config that shaped this run's calls, not re-read from disk.
+_benchmark_arm_id: str | None = None
+_run_config_snapshot: dict | None = None
+
 # Admission control's in-flight reservations (#563): sha -> estimated tokens, for a document that
 # has been admitted (or is mid-admission-check) but whose real usage hasn't landed in `_usage`
 # yet. Needed because `run()` fires every queued document's dispatch at once — `asyncio`'s
@@ -116,7 +130,8 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
                   filename: str | None = None, detail: str | None = None,
                   pruned: list[str] | None = None, failed: bool = False,
                   batch_meta: dict | None = None, rate_limit: dict | None = None,
-                  est_input_tokens: int | None = None) -> None:
+                  est_input_tokens: int | None = None, vault: Path | None = None,
+                  prompt_hash: str | None = None) -> None:
     """Append one call's usage to the run-scoped `_usage` accumulator, if one is active.
     Tolerates both Anthropic-style (`input_tokens`/`output_tokens`) and OpenAI-compatible
     (`prompt_tokens`/`completion_tokens`) usage dicts (D37) — the latter's cache-token fields
@@ -178,7 +193,15 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
     a per-model, per-call est/actual comparison possible at all
     (`ingest_setup._model_tokenizer_calibration`) — the run-level total alone can't be scoped to
     one model. Only set on `extract`/`extract-section` calls, the only tasks sectioning currently
-    cares about calibrating; every other task's record simply lacks the key, as before."""
+    cares about calibrating; every other task's record simply lacks the key, as before.
+
+    `vault`/`prompt_hash` (#611) feed the global telemetry store (`telemetry_db.record_call`) in
+    addition to this run's own `_usage`/JSON file — `vault` attributes the row (the store is
+    global, not per-vault, D50/#611), `prompt_hash` is a sha256 of the actual prompt text sent,
+    computed by `_call_model` (which has it in scope) and None for the batch-collection call site
+    (no live prompt at collection time). The telemetry write is best-effort: any failure is
+    caught and logged as a WARN via `_log`, never allowed to fail or slow down the ingest it's
+    observing."""
     if _usage is None:
         return
     u = usage or {}
@@ -195,10 +218,18 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         "cache_read_tokens": (u.get("cache_read_input_tokens")
                               or (u.get("prompt_tokens_details") or {}).get("cached_tokens")
                               or u.get("prompt_cache_hit_tokens") or 0),
-        "cache_write_tokens": u.get("cache_creation_input_tokens", 0) or 0,
+        # Cache-WRITE count, normalised the same way: Anthropic reports
+        # `cache_creation_input_tokens`; OpenAI's GPT-5.6 family and later nest it under
+        # `prompt_tokens_details.cache_write_tokens` (earlier families write for free and report
+        # nothing). Same lesson as the read count above (#495): read it here through the same
+        # helper `_openai_cost` bills from, so the log and the cost can't disagree (#586).
+        "cache_write_tokens": (u.get("cache_creation_input_tokens")
+                               or model_client.cache_write_tokens(u) or 0),
         "cost_usd": cost_usd, "attempts": attempts, "latency_s": latency_s, "effort": effort,
         "auth_mode": auth_mode, "filename": filename, "detail": detail, "end_ts": time.time(),
     }
+    if prompt_hash is not None:
+        record["prompt_hash"] = prompt_hash
     if u.get("duration_api_ms") is not None:
         record["api_ms"] = u["duration_api_ms"]
     if u.get("num_turns") is not None:
@@ -229,6 +260,13 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         # interleave with this write even under concurrent extraction.
         with open(_usage_partial_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    if vault is not None and _run_id is not None:
+        try:
+            telemetry_db.record_call(record, vault=vault, run_id=_run_id,
+                                     benchmark_arm_id=_benchmark_arm_id, prompt_hash=prompt_hash,
+                                     config_snapshot=_run_config_snapshot)
+        except Exception as e:
+            _log(vault, f"WARN telemetry_db write failed for task={task}: {e}")
 
 
 async def _call_model(*, task, prompt, schema, model=None, backend=None,
@@ -238,16 +276,25 @@ async def _call_model(*, task, prompt, schema, model=None, backend=None,
     """Thin wrapper around `model_client.acomplete_json` that also records this call's usage
     (A2) — every reasoning call in the orchestrator goes through here instead of the client
     directly, so telemetry can't silently miss a call site. `filename`/`detail` are passed
-    through to `_record_usage` unchanged (#247). `vault` (D124) is used only to log a WARN
-    line to `ingest.log` when the call's JSON carried unexpected keys that were pruned rather
-    than failing validation — pass it whenever a vault is in scope. `est_input_tokens` (#606 Part
+    through to `_record_usage` unchanged (#247). `vault` (D124) is used to log a WARN line to
+    `ingest.log` when the call's JSON carried unexpected keys that were pruned rather than
+    failing validation, and (#611) to attribute this call's row in the global telemetry store —
+    pass it whenever a vault is in scope. `est_input_tokens` (#606 Part
     B) is likewise passed straight through to `_record_usage`, when the caller has one — see its
     own docstring.
 
     A `ModelError` that carries usage/cost (D125 — the JSON-validation-failure and truncation
     paths in `acomplete_json`, the only ones where an attempt actually reached the model) is
     still recorded, flagged `failed=True`, before re-raising unchanged — every attempt spent
-    real tokens even though none produced a usable result, and that spend used to vanish."""
+    real tokens even though none produced a usable result, and that spend used to vanish.
+
+    `prompt_hash` (#611) is a sha256 of `prompt` itself, computed once here rather than in
+    `_record_usage` since this is the one place the actual rendered prompt text is in scope.
+    `prompt` is normally a string, but a caller may instead pass a list of Anthropic content
+    blocks (A1, cache_control) — `json.dumps` gives a stable, hashable text form for that shape
+    too, without needing to special-case it."""
+    prompt_text = prompt if isinstance(prompt, str) else json.dumps(prompt, sort_keys=True)
+    prompt_hash = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()
     try:
         r = await model_client.acomplete_json(task=task, prompt=prompt, schema=schema, model=model,
                                               backend=backend, max_retries=max_retries, effort=effort)
@@ -256,12 +303,12 @@ async def _call_model(*, task, prompt, schema, model=None, backend=None,
             _record_usage(task, model=e.model, backend=e.backend, usage=e.usage, cost_usd=e.cost_usd,
                          attempts=e.attempts, effort=effort, auth_mode=e.auth_mode,
                          filename=filename, detail=detail, failed=True,
-                         est_input_tokens=est_input_tokens)
+                         est_input_tokens=est_input_tokens, vault=vault, prompt_hash=prompt_hash)
         raise
     _record_usage(task, model=r.model, backend=r.backend, usage=r.usage, cost_usd=r.cost_usd,
                  attempts=r.attempts, latency_s=r.latency_s, effort=effort, auth_mode=r.auth_mode,
                  filename=filename, detail=detail, pruned=r.pruned, rate_limit=r.rate_limit,
-                 est_input_tokens=est_input_tokens)
+                 est_input_tokens=est_input_tokens, vault=vault, prompt_hash=prompt_hash)
     if r.pruned and vault is not None:
         _log(vault, f"WARN {filename or task}: pruned unexpected JSON key(s) from model "
                     f"output: {', '.join(r.pruned)}")
@@ -437,13 +484,20 @@ def _consolidate_orphaned_usage(vault: Path) -> None:
         partial.unlink(missing_ok=True)
 
 
-def _begin_usage_run(vault: Path) -> None:
+def _begin_usage_run(vault: Path, *, benchmark_arm_id: str | None = None,
+                     config_snapshot: dict | None = None) -> None:
     """Start this run's usage accumulation (#407): first consolidate any orphaned partial from
     a previous aborted run, then open this run's own `usage-<ts>.partial.jsonl` that
     `_record_usage` appends each call's record to as it completes. Called by every top-level
     entry point — `run()` and a standalone `finalize()` — in place of the bare `_usage = []`
-    this replaced."""
-    global _usage, _usage_partial_path
+    this replaced.
+
+    `benchmark_arm_id`/`config_snapshot` (#611) are stamped onto every `calls` row this run
+    writes to the global telemetry store — `run()`/`finalize()` build `config_snapshot` from
+    their own parameters and pass a benchmark arm's id through when `run_benchmark.py` is the
+    caller, both threaded no further than module-globals here since a single run/finalize call
+    is the same one-run-per-process scope `_usage` itself already relies on."""
+    global _usage, _usage_partial_path, _run_id, _benchmark_arm_id, _run_config_snapshot
     _consolidate_orphaned_usage(vault)
     _usage = []
     _admission_reserved.clear()
@@ -451,6 +505,9 @@ def _begin_usage_run(vault: Path) -> None:
     usage_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     _usage_partial_path = usage_dir / f"usage-{ts}.partial.jsonl"
+    _run_id = ts
+    _benchmark_arm_id = benchmark_arm_id
+    _run_config_snapshot = config_snapshot
 
 
 def _end_usage_run(vault: Path, est_input_tokens: int | None = None) -> tuple[str | None, dict | None]:
@@ -464,7 +521,7 @@ def _end_usage_run(vault: Path, est_input_tokens: int | None = None) -> tuple[st
     mirrored onto the returned `totals` so both the persisted file and the in-memory summary
     agree. The two `finalize()` exit points never extract anything, so they call this with the
     default `None` and no such field appears."""
-    global _usage, _usage_partial_path
+    global _usage, _usage_partial_path, _run_id, _benchmark_arm_id, _run_config_snapshot
     path = _write_usage(vault, _usage, est_input_tokens=est_input_tokens)
     totals = _usage_totals(_usage) if _usage else None
     if totals is not None and est_input_tokens is not None:
@@ -473,6 +530,9 @@ def _end_usage_run(vault: Path, est_input_tokens: int | None = None) -> tuple[st
         _usage_partial_path.unlink(missing_ok=True)
     _usage_partial_path = None
     _usage = None
+    _run_id = None
+    _benchmark_arm_id = None
+    _run_config_snapshot = None
     return path, totals
 
 
@@ -1528,7 +1588,7 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
         _record_usage("extract", model=model, backend=backend, usage=item["usage"],
                       cost_usd=item.get("cost_usd"), effort=effort, auth_mode="api-key",
                       filename=filename, detail=f"pages 1–{page_count}", batch_meta=batch_meta,
-                      est_input_tokens=est_input_tokens)
+                      est_input_tokens=est_input_tokens, vault=vault)
     if not item["ok"]:
         text = _pages_text(pf["pages"])
         # Off the event loop — see the comment in `_simple_extract`.
@@ -2540,7 +2600,8 @@ def pending_finalization(vault: Path) -> dict:
 async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None = None,
                    results: list | None = None, post_effort: str | None = None,
                    post_backend: str | None = None, force_shas: list[str] | None = None,
-                   skip_briefing: bool = False, finalizer_overrides: dict | None = None) -> dict:
+                   skip_briefing: bool = False, finalizer_overrides: dict | None = None,
+                   benchmark_arm_id: str | None = None) -> dict:
     """Reconcile, then commit every staged extraction to the vault, then run (or re-run)
     post-ingest over the current on-disk state: file contradictions, synthesize multi-mention
     entities, reconcile the timeline, and write the briefing/hot.md/log.
@@ -2578,11 +2639,19 @@ async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None 
     `finalizer_overrides` (#433) routes individual post-ingest stages to a different model than
     `post_model`/`post_backend` — see `_reconcile_pre_commit` and `_post_ingest` for the keys it
     accepts and how each falls back when absent.
+
+    `benchmark_arm_id` (#611) tags this run's telemetry rows in the global store when
+    `run_benchmark.py` is the caller (via `cmd_finalize`); None for an ordinary standalone
+    `watchdog bark`. Ignored when this call is nested inside `run()` (`standalone_usage` False
+    below) — `run()`'s own `_begin_usage_run` call already set the tag for the whole run,
+    extraction and finalize tail alike.
     """
     global _usage
     standalone_usage = _usage is None   # not nested inside `run` — this call owns the usage file
     if standalone_usage:
-        _begin_usage_run(vault)
+        config_snapshot = {"post_model": post_model, "post_effort": post_effort,
+                           "finalizer_overrides": finalizer_overrides}
+        _begin_usage_run(vault, benchmark_arm_id=benchmark_arm_id, config_snapshot=config_snapshot)
 
     shas = _pending_commits(vault, force_shas=force_shas)
     rec_result: dict = {"merged": [], "remap": {}, "contradictions": [], "error": None}
@@ -2631,7 +2700,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
               skip_finalize: bool = False, force: bool = False,
               skip_briefing: bool = False, finalizer_overrides: dict | None = None,
               resume_hint: str = "watchdog dig", verify: bool = False,
-              extract_token_budget: int | None = None) -> dict:
+              extract_token_budget: int | None = None,
+              benchmark_arm_id: str | None = None) -> dict:
     """Extract every queued document (bounded by `concurrency`), then post-ingest.
 
     `extract_model` drives extraction (whole-doc + section, and the sectioned-doc digest); `post_model` drives
@@ -2672,9 +2742,17 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     `claude-agent-sdk` (Claude subscription auth), which never reports it, making this the only
     lever on that path. Not consulted on a batch backend, which has no per-document dispatch loop
     to gate.
+    `benchmark_arm_id` (#611) tags this run's telemetry rows in the global store — set by
+    `run_benchmark.py` via `cmd_extract`/`cmd_ingest`, None for an ordinary ingest.
     """
     queue_dir = vault / ".watchdog" / "queue"
     shas = [f.stem for f in sorted(queue_dir.glob("*.json"))] if queue_dir.exists() else []
+    config_snapshot = {
+        "extract_model": extract_model, "extract_effort": extract_effort,
+        "extract_backend": extract_backend, "post_model": post_model, "post_effort": post_effort,
+        "classify_model": classify_model, "classify_pages": classify_pages,
+        "extract_token_budget": extract_token_budget, "verify": verify, "concurrency": concurrency,
+    }
 
     global _board, _usage, _resume_hint
     _resume_hint = resume_hint
@@ -2692,7 +2770,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             raise ValueError(f"the verification pass is not supported with {extract_backend}: it "
                              f"re-reads a document immediately after extracting it, and a batch's "
                              f"results arrive hours later in a separate run")
-        _begin_usage_run(vault)
+        _begin_usage_run(vault, benchmark_arm_id=benchmark_arm_id, config_snapshot=config_snapshot)
         brief = _read_brief(vault)
         batch_out = await _run_batch(vault, shas, brief, extract_model, pinned_skill,
                                      extract_effort, concurrency, classify_model, classify_pages,
@@ -2711,7 +2789,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         # in-flight document, finished/failed lines scrolling above. Auto-disables off a TTY,
         # where it degrades to the previous append-only output.
         _board = LiveRegion()
-        _begin_usage_run(vault)
+        _begin_usage_run(vault, benchmark_arm_id=benchmark_arm_id, config_snapshot=config_snapshot)
         # Admission control (#563): every queued document's pre-flight output is read once, up
         # front — cheap (sync, local JSON only, no model call) — and reused for two things: the
         # per-document token estimate `_admit` gates on (`section.est_tokens_from_pages`, the same

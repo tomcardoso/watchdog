@@ -36,9 +36,13 @@ _PRICING = {
     for m in _CATALOG["models"] if m["provider"] == "anthropic"
 }
 
-# OpenAI-compatible pricing, USD/token: (input, output, cached_input).
+# OpenAI-compatible pricing, USD/token: (input, output, cached_input, cache_write). `cache_write`
+# is 0.0 for the vast majority — every provider and family that writes to its prompt cache for
+# free. Only the GPT-5.6 family and later charge for a write (1.25x uncached input, #586/D195),
+# and only those entries declare the field.
 _OPENAI_PRICING = {
-    m["id"]: (float(m["input"]), float(m["output"]), float(m["cached_input"]))
+    m["id"]: (float(m["input"]), float(m["output"]), float(m["cached_input"]),
+              float(m.get("cache_write", 0.0)))
     for m in _CATALOG["models"] if m["provider"] != "anthropic"
 }
 
@@ -109,6 +113,19 @@ def fallback_is_reasoning(model_id: str) -> bool:
         if mid.startswith(prefix):
             return reasoning
     return False
+
+
+def catalog_cache_breakpoints(model_id: str) -> bool:
+    """Whether a model needs EXPLICIT prompt-cache breakpoints on the wire (#586, D195) — true
+    for the OpenAI GPT-5.6 family and later, false for everything else, including every
+    uncatalogued id.
+
+    False is the correct default in both directions, which is why this returns a bool rather than
+    the `None`-for-uncatalogued shape the other capability lookups use: an earlier-family OpenAI
+    model caches by longest-prefix fallback with no breakpoint sent, and a local/OpenRouter model
+    behind an arbitrary runner may reject an unknown body field outright."""
+    entry = _MODELS.get(model_id.lower())
+    return bool(entry.get("cache_breakpoints", False)) if entry else False
 
 
 def catalog_effort_levels(model_id: str) -> set[str] | None:

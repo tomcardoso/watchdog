@@ -15,9 +15,11 @@ than prose) and non-paginated files (.txt/.csv/.md) are a single "page"
 regardless of size. Token estimation is a cheap chars/4 heuristic.
 
 Splitting:
-  * paginated documents (page_count > 1) split on **page boundaries** —
-    pages-per-section derived from the document's average density — so page
-    citations are preserved.
+  * paginated documents (page_count > 1) split on **page boundaries** — pages
+    packed greedily against their own estimated token counts, not a uniform
+    page count derived from the document's average density (#596) — so page
+    citations are preserved and a section's size respects the budget wherever
+    in the document it falls.
   * non-paginated documents split the single page's text into **character
     windows**; citations for that content carry no page number.
 
@@ -215,24 +217,53 @@ def est_tokens_from_pages(pages: list) -> int:
     return sum(est_tokens(p.get("markdown", "")) for p in pages)
 
 
-def plan_ranges(page_count: int, size: int, overlap: int) -> list[tuple[int, int]]:
-    """Return 1-based inclusive (start, end) page ranges covering the document.
+def plan_ranges(page_tokens: list[int], budget: int, overlap: int) -> list[tuple[int, int]]:
+    """Return 1-based inclusive (start, end) page ranges covering the document, packed greedily
+    against each page's own estimated token count (`page_tokens[i - 1]` is page `i`'s).
 
-    Consecutive ranges overlap by `overlap` pages so a table straddling a
-    boundary is wholly visible in at least one section.
+    Walks pages in reading order and closes a section as soon as adding the next page would push
+    it past `budget`, rather than cutting uniform ranges sized from the document's *average*
+    density (#596). Density varies up to 4.6x inside a single document in the benchmark corpus, so
+    one average-derived pages-per-section figure is wrong in both directions at once: dense
+    stretches overshoot the budget (pushing output toward the ceiling, risking a truncation that
+    costs an extra re-split pair of calls to recover from), sparse ones undershoot it (producing
+    more sections than the budget requires, each re-paying the full prompt overhead — schema,
+    record skill, harvested candidates, carry-forward). Greedy packing needs nothing the planner
+    didn't already have: the per-page counts are right there in the queue file.
+
+    A page whose own estimate exceeds `budget` stands alone as its own section. Sections split on
+    page boundaries, so there is nothing smaller to cut, and a section must always advance.
+
+    Consecutive ranges overlap by up to `overlap` estimated tokens — whole trailing pages of the
+    section just closed, replayed at the head of the next — so a table straddling a boundary is
+    wholly visible in at least one section. Overlap is accounted in tokens for the same reason the
+    sections are: a page-count overlap derived from the average replays a wildly varying amount of
+    text depending on where in the document it lands. It can never consume a whole section — the
+    next section always starts at least one page past the previous section's start.
     """
+    page_count = len(page_tokens)
     if page_count <= 0:
         return []
-    size = max(1, size)
-    overlap = max(0, min(overlap, size - 1))  # guard against non-advancing ranges
+    budget = max(1, budget)
+    overlap = max(0, overlap)
     ranges: list[tuple[int, int]] = []
     start = 1
     while start <= page_count:
-        end = min(start + size - 1, page_count)
+        end = start                                  # first page always joins, however dense
+        total = page_tokens[start - 1]
+        while end < page_count and total + page_tokens[end] <= budget:
+            total += page_tokens[end]
+            end += 1
         ranges.append((start, end))
         if end >= page_count:
             break
-        start = end - overlap + 1
+        # Back the next section's start up over whole trailing pages while they fit the overlap
+        # allowance, never past `start` — that guard is what makes the loop advance.
+        next_start, carried = end + 1, 0
+        while next_start - 1 > start and carried + page_tokens[next_start - 2] <= overlap:
+            carried += page_tokens[next_start - 2]
+            next_start -= 1
+        start = next_start
     return ranges
 
 
@@ -298,12 +329,12 @@ def run(vault: Path, sha256: str, *, force_budget: int | None = None,
     sections = []
 
     if page_count > 1 and len(pages) > 1:
-        # Paginated: derive pages-per-section from average density, split on pages.
-        avg = max(1, total_tokens // page_count)
-        pages_per = max(1, round(budget / avg))
-        overlap_pages = min(pages_per - 1, max(0, round(overlap_tokens / avg)))
+        # Paginated: pack pages into sections greedily against their own token counts (#596), so a
+        # dense stretch gets fewer pages and a sparse one more, instead of every section getting
+        # the same page count cut from the document-wide average.
         by_num = {p.get("page"): p.get("markdown", "") for p in pages}
-        for idx, (start, end) in enumerate(plan_ranges(page_count, pages_per, overlap_pages), start=1):
+        page_tokens = [est_tokens(by_num.get(n, "")) for n in range(1, page_count + 1)]
+        for idx, (start, end) in enumerate(plan_ranges(page_tokens, budget, overlap_tokens), start=1):
             parts = [f"<!-- PAGE {n} -->\n\n{by_num.get(n, '')}" for n in range(start, end + 1)]
             path = tmp / f"section_{sha256}_{idx:02d}.md"
             path.write_text("\n\n---\n\n".join(parts), encoding="utf-8")

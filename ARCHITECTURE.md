@@ -463,6 +463,13 @@ bark` able to recommit it (its sha is already a registry key, and finalize's own
 into overlapping page-range sections, extracted **one at a time in reading order** with a
 carry-forward block in each section's prompt, then combined by `merge.merge_extractions`
 into a single extraction JSON that goes through the same post-flight / `write_vault` path.
+Pages are packed into those sections **greedily against their own estimated token counts**
+(`section.plan_ranges`, D196, #596) — walk the pages in order, close a section when the next page
+would exceed the budget — rather than cutting uniform page ranges sized from the document's
+average density, which overshoots the budget on dense stretches and under-fills on sparse ones.
+The overlap between consecutive sections is accounted the same way: whole trailing pages replayed
+up to `section_overlap_tokens`. A page denser than the whole budget stands alone (page boundaries
+are the smallest unit a section can cut on), and every section still advances at least one page.
 The threshold and per-section budget are **provider-aware** (D89, #321): rather than fixed
 numbers they default to fractions (0.6 / 0.3) of the extraction model's context window
 (`model_client.context_window` — Claude 200K, DeepSeek V4 1M, Gemini 2.5 1M, etc.), so a large-window model
@@ -472,7 +479,7 @@ accept an explicit `section_token_threshold`/`section_token_budget` integer as a
 escape hatch (a pinned integer does not rescale when the extraction model changes).
 The input-window default is **additionally capped by the output ceiling** for a backend that
 enforces a fixed `max_tokens` and can't paginate past it (openai, gemini — D104, #343). The
-ceiling itself is one per-model wire envelope (`model_client._wire_max_tokens`, D193, #598) —
+ceiling itself is one per-model wire envelope (`model_client._wire_max_tokens`, D197, #598) —
 the catalogued `max_output_tokens` cap under a 10% headroom, task- and effort-independent, with an
 uncatalogued id resolving through a documented per-family cap (`max_output_tokens_fallback`, shaped
 like `context_window_fallback`) before a conservative default — and
@@ -483,7 +490,7 @@ inverts an affine fit of *total* output — chain-of-thought plus the visible JS
 these backends both share the same wire-enforced envelope — against input size (D187, #542); the
 fixed cost and marginal rate are still looked up per reasoning `effort`, since reasoning volume
 scales with input very differently at each effort level, and the result is still clamped to a
-measured-range-bounded cap (D193 — pending a per-model per-effort sweep), since the underlying
+measured-range-bounded cap (D197 — pending a per-model per-effort sweep), since the underlying
 fits are weak and easily extrapolated past what was actually observed.
 Finally, the threshold and budget are divided by `model_client.tokenizer_ratio` (D180, #574):
 Claude 4.7+ models (Opus 4.8, Sonnet 5) use a newer tokenizer that produces ~30% more real tokens
@@ -527,22 +534,36 @@ spec in `extract_instructions.md`) — zero extra model calls, full-text groundi
 thus write `document.summary` at the extractor tier; they differ only in grounding — full text
 inline vs. the merged `key_facts` post-merge — because no single call can hold a sectioned doc.
 
-**Prompt caching (`claude-api` only).** `build_extract_prompt`/`build_section_prompt` return a
-list of Anthropic content blocks instead of one string: a stable block (instructions + brief,
-constant for the whole run), a skill block (constant per document type, carrying the
-`cache_control` breakpoint), then a volatile block (per-document data, never cached). Every
-extraction call sharing a skill within a run re-pays only the 0.1× cache-read rate for the
-stable+skill prefix instead of full price. Only `_api_complete_async` (the metered-key
-backend) understands blocks; `claude-agent-sdk` and the OpenAI-compatible backends flatten
-them to plain text (`model_client._flatten_prompt`) since neither exposes a cache knob to us
-(D51). Gemini's own implicit cache, confirmed separately (D183), keys on exact-request
-identity rather than shared-prefix identity — the flattened design has no lever to pull there
-even in principle, not just for lack of a `cache_control` equivalent. On the real OpenAI
-endpoint, the flattened call still sends a `prompt_cache_key`
+**Prompt caching (`claude-api` and OpenAI GPT-5.6+).** `build_extract_prompt`/
+`build_section_prompt`/`build_digest_prompt` return a list of Anthropic content blocks instead of
+one string: a stable block (instructions + brief, constant for the whole run), a skill block
+(constant per document type, carrying the `cache_control` breakpoint), then a volatile block
+(per-document data, never cached). Every call sharing a skill within a run re-pays only the
+cache-read rate for the stable+skill prefix instead of full price.
+
+Two backends honour that breakpoint on the wire, by different mechanisms. `_api_complete_async`
+(the metered-key Claude backend) sends the blocks as-is, at the 0.1× cache-read rate. On the real
+OpenAI endpoint, a model the catalog marks `cache_breakpoints: true` — the GPT-5.6 family and
+later — gets the same blocks re-rendered as OpenAI text parts with `prompt_cache_breakpoint` on
+the first breakpoint's block, plus `prompt_cache_options: {"mode": "explicit"}`
+(`model_client._openai_cache_blocks`, D195/#586). That family places one implicit breakpoint at
+the latest user message and does *not* fall back to the longest matching unmarked prefix before
+it, so an unmarked request — the whole prompt being one user message — can only hit on a
+byte-identical whole-prompt repeat. Explicit mode also stops the implicit breakpoint from writing
+the document text at the family's 1.25× write rate for a cache nothing reads back; that write rate
+is priced from the catalog's `cache_write` field, and the count comes back as
+`prompt_tokens_details.cache_write_tokens`.
+
+Everything else flattens to plain text (`model_client._flatten_prompt`). `claude-agent-sdk`
+exposes no cache knob (D51). Earlier OpenAI families need no breakpoint — their longest-prefix
+fallback is still in effect — but they do get a `prompt_cache_key`
 (`model_client._prompt_cache_key`, D181/#562) derived from the position of the first
-`cache_control` breakpoint — a routing hint OpenAI's own caching docs say is required for
-reliable matching on newer model families, not a `cache_control`-equivalent guarantee.
-`cache_read_input_tokens` is surfaced in the usage telemetry (§12) to verify hits.
+`cache_control` breakpoint, as does GPT-5.6+; it is a routing hint OpenAI's docs say is required
+for reliable matching on newer families, not a `cache_control`-equivalent guarantee. Gemini's own
+implicit cache, confirmed separately (D183), keys on exact-request identity rather than
+shared-prefix identity — the flattened design has no lever to pull there even in principle.
+`cache_read_input_tokens`/`cache_write_tokens` are surfaced in the usage telemetry (§12) to verify
+hits.
 
 **Candidate harvest (Tier 0, #361/D123).** Benchmark hand-scoring found extraction misses
 "buried" facts — a lone sentence after a table, a table row, a one-line disclosure — even on
@@ -1083,7 +1104,10 @@ registry/
   usage/usage-<ts>.json     per-run model-call token/cost/latency telemetry (D50, D86, D102);
                             `totals.est_input_tokens` (D135), present only when the run actually
                             extracted documents, is the naive chars/4 estimate for them — the
-                            input tokens-in calibration compares against `totals.input_tokens`
+                            input tokens-in calibration compares against `totals.input_tokens`.
+                            Every call recorded here is also written to a global, cross-vault
+                            SQLite store at `~/.watchdog/telemetry.db` (`telemetry_db.py`, D193) —
+                            additive, not a replacement; the JSON files above stay authoritative
   usage/usage-<ts>.partial.jsonl  in-progress run's calls, one JSON line per completed call —
                             folded into a real usage-<ts>.json and removed at the *next* run's
                             start if the run that wrote it never reached a clean exit (D132)
@@ -1178,7 +1202,7 @@ completed purge, and the CLI hint says so.
   request — ~11.2K tokens per call otherwise, D145), `claude-api` (raw Messages + structured
   outputs, called via the Anthropic SDK's streaming helper rather than a single non-streaming
   request — required once `max_tokens` exceeds the SDK's own ~21,333 non-streaming-timeout
-  guard, which the catalog-derived envelope now routinely does, D193), or the OpenAI-compatible
+  guard, which the catalog-derived envelope now routinely does, D197), or the OpenAI-compatible
   `openai`/`deepseek`/`gemini`/`local`/`openrouter` backends
   (Chat Completions over httpx, one provider each via base URL; D37, D94, D139) — by auth mode
   and per-task policy, validates the JSON, retries on the same model on failure, and reports

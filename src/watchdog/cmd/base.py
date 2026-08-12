@@ -451,6 +451,37 @@ def _perf_cpu_count() -> int:
     return os.cpu_count() or 4
 
 
+def _detected_install_manager() -> str:
+    """Best-effort detection of which packaging tool manages this watchdog install, so a
+    printed follow-up command for adding an optional extra afterwards (`pipx inject` vs
+    `uv tool install --with`) matches how it was actually installed (#610). Inspects
+    sys.executable's private-venv path — pipx: `.../pipx/venvs/<pkg>/bin/python`, uv tool:
+    `.../uv/tools/<pkg>/bin/python` — and defaults to pipx, the long-documented default,
+    when neither layout is recognized."""
+    parts = Path(sys.executable).parts
+    if "uv" in parts and "tools" in parts:
+        return "uv"
+    return "pipx"
+
+
+def _extra_install_cmd(extra: str) -> str:
+    """Command that adds an optional extra (e.g. "playwright", "gliner") to an
+    already-installed watchdog, matching whichever tool installed it. Re-running `uv tool
+    install` with a new `--with` picks it up on its own — confirmed against uv 0.12 — so no
+    `--reinstall`/`--force` flag is needed, mirroring how plain `pipx inject` needs none either."""
+    if _detected_install_manager() == "uv":
+        return f"uv tool install watchdog-intel --with {extra}"
+    return f"pipx inject watchdog-intel {extra}"
+
+
+def _venv_bin(name: str) -> str:
+    """Path to `name` inside watchdog's own install venv if it's there — pipx and uv tool both
+    put an injected extra's console scripts alongside watchdog's own interpreter, off PATH —
+    else the bare name, so a plain PATH lookup still has a chance."""
+    candidate = Path(sys.executable).parent / name
+    return str(candidate) if candidate.exists() else name
+
+
 def _render_template(filename: str, **vars: str) -> str:
     text = (_TEMPLATES_DIR / filename).read_text()
     for key, value in vars.items():

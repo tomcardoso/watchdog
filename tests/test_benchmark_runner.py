@@ -599,6 +599,18 @@ def test_run_extractor_arm_calls_cmd_extract_non_interactively(monkeypatch, tmp_
     assert captured.get("non_interactive") is True
 
 
+def test_run_extractor_arm_tags_ns_with_benchmark_arm_id(monkeypatch, tmp_path):
+    """#611: every arm's telemetry should be identifiable as a benchmark run, and as this arm
+    specifically — `cmd_extract` reads `ns.benchmark_arm_id` and threads it down to the global
+    telemetry store."""
+    captured = {}
+    monkeypatch.setattr(wd_ingest, "cmd_extract",
+                        lambda ns, **kw: captured.update(benchmark_arm_id=ns.benchmark_arm_id) or
+                        {"cancelled": False, "results": []})
+    rb.run_extractor_arm({"id": "sonnet-high", "extractor_model": "sonnet"}, tmp_path)
+    assert captured["benchmark_arm_id"] == "sonnet-high"
+
+
 @pytest.mark.parametrize("arm, expected", [
     ({"id": "a", "extractor_model": "haiku", "verify": True}, True),
     ({"id": "a", "extractor_model": "haiku", "verify": False}, False),
@@ -751,6 +763,16 @@ def test_run_finalizer_arm_passes_arm_knobs_through(monkeypatch, tmp_path):
     assert result.ok is True
     assert captured["finalizer_model"] == "gemini:gemini-3.1-flash-lite"
     assert captured["finalizer_effort"] is None
+
+
+def test_run_finalizer_arm_tags_ns_with_benchmark_arm_id(monkeypatch, tmp_path):
+    captured = {}
+    def _capture(ns):
+        captured["benchmark_arm_id"] = ns.benchmark_arm_id
+    monkeypatch.setattr(wd_ingest, "cmd_finalize", _capture)
+
+    rb.run_finalizer_arm({"id": "haiku", "finalizer_model": "haiku"}, tmp_path)
+    assert captured["benchmark_arm_id"] == "haiku"
 
 
 def test_run_finalizer_arm_records_failure(monkeypatch, tmp_path):

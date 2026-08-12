@@ -4,9 +4,9 @@
 # OCR pass. OCRing the scan first and drafting from that would bake the pipeline's own OCR errors
 # into the key: anything the OCR mangles would be absent from the key, the extractor would never
 # be scored on it, and every condition would "pass". That is the correlation failure mode #361
-# warns about, one stage earlier. So the key records what is ON THE PAGE, and where the text layer
-# is corrupt the `item`/`quote` split below records both the truth and the damage (see the comment
-# above `M1.1`).
+# warns about, one stage earlier. So the key records what is ON THE PAGE, and the OCR hazards are
+# enumerated in `ocr_hazards` below so scoring can tell an OCR failure apart from an extraction
+# failure.
 
 document:
   file: "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021.pdf"
@@ -15,7 +15,7 @@ document:
   text_layer: "NONE — court-stamped scan, requires OCR"
   doc_type: court order (CCAA Initial Order)
   date: 2021-02-01
-  court_file: "CV-21-___656040___-00CL (the digits are typed into blank ruled lines on the form)"
+  court_file: "CV-21-___656040___-00CL (typed into blank rules on the form — see ocr_hazards)"
   expected_skill: bankruptcy
   expected_skill_rationale: >
     A CCAA initial order. `court-documents` explicitly redirects: "for bankruptcy or
@@ -252,11 +252,56 @@ facts:
 
 contradictions: []
 
+# OCR HAZARDS — the point of this document in the benchmark.
+# These are scanned-page features that a text-extraction or OCR pass can plausibly mangle. When
+# scoring, check these FIRST: if a condition misses a fact anchored to one of these, establish
+# whether the OCR surfaced the text at all before charging it to the extractor.
+ocr_hazards:
+  - id: H1
+    hazard: "A red Superior Court of Justice seal is stamped over the left margin of page 1, overlapping the case-title text."
+    page: 1
+    risk: "OCR may drop, garble, or hallucinate characters where the seal overlaps the printed text."
+  - id: H2
+    hazard: >
+      The court file number is TYPED INTO BLANK RULED LINES on the form: "Court File No.
+      CV-21-___656040___-00CL". The digits sit between underscores/rules.
+    pages: [1, 17]
+    risk: >
+      OCR commonly renders the rules as characters or drops them, producing variants like
+      "CV-21-656040-00CL" or "CV-21- 656040 -00CL". This is the likely origin of the format
+      variance seen in the First Report. An extractor that resolves all variants to ONE court-file
+      entity is doing the right thing; one that creates several is not.
+  - id: H3
+    hazard: "A handwritten wet signature of Chief Justice G.B. Morawetz appears above his printed name."
+    page: 16
+    risk: "OCR may emit nothing, or noise characters, where the signature is. The printed name below it should still be recoverable."
+  - id: H4
+    hazard: >
+      A bilingual court registry stamp: "ENTERED AT / INSCRIT À TORONTO — ON / BOOK NO: — LE / DANS
+      LE REGISTRE NO:", with the date "FEB 0 1 2021" and handwritten registrar initials after
+      "PER / PAR:".
+    page: 16
+    risk: >
+      Two languages interleaved, a date with irregular spacing ("FEB 0 1 2021"), and handwriting.
+      A high-value target: this stamp is the proof the order was actually entered.
+  - id: H5
+    hazard: "THE BACKSHEET (page 17) IS ROTATED 90 DEGREES — the entire page reads sideways."
+    page: 17
+    risk: >
+      THE SINGLE BIGGEST HAZARD IN THE CORPUS. If the OCR does not auto-rotate, page 17 yields
+      nothing or gibberish — and page 17 is the ONLY place in this document where the applicant's
+      law firm and its four named lawyers appear. A condition that returns no counsel for this
+      document has almost certainly hit a rotation failure, not a reasoning failure. Check the chew
+      output for page 17 before scoring this against any extractor.
+  - id: H6
+    hazard: "Email addresses and LSO numbers on the sideways backsheet (djmiller@tgf.ca, LSO# 344393P, etc.)."
+    page: 17
+    risk: "Alphanumeric strings with punctuation, rotated. Compounding H5. Expect character-level errors even if rotation is handled."
+
 must_not_miss:
-  # The backsheet (page 17) is rotated 90° in the source PDF. The chew auto-rotates it and
-  # renders the whole page, but with character-level damage: `item` below carries the TRUE
-  # values read from the source PDF, `quote` carries what the OCR text layer actually
-  # produced, and two of them diverge (M5K->MSK, 69993I->699931). The divergence is
+  # `item` below carries the TRUE backsheet values read from the source PDF; `quote`
+  # carries what the OCR text layer actually produced, which corrupts two of them
+  # (M5K->MSK, 69993I->699931) exactly as ocr_hazards H5/H6 predict. The divergence is
   # deliberate — do NOT reconcile them. Per README, faithfully extracting the wrong
   # value is correct extraction and is not scored as a miss.
   - id: M1.1
@@ -272,9 +317,9 @@ must_not_miss:
     page: 17
     location: backsheet — ROTATED 90°
     why: >
-      Last page, rotated in the source, and the only place the applicant's counsel is named.
-      The chew does surface this page; what it damages is characters within it (see the note
-      above M1.1), so this is scored as ordinary recall of stated text.
+      Last page, rotated, and the only place the applicant's counsel is named. This is the
+      highest-value must-not-miss item in the corpus precisely because it sits behind an OCR
+      rotation failure. See ocr_hazards H5.
 
   - id: M1.2
     item: >
@@ -284,9 +329,9 @@ must_not_miss:
     page: 17
     location: backsheet — ROTATED 90°
     why: >
-      Last page, rotated in the source, and the only place the applicant's counsel is named.
-      The chew does surface this page; what it damages is characters within it (see the note
-      above M1.1), so this is scored as ordinary recall of stated text.
+      Last page, rotated, and the only place the applicant's counsel is named. This is the
+      highest-value must-not-miss item in the corpus precisely because it sits behind an OCR
+      rotation failure. See ocr_hazards H5.
 
   - id: M1.3
     item: >
@@ -296,9 +341,9 @@ must_not_miss:
     page: 17
     location: backsheet — ROTATED 90°
     why: >
-      Last page, rotated in the source, and the only place the applicant's counsel is named.
-      The chew does surface this page; what it damages is characters within it (see the note
-      above M1.1), so this is scored as ordinary recall of stated text.
+      Last page, rotated, and the only place the applicant's counsel is named. This is the
+      highest-value must-not-miss item in the corpus precisely because it sits behind an OCR
+      rotation failure. See ocr_hazards H5.
 
   - id: M1.4
     item: >
@@ -308,9 +353,9 @@ must_not_miss:
     page: 17
     location: backsheet — ROTATED 90°
     why: >
-      Last page, rotated in the source, and the only place the applicant's counsel is named.
-      The chew does surface this page; what it damages is characters within it (see the note
-      above M1.1), so this is scored as ordinary recall of stated text.
+      Last page, rotated, and the only place the applicant's counsel is named. This is the
+      highest-value must-not-miss item in the corpus precisely because it sits behind an OCR
+      rotation failure. See ocr_hazards H5.
 
   - id: M1.5
     item: >
@@ -320,9 +365,9 @@ must_not_miss:
     page: 17
     location: backsheet — ROTATED 90°
     why: >
-      Last page, rotated in the source, and the only place the applicant's counsel is named.
-      The chew does surface this page; what it damages is characters within it (see the note
-      above M1.1), so this is scored as ordinary recall of stated text.
+      Last page, rotated, and the only place the applicant's counsel is named. This is the
+      highest-value must-not-miss item in the corpus precisely because it sits behind an OCR
+      rotation failure. See ocr_hazards H5.
 
   - id: M2
     item: >
