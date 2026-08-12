@@ -65,11 +65,13 @@
 # (developers.openai.com/api/docs/models/<id>, e.g. .../gpt-5.5): a flat 128,000 across every
 # GPT-5.x model in this catalog. Gemini (ai.google.dev/gemini-api/docs/models/<id>): a flat 65,536
 # across every model in this catalog. DeepSeek (api-docs.deepseek.com/quick_start/pricing/):
-# 384,000 for both V4 Flash and Pro, thinking on or off — supersedes model_client.py's
+# 384,000 for both V4 Flash and Pro, thinking on or off — supersedes model_client.py's former
 # `_DEEPSEEK_THINKING_MAX_TOKENS = 48000`, whose cited source page
-# (api-docs.deepseek.com/guides/reasoning_model) has since been repurposed to unrelated content and
-# no longer documents that 32K/64K figure (a design call on what to do about that constant is left
-# to a follow-up — not changed here). No provider catalogued here documents a separate streaming
+# (api-docs.deepseek.com/guides/reasoning_model) had been repurposed to unrelated content and no
+# longer documented that 32K/64K figure. #598 removed that constant along with model_client.py's
+# other per-provider reserve tables, deriving the wire ceiling from this field instead — the
+# 384,000 DeepSeek figure above is taken from DeepSeek's own docs but not yet corroborated by a
+# live call (see DECISIONS D193). No provider catalogued here documents a separate streaming
 # ceiling (distinct from the Anthropic batch case above).
 models:
   # Order matches the old _MODEL_IDS table (haiku, sonnet, opus) — cmd/setup.py's interactive
@@ -276,6 +278,30 @@ context_window_fallback:
   - [o3, 200_000]
   - [o4, 200_000]
   - [claude, 200_000]         # every Claude tier shares this 200K usable window
+
+# Output-cap fallback, consulted by model_client.py's `_output_envelope()` only when a model isn't
+# an exact match in the `models` catalog above (same uncatalogued-model cases as
+# context_window_fallback). Matched by SUBSTRING anywhere in the model id, MOST SPECIFIC FIRST —
+# list order is the match order, exactly as in context_window_fallback. Without this table an
+# uncatalogued model falls back to model_client.py's conservative `_DEFAULT_MAX_OUTPUT_TOKENS`,
+# which for a *reasoning* model is far too small: chain-of-thought and the visible answer share
+# this one budget, and sectioning inverts the resulting ceiling into an input budget, so a
+# too-small cap collapses that budget and shreds a document into many tiny sections (#598).
+#
+# Every figure here is one of the per-family flats already cited in the `max_output_tokens` comment
+# at the top of this file — this table only extends those documented family-wide values to ids the
+# catalog doesn't list yet (an OpenAI or Gemini model shipped after this file was last updated).
+# Families deliberately OMITTED, so they keep the conservative default rather than an over-claim:
+#   * `claude`  — this table only fires for an *uncatalogued* Claude id, which by definition means
+#                 an old or third-party-routed one (e.g. `anthropic/claude-3.5-sonnet` via
+#                 OpenRouter, real cap 8,192). Claiming 128,000 there could exceed the real cap.
+#   * `gpt-4`   — gpt-4o's real cap (16,384) is close enough to the default that the default fits.
+#   * `o1`/`o3`/`o4` — no citation in this repo, and #598 is specifically about not guessing.
+#   * legacy `deepseek` (pre-V4) — low real cap; the default is the right direction to be wrong in.
+max_output_tokens_fallback:
+  - [gpt-5, 128_000]
+  - [gemini, 65_536]
+  - [deepseek-v4, 384_000]
 
 # Reasoning-model fallback, consulted by model_client.py's _openai_is_reasoning() only when a
 # model isn't an exact match in the `models` catalog above (same uncatalogued-model cases as

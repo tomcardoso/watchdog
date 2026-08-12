@@ -86,9 +86,11 @@ _BUDGET_FRACTION = 0.3
 # unclamped inversion can extrapolate to at low or medium effort's shallow marginal rate.
 # `_MAX_OUTPUT_CAPPED_BUDGET` caps the result at roughly 2x that measured range regardless of what
 # the formula returns, so a weak, extrapolated fit can't produce a budget the data doesn't
-# support. #598 is the follow-on that will derive the envelope itself from the model catalog's
-# `max_output_tokens` field with a proper per-model, per-effort sweep, rather than reasoning about
-# it from pooled archives the way this fix does.
+# support. #598 derived the *ceiling itself* (`output_ceiling_for_sectioning`) from the model
+# catalog's `max_output_tokens` field, one per-model envelope in place of the old flat 16K-based
+# reserves — but this density fit and the clamp on it are unchanged: they're still the pooled,
+# weak archive fit above, and still need a proper per-model, per-effort sweep (like #354's for
+# OpenAI) before `_MAX_OUTPUT_CAPPED_BUDGET` can be lifted with any confidence.
 _OUTPUT_DENSITY_BY_EFFORT: dict[str, tuple[int, float]] = {
     "low":    (2_509, 0.103),
     "medium": (1_051, 0.989),
@@ -141,10 +143,9 @@ def model_defaults(model: str | None, backend: str | None = None,
     fixed output ceiling it can't paginate past (openai/gemini — #343), additionally capped so a
     call's expected output stays under that ceiling. `model`/`backend` are the extraction stage's
     tier/id and backend (None ⇒ default tier / auth-routed Claude backend). `effort` selects which
-    row of the per-effort output-density fit `_invert_output_ceiling` inverts against, and is
-    passed to `output_ceiling_for_sectioning` too, since a reasoning model's real wire ceiling
-    (base task budget + reasoning reserve) is itself effort-scaled (#542 follow-up); irrelevant
-    when the backend has no output ceiling to protect against.
+    row of the per-effort output-density fit `_invert_output_ceiling` inverts against; the ceiling
+    itself is no longer effort-scaled (#598 — see `output_ceiling_for_sectioning`), so `effort`
+    only matters here, not to the lookup below.
 
     Finally divided by `model_client.tokenizer_ratio` (#574): `est_tokens`'s chars/4 heuristic is
     calibrated against Claude's *old* tokenizer, so on a model whose tokenizer produces more real
@@ -161,12 +162,10 @@ def model_defaults(model: str | None, backend: str | None = None,
     any caller change; a caller with no vault context (e.g. `watchdog configure`'s preview) leaves
     this `None` and gets the catalog ratio, exactly as before.
 
-    `threshold` and `budget` are checked against *different* tasks' ceilings — a document at or
-    under threshold runs whole-document (`extract`); once sectioned, each section runs as its own
-    `extract-section` call — so each is capped against its own task's ceiling rather than both
-    sharing one lookup. `_TASK_MAX_TOKENS` happens to give both the same value today, so this was
-    previously harmless as a single shared lookup, but it was checking the wrong capability for
-    `budget` specifically, not merely a redundant one.
+    `threshold` and `budget` are both capped against the *same* ceiling lookup (#598): the wire
+    envelope `output_ceiling_for_sectioning` returns no longer varies by task (`extract` vs.
+    `extract-section` used to be looked up separately even though `_TASK_MAX_TOKENS` gave them the
+    same value), so one lookup now serves both.
 
     Unlike the input-window fractions above (`_BUDGET_FRACTION` is deliberately half
     `_THRESHOLD_FRACTION`, so a document just over threshold still splits into two sections),
@@ -179,12 +178,11 @@ def model_defaults(model: str | None, backend: str | None = None,
     window = model_client.context_window(model, backend)
     threshold = int(window * _THRESHOLD_FRACTION)
     budget = int(window * _BUDGET_FRACTION)
-    extract_ceiling = model_client.output_ceiling_for_sectioning("extract", backend, model, effort)
-    if extract_ceiling is not None:
-        threshold = min(threshold, _invert_output_ceiling(extract_ceiling, effort))
-    section_ceiling = model_client.output_ceiling_for_sectioning("extract-section", backend, model, effort)
-    if section_ceiling is not None:
-        budget = min(budget, _invert_output_ceiling(section_ceiling, effort))
+    ceiling = model_client.output_ceiling_for_sectioning(backend, model)
+    if ceiling is not None:
+        capped = _invert_output_ceiling(ceiling, effort)
+        threshold = min(threshold, capped)
+        budget = min(budget, capped)
     ratio = model_client.tokenizer_ratio(model, backend, vault)
     threshold = int(threshold / ratio)
     budget = max(1, int(budget / ratio))
@@ -196,8 +194,10 @@ def section_token_threshold(model: str | None = None, backend: str | None = None
     """Estimated-token count at/under which a document is not sectioned.
 
     Model-aware by default: derived from the extraction model's context window (#321) and, for a
-    fixed-output-ceiling backend, its output cap (#343), itself effort-scaled for a reasoning
-    model (#542 follow-up). An explicit integer `section_token_threshold` in config overrides it,
+    fixed-output-ceiling backend, its output cap (#343, #598) — the cap itself no longer varies
+    with `effort` (#598), but `effort` still selects which row of the output-density fit
+    `_invert_output_ceiling` inverts that cap against. An explicit integer
+    `section_token_threshold` in config overrides it,
     as an advanced escape hatch; the `"auto"` sentinel (or an unset key) keeps the model-aware
     default. `vault` (#606 Part B) is passed straight through to `model_defaults`, so a caller
     with vault context benefits from this vault's own calibrated tokenizer ratio when one is
@@ -264,9 +264,10 @@ def run(vault: Path, sha256: str, *, force_budget: int | None = None,
 
     `model`/`backend` are the extraction stage's model (tier name or raw id) and backend, used to
     derive the context-window-aware threshold and budget (#321) and, for a fixed-output-ceiling
-    backend, the output-aware cap (#343); config values override the derived defaults. `effort`
-    additionally scales that output-aware cap for a reasoning model (#542 follow-up). All three
-    are irrelevant on the `force_budget` path, which sets its own small budget. `vault` (already
+    backend, the output-aware cap (#343, #598); config values override the derived defaults.
+    `effort` selects which row of the output-density fit that cap is inverted against (#542
+    follow-up) — the cap itself is no longer effort-scaled (#598). All three are irrelevant on the
+    `force_budget` path, which sets its own small budget. `vault` (already
     this function's own first argument) is additionally passed to `model_defaults` so the
     tokenizer-ratio correction can prefer this vault's own calibrated ratio over the static
     catalog constant when enough history is available (#606 Part B).
