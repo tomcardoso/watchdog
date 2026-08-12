@@ -48,6 +48,8 @@ _OPENAI_PRICING = {
 
 # (substring/prefix, value) pairs, most-specific-first — see model_catalog.yaml's own comments.
 _CONTEXT_WINDOW_FALLBACK = [(row[0], int(row[1])) for row in _CATALOG["context_window_fallback"]]
+_MAX_OUTPUT_TOKENS_FALLBACK = [(row[0], int(row[1]))
+                               for row in _CATALOG["max_output_tokens_fallback"]]
 _REASONING_FALLBACK = [(row[0], bool(row[1])) for row in _CATALOG["reasoning_fallback"]]
 
 
@@ -68,6 +70,25 @@ def catalog_context_window(model_id: str) -> int | None:
     """Explicit context window for a known catalog model id, or None if uncatalogued."""
     entry = _MODELS.get(model_id.lower())
     return entry.get("context_window") if entry else None
+
+
+def catalog_max_output_tokens(model_id: str) -> int | None:
+    """Explicit single-response output cap for a known catalog model id (#598), or None if
+    uncatalogued."""
+    entry = _MODELS.get(model_id.lower())
+    return entry.get("max_output_tokens") if entry else None
+
+
+def fallback_max_output_tokens(model_id: str) -> int | None:
+    """Substring-matched single-response output cap for an uncatalogued model (#598), or None (no
+    match). Extends the per-family flats the catalog already documents to ids not listed yet — see
+    `model_catalog.yaml`'s `max_output_tokens_fallback` comment for which families are deliberately
+    left out."""
+    mid = model_id.lower()
+    for marker, cap in _MAX_OUTPUT_TOKENS_FALLBACK:
+        if marker in mid:
+            return cap
+    return None
 
 
 def fallback_context_window(model_id: str) -> int | None:

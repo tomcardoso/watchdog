@@ -208,12 +208,14 @@ def test_cost_accumulates_across_attempts(api_key_auth, monkeypatch):
     assert r.cost_usd == pytest.approx(0.05)
 
 
-def test_extract_task_uses_larger_token_budget(api_key_auth, monkeypatch):
+@pytest.mark.parametrize("task", ["extract", "classify", "verify", "briefing", "other-task"])
+def test_wire_max_tokens_is_task_independent(api_key_auth, monkeypatch, task):
+    # #598: `max_tokens` is derived from the model's catalogued envelope alone — no per-task
+    # override, unlike the old `_TASK_MAX_TOKENS` table.
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    mc.complete_json(task="extract", prompt="p", schema=SCHEMA)
-    assert api.calls[0]["max_tokens"] == 16000           # per-task override
-    assert mc._TASK_MAX_TOKENS.get("other-task") is None  # default applies elsewhere
+    mc.complete_json(task=task, prompt="p", schema=SCHEMA)
+    assert api.calls[0]["max_tokens"] == mc._wire_max_tokens("claude-api", "claude-sonnet-4-6")
 
 
 # ── effort knob (D29) ─────────────────────────────────────────────────────────
@@ -593,10 +595,68 @@ def test_tokenizer_ratio_falls_back_to_catalog_when_calibration_returns_none(tmp
 
 
 def test_output_ceiling_applies_to_local_and_openrouter():
-    # local/openrouter enforce max_tokens and can't paginate (#380) — same treatment as openai/gemini.
-    assert mc.output_ceiling_for_sectioning("extract", "local", "llama-3.3-70b") == 16000
-    assert mc.output_ceiling_for_sectioning("extract", "openrouter", "anthropic/claude-3.5-sonnet") == 16000
-    assert mc.output_ceiling_for_sectioning("extract", "claude-agent-sdk", "sonnet") is None
+    # local/openrouter enforce max_tokens and can't paginate (#380) — same treatment as
+    # openai/gemini. Neither "llama-3.3-70b" nor the OpenRouter id is catalogued, so both fall
+    # back to `_DEFAULT_MAX_OUTPUT_TOKENS` under headroom (#598).
+    uncatalogued = int(mc._DEFAULT_MAX_OUTPUT_TOKENS * (1 - mc._OUTPUT_HEADROOM))
+    assert mc.output_ceiling_for_sectioning("local", "llama-3.3-70b") == uncatalogued
+    assert mc.output_ceiling_for_sectioning("openrouter", "anthropic/claude-3.5-sonnet") == uncatalogued
+    assert mc.output_ceiling_for_sectioning("claude-agent-sdk", "sonnet") is None
+
+
+@pytest.mark.parametrize("model_id, expected_cap", [
+    ("gpt-5-mini", 128_000),        # uncatalogued GPT-5 family member
+    ("gpt-5.9-turbo", 128_000),     # a GPT-5.x id shipped after this catalog was last updated
+    ("gemini-4.0-flash", 65_536),   # ditto, Gemini
+    ("deepseek-v4-turbo", 384_000),
+])
+def test_uncatalogued_model_resolves_via_the_family_fallback_table(model_id, expected_cap):
+    # An id the catalog doesn't list yet still gets its documented family cap (#598) rather than
+    # the much smaller `_DEFAULT_MAX_OUTPUT_TOKENS` — the normal state of affairs a few months
+    # after this catalog was last updated.
+    from watchdog.model_catalog import catalog_max_output_tokens
+    assert catalog_max_output_tokens(model_id) is None      # genuinely uncatalogued
+    assert mc._output_envelope(model_id) == int(expected_cap * (1 - mc._OUTPUT_HEADROOM))
+
+
+@pytest.mark.parametrize("model_id", [
+    "anthropic/claude-3.5-sonnet",   # old/third-party-routed Claude: real cap 8,192
+    "gpt-4o",                        # real cap 16,384 — the default already fits under it
+    "llama-3.3-70b",                 # self-hosted, cap unknowable
+])
+def test_families_excluded_from_the_fallback_keep_the_conservative_default(model_id):
+    # Deliberately NOT in `max_output_tokens_fallback` — over-claiming here could exceed the
+    # model's real cap, so these keep `_DEFAULT_MAX_OUTPUT_TOKENS`. See the table's own comment.
+    assert mc._output_envelope(model_id) == int(mc._DEFAULT_MAX_OUTPUT_TOKENS
+                                                * (1 - mc._OUTPUT_HEADROOM))
+
+
+def test_fallback_table_is_matched_most_specific_first():
+    # Same ordering contract as `context_window_fallback`: list order is match order, so no row may
+    # be shadowed by an earlier, broader one.
+    from watchdog.model_catalog import _MAX_OUTPUT_TOKENS_FALLBACK, fallback_max_output_tokens
+    markers = [m for m, _ in _MAX_OUTPUT_TOKENS_FALLBACK]
+    for i, marker in enumerate(markers):
+        earlier = markers[:i]
+        assert not any(e in marker for e in earlier), (
+            f"{marker!r} is shadowed by an earlier, broader row {earlier!r}")
+    assert fallback_max_output_tokens("deepseek-v4-flash") == 384_000
+    assert fallback_max_output_tokens("mistral-large") is None
+
+
+def test_uncatalogued_reasoning_model_budget_does_not_collapse_to_the_floor():
+    """Regression sentinel (#598). A reasoning model's chain-of-thought and visible answer share
+    one output budget, and `section` inverts that ceiling into an *input* budget — so an envelope
+    too small to cover the high-effort fit's fixed cost doesn't merely truncate, it floors the
+    section budget at `_MIN_OUTPUT_CAPPED_BUDGET` and shreds a document into hundreds of tiny
+    sections, each re-paying full prompt overhead. Before the family-fallback table, every
+    uncatalogued GPT-5/Gemini id did exactly that at high effort."""
+    from watchdog.pipeline import section
+    for model_id in ("gpt-5-mini", "gpt-5.9-turbo", "gemini-4.0-flash"):
+        for effort in ("low", "medium", "high"):
+            budget = section._invert_output_ceiling(mc._output_envelope(model_id), effort)
+            assert budget > section._MIN_OUTPUT_CAPPED_BUDGET, (
+                f"{model_id} at {effort} effort collapsed to the floor ({budget})")
 
 
 def test_openai_cost():
@@ -1602,19 +1662,38 @@ def test_rate_limit_error_is_not_a_model_error():
     assert not issubclass(mc.RateLimitError, mc.ModelError)
 
 
-def _fake_anthropic_client(monkeypatch, *, raw=None, error=None):
-    """Patch `anthropic.AsyncAnthropic` so `.messages.with_raw_response.create` either returns
-    `raw` or raises `error` — for the Anthropic rate-limit header capture tests (#563)."""
+def _fake_anthropic_client(monkeypatch, *, message=None, headers=None, error=None):
+    """Patch `anthropic.AsyncAnthropic` so `.messages.stream(...)` (#598, replacing
+    `.with_raw_response.create`) is an async context manager whose `__aenter__` returns a fake
+    stream — `get_final_message()` yields `message`, `.response.headers` yields `headers` — or
+    raises `error`. The real SDK issues the HTTP request inside `__aenter__`, so that's also
+    where a 429 now surfaces (`_api_complete_async`'s `except` wraps the whole `async with`)."""
     import anthropic
 
-    class FakeWithRawResponse:
-        async def create(self, **kwargs):
+    class FakeResponse:
+        def __init__(self, headers):
+            self.headers = headers
+
+    class FakeStream:
+        def __init__(self, message, headers):
+            self._message = message
+            self.response = FakeResponse(headers)
+
+        async def get_final_message(self):
+            return self._message
+
+    class FakeStreamManager:
+        async def __aenter__(self):
             if error is not None:
                 raise error
-            return raw
+            return FakeStream(message, headers)
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
 
     class FakeMessages:
-        with_raw_response = FakeWithRawResponse()
+        def stream(self, **kwargs):
+            return FakeStreamManager()
 
     class FakeClient:
         def __init__(self, api_key=None):
@@ -1637,14 +1716,11 @@ def test_anthropic_backend_captures_rate_limit_headers_on_success(monkeypatch):
         usage = FakeUsage()
         stop_reason = "end_turn"
 
-    class FakeRaw:
-        headers = {"anthropic-ratelimit-tokens-limit": "40000",
-                  "anthropic-ratelimit-tokens-remaining": "39000",
-                  "anthropic-ratelimit-tokens-reset": "2026-08-09T12:00:00Z"}
-        def parse(self):
-            return FakeMessage()
-
-    _fake_anthropic_client(monkeypatch, raw=FakeRaw())
+    _fake_anthropic_client(
+        monkeypatch, message=FakeMessage(),
+        headers={"anthropic-ratelimit-tokens-limit": "40000",
+                "anthropic-ratelimit-tokens-remaining": "39000",
+                "anthropic-ratelimit-tokens-reset": "2026-08-09T12:00:00Z"})
     out = asyncio.run(mc._api_complete_async("p", "claude-sonnet-4-6", SCHEMA, "sk-x", 8000))
     assert out["text"] == '{"name": "Acme"}'
     assert out["rate_limit"] == {"limit_tokens": 40000, "remaining_tokens": 39000,
@@ -1667,6 +1743,18 @@ def test_anthropic_backend_429_carries_rate_limit_headers_on_the_exception(monke
         asyncio.run(mc._api_complete_async("p", "claude-sonnet-4-6", SCHEMA, "sk-x", 8000))
     assert exc_info.value.rate_limit == {"limit_tokens": 40000, "remaining_tokens": 0,
                                          "reset_tokens": "2026-08-09T12:01:00Z"}
+
+
+def test_claude_envelope_requires_streaming():
+    # The Anthropic SDK (0.116.0) refuses a *non-streaming* request once
+    # `3600 * max_tokens / 128_000 > 600`, i.e. max_tokens > 21,333
+    # (`Anthropic._calculate_nonstreaming_timeout`). Sonnet 4.6's catalogued envelope (#598) sits
+    # well past that threshold — this is why `_api_complete_async` streams instead of calling
+    # `.create()`; it's the regression guard against reverting to the non-streaming call, which
+    # would raise at request time for exactly this model/envelope.
+    non_streaming_guard = 128_000 * 600 // 3600   # 21,333
+    envelope = mc._wire_max_tokens("claude-api", "claude-sonnet-4-6")
+    assert envelope > non_streaming_guard
 
 
 def test_acomplete_json_carries_rate_limit_onto_model_result(api_key_auth, monkeypatch):
@@ -2026,48 +2114,44 @@ def test_agent_query_usage_stays_none_when_nothing_present(monkeypatch):
     assert out["usage"] is None
 
 
-@pytest.mark.parametrize("task, backend, model, effort, expected", [
-    ("extract", "deepseek", "deepseek-v4-flash-thinking", None, mc._DEEPSEEK_THINKING_MAX_TOKENS),
-    ("extract", "deepseek", "deepseek-v4-flash", None, 16000),     # non-thinking → normal ceiling
-    ("extract", "claude-api", "claude-sonnet-4-6", None, 16000),   # CoT bump never applies to Claude
-    ("classify", "claude-api", "claude-haiku-4-5", None, mc._API_MAX_TOKENS),  # default ceiling
-    ("briefing", "openai", "gpt-4o", None, 16000),
-    ("classify", "openai", "gpt-5.4", None, mc._API_MAX_TOKENS),   # not a large-output task
-    # OpenAI reasoning models share max_completion_tokens between CoT and answer (#354). The
-    # reserve added on top of the 16K visible-answer budget scales with `effort` — reasoning
-    # volume is a function of effort, not task — so each tier gets its own headroom instead of
-    # one flat number that starves `high` and wastes budget at `low`.
-    ("extract", "openai", "gpt-5.4", "low", 32000),
-    ("extract", "openai", "gpt-5.4", "medium", 64000),
-    ("extract", "openai", "gpt-5.4", "high", 96000),
-    ("briefing", "openai", "o3", "high", 96000),
-    ("briefing", "openai", "gpt-5.6-terra", "xhigh", 116000),
-    ("briefing", "openai", "gpt-5.6-luna", "max", 116000),
-    ("extract", "openai", "gpt-5.4", None, 64000),   # effort unspecified -> treated as medium
-    # Gemini shares the starvation mode (#541) — every current Gemini model always gets an
-    # effort value (no chat-vs-reasoning split like OpenAI), so the reserve applies
-    # unconditionally on the large-output tasks, scaled to the smaller low/medium/high ladder.
-    ("extract", "gemini", "gemini-3.5-flash", "low", 32000),
-    ("extract", "gemini", "gemini-3.5-flash", "medium", 48000),
-    ("extract", "gemini", "gemini-3.5-flash", "high", 64000),
-    ("briefing", "gemini", "gemini-2.5-pro", "high", 64000),
-    ("classify", "gemini", "gemini-3.5-flash", "high", mc._API_MAX_TOKENS),  # not a large-output task
-    ("extract", "gemini", "gemini-3.5-flash", None, 48000),   # effort unspecified -> treated as medium
+@pytest.mark.parametrize("backend, model_id", [
+    ("claude-api", "claude-sonnet-4-6"),
+    ("claude-api", "claude-haiku-4-5"),
+    ("claude-api", "claude-opus-4-8"),
+    ("deepseek", "deepseek-v4-flash"),
+    ("deepseek", "deepseek-v4-flash-thinking"),   # -thinking marker doesn't change the envelope
+    ("openai", "gpt-5.4"),
+    ("gemini", "gemini-3.5-flash"),
 ])
-def test_task_max_tokens(task, backend, model, effort, expected):
-    assert mc._task_max_tokens(task, backend, model, effort) == expected
+def test_wire_max_tokens_derives_from_catalog(backend, model_id):
+    # #598: one per-model envelope — the catalogued `max_output_tokens` cap under
+    # `_OUTPUT_HEADROOM` — replaces the old per-task base plus per-provider reasoning reserve.
+    bare = model_id[: -len(mc._DEEPSEEK_THINKING_SUFFIX)] if model_id.endswith(
+        mc._DEEPSEEK_THINKING_SUFFIX) else model_id
+    from watchdog.model_catalog import catalog_max_output_tokens
+    cap = catalog_max_output_tokens(bare)
+    assert cap is not None
+    assert mc._wire_max_tokens(backend, model_id) == int(cap * (1 - mc._OUTPUT_HEADROOM))
 
 
-@pytest.mark.parametrize("task, backend, model", [
-    ("extract", "openai", "gpt-4o"),                  # chat model, not a reasoning model
-    ("extract", "claude-api", "claude-sonnet-4-6"),   # non-OpenAI backend
+def test_wire_max_tokens_uncatalogued_falls_back_to_default():
+    # An id with no catalog entry (a raw id past CLI validation, or a local/OpenRouter model) —
+    # we don't know its real cap, so this keeps the historical hand-picked value rather than
+    # guessing upward.
+    expected = int(mc._DEFAULT_MAX_OUTPUT_TOKENS * (1 - mc._OUTPUT_HEADROOM))
+    assert mc._wire_max_tokens("openai", "totally-unknown-model") == expected
+    assert mc._wire_max_tokens("local", "llama-3.3-70b") == expected
+
+
+@pytest.mark.parametrize("backend, model", [
+    ("openai", "gpt-5.4"),                # OpenAI reasoning model — used to get an effort-scaled reserve
+    ("gemini", "gemini-3.5-flash"),       # Gemini — used to get an effort-scaled reserve unconditionally
+    ("claude-api", "claude-sonnet-4-6"),  # never had a reserve
 ])
-def test_task_max_tokens_unaffected_by_effort_outside_openai_reasoning(task, backend, model):
-    # The effort-scaled reserve only applies to OpenAI reasoning models and Gemini — a chat
-    # model or a different backend must return the same ceiling regardless of `effort`.
-    ceilings = {mc._task_max_tokens(task, backend, model, effort)
-               for effort in (None, "low", "medium", "high", "xhigh", "max")}
-    assert len(ceilings) == 1
+def test_wire_max_tokens_unaffected_by_task_or_effort(backend, model):
+    # The inverse of the old effort-scaling behaviour (#598): the wire ceiling is the same
+    # regardless of task or effort now — `_wire_max_tokens` doesn't even take those parameters.
+    assert mc._wire_max_tokens(backend, model) == mc._wire_max_tokens(backend, model)
 
 
 @pytest.mark.parametrize("backend, model", [
@@ -2077,31 +2161,20 @@ def test_task_max_tokens_unaffected_by_effort_outside_openai_reasoning(task, bac
     (None, None),                       # unresolved → routes to a Claude backend
 ])
 def test_output_ceiling_is_none_when_nothing_to_protect(backend, model):
-    assert mc.output_ceiling_for_sectioning("extract", backend, model) is None
+    assert mc.output_ceiling_for_sectioning(backend, model) is None
 
 
-def test_output_ceiling_returned_for_non_continuation_capped_backends():
-    # A chat model enforces max_tokens but can't continue → must be sized, and (unlike a
-    # reasoning model) has no reserve to add regardless of effort.
-    assert mc.output_ceiling_for_sectioning("extract", "openai", "gpt-4o") == 16000
-    assert mc.output_ceiling_for_sectioning("extract", "openai", "gpt-4o", "high") == 16000
-
-
-@pytest.mark.parametrize("backend, model, effort, expected", [
-    # An OpenAI reasoning model's raised wire ceiling (#354), and Gemini's (#541), is shared with
-    # chain-of-thought/thinking. Pre-#542-follow-up, sectioning planned only against the base task
-    # budget; now it plans against the real wire ceiling (base + the effort-scaled reserve)
-    # instead, since total (reasoning + visible) output is what the fixed `max_tokens` actually
-    # bounds — an unspecified effort resolves to the medium reserve, matching
-    # `_task_max_tokens`'s own convention.
-    ("openai", "gpt-5.4", None, 64000),      # 16000 + 48000 (medium, unspecified default)
-    ("openai", "gpt-5.4", "low", 32000),     # 16000 + 16000
-    ("openai", "gpt-5.4", "high", 96000),    # 16000 + 80000
-    ("gemini", "gemini-2.5-flash", None, 48000),    # 16000 + 32000 (medium default)
-    ("gemini", "gemini-2.5-flash", "high", 64000),  # 16000 + 48000
+@pytest.mark.parametrize("backend, model", [
+    ("openai", "gpt-5.4"),
+    ("gemini", "gemini-3.5-flash"),
+    ("local", "llama-3.3-70b"),
+    ("openrouter", "anthropic/claude-3.5-sonnet"),
 ])
-def test_output_ceiling_scales_with_effort_for_reasoning_models(backend, model, effort, expected):
-    assert mc.output_ceiling_for_sectioning("extract", backend, model, effort) == expected
+def test_output_ceiling_returned_for_non_continuation_capped_backends(backend, model):
+    # openai, gemini, local, and openrouter enforce max_tokens yet can't continue — a real
+    # number, matching `_wire_max_tokens` exactly (#598: no more per-task/effort variation).
+    model_id = mc.resolve_model_id(model)
+    assert mc.output_ceiling_for_sectioning(backend, model) == mc._wire_max_tokens(backend, model_id)
 
 
 def _fake_httpx_sequence(monkeypatch, status_codes):

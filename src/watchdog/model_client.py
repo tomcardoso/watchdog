@@ -46,29 +46,50 @@ from watchdog.model_catalog import (
     catalog_context_window,
     catalog_effort_levels,
     catalog_is_reasoning,
+    catalog_max_output_tokens,
     catalog_tokenizer_ratio,
     fallback_context_window,
     fallback_is_reasoning,
+    fallback_max_output_tokens,
     resolve_model_id,
 )
 
 DEFAULT_TIER = "sonnet"
-_API_MAX_TOKENS = 8000
-# Extraction output is large; give it more room. Other tasks use the default. The briefing's
-# arrays (what_was_ingested/connections/leads/anomalies/emerging_patterns/open_questions) scale
-# with batch size, so it gets the same higher ceiling as extraction — a truncated briefing is a
-# JSON parse failure, not a partial result (#296).
-# `verify` (#535) keeps the plain 8000 base rather than extraction's raised one: the verification
-# pass emits only the facts an extraction missed, so its *answer* is short by construction and a
-# bigger visible-output budget would buy nothing. It is listed here at all — rather than falling
-# through to the same 8000 via `.get`'s default — because membership in this dict is what gates
-# the reasoning reserve (#337/#354/#541, D168/D171): the pass runs at low effort precisely to hold
-# reasoning tokens down, but "low" is not "none", and a CoT sharing 8000 tokens with the answer is
-# exactly how that JSON gets truncated. Since the reserve is added to the base and scales with
-# effort, `verify` on a reasoning model resolves to 8000 + the low-effort reserve — a short answer
-# with room to think, not extraction's headroom for a long one.
-_TASK_MAX_TOKENS = {"extract": 16000, "extract-section": 16000, "briefing": 16000,
-                    "verify": _API_MAX_TOKENS}
+
+# The output-token envelope sent to the provider on the wire (#598): a single per-model number
+# derived from the catalogued `max_output_tokens` cap, rather than a hand-picked per-task base
+# plus a bolted-on per-provider reasoning reserve (see `_output_envelope`/`_wire_max_tokens`
+# below for the rationale). `_OUTPUT_HEADROOM` leaves margin under the provider's own documented
+# ceiling — it applies to every cap below, including the fallbacks, since margin against a cap we
+# inferred rather than read is if anything more warranted, not less.
+#
+# An uncatalogued id (a raw id typed past the CLI's tier validation, or a local/OpenRouter model
+# with no catalog entry) is resolved in two more steps before giving up. First
+# `max_output_tokens_fallback`, which extends the per-family flats the catalog already documents
+# (GPT-5.x's 128,000, Gemini's 65,536, DeepSeek V4's 384,000) to ids not listed yet — the normal
+# state of affairs a few months after this catalog was last updated. That table is load-bearing
+# rather than a nicety: for a *reasoning* model the chain-of-thought and the visible answer share
+# this one budget, and `pipeline/section.py` inverts the resulting ceiling into an *input* budget,
+# so a too-small cap doesn't merely truncate — it collapses the section budget and shreds a
+# document into many tiny sections, each re-paying the full prompt overhead (#598).
+# Only then `_DEFAULT_MAX_OUTPUT_TOKENS`, for a model matching no known family at all: we have no
+# idea what a self-hosted model's real cap is, and it could sit far below a frontier model's, so
+# this stays at the historical hand-picked figure rather than guessing upward.
+_OUTPUT_HEADROOM = 0.10
+_DEFAULT_MAX_OUTPUT_TOKENS = 16_000   # unknown-family model: the historical hand-picked value
+
+
+def _output_envelope(model_id: str) -> int:
+    """The output-token envelope for `model_id`, less `_OUTPUT_HEADROOM`: the catalogued
+    `max_output_tokens` cap, else the substring-matched family cap, else
+    `_DEFAULT_MAX_OUTPUT_TOKENS`. Note the headroom applies to all three — see the constants
+    above, and `model_catalog.yaml`'s `max_output_tokens_fallback` comment for which families
+    are deliberately excluded from the middle step."""
+    cap = (catalog_max_output_tokens(model_id)
+           or fallback_max_output_tokens(model_id)
+           or _DEFAULT_MAX_OUTPUT_TOKENS)
+    return int(cap * (1 - _OUTPUT_HEADROOM))
+
 
 _SYSTEM_PROMPT = (
     "You are a precise extraction engine for an investigative-records pipeline. "
@@ -745,7 +766,21 @@ async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: d
     enforcement is dropped on a continuation (constrained decoding can't resume mid-object) —
     the concatenation is validated by the shared shell — but `effort` is still carried so the
     same reasoning depth applies (I4). The returned `finish_reason` mirrors `stop_reason` so the
-    shell can tell a max-token cut (`max_tokens`) from a natural stop."""
+    shell can tell a max-token cut (`max_tokens`) from a natural stop.
+
+    Streams rather than calling `.create()` (#598). The Anthropic SDK refuses a *non-streaming*
+    request once `3600 * max_tokens / 128_000 > 600`, i.e. `max_tokens > 21,333`
+    (`Anthropic._calculate_nonstreaming_timeout`, anthropic 0.116.0) — comfortably below the
+    catalogued envelope this now sends (115,200 on Sonnet 4.6). Overriding the client's timeout
+    instead of switching to streaming would defeat the reason the guard exists in the first
+    place: a non-streaming call holds one silent connection open for the whole generation, and a
+    TLS-inspecting corporate proxy between here and the API will drop a long-idle one — trading a
+    self-healing truncation (caught by `finish_reason`, recovered by continuation) for a dropped
+    connection. Streaming keeps bytes flowing instead, so the connection stays alive for the
+    proxy. Do not revert this to `.create()` without re-deriving `max_tokens` back under 21,333.
+    `_MAX_CONTINUATIONS` pagination (below) stays as a safety net either way — it just stops
+    being a *routine* cost now that the wire ceiling is the model's real cap, not a fraction of
+    it."""
     import anthropic
 
     messages = [{"role": "user", "content": prompt}]
@@ -763,28 +798,30 @@ async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: d
         if effort:
             kwargs["output_config"] = {"effort": effort}
     try:
-        # `with_raw_response` (#563) rather than the plain `.create`, so the response's
-        # `anthropic-ratelimit-tokens-*` headers are reachable via `.headers` — `.parse()` then
-        # yields the exact same `Message` object the plain call would have returned, so nothing
-        # downstream of it changes.
-        raw = await anthropic.AsyncAnthropic(api_key=api_key).messages.with_raw_response.create(
+        # `.messages.stream(...)` (#598, superseding `.with_raw_response.create(...)` — see the
+        # streaming note above) issues the actual HTTP request inside `__aenter__`, so the
+        # RateLimitError catch has to wrap the whole `async with`, not just an inner call.
+        # `AsyncMessageStream.response`/`.get_final_message()` (#563) map 1:1 onto the old
+        # `.headers`/`.parse()`, so the rate-limit-header capture below is unchanged.
+        async with anthropic.AsyncAnthropic(api_key=api_key).messages.stream(
             model=model_id,
             max_tokens=max_tokens,
             system=_SYSTEM_PROMPT,
             messages=messages,
             **kwargs,
-        )
+        ) as stream:
+            resp = await stream.get_final_message()
+            headers = stream.response.headers
     except anthropic.RateLimitError as e:   # 429 — surface as the shared typed error
         raise RateLimitError(str(e) or "Claude API rate limit reached",
                              rate_limit=_rate_limit_headers(e.response.headers,
                                                             _ANTHROPIC_RATE_LIMIT_HEADERS)) from e
-    resp = raw.parse()
     text = next((b.text for b in resp.content if getattr(b, "type", None) == "text"), "")
     usage = resp.usage
     usage_dict = usage.model_dump() if hasattr(usage, "model_dump") else dict(usage)
     return {"text": text, "usage": usage_dict, "cost_usd": _api_cost(model_id, usage),
             "finish_reason": getattr(resp, "stop_reason", None),
-            "rate_limit": _rate_limit_headers(raw.headers, _ANTHROPIC_RATE_LIMIT_HEADERS)}
+            "rate_limit": _rate_limit_headers(headers, _ANTHROPIC_RATE_LIMIT_HEADERS)}
 
 
 # OpenAI-compatible (Chat Completions) pricing: model id → (input, output, cached_input) $/tok,
@@ -898,59 +935,6 @@ def _openai_batch_cost(model_id: str, usage: dict | None) -> float | None:
 # Toggle shape (OpenAI format): {"thinking": {"type": "enabled"|"disabled"}}. Docs:
 # https://api-docs.deepseek.com/guides/thinking_mode  (D88)
 _DEEPSEEK_THINKING_SUFFIX = "-thinking"
-
-# DeepSeek's reasoning mode caps chain-of-thought + final answer under one combined `max_tokens`
-# (default 32K, max 64K: https://api-docs.deepseek.com/guides/reasoning_model). The flat per-task
-# ceilings in `_TASK_MAX_TOKENS` starve the JSON output once the CoT eats into that same budget —
-# fewer key facts, elided quotes (#337). Applied only to deepseek + `-thinking` + the large-output
-# tasks; every other backend/task keeps its normal ceiling.
-_DEEPSEEK_THINKING_MAX_TOKENS = 48000
-
-# OpenAI reasoning models have the same starvation mode (#354): reasoning tokens and the visible
-# answer share the one `max_completion_tokens` budget, so a ceiling too tight for the reasoning
-# volume leaves the JSON truncated with zero visible output — the exact failure #337 fixed for
-# DeepSeek thinking, confirmed live (benchmark 2026-08-03-1459): 0 visible characters, reasoning
-# tokens == the entire completion. Applied only to reasoning models (per `_openai_is_reasoning`)
-# on the large-output tasks; chat models keep the normal ceiling. Note this is the *wire* ceiling
-# only — sectioning still plans against the base task budget, since the JSON itself can't count
-# on the reasoning share (see `output_ceiling_for_sectioning`).
-#
-# Reasoning volume is almost entirely a function of `effort`, not a flat constant (same document,
-# same task: ~3.8K tokens at low, ~12.6K at medium, 48K+ at high) — so the reserve added on top of
-# the visible-answer budget (`_TASK_MAX_TOKENS`, 16K) scales with it. All five levels are listed
-# explicitly rather than falling back past `high`: gpt-5.6-terra/luna genuinely accept
-# `xhigh`/`max` (model_catalog.yaml), and a silent fallback to the medium reserve there would
-# under-provision exactly the deepest-reasoning configurations. 128K is the gpt-5-mini class's
-# documented output-token limit; every level below stays under it.
-_OPENAI_REASONING_RESERVE = {
-    "low": 16_000, "medium": 48_000, "high": 80_000, "xhigh": 100_000, "max": 100_000,
-}
-_OPENAI_REASONING_RESERVE_DEFAULT = 48_000   # effort unspecified -> treat as medium
-
-# Gemini has the same starvation mode (#541, follow-up to #354/D167). Its OpenAI-compatibility
-# endpoint maps `reasoning_effort` onto the native API's internal thinking budget, and that
-# budget is deducted from the same `max_tokens` envelope as the visible answer — confirmed
-# against Google's own thinking-model docs (ai.google.dev/gemini-api/docs/thinking) and
-# corroborated by third-party reports of the resulting failure (a `MAX_TOKENS` finish reason with
-# empty text once the budget is spent mid-thought, e.g. googleapis/python-genai#782,
-# discuss.ai.google.dev's "finishReason: MAX_TOKENS - But Text is Empty"). Unlike OpenAI, every
-# current Gemini model always gets an effort value (`_effort_levels` returns low/medium/high
-# unconditionally — no chat-vs-reasoning split to gate on), and several models (2.5+ Flash/Pro)
-# think by default even when `reasoning_effort` is omitted — so the reserve applies
-# unconditionally on the large-output tasks, not behind an is-reasoning check. Sectioning still
-# plans against the base task budget for the same reason as the OpenAI case (see
-# `output_ceiling_for_sectioning`).
-#
-# The per-level split is a reasoned placeholder, not a measured one — #354's OpenAI numbers came
-# from a real benchmark sweep at each effort level; #541 has no equivalent Gemini sweep yet (the
-# only runs so far, `benchmarks/FINDINGS.md`'s gemini-flash/-flash-lite arms, were at `low`
-# effort or no effort pinned, so they never exercised this path). Scaled down from the OpenAI
-# reserve's low/medium/high shape to fit Gemini's documented output-token ceiling (65,536 for the
-# 2.5/3.x families) rather than OpenAI's 128K-class limit. Re-tune with real per-effort reasoning-
-# token counts the first time a high-effort Gemini sweep runs, the same way D108's original flat
-# 48K guess for OpenAI got replaced by measured figures in D167.
-_GEMINI_REASONING_RESERVE = {"low": 16_000, "medium": 32_000, "high": 48_000}
-_GEMINI_REASONING_RESERVE_DEFAULT = 32_000   # effort unspecified -> treat as medium
 
 # Transient-failure retry for the OpenAI-compatible backends (#354). The Anthropic SDK retries
 # 429/5xx internally (2 attempts, backoff); this httpx path had none, so a single transient
@@ -1295,34 +1279,37 @@ def _merge_usage(a: dict | None, b: dict | None) -> dict | None:
     return merged
 
 
-def _task_max_tokens(task: str, backend: str, model_id: str, effort: str | None = None) -> int:
-    """The output-token ceiling sent to the provider for a task/backend/model. Models whose
-    chain-of-thought shares the output budget — DeepSeek thinking (#337), OpenAI reasoning
-    models (#354), Gemini (#541) — get a higher ceiling on the large-output tasks so reasoning
-    can't starve the JSON. For OpenAI and Gemini the extra reserve scales with `effort`
-    (`_OPENAI_REASONING_RESERVE`/`_GEMINI_REASONING_RESERVE`), since reasoning volume is a
-    function of effort, not task. `effort` defaults to None (treated as medium) so existing call
-    sites — DeepSeek's own ceiling, `output_ceiling_for_sectioning` — keep working unchanged.
+def _wire_max_tokens(backend: str, model_id: str) -> int:
+    """The `max_tokens` ceiling sent to the provider on the wire for `backend`/`model_id` — task-
+    and effort-independent (#598).
 
-    NOTE (2026-08-10, output-cap catalog research): "a function of effort, not task" above is
-    incomplete — archived telemetry fit against input length shows reasoning also scales steeply
-    with input (up to ~2.3 tokens of thinking per input token at high effort, ~12x the
-    visible-output rate), not just with the effort knob. Flagged here for whoever next revisits
-    these reserves; not addressed in this change."""
-    if task in _TASK_MAX_TOKENS:
-        if backend == "deepseek" and model_id.endswith(_DEEPSEEK_THINKING_SUFFIX):
-            return _DEEPSEEK_THINKING_MAX_TOKENS
-        if backend == "openai" and _openai_is_reasoning(model_id):
-            reserve = _OPENAI_REASONING_RESERVE.get(effort, _OPENAI_REASONING_RESERVE_DEFAULT)
-            return _TASK_MAX_TOKENS[task] + reserve
-        if backend == "gemini":
-            reserve = _GEMINI_REASONING_RESERVE.get(effort, _GEMINI_REASONING_RESERVE_DEFAULT)
-            return _TASK_MAX_TOKENS[task] + reserve
-    return _TASK_MAX_TOKENS.get(task, _API_MAX_TOKENS)
+    `max_tokens` is a runaway guard, not a reservation: billing is on actual output, so there is
+    no cost to sending the model's real envelope on every call regardless of what the call is for
+    or how hard it's asked to think. The old per-task base (`_TASK_MAX_TOKENS`, 16,000) plus a
+    per-provider reasoning "reserve" bolted on top of it (DeepSeek thinking #337, OpenAI reasoning
+    models #354, Gemini #541) existed only because that base was itself a hardcoded guess shared
+    with chain-of-thought — every provider catalogued here draws reasoning/thinking tokens from
+    the SAME output budget as the visible answer (see `model_catalog.yaml`'s `max_output_tokens`
+    comment), so a ceiling sized only for the visible JSON starves reasoning the moment it grows.
+    Deriving the ceiling from the model's real catalogued cap removes that starvation mode at its
+    root, for every backend, instead of layering a per-provider patch on top of it.
+
+    Reasoning volume itself is not a function of effort alone — archived telemetry fit against
+    input length shows it also scales steeply with *input size* (up to ~2.3 tokens of thinking
+    per input token at high effort, roughly 12x the visible-output rate) — but that no longer
+    matters here: the wire ceiling is now the model's own envelope regardless, and only
+    `pipeline/section.py`'s *input*-side sizing (`_invert_output_ceiling`) still needs to reason
+    about how much of that envelope reasoning is likely to consume."""
+    if backend == "deepseek":
+        # `-thinking` is a Watchdog-only routing marker (D88), not a real catalog id — strip it
+        # before consulting the catalog, the same normalization `_openai_complete_async` already
+        # does before its own catalog/pricing lookups, so a thinking-mode call gets the model's
+        # real 384,000 cap rather than falling through to the uncatalogued default.
+        model_id, _ = _split_deepseek_thinking(model_id)
+    return _output_envelope(model_id)
 
 
-def output_ceiling_for_sectioning(task: str, backend: str | None, model: str | None,
-                                  effort: str | None = None) -> int | None:
+def output_ceiling_for_sectioning(backend: str | None, model: str | None) -> int | None:
     """The per-call output-token ceiling that sectioning must keep a document under — or None
     when there is nothing to protect (#343). None is returned for the agent SDK (no enforced
     ceiling), for the prefill-continuation backends (claude-api, deepseek — pagination grows the
@@ -1332,20 +1319,14 @@ def output_ceiling_for_sectioning(task: str, backend: str | None, model: str | N
     would exceed the ceiling must be sectioned up front rather than truncating and relying on the
     reactive fallback.
 
-    For a reasoning model (openai reasoning models, every Gemini model), this now returns the
-    real wire `max_tokens` sent to the provider — the base task budget *plus* the effort-scaled
-    reasoning reserve (#542 follow-up) — rather than just the base budget. The base-only figure
-    was correct for bounding the *visible* JSON answer alone (still true — the JSON has never been
-    observed to need more than the base budget), but chain-of-thought and the JSON are drawn from
-    this SAME enforced envelope, so a caller sizing input against *total* predicted output (as
-    `section.model_defaults` now does) needs the envelope that output actually has to fit —
-    which does grow with `effort`. `effort` omitted falls back to `_task_max_tokens`'s own
-    "unspecified -> medium" convention."""
+    The ceiling no longer varies by task or effort (#598) — it is the same per-model wire envelope
+    `_wire_max_tokens` sends on every call for this backend/model, so a caller sizing input against
+    predicted output uses the one real number that output actually has to fit."""
     meta = _BACKEND_META.get(backend)
     if meta is None or not meta.enforces_max_tokens or meta.supports_continuation:
         return None
     model_id = resolve_model_id(model or DEFAULT_TIER)
-    return _task_max_tokens(task, backend, model_id, effort)
+    return _wire_max_tokens(backend, model_id)
 
 
 async def _complete_with_pagination(backend_fn, backend: str, prompt, model_id: str, schema: dict,
@@ -1404,7 +1385,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
     model_id = resolve_model_id(requested)
     effort_arg = _resolve_effort(provider, model_id, effort)   # provider-native value or None
 
-    max_tokens = _task_max_tokens(task, chosen, model_id, effort_arg)
+    max_tokens = _wire_max_tokens(chosen, model_id)
 
     start = time.monotonic()
     total_cost = 0.0

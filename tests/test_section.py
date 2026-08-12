@@ -257,51 +257,56 @@ def test_run_threshold_follows_model_window(tmp_path, monkeypatch):
     assert section.run(vault, "doc1", model="big")["sectioned"] is False      # 100000*0.6 ≫ 1000
 
 
-# ── output-ceiling-aware thresholds (#343) ────────────────────────────────────
+# ── output-ceiling-aware thresholds (#343, #598) ───────────────────────────────
 
 def test_model_defaults_capped_by_output_ceiling_for_openai_gemini():
     # A fixed-output-ceiling backend that can't paginate caps threshold/budget by the output-
     # derived input ceiling: inverting the affine *total*-output fit (#542 follow-up) against the
-    # real wire ceiling (base task budget + reasoning reserve). No effort given ⇒ medium row and
-    # medium reserve: openai ceiling 16000+48000=64000, (64000*0.7-1051)/0.989=44235; gemini
-    # ceiling 16000+32000=48000, (48000*0.7-1051)/0.989=32911. Budget is NOT halved again on this
-    # path (#490) — the ceiling-derived value already represents the full safe amount a single
-    # call can handle, whether that call covers a whole document or one section. The large input
-    # window (400K/1M) is overridden by the much tighter output-driven cap either way.
-    assert section.model_defaults("gpt-5-mini", backend="openai") == (44_235, 44_235)
-    assert section.model_defaults("gemini-2.5-flash", backend="gemini") == (32_911, 32_911)
+    # real per-model wire ceiling (#598 — the catalogued `max_output_tokens` cap under headroom,
+    # no longer a task base plus a reasoning reserve). No effort given ⇒ medium row.
+    # gpt-5.4's ceiling is 128_000 catalogued * 0.9 = 115_200; (115_200*0.7-1_051)/0.989 exceeds
+    # _MAX_OUTPUT_CAPPED_BUDGET, so it clamps to 50_000. gemini-3.5-flash's ceiling is
+    # 65_536 * 0.9 = 58_982 (int-truncated); (58_982*0.7-1_051)/0.989 = 40_683, under the clamp.
+    # Budget is NOT halved again on this path (#490) — the ceiling-derived value already
+    # represents the full safe amount a single call can handle, whether that call covers a whole
+    # document or one section. The large input window (1.05M/1M) is overridden by the much
+    # tighter output-driven cap either way.
+    assert section.model_defaults("gpt-5.4", backend="openai") == (50_000, 50_000)
+    assert section.model_defaults("gemini-3.5-flash", backend="gemini") == (40_683, 40_683)
 
 
 def test_model_defaults_output_capped_budget_varies_by_effort():
-    # Reasoning draws from the same wire-enforced envelope as the visible JSON, and scales with
-    # input far more steeply at some effort levels than others (#542 follow-up) — so the same
-    # model/backend must size very differently depending on effort. Low effort's raw formula
-    # (fixed=2509, marginal=0.103) extrapolates far past any measured input and is clamped to
-    # _MAX_OUTPUT_CAPPED_BUDGET; medium and high are both within the cap and land wherever their
-    # own fixed/marginal pair and effort-scaled envelope put them.
-    assert section.model_defaults("gpt-5-mini", backend="openai", effort="low") == \
+    # The wire ceiling itself no longer varies by effort (#598) — but `effort` still selects
+    # which row of the output-density fit `_invert_output_ceiling` inverts that SAME ceiling
+    # against, so the input-side budget still varies. gemini-3.5-flash's ceiling (58_982) shows
+    # all three shapes: low's shallow marginal rate (fixed=2_509, marginal=0.103) extrapolates
+    # past _MAX_OUTPUT_CAPPED_BUDGET and clamps; medium and high both land within the cap at
+    # their own fixed/marginal pair's value.
+    assert section.model_defaults("gemini-3.5-flash", backend="gemini", effort="low") == \
         (section._MAX_OUTPUT_CAPPED_BUDGET, section._MAX_OUTPUT_CAPPED_BUDGET)
-    assert section.model_defaults("gpt-5-mini", backend="openai", effort="medium") == (44_235, 44_235)
-    assert section.model_defaults("gpt-5-mini", backend="openai", effort="high") == (15_574, 15_574)
+    assert section.model_defaults("gemini-3.5-flash", backend="gemini", effort="medium") == (40_683, 40_683)
+    assert section.model_defaults("gemini-3.5-flash", backend="gemini", effort="high") == (5_151, 5_151)
 
 
-def test_model_defaults_checks_extract_and_extract_section_ceilings_separately(monkeypatch):
-    # threshold (gates whole-document extraction) and budget (sizes one section) are checked
-    # against their own task's ceiling, not a single shared lookup (#490) — even though
-    # _TASK_MAX_TOKENS happens to give both "extract" and "extract-section" the same value today.
+def test_model_defaults_uses_one_ceiling_lookup_for_both_threshold_and_budget(monkeypatch):
+    # #598: the ceiling is no longer looked up per task — `output_ceiling_for_sectioning` doesn't
+    # even take one — so ONE lookup now sizes both threshold and budget, replacing the old
+    # separate "extract"/"extract-section" lookups (#490) that happened to resolve to the same
+    # value under `_TASK_MAX_TOKENS`.
     import watchdog.model_client as mc
-    seen = []
+    calls = []
 
-    def fake_ceiling(task, backend, model, effort=None):
-        seen.append(task)
-        return {"extract": 32_000, "extract-section": 8_000}[task]
+    def fake_ceiling(backend, model):
+        calls.append((backend, model))
+        return 32_000
 
     monkeypatch.setattr(mc, "output_ceiling_for_sectioning", fake_ceiling)
     threshold, budget = section.model_defaults("gpt-5-mini", backend="openai")
-    assert sorted(seen) == ["extract", "extract-section"]
-    # No effort given ⇒ medium row (fixed=1051, marginal=0.989).
-    assert threshold == int((32_000 * 0.7 - 1_051) / 0.989)   # capped by the "extract" ceiling
-    assert budget == int((8_000 * 0.7 - 1_051) / 0.989)        # capped by the "extract-section" ceiling
+    assert calls == [("openai", "gpt-5-mini")]
+    # No effort given ⇒ medium row (fixed=1051, marginal=0.989); threshold and budget are now the
+    # SAME value, both capped by the one ceiling.
+    expected = int((32_000 * 0.7 - 1_051) / 0.989)
+    assert threshold == budget == expected
 
 
 def test_model_defaults_floors_output_capped_budget_for_pathological_ceiling(monkeypatch):
@@ -309,7 +314,7 @@ def test_model_defaults_floors_output_capped_budget_for_pathological_ceiling(mon
     # (#542): with the medium row (fixed=1051, marginal=0.989), (100*0.7-1051)/0.989 is negative
     # without a floor.
     import watchdog.model_client as mc
-    monkeypatch.setattr(mc, "output_ceiling_for_sectioning", lambda task, backend, model, effort=None: 100)
+    monkeypatch.setattr(mc, "output_ceiling_for_sectioning", lambda backend, model: 100)
     threshold, budget = section.model_defaults("gpt-5-mini", backend="openai")
     assert threshold == section._MIN_OUTPUT_CAPPED_BUDGET
     assert budget == section._MIN_OUTPUT_CAPPED_BUDGET
@@ -326,11 +331,12 @@ def test_model_defaults_uncapped_for_paginating_and_uncapped_backends():
 
 def test_section_token_threshold_capped_for_openai(monkeypatch):
     monkeypatch.setattr(section, "_config_get", lambda k, d: d)   # no config override
-    # gpt-5-mini's 400K window would give 240K, but the output ceiling caps it to ~44K
-    # (no effort given ⇒ medium row).
-    assert section.section_token_threshold("gpt-5-mini", backend="openai") == 44_235
+    # gpt-5.4's 1.05M window would give 630K, but the output ceiling — 128_000 catalogued * 0.9 =
+    # 115_200 (#598) — caps it, and the medium-row inversion of that clamps to
+    # _MAX_OUTPUT_CAPPED_BUDGET (50_000).
+    assert section.section_token_threshold("gpt-5.4", backend="openai") == 50_000
     # Same model, a paginating backend → uncapped input-window default.
-    assert section.section_token_threshold("gpt-5-mini", backend="claude-api") == 240_000
+    assert section.section_token_threshold("gpt-5.4", backend="claude-api") == 630_000
 
 
 def test_run_sections_openai_doc_that_claude_would_extract_whole(tmp_path, monkeypatch):
@@ -340,20 +346,24 @@ def test_run_sections_openai_doc_that_claude_would_extract_whole(tmp_path, monke
     vault = _vault(tmp_path)
     pages = [{"page": n, "markdown": "x" * 400} for n in range(1, 601)]   # 60_000 est tokens
     _write_queue(vault, "doc1", pages, 600)
-    # 60K tokens < gpt-5-mini's 240K input threshold, but > its ~44K output-capped threshold
-    # (no effort given ⇒ medium row).
-    assert section.run(vault, "doc1", model="gpt-5-mini", backend="claude-api")["sectioned"] is False
-    assert section.run(vault, "doc1", model="gpt-5-mini", backend="openai")["sectioned"] is True
+    # 60K tokens < gpt-5.4's 630K input threshold, but > its 50K output-capped threshold.
+    assert section.run(vault, "doc1", model="gpt-5.4", backend="claude-api")["sectioned"] is False
+    assert section.run(vault, "doc1", model="gpt-5.4", backend="openai")["sectioned"] is True
 
 
 def test_run_effort_flows_through_to_the_output_capped_threshold(tmp_path, monkeypatch):
-    # High reasoning effort draws more from the same wire-enforced output envelope than low effort
-    # does (#542 follow-up), so the same document sections at high effort but not at low.
+    # The wire ceiling itself is the same regardless of effort (#598), but `effort` still selects
+    # which row of the output-density fit that SAME ceiling is inverted against, so high effort's
+    # steep marginal rate still yields a much smaller input threshold than low's.
     monkeypatch.setattr(section, "_config_get", lambda k, d: d)   # no config override
     vault = _vault(tmp_path)
-    pages = [{"page": n, "markdown": "x" * 400} for n in range(1, 201)]   # 20_000 est tokens
-    _write_queue(vault, "doc1", pages, 200)
-    # 20K tokens <= low's 50K (capped) threshold, but > high's ~15.6K threshold.
+    pages = [{"page": n, "markdown": "x" * 400} for n in range(1, 301)]   # 30_000 est tokens
+    _write_queue(vault, "doc1", pages, 300)
+    # 30K tokens <= low's 50,000 (clamped) threshold, but > high's ~20,980: at high effort the fit
+    # predicts ~2.5 output tokens per input token, so the same ceiling buys far less input. Both
+    # thresholds here are real inverted values — deliberately NOT `_MIN_OUTPUT_CAPPED_BUDGET`,
+    # which would mean the ceiling couldn't even cover the fit's fixed cost (see
+    # test_uncatalogued_reasoning_model_budget_does_not_collapse_to_the_floor).
     assert section.run(vault, "doc1", model="gpt-5-mini", backend="openai", effort="low")["sectioned"] is False
     assert section.run(vault, "doc1", model="gpt-5-mini", backend="openai", effort="high")["sectioned"] is True
 

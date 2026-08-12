@@ -478,18 +478,20 @@ historical 120K/60K defaults exactly; the two config keys default to the `auto` 
 accept an explicit `section_token_threshold`/`section_token_budget` integer as an advanced
 escape hatch (a pinned integer does not rescale when the extraction model changes).
 The input-window default is **additionally capped by the output ceiling** for a backend that
-enforces a fixed `max_tokens` and can't paginate past it (openai, gemini — D104, #343): the
-safe output budget is converted back to an input-token cap by inverting an affine fit of
-*total* output — chain-of-thought plus the visible JSON answer, since on these backends both
-share the same wire-enforced `max_tokens` envelope — against input size (D187, #542). The fixed
-cost and marginal rate are looked up per reasoning `effort`, since reasoning volume (and so total
-output) scales with input very differently at each effort level; the result is clamped to a
-measured-range-bounded cap, since the underlying fits are weak and easily extrapolated past what
-was actually observed. `output_ceiling_for_sectioning` itself is effort-aware for a reasoning
-model, returning the real wire ceiling (base task budget plus the effort-scaled reasoning
-reserve) rather than the base budget alone. Backends that paginate their output (claude-api,
-deepseek) or have no ceiling (claude-agent-sdk) return `None` and keep the pure input-window
-default.
+enforces a fixed `max_tokens` and can't paginate past it (openai, gemini — D104, #343). The
+ceiling itself is one per-model wire envelope (`model_client._wire_max_tokens`, D197, #598) —
+the catalogued `max_output_tokens` cap under a 10% headroom, task- and effort-independent, with an
+uncatalogued id resolving through a documented per-family cap (`max_output_tokens_fallback`, shaped
+like `context_window_fallback`) before a conservative default — and
+`output_ceiling_for_sectioning(backend, model)` returns it directly for a non-continuation-capable
+backend, or `None` for claude-api/deepseek (pagination grows output past any cap) or
+claude-agent-sdk (no enforced ceiling at all). Sizing the *input* side against that ceiling still
+inverts an affine fit of *total* output — chain-of-thought plus the visible JSON answer, since on
+these backends both share the same wire-enforced envelope — against input size (D187, #542); the
+fixed cost and marginal rate are still looked up per reasoning `effort`, since reasoning volume
+scales with input very differently at each effort level, and the result is still clamped to a
+measured-range-bounded cap (D197 — pending a per-model per-effort sweep), since the underlying
+fits are weak and easily extrapolated past what was actually observed.
 Finally, the threshold and budget are divided by `model_client.tokenizer_ratio` (D180, #574):
 Claude 4.7+ models (Opus 4.8, Sonnet 5) use a newer tokenizer that produces ~30% more real tokens
 for the same text than the chars/4 `est_tokens` heuristic assumes, so their est-token
@@ -1198,7 +1200,10 @@ completed purge, and the CLI hint says so.
   only backend that works on a subscription; it passes **both** `allowed_tools=[]` and
   `tools=[]`, since only the latter keeps the built-in Claude Code tool suite out of the
   request — ~11.2K tokens per call otherwise, D145), `claude-api` (raw Messages + structured
-  outputs), or the OpenAI-compatible `openai`/`deepseek`/`gemini`/`local`/`openrouter` backends
+  outputs, called via the Anthropic SDK's streaming helper rather than a single non-streaming
+  request — required once `max_tokens` exceeds the SDK's own ~21,333 non-streaming-timeout
+  guard, which the catalog-derived envelope now routinely does, D197), or the OpenAI-compatible
+  `openai`/`deepseek`/`gemini`/`local`/`openrouter` backends
   (Chat Completions over httpx, one provider each via base URL; D37, D94, D139) — by auth mode
   and per-task policy, validates the JSON, retries on the same model on failure, and reports
   cost/latency. Backend registration metadata (provider, base URL, continuation/max-tokens

@@ -118,7 +118,12 @@ async def _anthropic_submit(vault: Path, docs: list[dict], *, model: str, effort
     output_config = {"format": {"type": "json_schema", "schema": schemas.EXTRACTION}}
     if effort_arg:
         output_config["effort"] = effort_arg
-    max_tokens = model_client._TASK_MAX_TOKENS.get("extract", model_client._API_MAX_TOKENS)
+    # The per-model wire envelope (#598) — not `_wire_max_tokens`'s streaming-guard rationale:
+    # the Batches API is asynchronous and holds no connection open, so the non-streaming timeout
+    # guard that shapes the synchronous claude-api path never applied here in the first place.
+    # `_output_envelope` directly rather than `_wire_max_tokens`: the only thing the latter adds is
+    # the DeepSeek `-thinking` strip, and there is no DeepSeek batch path (anthropic/openai only).
+    max_tokens = model_client._output_envelope(model_id)
 
     requests = [
         {
@@ -300,11 +305,12 @@ async def _openai_submit(vault: Path, docs: list[dict], *, model: str, effort: s
 
     model_id = model_client.resolve_model_id(model)
     effort_arg = model_client._resolve_effort("openai", model_id, effort)
-    # `effort_arg` is threaded through so a reasoning model's ceiling scales with the batch's own
-    # effort (D168, #354) — the same call `acomplete_json` makes for a live single call, rather
-    # than falling back to D168's medium-effort default and under-provisioning a high/xhigh/max
-    # batch extraction.
-    max_tokens = model_client._task_max_tokens("extract", "openai", model_id, effort_arg)
+    # The per-model wire envelope (#598) — task/effort-independent, so `effort_arg` is threaded
+    # through below only for the request body's own `reasoning_effort` field, not for sizing
+    # `max_tokens`.
+    # `_output_envelope` directly rather than `_wire_max_tokens`, for the same reason as the
+    # Anthropic path above: no DeepSeek batch path exists, so the `-thinking` strip is moot.
+    max_tokens = model_client._output_envelope(model_id)
     response_format = model_client._openai_response_format(
         model_client._OPENAI_BASE["openai"], schemas.EXTRACTION)
 
