@@ -468,6 +468,59 @@ conclusion stands: **no evidence of a recall gain that would justify 2× cost.**
 suppressed as a duplicate. D172 picked Jaccard 0.75 / containment 0.9 by hand and flagged that
 "only a real run will say which way they are wrong" — a 0.5% suppression rate is the answer.
 
+### The 220 additions, graded: 41% material, and duplication is not the problem (2026-08-15)
+
+All 220 additions from the run above were graded by hand through `verifier_precision.py` — the
+instrument written for this in #535 and never run until now. No model calls; the judge reads the
+packets. Grades are `grounded_material` (supported and worth a reporter's attention, not already
+in the extractor's list in any wording), `grounded_trivial` (true and supported, but a restatement
+or too minor to be worth a line) and `unsupported`.
+
+| Document | material | trivial | unsupported | precision |
+|---|---|---|---|---|
+| Annual-Financial-Report-19-20 | 15 | 12 | 0 | 56% |
+| Annual-Financial-Report-20-21 | 28 | 49 | 1 | 36% |
+| Initial Order | 3 | 5 | 0 | 38% |
+| First Report of the Monitor | 10 | 15 | 0 | 40% |
+| Pre-Filing Report | 33 | 45 | 0 | 42% |
+| Pension Order | 2 | 2 | 0 | 50% |
+| **All** | **91** | **128** | **1** | **41%** |
+
+**Grounding is not the failure.** Every one of the 220 quotes appears verbatim in its document,
+218 of them on the cited page. The single `unsupported` grade is a scrambled-infographic page
+where two adjacent KPI tiles were merged into one false figure.
+
+**Duplication is not the failure either, and this is the finding that matters.** Of the 128
+trivial additions only 73 restate a fact the extractor already had; the other 55 are distinct,
+correctly grounded, and worthless — standard-form CCAA clauses (aid-and-recognition, liability
+protection, effectiveness), accounting-policy notes, cash-flow-forecast mechanics. No
+near-duplicate guard of any design can suppress those, because they are not duplicates. And the
+73 that *are* restatements have a median containment of 0.39 against their nearest existing fact:
+these are paraphrases, and token-set overlap cannot see a paraphrase. The two grade classes are
+barely separable on word overlap at all — median containment 0.27 for material against 0.33 for
+trivial.
+
+**So the thresholds were wrong, but retuning them is a small lever.** Swept through
+`_is_restatement` itself against the grades, document-scoped: 0.9 catches 3, 0.6 catches 11, and
+nothing material is lost anywhere down to 0.5 (the numeric carve-out is what makes a bar that low
+safe — a material fact at high word overlap almost always carries a figure the matched fact
+lacks). Shipped at 0.6, with the strict bar retained below 8 content tokens where the ratio is
+too coarsely quantized to mean anything.
+
+**A second defect, mechanical and larger than the thresholds.** `merge_candidates` compared each
+candidate against *the current section's* facts, while the ledger is the whole document's.
+Section ranges overlap by a page, so the same content is offered twice by construction. All three
+additions in the final ledger that `_is_restatement` scores as duplicates — including a
+word-for-word restatement of an actuarial-valuation fact at containment 0.93 — got there this
+way: the rule fired correctly and never saw the pair. Fixed by threading earlier sections' facts
+into the comparison (#589).
+
+**Both fixes together, replayed against this run: 11 of 220 suppressed, all trivial, none
+material.** The staged ledger goes 537 → 526 and precision 41% → 44%. That is the honest size of
+the dedup lever. The ledger is still 69% larger than the noverify arm's 311 for no measured recall
+gain, and closing that gap means changing what the verifier considers worth reporting, not how
+duplicates are detected.
+
 **This converges with #581.** Five independent samples produced 3× the distinct facts and
 recovered none of the hard items; the verifier produced 220 extra facts and recovered none
 either. Two unrelated mechanisms for generating more candidates, both yielding volume and neither

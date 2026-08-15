@@ -805,7 +805,8 @@ def _verifier_effort() -> str | None:
     return effort if effort in model_client._EFFORT_LEVELS else "low"
 
 
-async def _verify_facts(vault, sha, base, extraction, *, model, backend, filename, detail):
+async def _verify_facts(vault, sha, base, extraction, *, model, backend, filename, detail,
+                        prior_facts=None):
     """One verification call over the document just extracted, then a deterministic merge of
     whatever it returns (#535). Returns the call's cost; `extraction` is mutated in place.
 
@@ -836,7 +837,7 @@ async def _verify_facts(vault, sha, base, extraction, *, model, backend, filenam
     except Exception as e:
         _log(vault, f"WARN {filename}: verification pass failed, keeping extraction as-is ({e})")
         return 0.0
-    stats = verify.merge_candidates(extraction, r.parsed.get("missing_facts") or [])
+    stats = verify.merge_candidates(extraction, r.parsed.get("missing_facts") or [], prior_facts)
     if stats["added"] or stats["suppressed"]:
         _log(vault, f"VERIFY {filename} [{detail}]: {stats['added']} fact(s) added, "
                     f"{stats['suppressed']} suppressed as duplicate or unusable")
@@ -973,8 +974,20 @@ async def _compose_digest(doc: dict, page_count: int | None, model: str, backend
         return _stitch_digest(doc, page_count), 0.0
 
 
+def _facts_so_far(section_parts: dict[int, list[dict]]) -> list[dict]:
+    """Every key fact from the sections already extracted, in section order — the verification
+    pass's near-duplicate reference (#589). Built from `section_parts` rather than accumulated
+    separately so a run resumed from checkpoints carries the same history as one that isn't."""
+    return [f
+            for index in sorted(section_parts)
+            for parsed in section_parts[index]
+            for f in (parsed.get("document") or {}).get("key_facts") or []
+            if isinstance(f, dict)]
+
+
 async def _extract_one_section(vault, sha, pf, skill_text, sec, *, is_first, carry, brief,
-                               model, effort, backend, repair_errors=None, verify_pass=False):
+                               model, effort, backend, repair_errors=None, verify_pass=False,
+                               prior_facts=None):
     """One section's extract-section call. `repair_errors`, when given, appends the post-flight
     repair note to the prompt (#505) — used only for a targeted section-1 retry, never the
     normal per-section loop.
@@ -1018,7 +1031,7 @@ async def _extract_one_section(vault, sha, pf, skill_text, sec, *, is_first, car
     if verify_pass:
         r.cost_usd = (r.cost_usd or 0.0) + await _verify_facts(
             vault, sha, base, r.parsed, model=model, backend=backend,
-            filename=pf["filename"], detail=sec["label"])
+            filename=pf["filename"], detail=sec["label"], prior_facts=prior_facts)
     return r
 
 
@@ -1216,11 +1229,12 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
         carry = _carry_text(entities_seen, last_parts[-1].get("observations") or "")
 
     for sec in sections[len(checkpoints):]:
+        prior = _facts_so_far(section_parts)
         try:
             r = await _extract_one_section(vault, sha, pf, skill_text, sec,
                                            is_first=(sec["index"] == 1), carry=carry, brief=brief,
                                            model=model, effort=effort, backend=backend,
-                                           verify_pass=verify_pass)
+                                           verify_pass=verify_pass, prior_facts=prior)
         except model_client.ModelError as e:
             if not e.truncated:
                 raise   # a rate limit, auth failure, or genuine schema failure — not ours to fix
@@ -1236,7 +1250,8 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
                     r = await _extract_one_section(vault, sha, pf, skill_text, sec,
                                                    is_first=(sec["index"] == 1), carry=carry,
                                                    brief=brief, model=model, effort=lower,
-                                                   backend=backend, verify_pass=verify_pass)
+                                                   backend=backend, verify_pass=verify_pass,
+                                                   prior_facts=prior)
                     section_cost[sec["index"]] = r.cost_usd or 0.0
                     section_parts[sec["index"]] = [r.parsed]
                     _write_section_checkpoint(vault, sha, sec, r.parsed, section_cost[sec["index"]])
@@ -1259,7 +1274,8 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
                 hr = await _extract_one_section(
                     vault, sha, pf, skill_text, half,
                     is_first=(sec["index"] == 1 and i == 0), carry=carry, brief=brief,
-                    model=model, effort=effort, backend=backend, verify_pass=verify_pass)
+                    model=model, effort=effort, backend=backend, verify_pass=verify_pass,
+                    prior_facts=prior + _facts_so_far({0: half_parts}))
                 half_cost += hr.cost_usd or 0.0
                 half_parts.append(hr.parsed)
                 for e2 in hr.parsed.get("entities") or []:
