@@ -216,27 +216,32 @@ def context_window(model: str | None, backend: str | None = None) -> int:
 def tokenizer_ratio(model: str | None, backend: str | None = None,
                     vault: Path | None = None) -> float:
     """Actual-tokens-per-estimated-token multiplier for a stage's model, for provider-aware
-    sectioning (#574). Claude 4.7+ models (Opus 4.8, Sonnet 5) use a newer tokenizer that
-    produces ~30% more tokens than earlier Claude models for the same text (see
-    `model_catalog.yaml`'s `tokenizer_ratio` field). `pipeline/section.py`'s chars/4 `est_tokens`
-    heuristic was calibrated against the *old* tokenizer, so on a new-tokenizer model it
-    undercounts a document's real token footprint by roughly this ratio; `section.model_defaults`
-    divides its window-derived threshold/budget by it so sectioning still respects the model's
-    real context window rather than the heuristic's optimistic count.
+    sectioning (#574, remeasured #617). `pipeline/section.py`'s chars/4 `est_tokens` heuristic was
+    calibrated against Claude's *old* tokenizer, so on a model whose tokenizer differs it
+    mis-counts a document's real token footprint; `section.model_defaults` divides its
+    window-derived threshold/budget by this ratio so sectioning respects the model's real context
+    window rather than the heuristic's count.
 
-    1.0 (no correction) for any model that doesn't declare a ratio — every non-Anthropic
-    provider and every Claude model through Sonnet 4.6 — and for `backend == "local"`, whose
-    self-hosted id carries no catalog entry to declare one.
+    Every catalogued value is now measured against corpus-v1 rather than quoted from a vendor
+    (#617, D197) — `benchmarks/tokenizer_ratio.py`, via each provider's own free token-counting
+    endpoint. Three tokenizers cover the seven models that declare one: 0.93 for Claude through
+    Sonnet 4.6, 1.28 for Claude 4.7+ (Opus 4.8, Sonnet 5 — the vendor's "~30% more" measured at
+    ~37% more on our text), 0.91 for Gemini.
+
+    1.0 (no correction) for any model that doesn't declare a ratio — OpenAI and DeepSeek, neither
+    of which exposes a token counter to measure against, see `model_catalog.yaml`'s field comment
+    — and for `backend == "local"`, whose self-hosted id carries no catalog entry to declare one.
 
     `vault` (#606 Part B), when given, prefers this vault's own empirically-measured ratio —
     `pipeline.ingest_setup._model_tokenizer_calibration`, computed from real est/actual token
-    pairs already recorded per model in this vault's usage history — over the static catalog
-    constant, which per DECISIONS D180 rests entirely on Anthropic's stated figure rather than on
-    measurement. Falls back to the catalog value when `vault` is None or the vault doesn't yet
-    have enough matching history to calibrate from (a cold-start model, or any caller with no
-    vault context, e.g. `watchdog configure`'s preview). Imported locally (not at module level)
-    to avoid a circular import — `ingest_setup` already imports `pipeline.section`, which needs
-    to reach this function."""
+    pairs already recorded per model in this vault's usage history — over the catalog constant,
+    since a vault's own documents are better evidence for its own sectioning than a benchmark
+    corpus is. Falls back to the catalog value when `vault` is None or the vault doesn't yet have
+    enough matching history to calibrate from (a cold-start model, a vault whose history all
+    predates #617's `est_prompt_tokens` field, or any caller with no vault context, e.g.
+    `watchdog configure`'s preview). Imported locally (not at module level) to avoid a circular
+    import — `ingest_setup` already imports `pipeline.section`, which needs to reach this
+    function."""
     if backend == "local":
         return 1.0
     model_id = resolve_model_id(model or DEFAULT_TIER)

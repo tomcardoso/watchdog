@@ -25,16 +25,59 @@
 # none) for a model with no effort control at all (Claude Haiku, DeepSeek). `model_client.py`'s
 # `_resolve_effort` rejects a request for a level outside this list with a clear error rather
 # than silently dropping it or sending a request the API would reject.
-# `tokenizer_ratio` (#574) is the actual-tokens-per-estimated-token multiplier for a model whose
-# tokenizer isn't the one `pipeline/section.py`'s chars/4 `est_tokens` heuristic was calibrated
-# against. Per Anthropic's pricing docs (platform.claude.com/docs/en/about-claude/pricing, fetched
-# 2026-08-08): "Claude 4.7 and later models ... use a newer tokenizer ... [that] produces
-# approximately 30% more tokens for the same text. ... Claude Sonnet 4.6 and earlier models use
-# the previous tokenizer." Omit it (defaults to 1.0, no correction) for every model on the old
-# tokenizer and for every non-Anthropic provider, which this Anthropic-specific finding says
-# nothing about. `model_client.tokenizer_ratio` resolves it; `section.model_defaults` divides its
-# window-derived threshold/budget by it so a document's real token footprint on a new-tokenizer
-# model still respects the model's real context window.
+# `tokenizer_ratio` (#574, remeasured #617) is the actual-tokens-per-estimated-token multiplier
+# for a model whose tokenizer isn't the one `pipeline/section.py`'s chars/4 `est_tokens` heuristic
+# was calibrated against. `model_client.tokenizer_ratio` resolves it; `section.model_defaults`
+# divides its window-derived threshold/budget by it so a document's real token footprint still
+# respects the model's real context window.
+#
+# MEASURED, not quoted (#617, D197). Every value below comes from `benchmarks/tokenizer_ratio.py`
+# run against corpus-v1 (6 documents, 209 pages, 160,031 est tokens) on 2026-08-15, using each
+# provider's own free, non-generative token counter — Anthropic's `messages.count_tokens`, Gemini's
+# `models/<id>:countTokens` — on the corpus's chewed markdown assembled exactly as
+# `orchestrate._pages_text` assembles it for a real call, with message framing subtracted out. It
+# is the ratio of that count to `est_tokens` over the same pages' raw markdown, which is the pair
+# sectioning actually reasons about. Rerun the script to reproduce; it needs no extraction calls.
+#
+# The measurement replaces #574's vendor citation, which was Anthropic's "approximately 30% more
+# tokens for the same text" for Claude 4.7+ and an unmeasured 1.0 for everyone else. That figure
+# turned out close but not exact on our text: 1.28, not 1.30. Relative to Claude's *old* tokenizer
+# the new one runs ~37% heavier here (1.278/0.931), not 30% — a vendor statement about general
+# prose, measured against chewed court filings and institutional financial reports.
+#
+# The ratio is a property of the TOKENIZER, not the model. Haiku 4.5 and Sonnet 4.6 return
+# byte-identical counts on all six documents; so do Opus 4.8 and Sonnet 5; so do all three Gemini
+# entries. Three tokenizers cover seven models. A new model joining an existing family can copy
+# its family's value; a genuinely new tokenizer needs its own run.
+#
+# Values are corpus-wide (est-token-weighted), not per-document means, and the per-document spread
+# is real: 0.902-1.146 (old Claude), 1.243-1.703 (new Claude), 0.847-1.074 (Gemini). Within-model
+# spread exceeds between-model spread, so #617 asked whether a single scalar is the wrong shape.
+# It is not, because the spread is size-dependent — the high end is always the 5-page Pension
+# Order, and a document that small is never sectioned and can never approach a window. Weighting
+# by est tokens puts the weight on the long documents, which are the only ones that can overrun.
+# The tail is covered structurally besides: `_THRESHOLD_FRACTION` is 0.6, so a threshold-sized
+# call built at the corpus ratio still lands at 60% of the window, and even at the worst measured
+# per-document ratio it reaches only ~80%.
+#
+# A value BELOW 1.0 means chars/4 over-estimates for that tokenizer, and widens the budget
+# accordingly. That is deliberate and safe for the same 40%-headroom reason — but it is also why
+# every value here is a measurement of OUR corpus. A corpus of very different text (non-English,
+# heavy code, dense tables throughout) could tokenize meaningfully worse; re-measure rather than
+# assuming these transfer.
+#
+# OPENAI AND DEEPSEEK ARE DELIBERATELY LEFT UNDECLARED (they default to 1.0). Neither provider
+# exposes a free token counter, and tiktoken is not a substitute: as of 2026-08-15 it cannot map
+# a single GPT-5.x id in this catalog (`encoding_for_model("gpt-5.4-mini")` raises), and it is
+# simply wrong for Claude. What we do have is `benchmarks/tokenizer_ratio.py --history`, which
+# regresses `actual = ratio * est + overhead` over archived benchmark calls; it puts every
+# OpenAI/DeepSeek model at or below ~1.1, and the same regression run against Claude and Gemini
+# reads ~12-17% HIGH versus their counted ground truth (the extraction prompt's harvested-
+# candidate block scales with document size, so some per-token overhead is still landing in the
+# slope). Corrected for that, all of them fall below 1.0 — meaning the 1.0 default is already on
+# the conservative side, and raising the budget on a derived correction to a noisy fit
+# (gpt-5.4-nano fits at r2 0.38) would be worse than the vendor figure this change removed.
+# Declare a measured value here if OpenAI or DeepSeek ever ships a counting endpoint.
 # Price reference (#574): https://github.com/pydantic/genai-prices — Pydantic's maintained price
 # dataset (~34 providers). Consult it when adding or revising a model, but read the schema
 # carefully: a price can be a LIST of clauses gated by `constraint.start_date` (take the clause
@@ -97,6 +140,7 @@ models:
     cache_read: 0.10e-6
     context_window: 200_000
     max_output_tokens: 64_000
+    tokenizer_ratio: 0.93     # measured #617, corpus-v1 2026-08-15 (old Claude tokenizer)
   - id: claude-sonnet-4-6
     name: Claude Sonnet 4.6
     provider: anthropic
@@ -109,6 +153,7 @@ models:
     max_output_tokens: 128_000
     max_output_tokens_batch: 300_000
     effort_levels: [low, medium, high, max]
+    tokenizer_ratio: 0.93     # measured #617, corpus-v1 2026-08-15 (old Claude tokenizer)
   - id: claude-opus-4-8
     name: Claude Opus 4.8
     provider: anthropic
@@ -121,7 +166,7 @@ models:
     max_output_tokens: 128_000
     max_output_tokens_batch: 300_000
     effort_levels: [low, medium, high, xhigh, max]
-    tokenizer_ratio: 1.3
+    tokenizer_ratio: 1.28     # measured #617, corpus-v1 2026-08-15 (new Claude tokenizer; was 1.3)
   # Claude Sonnet 5 (#361/#509 benchmark groundwork, D165) — additive alongside 4.6; bare `sonnet`
   # keeps resolving to 4.6 above, `sonnet-5` is the only way to select this entry. Pricing below is
   # the INTRODUCTORY rate, in effect through 2026-08-31 (source: platform.claude.com/docs/en/
@@ -131,8 +176,9 @@ models:
   # Context window is pinned to 200K like every other Claude tier in this catalog (D89) even
   # though Anthropic's own docs list 1M as both the default and the max for this model — 200K is
   # this catalog's deliberately conservative *sectioning* window, not the vendor ceiling.
-  # Sonnet 5 uses a new tokenizer producing ~30% MORE tokens than 4.6 for the same input text —
-  # see the `tokenizer_ratio` field comment above (#574) for the source and how it's applied.
+  # Sonnet 5 shares Opus 4.8's newer tokenizer, which on corpus-v1 runs ~37% heavier than Sonnet
+  # 4.6's for the same text (both return byte-identical counts on all six documents) — see the
+  # `tokenizer_ratio` field comment above (#617) for the measurement and how it's applied.
   - id: claude-sonnet-5
     name: Claude Sonnet 5
     provider: anthropic
@@ -145,7 +191,7 @@ models:
     max_output_tokens: 128_000
     max_output_tokens_batch: 300_000
     effort_levels: [low, medium, high, xhigh, max]
-    tokenizer_ratio: 1.3
+    tokenizer_ratio: 1.28     # measured #617, corpus-v1 2026-08-15 (new Claude tokenizer; was 1.3)
 
   # DeepSeek V4 (1M-token window; cache-hit input is a ~50x discount on the miss rate)
   - id: deepseek-v4-flash
@@ -259,6 +305,7 @@ models:
     context_window: 1_000_000
     max_output_tokens: 65_536
     effort_levels: [low, medium, high]
+    tokenizer_ratio: 0.91     # measured #617, corpus-v1 2026-08-15 (shared Gemini tokenizer)
   - id: gemini-3.1-flash-lite
     name: Gemini 3.1 Flash-Lite
     provider: gemini
@@ -268,6 +315,7 @@ models:
     context_window: 1_000_000
     max_output_tokens: 65_536
     effort_levels: [low, medium, high]
+    tokenizer_ratio: 0.91     # measured #617, corpus-v1 2026-08-15 (shared Gemini tokenizer)
   - id: gemini-3.1-pro-preview
     name: Gemini 3.1 Pro Preview
     provider: gemini
@@ -277,6 +325,7 @@ models:
     context_window: 1_000_000
     max_output_tokens: 65_536
     effort_levels: [low, medium, high]
+    tokenizer_ratio: 0.91     # measured #617, corpus-v1 2026-08-15 (shared Gemini tokenizer)
 
 # Context-window fallback, consulted by model_client.py's context_window() only when a model
 # isn't an exact match in the `models` catalog above — an unpriced local/OpenRouter model (whose

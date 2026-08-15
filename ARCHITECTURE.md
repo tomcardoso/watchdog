@@ -185,9 +185,14 @@ only when there's no such history yet. Deliberately scoped to the *displayed* es
 still-thin, self-reported history would be a pipeline-behaviour change dressed up as a display fix.
 Not model-tokenizer-scoped (D180, #574): the derived ratio already absorbs whichever tokenizer the
 extractor behind that history actually used, so it only stays accurate while the extractor doesn't
-cross the Claude tokenizer boundary (old tokenizer through Sonnet 4.6, new tokenizer from Opus
-4.8/Sonnet 5 on) between that history and the run being estimated — documented as a known gap
-rather than fixed, since correcting it needs grouping calibration runs by extractor model.
+cross a tokenizer boundary between that history and the run being estimated — and there are three
+such boundaries, not one, now that every catalogued tokenizer has been measured (D198, #617:
+Claude through Sonnet 4.6 at 0.93, Claude 4.7+ at 1.28, Gemini at 0.91). Documented as a known gap
+rather than fixed, since correcting it needs grouping calibration runs by extractor model. Note
+this is a different quantity from `_model_tokenizer_calibration`'s, which D198 rescoped to divide
+by the whole prompt's estimate; this one stays a run-level, document-only comparison and so still
+carries prompt overhead inside it, which is tolerable for a displayed tokens-in figure but is
+exactly what made it wrong to feed sectioning.
 
 **`watchdog bark --estimate` (D135).** Prices the batch already staged in `.watchdog/tmp/`
 (`result_<sha>.json` + `notes_<sha>.md`, chars/4) rather than a queue — `ingest_setup.
@@ -207,11 +212,11 @@ projected from this vault's own recent output:input *token* ratio (backend-agnos
 scoped the same way their own $/token ratios are), applied uniformly across every model. Every
 catalog model is shown, Claude tiers included, regardless of the vault's own auth mode — this is
 a list-price comparison across providers, not a projection of what this vault would actually be
-billed. Each row additionally scales `est_tokens` by that model's own `tokenizer_ratio` (D180,
-#574) — otherwise a single tokens-in figure calibrated on the old tokenizer would price a
-new-tokenizer Claude model (Opus 4.8, Sonnet 5) as if it read the same text into fewer real
-tokens than it actually does. Accurate as long as the vault's own calibration history stayed on
-the old tokenizer, same caveat D135's calibration carries below.
+billed. Each row additionally scales `est_tokens` by that model's own measured `tokenizer_ratio`
+(D180, #574; D198, #617) — otherwise a single tokens-in figure would price every model as if the
+same text became the same number of real tokens on each, when the measured spread across
+catalogued tokenizers runs 0.91 to 1.28. Accurate as long as the vault's own calibration history
+stayed on the same tokenizer, same caveat D135's calibration carries below.
 
 **Lock acquisition is atomic** (`pipeline/locks.py`, D66). All three run locks — the ingest
 lock, the shared finalize lock, and chew's `.watchdog/.chew-lock` — are taken with
@@ -492,20 +497,28 @@ fixed cost and marginal rate are still looked up per reasoning `effort`, since r
 scales with input very differently at each effort level, and the result is still clamped to a
 measured-range-bounded cap (D197 — pending a per-model per-effort sweep), since the underlying
 fits are weak and easily extrapolated past what was actually observed.
-Finally, the threshold and budget are divided by `model_client.tokenizer_ratio` (D180, #574):
-Claude 4.7+ models (Opus 4.8, Sonnet 5) use a newer tokenizer that produces ~30% more real tokens
-for the same text than the chars/4 `est_tokens` heuristic assumes, so their est-token
-threshold/budget shrink by that ratio to keep the real tokens a call sends under the model's
-actual context window. `tokenizer_ratio` is a per-model `model_catalog.yaml` field, defaulting to
-1.0 (no change) for every model through Sonnet 4.6 and every non-Anthropic provider — a static
-constant that, per D180, was never actually measured against real Watchdog usage. When a `vault`
-is in scope (the real ingest path — `section.run` passes its own `vault` through automatically),
-`tokenizer_ratio` instead prefers an empirically-derived ratio from that vault's own usage
-history, pooled per model/backend from real per-call estimate-vs-actual token pairs
-(`ingest_setup._model_tokenizer_calibration`, D190, #606), falling back to the static catalog
-value until a model has accumulated enough matching calls to calibrate from. `watchdog
-configure`'s preview (`cmd/setup.py:_auto_resolved_hint`) has no vault context and always shows
-the catalog-based number, by design.
+Finally, the threshold and budget are divided by `model_client.tokenizer_ratio` (D180, #574;
+remeasured D198, #617), correcting for the fact that the chars/4 `est_tokens` heuristic was
+calibrated against Claude's *old* tokenizer and mis-states every other one. Every catalogued
+value is measured against corpus-v1 by `benchmarks/tokenizer_ratio.py`, using each provider's own
+free, non-generative token counter; three tokenizers cover the seven models that declare a ratio —
+0.93 (Claude through Sonnet 4.6), 1.28 (Claude 4.7+: Opus 4.8, Sonnet 5), 0.91 (Gemini). The
+correction runs both ways: above 1.0 it shrinks the est-token budget so a call's real tokens stay
+inside the window, below 1.0 it widens it, which is safe because the threshold fraction reserves
+40% of the window regardless. OpenAI and DeepSeek are deliberately left undeclared (1.0) — neither
+exposes a counter to measure against, and the best available evidence puts them below 1.0, so 1.0
+is the conservative side. Because the output-ceiling clamp is a bound in est-token space, it is
+re-applied *after* this division, not just before it (D198).
+When a `vault` is in scope (the real ingest path — `section.run` passes its own `vault` through
+automatically), `tokenizer_ratio` instead prefers an empirically-derived ratio from that vault's
+own usage history, pooled per model/backend from real per-call estimate-vs-actual token pairs
+(`ingest_setup._model_tokenizer_calibration`, D190, #606), falling back to the catalog value until
+a model has accumulated enough matching calls to calibrate from. That calibration divides by
+`est_prompt_tokens` — the whole rendered prompt's chars/4 estimate, recorded on every call by
+`orchestrate._call_model` — not the document-only `est_input_tokens` it originally used, which
+made it measure prompt overhead as though it were tokenization (D198). `watchdog configure`'s
+preview (`cmd/setup.py:_auto_resolved_hint`) has no vault context and always shows the
+catalog-based number, by design.
 The carry-forward is a deduplicated entity-id → name/type map accumulated across every
 section seen so far (rebuilt fresh each section, one line per entity, not a running
 concatenation) plus only the immediately preceding section's `observations` text; and,

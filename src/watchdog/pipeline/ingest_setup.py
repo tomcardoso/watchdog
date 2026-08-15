@@ -145,6 +145,25 @@ def _model_tokenizer_calibration(vault: Path, model: str | None, backend: str | 
     alone — not of which task sent that text — so a whole-document `extract` call and a single
     section's `extract-section` call are equally valid evidence for the same ratio.
 
+    Divides by `est_prompt_tokens`, NOT `est_input_tokens` (#617, D197). This is the bug the
+    original #606 Part B version shipped with: `est_input_tokens` covers the document text only,
+    while the provider's reported input tokens cover the entire rendered prompt — schema,
+    extraction instructions, record skill, carry-forward entities, harvested candidates and the
+    document alike. Dividing one by the other measured
+    `tokenizer_ratio x (1 + prompt_overhead / document_tokens)`, and the bias was not even
+    constant: it shrank as sections grew, so a vault whose history happened to be section-heavy
+    calibrated to a larger ratio than a whole-document-heavy one for the same model and the same
+    tokenizer, and shrank its sectioning budget accordingly. Measured against corpus-v1 the
+    scaffolding is 7,200-9,300 real tokens per call, which read a true 1.09 Claude ratio as 1.41
+    and a true sub-1.0 GPT-5.4-nano ratio as 2.19.
+
+    Records written before #617 carry no `est_prompt_tokens` and are skipped rather than being
+    silently mixed in on the old denominator. A vault whose history is entirely pre-#617
+    therefore calibrates to None and falls back to the catalog constant — which is now itself a
+    measured figure (`model_catalog.yaml`, `benchmarks/tokenizer_ratio.py`), so the cold-start
+    fallback is real data rather than a vendor sentence, and the contaminated ratio stops being
+    preferred over it.
+
     Returns `None` (not a noisy one-or-two-sample ratio) when fewer than `min_records` matching
     records were found — a model tried once or twice in this vault shouldn't override the catalog
     constant on a whim; callers fall back to it instead, exactly as `_tokens_calibration` falls
@@ -168,7 +187,7 @@ def _model_tokenizer_calibration(vault: Path, model: str | None, backend: str | 
                 continue
             if record.get("task") not in ("extract", "extract-section"):
                 continue
-            est = record.get("est_input_tokens")
+            est = record.get("est_prompt_tokens")
             act = _real_input_tokens(record)
             if est and act:
                 estimated.append(est)

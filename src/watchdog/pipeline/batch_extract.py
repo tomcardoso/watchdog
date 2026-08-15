@@ -28,7 +28,7 @@ from pathlib import Path
 
 from watchdog import model_client
 from watchdog.model_catalog import catalog_cache_breakpoints
-from watchdog.pipeline import schemas
+from watchdog.pipeline import schemas, section
 
 STATE_REL = Path(".watchdog") / "registry" / "batch-pending.json"
 _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
@@ -57,6 +57,27 @@ def write_state(vault: Path, state: dict) -> None:
 
 def clear_state(vault: Path) -> None:
     state_path(vault).unlink(missing_ok=True)
+
+
+def est_prompt_tokens(docs: list[dict]) -> dict[str, int]:
+    """`{sha: chars/4 estimate of that doc's whole rendered prompt}`, persisted in the batch state
+    at submit time (#617).
+
+    The live path computes this inside `orchestrate._call_model`, which has the rendered prompt in
+    scope. A batch doesn't: the prompt is rendered here, at submission, and the usage record is
+    written by `_collect_batch_results` in a *later* invocation, by which point only the parsed
+    result and its usage remain. Without carrying it across, every batch-extracted call would lack
+    `est_prompt_tokens` and be skipped by `ingest_setup._model_tokenizer_calibration`, so a vault
+    that extracts exclusively on `claude-batch`/`openai-batch` could never calibrate its own
+    tokenizer ratio and would sit on the catalog constant forever.
+
+    Mirrors `_call_model`'s own normalization: a prompt is normally a string but may be a list of
+    Anthropic content blocks (A1, cache_control), and `json.dumps` gives that shape a stable text
+    form to measure — the same convention, so a batch record's estimate is comparable to a live
+    one's rather than being on its own scale."""
+    return {d["sha"]: section.est_tokens(
+        d["prompt"] if isinstance(d["prompt"], str) else json.dumps(d["prompt"], sort_keys=True))
+        for d in docs}
 
 
 def _client(api_key: str):
@@ -146,6 +167,7 @@ async def _anthropic_submit(vault: Path, docs: list[dict], *, model: str, effort
         "model": model_id,
         "effort": effort,
         "skills": dict(skills),
+        "est_prompt_tokens": est_prompt_tokens(docs),
         "backend": backend,
         "submitted_at": datetime.datetime.now(datetime.timezone.utc).strftime(_TS_FMT),
     })
@@ -342,6 +364,7 @@ async def _openai_submit(vault: Path, docs: list[dict], *, model: str, effort: s
         "model": model_id,
         "effort": effort,
         "skills": dict(skills),
+        "est_prompt_tokens": est_prompt_tokens(docs),
         "backend": backend,
         "submitted_at": datetime.datetime.now(datetime.timezone.utc).strftime(_TS_FMT),
     })

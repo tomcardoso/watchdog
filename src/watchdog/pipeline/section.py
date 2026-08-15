@@ -149,13 +149,15 @@ def model_defaults(model: str | None, backend: str | None = None,
     itself is no longer effort-scaled (#598 — see `output_ceiling_for_sectioning`), so `effort`
     only matters here, not to the lookup below.
 
-    Finally divided by `model_client.tokenizer_ratio` (#574): `est_tokens`'s chars/4 heuristic is
-    calibrated against Claude's *old* tokenizer, so on a model whose tokenizer produces more real
-    tokens per character (Claude 4.7+ — Opus 4.8, Sonnet 5) an est-token count undercounts the
-    real tokens a call will spend. Shrinking the est-token threshold/budget by that same ratio
-    keeps the real tokens sectioning actually sends under the model's real context window. A
-    1.0 ratio (every model through Sonnet 4.6, and every non-Anthropic provider) leaves this a
-    no-op — the historical 120K/60K Claude defaults are unchanged.
+    Finally divided by `model_client.tokenizer_ratio` (#574, remeasured #617): `est_tokens`'s
+    chars/4 heuristic is calibrated against Claude's *old* tokenizer, so on a model whose
+    tokenizer produces a different number of real tokens per character the est-token count
+    mis-states what a call will actually spend. Dividing the est-token threshold/budget by that
+    ratio keeps the real tokens sectioning sends inside the model's real context window. Above
+    1.0 (Claude 4.7+, 1.28) it shrinks the budget; below 1.0 (Claude through Sonnet 4.6 at 0.93,
+    Gemini at 0.91 — chars/4 over-estimates for those tokenizers) it widens it, which is safe
+    because `_THRESHOLD_FRACTION` leaves 40% of the window unused regardless. A 1.0 ratio
+    (OpenAI and DeepSeek, which expose no counter to measure against) leaves this a no-op.
 
     `vault` (#606 Part B), when given, is passed straight through to `tokenizer_ratio` so it can
     prefer this vault's own empirically-measured ratio over the static catalog constant once
@@ -188,6 +190,17 @@ def model_defaults(model: str | None, backend: str | None = None,
     ratio = model_client.tokenizer_ratio(model, backend, vault)
     threshold = int(threshold / ratio)
     budget = max(1, int(budget / ratio))
+    if ceiling is not None:
+        # Re-apply the output-ceiling clamp after the division (#617). `_invert_output_ceiling`
+        # bounds its result by `_MAX_OUTPUT_CAPPED_BUDGET`, which is a limit on how far the weak
+        # output-density fit may be extrapolated — and that fit's x-axis is EST tokens, so the
+        # bound has to hold on the est-token value this function actually returns. Dividing after
+        # clamping used to be harmless because every declared ratio was >= 1.0 and could only
+        # shrink the number; #617's measured sub-1.0 ratios (Claude through Sonnet 4.6, Gemini)
+        # divide it upward instead, which would otherwise hand back a budget past the largest
+        # input the fit was ever measured against.
+        threshold = min(threshold, _MAX_OUTPUT_CAPPED_BUDGET)
+        budget = min(budget, _MAX_OUTPUT_CAPPED_BUDGET)
     return threshold, budget
 
 

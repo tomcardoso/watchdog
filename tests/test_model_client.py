@@ -543,17 +543,22 @@ def test_context_window_ignores_backend_for_hosted_models():
     assert mc.context_window("deepseek-v4-flash", "deepseek") == 1_000_000
 
 
-# ── tokenizer ratio (#574) ──────────────────────────────────────────────────────
+# ── tokenizer ratio (#574, remeasured against corpus-v1 in #617) ────────────────
 
+# Three tokenizers cover the seven models that declare a ratio: Claude through Sonnet 4.6, Claude
+# 4.7+, and Gemini. Members of a family share a value exactly (they returned byte-identical counts
+# on all six corpus documents), which is what the paired rows below assert.
 @pytest.mark.parametrize("model, ratio", [
-    ("sonnet", 1.0),             # old tokenizer (Sonnet 4.6)
-    ("haiku", 1.0),              # old tokenizer
-    (None, 1.0),                 # default tier (sonnet)
-    ("sonnet-5", 1.3),           # new tokenizer
-    ("opus", 1.3),               # new tokenizer (Opus 4.8)
-    ("deepseek-v4-flash", 1.0),  # non-Anthropic, unaffected
-    ("gpt-5-mini", 1.0),
-    ("gemini-2.5-flash", 1.0),
+    ("sonnet", 0.93),            # old Claude tokenizer (Sonnet 4.6)
+    ("haiku", 0.93),             # old Claude tokenizer — same value, same tokenizer
+    (None, 0.93),                # default tier (sonnet)
+    ("sonnet-5", 1.28),          # new Claude tokenizer
+    ("opus", 1.28),              # new Claude tokenizer (Opus 4.8) — same value
+    ("gemini-3.5-flash", 0.91),  # Gemini tokenizer
+    ("gemini-3.1-pro-preview", 0.91),
+    ("deepseek-v4-flash", 1.0),  # no counting endpoint to measure against → left undeclared
+    ("gpt-5-mini", 1.0),         # ditto (also uncatalogued)
+    ("gemini-2.5-flash", 1.0),   # deliberately not catalogued (#583/D182) → no declared ratio
     ("some-unknown-model", 1.0),  # uncatalogued → no correction
 ])
 def test_tokenizer_ratio(model, ratio):
@@ -567,7 +572,7 @@ def test_tokenizer_ratio_local_backend_always_one():
 
 def test_tokenizer_ratio_no_vault_uses_catalog(tmp_path):
     # No vault context (e.g. `watchdog configure`'s preview, #606 Part A) — plain catalog value.
-    assert mc.tokenizer_ratio("sonnet-5", backend=None, vault=None) == 1.3
+    assert mc.tokenizer_ratio("sonnet-5", backend=None, vault=None) == 1.28
 
 
 def test_tokenizer_ratio_uses_vault_calibration_when_available(tmp_path, monkeypatch):
@@ -590,8 +595,8 @@ def test_tokenizer_ratio_falls_back_to_catalog_when_calibration_returns_none(tmp
 
     monkeypatch.setattr(ingest_setup, "_model_tokenizer_calibration", lambda *a, **kw: None)
     vault = tmp_path / "vault"
-    # sonnet-5's catalog ratio (1.3) is used when the vault has no matching calibration history.
-    assert mc.tokenizer_ratio("sonnet-5", backend=None, vault=vault) == 1.3
+    # sonnet-5's catalog ratio (1.28) is used when the vault has no matching calibration history.
+    assert mc.tokenizer_ratio("sonnet-5", backend=None, vault=vault) == 1.28
 
 
 def test_output_ceiling_applies_to_local_and_openrouter():

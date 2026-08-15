@@ -476,6 +476,39 @@ Same judge discipline as Step 7: the judge model must not be the model under tes
 `unsupported` rows first — a fact the source doesn't support is a different and worse failure than
 a trivial one, and the two should not be averaged together when deciding.
 
+## Token density — `tokenizer_ratio.py` (#617)
+
+Separate from the arm matrix, and **free**: measures how many real tokens each model counts for
+text the chars/4 `est_tokens` heuristic scores as one estimated token. That multiplier is
+`model_catalog.yaml`'s `tokenizer_ratio`, which `pipeline/section.py` divides its window-derived
+threshold/budget by, and every value in the catalog now comes from this script rather than a
+vendor sentence (D198).
+
+```
+~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/tokenizer_ratio.py
+```
+
+No extraction calls, no generation, no subscription session window — Anthropic's
+`messages.count_tokens` and Gemini's `models/<id>:countTokens` are free, non-generative endpoints.
+It needs the master chew (`--vault`, default `benchmarks/.vaults/bench-master`), not a set of arm
+vaults. Two modes, both reported unless you pass one:
+
+- `--count` queries those free endpoints for Anthropic and Gemini. This is the ground truth.
+- `--history` fits `actual = ratio × est + overhead` over usage already archived under
+  `benchmarks/<run-id>/artifacts/*/usage/*.json` — offline, and the only evidence available for
+  OpenAI and DeepSeek, neither of which exposes a counter. **Read `r²` and the slope's standard
+  error before believing a row**, and note that where both modes cover the same model the
+  regression reads 12–17% high (the harvested-candidate block scales with document size, so some
+  per-token overhead lands in the slope). Treat a history-only slope as an upper bound.
+
+Do **not** reach for tiktoken as a shortcut. It cannot map any GPT-5.x id in this catalog
+(`encoding_for_model("gpt-5.4-mini")` raises, checked 2026-08-15), and it is simply the wrong
+tokenizer for Claude.
+
+Re-run it when adding a model on a tokenizer no catalogued model already uses — members of a
+family return byte-identical counts and can copy their family's value — or when the corpus itself
+changes.
+
 ## Rough cost
 
 Order-of-magnitude, from the per-token pricing (extraction is output-dominated). The full corpus on
