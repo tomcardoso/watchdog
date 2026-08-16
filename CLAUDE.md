@@ -88,6 +88,14 @@ For a change that only touches comments, docstrings, or documentation — not an
 
 ---
 
+## Standing follow-ups
+
+Constants and choices that were fitted against a *specific* benchmark run and are provisional until refit. **Each entry names the trigger that should make you revisit it — if you're doing the thing in the trigger, raise the entry with Tom rather than treating the current value as settled.** Delete an entry once it's been refit; don't let this section become a graveyard.
+
+| Item | Trigger to revisit |
+|---|---|
+| `_CONTAINMENT_SUPPRESS` = 0.6 in `pipeline/verify.py` (near-duplicate suppression, D198) | **The next benchmark run that exercises the verifier.** The value was fitted against the 220 additions of run `2026-08-09-1523`, whose `prompts/verify.md` has since been rewritten (#619). The population it was tuned on no longer exists, so refit against the new run's additions before quoting it as tuned. Nothing breaks meanwhile — no material fact was lost anywhere from 0.9 down to 0.5 in the original sweep. |
+
 ## Releasing to PyPI
 
 The package publishes to PyPI automatically when a GitHub release is created. Publishing uses OIDC trusted-publisher auth — no API tokens or secrets.
