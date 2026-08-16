@@ -1,0 +1,316 @@
+{
+  "judgments": {
+    "Annual-Financial-Report-20-21:v26": {
+      "grade": "unsupported",
+      "note": "Asserts capital spending of $2.8M 'compared with $19.8M last year'. Page 3 is a scrambled infographic: capital spending was $1.4M this year and $2.8M last year, and the $19.8M belongs to the Available Expendable Resources tile (where it is negative). Both figures are mis-assembled from adjacent tiles."
+    },
+    "Annual-Financial-Report-20-21:v27": {
+      "grade": "grounded_material",
+      "note": "FTE enrolment 7,090 against 6,834 last year — a different measure from E17's headcount, and verified on the page."
+    },
+    "Annual-Financial-Report-20-21:v28": {
+      "grade": "grounded_material",
+      "note": "The Province's 10% domestic tuition cut for 2019-20 and freeze for 2020-21. The policy cause of the revenue squeeze; absent from the extractor's list."
+    },
+    "Annual-Financial-Report-20-21:v29": {
+      "grade": "grounded_material",
+      "note": "A completed January 2022 real-estate review to identify assets unnecessary to operations and monetization opportunities. Signals asset sales."
+    },
+    "Annual-Financial-Report-20-21:v30": {
+      "grade": "grounded_material",
+      "note": "A completed January 2022 external review of the Board of Governors, Senate and operational structure. Governance accountability."
+    },
+    "Annual-Financial-Report-20-21:v31": {
+      "grade": "grounded_trivial",
+      "note": "Restates the claims process already in E68/E104."
+    },
+    "Annual-Financial-Report-20-21:v32": {
+      "grade": "grounded_trivial",
+      "note": "Counts of student research awards and internships. Promotional detail."
+    },
+    "Annual-Financial-Report-20-21:v33": {
+      "grade": "grounded_trivial",
+      "note": "Restates E70/E137's enrolment-corridor and performance protection. _is_restatement returns True on this pair; it survived only because the match sits in another section."
+    },
+    "Annual-Financial-Report-20-21:v34": {
+      "grade": "grounded_material",
+      "note": "Enrolment decomposed: domestic +3.9%, international +9.1%, new incoming +11%, graduate +10.0%, undergraduate +3.5%."
+    },
+    "Annual-Financial-Report-20-21:v35": {
+      "grade": "grounded_material",
+      "note": "Other fees and income $22.2M, up $5.4M, including a one-time HST rebate."
+    },
+    "Annual-Financial-Report-20-21:v36": {
+      "grade": "grounded_trivial",
+      "note": "E26 already carries the 72% housing/food/parking share of the shortfall, in the same words."
+    },
+    "Annual-Financial-Report-20-21:v37": {
+      "grade": "grounded_trivial",
+      "note": "Restates E27's $260.1M expenses including $78.9M restructuring. _is_restatement returns True; cross-section survival."
+    },
+    "Annual-Financial-Report-20-21:v68": {
+      "grade": "grounded_trivial",
+      "note": "E24 already carries the ancillary break-even and the $5.7M expenditure."
+    },
+    "Annual-Financial-Report-20-21:v69": {
+      "grade": "grounded_trivial",
+      "note": "Near-identical to v35, which the same verification pass added from another section. Intra-pass duplication."
+    },
+    "Annual-Financial-Report-20-21:v70": {
+      "grade": "grounded_material",
+      "note": "Operating and research expenses $17.6M, down $10.7M, with the non-essential spending freeze from February 1."
+    },
+    "Annual-Financial-Report-20-21:v71": {
+      "grade": "grounded_material",
+      "note": "Occupancy $12.0M (down $3.3M), scholarships and bursaries $12.6M, amortization $10.5M."
+    },
+    "Annual-Financial-Report-20-21:v72": {
+      "grade": "grounded_trivial",
+      "note": "E34 already covers the federated terminations and transfer payments."
+    },
+    "Annual-Financial-Report-20-21:v73": {
+      "grade": "grounded_trivial",
+      "note": "E36 already carries the $91.3M of project debt; the addition is the stay and a rationale sentence."
+    },
+    "Annual-Financial-Report-20-21:v74": {
+      "grade": "grounded_trivial",
+      "note": "E58 already reports $36,965 against $3,425 restated."
+    },
+    "Annual-Financial-Report-20-21:v75": {
+      "grade": "grounded_material",
+      "note": "Accounts receivable down $11.3M and why — collections on the student centre, midwifery program, joint-venture partners and related parties. E89 gives the balance, not the movement or its causes."
+    },
+    "Annual-Financial-Report-20-21:v76": {
+      "grade": "grounded_trivial",
+      "note": "E86 already reports $62,175 of long-term investments."
+    },
+    "Annual-Financial-Report-20-21:v77": {
+      "grade": "grounded_trivial",
+      "note": "E98/E114 already carry the $263,385 capital-asset figure."
+    },
+    "Annual-Financial-Report-20-21:v78": {
+      "grade": "grounded_material",
+      "note": "$2.8M of the $8.5M held in segregated research and restricted accounts was transferred to the operating fund after year-end. Restricted money moving into operations is a distinct and pointed fact; E87/E88 give only the balances."
+    },
+    "Annual-Financial-Report-20-21:v79": {
+      "grade": "grounded_trivial",
+      "note": "E107 already carries the $36,364 deferred-contributions breakdown."
+    },
+    "Annual-Financial-Report-20-21:v80": {
+      "grade": "grounded_trivial",
+      "note": "Generic statement that compromised liabilities settle through a CCAA Plan."
+    },
+    "Annual-Financial-Report-20-21:v81": {
+      "grade": "grounded_trivial",
+      "note": "E92/E97 already carry the $9,535 valuation allowance and its effect."
+    },
+    "Annual-Financial-Report-20-21:v82": {
+      "grade": "grounded_trivial",
+      "note": "E91 already lists the pension amendments."
+    },
+    "Annual-Financial-Report-20-21:v83": {
+      "grade": "grounded_material",
+      "note": "Management's adjusted result: a $12.2M excess of revenue over expenses once CCAA and prior-period effects are excluded. A number the university chose to publish about itself, nowhere else in the ledger."
+    },
+    "Annual-Financial-Report-20-21:v84": {
+      "grade": "grounded_material",
+      "note": "Management's forward statement that enrolment and revenue will decline and restructuring savings must offset it."
+    },
+    "Annual-Financial-Report-20-21:v85": {
+      "grade": "grounded_trivial",
+      "note": "E52/E62 already record the Note 25 restatements."
+    },
+    "Annual-Financial-Report-20-21:v86": {
+      "grade": "grounded_trivial",
+      "note": "E141 already records the consultant-assisted strategic plan at MCU's request."
+    },
+    "Annual-Financial-Report-20-21:v119": {
+      "grade": "grounded_material",
+      "note": "2021 cash flows: $(75,057) operating, $115,451 financing, $(9,567) investing. The operating burn and the financing that covered it; no cash-flow line in the extractor's list."
+    },
+    "Annual-Financial-Report-20-21:v120": {
+      "grade": "grounded_trivial",
+      "note": "The $186,820 figure is already in E59/E105."
+    },
+    "Annual-Financial-Report-20-21:v121": {
+      "grade": "grounded_trivial",
+      "note": "Revenue-recognition accounting policy."
+    },
+    "Annual-Financial-Report-20-21:v122": {
+      "grade": "grounded_trivial",
+      "note": "Pledges-not-recorded accounting policy."
+    },
+    "Annual-Financial-Report-20-21:v123": {
+      "grade": "grounded_trivial",
+      "note": "Capital-contribution amortization policy."
+    },
+    "Annual-Financial-Report-20-21:v124": {
+      "grade": "grounded_trivial",
+      "note": "Investment measurement policy."
+    },
+    "Annual-Financial-Report-20-21:v125": {
+      "grade": "grounded_trivial",
+      "note": "Employee-future-benefit accrual policy."
+    },
+    "Annual-Financial-Report-20-21:v126": {
+      "grade": "grounded_trivial",
+      "note": "Pension asset measurement policy."
+    },
+    "Annual-Financial-Report-20-21:v127": {
+      "grade": "grounded_trivial",
+      "note": "Hedge accounting policy; E83/E118 carry the substantive swap termination."
+    },
+    "Annual-Financial-Report-20-21:v128": {
+      "grade": "grounded_trivial",
+      "note": "Boilerplate estimation-uncertainty statement on liabilities subject to compromise."
+    },
+    "Annual-Financial-Report-20-21:v129": {
+      "grade": "grounded_material",
+      "note": "Long-term investment composition: $27,514 equity, $28,809 fixed income, $3,102 structured credit, $2,750 real estate. Where the endowment money actually sits."
+    },
+    "Annual-Financial-Report-20-21:v130": {
+      "grade": "grounded_trivial",
+      "note": "E89 already carries the $15,793 receivable and the $3,174 allowance."
+    },
+    "Annual-Financial-Report-20-21:v155": {
+      "grade": "grounded_material",
+      "note": "Which former members kept a lump-sum transfer right — those hired before September 24, 2017 — and that non-electors were left with a monthly pension only. Determines what specific pensioners lost."
+    },
+    "Annual-Financial-Report-20-21:v156": {
+      "grade": "grounded_trivial",
+      "note": "Restates E82's actuarial valuation dates almost word for word. _is_restatement returns True; cross-section survival."
+    },
+    "Annual-Financial-Report-20-21:v157": {
+      "grade": "grounded_trivial",
+      "note": "Descriptive summary of the Retiree Health Benefit Plan; E81 covers it."
+    },
+    "Annual-Financial-Report-20-21:v158": {
+      "grade": "grounded_trivial",
+      "note": "Descriptive summary of the Supplementary Pension Plan; E81/E30 cover it."
+    },
+    "Annual-Financial-Report-20-21:v159": {
+      "grade": "grounded_material",
+      "note": "The $9,298 of remeasurements decomposed: a $12,422 gain from the pension amendment against a $3,239 loss on the retiree-health curtailment. The gain booked from cutting the pension is the striking figure here."
+    },
+    "Annual-Financial-Report-20-21:v160": {
+      "grade": "grounded_trivial",
+      "note": "$34 of buildings under construction. Immaterial."
+    },
+    "Annual-Financial-Report-20-21:v161": {
+      "grade": "grounded_trivial",
+      "note": "Government remittances payable of $3,749. Routine note detail."
+    },
+    "Annual-Financial-Report-20-21:v162": {
+      "grade": "grounded_trivial",
+      "note": "E102 already records the August 20, 2021 maturity extension."
+    },
+    "Annual-Financial-Report-20-21:v163": {
+      "grade": "grounded_trivial",
+      "note": "E70/E137/E138 already cover the $35,000 replacement DIP announcement."
+    },
+    "Annual-Financial-Report-20-21:v164": {
+      "grade": "grounded_material",
+      "note": "Long-term debt by lender: $1,301 BMO, $71,531 across four RBC loans, $17,095 across two TD loans, at 3.90-5.39% maturing 2023-2043. Names who is owed what; E43/E103 give only the $89,927 total."
+    },
+    "Annual-Financial-Report-20-21:v165": {
+      "grade": "grounded_material",
+      "note": "Six months of principal deferred on four loans, $1,784 paid on the others, no modification fees. A pre-filing forbearance arrangement."
+    },
+    "Annual-Financial-Report-20-21:v166": {
+      "grade": "grounded_trivial",
+      "note": "E32 already carries the seven swaps and the $24,700 loss."
+    },
+    "Annual-Financial-Report-20-21:v167": {
+      "grade": "grounded_material",
+      "note": "Decomposes the $70,097 and surfaces $102,750 of reclassifications from existing liabilities — a figure that appears nowhere in the extractor's list."
+    },
+    "Annual-Financial-Report-20-21:v168": {
+      "grade": "grounded_material",
+      "note": "Research activity funded by deferred contributions: $15,168 income against $11,378 salaries, $3,219 operating, $571 scholarships."
+    },
+    "Annual-Financial-Report-20-21:v169": {
+      "grade": "grounded_material",
+      "note": "Endowment investment income of $8,211 net of $213 in management fees and $400 available for distribution."
+    },
+    "Annual-Financial-Report-20-21:v170": {
+      "grade": "grounded_trivial",
+      "note": "A single comparative: nil transferred to endowment against $1,924 the prior year."
+    },
+    "Annual-Financial-Report-20-21:v191": {
+      "grade": "grounded_material",
+      "note": "Uncertified class actions over a data breach, plus employee claims. A data breach at the university appears nowhere else in the ledger and is a story in its own right."
+    },
+    "Annual-Financial-Report-20-21:v192": {
+      "grade": "grounded_material",
+      "note": "Third-party CCAA claims over construction delays and disputes and disclaimed contracts, beyond the amounts recognized. Points at contested claims the balance sheet does not show."
+    },
+    "Annual-Financial-Report-20-21:v193": {
+      "grade": "grounded_material",
+      "note": "Huntington University's active employees stopped accruing pension entitlement effective June 30, 2021. A dated consequence for an identifiable group."
+    },
+    "Annual-Financial-Report-20-21:v194": {
+      "grade": "grounded_material",
+      "note": "University of Sudbury and Thorneloe employees became suspended members while those universities stayed on the hook to fund earned benefits. Allocates pension liability between institutions."
+    },
+    "Annual-Financial-Report-20-21:v195": {
+      "grade": "grounded_material",
+      "note": "A Joint Committee on the Benefits and Funding Policy and Long-Term Sustainability agreed with the unions, with plan improvements conditional on funding levels."
+    },
+    "Annual-Financial-Report-20-21:v196": {
+      "grade": "grounded_trivial",
+      "note": "E142/E143 already record the CCAA-driven restatement review."
+    },
+    "Annual-Financial-Report-20-21:v197": {
+      "grade": "grounded_trivial",
+      "note": "A $673 reserve-account transfer on a policy change. Accounting mechanics."
+    },
+    "Annual-Financial-Report-20-21:v198": {
+      "grade": "grounded_trivial",
+      "note": "Accrued-vacation reclassification between net-asset categories. Accounting mechanics."
+    },
+    "Annual-Financial-Report-20-21:v199": {
+      "grade": "grounded_material",
+      "note": "An omitted accrual for Pension Benefit Guarantee Fund payments to FSRA, corrected at $702 with $214 of expense. A missed statutory pension payment accrual is a control failure, not a reclassification."
+    },
+    "Annual-Financial-Report-20-21:v200": {
+      "grade": "grounded_trivial",
+      "note": "E129 already carries the $747 accrued-vacation understatement."
+    },
+    "Annual-Financial-Report-20-21:v201": {
+      "grade": "grounded_trivial",
+      "note": "E128 already carries the 17-year endowment analysis."
+    },
+    "Annual-Financial-Report-20-21:v202": {
+      "grade": "grounded_trivial",
+      "note": "E129 already carries the $1,119 endowment reclassification."
+    },
+    "Annual-Financial-Report-20-21:v203": {
+      "grade": "grounded_trivial",
+      "note": "E127 already carries the $1,769 Retiree Health Benefit Plan correction."
+    },
+    "Annual-Financial-Report-20-21:v204": {
+      "grade": "grounded_trivial",
+      "note": "E129 already carries the capitalized-versus-expensed capital project."
+    },
+    "Annual-Financial-Report-20-21:v205": {
+      "grade": "grounded_trivial",
+      "note": "Line-level detail of restatements already summarized in E128/E144."
+    },
+    "Annual-Financial-Report-20-21:v206": {
+      "grade": "grounded_trivial",
+      "note": "E131/E132 already carry the $(3,120) to $(3,387) restatement."
+    },
+    "Annual-Financial-Report-20-21:v223": {
+      "grade": "grounded_material",
+      "note": "Restated 2020 net assets by component: $(23,640) unrestricted, $(22,557) employee future benefits, $3,848 internally restricted, $22,874 capital, $54,299 endowment. E130 gives only the $34,824 total."
+    },
+    "Annual-Financial-Report-20-21:v224": {
+      "grade": "grounded_trivial",
+      "note": "E64 already covers the CCAA application and initial order."
+    },
+    "Annual-Financial-Report-20-21:v225": {
+      "grade": "grounded_trivial",
+      "note": "E65 already covers the February 10 approval and January 31, 2022 maturity."
+    }
+  }
+}

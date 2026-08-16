@@ -1,0 +1,1366 @@
+{
+  "summary": {
+    "tally": {
+      "grounded_material": 91,
+      "grounded_trivial": 128,
+      "unsupported": 1
+    },
+    "per_document": {
+      "Annual-Financial-Report-19-20": {
+        "grounded_material": 15,
+        "grounded_trivial": 12,
+        "unsupported": 0
+      },
+      "Annual-Financial-Report-20-21": {
+        "grounded_material": 28,
+        "grounded_trivial": 49,
+        "unsupported": 1
+      },
+      "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021": {
+        "grounded_material": 3,
+        "grounded_trivial": 5,
+        "unsupported": 0
+      },
+      "Laurentian First Report of the Monitor": {
+        "grounded_material": 10,
+        "grounded_trivial": 15,
+        "unsupported": 0
+      },
+      "Laurentian Pre-Filing Report of the Proposed Monitor": {
+        "grounded_material": 33,
+        "grounded_trivial": 45,
+        "unsupported": 0
+      },
+      "Pension Order Morawetz CJ- March 17 2021(as stamped by Court)": {
+        "grounded_material": 2,
+        "grounded_trivial": 2,
+        "unsupported": 0
+      }
+    },
+    "graded": 220,
+    "precision": 0.4136,
+    "unsupported_rate": 0.0045
+  },
+  "rows": [
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v18",
+      "grounded_trivial",
+      "Accounting-policy note (deferral method, tuition recognition period). Standard NFP policy language."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v19",
+      "grounded_trivial",
+      "Restates E18's cash figures verbatim ($7,505 to $4,544); the only addition is the prior-year total-assets comparative. maxC=0.56."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v20",
+      "grounded_material",
+      "Net assets fell $53,164K to $36,682K in one year, with the vacation/employee-future-benefits component at $(22,635)K. The scale of the one-year collapse is the story; E0 gives only the closing figure."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v21",
+      "grounded_material",
+      "Operating cash flow swung from $(5,726)K to $2,075K. Cash-flow statement lines absent from the extractor's list entirely."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v22",
+      "grounded_material",
+      "Financing and investing cash flows, including $2,527K of capital purchases while the university was running a deficit."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v23",
+      "grounded_material",
+      "PfAD rate rose to 10.3% from 7.94% and going-concern deficits move to a 10-year amortization from 15. Concrete pension-funding tightening; E10 covers only the solvency ratio."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v24",
+      "grounded_material",
+      "The SMA3 mechanics: 25% of provincial funding tied to 10 metrics rising to 60% by 2024-25, and per-WGU enrolment funding falling $2,903 to $1,173. This is the funding squeeze in numbers; E11 says only that SMA3 was signed."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v25",
+      "grounded_material",
+      "Revenue composition ($86,234K grants, $53,211K tuition, $24,151K research) with tuition down 7.6%. E2 gives only the revenue total."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v26",
+      "grounded_material",
+      "Expense composition beyond E3's salaries line: operating and research, occupancy, scholarships, amortization."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v27",
+      "grounded_trivial",
+      "Enumerates three post-employment plans; E9, E20 and E29 already carry the pension plan, the retiree health plan and the supplemental obligation."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v28",
+      "grounded_material",
+      "The Board approved an accelerated and amended Long Term Sustainability plan responding to the 10% tuition cut. A governance action with a date-able paper trail; nothing equivalent in the extractor's list."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v29",
+      "grounded_trivial",
+      "Restates E16 (KPMG audited the consolidated statements), adding only the list of statements audited. maxC=0.57."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v48",
+      "grounded_trivial",
+      "E2 already carries the $(3,120) deficiency; this adds the prior-year comparative only. maxC=0.77, the highest containment in the document and still under the 0.9 threshold."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v49",
+      "grounded_trivial",
+      "The $(2,961) net decrease in cash is the arithmetic difference of the two figures already in E18. Comparative only."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v50",
+      "grounded_material",
+      "Gross accrued benefit obligations of $(441,850)K against plan assets of $421,062K. The scale of the pension obligation — an order of magnitude larger than the net figure in E20 — and central to the case."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v51",
+      "grounded_material",
+      "Capital assets at $272,267K net book value, buildings $249,644K. What the institution actually owns; absent from the extractor's list."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v52",
+      "grounded_material",
+      "A TD short-term loan for the student recreation centre with no mandatory repayment terms at 1.91%. A specific, unusual credit arrangement not in E26/E27's debt list."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v53",
+      "grounded_trivial",
+      "Deferred contributions balance movement. Routine note-level balance with no bearing on the solvency question."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v54",
+      "grounded_trivial",
+      "Deferred capital contributions balance movement. Routine note-level balance."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v55",
+      "grounded_material",
+      "Internally financed capital projects: $16,878K for Campus Modernization funded by internal loans repayable over three to twenty-four years, net of the $(14,400)K line of credit. Internal borrowing to fund construction during deficit years."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v56",
+      "grounded_trivial",
+      "Interest-rate spreads on the two lines of credit already described in E8/E27. Rate detail."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v57",
+      "grounded_trivial",
+      "Standard contingency note — involved in litigation, outcomes not determinable. Names no matter and quantifies nothing."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v58",
+      "grounded_trivial",
+      "Breakdown of an 'other fees and income' line. Routine note detail."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v59",
+      "grounded_trivial",
+      "Boilerplate COVID uncertainty statement; E33/E34 already carry the substantive COVID exposure."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v60",
+      "grounded_material",
+      "A six-month deferral of residence debt repayments negotiated after year-end to manage cash flow. A concrete liquidity action and a subsequent-event disclosure."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v61",
+      "grounded_material",
+      "The Northern Ontario School of Medicine sits outside the consolidation, with no claim to its net assets. Directly bears on what creditors could reach; E30/E31 cover only MIRARCO and CEMI."
+    ],
+    [
+      "Annual-Financial-Report-19-20",
+      "Annual-Financial-Report-19-20:v62",
+      "grounded_material",
+      "SNOLAB: a 20% proportionate share consolidated only to March 31 2019, 2020 statements unavailable, and the share written off as at April 30 2018 because incorporation would end access. Unavailable statements and a write-off are both flags."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v119",
+      "grounded_material",
+      "2021 cash flows: $(75,057) operating, $115,451 financing, $(9,567) investing. The operating burn and the financing that covered it; no cash-flow line in the extractor's list."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v120",
+      "grounded_trivial",
+      "The $186,820 figure is already in E59/E105."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v121",
+      "grounded_trivial",
+      "Revenue-recognition accounting policy."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v122",
+      "grounded_trivial",
+      "Pledges-not-recorded accounting policy."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v123",
+      "grounded_trivial",
+      "Capital-contribution amortization policy."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v124",
+      "grounded_trivial",
+      "Investment measurement policy."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v125",
+      "grounded_trivial",
+      "Employee-future-benefit accrual policy."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v126",
+      "grounded_trivial",
+      "Pension asset measurement policy."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v127",
+      "grounded_trivial",
+      "Hedge accounting policy; E83/E118 carry the substantive swap termination."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v128",
+      "grounded_trivial",
+      "Boilerplate estimation-uncertainty statement on liabilities subject to compromise."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v129",
+      "grounded_material",
+      "Long-term investment composition: $27,514 equity, $28,809 fixed income, $3,102 structured credit, $2,750 real estate. Where the endowment money actually sits."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v130",
+      "grounded_trivial",
+      "E89 already carries the $15,793 receivable and the $3,174 allowance."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v155",
+      "grounded_material",
+      "Which former members kept a lump-sum transfer right — those hired before September 24, 2017 — and that non-electors were left with a monthly pension only. Determines what specific pensioners lost."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v156",
+      "grounded_trivial",
+      "Restates E82's actuarial valuation dates almost word for word. _is_restatement returns True; cross-section survival."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v157",
+      "grounded_trivial",
+      "Descriptive summary of the Retiree Health Benefit Plan; E81 covers it."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v158",
+      "grounded_trivial",
+      "Descriptive summary of the Supplementary Pension Plan; E81/E30 cover it."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v159",
+      "grounded_material",
+      "The $9,298 of remeasurements decomposed: a $12,422 gain from the pension amendment against a $3,239 loss on the retiree-health curtailment. The gain booked from cutting the pension is the striking figure here."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v160",
+      "grounded_trivial",
+      "$34 of buildings under construction. Immaterial."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v161",
+      "grounded_trivial",
+      "Government remittances payable of $3,749. Routine note detail."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v162",
+      "grounded_trivial",
+      "E102 already records the August 20, 2021 maturity extension."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v163",
+      "grounded_trivial",
+      "E70/E137/E138 already cover the $35,000 replacement DIP announcement."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v164",
+      "grounded_material",
+      "Long-term debt by lender: $1,301 BMO, $71,531 across four RBC loans, $17,095 across two TD loans, at 3.90-5.39% maturing 2023-2043. Names who is owed what; E43/E103 give only the $89,927 total."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v165",
+      "grounded_material",
+      "Six months of principal deferred on four loans, $1,784 paid on the others, no modification fees. A pre-filing forbearance arrangement."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v166",
+      "grounded_trivial",
+      "E32 already carries the seven swaps and the $24,700 loss."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v167",
+      "grounded_material",
+      "Decomposes the $70,097 and surfaces $102,750 of reclassifications from existing liabilities — a figure that appears nowhere in the extractor's list."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v168",
+      "grounded_material",
+      "Research activity funded by deferred contributions: $15,168 income against $11,378 salaries, $3,219 operating, $571 scholarships."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v169",
+      "grounded_material",
+      "Endowment investment income of $8,211 net of $213 in management fees and $400 available for distribution."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v170",
+      "grounded_trivial",
+      "A single comparative: nil transferred to endowment against $1,924 the prior year."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v191",
+      "grounded_material",
+      "Uncertified class actions over a data breach, plus employee claims. A data breach at the university appears nowhere else in the ledger and is a story in its own right."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v192",
+      "grounded_material",
+      "Third-party CCAA claims over construction delays and disputes and disclaimed contracts, beyond the amounts recognized. Points at contested claims the balance sheet does not show."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v193",
+      "grounded_material",
+      "Huntington University's active employees stopped accruing pension entitlement effective June 30, 2021. A dated consequence for an identifiable group."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v194",
+      "grounded_material",
+      "University of Sudbury and Thorneloe employees became suspended members while those universities stayed on the hook to fund earned benefits. Allocates pension liability between institutions."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v195",
+      "grounded_material",
+      "A Joint Committee on the Benefits and Funding Policy and Long-Term Sustainability agreed with the unions, with plan improvements conditional on funding levels."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v196",
+      "grounded_trivial",
+      "E142/E143 already record the CCAA-driven restatement review."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v197",
+      "grounded_trivial",
+      "A $673 reserve-account transfer on a policy change. Accounting mechanics."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v198",
+      "grounded_trivial",
+      "Accrued-vacation reclassification between net-asset categories. Accounting mechanics."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v199",
+      "grounded_material",
+      "An omitted accrual for Pension Benefit Guarantee Fund payments to FSRA, corrected at $702 with $214 of expense. A missed statutory pension payment accrual is a control failure, not a reclassification."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v200",
+      "grounded_trivial",
+      "E129 already carries the $747 accrued-vacation understatement."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v201",
+      "grounded_trivial",
+      "E128 already carries the 17-year endowment analysis."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v202",
+      "grounded_trivial",
+      "E129 already carries the $1,119 endowment reclassification."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v203",
+      "grounded_trivial",
+      "E127 already carries the $1,769 Retiree Health Benefit Plan correction."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v204",
+      "grounded_trivial",
+      "E129 already carries the capitalized-versus-expensed capital project."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v205",
+      "grounded_trivial",
+      "Line-level detail of restatements already summarized in E128/E144."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v206",
+      "grounded_trivial",
+      "E131/E132 already carry the $(3,120) to $(3,387) restatement."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v223",
+      "grounded_material",
+      "Restated 2020 net assets by component: $(23,640) unrestricted, $(22,557) employee future benefits, $3,848 internally restricted, $22,874 capital, $54,299 endowment. E130 gives only the $34,824 total."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v224",
+      "grounded_trivial",
+      "E64 already covers the CCAA application and initial order."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v225",
+      "grounded_trivial",
+      "E65 already covers the February 10 approval and January 31, 2022 maturity."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v26",
+      "unsupported",
+      "Asserts capital spending of $2.8M 'compared with $19.8M last year'. Page 3 is a scrambled infographic: capital spending was $1.4M this year and $2.8M last year, and the $19.8M belongs to the Available Expendable Resources tile (where it is negative). Both figures are mis-assembled from adjacent tiles."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v27",
+      "grounded_material",
+      "FTE enrolment 7,090 against 6,834 last year — a different measure from E17's headcount, and verified on the page."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v28",
+      "grounded_material",
+      "The Province's 10% domestic tuition cut for 2019-20 and freeze for 2020-21. The policy cause of the revenue squeeze; absent from the extractor's list."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v29",
+      "grounded_material",
+      "A completed January 2022 real-estate review to identify assets unnecessary to operations and monetization opportunities. Signals asset sales."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v30",
+      "grounded_material",
+      "A completed January 2022 external review of the Board of Governors, Senate and operational structure. Governance accountability."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v31",
+      "grounded_trivial",
+      "Restates the claims process already in E68/E104."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v32",
+      "grounded_trivial",
+      "Counts of student research awards and internships. Promotional detail."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v33",
+      "grounded_trivial",
+      "Restates E70/E137's enrolment-corridor and performance protection. _is_restatement returns True on this pair; it survived only because the match sits in another section."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v34",
+      "grounded_material",
+      "Enrolment decomposed: domestic +3.9%, international +9.1%, new incoming +11%, graduate +10.0%, undergraduate +3.5%."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v35",
+      "grounded_material",
+      "Other fees and income $22.2M, up $5.4M, including a one-time HST rebate."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v36",
+      "grounded_trivial",
+      "E26 already carries the 72% housing/food/parking share of the shortfall, in the same words."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v37",
+      "grounded_trivial",
+      "Restates E27's $260.1M expenses including $78.9M restructuring. _is_restatement returns True; cross-section survival."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v68",
+      "grounded_trivial",
+      "E24 already carries the ancillary break-even and the $5.7M expenditure."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v69",
+      "grounded_trivial",
+      "Near-identical to v35, which the same verification pass added from another section. Intra-pass duplication."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v70",
+      "grounded_material",
+      "Operating and research expenses $17.6M, down $10.7M, with the non-essential spending freeze from February 1."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v71",
+      "grounded_material",
+      "Occupancy $12.0M (down $3.3M), scholarships and bursaries $12.6M, amortization $10.5M."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v72",
+      "grounded_trivial",
+      "E34 already covers the federated terminations and transfer payments."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v73",
+      "grounded_trivial",
+      "E36 already carries the $91.3M of project debt; the addition is the stay and a rationale sentence."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v74",
+      "grounded_trivial",
+      "E58 already reports $36,965 against $3,425 restated."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v75",
+      "grounded_material",
+      "Accounts receivable down $11.3M and why — collections on the student centre, midwifery program, joint-venture partners and related parties. E89 gives the balance, not the movement or its causes."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v76",
+      "grounded_trivial",
+      "E86 already reports $62,175 of long-term investments."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v77",
+      "grounded_trivial",
+      "E98/E114 already carry the $263,385 capital-asset figure."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v78",
+      "grounded_material",
+      "$2.8M of the $8.5M held in segregated research and restricted accounts was transferred to the operating fund after year-end. Restricted money moving into operations is a distinct and pointed fact; E87/E88 give only the balances."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v79",
+      "grounded_trivial",
+      "E107 already carries the $36,364 deferred-contributions breakdown."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v80",
+      "grounded_trivial",
+      "Generic statement that compromised liabilities settle through a CCAA Plan."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v81",
+      "grounded_trivial",
+      "E92/E97 already carry the $9,535 valuation allowance and its effect."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v82",
+      "grounded_trivial",
+      "E91 already lists the pension amendments."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v83",
+      "grounded_material",
+      "Management's adjusted result: a $12.2M excess of revenue over expenses once CCAA and prior-period effects are excluded. A number the university chose to publish about itself, nowhere else in the ledger."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v84",
+      "grounded_material",
+      "Management's forward statement that enrolment and revenue will decline and restructuring savings must offset it."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v85",
+      "grounded_trivial",
+      "E52/E62 already record the Note 25 restatements."
+    ],
+    [
+      "Annual-Financial-Report-20-21",
+      "Annual-Financial-Report-20-21:v86",
+      "grounded_trivial",
+      "E141 already records the consultant-assisted strategic plan at MCU's request."
+    ],
+    [
+      "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021",
+      "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021:v22",
+      "grounded_trivial",
+      "Monitor shall not take possession or manage the business. Standard-form CCAA monitor clause; appears in every initial order."
+    ],
+    [
+      "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021",
+      "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021:v23",
+      "grounded_trivial",
+      "Monitor may engage independent counsel. Standard-form clause."
+    ],
+    [
+      "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021",
+      "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021:v24",
+      "grounded_material",
+      "Creditor information rights, and it surfaces a proposed DIP Lender — an entity absent from the extractor's entire list for this document. The DIP financing is the central money question in the case."
+    ],
+    [
+      "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021",
+      "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021:v25",
+      "grounded_material",
+      "The Charges do not reach the Segregated Accounts — i.e. research funding, restricted donations and endowments sit outside the super-priority charges. Distinct court holding about whose money is protected; E4 establishes the accounts exist but not that the Charges are carved out."
+    ],
+    [
+      "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021",
+      "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021:v26",
+      "grounded_trivial",
+      "Monitor maintains a Service List and posts it. Procedural mechanic."
+    ],
+    [
+      "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021",
+      "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021:v27",
+      "grounded_trivial",
+      "Aid-and-recognition clause. Standard-form boilerplate in every CCAA order."
+    ],
+    [
+      "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021",
+      "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021:v28",
+      "grounded_material",
+      "Suppliers restrained from cutting off goods and services during the stay. Operative provision binding every vendor to the university; E9 covers only agreements involving the students' association."
+    ],
+    [
+      "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021",
+      "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021:v29",
+      "grounded_trivial",
+      "The standard counterpart to v28 (no one must extend credit). Boilerplate paired clause."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v20",
+      "grounded_trivial",
+      "Monitor's standard reliance disclaimer (unaudited information, no GAAS opinion). Boilerplate in every monitor's report."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v21",
+      "grounded_trivial",
+      "Companion disclaimer on forecasts not reviewed under the CPA Handbook. Boilerplate."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v22",
+      "grounded_trivial",
+      "Restates E26's mediation objectives (academic programs, Federated Universities), adding only 'employee-headcount reductions'."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v23",
+      "grounded_material",
+      "The $25M DIP facility is structured as two advances, the second gated on five days' notice and Monitor approval. Structural control over the money; not in the extractor's list."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v24",
+      "grounded_material",
+      "DIP advances restricted to working capital per the Cash Flow Forecast as approved by the lender — the lender constrains what the university may spend the money on."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v25",
+      "grounded_material",
+      "Laurentian declined two prospective competing DIP financiers' due-diligence requests. A contested-process fact with obvious reporting value; entirely absent from the extractor's list."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v26",
+      "grounded_trivial",
+      "The stay extension to April 30 is already E3; this adds only the current Feb 11 expiry date."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v27",
+      "grounded_material",
+      "The proposed order would stay pre- and post-filing special payments into the DB pension plan. Direct consequence for plan members; distinct from E13/E14's valuation figures."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v28",
+      "grounded_material",
+      "The proposed order would stay existing, pending and future FIPPA access-to-information requests. A public university seeking to suspend freedom-of-information obligations is a story on its own, and nothing in the extractor's list mentions FIPPA."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v29",
+      "grounded_trivial",
+      "Elaborates E15's $1.25M Administration Charge with the list of professionals it secures."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v30",
+      "grounded_material",
+      "The DIP Lender's Charge is secured by all Property — the whole institution is collateral, and it was a condition of the financing. E15 gives only the charge's rank and cap."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v31",
+      "grounded_material",
+      "Cash-flow forecast totals: $29,514,000 receipts against $58,553,000 disbursements to April 30. The central liquidity figures; no comparable number in the extractor's list."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v32",
+      "grounded_trivial",
+      "A stated modelling assumption behind the forecast (pre-filing amounts stayed). Mechanic, not a finding."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v33",
+      "grounded_trivial",
+      "Near-verbatim restatement of E23 — the clearest true duplicate in the whole set. Sits at maxJ=0.57 / maxC=0.68, below both shipped thresholds."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v34",
+      "grounded_material",
+      "Names the signing officer for Ernst & Young: Sharon S. Hamilton, Senior Vice President. A named, callable person."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v47",
+      "grounded_trivial",
+      "Approval of the confidentiality protocol; E28 already states the mediation is subject to it."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v48",
+      "grounded_trivial",
+      "Mediator authorized to take all necessary steps. Standard-form empowerment clause."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v49",
+      "grounded_trivial",
+      "Mediator liability protection, s.142 Courts of Justice Act. Standard-form clause."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v50",
+      "grounded_material",
+      "The Court and the mediator may communicate directly and on an ongoing basis, with carve-outs. An unusual arrangement worth a legal-affairs reporter's attention, and distinct from the confidentiality protocol facts."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v51",
+      "grounded_trivial",
+      "Liberty to apply for directions. Standard-form clause."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v52",
+      "grounded_trivial",
+      "Aid-and-recognition clause on the mediator order. Standard-form boilerplate, and the same clause type already graded trivial on the Initial Order."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v53",
+      "grounded_trivial",
+      "Effectiveness clause (12:01 a.m., enforceable without entry and filing). Boilerplate."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v54",
+      "grounded_trivial",
+      "Internal disclosure mechanics of the confidentiality protocol; E28 covers the protocol's effect."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v55",
+      "grounded_trivial",
+      "Restates E8's Feb 5 case conference, adding the judge's stated reason (compressed timeline)."
+    ],
+    [
+      "Laurentian First Report of the Monitor",
+      "Laurentian First Report of the Monitor:v56",
+      "grounded_material",
+      "Counsel of record for all three parties (Miller, Kennedy, Sinclair, Philpott, Wright, Taylor, Muller) plus E&Y's Hamilton. Eight named, callable people; the extractor's list for this document names none of them."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v100",
+      "grounded_material",
+      "Laurentian historically deposited operating receipts, restricted funds and donations into the same operating accounts, co-mingled them and paid all disbursements from them. This is the governance failure at the centre of the case; E40 records only the December 2020 fix, never the practice being fixed."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v101",
+      "grounded_trivial",
+      "Operational detail of the segregation regime E40 already records."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v102",
+      "grounded_material",
+      "The Province would not commit funding sufficient to avoid a CCAA filing despite discussions. Places the government's decision in the record."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v103",
+      "grounded_trivial",
+      "The Proposed Monitor's standard review procedures for a cash-flow forecast."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v104",
+      "grounded_trivial",
+      "Forecast assumptions of continued teaching and stayed pre-filing payments."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v105",
+      "grounded_trivial",
+      "E64/E65 already cover the stay exceptions for wages and student amounts."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v106",
+      "grounded_material",
+      "The DIP lender did not require advances in the first 10 days, which is why approval was pushed to the comeback hearing. Explains the sequencing of the financing."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v107",
+      "grounded_trivial",
+      "E44 already covers the limited stay for the students' association."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v108",
+      "grounded_trivial",
+      "E64/E65 already cover ordinary-course student payments."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v109",
+      "grounded_trivial",
+      "E45/E48 already cover the association fees; the addition is the assertion that they are not Laurentian's income."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v110",
+      "grounded_trivial",
+      "E51 already states the Administration Charge's purpose in nearly the same terms."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v130",
+      "grounded_trivial",
+      "Boilerplate on how the forecast was prepared and the nature of its assumptions."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v131",
+      "grounded_trivial",
+      "Forecast assumptions about DIP availability and stayed pre-filing supplier amounts."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v132",
+      "grounded_trivial",
+      "Forecast mechanics for operating grants."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v133",
+      "grounded_trivial",
+      "Forecast mechanics for student fee billing."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v134",
+      "grounded_trivial",
+      "The forecast's US dollar conversion rate."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v135",
+      "grounded_trivial",
+      "Duplicates v108's ordinary-course student payments."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v136",
+      "grounded_trivial",
+      "Capital projects deferred and excluded from the forecast. Minor forecast scoping note."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v137",
+      "grounded_trivial",
+      "Debt service stayed at the filing date. Follows from the stay itself."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v138",
+      "grounded_trivial",
+      "E62 already carries the Endowment Fund balances."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v139",
+      "grounded_trivial",
+      "Restructuring costs forecast on run rates. Forecast mechanics."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v140",
+      "grounded_trivial",
+      "A forecast assumption that the DIP advances in two tranches."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v141",
+      "grounded_trivial",
+      "The qualities the Proposed Monitor thought a mediator needed. Procedural opinion."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v142",
+      "grounded_material",
+      "The Proposed Monitor recommended the Court appoint a sitting or recently retired judge as mediator. This is why a sitting judge was appointed days later, and it is the Monitor putting a thumb on the scale of who mediates."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v143",
+      "grounded_trivial",
+      "Restates v142's urgency point without the substance."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v144",
+      "grounded_trivial",
+      "E56 already covers the liquidity conclusion; this adds the Monitor's caveat."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v20",
+      "grounded_trivial",
+      "EY's licensed-insolvency-trustee qualification. Standard eligibility recital."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v21",
+      "grounded_trivial",
+      "EY expects to perform the Monitor role virtually because of the pandemic. Administrative aside."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v22",
+      "grounded_material",
+      "Board composition (21 voting, 9 non-voting, four vacancies) and Senate composition (77 voting, 6 non-voting, two vacancies). Who actually governed the institution, and how many seats sat empty."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v23",
+      "grounded_trivial",
+      "Recital of the powers the Laurentian Act confers. Statutory background."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v24",
+      "grounded_trivial",
+      "E36 already covers the Barrie campus closure."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v25",
+      "grounded_trivial",
+      "E8/E9 already establish the NOSM relationship; this adds the service-and-reimbursement mechanics."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v26",
+      "grounded_trivial",
+      "E33 already carries the $14.0M of NOSM-designated endowments."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v27",
+      "grounded_material",
+      "The Federated Universities own buildings on land they lease from Laurentian and get no direct provincial funding apart from francophone grants to the University of Sudbury. The property and funding structure behind the federation dispute."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v28",
+      "grounded_material",
+      "Laurentian ran payroll for roughly 128 SNOLab employees and funded their pay, benefits and pension before reimbursement. A concrete exposure; E13 establishes this pattern only for MIRARCO."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v29",
+      "grounded_trivial",
+      "The same arrangement for CEMI's five employees. Immaterial at that scale once v28 is recorded."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v30",
+      "grounded_trivial",
+      "Fee collection on behalf of student associations; E45/E48 already carry the $1.6M remittance."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v31",
+      "grounded_material",
+      "Student employment fell from about 470 in November 2019 to about 200 in November 2020 — a countable pandemic effect on students' own income."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v32",
+      "grounded_material",
+      "Faculty accounted for roughly 60% of operating salaries and benefits. The ratio that made faculty cuts the restructuring's central target."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v33",
+      "grounded_material",
+      "The defined benefit plan's population: 406 collecting a lifetime pension, 981 active contributors, roughly 500 deferred members. How many people the pension changes reached."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v34",
+      "grounded_material",
+      "Current-service contributions of $16,188,000 a year plus a $505,000 special payment, with the monthly instalments. The pension's actual cash cost."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v35",
+      "grounded_material",
+      "Laurentian intended to seek a stay of pre- and post-filing pension special payments. Signals the pension relief before it was granted."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v36",
+      "grounded_material",
+      "The supplementary plan's 32 eligible retirees, about $260,000 due July 2021, and a $3,063,000 accrued obligation. Names the size of the group whose payments later stopped."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v37",
+      "grounded_material",
+      "The retiree health plan's 866 active contributors and 358 collecting retirees — the population of a plan terminated three months later."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v38",
+      "grounded_trivial",
+      "E17/E40 already cover the December 2020 segregation of RHBP contributions."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v39",
+      "grounded_material",
+      "Laurentian prepared no interim monthly or quarterly financial statements; the April 30, 2020 audited statements were the most recent available. A financial-control failure at an institution weeks from missing payroll."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v40",
+      "grounded_material",
+      "Operating grants and tuition made up roughly 70% of total revenue — the concentration that made the tuition cut and funding-model change existential."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v41",
+      "grounded_material",
+      "The Province's shift to a funding model weighted to outcome metrics rather than enrolment, with per-university targets."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v42",
+      "grounded_trivial",
+      "E35 already carries the 10% cut and the freeze; the addition is that international tuition was exempt."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v43",
+      "grounded_material",
+      "Research grants restrict funds to the specified research, sometimes require a separate account, and generally cannot fund faculty salaries or overhead. The rule the co-mingling practice broke."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v44",
+      "grounded_material",
+      "Of salaries and benefits, $16M went to research, MIRARCO and SNOLab staff and $119M to academic teaching and ancillary services."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v45",
+      "grounded_trivial",
+      "E19/E20/E21 already carry these balance-sheet lines."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v74",
+      "grounded_material",
+      "The current-liability stack decomposed: $14,400,000 line of credit, $22,319,000 payables, $1,846,000 accrued vacation, $2,738,000 current long-term debt. E19 gives only the $43,679 total."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v75",
+      "grounded_trivial",
+      "E19/E30 already carry the long-term debt and the $20,788,000 employee future benefits."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v76",
+      "grounded_material",
+      "Names the custodians of the $54.7M investment accounts — SEI Private Trust Company and RBC Dominion Securities. Institutions a reporter can follow."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v77",
+      "grounded_material",
+      "Capital assets by class plus named properties: the Art Centre at 251 John Street, the President's House, the McEwen School of Architecture at 85 Elm Street. Identifies the specific real estate later put in play."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v78",
+      "grounded_trivial",
+      "E23/E24 already cover the Desjardins facility."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v79",
+      "grounded_trivial",
+      "E24 already covers the cancelled $5M RBC line."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v80",
+      "grounded_trivial",
+      "E25 already carries the TD student recreation centre facility; this adds size and maturity."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v81",
+      "grounded_material",
+      "The BMO facility's structure: unsecured fixed-rate term and operating loans with a swap option, max $4,116,098, 20-year term. E26 gives only the deferral and the balance."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v82",
+      "grounded_material",
+      "RBC agreed on or about June 25, 2020 to defer principal on the Residence Takeout and Renovation Takeout facilities. A second lender's forbearance, dated; E26 covers only BMO."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v83",
+      "grounded_trivial",
+      "A negative-pledge covenant supporting the ranking point E47/E50 already make."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v84",
+      "grounded_trivial",
+      "E28 already carries the $10,575,875 balance; this adds the facility's initial amount and maturity."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v85",
+      "grounded_trivial",
+      "E28 already carries the $6,570,917 balance; this adds the facility's history."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v86",
+      "grounded_material",
+      "TD agreed on or about June 25, 2020 to defer principal payments. The third lender forbearance on the same date — together with v82 this shows every major lender had already granted accommodation."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v87",
+      "grounded_trivial",
+      "A pari passu covenant supporting the ranking point E47/E50 already make."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v88",
+      "grounded_trivial",
+      "E44 already carries the $8.5M SGA guarantee; this adds the instrument dates."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v89",
+      "grounded_trivial",
+      "Swap mechanics behind E29's $340,000 monthly outflow."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v90",
+      "grounded_material",
+      "The $38.5M deferred-contributions balance per the audited statements and what it consists of — externally restricted grants, donations, scholarships and RHBP contributions whose spending had not occurred. Note this differs from the ~$36.5M management estimate in E31."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v91",
+      "grounded_material",
+      "The internally restricted fund decomposed, including a negative $0.7M accumulated loss at the McEwen School of Architecture, and the statement that no funds were set aside for any of it."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v92",
+      "grounded_trivial",
+      "Arithmetic derivation of the investment-in-capital-assets balance from figures already in the ledger."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v93",
+      "grounded_material",
+      "Ontario Ministry of Finance projections showing a flat Northern Ontario student pool. The demographic constraint under the enrolment problem."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v94",
+      "grounded_material",
+      "175 programs — 132 undergraduate and 43 graduate — with many at consistently low enrolment and described as financially unsustainable. The setup for the program closures."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v95",
+      "grounded_material",
+      "Undergraduate enrolment concentration: 25% of students in the top five programs, 83% in the top 50, 1% in the bottom 25. The empirical case for the cuts."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v96",
+      "grounded_material",
+      "Graduate enrolment concentration: 48% in the top five programs, 91% in the top 25."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v97",
+      "grounded_trivial",
+      "A general list of pandemic effects; E37 covers the pandemic response."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v98",
+      "grounded_material",
+      "Roughly 20 non-faculty and 14 faculty FTEs already cut through attrition and deferred hiring before the filing."
+    ],
+    [
+      "Laurentian Pre-Filing Report of the Proposed Monitor",
+      "Laurentian Pre-Filing Report of the Proposed Monitor:v99",
+      "grounded_material",
+      "A hiring freeze from 2019-2020 with presidential sign-off required. A dated austerity measure predating the filing."
+    ],
+    [
+      "Pension Order Morawetz CJ- March 17 2021(as stamped by Court)",
+      "Pension Order Morawetz CJ- March 17 2021(as stamped by Court):v12",
+      "grounded_material",
+      "Names five Interim CV Applicants who appeared in person (Leduc, Zapalski, Pegoraro, Oxley, McGillis) and records that no one appeared for the rest. Named affected pensioners are direct reporting leads; nothing in the extractor's list carries a single individual applicant's name."
+    ],
+    [
+      "Pension Order Morawetz CJ- March 17 2021(as stamped by Court)",
+      "Pension Order Morawetz CJ- March 17 2021(as stamped by Court):v13",
+      "grounded_trivial",
+      "Service validation / dispensing with further service. Standard-form procedural clause, no consequence for anyone."
+    ],
+    [
+      "Pension Order Morawetz CJ- March 17 2021(as stamped by Court)",
+      "Pension Order Morawetz CJ- March 17 2021(as stamped by Court):v14",
+      "grounded_trivial",
+      "Restates the PBGF stay already in E6/E7, adding only a cross-reference to para 12 of the Feb 11 ARIO."
+    ],
+    [
+      "Pension Order Morawetz CJ- March 17 2021(as stamped by Court)",
+      "Pension Order Morawetz CJ- March 17 2021(as stamped by Court):v15",
+      "grounded_material",
+      "The evidentiary record: Hache affidavit (Jan 30), Brinkman affidavit (Mar 8), Monitor's Second Report (Mar 11), Harland affidavit of service. Each is a named, dated document a reporter can request; none appears in the extractor's list."
+    ]
+  ]
+}

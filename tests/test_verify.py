@@ -161,6 +161,57 @@ def test_the_pass_does_not_add_its_own_duplicate_twice():
     assert stats == {"added": 1, "suppressed": 1}
 
 
+def test_a_restatement_of_an_earlier_sections_fact_is_suppressed():
+    """The section-scope defect (#589). The verifier runs per section, so on a sectioned document
+    the candidate's match usually sits in a *different* section's fact list — and section ranges
+    overlap by a page, which guarantees the same content is offered twice. Without the earlier
+    sections' facts the guard cannot see the duplicate at all."""
+    ext = _extraction([{"fact": "The Court approved the claims process."}])
+    prior = [{"fact": "The University's expenses totalled $260.1 million in 2020-21, including "
+                      "restructuring costs of $78.9 million."}]
+    # An outright restatement, so this test turns on scope alone and not on where the
+    # containment threshold happens to sit.
+    candidate = [{"fact": "The University's expenses totalled $260.1 million in 2020-21, "
+                          "including restructuring costs of $78.9 million."}]
+
+    assert verify.merge_candidates(_extraction([]), list(candidate))["added"] == 1
+    assert verify.merge_candidates(ext, list(candidate), prior) == {"added": 0, "suppressed": 1}
+
+
+def test_a_partial_reword_below_the_old_threshold_is_now_suppressed():
+    """The fitted threshold (#589). At the hand-picked 0.9 a candidate had to be nearly a copy;
+    a reworded restatement that reorders clauses and swaps a word or two scored in the 0.6-0.9
+    band and survived. This pair sits at containment 0.78 and carries no figure the matched fact
+    lacks, so the numeric carve-out does not rescue it either."""
+    ext = _extraction([{"fact": "The University's expenses totalled $260.1 million in 2020-21, "
+                                "including restructuring costs of $78.9 million."}])
+    stats = verify.merge_candidates(ext, [
+        {"fact": "Total expenses of $260.1 million in 2020-21 included "
+                 "$78.9 million in restructuring costs."}])
+
+    assert stats == {"added": 0, "suppressed": 1}
+
+
+def test_a_short_candidate_keeps_the_strict_containment_bar():
+    """Containment over a short candidate is quantized too coarsely for the fitted 0.6 to mean
+    anything, so facts below `_CONTAINMENT_MIN_TOKENS` are held to the old 0.9. Here the two
+    facts differ in one content word out of five and score 0.8 — a distinct fact, not a reword."""
+    ext = _extraction([{"fact": "The second report was filed with the court."}])
+    stats = verify.merge_candidates(ext, [{"fact": "The second order was filed with the court."}])
+
+    assert stats["added"] == 1
+
+
+def test_prior_section_facts_are_never_added_to_the_ledger():
+    """They are a comparison reference only — the section's own extraction still owns its list."""
+    ext = _extraction([{"fact": "Existing."}])
+    verify.merge_candidates(ext, [{"fact": "A wholly unrelated new matter arose in March."}],
+                            [{"fact": "A fact from an earlier section."}])
+
+    assert [f["fact"] for f in _facts(ext)] == [
+        "Existing.", "A wholly unrelated new matter arose in March."]
+
+
 def test_shared_function_words_alone_never_make_two_facts_look_alike():
     """Two sentences about different things share most of their function words. Counting those
     pushes any pair of English sentences toward the suppression threshold, so a real difference

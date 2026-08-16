@@ -1,0 +1,104 @@
+{
+  "judgments": {
+    "Laurentian First Report of the Monitor:v20": {
+      "grade": "grounded_trivial",
+      "note": "Monitor's standard reliance disclaimer (unaudited information, no GAAS opinion). Boilerplate in every monitor's report."
+    },
+    "Laurentian First Report of the Monitor:v21": {
+      "grade": "grounded_trivial",
+      "note": "Companion disclaimer on forecasts not reviewed under the CPA Handbook. Boilerplate."
+    },
+    "Laurentian First Report of the Monitor:v22": {
+      "grade": "grounded_trivial",
+      "note": "Restates E26's mediation objectives (academic programs, Federated Universities), adding only 'employee-headcount reductions'."
+    },
+    "Laurentian First Report of the Monitor:v23": {
+      "grade": "grounded_material",
+      "note": "The $25M DIP facility is structured as two advances, the second gated on five days' notice and Monitor approval. Structural control over the money; not in the extractor's list."
+    },
+    "Laurentian First Report of the Monitor:v24": {
+      "grade": "grounded_material",
+      "note": "DIP advances restricted to working capital per the Cash Flow Forecast as approved by the lender — the lender constrains what the university may spend the money on."
+    },
+    "Laurentian First Report of the Monitor:v25": {
+      "grade": "grounded_material",
+      "note": "Laurentian declined two prospective competing DIP financiers' due-diligence requests. A contested-process fact with obvious reporting value; entirely absent from the extractor's list."
+    },
+    "Laurentian First Report of the Monitor:v26": {
+      "grade": "grounded_trivial",
+      "note": "The stay extension to April 30 is already E3; this adds only the current Feb 11 expiry date."
+    },
+    "Laurentian First Report of the Monitor:v27": {
+      "grade": "grounded_material",
+      "note": "The proposed order would stay pre- and post-filing special payments into the DB pension plan. Direct consequence for plan members; distinct from E13/E14's valuation figures."
+    },
+    "Laurentian First Report of the Monitor:v28": {
+      "grade": "grounded_material",
+      "note": "The proposed order would stay existing, pending and future FIPPA access-to-information requests. A public university seeking to suspend freedom-of-information obligations is a story on its own, and nothing in the extractor's list mentions FIPPA."
+    },
+    "Laurentian First Report of the Monitor:v29": {
+      "grade": "grounded_trivial",
+      "note": "Elaborates E15's $1.25M Administration Charge with the list of professionals it secures."
+    },
+    "Laurentian First Report of the Monitor:v30": {
+      "grade": "grounded_material",
+      "note": "The DIP Lender's Charge is secured by all Property — the whole institution is collateral, and it was a condition of the financing. E15 gives only the charge's rank and cap."
+    },
+    "Laurentian First Report of the Monitor:v31": {
+      "grade": "grounded_material",
+      "note": "Cash-flow forecast totals: $29,514,000 receipts against $58,553,000 disbursements to April 30. The central liquidity figures; no comparable number in the extractor's list."
+    },
+    "Laurentian First Report of the Monitor:v32": {
+      "grade": "grounded_trivial",
+      "note": "A stated modelling assumption behind the forecast (pre-filing amounts stayed). Mechanic, not a finding."
+    },
+    "Laurentian First Report of the Monitor:v33": {
+      "grade": "grounded_trivial",
+      "note": "Near-verbatim restatement of E23 — the clearest true duplicate in the whole set. Sits at maxJ=0.57 / maxC=0.68, below both shipped thresholds."
+    },
+    "Laurentian First Report of the Monitor:v34": {
+      "grade": "grounded_material",
+      "note": "Names the signing officer for Ernst & Young: Sharon S. Hamilton, Senior Vice President. A named, callable person."
+    },
+    "Laurentian First Report of the Monitor:v47": {
+      "grade": "grounded_trivial",
+      "note": "Approval of the confidentiality protocol; E28 already states the mediation is subject to it."
+    },
+    "Laurentian First Report of the Monitor:v48": {
+      "grade": "grounded_trivial",
+      "note": "Mediator authorized to take all necessary steps. Standard-form empowerment clause."
+    },
+    "Laurentian First Report of the Monitor:v49": {
+      "grade": "grounded_trivial",
+      "note": "Mediator liability protection, s.142 Courts of Justice Act. Standard-form clause."
+    },
+    "Laurentian First Report of the Monitor:v50": {
+      "grade": "grounded_material",
+      "note": "The Court and the mediator may communicate directly and on an ongoing basis, with carve-outs. An unusual arrangement worth a legal-affairs reporter's attention, and distinct from the confidentiality protocol facts."
+    },
+    "Laurentian First Report of the Monitor:v51": {
+      "grade": "grounded_trivial",
+      "note": "Liberty to apply for directions. Standard-form clause."
+    },
+    "Laurentian First Report of the Monitor:v52": {
+      "grade": "grounded_trivial",
+      "note": "Aid-and-recognition clause on the mediator order. Standard-form boilerplate, and the same clause type already graded trivial on the Initial Order."
+    },
+    "Laurentian First Report of the Monitor:v53": {
+      "grade": "grounded_trivial",
+      "note": "Effectiveness clause (12:01 a.m., enforceable without entry and filing). Boilerplate."
+    },
+    "Laurentian First Report of the Monitor:v54": {
+      "grade": "grounded_trivial",
+      "note": "Internal disclosure mechanics of the confidentiality protocol; E28 covers the protocol's effect."
+    },
+    "Laurentian First Report of the Monitor:v55": {
+      "grade": "grounded_trivial",
+      "note": "Restates E8's Feb 5 case conference, adding the judge's stated reason (compressed timeline)."
+    },
+    "Laurentian First Report of the Monitor:v56": {
+      "grade": "grounded_material",
+      "note": "Counsel of record for all three parties (Miller, Kennedy, Sinclair, Philpott, Wright, Taylor, Muller) plus E&Y's Hamilton. Eight named, callable people; the extractor's list for this document names none of them."
+    }
+  }
+}

@@ -1,0 +1,112 @@
+{
+  "judgments": {
+    "Annual-Financial-Report-19-20:v18": {
+      "grade": "grounded_trivial",
+      "note": "Accounting-policy note (deferral method, tuition recognition period). Standard NFP policy language."
+    },
+    "Annual-Financial-Report-19-20:v19": {
+      "grade": "grounded_trivial",
+      "note": "Restates E18's cash figures verbatim ($7,505 to $4,544); the only addition is the prior-year total-assets comparative. maxC=0.56."
+    },
+    "Annual-Financial-Report-19-20:v20": {
+      "grade": "grounded_material",
+      "note": "Net assets fell $53,164K to $36,682K in one year, with the vacation/employee-future-benefits component at $(22,635)K. The scale of the one-year collapse is the story; E0 gives only the closing figure."
+    },
+    "Annual-Financial-Report-19-20:v21": {
+      "grade": "grounded_material",
+      "note": "Operating cash flow swung from $(5,726)K to $2,075K. Cash-flow statement lines absent from the extractor's list entirely."
+    },
+    "Annual-Financial-Report-19-20:v22": {
+      "grade": "grounded_material",
+      "note": "Financing and investing cash flows, including $2,527K of capital purchases while the university was running a deficit."
+    },
+    "Annual-Financial-Report-19-20:v23": {
+      "grade": "grounded_material",
+      "note": "PfAD rate rose to 10.3% from 7.94% and going-concern deficits move to a 10-year amortization from 15. Concrete pension-funding tightening; E10 covers only the solvency ratio."
+    },
+    "Annual-Financial-Report-19-20:v24": {
+      "grade": "grounded_material",
+      "note": "The SMA3 mechanics: 25% of provincial funding tied to 10 metrics rising to 60% by 2024-25, and per-WGU enrolment funding falling $2,903 to $1,173. This is the funding squeeze in numbers; E11 says only that SMA3 was signed."
+    },
+    "Annual-Financial-Report-19-20:v25": {
+      "grade": "grounded_material",
+      "note": "Revenue composition ($86,234K grants, $53,211K tuition, $24,151K research) with tuition down 7.6%. E2 gives only the revenue total."
+    },
+    "Annual-Financial-Report-19-20:v26": {
+      "grade": "grounded_material",
+      "note": "Expense composition beyond E3's salaries line: operating and research, occupancy, scholarships, amortization."
+    },
+    "Annual-Financial-Report-19-20:v27": {
+      "grade": "grounded_trivial",
+      "note": "Enumerates three post-employment plans; E9, E20 and E29 already carry the pension plan, the retiree health plan and the supplemental obligation."
+    },
+    "Annual-Financial-Report-19-20:v28": {
+      "grade": "grounded_material",
+      "note": "The Board approved an accelerated and amended Long Term Sustainability plan responding to the 10% tuition cut. A governance action with a date-able paper trail; nothing equivalent in the extractor's list."
+    },
+    "Annual-Financial-Report-19-20:v29": {
+      "grade": "grounded_trivial",
+      "note": "Restates E16 (KPMG audited the consolidated statements), adding only the list of statements audited. maxC=0.57."
+    },
+    "Annual-Financial-Report-19-20:v48": {
+      "grade": "grounded_trivial",
+      "note": "E2 already carries the $(3,120) deficiency; this adds the prior-year comparative only. maxC=0.77, the highest containment in the document and still under the 0.9 threshold."
+    },
+    "Annual-Financial-Report-19-20:v49": {
+      "grade": "grounded_trivial",
+      "note": "The $(2,961) net decrease in cash is the arithmetic difference of the two figures already in E18. Comparative only."
+    },
+    "Annual-Financial-Report-19-20:v50": {
+      "grade": "grounded_material",
+      "note": "Gross accrued benefit obligations of $(441,850)K against plan assets of $421,062K. The scale of the pension obligation — an order of magnitude larger than the net figure in E20 — and central to the case."
+    },
+    "Annual-Financial-Report-19-20:v51": {
+      "grade": "grounded_material",
+      "note": "Capital assets at $272,267K net book value, buildings $249,644K. What the institution actually owns; absent from the extractor's list."
+    },
+    "Annual-Financial-Report-19-20:v52": {
+      "grade": "grounded_material",
+      "note": "A TD short-term loan for the student recreation centre with no mandatory repayment terms at 1.91%. A specific, unusual credit arrangement not in E26/E27's debt list."
+    },
+    "Annual-Financial-Report-19-20:v53": {
+      "grade": "grounded_trivial",
+      "note": "Deferred contributions balance movement. Routine note-level balance with no bearing on the solvency question."
+    },
+    "Annual-Financial-Report-19-20:v54": {
+      "grade": "grounded_trivial",
+      "note": "Deferred capital contributions balance movement. Routine note-level balance."
+    },
+    "Annual-Financial-Report-19-20:v55": {
+      "grade": "grounded_material",
+      "note": "Internally financed capital projects: $16,878K for Campus Modernization funded by internal loans repayable over three to twenty-four years, net of the $(14,400)K line of credit. Internal borrowing to fund construction during deficit years."
+    },
+    "Annual-Financial-Report-19-20:v56": {
+      "grade": "grounded_trivial",
+      "note": "Interest-rate spreads on the two lines of credit already described in E8/E27. Rate detail."
+    },
+    "Annual-Financial-Report-19-20:v57": {
+      "grade": "grounded_trivial",
+      "note": "Standard contingency note — involved in litigation, outcomes not determinable. Names no matter and quantifies nothing."
+    },
+    "Annual-Financial-Report-19-20:v58": {
+      "grade": "grounded_trivial",
+      "note": "Breakdown of an 'other fees and income' line. Routine note detail."
+    },
+    "Annual-Financial-Report-19-20:v59": {
+      "grade": "grounded_trivial",
+      "note": "Boilerplate COVID uncertainty statement; E33/E34 already carry the substantive COVID exposure."
+    },
+    "Annual-Financial-Report-19-20:v60": {
+      "grade": "grounded_material",
+      "note": "A six-month deferral of residence debt repayments negotiated after year-end to manage cash flow. A concrete liquidity action and a subsequent-event disclosure."
+    },
+    "Annual-Financial-Report-19-20:v61": {
+      "grade": "grounded_material",
+      "note": "The Northern Ontario School of Medicine sits outside the consolidation, with no claim to its net assets. Directly bears on what creditors could reach; E30/E31 cover only MIRARCO and CEMI."
+    },
+    "Annual-Financial-Report-19-20:v62": {
+      "grade": "grounded_material",
+      "note": "SNOLAB: a 20% proportionate share consolidated only to March 31 2019, 2020 statements unavailable, and the share written off as at April 30 2018 because incorporation would end access. Unavailable statements and a write-off are both flags."
+    }
+  }
+}

@@ -1,0 +1,316 @@
+{
+  "judgments": {
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v20": {
+      "grade": "grounded_trivial",
+      "note": "EY's licensed-insolvency-trustee qualification. Standard eligibility recital."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v21": {
+      "grade": "grounded_trivial",
+      "note": "EY expects to perform the Monitor role virtually because of the pandemic. Administrative aside."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v22": {
+      "grade": "grounded_material",
+      "note": "Board composition (21 voting, 9 non-voting, four vacancies) and Senate composition (77 voting, 6 non-voting, two vacancies). Who actually governed the institution, and how many seats sat empty."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v23": {
+      "grade": "grounded_trivial",
+      "note": "Recital of the powers the Laurentian Act confers. Statutory background."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v24": {
+      "grade": "grounded_trivial",
+      "note": "E36 already covers the Barrie campus closure."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v25": {
+      "grade": "grounded_trivial",
+      "note": "E8/E9 already establish the NOSM relationship; this adds the service-and-reimbursement mechanics."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v26": {
+      "grade": "grounded_trivial",
+      "note": "E33 already carries the $14.0M of NOSM-designated endowments."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v27": {
+      "grade": "grounded_material",
+      "note": "The Federated Universities own buildings on land they lease from Laurentian and get no direct provincial funding apart from francophone grants to the University of Sudbury. The property and funding structure behind the federation dispute."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v28": {
+      "grade": "grounded_material",
+      "note": "Laurentian ran payroll for roughly 128 SNOLab employees and funded their pay, benefits and pension before reimbursement. A concrete exposure; E13 establishes this pattern only for MIRARCO."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v29": {
+      "grade": "grounded_trivial",
+      "note": "The same arrangement for CEMI's five employees. Immaterial at that scale once v28 is recorded."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v30": {
+      "grade": "grounded_trivial",
+      "note": "Fee collection on behalf of student associations; E45/E48 already carry the $1.6M remittance."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v31": {
+      "grade": "grounded_material",
+      "note": "Student employment fell from about 470 in November 2019 to about 200 in November 2020 — a countable pandemic effect on students' own income."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v32": {
+      "grade": "grounded_material",
+      "note": "Faculty accounted for roughly 60% of operating salaries and benefits. The ratio that made faculty cuts the restructuring's central target."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v33": {
+      "grade": "grounded_material",
+      "note": "The defined benefit plan's population: 406 collecting a lifetime pension, 981 active contributors, roughly 500 deferred members. How many people the pension changes reached."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v34": {
+      "grade": "grounded_material",
+      "note": "Current-service contributions of $16,188,000 a year plus a $505,000 special payment, with the monthly instalments. The pension's actual cash cost."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v35": {
+      "grade": "grounded_material",
+      "note": "Laurentian intended to seek a stay of pre- and post-filing pension special payments. Signals the pension relief before it was granted."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v36": {
+      "grade": "grounded_material",
+      "note": "The supplementary plan's 32 eligible retirees, about $260,000 due July 2021, and a $3,063,000 accrued obligation. Names the size of the group whose payments later stopped."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v37": {
+      "grade": "grounded_material",
+      "note": "The retiree health plan's 866 active contributors and 358 collecting retirees — the population of a plan terminated three months later."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v38": {
+      "grade": "grounded_trivial",
+      "note": "E17/E40 already cover the December 2020 segregation of RHBP contributions."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v39": {
+      "grade": "grounded_material",
+      "note": "Laurentian prepared no interim monthly or quarterly financial statements; the April 30, 2020 audited statements were the most recent available. A financial-control failure at an institution weeks from missing payroll."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v40": {
+      "grade": "grounded_material",
+      "note": "Operating grants and tuition made up roughly 70% of total revenue — the concentration that made the tuition cut and funding-model change existential."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v41": {
+      "grade": "grounded_material",
+      "note": "The Province's shift to a funding model weighted to outcome metrics rather than enrolment, with per-university targets."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v42": {
+      "grade": "grounded_trivial",
+      "note": "E35 already carries the 10% cut and the freeze; the addition is that international tuition was exempt."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v43": {
+      "grade": "grounded_material",
+      "note": "Research grants restrict funds to the specified research, sometimes require a separate account, and generally cannot fund faculty salaries or overhead. The rule the co-mingling practice broke."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v44": {
+      "grade": "grounded_material",
+      "note": "Of salaries and benefits, $16M went to research, MIRARCO and SNOLab staff and $119M to academic teaching and ancillary services."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v45": {
+      "grade": "grounded_trivial",
+      "note": "E19/E20/E21 already carry these balance-sheet lines."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v74": {
+      "grade": "grounded_material",
+      "note": "The current-liability stack decomposed: $14,400,000 line of credit, $22,319,000 payables, $1,846,000 accrued vacation, $2,738,000 current long-term debt. E19 gives only the $43,679 total."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v75": {
+      "grade": "grounded_trivial",
+      "note": "E19/E30 already carry the long-term debt and the $20,788,000 employee future benefits."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v76": {
+      "grade": "grounded_material",
+      "note": "Names the custodians of the $54.7M investment accounts — SEI Private Trust Company and RBC Dominion Securities. Institutions a reporter can follow."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v77": {
+      "grade": "grounded_material",
+      "note": "Capital assets by class plus named properties: the Art Centre at 251 John Street, the President's House, the McEwen School of Architecture at 85 Elm Street. Identifies the specific real estate later put in play."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v78": {
+      "grade": "grounded_trivial",
+      "note": "E23/E24 already cover the Desjardins facility."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v79": {
+      "grade": "grounded_trivial",
+      "note": "E24 already covers the cancelled $5M RBC line."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v80": {
+      "grade": "grounded_trivial",
+      "note": "E25 already carries the TD student recreation centre facility; this adds size and maturity."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v81": {
+      "grade": "grounded_material",
+      "note": "The BMO facility's structure: unsecured fixed-rate term and operating loans with a swap option, max $4,116,098, 20-year term. E26 gives only the deferral and the balance."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v82": {
+      "grade": "grounded_material",
+      "note": "RBC agreed on or about June 25, 2020 to defer principal on the Residence Takeout and Renovation Takeout facilities. A second lender's forbearance, dated; E26 covers only BMO."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v83": {
+      "grade": "grounded_trivial",
+      "note": "A negative-pledge covenant supporting the ranking point E47/E50 already make."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v84": {
+      "grade": "grounded_trivial",
+      "note": "E28 already carries the $10,575,875 balance; this adds the facility's initial amount and maturity."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v85": {
+      "grade": "grounded_trivial",
+      "note": "E28 already carries the $6,570,917 balance; this adds the facility's history."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v86": {
+      "grade": "grounded_material",
+      "note": "TD agreed on or about June 25, 2020 to defer principal payments. The third lender forbearance on the same date — together with v82 this shows every major lender had already granted accommodation."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v87": {
+      "grade": "grounded_trivial",
+      "note": "A pari passu covenant supporting the ranking point E47/E50 already make."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v88": {
+      "grade": "grounded_trivial",
+      "note": "E44 already carries the $8.5M SGA guarantee; this adds the instrument dates."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v89": {
+      "grade": "grounded_trivial",
+      "note": "Swap mechanics behind E29's $340,000 monthly outflow."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v90": {
+      "grade": "grounded_material",
+      "note": "The $38.5M deferred-contributions balance per the audited statements and what it consists of — externally restricted grants, donations, scholarships and RHBP contributions whose spending had not occurred. Note this differs from the ~$36.5M management estimate in E31."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v91": {
+      "grade": "grounded_material",
+      "note": "The internally restricted fund decomposed, including a negative $0.7M accumulated loss at the McEwen School of Architecture, and the statement that no funds were set aside for any of it."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v93": {
+      "grade": "grounded_material",
+      "note": "Ontario Ministry of Finance projections showing a flat Northern Ontario student pool. The demographic constraint under the enrolment problem."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v92": {
+      "grade": "grounded_trivial",
+      "note": "Arithmetic derivation of the investment-in-capital-assets balance from figures already in the ledger."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v94": {
+      "grade": "grounded_material",
+      "note": "175 programs — 132 undergraduate and 43 graduate — with many at consistently low enrolment and described as financially unsustainable. The setup for the program closures."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v95": {
+      "grade": "grounded_material",
+      "note": "Undergraduate enrolment concentration: 25% of students in the top five programs, 83% in the top 50, 1% in the bottom 25. The empirical case for the cuts."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v96": {
+      "grade": "grounded_material",
+      "note": "Graduate enrolment concentration: 48% in the top five programs, 91% in the top 25."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v97": {
+      "grade": "grounded_trivial",
+      "note": "A general list of pandemic effects; E37 covers the pandemic response."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v98": {
+      "grade": "grounded_material",
+      "note": "Roughly 20 non-faculty and 14 faculty FTEs already cut through attrition and deferred hiring before the filing."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v99": {
+      "grade": "grounded_material",
+      "note": "A hiring freeze from 2019-2020 with presidential sign-off required. A dated austerity measure predating the filing."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v100": {
+      "grade": "grounded_material",
+      "note": "Laurentian historically deposited operating receipts, restricted funds and donations into the same operating accounts, co-mingled them and paid all disbursements from them. This is the governance failure at the centre of the case; E40 records only the December 2020 fix, never the practice being fixed."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v101": {
+      "grade": "grounded_trivial",
+      "note": "Operational detail of the segregation regime E40 already records."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v102": {
+      "grade": "grounded_material",
+      "note": "The Province would not commit funding sufficient to avoid a CCAA filing despite discussions. Places the government's decision in the record."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v103": {
+      "grade": "grounded_trivial",
+      "note": "The Proposed Monitor's standard review procedures for a cash-flow forecast."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v104": {
+      "grade": "grounded_trivial",
+      "note": "Forecast assumptions of continued teaching and stayed pre-filing payments."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v105": {
+      "grade": "grounded_trivial",
+      "note": "E64/E65 already cover the stay exceptions for wages and student amounts."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v106": {
+      "grade": "grounded_material",
+      "note": "The DIP lender did not require advances in the first 10 days, which is why approval was pushed to the comeback hearing. Explains the sequencing of the financing."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v107": {
+      "grade": "grounded_trivial",
+      "note": "E44 already covers the limited stay for the students' association."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v108": {
+      "grade": "grounded_trivial",
+      "note": "E64/E65 already cover ordinary-course student payments."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v109": {
+      "grade": "grounded_trivial",
+      "note": "E45/E48 already cover the association fees; the addition is the assertion that they are not Laurentian's income."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v110": {
+      "grade": "grounded_trivial",
+      "note": "E51 already states the Administration Charge's purpose in nearly the same terms."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v130": {
+      "grade": "grounded_trivial",
+      "note": "Boilerplate on how the forecast was prepared and the nature of its assumptions."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v131": {
+      "grade": "grounded_trivial",
+      "note": "Forecast assumptions about DIP availability and stayed pre-filing supplier amounts."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v132": {
+      "grade": "grounded_trivial",
+      "note": "Forecast mechanics for operating grants."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v133": {
+      "grade": "grounded_trivial",
+      "note": "Forecast mechanics for student fee billing."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v134": {
+      "grade": "grounded_trivial",
+      "note": "The forecast's US dollar conversion rate."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v135": {
+      "grade": "grounded_trivial",
+      "note": "Duplicates v108's ordinary-course student payments."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v136": {
+      "grade": "grounded_trivial",
+      "note": "Capital projects deferred and excluded from the forecast. Minor forecast scoping note."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v137": {
+      "grade": "grounded_trivial",
+      "note": "Debt service stayed at the filing date. Follows from the stay itself."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v138": {
+      "grade": "grounded_trivial",
+      "note": "E62 already carries the Endowment Fund balances."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v139": {
+      "grade": "grounded_trivial",
+      "note": "Restructuring costs forecast on run rates. Forecast mechanics."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v140": {
+      "grade": "grounded_trivial",
+      "note": "A forecast assumption that the DIP advances in two tranches."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v141": {
+      "grade": "grounded_trivial",
+      "note": "The qualities the Proposed Monitor thought a mediator needed. Procedural opinion."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v142": {
+      "grade": "grounded_material",
+      "note": "The Proposed Monitor recommended the Court appoint a sitting or recently retired judge as mediator. This is why a sitting judge was appointed days later, and it is the Monitor putting a thumb on the scale of who mediates."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v143": {
+      "grade": "grounded_trivial",
+      "note": "Restates v142's urgency point without the substance."
+    },
+    "Laurentian Pre-Filing Report of the Proposed Monitor:v144": {
+      "grade": "grounded_trivial",
+      "note": "E56 already covers the liquidity conclusion; this adds the Monitor's caveat."
+    }
+  }
+}

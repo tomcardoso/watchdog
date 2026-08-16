@@ -351,7 +351,10 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    (`pipeline/verify.merge_candidates`), never by a second model call: candidates are sanitized
    (entity tags filtered to ids the extraction actually produced, page coerced, basis bounded)
    and near-duplicates of existing facts suppressed by token-set overlap, with a carve-out for a
-   candidate carrying a figure the matched fact lacks. Survivors are appended to
+   candidate carrying a figure the matched fact lacks. The call is section-scoped but the
+   duplicate check is **document**-scoped: earlier sections' facts are threaded in as a comparison
+   reference, since section ranges overlap and the ledger being protected is the document's
+   (D199). Survivors are appended to
    `document.key_facts` tagged `added_by: "verify"` and go through post-flight like any other
    fact — there is no second class of fact downstream. A failed verification call is logged and
    the extraction proceeds unchanged. Not available on a batch backend (`claude-batch`/

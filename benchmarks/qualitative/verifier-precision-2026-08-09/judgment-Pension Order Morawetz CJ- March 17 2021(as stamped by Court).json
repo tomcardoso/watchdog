@@ -1,0 +1,20 @@
+{
+  "judgments": {
+    "Pension Order Morawetz CJ- March 17 2021(as stamped by Court):v12": {
+      "grade": "grounded_material",
+      "note": "Names five Interim CV Applicants who appeared in person (Leduc, Zapalski, Pegoraro, Oxley, McGillis) and records that no one appeared for the rest. Named affected pensioners are direct reporting leads; nothing in the extractor's list carries a single individual applicant's name."
+    },
+    "Pension Order Morawetz CJ- March 17 2021(as stamped by Court):v13": {
+      "grade": "grounded_trivial",
+      "note": "Service validation / dispensing with further service. Standard-form procedural clause, no consequence for anyone."
+    },
+    "Pension Order Morawetz CJ- March 17 2021(as stamped by Court):v14": {
+      "grade": "grounded_trivial",
+      "note": "Restates the PBGF stay already in E6/E7, adding only a cross-reference to para 12 of the Feb 11 ARIO."
+    },
+    "Pension Order Morawetz CJ- March 17 2021(as stamped by Court):v15": {
+      "grade": "grounded_material",
+      "note": "The evidentiary record: Hache affidavit (Jan 30), Brinkman affidavit (Mar 8), Monitor's Second Report (Mar 11), Harland affidavit of service. Each is a named, dated document a reporter can request; none appears in the extractor's list."
+    }
+  }
+}
