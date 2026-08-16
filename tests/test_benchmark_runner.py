@@ -2284,6 +2284,33 @@ def test_versions_carries_both_constants():
                                "cost_model": br.COST_MODEL_VERSION}
 
 
+def test_pages_extracted_skips_a_malformed_artifact_rather_than_failing(tmp_path):
+    """A run has already been paid for by the time this renders, so one unparseable artifact must
+    cost that arm its own pages, not the whole report. The good siblings still count."""
+    vault = tmp_path / "bench-ex-a"
+    _write_extracted(vault, "aaa", page_count=5)
+    _write_extracted(vault, "bbb", page_count=3)
+    (vault / ".watchdog" / "extracted" / "ccc.json").write_text("{ truncated")
+    (vault / ".watchdog" / "extracted" / "ddd.json").write_text('["not an object"]')
+    results = [_arm_result(arm_id="a", vault=str(vault))]
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    data = br.run_json("rid", results, {}, config, {"commit": None})
+    assert data["arms"][0]["pages_extracted"] == 8
+
+
+def test_model_joins_distinct_values_when_an_arm_did_not_run_uniformly():
+    """Two models across one arm's calls means the arm didn't run under one setting — the whole
+    point of recording this per arm. Collapsing to the first would hide exactly that."""
+    results = [_arm_result(arm_id="a", vault=None,
+                           usage={"calls": [{"model": "sonnet-5", "effort": "low"},
+                                            {"model": "sonnet-5", "effort": "low"},
+                                            {"model": "haiku", "effort": "low"}]})]
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    data = br.run_json("rid", results, {}, config, {"commit": None})
+    assert data["arms"][0]["model"] == "sonnet-5, haiku"
+    assert data["arms"][0]["effort"] == "low"
+
+
 def test_qualitative_aggregate_reproduces_the_committed_pass(tmp_path):
     """The judge protocol is kept tracked so the next pass is comparable to the last. That only
     holds if the aggregator keeps producing the same numbers from the same judgments, so this

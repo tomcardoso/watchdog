@@ -457,7 +457,10 @@ def run_json(rid: str, results: list, scores: dict, config: dict, prov: dict,
     # this off `arm_id` alone (rather than scoping to `r.stage == "extractor"` below) would risk
     # a finalizer/classifier arm sharing an id (e.g. "haiku") with an extractor arm and silently
     # inheriting the wrong config.
-    extractor_arm_configs = {a["id"]: a for a in config.get("extractor_sweep", {}).get("arms", [])}
+    # `or {}`/`or []` rather than `.get(k, {})`: a YAML key present but empty (`extractor_sweep:`
+    # with nothing under it) parses as None, which a default only covers when the key is absent.
+    extractor_arm_configs = {a["id"]: a
+                             for a in (config.get("extractor_sweep") or {}).get("arms") or []}
     arms = []
     for r in results:
         vb = Path(r.vault).name if r.vault else r.arm_id
