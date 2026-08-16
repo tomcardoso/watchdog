@@ -54,17 +54,40 @@ def scan_queue(vault: Path) -> list[dict]:
     return queue_files
 
 
-def _real_input_tokens(totals: dict) -> int:
-    """Total tokens the model actually processed as input for a run's calls (issue #470): plain
-    `input_tokens` alone badly undercounts once prompt caching is in play, since a cache hit or
-    write moves the bulk of a call's input volume into `cache_read_tokens`/`cache_write_tokens`
-    instead — a sectioned extraction that carries a growing shared prefix across calls can show
+def _real_input_tokens(totals: dict, backend: str | None = None) -> int:
+    """Total tokens the model actually processed as input for a run's calls (issue #470).
+
+    On Anthropic, plain `input_tokens` badly undercounts once prompt caching is in play: a cache
+    hit or write moves the bulk of a call's input volume into `cache_read_tokens`/
+    `cache_write_tokens` instead, and those are reported as counts *additional* to
+    `input_tokens` — a sectioned extraction carrying a growing shared prefix can show
     `input_tokens` in the single digits while the real content processed is orders of magnitude
-    larger. The naive chars/4 estimate this is calibrated against counts a document's full text
-    once regardless of how many cached/fresh calls served it, so the comparison point needs the
-    same full-volume accounting."""
-    return ((totals.get("input_tokens") or 0) + (totals.get("cache_read_tokens") or 0)
-            + (totals.get("cache_write_tokens") or 0))
+    larger. (The archived `claude-agent-sdk` arm is the extreme case: 18 input tokens against
+    230,155 cache-write tokens for the same six documents.) The naive chars/4 estimate this is
+    compared against counts a document's full text once regardless of how many cached/fresh calls
+    served it, so the comparison point needs the same full-volume accounting.
+
+    **Every other provider reports the opposite convention** (#617): OpenAI's `prompt_tokens`
+    already *includes* `prompt_tokens_details.cached_tokens`, and DeepSeek's already includes
+    `prompt_cache_hit_tokens` — the cached count is a breakdown OF the input total, not an
+    addition to it. Summing there double-counts every cached token. Measured on the archived
+    benchmark corpus this inflated `gpt-5.4-mini`'s apparent tokens-per-est-token by 12.6% (its
+    fitted ratio read 1.110 summed against 0.914 on `input_tokens` alone — and the *unsummed* fit
+    is the better one, r² 0.839 vs 0.747, which is the tell that the extra tokens were double
+    counting rather than signal).
+
+    So `backend` selects the convention. It is optional and defaults to the summing form, because
+    the run-level `totals` dict this is also called with has no single backend to key off — a run
+    may mix providers — and Anthropic is both the default backend and the only one where the
+    naive form is catastrophically wrong rather than mildly so. Pass it whenever the caller has a
+    single call's record in hand, as `_model_tokenizer_calibration` does."""
+    # Local import for the same circular-import reason `_model_tokenizer_calibration` has one:
+    # `model_client.tokenizer_ratio` reaches back into this module.
+    from watchdog.model_client import provider_for_backend
+    inp = totals.get("input_tokens") or 0
+    if backend is not None and provider_for_backend(backend) != "anthropic":
+        return inp
+    return inp + (totals.get("cache_read_tokens") or 0) + (totals.get("cache_write_tokens") or 0)
 
 
 def _tokens_calibration(vault: Path, max_runs: int = 3) -> float | None:
@@ -188,7 +211,7 @@ def _model_tokenizer_calibration(vault: Path, model: str | None, backend: str | 
             if record.get("task") not in ("extract", "extract-section"):
                 continue
             est = record.get("est_prompt_tokens")
-            act = _real_input_tokens(record)
+            act = _real_input_tokens(record, backend)
             if est and act:
                 estimated.append(est)
                 actual.append(act)

@@ -185,9 +185,10 @@ only when there's no such history yet. Deliberately scoped to the *displayed* es
 still-thin, self-reported history would be a pipeline-behaviour change dressed up as a display fix.
 Not model-tokenizer-scoped (D180, #574): the derived ratio already absorbs whichever tokenizer the
 extractor behind that history actually used, so it only stays accurate while the extractor doesn't
-cross a tokenizer boundary between that history and the run being estimated — and there are three
-such boundaries, not one, now that every catalogued tokenizer has been measured (D198, #617:
-Claude through Sonnet 4.6 at 0.93, Claude 4.7+ at 1.28, Gemini at 0.91). Documented as a known gap
+cross a tokenizer boundary between that history and the run being estimated — and there are four
+such families, not one, now that every catalogued tokenizer has been measured (D198, #617: Claude
+through Sonnet 4.6 at 0.93, Claude 4.7+ at 1.28, Gemini at 0.91, GPT-5.x at 0.80, DeepSeek V4 at
+0.81). Documented as a known gap
 rather than fixed, since correcting it needs grouping calibration runs by extractor model. Note
 this is a different quantity from `_model_tokenizer_calibration`'s, which D198 rescoped to divide
 by the whole prompt's estimate; this one stays a run-level, document-only comparison and so still
@@ -215,7 +216,7 @@ a list-price comparison across providers, not a projection of what this vault wo
 billed. Each row additionally scales `est_tokens` by that model's own measured `tokenizer_ratio`
 (D180, #574; D198, #617) — otherwise a single tokens-in figure would price every model as if the
 same text became the same number of real tokens on each, when the measured spread across
-catalogued tokenizers runs 0.91 to 1.28. Accurate as long as the vault's own calibration history
+catalogued tokenizers runs 0.80 to 1.28. Accurate as long as the vault's own calibration history
 stayed on the same tokenizer, same caveat D135's calibration carries below.
 
 **Lock acquisition is atomic** (`pipeline/locks.py`, D66). All three run locks — the ingest
@@ -500,15 +501,15 @@ fits are weak and easily extrapolated past what was actually observed.
 Finally, the threshold and budget are divided by `model_client.tokenizer_ratio` (D180, #574;
 remeasured D198, #617), correcting for the fact that the chars/4 `est_tokens` heuristic was
 calibrated against Claude's *old* tokenizer and mis-states every other one. Every catalogued
-value is measured against corpus-v1 by `benchmarks/tokenizer_ratio.py`, using each provider's own
-free, non-generative token counter; three tokenizers cover the seven models that declare a ratio —
-0.93 (Claude through Sonnet 4.6), 1.28 (Claude 4.7+: Opus 4.8, Sonnet 5), 0.91 (Gemini). The
-correction runs both ways: above 1.0 it shrinks the est-token budget so a call's real tokens stay
-inside the window, below 1.0 it widens it, which is safe because the threshold fraction reserves
-40% of the window regardless. OpenAI and DeepSeek are deliberately left undeclared (1.0) — neither
-exposes a counter to measure against, and the best available evidence puts them below 1.0, so 1.0
-is the conservative side. Because the output-ceiling clamp is a bound in est-token space, it is
-re-applied *after* this division, not just before it (D198).
+value is measured against corpus-v1 by `benchmarks/tokenizer_ratio.py` — via each provider's own
+free token counter where one exists (Anthropic, Gemini), and a billed differential probe where
+none does (OpenAI, DeepSeek). Four tokenizers cover all fifteen catalogued models: 0.93 (Claude
+through Sonnet 4.6), 1.28 (Claude 4.7+: Opus 4.8, Sonnet 5), 0.91 (Gemini), 0.80 (GPT-5.x), 0.81
+(DeepSeek V4). The correction runs both ways, and *widening* is the common case — every tokenizer
+but Claude 4.7+ measures below 1.0, meaning chars/4 over-estimates it — which is safe because the
+threshold fraction reserves 40% of the window regardless. Only an uncatalogued id resolves to 1.0.
+Because the output-ceiling clamp is a bound in est-token space, it is re-applied *after* this
+division, not just before it (D198).
 When a `vault` is in scope (the real ingest path — `section.run` passes its own `vault` through
 automatically), `tokenizer_ratio` instead prefers an empirically-derived ratio from that vault's
 own usage history, pooled per model/backend from real per-call estimate-vs-actual token pairs

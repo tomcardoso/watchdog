@@ -31,13 +31,19 @@
 # divides its window-derived threshold/budget by it so a document's real token footprint still
 # respects the model's real context window.
 #
-# MEASURED, not quoted (#617, D197). Every value below comes from `benchmarks/tokenizer_ratio.py`
-# run against corpus-v1 (6 documents, 209 pages, 160,031 est tokens) on 2026-08-15, using each
-# provider's own free, non-generative token counter — Anthropic's `messages.count_tokens`, Gemini's
-# `models/<id>:countTokens` — on the corpus's chewed markdown assembled exactly as
-# `orchestrate._pages_text` assembles it for a real call, with message framing subtracted out. It
-# is the ratio of that count to `est_tokens` over the same pages' raw markdown, which is the pair
-# sectioning actually reasons about. Rerun the script to reproduce; it needs no extraction calls.
+# MEASURED, not quoted (#617, D198). EVERY value below comes from `benchmarks/tokenizer_ratio.py`
+# run against corpus-v1 (6 documents, 209 pages, 160,031 est tokens) on 2026-08-15, against the
+# corpus's chewed markdown assembled exactly as `orchestrate._pages_text` assembles it for a real
+# call, with message framing subtracted out. It is the ratio of the provider's own count to
+# `est_tokens` over the same pages' raw markdown — the pair sectioning actually reasons about.
+# Two measurement routes, because the providers differ in what they expose:
+#   * Anthropic and Gemini have free, non-generative counters (`messages.count_tokens`,
+#     `models/<id>:countTokens`). Measured on the whole corpus, free. Rerun any time.
+#   * OpenAI and DeepSeek have none, so they were measured by a BILLED differential probe
+#     (`--probe`): a one-character baseline call plus one sample call, subtracted. Measured on a
+#     12,028-est-token strided sample rather than the whole corpus, and ~$0.11 to reproduce.
+#     Do not reach for tiktoken instead — as of 2026-08-15 it cannot map a single GPT-5.x id in
+#     this catalog (`encoding_for_model("gpt-5.4-mini")` raises), and it is wrong for Claude.
 #
 # The measurement replaces #574's vendor citation, which was Anthropic's "approximately 30% more
 # tokens for the same text" for Claude 4.7+ and an unmeasured 1.0 for everyone else. That figure
@@ -45,39 +51,34 @@
 # the new one runs ~37% heavier here (1.278/0.931), not 30% — a vendor statement about general
 # prose, measured against chewed court filings and institutional financial reports.
 #
-# The ratio is a property of the TOKENIZER, not the model. Haiku 4.5 and Sonnet 4.6 return
-# byte-identical counts on all six documents; so do Opus 4.8 and Sonnet 5; so do all three Gemini
-# entries. Three tokenizers cover seven models. A new model joining an existing family can copy
-# its family's value; a genuinely new tokenizer needs its own run.
+# The ratio is a property of the TOKENIZER, not the model, confirmed on all four providers: every
+# model within a family returned byte-identical counts. Haiku 4.5 = Sonnet 4.6; Opus 4.8 = Sonnet
+# 5; all three Gemini entries; all six GPT-5.x entries (9,558 tokens each on the sample); both
+# DeepSeek V4 entries (9,656). FOUR tokenizers cover all fifteen models. A new model joining an
+# existing family can copy its family's value; a genuinely new tokenizer needs its own run.
 #
-# Values are corpus-wide (est-token-weighted), not per-document means, and the per-document spread
-# is real: 0.902-1.146 (old Claude), 1.243-1.703 (new Claude), 0.847-1.074 (Gemini). Within-model
-# spread exceeds between-model spread, so #617 asked whether a single scalar is the wrong shape.
-# It is not, because the spread is size-dependent — the high end is always the 5-page Pension
-# Order, and a document that small is never sectioned and can never approach a window. Weighting
-# by est tokens puts the weight on the long documents, which are the only ones that can overrun.
-# The tail is covered structurally besides: `_THRESHOLD_FRACTION` is 0.6, so a threshold-sized
-# call built at the corpus ratio still lands at 60% of the window, and even at the worst measured
-# per-document ratio it reaches only ~80%.
+# The Claude/Gemini values are corpus-wide (est-token-weighted), not per-document means, and the
+# per-document spread is real: 0.902-1.146 (old Claude), 1.243-1.703 (new Claude), 0.847-1.074
+# (Gemini). Within-model spread exceeds between-model spread, so #617 asked whether a single
+# scalar is the wrong shape. It is not, because the spread is size-dependent — the high end is
+# always the 5-page Pension Order, and a document that small is never sectioned and can never
+# approach a window. Weighting by est tokens puts the weight on the long documents, which are the
+# only ones that can overrun. The tail is covered structurally besides: `_THRESHOLD_FRACTION` is
+# 0.6, so a threshold-sized call built at the corpus ratio still lands at 60% of the window, and
+# even at the worst measured per-document ratio it reaches only ~80%.
+#
+# The OpenAI/DeepSeek figures carry one extra step, since the probe could only afford a slice: the
+# same strided sample was also counted for free on Claude and Gemini, where it reads 0.1-1.8% LOW
+# against those models' whole-corpus ratios. The raw sample ratios (0.795 OpenAI, 0.803 DeepSeek)
+# are nudged up by that ~1% and rounded — 0.80 and 0.81. Rounding up is the conservative
+# direction here, since a smaller ratio widens the budget.
 #
 # A value BELOW 1.0 means chars/4 over-estimates for that tokenizer, and widens the budget
-# accordingly. That is deliberate and safe for the same 40%-headroom reason — but it is also why
-# every value here is a measurement of OUR corpus. A corpus of very different text (non-English,
-# heavy code, dense tables throughout) could tokenize meaningfully worse; re-measure rather than
-# assuming these transfer.
-#
-# OPENAI AND DEEPSEEK ARE DELIBERATELY LEFT UNDECLARED (they default to 1.0). Neither provider
-# exposes a free token counter, and tiktoken is not a substitute: as of 2026-08-15 it cannot map
-# a single GPT-5.x id in this catalog (`encoding_for_model("gpt-5.4-mini")` raises), and it is
-# simply wrong for Claude. What we do have is `benchmarks/tokenizer_ratio.py --history`, which
-# regresses `actual = ratio * est + overhead` over archived benchmark calls; it puts every
-# OpenAI/DeepSeek model at or below ~1.1, and the same regression run against Claude and Gemini
-# reads ~12-17% HIGH versus their counted ground truth (the extraction prompt's harvested-
-# candidate block scales with document size, so some per-token overhead is still landing in the
-# slope). Corrected for that, all of them fall below 1.0 — meaning the 1.0 default is already on
-# the conservative side, and raising the budget on a derived correction to a noisy fit
-# (gpt-5.4-nano fits at r2 0.38) would be worse than the vendor figure this change removed.
-# Declare a measured value here if OpenAI or DeepSeek ever ships a counting endpoint.
+# accordingly. Every provider but Claude-4.7+ lands there, so this is the common case, not an edge
+# one. It is safe for the same 40%-headroom reason — but it is also why every value here is a
+# measurement of OUR corpus. A corpus of very different text (non-English, heavy code, dense
+# tables throughout) could tokenize meaningfully worse; re-measure rather than assuming these
+# transfer.
 # Price reference (#574): https://github.com/pydantic/genai-prices — Pydantic's maintained price
 # dataset (~34 providers). Consult it when adding or revising a model, but read the schema
 # carefully: a price can be a LIST of clauses gated by `constraint.start_date` (take the clause
@@ -202,6 +203,7 @@ models:
     cached_input: 0.0028e-6
     context_window: 1_000_000
     max_output_tokens: 384_000
+    tokenizer_ratio: 0.81     # measured #617, corpus-v1 2026-08-15 (DeepSeek V4 tokenizer)
   - id: deepseek-v4-pro
     name: DeepSeek V4 Pro
     provider: deepseek
@@ -210,6 +212,7 @@ models:
     cached_input: 0.003625e-6
     context_window: 1_000_000
     max_output_tokens: 384_000
+    tokenizer_ratio: 0.81     # measured #617, corpus-v1 2026-08-15 (DeepSeek V4 tokenizer)
 
   # OpenAI GPT-5 family, standard tier (the -pro variants are excluded: no discounted cache
   # rate, and a flat 6x price jump over these for no clear quality benefit — see #473)
@@ -223,6 +226,7 @@ models:
     max_output_tokens: 128_000
     reasoning: true
     effort_levels: [low, medium, high]
+    tokenizer_ratio: 0.80     # measured #617, corpus-v1 2026-08-15 (shared GPT-5.x tokenizer)
   - id: gpt-5.4
     name: GPT-5.4
     provider: openai
@@ -233,6 +237,7 @@ models:
     max_output_tokens: 128_000
     reasoning: true
     effort_levels: [low, medium, high]
+    tokenizer_ratio: 0.80     # measured #617, corpus-v1 2026-08-15 (shared GPT-5.x tokenizer)
   - id: gpt-5.4-mini
     name: GPT-5.4 Mini
     provider: openai
@@ -243,6 +248,7 @@ models:
     max_output_tokens: 128_000
     reasoning: true
     effort_levels: [low, medium, high]
+    tokenizer_ratio: 0.80     # measured #617, corpus-v1 2026-08-15 (shared GPT-5.x tokenizer)
   - id: gpt-5.4-nano
     name: GPT-5.4 Nano
     provider: openai
@@ -253,6 +259,7 @@ models:
     max_output_tokens: 128_000
     reasoning: true
     effort_levels: [low, medium, high]
+    tokenizer_ratio: 0.80     # measured #617, corpus-v1 2026-08-15 (shared GPT-5.x tokenizer)
   # GPT-5.6 family (Sol/Terra/Luna) — same 1.05M window as gpt-5.4/5.5 (issue #599). Sol (the
   # flagship, same price as gpt-5.5) isn't added — not asked for; add the same way if wanted.
   # `cache_breakpoints: true` and `cache_write` are the two fields that make prompt caching work
@@ -276,6 +283,7 @@ models:
     max_output_tokens: 128_000
     reasoning: true
     effort_levels: [low, medium, high, xhigh, max]
+    tokenizer_ratio: 0.80     # measured #617, corpus-v1 2026-08-15 (shared GPT-5.x tokenizer)
   - id: gpt-5.6-luna
     name: GPT-5.6 Luna
     provider: openai
@@ -288,6 +296,7 @@ models:
     max_output_tokens: 128_000
     reasoning: true
     effort_levels: [low, medium, high, xhigh, max]
+    tokenizer_ratio: 0.80     # measured #617, corpus-v1 2026-08-15 (shared GPT-5.x tokenizer)
 
   # Gemini 3.x, standard tier at the <=200k-token rate (Pro's >200k rate is double — not
   # modeled here, same simplification as elsewhere in this catalog). 3.5 Flash and 3.1

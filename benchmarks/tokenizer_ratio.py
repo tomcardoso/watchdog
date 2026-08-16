@@ -63,6 +63,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
+from watchdog import model_client  # noqa: E402
+from watchdog.pipeline.ingest_setup import _real_input_tokens  # noqa: E402
 from watchdog.pipeline.orchestrate import _pages_text  # noqa: E402
 from watchdog.pipeline.section import est_tokens  # noqa: E402
 
@@ -70,8 +72,19 @@ from watchdog.pipeline.section import est_tokens  # noqa: E402
 # The dash is an en dash in real records; both are accepted so a hand-written fixture still parses.
 _PAGES_RE = re.compile(r"pages (\d+)[–-](\d+)")
 
-# Models with a free, non-generative token-counting endpoint. Everyone else is history-only.
+# Models with a free, non-generative token-counting endpoint.
 _COUNTABLE = {"anthropic", "gemini"}
+
+# Models with no counter, measurable only by a billed differential probe (`--probe`).
+_PROBEABLE = {"openai", "deepseek"}
+
+# Every `_SAMPLE_STRIDE`-th page of the corpus, in filename then page order, forms the probe
+# sample — ~16 of 209 pages, ~12K est tokens. Big enough for a stable ratio, small enough that
+# probing all eight billed models costs cents. Striding rather than taking one document keeps the
+# sample spanning the corpus's born-digital/OCR and prose/table mix; `--count` measures the same
+# sample alongside the full corpus so the two can be compared before the probe's numbers are read
+# as corpus numbers.
+_SAMPLE_STRIDE = 13
 
 # A one-character message sent before each counted document so the provider's own message framing
 # (role wrappers, BOS markers) cancels out in the subtraction, leaving the document's own tokens.
@@ -122,6 +135,25 @@ def load_chew(vault: Path) -> dict[str, dict]:
     return docs
 
 
+def build_sample(docs: dict[str, dict]) -> tuple[int, str]:
+    """(est tokens, text) for the strided cross-corpus sample the billed probe measures.
+
+    Assembled per document with `orchestrate._pages_text`, exactly as a real call assembles pages,
+    then joined on the same `\\n\\n---\\n\\n` separator `_pages_text` uses between pages — so the
+    stitched sample carries the same page-marker overhead per page that a real section does, and
+    its ratio is comparable to the whole-document ratios `--count` reports."""
+    est_total, chunks = 0, []
+    flat = [(name, page) for name in sorted(docs) for page in sorted(docs[name]["pages"])]
+    picked: dict[str, list[int]] = collections.defaultdict(list)
+    for name, page in flat[::_SAMPLE_STRIDE]:
+        picked[name].append(page)
+    for name in sorted(picked):
+        pages = [{"page": p, "markdown": docs[name]["pages"].get(p, "")} for p in picked[name]]
+        est_total += sum(est_tokens(p["markdown"]) for p in pages)
+        chunks.append(_pages_text(pages))
+    return est_total, "\n\n---\n\n".join(chunks)
+
+
 def fit(points: list[tuple[float, float]]) -> dict:
     """Least-squares fit of `actual = slope * est + intercept` over (est, actual) pairs.
 
@@ -154,9 +186,11 @@ def history(bench_dir: Path, docs: dict[str, dict]) -> dict[tuple[str, str], dic
     """Fit every (model, backend) with archived extraction calls. See the module docstring for
     why this is a regression rather than a division.
 
-    `actual` sums `input_tokens` with `cache_read_tokens`/`cache_write_tokens`: on a cached call
-    the bulk of the input volume moves into those fields, and the model tokenized all of it —
-    the same reasoning as `ingest_setup._real_input_tokens`."""
+    `actual` comes from `ingest_setup._real_input_tokens`, which is provider-aware and must be:
+    Anthropic reports cache reads/writes as counts *additional* to `input_tokens` (so they are
+    summed), while OpenAI and DeepSeek report `prompt_tokens` with the cached count already
+    inside it (so summing would double-count). Getting this wrong reads `gpt-5.4-mini` at 1.110
+    instead of 0.914."""
     groups: dict[tuple[str, str], list[tuple[float, float]]] = collections.defaultdict(list)
     unmatched = 0
     for f in sorted(bench_dir.glob("*/artifacts/*/usage/*.json")):
@@ -173,8 +207,7 @@ def history(bench_dir: Path, docs: dict[str, dict]) -> dict[tuple[str, str], dic
                 unmatched += 1
                 continue
             est, _ = slice_pages(doc, int(m.group(1)), int(m.group(2)))
-            actual = ((c.get("input_tokens") or 0) + (c.get("cache_read_tokens") or 0)
-                      + (c.get("cache_write_tokens") or 0))
+            actual = _real_input_tokens(c, c.get("backend"))
             if est and actual:
                 groups[(c.get("model"), c.get("backend"))].append((est, actual))
     if unmatched:
@@ -231,6 +264,69 @@ async def _count_gemini(model: str, texts: list[str], key: str) -> list[int]:
         return [await one(_BASELINE + t) - base for t in texts]
 
 
+async def _probe_one(model_id: str, provider: str, texts: list[str], key: str) -> list[int]:
+    """Real prompt-token counts for `texts` on a provider with no counting endpoint — the only
+    way to measure OpenAI or DeepSeek, and the one part of this script that spends money.
+
+    Each text costs ONE billed call, plus one shared baseline call carrying a single character.
+    Subtracting the baseline cancels the provider's own message framing exactly, so what's left is
+    the text's own token count with no scaffolding — the same quantity `_count_anthropic` gets for
+    free. `max_completion_tokens`/`max_tokens` is pinned to the API minimum so essentially nothing
+    is generated; only `usage.prompt_tokens` is read, and the response body is discarded.
+
+    Caching cannot distort this: on these providers `prompt_tokens` already includes any cached
+    tokens (the same convention that makes summing wrong in `_real_input_tokens`), so a hit
+    changes the price but never the count."""
+    import httpx
+    import truststore
+    ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    base = model_client._OPENAI_BASE[provider]
+    # Reasoning models take `max_completion_tokens` and reject `max_tokens`; chat models the
+    # reverse. Same fork `model_client._openai_complete_async` makes for real calls.
+    cap_key = ("max_completion_tokens" if provider == "openai"
+               and model_client._openai_is_reasoning(model_id) else "max_tokens")
+
+    async with httpx.AsyncClient(timeout=300, verify=ctx) as client:
+        async def one(text: str) -> int:
+            r = await client.post(
+                base.rstrip("/") + "/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={"model": model_id, "messages": [{"role": "user", "content": text}],
+                      cap_key: 16})
+            r.raise_for_status()
+            return r.json()["usage"]["prompt_tokens"]
+
+        baseline = await one(_BASELINE)
+        return [await one(_BASELINE + t) - baseline for t in texts]
+
+
+async def probe(docs: dict[str, dict], models: list[dict]) -> dict[str, dict]:
+    """Measure every billed model against the strided sample. Spends real money — see
+    `_probe_one`. Reports the sample's est tokens beside the ratio so the reader can see what the
+    number was derived from rather than taking a bare scalar on trust."""
+    from watchdog.cmd import auth
+    sample_est, sample_text = build_sample(docs)
+    out: dict[str, dict] = {}
+    for entry in models:
+        provider = entry["provider"]
+        if provider not in _PROBEABLE:
+            continue
+        key = auth.get_api_key(provider)
+        if not key:
+            print(f"skip {entry['id']}: no {provider} credential configured", file=sys.stderr)
+            continue
+        print(f"probing {entry['id']} (2 billed calls, ~{sample_est:,} est tokens)…",
+              file=sys.stderr)
+        try:
+            actual, = await _probe_one(entry["id"], provider, [sample_text], key)
+        except Exception as e:                                    # noqa: BLE001 — report, continue
+            print(f"skip {entry['id']}: {type(e).__name__}: {str(e)[:200]}", file=sys.stderr)
+            continue
+        out[entry["id"]] = {"provider": provider, "est": sample_est, "actual": actual,
+                            "sample_ratio": actual / sample_est}
+    return out
+
+
 async def count(docs: dict[str, dict], models: list[dict]) -> dict[str, dict]:
     """Count every document of the corpus on every countable model.
 
@@ -239,6 +335,10 @@ async def count(docs: dict[str, dict], models: list[dict]) -> dict[str, dict]:
     from watchdog.cmd import auth
     names = sorted(docs)
     ests = [docs[n]["est"] for n in names]
+    # The probe's sample is counted here too (free), so its ratio can be checked against the same
+    # model's whole-corpus ratio. That agreement is what licenses reading a probed OpenAI/DeepSeek
+    # sample ratio as a corpus ratio; without it the probe would measure a slice of unknown bias.
+    sample_est, sample_text = build_sample(docs)
     out: dict[str, dict] = {}
     for entry in models:
         provider = entry["provider"]
@@ -252,16 +352,19 @@ async def count(docs: dict[str, dict], models: list[dict]) -> dict[str, dict]:
         counter = _count_anthropic if provider == "anthropic" else _count_gemini
         print(f"counting {entry['id']} ({len(names)} documents)…", file=sys.stderr)
         try:
-            actuals = await counter(entry["id"], [docs[n]["text"] for n in names], key)
+            actuals = await counter(entry["id"], [docs[n]["text"] for n in names] + [sample_text],
+                                    key)
         except Exception as e:                                    # noqa: BLE001 — report, continue
             print(f"skip {entry['id']}: {type(e).__name__}: {str(e)[:200]}", file=sys.stderr)
             continue
+        *doc_actuals, sample_actual = actuals
         out[entry["id"]] = {
             "provider": provider,
-            "corpus_ratio": sum(actuals) / sum(ests),
+            "corpus_ratio": sum(doc_actuals) / sum(ests),
+            "sample_ratio": sample_actual / sample_est,
             "documents": [{"filename": n, "pages": docs[n]["page_count"], "ocr": docs[n]["ocr"],
                            "est": e, "actual": a, "ratio": a / e}
-                          for n, e, a in zip(names, ests, actuals)],
+                          for n, e, a in zip(names, ests, doc_actuals)],
         }
     return out
 
@@ -270,7 +373,7 @@ def _fmt(v, spec: str) -> str:
     return "—".rjust(len(format(0, spec))) if v is None else format(v, spec)
 
 
-def report(counted: dict, fitted: dict, docs: dict) -> str:
+def report(counted: dict, fitted: dict, probed: dict, docs: dict) -> str:
     total_pages = sum(d["page_count"] for d in docs.values())
     total_est = sum(d["est"] for d in docs.values())
     lines = [f"# Token density vs corpus-v1 — {len(docs)} documents, {total_pages} pages, "
@@ -287,6 +390,18 @@ def report(counted: dict, fitted: dict, docs: dict) -> str:
             lines.append(f"| `{mid}` | **{r['corpus_ratio']:.3f}** | "
                          f"{min(ratios):.3f}–{max(ratios):.3f} |")
         lines.append("")
+        lines += ["### Sample vs whole corpus", "",
+                  "The billed probe below can only afford a slice. These are the same models "
+                  "measured both ways — close agreement is what licenses reading a probed "
+                  "sample ratio as a corpus ratio.", "",
+                  "| model | corpus | sample | delta |", "|---|---|---|---|"]
+        for mid, r in counted.items():
+            if r.get("sample_ratio") is None:
+                continue
+            delta = r["sample_ratio"] / r["corpus_ratio"] - 1
+            lines.append(f"| `{mid}` | {r['corpus_ratio']:.3f} | {r['sample_ratio']:.3f} | "
+                         f"{delta:+.1%} |")
+        lines.append("")
         lines += ["### Per document", "",
                   "| model | document | pages | OCR | est | actual | ratio |", "|---|---|---|---|---|---|---|"]
         for mid, r in counted.items():
@@ -294,6 +409,18 @@ def report(counted: dict, fitted: dict, docs: dict) -> str:
                 lines.append(f"| `{mid}` | {d['filename'][:44]} | {d['pages']} | "
                              f"{'yes' if d['ocr'] else 'no'} | {d['est']:,} | {d['actual']:,} | "
                              f"{d['ratio']:.3f} |")
+        lines.append("")
+
+    if probed:
+        lines += ["## Measured by billed differential probe", "",
+                  "OpenAI and DeepSeek expose no token counter, so these cost real money: one "
+                  "baseline call plus one sample call per model, subtracted so message framing "
+                  "cancels. Measured on the strided sample, not the whole corpus — check the "
+                  "sample-vs-corpus table above before reading these as corpus ratios.", "",
+                  "| model | est | actual | ratio |", "|---|---|---|---|"]
+        for mid, r in probed.items():
+            lines.append(f"| `{mid}` | {r['est']:,} | {r['actual']:,} | "
+                         f"**{r['sample_ratio']:.3f}** |")
         lines.append("")
 
     if fitted:
@@ -321,23 +448,33 @@ def main(argv=None) -> int:
     p.add_argument("--history", action="store_true", help="fit archived history only (offline)")
     p.add_argument("--count", action="store_true",
                    help="query the free count endpoints only (Anthropic, Gemini)")
+    p.add_argument("--probe", action="store_true",
+                   help="BILLED: differential probe for OpenAI/DeepSeek, which have no counter "
+                        "(2 small calls per model, cents total). Never implied — must be asked "
+                        "for, so the free modes can never spend by accident.")
     p.add_argument("--json", type=Path, help="also write the raw measurements here")
     args = p.parse_args(argv)
 
-    # Neither flag means both — the two modes cover different halves of the catalog.
-    do_history, do_count = (args.history, args.count) if (args.history or args.count) else (True, True)
+    # Neither free flag means both of them. `--probe` is deliberately excluded from that default:
+    # it is the only mode that costs money, so a bare run stays free.
+    do_history, do_count = ((args.history, args.count) if (args.history or args.count)
+                            else (True, True))
 
     docs = load_chew(args.vault)
     fitted = history(args.runs, docs) if do_history else {}
-    counted = {}
-    if do_count:
+    counted, probed = {}, {}
+    if do_count or args.probe:
         from watchdog.model_catalog import all_models
-        counted = asyncio.run(count(docs, all_models()))
+        catalog = all_models()
+        if do_count:
+            counted = asyncio.run(count(docs, catalog))
+        if args.probe:
+            probed = asyncio.run(probe(docs, catalog))
 
-    print(report(counted, fitted, docs))
+    print(report(counted, fitted, probed, docs))
     if args.json:
         args.json.write_text(json.dumps(
-            {"counted": counted,
+            {"counted": counted, "probed": probed,
              "fitted": {f"{m}|{b}": r for (m, b), r in fitted.items()}}, indent=1), encoding="utf-8")
     return 0
 

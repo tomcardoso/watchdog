@@ -222,16 +222,16 @@ def test_model_defaults_scale_with_context_window():
     assert section.model_defaults("sonnet") == (int(120_000 / 0.93), int(60_000 / 0.93))
     assert section.model_defaults("sonnet") == (129_032, 64_516)
     assert section.model_defaults(None) == (129_032, 64_516)              # default tier
-    # DeepSeek and OpenAI declare no ratio (no counting endpoint to measure one), so their
-    # window fractions pass through undivided.
-    assert section.model_defaults("deepseek-v4-flash") == (600_000, 300_000)   # 1M window
+    assert section.model_defaults("deepseek-v4-flash") == (740_740, 370_370)   # 1M window / 0.81
+    # `gpt-5-mini` is NOT in the catalog (the real ids are gpt-5.4-mini etc.), so it declares no
+    # ratio and its window fractions pass through undivided — the uncorrected control.
     assert section.model_defaults("gpt-5-mini") == (240_000, 120_000)          # 400K window
 
 
 def test_section_token_threshold_model_aware(monkeypatch):
     monkeypatch.setattr(section, "_config_get", lambda k, d: d)   # no config override
     assert section.section_token_threshold("sonnet") == 129_032    # 120K / 0.93 (#617)
-    assert section.section_token_threshold("deepseek-v4-flash") == 600_000  # no declared ratio
+    assert section.section_token_threshold("deepseek-v4-flash") == 740_740  # 600K / 0.81 (#617)
 
 
 def test_section_token_threshold_config_override_wins(monkeypatch):
@@ -246,7 +246,7 @@ def test_section_token_threshold_auto_uses_model_default(monkeypatch):
     monkeypatch.setattr(section, "_config_get",
                         lambda k, d: "auto" if k == "section_token_threshold" else d)
     assert section.section_token_threshold("sonnet") == 129_032    # 120K / 0.93 (#617)
-    assert section.section_token_threshold("deepseek-v4-flash") == 600_000  # no declared ratio
+    assert section.section_token_threshold("deepseek-v4-flash") == 740_740  # 600K / 0.81 (#617)
 
 
 def test_run_threshold_follows_model_window(tmp_path, monkeypatch):
@@ -348,7 +348,7 @@ def test_model_defaults_uncapped_for_paginating_and_uncapped_backends():
     # argument doesn't move them, not what the ratio is.
     assert section.model_defaults("sonnet", backend="claude-api") == (129_032, 64_516)
     assert section.model_defaults("sonnet", backend="claude-agent-sdk") == (129_032, 64_516)
-    assert section.model_defaults("deepseek-v4-flash", backend="deepseek") == (600_000, 300_000)
+    assert section.model_defaults("deepseek-v4-flash", backend="deepseek") == (740_740, 370_370)
     assert section.model_defaults("sonnet", backend=None) == (129_032, 64_516)
 
 
@@ -356,10 +356,13 @@ def test_section_token_threshold_capped_for_openai(monkeypatch):
     monkeypatch.setattr(section, "_config_get", lambda k, d: d)   # no config override
     # gpt-5.4's 1.05M window would give 630K, but the output ceiling — 128_000 catalogued * 0.9 =
     # 115_200 (#598) — caps it, and the medium-row inversion of that clamps to
-    # _MAX_OUTPUT_CAPPED_BUDGET (50_000).
+    # _MAX_OUTPUT_CAPPED_BUDGET (50_000). It stays 50_000 after gpt-5.4's measured 0.80
+    # tokenizer_ratio would divide it up to 62_500, because the clamp is re-applied after the
+    # division (#617) — the fit's trusted range is in est-token space.
     assert section.section_token_threshold("gpt-5.4", backend="openai") == 50_000
-    # Same model, a paginating backend → uncapped input-window default.
-    assert section.section_token_threshold("gpt-5.4", backend="claude-api") == 630_000
+    # Same model, a paginating backend → uncapped input-window default, and with no ceiling there
+    # is no clamp to re-apply, so the 0.80 ratio does widen it: 630_000 / 0.80.
+    assert section.section_token_threshold("gpt-5.4", backend="claude-api") == 787_500
 
 
 def test_run_sections_openai_doc_that_claude_would_extract_whole(tmp_path, monkeypatch):
@@ -403,14 +406,17 @@ def test_model_defaults_shrinks_for_new_tokenizer_claude_model():
 
 
 def test_model_defaults_widen_for_over_estimating_tokenizers():
-    # The correction runs both ways (#617). Claude through Sonnet 4.6 measures 0.93 and Gemini
-    # 0.91 — chars/4 over-estimates for both, so their budgets widen rather than shrink. Safe
-    # because _THRESHOLD_FRACTION leaves 40% of the window unused regardless.
+    # The correction runs both ways (#617), and widening is the COMMON case: every catalogued
+    # tokenizer except Claude 4.7+ measures below 1.0, meaning chars/4 over-estimates it, so its
+    # budget widens rather than shrinks. Safe because _THRESHOLD_FRACTION leaves 40% of the window
+    # unused regardless.
     assert section.model_defaults("sonnet") == (int(120_000 / 0.93), int(60_000 / 0.93))
     assert section.model_defaults("haiku") == (int(120_000 / 0.93), int(60_000 / 0.93))
-    # Only OpenAI and DeepSeek are left undeclared (no counting endpoint to measure against),
-    # so only they pass through unchanged.
-    assert section.model_defaults("deepseek-v4-flash") == (600_000, 300_000)
+    assert section.model_defaults("deepseek-v4-flash") == (740_740, 370_370)     # 0.81
+    assert section.model_defaults("gpt-5.4", backend="claude-api") == (787_500, 393_750)  # 0.80
+    # Shrinking is now the exception — only the Claude 4.7+ tokenizer, at 1.28.
+    assert section.model_defaults("sonnet-5") == (int(120_000 / 1.28), int(60_000 / 1.28))
+    # An uncatalogued id still declares nothing and is the uncorrected control.
     assert section.model_defaults("gpt-5-mini") == (240_000, 120_000)
 
 

@@ -545,9 +545,10 @@ def test_context_window_ignores_backend_for_hosted_models():
 
 # ── tokenizer ratio (#574, remeasured against corpus-v1 in #617) ────────────────
 
-# Three tokenizers cover the seven models that declare a ratio: Claude through Sonnet 4.6, Claude
-# 4.7+, and Gemini. Members of a family share a value exactly (they returned byte-identical counts
-# on all six corpus documents), which is what the paired rows below assert.
+# FOUR tokenizers cover all fifteen catalogued models: Claude through Sonnet 4.6, Claude 4.7+,
+# Gemini, GPT-5.x, and DeepSeek V4. Members of a family share a value exactly — every model within
+# one returned byte-identical counts on the corpus — which is what the paired rows below assert.
+# Only an UNCATALOGUED id falls through to 1.0 now.
 @pytest.mark.parametrize("model, ratio", [
     ("sonnet", 0.93),            # old Claude tokenizer (Sonnet 4.6)
     ("haiku", 0.93),             # old Claude tokenizer — same value, same tokenizer
@@ -556,8 +557,12 @@ def test_context_window_ignores_backend_for_hosted_models():
     ("opus", 1.28),              # new Claude tokenizer (Opus 4.8) — same value
     ("gemini-3.5-flash", 0.91),  # Gemini tokenizer
     ("gemini-3.1-pro-preview", 0.91),
-    ("deepseek-v4-flash", 1.0),  # no counting endpoint to measure against → left undeclared
-    ("gpt-5-mini", 1.0),         # ditto (also uncatalogued)
+    ("gpt-5.4-nano", 0.80),      # GPT-5.x tokenizer — measured by billed probe (#617)
+    ("gpt-5.5", 0.80),           # same family, same value
+    ("gpt-5.6-luna", 0.80),
+    ("deepseek-v4-flash", 0.81),  # DeepSeek V4 tokenizer
+    ("deepseek-v4-pro", 0.81),
+    ("gpt-5-mini", 1.0),         # uncatalogued id → no correction
     ("gemini-2.5-flash", 1.0),   # deliberately not catalogued (#583/D182) → no declared ratio
     ("some-unknown-model", 1.0),  # uncatalogued → no correction
 ])

@@ -154,10 +154,12 @@ def model_defaults(model: str | None, backend: str | None = None,
     tokenizer produces a different number of real tokens per character the est-token count
     mis-states what a call will actually spend. Dividing the est-token threshold/budget by that
     ratio keeps the real tokens sectioning sends inside the model's real context window. Above
-    1.0 (Claude 4.7+, 1.28) it shrinks the budget; below 1.0 (Claude through Sonnet 4.6 at 0.93,
-    Gemini at 0.91 — chars/4 over-estimates for those tokenizers) it widens it, which is safe
-    because `_THRESHOLD_FRACTION` leaves 40% of the window unused regardless. A 1.0 ratio
-    (OpenAI and DeepSeek, which expose no counter to measure against) leaves this a no-op.
+    1.0 — only Claude 4.7+, at 1.28 — it shrinks the budget. Below 1.0 it widens it, and that is
+    the common case: Claude through Sonnet 4.6 at 0.93, Gemini at 0.91, GPT-5.x at 0.80, DeepSeek
+    V4 at 0.81, i.e. chars/4 over-estimates most real tokenizers on this corpus. Widening is safe
+    because `_THRESHOLD_FRACTION` leaves 40% of the window unused regardless, and because the
+    output-ceiling clamp is re-applied after the division (see below). Only an uncatalogued id
+    resolves to 1.0 and leaves this a no-op.
 
     `vault` (#606 Part B), when given, is passed straight through to `tokenizer_ratio` so it can
     prefer this vault's own empirically-measured ratio over the static catalog constant once

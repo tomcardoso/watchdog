@@ -504,6 +504,29 @@ def _record(model, backend, task, est, act, **extra):
             "cache_read_tokens": 0, "cache_write_tokens": 0, **extra}
 
 
+def test_real_input_tokens_sums_cache_fields_only_for_anthropic(tmp_path):
+    """#617: the two provider families report cache tokens under opposite conventions.
+
+    Anthropic reports cache reads/writes as counts *additional* to `input_tokens` — the archived
+    `claude-agent-sdk` arm shows 18 input tokens against 230,155 cache-write tokens for the same
+    six documents — so they must be summed or the real volume vanishes. OpenAI's `prompt_tokens`
+    and DeepSeek's already include their cached counts, so summing there double-counts every
+    cached token (it read `gpt-5.4-mini` 12.6% high on the archived corpus)."""
+    from watchdog.pipeline.ingest_setup import _real_input_tokens
+    rec = {"input_tokens": 1000, "cache_read_tokens": 400, "cache_write_tokens": 100}
+
+    assert _real_input_tokens(rec, "claude-api") == 1500
+    assert _real_input_tokens(rec, "claude-agent-sdk") == 1500
+    assert _real_input_tokens(rec, "claude-batch") == 1500
+    assert _real_input_tokens(rec, "openai") == 1000
+    assert _real_input_tokens(rec, "openai-batch") == 1000
+    assert _real_input_tokens(rec, "deepseek") == 1000
+    assert _real_input_tokens(rec, "gemini") == 1000
+    # No backend (a run-level `totals`, which may mix providers) keeps the summing form: Anthropic
+    # is the default backend and the only one the naive form is catastrophically wrong for.
+    assert _real_input_tokens(rec) == 1500
+
+
 def test_model_tokenizer_calibration_no_history_returns_none(tmp_path):
     from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
     vault = _make_vault(tmp_path)
@@ -733,12 +756,13 @@ def test_cost_estimate_all_models_projects_every_catalog_model(tmp_path):
     catalog = all_models()
     assert {r["id"] for r in rows} == {m["id"] for m in catalog}
     assert [r["cost"] for r in rows] == sorted(r["cost"] for r in rows)   # cheapest first
-    # output ratio 500/1000 = 0.5 -> est_output = 1000; cost = 2000*input + 1000*output per model.
-    # Spot-checked on a model with no declared tokenizer_ratio, so the arithmetic here stays about
-    # the projection rather than about the ratio — that has its own test below.
+    # output ratio 500/1000 = 0.5 -> est_output = 1000; cost = 2000*input + 1000*output per model,
+    # each scaled by that model's own tokenizer_ratio (0.81 for DeepSeek V4 — see the dedicated
+    # ratio test below; this one is about the projection).
     by_id = {r["id"]: r["cost"] for r in rows}
     ds = next(m for m in catalog if m["id"] == "deepseek-v4-flash")
-    assert by_id["deepseek-v4-flash"] == pytest.approx(2000 * ds["input"] + 1000 * ds["output"])
+    assert by_id["deepseek-v4-flash"] == pytest.approx(
+        2000 * 0.81 * ds["input"] + 1000 * 0.81 * ds["output"])
 
 
 def test_cost_estimate_all_models_ignores_runs_with_no_output_tokens(tmp_path):
@@ -750,12 +774,13 @@ def test_cost_estimate_all_models_ignores_runs_with_no_output_tokens(tmp_path):
 
     rows = cost_estimate_all_models(vault, est_tokens=1000)
 
-    # only the second run's 1:1 ratio counts -> est_output = 1000. Spot-checked on a model with no
-    # declared tokenizer_ratio so the figure isn't also scaled by one.
+    # only the second run's 1:1 ratio counts -> est_output = 1000, both sides then scaled by
+    # DeepSeek V4's measured 0.81 tokenizer_ratio.
     by_id = {r["id"]: r["cost"] for r in rows}
     from watchdog.model_catalog import all_models
     ds = next(m for m in all_models() if m["id"] == "deepseek-v4-flash")
-    assert by_id["deepseek-v4-flash"] == pytest.approx(1000 * ds["input"] + 1000 * ds["output"])
+    assert by_id["deepseek-v4-flash"] == pytest.approx(
+        1000 * 0.81 * ds["input"] + 1000 * 0.81 * ds["output"])
 
 
 def test_cost_estimate_all_models_scales_by_each_models_tokenizer_ratio(tmp_path):
@@ -781,8 +806,8 @@ def test_cost_estimate_all_models_scales_by_each_models_tokenizer_ratio(tmp_path
     assert by_id["claude-sonnet-5"] == pytest.approx(projected("claude-sonnet-5", 1.28))
     assert by_id["claude-sonnet-4-6"] == pytest.approx(projected("claude-sonnet-4-6", 0.93))
     assert by_id["gemini-3.5-flash"] == pytest.approx(projected("gemini-3.5-flash", 0.91))
-    # DeepSeek declares none — projected on the raw est-token count, ratio 1.0.
-    assert by_id["deepseek-v4-flash"] == pytest.approx(projected("deepseek-v4-flash", 1.0))
+    assert by_id["gpt-5.4-nano"] == pytest.approx(projected("gpt-5.4-nano", 0.80))
+    assert by_id["deepseek-v4-flash"] == pytest.approx(projected("deepseek-v4-flash", 0.81))
 
 
 def test_finalize_cost_estimate_all_models_no_standalone_history_returns_empty(tmp_path):

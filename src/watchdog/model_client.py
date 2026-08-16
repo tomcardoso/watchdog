@@ -223,14 +223,16 @@ def tokenizer_ratio(model: str | None, backend: str | None = None,
     window rather than the heuristic's count.
 
     Every catalogued value is now measured against corpus-v1 rather than quoted from a vendor
-    (#617, D197) — `benchmarks/tokenizer_ratio.py`, via each provider's own free token-counting
-    endpoint. Three tokenizers cover the seven models that declare one: 0.93 for Claude through
-    Sonnet 4.6, 1.28 for Claude 4.7+ (Opus 4.8, Sonnet 5 — the vendor's "~30% more" measured at
-    ~37% more on our text), 0.91 for Gemini.
+    (#617, D198) — `benchmarks/tokenizer_ratio.py`, via each provider's free token counter where
+    one exists (Anthropic, Gemini) and a billed differential probe where none does (OpenAI,
+    DeepSeek). Four tokenizers cover all fifteen catalogued models: 0.93 Claude through Sonnet
+    4.6, 1.28 Claude 4.7+ (Opus 4.8, Sonnet 5 — the vendor's "~30% more" measured at ~37% on our
+    text), 0.91 Gemini, 0.80 GPT-5.x, 0.81 DeepSeek V4. All but Claude 4.7+ sit below 1.0, i.e.
+    chars/4 over-estimates most real tokenizers on this corpus.
 
-    1.0 (no correction) for any model that doesn't declare a ratio — OpenAI and DeepSeek, neither
-    of which exposes a token counter to measure against, see `model_catalog.yaml`'s field comment
-    — and for `backend == "local"`, whose self-hosted id carries no catalog entry to declare one.
+    1.0 (no correction) only for a model with no catalog entry to declare one — an id shipped
+    after this catalog was last updated, a self-hosted/OpenRouter model an operator named
+    themselves — and for `backend == "local"` for the same reason.
 
     `vault` (#606 Part B), when given, prefers this vault's own empirically-measured ratio —
     `pipeline.ingest_setup._model_tokenizer_calibration`, computed from real est/actual token

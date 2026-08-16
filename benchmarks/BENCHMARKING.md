@@ -478,36 +478,42 @@ a trivial one, and the two should not be averaged together when deciding.
 
 ## Token density — `tokenizer_ratio.py` (#617)
 
-Separate from the arm matrix, and **free**: measures how many real tokens each model counts for
-text the chars/4 `est_tokens` heuristic scores as one estimated token. That multiplier is
-`model_catalog.yaml`'s `tokenizer_ratio`, which `pipeline/section.py` divides its window-derived
-threshold/budget by, and every value in the catalog now comes from this script rather than a
-vendor sentence (D198).
+Separate from the arm matrix: measures how many real tokens each model counts for text the chars/4
+`est_tokens` heuristic scores as one estimated token. That multiplier is `model_catalog.yaml`'s
+`tokenizer_ratio`, which `pipeline/section.py` divides its window-derived threshold/budget by, and
+every value in the catalog now comes from this script rather than a vendor sentence (D198).
 
 ```
 ~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/tokenizer_ratio.py
 ```
 
-No extraction calls, no generation, no subscription session window — Anthropic's
-`messages.count_tokens` and Gemini's `models/<id>:countTokens` are free, non-generative endpoints.
-It needs the master chew (`--vault`, default `benchmarks/.vaults/bench-master`), not a set of arm
-vaults. Two modes, both reported unless you pass one:
+**A bare run is free** — no extraction calls, no generation, no subscription session window. It
+needs the master chew (`--vault`, default `benchmarks/.vaults/bench-master`), not a set of arm
+vaults. Three modes; the two free ones both run unless you name one, and the billed one never runs
+unless you ask for it:
 
-- `--count` queries those free endpoints for Anthropic and Gemini. This is the ground truth.
-- `--history` fits `actual = ratio × est + overhead` over usage already archived under
-  `benchmarks/<run-id>/artifacts/*/usage/*.json` — offline, and the only evidence available for
-  OpenAI and DeepSeek, neither of which exposes a counter. **Read `r²` and the slope's standard
-  error before believing a row**, and note that where both modes cover the same model the
-  regression reads 12–17% high (the harvested-candidate block scales with document size, so some
-  per-token overhead lands in the slope). Treat a history-only slope as an upper bound.
+- `--count` (free) queries Anthropic's `messages.count_tokens` and Gemini's
+  `models/<id>:countTokens`, non-generative endpoints that cost nothing. Whole corpus. This is the
+  ground truth for those two providers.
+- `--probe` (**billed, ~$0.11**) is the only way to measure OpenAI and DeepSeek, which expose no
+  counter: a one-character baseline call plus one sample call per model, subtracted so message
+  framing cancels. It measures a 12,028-est-token strided sample, not the whole corpus — `--count`
+  measures that same sample too, and it tracks the whole-corpus ratio to within 0.1–1.8%, which is
+  what licenses reading a probed sample ratio as a corpus ratio.
+- `--history` (free, offline) fits `actual = ratio × est + overhead` over usage already archived
+  under `benchmarks/<run-id>/artifacts/*/usage/*.json`. **Read `r²` and the slope's standard error
+  before believing a row.** Where counted ground truth also exists the regression reads 12–17%
+  high (the harvested-candidate block scales with document size, so some per-token overhead lands
+  in the slope), so treat a history-only slope as an upper bound. The `gpt-5.4-nano` row is the
+  cautionary case: it fits at r² 0.38 and reads 1.354, against a probed 0.795.
 
 Do **not** reach for tiktoken as a shortcut. It cannot map any GPT-5.x id in this catalog
 (`encoding_for_model("gpt-5.4-mini")` raises, checked 2026-08-15), and it is simply the wrong
 tokenizer for Claude.
 
-Re-run it when adding a model on a tokenizer no catalogued model already uses — members of a
-family return byte-identical counts and can copy their family's value — or when the corpus itself
-changes.
+Re-run it when adding a model on a tokenizer no catalogued model already uses — every model within
+a family returned byte-identical counts, on all four providers, so a family member can just copy
+its family's value — or when the corpus itself changes.
 
 ## Rough cost
 
