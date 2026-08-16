@@ -58,7 +58,7 @@ _CHARS_PER_TOKEN = 4                # cheap heuristic
 _THRESHOLD_FRACTION = 0.6
 _BUDGET_FRACTION = 0.3
 
-# Sectioning is sized from the input window alone (#555, D199). It used to be additionally capped
+# Sectioning is sized from the input window alone (#555, D202). It used to be additionally capped
 # by an output-derived input ceiling (#343, #542): predict a call's *total* (reasoning + visible)
 # output from its input size with an affine fit, then invert that fit against the model's wire
 # `max_output_tokens` envelope to find the largest input whose answer would still fit. That whole

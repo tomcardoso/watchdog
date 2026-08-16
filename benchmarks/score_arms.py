@@ -38,6 +38,13 @@ import sys
 
 import yaml
 
+# Bumped whenever a change alters what counts as a hit, so figures produced under different
+# versions are never ranked against each other as if they measured the same thing (#551). Version
+# 1 was everything before this constant existed; version 2 is post-#591 — per-document matching
+# (a key item is scored only against its own document's extraction, not the whole vault), the
+# rounding-collision fix, and `millions_prose`.
+SCORER_VERSION = 2
+
 
 def _keys_glob(keys_dir=None):
     d = keys_dir if keys_dir is not None else os.path.join(os.path.dirname(os.path.abspath(__file__)), "keys")

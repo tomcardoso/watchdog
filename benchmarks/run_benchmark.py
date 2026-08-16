@@ -372,6 +372,10 @@ class ArmResult:
     doc_errors: list[str] = field(default_factory=list)
     estimate: dict | None = None
     usage: dict | None = None
+    # The `<ts>` stem of the `usage-<ts>.json` `usage` above was loaded from (#551) — the join
+    # key back to telemetry_db's `calls.run_id` column (D193), which is that same stem. None
+    # when the arm has no usage file at all.
+    usage_run_id: str | None = None
     extra: dict = field(default_factory=dict)
     # #559: a rate limit during extraction used to surface identically to a Ctrl-C
     # (`cancelled` alone, indistinguishable) and left no errors.log entry at all, and the arm's
@@ -454,16 +458,22 @@ def preview_finalizer_arm(vault: Path, finalizer_model: str, finalizer_effort: s
     return est
 
 
-def _latest_usage(vault: Path) -> dict | None:
+def _latest_usage(vault: Path) -> tuple[dict | None, str | None]:
+    """The vault's most recent usage record, parsed, alongside the `<ts>` stem of the
+    `usage-<ts>.json` it came from — the same id telemetry_db's `calls.run_id` column carries for
+    the SQLite rows this file's calls were also written to (D193, #611). `run.json` needs that
+    stem to join an archived run's arms back to their telemetry rows later, since the DB itself is
+    machine-local and not archived with the run."""
     from watchdog.pipeline.orchestrate import usage_files
     files = usage_files(vault)
     if not files:
-        return None
+        return None, None
+    usage_run_id = files[-1].stem.removeprefix("usage-")
     import json
     try:
-        return json.loads(files[-1].read_text(encoding="utf-8"))
+        return json.loads(files[-1].read_text(encoding="utf-8")), usage_run_id
     except (OSError, ValueError):
-        return None
+        return None, usage_run_id
 
 
 @contextlib.contextmanager
@@ -549,8 +559,9 @@ def run_extractor_arm(arm: dict, vault: Path) -> ArmResult:
             summary = _quiet(ing.cmd_extract, ns, non_interactive=True)
     except SystemExit as e:
         return ArmResult(arm_id=arm["id"], stage="extractor", vault=vault, ok=False, error=str(e))
+    usage, usage_run_id = _latest_usage(vault)
     return ArmResult(arm_id=arm["id"], stage="extractor", vault=vault, ok=True,
-                     doc_errors=_doc_errors(summary), usage=_latest_usage(vault),
+                     doc_errors=_doc_errors(summary), usage=usage, usage_run_id=usage_run_id,
                      **_extraction_outcome(summary, documents_total))
 
 
@@ -567,8 +578,10 @@ def run_finalizer_arm(arm: dict, vault: Path) -> ArmResult:
     # A finalize failure (rate limit, reconciliation error) is also caught and returned rather
     # than raised — same silent-`ok=True` trap as extraction's per-document failures.
     reason = (out or {}).get("error") or (out or {}).get("briefing_error")
+    usage, usage_run_id = _latest_usage(vault)
     return ArmResult(arm_id=arm["id"], stage="finalizer", vault=vault, ok=True,
-                     doc_errors=[reason] if reason else [], usage=_latest_usage(vault))
+                     doc_errors=[reason] if reason else [], usage=usage,
+                     usage_run_id=usage_run_id)
 
 
 def _classify_results(vault: Path, expected: dict[str, str]) -> dict:
@@ -1023,7 +1036,8 @@ def main(argv: list[str] | None = None) -> int:
     from score_arms import score as score_vaults
     scores = score_vaults(vaults_to_score) if vaults_to_score else {
         "vaults": [], "detail": [], "totals": {"facts": {}, "must_not_miss": {}}, "unscorable": []}
-    out_dir = bench_report.write_run(args.out, results, scores, config, provenance)
+    out_dir = bench_report.write_run(args.out, results, scores, config, provenance,
+                                     benchmarks_dir=config_dir)
     n_failed = sum(1 for r in results if not r.ok or r.doc_errors)
     tail = f" — {n_failed} arm(s) had failures, see errors.log" if n_failed else ""
     print(f"\nReport written to {out_dir}{tail}")

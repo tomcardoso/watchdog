@@ -103,7 +103,7 @@ def _output_envelope(model_id: str) -> int:
 # the field that would measure the real figure per call (`est_prompt_tokens`, #617) is on zero
 # archived records because no run has happened since it landed. 10% of 272,000 is 27,200 tokens of
 # slack, comfortably over that floor and the only thing standing between a long document and a 2x
-# bill (#555, D199).
+# bill (#555, D202).
 _LONG_CONTEXT_HEADROOM = _OUTPUT_HEADROOM
 
 
@@ -1338,7 +1338,7 @@ def _wire_max_tokens(backend: str, model_id: str) -> int:
     matters anywhere: the wire ceiling is the model's own envelope regardless, and as of #555
     nothing reasons about how much of it reasoning will consume. `pipeline/section.py`'s
     *input*-side sizing used to invert that estimate into a section budget; it no longer consults
-    this function at all (see D199), so this envelope is now purely a runaway guard on the wire."""
+    this function at all (see D202), so this envelope is now purely a runaway guard on the wire."""
     if backend == "deepseek":
         # `-thinking` is a Watchdog-only routing marker (D88), not a real catalog id — strip it
         # before consulting the catalog, the same normalization `_openai_complete_async` already

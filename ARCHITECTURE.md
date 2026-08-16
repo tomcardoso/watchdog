@@ -351,7 +351,10 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    (`pipeline/verify.merge_candidates`), never by a second model call: candidates are sanitized
    (entity tags filtered to ids the extraction actually produced, page coerced, basis bounded)
    and near-duplicates of existing facts suppressed by token-set overlap, with a carve-out for a
-   candidate carrying a figure the matched fact lacks. Survivors are appended to
+   candidate carrying a figure the matched fact lacks. The call is section-scoped but the
+   duplicate check is **document**-scoped: earlier sections' facts are threaded in as a comparison
+   reference, since section ranges overlap and the ledger being protected is the document's
+   (D199). Survivors are appended to
    `document.key_facts` tagged `added_by: "verify"` and go through post-flight like any other
    fact — there is no second class of fact downstream. A failed verification call is logged and
    the extraction proceeds unchanged. Not available on a batch backend (`claude-batch`/
@@ -362,11 +365,13 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    descriptor into a full `quote` (`quote_verify.resolve_quotes`, D75, D170, D177) — correcting
    the fact's own `page` when the locator resolves, unambiguously, to exactly one page other
    than the one cited AND is unique across the whole document (D177); joining two adjacent
-   pages' text as a fallback when a sentence is split by a page break — then **explodes**
+   pages' text as a fallback when a sentence is split by a page break — **checks each stated
+   fact's numeric figures** against the cited page's text (`figure_verify.verify_figures`,
+   D112), annotating the fact with any figure found nowhere in the document or found only on
+   another page so the vault shows it, not just the ingest log (D200) — then **explodes**
    the unified key_facts into the per-entity `evidence_fragments` + `timeline_events` that the
-   writers consume (`explode_key_facts`, D26) — carrying the resolved `quote` along with each
-   fragment, **checks each stated fact's numeric figures** against the cited page's text
-   (`figure_verify.verify_figures`, D112), **flags a file-metadata date mismatch** —
+   writers consume (`explode_key_facts`, D26) — carrying the resolved `quote` and those figure
+   annotations along with each fragment, **flags a file-metadata date mismatch** —
    `document.file_metadata.created` postdating `date_of_document` by a year or more
    (`file_metadata.check_date_mismatch`, #369), deterministic and suppressed whenever
    `ocr_used` is true, since a scan's creation date describes the scan, not the original —
@@ -486,7 +491,7 @@ escape hatch (a pinned integer does not rescale when the extraction model change
 **The output ceiling does not enter into this.** It used to: for a backend enforcing a fixed
 `max_tokens` it can't paginate past (openai, gemini — D104, #343), the input default was
 additionally capped by inverting an affine fit of *total* output against that envelope, per
-reasoning `effort`, clamped to a measured-range bound (D187, #542). All of it was deleted in D199
+reasoning `effort`, clamped to a measured-range bound (D187, #542). All of it was deleted in D202
 (#555) after the archive showed the cap never bound (peak output was 14–27% of the envelope on
 every model but one), that pooling the fit across models let one model's reasoning volume set
 every other's budget, and that the inversion degenerates wherever the fitted slope is near zero.
@@ -509,7 +514,7 @@ through Sonnet 4.6), 1.28 (Claude 4.7+: Opus 4.8, Sonnet 5), 0.91 (Gemini), 0.80
 (DeepSeek V4). The correction runs both ways, and *widening* is the common case — every tokenizer
 but Claude 4.7+ measures below 1.0, meaning chars/4 over-estimates it — which is safe because the
 threshold fraction reserves 40% of the window regardless. Only an uncatalogued id resolves to 1.0.
-**One clamp sits between the window fraction and that division: `long_context_threshold`** (D199,
+**One clamp sits between the window fraction and that division: `long_context_threshold`** (D202,
 #555), the catalogued real-token input length at which a model starts billing at a higher rate —
 ~272K on the large-window GPT-5.x models, 200K on Gemini 3.1 Pro, absent on the eleven that price
 flat. `model_client.long_context_input_cap` returns it under the same 10% headroom

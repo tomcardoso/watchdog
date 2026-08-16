@@ -91,10 +91,10 @@
 # known here: the large-window GPT-5.x models roughly double their rate above ~272K tokens, and
 # Gemini 3.1 Pro doubles above 200K.
 #
-# `long_context_threshold` (#555, D199) is the real-token input length at/above which a model bills
+# `long_context_threshold` (#555, D202) is the real-token input length at/above which a model bills
 # at a higher rate. `pipeline/section.py` clamps BOTH the sectioning threshold and the per-section
 # budget to it (under `_LONG_CONTEXT_HEADROOM`), so no single extraction call is ever planned past
-# the boundary. It exists because D199 deleted the old output-derived clamp that had been holding
+# the boundary. It exists because D202 deleted the old output-derived clamp that had been holding
 # these models a factor of five under the line by accident: sizing from the context window alone
 # gives gpt-5.4/-5.5/gpt-5.6-luna/-terra a 393,750 est-token budget — about 315,000 real tokens at
 # their measured 0.80 ratio, comfortably PAST 272K — and a whole-document threshold larger still.
@@ -303,7 +303,7 @@ models:
     provider: openai
     # Corrected 2026-08-16 against developers.openai.com/api/docs/models/gpt-5.6-terra: this row
     # had gpt-5.4's rates (2.5/15.0, and the two cache fields derived from them), over-stating
-    # every Terra cost by 25%. Found while citing `long_context_threshold` — see D199.
+    # every Terra cost by 25%. Found while citing `long_context_threshold` — see D202.
     input: 2.0e-6
     output: 12.0e-6
     cached_input: 0.20e-6

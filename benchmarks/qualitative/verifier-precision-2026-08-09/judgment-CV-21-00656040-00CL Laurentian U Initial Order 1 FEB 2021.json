@@ -1,0 +1,36 @@
+{
+  "judgments": {
+    "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021:v22": {
+      "grade": "grounded_trivial",
+      "note": "Monitor shall not take possession or manage the business. Standard-form CCAA monitor clause; appears in every initial order."
+    },
+    "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021:v23": {
+      "grade": "grounded_trivial",
+      "note": "Monitor may engage independent counsel. Standard-form clause."
+    },
+    "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021:v24": {
+      "grade": "grounded_material",
+      "note": "Creditor information rights, and it surfaces a proposed DIP Lender — an entity absent from the extractor's entire list for this document. The DIP financing is the central money question in the case."
+    },
+    "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021:v25": {
+      "grade": "grounded_material",
+      "note": "The Charges do not reach the Segregated Accounts — i.e. research funding, restricted donations and endowments sit outside the super-priority charges. Distinct court holding about whose money is protected; E4 establishes the accounts exist but not that the Charges are carved out."
+    },
+    "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021:v26": {
+      "grade": "grounded_trivial",
+      "note": "Monitor maintains a Service List and posts it. Procedural mechanic."
+    },
+    "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021:v27": {
+      "grade": "grounded_trivial",
+      "note": "Aid-and-recognition clause. Standard-form boilerplate in every CCAA order."
+    },
+    "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021:v28": {
+      "grade": "grounded_material",
+      "note": "Suppliers restrained from cutting off goods and services during the stay. Operative provision binding every vendor to the university; E9 covers only agreements involving the students' association."
+    },
+    "CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021:v29": {
+      "grade": "grounded_trivial",
+      "note": "The standard counterpart to v28 (no one must extend credit). Boilerplate paired clause."
+    }
+  }
+}

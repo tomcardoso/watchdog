@@ -35,7 +35,28 @@ import re
 _JACCARD_SUPPRESS = 0.75
 # A candidate whose content words are almost entirely contained in an existing fact adds nothing
 # the reporter can't already read — the "sub-clause of a captured fact" restatement.
-_CONTAINMENT_SUPPRESS = 0.9
+#
+# Fitted, not hand-picked (#589). All 220 additions from the 2026-08-09 verify arm were graded
+# material/trivial by hand, then this threshold swept through `_is_restatement` itself against
+# those grades, document-scoped. 0.9 caught 3 trivial additions; 0.6 catches 11, and no material
+# one is lost anywhere down to 0.5. It is the numeric carve-out below that makes a threshold this
+# low safe — a material fact at high word overlap almost always carries a figure the matched fact
+# lacks, which is what the carve-out keys on. 0.6 rather than 0.5 because material containment
+# runs to 0.65 in this sample, and the extra margin costs 3 suppressions.
+#
+# What this does *not* buy: only 73 of the 128 trivial additions restate an existing fact at all,
+# and their median containment is 0.39 — far under any threshold that keeps the material ones.
+# Word overlap cannot see a paraphrase, so this is a small correction to a guard with a low
+# ceiling, not a fix for the ledger's size. That lever is the verifier's materiality criterion.
+_CONTAINMENT_SUPPRESS = 0.6
+# …but only where the ratio can carry that much precision. Containment over a `k`-token candidate
+# is quantized to 1/k, so at four content tokens the only readings are 0, .25, .5, .75, 1 — and a
+# fact differing from another in a single content word ("the *report* was filed" against "the
+# *order* was filed") reads 0.75, which 0.6 would suppress and 0.9 would not. Below this length
+# the strict bar stays, which costs nothing measurable: the shortest of the 220 real additions
+# carries 9 content tokens, so every one of them clears the gate.
+_CONTAINMENT_MIN_TOKENS = 8
+_CONTAINMENT_SUPPRESS_SHORT = 0.9
 
 _WORD_RE = re.compile(r"[a-z0-9][a-z0-9.,/$%-]*")
 _NUM_RE = re.compile(r"\d")
@@ -76,7 +97,9 @@ def _is_restatement(candidate: frozenset[str], existing: frozenset[str]) -> bool
     shared = len(candidate & existing)
     if shared / len(candidate | existing) >= _JACCARD_SUPPRESS:
         return True
-    return shared / len(candidate) >= _CONTAINMENT_SUPPRESS
+    threshold = (_CONTAINMENT_SUPPRESS if len(candidate) >= _CONTAINMENT_MIN_TOKENS
+                 else _CONTAINMENT_SUPPRESS_SHORT)
+    return shared / len(candidate) >= threshold
 
 
 def _sanitize(candidate: dict, known_ids: set[str]) -> dict | None:
@@ -120,7 +143,7 @@ def _sanitize(candidate: dict, known_ids: set[str]) -> dict | None:
     return fact
 
 
-def merge_candidates(extraction: dict, candidates: list) -> dict:
+def merge_candidates(extraction: dict, candidates: list, prior_facts: list | None = None) -> dict:
     """Append the verifier's surviving candidates to `extraction`'s `document.key_facts`, in
     place. Returns `{"added": int, "suppressed": int}` for telemetry — `suppressed` counts both
     unusable candidates and near-duplicates, since from the caller's point of view they are the
@@ -128,13 +151,21 @@ def merge_candidates(extraction: dict, candidates: list) -> dict:
 
     Candidates are compared against the extraction's facts *and* against the candidates already
     accepted from the same pass, so a verifier that lists one miss twice adds it once.
+
+    `prior_facts` are facts from earlier sections of the same document, which the caller passes
+    on a sectioned extraction. Without them the guard's scope is one section while the ledger's
+    scope is the document, and a candidate restating a fact captured in a *different* section can
+    never be caught — structurally, not marginally, because section boundaries overlap by a page
+    (#589). Every fact in the 2026-08-09 verify arm's ledger that `_is_restatement` scores as a
+    duplicate got there this way.
     """
     doc = extraction.setdefault("document", {})
     facts = doc.setdefault("key_facts", [])
     known_ids = {e["id"] for e in extraction.get("entities") or []
                  if isinstance(e, dict) and isinstance(e.get("id"), str)}
 
-    seen = [_tokens(f.get("fact") or "") for f in facts if isinstance(f, dict)]
+    seen = [_tokens(f.get("fact") or "") for f in list(prior_facts or []) + facts
+            if isinstance(f, dict)]
     added = 0
     for candidate in candidates or []:
         fact = _sanitize(candidate, known_ids)
