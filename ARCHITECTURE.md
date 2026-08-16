@@ -365,11 +365,13 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    descriptor into a full `quote` (`quote_verify.resolve_quotes`, D75, D170, D177) — correcting
    the fact's own `page` when the locator resolves, unambiguously, to exactly one page other
    than the one cited AND is unique across the whole document (D177); joining two adjacent
-   pages' text as a fallback when a sentence is split by a page break — then **explodes**
+   pages' text as a fallback when a sentence is split by a page break — **checks each stated
+   fact's numeric figures** against the cited page's text (`figure_verify.verify_figures`,
+   D112), annotating the fact with any figure found nowhere in the document or found only on
+   another page so the vault shows it, not just the ingest log (D200) — then **explodes**
    the unified key_facts into the per-entity `evidence_fragments` + `timeline_events` that the
-   writers consume (`explode_key_facts`, D26) — carrying the resolved `quote` along with each
-   fragment, **checks each stated fact's numeric figures** against the cited page's text
-   (`figure_verify.verify_figures`, D112), **flags a file-metadata date mismatch** —
+   writers consume (`explode_key_facts`, D26) — carrying the resolved `quote` and those figure
+   annotations along with each fragment, **flags a file-metadata date mismatch** —
    `document.file_metadata.created` postdating `date_of_document` by a year or more
    (`file_metadata.check_date_mismatch`, #369), deterministic and suppressed whenever
    `ocr_used` is true, since a scan's creation date describes the scan, not the original —

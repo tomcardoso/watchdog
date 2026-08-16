@@ -313,6 +313,8 @@ def explode_key_facts(extraction: dict) -> None:
         quote_verified = fact.get("quote_verified")
         quote_found_page = fact.get("quote_found_page")
         quote_spans_pages = fact.get("quote_spans_pages")
+        figures_unverified = fact.get("figures_unverified")
+        figures_off_page = fact.get("figures_off_page")
         date = (fact.get("date") or "").strip()
         for eid in fact.get("entities", []) or []:
             ent = by_id.get(eid)
@@ -331,6 +333,10 @@ def explode_key_facts(extraction: dict) -> None:
                 frag["quote_found_page"] = quote_found_page
             if quote_spans_pages:
                 frag["quote_spans_pages"] = quote_spans_pages
+            if figures_unverified:
+                frag["figures_unverified"] = figures_unverified
+            if figures_off_page:
+                frag["figures_off_page"] = figures_off_page
             ent.setdefault("evidence_fragments", []).append(frag)
             if date:
                 event = {"date": date, "event": text}
@@ -408,16 +414,19 @@ def run(vault: Path, extraction_path: Path, warn=None) -> dict:
     for warning in resolve_quotes(extraction, page_texts):
         _warn(warning)
 
-    # Fan the unified key_facts out into the per-entity evidence_fragments / timeline_events that
-    # write_vault and timeline staging consume (#140).
-    explode_key_facts(extraction)
-
     # Deterministic figure grounding against the morgue text (#363): flags any stated
     # key_fact whose numeric figures can't all be found on (or near) the cited page —
-    # advisory only, never blocks the document.
+    # advisory only, never blocks the document. Ordered between the two neighbours on
+    # purpose (#623): after resolve_quotes, whose D177 page correction changes the very page
+    # this reads; before explode_key_facts, so the fan-out copies the annotation onto each
+    # entity's evidence fragment the way it already copies the resolved quote.
     from watchdog.pipeline.figure_verify import verify_figures
     for warning in verify_figures(extraction, page_texts):
         _warn(warning)
+
+    # Fan the unified key_facts out into the per-entity evidence_fragments / timeline_events that
+    # write_vault and timeline staging consume (#140).
+    explode_key_facts(extraction)
 
     # Deterministic date-mismatch check (#369): flags a file whose embedded creation date
     # postdates its claimed date_of_document by a suspicious margin — annotation only, never

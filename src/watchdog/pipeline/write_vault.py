@@ -628,6 +628,43 @@ def _quote_verification_note(f: dict) -> str:
     return ""
 
 
+def _group_digits(token: str) -> str:
+    """Re-comma a normalized figure token for display — the check strips grouping to compare,
+    but a reporter reads 173,471, not 173471. Left alone if it isn't a plain integer."""
+    int_part, _, dec_part = token.partition(".")
+    if not int_part.isdigit():
+        return token
+    grouped = f"{int(int_part):,}"
+    return f"{grouped}.{dec_part}" if dec_part else grouped
+
+
+def _figure_verification_note(f: dict) -> str:
+    """Suffix for a rendered fact, from the deterministic post-flight figure check (#363/#623).
+
+    ``figures_unverified`` are figures found nowhere in the document — computed or garbled,
+    and the reporter should check the source. ``figures_off_page`` are figures that are real
+    but sit on a page other than the one cited; unlike a quote locator, a single off-page
+    figure isn't strong enough evidence to correct the citation (a fact may legitimately draw
+    figures from several pages), so it is flagged and the citation left alone. Neither key
+    present means the fact's figures checked out, or that there was nothing to check.
+    """
+    parts = []
+    missing = f.get("figures_unverified")
+    if missing:
+        figs = ", ".join(_group_digits(t) for t in missing)
+        parts.append(f"figure{'s' if len(missing) > 1 else ''} {figs} not found in the document "
+                     "— may be derived; verify against source")
+    off_page = f.get("figures_off_page")
+    if off_page:
+        detail = ", ".join(
+            f"{_group_digits(t)} (p. {'/'.join(str(p) for p in pages)})"
+            for t, pages in off_page.items()
+        )
+        parts.append(f"figure{'s' if len(off_page) > 1 else ''} {detail} found on another page, "
+                     "not the one cited")
+    return f" *({'; '.join(parts)})*" if parts else ""
+
+
 def _render_evidence_fragments(fragments: list, morgue_path: str = "") -> str:
     """Render evidence-fragment claims as Markdown bullets.
 
@@ -645,7 +682,7 @@ def _render_evidence_fragments(fragments: list, morgue_path: str = "") -> str:
         page = f" ({pg})" if pg else ""
         reason = f" — {_defang(f['reason'].strip())}" if f.get("reason") else ""
         basis_note = " *(inferred)*" if f.get("basis") == "inferred" else ""
-        line = f"- {claim}{page}{reason}{basis_note}"
+        line = f"- {claim}{page}{reason}{basis_note}{_figure_verification_note(f)}"
         quote = _defang((f.get("quote") or "").strip())
         if quote:
             line += f"\n  > {quote}{_quote_verification_note(f)}"
@@ -738,7 +775,7 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
             pg = _page_link(morgue_path or "", kf.get("page"))
             page = f" ({pg})" if pg else ""
             basis_note = " *(inferred)*" if kf.get("basis") == "inferred" else ""
-            body += f"- {kf['fact']}{page}{basis_note}\n"
+            body += f"- {kf['fact']}{page}{basis_note}{_figure_verification_note(kf)}\n"
             quote = (kf.get("quote") or "").strip()
             if quote:
                 body += f"  > {quote}{_quote_verification_note(kf)}\n"
