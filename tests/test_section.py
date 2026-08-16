@@ -263,135 +263,153 @@ def test_run_threshold_follows_model_window(tmp_path, monkeypatch):
     assert section.run(vault, "doc1", model="big")["sectioned"] is False      # 100000*0.6 ≫ 1000
 
 
-# ── output-ceiling-aware thresholds (#343, #598) ───────────────────────────────
+# ── the output ceiling no longer sizes the input (#555) ───────────────────────
 
-def test_model_defaults_capped_by_output_ceiling_for_openai_gemini():
-    # A fixed-output-ceiling backend that can't paginate caps threshold/budget by the output-
-    # derived input ceiling: inverting the affine *total*-output fit (#542 follow-up) against the
-    # real per-model wire ceiling (#598 — the catalogued `max_output_tokens` cap under headroom,
-    # no longer a task base plus a reasoning reserve). No effort given ⇒ medium row.
-    # gpt-5.4's ceiling is 128_000 catalogued * 0.9 = 115_200; (115_200*0.7-1_051)/0.989 exceeds
-    # _MAX_OUTPUT_CAPPED_BUDGET, so it clamps to 50_000. gemini-3.5-flash's ceiling is
-    # 65_536 * 0.9 = 58_982 (int-truncated); (58_982*0.7-1_051)/0.989 = 40_683, under the clamp.
-    # Budget is NOT halved again on this path (#490) — the ceiling-derived value already
-    # represents the full safe amount a single call can handle, whether that call covers a whole
-    # document or one section. The large input window (1.05M/1M) is overridden by the much
-    # tighter output-driven cap either way.
-    # gpt-5.4 declares no tokenizer_ratio, so its clamped 50_000 passes straight through.
-    # gemini-3.5-flash's measured 0.91 (#617) widens 40_683 to 44_706 — still under the clamp,
-    # so the clamp doesn't bind here; `test_model_defaults_output_cap_survives_sub_one_ratio`
-    # covers the case where it does.
-    assert section.model_defaults("gpt-5.4", backend="openai") == (50_000, 50_000)
-    assert section.model_defaults("gemini-3.5-flash", backend="gemini") == (44_706, 44_706)
-
-
-def test_model_defaults_output_capped_budget_varies_by_effort():
-    # The wire ceiling itself no longer varies by effort (#598) — but `effort` still selects
-    # which row of the output-density fit `_invert_output_ceiling` inverts that SAME ceiling
-    # against, so the input-side budget still varies. gemini-3.5-flash's ceiling (58_982) shows
-    # all three shapes: low's shallow marginal rate (fixed=2_509, marginal=0.103) extrapolates
-    # past _MAX_OUTPUT_CAPPED_BUDGET and clamps; medium and high both land within the cap at
-    # their own fixed/marginal pair's value.
-    assert section.model_defaults("gemini-3.5-flash", backend="gemini", effort="low") == \
-        (section._MAX_OUTPUT_CAPPED_BUDGET, section._MAX_OUTPUT_CAPPED_BUDGET)
-    assert section.model_defaults("gemini-3.5-flash", backend="gemini", effort="medium") == (44_706, 44_706)
-    assert section.model_defaults("gemini-3.5-flash", backend="gemini", effort="high") == (5_660, 5_660)
-
-
-def test_model_defaults_output_cap_survives_sub_one_ratio():
-    # #617: the clamp is a bound in EST-token space, so it must hold on the value returned, after
-    # the tokenizer_ratio division — not just before it. gemini-3.5-flash at low effort inverts
-    # to the clamp (50_000); its measured 0.91 ratio would divide that up to 54_945 if the clamp
-    # were applied only before the division, handing back a budget past the largest input the
-    # output-density fit was ever measured against. Mutating the re-clamp away turns this red.
-    low = section.model_defaults("gemini-3.5-flash", backend="gemini", effort="low")
-    assert low == (section._MAX_OUTPUT_CAPPED_BUDGET, section._MAX_OUTPUT_CAPPED_BUDGET)
-    assert int(section._MAX_OUTPUT_CAPPED_BUDGET / 0.91) > section._MAX_OUTPUT_CAPPED_BUDGET
-
-
-def test_model_defaults_uses_one_ceiling_lookup_for_both_threshold_and_budget(monkeypatch):
-    # #598: the ceiling is no longer looked up per task — `output_ceiling_for_sectioning` doesn't
-    # even take one — so ONE lookup now sizes both threshold and budget, replacing the old
-    # separate "extract"/"extract-section" lookups (#490) that happened to resolve to the same
-    # value under `_TASK_MAX_TOKENS`.
+def test_model_defaults_ignores_the_output_ceiling(monkeypatch):
+    # The load-bearing assertion of #555: `model_defaults` must never consult
+    # `output_ceiling_for_sectioning`. A backend that enforces a fixed output ceiling it can't
+    # paginate past (openai/gemini) used to have its threshold/budget capped by inverting an
+    # affine output-density fit against that ceiling (#343, #542); across 673 archived extraction
+    # calls that cap never bound — peak output was 14-27% of the envelope on every model but
+    # gpt-5.4-mini at high effort — while the pooled fit behind it let one model's reasoning
+    # volume set every other model's budget. Both the fit and the ceiling term are gone.
+    #
+    # Monkeypatching the lookup to explode is what makes this mutation-resistant: reinstating any
+    # ceiling term, however it is clamped, turns this red rather than merely changing a number.
     import watchdog.model_client as mc
-    calls = []
 
-    def fake_ceiling(backend, model):
-        calls.append((backend, model))
-        return 32_000
+    def boom(backend, model):
+        raise AssertionError("model_defaults must not consult the output ceiling (#555)")
 
-    monkeypatch.setattr(mc, "output_ceiling_for_sectioning", fake_ceiling)
-    threshold, budget = section.model_defaults("gpt-5-mini", backend="openai")
-    assert calls == [("openai", "gpt-5-mini")]
-    # No effort given ⇒ medium row (fixed=1051, marginal=0.989); threshold and budget are now the
-    # SAME value, both capped by the one ceiling.
-    expected = int((32_000 * 0.7 - 1_051) / 0.989)
-    assert threshold == budget == expected
+    monkeypatch.setattr(mc, "output_ceiling_for_sectioning", boom)
+    # Pure input-window defaults on the very backends that used to be capped. Both models price
+    # flat, so the surviving long-context clamp doesn't confound the assertion.
+    assert section.model_defaults("gpt-5.4-mini", backend="openai") == (300_000, 150_000)
+    assert section.model_defaults("gemini-3.5-flash", backend="gemini") == (659_340, 329_670)
 
 
-def test_model_defaults_floors_output_capped_budget_for_pathological_ceiling(monkeypatch):
-    # A ceiling too small to clear the fixed per-call cost must not invert to zero or negative
-    # (#542): with the medium row (fixed=1051, marginal=0.989), (100*0.7-1051)/0.989 is negative
-    # without a floor.
+def test_model_defaults_clamped_below_a_long_context_pricing_tier():
+    # #555/D199: the one clamp that survives, and the only one whose bound is a published number
+    # rather than a fitted one. gpt-5.4 and friends roughly double their rate above 272,000 real
+    # input tokens; 10% headroom puts the cap at 244,800 real, which at their measured 0.80
+    # tokenizer_ratio is 306,000 est. Without it the window fraction alone would plan 393,750 est
+    # = 315,000 real, past the boundary.
+    for model in ("gpt-5.4", "gpt-5.5", "gpt-5.6-luna", "gpt-5.6-terra"):
+        threshold, budget = section.model_defaults(model, backend="openai")
+        assert (threshold, budget) == (306_000, 306_000), model
+    # Gemini 3.1 Pro carries its own, lower boundary (200,000) at its own 0.91 ratio.
+    assert section.model_defaults("gemini-3.1-pro-preview", backend="gemini") == (197_802, 197_802)
+
+
+def test_long_context_clamp_keeps_real_tokens_under_the_boundary():
+    # The assertion that actually matters is in REAL tokens, since that is what a provider meters:
+    # budget x tokenizer_ratio must land under the catalogued boundary for every tiered model, and
+    # the headroom must be real slack rather than a rounding artifact. Mutating the clamp to apply
+    # after the ratio division turns this red on exactly the sub-1.0 ratios that make it wrong.
     import watchdog.model_client as mc
-    monkeypatch.setattr(mc, "output_ceiling_for_sectioning", lambda backend, model: 100)
-    threshold, budget = section.model_defaults("gpt-5-mini", backend="openai")
-    assert threshold == section._MIN_OUTPUT_CAPPED_BUDGET
-    assert budget == section._MIN_OUTPUT_CAPPED_BUDGET
+    from watchdog.model_catalog import catalog_long_context_threshold
+    tiered = [("openai", m) for m in ("gpt-5.4", "gpt-5.5", "gpt-5.6-luna", "gpt-5.6-terra")]
+    tiered.append(("gemini", "gemini-3.1-pro-preview"))
+    for backend, model in tiered:
+        boundary = catalog_long_context_threshold(model)
+        assert boundary, f"{model} lost its catalogued boundary"
+        _, budget = section.model_defaults(model, backend=backend)
+        real = budget * mc.tokenizer_ratio(model, backend, None)
+        assert real < boundary, f"{model} plans {real:,.0f} real tokens against a {boundary:,} tier"
+        assert real >= boundary * 0.85, f"{model} gave up more headroom than intended"
 
 
-def test_model_defaults_uncapped_for_paginating_and_uncapped_backends():
-    # claude-api/deepseek paginate their output, and the agent SDK has no ceiling — all keep the
-    # pure input-window defaults regardless of the backend argument.
-    # Claude's numbers carry its measured 0.93 ratio (#617); the point here is that the backend
-    # argument doesn't move them, not what the ratio is.
-    assert section.model_defaults("sonnet", backend="claude-api") == (129_032, 64_516)
-    assert section.model_defaults("sonnet", backend="claude-agent-sdk") == (129_032, 64_516)
+def test_model_defaults_unclamped_for_flat_priced_models():
+    # A model with no catalogued boundary keeps the pure window-derived default — the clamp must
+    # not leak onto models that price flat at every length, including the ones sharing a family
+    # (and a tokenizer) with a tiered one. gpt-5.4-mini shares gpt-5.4's 0.80 ratio but has a 400K
+    # window, so it could never reach the boundary and must not be shrunk toward it.
+    assert section.model_defaults("gpt-5.4-mini", backend="openai") == (300_000, 150_000)
+    assert section.model_defaults("gemini-3.5-flash", backend="gemini") == (659_340, 329_670)
     assert section.model_defaults("deepseek-v4-flash", backend="deepseek") == (740_740, 370_370)
-    assert section.model_defaults("sonnet", backend=None) == (129_032, 64_516)
+    assert section.model_defaults("sonnet") == (129_032, 64_516)
 
 
-def test_section_token_threshold_capped_for_openai(monkeypatch):
+def test_long_context_clamp_binds_the_threshold_not_just_the_budget():
+    # The threshold decides whether a document is sectioned AT ALL, so an unclamped threshold would
+    # send a document larger than the boundary in ONE whole-document call — the larger exposure,
+    # since only big documents reach a pricing tier in the first place. A 350,000 est-token
+    # document (280,000 real) sits under gpt-5.4's unclamped 787,500 threshold but over its
+    # clamped 306,000 one.
+    threshold, _ = section.model_defaults("gpt-5.4", backend="openai")
+    assert 306_000 == threshold < 787_500
+    assert 350_000 > threshold
+
+
+def test_model_defaults_identical_across_every_backend():
+    # One model, one pair of numbers, whatever backend routes it (#555). Previously the same model
+    # returned 50_000 on openai and 787_500 on claude-api — a 15x swing driven entirely by whether
+    # the backend happened to paginate its output, which is what produced #555's 58x catalogue
+    # spread. Both surviving terms (context window, pricing boundary) are properties of the model
+    # id, so the backend cannot move either.
+    for model, expected in (("gpt-5.4", (306_000, 306_000)),          # tiered
+                            ("gpt-5.4-mini", (300_000, 150_000))):    # flat-priced
+        for backend in ("openai", "claude-api", "claude-agent-sdk", "deepseek", None):
+            assert section.model_defaults(model, backend=backend) == expected, (model, backend)
+
+
+def test_model_defaults_track_only_window_and_tokenizer_ratio(monkeypatch):
+    # The whole formula, stated as a test: window x fraction / ratio, nothing else. Both inputs are
+    # catalogued per model, so a catalogue edit is the only thing that can move a budget.
+    import watchdog.model_client as mc
+    monkeypatch.setattr(mc, "context_window", lambda model, backend=None: 300_000)
+    monkeypatch.setattr(mc, "tokenizer_ratio", lambda model, backend=None, vault=None: 1.5)
+    assert section.model_defaults("whatever") == (int(180_000 / 1.5), int(90_000 / 1.5))
+
+
+def test_model_defaults_budget_never_collapses_to_zero(monkeypatch):
+    # A pathologically small window must still yield a usable budget rather than 0, which would
+    # make `plan_ranges` emit one section per page. The `max(1, ...)` floor is the only guard left
+    # now that `_MIN_OUTPUT_CAPPED_BUDGET` is gone.
+    import watchdog.model_client as mc
+    monkeypatch.setattr(mc, "context_window", lambda model, backend=None: 2)
+    _, budget = section.model_defaults("tiny")
+    assert budget == 1
+
+
+def test_section_token_threshold_identical_across_backends(monkeypatch):
     monkeypatch.setattr(section, "_config_get", lambda k, d: d)   # no config override
-    # gpt-5.4's 1.05M window would give 630K, but the output ceiling — 128_000 catalogued * 0.9 =
-    # 115_200 (#598) — caps it, and the medium-row inversion of that clamps to
-    # _MAX_OUTPUT_CAPPED_BUDGET (50_000). It stays 50_000 after gpt-5.4's measured 0.80
-    # tokenizer_ratio would divide it up to 62_500, because the clamp is re-applied after the
-    # division (#617) — the fit's trusted range is in est-token space.
-    assert section.section_token_threshold("gpt-5.4", backend="openai") == 50_000
-    # Same model, a paginating backend → uncapped input-window default, and with no ceiling there
-    # is no clamp to re-apply, so the 0.80 ratio does widen it: 630_000 / 0.80.
-    assert section.section_token_threshold("gpt-5.4", backend="claude-api") == 787_500
+    # The same on the backend that enforces an output ceiling as on the one that paginates past it
+    # (#555) — for a tiered model, where the pricing clamp binds, and a flat-priced one, where the
+    # 1.05M/400K window fraction over the measured 0.80 ratio does.
+    assert section.section_token_threshold("gpt-5.4", backend="openai") == 306_000
+    assert section.section_token_threshold("gpt-5.4", backend="claude-api") == 306_000
+    assert section.section_token_threshold("gpt-5.4-mini", backend="openai") == 300_000
+    assert section.section_token_threshold("gpt-5.4-mini", backend="claude-api") == 300_000
 
 
-def test_run_sections_openai_doc_that_claude_would_extract_whole(tmp_path, monkeypatch):
-    # A document that fits a big input window comfortably (extracted whole on a paginating backend)
-    # must section on openai, whose fixed output ceiling it would otherwise overrun (#343).
+def test_run_sectioning_decision_does_not_depend_on_backend(tmp_path, monkeypatch):
+    # The behavioural counterpart: a 60K-token document that a paginating backend extracts whole
+    # is now also extracted whole on openai. Before #555 the same document sectioned on openai
+    # alone, because its output-derived threshold was 50_000 against a 630K input threshold.
     monkeypatch.setattr(section, "_config_get", lambda k, d: d)   # no config override
     vault = _vault(tmp_path)
     pages = [{"page": n, "markdown": "x" * 400} for n in range(1, 601)]   # 60_000 est tokens
     _write_queue(vault, "doc1", pages, 600)
-    # 60K tokens < gpt-5.4's 630K input threshold, but > its 50K output-capped threshold.
     assert section.run(vault, "doc1", model="gpt-5.4", backend="claude-api")["sectioned"] is False
-    assert section.run(vault, "doc1", model="gpt-5.4", backend="openai")["sectioned"] is True
+    assert section.run(vault, "doc1", model="gpt-5.4", backend="openai")["sectioned"] is False
+    # Still sections when the document genuinely exceeds the window-derived threshold.
+    big = [{"page": n, "markdown": "x" * 400} for n in range(1, 9_001)]   # 900_000 est tokens
+    _write_queue(vault, "doc2", big, 9_000)
+    assert section.run(vault, "doc2", model="gpt-5.4", backend="openai")["sectioned"] is True
 
 
-def test_run_effort_flows_through_to_the_output_capped_threshold(tmp_path, monkeypatch):
-    # The wire ceiling itself is the same regardless of effort (#598), but `effort` still selects
-    # which row of the output-density fit that SAME ceiling is inverted against, so high effort's
-    # steep marginal rate still yields a much smaller input threshold than low's.
-    monkeypatch.setattr(section, "_config_get", lambda k, d: d)   # no config override
+def test_run_no_longer_accepts_an_effort_argument(tmp_path):
+    # `effort` is gone from the sectioning path entirely (#555): it selected a row of the output-
+    # density fit, and with that fit deleted there is nothing for it to select. Kept as an explicit
+    # test because a caller still passing it would otherwise fail far from here.
+    import pytest
     vault = _vault(tmp_path)
-    pages = [{"page": n, "markdown": "x" * 400} for n in range(1, 301)]   # 30_000 est tokens
-    _write_queue(vault, "doc1", pages, 300)
-    # 30K tokens <= low's 50,000 (clamped) threshold, but > high's ~20,980: at high effort the fit
-    # predicts ~2.5 output tokens per input token, so the same ceiling buys far less input. Both
-    # thresholds here are real inverted values — deliberately NOT `_MIN_OUTPUT_CAPPED_BUDGET`,
-    # which would mean the ceiling couldn't even cover the fit's fixed cost (see
-    # test_uncatalogued_reasoning_model_budget_does_not_collapse_to_the_floor).
-    assert section.run(vault, "doc1", model="gpt-5-mini", backend="openai", effort="low")["sectioned"] is False
-    assert section.run(vault, "doc1", model="gpt-5-mini", backend="openai", effort="high")["sectioned"] is True
+    _write_queue(vault, "doc1", [{"page": 1, "markdown": "x" * 400}], 1)
+    with pytest.raises(TypeError):
+        section.run(vault, "doc1", model="gpt-5.4", backend="openai", effort="high")
+    with pytest.raises(TypeError):
+        section.model_defaults("gpt-5.4", backend="openai", effort="high")
 
 
 # ── tokenizer-aware thresholds (#574) ────────────────────────────────────────
@@ -413,7 +431,9 @@ def test_model_defaults_widen_for_over_estimating_tokenizers():
     assert section.model_defaults("sonnet") == (int(120_000 / 0.93), int(60_000 / 0.93))
     assert section.model_defaults("haiku") == (int(120_000 / 0.93), int(60_000 / 0.93))
     assert section.model_defaults("deepseek-v4-flash") == (740_740, 370_370)     # 0.81
-    assert section.model_defaults("gpt-5.4", backend="claude-api") == (787_500, 393_750)  # 0.80
+    # gpt-5.4-mini rather than gpt-5.4: same 0.80 ratio, but no pricing boundary to clamp against,
+    # so the widening is visible rather than masked by the clamp. 400K window: 240_000/0.80.
+    assert section.model_defaults("gpt-5.4-mini", backend="claude-api") == (300_000, 150_000)
     # Shrinking is now the exception — only the Claude 4.7+ tokenizer, at 1.28.
     assert section.model_defaults("sonnet-5") == (int(120_000 / 1.28), int(60_000 / 1.28))
     # An uncatalogued id still declares nothing and is the uncorrected control.

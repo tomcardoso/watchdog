@@ -86,18 +86,43 @@
 # `{base, tiers}` object rather than a scalar. Both have produced a false "our catalog is wrong"
 # reading before — resolve them before trusting a surface diff against this file.
 # Speaking of tiers: this catalog prices every model at one flat rate and does not model
-# context-length pricing tiers (several providers, incl. gpt-5.6-luna/-terra and gpt-5.4, roughly
-# double their rate above ~272K tokens). That's deliberate, and currently harmless: section.py
-# caps every real call's context far below that regardless — at most `_MAX_OUTPUT_CAPPED_BUDGET`
-# (50,000 est tokens) on the output-ceiling-capped openai/gemini path, which the catalog-derived
-# envelope now reaches routinely at low/medium effort (#598, D197) where the old 16K-based
-# ceilings landed well under it. Still a factor of five under the ~272K threshold where these
-# tiers begin, but the margin is thinner than it was. It stops being harmless if a user
-# pins an absolute `section_token_threshold` in config: `_resolve_override` honours a literal int
-# as-is and does NOT rescale it against the model's real window (see its docstring), so a value
-# large enough could push a single call's context past a tier boundary — and then `--estimate-all`
-# would understate that model's real cost. No enforcement for this; re-check the margin if you
-# change sectioning defaults or add a tiered model.
+# context-length pricing tiers. It doesn't have to, because `long_context_threshold` keeps every
+# call below the length where any tier would kick in — see the next paragraph. Two boundaries are
+# known here: the large-window GPT-5.x models roughly double their rate above ~272K tokens, and
+# Gemini 3.1 Pro doubles above 200K.
+#
+# `long_context_threshold` (#555, D202) is the real-token input length at/above which a model bills
+# at a higher rate. `pipeline/section.py` clamps BOTH the sectioning threshold and the per-section
+# budget to it (under `_LONG_CONTEXT_HEADROOM`), so no single extraction call is ever planned past
+# the boundary. It exists because D202 deleted the old output-derived clamp that had been holding
+# these models a factor of five under the line by accident: sizing from the context window alone
+# gives gpt-5.4/-5.5/gpt-5.6-luna/-terra a 393,750 est-token budget — about 315,000 real tokens at
+# their measured 0.80 ratio, comfortably PAST 272K — and a whole-document threshold larger still.
+# Without the clamp a long document bills at the upper tier while `--estimate-all`, which prices
+# flat, quotes the lower one: a ~2x understatement on the affected calls. Omit the field entirely
+# for a model that prices flat (every Claude and DeepSeek entry, both Gemini Flash entries, and
+# gpt-5.4-mini/-nano, whose 400K window can't reach 272K anyway).
+#
+# **Both boundaries are vendor-cited, fetched 2026-08-16.** OpenAI
+# (developers.openai.com/api/docs/pricing) prices gpt-5.5/-5.4 (and their -pro variants) in two
+# columns split at 272K, and lists long-context rates for gpt-5.6-terra/-luna on the same boundary:
+# input doubles, output goes to 1.5x, and — the part that matters here — the higher rate applies to
+# the ENTIRE request, not just the tokens past the line. Crossing by one token reprices the whole
+# call, which is why the clamp is strict rather than approximate. Google
+# (ai.google.dev/gemini-api/docs/pricing) prices Gemini 3.1 Pro Preview at "$2.00, prompts <= 200k
+# tokens" against "$4.00, prompts > 200k tokens". Both replace this file's own earlier untraced
+# prose ("roughly double ... above ~272K"), which is what the figures used to rest on.
+#
+# `_LONG_CONTEXT_HEADROOM` (10%, the same convention `_OUTPUT_HEADROOM` already uses for
+# `max_output_tokens`) covers the per-call prompt scaffolding that rides on top of the document
+# text `section.py` sizes, which cannot yet be measured directly: `est_prompt_tokens` landed in
+# #617 and no run has happened since, so zero archived records carry it. Add the field to any new
+# tiered model — and note the boundary is a property of the model, not the family: gpt-5.4-mini and
+# -nano are absent from OpenAI's two-column tables and could not reach 272K anyway on a 400K window.
+#
+# The same caveat applies, as it always did, to a user who pins an absolute
+# `section_token_threshold`: `_resolve_override` honours a literal int as-is and does NOT rescale
+# it against the model's real window or this boundary (see its docstring).
 # `max_output_tokens` is the maximum tokens a model will emit in one non-batch response, per each
 # provider's own docs (all fetched 2026-08-10). Every provider catalogued here draws
 # reasoning/thinking tokens from this SAME budget when a model reasons — Claude's extended/adaptive
@@ -227,6 +252,7 @@ models:
     reasoning: true
     effort_levels: [low, medium, high]
     tokenizer_ratio: 0.80     # measured #617, corpus-v1 2026-08-15 (shared GPT-5.x tokenizer)
+    long_context_threshold: 272_000   # 2x input / 1.5x output above this, whole request (#555)
   - id: gpt-5.4
     name: GPT-5.4
     provider: openai
@@ -238,6 +264,7 @@ models:
     reasoning: true
     effort_levels: [low, medium, high]
     tokenizer_ratio: 0.80     # measured #617, corpus-v1 2026-08-15 (shared GPT-5.x tokenizer)
+    long_context_threshold: 272_000   # 2x input / 1.5x output above this, whole request (#555)
   - id: gpt-5.4-mini
     name: GPT-5.4 Mini
     provider: openai
@@ -274,16 +301,20 @@ models:
   - id: gpt-5.6-terra
     name: GPT-5.6 Terra
     provider: openai
-    input: 2.5e-6
-    output: 15.0e-6
-    cached_input: 0.25e-6
-    cache_write: 3.125e-6
+    # Corrected 2026-08-16 against developers.openai.com/api/docs/models/gpt-5.6-terra: this row
+    # had gpt-5.4's rates (2.5/15.0, and the two cache fields derived from them), over-stating
+    # every Terra cost by 25%. Found while citing `long_context_threshold` — see D202.
+    input: 2.0e-6
+    output: 12.0e-6
+    cached_input: 0.20e-6
+    cache_write: 2.5e-6       # 1.25x uncached input, per the family rule above
     cache_breakpoints: true
     context_window: 1_050_000
     max_output_tokens: 128_000
     reasoning: true
     effort_levels: [low, medium, high, xhigh, max]
     tokenizer_ratio: 0.80     # measured #617, corpus-v1 2026-08-15 (shared GPT-5.x tokenizer)
+    long_context_threshold: 272_000   # 2x input / 1.5x output above this, whole request (#555)
   - id: gpt-5.6-luna
     name: GPT-5.6 Luna
     provider: openai
@@ -297,6 +328,7 @@ models:
     reasoning: true
     effort_levels: [low, medium, high, xhigh, max]
     tokenizer_ratio: 0.80     # measured #617, corpus-v1 2026-08-15 (shared GPT-5.x tokenizer)
+    long_context_threshold: 272_000   # 2x input / 1.5x output above this, whole request (#555)
 
   # Gemini 3.x, standard tier at the <=200k-token rate (Pro's >200k rate is double — not
   # modeled here, same simplification as elsewhere in this catalog). 3.5 Flash and 3.1
@@ -335,6 +367,7 @@ models:
     max_output_tokens: 65_536
     effort_levels: [low, medium, high]
     tokenizer_ratio: 0.91     # measured #617, corpus-v1 2026-08-15 (shared Gemini tokenizer)
+    long_context_threshold: 200_000   # $2.00 -> $4.00 input above 200K tokens (#555)
 
 # Context-window fallback, consulted by model_client.py's context_window() only when a model
 # isn't an exact match in the `models` catalog above — an unpriced local/OpenRouter model (whose

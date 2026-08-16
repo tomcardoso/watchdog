@@ -654,19 +654,21 @@ def test_fallback_table_is_matched_most_specific_first():
     assert fallback_max_output_tokens("mistral-large") is None
 
 
-def test_uncatalogued_reasoning_model_budget_does_not_collapse_to_the_floor():
-    """Regression sentinel (#598). A reasoning model's chain-of-thought and visible answer share
-    one output budget, and `section` inverts that ceiling into an *input* budget — so an envelope
-    too small to cover the high-effort fit's fixed cost doesn't merely truncate, it floors the
-    section budget at `_MIN_OUTPUT_CAPPED_BUDGET` and shreds a document into hundreds of tiny
-    sections, each re-paying full prompt overhead. Before the family-fallback table, every
-    uncatalogued GPT-5/Gemini id did exactly that at high effort."""
-    from watchdog.pipeline import section
+def test_uncatalogued_reasoning_model_gets_a_family_sized_envelope():
+    """Regression sentinel (#598, narrowed by #555). A reasoning model draws chain-of-thought and
+    its visible answer from ONE output budget, so an uncatalogued GPT-5/Gemini id falling back to
+    the generic 16,000 default starves the thinking and truncates the answer. The family-fallback
+    table is what prevents that.
+
+    This used to assert against `section._invert_output_ceiling`, because the envelope also fed
+    back into the *input*-side section budget and a too-small one shredded documents into hundreds
+    of tiny sections. #555 removed that feedback — sectioning no longer consults the envelope at
+    all — so the sentinel now guards the wire ceiling directly, which is the thing the fallback
+    table actually governs."""
     for model_id in ("gpt-5-mini", "gpt-5.9-turbo", "gemini-4.0-flash"):
-        for effort in ("low", "medium", "high"):
-            budget = section._invert_output_ceiling(mc._output_envelope(model_id), effort)
-            assert budget > section._MIN_OUTPUT_CAPPED_BUDGET, (
-                f"{model_id} at {effort} effort collapsed to the floor ({budget})")
+        envelope = mc._output_envelope(model_id)
+        assert envelope > int(mc._DEFAULT_MAX_OUTPUT_TOKENS * (1 - mc._OUTPUT_HEADROOM)), (
+            f"{model_id} fell through to the generic default envelope ({envelope})")
 
 
 def test_openai_cost():
@@ -681,6 +683,22 @@ def test_openai_cost_prices_openai_models():
     assert mc._openai_cost("gpt-5.4",
                            {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
         == pytest.approx(2.5 + 15)
+
+
+@pytest.mark.parametrize("model_id, price_in, price_out", [
+    ("gpt-5.5", 5.0, 30.0),
+    ("gpt-5.4", 2.5, 15.0),
+    ("gpt-5.6-terra", 2.0, 12.0),
+    ("gpt-5.6-luna", 0.20, 1.20),
+])
+def test_openai_family_prices_match_the_published_rate_card(model_id, price_in, price_out):
+    """Per-model price sentinel (#555). gpt-5.6-terra shipped carrying gpt-5.4's rates (2.50/15.00
+    rather than 2.00/12.00), over-stating every Terra cost by 25% — a copy-paste when the row was
+    added, invisible because nothing asserted a per-model price. Verified 2026-08-16 against
+    developers.openai.com/api/docs/models/<id>. A row whose rate changes should update this table
+    deliberately, not discover the drift through a cost report."""
+    assert mc._openai_cost(model_id, {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
+        == pytest.approx(price_in + price_out)
 
 
 def test_openai_cost_deepseek_cache_hit():

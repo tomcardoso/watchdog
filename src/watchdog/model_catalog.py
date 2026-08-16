@@ -79,6 +79,14 @@ def catalog_max_output_tokens(model_id: str) -> int | None:
     return entry.get("max_output_tokens") if entry else None
 
 
+def catalog_long_context_threshold(model_id: str) -> int | None:
+    """Real-token input length at/above which this model bills at a higher rate (#555), or None
+    when it prices flat at every length. See `model_catalog.yaml`'s `long_context_threshold`
+    comment — including the caveat that these figures still need a vendor citation."""
+    entry = _MODELS.get(model_id.lower())
+    return entry.get("long_context_threshold") if entry else None
+
+
 def fallback_max_output_tokens(model_id: str) -> int | None:
     """Substring-matched single-response output cap for an uncatalogued model (#598), or None (no
     match). Extends the per-family flats the catalog already documents to ids not listed yet — see
