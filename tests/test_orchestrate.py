@@ -189,6 +189,53 @@ def test_call_model_prompt_hash_stable_and_differs(tmp_path, monkeypatch):
         orchestrate._usage = None
 
 
+def test_call_model_records_est_prompt_tokens_for_whole_rendered_prompt(tmp_path, monkeypatch):
+    """#617: every call records `est_prompt_tokens` — chars/4 over the ENTIRE rendered prompt, not
+    just the document text the caller separately reports as `est_input_tokens`.
+
+    This is the like-for-like denominator `ingest_setup._model_tokenizer_calibration` divides real
+    input tokens by. Pairing those tokens with the document-only estimate instead measures
+    `tokenizer_ratio x (1 + prompt_overhead / document_tokens)`, which is what #617 was opened
+    about. The two values are deliberately different here — a 400-char prompt carrying a document
+    the caller estimated at 12 tokens — so reading the wrong field can't accidentally pass."""
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        return model_client.ModelResult(
+            parsed={"name": "Acme"}, text="", model="m", backend="claude-api",
+            auth_mode="api-key", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    orchestrate._usage = []
+    try:
+        asyncio.run(orchestrate._call_model(task="extract", prompt="x" * 400,
+                                            schema=schemas.EXTRACTION, est_input_tokens=12))
+        record = orchestrate._usage[0]
+        assert record["est_prompt_tokens"] == 100          # 400 chars / 4
+        assert record["est_input_tokens"] == 12            # the caller's document-only figure
+    finally:
+        orchestrate._usage = None
+
+
+def test_call_model_records_est_prompt_tokens_for_every_task(tmp_path, monkeypatch):
+    """#617: unlike `est_input_tokens`, which only extraction call sites pass, `est_prompt_tokens`
+    is computed inside `_call_model` from the prompt it already has — so a task that passes no
+    estimate at all still gets one, and no call site has to be threaded to add a new task."""
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        return model_client.ModelResult(
+            parsed={"name": "Acme"}, text="", model="m", backend="claude-api",
+            auth_mode="api-key", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    orchestrate._usage = []
+    try:
+        asyncio.run(orchestrate._call_model(task="digest", prompt="y" * 80,
+                                            schema=schemas.EXTRACTION))
+        record = orchestrate._usage[0]
+        assert record["est_prompt_tokens"] == 20
+        assert "est_input_tokens" not in record
+    finally:
+        orchestrate._usage = None
+
+
 def test_call_model_records_usage_to_telemetry_db(tmp_path, monkeypatch):
     """#611: a real vault + an active run tags the call's telemetry row with this run's
     benchmark id and config snapshot, in addition to the JSON usage file `_usage` already gets."""

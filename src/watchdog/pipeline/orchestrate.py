@@ -130,8 +130,8 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
                   filename: str | None = None, detail: str | None = None,
                   pruned: list[str] | None = None, failed: bool = False,
                   batch_meta: dict | None = None, rate_limit: dict | None = None,
-                  est_input_tokens: int | None = None, vault: Path | None = None,
-                  prompt_hash: str | None = None) -> None:
+                  est_input_tokens: int | None = None, est_prompt_tokens: int | None = None,
+                  vault: Path | None = None, prompt_hash: str | None = None) -> None:
     """Append one call's usage to the run-scoped `_usage` accumulator, if one is active.
     Tolerates both Anthropic-style (`input_tokens`/`output_tokens`) and OpenAI-compatible
     (`prompt_tokens`/`completion_tokens`) usage dicts (D37) — the latter's cache-token fields
@@ -187,13 +187,24 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
     counted against the caller's per-minute budget alongside the tokens we ourselves logged.
 
     `est_input_tokens` (#606 Part B), when given, is this call's own naive chars/4 estimate
-    (`section.est_tokens_from_pages`/`section.est_tokens`) for whatever text it sent — mirroring
-    how the *run-level* `totals.est_input_tokens` is already added in `_write_usage_file`/
-    `_end_usage_run`, but per call rather than summed once across a whole run. This is what makes
-    a per-model, per-call est/actual comparison possible at all
-    (`ingest_setup._model_tokenizer_calibration`) — the run-level total alone can't be scoped to
-    one model. Only set on `extract`/`extract-section` calls, the only tasks sectioning currently
-    cares about calibrating; every other task's record simply lacks the key, as before.
+    (`section.est_tokens_from_pages`/`section.est_tokens`) for the DOCUMENT TEXT it sent —
+    mirroring how the *run-level* `totals.est_input_tokens` is already added in
+    `_write_usage_file`/`_end_usage_run`, but per call rather than summed once across a whole run.
+    Only set on `extract`/`extract-section` calls, the only tasks sectioning currently cares
+    about; every other task's record simply lacks the key, as before.
+
+    `est_prompt_tokens` (#617) is the same chars/4 estimate over the ENTIRE RENDERED PROMPT —
+    schema, extraction instructions, record skill, carry-forward entities, harvested candidates
+    and the document text alike. The distinction is the whole point, and getting it wrong is what
+    #617 was opened about: the provider's reported `input_tokens` counts the entire prompt, so
+    comparing it against document-text-only `est_input_tokens` measures
+    `tokenizer_ratio x (1 + prompt_overhead / document_tokens)` rather than the tokenizer ratio —
+    a bias that isn't even constant, since it shrinks as sections get bigger. Measured against
+    corpus-v1, that scaffolding is 7,200-9,300 real tokens per call, enough to read a true 1.09
+    ratio as 1.41. `est_prompt_tokens` is the like-for-like denominator that makes
+    `ingest_setup._model_tokenizer_calibration` a real tokenizer measurement; unlike
+    `est_input_tokens` it is set for EVERY task, since `_call_model` can compute it from the
+    prompt it already has without the caller passing anything.
 
     `vault`/`prompt_hash` (#611) feed the global telemetry store (`telemetry_db.record_call`) in
     addition to this run's own `_usage`/JSON file — `vault` attributes the row (the store is
@@ -252,6 +263,8 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         record["rate_limit"] = rate_limit
     if est_input_tokens is not None:
         record["est_input_tokens"] = est_input_tokens
+    if est_prompt_tokens is not None:
+        record["est_prompt_tokens"] = est_prompt_tokens
     _usage.append(record)
     if _usage_partial_path is not None:
         # Durable per-call persistence (#407): appended synchronously, so a crash or a hard
@@ -292,9 +305,18 @@ async def _call_model(*, task, prompt, schema, model=None, backend=None,
     `_record_usage` since this is the one place the actual rendered prompt text is in scope.
     `prompt` is normally a string, but a caller may instead pass a list of Anthropic content
     blocks (A1, cache_control) — `json.dumps` gives a stable, hashable text form for that shape
-    too, without needing to special-case it."""
+    too, without needing to special-case it.
+
+    `est_prompt_tokens` (#617) rides on that same observation: the rendered prompt is in scope
+    exactly here, so the whole-prompt chars/4 estimate is computed once alongside the hash rather
+    than threaded through every call site the way `est_input_tokens` is. That is what makes it
+    universal — every task gets it for free, including the ones that never pass an
+    `est_input_tokens` — and it is the like-for-like denominator
+    `ingest_setup._model_tokenizer_calibration` needs; see `_record_usage`'s docstring for why
+    the document-only estimate was the wrong one to divide by."""
     prompt_text = prompt if isinstance(prompt, str) else json.dumps(prompt, sort_keys=True)
     prompt_hash = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()
+    est_prompt_tokens = section.est_tokens(prompt_text)
     try:
         r = await model_client.acomplete_json(task=task, prompt=prompt, schema=schema, model=model,
                                               backend=backend, max_retries=max_retries, effort=effort)
@@ -303,12 +325,14 @@ async def _call_model(*, task, prompt, schema, model=None, backend=None,
             _record_usage(task, model=e.model, backend=e.backend, usage=e.usage, cost_usd=e.cost_usd,
                          attempts=e.attempts, effort=effort, auth_mode=e.auth_mode,
                          filename=filename, detail=detail, failed=True,
-                         est_input_tokens=est_input_tokens, vault=vault, prompt_hash=prompt_hash)
+                         est_input_tokens=est_input_tokens, est_prompt_tokens=est_prompt_tokens,
+                         vault=vault, prompt_hash=prompt_hash)
         raise
     _record_usage(task, model=r.model, backend=r.backend, usage=r.usage, cost_usd=r.cost_usd,
                  attempts=r.attempts, latency_s=r.latency_s, effort=effort, auth_mode=r.auth_mode,
                  filename=filename, detail=detail, pruned=r.pruned, rate_limit=r.rate_limit,
-                 est_input_tokens=est_input_tokens, vault=vault, prompt_hash=prompt_hash)
+                 est_input_tokens=est_input_tokens, est_prompt_tokens=est_prompt_tokens,
+                 vault=vault, prompt_hash=prompt_hash)
     if r.pruned and vault is not None:
         _log(vault, f"WARN {filename or task}: pruned unexpected JSON key(s) from model "
                     f"output: {', '.join(r.pruned)}")
@@ -1553,7 +1577,8 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
                              skill_label: str, brief: str | None, api_key: str,
                              model: str | None = None, effort: str | None = None,
                              force: bool = False, batch_meta: dict | None = None,
-                             backend: str = "claude-batch") -> dict:
+                             backend: str = "claude-batch",
+                             est_prompt_tokens: int | None = None) -> dict:
     """Turn one collected batch result into a finished document. `item` is `batch_extract.collect`'s
     per-sha entry (or None if the batch has no result for this sha at all). A batch response that
     didn't pass schema validation gets exactly one synchronous single-call repair attempt, on the
@@ -1571,7 +1596,16 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
     same as `_extract_document` — the batch already ran, so bypassing just means the collected
     result is staged/committed instead of discarded. `batch_meta` (from `_resume_batch`) is
     passed straight through to `_record_usage` so this item's usage row carries the batch's own
-    submitted/ended/collected lifecycle, not just this call's own token counts."""
+    submitted/ended/collected lifecycle, not just this call's own token counts.
+
+    `est_prompt_tokens` (#617) is this document's whole-prompt chars/4 estimate, read off the
+    batch state where `batch_extract.est_prompt_tokens` stashed it at submit time. Every other
+    extraction path computes it inside `_call_model` from the prompt in scope; a batch's prompt
+    was rendered in an earlier invocation and is gone by now, so it has to be carried. Without it
+    a batch-extracted document's usage row would lack the field entirely and be skipped by
+    `ingest_setup._model_tokenizer_calibration` — leaving a vault that extracts only on a batch
+    backend permanently unable to calibrate its own tokenizer ratio. None for a batch submitted
+    before #617, whose state has no such map; that record is simply skipped, as before."""
     pf = preflight.run(vault, sha)
     if pf.get("error"):
         return _fail(vault, sha, "", pf["error"])
@@ -1604,7 +1638,8 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
         _record_usage("extract", model=model, backend=backend, usage=item["usage"],
                       cost_usd=item.get("cost_usd"), effort=effort, auth_mode="api-key",
                       filename=filename, detail=f"pages 1–{page_count}", batch_meta=batch_meta,
-                      est_input_tokens=est_input_tokens, vault=vault)
+                      est_input_tokens=est_input_tokens, est_prompt_tokens=est_prompt_tokens,
+                      vault=vault)
     if not item["ok"]:
         text = _pages_text(pf["pages"])
         # Off the event loop — see the comment in `_simple_extract`.
@@ -1734,7 +1769,9 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str | None, brie
                                                      skill_label, brief, api_key,
                                                      model=state["model"], effort=state.get("effort"),
                                                      force=force, batch_meta=batch_meta,
-                                                     backend=backend))
+                                                     backend=backend,
+                                                     est_prompt_tokens=(state.get("est_prompt_tokens")
+                                                                        or {}).get(sha)))
     except model_client.RateLimitError as e:
         # A repair-retry call (claude-api) hit a rate limit partway through collection. Leave
         # the batch state in place — already-written documents are safe (preflight's

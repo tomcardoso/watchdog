@@ -94,7 +94,7 @@ Constants and choices that were fitted against a *specific* benchmark run and ar
 
 | Item | Trigger to revisit |
 |---|---|
-| `_CONTAINMENT_SUPPRESS` = 0.6 in `pipeline/verify.py` (near-duplicate suppression, D198) | **The next benchmark run that exercises the verifier.** The value was fitted against the 220 additions of run `2026-08-09-1523`, whose `prompts/verify.md` has since been rewritten (#619). The population it was tuned on no longer exists, so refit against the new run's additions before quoting it as tuned. Nothing breaks meanwhile — no material fact was lost anywhere from 0.9 down to 0.5 in the original sweep. |
+| `_CONTAINMENT_SUPPRESS` = 0.6 in `pipeline/verify.py` (near-duplicate suppression, D199) | **The next benchmark run that exercises the verifier.** The value was fitted against the 220 additions of run `2026-08-09-1523`, whose `prompts/verify.md` has since been rewritten (#619). The population it was tuned on no longer exists, so refit against the new run's additions before quoting it as tuned. Nothing breaks meanwhile — no material fact was lost anywhere from 0.9 down to 0.5 in the original sweep. |
 
 ## Releasing to PyPI
 

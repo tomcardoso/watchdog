@@ -493,10 +493,38 @@ def test_cost_estimate_calibration_still_applies_under_subscription_auth(tmp_pat
 
 def _record(model, backend, task, est, act, **extra):
     """One `usage-<ts>.json` `calls` entry — the fields `_model_tokenizer_calibration` and
-    `_real_input_tokens` actually read (`orchestrate._record_usage`'s own record shape)."""
+    `_real_input_tokens` actually read (`orchestrate._record_usage`'s own record shape).
+
+    `est` is the WHOLE-PROMPT estimate (`est_prompt_tokens`), which is the denominator the
+    calibration must use (#617). A deliberately different document-only `est_input_tokens` — half
+    of it — is written alongside, exactly as a real record carries both: reading the wrong one
+    would double every ratio below rather than silently agreeing, which is the point."""
     return {"model": model, "backend": backend, "task": task,
-            "est_input_tokens": est, "input_tokens": act,
+            "est_prompt_tokens": est, "est_input_tokens": est // 2, "input_tokens": act,
             "cache_read_tokens": 0, "cache_write_tokens": 0, **extra}
+
+
+def test_real_input_tokens_sums_cache_fields_only_for_anthropic(tmp_path):
+    """#617: the two provider families report cache tokens under opposite conventions.
+
+    Anthropic reports cache reads/writes as counts *additional* to `input_tokens` — the archived
+    `claude-agent-sdk` arm shows 18 input tokens against 230,155 cache-write tokens for the same
+    six documents — so they must be summed or the real volume vanishes. OpenAI's `prompt_tokens`
+    and DeepSeek's already include their cached counts, so summing there double-counts every
+    cached token (it read `gpt-5.4-mini` 12.6% high on the archived corpus)."""
+    from watchdog.pipeline.ingest_setup import _real_input_tokens
+    rec = {"input_tokens": 1000, "cache_read_tokens": 400, "cache_write_tokens": 100}
+
+    assert _real_input_tokens(rec, "claude-api") == 1500
+    assert _real_input_tokens(rec, "claude-agent-sdk") == 1500
+    assert _real_input_tokens(rec, "claude-batch") == 1500
+    assert _real_input_tokens(rec, "openai") == 1000
+    assert _real_input_tokens(rec, "openai-batch") == 1000
+    assert _real_input_tokens(rec, "deepseek") == 1000
+    assert _real_input_tokens(rec, "gemini") == 1000
+    # No backend (a run-level `totals`, which may mix providers) keeps the summing form: Anthropic
+    # is the default backend and the only one the naive form is catastrophically wrong for.
+    assert _real_input_tokens(rec) == 1500
 
 
 def test_model_tokenizer_calibration_no_history_returns_none(tmp_path):
@@ -536,6 +564,26 @@ def test_model_tokenizer_calibration_pools_matching_records(tmp_path):
 
     # sum(actual)/sum(estimated) = (1300+2600+650) / (1000+2000+500) = 4550/3500 = 1.3
     assert _model_tokenizer_calibration(vault, "sonnet-5", None) == pytest.approx(1.3)
+
+
+def test_model_tokenizer_calibration_skips_pre_617_records(tmp_path):
+    """A record written before #617 carries only the document-only `est_input_tokens`, never
+    `est_prompt_tokens`. Those records are skipped, not silently divided on the old denominator:
+    `input_tokens` covers the whole rendered prompt, so pairing it with a document-only estimate
+    measures `tokenizer_ratio x (1 + prompt_overhead / document_tokens)` — the contamination
+    #617 was opened about, which read a true 1.09 Claude ratio as 1.41. With nothing usable left
+    the vault calibrates to None and the caller falls back to the measured catalog constant."""
+    from watchdog.model_catalog import resolve_model_id
+    from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
+    vault = _make_vault(tmp_path)
+    model_id = resolve_model_id("sonnet-5")
+    legacy = [{"model": model_id, "backend": None, "task": "extract",
+               "est_input_tokens": est, "input_tokens": act,
+               "cache_read_tokens": 0, "cache_write_tokens": 0}
+              for est, act in ((1000, 1300), (2000, 2600), (500, 650))]
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=0, cost_usd=None, calls=legacy)
+
+    assert _model_tokenizer_calibration(vault, "sonnet-5", None) is None
 
 
 def test_model_tokenizer_calibration_ignores_non_matching_model_or_backend(tmp_path):
@@ -708,10 +756,13 @@ def test_cost_estimate_all_models_projects_every_catalog_model(tmp_path):
     catalog = all_models()
     assert {r["id"] for r in rows} == {m["id"] for m in catalog}
     assert [r["cost"] for r in rows] == sorted(r["cost"] for r in rows)   # cheapest first
-    # output ratio 500/1000 = 0.5 -> est_output = 1000; cost = 2000*input + 1000*output per model
+    # output ratio 500/1000 = 0.5 -> est_output = 1000; cost = 2000*input + 1000*output per model,
+    # each scaled by that model's own tokenizer_ratio (0.81 for DeepSeek V4 — see the dedicated
+    # ratio test below; this one is about the projection).
     by_id = {r["id"]: r["cost"] for r in rows}
-    haiku = next(m for m in catalog if m["id"] == "claude-haiku-4-5")
-    assert by_id["claude-haiku-4-5"] == pytest.approx(2000 * haiku["input"] + 1000 * haiku["output"])
+    ds = next(m for m in catalog if m["id"] == "deepseek-v4-flash")
+    assert by_id["deepseek-v4-flash"] == pytest.approx(
+        2000 * 0.81 * ds["input"] + 1000 * 0.81 * ds["output"])
 
 
 def test_cost_estimate_all_models_ignores_runs_with_no_output_tokens(tmp_path):
@@ -723,17 +774,20 @@ def test_cost_estimate_all_models_ignores_runs_with_no_output_tokens(tmp_path):
 
     rows = cost_estimate_all_models(vault, est_tokens=1000)
 
-    # only the second run's 1:1 ratio counts -> est_output = 1000
+    # only the second run's 1:1 ratio counts -> est_output = 1000, both sides then scaled by
+    # DeepSeek V4's measured 0.81 tokenizer_ratio.
     by_id = {r["id"]: r["cost"] for r in rows}
     from watchdog.model_catalog import all_models
-    haiku = next(m for m in all_models() if m["id"] == "claude-haiku-4-5")
-    assert by_id["claude-haiku-4-5"] == pytest.approx(1000 * haiku["input"] + 1000 * haiku["output"])
+    ds = next(m for m in all_models() if m["id"] == "deepseek-v4-flash")
+    assert by_id["deepseek-v4-flash"] == pytest.approx(
+        1000 * 0.81 * ds["input"] + 1000 * 0.81 * ds["output"])
 
 
-def test_cost_estimate_all_models_scales_new_tokenizer_claude_models(tmp_path):
-    # Sonnet 5 / Opus 4.8 (#574, new tokenizer) get their own tokenizer_ratio applied to the
-    # projected input AND output tokens, so they're priced against their own higher real token
-    # count for the same text rather than the old-tokenizer figure other catalog models use as-is.
+def test_cost_estimate_all_models_scales_by_each_models_tokenizer_ratio(tmp_path):
+    # Every catalogued model's measured tokenizer_ratio (#574, remeasured #617) is applied to its
+    # projected input AND output tokens, so each is priced against its own real token count for
+    # the same text. The correction runs both directions: Sonnet 5's 1.28 prices it up, Sonnet
+    # 4.6's 0.93 prices it down, and only a model with no declared ratio is projected as-is.
     from watchdog.model_catalog import all_models
     vault = _make_vault(tmp_path)
     _write_usage_file(vault, "20260101T000000Z", input_tokens=1000, cost_usd=1.0, output_tokens=500)
@@ -742,14 +796,18 @@ def test_cost_estimate_all_models_scales_new_tokenizer_claude_models(tmp_path):
 
     by_id = {r["id"]: r["cost"] for r in rows}
     catalog = {m["id"]: m for m in all_models()}
-    sonnet5 = catalog["claude-sonnet-5"]
-    scaled_in = 2000 * 1.3       # tokenizer_ratio
-    scaled_out = scaled_in * 0.5  # output_ratio (500/1000) applied after scaling
-    assert by_id["claude-sonnet-5"] == pytest.approx(
-        scaled_in * sonnet5["input"] + scaled_out * sonnet5["output"])
-    # Old-tokenizer Sonnet 4.6 is unaffected (ratio 1.0) — same figure as before this fix.
-    sonnet46 = catalog["claude-sonnet-4-6"]
-    assert by_id["claude-sonnet-4-6"] == pytest.approx(2000 * sonnet46["input"] + 1000 * sonnet46["output"])
+
+    def projected(model_id, ratio):
+        m = catalog[model_id]
+        scaled_in = 2000 * ratio
+        scaled_out = scaled_in * 0.5   # output_ratio (500/1000), applied after scaling
+        return scaled_in * m["input"] + scaled_out * m["output"]
+
+    assert by_id["claude-sonnet-5"] == pytest.approx(projected("claude-sonnet-5", 1.28))
+    assert by_id["claude-sonnet-4-6"] == pytest.approx(projected("claude-sonnet-4-6", 0.93))
+    assert by_id["gemini-3.5-flash"] == pytest.approx(projected("gemini-3.5-flash", 0.91))
+    assert by_id["gpt-5.4-nano"] == pytest.approx(projected("gpt-5.4-nano", 0.80))
+    assert by_id["deepseek-v4-flash"] == pytest.approx(projected("deepseek-v4-flash", 0.81))
 
 
 def test_finalize_cost_estimate_all_models_no_standalone_history_returns_empty(tmp_path):

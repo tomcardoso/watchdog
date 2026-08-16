@@ -54,17 +54,40 @@ def scan_queue(vault: Path) -> list[dict]:
     return queue_files
 
 
-def _real_input_tokens(totals: dict) -> int:
-    """Total tokens the model actually processed as input for a run's calls (issue #470): plain
-    `input_tokens` alone badly undercounts once prompt caching is in play, since a cache hit or
-    write moves the bulk of a call's input volume into `cache_read_tokens`/`cache_write_tokens`
-    instead — a sectioned extraction that carries a growing shared prefix across calls can show
+def _real_input_tokens(totals: dict, backend: str | None = None) -> int:
+    """Total tokens the model actually processed as input for a run's calls (issue #470).
+
+    On Anthropic, plain `input_tokens` badly undercounts once prompt caching is in play: a cache
+    hit or write moves the bulk of a call's input volume into `cache_read_tokens`/
+    `cache_write_tokens` instead, and those are reported as counts *additional* to
+    `input_tokens` — a sectioned extraction carrying a growing shared prefix can show
     `input_tokens` in the single digits while the real content processed is orders of magnitude
-    larger. The naive chars/4 estimate this is calibrated against counts a document's full text
-    once regardless of how many cached/fresh calls served it, so the comparison point needs the
-    same full-volume accounting."""
-    return ((totals.get("input_tokens") or 0) + (totals.get("cache_read_tokens") or 0)
-            + (totals.get("cache_write_tokens") or 0))
+    larger. (The archived `claude-agent-sdk` arm is the extreme case: 18 input tokens against
+    230,155 cache-write tokens for the same six documents.) The naive chars/4 estimate this is
+    compared against counts a document's full text once regardless of how many cached/fresh calls
+    served it, so the comparison point needs the same full-volume accounting.
+
+    **Every other provider reports the opposite convention** (#617): OpenAI's `prompt_tokens`
+    already *includes* `prompt_tokens_details.cached_tokens`, and DeepSeek's already includes
+    `prompt_cache_hit_tokens` — the cached count is a breakdown OF the input total, not an
+    addition to it. Summing there double-counts every cached token. Measured on the archived
+    benchmark corpus this inflated `gpt-5.4-mini`'s apparent tokens-per-est-token by 12.6% (its
+    fitted ratio read 1.110 summed against 0.914 on `input_tokens` alone — and the *unsummed* fit
+    is the better one, r² 0.839 vs 0.747, which is the tell that the extra tokens were double
+    counting rather than signal).
+
+    So `backend` selects the convention. It is optional and defaults to the summing form, because
+    the run-level `totals` dict this is also called with has no single backend to key off — a run
+    may mix providers — and Anthropic is both the default backend and the only one where the
+    naive form is catastrophically wrong rather than mildly so. Pass it whenever the caller has a
+    single call's record in hand, as `_model_tokenizer_calibration` does."""
+    # Local import for the same circular-import reason `_model_tokenizer_calibration` has one:
+    # `model_client.tokenizer_ratio` reaches back into this module.
+    from watchdog.model_client import provider_for_backend
+    inp = totals.get("input_tokens") or 0
+    if backend is not None and provider_for_backend(backend) != "anthropic":
+        return inp
+    return inp + (totals.get("cache_read_tokens") or 0) + (totals.get("cache_write_tokens") or 0)
 
 
 def _tokens_calibration(vault: Path, max_runs: int = 3) -> float | None:
@@ -145,6 +168,38 @@ def _model_tokenizer_calibration(vault: Path, model: str | None, backend: str | 
     alone — not of which task sent that text — so a whole-document `extract` call and a single
     section's `extract-section` call are equally valid evidence for the same ratio.
 
+    Divides by `est_prompt_tokens`, NOT `est_input_tokens` (#617, D197). This is the bug the
+    original #606 Part B version shipped with: `est_input_tokens` covers the document text only,
+    while the provider's reported input tokens cover the entire rendered prompt — schema,
+    extraction instructions, record skill, carry-forward entities, harvested candidates and the
+    document alike. Dividing one by the other measured
+    `tokenizer_ratio x (1 + prompt_overhead / document_tokens)`, and the bias was not even
+    constant: it shrank as sections grew, so a vault whose history happened to be section-heavy
+    calibrated to a larger ratio than a whole-document-heavy one for the same model and the same
+    tokenizer, and shrank its sectioning budget accordingly. Measured against corpus-v1 the
+    scaffolding is 7,200-9,300 real tokens per call, which read a true 1.09 Claude ratio as 1.41
+    and a true sub-1.0 GPT-5.4-nano ratio as 2.19.
+
+    One residue survives on `claude-agent-sdk` specifically. `est_prompt_tokens` measures the
+    prompt *this code* renders; the SDK then prepends its own system prompt and CLI preamble,
+    which we never see and therefore never estimate. Archived history puts that at roughly 930
+    real tokens per call — the three Claude backends fit the same slope (1.089-1.091) over the
+    same documents and differ only in intercept: 8,393 `claude-api`, 8,516 `claude-batch`, 9,326
+    `claude-agent-sdk`. So an SDK-backed vault calibrates a few per cent high, the same kind of
+    contamination this function was fixed for, an order of magnitude smaller. Left alone on
+    purpose: the ratio is scoped by `(model, backend)`, so the inflated figure is only ever
+    applied to SDK calls — which really do send those extra tokens — and a slightly more
+    conservative budget on the backend that sends more is the right direction. It is not evidence
+    about the tokenizer, though, which is why `model_catalog.yaml`'s constants come from
+    `count_tokens` (backend-free by construction) rather than from this.
+
+    Records written before #617 carry no `est_prompt_tokens` and are skipped rather than being
+    silently mixed in on the old denominator. A vault whose history is entirely pre-#617
+    therefore calibrates to None and falls back to the catalog constant — which is now itself a
+    measured figure (`model_catalog.yaml`, `benchmarks/tokenizer_ratio.py`), so the cold-start
+    fallback is real data rather than a vendor sentence, and the contaminated ratio stops being
+    preferred over it.
+
     Returns `None` (not a noisy one-or-two-sample ratio) when fewer than `min_records` matching
     records were found — a model tried once or twice in this vault shouldn't override the catalog
     constant on a whim; callers fall back to it instead, exactly as `_tokens_calibration` falls
@@ -168,8 +223,8 @@ def _model_tokenizer_calibration(vault: Path, model: str | None, backend: str | 
                 continue
             if record.get("task") not in ("extract", "extract-section"):
                 continue
-            est = record.get("est_input_tokens")
-            act = _real_input_tokens(record)
+            est = record.get("est_prompt_tokens")
+            act = _real_input_tokens(record, backend)
             if est and act:
                 estimated.append(est)
                 actual.append(act)
