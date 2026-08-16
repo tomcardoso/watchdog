@@ -35,6 +35,15 @@ _PLAIN_NUM_RE = re.compile(r"\d+(?:\.\d+)?")
 _GROUP_CHARS_RE = re.compile(r"[,  ]")
 _SCALE_EXPONENTS = (3, 6)  # thousands, millions
 
+# A bare four-digit year is a date, not a figure (#623). It was always the noisiest token class
+# here — 9.6% of every flag over the extraction corpus was a fact flagged for a year alone, e.g.
+# "…for the fiscal year ended April 30, 2021" where the page writes that period some other way —
+# and that was tolerable while the finding only reached ingest.log. Now that a flag renders in the
+# vault, a false "figure 2,021 not found in the document" costs the reader's trust in every other
+# flag. What skipping them costs: a genuine dollar amount that happens to be exactly $2,021 goes
+# unchecked. Applied to the fact's own tokens only — page text is still indexed in full.
+_YEAR_RE = re.compile(r"^(?:1[5-9]\d\d|20\d\d|21\d\d)$")
+
 
 def _normalize_token(token: str) -> str:
     """Strip grouping separators, leading zeros (keep a lone "0"), and trailing decimal
@@ -103,14 +112,27 @@ def _index_pages(page_texts: dict[int, str]) -> dict[str, list[int]]:
 
 def verify_figures(extraction: dict, page_texts: dict[int, str]) -> list[str]:
     """Check every stated `key_facts[].fact`'s numeric figures against its cited page (and
-    the page ±1, with exact x1,000/x1,000,000 scale variants allowed). Pure and advisory:
-    mutates nothing. A figure absent nearby but verbatim (or scale-equivalent) elsewhere in
-    the document gets a softer "check the citation" warning; a figure absent from the whole
-    document keeps the original "may be derived or garbled" warning.
+    the page ±1, with exact x1,000/x1,000,000 scale variants allowed). A figure absent nearby
+    but verbatim (or scale-equivalent) elsewhere in the document gets a softer "check the
+    citation" warning; a figure absent from the whole document keeps the original "may be
+    derived or garbled" warning.
+
+    Advisory, never a gate — but the finding has to reach the reporter, not just the ingest
+    log (#623), so a flagged fact is annotated in place the way `quote_verify` annotates an
+    unresolved quote: ``figures_unverified`` lists the tokens found nowhere in the document,
+    ``figures_off_page`` maps each token found elsewhere to the pages holding it. `write_vault`
+    renders both on the fact's own line. Facts that pass are left untouched — an absent key
+    means "checked and clean", or not checked at all (no page text, no figures, `inferred`).
     """
     warnings: list[str] = []
     doc_index: dict[str, list[int]] | None = None
     for i, fact in enumerate(extraction.get("document", {}).get("key_facts", [])):
+        # Clear any annotation from an earlier post-flight pass over the same staged extraction
+        # (`watchdog bark`) before re-deciding: a figure that resolves this time — better OCR, a
+        # page text that wasn't on disk before — must not keep yesterday's flag.
+        fact.pop("figures_unverified", None)
+        fact.pop("figures_off_page", None)
+
         if fact.get("basis") == "inferred":
             continue
 
@@ -122,7 +144,7 @@ def verify_figures(extraction: dict, page_texts: dict[int, str]) -> list[str]:
         if not text:
             continue
 
-        fact_tokens = _tokens(text, _GROUPED_NUM_RE)
+        fact_tokens = {t for t in _tokens(text, _GROUPED_NUM_RE) if not _YEAR_RE.match(t)}
         if not fact_tokens:
             continue
 
@@ -152,12 +174,14 @@ def verify_figures(extraction: dict, page_texts: dict[int, str]) -> list[str]:
                 still_missing.append(t)
 
         if still_missing:
+            fact["figures_unverified"] = still_missing
             warnings.append(
                 f"document.key_facts[{i}] figure(s) {', '.join(still_missing)} not found on "
                 f"page {page} (or adjacent pages) — may be derived or garbled; check the "
                 f"source: {text!r}"
             )
         if elsewhere:
+            fact["figures_off_page"] = {t: pages for t, pages in elsewhere}
             detail = ", ".join(f"{t} (page {'/'.join(str(p) for p in pages)})" for t, pages in elsewhere)
             warnings.append(
                 f"document.key_facts[{i}] figure(s) {detail} not found on page {page} (or "

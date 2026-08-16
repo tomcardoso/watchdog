@@ -1254,6 +1254,48 @@ def test_evidence_fragment_claim_reason_quote_bracket_injection_defanged():
     assert "]] [[" not in rendered
 
 
+def test_evidence_fragment_flags_a_figure_missing_from_the_document():
+    """#623: the post-flight figure check has to be visible where the fact is read, not only in
+    the ingest log."""
+    fragments = [{"claim": "Stayed $430,000 across two payments.", "page": 3, "basis": "stated",
+                  "figures_unverified": ["430000"]}]
+    rendered = wv._render_evidence_fragments(fragments)
+    assert "*(figure 430,000 not found in the document — may be derived; verify against source)*" in rendered
+
+
+def test_evidence_fragment_flags_a_figure_found_on_another_page():
+    fragments = [{"claim": "Prior-year revenue was $197.6 million.", "page": 10, "basis": "stated",
+                  "figures_off_page": {"197.6": [3, 5]}}]
+    rendered = wv._render_evidence_fragments(fragments)
+    assert "*(figure 197.6 (p. 3/5) found on another page, not the one cited)*" in rendered
+
+
+def test_evidence_fragment_without_figure_flags_renders_no_note():
+    fragments = [{"claim": "Revenue was $1M.", "page": 3, "basis": "stated"}]
+    assert "*(figure" not in wv._render_evidence_fragments(fragments)
+
+
+def test_document_note_flags_a_figure_missing_from_the_document(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    run(make_extraction(tmp_path, {"document": {
+        "key_facts": [{"fact": "Stayed $430,000 across two payments.", "page": 3,
+                       "basis": "stated", "figures_unverified": ["430000"]}],
+    }}), vault)
+
+    content = (vault / "documents" / "test-doc.md").read_text()
+    assert "*(figure 430,000 not found in the document — may be derived; verify against source)*" in content
+
+
+def test_figure_note_pluralizes_and_joins_both_classes():
+    fragments = [{"claim": "Several figures.", "page": 3, "basis": "stated",
+                  "figures_unverified": ["430000", "999999"],
+                  "figures_off_page": {"197.6": [3]}}]
+    rendered = wv._render_evidence_fragments(fragments)
+    assert "figures 430,000, 999,999 not found in the document" in rendered
+    assert "; figure 197.6 (p. 3) found on another page" in rendered
+
+
 def test_entity_timeline_has_page_link(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")

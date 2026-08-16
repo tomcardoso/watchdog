@@ -97,6 +97,34 @@ def test_explode_propagates_quote_spans_pages_to_fragments():
     assert frag["quote_spans_pages"] == [2, 3]
 
 
+def test_explode_propagates_figure_annotations_to_fragments():
+    """#623: `verify_figures` runs before `explode_key_facts` and annotates the key_fact with
+    the figures it couldn't ground — the fan-out must carry both keys onto the fragment, the
+    way it already carries the resolved quote, or the entity note shows the fact unflagged."""
+    extraction = {
+        "document": {"key_facts": [
+            {"fact": "x", "page": 3, "entities": ["a"],
+             "figures_unverified": ["430000"], "figures_off_page": {"197.6": [9]}},
+        ]},
+        "entities": [{"id": "a", "name": "A", "type": "Person"}],
+    }
+    explode_key_facts(extraction)
+    frag = extraction["entities"][0]["evidence_fragments"][0]
+    assert frag["figures_unverified"] == ["430000"]
+    assert frag["figures_off_page"] == {"197.6": [9]}
+
+
+def test_explode_leaves_figure_keys_off_an_unflagged_fragment():
+    extraction = {
+        "document": {"key_facts": [{"fact": "x", "page": 3, "entities": ["a"]}]},
+        "entities": [{"id": "a", "name": "A", "type": "Person"}],
+    }
+    explode_key_facts(extraction)
+    frag = extraction["entities"][0]["evidence_fragments"][0]
+    assert "figures_unverified" not in frag
+    assert "figures_off_page" not in frag
+
+
 def test_explode_propagates_quote_verified_false_to_fragments():
     extraction = {
         "document": {"key_facts": [
@@ -507,6 +535,37 @@ def test_postflight_run_rejects_and_does_not_stage_empty_extraction_on_substanti
     assert "errors" in result
     assert any("key_facts is empty" in e for e in result["errors"])
     assert not (vault / ".watchdog" / "extracted" / "sha777aaa.json").exists()
+
+
+# ── Figure grounding reaches the staged artifact, not just the log (#363/#623) ──
+
+def test_postflight_annotates_ungrounded_figure_on_fact_and_fragment(tmp_path, capsys):
+    """The ordering that makes this work is the point: `verify_figures` has to run after
+    `resolve_quotes` (which may move the page it reads) but before `explode_key_facts`, or the
+    entity's fragment is fanned out before the annotation exists."""
+    vault = _full_vault(tmp_path)
+    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
+        "pages": [{"page": 2, "markdown": "The transfer ratio set at 65.8% was confirmed."},
+                  {"page": 3, "markdown": "Payments of $250,000 and $180,000 were stayed."}],
+    }))
+    ext = _extraction()
+    ext["document"]["key_facts"][1]["fact"] = "Stayed $430,000 across two payments."
+    ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
+    ext_path.write_text(json.dumps(ext), encoding="utf-8")
+
+    result = postflight_run(vault, ext_path)
+    assert result.get("ok"), result
+
+    staged = _staged(vault, "sha777aaa")
+    fact = next(f for f in staged["document"]["key_facts"] if "430,000" in f["fact"])
+    assert fact["figures_unverified"] == ["430000"]
+
+    lu = next(e for e in staged["entities"] if e["id"] == "lu")
+    frag = next(f for f in lu["evidence_fragments"] if "430,000" in f["claim"])
+    assert frag["figures_unverified"] == ["430000"]
+
+    assert "may be derived or garbled" in capsys.readouterr().err
 
 
 # ── Quote verification against the morgue text (#267) ───────────────────────
