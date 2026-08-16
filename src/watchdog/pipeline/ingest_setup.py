@@ -180,6 +180,19 @@ def _model_tokenizer_calibration(vault: Path, model: str | None, backend: str | 
     scaffolding is 7,200-9,300 real tokens per call, which read a true 1.09 Claude ratio as 1.41
     and a true sub-1.0 GPT-5.4-nano ratio as 2.19.
 
+    One residue survives on `claude-agent-sdk` specifically. `est_prompt_tokens` measures the
+    prompt *this code* renders; the SDK then prepends its own system prompt and CLI preamble,
+    which we never see and therefore never estimate. Archived history puts that at roughly 930
+    real tokens per call — the three Claude backends fit the same slope (1.089-1.091) over the
+    same documents and differ only in intercept: 8,393 `claude-api`, 8,516 `claude-batch`, 9,326
+    `claude-agent-sdk`. So an SDK-backed vault calibrates a few per cent high, the same kind of
+    contamination this function was fixed for, an order of magnitude smaller. Left alone on
+    purpose: the ratio is scoped by `(model, backend)`, so the inflated figure is only ever
+    applied to SDK calls — which really do send those extra tokens — and a slightly more
+    conservative budget on the backend that sends more is the right direction. It is not evidence
+    about the tokenizer, though, which is why `model_catalog.yaml`'s constants come from
+    `count_tokens` (backend-free by construction) rather than from this.
+
     Records written before #617 carry no `est_prompt_tokens` and are skipped rather than being
     silently mixed in on the old denominator. A vault whose history is entirely pre-#617
     therefore calibrates to None and falls back to the catalog constant — which is now itself a
