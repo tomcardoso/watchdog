@@ -202,3 +202,67 @@ def test_citation_warning_does_not_truncate_the_fact_before_the_flagged_figure()
     warnings = verify_figures(extraction, pages)
     citation = next(w for w in warnings if "page citation may be wrong" in w)
     assert fact_text in citation
+
+
+# ── #623: the finding is annotated onto the fact, not just returned as a warning ──
+
+def test_figure_missing_from_document_is_annotated_on_the_fact():
+    extraction = _fact("$430,000 across two transfers.")
+    pages = {3: "The company recorded transfers of $250,000 and $180,000."}
+    verify_figures(extraction, pages)
+    fact = extraction["document"]["key_facts"][0]
+    assert fact["figures_unverified"] == ["430000"]
+    assert "figures_off_page" not in fact
+
+
+def test_figure_found_elsewhere_is_annotated_with_the_pages_holding_it():
+    extraction = _fact("Revenue was $193.4 million (prior year: $197.6 million).", page=10)
+    pages = {
+        3: "Consolidated revenue of $197.6 million was reported last year.",
+        5: "A restatement note repeats the $197.6 million prior-year figure.",
+        10: "Consolidated revenue of $193.4 million decreased from the previous year.",
+    }
+    verify_figures(extraction, pages)
+    fact = extraction["document"]["key_facts"][0]
+    assert fact["figures_off_page"] == {"197.6": [3, 5]}
+    assert "figures_unverified" not in fact
+
+
+def test_clean_fact_is_left_unannotated():
+    extraction = _fact("Paid $430,000 to the fund.")
+    pages = {3: "The transfer totalled 430,000 dollars."}
+    verify_figures(extraction, pages)
+    fact = extraction["document"]["key_facts"][0]
+    assert "figures_unverified" not in fact
+    assert "figures_off_page" not in fact
+
+
+def test_bare_year_is_not_treated_as_a_figure():
+    """#623: a four-digit year is a date. Flagging "the fiscal year ended April 30, 2021" as an
+    ungrounded *figure* was 9.6% of all flags, and it now renders in the vault."""
+    extraction = _fact("Revenue fell in fiscal 2021.")
+    pages = {3: "Nothing here names that period."}
+    assert verify_figures(extraction, pages) == []
+    assert "figures_unverified" not in extraction["document"]["key_facts"][0]
+
+
+def test_year_exclusion_does_not_mask_a_real_figure_in_the_same_fact():
+    extraction = _fact("Paid $500,000 in fiscal 2021.")
+    pages = {3: "Nothing about payments on this page."}
+    warnings = verify_figures(extraction, pages)
+    assert len(warnings) == 1
+    assert extraction["document"]["key_facts"][0]["figures_unverified"] == ["500000"]
+
+
+def test_stale_annotation_is_cleared_when_the_figure_now_resolves():
+    """`watchdog bark` re-runs post-flight over the same staged extraction. A figure that
+    resolves this time — page text that wasn't on disk before, better OCR — must not keep the
+    flag the earlier pass wrote."""
+    extraction = _fact("Paid $430,000 to the fund.")
+    extraction["document"]["key_facts"][0]["figures_unverified"] = ["430000"]
+    extraction["document"]["key_facts"][0]["figures_off_page"] = {"430000": [9]}
+    pages = {3: "The transfer totalled 430,000 dollars."}
+    assert verify_figures(extraction, pages) == []
+    fact = extraction["document"]["key_facts"][0]
+    assert "figures_unverified" not in fact
+    assert "figures_off_page" not in fact

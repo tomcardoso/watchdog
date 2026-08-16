@@ -106,6 +106,17 @@ Every extracted fact records its **basis** — whether the document said it, or 
 
 Only inferred facts are flagged, so anything **unmarked is directly stated**. Treat an *(inferred)* fact as a lead that requires verification, not as an established fact.
 
+## Figures that aren't on the page they cite
+
+Watchdog checks every number in a stated fact against the page the fact cites (and the pages either side of it, allowing for statements printed in thousands or millions). Nothing is blocked or rewritten — but where a number doesn't check out, the fact carries a short note:
+
+| Note | What it means |
+|------|---------------|
+| *(figure 173,471 not found in the document — may be derived; verify against source)* | The number appears nowhere in the source document. Usually it was calculated — a total, a difference, a gap between two figures — rather than read off the page. Check the arithmetic before you use it. |
+| *(figure 197.6 (p. 3) found on another page, not the one cited)* | The number is real and appears in the document, just not where the fact says. The page link may point at the wrong page. |
+
+Dates are not checked this way — only figures — and roughly two to three per cent of facts carry a note, so one is worth stopping on. A fact with no note had its figures found where it said they were.
+
 When a new document contradicts a fact already in the vault — a different address, a conflicting date, a mismatched role — that is not a basis level. It surfaces as a `[!contradiction]` callout in the entity's note, with both sources cited. A contradiction is often newsworthy in itself: two official records that disagree can be the story.
 
 > **Verify before you publish.** AI extraction makes mistakes. Every fact links to its source document and page; facts the model inferred rather than read are marked *(inferred)* and are leads, not findings. Follow the link before publishing.
