@@ -1457,40 +1457,41 @@ def test_auto_resolved_hint_explicit_claude_backend_unchanged():
     assert "medium" not in out
 
 
-def test_auto_resolved_hint_openai_medium_effort():
-    out = _setup._auto_resolved_hint(
-        "section_token_threshold",
-        {"extractor_model": "openai:gpt-5-mini", "extractor_effort": "medium"})
-    assert "50000 — openai:gpt-5-mini, medium" in out
-
-
-def test_auto_resolved_hint_openai_low_effort():
-    out = _setup._auto_resolved_hint(
-        "section_token_threshold",
-        {"extractor_model": "openai:gpt-5-mini", "extractor_effort": "low"})
-    assert "50000 — openai:gpt-5-mini, low" in out
-
-
-def test_auto_resolved_hint_openai_high_effort():
-    out = _setup._auto_resolved_hint(
-        "section_token_threshold",
-        {"extractor_model": "openai:gpt-5-mini", "extractor_effort": "high"})
-    assert "20980 — openai:gpt-5-mini, high" in out
-
-
-def test_auto_resolved_hint_gemini_medium_effort():
-    out = _setup._auto_resolved_hint(
-        "section_token_threshold",
-        {"extractor_model": "gemini:gemini-3.5-flash", "extractor_effort": "medium"})
-    assert "44706 — gemini:gemini-3.5-flash, medium" in out   # 40683 / 0.91 (#617)
-
-
-def test_auto_resolved_hint_openai_no_explicit_effort_defaults_medium():
-    # extractor_effort unset in config: defaults to medium, same convention cmd/ingest.py's
-    # _effort() applies for extractor_effort, since gpt-5-mini supports it.
+def test_auto_resolved_hint_names_a_non_claude_backend():
+    # A non-Claude backend IS named, because it selects which model id resolves — unlike the
+    # Claude backends above, where the prefix is inert. gpt-5-mini is uncatalogued (ratio 1.0), so
+    # its 400K window passes through undivided: 400_000 * 0.6.
     out = _setup._auto_resolved_hint(
         "section_token_threshold", {"extractor_model": "openai:gpt-5-mini"})
-    assert "50000 — openai:gpt-5-mini, medium" in out
+    assert "240000 — openai:gpt-5-mini)" in out
+
+
+def test_auto_resolved_hint_ignores_extractor_effort(monkeypatch):
+    # #555: sectioning is sized from the context window and tokenizer ratio alone, so the preview
+    # must neither vary with `extractor_effort` nor name it — a suffix here would advertise a
+    # dependency the formula no longer has. Previously these three rendered 50000/50000/20980.
+    outs = [
+        _setup._auto_resolved_hint(
+            "section_token_threshold",
+            {"extractor_model": "openai:gpt-5-mini", "extractor_effort": effort})
+        for effort in ("low", "medium", "high")
+    ]
+    assert len(set(outs)) == 1
+    assert "240000 — openai:gpt-5-mini)" in outs[0]
+    for effort in ("low", "medium", "high"):
+        assert effort not in outs[0]
+    # Unset effort resolves identically — there is no defaulting step left to get wrong.
+    assert _setup._auto_resolved_hint(
+        "section_token_threshold", {"extractor_model": "openai:gpt-5-mini"}) == outs[0]
+
+
+def test_auto_resolved_hint_gemini_uses_catalogued_window_and_ratio():
+    # gemini-3.5-flash IS catalogued: 1M window * 0.6, over its measured 0.91 ratio (#617). Before
+    # #555 this read 44706, set by inverting an output-density fit rather than by either
+    # catalogued number.
+    out = _setup._auto_resolved_hint(
+        "section_token_threshold", {"extractor_model": "gemini:gemini-3.5-flash"})
+    assert "659340 — gemini:gemini-3.5-flash)" in out
 
 
 def test_auto_resolved_hint_section_token_budget_key():
@@ -1502,11 +1503,10 @@ def test_auto_resolved_hint_section_token_budget_key():
     budget_out = _setup._auto_resolved_hint("section_token_budget", {"extractor_model": "sonnet"})
     assert "129032" in threshold_out
     assert "64516" in budget_out
-    # Backend/effort labelling applies to the budget key too, same as the threshold key.
+    # Backend labelling applies to the budget key too, same as the threshold key.
     out = _setup._auto_resolved_hint(
-        "section_token_budget",
-        {"extractor_model": "openai:gpt-5-mini", "extractor_effort": "medium"})
-    assert "openai:gpt-5-mini, medium" in out
+        "section_token_budget", {"extractor_model": "openai:gpt-5-mini"})
+    assert "openai:gpt-5-mini)" in out
 
 
 # ── configure — bool keys ─────────────────────────────────────────────────────

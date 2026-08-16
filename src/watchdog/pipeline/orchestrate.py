@@ -1455,7 +1455,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
 
     flow = f"{pg} · {skill_label}"        # the accumulated in-flight prefix for this document's row
 
-    plan = section.run(vault, sha, model=extract_model, backend=extract_backend, effort=extract_effort)
+    plan = section.run(vault, sha, model=extract_model, backend=extract_backend)
     if plan.get("sectioned"):
         n_sections = len(plan.get("sections", []))
         _step(f"{_DIM}→  {filename}  {flow} · extracting · {n_sections} sections…{_RESET}",

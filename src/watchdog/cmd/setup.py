@@ -197,10 +197,11 @@ _CONFIGURE_KEYS = {
             "  whole; larger ones are split into overlapping sections and extracted sequentially\n"
             "  with a carried-forward entity list. Token count is estimated as chars/4.\n"
             "  'auto' (default): derived from the extraction model's context window (about 60% of\n"
-            "  it) — so a 1M-window model like DeepSeek V4 reads far more of a document in one call\n"
-            "  than a 200K Claude window (which resolves to 120000). Set a fixed number to pin it as\n"
-            "  an advanced override — e.g. lower it if whole-document extraction is overrunning the\n"
-            "  model's output ceiling on dense documents.\n"
+            "  it), adjusted for how that model's tokenizer counts — so a 1M-window model like\n"
+            "  DeepSeek V4 reads far more of a document in one call than a 200K Claude window\n"
+            "  (which resolves to 129032). Set a fixed number to pin it as an advanced override —\n"
+            "  e.g. lower it if extraction quality drops on long documents, or to hold a call under\n"
+            "  a provider's long-context pricing tier.\n"
             "  Note: a fixed number does NOT rescale when you change extractor_model — pin it back to\n"
             "  'auto' (or re-check the value) if you switch to a model with a different context window."
         ),
@@ -865,21 +866,21 @@ def _persist(config: dict) -> None:
 
 def _auto_resolved_hint(key: str, config: dict) -> str:
     """Render 'auto' for a model-aware section budget along with the concrete value it currently
-    resolves to for the configured extractor model/backend/effort, e.g. 'auto (120000 — sonnet)'
-    for plain Claude, or 'auto (44235 — openai:gpt-5-mini, medium)' for a backend that enforces a
-    fixed output ceiling section.model_defaults caps against (#606) — a bare model name there
-    would be misleading, since the resolved number depends on backend and effort too, not just
-    the model. `extractor_model` is parsed the same tolerant `[backend:]model` way
+    resolves to for the configured extractor model/backend, e.g. 'auto (129032 — sonnet)' for
+    plain Claude, or 'auto (150000 — openai:gpt-5-mini)' for a non-Claude backend — a bare model
+    name there would be misleading, since the resolved number depends on the backend too (#606).
+    `extractor_model` is parsed the same tolerant `[backend:]model` way
     `cmd/ingest.py:_resolve_stage` does (rpartition on the last ':'), but never exits on an
     unrecognized value — this only previews an already-stored, already-validated config value, so
-    a hard error here would be the wrong failure mode. `extractor_effort` defaults the same way
-    `cmd/ingest.py:_effort` defaults `extractor_effort` — 'medium' only when the resolved
-    backend/model actually supports an effort knob, so a model with none (e.g. Haiku) doesn't get
-    a misleading effort suffix. Every Claude backend (`model_client.CLAUDE_BACKENDS` — including
-    an explicit `claude-api:`/`claude-agent-sdk:` prefix, not just a bare tier name) keeps the
-    plain pre-#606 format with no backend/effort suffix: none of them has an output ceiling for
-    effort to scale against, so naming the backend there would be technically accurate but inert
-    — it would never explain why the number is what it is, only add noise.
+    a hard error here would be the wrong failure mode. Every Claude backend
+    (`model_client.CLAUDE_BACKENDS` — including an explicit `claude-api:`/`claude-agent-sdk:`
+    prefix, not just a bare tier name) keeps the plain pre-#606 format with no backend suffix:
+    naming the backend there would be technically accurate but inert, since it would never explain
+    why the number is what it is, only add noise.
+
+    No effort suffix (#555): sectioning is sized from the context window and tokenizer ratio alone,
+    so the resolved number no longer varies with `extractor_effort` and naming it here would imply
+    a dependency that isn't there.
 
     `watchdog configure` is a global, vault-independent command (`CONFIG_FILE` lives under
     `~/.watchdog/`; `cmd_configure` never touches a vault path) — there is no usage history to
@@ -893,16 +894,10 @@ def _auto_resolved_hint(key: str, config: dict) -> str:
     backend, _, model = (raw or "").rpartition(":")
     backend = backend or None
     model = model or None
-    effort_val = config.get("extractor_effort")
-    if effort_val is not None:
-        effort = effort_val
-    else:
-        effort = "medium" if model_client.effort_supported(backend, model, "medium") else None
-    threshold, budget = section.model_defaults(model, backend=backend, effort=effort)
+    threshold, budget = section.model_defaults(model, backend=backend)
     resolved = threshold if key == "section_token_threshold" else budget
     if backend and backend not in model_client.CLAUDE_BACKENDS:
-        label = f"{backend}:{model}"
-        suffix = f"{label}, {effort}" if effort else label
+        suffix = f"{backend}:{model}"
     else:
         suffix = model or "sonnet"
     return f"{_CYAN}auto{_RESET} {_DIM}({resolved} — {suffix}){_RESET}"

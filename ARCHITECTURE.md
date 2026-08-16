@@ -483,21 +483,22 @@ reads far more of a document per call before sectioning. A 200K Claude window re
 historical 120K/60K defaults exactly; the two config keys default to the `auto` sentinel and
 accept an explicit `section_token_threshold`/`section_token_budget` integer as an advanced
 escape hatch (a pinned integer does not rescale when the extraction model changes).
-The input-window default is **additionally capped by the output ceiling** for a backend that
-enforces a fixed `max_tokens` and can't paginate past it (openai, gemini — D104, #343). The
-ceiling itself is one per-model wire envelope (`model_client._wire_max_tokens`, D197, #598) —
-the catalogued `max_output_tokens` cap under a 10% headroom, task- and effort-independent, with an
-uncatalogued id resolving through a documented per-family cap (`max_output_tokens_fallback`, shaped
-like `context_window_fallback`) before a conservative default — and
-`output_ceiling_for_sectioning(backend, model)` returns it directly for a non-continuation-capable
-backend, or `None` for claude-api/deepseek (pagination grows output past any cap) or
-claude-agent-sdk (no enforced ceiling at all). Sizing the *input* side against that ceiling still
-inverts an affine fit of *total* output — chain-of-thought plus the visible JSON answer, since on
-these backends both share the same wire-enforced envelope — against input size (D187, #542); the
-fixed cost and marginal rate are still looked up per reasoning `effort`, since reasoning volume
-scales with input very differently at each effort level, and the result is still clamped to a
-measured-range-bounded cap (D197 — pending a per-model per-effort sweep), since the underlying
-fits are weak and easily extrapolated past what was actually observed.
+**The output ceiling does not enter into this.** It used to: for a backend enforcing a fixed
+`max_tokens` it can't paginate past (openai, gemini — D104, #343), the input default was
+additionally capped by inverting an affine fit of *total* output against that envelope, per
+reasoning `effort`, clamped to a measured-range bound (D187, #542). All of it was deleted in D199
+(#555) after the archive showed the cap never bound (peak output was 14–27% of the envelope on
+every model but one), that pooling the fit across models let one model's reasoning volume set
+every other's budget, and that the inversion degenerates wherever the fitted slope is near zero.
+`effort` is no longer a parameter of `model_defaults`/`section_token_threshold`/`section.run` at
+all. `output_ceiling_for_sectioning(backend, model)` still exists and still returns one per-model
+wire envelope (`model_client._wire_max_tokens`, D197, #598) — the catalogued `max_output_tokens`
+cap under a 10% headroom, task- and effort-independent, with an uncatalogued id resolving through
+a documented per-family cap (`max_output_tokens_fallback`, shaped like `context_window_fallback`)
+before a conservative default, or `None` for claude-api/deepseek (pagination grows output past any
+cap) and claude-agent-sdk (no enforced ceiling at all) — but it governs only the wire `max_tokens`
+now, and sectioning never calls it. Truncation is handled where it is observable instead: the
+bounded re-split (D183, #540) and the starvation retry (#558).
 Finally, the threshold and budget are divided by `model_client.tokenizer_ratio` (D180, #574;
 remeasured D198, #617), correcting for the fact that the chars/4 `est_tokens` heuristic was
 calibrated against Claude's *old* tokenizer and mis-states every other one. Every catalogued
@@ -508,8 +509,17 @@ through Sonnet 4.6), 1.28 (Claude 4.7+: Opus 4.8, Sonnet 5), 0.91 (Gemini), 0.80
 (DeepSeek V4). The correction runs both ways, and *widening* is the common case — every tokenizer
 but Claude 4.7+ measures below 1.0, meaning chars/4 over-estimates it — which is safe because the
 threshold fraction reserves 40% of the window regardless. Only an uncatalogued id resolves to 1.0.
-Because the output-ceiling clamp is a bound in est-token space, it is re-applied *after* this
-division, not just before it (D198).
+**One clamp sits between the window fraction and that division: `long_context_threshold`** (D199,
+#555), the catalogued real-token input length at which a model starts billing at a higher rate —
+~272K on the large-window GPT-5.x models, 200K on Gemini 3.1 Pro, absent on the eleven that price
+flat. `model_client.long_context_input_cap` returns it under the same 10% headroom
+`_OUTPUT_HEADROOM` takes off `max_output_tokens`, and *both* the threshold and the budget are
+clamped to it — the threshold because it is what decides whether a document is sectioned at all,
+so leaving it open would send an oversized document past the boundary in one whole-document call.
+The clamp is applied in **real** tokens, before the ratio division, since that is the unit a
+provider meters; clamping the est-token result afterwards would let a sub-1.0 ratio divide it back
+up past the boundary, which is the ordering bug D198 found in the old output clamp. It is also what
+keeps `--estimate-all` truthful, since the cost model prices every model at one flat rate.
 When a `vault` is in scope (the real ingest path — `section.run` passes its own `vault` through
 automatically), `tokenizer_ratio` instead prefers an empirically-derived ratio from that vault's
 own usage history, pooled per model/backend from real per-call estimate-vs-actual token pairs

@@ -46,6 +46,7 @@ from watchdog.model_catalog import (
     catalog_context_window,
     catalog_effort_levels,
     catalog_is_reasoning,
+    catalog_long_context_threshold,
     catalog_max_output_tokens,
     catalog_tokenizer_ratio,
     fallback_context_window,
@@ -89,6 +90,36 @@ def _output_envelope(model_id: str) -> int:
            or fallback_max_output_tokens(model_id)
            or _DEFAULT_MAX_OUTPUT_TOKENS)
     return int(cap * (1 - _OUTPUT_HEADROOM))
+
+
+# Input length at/above which a model bills at a higher rate, less the same 10% headroom
+# `_OUTPUT_HEADROOM` takes off `max_output_tokens` — for the same reason, and it is deliberately
+# the same figure rather than a second tunable. The headroom absorbs two unknowns at once: the
+# catalogued boundaries are read off vendor prose ("roughly double above ~272K") rather than a
+# cited rate card, and every call carries prompt scaffolding — schema, extraction instructions,
+# record skill, carry-forward entities, harvested candidates — on top of the document text that
+# `section.py` sizes. The archive's smallest real input on a metered backend is 7,707-8,773 tokens,
+# which is a *floor*: carry-forward and harvested candidates both grow with document length, and
+# the field that would measure the real figure per call (`est_prompt_tokens`, #617) is on zero
+# archived records because no run has happened since it landed. 10% of 272,000 is 27,200 tokens of
+# slack, comfortably over that floor and the only thing standing between a long document and a 2x
+# bill (#555, D199).
+_LONG_CONTEXT_HEADROOM = _OUTPUT_HEADROOM
+
+
+def long_context_input_cap(model: str | None, backend: str | None = None) -> int | None:
+    """Max real input tokens a single call to `model` may plan for before it crosses into a higher
+    pricing tier, or None when the model prices flat at every length (#555).
+
+    `section.py` clamps both the sectioning threshold and the per-section budget to this, so no
+    extraction call is ever *planned* past the boundary — which is also what keeps `--estimate-all`
+    honest, since it prices every model at one flat rate. Returns None for an uncatalogued id: we
+    can't know a self-hosted or OpenRouter model's rate card, and inventing a boundary would shrink
+    its sections for no reason. Unlike `_output_envelope` there is no family-fallback table —
+    pricing tiers vary within a family (gpt-5.4-mini shares gpt-5.4's tokenizer but not its window,
+    and so never approaches the boundary), so a substring guess would be an over-claim."""
+    threshold = catalog_long_context_threshold(resolve_model_id(model or DEFAULT_TIER))
+    return int(threshold * (1 - _LONG_CONTEXT_HEADROOM)) if threshold else None
 
 
 _SYSTEM_PROMPT = (
@@ -1304,9 +1335,10 @@ def _wire_max_tokens(backend: str, model_id: str) -> int:
     Reasoning volume itself is not a function of effort alone — archived telemetry fit against
     input length shows it also scales steeply with *input size* (up to ~2.3 tokens of thinking
     per input token at high effort, roughly 12x the visible-output rate) — but that no longer
-    matters here: the wire ceiling is now the model's own envelope regardless, and only
-    `pipeline/section.py`'s *input*-side sizing (`_invert_output_ceiling`) still needs to reason
-    about how much of that envelope reasoning is likely to consume."""
+    matters anywhere: the wire ceiling is the model's own envelope regardless, and as of #555
+    nothing reasons about how much of it reasoning will consume. `pipeline/section.py`'s
+    *input*-side sizing used to invert that estimate into a section budget; it no longer consults
+    this function at all (see D199), so this envelope is now purely a runaway guard on the wire."""
     if backend == "deepseek":
         # `-thinking` is a Watchdog-only routing marker (D88), not a real catalog id — strip it
         # before consulting the catalog, the same normalization `_openai_complete_async` already
