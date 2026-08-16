@@ -14,6 +14,14 @@ from pathlib import Path
 
 import yaml
 
+# The token-accounting epoch a run's cost figures were computed under — hand-maintained, bumped
+# by whoever changes how cost is computed or priced, so a consumer can tell two runs' dollar
+# figures apart instead of ranking them as if they meant the same thing. History: v1 = pre-D145
+# (Claude costs inflated by ~11.2K tokens/call from the agent SDK's tool definitions); v2 =
+# post-D145 but pre-#547 (Gemini thinking tokens went unpriced, so Gemini costs were floors, not
+# real totals); v3 = current.
+COST_MODEL_VERSION = 3
+
 
 def run_id(now: datetime | None = None, *, existing: set[str] | None = None) -> str:
     """"YYYY-MM-DD-HHMM", or "-2"/"-3"/... if that exact minute is already taken (`existing`, or —
@@ -66,6 +74,24 @@ def _is_notional(usage: dict | None) -> bool:
     list-price equivalent rather than an amount billed."""
     return any(c.get("backend") in _CLAUDE_BACKENDS and c.get("auth_mode") == "subscription"
                for c in (usage or {}).get("calls", []))
+
+
+def _arm_calls_field(usage: dict | None, key: str) -> tuple[bool, str | None]:
+    """Distinct `key` values seen across an arm's calls, first-seen order, joined with `", "` if
+    more than one — worth surfacing on its own when that happens, since it means the arm didn't
+    run uniformly under one setting. Returns `(found, value)`: `found` is False only when the arm
+    made no calls at all, which the caller needs as a distinct case from "the calls all read
+    None" — an effort-less model (Claude Haiku, DeepSeek) legitimately reports `effort: None` on
+    every call, and that is real information, not a missing measurement to fall back away from."""
+    calls = (usage or {}).get("calls", [])
+    if not calls:
+        return False, None
+    seen = []
+    for c in calls:
+        v = c.get(key)
+        if v not in seen:
+            seen.append(v)
+    return True, (seen[0] if len(seen) == 1 else ", ".join(str(v) for v in seen))
 
 
 def _notional_note(results: list) -> list[str]:
@@ -367,17 +393,88 @@ def _scored_document_count(vault) -> int | None:
     return len(list(d.glob("*.json"))) if d.is_dir() else None
 
 
-def run_json(rid: str, results: list, scores: dict, config: dict, prov: dict) -> dict:
+def _extracted_page_stats(vault) -> tuple[int | None, int | None]:
+    """`(pages_extracted, coverage_gaps)` summed/counted straight off an arm's own
+    `.watchdog/extracted/*.json` artifacts. This is the arm's OWN page count, not the corpus
+    total — the #551 index divides cost and latency by it to get cost-per-page and
+    speed-per-page, and a partial arm (rate limit, Ctrl-C, per-document failures, #559) must not
+    get flattered by dividing its smaller cost over a denominator it never earned. Defensive in
+    the same spirit as `score_arms.vault_doc_texts`: a file that fails to parse, isn't a JSON
+    object, or lacks `document`/`page_count` is skipped rather than raising — a benchmark run
+    that's already been paid for should not be discarded over one malformed artifact."""
+    if not vault:
+        return None, None
+    d = Path(vault) / ".watchdog" / "extracted"
+    if not d.is_dir():
+        return None, None
+    pages = 0
+    gaps = 0
+    for f in d.glob("*.json"):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        doc = data.get("document") if isinstance(data, dict) else None
+        if not isinstance(doc, dict):
+            continue
+        page_count = doc.get("page_count")
+        if isinstance(page_count, int):
+            pages += page_count
+        if doc.get("coverage_gap") is not None:
+            gaps += 1
+    return pages, gaps
+
+
+def _manifest_digest(benchmarks_dir: Path, rel_path: str) -> str | None:
+    """sha256 of a frozen-reference manifest's own bytes (not the corpus/keys files it lists) —
+    `frozen_refs`' path strings only say which manifest was verified, not what that manifest
+    actually said at the time; two runs can quote the same path after the file was edited
+    between them and look identical without this. `None`, not a raised error, when the file
+    can't be read — the run has already happened and paid for itself either way."""
+    import hashlib
+    try:
+        data = (Path(benchmarks_dir) / rel_path).read_bytes()
+    except OSError:
+        return None
+    return hashlib.sha256(data).hexdigest()
+
+
+def run_json(rid: str, results: list, scores: dict, config: dict, prov: dict,
+            benchmarks_dir: Path | None = None) -> dict:
     """The run's numbers in a machine-readable shape, so a consumer (the composite score index,
     #551) reads structured data instead of re-parsing REPORT.md's markdown tables. Every figure
     here is the same one the tables render, from the same helpers — this is a second rendering of
-    the run, never a second calculation of it."""
+    the run, never a second calculation of it.
+
+    `benchmarks_dir` resolves `frozen_refs`' relative manifest paths for digesting; defaults to
+    this file's own directory, which is where `config.yaml`'s `corpus`/`keys` paths are always
+    relative to in real use — only tests pass something else."""
+    import score_arms
+    benchmarks_dir = Path(benchmarks_dir) if benchmarks_dir is not None else Path(__file__).resolve().parent
     facts = scores.get("totals", {}).get("facts", {})
     mnm = scores.get("totals", {}).get("must_not_miss", {})
+    # Only extractor_sweep arms declare `extractor_model`/`extractor_effort`/`verify` — keying
+    # this off `arm_id` alone (rather than scoping to `r.stage == "extractor"` below) would risk
+    # a finalizer/classifier arm sharing an id (e.g. "haiku") with an extractor arm and silently
+    # inheriting the wrong config.
+    extractor_arm_configs = {a["id"]: a for a in config.get("extractor_sweep", {}).get("arms", [])}
     arms = []
     for r in results:
         vb = Path(r.vault).name if r.vault else r.arm_id
         u = _usage_totals(r.usage)
+        arm_cfg = extractor_arm_configs.get(r.arm_id, {}) if r.stage == "extractor" else {}
+        # The model/effort that actually served the arm, read from its own calls first — a bare
+        # model id like "sonnet" resolves differently depending on runtime auth (#475), so only
+        # the calls themselves say for certain what ran. Falls back to the arm's configured value
+        # only when it made no calls at all (a hard failure before the first request). The global
+        # SQLite telemetry store (D193, #611) also carries model/effort per call, but that store
+        # is machine-local and not archived with the run — a run.json copied elsewhere, or read
+        # after `~/.watchdog/telemetry.db` is wiped, still has to say what produced its numbers.
+        had_calls, model = _arm_calls_field(r.usage, "model")
+        model = model if had_calls else arm_cfg.get("extractor_model")
+        had_calls, effort = _arm_calls_field(r.usage, "effort")
+        effort = effort if had_calls else arm_cfg.get("extractor_effort")
+        pages_extracted, coverage_gaps = _extracted_page_stats(r.vault)
         arms.append({
             "arm_id": r.arm_id, "stage": r.stage, "vault": vb,
             "ok": bool(r.ok), "skipped": bool(r.skipped), "cancelled": bool(r.cancelled),
@@ -396,11 +493,41 @@ def run_json(rid: str, results: list, scores: dict, config: dict, prov: dict) ->
             "documents_extracted": r.documents_done,
             "documents_total": r.documents_total,
             "scored_documents": _scored_document_count(r.vault),
+            "model": model,
+            "effort": effort,
+            "verify": bool(arm_cfg.get("verify", False)),
+            # The #551 index's cost-per-page/speed-per-page denominator — the arm's own pages,
+            # never the corpus total (see `_extracted_page_stats`).
+            "pages_extracted": pages_extracted,
+            # A subscription arm's `cost_usd` is a list-price equivalent, not billed money
+            # (`_is_notional`'s own docstring) — without this flag reaching run.json, the index's
+            # cost column can't tell the two kinds of dollar figure apart.
+            "notional_cost": _is_notional(r.usage),
+            "coverage_gaps": coverage_gaps,
+            # The `<ts>` stem of the `usage-<ts>.json` this arm's `r.usage` was loaded from
+            # (`run_benchmark._latest_usage`) — the join key back to `telemetry_db`'s `calls.run_id`
+            # column (D193 point 3), which uses that same stem, NOT this dict's own `run_id` above
+            # (the benchmark run's "YYYY-MM-DD-HHMM" id — a different namespace with the same
+            # name). Without this, matching an archived run's arms to their telemetry rows means
+            # guessing from timestamps. `None` when the arm has no usage file at all.
+            "usage_run_id": r.usage_run_id,
         })
+    corpus_ref, keys_ref = config["corpus"]["sha256"], config["keys"]["sha256"]
     return {
         "run_id": rid,
         "provenance": prov,
-        "frozen_refs": {"corpus": config["corpus"]["sha256"], "keys": config["keys"]["sha256"]},
+        "frozen_refs": {
+            "corpus": corpus_ref, "keys": keys_ref,
+            # The path string alone only says which manifest was verified, not what it said at
+            # verification time — a manifest edited between two runs quotes the same path and
+            # looks identical without the digest of its own bytes alongside it.
+            "corpus_digest": _manifest_digest(benchmarks_dir, corpus_ref),
+            "keys_digest": _manifest_digest(benchmarks_dir, keys_ref),
+        },
+        # Which code computed these figures, not just which commit (`provenance` above) — a
+        # scorer or cost-accounting change can land without touching pipeline code at all, and
+        # `git_provenance`'s commit hash doesn't say whether either epoch changed since a past run.
+        "versions": {"scorer": score_arms.SCORER_VERSION, "cost_model": COST_MODEL_VERSION},
         "arms": arms,
     }
 
@@ -427,7 +554,7 @@ def _copy_page_text(vault: Path, dest: Path) -> None:
 
 
 def write_run(out_root: Path, results: list, scores: dict, config: dict,
-              provenance: dict | None = None) -> Path:
+              provenance: dict | None = None, benchmarks_dir: Path | None = None) -> Path:
     # Captured at run *start* by the caller and passed in — a sweep runs for tens of minutes and
     # the tree can change under it, so capturing at write time would record the wrong commit.
     prov = provenance or git_provenance()
@@ -469,7 +596,8 @@ def write_run(out_root: Path, results: list, scores: dict, config: dict,
     (run_dir / "docs-summary.md").write_text(docs_summary_md(results, scores), encoding="utf-8")
     (run_dir / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     (run_dir / "run.json").write_text(
-        json.dumps(run_json(rid, results, scores, config, prov), indent=2) + "\n",
+        json.dumps(run_json(rid, results, scores, config, prov, benchmarks_dir=benchmarks_dir),
+                  indent=2) + "\n",
         encoding="utf-8")
 
     errors_text = _errors_log_text(results)

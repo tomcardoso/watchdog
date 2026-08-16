@@ -583,6 +583,19 @@ def test_run_extractor_arm_ok_reads_usage(monkeypatch, tmp_path):
     result = rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
     assert result.ok is True
     assert result.usage["calls"][0]["cost_usd"] == 1.5
+    # #551: the `<ts>` stem is the join key back to telemetry_db's `calls.run_id` (D193) — it
+    # must round-trip from the usage file's own name, not be derived some other way.
+    assert result.usage_run_id == "1"
+
+
+def test_run_extractor_arm_usage_run_id_none_without_a_usage_file(monkeypatch, tmp_path):
+    """A vault with no usage file at all (nothing extracted, or a hard failure before the first
+    write) has no telemetry to join to — `None`, not a guessed or empty-string id."""
+    monkeypatch.setattr(wd_ingest, "cmd_extract", lambda ns, **kw: None)
+    result = rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
+    assert result.ok is True
+    assert result.usage is None
+    assert result.usage_run_id is None
 
 
 def test_run_extractor_arm_calls_cmd_extract_non_interactively(monkeypatch, tmp_path):
@@ -1759,7 +1772,8 @@ def test_keyboard_interrupt_mid_arm_still_writes_a_report(tmp_path, monkeypatch,
     monkeypatch.setattr(rb, "run_extractor_arm", _fake_run_extractor_arm)
     captured = {}
     monkeypatch.setattr(br, "write_run",
-                        lambda out_root, results, scores, config, provenance=None: (
+                        lambda out_root, results, scores, config, provenance=None,
+                               benchmarks_dir=None: (
                             captured.__setitem__("results", results), tmp_path)[1])
 
     rc = rb.main(["--config", str(cfg), "--stages", "extractor"])
@@ -1786,7 +1800,8 @@ def test_unhandled_exception_mid_arm_still_writes_a_report(tmp_path, monkeypatch
     monkeypatch.setattr(rb, "run_extractor_arm", _fake_run_extractor_arm)
     captured = {}
     monkeypatch.setattr(br, "write_run",
-                        lambda out_root, results, scores, config, provenance=None: (
+                        lambda out_root, results, scores, config, provenance=None,
+                               benchmarks_dir=None: (
                             captured.__setitem__("results", results), tmp_path)[1])
 
     rc = rb.main(["--config", str(cfg), "--stages", "extractor"])
@@ -1852,7 +1867,7 @@ def test_sdk_check_arm_relabeled_and_excluded_from_recall_scoring(tmp_path, monk
 
     captured = {}
 
-    def fake_write_run(out_root, results, scores, config, provenance=None):
+    def fake_write_run(out_root, results, scores, config, provenance=None, benchmarks_dir=None):
         captured["results"] = results
         captured["scores"] = scores
         return tmp_path / "run-out"
@@ -2110,6 +2125,163 @@ def test_run_json_cost_matches_the_report_table(tmp_path):
     data = br.run_json("rid", results, {}, config, {"commit": None})
     assert data["arms"][0]["cost_usd"] == pytest.approx(
         br._usage_totals(results[0].usage)["cost_usd"])
+
+
+# ── #551 index instrumentation: model/effort/verify, pages_extracted, coverage_gaps,
+#    notional_cost, frozen_refs digests, versions ──────────────────────────────────
+
+def _write_extracted(vault, sha, *, page_count=None, coverage_gap=None):
+    d = vault / ".watchdog" / "extracted"
+    d.mkdir(parents=True, exist_ok=True)
+    doc = {}
+    if page_count is not None:
+        doc["page_count"] = page_count
+    doc["coverage_gap"] = coverage_gap
+    (d / f"{sha}.json").write_text(json.dumps({"document": doc}))
+
+
+def test_pages_extracted_sums_the_arms_own_pages_not_the_corpus_total(tmp_path):
+    """The denominator for cost-per-page/speed-per-page must be the arm's own extracted pages —
+    a partial arm (fewer documents than the corpus has) must not get its smaller cost divided
+    over the full corpus's page count."""
+    vault = tmp_path / "bench-ex-a"
+    _write_extracted(vault, "aaa", page_count=5)
+    _write_extracted(vault, "bbb", page_count=3)   # only 2 of the corpus's, say, 3 documents
+    results = [_arm_result(arm_id="a", vault=str(vault))]
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    data = br.run_json("rid", results, {}, config, {"commit": None})
+    assert data["arms"][0]["pages_extracted"] == 8
+
+
+def test_pages_extracted_and_coverage_gaps_none_when_directory_absent(tmp_path):
+    """A missing measurement and a measured zero are different claims — an arm whose vault was
+    never created (or never extracted anything) must report `None`, not `0`."""
+    results = [_arm_result(arm_id="a", vault=str(tmp_path / "no-such-vault"))]
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    data = br.run_json("rid", results, {}, config, {"commit": None})
+    assert data["arms"][0]["pages_extracted"] is None
+    assert data["arms"][0]["coverage_gaps"] is None
+
+
+def test_coverage_gaps_counts_only_non_null_gaps(tmp_path):
+    vault = tmp_path / "bench-ex-a"
+    _write_extracted(vault, "aaa", page_count=1, coverage_gap={"reason": "ocr fallback"})
+    _write_extracted(vault, "bbb", page_count=1, coverage_gap=None)
+    _write_extracted(vault, "ccc", page_count=1, coverage_gap={"reason": "figure"})
+    results = [_arm_result(arm_id="a", vault=str(vault))]
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    data = br.run_json("rid", results, {}, config, {"commit": None})
+    assert data["arms"][0]["coverage_gaps"] == 2
+
+
+def test_model_and_effort_come_from_usage_calls_when_present():
+    results = [_arm_result(arm_id="sonnet-5-med", vault=None,
+                           usage={"calls": [{"model": "sonnet-5", "effort": "medium",
+                                             "cost_usd": 0.1}]})]
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"},
+              "extractor_sweep": {"arms": [{"id": "sonnet-5-med", "extractor_model": "wrong",
+                                            "extractor_effort": "wrong"}]}}
+    data = br.run_json("rid", results, {}, config, {"commit": None})
+    assert data["arms"][0]["model"] == "sonnet-5"
+    assert data["arms"][0]["effort"] == "medium"
+
+
+def test_model_and_effort_fall_back_to_config_when_arm_made_no_calls():
+    """A hard failure before the first request leaves an arm with no calls at all — the
+    configured model/effort is still worth recording, even though nothing ran."""
+    results = [_arm_result(arm_id="sonnet-5-med", vault=None, ok=False, error="boom",
+                           usage={"calls": []})]
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"},
+              "extractor_sweep": {"arms": [{"id": "sonnet-5-med", "extractor_model": "sonnet-5",
+                                            "extractor_effort": "medium"}]}}
+    data = br.run_json("rid", results, {}, config, {"commit": None})
+    assert data["arms"][0]["model"] == "sonnet-5"
+    assert data["arms"][0]["effort"] == "medium"
+
+
+def test_effort_is_none_for_a_model_with_no_effort_control():
+    """Claude Haiku and DeepSeek have no effort knob — their calls carry `effort: None`
+    honestly, and that is real signal, not an absent measurement to fall back away from. The
+    config below deliberately supplies a (wrong) `extractor_effort` so a bug that always falls
+    back to config, ignoring the calls, would be caught here rather than coincidentally passing."""
+    results = [_arm_result(arm_id="haiku", vault=None,
+                           usage={"calls": [{"model": "haiku", "effort": None,
+                                             "cost_usd": 0.05}]})]
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"},
+              "extractor_sweep": {"arms": [{"id": "haiku", "extractor_model": "haiku",
+                                            "extractor_effort": "high"}]}}
+    data = br.run_json("rid", results, {}, config, {"commit": None})
+    assert data["arms"][0]["effort"] is None
+
+
+def test_notional_cost_true_for_subscription_claude_arm_false_for_metered():
+    sub = _arm_result(arm_id="sonnet-med-sdk", vault=None,
+                      usage={"calls": [{"cost_usd": 1.0, "backend": "claude-agent-sdk",
+                                        "auth_mode": "subscription"}]})
+    metered = _arm_result(arm_id="gpt-mini", vault=None,
+                          usage={"calls": [{"cost_usd": 1.0, "backend": "openai"}]})
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    data = br.run_json("rid", [sub, metered], {}, config, {"commit": None})
+    assert data["arms"][0]["notional_cost"] is True
+    assert data["arms"][1]["notional_cost"] is False
+
+
+def test_verify_reads_arm_config_default_false():
+    results = [_arm_result(arm_id="gpt-luna-low-verify", vault=None),
+              _arm_result(arm_id="gpt-luna-low", vault=None)]
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"},
+              "extractor_sweep": {"arms": [
+                  {"id": "gpt-luna-low-verify", "extractor_model": "x", "verify": True},
+                  {"id": "gpt-luna-low", "extractor_model": "x"}]}}
+    data = br.run_json("rid", results, {}, config, {"commit": None})
+    assert data["arms"][0]["verify"] is True
+    assert data["arms"][1]["verify"] is False
+
+
+def test_frozen_refs_carries_manifest_digests(tmp_path):
+    import hashlib
+    (tmp_path / "keys").mkdir()
+    (tmp_path / "corpora" / "extract").mkdir(parents=True)
+    corpus_manifest = tmp_path / "corpora" / "extract" / "corpus-v1.sha256"
+    keys_manifest = tmp_path / "keys" / "keys-v1.sha256"
+    corpus_manifest.write_text("abc123  file.pdf\n")
+    keys_manifest.write_text("def456  key.yaml\n")
+    config = {"corpus": {"sha256": "corpora/extract/corpus-v1.sha256"},
+              "keys": {"sha256": "keys/keys-v1.sha256"}}
+    data = br.run_json("rid", [], {}, config, {"commit": None}, benchmarks_dir=tmp_path)
+    assert data["frozen_refs"]["corpus_digest"] == hashlib.sha256(
+        corpus_manifest.read_bytes()).hexdigest()
+    assert data["frozen_refs"]["keys_digest"] == hashlib.sha256(
+        keys_manifest.read_bytes()).hexdigest()
+    # Path strings are unchanged — other code and archived runs depend on them exactly.
+    assert data["frozen_refs"]["corpus"] == "corpora/extract/corpus-v1.sha256"
+    assert data["frozen_refs"]["keys"] == "keys/keys-v1.sha256"
+
+
+def test_frozen_refs_digest_none_when_manifest_missing(tmp_path):
+    config = {"corpus": {"sha256": "corpora/extract/corpus-v1.sha256"},
+              "keys": {"sha256": "keys/keys-v1.sha256"}}
+    data = br.run_json("rid", [], {}, config, {"commit": None}, benchmarks_dir=tmp_path)
+    assert data["frozen_refs"]["corpus_digest"] is None
+    assert data["frozen_refs"]["keys_digest"] is None
+
+
+def test_run_json_carries_usage_run_id():
+    """The join key back to telemetry_db's `calls.run_id` (D193) must reach run.json — it is a
+    different namespace from run.json's own top-level `run_id` (the benchmark run's id), and
+    without this field an archived run's arms can't be matched to their telemetry rows later."""
+    results = [_arm_result(arm_id="a", vault=None, usage_run_id="20260806T030702Z")]
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    data = br.run_json("rid", results, {}, config, {"commit": None})
+    assert data["arms"][0]["usage_run_id"] == "20260806T030702Z"
+
+
+def test_versions_carries_both_constants():
+    import score_arms
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    data = br.run_json("rid", [], {}, config, {"commit": None})
+    assert data["versions"] == {"scorer": score_arms.SCORER_VERSION,
+                               "cost_model": br.COST_MODEL_VERSION}
 
 
 def test_qualitative_aggregate_reproduces_the_committed_pass(tmp_path):
