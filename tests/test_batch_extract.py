@@ -43,6 +43,25 @@ def test_read_state_tolerates_corrupt_json(tmp_path):
     assert be.read_state(vault) is None
 
 
+# ── whole-prompt token estimate carried across the batch boundary (#617) ─────
+
+def test_est_prompt_tokens_measures_whole_prompt_per_sha():
+    """#617: the estimate is taken at submit time, while the rendered prompt still exists — the
+    collect pass runs in a later invocation with only the parsed result and its usage in hand."""
+    docs = [{"sha": "aaa", "prompt": "x" * 400}, {"sha": "bbb", "prompt": "y" * 40}]
+    assert be.est_prompt_tokens(docs) == {"aaa": 100, "bbb": 10}
+
+
+def test_est_prompt_tokens_handles_anthropic_content_blocks():
+    """A prompt may be a list of content blocks (A1, cache_control) rather than a string. Measured
+    through the same `json.dumps` normalization `orchestrate._call_model` applies, so a batch
+    record's estimate lands on the same scale as a live call's rather than its own."""
+    blocks = [{"type": "text", "text": "hello"}, {"type": "text", "text": "world"}]
+    expected = len(json.dumps(blocks, sort_keys=True)) // 4
+    assert be.est_prompt_tokens([{"sha": "aaa", "prompt": blocks}]) == {"aaa": expected}
+    assert expected > 0
+
+
 # ── fakes for the SDK boundary ───────────────────────────────────────────────
 
 class _Obj:
@@ -153,6 +172,10 @@ def test_submit_builds_one_request_per_doc_and_persists_state(tmp_path, monkeypa
     # runs in a later process that has no other way to rebuild each document's prompt.
     assert state["skills"] == {"sha1": "annual-report", "sha2": "bankruptcy"}
     assert state["model"] == "claude-sonnet-4-6"
+    # Same reasoning as `skills` above, for the whole-prompt token estimate (#617): the prompt is
+    # gone by collection time, so the estimate the tokenizer calibration needs is stashed here.
+    assert state["est_prompt_tokens"] == be.est_prompt_tokens(docs)
+    assert set(state["est_prompt_tokens"]) == {"sha1", "sha2"}
 
 
 def test_submit_passes_resolved_effort(tmp_path, monkeypatch):
@@ -400,6 +423,7 @@ def test_openai_submit_uploads_jsonl_and_creates_batch(tmp_path, monkeypatch):
     assert state["model"] == "gpt-5.6-luna"
     assert state["shas"] == ["sha1", "sha2"]
     assert state["skills"] == {"sha1": "annual-report", "sha2": "bankruptcy"}
+    assert set(state["est_prompt_tokens"]) == {"sha1", "sha2"}   # #617, as on the Anthropic path
 
 
 def test_openai_submit_passes_resolved_effort(tmp_path, monkeypatch):

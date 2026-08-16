@@ -215,17 +215,23 @@ def test_default_overlap_shrinks_for_a_smaller_output_capped_budget():
 # ── provider-aware thresholds (#321) ─────────────────────────────────────────
 
 def test_model_defaults_scale_with_context_window():
-    # 0.6 / 0.3 of the model's context window; Claude 200K reproduces the historical 120K/60K.
-    assert section.model_defaults("sonnet") == (120_000, 60_000)
-    assert section.model_defaults(None) == (120_000, 60_000)              # default tier
-    assert section.model_defaults("deepseek-v4-flash") == (600_000, 300_000)   # 1M window
+    # 0.6 / 0.3 of the model's context window, then divided by the model's measured
+    # tokenizer_ratio (#617). Claude's 200K window gives the historical 120K/60K before that
+    # division; Sonnet 4.6's measured 0.93 widens it to 129,032/64,516, since chars/4 turns out to
+    # over-estimate for Claude's old tokenizer on real chewed documents.
+    assert section.model_defaults("sonnet") == (int(120_000 / 0.93), int(60_000 / 0.93))
+    assert section.model_defaults("sonnet") == (129_032, 64_516)
+    assert section.model_defaults(None) == (129_032, 64_516)              # default tier
+    assert section.model_defaults("deepseek-v4-flash") == (740_740, 370_370)   # 1M window / 0.81
+    # `gpt-5-mini` is NOT in the catalog (the real ids are gpt-5.4-mini etc.), so it declares no
+    # ratio and its window fractions pass through undivided — the uncorrected control.
     assert section.model_defaults("gpt-5-mini") == (240_000, 120_000)          # 400K window
 
 
 def test_section_token_threshold_model_aware(monkeypatch):
     monkeypatch.setattr(section, "_config_get", lambda k, d: d)   # no config override
-    assert section.section_token_threshold("sonnet") == 120_000
-    assert section.section_token_threshold("deepseek-v4-flash") == 600_000
+    assert section.section_token_threshold("sonnet") == 129_032    # 120K / 0.93 (#617)
+    assert section.section_token_threshold("deepseek-v4-flash") == 740_740  # 600K / 0.81 (#617)
 
 
 def test_section_token_threshold_config_override_wins(monkeypatch):
@@ -239,8 +245,8 @@ def test_section_token_threshold_auto_uses_model_default(monkeypatch):
     # The 'auto' sentinel (or an unset key) falls back to the model-aware default.
     monkeypatch.setattr(section, "_config_get",
                         lambda k, d: "auto" if k == "section_token_threshold" else d)
-    assert section.section_token_threshold("sonnet") == 120_000
-    assert section.section_token_threshold("deepseek-v4-flash") == 600_000
+    assert section.section_token_threshold("sonnet") == 129_032    # 120K / 0.93 (#617)
+    assert section.section_token_threshold("deepseek-v4-flash") == 740_740  # 600K / 0.81 (#617)
 
 
 def test_run_threshold_follows_model_window(tmp_path, monkeypatch):
@@ -271,8 +277,12 @@ def test_model_defaults_capped_by_output_ceiling_for_openai_gemini():
     # represents the full safe amount a single call can handle, whether that call covers a whole
     # document or one section. The large input window (1.05M/1M) is overridden by the much
     # tighter output-driven cap either way.
+    # gpt-5.4 declares no tokenizer_ratio, so its clamped 50_000 passes straight through.
+    # gemini-3.5-flash's measured 0.91 (#617) widens 40_683 to 44_706 — still under the clamp,
+    # so the clamp doesn't bind here; `test_model_defaults_output_cap_survives_sub_one_ratio`
+    # covers the case where it does.
     assert section.model_defaults("gpt-5.4", backend="openai") == (50_000, 50_000)
-    assert section.model_defaults("gemini-3.5-flash", backend="gemini") == (40_683, 40_683)
+    assert section.model_defaults("gemini-3.5-flash", backend="gemini") == (44_706, 44_706)
 
 
 def test_model_defaults_output_capped_budget_varies_by_effort():
@@ -284,8 +294,19 @@ def test_model_defaults_output_capped_budget_varies_by_effort():
     # their own fixed/marginal pair's value.
     assert section.model_defaults("gemini-3.5-flash", backend="gemini", effort="low") == \
         (section._MAX_OUTPUT_CAPPED_BUDGET, section._MAX_OUTPUT_CAPPED_BUDGET)
-    assert section.model_defaults("gemini-3.5-flash", backend="gemini", effort="medium") == (40_683, 40_683)
-    assert section.model_defaults("gemini-3.5-flash", backend="gemini", effort="high") == (5_151, 5_151)
+    assert section.model_defaults("gemini-3.5-flash", backend="gemini", effort="medium") == (44_706, 44_706)
+    assert section.model_defaults("gemini-3.5-flash", backend="gemini", effort="high") == (5_660, 5_660)
+
+
+def test_model_defaults_output_cap_survives_sub_one_ratio():
+    # #617: the clamp is a bound in EST-token space, so it must hold on the value returned, after
+    # the tokenizer_ratio division — not just before it. gemini-3.5-flash at low effort inverts
+    # to the clamp (50_000); its measured 0.91 ratio would divide that up to 54_945 if the clamp
+    # were applied only before the division, handing back a budget past the largest input the
+    # output-density fit was ever measured against. Mutating the re-clamp away turns this red.
+    low = section.model_defaults("gemini-3.5-flash", backend="gemini", effort="low")
+    assert low == (section._MAX_OUTPUT_CAPPED_BUDGET, section._MAX_OUTPUT_CAPPED_BUDGET)
+    assert int(section._MAX_OUTPUT_CAPPED_BUDGET / 0.91) > section._MAX_OUTPUT_CAPPED_BUDGET
 
 
 def test_model_defaults_uses_one_ceiling_lookup_for_both_threshold_and_budget(monkeypatch):
@@ -323,20 +344,25 @@ def test_model_defaults_floors_output_capped_budget_for_pathological_ceiling(mon
 def test_model_defaults_uncapped_for_paginating_and_uncapped_backends():
     # claude-api/deepseek paginate their output, and the agent SDK has no ceiling — all keep the
     # pure input-window defaults regardless of the backend argument.
-    assert section.model_defaults("sonnet", backend="claude-api") == (120_000, 60_000)
-    assert section.model_defaults("sonnet", backend="claude-agent-sdk") == (120_000, 60_000)
-    assert section.model_defaults("deepseek-v4-flash", backend="deepseek") == (600_000, 300_000)
-    assert section.model_defaults("sonnet", backend=None) == (120_000, 60_000)
+    # Claude's numbers carry its measured 0.93 ratio (#617); the point here is that the backend
+    # argument doesn't move them, not what the ratio is.
+    assert section.model_defaults("sonnet", backend="claude-api") == (129_032, 64_516)
+    assert section.model_defaults("sonnet", backend="claude-agent-sdk") == (129_032, 64_516)
+    assert section.model_defaults("deepseek-v4-flash", backend="deepseek") == (740_740, 370_370)
+    assert section.model_defaults("sonnet", backend=None) == (129_032, 64_516)
 
 
 def test_section_token_threshold_capped_for_openai(monkeypatch):
     monkeypatch.setattr(section, "_config_get", lambda k, d: d)   # no config override
     # gpt-5.4's 1.05M window would give 630K, but the output ceiling — 128_000 catalogued * 0.9 =
     # 115_200 (#598) — caps it, and the medium-row inversion of that clamps to
-    # _MAX_OUTPUT_CAPPED_BUDGET (50_000).
+    # _MAX_OUTPUT_CAPPED_BUDGET (50_000). It stays 50_000 after gpt-5.4's measured 0.80
+    # tokenizer_ratio would divide it up to 62_500, because the clamp is re-applied after the
+    # division (#617) — the fit's trusted range is in est-token space.
     assert section.section_token_threshold("gpt-5.4", backend="openai") == 50_000
-    # Same model, a paginating backend → uncapped input-window default.
-    assert section.section_token_threshold("gpt-5.4", backend="claude-api") == 630_000
+    # Same model, a paginating backend → uncapped input-window default, and with no ceiling there
+    # is no clamp to re-apply, so the 0.80 ratio does widen it: 630_000 / 0.80.
+    assert section.section_token_threshold("gpt-5.4", backend="claude-api") == 787_500
 
 
 def test_run_sections_openai_doc_that_claude_would_extract_whole(tmp_path, monkeypatch):
@@ -371,19 +397,26 @@ def test_run_effort_flows_through_to_the_output_capped_threshold(tmp_path, monke
 # ── tokenizer-aware thresholds (#574) ────────────────────────────────────────
 
 def test_model_defaults_shrinks_for_new_tokenizer_claude_model():
-    # Sonnet 5 / Opus 4.8 use a newer tokenizer producing ~30% more real tokens for the same
-    # text than the chars/4 est_tokens heuristic assumes — threshold/budget shrink by that same
-    # ratio so the real tokens a call sends still respect the 200K context window.
-    assert section.model_defaults("sonnet-5") == (int(120_000 / 1.3), int(60_000 / 1.3))
-    assert section.model_defaults("opus") == (int(120_000 / 1.3), int(60_000 / 1.3))
+    # Sonnet 5 / Opus 4.8 share a newer tokenizer that produces more real tokens for the same text
+    # than the chars/4 est_tokens heuristic assumes — measured at 1.28 against corpus-v1 (#617),
+    # replacing #574's quoted 1.3. Threshold/budget shrink by that ratio so the real tokens a call
+    # sends still respect the 200K context window.
+    assert section.model_defaults("sonnet-5") == (int(120_000 / 1.28), int(60_000 / 1.28))
+    assert section.model_defaults("opus") == (int(120_000 / 1.28), int(60_000 / 1.28))
 
 
-def test_model_defaults_unchanged_for_old_tokenizer_and_non_claude_models():
-    # No behaviour change for anyone on the old tokenizer or a non-Anthropic provider (#574) —
-    # same historical figures as before this fix.
-    assert section.model_defaults("sonnet") == (120_000, 60_000)
-    assert section.model_defaults("haiku") == (120_000, 60_000)
-    assert section.model_defaults("deepseek-v4-flash") == (600_000, 300_000)
+def test_model_defaults_widen_for_over_estimating_tokenizers():
+    # The correction runs both ways (#617), and widening is the COMMON case: every catalogued
+    # tokenizer except Claude 4.7+ measures below 1.0, meaning chars/4 over-estimates it, so its
+    # budget widens rather than shrinks. Safe because _THRESHOLD_FRACTION leaves 40% of the window
+    # unused regardless.
+    assert section.model_defaults("sonnet") == (int(120_000 / 0.93), int(60_000 / 0.93))
+    assert section.model_defaults("haiku") == (int(120_000 / 0.93), int(60_000 / 0.93))
+    assert section.model_defaults("deepseek-v4-flash") == (740_740, 370_370)     # 0.81
+    assert section.model_defaults("gpt-5.4", backend="claude-api") == (787_500, 393_750)  # 0.80
+    # Shrinking is now the exception — only the Claude 4.7+ tokenizer, at 1.28.
+    assert section.model_defaults("sonnet-5") == (int(120_000 / 1.28), int(60_000 / 1.28))
+    # An uncatalogued id still declares nothing and is the uncorrected control.
     assert section.model_defaults("gpt-5-mini") == (240_000, 120_000)
 
 
