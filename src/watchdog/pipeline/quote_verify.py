@@ -46,6 +46,18 @@ _SENTENCE_BACK_WINDOW = 300     # max chars scanned backward for a sentence star
 _SENTENCE_FORWARD_WINDOW = 400  # max chars scanned forward (past the match) for a sentence end
 _QUOTE_CAP = 500                # max rendered quote length, in characters
 
+# An ELIDED quote — one where the model cut the middle and kept both ends:
+#   "the payment due on March 30, 2021 … is stayed and suspended"
+# Something must follow the ellipsis, so a merely truncated quote ("the payment
+# due…") is not an elision and keeps its pre-#630 behaviour. The trailing side
+# tests for any non-space rather than a word character: a cut very often resumes
+# on a figure, and "the total was … $842,018.34" resumes on "$", which is not a
+# word character. Leading punctuation is consumed by the character classes, and
+# a part that turns out to be punctuation-only is rejected by the length floor.
+_ELISION_RE = re.compile(r"(?<=\w)[\s\"'’”)\]]*(?:…|\.\.\.)[\s\"'‘“(\[]*(?=\S)")
+_MIN_ELISION_PART = 12   # normalized chars; a shorter fragment matches by luck, not by content
+_MAX_ELISION_GAP = 600   # normalized chars the model may cut out between two kept parts
+
 
 def _normalize(text: str) -> str:
     """Case/whitespace/punctuation/hyphenation/accent-insensitive form for fuzzy matching.
@@ -111,6 +123,40 @@ def _normalize_with_map(text: str) -> tuple[str, list[int]]:
     return "".join(out_chars), out_idx
 
 
+def _elision_parts(quote: str) -> list[str] | None:
+    """Split an elided quote into its kept parts, normalized.
+
+    Returns ``None`` when the quote isn't elided, or when any part is too short
+    to carry a match on its own — a two-word fragment would verify against
+    almost any page, which is worse than the false negative it fixes.
+    """
+    if not _ELISION_RE.search(quote):
+        return None
+    parts = [_normalize(p) for p in _ELISION_RE.split(quote)]
+    if len(parts) < 2 or any(len(p) < _MIN_ELISION_PART for p in parts):
+        return None
+    return parts
+
+
+def _elided_match(norm_text: str, parts: list[str]) -> bool:
+    """True when every part appears in `norm_text`, in order, without the model
+    having stitched together fragments from opposite ends of the page.
+
+    Order and gap are both load-bearing. Without them this trades a
+    false-negative problem for a false-positive one: any two phrases that happen
+    to share a page would "verify" as a quote that was never written.
+    """
+    idx = 0
+    for i, part in enumerate(parts):
+        pos = norm_text.find(part, idx)
+        if pos < 0:
+            return False
+        if i and pos - idx > _MAX_ELISION_GAP:
+            return False
+        idx = pos + len(part)
+    return True
+
+
 def verify_quote(page_texts: dict[int, str], page: int | None, quote: str) -> dict:
     """Check ``quote`` against its cited page, then the page ±1 (OCR noise, page-marker
     drift), and report the outcome.
@@ -118,6 +164,11 @@ def verify_quote(page_texts: dict[int, str], page: int | None, quote: str) -> di
     Legacy path only (#529): a `quote_locator`-carrying fact is resolved by `resolve_quote`
     instead. This is kept for a pre-#529 extraction staged before the change and re-run through
     post-flight by `watchdog bark`.
+
+    Handles an **elided** quote — one where the model kept both ends and cut the middle with
+    an ellipsis (#630). Those used to fail categorically: measured over the archived benchmark
+    extractions, elided quotes verified at 0.9% against 92.7% for the rest, and the rejected
+    ones were accurate quotations of real provisions.
 
     Returns ``{"verified": None}`` when there's nothing to check (no page cited, or the
     page text isn't available at all — e.g. a `watchdog bark` re-run with no chew-time
@@ -138,9 +189,18 @@ def verify_quote(page_texts: dict[int, str], page: int | None, quote: str) -> di
     if not norm_quote:
         return {"verified": None}
 
+    parts = _elision_parts(quote)
     for candidate in (page, page - 1, page + 1):
         text = page_texts.get(candidate)
-        if text and norm_quote in _normalize(text):
+        if not text:
+            continue
+        norm_text = _normalize(text)
+        # On each page the whole quote is tried first, so the elided form can
+        # recover an otherwise-lost match but never override a real one. Pages
+        # are still searched cited-first, so an elided match on the cited page
+        # is preferred over a whole-quote match on a neighbour — which is the
+        # right way round: the model told us which page it read.
+        if norm_quote in norm_text or (parts and _elided_match(norm_text, parts)):
             result = {"verified": True}
             if candidate != page:
                 result["found_page"] = candidate

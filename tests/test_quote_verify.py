@@ -61,6 +61,75 @@ def test_page_out_of_range_of_available_text_is_unverified_not_unchecked():
     assert result == {"verified": False}
 
 
+# ── verify_quote: elided quotes (#630) ─────────────────────────────────────
+
+_ELISION_PAGE = {
+    3: ("THIS COURT ORDERS that the payment due on March 30, 2021 in the amount of "
+        "$842,018.34 in respect of LU's pro rata portion of assessment fees payable to "
+        "the Pension Benefits Guarantee Fund relating to the Pension Plan is stayed and "
+        "suspended until further order of this Court."),
+}
+
+
+@pytest.mark.parametrize("ellipsis", ["…", "..."])
+def test_elided_quote_verifies_when_parts_appear_in_order(ellipsis):
+    quote = f"the payment due on March 30, 2021 in the amount of $842,018.34 {ellipsis} is stayed and suspended"
+    assert verify_quote(_ELISION_PAGE, 3, quote) == {"verified": True}
+
+
+def test_elided_quote_with_no_spaces_around_the_ellipsis_verifies():
+    # "LU... shall be permitted" — models elide without padding too.
+    pages = {2: "LU and the Administrator shall be permitted to transfer commuted values."}
+    assert verify_quote(pages, 2, "LU and the Administrator... shall be permitted to transfer") == {
+        "verified": True}
+
+
+def test_elided_quote_with_parts_out_of_order_is_unverified():
+    quote = "is stayed and suspended … the payment due on March 30, 2021 in the amount of"
+    assert verify_quote(_ELISION_PAGE, 3, quote) == {"verified": False}
+
+
+def test_elided_quote_stitching_distant_fragments_is_unverified():
+    filler = "Some entirely unrelated intervening provision. " * 30   # > _MAX_ELISION_GAP
+    pages = {3: f"the payment due on March 30, 2021 {filler} is stayed and suspended"}
+    quote = "the payment due on March 30, 2021 … is stayed and suspended"
+    assert verify_quote(pages, 3, quote) == {"verified": False}
+
+
+def test_elided_quote_with_a_too_short_part_is_unverified():
+    # A fragment this small would match almost any page; better a false negative.
+    pages = {3: "The board approved the measure and the total was $1,000,000 in the end."}
+    assert verify_quote(pages, 3, "The board … was $1,000,000 in the end") == {"verified": False}
+
+
+def test_elision_resuming_on_a_currency_figure_is_detected():
+    # The cut very often lands just before a number, so the character after the
+    # ellipsis is "$" rather than a word character.
+    pages = {3: "The total assessed against the university was $842,018.34 for the period."}
+    quote = "The total assessed against the university … $842,018.34 for the period"
+    assert verify_quote(pages, 3, quote) == {"verified": True}
+
+
+def test_trailing_ellipsis_is_truncation_not_elision():
+    # No word character after the ellipsis, so this is not treated as elided and
+    # keeps its pre-#630 behaviour: it still matches as a plain prefix.
+    assert verify_quote(_ELISION_PAGE, 3, "the payment due on March 30, 2021 …") == {
+        "verified": True}
+
+
+def test_elided_quote_resolves_on_an_adjacent_page():
+    pages = {2: "irrelevant", 3: _ELISION_PAGE[3]}
+    quote = "the payment due on March 30, 2021 in the amount of $842,018.34 … is stayed and suspended"
+    assert verify_quote(pages, 4, quote) == {"verified": True, "found_page": 3}
+
+
+def test_unelided_quote_that_never_appears_is_still_unverified():
+    # Guards the change: adding elision handling must not soften the plain path.
+    pages = {3: "Something entirely different."}
+    assert verify_quote(pages, 3, "Total revenue … for the year was $1,000,000") == {
+        "verified": False}
+
+
 # ── _normalize_with_map (must never drift from _normalize, #529) ────────────
 
 @pytest.mark.parametrize("text", [
