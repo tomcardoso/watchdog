@@ -37,6 +37,7 @@ Flag a contradiction only when **both** sides are directly stated in their docum
 
 Do NOT flag:
 - a discrepancy where either side is marked `(inferred)` — an inferred value conflicting with a stated one is a reasoning error, not a finding
+- a discrepancy on a figure annotated `not found in the document — may be derived` — that note is this pipeline's own deterministic check reporting that the number appears nowhere in its source document, so the conflict is between a value the extractor computed and one a document printed, not between two documents. Honour it even where the claim is otherwise unmarked: `(inferred)` is self-reported and heavily under-used, whereas this note was verified. It covers only the figures it names — a claim carrying it can still contradict on some other value it does state — and the separate `found on another page` note is not a reason to withhold anything, since that figure is real and printed.
 - a value that was simply **updated** between documents, where both are true at their own dates: a share price, a headcount, a balance, an address, a role someone held and then left. A contradiction is two claims that cannot both be true; a change over time is chronology. If the two documents' dates explain the difference, it is not a contradiction.
 - rounding, restatement in different units, or trivially different phrasings of the same fact
 - name and spelling variations (that is Job 1)
