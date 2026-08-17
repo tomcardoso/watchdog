@@ -95,6 +95,7 @@ Constants and choices that were fitted against a *specific* benchmark run and ar
 | Item | Trigger to revisit |
 |---|---|
 | `_CONTAINMENT_SUPPRESS` = 0.6 in `pipeline/verify.py` (near-duplicate suppression, D199) | **The next benchmark run that exercises the verifier.** The value was fitted against the 220 additions of run `2026-08-09-1523`, whose `prompts/verify.md` has since been rewritten (#619). The population it was tuned on no longer exists, so refit against the new run's additions before quoting it as tuned. Nothing breaks meanwhile — no material fact was lost anywhere from 0.9 down to 0.5 in the original sweep. |
+| The "a computed figure is `inferred`" rule in `prompts/extract_instructions.md` (D203) | **The next benchmark run that exercises the extractor.** The change shipped unmeasured — it rests on a reading of the old sentence, not on evidence the model acted on that reading. Check two rates together against the archived baseline (`inferred` at 0.09% of key facts, `figures_unverified` at 0.9%): the first should rise, and the second should *fall*, since `figure_verify` exempts `inferred` facts. A rise in both means the prompt is being read as an extra duty rather than a relabelling. |
 
 ## Releasing to PyPI
 

@@ -416,6 +416,49 @@ def test_section_document_block_is_cached_only_when_the_verifier_will_reread_it(
     assert cached[2]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
 
 
+def test_extract_prompt_tags_a_computed_figure_as_inferred():
+    """#622: the `basis` paragraph closed by telling the model how to *format* a computed figure
+    ("name its components in the fact text") without ever saying to tag one — and 69 `stated`
+    facts on disk carry a dollar figure that appears nowhere in their source document. The
+    formatting rule must read as a worked example of the inferred rule, not an alternative to it."""
+    p = prompts.build_extract_prompt(
+        pages_text="x", skill_text="", sidecar=None, brief=None, known_document_types=[])
+    text = _flat(p)
+    assert "the fact carrying it is `inferred`, so tag it AND name the figure's components" in text
+    assert "Naming the components is not a substitute for the tag" in text
+
+
+# ── the contradiction gate's derived-figure signal (#622/D203) ───────────────
+
+def test_reconcile_prompt_withholds_contradictions_on_derived_figures():
+    """#622: `basis: inferred` is self-reported and near-inert (13 of 15,059 archived facts),
+    so gating the contradiction check on it alone let computed sums be compared against printed
+    ones. The gate now also honours `figure_verify`'s deterministic annotation."""
+    p = prompts.build_reconcile_prompt({"pairs": [], "entities": []})
+    assert "not found in the document — may be derived" in p
+    assert "`(inferred)`" in p                      # the self-reported gate is kept, not replaced
+
+
+def test_reconcile_gate_quotes_the_phrase_the_renderer_actually_emits():
+    """The seam that breaks silently: the prompt tells the model to look for a phrase, and
+    `_figure_verification_note` is what puts that phrase into the claims bundle (both the vault
+    and the reconcile bundle render through `_render_evidence_fragments`). Reword either side
+    alone and the gate stops firing with nothing to show for it."""
+    from watchdog.pipeline.write_vault import _figure_verification_note
+
+    p = prompts.build_reconcile_prompt({"pairs": [], "entities": []})
+
+    derived = _figure_verification_note({"figures_unverified": ["360300000"]})
+    assert "not found in the document — may be derived" in derived
+
+    off_page = _figure_verification_note({"figures_off_page": {"21406000": [7]}})
+    assert "found on another page" in off_page
+
+    # …and the prompt names both — the first to withhold on, the second explicitly not to.
+    for phrase in ("not found in the document — may be derived", "found on another page"):
+        assert phrase in p
+
+
 def test_prompt_templates_not_in_skills_catalog():
     """The user-facing guarantee: prompt templates are invisible to the classifier."""
     catalog = set(skills_catalog.catalog())
