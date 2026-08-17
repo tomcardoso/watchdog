@@ -416,6 +416,18 @@ def test_section_document_block_is_cached_only_when_the_verifier_will_reread_it(
     assert cached[2]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
 
 
+def test_extract_prompt_tags_a_computed_figure_as_inferred():
+    """#622: the `basis` paragraph closed by telling the model how to *format* a computed figure
+    ("name its components in the fact text") without ever saying to tag one — and 69 `stated`
+    facts on disk carry a dollar figure that appears nowhere in their source document. The
+    formatting rule must read as a worked example of the inferred rule, not an alternative to it."""
+    p = prompts.build_extract_prompt(
+        pages_text="x", skill_text="", sidecar=None, brief=None, known_document_types=[])
+    text = _flat(p)
+    assert "the fact carrying it is `inferred`, so tag it AND name the figure's components" in text
+    assert "Naming the components is not a substitute for the tag" in text
+
+
 # ── the contradiction gate's derived-figure signal (#622/D203) ───────────────
 
 def test_reconcile_prompt_withholds_contradictions_on_derived_figures():
