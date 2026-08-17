@@ -194,7 +194,7 @@ facts:
     fact: >
       Board Counsel's fees paid by the Applicant after the date of the order are capped at $250,000
       plus HST, pending further order.
-    page: 12
+    page: 11
     paragraph: 29
     quote: "the fees and disbursement of Board Counsel paid by the Applicant from and after the date of this Order shall not exceed the aggregate amount of $250,000, plus HST, pending further Order of the Court."
   - id: F15
@@ -427,7 +427,7 @@ must_not_miss:
       Board Counsel's fees are capped at $250,000 plus HST.
     quote:
       - "the fees and disbursement of Board Counsel paid by the Applicant from and after the date of this Order shall not exceed the aggregate amount of $250,000, plus HST, pending further Order of the Court."
-    page: 12
+    page: 11
     paragraph: 29
     why: >
       A discrete dollar cap at the end of a long paragraph about professional fees.

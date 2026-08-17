@@ -20,6 +20,10 @@ reference." That limitation is recorded in #361 and is not negotiable.
 - **From the source PDFs.** Never from a pipeline extraction, never from chewed text. A key built
   from the pipeline's own output inherits the pipeline's blind spots, so the extractor is never
   scored on anything the pipeline already drops.
+- **The prompt that does the drafting is [`drafting-prompt.md`](drafting-prompt.md).** Use it when
+  adding a document to the corpus or widening an existing key, so every key is drafted to the same
+  standard — a key drafted to a different standard than its neighbours makes cross-document
+  comparisons meaningless.
 - **The scanned Initial Order was read visually, not OCR'd first** — same reason, one stage earlier.
 - **`must_not_miss` for the dense 70-page report was built against a mechanical inventory** — all 27
   note headings enumerated programmatically with page numbers, so a buried item cannot be absent
@@ -40,6 +44,20 @@ reference." That limitation is recorded in #361 and is not negotiable.
 `quote` and `aliases` exist to support the **three grounding tiers** (verbatim / credited
 normalization / ungrounded) rather than exact match. "LU" for "Laurentian University of Sudbury" is
 a credited normalization, not a miss.
+
+**Page cites and quote spans.** The page field is spelled `page` for a single page and `pages` for
+a list; both are accepted everywhere. A `quote` in either section may be one string or a **list of
+spans**, and a list is required wherever the document has no contiguous run of text to quote:
+
+- the sentence crosses a page break
+- the conversion scatters a table row across columns, so the row label and its figure have to be
+  quoted separately (`["Total Receipts", "29,514"]`)
+- the conversion mangles the page badly enough that only fragments survive
+
+In all three, `fact`/`item` carries the truth and the spans carry what the conversion renders —
+the M1.1 precedent in `initial-order-2021-02-01.yaml`. **Every quote in every key is machine-checked
+to appear on its cited page in the frozen chew**; a quote that cannot be located there is a defect
+in the key, not evidence about the pipeline.
 
 ### `must_not_miss` anchoring (#573)
 

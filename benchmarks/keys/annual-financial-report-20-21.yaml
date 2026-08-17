@@ -234,17 +234,33 @@ facts:
       accounts payable $35; legal fees $4,903; Monitor fees $2,800; consulting fees $223;
       interest and finance costs $881.
     page: 58
-    quote: "Legal fees   $       4,903 \nMonitor fees           2,800 \nConsulting fees              223"
+    quote:
+      - "Legal fees"
+      - "4,903"
+      - "Monitor fees"
+      - "2,800"
+      - "Consulting fees"
+      - "223"
+    note: >
+      The conversion collapses this table and fuses stray words from the neighbouring column
+      into the figures ("4,903 seeking to,"), so no contiguous label-plus-figure span exists.
+      Each label and figure is quoted separately; `fact` carries the association.
   - id: F11
     fact: "Employee compensation costs of $59,568 thousand sit within liabilities subject to compromise."
     page: 48
-    quote: "Employee compensation costs  59,568"
+    quote:
+      - "Employee compensation costs"
+      - "59,568"
   - id: F12
     fact: >
       The auditors' report contains a Material Uncertainty Related to Going Concern, pointing to
       Note 2 and the CCAA stay extended to 31 May 2022. The opinion is NOT modified in respect of it.
-    page: 24
-    quote: "Material Uncertainty Related to Going Concern … Our opinion is not modified in respect of this matter."
+    pages:
+      - 24
+      - 25
+    quote:
+      - "Material Uncertainty Related to Going Concern"
+      - "Our opinion is not modified in respect of this matter."
   - id: F13
     fact: >
       The financial statements were AMENDED after issuance. Statements originally reported on
@@ -265,7 +281,18 @@ facts:
       for "items that had not been properly recognized, measured or presented". Opening net assets
       were restated from $53,164 thousand as previously reported to $52,010 thousand.
     page: 30
-    quote: "Net assets (deficiency), beginning of year, previously reported $ (14,544) … $ 53,164 … Restatement adjustments (note 25) … Net assets (deficiency), beginning of year, restated (17,761) … 52,010"
+    quote:
+      - "beginning of year, previously reported"
+      - "(14,544)"
+      - "53,164"
+      - "Restatement adjustments (note 25)"
+      - "restated (17,761)"
+      - "52,010"
+    note: >
+      The Statement of Changes in Net Assets converts badly — row labels are duplicated and
+      figures land under the wrong headings — so the restatement line has no readable
+      contiguous span. Each label and figure is quoted separately; `fact` carries which
+      figure belongs to which line.
   - id: F16
     fact: >
       MD&A attributes the insolvency to LONG-RUN causes, not the pandemic: "many years of

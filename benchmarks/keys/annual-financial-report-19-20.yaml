@@ -127,7 +127,10 @@ facts:
       respects" — dated 30 October 2020 at Sudbury. The opinion carries NO going-concern
       modification and no emphasis of matter.
     pages: [16, 18]
-    quote: "In our opinion, the accompanying financial statements present fairly, in all material respects, the consolidated financial position of Laurentian University of Sudbury as at April 30, 2020 … Sudbury, Canada October 30, 2020"
+    quote:
+      - "In our opinion, the accompanying financial statements present fairly, in all material respects, the consolidated financial position of Laurentian University of Sudbury as at April 30, 2020"
+      - "Sudbury, Canada"
+      - "October 30, 2020"
     note: >
       The single most consequential fact in this document. Three months later the Monitor told the
       court LU was insolvent and could not make payroll. Compare the FY20-21 report, whose audit

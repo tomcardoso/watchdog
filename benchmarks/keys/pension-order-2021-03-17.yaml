@@ -159,7 +159,16 @@ facts:
   - id: F1
     fact: "The order was made Wednesday, 17 March 2021 by Chief Justice Morawetz."
     page: 1
-    quote: "THE HONOURABLE CHIEF JUSTICE MORAWETZ ) WEDNESDAY, THE 17th DAY OF MARCH, 2021"
+    quote:
+      - "THE HONOURABLE CHIEF"
+      - "JUSTICE MORAWETZ"
+      - "WEDNESDAY, THE 17th"
+      - "DAY OF MARCH, 2021"
+    note: >
+      The PDF sets the judge and the date in a two-column header read across the page. The
+      conversion reads it column-wise into a two-row table, so even "THE HONOURABLE CHIEF
+      JUSTICE MORAWETZ" has no contiguous counterpart. `fact` carries the truth, the spans
+      carry what the conversion renders — the M1.1 precedent.
 
   - id: F2
     fact: "The motion was brought by LU under the Companies' Creditors Arrangement Act (CCAA)."
@@ -206,9 +215,16 @@ facts:
     fact: >
       An Interim CV Applicant who does not elect within 30 days is DEEMED TO HAVE WITHDRAWN the
       transfer application and retains only a deferred pension.
-    page: 2
-    quote: "shall be deemed to have withdrawn their application for a transfer of their commuted value and shall retain their entitlement to a deferred pension from the Pension Plan"
-    note: "Silence forfeits the transfer. A consequential default rule, easy to skim past."
+    pages:
+      - 2
+      - 3
+    quote:
+      - "shall be deemed to have withdrawn their application for"
+      - "a transfer of their commuted value and shall retain their entitlement to a deferred pension from the Pension Plan"
+    note: >
+      Silence forfeits the transfer. A consequential default rule, easy to skim past. The
+      sentence runs across the page 2/3 break, so it is quoted as the two spans the
+      conversion actually holds.
 
   - id: F9
     fact: >
@@ -401,7 +417,9 @@ must_not_miss:
     quote:
       - "Any such  Interim CV Applicant who does not make an election in writing to LU within 30 days of the date upon which notice of this Order is provided to them, shall be deemed to have withdrawn their application for"
       - "a transfer of their commuted value and shall retain their entitlement to a deferred pension from the Pension Plan."
-    page: 2
+    pages:
+      - 2
+      - 3
     location: end of paragraph 4, crossing the page 2/3 boundary
     why: >
       The consequence clause runs across a page break — precisely where section-chunked

@@ -217,7 +217,7 @@ facts:
     quote: "estimated total combined receipts of approximately $29.5 million … Estimated total combined disbursements are forecast to be approximately $58.5 million … This results in projected net cash outflow (net of Segregated Account activity) of approximately $29.0 million."
   - id: F9
     fact: "At 30 April 2020 LU held ~$52.8 million in endowments; investment accounts totalled $54.7 million."
-    page: 24
+    page: 20
     paragraph: 120
     quote: "At April 30, 2020, the balance in these investment accounts was $54.7 million … The majority of this amount is designated to support the $52.8 million in endowments held by LU"
     note: >
@@ -226,12 +226,12 @@ facts:
       produced a FALSE POSITIVE.
   - id: F10
     fact: "LU had minimal cash at 30 April 2020 — ~$2.6M cash and $1.9M short-term investments."
-    page: 24
+    page: 20
     paragraph: 118
     quote: "As at April 30, 2020, LU had minimal cash on hand – approximately $2.6 million in cash and $1.9 million in short-term investments."
   - id: F11
     fact: "Net assets fell $32.9 million, from $69.6 million in FY2014-15."
-    page: 29
+    page: 26
     paragraph: 154
     quote: "Net assets have decreased by $32.9 million from $69.6 million in fiscal year 2014-2015"
     note: "Dates the decline to 2014-15 — six years before COVID."
@@ -263,12 +263,12 @@ facts:
     quote: "LU administers three employee pension and benefit plans: (i) a registered defined benefit pension plan (the \"DB Pension Plan\"); (ii) a supplementary unfunded retirement plan (the \"SuRP\") and (iii) a retirement health benefits plan (the \"RHBP\")."
   - id: F16
     fact: "LU's interest rate swaps produced a net cash OUTFLOW of approximately $340,000 per month."
-    page: 28
+    page: 24
     paragraph: 147
     quote: "The net impact of these interest rate swap transactions has been a net cash outflow from LU of approximately $340,000 monthly."
   - id: F17
     fact: "LU drew $14.4 million on the Desjardins line of credit as at 30 April 2020."
-    page: 26
+    page: 21
     paragraph: 126
     quote: "As at April 30, 2020, LU had drawn $14.4 million against the Desjardins Line of Credit."
   - id: F18
@@ -352,9 +352,12 @@ must_not_miss:
       affidavit's stated swearing date.
     quote:
       - "REPORT OF THE PROPOSED MONITOR January 30, 2021"
-    page: 3
+      - "the \"Haché Affidavit\") sworn January 30, 2020 (the \"Initial Order Affidavit\")"
+    pages:
+      - 1
+      - 3
     paragraph: 8
-    location: Terms of Reference
+    location: cover page; Terms of Reference
     why: >
       A DATE ERROR IN THE SOURCE. Recorded here so scoring can tell the difference between an
       extractor faithfully reporting the document's stated (wrong) date — which is CORRECT
@@ -421,7 +424,7 @@ must_not_miss:
       The interest rate swaps bled ~$340,000 per month in net cash outflow.
     quote:
       - "The net impact of these interest rate swap transactions has been a net cash outflow from LU of approximately $340,000 monthly."
-    page: 28
+    page: 24
     paragraph: 147
     why: >
       ~$4M a year, and the swap termination later cost $24.7M (see doc 3). One sentence at the
@@ -434,7 +437,7 @@ must_not_miss:
     quote:
       - "Further, in accordance with a guarantee dated June 27, 2018, LU guaranteed the obligations owed by the SGA to TD pursuant to a Letter Agreement between the SGA and TD dated April 10, 2018 in the amount of $8,500,000."
       - "This indebtedness was incurred by the SGA to provide funding for a new student centre."
-    page: 28
+    page: 24
     paragraph: 144
     why: >
       Names the counterparty, amount and instrument date. Buried in the debt schedule.
@@ -520,7 +523,7 @@ must_not_miss:
       LU's satellite campus in Barrie, Ontario has been closed since 2019.
     quote:
       - "At one time, LU operated a satellite campus in Barrie, Ontario which has been closed since 2019."
-    page: 6
+    page: 5
     paragraph: 26
     why: >
       Prior retrenchment, mentioned once in a scene-setting paragraph.
@@ -530,7 +533,7 @@ must_not_miss:
       LU is one of twenty public universities in Ontario.
     quote:
       - "LU is one of twenty public universities in Ontario."
-    page: 6
+    page: 5
     paragraph: 26
     why: >
       Prior retrenchment, mentioned once in a scene-setting paragraph.
@@ -541,7 +544,7 @@ must_not_miss:
       $450,000.
     quote:
       - "The furlough days provided LU with a one-time cash benefit of $450,000"
-    page: 20
+    page: 14
     paragraph: 83
     why: >
       The scale of the cost-cutting versus the scale of the hole — $450K against a $29M
@@ -570,11 +573,12 @@ must_not_miss:
       - "The effect of this amendment decreased the amount of funding distributed to the Federated Universities."
     pages:
       - 9
-      - 30
+      - 31
     paragraph: 51, 163(iv)
     why: >
       LU was already squeezing the federated universities two years before disclaiming them
-      entirely. Requires joining a definition on p. 9 with a cost-cutting list on p. 30.
+      entirely. Requires joining a definition on p. 9 with a cost-cutting list that begins on
+      p. 30 and carries the quoted sub-item onto p. 31.
 
   - id: M14
     item: >
