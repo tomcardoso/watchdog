@@ -197,6 +197,19 @@ def test_extract_prompt_forbids_silent_date_correction():
     assert "never quietly swap in the date you infer was intended" in text
 
 
+def test_extract_prompt_warns_about_conversion_artifacts():
+    """#631: Docling can merge table rows during conversion (e.g. two payroll line items
+    fused into one, scattering their figures), so the extractor needs to know its input is
+    an automated conversion that can lose table structure — and to decline a label/figure
+    pairing it can't plausibly stand behind, rather than the general TRANSCRIBE, DON'T
+    CORRECT rule alone, which governs source *content*, not conversion-introduced structure."""
+    p = prompts.build_extract_prompt(
+        pages_text="x", skill_text="", sidecar=None, brief=None, known_document_types=[])
+    text = _flat(p)
+    assert "CONVERSION ARTIFACTS" in text
+    assert "rows can merge" in text
+
+
 def test_extract_prompt_carries_no_vault_state():
     """Extraction is stateless (#381/D118): no EXISTING_ENTITIES / EXISTING_TIMELINE block in
     any content block — entity resolution and the contradiction check moved to the finalizer."""
