@@ -159,16 +159,7 @@ facts:
   - id: F1
     fact: "The order was made Wednesday, 17 March 2021 by Chief Justice Morawetz."
     page: 1
-    quote:
-      - "THE HONOURABLE CHIEF"
-      - "JUSTICE MORAWETZ"
-      - "WEDNESDAY, THE 17th"
-      - "DAY OF MARCH, 2021"
-    note: >
-      The PDF sets the judge and the date in a two-column header read across the page. The
-      conversion reads it column-wise into a two-row table, so even "THE HONOURABLE CHIEF
-      JUSTICE MORAWETZ" has no contiguous counterpart. `fact` carries the truth, the spans
-      carry what the conversion renders — the M1.1 precedent.
+    quote: "THE HONOURABLE CHIEF JUSTICE MORAWETZ ) WEDNESDAY, THE 17th DAY OF MARCH, 2021"
 
   - id: F2
     fact: "The motion was brought by LU under the Companies' Creditors Arrangement Act (CCAA)."
@@ -215,16 +206,9 @@ facts:
     fact: >
       An Interim CV Applicant who does not elect within 30 days is DEEMED TO HAVE WITHDRAWN the
       transfer application and retains only a deferred pension.
-    pages:
-      - 2
-      - 3
-    quote:
-      - "shall be deemed to have withdrawn their application for"
-      - "a transfer of their commuted value and shall retain their entitlement to a deferred pension from the Pension Plan"
-    note: >
-      Silence forfeits the transfer. A consequential default rule, easy to skim past. The
-      sentence runs across the page 2/3 break, so it is quoted as the two spans the
-      conversion actually holds.
+    page: 2
+    quote: "shall be deemed to have withdrawn their application for a transfer of their commuted value and shall retain their entitlement to a deferred pension from the Pension Plan"
+    note: "Silence forfeits the transfer. A consequential default rule, easy to skim past."
 
   - id: F9
     fact: >
@@ -317,38 +301,6 @@ facts:
 # No internal contradiction in this document. The scored contradiction pair is documents 1 and 2
 # (see CORPUS-v1.md). Recorded explicitly so a condition that INVENTS a contradiction here is
 # scored as a false positive rather than passing unnoticed.
-  - id: F20
-    fact: >
-      The order arises within Laurentian University of Sudbury's CCAA proceeding for a plan of
-      compromise or arrangement, not a standalone pension dispute.
-    page: 1
-    location: "case caption, second recital"
-    quote: "AND IN THE MATTER OF A PLAN OF COMPROMISE OR ARRANGEMENT OF LAURENTIAN UNIVERSITY OF SUDBURY"
-  - id: F21
-    fact: >
-      Service on the parties is confirmed by the Affidavit of Service of Derek Harland, sworn March
-      10, 2021.
-    page: 1
-    location: "recital, carrying over from p1"
-    quote:
-      - "the Affidavit of Service of Derek Harland sworn March 10,"
-      - "2021,"
-  - id: F22
-    fact: >
-      On re-election, an Interim CV Applicant may choose to receive an immediate pension, a deferred
-      pension, or a commuted value transfer based on the Transfer Ratio.
-    page: 2
-    location: "para 4, Application of the Transfer Ratio for Commuted Value Transfers"
-    quote: "to elect to either receive an immediate or deferred pension, as applicable, or a commuted value transfer based on the Transfer Ratio."
-  - id: F23
-    fact: >
-      LU is required to give each Interim CV Applicant a copy of the order itself and advise them of
-      the 30-day election deadline, and written election must be made to LU.
-    page: 2
-    location: "para 4, Application of the Transfer Ratio for Commuted Value Transfers"
-    quote:
-      - "Each such Interim CV Applicant shall receive a copy of this Order from LU"
-      - "such election shall be  made in writing to LU"
 contradictions: []
 
 # Buried items — things a hurried reader (or a budget-constrained extractor) drops first.
@@ -449,9 +401,7 @@ must_not_miss:
     quote:
       - "Any such  Interim CV Applicant who does not make an election in writing to LU within 30 days of the date upon which notice of this Order is provided to them, shall be deemed to have withdrawn their application for"
       - "a transfer of their commuted value and shall retain their entitlement to a deferred pension from the Pension Plan."
-    pages:
-      - 2
-      - 3
+    page: 2
     location: end of paragraph 4, crossing the page 2/3 boundary
     why: >
       The consequence clause runs across a page break — precisely where section-chunked

@@ -294,6 +294,580 @@ facts:
     page: 39
     paragraph: 208
     quote: "The Proposed Monitor notes the relationship between the Applicant and LUFA is currently strained."
+  - id: F22
+    fact: >
+      The Report relies on unaudited financial information provided by LU, and the Proposed Monitor
+      expressly states it has not audited or verified that information and gives no opinion or
+      assurance on it.
+    page: 2
+    location: "para 4, Terms of Reference and Disclaimer"
+    quote:
+      - "the Proposed Monitor  has  not  audited  or  otherwise  attempted  to  verify  the  accuracy  or"
+      - "completeness of the Information"
+      - "the Proposed Monitor expresses no opinion or other form of assurance contemplated"
+  - id: F23
+    fact: >
+      Two elected student voting member positions on LU's Senate are currently vacant, in addition to
+      the four vacant Board voting positions already noted.
+    page: 5
+    location: "para 24, Governance Structure"
+    quote:
+      - "Two elected student voting member"
+      - "positions are vacant."
+  - id: F24
+    fact: >
+      LU's student body in the 2020-2021 fall semester was approximately 8,200 domestic and
+      international undergraduates (about 6,250 full-time equivalents) and about 1,100 graduate
+      students (about 830 FTEs).
+    page: 6
+    location: "para 28, Operations"
+    quote:
+      - "approximately 8,200 domestic and international undergraduate students (or"
+      - "approximately 6,250 full time equivalents) enrolled in the 2020-2021 fall semester"
+      - "approximately 1,100 domestic and international graduate students (or approximately"
+      - "830 full time equivalents) enrolled during the 2020-2021 fall semester"
+  - id: F25
+    fact: >
+      LU owns the two buildings NOSM occupies on LU's Sudbury campus and leases those buildings to
+      NOSM.
+    page: 7
+    location: "para 37, Northern Ontario School of Medicine"
+    quote:
+      - "LU owns the two buildings"
+      - "that NOSM occupies on the Sudbury campus and leases the buildings to NOSM."
+  - id: F26
+    fact: >
+      LU processes payroll for approximately 128 SNOLab employees (as of December 2020) and provides
+      their benefit programs.
+    page: 10
+    location: "para 54, SNOLab"
+    quote:
+      - "LU  processes  the  payroll  for"
+      - "approximately  128  SNOLab  employees,  as  of  December  2020  and  provides  benefit"
+  - id: F27
+    fact: >
+      LU processes payroll for MIRARCO's 19 employees and provides their benefit programs.
+    page: 10
+    location: "para 58, MIRARCO"
+    quote:
+      - "LU processes the payroll for MIRARCO"
+      - "19 employees, provides their benefit programs"
+  - id: F28
+    fact: >
+      LU processes payroll for CEMI's 5 employees and provides their benefit programs.
+    page: 11
+    location: "para 63, CEMI"
+    quote:
+      - "LU processes the payroll for CEMI"
+      - "5 employees, provides their benefit programs and"
+  - id: F29
+    fact: >
+      As at December 30, 2020, LU employed approximately 1,751 people, split into roughly 758
+      full-time and 993 fixed-term/part-time/student employees, across LUFA (612), LUSU (268), CUPE
+      (305), LUAPSA (134) and 432 non-unionized part-time/student staff.
+    page: 12
+    location: "para 71, Employees"
+    quote:
+      - "LU  employed  approximately  1,751  people."
+      - "approximately 758 are full-time employees and approximately 993 are fixed term, part"
+      - "time and student employees"
+  - id: F30
+    fact: >
+      The number of part-time student employees fell to roughly 200 in November 2020, down from about
+      470 in November 2019, reflecting the shift to remote study during the pandemic.
+    page: 12
+    location: "para 72, Employees"
+    quote:
+      - "there  were  approximately  200  student"
+      - "employees in November 2020 vs. 470 in November 2019."
+  - id: F31
+    fact: >
+      There are currently approximately 102 active unresolved grievances filed by LUFA against LU.
+    page: 13
+    location: "para 80, LUFA"
+    quote:
+      - "there are currently approximately 102 active"
+      - "unresolved  grievances  filed  by  LUFA"
+  - id: F32
+    fact: >
+      The 2020 LUSU concessions (reassignment, transfer, and retirement provisions) produced 11.5
+      position redundancies, generating approximately $800,000 in total annual savings.
+    page: 14
+    location: "para 83, LUSU"
+    quote:
+      - "the reassignment, transfer and retirement provisions resulted in 11.5"
+      - "position redundancies in 2020 generating total annual savings of approximately $800,000."
+  - id: F33
+    fact: >
+      In September 2019, CUPE agreed to a 1% total compensation increase that was allocated entirely
+      to scholarship payments, with a 0% salary increase over the two-year CUPE agreement term.
+    page: 14
+    location: "para 85, CUPE"
+    quote:
+      - "CUPE agreed to a total compensation increase of 1%. The entirety of"
+      - "the increase was allocated to scholarship payments, with a 0% increase in salary over the"
+      - "two-year term of the CUPE CA."
+  - id: F34
+    fact: >
+      The Proposed Monitor states that LU will seek relief in the CCAA proceeding to stay payment of
+      any pre-filing or post-filing special payments to the DB Pension Plan, to preserve liquidity.
+    page: 15
+    location: "para 91, DB Pension Plan"
+    quote:
+      - "The Proposed Monitor understands that in light of its current financial situation, LU will"
+      - "be seeking relief from this Court in the CCAA proceedings to stay the payment of any pre"
+      - "filing or post-filing special payments to the DB Pension Plan"
+  - id: F35
+    fact: >
+      The RHBP (retirement health benefits plan) covers approximately 866 active enrolled employees
+      not yet collecting benefits, and about 358 retirees currently eligible to collect benefits.
+    pages: [15, 16]
+    location: "para 97, RHBP"
+    quote:
+      - "There are currently 866 active employees"
+      - "enrolled in and contributing to the RHBP that are not yet collecting benefits. There are"
+      - "currently 358 retirees who are eligible to collect benefits."
+  - id: F36
+    fact: >
+      LU does not prepare interim monthly or quarterly financial statements; the audited annual
+      financial statements for the year ended April 30, 2020 are the most recent LU has available,
+      meaning the CCAA filing relies on figures roughly nine months old.
+    page: 16
+    location: "para 104, Financial Position"
+    quote:
+      - "LU does not prepare interim monthly or quarterly financial statements."
+      - "The audited annual"
+      - "financial  statements  for  the  year  ended  April  30,  2020  are  the  most  recent  available"
+      - "financial statements."
+  - id: F37
+    fact: >
+      LU's consolidated results show an "excess/(deficiency) of revenues over expenses" of
+      $(1,986,000) in 2015-16, $(1,822,000) in 2016-17, a rare surplus of $2,060,000 in 2017-18, then
+      deficits of $(4,100,000) in 2018-19 and $(3,120,000) in 2019-20.
+    page: 17
+    location: "para 105, five-year financial summary table"
+    quote:
+      - "Excess / (deficiency) of revenues over expenses"
+      - "(1,986)"
+      - "(1,822)"
+      - "2,060"
+      - "(4,100)"
+      - "(3,120)"
+  - id: F38
+    fact: >
+      As at April 30, 2020, LU had recorded liabilities with a book value totalling approximately
+      $321.8 million.
+    page: 20
+    location: "para 123, Liabilities"
+    quote:
+      - "As at April 30, 2020, LU had recorded liabilities with a book value totaling approximately"
+      - "$321.8 million."
+  - id: F39
+    fact: >
+      LU's total assets as at April 30, 2020 were approximately $358.5 million.
+    page: 19
+    location: "para 117, Consolidated Statement of Financial Position"
+    quote:
+      - "TOTALASSETS"
+      - "358,520"
+  - id: F40
+    fact: >
+      LU's long-term debt as at April 30, 2020 totalled approximately $91.7 million, spread across six
+      facilities with BMO, RBC and TD maturing between 2023 and 2043.
+    page: 22
+    location: "para 130, long-term debt table"
+    quote:
+      - "TOTAL LONG-TERM DEBT"
+      - "91,711"
+  - id: F41
+    fact: >
+      The largest single tranche of LU's long-term debt is a $39.496 million RBC facility maturing in
+      2042.
+    page: 22
+    location: "para 130, long-term debt table"
+    quote: "RBC                  | 2042                 |               39.496"
+  - id: F42
+    fact: >
+      As at the report date, the aggregate principal amount owing by LU under its RBC Credit
+      Facilities Agreement is approximately $71.1 million.
+    page: 23
+    location: "para 137, RBC"
+    quote:
+      - "As  at  the  current  date,  the  aggregate  principal  amount  owing  under  the  RBC  Credit"
+      - "Facilities Agreement is approximately $71.1 million."
+  - id: F43
+    fact: >
+      As at the report date, the aggregate principal amount owing by LU under its TD Credit Facilities
+      Agreement is approximately $18.5 million.
+    page: 24
+    location: "para 142, TD"
+    quote:
+      - "As at the current date, the aggregate principal amount owing under the TD Credit Facilities"
+      - "Agreement is approximately $18.5 million."
+  - id: F44
+    fact: >
+      Under its agreement with RBC, LU covenanted not to grant, create, assume or allow any charge,
+      security interest or encumbrance on any of its properties or assets without RBC's written
+      consent.
+    page: 23
+    location: "para 138, RBC"
+    quote:
+      - "LU has, among other things, covenanted"
+      - "not to grant, create, assume or suffer any charge, security interest or encumbrance affecting"
+      - "any of its properties or assets without the written consent of RBC."
+  - id: F45
+    fact: >
+      A $2.0 million TD term facility that funded LU's student recreation centre matures April 3, 2021
+      — a date falling within the CCAA proceedings — with an outstanding balance of $1,323,626 as of
+      January 29, 2021.
+    page: 21
+    location: "para 128, TD"
+    quote:
+      - "in the initial principal amount of $2.0 million with a maturity date of April 3, 2021."
+      - "the  outstanding  principal  balance  owing  under  this  facility  is"
+      - "$1,323,626"
+  - id: F46
+    fact: >
+      On June 16, 2020, BMO agreed to defer LU's principal payments under the BMO Credit Facility for
+      several months because of the pandemic; approximately $1.3 million remains outstanding.
+    page: 22
+    location: "para 132, BMO"
+    quote:
+      - "On  June  16,  2020,  LU  requested,  and  BMO  agreed  to  provide  certain  payment"
+      - "accommodations to LU in light of the ongoing Pandemic and defer principal payments"
+      - "under  the  BMO  Credit  Facility  for  a  period  of  several  months."
+  - id: F47
+    fact: >
+      Although the $36-38 million in deferred contributions is recorded as a liability on LU's balance
+      sheet, no funds have been set aside or are currently available to satisfy these obligations.
+    page: 25
+    location: "para 151, Deferred Contributions"
+    quote:
+      - "no  funds  have  been  set  aside  or  are  currently"
+      - "available  to  satisfy  these"
+      - "obligations."
+  - id: F48
+    fact: >
+      LU separately carries a deferred capital contributions balance of approximately $129.9 million
+      (mostly unamortized), and similarly, no funds have been set aside for the unspent portion.
+    pages: [25, 26]
+    location: "para 152-153, Deferred Capital Contributions"
+    quote:
+      - "As at April 30, 2020, LU had"
+      - "a deferred capital contributions balance of approximately $129.9 million, of which $0.6"
+      - "million represented the unspent portion and $129.3 million represented the unamortized portion."
+      - "no  funds  were  set  aside  for  unspent  deferred  capital"
+      - "contributions."
+  - id: F49
+    fact: >
+      LU's April 30, 2020 net assets of $36.7 million break down into a $20.0 million unrestricted
+      fund deficit, a $22.6 million vacation and employee future benefits fund deficit, a $3.8 million
+      internally restricted balance, a $22.6 million investment-in-capital-assets balance, and $52.8
+      million in endowments.
+    page: 26
+    location: "para 154, Net Assets"
+    quote:
+      - "i)  $20.0  million  unrestricted  fund  deficit,  ii)  $22.6  million  vacation  and"
+      - "employee future benefits fund deficit"
+  - id: F50
+    fact: >
+      Within LU's internally restricted fund balance, the McEwen School of Architecture carries a
+      negative $0.7 million accumulated operating loss.
+    page: 26
+    location: "para 157, Net Assets"
+    quote:
+      - "negative  $0.7  million"
+      - "accumulated operating loss from the McEwen School of Architecture"
+  - id: F51
+    fact: >
+      In January 2019 the Province required a 10% cut to domestic tuition fees for 2019-2020, followed
+      by a freeze on domestic tuition for 2020-2021, with no guidelines yet announced for 2021-2022
+      onward.
+    page: 27
+    location: "para 161(i), Tuition reduction and freeze"
+    quote:
+      - "required all universities to implement a domestic tuition fee reduction of 10% for"
+      - "the 2019-2020 fiscal year and then a freeze on domestic tuition fees for the 2020"
+      - "2021 fiscal year for all Ontario universities."
+      - "The Province has not yet announced"
+      - "tuition fee guidelines for the 2021-2022 fiscal year and onwards."
+  - id: F52
+    fact: >
+      LU's overall enrolment rose 3.7% in 2020-2021, driven almost entirely by a 36.7% jump in online
+      course enrolment, even as first-year enrolment fell 2.3%.
+    page: 27
+    location: "para 161(ii), Declining domestic enrolment"
+    quote:
+      - "In the 2020-2021 fiscal year, LU has"
+      - "seen  an  increase  in  enrolment  of  3.7%."
+      - "the  increase  is  primarily"
+      - "attributable to growth in online course enrolment of 36.7%."
+      - "Enrolment by students"
+      - "into first year programs declined by 2.3%."
+  - id: F53
+    fact: >
+      LU's fiscal 2020-2021 enrolment was approximately 89% from the province of Ontario, 39% from
+      Sudbury itself, and 50% from Northern Ontario broadly.
+    page: 27
+    location: "para 161(ii), Declining domestic enrolment"
+    quote:
+      - "enrolment from i) the province of Ontario was approximately"
+      - "89%, ii) Sudbury was approximately 39%, and iii) the Northern Ontario regions"
+  - id: F54
+    fact: >
+      LU's total fall-semester enrolment, measured in full-time equivalents, fell from 7,246 in
+      2015-2016 to a low of 6,758 in 2018-2019, before recovering to 7,090 by 2020-2021.
+    page: 27
+    location: "para 161(ii), enrolment table"
+    quote: "Total                     |       7,246 |       7,222 |       6,896 |       6,758 |       6,834 |       7,090"
+  - id: F55
+    fact: >
+      International student enrolment (in FTEs) at LU grew from 95 in 2015-2016 to 241 in 2020-2021 —
+      more than double — even as total enrolment barely moved.
+    page: 27
+    location: "para 161(ii), enrolment table"
+    quote: "International             |          95 |          90 |         134 |         165 |         176 |         241"
+  - id: F56
+    fact: >
+      LU currently offers 175 different academic programs — 132 undergraduate and 43 graduate — a
+      number the Monitor flags as large relative to LU's enrolment.
+    page: 28
+    location: "para 161(iv), Academic Programming"
+    quote:
+      - "there are 175 different programs offered -  132"
+      - "undergraduate programs and 43 graduate programs."
+  - id: F57
+    fact: >
+      Enrolment at LU is highly concentrated: of 132 undergraduate programs, 25% of students are in
+      the top 5 programs while just 1% are in the bottom 25 programs; of 43 graduate programs, 48% of
+      students are in the top 5 while less than 1% are in the bottom 5.
+    page: 29
+    location: "para 161(iv), Academic Programming"
+    quote:
+      - "Of the 132 undergraduate programs, 25% of students are enrolled in the top"
+      - "5 programs, 62% are enrolled in the top 25 and 83% are enrolled in the top"
+      - "50 programs;"
+      - "only  1%  of  students  are"
+      - "enrolled in the bottom 25 programs and only 5% are enrolled in the bottom"
+  - id: F58
+    fact: >
+      LU's Barrie satellite campus operated through an arrangement with Georgian College that expired
+      in 2014; after LU failed to negotiate a renewal, it decided in 2016 to close the campus, which
+      finally shut in May 2019.
+    page: 29
+    location: "para 161(v), Barrie Campus Closure"
+    quote:
+      - "As discussed in the Overview section of this Report, LU"
+      - "previously operated a satellite campus in Barrie, Ontario through an arrangement"
+      - "with Georgian College."
+      - "The agreement governing the arrangement expired in 2014"
+      - "and  despite  attempts  to  negotiate  a  continuation  of  the  arrangement,  LU  was"
+      - "unsuccessful."
+      - "This  led  to  a  decision  in  2016  to  close  the  Barrie  campus  which"
+      - "ultimately  closed  in  May  2019."
+  - id: F59
+    fact: >
+      Closing the Barrie campus still left LU with a LUFA collective-agreement obligation to retain
+      the faculty who had been associated with that campus.
+    page: 29
+    location: "para 161(v), Barrie Campus Closure"
+    quote:
+      - "an obligation under the LUFA CA to retain the faculty"
+      - "previously associated with the Barrie campus."
+  - id: F60
+    fact: >
+      The pandemic cut LU's ancillary revenue through fewer students in residences, lost rental income
+      from campus events and conferences, lost parking income, and lost food-service income.
+    page: 30
+    location: "para 161(vi), COVID-19 Impact"
+    quote:
+      - "a decrease in ancillary revenues associated with: (i) fewer students staying"
+      - "in on-campus residences owned and operated by LU, (ii) the loss of rental"
+      - "income  from  events  and  conferences  hosted  on  campus,  (iii)  the  loss  of"
+      - "parking  income,  (iv)  the  loss  of  food  service  income"
+  - id: F61
+    fact: >
+      Through attrition and hiring deferrals over the past few years, LU cut its non-faculty workforce
+      by approximately 20 full-time-equivalent positions and its faculty workforce (excluding the
+      Barrie closure) by about 14 FTEs.
+    page: 30
+    location: "para 163(i), Faculty and Employee Reductions"
+    quote:
+      - "LU has reduced i)"
+      - "its non-faculty workforce by approximately 20 full time equivalents"
+      - "and faculty workforce (excluding the Barrie closure) by approximately 14 FTEs."
+  - id: F62
+    fact: >
+      As part of its cost-cutting, LU approved a pay freeze and reduced the salaries of certain
+      members of its executive team.
+    page: 31
+    location: "para 163(iii), Salary reductions & freezes"
+    quote:
+      - "approved a pay freeze and reduced the salaries of"
+      - "certain members of the executive team."
+  - id: F63
+    fact: >
+      Beyond its main RBC operating accounts, LU also maintains a blocked account each with Bank of
+      Montreal and TD Canada Trust solely to sweep and process debt-service payments.
+    page: 31
+    location: "para 166, Cash Management"
+    quote:
+      - "LU also maintains a blocked"
+      - "account with both the Bank of Montreal and TD Canada Trust solely for the purpose of"
+      - "sweeping and processing debt service payments."
+  - id: F64
+    fact: >
+      LU held discussions with the Province of Ontario about additional financing to address its
+      liquidity crisis, but the scale of financing needed meant LU ended up without sufficient funding
+      commitments to avoid filing for CCAA protection.
+    page: 33
+    location: "para 176, Cash Position and Liquidity"
+    quote:
+      - "The Applicant has engaged in discussions with the Province in respect of its liquidity crisis"
+      - "and need for additional financing that would permit it to continue operations."
+      - "LU  currently"
+      - "does  not  have  sufficient  funding"
+      - "commitments to permit it to avoid a CCAA proceeding."
+  - id: F65
+    fact: >
+      Salaries and benefits made up approximately 67% of LU's total expenses in fiscal 2020; of that,
+      $16 million was paid to MIRARCO and SNOLab employees, while the remaining $119 million funded
+      LU's own academic teaching operations and ancillary services.
+    pages: [18, 19]
+    location: "para 114, Expenses"
+    quote:
+      - "Salaries and benefits represent LU's most significant expense at approximately 67% of"
+      - "total  expenses  for  the  fiscal  year  ended  April  30,  2020."
+      - "the aggregate of $16 million for fiscal 2020."
+      - "The remaining $119 million in fiscal 2020"
+      - "represents costs of the academic teaching operations and provision of ancillary services."
+  - id: F66
+    fact: >
+      Beyond its main campus, LU's capital assets include the Art Centre at 251 John Street, the
+      President's House, and the McEwen School of Architecture at 85 Elm Street in downtown Sudbury.
+    page: 20
+    location: "para 122, Assets"
+    quote:
+      - "the Art Centre"
+      - "located at 251 John Street, the President's House and the McEwen School of Architecture"
+      - "located in downtown Sudbury at 85 Elm Street."
+  - id: F67
+    fact: >
+      LU's employee future benefits liability was $20.8 million as at April 30, 2020 (the combined
+      shortfall across the DB Pension Plan, SuRP and RHBP), but the Monitor cautions this accounting
+      figure does not represent the actual deficit that would apply if the plans were wound up.
+    page: 24
+    location: "para 148, Employee Future Benefits"
+    quote:
+      - "The balance of $20.8 million reported on the annual audited financial statements as at April"
+      - "30, 2020 in respect of employee future benefits represents the actuarial estimated accrued"
+      - "benefit obligation less the fair value of the plan assets pursuant to the DB Pension Plan,"
+      - "does  not  represent  the  actual  deficit  that  would  be"
+      - "applicable if the plans were wound up."
+  - id: F68
+    fact: >
+      Over the 13-week forecast period (January 30 - April 30, 2021), LU projects paying approximately
+      $31.3 million in payroll and benefits — by far its largest disbursement category.
+    page: 43
+    location: "Appendix A, 13 Week Cash Flow Forecast — Operating Disbursements"
+    quote:
+      - "Payroll & Benefits"
+      - "(31,310)"
+  - id: F69
+    fact: >
+      The 13-week forecast includes approximately $4.3 million in pension-related disbursements.
+    page: 43
+    location: "Appendix A, 13 Week Cash Flow Forecast — Operating Disbursements"
+    quote:
+      - "Pension"
+      - "(4,322)"
+  - id: F70
+    fact: >
+      The 13-week forecast sets aside approximately $2.6 million to pay student refunds.
+    page: 43
+    location: "Appendix A, 13 Week Cash Flow Forecast — Operating Disbursements"
+    quote:
+      - "Student Refunds"
+      - "(2,637)"
+  - id: F71
+    fact: >
+      The 13-week forecast includes approximately $1.6 million in fee transfers to the Students'
+      Associations.
+    page: 43
+    location: "Appendix A, 13 Week Cash Flow Forecast — Operating Disbursements"
+    quote:
+      - "Transfers to the Students"
+      - "(1,636)"
+  - id: F72
+    fact: >
+      The 13-week forecast includes approximately $1.9 million in transfers from LU to the Federated
+      Universities under the Federated Funding Formula.
+    page: 43
+    location: "Appendix A, 13 Week Cash Flow Forecast — Operating Disbursements"
+    quote:
+      - "Transfers to Federated Universities"
+      - "(1,937)"
+  - id: F73
+    fact: >
+      LU's 13-week cash flow forecast includes approximately $3.75 million in "Restructuring Costs" —
+      the fees and disbursements of the advisors assisting with the CCAA process.
+    page: 43
+    location: "Appendix A, 13 Week Cash Flow Forecast — Non-Operating Disbursements"
+    quote:
+      - "Restructuring Costs"
+      - "(3,750)"
+  - id: F74
+    fact: >
+      By the end of the 13-week forecast period, LU's proposed debtor-in-possession loan is projected
+      to be fully drawn to its $25 million ceiling, at a cost of approximately $924,000 in interest
+      and other fees over the period.
+    page: 43
+    location: "Appendix A, 13 Week Cash Flow Forecast — DIP Financing"
+    quote:
+      - "Ending Balance"
+      - "25,000"
+      - "Interest and Other Fees"
+      - "924"
+  - id: F75
+    fact: >
+      LU's cash balance is forecast to fall from about $13.3 million at the start of the 13-week
+      period to about $8.3 million by the end, even with DIP financing.
+    page: 43
+    location: "Appendix A, 13 Week Cash Flow Forecast — Cash Balance"
+    quote:
+      - "Ending cash balance"
+      - "8,328"
+  - id: F76
+    fact: >
+      The 13-week forecast shows approximately $860,000 transferred out of LU's endowment fund,
+      reducing its balance from $55.7 million to $54.9 million over the period.
+    page: 43
+    location: "Appendix A, 13 Week Cash Flow Forecast — Endowment Fund"
+    quote:
+      - "Endowment Fund"
+      - "(860)"
+      - "54,876"
+  - id: F77
+    fact: >
+      LU's newly created Segregated Accounts are forecast to grow from about $3.3 million to about
+      $6.8 million over the 13-week period, as restricted receipts continue to flow into them.
+    page: 43
+    location: "Appendix A, 13 Week Cash Flow Forecast — Segregated Accounts"
+    quote:
+      - "Segregated Accounts"
+      - "6,817"
+  - id: F78
+    fact: >
+      LU's 13-week receipts forecast includes only about $150,000 in donations and $1.4 million in
+      miscellaneous "Other Receipts" — modest amounts compared to the $21.4 million forecast from
+      operating grants.
+    page: 43
+    location: "Appendix A, 13 Week Cash Flow Forecast — Total Receipts"
+    quote:
+      - "Donations"
+      - "150"
+      - "Other Receipts"
+      - "1,402"
 
 contradictions:
   - id: C1
@@ -648,3 +1222,98 @@ must_not_miss:
       Explains part of LU's cash erosion: it was carrying the operating costs of its own mining-
       research affiliate on reimbursements that came back late, buried in a routine description
       of the payroll arrangement.
+  - id: M17
+    item: >
+      Beyond the SuRP, LU has separate, also-unfunded contractual agreements to provide supplemental
+      retirement benefits to two individuals in former or current leadership roles.
+    page: 15
+    location: "para 95, SuRP"
+    quote:
+      - "LU also has contractual agreements to provide"
+      - "supplemental retirement benefits to two individuals in former or current leadership roles."
+      - "These obligations are also unfunded."
+    why: >
+      A reporter who missed this would miss that LU carries undisclosed, unfunded personal retirement
+      promises to specific leadership figures — a natural follow-up story (who are the two
+      individuals, what do they receive) that a general summary of "the pension is underfunded" would
+      not surface.
+  - id: M18
+    item: >
+      Although the RHBP policy promised employees LU would establish a trust account to hold
+      contributions, LU instead simply tracked RHBP contributions as a balance-sheet liability, and
+      neither employee nor LU contributions were ever set aside in a separate bank account.
+    page: 16
+    location: "para 101-102, RHBP"
+    quote:
+      - "Rather than establishing a separate trust account, LU has historically tracked contributions"
+      - "to the RHBP as a liability in its accounting records and on its balance sheet."
+      - "neither contributions by employees nor LU contributions to the RHBP were set aside in a"
+      - "separate bank account."
+    why: >
+      Extends the co-mingling/broken-promise story specifically to the health-benefits plan employees
+      pay into — a reporter covering the comingled-funds story needs this concrete, plan-specific
+      instance.
+  - id: M19
+    item: >
+      RBC has cancelled LU's RBC Line of Credit entirely, and LU separately agreed with Desjardins not
+      to draw on its Desjardins Line of Credit because of LU's financial position — both of LU's
+      previously-relied-upon operating lines of credit are now unavailable.
+    page: 21
+    location: "para 127, lines of credit"
+    quote:
+      - "RBC has since advised LU that the RBC Line of Credit has been cancelled and is no longer"
+      - "available to LU.  In addition, in connection with discussions with Desjardins, LU agreed"
+      - "that it would not draw any amount on the Desjardins Line of Credit in light of its financial"
+      - "challenges."
+    why: >
+      Explains concretely why LU can no longer bridge its cash shortfalls the way it used to — its
+      banks have shut off both credit lines, a key precipitating fact a reporter summarizing "LU ran
+      out of money" needs to explain why.
+  - id: M20
+    item: >
+      LU's deferred contributions liability — money it holds designated for unspent research grants,
+      restricted donations, scholarships and RHBP contributions — was $38.5 million as at April 30,
+      2020, estimated at approximately $36.5 million as of December 31, 2020.
+    page: 25
+    location: "para 149-150, Deferred Contributions"
+    quote:
+      - "The balance of $38.5 million reported on the annual audited financial statements as at April"
+      - "30, 2020 in respect of deferred contributions"
+      - "Management  has  advised  the  Proposed  Monitor  that  as  of  December  31,  2020,  LU"
+      - "estimates the deferred contributions liability to be approximately $36.5 million."
+    why: >
+      Quantifies precisely how large the restricted-funds shortfall is — the dollar figure behind the
+      co-mingling story already in the key, which currently states LU can't cover its restricted
+      obligations but doesn't say by how much.
+  - id: M21
+    item: >
+      LU's combined accumulated unrestricted fund deficit and employee liabilities deficit has grown
+      to approximately $42.6 million.
+    page: 27
+    location: "para 160, Circumstances Leading to the Applicant's CCAA Filing"
+    quote:
+      - "As a result, LU's"
+      - "combined accumulated unrestricted fund deficit and employee liabilities deficit has grown"
+      - "to approximately $42.6 million."
+    why: >
+      This is the single headline number quantifying the scale of LU's accumulated financial hole —
+      the number a reporter would lead with when describing how deep in the hole LU is.
+  - id: M22
+    item: >
+      The Proposed Monitor notes it is not unusual for universities to deposit restricted funds into
+      their main operating account, and such universities usually have sufficient cash reserves to
+      cover the resulting obligations — but LU's own funds are insufficient to cover its
+      restricted-fund obligations.
+    pages: [31, 32]
+    location: "para 168, Cash Management"
+    quote:
+      - "it  is  not  uncommon  for  universities  to  deposit"
+      - "Research  Grants  and  other  restricted  funds  into  their  main  operating  account."
+      - "in LU's case, as a result of its historical deficits and other issues"
+      - "described  above,  the  funds  held  by  LU  at  the  current  time  are  insufficient  to  cover"
+      - "obligations in connection with these restricted funds."
+    why: >
+      Reframes the co-mingling story already in the key: mixing restricted funds with operating cash
+      is common university practice, but what makes LU's situation dangerous is that it no longer has
+      the cash reserves other schools would have to cover the shortfall — a nuance needed to avoid
+      overstating comingling itself as the wrongdoing.
