@@ -58,10 +58,12 @@ NUM_RE = re.compile(r"\$?\d[\d,]*(?:\.\d+)?%?")
 def quote_text(it):
     """A key item's supporting quote, flattened to one string.
 
-    `facts` entries carry a single string; `must_not_miss` entries carry a list of one or more
-    verbatim spans (#573), because a de-bundled claim is often supported by two adjacent spans or
-    by several lines of a backsheet. Callers only ever scan this for numeric anchors, so joining
-    is lossless for their purposes — nothing downstream needs the spans kept apart."""
+    Either section may carry a single string or a list of verbatim spans (#573). A list is used
+    wherever no contiguous span exists in the chew: a de-bundled `must_not_miss` claim supported
+    by two adjacent spans, a sentence crossing a page break, or a table row the conversion
+    scatters across columns so its label and figure must be quoted separately. Callers only ever
+    scan this for numeric anchors, so joining is lossless for their purposes — nothing downstream
+    needs the spans kept apart."""
     q = it.get("quote")
     if isinstance(q, (list, tuple)):
         return " ".join(str(x) for x in q)

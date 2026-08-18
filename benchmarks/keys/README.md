@@ -2,8 +2,8 @@
 
 One YAML per corpus document. These are the fixed reference every condition in the #361 / #215
 benchmark is scored against — see `../BENCHMARKING.md` for how many runs that is and what each one
-varies. **Drafted and reviewed; not yet frozen.** Freezing (see "The freeze" below) is Step 0 of
-`BENCHMARKING.md` — the one thing to do before anything else in that guide.
+varies. **Frozen at `keys-v4.sha256`.** Re-freezing after any revision (see "The freeze" below) is
+Step 0 of `BENCHMARKING.md` — the one thing to do before anything else in that guide.
 
 ## What these are, and what they are not
 
@@ -20,11 +20,26 @@ reference." That limitation is recorded in #361 and is not negotiable.
 - **From the source PDFs.** Never from a pipeline extraction, never from chewed text. A key built
   from the pipeline's own output inherits the pipeline's blind spots, so the extractor is never
   scored on anything the pipeline already drops.
+- **The prompt that does the drafting is [`drafting-prompt.md`](drafting-prompt.md).** Use it when
+  adding a document to the corpus or widening an existing key, so every key is drafted to the same
+  standard — a key drafted to a different standard than its neighbours makes cross-document
+  comparisons meaningless.
 - **The scanned Initial Order was read visually, not OCR'd first** — same reason, one stage earlier.
 - **`must_not_miss` for the dense 70-page report was built against a mechanical inventory** — all 27
   note headings enumerated programmatically with page numbers, so a buried item cannot be absent
   from the key merely because the drafting model overlooked it. This is the fix for the
   *correlation* risk #361 identifies (see "The mistake worth recording" in that issue).
+- **Every page of every document was read for `keys-v4`** (#625). Before it, the keys cited 88 of
+  the corpus's 209 pages — a regression on the other 121 could not be detected, because nothing
+  was keyed there. v4 cites 158, and no document sits below 68%.
+
+**One imbalance survives v4, and it is worth knowing before quoting a per-document number.** The
+keys are not drafted at a uniform density: measured against each document's word count, the
+2019-20 annual report gets roughly twice its share of the key and the 2020-21 report — the largest
+document in the corpus at 42% of its words — gets about half. That is an artifact of how much each
+document's drafting pass proposed, not a judgment that one matters more. The fix is a further pass
+on the 2020-21 report rather than cuts elsewhere; until then, read aggregate recall as weighted
+toward the smaller annual report.
 
 ## Schema
 
@@ -33,13 +48,32 @@ reference." That limitation is recorded in #361 and is not negotiable.
 | `document` | File, sha256, pages, text layer, type, role in the benchmark |
 | `entities` | Name, type, `aliases`, role, page |
 | `relationships` | subject / predicate / object / page |
-| `facts` | 19–22 material facts, each with `page` and a **verbatim `quote`** |
+| `facts` | Material facts, each with `page` and a **verbatim `quote`**. Count is set by the document, not a quota — 23 in the Pension Order, 121 in the 2019-20 annual report |
 | `contradictions` | Cross-document conflicts, with both sides quoted. **An empty list is meaningful** — it means an invented contradiction scores as a false positive |
 | `must_not_miss` | Buried items, **scored separately**. This is where cheap conditions degrade first. One claim per entry, each with a **verbatim `quote`** or `basis: inferred` (#573) |
 
 `quote` and `aliases` exist to support the **three grounding tiers** (verbatim / credited
 normalization / ungrounded) rather than exact match. "LU" for "Laurentian University of Sudbury" is
 a credited normalization, not a miss.
+
+**Page cites and quote spans.** The page field is spelled `page` for a single page and `pages` for
+a list; both are accepted everywhere. A `quote` in either section may be one string or a **list of
+spans**, and a list is required wherever the document has no contiguous run of text to quote:
+
+- the sentence crosses a page break
+- the conversion scatters a table row across columns, so the row label and its figure have to be
+  quoted separately (`["Total Receipts", "29,514"]`)
+- the conversion mangles the page badly enough that only fragments survive
+
+**In the entries added by the #625 pass, a span list is the norm rather than the exception** — 246
+of the 296 carry more than one, because `drafting-prompt.md` asks for discrete verbatim spans and
+forbids eliding across them. So a list there is not by itself a signal that the page is damaged;
+read the entry's `location` for that. In the pre-#625 entries a list still means what it says below.
+
+In all three, `fact`/`item` carries the truth and the spans carry what the conversion renders —
+the M1.1 precedent in `initial-order-2021-02-01.yaml`. **Every quote in every key is machine-checked
+to appear on its cited page in the frozen chew**; a quote that cannot be located there is a defect
+in the key, not evidence about the pipeline.
 
 ### `must_not_miss` anchoring (#573)
 
@@ -156,7 +190,18 @@ The split of labour across models changed, so the attribution of each metric cha
 
 ## The freeze
 
-Once reviewed, hash the keys the way the corpus is hashed and do not touch them again:
+**Before hashing, check the quotes** — a key quote that isn't where the key says it is reads as
+evidence about the pipeline rather than as the key defect it is, and freezing makes it permanent:
+
+```
+python3 benchmarks/verify_keys.py --pages benchmarks/runs/<run>/pages
+```
+
+It exits non-zero on any problem. `benchmarks/runs/` is gitignored, so this needs a local chewed
+run of the corpus; the check is on the frozen chew, not the PDFs, because the chew is what an
+extraction is scored against.
+
+Then hash the keys the way the corpus is hashed and do not touch them again:
 
 ```
 cd benchmarks/keys && shasum -a 256 *.yaml > keys-v<n>.sha256
@@ -174,6 +219,7 @@ archived comparison claiming to be scored against a key that no longer exists.
 | `keys-v1.sha256` | before the first sweep | every figure in `FINDINGS.md` up to and including 2026-08-08 |
 | `keys-v2.sha256` | 2026-08-09 | `must_not_miss` anchoring and de-bundling (#573) — 77 entries became 131 |
 | `keys-v3.sha256` | 2026-08-11 | `ocr_hazards` removed from the Initial Order and its dangling `why` references rewritten (#579). **Ids and item text are unchanged from v2** — this bump is advisory prose only |
+| `keys-v4.sha256` | 2026-08-18 | The page-by-page pass (#625) — 257 entries became 553. 14 wrong page cites corrected and 6 unlocatable quotes rewritten as spans; `verify_keys.py` added and now gates the freeze. **No id drift** — every v4 entry is either a v3 entry under its original id or a new one appended after the highest existing id. No surviving entry's `fact`/`item` text changed; what changed is `page` on 17 of them and `quote` on 10, neither of which a judge is shown |
 
 Each version's key files are archived beside its manifest (`v1/`, `v2/`) so an archived figure can
 be read against the exact keys that produced it.

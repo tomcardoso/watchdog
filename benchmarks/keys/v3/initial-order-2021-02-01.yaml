@@ -194,7 +194,7 @@ facts:
     fact: >
       Board Counsel's fees paid by the Applicant after the date of the order are capped at $250,000
       plus HST, pending further order.
-    page: 11
+    page: 12
     paragraph: 29
     quote: "the fees and disbursement of Board Counsel paid by the Applicant from and after the date of this Order shall not exceed the aggregate amount of $250,000, plus HST, pending further Order of the Court."
   - id: F15
@@ -249,195 +249,6 @@ facts:
     page: 11
     paragraph: 26
     quote: "nothing herein contained shall require the Monitor to occupy or to take control, care, charge, possession or management … of any of the Property that might be environmentally contaminated"
-  - id: F23
-    fact: >
-      The Applicant is ordered to remain in possession and control of all its current and future
-      assets and property, and to continue carrying on business, including the businesses and assets
-      of other entities, partnerships and joint ventures in which it holds a direct or indirect
-      interest.
-    page: 2
-    location: "para 5, Possession of Property and Operations"
-    quote:
-      - "shall remain in possession and control of its current and future assets, undertakings and properties of every nature and kind whatsoever"
-      - "including the businesses and assets of the other entities, partnerships and joint ventures in which the Applicant has a direct or indirect interest"
-  - id: F24
-    fact: >
-      The Applicant may pay, at its discretion, amounts owing on corporate credit cards issued to its
-      management and employees, plus director fees and expenses, incurred on or after the order date
-      in the ordinary course.
-    page: 4
-    location: "para 8(a), continued from p3"
-    quote:
-      - "amounts owing under corporate credit cards issued to management and employees of the Applicant"
-      - "vacation pay, expenses and any director fees and expenses"
-  - id: F25
-    fact: >
-      The Applicant is authorized to pay outstanding and future tuition and ancillary fee rebates or
-      refunds owed to students or student associations for the 2020-21 academic year, subject to its
-      existing policies.
-    page: 4
-    location: "para 8(b)"
-    quote:
-      - "rebates, refunds or other similar amounts that are owing or may be owed to students or student associations"
-      - "reimbursement of tuition fees, ancillary fees or otherwise"
-  - id: F26
-    fact: >
-      The Applicant is authorized to continue paying student scholarships, bursaries and grants owed
-      for the 2020-21 academic year.
-    page: 4
-    location: "para 8(c)"
-    quote:
-      - "all outstanding amounts owing in respect of the current 2020-21 academic year"
-      - "amounts payable to students in respect of student scholarship, bursary or grants"
-  - id: F27
-    fact: >
-      The Applicant may continue paying expenses and capital expenditures needed to preserve its
-      property and business, including insurance premiums (including D&O insurance), maintenance and
-      security services.
-    page: 4
-    location: "para 9(a)"
-    quote:
-      - "all expenses and capital expenditures reasonably necessary for the preservation of the Property or the Business"
-      - "payments on account of insurance (including directors and officers insurance), maintenance and security services"
-  - id: F28
-    fact: >
-      The Applicant is ordered to remit statutory deemed-trust deductions from employees' wages —
-      employment insurance, Canada Pension Plan contributions, and income tax — to the Crown, plus
-      applicable sales taxes.
-    page: 5
-    location: "para 10(b)"
-    quote:
-      - "any statutory deemed trust amounts in favour of the Crown in right of Canada or of any Province thereof"
-      - "employment insurance, (ii) Canada Pension Plan, and (iii) income taxes"
-  - id: F29
-    fact: >
-      Until further Court order, Laurentian is barred from granting new security interests, liens or
-      encumbrances on its property, and from extending credit or incurring liabilities outside the
-      ordinary course of business.
-    page: 6
-    location: "para 11(b)-(c)"
-    quote:
-      - "to grant no security interests, trust, liens, charges or encumbrances upon or in respect of any of its Property"
-      - "to not grant credit or incur liabilities except in the ordinary course of the Business"
-  - id: F30
-    fact: >
-      The Order explicitly authorizes Laurentian to keep negotiating with stakeholders to pursue all
-      restructuring options, subject to CCAA requirements.
-    page: 6
-    location: "para 12, Restructuring"
-    quote:
-      - "have the right to continue negotiations with stakeholders in an effort to pursue all restructuring options"
-      - "subject to such requirements as are imposed by the CCAA"
-  - id: F31
-    fact: >
-      During the Stay Period, no legal proceeding or enforcement process of any kind — in or out of
-      court, including under a collective agreement — may be commenced or continued against
-      Laurentian, the Monitor, the Business or the Property without written consent or Court leave.
-    page: 6
-    location: "para 13, No Proceedings Against the Applicant or the Property"
-    quote:
-      - "no proceeding or enforcement process in or out of any court or tribunal or other forum"
-      - "shall be commenced or continued against or in respect of the Applicant or the Monitor, or affecting the Business or the Property"
-  - id: F32
-    fact: >
-      The general stay against Laurentian does not exempt the university from complying with health,
-      safety or environmental law, and does not block regulatory investigations or proceedings
-      specifically permitted under CCAA section 11.1.
-    pages: [6, 7]
-    location: "para 14(b)-(c)"
-    quote:
-      - "exempt the Applicant from compliance with any statutory or regulatory provisions relating to health, safety or the environment"
-      - "affect such investigations, actions, suits or proceedings by a regulatory body as are specifically permitted by Section 11.1 of the CCAA"
-  - id: F33
-    fact: >
-      Counterparties to agreements where the SGA is a party, borrower, principal obligor or guarantor
-      are barred from terminating, accelerating or declaring default on those agreements because of
-      Laurentian's insolvency or CCAA application.
-    page: 7
-    location: "para 15, Limited Stay in Respect of the Non-Applicant Stay Party"
-    quote:
-      - "no Person shall (a) commence or continue any Proceeding or enforcement process"
-      - "with respect to which the NonApplicant Stay Party is a party, borrower, principal obligor or guarantor"
-  - id: F34
-    fact: >
-      No party may discontinue, alter, interfere with or terminate any right, contract, lease or
-      licence held by Laurentian or the SGA, or otherwise interrupt the university's business or use
-      of its property, during the Stay Period.
-    page: 7
-    location: "para 16, No Interference with Rights"
-    quote:
-      - "no Person shall discontinue, fail to honour, alter, interfere with, repudiate, terminate or cease to perform any right, renewal right, contract, agreement, lease, sublease, licence or permit"
-      - "take any steps to interrupt or interfere with the operation of the Business or the continued use of the Property of the Applicant"
-  - id: F35
-    fact: >
-      Suppliers of software, communications/data services, banking, insurance, transportation and
-      utilities are barred from cutting off Laurentian, and the university keeps its premises,
-      phone/fax numbers, internet addresses and domain names, so long as it pays normal ongoing
-      charges.
-    page: 8
-    location: "para 17, Continuation of Services"
-    quote:
-      - "all computer software, communication and other data services, centralized banking services, insurance, transportation services, utility or other services"
-      - "the Applicant shall be entitled to the continued use of its current premises, telephone numbers, facsimile numbers, internet addresses and domain names"
-  - id: F36
-    fact: >
-      Proceedings against Laurentian's current or future directors, officers or Board of Governors
-      members over pre-order obligations are stayed until a plan of compromise is either sanctioned or
-      refused.
-    page: 8
-    location: "para 19, Proceedings Against Directors and Officers"
-    quote:
-      - "no Proceeding may be commenced or continued against any of the current or future directors or officers of the Applicant, including the members of the Board of Governors"
-      - "a compromise or arrangement in respect of the Applicant, if one is filed, is sanctioned by this Court or is refused by the creditors of the Applicant or this Court"
-  - id: F37
-    fact: >
-      Ernst & Young Inc. is formally appointed as Monitor and officer of the Court, and Laurentian's
-      officers, directors and advisors must keep it informed of all material steps and cooperate
-      fully.
-    page: 9
-    location: "para 23, Appointment of Monitor"
-    quote:
-      - "Ernst &amp; Young Inc. is hereby appointed pursuant to the CCAA as the Monitor, an officer of this Court"
-      - "the Applicant and its officers, directors, and Assistants shall advise the Monitor of all material steps taken by the Applicant"
-  - id: F38
-    fact: >
-      The Monitor must share information with any creditor and with the "proposed DIP Lender" who make
-      reasonable written requests — confirming a debtor-in-possession lender is anticipated even
-      though this order doesn't itself approve DIP financing.
-    page: 11
-    location: "para 27"
-    quote:
-      - "provide any creditor of the Applicant and the proposed DIP Lender with information provided by the Applicant"
-      - "reasonable requests for information made in writing by such creditor addressed to the Monitor"
-  - id: F39
-    fact: >
-      The Monitor, its counsel, Laurentian's own Restructuring Advisors, and independent Board Counsel
-      are all paid their standard-rate fees by the Applicant as costs of the CCAA proceeding, and
-      Laurentian is directed to pay those accounts.
-    page: 11
-    location: "para 29"
-    quote:
-      - "shall each be paid their reasonable fees and disbursements, in each case at their standard rates and charges"
-      - "The Applicant is hereby authorized and directed to pay the accounts of the Restructuring Advisors and Board Counsel"
-  - id: F40
-    fact: >
-      The order leaves the door open for Laurentian to return to court later to seek higher charge
-      amounts, additional charges, or greater priority for the charges over other encumbrances.
-    page: 13
-    location: "para 35"
-    quote:
-      - "entitled, on a subsequent attendance on notice to those Persons likely to be affected thereby, to seek an increase to the amounts"
-      - "to seek additional charges and to seek priority of the Charges ahead of any Encumbrance"
-  - id: F41
-    fact: >
-      The Monitor must publish a list of creditor names, addresses and estimated claim amounts, but is
-      barred from publicly disclosing the claims, names or addresses of individual creditors unless
-      the Court orders otherwise.
-    page: 13
-    location: "para 39(C), continued to p14"
-    quote:
-      - "prepare a list showing the names and addresses of those"
-      - "the Monitor shall not make the claims, names and addresses of individuals who are creditors publicly available, unless otherwise ordered by the Court"
 
 contradictions: []
 
@@ -616,7 +427,7 @@ must_not_miss:
       Board Counsel's fees are capped at $250,000 plus HST.
     quote:
       - "the fees and disbursement of Board Counsel paid by the Applicant from and after the date of this Order shall not exceed the aggregate amount of $250,000, plus HST, pending further Order of the Court."
-    page: 11
+    page: 12
     paragraph: 29
     why: >
       A discrete dollar cap at the end of a long paragraph about professional fees.
@@ -685,16 +496,3 @@ must_not_miss:
       An unusual CCAA device, and the reason the students' association and its $8.5M loan sit
       inside the proceeding. A short paragraph under its own heading, early, where extractors
       are still processing boilerplate.
-  - id: M12
-    item: >
-      The Monitor is expressly authorized to hold discussions with the Ontario Ministry of Colleges
-      and Universities and other provincial or federal government agencies on all aspects of the CCAA
-      proceeding and Laurentian's restructuring.
-    page: 10
-    location: "para 24(d)"
-    quote:
-      - "participate in discussions with representatives of the Ministry of Colleges and Universities (\"MCU\") and such other representatives of Provincial or Federal government agencies"
-      - "on all aspects of this proceeding and the Applicant's restructuring"
-    why: >
-      A reporter who missed this would miss that the provincial government is a sanctioned party to
-      restructuring talks from day one — central to the public-institution angle of the story.

@@ -127,7 +127,10 @@ facts:
       respects" — dated 30 October 2020 at Sudbury. The opinion carries NO going-concern
       modification and no emphasis of matter.
     pages: [16, 18]
-    quote: "In our opinion, the accompanying financial statements present fairly, in all material respects, the consolidated financial position of Laurentian University of Sudbury as at April 30, 2020 … Sudbury, Canada October 30, 2020"
+    quote:
+      - "In our opinion, the accompanying financial statements present fairly, in all material respects, the consolidated financial position of Laurentian University of Sudbury as at April 30, 2020"
+      - "Sudbury, Canada"
+      - "October 30, 2020"
     note: >
       The single most consequential fact in this document. Three months later the Monitor told the
       court LU was insolvent and could not make payroll. Compare the FY20-21 report, whose audit
@@ -165,7 +168,13 @@ facts:
       The DB Pension Plan solvency ratio was 85.4% at 1 January 2020 (2019: 87.8%). LU is only
       required to fund solvency deficits up to an 85% level.
     page: 8
-    quote: "The solvency ratio deficit for the January 1, 2020 was 85.4% (2019, 87.8%) … The University is only required to fund solvency deficits up to an 85% level with a 5-year amortization period."
+    quote:
+      - "The University is only required to fund solvency deficits up to an 85% level with a 5-year amortization period."
+      - "The solvency ratio deficit for the January 1, 2020 was 85.4% (2019, 87.8%)."
+    note: >
+      Quoted as two spans, not one elision: on the page the 85% funding rule appears in the
+      paragraph BEFORE the solvency ratio, so an ellipsis between them would assert a document
+      order that does not exist.
   - id: F13
     fact: "The Provision for Adverse Deviation (PfAD) rate rose to 10.3% from 7.94%."
     page: 8
@@ -211,6 +220,1002 @@ facts:
     fact: "Long-term debt stood at $88,973 thousand, with $2,738 thousand in current portion."
     page: 19
     quote: "Long-term debt (note 8) 88,973 91,711"
+  - id: F22
+    fact: >
+      Laurentian University reports fall 2019 enrolment of 6,834 full-time-equivalent (FTE) students.
+    page: 3
+    location: "Overview infographic"
+    quote:
+      - "Laurentian enrolment"
+      - "Fall 2019 - 6,834 FTE"
+  - id: F23
+    fact: >
+      LU claims to be ranked #1 in earned research income growth, citing 37% growth between 2017 and
+      2018.
+    page: 3
+    location: "Overview infographic"
+    quote:
+      - "Ranked #1 in earned\n\nResearch Income\n\nGrowth"
+      - "(37% growth\n\nbetween 2017-2018)"
+  - id: F24
+    fact: >
+      LU claims to be ranked 8th in Ontario for research intensity, at $110,000 per full-time faculty
+      member.
+    page: 3
+    location: "Overview infographic"
+    quote:
+      - "Ranked 8th in Ontario for Research\n\nIntensity"
+      - "$110,000"
+  - id: F25
+    fact: >
+      LU reports a 9% increase in Indigenous student enrolment over the last decade.
+    page: 3
+    location: "Overview infographic"
+    quote: "9% increase in Indigenous student enrolment in last decade"
+  - id: F26
+    fact: >
+      LU reports a 5.8% increase in Francophone student enrolment since 2009.
+    page: 3
+    location: "Overview infographic"
+    quote: "5.8% increase in Francophone student enrolment since 2009"
+  - id: F27
+    fact: >
+      LU claims 65% of its alumni reside in Northern Ontario after graduation.
+    page: 3
+    location: "Overview infographic"
+    quote: "65% of Alumni reside in Northern Ontario after graduation"
+  - id: F28
+    fact: >
+      LU claims its graduates have the second-highest salary outcomes in Ontario.
+    page: 3
+    location: "Overview infographic"
+    quote: "Laurentian graduates have\n\nthe SECOND HIGHEST\n\nSALARY outcomes in Ontario"
+  - id: F29
+    fact: >
+      LU reports that 52.3% of enrolled students are first-generation postsecondary students.
+    page: 3
+    location: "Overview infographic"
+    quote: "52.3 of enrolled students are First Generation postsecondary students"
+  - id: F30
+    fact: >
+      Before folding in consolidated entities, the capital fund, the research and trust fund, and the
+      pension contribution/cost difference, the University's core net operating deficit for FY2019-20
+      was $5,442 thousand — wider than the $3,120 thousand deficiency ultimately reported in the
+      audited statements.
+    page: 5
+    location: "Reconciliation of Budget to Audited Financial Statements table"
+    quote:
+      - "Net operating deficit"
+      - "159,041"
+      - "164,483"
+      - "(5,442)"
+  - id: F31
+    fact: >
+      Consolidating MIRARCO and the University's 20% share of SNOLAB added a further $458 thousand net
+      deficit to the reconciliation.
+    page: 5
+    location: "Reconciliation of Budget to Audited Financial Statements table"
+    quote:
+      - "Consolidated entities (MIRARCO and 20% of SNOLAB)"
+      - "4,460"
+      - "4,918"
+      - "(458)"
+  - id: F32
+    fact: >
+      The capital fund (+$329K) and the non-operating research and trust fund (+$1,534K) both ran
+      surpluses that year, offsetting part of the operating deficit in the consolidated total.
+    page: 5
+    location: "Reconciliation of Budget to Audited Financial Statements table"
+    quote:
+      - "Capital fund"
+      - "5,594"
+      - "5,265"
+      - "329"
+      - "Research and trust (non-operating fund)"
+      - "29,302"
+      - "27,768"
+      - "1,534"
+  - id: F33
+    fact: >
+      A further $917 thousand adjustment in the reconciliation reflects the difference between what
+      the University actually paid into the pension plan (employer contributions) and the net benefit
+      cost recognized under accounting rules.
+    page: 5
+    location: "Reconciliation of Budget to Audited Financial Statements table"
+    quote:
+      - "Difference between Employer Pension Contributions and Net Benefit Cost"
+      - "917"
+  - id: F34
+    fact: >
+      The University received a "Net COVID-19 Grant from MCU" of $751 thousand as part of the year's
+      COVID-19 revenue/expense variance reconciliation.
+    page: 6
+    location: "COVID-19 causes table"
+    quote:
+      - "Net COVID-19 Grant from MCU"
+      - "751"
+  - id: F35
+    fact: >
+      The province's COVID-19 grant was shared among the Federated Universities, with Laurentian's net
+      share being $751,000.
+    page: 6
+    location: "narrative below the COVID-19 causes table"
+    quote:
+      - "the University received a Grant from the Province which was shared with"
+      - "the Federated Universities. The net grant to Laurentian University was $751,000."
+  - id: F36
+    fact: >
+      The University booked $1.3 million in additional credit risk (bad-debt provision) on tuition
+      receivable as a result of COVID-19.
+    page: 6
+    location: "COVID-19 causes table"
+    quote:
+      - "Additional credit risk on tuition receivable"
+      - "1,300"
+  - id: F37
+    fact: >
+      COVID-19 refunds of ancillary fees, combined with a cut to the ancillary fund's planned
+      contribution to the operating budget, cost $1.521 million.
+    page: 6
+    location: "COVID-19 causes table"
+    quote:
+      - "Refund of ancillary fees and reduction in planned contribution to"
+      - "operating budget"
+      - "1,521"
+  - id: F38
+    fact: >
+      Interest and investment income came in $1.171 million below budget because of COVID-19 market
+      conditions.
+    page: 6
+    location: "COVID-19 causes table"
+    quote:
+      - "Interest and investment income declines compared to budget"
+      - "1,171"
+  - id: F39
+    fact: >
+      A residual $105 thousand of other COVID-19-related costs, net of savings, is also included in
+      the reconciliation.
+    page: 6
+    location: "COVID-19 causes table"
+    quote:
+      - "Other COVID-19 costs net of savings"
+      - "105"
+  - id: F40
+    fact: >
+      The University explicitly anticipates a further increase in the risk of tuition receivables
+      going unpaid because students may not return to their studies.
+    page: 6
+    location: "narrative below the COVID-19 causes table"
+    quote:
+      - "the risk of default on contractual obligations is anticipated to increase as students decide if they shall"
+      - "return to post-secondary studies."
+  - id: F41
+    fact: >
+      Early campus closure led to partial refunds for residences and other ancillary activities.
+    page: 6
+    location: "narrative below the COVID-19 causes table"
+    quote:
+      - "The early closure of the campus resulted in partial refunds of the residences and other ancillary"
+      - "activities."
+  - id: F42
+    fact: >
+      Aside from COVID-19, other budget variances netted to $0.3 million.
+    page: 6
+    location: "narrative, operational variances"
+    quote: "Operational variances, other than those caused by COVID-19 were $0.3 million."
+  - id: F43
+    fact: >
+      Provincial Graduate Capital grants came in $0.6 million below budget.
+    page: 6
+    location: "narrative, operational variances"
+    quote:
+      - "reductions in provincial grants for Graduate"
+      - "Capital of $0.6 million"
+  - id: F44
+    fact: >
+      Proceeds from the Northern Tuition Sustainability Fund came in $1.4 million lower than expected.
+    page: 6
+    location: "narrative, operational variances"
+    quote:
+      - "lower than expected proceeds from the Northern Tuition Sustainability"
+      - "Fund of $1.4 million"
+  - id: F45
+    fact: >
+      Grant shortfalls were partly offset by $1.0 million of additional, unbudgeted tuition revenue.
+    page: 6
+    location: "narrative, operational variances"
+    quote: "offset by additional tuition revenue of $1.0 million"
+  - id: F46
+    fact: >
+      The University saved $1.2 million in expenses by not hiring into vacant positions and cutting
+      spending in non-essential areas.
+    page: 6
+    location: "narrative, operational variances"
+    quote:
+      - "Total expenses savings"
+      - "of $1.2 million were as a result of not hiring into vacant positions and reducing spending for non"
+      - "essential areas."
+  - id: F47
+    fact: >
+      Of the $91.7 million in total outstanding long-term debt at fiscal year-end 2020, $39.5 million
+      financed campus modernization projects, $32.3 million financed ancillaries, $13.2 million
+      financed the School of Education, and $6.7 million financed the Voyageur Recreation Centre.
+    page: 7
+    location: "Capital financing table"
+    quote:
+      - "Campus modernization projects"
+      - "$39.5"
+      - "Ancillaries"
+      - "$32.3"
+      - "School of Education"
+      - "$13.2"
+      - "Voyageur Recreation Centre"
+      - "$6.7"
+  - id: F48
+    fact: >
+      Total outstanding long-term debt stood at $91.7 million at the end of fiscal 2020.
+    page: 7
+    location: "Capital financing narrative"
+    quote: "Total outstanding long-term debt was $91.7 million at the end of fiscal 2020."
+  - id: F49
+    fact: >
+      The University repaid $3.6 million in long-term debt during the year and states it is compliant
+      with its Board-approved debt policy.
+    page: 7
+    location: "Capital financing narrative"
+    quote: "During the year, the University repaid $3.6 million in long-term debt and is compliant with the debt policy approved by the Board of Governors."
+  - id: F50
+    fact: >
+      As of April 30, 2020, $12.9 million of capital projects were financed internally rather than by
+      external debt.
+    page: 7
+    location: "Capital financing narrative"
+    quote:
+      - "At April 30, 2020, $12.9 million in capital"
+      - "projects were financed by internal financing."
+  - id: F51
+    fact: >
+      The University has a $5 million unsecured line of credit with Royal Bank and a $26 million
+      unsecured line of credit with Desjardins to support internal capital funding; $14.4 million was
+      drawn as of April 30, 2020.
+    page: 7
+    location: "Capital financing narrative"
+    quote:
+      - "The University has access to a Royal Bank unsecured line of credit of $5 million and a Desjardins"
+      - "unsecured line of credit of $26 million in support of internal capital funding. At April 30, 2020 the"
+      - "University had utilized $14.4 million."
+  - id: F52
+    fact: >
+      Salaries and benefits make up 67% of the University's total expenses.
+    page: 7
+    location: "Compensation and Benefits narrative"
+    quote: "Salaries and benefits represent 67% of the University's expenses."
+  - id: F53
+    fact: >
+      The $134 million in salaries and benefits breaks down as $107,722 thousand operating excluding
+      employee future benefits, $14,171 thousand research and trust, $3,232 thousand ancillaries, and
+      $6,728 thousand employee future benefits.
+    page: 7
+    location: "Compensation and Benefits pie chart"
+    quote:
+      - "Operating, excluding EFB"
+      - "($107,722)"
+      - "Research &amp; Trust ($14,171)"
+      - "Ancillaries ($3,232)"
+      - "Employee future benefits (EFB)"
+      - "($6,728)"
+  - id: F54
+    fact: >
+      The University maintains three post-employment benefit plans: a defined benefit pension plan (a
+      hybrid plan until 2012), a Retiree Health Benefit Plan (RHBP), and a supplemental pension plan.
+    page: 8
+    location: "Employee Future Benefits (EFB) narrative"
+    quote:
+      - "The University has three post-employment benefit plans."
+      - "The first is a defined benefit pension"
+      - "plan (formerly a hybrid plan until 2012)"
+  - id: F55
+    fact: >
+      The Retiree Health Benefit Plan (RHBP) is one to which employees contribute during their
+      employment, reimbursing a fixed annual maximum of actual expenses claimed.
+    page: 8
+    location: "Employee Future Benefits (EFB) narrative"
+    quote:
+      - "The second benefit is the Retiree Health Benefit"
+      - "Plan (RHBP) to which the employees contribute during their employment."
+  - id: F56
+    fact: >
+      A third, supplemental pension plan tops up benefits for eligible employees beyond what Canada
+      Revenue Agency limits would otherwise allow.
+    page: 8
+    location: "Employee Future Benefits (EFB) narrative"
+    quote:
+      - "The third benefit is a"
+      - "supplemental pension plan to provide eligible employees with benefits otherwise available should"
+      - "Canada Revenue Agency limitations not be imposed"
+  - id: F57
+    fact: >
+      Under the new pension-reform regulations, going-concern funding deficits must now be amortized
+      over 10 years instead of 15.
+    page: 8
+    location: "Employee Future Benefits (EFB) narrative"
+    quote:
+      - "Going concern"
+      - "deficits will now be required to be funded over a 10 year period instead of 15 year period."
+  - id: F58
+    fact: >
+      Beginning in the 2020-21 academic year, Laurentian's enrolment fell below the SMA3 funding
+      corridor's minimum threshold.
+    page: 8
+    location: "Funding Formula and Strategic Mandate Agreement narrative"
+    quote:
+      - "Starting in 2020-21, Laurentian is below the"
+      - "corridor."
+  - id: F59
+    fact: >
+      Starting in 2020-21, 25% of Laurentian's provincial funding was to be tied to performance on 10
+      metrics, rising to 60% by 2024-25.
+    page: 9
+    location: "Funding Formula and Strategic Mandate Agreement narrative"
+    quote:
+      - "Beginning in 2020-21, 25% of provincial funding was to be linked to 10 metrics with that share"
+      - "rising to 60% by the 2024-25 academic year."
+  - id: F60
+    fact: >
+      Laurentian signed its new Strategic Mandate Agreement (SMA3) with the Province in September
+      2020, covering 2020-25.
+    page: 9
+    location: "Funding Formula and Strategic Mandate Agreement narrative"
+    quote:
+      - "Laurentian signed a new Strategic Mandate Agreements (SMA3) agreement with the Province in"
+      - "September 2020 covering the period of 2020-25."
+  - id: F61
+    fact: >
+      Because of COVID-19, the ministry delayed activating the SMA3 performance-based grant for two
+      years (2020-21 and 2021-22), decoupling funding from performance metrics during that window.
+    page: 9
+    location: "Funding Formula and Strategic Mandate Agreement narrative"
+    quote:
+      - "the ministry"
+      - "announced their decision to delay the activation of the Performance-based grant for two years"
+      - "(2020-21 and 2021-22), decoupling the funding, but keeping all other aspects of the SMA3"
+      - "model."
+  - id: F62
+    fact: >
+      Ancillary revenues came in $615 thousand under budget ($14,979K actual vs. $15,594K budget)
+      while ancillary expenses ran $277 thousand over budget ($12,232K actual vs. $11,955K budget).
+    page: 9
+    location: "Ancillaries table"
+    quote:
+      - "Ancillary revenues"
+      - "15,594"
+      - "14,979"
+      - "Ancillary expenses"
+      - "11,955"
+      - "12,232"
+  - id: F63
+    fact: >
+      Laurentian's ancillary operations comprise Residences, Parking, Food Services, Press,
+      Conferences and Events, the Laurentian English Language Institute, and the Centre for Academic
+      Development.
+    page: 9
+    location: "Ancillaries narrative"
+    quote:
+      - "Laurentian's ancillary operations include Residences, Parking, Food Services, Press, Conferences"
+      - "and Events, Laurentian English Language Institute and the Centre for Academic Development."
+  - id: F64
+    fact: >
+      Laurentian University reports more than 62,000 alumni.
+    page: 9
+    location: "Research narrative"
+    quote: "With more than 62,000 alumni, Laurentian University is proud of its significant contribution to"
+  - id: F65
+    fact: >
+      The Board of Governors approved an accelerated, amended Long Term Sustainability Plan
+      specifically to address the 10% tuition rate reduction, grant-funding changes, and COVID-related
+      long-term impacts.
+    page: 11
+    location: "Future Impact of COVID-19 narrative"
+    quote:
+      - "The Board of Governors had approved an accelerated and amended Long Term Sustainability plan"
+      - "to address the 10% tuition rate reduction, grant funding changes, as well as the COVID related"
+      - "long term impacts."
+  - id: F66
+    fact: >
+      Sustained low long-term interest rates have already increased pension plan liabilities, and the
+      University warns that prolonged low rates could increase defined benefit pension liabilities
+      further and require additional funding from the University.
+    page: 11
+    location: "Future Impact of COVID-19 narrative"
+    quote:
+      - "Significant reductions in long term interest rates has resulted in an increase in liability for the"
+      - "Pension Plan."
+      - "While the Pension Plan investments have rebounded, the impact of prolonged low"
+      - "interest rates could increase the defined benefit pension plan liabilities and require additional"
+      - "funding from the University."
+  - id: F67
+    fact: >
+      The University warns that pandemic-driven market volatility could lead to a loss on its
+      investments' market value that is "other than temporary."
+    page: 11
+    location: "Future Impact of COVID-19 narrative"
+    quote:
+      - "The University's investments are recognized at fair value and the impact of the pandemic has"
+      - "created volatility and uncertainty in world markets, which may lead to a loss on market value that"
+      - "is other than temporary."
+  - id: F68
+    fact: >
+      Capital assets decreased $8.0 million in FY2020, mainly reflecting amortization outpacing a set
+      of small project additions.
+    page: 12
+    location: "Financial Statement Highlights, Statement of Financial Position narrative"
+    quote:
+      - "Capital assets decreased $8.0M which is primarily"
+      - "comprised of additions pertaining to various small"
+      - "projects less amortization."
+  - id: F69
+    fact: >
+      Total assets fell 3.6% year over year.
+    page: 12
+    location: "Financial Statement Highlights, Statement of Financial Position narrative"
+    quote: "Overall, assets decreased by 3.6%."
+  - id: F70
+    fact: >
+      Total liabilities and deferred contributions decreased 3.7% year over year.
+    page: 12
+    location: "Financial Statement Highlights, Statement of Financial Position narrative"
+    quote:
+      - "Overall, liabilities and deferred contributions decreased"
+      - "by 3.7%."
+  - id: F71
+    fact: >
+      The University's cash fell $2.9 million during the year, partly because it used cash to pay down
+      a portion of its line of credit.
+    page: 12
+    location: "Financial Statement Highlights, Statement of Financial Position narrative"
+    quote:
+      - "The University's cash level decreased"
+      - "$2.9M as a portion of the line of credit was paid off in"
+      - "2020."
+  - id: F72
+    fact: >
+      Other fees and income rose partly because new compulsory ancillary fees were introduced, and
+      because administrative fees rose following an amendment to funding arrangements with the
+      Federated Universities.
+    page: 13
+    location: "Financial Statement Highlights, Statement of Operations narrative"
+    quote:
+      - "Other fees and income are up due to new"
+      - "compulsory ancillary fees that were introduced."
+      - "Furthermore, there was an increase in administrative"
+      - "fees due"
+      - "an amendment to the funding arrangements"
+      - "with the Federated Universities."
+  - id: F73
+    fact: >
+      Amortization of deferred capital contributions rose 15.0%, driven by amortization recorded on
+      the RIE building grants.
+    page: 13
+    location: "Financial Statement Highlights, Statement of Operations narrative"
+    quote:
+      - "Amortization of deferred capital"
+      - "is up by 15.0% due to amortization recorded on"
+      - "the RIE building grants."
+  - id: F74
+    fact: >
+      The decline in tuition revenue from the mandated domestic tuition cut was partially offset by
+      growth in international and graduate-studies enrolment.
+    page: 13
+    location: "Financial Statement Highlights, Statement of Operations narrative"
+    quote:
+      - "which was partially"
+      - "offset by international and graduate studies growth."
+  - id: F75
+    fact: >
+      Operating and research expenses fell 5.6%, driven by a decrease in research expenses.
+    page: 13
+    location: "Financial Statement Highlights, Statement of Operations narrative"
+    quote:
+      - "There was a decrease in operating and research of"
+      - "5.6% because of a decrease in research expenses."
+  - id: F76
+    fact: >
+      Scholarships and bursaries rose 5.8% because of a new scholarship program introduced for
+      international students.
+    page: 13
+    location: "Financial Statement Highlights, Statement of Operations narrative"
+    quote:
+      - "Scholarships and bursaries increased 5.8%"
+      - "due to a new scholarship program that was introduced"
+      - "for international students."
+  - id: F77
+    fact: >
+      Although Eckler Ltd. performs the actuarial work, the University's management retains ultimate
+      responsibility for the pension and other employee-future-benefit liability figures reported in
+      the statements.
+    page: 14
+    location: "Statement of Administrative Responsibility narrative"
+    quote:
+      - "Management has provided the actuary with the information"
+      - "necessary for the completion of the University's actuarial report and retains ultimate responsibility"
+      - "for the determination and estimation of the pension and other employee future benefits liabilities"
+      - "reported."
+  - id: F78
+    fact: >
+      KPMG LLP was appointed as the University's auditor by the Board of Governors.
+    page: 14
+    location: "Statement of Administrative Responsibility narrative"
+    quote:
+      - "The consolidated financial statements for the year ended April 30, 2020 have been reported on by KPMG"
+      - "LLP, Chartered Accountants, the auditors appointed by the Board of Governors."
+  - id: F79
+    fact: >
+      Operating grants and contracts revenue was $86,234 thousand in FY2020, up from $80,063 thousand
+      in FY2019.
+    page: 20
+    location: "Consolidated Statement of Operations"
+    quote:
+      - "Operating grants and contracts"
+      - "86,234"
+      - "80,063"
+  - id: F80
+    fact: >
+      Tuition fee revenue fell to $53,211 thousand in FY2020 from $55,581 thousand in FY2019.
+    page: 20
+    location: "Consolidated Statement of Operations"
+    quote:
+      - "Tuition fees"
+      - "53,211"
+      - "55,581"
+  - id: F81
+    fact: >
+      Research grants and contracts revenue was $24,151 thousand in FY2020, down slightly from $24,655
+      thousand in FY2019.
+    page: 20
+    location: "Consolidated Statement of Operations"
+    quote:
+      - "Research grants and contracts"
+      - "24,151"
+      - "24,655"
+  - id: F82
+    fact: >
+      Endowment contributions (donations) fell to $1,036 thousand in FY2020 from $3,009 thousand in
+      FY2019 — a roughly two-thirds decline.
+    page: 21
+    location: "Consolidated Statement of Changes in Net Assets (Deficiency)"
+    quote:
+      - "Endowment contributions"
+      - "1,036"
+      - "3,009"
+  - id: F83
+    fact: >
+      A $14,398 thousand charge for "employee future benefits remeasurements and other items" was
+      recognized directly against net assets in FY2020, versus a $7,374 thousand gain the prior year.
+    page: 21
+    location: "Consolidated Statement of Changes in Net Assets (Deficiency)"
+    quote:
+      - "Employee Future Benefits"
+      - "remeasurements and other items"
+      - "(14,398)"
+  - id: F84
+    fact: >
+      Cash purchases of capital assets fell to $2,527 thousand in FY2020 from $11,393 thousand in
+      FY2019 — a more than 75% pullback in capital spending.
+    page: 22
+    location: "Consolidated Statement of Cash Flows"
+    quote:
+      - "Purchases of capital assets"
+      - "(2,527)"
+      - "(11,393)"
+  - id: F85
+    fact: >
+      The University's line of credit decreased by $3,200 thousand in FY2020, reversing an $8,600
+      thousand increase the prior year.
+    page: 22
+    location: "Consolidated Statement of Cash Flows"
+    quote:
+      - "Increase (decrease) in line of credit"
+      - "(3,200)"
+      - "8,600"
+  - id: F86
+    fact: >
+      The University has incurred more than $100 million in combined short- and long-term borrowing to
+      finance residences, the student recreation centre, and campus-modernization buildings.
+    page: 23
+    location: "Notes to Consolidated Financial Statements, introductory paragraph"
+    quote:
+      - "The University has incurred short and long-term borrowing in excess of $100 million, the proceeds of"
+      - "which were used to finance residences, the student recreation centre and various educational buildings"
+      - "to modernize the campus."
+  - id: F87
+    fact: >
+      Management states it will be difficult to use the full campus under social-distancing
+      requirements and anticipates a negative effect on ancillary revenues as a result.
+    page: 23
+    location: "Notes to Consolidated Financial Statements, introductory paragraph"
+    quote:
+      - "It will prove difficult to utilize the full campus with social distancing"
+      - "requirements and management anticipates a negative effect on ancillary revenues (note 17)."
+  - id: F88
+    fact: >
+      The consolidated statements include the Mining Innovation Rehabilitation and Applied Research
+      Corporation (MIRARCO), a wholly controlled entity of the University.
+    page: 25
+    location: "Note 1(f), Related entities and basis of presentation — MIRARCO"
+    quote:
+      - "These consolidated financial statements are inclusive of the assets, liabilities, revenues and"
+      - "expenses of the Mining Innovation Rehabilitation and Applied Research Corporation, which is"
+      - "a wholly controlled entity."
+  - id: F89
+    fact: >
+      The Northern Ontario School of Medicine (NOSM) is not included in the consolidated financial
+      statements; Laurentian and Lakehead University are its only voting members, but Laurentian has
+      no claim on, and no liability for, NOSM's net assets or obligations.
+    page: 25
+    location: "Note 1(f), Related entities and basis of presentation — Northern Ontario School of Medicine"
+    quote:
+      - "Northern Ontario School of Medicine (the"
+      - "School\") was created to provide medical"
+      - "education in Northern Ontario."
+      - "Although the University, along with Lakehead University, the"
+      - "only other voting member of the School, has significant relationships with the School, the"
+      - "University has no claim to the School's net assets nor is the University liable or contingently"
+      - "liable for any of the School's obligations."
+  - id: F90
+    fact: >
+      The University created and funded the Centre for Excellence in Mining and Innovation (CEMI) on
+      April 23, 2007 with $10 million it received from the Provincial Government; CEMI's operations
+      are not included in these consolidated statements.
+    page: 26
+    location: "Note 1(f), Related entities and basis of presentation — CEMI"
+    quote:
+      - "The Centre for Excellence in Mining and Innovation (CEMI) was created on April 23, 2007 to"
+      - "advance study, research and innovation."
+      - "The University contributed $10 million received from"
+      - "the Provincial Government to create and fund CEMI on its inception."
+  - id: F91
+    fact: >
+      The University uses interest rate swaps to hedge long-term debt that bears interest based on
+      LIBOR.
+    page: 26
+    location: "Note 1(g), Financial instruments"
+    quote:
+      - "The University enters into interest rate swaps to hedge the effect of changes in interest rates on"
+      - "its long-term debt that bears interest based on LIBOR."
+  - id: F92
+    fact: >
+      Realized investment losses grew to $2,016 thousand in FY2020 from $760 thousand in FY2019.
+    page: 28
+    location: "Note 2, Cash and Investments (continued) — investment income table"
+    quote:
+      - "Realized losses"
+      - "(2,016)"
+      - "(760)"
+  - id: F93
+    fact: >
+      The University's defined benefit pension plan carries a gross accrued benefit obligation of
+      $431,581 thousand against fair-value plan assets of $419,293 thousand.
+    page: 28
+    location: "Note 4, Employee future benefits table"
+    quote:
+      - "accrued benefit obligation"
+      - "(431,581)"
+      - "Fair value of plan assets"
+      - "419,293"
+  - id: F94
+    fact: >
+      The Retiree Health Benefit Plan (RHBP) carries a $7,206 thousand accrued benefit obligation
+      against only $1,769 thousand in plan assets, leaving a $5,437 thousand accrued liability.
+    page: 28
+    location: "Note 4, Employee future benefits table"
+    quote:
+      - "(7,206)"
+      - "1,769"
+      - "(5,437)"
+  - id: F95
+    fact: >
+      The discount rate used to value the pension and supplemental pension plan fell to 5.85% in
+      FY2020 from 6.10% in FY2019.
+    page: 29
+    location: "Note 4, Employee future benefits (continued) — assumptions table"
+    quote:
+      - "Discount rate"
+      - "5.85%"
+      - "6.10%"
+  - id: F96
+    fact: >
+      Laurentian's buildings have a gross cost of $356,705 thousand, accumulated amortization of
+      $107,061 thousand, and a FY2020 net book value of $249,644 thousand.
+    page: 29
+    location: "Note 5, Capital assets table"
+    quote:
+      - "Buildings"
+      - "356,705"
+      - "107,061"
+      - "249,644"
+  - id: F97
+    fact: >
+      Only $1,525 thousand of buildings (down from $5,888 thousand the prior year) and $564 thousand
+      of equipment were under construction and not yet being amortized at year-end.
+    page: 29
+    location: "Note 5, Capital assets (continued)"
+    quote:
+      - "A total of $1,525 (2019 - $5,888) of buildings and $564 (2019 - $571) of equipment is under"
+      - "construction and not yet subject to amortization."
+  - id: F98
+    fact: >
+      The University's short-term loan from TD Canada Trust, financing the student recreation centre,
+      is unsecured and carries no mandatory repayment terms; its floating rate was 1.91% at April 30,
+      2020, down from 3.28% the prior year.
+    page: 29
+    location: "Note 6, Short-term loan"
+    quote:
+      - "The short-term loan represents an unsecured loan with no mandatory repayment terms from TD"
+      - "Canada Trust for the student recreation centre, with a floating interest rate of 1.91% at April 30,"
+      - "2020 (2019"
+      - "3.28%)."
+  - id: F99
+    fact: >
+      Of the University's accounts payable and accrued liabilities, $3,872 thousand represents
+      government remittances payable, including payroll-related taxes.
+    page: 30
+    location: "Note 7, Accounts payable and accrued liabilities"
+    quote:
+      - "Included in accounts payable and accrued liabilities are government remittances payable of $3,872"
+      - "(2019 - $3,791), which includes amounts payable for payroll related taxes."
+  - id: F100
+    fact: >
+      The University has an unsecured loan with Bank of Montreal at a fixed 5.14% rate, maturing in
+      2024, with a $1,366 thousand balance at April 30, 2020.
+    page: 30
+    location: "Note 8, Long-term debt table"
+    quote:
+      - "Bank of Montreal (i)"
+      - "5.14%"
+      - "2024"
+      - "1,366"
+  - id: F101
+    fact: >
+      The University has an unsecured loan with Royal Bank of Canada at a fixed 3.90% rate, maturing
+      in 2040, with a $13,187 thousand balance at April 30, 2020.
+    page: 30
+    location: "Note 8, Long-term debt table"
+    quote:
+      - "Royal Bank of Canada"
+      - "3.90%"
+      - "2040"
+      - "13,187"
+  - id: F102
+    fact: >
+      The University has an unsecured loan with Royal Bank of Canada at a fixed 4.50% rate, maturing
+      in 2043, with a $17,573 thousand balance at April 30, 2020 — one of the four loans whose
+      principal repayments were deferred six months after year-end.
+    page: 30
+    location: "Note 8, Long-term debt table"
+    quote:
+      - "Royal Bank of Canada (i)"
+      - "4.50%"
+      - "2043"
+      - "17,573"
+  - id: F103
+    fact: >
+      The University has an unsecured loan with Royal Bank of Canada at a fixed 3.90% rate, maturing
+      in 2023, with a $2,770 thousand balance at April 30, 2020 — another of the four loans whose
+      repayments were deferred post year-end.
+    page: 30
+    location: "Note 8, Long-term debt table"
+    quote:
+      - "Royal Bank of Canada (i)"
+      - "3.90%"
+      - "2023"
+      - "2,770"
+  - id: F104
+    fact: >
+      The University's largest single loan is an unsecured Royal Bank of Canada facility at a fixed
+      4.63% rate, maturing in 2042, with a $39,496 thousand balance at April 30, 2020.
+    page: 30
+    location: "Note 8, Long-term debt table"
+    quote:
+      - "Royal Bank of Canada"
+      - "4.63%"
+      - "2042"
+      - "39,496"
+  - id: F105
+    fact: >
+      The University has an unsecured loan with TD Canada Trust at a fixed 4.70% rate, maturing in
+      2036, with a $10,647 thousand balance at April 30, 2020 — the fourth of the four loans whose
+      repayments were deferred post year-end.
+    page: 30
+    location: "Note 8, Long-term debt table"
+    quote:
+      - "TD Canada Trust (i)"
+      - "4.70%"
+      - "2036"
+      - "10,647"
+  - id: F106
+    fact: >
+      The University has a second unsecured loan with TD Canada Trust at a fixed 4.74% rate, maturing
+      in 2043, with a $6,672 thousand balance at April 30, 2020.
+    page: 30
+    location: "Note 8, Long-term debt table"
+    quote:
+      - "TD Canada Trust"
+      - "4.74%"
+      - "2043"
+      - "6,672"
+  - id: F107
+    fact: >
+      Only 0.62% of the University's debt remained floating-rate after its interest-rate swaps in
+      FY2020, down from 1.96% in FY2019 — nearly all of its long-term debt is effectively fixed-rate.
+    page: 30
+    location: "Note 8, Long-term debt narrative"
+    quote:
+      - "The University converted floating rate debt 0.62% (2019"
+      - "1.96%) for fixed rate debt"
+      - "as noted above."
+  - id: F108
+    fact: >
+      The University's long-term debt principal repayment schedule calls for $2,738 thousand in 2021,
+      $3,917 thousand in 2022, $4,082 thousand in 2023, $3,504 thousand in 2024, $3,337 thousand in
+      2025, and $74,133 thousand thereafter.
+    page: 30
+    location: "Note 8, Long-term debt — principal repayment schedule"
+    quote:
+      - "2021"
+      - "2,738"
+      - "2022"
+      - "3,917"
+      - "2023"
+      - "4,082"
+      - "2024"
+      - "3,504"
+      - "2025"
+      - "3,337"
+      - "Thereafter"
+      - "74,133"
+  - id: F109
+    fact: >
+      Deferred, externally restricted, non-capital contributions rose to $38,519 thousand at year-end
+      from $36,078 thousand at the start of the year, on $25,860 thousand of new contributions
+      received during FY2020.
+    page: 31
+    location: "Note 9, Deferred contributions table"
+    quote:
+      - "Balance, beginning of year"
+      - "36,078"
+      - "Add contributions received in the year"
+      - "25,860"
+  - id: F110
+    fact: >
+      After deducting all the debt, internal financing, short-term loan, line of credit, and
+      unamortized deferred capital contributions used to fund them, the University's net equity
+      investment in its $272,267 thousand of capital assets is just $22,610 thousand.
+    page: 32
+    location: "Note 10, Investment in capital assets table"
+    quote:
+      - "capital assets"
+      - "272,267"
+      - "22,610"
+  - id: F111
+    fact: >
+      The McEwen School of Architecture, launched in 2013, is expected to run accumulated losses until
+      it reaches full enrolment in its Master in Architecture Program, after which it is expected to
+      repay those accumulated deficits to the University's Operating Fund.
+    page: 32
+    location: "Note 11, Internally restricted net assets narrative"
+    quote:
+      - "The McEwen School of Architecture was launched in 2013."
+      - "During the initial years, losses from the"
+      - "school will accumulate until full enrolment in the Master in Architecture Program."
+      - "Subsequently,"
+      - "the School of Architecture will repay the accumulated deficits to the University's Operating Fund."
+  - id: F112
+    fact: >
+      Internal financing for the Cardiovascular Metabolic Research Lab stood at $5,268 thousand at
+      year-end FY2020, down from $5,501 thousand the prior year.
+    page: 33
+    location: "Note 12, Internal financing table"
+    quote:
+      - "Cardiovascular Metabolic Research Lab"
+      - "5,501"
+      - "5,268"
+  - id: F113
+    fact: >
+      Internal financing for the Cliff Fielding Research, Innovation and Engineering Building stood at
+      $729 thousand at year-end FY2020, down from $985 thousand.
+    page: 33
+    location: "Note 12, Internal financing table"
+    quote:
+      - "Cliff Fielding Research, Innovation"
+      - "and Engineering Building"
+      - "985"
+      - "729"
+  - id: F114
+    fact: >
+      Internal financing for Great Hall renovations stood at $1,402 thousand at year-end FY2020, down
+      from $1,646 thousand.
+    page: 33
+    location: "Note 12, Internal financing table"
+    quote:
+      - "Great Hall renovations"
+      - "1,646"
+      - "1,402"
+  - id: F115
+    fact: >
+      Internal financing for the University's DNA Lab stood at $184 thousand at year-end FY2020, down
+      from $206 thousand.
+    page: 33
+    location: "Note 12, Internal financing table"
+    quote:
+      - "DNA Lab"
+      - "206"
+      - "184"
+  - id: F116
+    fact: >
+      Internal capital loans bear a floating rate tied to short-term investment returns and are repaid
+      over terms ranging from three to twenty-four years.
+    page: 33
+    location: "Note 12, Internal financing narrative"
+    quote:
+      - "The internal loans bear interest at a floating rate equal to the return earned on short-term"
+      - "investments and are to be repaid over a period ranging from three to twenty-four years."
+  - id: F117
+    fact: >
+      The University's Royal Bank line of credit carries interest at prime less 0.50% and its
+      Desjardins line at prime less 0.70%; at April 30, 2020 the University had drawn nothing on the
+      Royal Bank line but had drawn $14,400 thousand on the Desjardins line.
+    page: 33
+    location: "Note 13(a), Commitments and contingencies"
+    quote:
+      - "These lines of credit bear interest at Royal Bank prime rate"
+      - "less 0.50% and Desjardins prime rate less 0.70%."
+      - "As at April 30, 2020, the University had not"
+      - "drawn on the Royal Bank line and had drawn $14,400 on the Desjardins line of credit."
+  - id: F118
+    fact: >
+      The University participates in a self-insurance co-operative with forty other Canadian
+      universities, sharing property and liability insurance risk under a contractual agreement.
+    page: 33
+    location: "Note 13(b), Commitments and contingencies"
+    quote:
+      - "The University participates in a reciprocal exchange of insurance risks in association with forty"
+      - "other Canadian universities."
+      - "This self-insurance co-operative involves a contractual agreement"
+      - "to share the insurance property and liability risks of member universities."
+  - id: F119
+    fact: >
+      Beyond the University's own reported figures, the Federated Universities and SNOLAB together
+      carry $4,918 thousand in post-employment benefit liabilities that Laurentian administers but
+      that sit outside the University's own balance sheet.
+    page: 33
+    location: "Note 13(e), Commitments and contingencies"
+    quote:
+      - "In total, the Federated"
+      - "Universities and SNOLAB have post-employment benefit liabilities of $4,918, in addition to the"
+      - "amounts allocated to the University."
+  - id: F120
+    fact: >
+      Laurentian halted in-person activity and moved to online education in March 2020, following the
+      World Health Organization's pandemic declaration and recommendations from Public Health Ontario.
+    page: 35
+    location: "Note 17, Effects of COVID-19"
+    quote:
+      - "Prior to year-end, the COVID-19 (the \"pandemic\") outbreak was declared a pandemic by the World"
+      - "Health Organization."
+      - "Laurentian University halted in-person activity, restricted its facilities to staff"
+      - "and students and moved to online education format in March 2020 based on recommendations from"
+      - "Public Health Ontario."
+  - id: F121
+    fact: >
+      The University states it cannot reasonably estimate or disclose the future financial impact of
+      COVID-19 on its operations.
+    page: 36
+    location: "Note 17, Effects of COVID-19 (continued)"
+    quote:
+      - "The University cannot reasonably reflect the future financial impact of COVID-19."
+      - "Given that the"
+      - "outcome and timeframe to a recovery from the current pandemic is highly unpredictable, it is not"
+      - "practicable to estimate and disclose its financial effect on future operations at this time."
 
 contradictions:
   - id: C1
@@ -598,3 +1603,112 @@ must_not_miss:
       A subtle cash-crunch signal that survived into the final report despite the clean audit
       opinion (M1) and the "on track" narrative (F1) — LU was already deferring debt service
       before this report was even issued.
+  - id: M13
+    item: >
+      The University states it relies on the Ministry of Colleges and Universities to help it meet its
+      financial obligations, alongside a requirement to hit sustainability targets.
+    page: 23
+    location: "Notes to Consolidated Financial Statements, introductory paragraph"
+    quote:
+      - "Consistent with prior years, the University has a level of reliance on the Ministry of Colleges and"
+      - "Universities to assist in meeting its obligations and also a requirement to meet its sustainability targets."
+    why: >
+      A direct admission of reliance on government support to meet obligations, sitting in tension
+      with the clean, unqualified audit opinion that carries no going-concern modification; a reporter
+      who missed this would be missing a key thread in the University's financial-health story.
+  - id: M14
+    item: >
+      The University consolidates only its 20% share of SNOLAB's revenue and expenses through March
+      31, 2019 — SNOLAB's 2020 figures were not yet available when these statements were prepared —
+      and it wrote off its share of SNOLAB's assets and liabilities as at April 30, 2018 because it
+      will lose access to them once SNOLAB incorporates separately.
+    page: 25
+    location: "Note 1(f), Related entities and basis of presentation — SNOLAB"
+    quote:
+      - "As a result, the University's proportionate share (20%) of the entity's revenues and"
+      - "expenses to March 31, 2019 have been included in these consolidated financial statements."
+      - "The"
+      - "2020 financial statements are not yet available."
+      - "SNOLAB is in the process of incorporating"
+      - "as a not-for-profit corporation."
+      - "Therefore, the University wrote-off its share of assets and"
+      - "liabilities as at April 30, 2018 as it will no longer have access to the assets or liabilities related"
+      - "to the operations of SNOLAB once incorporated."
+    why: >
+      The "consolidated" financial statements actually include stale, up-to-two-year-old data for
+      SNOLAB and a prior write-off of that entity's assets/liabilities; a reporter relying on these
+      statements to assess SNOLAB-related exposure would be misled without this caveat.
+  - id: M15
+    item: >
+      The allowance for doubtful accounts on the University's receivables rose to $5,020 thousand in
+      FY2020 from $3,120 thousand in FY2019 — a 61% increase.
+    page: 28
+    location: "Note 3, Accounts receivable table"
+    quote:
+      - "Less allowance for doubtful accounts"
+      - "(5,020)"
+      - "(3,120)"
+    why: >
+      A sharp rise in bad-debt provisioning is a direct, quantified sign of deteriorating
+      collectability on the University's receivables, consistent with the additional credit risk
+      booked on tuition receivable, and central to any story about the University's financial
+      deterioration.
+  - id: M16
+    item: >
+      The supplemental pension plan for employees whose benefits would otherwise exceed Canada Revenue
+      Agency limits is entirely unfunded — its accrued benefit obligation equals its accrued benefit
+      liability of $3,063 thousand, with no plan assets set aside.
+    page: 28
+    location: "Note 4, Employee future benefits table"
+    quote:
+      - "Accrued benefit liabilities"
+      - "(3,063)"
+    why: >
+      An unfunded, CRA-limit top-up pension plan with zero assets set aside is a natural investigative
+      target; missing it would mean missing a distinct, unfunded supplemental-benefit liability
+      separate from the main pension plan already covered.
+  - id: M17
+    item: >
+      The University's internally restricted "Reserve for future years" was drawn down to zero in
+      FY2020, from $744 thousand the prior year.
+    page: 32
+    location: "Note 11, Internally restricted net assets table"
+    quote:
+      - "Reserve for future years"
+      - "744"
+    why: >
+      A rainy-day reserve being fully depleted in the same year the University posted a $5.4 million
+      operating deficit is a material sign of shrinking financial cushion that a reporter needs to
+      catch.
+  - id: M18
+    item: >
+      Students approved, by referendum, a levy to repay a long-term debt facility funding a new
+      Student Centre, and the Board of Governors has approved a University guarantee of that student
+      loan up to $8,500 thousand.
+    page: 33
+    location: "Note 13(c), Commitments and contingencies"
+    quote:
+      - "The Students' General Association, through a referendum, approved a student levy to cover the"
+      - "repayment of a student long-term debt facility to provide funding for a new Student Centre."
+      - "the"
+      - "Board of Governors of the University has approved that the University guarantee the student"
+      - "loan up to the amount of $8,500."
+    why: >
+      A material contingent liability — an up-to-$8.5-million guarantee — tied to a student-approved
+      levy, an item a reporter covering the University's total debt exposure or student finances would
+      need to know about.
+  - id: M19
+    item: >
+      The University discloses that it is involved in unspecified legal matters and litigation whose
+      outcomes are not presently determinable.
+    page: 33
+    location: "Note 13(d), Commitments and contingencies"
+    quote:
+      - "The University is involved in certain legal matters and litigation, the outcomes of which are not"
+      - "presently determinable."
+      - "The loss, if any, from these contingencies will be accounted for in the"
+      - "periods in which the matters are resolved."
+    why: >
+      An acknowledgment of open, undisclosed litigation with an indeterminate financial outcome is
+      exactly the kind of contingent liability a reporter needs to flag and try to identify, even
+      though the statements do not name the matters.

@@ -18,6 +18,7 @@ Annotation only, never a gate (same posture as the D32 coverage warning): a loca
 be resolved is flagged in the rendered note and logged as a WARN, but never blocks the document.
 """
 
+import html.entities as html_entities
 import re
 import unicodedata
 
@@ -59,17 +60,81 @@ _MIN_ELISION_PART = 12   # normalized chars; a shorter fragment matches by luck,
 _MAX_ELISION_GAP = 600   # normalized chars the model may cut out between two kept parts
 
 
-def _normalize(text: str) -> str:
+_ENTITY_RE = re.compile(r"&(?:#\d+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]{1,31});")
+
+
+def _entity_char(token: str) -> str | None:
+    """The character `token` denotes, or None if it is not actually an entity.
+
+    Deliberately stricter than `html.unescape`, which resolves the longest
+    KNOWN prefix and leaves the rest: it turns `&notanentity;` into `¬anentity;`
+    because `&not` is real. Silently mangling text that merely looks like an
+    entity would lose real document content, so only a token that resolves
+    whole is treated as one.
+    """
+    body = token[1:-1]
+    if body.startswith("#"):
+        try:
+            code = int(body[2:], 16) if body[1:2] in "xX" else int(body[1:])
+        except ValueError:
+            return None
+        return chr(code) if 0 < code < 0x110000 else None
+    resolved = html_entities.html5.get(body + ";")
+    return resolved if resolved else None
+
+
+def _unescape_with_map(text: str) -> tuple[str, list[int]]:
+    """HTML-unescape `text`, mapping each output character back to its input index.
+
+    The chew emits `&amp;` where the page prints `&`, so without this a quote
+    reading "Payroll & Benefits" cannot match its own page. Entities change
+    length, which is why this returns a map rather than just a string — the
+    callers that resolve a match back into real page text need it.
+    """
+    out: list[str] = []
+    origin: list[int] = []
+    at = 0
+    for m in _ENTITY_RE.finditer(text):
+        if m.start() < at:
+            continue
+        ch = _entity_char(m.group(0))
+        if ch is None:
+            continue
+        for i in range(at, m.start()):
+            out.append(text[i])
+            origin.append(i)
+        for c in ch:
+            out.append(c)
+            origin.append(m.start())
+        at = m.end()
+    for i in range(at, len(text)):
+        out.append(text[i])
+        origin.append(i)
+    return "".join(out), origin
+
+
+def _normalize(text: str, *, collapse_spaces: bool = True) -> str:
     """Case/whitespace/punctuation/hyphenation/accent-insensitive form for fuzzy matching.
 
     Deliberately aggressive: a false "unverified" flag on a real quote erodes trust in the
     flag itself more than an occasional false-positive match would.
+
+    `collapse_spaces=False` discards whitespace outright instead of collapsing runs to a
+    single space. That is what a checker comparing text against CHEWED MARKDOWN needs, because
+    the conversion splits words with spaces: the pension order's header converts to
+    "WEDNESDAY, THE 17 th", which no amount of collapsing will reconcile with the page's
+    printed "17th". Discarding whitespace is safe applied to both sides — a despaced span of a
+    hundred characters does not match by accident — but it is looser, so the pipeline's own
+    quote checking keeps the default.
     """
+    text, _ = _unescape_with_map(text)
     text = text.replace("­", "")          # soft hyphen
     text = _HYPHEN_BREAK_RE.sub("", text)       # word broken across a line by hyphenation
     text = unicodedata.normalize("NFKD", text)
     text = "".join(c for c in text if not unicodedata.combining(c))
     text = _NON_WORD_RE.sub("", text.lower())
+    if not collapse_spaces:
+        return _WS_RE.sub("", text)
     return _WS_RE.sub(" ", text).strip()
 
 
@@ -84,6 +149,10 @@ def _normalize_with_map(text: str) -> tuple[str, list[int]]:
     across a battery of gnarly inputs (accents, hyphen line breaks, soft hyphens, punctuation
     and whitespace runs, empty string).
     """
+    # Entities are expanded first and their map composed with this function's,
+    # so `origin` still refers to indices in the caller's original string.
+    text, entity_origin = _unescape_with_map(text)
+
     skip = [False] * len(text)
     for m in _HYPHEN_BREAK_RE.finditer(text):
         for i in range(m.start(), m.end()):
@@ -120,7 +189,7 @@ def _normalize_with_map(text: str) -> tuple[str, list[int]]:
         out_chars.pop()
         out_idx.pop()
 
-    return "".join(out_chars), out_idx
+    return "".join(out_chars), [entity_origin[i] for i in out_idx]
 
 
 def _elision_parts(quote: str) -> list[str] | None:

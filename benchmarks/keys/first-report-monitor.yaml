@@ -218,7 +218,7 @@ facts:
       published on 4 February 2021 in the Globe and Mail (National Edition) and the Sudbury Star.
     pages: [5, 6]
     paragraph: "23(b), 23(d)"
-    quote: "On February 4, 2021, the Monitor published the Notice to Creditors in the Globe and Mail (National Edition) and the Sudbury Star."
+    quote: "On February 4, 2021, the Monitor published the Notice to Creditors in the Globe and Mail (National Edition) and the Sudbury Star;"
   - id: F19
     fact: >
       The Monitor established a case website (ey.com/ca/Laurentian), a toll-free hotline
@@ -240,6 +240,102 @@ facts:
     quote: "Student classes are continuing (virtually due to the Pandemic) with no disruption."
 
 # No internal contradiction. Recorded explicitly so an invented one scores as a false positive.
+  - id: F22
+    fact: >
+      The Monitor states it has not audited or otherwise attempted to verify the accuracy or
+      completeness of the Information, and expresses no opinion or assurance under GAAS.
+    page: 2
+    location: "para 5(a), Terms of Reference and Disclaimer"
+    quote: "e in the context in which it was provided.  However, the Monitor has not audited  or  otherwise  attempted  to  verify  the  accuracy  or  completeness  of  the Information  in  a  manner  that  would  wholly  or  partially  comply  with  Generally Accepted Assurance Standards (' GAAS ') pursuant to the Chartered Professional Accountants Canada Handbook and, accordingly, the Monitor expresses no o"
+  - id: F23
+    fact: >
+      Laurentian University of Sudbury was incorporated March 28, 1960 under An Act to Incorporate
+      Laurentian University of Sudbury, S.O. 1960, c. 151.
+    page: 3
+    location: "para 12, Background"
+    quote: "12. On  March  28,  1960,  LU  was  incorporated  under  An  Act  to  Incorporate  Laurentian University of Sudbury, S.O. 1960, c. 151 C. 154 (the ' Laurentian Act '). A copy of the Laurentian Act is attached as Exhibit 'A' to the Haché Affidavit."
+  - id: F24
+    fact: >
+      LU is described as a publicly funded, bilingual and tricultural post-secondary institution in
+      Greater Sudbury, and has consistently been one of the largest employers in Sudbury.
+    page: 4
+    location: "para 13, Background"
+    quote: "13. LU is a publicly funded, bilingual and tricultural post-secondary institution.  Its operations are located in the City of Greater Sudbury, Ontario. LU has consistently been one of the largest employers in Sudbury."
+  - id: F25
+    fact: >
+      LU is a non-share capital corporation and a registered charity, exempt from income tax under
+      s.149 of the Income Tax Act, and issues tax receipts to donors.
+    page: 4
+    location: "para 15, Background"
+    quote: "15. LU is a non-share capital corporation and a registered charity pursuant to the Income Tax Act , R.S.C. 1985, c.1 (the ' Income Tax Act '). Pursuant to Section 149 of the Income Tax Act, LU is exempt from the payment of income tax because of its status as a registered charity.    As  a  registered  charity,  LU  also  receives  donations  and  issues  tax  receipts  to donors."
+  - id: F26
+    fact: >
+      LU administers three employee pension and benefit plans: a registered defined benefit pension
+      plan (DB Pension Plan), a supplementary unfunded retirement plan (SuRP), and a retirement health
+      benefits plan (RHBP).
+    page: 10
+    location: "para 42, Pension and Benefit Plans"
+    quote: "42. As set out in the Pre-Filing Report, the Applicant administers three employee pension and benefit plans: (a) a registered defined benefit pension plan (the ' DB Pension Plan '); (b) a supplementary unfunded retirement plan (the ' SuRP ') and (c) a retirement health benefits plan (the ' RHBP ')."
+  - id: F27
+    fact: >
+      The SuRP and RHBP are unfunded contractual obligations to former or retired employees, and the
+      Initial Order stays any amounts payable under these plans.
+    page: 11
+    location: "para 43, Pension and Benefit Plans"
+    quote: "43. As the SuRP and RHBP plans are unfunded contractual obligations to former or retired employees, the Initial Order provides for a stay of any amounts payable under these plans."
+  - id: F28
+    fact: >
+      LU's DB Pension Plan had a solvency ratio of 85.4% and a going concern deficiency of
+      approximately $4.5 million as of the most recent actuarial valuation (Jan 1, 2020, updated
+      December 2020), to be addressed over up to ten years from January 1, 2021.
+    page: 11
+    location: "para 44, Pension and Benefit Plans"
+    quote: "ension  Plan,  the  most  recent  actuarial  valuation  was  made  as of January 1, 2020 (updated in December 2020).  Pursuant to this actuarial valuation, the DB Pension Plan had a solvency ratio of 85.4%, representing a going concern deficiency of approximately $4.5 million.  This deficiency is required to be addressed over a period not exceeding ten years, beginning one year after the date of v"
+  - id: F29
+    fact: >
+      The DB Pension Plan's current service contributions for the next three years were set at
+      $16,188,000 annually (~$1,349,000/month), plus a $505,000 annual special payment
+      (~$42,083/month) to address the deficiency.
+    page: 11
+    location: "para 45, Pension and Benefit Plans"
+    quote: "ctuarial valuation provided that the DB Pension Plan current service contributions for the next three years would be set at $16,188,000, annually, payable in monthly instalment of approximately $1,349,000.  In addition, to address the going concern deficiency, the actuary concluded that an annual special payment contribution of $505,000 must be made, payable in monthly instalments of approximately"
+  - id: F30
+    fact: >
+      LU is asking the Court to stay payment of any pre-filing or post-filing special payments to the
+      DB Pension Plan, to help its liquidity crisis.
+    page: 11
+    location: "para 46, Pension and Benefit Plans"
+    quote: "46. In  light  of  LU's  current  financial  situation,  the  proposed  Amended and  Restated  Order requests relief from this Court to stay the payment of any pre-filing or post-filing special payments to the DB Pension Plan to assist LU with its current liquidity crisis and maximize the chance that LU can successfully restructure."
+  - id: F31
+    fact: >
+      The proposed order stays all existing, pending or future FIPPA (freedom-of-information) requests
+      to LU; LU says it expects a sharp rise in such requests and lacks the resources to handle them.
+    page: 11
+    location: "paras 48-49, Freedom of Information and Protection of Privacy Act"
+    quote: "sting, pending or future information requests to the Applicant pursuant to the Freedom of Information and Protection of Privacy Act (' FIPPA ').  As a publicly funded university, LU is subject to these requests in the normal course.\n49. As a result of the CCAA proceedings and the anticipated mediation, the Applicant expects to receive a significantly increased volume of FIPPA information requests."
+  - id: F32
+    fact: >
+      LU's secured creditors are primarily subcontractors holding registered construction liens
+      against LU real property, plus a limited number of equipment lessors — and the new court-ordered
+      Charges are set to rank ahead of these claims.
+    page: 12
+    location: "para 54, Super-Priority Charges"
+    quote: "t's  secured  creditors  are  primarily  comprised  of  subcontractors  who  have registered  construction  liens  against  certain  real  property  owned  by  the  Applicant  and limited equipment lessors.  The Monitor understands that these parties have been served with notice of the Comeback Motion and the relief sought at the Comeback Motion will provide for the Charges to rank ahead of these"
+  - id: F33
+    fact: >
+      Professional fees secured by the $1.25-million Administration Charge will be paid in the
+      ordinary course from the DIP financing.
+    page: 12
+    location: "para 55, Administration Charge"
+    quote: "Professional  fee  obligations  secured  by  the Administration  Charge  will  be  paid  in  the  ordinary  course  from  funding  provided  by, among other things, the DIP financing."
+  - id: F34
+    fact: >
+      For illustration, the Monitor states LU's aggregate monthly payroll is approximately $11
+      million, monthly DB Pension Plan contributions approximately $1.2 million, and monthly accrued
+      vacation pay approximately $800,000.
+    page: 14
+    location: "para 63, Directors' Charge"
+    quote: "For  illustration,  the majority of the Applicant's employees are paid once per month and aggregate monthly payroll  is  approximately  $11  million,  monthly  DB  Pension  Plan  contributions  are approximately $1.2 million and vacation pay accrued on a monthly basis is approximately $800,000."
 contradictions: []
 
 must_not_miss:
@@ -438,3 +534,301 @@ must_not_miss:
     why: >
       How an insolvent public university shopped for money in secret. Procedural, and routinely
       dropped.
+  - id: M11
+    item: >
+      The Monitor participated in a call with LU and the Ministry of Colleges and Universities (MCU)
+      as part of its activities since the Initial Order.
+    page: 5
+    location: "para 20(e), list of Monitor's activities to date"
+    quote:
+      - "e. participated  in  a  call  with  the  Applicant  and  the  Ministry  of  Colleges  and Universities (' MCU '); and"
+    why: >
+      One line buried in a six-item bullet list, but it shows the Ontario government was directly
+      briefed within days of the filing — relevant to any story about provincial involvement or
+      awareness.
+  - id: M12
+    item: >
+      On February 4, 2021 the Monitor publicly posted a list of Known Creditors' names AND the amounts
+      each is owed, per LU's own books and records.
+    page: 6
+    location: "para 23(c), notices posted since Initial Order"
+    quote:
+      - "c. On February 4, 2021, the Monitor posted a list showing the names of the Known Creditors  and  amounts  owing  per  the  Applicant's  books  and  records  on  the Monitor's Website and the service list for the CCAA proceedings (this service list will be updated regularly by the Monitor as additional Notices of Appearance are filed);"
+    why: >
+      A public, named creditor list with dollar amounts is a reporting goldmine (who is owed what)
+      that sits inside a routine bulleted list of website postings — easy to skip.
+  - id: M13
+    item: >
+      As of the report date, the $25-million DIP financing rests only on a signed term sheet — the
+      definitive DIP Agreement documenting its terms was still being negotiated.
+    page: 8
+    location: "para 33, DIP Agreement"
+    quote:
+      - "The DIP Lender has requested a definitive agreement (the ' DIP Agreement ') to formally document the terms and conditions set out in the DIP Term Sheet.  The Applicant and the DIP Lender are in the process of negotiating and finalizing the DIP Agreement."
+    why: >
+      The financing the Court is being asked to approve is not yet a finished, binding contract — a
+      caveat easy to lose inside a paragraph mostly about the term sheet.
+  - id: M14
+    item: >
+      The second DIP advance requires five calendar days' prior written request to the DIP Lender, and
+      must be approved by the Monitor.
+    page: 9
+    location: "para 34(c)(ii), DIP facility material terms"
+    quote:
+      - "ii. the second advance shall be made upon five calendar days' prior written request to the DIP Lender and approved by the Monitor."
+    why: >
+      Gives the court-appointed Monitor a direct gatekeeping role over release of DIP funds — a
+      governance detail buried in a sub-clause of a longer list.
+  - id: M15
+    item: >
+      DIP advances must follow the Cash Flow Forecast "or any revised versions of same, as approved by
+      the DIP Lender" — meaning the lender must sign off on any revised forecast.
+    page: 9
+    location: "para 34(d), DIP facility material terms"
+    quote:
+      - "d. advances shall be used to fund LU's working capital requirements for operations during the CCAA proceedings in accordance with the Cash Flow Forecast, or any revised versions of same, as approved by the DIP Lender;"
+    why: >
+      A private lender effectively holds veto power over any updated cash flow plan LU might need to
+      adopt — a discretion easy to miss inside a routine "advances shall be used" clause.
+  - id: M16
+    item: >
+      The stated reason LU judged a new competing DIP lender unworkable was the time other lenders
+      needed for due diligence "as a result of the inherent complexity in the real estate assets."
+    page: 9
+    location: "para 36, competing DIP proposals"
+    quote:
+      - "t determined that given the number of weeks it took other potential lenders to conduct their due diligence, as a result of the inherent complexity in the real estate assets, it  was  highly  unlikely  that  a  new  party  could  negotiate  and  execute  a  non-disclosure agreement, conduct its due diligence and be in a position to submit a binding offer and complete all  definitive  documentation"
+    why: >
+      Explains WHY two later, potentially competing financing offers were turned away — the reasoning,
+      not just the fact of the refusal, is the part a reporter needs.
+  - id: M17
+    item: >
+      The Directors' Charge is split across two priority ranks: $2 million ranks second (ahead of the
+      DIP Lender's Charge) and a further $3 million ranks fourth (behind it), for a stated total
+      maximum of $5 million.
+    page: 12
+    location: "para 52(a)-(d), priority ranking of the Charges"
+    quote:
+      - "a. first, the Administration Charge (up to a maximum amount of $1.25 million);\n- b. second, the Directors' Charge (up to a maximum amount of $2 million);\n- c. third, the DIP Lender's Charge (up to a maximum of $25 million); and\n- d. fourth, the Directors' Charge (up to an additional $3 million for a total maximum Directors' Charge amount of $5 million)."
+    why: >
+      A reader skimming the $5 million Directors' Charge figure would miss that it is split into two
+      separate ranks straddling the $25 million DIP charge — a structural nuance that only shows up by
+      reading all four list items together.
+  - id: M18
+    item: >
+      Over the 13-week forecast period (Jan 30 to Apr 30, 2021), LU projects Total Receipts of $29,514
+      (000s) against Total Disbursements of $58,553 (000s) — a net cash outflow of $(29,039) (000s),
+      roughly $29 million.
+    page: 16
+    location: "Appendix A, Cash Flow Forecast table, Total column"
+    quote:
+      - "Total Receipts"
+      - "29,514"
+      - "Total Disbursements"
+      - "(58,553)"
+    why: >
+      The single most important number in the appendix — LU is forecast to burn roughly $29 million
+      more than it takes in over just 13 weeks — sitting only in a table's Total column.
+  - id: M19
+    item: >
+      Payroll & Benefits disbursements alone are forecast at $(31,310) (000s), i.e. approximately
+      $31.3 million, over the 13-week period — more than half of total operating disbursements.
+    page: 16
+    location: "Appendix A, Cash Flow Forecast table, 'Payroll & Benefits' row, Total column"
+    quote:
+      - "Payroll & Benefits"
+      - "(31,310)"
+    why: >
+      Quantifies payroll's dominance of LU's cash burn during the insolvency; a table row total that
+      is easy to skip past.
+  - id: M20
+    item: >
+      By the end of the 13-week forecast (April 30, 2021), the DIP facility's Ending Balance is
+      $25,000 (000s) — its full $25-million ceiling — meaning the entire facility is projected to be
+      fully drawn right as it approaches its May 1, 2021 maturity date.
+    page: 16
+    location: "Appendix A, Cash Flow Forecast table, 'DIP Financing' sub-table, week 13 / Total"
+    quote:
+      - "Ending Balance"
+      - "25,000"
+      - "Draw/(Payback)"
+      - "24,076"
+    why: >
+      A reader would need to notice the forecast shows the facility maxed out at exactly the moment it
+      matures — implying LU will need more money or an extension right on schedule.
+  - id: M21
+    item: >
+      The forecast includes $924,000 in "Interest and Other Fees" on the DIP facility accruing over
+      the 13-week period.
+    page: 16
+    location: "Appendix A, Cash Flow Forecast table, 'Interest and Other Fees' row, Total column"
+    quote:
+      - "Interest and Other Fees"
+      - "924"
+    why: >
+      A concrete borrowing-cost figure, on top of the separately-disclosed $500,000 commitment fee,
+      sitting in a table row most readers would skip.
+  - id: M22
+    item: >
+      The Cash Flow Forecast converts US-currency receipts and disbursements to Canadian dollars using
+      an assumed exchange rate of CDN$1.30 = US$1.00.
+    page: 17
+    location: "Notes to the Cash Flow Forecast, General assumptions, bullet 1"
+    quote:
+      - "Receipts and disbursements denominated in US currency have been converted into Canadian dollars using an exchange rate of CDN$1.30 = US$1.00."
+    why: >
+      A specific, quantifiable assumption buried in the forecast's general notes that could materially
+      shift any USD-denominated figures (e.g. US research funding) if wrong.
+  - id: M23
+    item: >
+      LU funds costs on behalf of certain associated organizations — named as including SNOLab, CEMI,
+      and MIRARCO — and is later reimbursed.
+    page: 17
+    location: "Notes to the Cash Flow Forecast, Note 4, Reimbursements"
+    quote:
+      - "Receipts for the reimbursement of costs funded by the Applicant on behalf of certain associated organizations, including, but not limited to SNOLab, CEMI, and MIRARCO, have been forecast based upon the anticipated timing of incurring the costs and the subsequent billing and collection experience of the re-imbursement."
+    why: >
+      Names specific affiliated research institutions (including the internationally known SNOLab
+      underground physics laboratory) whose funding flows through LU — a detail buried in a numbered
+      footnote to a financial appendix.
+  - id: M24
+    item: >
+      Termination or severance payments to employees are explicitly excluded from ordinary payroll
+      disbursements in the forecast and are stayed.
+    page: 18
+    location: "Notes to the Cash Flow Forecast, Note 7, Payroll & Benefits"
+    quote:
+      - "(but not including any payments to former employees or retirees in respect of the SuRP, the RHBP or termination or severance payments, which are hereby stayed)"
+    why: >
+      Any employee terminated during this period will not receive severance while the stay is in
+      effect — a significant detail tucked inside a parenthetical in a payroll footnote.
+  - id: M25
+    item: >
+      LU continues post-filing transfers to its Federated Universities during the CCAA proceedings,
+      based on the existing Federated Funding Formula.
+    page: 19
+    location: "Notes to the Cash Flow Forecast, Note 15, Transfers to Federated Universities"
+    quote:
+      - "15. Transfers to Federated Universities:\n\n-  Transfers to Federated Universities are forecast based on LU's post-filing obligations with respect to its Federated Funding Formula to the Federated Universities."
+    why: >
+      Confirms LU's ongoing funding obligations to its Federated Universities continue through the
+      insolvency, under a specific named funding formula.
+  - id: M26
+    item: >
+      LU continues post-filing transfers of collected student fees to the Northern Ontario School of
+      Medicine (NOSM), while pre-filing NOSM fee collections are stayed.
+    page: 19
+    location: "Notes to the Cash Flow Forecast, Note 16, Transfers to NOSM"
+    quote:
+      - "16. Transfers to NOSM:\n\n-  Transfers  to  NOSM  for  Student  Fees  collected  on  behalf  of  NOSM  are  forecast  based  on  post-filing collection of NOSM Student Fees.\n-  Student fees collected pre-filing are stayed."
+    why: >
+      Names another specific affiliated institution (NOSM) whose fee-collection relationship with LU
+      is directly affected by the filing.
+  - id: M27
+    item: >
+      Certain of LU's capital projects have been deferred and excluded from the forecast due to cash
+      conservation measures.
+    page: 19
+    location: "Notes to the Cash Flow Forecast, Note 18, Capital projects"
+    quote:
+      - "18. Capital projects:\n\n-  Capital Project disbursements are projected based on budgeted capital projects. Due to cash conservation measures taken, certain capital projects have been deferred and are not included in the forecast."
+    why: >
+      Confirms LU has already begun cutting capital spending in response to the crisis — a concrete
+      operational consequence tucked into a forecast footnote.
+  - id: M28
+    item: >
+      The toll-free hotline number given in the body of the First Report (1-855-338-1766) differs from
+      the number printed on the Notice to Creditors appendix and its French translation, the Avis
+      (1-888-338-1766).
+    pages: [5, 22]
+    location: "Notice to Creditors (Appendix B), Monitor contact block, vs. First Report para 22 (page 5)"
+    quote:
+      - "the Monitor has arranged for a toll-free hotline phone number (1-855-338-1766) for calls related to this matter"
+      - "Telephone:  1-888-338-1766 / 1-416-943-3057"
+    why: >
+      Two different toll-free numbers appear in the same document for what is meant to be the same
+      creditor hotline — a reporter or creditor calling the number quoted in the report body would be
+      dialing the wrong line.
+  - id: M29
+    item: >
+      The Notice to Creditors states the Monitor's mailing address and phone numbers are information
+      "not found on the Monitor's website" — 100 Adelaide Street West, P.O. Box 1, Toronto, ON, M5H
+      0B3.
+    page: 22
+    location: "Notice to Creditors (Appendix B), Monitor contact block"
+    quote:
+      - "The Monitor's contact details for information specific to the CCAA Proceedings and not found on the Monitor's website are:\n\nErnst &amp; Young Inc. - The Court Appointed Monitor of Laurentian University of Sudbury 100 Adelaide Street West, P.O. Box 1 Toronto, ON, M5H 0B3"
+    why: >
+      A physical mailing address for the Monitor, flagged by the document itself as not published on
+      the case website — buried in an appendix a reader might not open.
+  - id: M30
+    item: >
+      The Order attached to the First Report cites the Haché affidavit as "sworn January 30, 2021" —
+      the correct year — confirming that the First Report's own reliability caveat (page 3), which
+      twice cites the same affidavit as "sworn January 30, 2020," contains a typo in the year.
+    pages: [3, 25]
+    location: "Order (Re: Appointment of Mediator), opening 'ON READING' paragraph, vs. First Report para 9 (page 3)"
+    quote:
+      - "paragraph 5 of the Affidavit of Dr. Robert Haché (the ' Haché Affidavit ') sworn January 30, 2020"
+      - "the affidavit of Dr. Robert Haché sworn January 30, 2021 and the Exhibits thereto (the \"Haché Initial Affidavit\")"
+    why: >
+      Resolves, using the document's own appendix, whether the wrong year on page 3 is a real fact or
+      a typo — useful for anyone deciding whether to flag or repeat that date.
+  - id: M31
+    item: >
+      The Court-ordered Mediation Objectives explicitly include "the review and restructuring of the
+      faculty necessary to deliver the Applicant's restructured academic programs."
+    page: 26
+    location: "Order (Re: Appointment of Mediator), para 3(b), Mediation Objectives"
+    quote:
+      - "(b) the review and restructuring of the faculty necessary to deliver the Applicant's restructured academic programs;"
+    why: >
+      An explicit, court-ordered mediation objective touching faculty restructuring — i.e. potential
+      job cuts — sitting inside a six-item lettered list in an order appendix.
+  - id: M32
+    item: >
+      The Court-ordered Mediation Objectives explicitly include "the review and restructuring of the
+      Applicant's Federated Universities' model."
+    page: 26
+    location: "Order (Re: Appointment of Mediator), para 3(d), Mediation Objectives"
+    quote:
+      - "(d) the review and restructuring of the Applicant's Federated Universities' model;"
+    why: >
+      Confirms the Federated Universities model is a formal, court-sanctioned subject of the mediation
+      — a specific and consequential objective buried in the same lettered list.
+  - id: M33
+    item: >
+      Under the Mediation Confidentiality Protocol, no communication from the mediation may be
+      discoverable, admissible, or referred to in Court for any purpose, and shall not be discussed
+      with anyone.
+    page: 30
+    location: "Schedule 'A' Mediation Confidentiality Protocol, para 2(c)"
+    quote:
+      - "le, admissible or referred to in Court for any purpose, including impeachment in the action or in any other proceeding or to establish the meaning and/or validity of any settlement or alleged settlement arising from the Mediation, and shall not be discussed with anyone, provided that communications otherwise admissible or subject to discovery do not become inadmissible or protected from discovery"
+    why: >
+      Confirms that whatever is negotiated on academic, faculty, and Federated Universities
+      restructuring in mediation is permanently walled off from public record — directly relevant to
+      what a reporter will and won't ever be able to learn about the outcome.
+  - id: M34
+    item: >
+      LU retained a separate Labour Counsel, Michael Kennedy, in addition to its principal counsel, as
+      listed in the Endorsement of the mediator-appointment hearing.
+    page: 33
+    location: "Endorsement (2021 ONSC 951), Counsel list"
+    quote:
+      - "COUNSEL:\n\nD.J. Miller , for the Applicant\n\nMichael Kennedy, Labour Counsel for the Applicant"
+    why: >
+      A dedicated labour lawyer for LU appears as early as the Feb 5 mediator-appointment hearing,
+      signalling how central the labour dimension was from the outset — easy to miss in a routine
+      counsel-appearance list.
+  - id: M35
+    item: >
+      The Endorsement confirms Justice Dunphy may consult with any parties he considers appropriate,
+      "including the Senate of Laurentian University."
+    page: 34
+    location: "Endorsement (2021 ONSC 951), para 6"
+    quote:
+      - "Justice Dunphy can consult with such parties as he considers appropriate, including the Senate of Laurentian University."
+    why: >
+      Specifically names LU's academic governance body (the Senate) as a recognized party to the
+      mediation, beyond LUFA — a one-line detail in a short numbered endorsement.
