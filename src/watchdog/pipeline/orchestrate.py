@@ -893,7 +893,7 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
         skill_text=skill_text, sidecar=pf.get("sidecar"), brief=brief,
         known_document_types=pf.get("known_document_types", []),
         file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
-        candidates=candidates, cache_document=verify_pass,
+        candidates=candidates, cache_document=verify_pass, model=model,
     )
     cost, errors, extraction, scratchpad = 0.0, [], {}, ""
     for _ in range(2):
@@ -1038,7 +1038,7 @@ async def _extract_one_section(vault, sha, pf, skill_text, sec, *, is_first, car
         is_first=is_first, brief=brief,
         known_document_types=pf.get("known_document_types", []),
         file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
-        candidates=candidates, cache_document=verify_pass,
+        candidates=candidates, cache_document=verify_pass, model=model,
     )
     prompt, detail = base, sec["label"]
     if repair_errors:
@@ -1644,17 +1644,17 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
         text = _pages_text(pf["pages"])
         # Off the event loop — see the comment in `_simple_extract`.
         candidates = await asyncio.to_thread(_candidates_checklist, text)
+        is_anthropic = model_client.provider_for_backend(backend) == "anthropic"
+        repair_backend = "claude-api" if is_anthropic else "openai"
+        repair_model = None if is_anthropic else model
         prompt = prompts.build_extract_prompt(
             pages_text=text,
             skill_text=skill_text, sidecar=pf.get("sidecar"), brief=brief,
             known_document_types=pf.get("known_document_types", []),
             file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
-            candidates=candidates)
+            candidates=candidates, model=repair_model or model)
         if item.get("error"):
             prompt = _append_repair_note(prompt, [item["error"]])
-        is_anthropic = model_client.provider_for_backend(backend) == "anthropic"
-        repair_backend = "claude-api" if is_anthropic else "openai"
-        repair_model = None if is_anthropic else model
         try:
             r = await _call_model(task="extract", model=repair_model, backend=repair_backend,
                                   prompt=prompt, schema=schemas.EXTRACTION,
@@ -1850,7 +1850,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
             skill_text=skill_text, sidecar=pf.get("sidecar"), brief=brief,
             known_document_types=pf.get("known_document_types", []), cache_ttl="1h",
             file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
-            candidates=candidates)
+            candidates=candidates, model=extract_model)
         batch_docs.append({"sha": sha, "prompt": prompt, "skill_label": skill_label})
         skills[sha] = skill_label
 

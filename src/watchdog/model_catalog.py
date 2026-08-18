@@ -132,6 +132,32 @@ def catalog_needs_thinking_param(model_id: str) -> bool:
     return bool(entry.get("thinking", False)) if entry else False
 
 
+# Claude tiers that ship extended thinking on by default (no `thinking` catalog flag needed —
+# see that field's own comment in model_catalog.yaml). Kept private: catalog_has_reasoning is
+# the only thing that should need this list.
+_THINKING_BY_DEFAULT_TIERS = {"sonnet-5", "opus-5"}
+
+
+def catalog_has_reasoning(model_id: str) -> bool:
+    """Whether `model_id` has a private reasoning channel it can use before committing to its
+    visible answer — an OpenAI reasoning model (`reasoning: true`) or a Claude model with
+    `thinking` engaged, whether sent explicitly (`thinking: true`, #635) or on by default (Sonnet
+    5, Opus 5). Feeds the extraction scaffold's branch (#570): a model with a channel gets a
+    compact nudge into it, one without gets the explicit step-by-step form written into the
+    visible completion instead, via `document.plan` (see extract_instructions.md).
+
+    False — the conservative default — for every other catalogued model (Haiku, DeepSeek's plain
+    ids, Gemini) and for any uncatalogued id: never assume a channel that isn't confirmed."""
+    entry = _MODELS.get(model_id.lower())
+    if not entry:
+        return False
+    if entry.get("reasoning") or entry.get("thinking"):
+        return True
+    tier = entry.get("tier")
+    tiers = {tier} if isinstance(tier, str) else set(tier or [])
+    return bool(tiers & _THINKING_BY_DEFAULT_TIERS)
+
+
 def catalog_cache_breakpoints(model_id: str) -> bool:
     """Whether a model needs EXPLICIT prompt-cache breakpoints on the wire (#586, D195) — true
     for the OpenAI GPT-5.6 family and later, false for everything else, including every
