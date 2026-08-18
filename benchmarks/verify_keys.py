@@ -60,30 +60,40 @@ text that isn't there; it cannot certify the claim built on top of it.
 """
 import argparse
 import glob
-import html
 import json
 import os
 import re
 import sys
-import unicodedata
 
 import yaml
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_KEYS = os.path.join(HERE, "keys")
 
-_DROP = dict.fromkeys(map(ord, "‘’‛′`\"“”„″'-‐‑‒–—―−"), None)
-_SPACES = dict.fromkeys(map(ord, "       "), " ")
-_MARKDOWN = re.compile(r"[*_|#>]")
+# Run from a checkout without the package installed — this gates a key freeze,
+# so it must not need a working install to answer.
+_SRC = os.path.join(os.path.dirname(HERE), "src")
+if os.path.isdir(_SRC) and _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
+
+from watchdog.pipeline.quote_verify import _normalize  # noqa: E402
 
 
 def normalize(s):
-    """Strip everything that is an artifact of conversion, keep the text."""
-    s = html.unescape(str(s or ""))
-    s = unicodedata.normalize("NFKC", s)
-    s = s.translate(_SPACES).translate(_DROP)
-    s = _MARKDOWN.sub(" ", s)
-    return re.sub(r"\s+", "", s).lower()
+    """Strip everything that is an artifact of conversion, keep the text.
+
+    Shared with the pipeline's own quote checking (`quote_verify._normalize`)
+    rather than reimplemented here. These rules were expensive to get right —
+    hyphens lost where a word breaks across a line, HTML entities, quote glyphs
+    and their padding, accents — and two copies would drift, which is how a key
+    could start passing its own checker while failing the pipeline's.
+
+    `collapse_spaces=False` is the one deliberate difference, and it is about
+    the input rather than the policy: this reads CHEWED MARKDOWN, where the
+    conversion splits words with spaces ("WEDNESDAY, THE 17 th"), which no
+    amount of collapsing reconciles with the page's printed "17th".
+    """
+    return _normalize(str(s or ""), collapse_spaces=False)
 
 
 def cited_pages(entry):

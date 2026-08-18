@@ -143,11 +143,57 @@ def test_unelided_quote_that_never_appears_is_still_unverified():
     "MiXeD CaSe TeXt",
     "—em—dash—runs—",   # em dashes
     "   leading and trailing whitespace   ",
+    "Payroll &amp; Benefits",               # HTML entity the chew emits for "&"
+    "&lt;tag&gt; &#39;quoted&#39; &nbsp;x",  # several entities, incl. numeric
+    "a &amp; b &notanentity; c",             # a bare ampersand run must survive
 ])
 def test_normalize_with_map_matches_normalize(text):
     norm, idx_map = _normalize_with_map(text)
     assert norm == _normalize(text)
     assert len(idx_map) == len(norm)
+
+
+def test_normalize_with_map_indices_point_into_the_original_string():
+    """An entity is five characters wide and normalizes to one, so the map has
+    to survive the length change — otherwise `resolve_quote` renders a span
+    from the wrong offsets."""
+    text = "Payroll &amp; Benefits"
+    norm, idx_map = _normalize_with_map(text)
+    assert max(idx_map) < len(text)
+    # every index still lands on the character it came from
+    assert text[idx_map[norm.index("benefits")]] == "B"
+
+
+# ── HTML entities (the chew emits `&amp;` where the page prints `&`) ────────
+
+def test_entity_in_the_page_matches_the_printed_character_in_the_quote():
+    pages = {1: "the Payroll &amp; Benefits line"}
+    assert verify_quote(pages, 1, "Payroll & Benefits") == {"verified": True}
+
+
+def test_numeric_entity_is_unescaped_too():
+    assert _normalize("it&#39;s") == _normalize("it's")
+
+
+def test_a_bare_ampersand_is_left_alone():
+    """`&notanentity;` is not an entity; mangling it would lose real text."""
+    assert "notanentity" in _normalize("a &notanentity; b")
+
+
+# ── collapse_spaces=False, for checking against chewed markdown ─────────────
+
+def test_collapse_spaces_false_matches_a_word_the_conversion_split():
+    """Docling converts the pension order's header to "WEDNESDAY, THE 17 th".
+    Collapsing runs to one space cannot reconcile that with "17th"; discarding
+    whitespace can, which is why the key checker asks for it."""
+    page, quote = "WEDNESDAY, THE 17 th", "WEDNESDAY, THE 17th"
+    assert _normalize(quote) not in _normalize(page)
+    assert _normalize(quote, collapse_spaces=False) in _normalize(page, collapse_spaces=False)
+
+
+def test_collapse_spaces_defaults_to_true_so_the_pipeline_is_unchanged():
+    assert _normalize("a  b") == "a b"
+    assert _normalize("a  b", collapse_spaces=False) == "ab"
 
 
 # ── resolve_quote (#529: resolves a `quote_locator` against real page text) ─
