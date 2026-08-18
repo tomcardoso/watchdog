@@ -38,6 +38,25 @@ convenience — it is how the key represents text the conversion does not hold
 contiguously (a sentence over a page break, a table row scattered across
 columns). Every span must be found, and the spans may sit on different pages of
 the entry's cite: `pages: [2, 3]` with two spans means one on each.
+
+WHAT ORDER IS AND ISN'T ENFORCED — read this before trusting a green result.
+Within ONE span, parts separated by an ellipsis must appear in the order the
+quote puts them, or "for the period ... Payroll & Benefits" would verify against
+a page saying the reverse. ACROSS the elements of a list, order is deliberately
+NOT enforced, because a list exists precisely where the conversion's order
+differs from the document's reading order. The clearest case is a two-column
+court header: a person reads "THE HONOURABLE CHIEF JUSTICE MORAWETZ" across the
+page, but the conversion reads down the columns and interleaves it with the
+date beside it. Requiring the key to match conversion order would fail a
+correct quote, and requiring it to match reading order would fail a correct
+table row.
+
+The honest consequence: a multi-span quote establishes that each piece really
+is on the cited page. It does NOT establish that the pieces belong together —
+that Morawetz is the judge who sat on 17 March rather than two true facts about
+one page. The `fact`/`item` field is what asserts the relationship, and only a
+human reading the page can vouch for it. This tool exists to stop a key citing
+text that isn't there; it cannot certify the claim built on top of it.
 """
 import argparse
 import glob
@@ -163,6 +182,9 @@ def check_entry(entry, pages):
     A span is located on ONE page where possible. Failing that, its parts are
     located individually, because a quote can legitimately be elided across a
     page break — the key's own `pages: [2, 3]` entries are exactly that.
+
+    Each span in a list is located independently of the others; see the module
+    docstring for why order is enforced inside a span but not across a list.
     """
     cited = set(cited_pages(entry))
     norm_pages = {n: normalize(md) for n, md in pages.items()}

@@ -125,6 +125,24 @@ def test_an_elided_quote_with_an_unfindable_part_fails():
     assert check(page=2, quote="Payroll & Benefits … never printed anywhere") == "fail"
 
 
+def test_order_is_not_enforced_across_the_elements_of_a_list():
+    """Deliberate, and the opposite of the rule inside a single span.
+
+    A list exists where the conversion's order differs from the document's
+    reading order — a two-column court header reads across the page but
+    converts down the columns. Enforcing order across list elements would fail
+    a correctly quoted header or table row. The cost is that a list establishes
+    each piece is on the page, not that the pieces belong together; the `fact`
+    field carries that, and only a human can vouch for it.
+    """
+    forwards = ["Payroll & Benefits", "for the period"]
+    assert check(page=2, quote=forwards) == "ok"
+    assert check(page=2, quote=list(reversed(forwards))) == "ok"
+    # ...whereas the same two joined into one elided span must respect order:
+    assert check(page=2, quote=" … ".join(forwards)) == "ok"
+    assert check(page=2, quote=" … ".join(reversed(forwards))) == "fail"
+
+
 # ── end to end ─────────────────────────────────────────────────────────────
 
 def _write_corpus(tmp_path, key_entries):
