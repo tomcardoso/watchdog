@@ -48,6 +48,7 @@ from watchdog.model_catalog import (
     catalog_is_reasoning,
     catalog_long_context_threshold,
     catalog_max_output_tokens,
+    catalog_needs_thinking_param,
     catalog_tokenizer_ratio,
     fallback_context_window,
     fallback_is_reasoning,
@@ -127,6 +128,15 @@ _SYSTEM_PROMPT = (
     "Respond with ONLY a single JSON object that conforms to the provided schema — "
     "no prose, no markdown fences, no explanation."
 )
+
+# Sent on Claude models that ship thinking off by default (`catalog_needs_thinking_param`, #635,
+# D206) — `adaptive` lets the model decide per-call whether/how deeply to think rather than
+# forcing a fixed budget, and `summarized` display keeps the (billed) thinking output bounded to
+# a summary rather than the full trace. Never sent on a continuation retry (I4-adjacent): Anthropic
+# rejects an assistant-turn prefill while thinking is on, and `_api_complete_async`'s pagination
+# path prefills the truncated partial to resume it — see that function's `prefix is not None`
+# branch, which omits this deliberately.
+_THINKING_ADAPTIVE = {"type": "adaptive", "display": "summarized"}
 
 # Reasoning-effort levels for the per-stage `effort` knob (D36) — an abstract intent the
 # pipeline passes down. `model_catalog.yaml`'s `effort_levels` is the single source of truth for
@@ -635,6 +645,21 @@ def _agent_supports_tools() -> bool:
         return False
 
 
+@lru_cache(maxsize=1)
+def _agent_supports_thinking() -> bool:
+    """Whether the installed `claude-agent-sdk` accepts `ClaudeAgentOptions(thinking=…)` (#635,
+    D206) — same guard shape as `_agent_supports_tools` above, for the same reason: the option
+    postdates our SDK floor, so passing it blind would `TypeError` on an older install. Anything
+    unexpected answers False, leaving the Agent SDK backend at its pre-#635 behaviour (thinking
+    off) rather than risking a crash on every agent-backend call."""
+    import dataclasses
+    try:
+        from claude_agent_sdk import ClaudeAgentOptions
+        return any(f.name == "thinking" for f in dataclasses.fields(ClaudeAgentOptions))
+    except Exception:
+        return False
+
+
 async def _agent_query(prompt: str, model: str, env: dict | None,
                        effort: str | None = None) -> dict:
     from claude_agent_sdk import query, ClaudeAgentOptions
@@ -670,6 +695,8 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
         opts["tools"] = []
     if effort:                  # only set when overriding the model default (D36)
         opts["effort"] = effort
+    if catalog_needs_thinking_param(model) and _agent_supports_thinking():
+        opts["thinking"] = _THINKING_ADAPTIVE
     options = ClaudeAgentOptions(**opts)
     out = {"text": "", "cost_usd": None, "usage": None}
     api_status = None        # ResultMessage.api_error_status (e.g. 429) since CLI v2.1.110
@@ -803,8 +830,12 @@ async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: d
     prefilled as the assistant turn and the model continues it. Structured-output `format`
     enforcement is dropped on a continuation (constrained decoding can't resume mid-object) —
     the concatenation is validated by the shared shell — but `effort` is still carried so the
-    same reasoning depth applies (I4). The returned `finish_reason` mirrors `stop_reason` so the
-    shell can tell a max-token cut (`max_tokens`) from a natural stop.
+    same reasoning depth applies (I4). `thinking` (#635, D206) is likewise dropped on a
+    continuation: Anthropic rejects prefilling the assistant turn while thinking is on, and this
+    is exactly what a continuation does. The initial attempt still thinks; only the retry-to-
+    resume-a-truncation path loses it, same shape as the `format` drop above. The returned
+    `finish_reason` mirrors `stop_reason` so the shell can tell a max-token cut (`max_tokens`)
+    from a natural stop.
 
     Streams rather than calling `.create()` (#598). The Anthropic SDK refuses a *non-streaming*
     request once `3600 * max_tokens / 128_000 > 600`, i.e. `max_tokens > 21,333`
@@ -829,6 +860,8 @@ async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: d
         if effort:
             output_config["effort"] = effort
         kwargs["output_config"] = output_config
+        if catalog_needs_thinking_param(model_id):
+            kwargs["thinking"] = _THINKING_ADAPTIVE
     else:
         # Continuation: prefill the partial (Anthropic rejects a trailing-whitespace assistant
         # turn, so rstrip — JSON ignores inter-token whitespace, so the concatenation is intact).
