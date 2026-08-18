@@ -168,7 +168,13 @@ facts:
       The DB Pension Plan solvency ratio was 85.4% at 1 January 2020 (2019: 87.8%). LU is only
       required to fund solvency deficits up to an 85% level.
     page: 8
-    quote: "The solvency ratio deficit for the January 1, 2020 was 85.4% (2019, 87.8%) … The University is only required to fund solvency deficits up to an 85% level with a 5-year amortization period."
+    quote:
+      - "The University is only required to fund solvency deficits up to an 85% level with a 5-year amortization period."
+      - "The solvency ratio deficit for the January 1, 2020 was 85.4% (2019, 87.8%)."
+    note: >
+      Quoted as two spans, not one elision: on the page the 85% funding rule appears in the
+      paragraph BEFORE the solvency ratio, so an ellipsis between them would assert a document
+      order that does not exist.
   - id: F13
     fact: "The Provision for Adverse Deviation (PfAD) rate rose to 10.3% from 7.94%."
     page: 8

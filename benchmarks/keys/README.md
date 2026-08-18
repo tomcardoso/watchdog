@@ -174,7 +174,18 @@ The split of labour across models changed, so the attribution of each metric cha
 
 ## The freeze
 
-Once reviewed, hash the keys the way the corpus is hashed and do not touch them again:
+**Before hashing, check the quotes** — a key quote that isn't where the key says it is reads as
+evidence about the pipeline rather than as the key defect it is, and freezing makes it permanent:
+
+```
+python3 benchmarks/verify_keys.py --pages benchmarks/runs/<run>/pages
+```
+
+It exits non-zero on any problem. `benchmarks/runs/` is gitignored, so this needs a local chewed
+run of the corpus; the check is on the frozen chew, not the PDFs, because the chew is what an
+extraction is scored against.
+
+Then hash the keys the way the corpus is hashed and do not touch them again:
 
 ```
 cd benchmarks/keys && shasum -a 256 *.yaml > keys-v<n>.sha256
