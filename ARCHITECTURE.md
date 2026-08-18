@@ -1223,7 +1223,16 @@ completed purge, and the CLI hint says so.
   and low is where it is meant to live. `model_client` maps a configured effort to each backend's native
   control (`output_config.effort` / `ClaudeAgentOptions.effort`) and drops it on Haiku-tier
   stages (classify; any Haiku model), which reject `effort`. Overridable per run via
-  `--extractor-effort` / `--finalizer-effort`.
+  `--extractor-effort` / `--finalizer-effort`. **`effort` alone doesn't engage reasoning on every
+  Claude model** (#635): Anthropic's `thinking` (whether the model reasons at all) and `effort`
+  (how deep, once it does) are independent controls, and Sonnet 4.6/Opus 4.8 ship thinking OFF
+  by default — `effort` on those two tuned response verbosity only, not reasoning depth, until
+  this fix. `model_catalog.yaml`'s `thinking: true` flag marks a model that needs it sent
+  explicitly; `model_client.py` sends `{"type": "adaptive", "display": "summarized"}` for those
+  two, and sends nothing for Sonnet 5/Opus 5 (already on by default) or Haiku (no thinking
+  control at all) — never overriding a model's native default either way. Dropped again on a
+  continuation retry (response-pagination prefill is incompatible with thinking on), same shape
+  as the structured-output-enforcement drop on that path (D206).
 - **Model client** (`model_client.py`): the orchestrator's single entry to the model.
   Routes each task to a backend — `claude-agent-sdk` (subscription login or API key — the
   only backend that works on a subscription; it passes **both** `allowed_tools=[]` and

@@ -25,6 +25,12 @@
 # none) for a model with no effort control at all (Claude Haiku, DeepSeek). `model_client.py`'s
 # `_resolve_effort` rejects a request for a level outside this list with a clear error rather
 # than silently dropping it or sending a request the API would reject.
+# `thinking: true` (Claude only, #635) marks a model that ships with extended thinking OFF by
+# default — Anthropic's `thinking` parameter is a separate on/off switch from `effort`, which only
+# tunes depth once thinking is (or isn't) engaged, and `effort` alone never turns it on. Sonnet 4.6
+# and Opus 4.8 are off by default; Sonnet 5 and Opus 5 ship with it already on, so they don't
+# declare the field — `model_client.py` only sends the `thinking` param when this flag is true,
+# leaving the newer models' native default untouched. See D206.
 # `tokenizer_ratio` (#574, remeasured #617) is the actual-tokens-per-estimated-token multiplier
 # for a model whose tokenizer isn't the one `pipeline/section.py`'s chars/4 `est_tokens` heuristic
 # was calibrated against. `model_client.tokenizer_ratio` resolves it; `section.model_defaults`
@@ -180,6 +186,7 @@ models:
     max_output_tokens_batch: 300_000
     effort_levels: [low, medium, high, max]
     tokenizer_ratio: 0.93     # measured #617, corpus-v1 2026-08-15 (old Claude tokenizer)
+    thinking: true            # off by default on this model — see the field comment above (D206)
   - id: claude-opus-4-8
     name: Claude Opus 4.8
     provider: anthropic
@@ -193,6 +200,7 @@ models:
     max_output_tokens_batch: 300_000
     effort_levels: [low, medium, high, xhigh, max]
     tokenizer_ratio: 1.28     # measured #617, corpus-v1 2026-08-15 (new Claude tokenizer; was 1.3)
+    thinking: true            # off by default on this model — see the field comment above (D206)
   # Claude Sonnet 5 (#361/#509 benchmark groundwork, D165) — additive alongside 4.6; bare `sonnet`
   # keeps resolving to 4.6 above, `sonnet-5` is the only way to select this entry. Pricing below is
   # the INTRODUCTORY rate, in effect through 2026-08-31 (source: platform.claude.com/docs/en/
@@ -218,6 +226,30 @@ models:
     max_output_tokens_batch: 300_000
     effort_levels: [low, medium, high, xhigh, max]
     tokenizer_ratio: 1.28     # measured #617, corpus-v1 2026-08-15 (new Claude tokenizer; was 1.3)
+  # Claude Opus 5 (#635) — additive alongside Opus 4.8, same pattern as Sonnet 5 above; bare
+  # `opus` keeps resolving to 4.8, `opus-5` is the only way to select this entry. Pricing,
+  # max_output_tokens, and effort_levels are identical to Opus 4.8's (platform.claude.com/docs/en/
+  # about-claude/pricing and the Thinking/Effort pages, fetched 2026-08-18) — no introductory-rate
+  # note like Sonnet 5's, since none was published for this tier. Context window pinned to 200K
+  # per D89, same as every other Claude tier here. No `thinking` field: this model ships with
+  # extended thinking already on by default (vendor default, no param needed — D206), unlike
+  # Sonnet 4.6/Opus 4.8 above. `tokenizer_ratio` is COPIED from the Opus 4.8/Sonnet 5 family
+  # value, not yet independently measured for this id — the catalog's own convention above ("a new
+  # model joining an existing family can copy its family's value") permits this, but it's
+  # unconfirmed for Opus 5 specifically; see the CLAUDE.md Standing Follow-ups entry.
+  - id: claude-opus-5
+    name: Claude Opus 5
+    provider: anthropic
+    tier: opus-5
+    input: 5.0e-6
+    output: 25.0e-6
+    cache_write: 6.25e-6
+    cache_read: 0.50e-6
+    context_window: 200_000
+    max_output_tokens: 128_000
+    max_output_tokens_batch: 300_000
+    effort_levels: [low, medium, high, xhigh, max]
+    tokenizer_ratio: 1.28     # copied from Opus 4.8/Sonnet 5 family, unconfirmed for this id (D206)
 
   # DeepSeek V4 (1M-token window; cache-hit input is a ~50x discount on the miss rate)
   - id: deepseek-v4-flash

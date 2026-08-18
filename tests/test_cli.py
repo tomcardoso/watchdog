@@ -1177,9 +1177,10 @@ def test_pick_model_interactive_only_provider_filters_to_one_group(monkeypatch):
 
 
 def test_pick_model_interactive_custom_free_text(monkeypatch):
-    # "17" is "Type my own…" — shifted down by 3 when gemini-2.5-flash/-flash-lite/-pro were
-    # dropped from the catalog (#583, D182).
-    answers = iter(["17", "openai:my-custom-model"])
+    # "18" is "Type my own…" — shifted down by 1 when Opus 5 (#635) joined the Claude group
+    # (previously 17, shifted down by 3 when gemini-2.5-flash/-flash-lite/-pro were dropped from
+    # the catalog, #583, D182).
+    answers = iter(["18", "openai:my-custom-model"])
     monkeypatch.setattr("builtins.input", lambda *a: next(answers))
     assert _setup._pick_model_interactive(None) == "openai:my-custom-model"
 

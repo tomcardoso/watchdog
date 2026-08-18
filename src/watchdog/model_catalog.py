@@ -123,6 +123,15 @@ def fallback_is_reasoning(model_id: str) -> bool:
     return False
 
 
+def catalog_needs_thinking_param(model_id: str) -> bool:
+    """Whether `model_id` ships with Anthropic's extended thinking OFF by default, so
+    `model_client.py` must send `thinking` explicitly to turn it on (#635, D206). False (the
+    correct default in both directions) for a model that's already on by default, and for every
+    uncatalogued or non-Claude id — never consulted there."""
+    entry = _MODELS.get(model_id.lower())
+    return bool(entry.get("thinking", False)) if entry else False
+
+
 def catalog_cache_breakpoints(model_id: str) -> bool:
     """Whether a model needs EXPLICIT prompt-cache breakpoints on the wire (#586, D195) — true
     for the OpenAI GPT-5.6 family and later, false for everything else, including every

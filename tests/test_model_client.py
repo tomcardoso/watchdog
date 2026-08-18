@@ -277,6 +277,36 @@ def test_resolve_effort(provider, model_id, effort, expected):
     assert mc._resolve_effort(provider, model_id, effort) == expected
 
 
+# ── Opus 5 catalog entry (#635) — additive alongside Opus 4.8, same pattern as Sonnet 5 ────────
+
+def test_opus_5_tier_resolves():
+    assert mc.resolve_model_id("opus-5") == "claude-opus-5"
+    assert mc.resolve_model_id("opus") == "claude-opus-4-8"   # bare `opus` still means 4.8
+
+
+def test_opus_5_effort_levels_match_opus_4_8():
+    assert mc._effort_levels("anthropic", "claude-opus-5") == \
+        mc._effort_levels("anthropic", "claude-opus-4-8") == \
+        {"low", "medium", "high", "xhigh", "max"}
+
+
+def test_opus_5_pricing_matches_opus_4_8():
+    assert mc._PRICING["claude-opus-5"] == mc._PRICING["claude-opus-4-8"]
+
+
+@pytest.mark.parametrize("model_id,needs_thinking_param", [
+    ("claude-sonnet-4-6", True),
+    ("claude-opus-4-8", True),
+    ("claude-sonnet-5", False),    # ships on by default — no param needed
+    ("claude-opus-5", False),      # ships on by default — no param needed
+    ("claude-haiku-4-5", False),   # no thinking control at all
+    ("gpt-5", False),              # non-Claude — never consulted
+    ("not-a-real-model", False),   # uncatalogued — correctness-safe default
+])
+def test_catalog_needs_thinking_param(model_id, needs_thinking_param):
+    assert mc.catalog_needs_thinking_param(model_id) is needs_thinking_param
+
+
 # ── unsupported effort requests fail loud, at any level (#518, D158) ──────────
 # `model_catalog.yaml`'s `effort_levels` is authoritative for every provider now, not just a
 # per-provider "supports effort at all" flag — so a request for a level a model doesn't accept
@@ -1690,12 +1720,15 @@ def test_rate_limit_error_is_not_a_model_error():
     assert not issubclass(mc.RateLimitError, mc.ModelError)
 
 
-def _fake_anthropic_client(monkeypatch, *, message=None, headers=None, error=None):
+def _fake_anthropic_client(monkeypatch, *, message=None, headers=None, error=None, calls=None):
     """Patch `anthropic.AsyncAnthropic` so `.messages.stream(...)` (#598, replacing
     `.with_raw_response.create`) is an async context manager whose `__aenter__` returns a fake
     stream — `get_final_message()` yields `message`, `.response.headers` yields `headers` — or
     raises `error`. The real SDK issues the HTTP request inside `__aenter__`, so that's also
-    where a 429 now surfaces (`_api_complete_async`'s `except` wraps the whole `async with`)."""
+    where a 429 now surfaces (`_api_complete_async`'s `except` wraps the whole `async with`).
+
+    `calls`, when given a list, has each `.stream(**kwargs)` call's kwargs appended — for tests
+    that need to inspect what was actually sent (e.g. whether `thinking` was included, #635)."""
     import anthropic
 
     class FakeResponse:
@@ -1721,6 +1754,8 @@ def _fake_anthropic_client(monkeypatch, *, message=None, headers=None, error=Non
 
     class FakeMessages:
         def stream(self, **kwargs):
+            if calls is not None:
+                calls.append(kwargs)
             return FakeStreamManager()
 
     class FakeClient:
@@ -1771,6 +1806,79 @@ def test_anthropic_backend_429_carries_rate_limit_headers_on_the_exception(monke
         asyncio.run(mc._api_complete_async("p", "claude-sonnet-4-6", SCHEMA, "sk-x", 8000))
     assert exc_info.value.rate_limit == {"limit_tokens": 40000, "remaining_tokens": 0,
                                          "reset_tokens": "2026-08-09T12:01:00Z"}
+
+
+def _fake_anthropic_message(text='{"name": "Acme"}'):
+    class FakeUsage:
+        def model_dump(self):
+            return {"input_tokens": 10, "output_tokens": 5}
+
+    class FakeBlock:
+        type = "text"
+
+    block = FakeBlock()
+    block.text = text
+
+    class FakeMessage:
+        content = [block]
+        usage = FakeUsage()
+        stop_reason = "end_turn"
+
+    return FakeMessage()
+
+
+# ── thinking (#635, D206) ────────────────────────────────────────────────────
+
+def test_api_complete_sends_thinking_for_a_model_that_defaults_off(monkeypatch):
+    calls = []
+    _fake_anthropic_client(monkeypatch, message=_fake_anthropic_message(), headers={}, calls=calls)
+    asyncio.run(mc._api_complete_async("p", "claude-sonnet-4-6", SCHEMA, "sk-x", 8000))
+    assert calls[0]["thinking"] == mc._THINKING_ADAPTIVE
+
+
+def test_api_complete_sends_thinking_for_opus_4_8(monkeypatch):
+    calls = []
+    _fake_anthropic_client(monkeypatch, message=_fake_anthropic_message(), headers={}, calls=calls)
+    asyncio.run(mc._api_complete_async("p", "claude-opus-4-8", SCHEMA, "sk-x", 8000))
+    assert calls[0]["thinking"] == mc._THINKING_ADAPTIVE
+
+
+def test_api_complete_omits_thinking_for_a_model_already_on_by_default(monkeypatch):
+    # Sonnet 5 / Opus 5 ship with thinking on already — sending the param isn't needed and would
+    # risk overriding the vendor default in a way this fix never intended.
+    calls = []
+    _fake_anthropic_client(monkeypatch, message=_fake_anthropic_message(), headers={}, calls=calls)
+    asyncio.run(mc._api_complete_async("p", "claude-sonnet-5", SCHEMA, "sk-x", 8000))
+    assert "thinking" not in calls[0]
+
+
+def test_api_complete_omits_thinking_for_haiku(monkeypatch):
+    calls = []
+    _fake_anthropic_client(monkeypatch, message=_fake_anthropic_message(), headers={}, calls=calls)
+    asyncio.run(mc._api_complete_async("p", "claude-haiku-4-5", SCHEMA, "sk-x", 8000))
+    assert "thinking" not in calls[0]
+
+
+def test_api_complete_composes_thinking_with_effort(monkeypatch):
+    # `thinking` and `effort` are independent controls (Anthropic docs) — both should land on
+    # the same call, `effort` inside `output_config`, `thinking` as its own top-level kwarg.
+    calls = []
+    _fake_anthropic_client(monkeypatch, message=_fake_anthropic_message(), headers={}, calls=calls)
+    asyncio.run(mc._api_complete_async("p", "claude-opus-4-8", SCHEMA, "sk-x", 8000,
+                                       effort="medium"))
+    assert calls[0]["thinking"] == mc._THINKING_ADAPTIVE
+    assert calls[0]["output_config"]["effort"] == "medium"
+
+
+def test_api_complete_omits_thinking_on_a_continuation(monkeypatch):
+    # Anthropic rejects prefilling the assistant turn while thinking is on, and a continuation
+    # (`prefix` set) does exactly that to resume a truncated call — thinking must stay off on
+    # the retry even though the model needs it explicitly enabled on a fresh call.
+    calls = []
+    _fake_anthropic_client(monkeypatch, message=_fake_anthropic_message(), headers={}, calls=calls)
+    asyncio.run(mc._api_complete_async("p", "claude-sonnet-4-6", SCHEMA, "sk-x", 8000,
+                                       prefix="partial output"))
+    assert "thinking" not in calls[0]
 
 
 def test_claude_envelope_requires_streaming():
@@ -2287,10 +2395,12 @@ def test_openai_backend_never_retries_429(monkeypatch):
 
 # ── agent SDK: built-in tools stay out of the request (D145, #475) ─────────────
 
-def _patch_agent_query_capturing(monkeypatch, *, with_tools_field: bool):
+def _patch_agent_query_capturing(monkeypatch, *, with_tools_field: bool,
+                                 with_thinking_field: bool = False):
     """Like `_patch_agent_query`, but returns a dict that captures the options `_agent_query`
-    built. `with_tools_field` controls whether the stand-in `ClaudeAgentOptions` dataclass
-    declares a `tools` field, so both sides of the version guard can be exercised."""
+    built. `with_tools_field`/`with_thinking_field` control whether the stand-in
+    `ClaudeAgentOptions` dataclass declares a `tools`/`thinking` field, so both sides of each
+    version guard can be exercised independently."""
     import sys
     import types
     import dataclasses
@@ -2306,6 +2416,8 @@ def _patch_agent_query_capturing(monkeypatch, *, with_tools_field: bool):
               ("max_turns", object, None), ("env", object, None), ("effort", object, None)]
     if with_tools_field:
         fields.append(("tools", object, None))
+    if with_thinking_field:
+        fields.append(("thinking", object, None))
     Options = dataclasses.make_dataclass(
         "ClaudeAgentOptions", [(n, t, dataclasses.field(default=d)) for n, t, d in fields])
 
@@ -2317,6 +2429,7 @@ def _patch_agent_query_capturing(monkeypatch, *, with_tools_field: bool):
     fake_module.ClaudeAgentOptions.__wrapped_dataclass__ = Options
     monkeypatch.setitem(sys.modules, "claude_agent_sdk", fake_module)
     monkeypatch.setattr(mc, "_agent_supports_tools", lambda: with_tools_field)
+    monkeypatch.setattr(mc, "_agent_supports_thinking", lambda: with_thinking_field)
     return captured
 
 
@@ -2382,3 +2495,47 @@ def test_agent_supports_tools_detects_the_real_sdk_dataclass(monkeypatch):
         mc._agent_supports_tools.cache_clear()
         assert mc._agent_supports_tools() is has
     mc._agent_supports_tools.cache_clear()
+
+
+# ── agent SDK: thinking (#635, D206) ────────────────────────────────────────────
+
+def test_agent_query_sends_thinking_for_a_model_that_defaults_off(monkeypatch):
+    captured = _patch_agent_query_capturing(monkeypatch, with_tools_field=True,
+                                            with_thinking_field=True)
+    asyncio.run(mc._agent_query("p", "claude-sonnet-4-6", None))
+    assert captured["thinking"] == mc._THINKING_ADAPTIVE
+
+
+def test_agent_query_omits_thinking_for_a_model_already_on_by_default(monkeypatch):
+    # Sonnet 5 / Opus 5 ship with thinking on already — no catalog `thinking: true` flag, so
+    # the param is never sent and the model's own native default is left untouched.
+    captured = _patch_agent_query_capturing(monkeypatch, with_tools_field=True,
+                                            with_thinking_field=True)
+    asyncio.run(mc._agent_query("p", "claude-sonnet-5", None))
+    assert "thinking" not in captured
+
+
+def test_agent_query_omits_thinking_on_an_older_sdk(monkeypatch):
+    # `thinking` postdates the SDK floor just like `tools` — an older install keeps old behaviour
+    # (no crash) rather than sending a kwarg ClaudeAgentOptions doesn't accept.
+    captured = _patch_agent_query_capturing(monkeypatch, with_tools_field=True,
+                                            with_thinking_field=False)
+    asyncio.run(mc._agent_query("p", "claude-sonnet-4-6", None))
+    assert "thinking" not in captured
+
+
+def test_agent_supports_thinking_detects_the_real_sdk_dataclass(monkeypatch):
+    import sys
+    import types
+    import dataclasses
+
+    for has in (True, False):
+        names = [("allowed_tools", list, dataclasses.field(default_factory=list))]
+        if has:
+            names.append(("thinking", object, dataclasses.field(default=None)))
+        mod = types.ModuleType("claude_agent_sdk")
+        mod.ClaudeAgentOptions = dataclasses.make_dataclass("ClaudeAgentOptions", names)
+        monkeypatch.setitem(sys.modules, "claude_agent_sdk", mod)
+        mc._agent_supports_thinking.cache_clear()
+        assert mc._agent_supports_thinking() is has
+    mc._agent_supports_thinking.cache_clear()
