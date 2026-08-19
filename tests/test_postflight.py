@@ -64,6 +64,19 @@ def test_explode_ignores_unknown_tags():
     assert "evidence_fragments" not in extraction["entities"][0]
 
 
+def test_explode_warns_on_unknown_tag_instead_of_silently_dropping_it():
+    """A fact tagging an entity id absent from `entities` is dropped from that entity's view
+    (there's nothing to attach it to) but must not vanish without a trace — the schema has the
+    model write key_facts' entity tags before the entities array that defines those ids, so a
+    drifted id is a real failure mode, not a hypothetical one."""
+    extraction = {"document": {"key_facts": [{"fact": "x", "entities": ["ghost"]}]},
+                  "entities": [{"id": "real", "name": "R", "type": "Person"}]}
+    warnings = explode_key_facts(extraction)
+    assert len(warnings) == 1
+    assert "ghost" in warnings[0]
+    assert "key_facts[0]" in warnings[0]
+
+
 def test_explode_propagates_resolved_quote_fields_to_fragments():
     """#529: `resolve_quotes` runs before `explode_key_facts` and annotates the key_fact with
     `quote`/`quote_verified`/`quote_found_page` — the fan-out must copy all three onto the
