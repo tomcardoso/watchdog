@@ -11,12 +11,12 @@ Matching: a literal term matches case-insensitively on word boundaries ("Ana" wo
 """
 
 import datetime
-import json
 import re
 from collections import defaultdict
 from pathlib import Path
 
 from watchdog.pipeline import resolutions
+from watchdog.pipeline.json_io import _read_json_or
 
 _CONTEXT_CHARS = 80          # context shown on each side of a match in the snippet
 _MAX_HITS_PER_DOC = 50       # bound a pathological term (e.g. a too-broad regex) per document
@@ -80,10 +80,7 @@ def add_terms(vault: Path, terms: list[str]) -> list[str]:
 
 
 def _load_json(path: Path) -> dict:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
+    return _read_json_or(path, {})
 
 
 def _entity_index(vault: Path) -> dict[str, dict]:

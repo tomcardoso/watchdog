@@ -67,6 +67,7 @@ import yaml
 
 from watchdog.pipeline.entity_norm import normalize_entity_name
 from watchdog.pipeline.entity_type import canonical_type
+from watchdog.pipeline.json_io import _read_json_or
 
 try:
     from fcntl import flock as _flock, LOCK_EX as _LOCK_EX, LOCK_UN as _LOCK_UN
@@ -558,12 +559,7 @@ def _write_morgue_markdown(vault_path: Path, sha256: str, morgue_dir: Path, stem
     Pages are joined with `<!-- PAGE N -->` markers so the file is both greppable and page-aligned.
     """
     queue_file = vault_path / ".watchdog" / "queue" / f"{sha256}.json"
-    if not queue_file.exists():
-        return
-    try:
-        pages = json.loads(queue_file.read_text(encoding="utf-8")).get("pages", [])
-    except (OSError, json.JSONDecodeError):
-        return
+    pages = _read_json_or(queue_file, {}).get("pages", [])
     if not pages:
         return
     body = "\n\n".join(

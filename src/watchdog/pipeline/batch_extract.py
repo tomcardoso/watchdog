@@ -29,6 +29,7 @@ from pathlib import Path
 from watchdog import model_client
 from watchdog.model_catalog import catalog_cache_breakpoints, catalog_needs_thinking_param
 from watchdog.pipeline import schemas, section
+from watchdog.pipeline.json_io import _read_json_or
 
 STATE_REL = Path(".watchdog") / "registry" / "batch-pending.json"
 _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
@@ -40,13 +41,7 @@ def state_path(vault: Path) -> Path:
 
 def read_state(vault: Path) -> dict | None:
     """The pending batch's persisted state, or None if no batch is in flight."""
-    p = state_path(vault)
-    if not p.exists():
-        return None
-    try:
-        return json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
+    return _read_json_or(state_path(vault), None)
 
 
 def write_state(vault: Path, state: dict) -> None:

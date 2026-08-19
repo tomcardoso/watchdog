@@ -26,6 +26,7 @@ from watchdog.pipeline import (
     abort, batch_extract, harvest, leads, merge, preflight, postflight, prompts, reconcile,
     requests, schemas, section, sidecar, synthesis_bundle, timeline, verify, watchlist,
 )
+from watchdog.pipeline.json_io import _read_json_or
 from watchdog.pipeline.write_vault import _doc_slug
 
 DEFAULT_CONCURRENCY = 5
@@ -566,9 +567,8 @@ def latest_usage(vault: Path) -> dict | None:
     files = usage_files(vault)
     if not files:
         return None
-    try:
-        data = json.loads(files[-1].read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    data = _read_json_or(files[-1], None)
+    if data is None:
         return None
     return data.get("totals")
 
@@ -603,9 +603,8 @@ def _update_graph_colours(vault: Path) -> None:
     edir = vault / "entities"
     if not gpath.exists() or not edir.exists():
         return
-    try:
-        graph = json.loads(gpath.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    graph = _read_json_or(gpath, None)
+    if graph is None:
         return
     groups = graph.setdefault("colorGroups", [])
     existing = {g.get("query") for g in groups}
@@ -1364,10 +1363,8 @@ def _queued_filename(vault: Path, sha: str) -> str | None:
     for sub in ("", "_failed"):
         p = vault / ".watchdog" / "queue" / sub / f"{sha}.json"
         if p.exists():
-            try:
-                return json.loads(p.read_text(encoding="utf-8")).get("filename")
-            except (OSError, json.JSONDecodeError):
-                return None
+            data = _read_json_or(p, None)
+            return data.get("filename") if data is not None else None
     return None
 
 
@@ -2463,12 +2460,7 @@ def _pending_commits(vault: Path, force_shas: list[str] | None = None) -> list[s
     if not extracted_dir.exists():
         return []
     documents_path = vault / ".watchdog" / "registry" / "documents.json"
-    committed: set = set()
-    if documents_path.exists():
-        try:
-            committed = set(json.loads(documents_path.read_text(encoding="utf-8")))
-        except (OSError, json.JSONDecodeError):
-            pass
+    committed = set(_read_json_or(documents_path, []))
     committed -= set(force_shas or [])
     return sorted(p.stem for p in extracted_dir.glob("*.json") if p.stem not in committed)
 
@@ -2491,12 +2483,7 @@ def _commit_extracted(vault: Path, sha: str) -> dict | None:
     if not extracted_path.exists():
         return None
     queue_file = vault / ".watchdog" / "queue" / f"{sha}.json"
-    neardup_data: dict = {}
-    if queue_file.exists():
-        try:
-            neardup_data = json.loads(queue_file.read_text(encoding="utf-8")).get("near_dup", {})
-        except (OSError, json.JSONDecodeError):
-            pass
+    neardup_data = _read_json_or(queue_file, {}).get("near_dup", {})
     from watchdog.pipeline.write_vault import run as wv_run
     try:
         written = wv_run(extraction_path=extracted_path, vault_path=vault,

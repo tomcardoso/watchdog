@@ -8,7 +8,6 @@ deterministic egress gate in `pipeline.research` (validate URL → fetch → san
 never granted to the interactive skill, whose only web access is WebSearch/WebFetch for its own
 reading. The internal `research-fetch` command runs the same download on demand (recovery)."""
 
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -31,15 +30,11 @@ from watchdog.cmd.base import (
     load_projects,
 )
 from watchdog.pipeline import capture, research
+from watchdog.pipeline.json_io import _read_json_or
 
 
 def _load_config() -> dict:
-    if not CONFIG_FILE.exists():
-        return {}
-    try:
-        return json.loads(CONFIG_FILE.read_text())
-    except (OSError, json.JSONDecodeError):
-        return {}
+    return _read_json_or(CONFIG_FILE, {})
 
 
 def _wayback_creds() -> tuple[str, str] | None:

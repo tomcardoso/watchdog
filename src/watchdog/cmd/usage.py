@@ -18,6 +18,7 @@ from pathlib import Path
 
 from watchdog.cmd.base import _DIM, _RESET, _YELLOW, _resolve_vault
 from watchdog.model_catalog import display_name
+from watchdog.pipeline.json_io import _read_json_or
 from watchdog.pipeline.orchestrate import usage_files
 
 # task name -> stage bucket, matching --classifier-model/--extractor-model/--finalizer-model.
@@ -249,11 +250,8 @@ def _corpus_pages(vault: Path) -> tuple[int, int] | None:
         return (pages, n)
 
     reg = vault / ".watchdog" / "registry" / "documents.json"
-    if not reg.exists():
-        return None
-    try:
-        docs = json.loads(reg.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    docs = _read_json_or(reg, None)
+    if docs is None:
         return None
     if not docs:
         return None
