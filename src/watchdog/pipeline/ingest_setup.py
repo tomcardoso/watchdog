@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from watchdog.pipeline.backup import snapshot as _snapshot
+from watchdog.pipeline.json_io import _read_json
 from watchdog.pipeline.locks import acquire_or_take_stale, lock_age_seconds, lock_started_at
 from watchdog.pipeline.section import (
     section_token_threshold as _section_token_threshold,
@@ -124,7 +125,7 @@ def _tokens_calibration(vault: Path, max_runs: int = 3) -> float | None:
     ratios = []
     for uf in reversed(orchestrate.usage_files(vault)):
         try:
-            totals = json.loads(uf.read_text(encoding="utf-8")).get("totals", {})
+            totals = _read_json(uf).get("totals", {})
         except (OSError, json.JSONDecodeError):
             continue
         est, actual = totals.get("est_input_tokens"), _real_input_tokens(totals)
@@ -213,7 +214,7 @@ def _model_tokenizer_calibration(vault: Path, model: str | None, backend: str | 
     actual: list[float] = []
     for uf in reversed(orchestrate.usage_files(vault)):
         try:
-            records = json.loads(uf.read_text(encoding="utf-8")).get("calls", [])
+            records = _read_json(uf).get("calls", [])
         except (OSError, json.JSONDecodeError):
             continue
         for record in records:
@@ -247,7 +248,7 @@ def _output_token_ratio(vault: Path, max_runs: int, finalize_only: bool = False)
     ratios = []
     for uf in reversed(orchestrate.usage_files(vault)):
         try:
-            data = json.loads(uf.read_text(encoding="utf-8"))
+            data = _read_json(uf)
         except (OSError, json.JSONDecodeError):
             continue
         if finalize_only:
@@ -349,7 +350,7 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
     ratios = []
     for uf in files[-max_runs:]:
         try:
-            totals = json.loads(uf.read_text(encoding="utf-8")).get("totals", {})
+            totals = _read_json(uf).get("totals", {})
         except (OSError, json.JSONDecodeError):
             continue
         input_tokens, cost_usd = _real_input_tokens(totals), totals.get("cost_usd")
@@ -411,7 +412,7 @@ def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3,
     ratios = []
     for uf in reversed(files):
         try:
-            data = json.loads(uf.read_text(encoding="utf-8"))
+            data = _read_json(uf)
         except (OSError, json.JSONDecodeError):
             continue
         calls = data.get("calls") or []

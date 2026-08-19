@@ -15,16 +15,14 @@ from pathlib import Path
 
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW, _resolve_vault
 from watchdog.pipeline import watchlist as _watchlist
+from watchdog.pipeline.json_io import _read_json_or
 
 
 def cmd_watchlist(args) -> None:
     _, info, vault = _resolve_vault(getattr(args, "project", None))
 
     documents_path = vault / ".watchdog" / "registry" / "documents.json"
-    try:
-        documents_reg = json.loads(documents_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        documents_reg = {}
+    documents_reg = _read_json_or(documents_path, {})
 
     print()
     print(f"  {_BOLD}Watchlist scan{_RESET} {_DIM}— {info['name']}{_RESET}")

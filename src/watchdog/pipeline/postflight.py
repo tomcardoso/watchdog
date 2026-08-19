@@ -30,6 +30,8 @@ import sys
 from datetime import date as _date
 from pathlib import Path
 
+from watchdog.pipeline.json_io import _read_json
+
 _VALID_BASIS = {"stated", "inferred"}
 _DATE_RE = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
 
@@ -362,7 +364,7 @@ def run(vault: Path, extraction_path: Path, warn=None) -> dict:
         return {"errors": [f"extraction file not found: {extraction_path}"]}
 
     try:
-        extraction = json.loads(extraction_path.read_text(encoding="utf-8"))
+        extraction = _read_json(extraction_path)
     except json.JSONDecodeError as e:
         return {"errors": [f"invalid JSON: {e}"]}
 

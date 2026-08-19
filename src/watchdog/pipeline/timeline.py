@@ -15,6 +15,8 @@ import json
 import sys
 from pathlib import Path
 
+from watchdog.pipeline.json_io import _read_json_or
+
 
 def _timeline_dir(vault: Path) -> Path:
     return vault / ".watchdog" / "timeline"
@@ -247,10 +249,7 @@ def _write_timeline_md(vault: Path, content: str) -> None:
 
 
 def _load_registry(path: Path) -> dict:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
+    return _read_json_or(path, {})
 
 
 def _render_event_line(ev: dict, docs_reg: dict, manifest: dict) -> str:

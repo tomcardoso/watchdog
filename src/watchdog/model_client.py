@@ -55,6 +55,7 @@ from watchdog.model_catalog import (
     fallback_max_output_tokens,
     resolve_model_id,
 )
+from watchdog.pipeline.json_io import _read_json_or
 
 DEFAULT_TIER = "sonnet"
 
@@ -222,13 +223,8 @@ _LOCAL_DEFAULT_CONTEXT_WINDOW = 8_000
 
 
 def _configured_local_context_window() -> int | None:
-    config = {}
-    try:
-        from watchdog.cmd.base import CONFIG_FILE
-        if CONFIG_FILE.exists():
-            config = json.loads(CONFIG_FILE.read_text())
-    except (OSError, json.JSONDecodeError):
-        config = {}
+    from watchdog.cmd.base import CONFIG_FILE
+    config = _read_json_or(CONFIG_FILE, {})
     value = config.get("local_context_window")
     return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
 

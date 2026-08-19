@@ -17,6 +17,7 @@ from pathlib import Path
 
 from watchdog.terminal import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW, LiveRegion
 from watchdog.pipeline import sidecar
+from watchdog.pipeline.json_io import _read_json_or
 from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
 
 DEFAULT_FILE_TIMEOUT = 600
@@ -290,10 +291,7 @@ def _filter_already_seen(files: list, vault: Path, incoming: Path, queue: Path,
     where being already-ingested is the whole point, not a reason to skip it.
     """
     docs_path = vault / ".watchdog" / "registry" / "documents.json"
-    try:
-        ingested = set(json.loads(docs_path.read_text(encoding="utf-8"))) if docs_path.exists() else set()
-    except (OSError, json.JSONDecodeError):
-        ingested = set()
+    ingested = set(_read_json_or(docs_path, []))
     queued = {p.stem for p in queue.glob("*.json")}
     force_shas = force_shas or set()
 

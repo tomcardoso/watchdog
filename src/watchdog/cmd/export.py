@@ -16,6 +16,7 @@ from watchdog.cmd.base import (
     _RESET,
     _resolve_vault,
 )
+from watchdog.pipeline.json_io import _read_json
 
 
 def _forward_edges(entities: dict) -> tuple[list[dict], int]:
@@ -121,7 +122,7 @@ def cmd_export(args) -> None:
     if not entities_path.exists():
         sys.exit(f"Error: no entity registry found for {info['name']} — has anything been ingested?")
     try:
-        entities = json.loads(entities_path.read_text(encoding="utf-8"))
+        entities = _read_json(entities_path)
     except json.JSONDecodeError as e:
         sys.exit(f"Error: entities.json is corrupt — {e}")
 

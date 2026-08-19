@@ -17,6 +17,7 @@ from watchdog.cmd.base import (
     _find_project,
     load_projects,
 )
+from watchdog.pipeline.json_io import _read_json
 
 
 _CONFIGURE_KEYS = {
@@ -729,7 +730,7 @@ def cmd_refresh_skills(args) -> None:
     added = []
     if settings_path.exists():
         try:
-            settings = json.loads(settings_path.read_text())
+            settings = _read_json(settings_path)
             existing = set(settings.get("permissions", {}).get("allow", []))
             missing  = [p for p in _VAULT_PERMISSIONS if p not in existing]
             if missing:
@@ -1185,7 +1186,7 @@ def cmd_configure(args) -> None:
     config = {}
     if CONFIG_FILE.exists():
         try:
-            config = json.loads(CONFIG_FILE.read_text())
+            config = _read_json(CONFIG_FILE)
         except json.JSONDecodeError:
             sys.exit("Error: config file is corrupt. Try running 'watchdog setup --force'.")
 

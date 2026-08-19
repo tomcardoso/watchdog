@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 from watchdog.cmd.base import _BOLD, _DIM, _GREEN, _RESET, _YELLOW, _resolve_vault
+from watchdog.pipeline.json_io import _read_json_or
 
 _PAGE_MARKER = re.compile(r"<!-- PAGE (\d+) -->\n\n")
 
@@ -97,20 +98,14 @@ def cmd_reindex(args) -> None:
     documents_reg = {}
     documents_path = reg_dir / "documents.json"
     if documents_path.exists():
-        try:
-            documents_reg = json.loads(documents_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            pass
+        documents_reg = _read_json_or(documents_path, {}, catch=(json.JSONDecodeError,))
     if not documents_reg:
         sys.exit("Error: no documents ingested yet — nothing to reindex.")
 
     entities_reg = {}
     entities_path = reg_dir / "entities.json"
     if entities_path.exists():
-        try:
-            entities_reg = json.loads(entities_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            pass
+        entities_reg = _read_json_or(entities_path, {}, catch=(json.JSONDecodeError,))
 
     print()
     print(f"  {_BOLD}Reindexing{_RESET} {_DIM}— {info['name']}{_RESET}")

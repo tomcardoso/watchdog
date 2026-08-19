@@ -23,6 +23,7 @@ from watchdog.cmd.base import (
     _warn_pending_research,
     load_projects,
 )
+from watchdog.pipeline.json_io import _read_json_or
 
 # Sentinel for `--skill` with no value: trigger the interactive record-skill picker.
 _PICK_SKILL = "\x00pick"
@@ -493,11 +494,8 @@ def _forced_overwrite_targets(vault: Path, summary: dict) -> list[tuple[str, str
     note — the set the overwrite-warning gate must list and confirm before finalize recommits
     them. Returns (sha256, document_note) pairs, in `summary["results"]` order."""
     documents_path = vault / ".watchdog" / "registry" / "documents.json"
-    if not documents_path.exists():
-        return []
-    try:
-        committed = json.loads(documents_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    committed = _read_json_or(documents_path, None)
+    if committed is None:
         return []
     out = []
     for r in summary.get("results", []):
@@ -545,10 +543,7 @@ def _resolve_force_selectors(vault: Path, selectors: list[str]) -> list[str]:
     Exits with a clear error on no match or an ambiguous prefix — never a silent no-op. Returns
     shas in selector order, de-duplicated (two selectors naming the same document collapse to one)."""
     documents_path = vault / ".watchdog" / "registry" / "documents.json"
-    try:
-        documents = json.loads(documents_path.read_text(encoding="utf-8")) if documents_path.exists() else {}
-    except (OSError, json.JSONDecodeError):
-        documents = {}
+    documents = _read_json_or(documents_path, {})
 
     resolved: list[str] = []
     for sel in selectors:

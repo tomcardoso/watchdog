@@ -26,6 +26,7 @@ from watchdog.pipeline import (
     abort, batch_extract, harvest, leads, merge, preflight, postflight, prompts, reconcile,
     requests, schemas, section, sidecar, synthesis_bundle, timeline, verify, watchlist,
 )
+from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline.write_vault import _doc_slug
 
 DEFAULT_CONCURRENCY = 5
@@ -566,9 +567,8 @@ def latest_usage(vault: Path) -> dict | None:
     files = usage_files(vault)
     if not files:
         return None
-    try:
-        data = json.loads(files[-1].read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    data = _read_json_or(files[-1], None)
+    if data is None:
         return None
     return data.get("totals")
 
@@ -603,9 +603,8 @@ def _update_graph_colours(vault: Path) -> None:
     edir = vault / "entities"
     if not gpath.exists() or not edir.exists():
         return
-    try:
-        graph = json.loads(gpath.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    graph = _read_json_or(gpath, None)
+    if graph is None:
         return
     groups = graph.setdefault("colorGroups", [])
     existing = {g.get("query") for g in groups}
@@ -1108,7 +1107,7 @@ def _load_section_checkpoints(vault: Path, sha: str, sections: list[dict]) -> li
         if not path.exists():
             break
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = _read_json(path)
         except (OSError, json.JSONDecodeError):
             break
         if data.get("section") != sec:
@@ -1205,6 +1204,30 @@ def _lower_effort(effort: str | None) -> str | None:
     return levels[idx - 1] if idx > 0 else None
 
 
+def _note_section_entities(entities_seen: dict, parsed: dict) -> str:
+    """Fold one section call's entities into `entities_seen` and return the updated carry-forward
+    text (#636). Shared by every `_extract_sectioned` path that produces a section result and
+    needs the next call's carry — normal success, the starved-effort retry, and each half of a
+    re-split section. The section-1 repair path does not call this: a repair never changes
+    entities_seen/carry, since it happens after the whole document is already merged."""
+    for e in parsed.get("entities") or []:
+        if e.get("id"):
+            entities_seen[e["id"]] = {"name": e.get("name"), "type": e.get("type")}
+    return _carry_text(entities_seen, parsed.get("observations") or "")
+
+
+def _record_single_part_section(section_parts: dict[int, list[dict]], section_cost: dict[int, float],
+                                vault: Path, sha: str, sec: dict, parsed: dict, cost: float) -> None:
+    """Record one section's result as its sole part — set `section_cost`/`section_parts` and write
+    the checkpoint (#636). Shared by the normal-success, starved-effort-retry, and section-1-repair
+    paths, all of which replace a section's entry outright with one result. The re-split path keeps
+    its own inline version: it accumulates 2+ parts under one section index, which this helper's
+    single-`parsed` shape can't express."""
+    section_cost[sec["index"]] = cost
+    section_parts[sec["index"]] = [parsed]
+    _write_section_checkpoint(vault, sha, sec, parsed, cost)
+
+
 async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_label,
                              effort=None, backend=None, brief=None, verify_pass=False):
     """Sequential per-section extraction with carry-forward, then deterministic merge.
@@ -1275,13 +1298,9 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
                                                    brief=brief, model=model, effort=lower,
                                                    backend=backend, verify_pass=verify_pass,
                                                    prior_facts=prior)
-                    section_cost[sec["index"]] = r.cost_usd or 0.0
-                    section_parts[sec["index"]] = [r.parsed]
-                    _write_section_checkpoint(vault, sha, sec, r.parsed, section_cost[sec["index"]])
-                    for e2 in r.parsed.get("entities") or []:
-                        if e2.get("id"):
-                            entities_seen[e2["id"]] = {"name": e2.get("name"), "type": e2.get("type")}
-                    carry = _carry_text(entities_seen, r.parsed.get("observations") or "")
+                    _record_single_part_section(section_parts, section_cost, vault, sha, sec,
+                                                r.parsed, r.cost_usd or 0.0)
+                    carry = _note_section_entities(entities_seen, r.parsed)
                     continue
                 raise
             # Split just this section's page range in half and run both halves through the same
@@ -1301,22 +1320,15 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
                     prior_facts=prior + _facts_so_far({0: half_parts}))
                 half_cost += hr.cost_usd or 0.0
                 half_parts.append(hr.parsed)
-                for e2 in hr.parsed.get("entities") or []:
-                    if e2.get("id"):
-                        entities_seen[e2["id"]] = {"name": e2.get("name"), "type": e2.get("type")}
-                carry = _carry_text(entities_seen, hr.parsed.get("observations") or "")
+                carry = _note_section_entities(entities_seen, hr.parsed)
             section_cost[sec["index"]] = half_cost
             section_parts[sec["index"]] = half_parts
             _write_section_checkpoint(vault, sha, sec, half_parts[0], half_cost, parts=half_parts)
             continue
 
-        section_cost[sec["index"]] = r.cost_usd or 0.0
-        section_parts[sec["index"]] = [r.parsed]
-        _write_section_checkpoint(vault, sha, sec, r.parsed, section_cost[sec["index"]])
-        for e in r.parsed.get("entities") or []:
-            if e.get("id"):
-                entities_seen[e["id"]] = {"name": e.get("name"), "type": e.get("type")}
-        carry = _carry_text(entities_seen, r.parsed.get("observations") or "")
+        _record_single_part_section(section_parts, section_cost, vault, sha, sec,
+                                    r.parsed, r.cost_usd or 0.0)
+        carry = _note_section_entities(entities_seen, r.parsed)
 
     parts = _ordered_parts(section_parts)
     extraction, scratchpad, digest_cost = await _merge_sectioned(
@@ -1330,11 +1342,10 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
                                        model=model, effort=effort, backend=backend,
                                        repair_errors=errors, verify_pass=verify_pass)
         idx = sections[0]["index"]
-        section_cost[idx] = section_cost.get(idx, 0.0) + (r.cost_usd or 0.0)
         # Replaces every part section 1 contributed, not just the first: the repair re-ran the
         # whole section, so a re-split section 1's second half is now superseded, not still due.
-        section_parts[idx] = [r.parsed]
-        _write_section_checkpoint(vault, sha, sections[0], r.parsed, section_cost[idx])
+        _record_single_part_section(section_parts, section_cost, vault, sha, sections[0], r.parsed,
+                                    section_cost.get(idx, 0.0) + (r.cost_usd or 0.0))
         parts = _ordered_parts(section_parts)
         extraction, scratchpad, digest_cost = await _merge_sectioned(
             parts, pf, sha, skill_label, skill_text, model, effort, backend, brief, vault)
@@ -1352,10 +1363,8 @@ def _queued_filename(vault: Path, sha: str) -> str | None:
     for sub in ("", "_failed"):
         p = vault / ".watchdog" / "queue" / sub / f"{sha}.json"
         if p.exists():
-            try:
-                return json.loads(p.read_text(encoding="utf-8")).get("filename")
-            except (OSError, json.JSONDecodeError):
-                return None
+            data = _read_json_or(p, None)
+            return data.get("filename") if data is not None else None
     return None
 
 
@@ -2357,7 +2366,7 @@ def _load_results(vault: Path) -> list:
     out = []
     for p in sorted((vault / ".watchdog" / "tmp").glob("result_*.json")):
         try:
-            out.append(json.loads(p.read_text(encoding="utf-8")))
+            out.append(_read_json(p))
         except (OSError, json.JSONDecodeError):
             pass
     return out
@@ -2451,12 +2460,7 @@ def _pending_commits(vault: Path, force_shas: list[str] | None = None) -> list[s
     if not extracted_dir.exists():
         return []
     documents_path = vault / ".watchdog" / "registry" / "documents.json"
-    committed: set = set()
-    if documents_path.exists():
-        try:
-            committed = set(json.loads(documents_path.read_text(encoding="utf-8")))
-        except (OSError, json.JSONDecodeError):
-            pass
+    committed = set(_read_json_or(documents_path, []))
     committed -= set(force_shas or [])
     return sorted(p.stem for p in extracted_dir.glob("*.json") if p.stem not in committed)
 
@@ -2479,12 +2483,7 @@ def _commit_extracted(vault: Path, sha: str) -> dict | None:
     if not extracted_path.exists():
         return None
     queue_file = vault / ".watchdog" / "queue" / f"{sha}.json"
-    neardup_data: dict = {}
-    if queue_file.exists():
-        try:
-            neardup_data = json.loads(queue_file.read_text(encoding="utf-8")).get("near_dup", {})
-        except (OSError, json.JSONDecodeError):
-            pass
+    neardup_data = _read_json_or(queue_file, {}).get("near_dup", {})
     from watchdog.pipeline.write_vault import run as wv_run
     try:
         written = wv_run(extraction_path=extracted_path, vault_path=vault,
@@ -2598,7 +2597,7 @@ def _commit_pending(vault: Path, shas: list[str] | None = None) -> dict:
         if not result_path.exists():
             continue
         try:
-            result = json.loads(result_path.read_text(encoding="utf-8"))
+            result = _read_json(result_path)
         except (OSError, json.JSONDecodeError):
             continue
         result["new_entities"] = written.get("new_entities", [])
@@ -2630,7 +2629,7 @@ def pending_finalization(vault: Path) -> dict:
     entities = 0
     try:
         reg_path = vault / ".watchdog" / "registry" / "entities.json"
-        registry = json.loads(reg_path.read_text(encoding="utf-8")) if reg_path.exists() else {}
+        registry = _read_json(reg_path) if reg_path.exists() else {}
         extracted_dir = vault / ".watchdog" / "extracted"
         touched: set = set()
         for p in results:
@@ -2638,7 +2637,7 @@ def pending_finalization(vault: Path) -> dict:
             art = extracted_dir / f"{sha}.json"
             if not art.exists():
                 continue
-            artifact = json.loads(art.read_text(encoding="utf-8"))
+            artifact = _read_json(art)
             for e in artifact.get("entities") or []:
                 if e.get("id"):
                     touched.add(e["id"])

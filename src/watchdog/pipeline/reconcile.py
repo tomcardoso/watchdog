@@ -50,6 +50,7 @@ from pathlib import Path
 from watchdog.pipeline import contradiction, merge_entities
 from watchdog.pipeline.entity_norm import normalize_entity_name
 from watchdog.pipeline.entity_type import canonical_type
+from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline.write_vault import (
     _doc_slug, _extract_analysis, _extract_summary, _merge_entity, _new_entity,
     _render_evidence_fragments,
@@ -206,7 +207,7 @@ def _staged_artifacts(vault: Path, shas: list[str]) -> list[tuple[str, dict]]:
         if not p.exists():
             continue
         try:
-            out.append((sha, json.loads(p.read_text(encoding="utf-8"))))
+            out.append((sha, _read_json(p)))
         except (OSError, json.JSONDecodeError):
             continue
     return out
@@ -237,12 +238,7 @@ def build_bundle(vault: Path, shas: list[str]) -> dict:
     not be byte-identical to what `write_vault` eventually renders.
     """
     entities_path = vault / ".watchdog" / "registry" / "entities.json"
-    try:
-        original_reg = (
-            json.loads(entities_path.read_text(encoding="utf-8")) if entities_path.exists() else {}
-        )
-    except (OSError, json.JSONDecodeError):
-        original_reg = {}
+    original_reg = _read_json_or(entities_path, {})
 
     working = deepcopy(original_reg)
     # eid -> this batch's (sha, document, entity) contributions, in `shas` order (sorted, D126),
@@ -344,7 +340,7 @@ def _rewrite_staged_ids(vault: Path, shas: list[str], merge_id: str, keep_id: st
         if not artifact_path.exists():
             continue
         try:
-            artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+            artifact = _read_json(artifact_path)
         except (OSError, json.JSONDecodeError):
             continue
         entities = artifact.get("entities") or []
@@ -408,13 +404,7 @@ def apply_merges(vault: Path, shas: list[str], parsed: dict, bundle: dict, warn)
     through unapplied — they need the committed vault to validate against.
     """
     entities_path = vault / ".watchdog" / "registry" / "entities.json"
-    try:
-        registry_ids = (
-            set(json.loads(entities_path.read_text(encoding="utf-8")))
-            if entities_path.exists() else set()
-        )
-    except (OSError, json.JSONDecodeError):
-        registry_ids = set()
+    registry_ids = set(_read_json_or(entities_path, []))
 
     pairs = bundle.get("pairs", [])
     applied: list[dict] = []
