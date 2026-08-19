@@ -7,9 +7,9 @@ from watchdog.pipeline import prompts
 
 _flat = model_client._flatten_prompt   # extract/section prompts are content-block lists (A1)
 
-_TEMPLATES = ["classify", "extract_instructions", "extract_scaffold", "section_intro",
-              "synthesis", "briefing", "timeline_dedup", "timeline_precision", "digest",
-              "candidates_intro"]
+_TEMPLATES = ["classify", "extract_instructions", "extract_scaffold", "extract_reasoning_nudge",
+              "section_intro", "synthesis", "briefing", "timeline_dedup", "timeline_precision",
+              "digest", "candidates_intro"]
 
 
 @pytest.mark.parametrize("name", _TEMPLATES)
@@ -221,22 +221,26 @@ def test_extract_prompt_carries_no_vault_state():
     assert "EXISTING_TIMELINE" not in text
 
 
-# ── explicit scaffold for non-reasoning models (#570 Phase 1) ─────────────────────────────
+# ── extraction scaffold: explicit form (Phase 1) vs. compact nudge (Phase 2) (#570) ────────
 
-def test_extract_prompt_adds_scaffold_for_a_non_reasoning_model():
+def test_extract_prompt_adds_explicit_scaffold_for_a_non_reasoning_model():
     p = prompts.build_extract_prompt(
         pages_text="x", skill_text="", sidecar=None, brief=None, known_document_types=[],
         model="haiku")
     text = _flat(p)
     assert "no private reasoning channel" in text
     assert "document.plan" in text
+    assert "You have a private reasoning channel" not in text
 
 
-def test_extract_prompt_omits_scaffold_for_a_reasoning_model():
+def test_extract_prompt_adds_compact_nudge_for_a_reasoning_model():
     p = prompts.build_extract_prompt(
         pages_text="x", skill_text="", sidecar=None, brief=None, known_document_types=[],
         model="sonnet-4.6")
-    assert "no private reasoning channel" not in _flat(p)
+    text = _flat(p)
+    assert "You have a private reasoning channel" in text
+    assert "Do not restate this reasoning" in text
+    assert "no private reasoning channel" not in text
 
 
 def test_extract_prompt_omits_scaffold_when_no_model_given():
@@ -244,7 +248,9 @@ def test_extract_prompt_omits_scaffold_when_no_model_given():
     wants the base instructions) — no model means no scaffold, not a crash."""
     p = prompts.build_extract_prompt(
         pages_text="x", skill_text="", sidecar=None, brief=None, known_document_types=[])
-    assert "no private reasoning channel" not in _flat(p)
+    text = _flat(p)
+    assert "no private reasoning channel" not in text
+    assert "You have a private reasoning channel" not in text
 
 
 def test_extract_prompt_scaffold_survives_tier_alias_resolution():
@@ -260,18 +266,20 @@ def test_extract_prompt_scaffold_survives_tier_alias_resolution():
     assert "no private reasoning channel" in _flat(by_id)
 
 
-def test_section_prompt_adds_scaffold_for_a_non_reasoning_model():
+def test_section_prompt_adds_explicit_scaffold_for_a_non_reasoning_model():
     p = prompts.build_section_prompt(
         pages_text="x", skill_text="", carry_forward="", section_label="pages 1-5",
         is_first=True, known_document_types=[], model="haiku")
     assert "no private reasoning channel" in _flat(p)
 
 
-def test_section_prompt_omits_scaffold_for_a_reasoning_model():
+def test_section_prompt_adds_compact_nudge_for_a_reasoning_model():
     p = prompts.build_section_prompt(
         pages_text="x", skill_text="", carry_forward="", section_label="pages 1-5",
         is_first=True, known_document_types=[], model="sonnet-5")
-    assert "no private reasoning channel" not in _flat(p)
+    text = _flat(p)
+    assert "You have a private reasoning channel" in text
+    assert "no private reasoning channel" not in text
 
 
 # ── prompt caching (A1): extract/section prompts are content-block lists ──────────────────

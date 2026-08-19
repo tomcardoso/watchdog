@@ -336,13 +336,14 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    `build_section_prompt` render it as a volatile `FILE_METADATA` block — data, not
    instructions, stating the trust caveat (forgeable, often machine-generated) plus the
    `ocr_used`/`source_type` processing facts, so the model can judge whether a creation date
-   plausibly describes the original or just a scan/template. A model with no private reasoning
-   channel (`model_catalog.catalog_has_reasoning`, resolved once from the catalog per model —
-   D206, D208) also gets `prompts/extract_scaffold.md` appended: an explicit plan/evidence-triage/
-   consistency-pass scaffold written into a new optional `document.plan` scratch field, ordered
-   ahead of `key_facts` in the schema so it fills first — nothing downstream reads it. A model
-   with a private channel (Claude `thinking`, an OpenAI reasoning model) gets the base prompt
-   unchanged.
+   plausibly describes the original or just a scan/template. `prompts._extraction_scaffold`
+   appends one of two forms of the same plan/evidence-triage/consistency-pass scaffold, chosen
+   once per call from `model_catalog.catalog_has_reasoning` (D206, D208, D209): a model with no
+   private reasoning channel gets `prompts/extract_scaffold.md`, the explicit form, written into
+   a new optional `document.plan` scratch field ordered ahead of `key_facts` in the schema so it
+   fills first — nothing downstream reads it; a model with one (Claude `thinking`, an OpenAI
+   reasoning model) gets `prompts/extract_reasoning_nudge.md`, the compact form, pointed at that
+   channel instead, with an explicit instruction not to restate it in the visible JSON.
 4. **Verify** *(optional, off by default — `verify_extraction` / `--verify`, D172)* — one
    second, cheap model call over the *same* document (or, on a sectioned document, the same
    section), asking only what material fact is on the page and absent from the fact list just

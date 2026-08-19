@@ -144,13 +144,22 @@ def _file_metadata_block(file_metadata: dict, processing: dict) -> str:
     )
 
 
-def _wants_scaffold(model: str | None) -> bool:
-    """Whether the extraction prompt should carry the explicit step-by-step scaffold (#570) —
-    true for a model with no private reasoning channel to work the problem in instead. Resolved
-    once here from the catalog, per the issue's own scope note, rather than becoming a per-model
-    prompt matrix. `model` is None for any caller that doesn't yet thread a model id through
-    (there are none left as of #570 Phase 1, but this keeps a missing id a no-op, not a crash)."""
-    return model is not None and not catalog_has_reasoning(resolve_model_id(model))
+def _extraction_scaffold(model: str | None) -> str | None:
+    """The extraction scaffold text for `model`'s reasoning branch (#570), or None when no model
+    id was given. One three-stage scaffold (plan, evidence triage, consistency pass), two forms —
+    the branch is resolved once here, from the catalog, per the issue's own scope note, rather
+    than becoming a per-model prompt matrix. A model with no private reasoning channel
+    (`catalog_has_reasoning` false — Haiku, DeepSeek's plain ids, Gemini, any uncatalogued id)
+    gets the explicit step-by-step form (Phase 1, #570): nowhere else to work the stages but the
+    visible completion, so `extract_scaffold.md` gives it `document.plan` to write them into. A
+    model with one (an OpenAI reasoning model, or a Claude model with `thinking` on — explicit or
+    default, D206) gets the compact nudge instead (Phase 2, #570): the same three moves, pointed
+    at its private channel, with an explicit instruction not to restate them in the visible JSON."""
+    if model is None:
+        return None
+    if catalog_has_reasoning(resolve_model_id(model)):
+        return _text("extract_reasoning_nudge")
+    return _text("extract_scaffold")
 
 
 def build_extract_prompt(*, pages_text: str, skill_text: str, sidecar: str | None,
@@ -177,8 +186,9 @@ def build_extract_prompt(*, pages_text: str, skill_text: str, sidecar: str | Non
     # Block 3 is per-document volatile data and is never cached. `cache_ttl` is "1h" for batch
     # submissions (#214) — see _cache_block.
     stable = [_text("extract_instructions")]
-    if _wants_scaffold(model):
-        stable.append(f"\n{_text('extract_scaffold')}")
+    scaffold = _extraction_scaffold(model)
+    if scaffold:
+        stable.append(f"\n{scaffold}")
     if brief:
         stable.append(f"\nINVESTIGATION BRIEF (orient extraction toward this):\n{brief}")
 
@@ -217,8 +227,9 @@ def build_section_prompt(*, pages_text: str, skill_text: str, carry_forward: str
     # well past an hour later (a rate-limit backoff, a Ctrl-C resumed the next day) — the same
     # reasoning that gave the batch-submission path (#214) its own "1h" override applies here too.
     stable = [_text("extract_instructions")]
-    if _wants_scaffold(model):
-        stable.append(f"\n{_text('extract_scaffold')}")
+    scaffold = _extraction_scaffold(model)
+    if scaffold:
+        stable.append(f"\n{scaffold}")
     if brief:
         stable.append(f"\nINVESTIGATION BRIEF (orient extraction toward this):\n{brief}")
 
