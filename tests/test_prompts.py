@@ -506,10 +506,10 @@ def test_extract_prompt_tags_a_computed_figure_as_inferred():
     assert "Naming the components is not a substitute for the tag" in text
 
 
-# ── contradictions are surfaced regardless of basis (#622/D211) ──────────────
+# ── contradictions are surfaced regardless of basis (#622/D214) ──────────────
 
 def test_reconcile_prompt_does_not_gate_contradictions_on_basis():
-    """D211 reversed D203/D34: a contradiction is among the most valuable signals here, and the
+    """D214 reversed D203/D34: a contradiction is among the most valuable signals here, and the
     old gate suppressed only the *candid* derivations — `basis: inferred` fires on 0.16% of
     facts, so the derivations the model never declared were being compared all along."""
     p = prompts.build_reconcile_prompt({"pairs": [], "entities": []})
@@ -518,6 +518,15 @@ def test_reconcile_prompt_does_not_gate_contradictions_on_basis():
     assert "both** sides are directly stated" not in p
     assert "is a reasoning error, not a finding" not in p
     assert "so the conflict is between a value the extractor computed" not in p
+
+
+def test_synthesis_prompt_weighs_a_derived_figure_like_an_inferred_claim():
+    """D215: synthesis prefers a stated value over an inferred one where sources conflict, but
+    read `basis` alone and a computed figure — which almost never carries the label — could
+    outrank a printed one. It now names `figure_verify`'s annotation alongside *(inferred)*."""
+    text = prompts._text("synthesis")
+    assert "not found in the document — may be derived" in text
+    assert "Treat the two markings alike" in text
 
 
 def test_reconcile_prompt_names_the_annotations_the_renderer_actually_emits():

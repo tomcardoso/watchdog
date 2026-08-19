@@ -131,7 +131,7 @@ def _rounding_interval(token: str) -> tuple[Decimal, Decimal] | None:
 
 def _numeric_values(text: str) -> set[Decimal]:
     values: set[Decimal] = set()
-    for token in _tokens(text, _GROUPED_NUM_RE) | _tokens(text, _PLAIN_NUM_RE):
+    for token in _tokens(text, _GROUPED_NUM_RE):
         try:
             values.add(Decimal(token))
         except InvalidOperation:

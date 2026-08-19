@@ -113,6 +113,57 @@ def test_inferred_excludes_stated_only_entities():
     assert "acme" not in ids
 
 
+# ── D215: figure_verify's deterministic signal is a lead too ─────────────────
+
+def test_derived_figure_makes_a_lead_without_any_inferred_marking():
+    """`basis: inferred` fires on 0.16% of facts, so the lead sweep saw almost no derivations.
+    A timeline event carrying `figures_unverified` now qualifies on its own."""
+    reg = _registry()
+    reg["bob"]["timeline_events"] = [
+        {"date": "2021-04-30", "event": "Total claims were $360.3 million",
+         "figures_unverified": ["360.3"]},
+    ]
+    data = leads.find_leads(reg)
+    bob = next(i for i in data["inferred"] if i["id"] == "bob")
+    assert bob["claims"] == [
+        "2021-04-30: Total claims were $360.3 million (figure 360.3 not found in the document)"
+    ]
+
+
+def test_derived_figure_lead_names_every_missing_figure():
+    reg = _registry()
+    reg["bob"]["timeline_events"] = [
+        {"date": "2021-04-30", "event": "Assets fell", "figures_unverified": ["17319", "73026"]},
+    ]
+    claims = leads.find_leads(reg)["inferred"]
+    bob = next(i for i in claims if i["id"] == "bob")
+    assert bob["claims"] == ["2021-04-30: Assets fell (figures 17319, 73026 not found in the document)"]
+
+
+def test_off_page_figure_alone_is_not_a_lead():
+    """`figures_off_page` means the number is real and printed, just not where the fact cited —
+    a citation problem, not a verify-the-arithmetic one. It must not inflate this list."""
+    reg = _registry()
+    reg["bob"]["timeline_events"] = [
+        {"date": "2021-04-30", "event": "Revenue was $193.4 million",
+         "figures_off_page": {"193.4": [7]}},
+    ]
+    ids = {i["id"] for i in leads.find_leads(reg)["inferred"]}
+    assert "bob" not in ids
+
+
+def test_derived_figure_lead_is_resolvable_like_any_other():
+    """It rides the existing per-entity `inferred` resolution id, so `watchdog resolve` still
+    clears it — a new lead class that couldn't be acknowledged would be a nuisance."""
+    reg = _registry()
+    reg["bob"]["timeline_events"] = [
+        {"date": "2021-04-30", "event": "Total claims", "figures_unverified": ["360.3"]},
+    ]
+    resolved = frozenset({leads.resolutions.lead_id("inferred", "bob")})
+    ids = {i["id"] for i in leads.find_leads(reg, resolved)["inferred"]}
+    assert "bob" not in ids
+
+
 def test_total_and_empty():
     assert leads.total(leads.find_leads(_registry())) == 4
     assert leads.total(leads.find_leads({})) == 0

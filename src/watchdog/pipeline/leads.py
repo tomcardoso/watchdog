@@ -12,8 +12,10 @@ read straight from `.watchdog/registry/entities.json`:
     name keep recurring in isolation?
   * **Unresolved contradictions** — an entity carrying contradiction flags recorded at ingest,
     listed so they don't sit unreviewed.
-  * **Inferred facts to verify** — an entity carrying a `roles`/`timeline_events` entry with
-    `basis: inferred` (D34: "a lead to verify, not a finding"). Surfaces the pipeline's own
+  * **Facts to verify** — an entity carrying a `roles`/`timeline_events` entry the pipeline
+    can't vouch for: either `basis: inferred`, the model's own declaration (D34: "a lead to
+    verify, not a finding"), or `figures_unverified`, `figure_verify`'s deterministic finding
+    that a figure appears nowhere in the source document (D215). Surfaces the pipeline's own
     verify-me markers so they reach the report a journalist actually reads instead of sitting
     unread in a note body.
 
@@ -43,16 +45,33 @@ def _callout_summary(callout: str) -> str:
     return first or (lines[1] if len(lines) > 1 else "contradiction")
 
 
+def _derived_figures(claim: dict) -> str:
+    """The " (figures 1,234, 5,678 not on the cited page)" suffix for a claim `figure_verify`
+    found ungrounded figures in, or "" for a clean one."""
+    missing = claim.get("figures_unverified")
+    if not missing:
+        return ""
+    figs = ", ".join(str(t) for t in missing)
+    return f" (figure{'s' if len(missing) > 1 else ''} {figs} not found in the document)"
+
+
 def _inferred_claims(ent: dict) -> list[str]:
-    """Text for every basis:inferred role/timeline_event on an entity, in registry order."""
+    """Text for every role/timeline_event on an entity that needs verifying, in registry order.
+
+    Two independent signals, either of which qualifies (D215). `basis: inferred` is the model's
+    own declaration (D34: "a lead to verify, not a finding"); `figures_unverified` is
+    `figure_verify`'s deterministic finding that a figure appears nowhere in the source. The
+    second matters because the first is near-inert — `basis: inferred` fires on 0.16% of facts,
+    so relying on it alone let computed figures pass as read-off-the-page.
+    """
     claims = []
     for role in ent.get("roles", []):
         if role.get("basis") == "inferred":
             target = role.get("target_name") or role.get("target_id") or "?"
             claims.append(f"{role.get('relationship', '?')} → {target}")
     for ev in ent.get("timeline_events", []):
-        if ev.get("basis") == "inferred":
-            claims.append(f"{ev.get('date', '?')}: {ev.get('event', '?')}")
+        if ev.get("basis") == "inferred" or ev.get("figures_unverified"):
+            claims.append(f"{ev.get('date', '?')}: {ev.get('event', '?')}{_derived_figures(ev)}")
     return claims
 
 

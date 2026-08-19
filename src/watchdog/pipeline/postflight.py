@@ -360,6 +360,13 @@ def explode_key_facts(extraction: dict) -> list[str]:
                     event["page"] = page
                 if basis:
                     event["basis"] = basis
+                # The figure annotations ride along too (D215). `leads.py` reads roles and
+                # timeline_events — not evidence_fragments — so without this a derived figure
+                # is invisible to the lead sweep no matter what that sweep looks for.
+                if figures_unverified:
+                    event["figures_unverified"] = figures_unverified
+                if figures_off_page:
+                    event["figures_off_page"] = figures_off_page
                 ent.setdefault("timeline_events", []).append(event)
     return warnings
 
