@@ -1,12 +1,10 @@
-"""Registry query commands: entity-index, validate-extraction, is-duplicate."""
+"""Registry query commands: entity-index, is-duplicate."""
 
 import json
 import sys
 from pathlib import Path
 
 from watchdog.cmd.base import _find_project
-
-_VALID_BASIS = {"stated", "inferred"}
 
 
 def cmd_entity_index(args) -> None:
@@ -33,64 +31,6 @@ def cmd_entity_index(args) -> None:
         if e.get("name")
     ]
     print(json.dumps(compact, ensure_ascii=False))
-
-
-def cmd_validate_extraction(args) -> None:
-    path = Path(args.file).resolve()
-    vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
-        sys.exit("Error: must be run from inside a Watchdog vault directory")
-    if not str(path).startswith(str(vault) + "/"):
-        sys.exit(f"Error: file must be inside the vault directory ({vault})")
-    if not path.exists():
-        sys.exit(f"Error: file not found: {path}")
-
-    try:
-        data = json.loads(path.read_text())
-    except json.JSONDecodeError as e:
-        sys.exit(f"Error: invalid JSON — {e}")
-
-    errors = []
-
-    doc = data.get("document")
-    if not isinstance(doc, dict):
-        errors.append("missing or invalid 'document' field")
-    else:
-        for field in ("sha256", "filename"):
-            if not doc.get(field):
-                errors.append(f"document.{field} is missing or empty")
-        for fact in doc.get("key_facts", []):
-            if not isinstance(fact, dict):
-                errors.append("key_facts contains a non-object entry")
-            elif fact.get("basis") and fact["basis"] not in _VALID_BASIS:
-                errors.append(f"key_facts basis '{fact['basis']}' is not valid")
-
-    entities = data.get("entities")
-    if not isinstance(entities, list):
-        errors.append("missing or invalid 'entities' field")
-    else:
-        for i, ent in enumerate(entities):
-            if not isinstance(ent, dict):
-                errors.append(f"entities[{i}] is not an object")
-                continue
-            for field in ("id", "name", "type"):
-                if not ent.get(field):
-                    errors.append(f"entities[{i}].{field} is missing or empty")
-            for j, role in enumerate(ent.get("roles", [])):
-                if not isinstance(role, dict):
-                    errors.append(f"entities[{i}].roles[{j}] is not an object")
-
-    if not data.get("morgue_entity_id"):
-        errors.append("morgue_entity_id is missing or empty")
-    if not data.get("morgue_document_type"):
-        errors.append("morgue_document_type is missing or empty")
-
-    if errors:
-        for e in errors:
-            print(f"error: {e}")
-        sys.exit(1)
-
-    print("ok")
 
 
 def cmd_is_duplicate(args) -> None:

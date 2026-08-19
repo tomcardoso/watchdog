@@ -1,4 +1,4 @@
-"""Document pipeline commands: chew, ingest, queue-status, pre-flight, post-flight."""
+"""Document pipeline commands: chew, ingest, queue-status."""
 
 import contextlib
 import json
@@ -1478,28 +1478,3 @@ def cmd_queue_status(args) -> None:
         entries.append({"path": str(f), "source_type": source_type})
 
     print(json.dumps({"total": len(entries), "files": entries}, ensure_ascii=False))
-
-
-def cmd_preflight(args) -> None:
-    vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
-        sys.exit("Error: must be run from inside a Watchdog vault directory")
-    from watchdog.pipeline.preflight import run as pf_run
-    result = pf_run(vault, args.sha256)
-    if "error" in result:
-        sys.exit(f"Error: {result['error']}")
-    print(json.dumps(result, ensure_ascii=False))
-
-
-def cmd_postflight(args) -> None:
-    vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
-        sys.exit("Error: must be run from inside a Watchdog vault directory")
-    extraction_path = Path(args.extraction).resolve()
-    if not str(extraction_path).startswith(str(vault) + "/"):
-        sys.exit(f"Error: --extraction must be inside the vault directory ({vault})")
-    from watchdog.pipeline.postflight import run as post_run
-    result = post_run(vault, extraction_path)
-    print(json.dumps(result, ensure_ascii=False))
-    if "errors" in result:
-        sys.exit(1)
