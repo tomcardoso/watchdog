@@ -223,10 +223,22 @@ def test_extract_prompt_carries_no_vault_state():
 
 # ── explicit scaffold for non-reasoning models (#570 Phase 1) ─────────────────────────────
 
-def test_extract_prompt_adds_scaffold_for_a_non_reasoning_model():
+@pytest.mark.parametrize("model", [
+    "haiku",                # Claude, no thinking control at all
+    "deepseek-v4-flash",    # DeepSeek's plain (non "-thinking") id
+    "gemini-3.5-flash",     # Gemini — no reasoning field in the catalog
+    "not-a-real-model",     # uncatalogued — conservative default is "no channel"
+])
+def test_extract_prompt_adds_scaffold_for_a_non_reasoning_model(model):
+    """The branch is resolved from the catalog (`catalog_has_reasoning`), not hardcoded to
+    Haiku — every model family the catalog doesn't confirm a reasoning channel for gets the
+    scaffold, not just the one this was built and benchmarked against (#570 Phase 1). `model`
+    here is always the bare catalog id, never a `provider:model` CLI form — `cmd/ingest.py`'s
+    `_resolve_stage` strips that prefix into a separate `backend` before `model` ever reaches
+    this layer, so a bare id is what `orchestrate.py` actually threads through in production."""
     p = prompts.build_extract_prompt(
         pages_text="x", skill_text="", sidecar=None, brief=None, known_document_types=[],
-        model="haiku")
+        model=model)
     text = _flat(p)
     assert "no private reasoning channel" in text
     assert "document.plan" in text
