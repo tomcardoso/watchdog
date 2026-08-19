@@ -279,6 +279,27 @@ def test_collect_includes_stop_reason_in_usage(monkeypatch):
     assert out["sha1"]["usage"]["stop_reason"] == "max_tokens"
 
 
+def test_collect_surfaces_anthropic_reasoning_tokens(monkeypatch):
+    """Same bug as _api_complete_async's direct-call path: a thinking-enabled batch result's
+    usage carries thinking tokens under output_tokens_details.thinking_tokens, a different key
+    than the completion_tokens_details.reasoning_tokens shape every reader here checks."""
+    message = _Obj(
+        content=[_Obj(type="text", text=json.dumps(VALID_EXTRACTION))],
+        # output_tokens_details is a plain dict here, not an _Obj: real pydantic's model_dump()
+        # recursively serializes a nested model into a dict, which _Obj's shallow fake doesn't
+        # replicate — a dict literal matches what _fold_in_anthropic_thinking actually receives.
+        usage=_Obj(input_tokens=9408, output_tokens=1500,
+                  cache_creation_input_tokens=0, cache_read_input_tokens=0,
+                  output_tokens_details={"thinking_tokens": 1200}),
+        stop_reason="end_turn",
+    )
+    results = [_Obj(custom_id="sha1", result=_Obj(type="succeeded", message=message))]
+    fake = FakeBatches(results=results)
+    monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
+    out = asyncio.run(be.collect("batch_abc", "sk-x", "claude-sonnet-4-6"))
+    assert out["sha1"]["usage"]["completion_tokens_details"]["reasoning_tokens"] == 1200
+
+
 def test_collect_flags_unparseable_text_without_crashing(monkeypatch):
     fake = FakeBatches(results=[
         _Obj(custom_id="sha1", result=_Obj(

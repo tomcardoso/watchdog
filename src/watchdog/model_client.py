@@ -890,6 +890,7 @@ async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: d
     text = next((b.text for b in resp.content if getattr(b, "type", None) == "text"), "")
     usage = resp.usage
     usage_dict = usage.model_dump() if hasattr(usage, "model_dump") else dict(usage)
+    usage_dict = _fold_in_anthropic_thinking(usage_dict)
     return {"text": text, "usage": usage_dict, "cost_usd": _api_cost(model_id, usage),
             "finish_reason": getattr(resp, "stop_reason", None),
             "rate_limit": _rate_limit_headers(headers, _ANTHROPIC_RATE_LIMIT_HEADERS)}
@@ -959,6 +960,26 @@ def _fold_in_hidden_reasoning(usage: dict | None) -> dict | None:
     return {**usage,
             "completion_tokens": (usage.get("completion_tokens") or 0) + hidden,
             "completion_tokens_details": {**details, "reasoning_tokens": hidden}}
+
+
+def _fold_in_anthropic_thinking(usage_dict: dict) -> dict:
+    """Break Claude's thinking-token count out into `completion_tokens_details.reasoning_tokens`
+    — the OpenAI-shaped key `orchestrate.py`, `cmd/usage.py`, and `telemetry_db.py` already read
+    with no provider-specific branch (same target shape `_fold_in_hidden_reasoning` above
+    produces for Gemini). The anthropic SDK's `Usage` reports thinking tokens under a
+    *different* key, `output_tokens_details.thinking_tokens` — since #635 started sending
+    `thinking`, every Claude call's reasoning-token count has been silently dropped here, not
+    because the API doesn't report it but because nothing looked in the right place.
+
+    Unlike Gemini's fold, this never adjusts `output_tokens`: Anthropic already includes
+    thinking tokens in that total (`_api_cost` bills it correctly and unconditionally), so this
+    is purely surfacing an existing total's breakdown, not recovering a gap. Returns `usage_dict`
+    unchanged when the model didn't think (thinking off, or off by default with nothing sent) or
+    `thinking_tokens` is 0/absent."""
+    thinking = (usage_dict.get("output_tokens_details") or {}).get("thinking_tokens")
+    if not thinking:
+        return usage_dict
+    return {**usage_dict, "completion_tokens_details": {"reasoning_tokens": thinking}}
 
 
 def _openai_cost(model_id: str, usage: dict | None) -> float | None:

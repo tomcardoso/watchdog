@@ -857,6 +857,34 @@ def test_fold_in_hidden_reasoning_leaves_other_usage_shapes_alone(usage):
     assert mc._fold_in_hidden_reasoning(usage) == usage
 
 
+# ── Anthropic thinking-token telemetry (#635 sent `thinking`; the reasoning-tokens count it
+#    produces was never read, because it arrives under a different key than OpenAI's) ─────────
+
+def test_fold_in_anthropic_thinking_surfaces_the_count():
+    # The real shape anthropic's SDK returns for a thinking-enabled call: reasoning tokens are
+    # already included in output_tokens (Anthropic bills them there, unconditionally), and
+    # broken out separately under output_tokens_details.thinking_tokens — a different key than
+    # completion_tokens_details.reasoning_tokens, the one every reader here actually checks.
+    out = mc._fold_in_anthropic_thinking(
+        {"input_tokens": 9408, "output_tokens": 1500,
+         "output_tokens_details": {"thinking_tokens": 1200}})
+    assert out["completion_tokens_details"]["reasoning_tokens"] == 1200
+    # Unlike Gemini's fold, output_tokens is untouched — it already includes the 1,200.
+    assert out["output_tokens"] == 1500
+    assert out["input_tokens"] == 9408
+
+
+@pytest.mark.parametrize("usage_dict", [
+    {"input_tokens": 100, "output_tokens": 50},                          # no details at all
+    {"input_tokens": 100, "output_tokens": 50, "output_tokens_details": {}},
+    # thinking off, or a model with no thinking control — reports 0, not absent
+    {"input_tokens": 100, "output_tokens": 50, "output_tokens_details": {"thinking_tokens": 0}},
+    {"input_tokens": 100, "output_tokens": 50, "output_tokens_details": {"thinking_tokens": None}},
+])
+def test_fold_in_anthropic_thinking_leaves_other_usage_shapes_alone(usage_dict):
+    assert mc._fold_in_anthropic_thinking(usage_dict) == usage_dict
+
+
 def _fake_usage_response(monkeypatch, usage):
     """Point httpx at a fixed JSON body carrying `usage`, for the wire-level usage tests."""
     import httpx
@@ -1896,6 +1924,29 @@ def test_api_complete_omits_thinking_on_a_continuation(monkeypatch):
     asyncio.run(mc._api_complete_async("p", "claude-sonnet-4-6", SCHEMA, "sk-x", 8000,
                                        prefix="partial output"))
     assert "thinking" not in calls[0]
+
+
+def test_api_complete_surfaces_anthropic_reasoning_tokens(monkeypatch):
+    # The bug this fixes: a thinking-enabled Claude call's usage carries thinking tokens under
+    # output_tokens_details.thinking_tokens, but nothing read that key — every reader here checks
+    # completion_tokens_details.reasoning_tokens (OpenAI's shape) and silently saw nothing.
+    class FakeUsage:
+        def model_dump(self):
+            return {"input_tokens": 9408, "output_tokens": 1500,
+                   "output_tokens_details": {"thinking_tokens": 1200}}
+
+    class FakeBlock:
+        type = "text"
+        text = '{"name": "Acme"}'
+
+    class FakeMessage:
+        content = [FakeBlock()]
+        usage = FakeUsage()
+        stop_reason = "end_turn"
+
+    _fake_anthropic_client(monkeypatch, message=FakeMessage(), headers={})
+    out = asyncio.run(mc._api_complete_async("p", "claude-sonnet-4-6", SCHEMA, "sk-x", 8000))
+    assert out["usage"]["completion_tokens_details"]["reasoning_tokens"] == 1200
 
 
 def test_claude_envelope_requires_streaming():
