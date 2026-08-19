@@ -198,6 +198,32 @@ def test_submit_omits_effort_when_high_ie_default(tmp_path, monkeypatch):
     assert "effort" not in fake.create_calls[0][0]["params"]["output_config"]
 
 
+def test_submit_sends_thinking_for_a_model_that_defaults_off(tmp_path, monkeypatch):
+    """#643: `claude-sonnet-4-6` ships thinking off by default (catalog `thinking: true`) — the
+    live and agent-sdk paths already send it explicitly (#635, D206); this batch path was the one
+    Claude-calling caller left off that gate, so a batch extraction never actually reasoned."""
+    vault = make_vault(tmp_path)
+    fake = FakeBatches()
+    monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
+    docs = [{"sha": "sha1", "prompt": [{"type": "text", "text": "p"}]}]
+    asyncio.run(be.submit(vault, docs, model="sonnet", effort=None,
+                          skills={"sha1": "s"}, api_key="sk-x"))
+    assert fake.create_calls[0][0]["params"]["thinking"] == model_client._THINKING_ADAPTIVE
+
+
+def test_submit_omits_thinking_for_a_model_that_defaults_on(tmp_path, monkeypatch):
+    """`sonnet-5` ships thinking on by default (no catalog `thinking` flag) — sending the param
+    explicitly is unnecessary and, unlike the live path, has no continuation call here to worry
+    about conflicting with; the gate should still say no."""
+    vault = make_vault(tmp_path)
+    fake = FakeBatches()
+    monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
+    docs = [{"sha": "sha1", "prompt": [{"type": "text", "text": "p"}]}]
+    asyncio.run(be.submit(vault, docs, model="sonnet-5", effort=None,
+                          skills={"sha1": "s"}, api_key="sk-x"))
+    assert "thinking" not in fake.create_calls[0][0]["params"]
+
+
 # ── status ────────────────────────────────────────────────────────────────────
 
 def test_status_reports_processing_state(monkeypatch):

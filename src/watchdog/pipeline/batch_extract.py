@@ -27,7 +27,7 @@ import json
 from pathlib import Path
 
 from watchdog import model_client
-from watchdog.model_catalog import catalog_cache_breakpoints
+from watchdog.model_catalog import catalog_cache_breakpoints, catalog_needs_thinking_param
 from watchdog.pipeline import schemas, section
 
 STATE_REL = Path(".watchdog") / "registry" / "batch-pending.json"
@@ -133,6 +133,11 @@ async def _anthropic_submit(vault: Path, docs: list[dict], *, model: str, effort
     may mix skills — the skill is baked into that request's own prompt blocks, and the API treats
     each request independently — but collection runs in a later process, so the mapping has to be
     persisted rather than recomputed.
+
+    Sends `thinking` per request on the same `catalog_needs_thinking_param` gate the live
+    (`_api_complete_async`) and agent-sdk (`_agent_query`) paths already use (#635, D206) — this
+    path was the one Claude-calling caller left off that gate (#643), so a `thinking`-default-off
+    model extracted via `claude-batch` never actually reasoned regardless of #635 shipping.
     """
     model_id = model_client.resolve_model_id(model)
     effort_arg = model_client._resolve_effort("anthropic", model_id, effort)
@@ -145,17 +150,19 @@ async def _anthropic_submit(vault: Path, docs: list[dict], *, model: str, effort
     # `_output_envelope` directly rather than `_wire_max_tokens`: the only thing the latter adds is
     # the DeepSeek `-thinking` strip, and there is no DeepSeek batch path (anthropic/openai only).
     max_tokens = model_client._output_envelope(model_id)
+    params: dict = {
+        "model": model_id,
+        "max_tokens": max_tokens,
+        "system": model_client._SYSTEM_PROMPT,
+        "output_config": output_config,
+    }
+    if catalog_needs_thinking_param(model_id):
+        params["thinking"] = model_client._THINKING_ADAPTIVE
 
     requests = [
         {
             "custom_id": d["sha"],
-            "params": {
-                "model": model_id,
-                "max_tokens": max_tokens,
-                "system": model_client._SYSTEM_PROMPT,
-                "messages": [{"role": "user", "content": d["prompt"]}],
-                "output_config": output_config,
-            },
+            "params": {**params, "messages": [{"role": "user", "content": d["prompt"]}]},
         }
         for d in docs
     ]
