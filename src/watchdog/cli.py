@@ -106,15 +106,13 @@ from watchdog.cmd.watchlist import cmd_watchlist, cmd_watchlist_add
 
 def _cmd_rebuild_timeline(args) -> None:
     from pathlib import Path
-    from watchdog.pipeline.timeline import cmd_rebuild_timeline
+    from watchdog.pipeline.timeline import cmd_rebuild_timeline, main_rebuild
     if args.name:
         _, info = _find_project(args.name)
         vault = Path(info["path"])
+        cmd_rebuild_timeline(vault)
     else:
-        vault = Path(".").resolve()
-        if not (vault / ".watchdog").is_dir():
-            sys.exit("Error: not inside a watchdog project. Run `watchdog timeline <name>` or cd into a project first.")
-    cmd_rebuild_timeline(vault)
+        main_rebuild()
 
 
 def main() -> None:

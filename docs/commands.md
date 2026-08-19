@@ -317,7 +317,7 @@ Shows how Watchdog currently authenticates to model providers, then, on a termin
   - For **Anthropic**, choose between your Claude Code subscription (not metered) and a metered API key.
   - For **OpenAI**, **DeepSeek**, or **Gemini**, store a new key, replace an existing one, or delete it.
 
-There is no separate `set`/`get`/`use`/`remove` subcommand — this one interactive flow covers all of it. Keys can also come from the standard environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`), which always take precedence over a stored key. Routing a pipeline stage to another provider is covered in [Model backends](configuration.md#model-backends).
+There is no separate `set`/`get`/`use`/`remove` subcommand — this one interactive flow covers all of it. Keys can also come from the standard environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `LOCAL_API_KEY`, `OPENROUTER_API_KEY`), which always take precedence over a stored key. `LOCAL_BASE_URL` and `OPENROUTER_BASE_URL` likewise override the `local_base_url`/`openrouter_base_url` `watchdog configure` keys for those two backends. Routing a pipeline stage to another provider is covered in [Model backends](configuration.md#model-backends).
 
 ### watchdog unlock
 

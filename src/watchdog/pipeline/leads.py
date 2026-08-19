@@ -24,20 +24,13 @@ claims) are deliberately out of scope here — see DECISIONS D40 and #155.
 """
 
 import datetime
-import json
 import re
 from pathlib import Path
 
 from watchdog.pipeline import resolutions
+from watchdog.pipeline.watchlist import _load_json
 
 _ISOLATED_MIN_DOCS = 3   # appears-in count below which an unconnected entity is just long-tail noise
-
-
-def _load_json(path: Path) -> dict:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
 
 
 def _callout_summary(callout: str) -> str:
