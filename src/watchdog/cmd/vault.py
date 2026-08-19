@@ -238,7 +238,10 @@ def cmd_register(args) -> None:
     if not (vault / ".watchdog").exists():
         sys.exit(f"Error: {vault} does not look like a watchdog vault — no .watchdog folder found.")
 
-    reg = _load_registry(vault)
+    try:
+        reg = _load_registry(vault)
+    except json.JSONDecodeError as e:
+        sys.exit(f"Error: registry file is corrupt — {e}\nRun 'watchdog doctor' to diagnose.")
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # Infer name: use folder name as default, let user override
@@ -953,7 +956,12 @@ def cmd_list(args) -> None:
     for slug, info in sorted(visible.items(), key=lambda x: x[1]["name"]):
         vault = Path(info["path"])
         health   = _check_project_health(info)
-        reg      = _load_registry(vault)
+        registry_corrupt = False
+        try:
+            reg = _load_registry(vault)
+        except json.JSONDecodeError:
+            reg = None
+            registry_corrupt = True
         docs     = str(reg["document_count"]) if reg else "—"
         entities = str(reg["entity_count"])   if reg else "—"
         updated  = _fmt_date(reg["last_updated"]) if reg else "—"
@@ -969,7 +977,7 @@ def cmd_list(args) -> None:
         is_arch  = bool(info.get("archived"))
         description = info.get("description", "")
         rows.append((info["name"], slug, docs, entities, updated, incoming, awaiting_dig,
-                    awaiting_bark, is_arch, description, health, created, size))
+                    awaiting_bark, is_arch, description, health, created, size, registry_corrupt))
 
     name_w = max(len(r[0]) for r in rows) + 2
     slug_w = max(len(r[1]) for r in rows) + 2
@@ -989,7 +997,7 @@ def cmd_list(args) -> None:
     print(f"\n{header}")
     print(f"  {_DIM}{'─' * sep_w}{_RESET}")
     for (name, slug, docs, entities, updated, incoming, awaiting_dig, awaiting_bark,
-         is_arch, description, health, created, size) in rows:
+         is_arch, description, health, created, size, registry_corrupt) in rows:
         inc = "—" if incoming == "0" else incoming
         dig = "—" if awaiting_dig  == "0" else awaiting_dig
         bark = "—" if awaiting_bark == "0" else awaiting_bark
@@ -1019,6 +1027,8 @@ def cmd_list(args) -> None:
             print(f"    {_DIM}{description}{_RESET}")
         if health:
             print(f"    {_YELLOW}⚠ {health}{_RESET}  {_DIM}run {_RESET}{_CYAN}watchdog move {slug} <path>{_RESET}{_DIM} to relink or {_RESET}{_CYAN}watchdog delete {slug}{_RESET}{_DIM} to remove{_RESET}")
+        elif registry_corrupt:
+            print(f"    {_YELLOW}⚠ registry file is corrupt{_RESET}  {_DIM}run {_RESET}{_CYAN}watchdog doctor{_RESET}{_DIM} to diagnose{_RESET}")
     if archived and not show_all:
         n = len(archived)
         print(f"  {_DIM}+ {n} archived — run {_RESET}{_CYAN}watchdog list --all{_RESET}{_DIM} to show{_RESET}")
@@ -1045,7 +1055,10 @@ def cmd_status(args) -> None:
     if not vault.exists():
         sys.exit(f"Error: project directory not found: {vault}")
 
-    reg = _load_registry(vault)
+    try:
+        reg = _load_registry(vault)
+    except json.JSONDecodeError as e:
+        sys.exit(f"Error: registry file is corrupt — {e}\nRun 'watchdog doctor' to diagnose.")
     if not reg:
         print(f"\n  {_BOLD}{info['name']}{_RESET}")
         print(f"  {_CYAN}{info['path']}{_RESET}")
@@ -1140,17 +1153,22 @@ def cmd_doctor(args) -> None:
 
     struct_issues  = []
     schema_issues  = []
+    corrupt_registries = []
     for slug, info in sorted(all_projects.items(), key=lambda x: x[1]["name"]):
         problem = _check_project_health(info)
         if problem:
             struct_issues.append((slug, info, problem))
         else:
-            reg = _load_registry(Path(info["path"]))
+            try:
+                reg = _load_registry(Path(info["path"]))
+            except json.JSONDecodeError:
+                corrupt_registries.append((slug, info))
+                continue
             if reg and reg.get("schema_version") != VAULT_SCHEMA_VERSION:
                 schema_issues.append((slug, info, reg.get("schema_version", "unversioned")))
 
     total   = len(all_projects)
-    n_issues = len(struct_issues) + len(schema_issues)
+    n_issues = len(struct_issues) + len(schema_issues) + len(corrupt_registries)
     healthy  = total - n_issues
     noun     = "investigation" if total == 1 else "investigations"
     print(f"\n  Checking {total} registered {noun}...")
@@ -1178,6 +1196,14 @@ def cmd_doctor(args) -> None:
         print(f"  {_YELLOW}⚠  {_BOLD}{info['name']}{_RESET}  {_DIM}{slug}{_RESET}{arch_note}")
         print(f"     {_DIM}Schema v{found_ver} — current is v{VAULT_SCHEMA_VERSION}{_RESET}")
         print(f"     {_DIM}This vault may need migration before it is fully compatible.{_RESET}")
+        print()
+
+    for slug, info in corrupt_registries:
+        arch_note = f"  {_DIM}(archived){_RESET}" if info.get("archived") else ""
+        reg_path = Path(info["path"]) / ".watchdog" / "registry" / "registry.json"
+        print(f"  {_YELLOW}⚠  {_BOLD}{info['name']}{_RESET}  {_DIM}{slug}{_RESET}{arch_note}")
+        print(f"     {_DIM}Registry file is corrupt: {reg_path}{_RESET}")
+        print(f"     {_DIM}It's a regenerated summary cache — delete it and it will rebuild on the next {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM} or {_RESET}{_CYAN}watchdog bark{_RESET}{_DIM}.{_RESET}")
         print()
 
 

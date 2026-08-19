@@ -562,13 +562,15 @@ def _check_project_health(info: dict) -> str | None:
 
 
 def _load_registry(vault: Path) -> dict | None:
+    """Returns None only when registry.json doesn't exist yet (nothing ingested). A corrupt
+    file raises json.JSONDecodeError rather than being swallowed as "no registry" (#636) —
+    callers that check one project (cmd_register, cmd_status) should let that propagate as a
+    clean sys.exit; callers that loop over every registered project (cmd_list, cmd_doctor)
+    should catch it per-project so one corrupt vault doesn't abort the whole command."""
     reg = vault / ".watchdog" / "registry" / "registry.json"
     if not reg.exists():
         return None
-    try:
-        return json.loads(reg.read_text())
-    except json.JSONDecodeError as e:
-        sys.exit(f"Error: registry file is corrupt — {e}\nRun 'watchdog doctor' to diagnose.")
+    return json.loads(reg.read_text())
 
 
 def _count_incoming(vault: Path) -> int:

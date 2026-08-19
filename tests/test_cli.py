@@ -237,16 +237,57 @@ def test_load_registry_returns_data(tmp_path):
     assert cli._load_registry(tmp_path) == data
 
 
-def test_load_registry_corrupt_json_raises_clean_error(tmp_path):
-    """A corrupt registry.json must surface a clear signal — not be silently reported as
-    "no registry" (#636), which callers like `cmd_status`/`cmd_list` treat as "nothing
-    ingested yet"."""
+def test_load_registry_corrupt_json_raises(tmp_path):
+    """A corrupt registry.json must surface as a real exception — not be silently swallowed
+    as "no registry" (#636), which callers like `cmd_status`/`cmd_list` would otherwise treat
+    as "nothing ingested yet". `_load_registry` itself doesn't decide how to report this: a
+    single-project caller (cmd_register, cmd_status) turns it into a clean sys.exit, while a
+    caller that loops over every registered project (cmd_list, cmd_doctor) catches it
+    per-project so one corrupt vault doesn't abort the whole command — see the tests below."""
     reg_dir = tmp_path / ".watchdog" / "registry"
     reg_dir.mkdir(parents=True)
     (reg_dir / "registry.json").write_text("not json {{{")
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(json.JSONDecodeError):
         cli._load_registry(tmp_path)
-    assert "corrupt" in str(exc_info.value)
+
+
+def test_cmd_register_corrupt_registry_exits_cleanly(configured, wdg_home, tmp_path):
+    vault = tmp_path / "external-vault"
+    (vault / ".watchdog" / "registry").mkdir(parents=True)
+    (vault / ".watchdog" / "registry" / "registry.json").write_text("not json {{{")
+    with pytest.raises(SystemExit, match="corrupt"):
+        cli.cmd_register(args(path=str(vault), name=None))
+
+
+def test_cmd_list_one_corrupt_registry_does_not_hide_other_projects(configured, wdg_home, capsys):
+    """A corrupt registry.json in one project must not abort `watchdog list` for every other
+    registered project (#636) — cmd_list loops over all of them, so a single sys.exit here
+    would make one broken vault take the whole command down."""
+    cli.cmd_new(args(name="Healthy Co", dir=str(configured)))
+    cli.cmd_new(args(name="Broken Co", dir=str(configured)))
+    (configured / "broken-co" / ".watchdog" / "registry" / "registry.json").write_text("not json {{{")
+
+    cli.cmd_list(args())
+    out = capsys.readouterr().out
+    assert "Healthy Co" in out
+    assert "Broken Co" in out
+    assert "registry file is corrupt" in out
+    assert "watchdog doctor" in out
+
+
+def test_cmd_doctor_one_corrupt_registry_reports_instead_of_crashing(configured, wdg_home, capsys):
+    """Same concern as cmd_list, but for `watchdog doctor` — the command whose entire job is
+    to survive and report per-project problems, so a corrupt registry.json must land as one
+    more reported issue, not an uncaught exception that kills the health check itself."""
+    cli.cmd_new(args(name="Healthy Co", dir=str(configured)))
+    cli.cmd_new(args(name="Broken Co", dir=str(configured)))
+    (configured / "broken-co" / ".watchdog" / "registry" / "registry.json").write_text("not json {{{")
+
+    cli.cmd_doctor(args())
+    out = capsys.readouterr().out
+    assert "1 investigation healthy" in out
+    assert "Broken Co" in out
+    assert "Registry file is corrupt" in out
 
 
 # ── cmd_new ───────────────────────────────────────────────────────────────────
