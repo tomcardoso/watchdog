@@ -16,6 +16,8 @@ import importlib.resources
 import json
 from functools import lru_cache
 
+from watchdog.model_catalog import catalog_has_reasoning, resolve_model_id
+
 
 @lru_cache(maxsize=None)
 def _text(name: str) -> str:
@@ -142,12 +144,21 @@ def _file_metadata_block(file_metadata: dict, processing: dict) -> str:
     )
 
 
+def _wants_scaffold(model: str | None) -> bool:
+    """Whether the extraction prompt should carry the explicit step-by-step scaffold (#570) —
+    true for a model with no private reasoning channel to work the problem in instead. Resolved
+    once here from the catalog, per the issue's own scope note, rather than becoming a per-model
+    prompt matrix. `model` is None for any caller that doesn't yet thread a model id through
+    (there are none left as of #570 Phase 1, but this keeps a missing id a no-op, not a crash)."""
+    return model is not None and not catalog_has_reasoning(resolve_model_id(model))
+
+
 def build_extract_prompt(*, pages_text: str, skill_text: str, sidecar: str | None,
                          brief: str | None, known_document_types: list, cache_ttl: str = "5m",
                          file_metadata: dict | None = None,
                          processing: dict | None = None,
                          candidates: str | None = None,
-                         cache_document: bool = False) -> list[dict]:
+                         cache_document: bool = False, model: str | None = None) -> list[dict]:
     # Document identity (sha256/filename/original_path/page_count) and provenance
     # (source/obtained) are stamped onto the result by Python — see
     # orchestrate._stamp_document — so they are deliberately not asked of the model here.
@@ -166,6 +177,8 @@ def build_extract_prompt(*, pages_text: str, skill_text: str, sidecar: str | Non
     # Block 3 is per-document volatile data and is never cached. `cache_ttl` is "1h" for batch
     # submissions (#214) — see _cache_block.
     stable = [_text("extract_instructions")]
+    if _wants_scaffold(model):
+        stable.append(f"\n{_text('extract_scaffold')}")
     if brief:
         stable.append(f"\nINVESTIGATION BRIEF (orient extraction toward this):\n{brief}")
 
@@ -192,7 +205,7 @@ def build_section_prompt(*, pages_text: str, skill_text: str, carry_forward: str
                          file_metadata: dict | None = None,
                          processing: dict | None = None,
                          candidates: str | None = None, cache_ttl: str = "1h",
-                         cache_document: bool = False) -> list[dict]:
+                         cache_document: bool = False, model: str | None = None) -> list[dict]:
     # Same cache-block split as build_extract_prompt (A1): instructions + brief + skill lead,
     # since those are the only parts stable across every section of one run — the section
     # label/metadata-mode note, carry-forward, and section text change on every call, so they
@@ -204,6 +217,8 @@ def build_section_prompt(*, pages_text: str, skill_text: str, carry_forward: str
     # well past an hour later (a rate-limit backoff, a Ctrl-C resumed the next day) — the same
     # reasoning that gave the batch-submission path (#214) its own "1h" override applies here too.
     stable = [_text("extract_instructions")]
+    if _wants_scaffold(model):
+        stable.append(f"\n{_text('extract_scaffold')}")
     if brief:
         stable.append(f"\nINVESTIGATION BRIEF (orient extraction toward this):\n{brief}")
 

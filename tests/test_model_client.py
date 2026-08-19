@@ -307,6 +307,23 @@ def test_catalog_needs_thinking_param(model_id, needs_thinking_param):
     assert mc.catalog_needs_thinking_param(model_id) is needs_thinking_param
 
 
+@pytest.mark.parametrize("model_id,has_reasoning", [
+    ("claude-sonnet-4-6", True),   # thinking sent explicitly (#635)
+    ("claude-opus-4-8", True),     # thinking sent explicitly (#635)
+    ("claude-sonnet-5", True),     # thinking on by default
+    ("claude-opus-5", True),       # thinking on by default
+    ("claude-haiku-4-5", False),   # no thinking control at all
+    ("gpt-5.6-luna", True),        # OpenAI reasoning model
+    ("gpt-5.4-nano", True),        # OpenAI reasoning model
+    ("deepseek-v4-flash", False),  # no reasoning field in the catalog
+    ("gemini-3.5-flash", False),   # no reasoning field in the catalog
+    ("not-a-real-model", False),   # uncatalogued — never assume a channel that isn't confirmed
+])
+def test_catalog_has_reasoning(model_id, has_reasoning):
+    from watchdog.model_catalog import catalog_has_reasoning
+    assert catalog_has_reasoning(model_id) is has_reasoning
+
+
 # ── unsupported effort requests fail loud, at any level (#518, D158) ──────────
 # `model_catalog.yaml`'s `effort_levels` is authoritative for every provider now, not just a
 # per-provider "supports effort at all" flag — so a request for a level a model doesn't accept

@@ -119,6 +119,14 @@ _DOCUMENT = _obj(
         "document_type": {"type": "string"},
         "date_of_document": _NULLABLE_STR,
         "summary": {"type": "string"},
+        # Visible scratch space, read by nothing downstream (#570). Ordered ahead of key_facts
+        # because structured-output decoding fills an object's properties in schema-declaration
+        # order — a model with no private reasoning channel (extract_instructions.md's scaffold
+        # section only addresses this field to that model) gets to work through plan, evidence
+        # triage, and a consistency pass here BEFORE it has to commit to key_facts. A model that
+        # already has a private channel (thinking) has no reason to use it and normally won't;
+        # optional, so leaving it empty costs nothing.
+        "plan": {"type": "string"},
         "key_facts": {"type": "array", "items": _KEY_FACT},
     },
     ["title", "document_type", "summary", "key_facts"],
