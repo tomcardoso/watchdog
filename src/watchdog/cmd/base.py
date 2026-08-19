@@ -9,37 +9,16 @@ from pathlib import Path
 
 from watchdog.model_catalog import _MODEL_IDS, resolve_model_id  # noqa: F401 — re-exported
 from watchdog.pipeline.write_vault import slugify  # noqa: F401 — re-exported
+# Colour constants and their gating logic live in watchdog.terminal (#636) — a neutral module
+# with no dependency on this package — re-exported here so the ~40 existing call sites across
+# cmd/*.py that do `from watchdog.cmd.base import _BOLD, ...` keep working unchanged.
+from watchdog.terminal import (  # noqa: F401 — re-exported
+    _COLOR, _color_enabled, _BOLD, _DIM, _CYAN, _YELLOW, _GREEN, _RESET,
+)
 
 WATCHDOG_HOME = Path.home() / ".watchdog"
 PROJECTS_FILE = WATCHDOG_HOME / "projects.json"
 CONFIG_FILE   = WATCHDOG_HOME / "config.json"
-
-def _color_enabled() -> bool:
-    """Whether to emit ANSI colour codes at all (#499). `NO_COLOR` (any non-empty value) forces
-    them off; otherwise follow whether stdout is a real terminal. Gated on stdout specifically,
-    not stderr — the standard simplification, and it means a piped stdout also de-colours the few
-    warnings this module prints to stderr (see D174).
-
-    `FORCE_COLOR` is deliberately *not* honoured: Claude Code sets `FORCE_COLOR=3` in the
-    environment it hands to shell commands, so honouring it would force colour back on for the
-    exact reader this gate exists to protect — a session piping `watchdog status` into its own
-    context and paying tokens for the escape bytes (D174)."""
-    if os.environ.get("NO_COLOR"):
-        return False
-    try:
-        return sys.stdout.isatty()
-    except Exception:
-        return False
-
-
-_COLOR = _color_enabled()
-
-_BOLD   = "\033[1m" if _COLOR else ""
-_DIM    = "\033[2m" if _COLOR else ""
-_CYAN   = "\033[0;36m" if _COLOR else ""
-_YELLOW = "\033[0;33m" if _COLOR else ""
-_GREEN  = "\033[0;32m" if _COLOR else ""
-_RESET  = "\033[0m" if _COLOR else ""
 
 VAULT_SCHEMA_VERSION = "1"
 
@@ -493,7 +472,10 @@ def load_projects() -> dict:
     if not PROJECTS_FILE.exists():
         return {}
     with open(PROJECTS_FILE) as f:
-        return json.load(f)
+        try:
+            return json.load(f)
+        except json.JSONDecodeError as e:
+            sys.exit(f"Error: projects file is corrupt — {e}\nRun 'watchdog setup --force'.")
 
 
 def _project_completer(prefix, parsed_args, **kwargs):
@@ -510,7 +492,10 @@ def save_projects(projects: dict) -> None:
 def _projects_dir() -> Path:
     default = Path.home() / "Investigations"
     if CONFIG_FILE.exists():
-        config = json.loads(CONFIG_FILE.read_text())
+        try:
+            config = json.loads(CONFIG_FILE.read_text())
+        except json.JSONDecodeError as e:
+            sys.exit(f"Error: config file is corrupt — {e}\nRun 'watchdog setup --force'.")
         # config.json can legitimately omit "projects_dir", or carry it as "" / null (e.g. a
         # config written before that key existed, or hand-edited to set only one other knob) —
         # `or default` treats any falsy value the same as a missing one, since `config.get(...,
@@ -556,13 +541,15 @@ def _check_project_health(info: dict) -> str | None:
 
 
 def _load_registry(vault: Path) -> dict | None:
+    """Returns None only when registry.json doesn't exist yet (nothing ingested). A corrupt
+    file raises json.JSONDecodeError rather than being swallowed as "no registry" (#636) —
+    callers that check one project (cmd_register, cmd_status) should let that propagate as a
+    clean sys.exit; callers that loop over every registered project (cmd_list, cmd_doctor)
+    should catch it per-project so one corrupt vault doesn't abort the whole command."""
     reg = vault / ".watchdog" / "registry" / "registry.json"
     if not reg.exists():
         return None
-    try:
-        return json.loads(reg.read_text())
-    except Exception:
-        return None
+    return json.loads(reg.read_text())
 
 
 def _count_incoming(vault: Path) -> int:

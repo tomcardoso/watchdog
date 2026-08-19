@@ -312,6 +312,27 @@ def test_resolve_workers_explicit_chunk_overrides_config(tmp_path, monkeypatch):
     assert chunk == 8  # from explicit flag
 
 
+@pytest.mark.parametrize("bad_value", [0, -1])
+def test_resolve_workers_rejects_non_positive_explicit_pre(tmp_path, monkeypatch, bad_value):
+    # `--chew-workers -1` (or 0) must fail with a clean CLI error, not ThreadPoolExecutor's raw
+    # "max_workers must be greater than 0" ValueError (#636).
+    files = [tmp_path / "a.pdf"]
+    files[0].write_bytes(b"")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    with pytest.raises(SystemExit, match="chew-workers"):
+        _resolve_workers(files, explicit_pre=bad_value)
+
+
+@pytest.mark.parametrize("bad_value", [0, -1])
+def test_resolve_workers_rejects_non_positive_explicit_chunk(tmp_path, monkeypatch, bad_value):
+    # `--chunk-workers -1` (or 0) must fail with a clean CLI error, not a raw ValueError (#636).
+    files = [tmp_path / "a.pdf"]
+    files[0].write_bytes(b"")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    with pytest.raises(SystemExit, match="chunk-workers"):
+        _resolve_workers(files, explicit_pre=None, explicit_chunk=bad_value)
+
+
 def test_resolve_workers_caps_pre_to_file_count(tmp_path, monkeypatch):
     files = [tmp_path / "only.pdf"]
     files[0].write_bytes(b"")

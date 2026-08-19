@@ -15,8 +15,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
-from watchdog.cmd.live import LiveRegion
+from watchdog.terminal import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW, LiveRegion
 from watchdog.pipeline import sidecar
 from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
 
@@ -142,6 +141,13 @@ def _resolve_workers(
     explicit_pre: int | None,
     explicit_chunk: int | None = None,
 ) -> tuple[int, int, bool, dict | None]:
+    # A worker count below 1 reaches ThreadPoolExecutor's own `max_workers must be greater than
+    # 0` ValueError (#636) — catch it here with a clear message instead.
+    if explicit_pre is not None and explicit_pre < 1:
+        sys.exit(f"Error: --chew-workers must be at least 1 (got {explicit_pre}).")
+    if explicit_chunk is not None and explicit_chunk < 1:
+        sys.exit(f"Error: --chunk-workers must be at least 1 (got {explicit_chunk}).")
+
     cfg: dict = {}
     try:
         cfg = json.loads((Path.home() / ".watchdog" / "config.json").read_text())

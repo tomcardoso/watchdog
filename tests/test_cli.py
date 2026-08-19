@@ -1,6 +1,7 @@
 import argparse
 import contextlib
 import json
+import os
 import re
 import pytest
 from datetime import datetime, timezone
@@ -236,11 +237,57 @@ def test_load_registry_returns_data(tmp_path):
     assert cli._load_registry(tmp_path) == data
 
 
-def test_load_registry_corrupt_json(tmp_path):
+def test_load_registry_corrupt_json_raises(tmp_path):
+    """A corrupt registry.json must surface as a real exception — not be silently swallowed
+    as "no registry" (#636), which callers like `cmd_status`/`cmd_list` would otherwise treat
+    as "nothing ingested yet". `_load_registry` itself doesn't decide how to report this: a
+    single-project caller (cmd_register, cmd_status) turns it into a clean sys.exit, while a
+    caller that loops over every registered project (cmd_list, cmd_doctor) catches it
+    per-project so one corrupt vault doesn't abort the whole command — see the tests below."""
     reg_dir = tmp_path / ".watchdog" / "registry"
     reg_dir.mkdir(parents=True)
     (reg_dir / "registry.json").write_text("not json {{{")
-    assert cli._load_registry(tmp_path) is None
+    with pytest.raises(json.JSONDecodeError):
+        cli._load_registry(tmp_path)
+
+
+def test_cmd_register_corrupt_registry_exits_cleanly(configured, wdg_home, tmp_path):
+    vault = tmp_path / "external-vault"
+    (vault / ".watchdog" / "registry").mkdir(parents=True)
+    (vault / ".watchdog" / "registry" / "registry.json").write_text("not json {{{")
+    with pytest.raises(SystemExit, match="corrupt"):
+        cli.cmd_register(args(path=str(vault), name=None))
+
+
+def test_cmd_list_one_corrupt_registry_does_not_hide_other_projects(configured, wdg_home, capsys):
+    """A corrupt registry.json in one project must not abort `watchdog list` for every other
+    registered project (#636) — cmd_list loops over all of them, so a single sys.exit here
+    would make one broken vault take the whole command down."""
+    cli.cmd_new(args(name="Healthy Co", dir=str(configured)))
+    cli.cmd_new(args(name="Broken Co", dir=str(configured)))
+    (configured / "broken-co" / ".watchdog" / "registry" / "registry.json").write_text("not json {{{")
+
+    cli.cmd_list(args())
+    out = capsys.readouterr().out
+    assert "Healthy Co" in out
+    assert "Broken Co" in out
+    assert "registry file is corrupt" in out
+    assert "watchdog doctor" in out
+
+
+def test_cmd_doctor_one_corrupt_registry_reports_instead_of_crashing(configured, wdg_home, capsys):
+    """Same concern as cmd_list, but for `watchdog doctor` — the command whose entire job is
+    to survive and report per-project problems, so a corrupt registry.json must land as one
+    more reported issue, not an uncaught exception that kills the health check itself."""
+    cli.cmd_new(args(name="Healthy Co", dir=str(configured)))
+    cli.cmd_new(args(name="Broken Co", dir=str(configured)))
+    (configured / "broken-co" / ".watchdog" / "registry" / "registry.json").write_text("not json {{{")
+
+    cli.cmd_doctor(args())
+    out = capsys.readouterr().out
+    assert "1 investigation healthy" in out
+    assert "Broken Co" in out
+    assert "Registry file is corrupt" in out
 
 
 # ── cmd_new ───────────────────────────────────────────────────────────────────
@@ -345,6 +392,13 @@ def test_cmd_new_invalid_name_exits(configured):
         cli.cmd_new(args(name="!!!", dir=str(configured)))
 
 
+def test_cmd_new_slug_too_long_exits_cleanly(configured):
+    # A slugified name past the filesystem's ~255-byte path-component limit must fail with a
+    # clean CLI error (#636), not an uncaught OSError from mkdir().
+    with pytest.raises(SystemExit, match="too long"):
+        cli.cmd_new(args(name="x" * 300, dir=str(configured)))
+
+
 def test_cmd_new_installs_skills_per_project(configured):
     cli.cmd_new(args(name="My Story", dir=str(configured)))
     commands_dir = configured / "my-story" / ".claude" / "commands"
@@ -377,6 +431,22 @@ def test_projects_dir_falls_back_when_key_is_falsy(wdg_home, value):
     # (the cwd) would become the silent vault-creation directory.
     (wdg_home / "config.json").write_text(json.dumps({"projects_dir": value}) + "\n")
     assert _base._projects_dir() == Path.home() / "Investigations"
+
+
+def test_projects_dir_corrupt_config_exits_cleanly(wdg_home):
+    # A truncated/corrupt config.json must not crash the CLI with a raw JSONDecodeError (#636) —
+    # every command that resolves a vault path calls this.
+    (wdg_home / "config.json").write_text("not json {{{")
+    with pytest.raises(SystemExit, match="corrupt"):
+        _base._projects_dir()
+
+
+def test_load_projects_corrupt_projects_file_exits_cleanly(wdg_home):
+    # A truncated/corrupt projects.json must not crash the CLI with a raw JSONDecodeError
+    # (#636) — nearly every command calls this to resolve a project by name.
+    (wdg_home / "projects.json").write_text("not json {{{")
+    with pytest.raises(SystemExit, match="corrupt"):
+        cli.load_projects()
 
 
 def test_cmd_new_description_stored_in_registry(configured, wdg_home):
@@ -871,6 +941,16 @@ def test_cmd_status_corrupt_registry_exits(configured):
     cli.cmd_new(args(name="Test Proj", dir=str(configured)))
     reg = configured / "test-proj" / ".watchdog" / "registry"
     (reg / "documents.json").write_text("not valid json {{{")
+    with pytest.raises(SystemExit, match="corrupt"):
+        cli.cmd_status(args(name="Test Proj"))
+
+
+def test_cmd_status_corrupt_registry_json_exits_with_clean_error(configured):
+    """#636: a corrupt registry.json (not documents.json/entities.json) must not be silently
+    reported as "no registry found" — it must surface a clear corruption error."""
+    cli.cmd_new(args(name="Test Proj", dir=str(configured)))
+    reg = configured / "test-proj" / ".watchdog" / "registry"
+    (reg / "registry.json").write_text("not valid json {{{")
     with pytest.raises(SystemExit, match="corrupt"):
         cli.cmd_status(args(name="Test Proj"))
 
@@ -1723,6 +1803,29 @@ def test_cmd_move_moves_files_when_src_exists(configured, capsys):
     assert new_path.exists()
     assert cli.load_projects()["shell-co"]["path"] == str(new_path)
     assert "Moved" in capsys.readouterr().out
+
+
+def test_cmd_move_reports_special_files_cleanly(configured, monkeypatch):
+    """`shutil.move` falls back to `shutil.copytree` on a cross-filesystem move, which raises
+    `shutil.Error` if the vault contains a non-regular file (FIFO, socket, device) it can't
+    copy (#636). Force the fallback by making `os.rename` look like a cross-device move — same
+    trigger a real move across filesystems would hit — and confirm a clean CLI error instead of
+    a raw traceback."""
+    import errno
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    os.mkfifo(vault / "myfifo")
+    new_path = configured / "new-location"
+
+    real_rename = os.rename
+
+    def fake_rename(a, b):
+        raise OSError(errno.EXDEV, "cross-device")
+    monkeypatch.setattr(os, "rename", fake_rename)
+
+    with pytest.raises(SystemExit, match="myfifo"):
+        cli.cmd_move(args(name="Shell Co", path=str(new_path)))
+    monkeypatch.setattr(os, "rename", real_rename)
 
 
 def test_cmd_move_updates_obsidian_registry(configured, capsys):

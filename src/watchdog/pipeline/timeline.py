@@ -348,5 +348,5 @@ def main_collisions() -> None:
 def main_rebuild() -> None:
     vault = Path(".").resolve()
     if not (vault / ".watchdog").is_dir():
-        sys.exit("Error: must be run from inside a Watchdog vault directory")
+        sys.exit("Error: not inside a watchdog project. Run `watchdog timeline <name>` or cd into a project first.")
     cmd_rebuild_timeline(vault)
