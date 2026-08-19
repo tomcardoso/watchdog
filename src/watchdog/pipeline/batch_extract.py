@@ -245,7 +245,7 @@ async def _anthropic_collect(batch_id: str, api_key: str, model_id: str) -> dict
         message = item.result.message
         text = next((b.text for b in message.content if getattr(b, "type", None) == "text"), "")
         parsed = model_client._extract_json(text)
-        usage_dict = _model_dump(message.usage)
+        usage_dict = model_client._fold_in_anthropic_thinking(_model_dump(message.usage))
         stop_reason = getattr(message, "stop_reason", None)
         if stop_reason:
             usage_dict["stop_reason"] = stop_reason
