@@ -93,7 +93,7 @@ Use `→` notation. Include the relationship type after the colon.
 5. [Specific thing]
 6. [Specific thing]
 
-Aim for six to eight items. Each should name something a first-year journalist would overlook but a twenty-year veteran would check automatically.
+List as many as this record type genuinely has — no more, no fewer. Each should name something a first-year journalist would overlook but a twenty-year veteran would check automatically; stop when you run out of those, even if that's three, and don't pad past that point just because a longer list looks more thorough.
 
 ---
 

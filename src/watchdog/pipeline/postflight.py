@@ -294,7 +294,7 @@ def _sanitize_dates(extraction: dict) -> list[str]:
     return warnings
 
 
-def explode_key_facts(extraction: dict) -> None:
+def explode_key_facts(extraction: dict) -> list[str]:
     """Reconstruct the per-entity views from the unified `key_facts` primitive (#140).
 
     The model emits each material fact once on ``document.key_facts``, tagged with the entity ids
@@ -303,9 +303,19 @@ def explode_key_facts(extraction: dict) -> None:
     that carry a date), the per-entity shapes that write_vault already renders. Mutates the entities
     in place. The document-level ``key_facts`` are left intact (the document note and the global
     timeline read them directly).
+
+    A tag naming an id absent from ``entities`` is dropped rather than filed anywhere — there is
+    nothing to attach it to, and inventing an entity here would bypass the schema's own required
+    fields (name, type). Returns one warning per dropped tag so the loss is visible to the ingest
+    log instead of silent: the schema asks the model to write ``document.key_facts`` (with its
+    entity tags) before the top-level ``entities`` array that defines those ids (#570/D208 leans
+    on structured-output decoding filling properties in schema-declaration order), so a tag drifting
+    out of sync with the id the model later commits to in ``entities`` is a real failure mode, not
+    a hypothetical one.
     """
     by_id = {e["id"]: e for e in extraction.get("entities", []) if e.get("id")}
-    for fact in extraction.get("document", {}).get("key_facts", []):
+    warnings: list[str] = []
+    for i, fact in enumerate(extraction.get("document", {}).get("key_facts", [])):
         text = (fact.get("fact") or "").strip()
         if not text:
             continue
@@ -321,6 +331,10 @@ def explode_key_facts(extraction: dict) -> None:
         for eid in fact.get("entities", []) or []:
             ent = by_id.get(eid)
             if ent is None:
+                warnings.append(
+                    f"document.key_facts[{i}] tags entity id {eid!r}, which is not in "
+                    "'entities' — dropped, not filed under any entity"
+                )
                 continue
             frag = {"claim": text}
             if page is not None:
@@ -347,6 +361,7 @@ def explode_key_facts(extraction: dict) -> None:
                 if basis:
                     event["basis"] = basis
                 ent.setdefault("timeline_events", []).append(event)
+    return warnings
 
 
 def run(vault: Path, extraction_path: Path, warn=None) -> dict:
@@ -428,7 +443,8 @@ def run(vault: Path, extraction_path: Path, warn=None) -> dict:
 
     # Fan the unified key_facts out into the per-entity evidence_fragments / timeline_events that
     # write_vault and timeline staging consume (#140).
-    explode_key_facts(extraction)
+    for warning in explode_key_facts(extraction):
+        _warn(warning)
 
     # Deterministic date-mismatch check (#369): flags a file whose embedded creation date
     # postdates its claimed date_of_document by a suspicious margin — annotation only, never
