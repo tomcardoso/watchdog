@@ -15,8 +15,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
-from watchdog.cmd.live import LiveRegion
+from watchdog.terminal import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW, LiveRegion
 from watchdog.pipeline import sidecar
 from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
 

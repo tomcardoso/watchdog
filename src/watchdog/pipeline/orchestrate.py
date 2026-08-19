@@ -21,8 +21,7 @@ import time
 from pathlib import Path
 
 from watchdog import model_client, skills_catalog, telemetry_db
-from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
-from watchdog.cmd.live import LiveRegion
+from watchdog.terminal import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW, LiveRegion
 from watchdog.pipeline import (
     abort, batch_extract, harvest, leads, merge, preflight, postflight, prompts, reconcile,
     requests, schemas, section, sidecar, synthesis_bundle, timeline, verify, watchlist,
