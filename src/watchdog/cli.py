@@ -69,8 +69,6 @@ from watchdog.cmd.ingest import (
     cmd_finalize,
     cmd_guided,
     cmd_ingest,
-    cmd_postflight,
-    cmd_preflight,
     cmd_queue_status,
     cmd_requeue,
     exit_code_for,
@@ -78,7 +76,6 @@ from watchdog.cmd.ingest import (
 from watchdog.cmd.registry import (
     cmd_entity_index,
     cmd_is_duplicate,
-    cmd_validate_extraction,
 )
 from watchdog.cmd.setup import (
     _CONFIGURE_KEYS,
@@ -154,8 +151,8 @@ def main() -> None:
     # Internal pipeline commands — dispatched before argparse so they never
     # appear in tab completion
     _INTERNAL_CMDS = {
-        "entity-index", "queue-status", "validate-extraction",
-        "is-duplicate",  "pre-flight",  "post-flight",
+        "entity-index", "queue-status",
+        "is-duplicate",
         "timeline-collisions", "research-fetch", "research-seen", "watchlist-add",
     }
     if len(sys.argv) >= 2 and sys.argv[1] in _INTERNAL_CMDS:
@@ -167,19 +164,10 @@ def main() -> None:
         elif cmd == "queue-status":
             _p.add_argument("project", nargs="?")
             cmd_queue_status(_p.parse_args(sys.argv[2:]))
-        elif cmd == "validate-extraction":
-            _p.add_argument("file")
-            cmd_validate_extraction(_p.parse_args(sys.argv[2:]))
         elif cmd == "is-duplicate":
             _p.add_argument("sha256")
             _p.add_argument("project", nargs="?")
             cmd_is_duplicate(_p.parse_args(sys.argv[2:]))
-        elif cmd == "pre-flight":
-            _p.add_argument("sha256")
-            cmd_preflight(_p.parse_args(sys.argv[2:]))
-        elif cmd == "post-flight":
-            _p.add_argument("--extraction", required=True)
-            cmd_postflight(_p.parse_args(sys.argv[2:]))
         elif cmd == "timeline-collisions":
             from watchdog.pipeline.timeline import main_collisions
             main_collisions()

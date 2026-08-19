@@ -35,8 +35,6 @@ The following are auto-allowed in `.claude/settings.json` — never ask for conf
 | Write/edit briefing notes in `briefings/` | auto-allowed |
 | Write/edit `hot.md` | auto-allowed |
 | Write/edit `log.md` | auto-allowed |
-| `watchdog pre-flight <sha256>` | auto-allowed |
-| `watchdog post-flight --extraction <path>` | auto-allowed |
 | `watchdog queue-status` | auto-allowed |
 | `watchdog entity-index` | auto-allowed |
 | `watchdog is-duplicate <sha256>` | auto-allowed |
