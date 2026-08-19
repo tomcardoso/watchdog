@@ -279,3 +279,66 @@ def test_stale_annotation_is_cleared_when_the_figure_now_resolves():
     fact = extraction["document"]["key_facts"][0]
     assert "figures_unverified" not in fact
     assert "figures_off_page" not in fact
+
+
+# ── D213: a figure reported to fewer digits than the page prints it at ───────
+
+def test_rounded_restatement_of_a_thousands_table_figure_is_not_flagged():
+    """The dominant false positive this check produced: a $000s statement prints 360,291 and
+    the model correctly writes "$360.3 million". Exact x1,000 scaling gives 360,291,000, not
+    360.3, so `_scale_variants` alone never matched it."""
+    extraction = _fact("Total claims asserted by creditors were $360.3 million.")
+    pages = {3: "Total claims                          360,291"}
+    assert verify_figures(extraction, pages) == []
+
+
+def test_truncated_restatement_is_not_flagged():
+    """We can't know whether a model rounded or truncated, so both are accepted: 7.9 -> "7"
+    is a truncation, and needs the full unit above the written figure."""
+    extraction = _fact("The facility was drawn to about $7 million.")
+    pages = {3: "The facility was drawn to 7.9 million dollars."}
+    assert verify_figures(extraction, pages) == []
+
+
+def test_figure_below_the_rounding_floor_is_still_flagged():
+    """The window is deliberately not symmetric — nothing shortens 6.0 to "7", so the low side
+    stays at half a unit while the high side carries a full one for truncation."""
+    extraction = _fact("The facility was drawn to about $7 million.")
+    pages = {3: "The facility was drawn to 6.0 million dollars."}
+    warnings = verify_figures(extraction, pages)
+    assert len(warnings) == 1
+    assert "may be derived or garbled" in warnings[0]
+
+
+def test_written_precision_sets_the_window_width():
+    """A figure written to four significant digits gets a tight window: 361,000 is nowhere
+    near close enough to ground "$360.3 million", even though 360.3 and 361.0 are adjacent
+    once you round to whole millions."""
+    extraction = _fact("Total claims asserted by creditors were $360.3 million.")
+    pages = {3: "Total claims                          361,000"}
+    warnings = verify_figures(extraction, pages)
+    assert len(warnings) == 1
+    assert "360.3" in warnings[0]
+
+
+def test_rounding_does_not_mask_a_derived_sum():
+    """The whole point of the check survives: a computed total is still flagged, because no
+    single printed figure rounds to it."""
+    extraction = _fact("$430,000 across two transfers.")
+    pages = {3: "The company recorded transfers of $250,000 and $180,000."}
+    warnings = verify_figures(extraction, pages)
+    assert len(warnings) == 1
+    assert "430000" in warnings[0]
+
+
+def test_rounded_match_elsewhere_in_the_document_gets_the_citation_warning():
+    """The document-wide pass rounds too, so a rounded figure that is real but on another page
+    gets the softer "check the citation" warning rather than "may be derived"."""
+    extraction = _fact("Total claims asserted by creditors were $360.3 million.", page=10)
+    pages = {3: "Total claims                          360,291", 10: "No figures on this page."}
+    warnings = verify_figures(extraction, pages)
+    assert len(warnings) == 1
+    assert "appear(s) elsewhere in the document" in warnings[0]
+    fact = extraction["document"]["key_facts"][0]
+    assert "figures_unverified" not in fact
+    assert fact["figures_off_page"] == {"360.3": [3]}

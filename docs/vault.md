@@ -108,7 +108,7 @@ Only inferred facts are flagged, so anything **unmarked is directly stated**. Tr
 
 ## Figures that aren't on the page they cite
 
-Watchdog checks every number in a stated fact against the page the fact cites (and the pages either side of it, allowing for statements printed in thousands or millions). Nothing is blocked or rewritten — but where a number doesn't check out, the fact carries a short note:
+Watchdog checks every number in a stated fact against the page the fact cites (and the pages either side of it, allowing for statements printed in thousands or millions, and for figures reported to fewer digits than the page prints them at — a statement showing `360,291` in a thousands column backs a fact that says "$360.3 million"). Nothing is blocked or rewritten — but where a number doesn't check out, the fact carries a short note:
 
 | Note | What it means |
 |------|---------------|
