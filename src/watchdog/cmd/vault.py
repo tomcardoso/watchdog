@@ -35,6 +35,7 @@ from watchdog.cmd.base import (
     slugify,
 )
 from watchdog.pipeline.backup import snapshot as _snapshot
+from watchdog.pipeline.json_io import _read_json, _read_json_or
 
 
 _WATCHLIST_TEMPLATE = """\
@@ -1071,8 +1072,8 @@ def cmd_status(args) -> None:
     docs_file = vault / ".watchdog" / "registry" / "documents.json"
     ents_file = vault / ".watchdog" / "registry" / "entities.json"
     try:
-        docs_data = json.loads(docs_file.read_text()) if docs_file.exists() else {}
-        ents_data = json.loads(ents_file.read_text()) if ents_file.exists() else {}
+        docs_data = _read_json(docs_file) if docs_file.exists() else {}
+        ents_data = _read_json(ents_file) if ents_file.exists() else {}
     except json.JSONDecodeError as e:
         sys.exit(f"Error: registry file is corrupt — {e}\nRun '/watchdog-health' to diagnose.")
 
@@ -1323,10 +1324,7 @@ def cmd_search_batch(args, vault: Path, batch_file: str) -> None:
     manifest_path = vault / ".watchdog" / "registry" / "manifest.json"
     manifest = {}
     if manifest_path.exists():
-        try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            pass
+        manifest = _read_json_or(manifest_path, {}, catch=(json.JSONDecodeError,))
 
     as_json = getattr(args, "json", False)
     limit = args.top_n
@@ -1414,10 +1412,7 @@ def cmd_search_everywhere(args) -> None:
         manifest_path = vault / ".watchdog" / "registry" / "manifest.json"
         manifest = {}
         if manifest_path.exists():
-            try:
-                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                pass
+            manifest = _read_json_or(manifest_path, {}, catch=(json.JSONDecodeError,))
 
         entities_by_id = {}
         hits = []

@@ -18,7 +18,7 @@ from pathlib import Path
 
 from watchdog.cmd.base import _DIM, _RESET, _YELLOW, _resolve_vault
 from watchdog.model_catalog import display_name
-from watchdog.pipeline.json_io import _read_json_or
+from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline.orchestrate import usage_files
 
 # task name -> stage bucket, matching --classifier-model/--extractor-model/--finalizer-model.
@@ -241,7 +241,7 @@ def _corpus_pages(vault: Path) -> tuple[int, int] | None:
     if extracted.exists():
         for f in extracted.glob("*.json"):
             try:
-                doc = json.loads(f.read_text(encoding="utf-8")).get("document", {})
+                doc = _read_json(f).get("document", {})
             except (json.JSONDecodeError, OSError):
                 continue
             pages += doc.get("page_count") or 0
@@ -261,7 +261,7 @@ def _corpus_pages(vault: Path) -> tuple[int, int] | None:
 
 def _load(path: Path) -> dict:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return _read_json(path)
     except (OSError, json.JSONDecodeError) as e:
         sys.exit(f"Error: could not read {path}: {e}")
 

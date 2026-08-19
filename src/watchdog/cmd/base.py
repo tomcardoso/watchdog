@@ -8,6 +8,7 @@ from collections import Counter  # noqa: F401 — re-exported for cmd modules
 from pathlib import Path
 
 from watchdog.model_catalog import _MODEL_IDS, resolve_model_id  # noqa: F401 — re-exported
+from watchdog.pipeline.json_io import _read_json
 from watchdog.pipeline.write_vault import slugify  # noqa: F401 — re-exported
 # Colour constants and their gating logic live in watchdog.terminal (#636) — a neutral module
 # with no dependency on this package — re-exported here so the ~40 existing call sites across
@@ -493,7 +494,7 @@ def _projects_dir() -> Path:
     default = Path.home() / "Investigations"
     if CONFIG_FILE.exists():
         try:
-            config = json.loads(CONFIG_FILE.read_text())
+            config = _read_json(CONFIG_FILE)
         except json.JSONDecodeError as e:
             sys.exit(f"Error: config file is corrupt — {e}\nRun 'watchdog setup --force'.")
         # config.json can legitimately omit "projects_dir", or carry it as "" / null (e.g. a

@@ -50,7 +50,7 @@ from pathlib import Path
 from watchdog.pipeline import contradiction, merge_entities
 from watchdog.pipeline.entity_norm import normalize_entity_name
 from watchdog.pipeline.entity_type import canonical_type
-from watchdog.pipeline.json_io import _read_json_or
+from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline.write_vault import (
     _doc_slug, _extract_analysis, _extract_summary, _merge_entity, _new_entity,
     _render_evidence_fragments,
@@ -207,7 +207,7 @@ def _staged_artifacts(vault: Path, shas: list[str]) -> list[tuple[str, dict]]:
         if not p.exists():
             continue
         try:
-            out.append((sha, json.loads(p.read_text(encoding="utf-8"))))
+            out.append((sha, _read_json(p)))
         except (OSError, json.JSONDecodeError):
             continue
     return out
@@ -340,7 +340,7 @@ def _rewrite_staged_ids(vault: Path, shas: list[str], merge_id: str, keep_id: st
         if not artifact_path.exists():
             continue
         try:
-            artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+            artifact = _read_json(artifact_path)
         except (OSError, json.JSONDecodeError):
             continue
         entities = artifact.get("entities") or []

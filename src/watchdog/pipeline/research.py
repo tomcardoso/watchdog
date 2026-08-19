@@ -39,6 +39,7 @@ import nh3
 import yaml
 
 from watchdog.pipeline import sidecar
+from watchdog.pipeline.json_io import _read_json
 from watchdog.pipeline.preprocess import DIRECT_TEXT_SUFFIXES, DOCLING_SUFFIXES
 from watchdog.pipeline.write_vault import slugify
 
@@ -427,7 +428,7 @@ def seen_urls(vault: Path) -> set[str]:
     docs_file = vault / ".watchdog" / "registry" / "documents.json"
     if docs_file.exists():
         try:
-            for entry in json.loads(docs_file.read_text(encoding="utf-8")).values():
+            for entry in _read_json(docs_file).values():
                 src = entry.get("source") if isinstance(entry, dict) else None
                 if src:
                     urls.add(str(src))
@@ -448,7 +449,7 @@ def seen_urls(vault: Path) -> set[str]:
     if queue_dir.is_dir():
         for queue_file in queue_dir.glob("*.json"):
             try:
-                entry = json.loads(queue_file.read_text(encoding="utf-8"))
+                entry = _read_json(queue_file)
             except (OSError, json.JSONDecodeError):
                 continue
             src = sidecar.provenance(entry.get("sidecar")).get("source")

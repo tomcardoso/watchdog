@@ -33,6 +33,8 @@ import json
 import re
 from pathlib import Path
 
+from watchdog.pipeline.json_io import _read_json
+
 _SCHEMA_VERSION = 1
 _WID_RE = re.compile(r"<!--\s*wid:(\S+?)\s*-->")
 _CHECKBOX_RE = re.compile(r"^\s*[-*]\s*\[(?P<mark>[ xX])\]")
@@ -110,7 +112,7 @@ def filter_callouts(callouts: list[str], resolved: frozenset[str]) -> list[str]:
 def load(vault: Path) -> dict:
     """Load the store, returning a fresh empty structure on missing/corrupt file."""
     try:
-        data = json.loads(_path(vault).read_text(encoding="utf-8"))
+        data = _read_json(_path(vault))
     except (OSError, json.JSONDecodeError):
         return {"schema_version": _SCHEMA_VERSION, "resolved": {}}
     if not isinstance(data, dict) or not isinstance(data.get("resolved"), dict):

@@ -28,6 +28,7 @@ from pathlib import Path
 from watchdog.cmd import base
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 from watchdog.interactive import CANCELLED, confirm, pick
+from watchdog.pipeline.json_io import _read_json, _read_json_or
 
 # Providers whose keys watchdog manages. `anthropic` covers both the Claude
 # Agent SDK and the Claude API backends — they share ANTHROPIC_API_KEY. The
@@ -128,7 +129,7 @@ def _load_state() -> dict:
     if not path.exists():
         return {"mode": None, "keys": {}}
     try:
-        data = json.loads(path.read_text())
+        data = _read_json(path)
     except json.JSONDecodeError:
         sys.exit("Error: credentials file is corrupt; remove it and re-add your keys.")
     data.setdefault("mode", None)
@@ -167,10 +168,7 @@ def _load_config() -> dict:
     from watchdog.cmd.base import CONFIG_FILE
     if not CONFIG_FILE.exists():
         return {}
-    try:
-        return json.loads(CONFIG_FILE.read_text())
-    except json.JSONDecodeError:
-        return {}
+    return _read_json_or(CONFIG_FILE, {}, catch=(json.JSONDecodeError,))
 
 
 def _save_config(config: dict) -> None:
@@ -282,10 +280,7 @@ def _status() -> None:
     from watchdog.cmd.base import CONFIG_FILE
     config: dict = {}
     if CONFIG_FILE.exists():
-        try:
-            config = json.loads(CONFIG_FILE.read_text())
-        except json.JSONDecodeError:
-            config = {}
+        config = _read_json_or(CONFIG_FILE, {}, catch=(json.JSONDecodeError,))
 
     print(f"  {_BOLD}Ingestion{_RESET}  {_DIM}— classifier / extractor / finalizer{_RESET}")
     for stage_key, default in _INGEST_STAGES:
@@ -531,10 +526,7 @@ def _maybe_tune_concurrency_for_subscription() -> bool:
     overwrite. Returns whether anything was printed, for the caller's blank-line bookkeeping."""
     config: dict = {}
     if base.CONFIG_FILE.exists():
-        try:
-            config = json.loads(base.CONFIG_FILE.read_text())
-        except json.JSONDecodeError:
-            config = {}
+        config = _read_json_or(base.CONFIG_FILE, {}, catch=(json.JSONDecodeError,))
     if "extract_concurrency" in config:
         return False
 
@@ -598,10 +590,7 @@ def _setup_metered_ingestion(state: dict) -> None:
     from watchdog.cmd.setup import _pick_model_interactive
     config: dict = {}
     if CONFIG_FILE.exists():
-        try:
-            config = json.loads(CONFIG_FILE.read_text())
-        except json.JSONDecodeError:
-            config = {}
+        config = _read_json_or(CONFIG_FILE, {}, catch=(json.JSONDecodeError,))
 
     print(f"\n  {_BOLD}Pick default models for ingestion{_RESET} "
           f"{_DIM}(change anytime with watchdog configure){_RESET}")

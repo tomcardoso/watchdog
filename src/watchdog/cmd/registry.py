@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from watchdog.cmd.base import _find_project
+from watchdog.pipeline.json_io import _read_json, _read_json_or
 
 
 def cmd_entity_index(args) -> None:
@@ -21,7 +22,7 @@ def cmd_entity_index(args) -> None:
         return
 
     try:
-        manifest = json.loads(manifest_file.read_text())
+        manifest = _read_json(manifest_file)
     except json.JSONDecodeError as e:
         sys.exit(f"Error: manifest.json is corrupt — {e}")
 
@@ -42,10 +43,7 @@ def cmd_is_duplicate(args) -> None:
         vault = Path(info["path"])
 
     docs_file = vault / ".watchdog" / "registry" / "documents.json"
-    try:
-        docs = json.loads(docs_file.read_text()) if docs_file.exists() else {}
-    except json.JSONDecodeError:
-        docs = {}
+    docs = _read_json_or(docs_file, {}, catch=(json.JSONDecodeError,)) if docs_file.exists() else {}
 
     if args.sha256 in docs:
         print("dup")

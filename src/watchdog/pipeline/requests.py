@@ -39,6 +39,7 @@ import json
 from pathlib import Path
 
 from watchdog.pipeline import resolutions
+from watchdog.pipeline.json_io import _read_json
 
 _SCHEMA_VERSION = 2
 
@@ -50,7 +51,7 @@ def _path(vault: Path) -> Path:
 def load(vault: Path) -> dict:
     """Load the ledger, returning a fresh empty structure on missing/corrupt file."""
     try:
-        data = json.loads(_path(vault).read_text(encoding="utf-8"))
+        data = _read_json(_path(vault))
     except (OSError, json.JSONDecodeError):
         return {"schema_version": _SCHEMA_VERSION, "requests": {}}
     if not isinstance(data, dict) or not isinstance(data.get("requests"), dict):

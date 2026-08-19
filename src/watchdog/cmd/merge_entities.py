@@ -16,6 +16,7 @@ from pathlib import Path
 from watchdog import interactive
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _YELLOW, _RESET
 from watchdog.pipeline import merge_entities as _merge_entities
+from watchdog.pipeline.json_io import _read_json
 
 
 def _entity_preview(eid: str, entry: dict) -> str:
@@ -35,7 +36,7 @@ def cmd_merge_entities(args) -> None:
 
     entities_path = vault / ".watchdog" / "registry" / "entities.json"
     try:
-        entities_reg = json.loads(entities_path.read_text(encoding="utf-8"))
+        entities_reg = _read_json(entities_path)
     except (OSError, json.JSONDecodeError):
         sys.exit("Error: entities.json not found or unreadable — is this a Watchdog vault?")
 

@@ -26,7 +26,7 @@ from watchdog.pipeline import (
     abort, batch_extract, harvest, leads, merge, preflight, postflight, prompts, reconcile,
     requests, schemas, section, sidecar, synthesis_bundle, timeline, verify, watchlist,
 )
-from watchdog.pipeline.json_io import _read_json_or
+from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline.write_vault import _doc_slug
 
 DEFAULT_CONCURRENCY = 5
@@ -1107,7 +1107,7 @@ def _load_section_checkpoints(vault: Path, sha: str, sections: list[dict]) -> li
         if not path.exists():
             break
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = _read_json(path)
         except (OSError, json.JSONDecodeError):
             break
         if data.get("section") != sec:
@@ -2366,7 +2366,7 @@ def _load_results(vault: Path) -> list:
     out = []
     for p in sorted((vault / ".watchdog" / "tmp").glob("result_*.json")):
         try:
-            out.append(json.loads(p.read_text(encoding="utf-8")))
+            out.append(_read_json(p))
         except (OSError, json.JSONDecodeError):
             pass
     return out
@@ -2597,7 +2597,7 @@ def _commit_pending(vault: Path, shas: list[str] | None = None) -> dict:
         if not result_path.exists():
             continue
         try:
-            result = json.loads(result_path.read_text(encoding="utf-8"))
+            result = _read_json(result_path)
         except (OSError, json.JSONDecodeError):
             continue
         result["new_entities"] = written.get("new_entities", [])
@@ -2629,7 +2629,7 @@ def pending_finalization(vault: Path) -> dict:
     entities = 0
     try:
         reg_path = vault / ".watchdog" / "registry" / "entities.json"
-        registry = json.loads(reg_path.read_text(encoding="utf-8")) if reg_path.exists() else {}
+        registry = _read_json(reg_path) if reg_path.exists() else {}
         extracted_dir = vault / ".watchdog" / "extracted"
         touched: set = set()
         for p in results:
@@ -2637,7 +2637,7 @@ def pending_finalization(vault: Path) -> dict:
             art = extracted_dir / f"{sha}.json"
             if not art.exists():
                 continue
-            artifact = json.loads(art.read_text(encoding="utf-8"))
+            artifact = _read_json(art)
             for e in artifact.get("entities") or []:
                 if e.get("id"):
                     touched.add(e["id"])

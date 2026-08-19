@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 from watchdog.pipeline import resolutions
-from watchdog.pipeline.json_io import _read_json_or
+from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline.write_vault import (
     _defang,
     _extract_analysis,
@@ -92,7 +92,7 @@ def run(vault: Path, entity_id: str, label: str,
     documents_path = registry_dir / "documents.json"
 
     try:
-        entities_reg = json.loads(entities_path.read_text(encoding="utf-8"))
+        entities_reg = _read_json(entities_path)
     except (OSError, json.JSONDecodeError):
         raise ValueError("entities.json not found or unreadable — is this a Watchdog vault?")
     if entity_id not in entities_reg:

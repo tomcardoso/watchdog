@@ -1000,10 +1000,10 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
         _write_atomic(entities_path, entities_reg)
         _write_atomic(documents_path, documents_reg)
 
-        try:
-            existing_registry = json.loads(registry_path.read_text()) if registry_path.exists() else {}
-        except json.JSONDecodeError:
-            existing_registry = {}
+        existing_registry = (
+            _read_json_or(registry_path, {}, catch=(json.JSONDecodeError,))
+            if registry_path.exists() else {}
+        )
         existing_registry.update({
             "last_updated":   _now_iso(),
             "document_count": len(documents_reg),

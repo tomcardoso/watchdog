@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 
 from watchdog.pipeline.entity_norm import normalize_entity_name
+from watchdog.pipeline.json_io import _read_json
 
 
 def _role_key(role: dict) -> tuple:
@@ -198,7 +199,7 @@ def run(vault: Path, sha256: str) -> dict:
     sections = []
     for f in section_files:
         try:
-            sections.append(json.loads(f.read_text(encoding="utf-8")))
+            sections.append(_read_json(f))
         except json.JSONDecodeError as e:
             return {"error": f"invalid section JSON {f.name}: {e}"}
 
