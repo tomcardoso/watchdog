@@ -33,11 +33,11 @@ Read each entity's claims across its documents and flag material discrepancies. 
 - `a_doc` / `b_doc` — the document each value comes from: the `<slug>` out of the `[[documents/<slug>|<title>]]` heading the claim is filed under. Copy it exactly; a slug that does not name a real document is discarded.
 - `a_page` / `b_page` — the page each value appears on, when the claim records one; otherwise null.
 
-Flag a contradiction only when **both** sides are directly stated in their documents (not inferred, not derived) and you are confident the conflict is genuine. This is the only verification step there is — what you return is written into the entity's note as-is, for a journalist to act on.
+Flag a contradiction whenever you are confident the conflict is genuine. This is the only verification step there is — what you return is written into the entity's note as-is, for a journalist to act on.
+
+A claim's basis is **not** a reason to withhold. Flag the conflict even where one or both sides are marked `(inferred)`, or carry the note `not found in the document — may be derived`, or `found on another page`. A contradiction is among the most valuable things this pipeline surfaces, and a reader already knows a model produces some noise; a missed conflict between two records costs far more than one that turns out to be the extractor's own reasoning error. Every contradiction cites both documents and pages, so the journalist can check it. Report what the claims say and let them judge.
 
 Do NOT flag:
-- a discrepancy where either side is marked `(inferred)` — an inferred value conflicting with a stated one is a reasoning error, not a finding
-- a discrepancy on a figure annotated `not found in the document — may be derived` — that note is this pipeline's own deterministic check reporting that the number appears nowhere in its source document, so the conflict is between a value the extractor computed and one a document printed, not between two documents. Honour it even where the claim is otherwise unmarked: `(inferred)` is self-reported and heavily under-used, whereas this note was verified. It covers only the figures it names — a claim carrying it can still contradict on some other value it does state — and the separate `found on another page` note is not a reason to withhold anything, since that figure is real and printed.
 - a value that was simply **updated** between documents, where both are true at their own dates: a share price, a headcount, a balance, an address, a role someone held and then left. A contradiction is two claims that cannot both be true; a change over time is chronology. If the two documents' dates explain the difference, it is not a contradiction.
 - rounding, restatement in different units, or trivially different phrasings of the same fact
 - name and spelling variations (that is Job 1)
