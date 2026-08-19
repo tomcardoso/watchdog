@@ -1205,6 +1205,30 @@ def _lower_effort(effort: str | None) -> str | None:
     return levels[idx - 1] if idx > 0 else None
 
 
+def _note_section_entities(entities_seen: dict, parsed: dict) -> str:
+    """Fold one section call's entities into `entities_seen` and return the updated carry-forward
+    text (#636). Shared by every `_extract_sectioned` path that produces a section result and
+    needs the next call's carry — normal success, the starved-effort retry, and each half of a
+    re-split section. The section-1 repair path does not call this: a repair never changes
+    entities_seen/carry, since it happens after the whole document is already merged."""
+    for e in parsed.get("entities") or []:
+        if e.get("id"):
+            entities_seen[e["id"]] = {"name": e.get("name"), "type": e.get("type")}
+    return _carry_text(entities_seen, parsed.get("observations") or "")
+
+
+def _record_single_part_section(section_parts: dict[int, list[dict]], section_cost: dict[int, float],
+                                vault: Path, sha: str, sec: dict, parsed: dict, cost: float) -> None:
+    """Record one section's result as its sole part — set `section_cost`/`section_parts` and write
+    the checkpoint (#636). Shared by the normal-success, starved-effort-retry, and section-1-repair
+    paths, all of which replace a section's entry outright with one result. The re-split path keeps
+    its own inline version: it accumulates 2+ parts under one section index, which this helper's
+    single-`parsed` shape can't express."""
+    section_cost[sec["index"]] = cost
+    section_parts[sec["index"]] = [parsed]
+    _write_section_checkpoint(vault, sha, sec, parsed, cost)
+
+
 async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_label,
                              effort=None, backend=None, brief=None, verify_pass=False):
     """Sequential per-section extraction with carry-forward, then deterministic merge.
@@ -1275,13 +1299,9 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
                                                    brief=brief, model=model, effort=lower,
                                                    backend=backend, verify_pass=verify_pass,
                                                    prior_facts=prior)
-                    section_cost[sec["index"]] = r.cost_usd or 0.0
-                    section_parts[sec["index"]] = [r.parsed]
-                    _write_section_checkpoint(vault, sha, sec, r.parsed, section_cost[sec["index"]])
-                    for e2 in r.parsed.get("entities") or []:
-                        if e2.get("id"):
-                            entities_seen[e2["id"]] = {"name": e2.get("name"), "type": e2.get("type")}
-                    carry = _carry_text(entities_seen, r.parsed.get("observations") or "")
+                    _record_single_part_section(section_parts, section_cost, vault, sha, sec,
+                                                r.parsed, r.cost_usd or 0.0)
+                    carry = _note_section_entities(entities_seen, r.parsed)
                     continue
                 raise
             # Split just this section's page range in half and run both halves through the same
@@ -1301,22 +1321,15 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
                     prior_facts=prior + _facts_so_far({0: half_parts}))
                 half_cost += hr.cost_usd or 0.0
                 half_parts.append(hr.parsed)
-                for e2 in hr.parsed.get("entities") or []:
-                    if e2.get("id"):
-                        entities_seen[e2["id"]] = {"name": e2.get("name"), "type": e2.get("type")}
-                carry = _carry_text(entities_seen, hr.parsed.get("observations") or "")
+                carry = _note_section_entities(entities_seen, hr.parsed)
             section_cost[sec["index"]] = half_cost
             section_parts[sec["index"]] = half_parts
             _write_section_checkpoint(vault, sha, sec, half_parts[0], half_cost, parts=half_parts)
             continue
 
-        section_cost[sec["index"]] = r.cost_usd or 0.0
-        section_parts[sec["index"]] = [r.parsed]
-        _write_section_checkpoint(vault, sha, sec, r.parsed, section_cost[sec["index"]])
-        for e in r.parsed.get("entities") or []:
-            if e.get("id"):
-                entities_seen[e["id"]] = {"name": e.get("name"), "type": e.get("type")}
-        carry = _carry_text(entities_seen, r.parsed.get("observations") or "")
+        _record_single_part_section(section_parts, section_cost, vault, sha, sec,
+                                    r.parsed, r.cost_usd or 0.0)
+        carry = _note_section_entities(entities_seen, r.parsed)
 
     parts = _ordered_parts(section_parts)
     extraction, scratchpad, digest_cost = await _merge_sectioned(
@@ -1330,11 +1343,10 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
                                        model=model, effort=effort, backend=backend,
                                        repair_errors=errors, verify_pass=verify_pass)
         idx = sections[0]["index"]
-        section_cost[idx] = section_cost.get(idx, 0.0) + (r.cost_usd or 0.0)
         # Replaces every part section 1 contributed, not just the first: the repair re-ran the
         # whole section, so a re-split section 1's second half is now superseded, not still due.
-        section_parts[idx] = [r.parsed]
-        _write_section_checkpoint(vault, sha, sections[0], r.parsed, section_cost[idx])
+        _record_single_part_section(section_parts, section_cost, vault, sha, sections[0], r.parsed,
+                                    section_cost.get(idx, 0.0) + (r.cost_usd or 0.0))
         parts = _ordered_parts(section_parts)
         extraction, scratchpad, digest_cost = await _merge_sectioned(
             parts, pf, sha, skill_label, skill_text, model, effort, backend, brief, vault)
