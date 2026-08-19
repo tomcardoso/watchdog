@@ -31,7 +31,6 @@ import re
 from decimal import Decimal, InvalidOperation
 
 _GROUPED_NUM_RE = re.compile(r"\d{1,3}(?:[,  ]\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?")
-_PLAIN_NUM_RE = re.compile(r"\d+(?:\.\d+)?")
 _GROUP_CHARS_RE = re.compile(r"[,  ]")
 _SCALE_EXPONENTS = (3, 6)  # thousands, millions
 
@@ -74,7 +73,6 @@ def _page_tokens(page_texts: dict[int, str], page: int) -> set[str]:
         if not text:
             continue
         tokens |= _tokens(text, _GROUPED_NUM_RE)
-        tokens |= _tokens(text, _PLAIN_NUM_RE)
     return tokens
 
 
@@ -103,7 +101,7 @@ def _index_pages(page_texts: dict[int, str]) -> dict[str, list[int]]:
     for page_num, text in page_texts.items():
         if not text:
             continue
-        for tok in _tokens(text, _GROUPED_NUM_RE) | _tokens(text, _PLAIN_NUM_RE):
+        for tok in _tokens(text, _GROUPED_NUM_RE):
             index.setdefault(tok, []).append(page_num)
     for pages in index.values():
         pages.sort()

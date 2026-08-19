@@ -2937,15 +2937,18 @@ def test_current_token_budget_none_when_no_record_carries_rate_limit():
 
 
 def test_admit_noop_when_budget_none():
-    # Would hang forever if this actually polled — budget=None must return immediately.
-    asyncio.run(orchestrate._admit("sha1", 1000, None, asyncio.Event()))
+    # Would hang for up to _ADMISSION_MAX_WAIT_S (300s, unpatched here) if this actually
+    # polled — budget=None must return immediately. wait_for with a tight timeout, well under
+    # that production fallback, turns a deleted early-return into a fast red failure instead of
+    # a slow-but-still-green pass.
+    asyncio.run(asyncio.wait_for(orchestrate._admit("sha1", 1000, None, asyncio.Event()), timeout=1.0))
 
 
 def test_admit_noop_when_estimate_alone_exceeds_margin():
     # 1000 >= 1000 * 0.85 — nothing to wait for; the reactive RateLimitError is the backstop.
     orchestrate._usage = []
     try:
-        asyncio.run(orchestrate._admit("sha1", 1000, 1000, asyncio.Event()))
+        asyncio.run(asyncio.wait_for(orchestrate._admit("sha1", 1000, 1000, asyncio.Event()), timeout=1.0))
     finally:
         orchestrate._usage = None
 
@@ -2953,7 +2956,7 @@ def test_admit_noop_when_estimate_alone_exceeds_margin():
 def test_admit_returns_immediately_when_already_under_budget():
     orchestrate._usage = []
     try:
-        asyncio.run(orchestrate._admit("sha1", 10, 1000, asyncio.Event()))
+        asyncio.run(asyncio.wait_for(orchestrate._admit("sha1", 10, 1000, asyncio.Event()), timeout=1.0))
     finally:
         orchestrate._usage = None
 

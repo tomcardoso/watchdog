@@ -438,9 +438,24 @@ def test_deregister_obsidian_vault_removes_only_its_own_path(monkeypatch, tmp_pa
 
 
 def test_deregister_obsidian_vault_is_a_noop_when_config_missing(monkeypatch, tmp_path):
+    """The function's body is wrapped in a blanket `except Exception: pass`, so "doesn't raise"
+    alone can't tell a correct early exit (config genuinely absent) apart from a broken early
+    exit whose resulting FileNotFoundError just gets silently swallowed by that same except.
+    Spy on `Path.read_text` — the missing-config branch must return before ever calling it."""
     import watchdog.cmd.vault as wd_vault
     monkeypatch.setattr(wd_vault, "_obsidian_config_path", lambda: tmp_path / "does-not-exist.json")
+
+    calls = []
+    real_read_text = Path.read_text
+
+    def spy_read_text(self, *args, **kwargs):
+        calls.append(self)
+        return real_read_text(self, *args, **kwargs)
+    monkeypatch.setattr(Path, "read_text", spy_read_text)
+
     rb._deregister_obsidian_vault(tmp_path / "bench-master")  # must not raise
+
+    assert calls == []
 
 
 def test_deregister_obsidian_vault_swallows_malformed_config(monkeypatch, tmp_path):

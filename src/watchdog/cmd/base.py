@@ -493,7 +493,10 @@ def load_projects() -> dict:
     if not PROJECTS_FILE.exists():
         return {}
     with open(PROJECTS_FILE) as f:
-        return json.load(f)
+        try:
+            return json.load(f)
+        except json.JSONDecodeError as e:
+            sys.exit(f"Error: projects file is corrupt — {e}\nRun 'watchdog setup --force'.")
 
 
 def _project_completer(prefix, parsed_args, **kwargs):
@@ -510,7 +513,10 @@ def save_projects(projects: dict) -> None:
 def _projects_dir() -> Path:
     default = Path.home() / "Investigations"
     if CONFIG_FILE.exists():
-        config = json.loads(CONFIG_FILE.read_text())
+        try:
+            config = json.loads(CONFIG_FILE.read_text())
+        except json.JSONDecodeError as e:
+            sys.exit(f"Error: config file is corrupt — {e}\nRun 'watchdog setup --force'.")
         # config.json can legitimately omit "projects_dir", or carry it as "" / null (e.g. a
         # config written before that key existed, or hand-edited to set only one other knob) —
         # `or default` treats any falsy value the same as a missing one, since `config.get(...,
@@ -561,8 +567,8 @@ def _load_registry(vault: Path) -> dict | None:
         return None
     try:
         return json.loads(reg.read_text())
-    except Exception:
-        return None
+    except json.JSONDecodeError as e:
+        sys.exit(f"Error: registry file is corrupt — {e}\nRun 'watchdog doctor' to diagnose.")
 
 
 def _count_incoming(vault: Path) -> int:

@@ -2301,9 +2301,11 @@ def test_wire_max_tokens_uncatalogued_falls_back_to_default():
     ("gemini", "gemini-3.5-flash"),       # Gemini — used to get an effort-scaled reserve unconditionally
     ("claude-api", "claude-sonnet-4-6"),  # never had a reserve
 ])
-def test_wire_max_tokens_unaffected_by_task_or_effort(backend, model):
-    # The inverse of the old effort-scaling behaviour (#598): the wire ceiling is the same
-    # regardless of task or effort now — `_wire_max_tokens` doesn't even take those parameters.
+def test_wire_max_tokens_is_deterministic_for_fixed_args(backend, model):
+    # `_wire_max_tokens(backend, model_id)` doesn't take task/effort parameters at all (#598
+    # removed the per-task base and the per-provider reasoning reserve — see its docstring), so
+    # calling it twice with identical args can only verify it's deterministic/idempotent for
+    # those args, not "unaffected by task or effort" — there's no task/effort input here to vary.
     assert mc._wire_max_tokens(backend, model) == mc._wire_max_tokens(backend, model)
 
 

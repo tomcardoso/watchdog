@@ -116,6 +116,19 @@ def test_derived_sum_not_traceable_to_page_is_flagged():
     assert "430000" in warnings[0]
 
 
+# ── comma-grouped numbers must not leak split fragments (#636) ──────────────
+
+def test_comma_split_fragment_of_a_grouped_number_does_not_verify():
+    """A fabricated fact citing "345" must not pass just because "345" is a
+    substring fragment of the comma-grouped "12,345,000" on the page."""
+    extraction = _fact("The filing lists 345 shareholders of record.", page=1, basis="stated")
+    pages = {1: "Total assets were $12,345,000 as of year end."}
+    warnings = verify_figures(extraction, pages)
+    assert len(warnings) == 1
+    assert "345" in warnings[0]
+    assert extraction["document"]["key_facts"][0]["figures_unverified"] == ["345"]
+
+
 # ── multi-number fact, only some missing ─────────────────────────────────────
 
 def test_multi_number_fact_lists_only_the_missing_figures():

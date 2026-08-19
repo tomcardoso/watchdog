@@ -306,6 +306,12 @@ def cmd_new(args) -> None:
     if not slug:
         sys.exit("Error: project name is invalid.")
 
+    # Most filesystems (APFS, ext4, ...) cap a single path component at 255 bytes — a slug
+    # past that raises an uncaught OSError from mkdir() below. Check bytes, not characters:
+    # slugify passes through non-ASCII word characters, which can be several bytes each in UTF-8.
+    if len(slug.encode("utf-8")) > 255:
+        sys.exit("Error: project name is too long once slugified — shorten it.")
+
     parent = Path(args.dir).expanduser().resolve() if args.dir else _projects_dir()
     vault = parent / slug
 
@@ -762,7 +768,14 @@ def cmd_move(args) -> None:
 
     moved = False
     if src.exists():
-        shutil.move(str(src), str(dst))
+        try:
+            shutil.move(str(src), str(dst))
+        except shutil.Error as e:
+            # Raised by the copytree fallback (cross-filesystem move) when the vault contains a
+            # file it can't copy — a FIFO, socket, or device node. `e.args[0]` is a list of
+            # (src, dst, error_string) triples, one per file that blocked the move.
+            blocked = "\n".join(f"  {s}: {err}" for s, _d, err in e.args[0]) if e.args else str(e)
+            sys.exit(f"Error: could not move {src} — some files could not be copied:\n{blocked}")
         moved = True
     elif not dst.exists():
         sys.exit(
