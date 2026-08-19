@@ -506,22 +506,34 @@ def test_extract_prompt_tags_a_computed_figure_as_inferred():
     assert "Naming the components is not a substitute for the tag" in text
 
 
-# ── the contradiction gate's derived-figure signal (#622/D203) ───────────────
+# ── contradictions are surfaced regardless of basis (#622/D214) ──────────────
 
-def test_reconcile_prompt_withholds_contradictions_on_derived_figures():
-    """#622: `basis: inferred` is self-reported and near-inert (13 of 15,059 archived facts),
-    so gating the contradiction check on it alone let computed sums be compared against printed
-    ones. The gate now also honours `figure_verify`'s deterministic annotation."""
+def test_reconcile_prompt_does_not_gate_contradictions_on_basis():
+    """D214 reversed D203/D34: a contradiction is among the most valuable signals here, and the
+    old gate suppressed only the *candid* derivations — `basis: inferred` fires on 0.16% of
+    facts, so the derivations the model never declared were being compared all along."""
     p = prompts.build_reconcile_prompt({"pairs": [], "entities": []})
-    assert "not found in the document — may be derived" in p
-    assert "`(inferred)`" in p                      # the self-reported gate is kept, not replaced
+    assert "A claim's basis is **not** a reason to withhold" in p
+    # the three suppression clauses are gone, not merely softened
+    assert "both** sides are directly stated" not in p
+    assert "is a reasoning error, not a finding" not in p
+    assert "so the conflict is between a value the extractor computed" not in p
 
 
-def test_reconcile_gate_quotes_the_phrase_the_renderer_actually_emits():
-    """The seam that breaks silently: the prompt tells the model to look for a phrase, and
-    `_figure_verification_note` is what puts that phrase into the claims bundle (both the vault
-    and the reconcile bundle render through `_render_evidence_fragments`). Reword either side
-    alone and the gate stops firing with nothing to show for it."""
+def test_synthesis_prompt_weighs_a_derived_figure_like_an_inferred_claim():
+    """D215: synthesis prefers a stated value over an inferred one where sources conflict, but
+    read `basis` alone and a computed figure — which almost never carries the label — could
+    outrank a printed one. It now names `figure_verify`'s annotation alongside *(inferred)*."""
+    text = prompts._text("synthesis")
+    assert "not found in the document — may be derived" in text
+    assert "Treat the two markings alike" in text
+
+
+def test_reconcile_prompt_names_the_annotations_the_renderer_actually_emits():
+    """The prompt lists the notes by their exact rendered wording so the model recognizes them
+    in the claims bundle (vault and bundle both render through `_render_evidence_fragments`).
+    Drift here is no longer silent suppression — nothing is gated on these any more — but a
+    phrase the model is told about and never sees is still dead text worth catching."""
     from watchdog.pipeline.write_vault import _figure_verification_note
 
     p = prompts.build_reconcile_prompt({"pairs": [], "entities": []})
@@ -532,7 +544,6 @@ def test_reconcile_gate_quotes_the_phrase_the_renderer_actually_emits():
     off_page = _figure_verification_note({"figures_off_page": {"21406000": [7]}})
     assert "found on another page" in off_page
 
-    # …and the prompt names both — the first to withhold on, the second explicitly not to.
     for phrase in ("not found in the document — may be derived", "found on another page"):
         assert phrase in p
 

@@ -260,7 +260,7 @@ Omit the project name when running from inside the vault directory; with `--ever
 
 ### watchdog leads
 
-Prints the deterministic lead sweep over the vault's entity graph — no model call. It flags four things: entities named as a relationship target but never profiled, entities recurring across documents with no relationships, entities carrying unresolved contradiction flags, and entities carrying facts or roles marked as inferred. The same sweep runs automatically at the end of every ingest, writing `briefings/leads-<date>.md`; this command re-runs it on demand. Items acknowledged with `watchdog resolve` drop out of the list. See [Investigating](investigating.md) for how leads fit the working rhythm.
+Prints the deterministic lead sweep over the vault's entity graph — no model call. It flags four things: entities named as a relationship target but never profiled, entities recurring across documents with no relationships, entities carrying unresolved contradiction flags, and entities carrying facts or roles that need verifying — either marked as inferred, or carrying a figure Watchdog could not find anywhere in the source document. The same sweep runs automatically at the end of every ingest, writing `briefings/leads-<date>.md`; this command re-runs it on demand. Items acknowledged with `watchdog resolve` drop out of the list. See [Investigating](investigating.md) for how leads fit the working rhythm.
 
 ### watchdog resolve and unresolve
 

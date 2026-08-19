@@ -127,6 +127,36 @@ def test_explode_propagates_figure_annotations_to_fragments():
     assert frag["figures_off_page"] == {"197.6": [9]}
 
 
+def test_explode_propagates_figure_annotations_to_timeline_events():
+    """D215: `leads.py` reads roles and timeline_events, never evidence_fragments, so a dated
+    fact's figure annotation has to reach the event too or the lead sweep can never see it."""
+    extraction = {
+        "document": {"key_facts": [
+            {"fact": "Total claims were $360.3 million", "page": 49, "date": "2021-04-30",
+             "entities": ["a"], "figures_unverified": ["360.3"],
+             "figures_off_page": {"197.6": [9]}},
+        ]},
+        "entities": [{"id": "a", "name": "A", "type": "Person"}],
+    }
+    explode_key_facts(extraction)
+    event = extraction["entities"][0]["timeline_events"][0]
+    assert event["figures_unverified"] == ["360.3"]
+    assert event["figures_off_page"] == {"197.6": [9]}
+
+
+def test_explode_leaves_figure_keys_off_an_unflagged_timeline_event():
+    extraction = {
+        "document": {"key_facts": [
+            {"fact": "x", "page": 3, "date": "2021-04-30", "entities": ["a"]},
+        ]},
+        "entities": [{"id": "a", "name": "A", "type": "Person"}],
+    }
+    explode_key_facts(extraction)
+    event = extraction["entities"][0]["timeline_events"][0]
+    assert "figures_unverified" not in event
+    assert "figures_off_page" not in event
+
+
 def test_explode_leaves_figure_keys_off_an_unflagged_fragment():
     extraction = {
         "document": {"key_facts": [{"fact": "x", "page": 3, "entities": ["a"]}]},
