@@ -133,10 +133,15 @@ _DOCUMENT = _obj(
 )
 
 # Full single-document extraction (simple path, and the merged result of a sectioned doc).
+# `entities` is declared BEFORE `document` (#651, following D208's own assumption that
+# structured-output decoding fills an object's properties in schema-declaration order): the
+# roster of entity ids `document.key_facts[].entities` tags against should exist before the
+# model has to write those tags, not after (D211 found the opposite order was a real source of
+# dangling tags — this addresses the root cause that fix only made visible).
 EXTRACTION = _obj(
     {
-        "document": _DOCUMENT,
         "entities": {"type": "array", "items": _ENTITY},
+        "document": _DOCUMENT,
         "morgue_entity_id": {"type": "string"},
         "scratchpad": {"type": "string"},   # curated briefing notes (Step 9 of the old skill)
         # Concrete documents this document refers to that a reporter could go and get (#365) —
@@ -178,8 +183,10 @@ _SECTION_DOCUMENT_PROPS = {
 # key was always handled safely downstream; only the schema was stricter than the code needed.
 SECTION = _obj(
     {
-        "document": _obj(_SECTION_DOCUMENT_PROPS, ["key_facts"]),
+        # `entities` before `document`, mirroring EXTRACTION (#651) — same decode-order
+        # reasoning, so a section's key_facts tag ids the section has already named.
         "entities": {"type": "array", "items": _ENTITY},
+        "document": _obj(_SECTION_DOCUMENT_PROPS, ["key_facts"]),
         # Nullable (not bare "string"): OpenAI's json_object mode gives no wire-level shape
         # enforcement, so a model that means "nothing for this section" sometimes emits an
         # explicit `null` here instead of omitting the key — bare "string" made that a hard

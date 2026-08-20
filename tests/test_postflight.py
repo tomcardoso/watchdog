@@ -66,9 +66,10 @@ def test_explode_ignores_unknown_tags():
 
 def test_explode_warns_on_unknown_tag_instead_of_silently_dropping_it():
     """A fact tagging an entity id absent from `entities` is dropped from that entity's view
-    (there's nothing to attach it to) but must not vanish without a trace — the schema has the
-    model write key_facts' entity tags before the entities array that defines those ids, so a
-    drifted id is a real failure mode, not a hypothetical one."""
+    (there's nothing to attach it to) but must not vanish without a trace — the schema now
+    declares `entities` before `document.key_facts` (#651) so the model should have the roster
+    in hand before tagging, but drift is still possible, so a dangling tag is a real failure mode
+    worth a warning, not a hypothetical one."""
     extraction = {"document": {"key_facts": [{"fact": "x", "entities": ["ghost"]}]},
                   "entities": [{"id": "real", "name": "R", "type": "Person"}]}
     warnings = explode_key_facts(extraction)
