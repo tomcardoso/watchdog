@@ -31,6 +31,23 @@ def _tier_aliases(entry: dict) -> list[str]:
 
 _MODEL_IDS = {alias: m["id"] for m in _CATALOG["models"] for alias in _tier_aliases(m)}
 
+# DeepSeek V4 collapsed thinking/non-thinking into a single model id switched by a request param,
+# and Watchdog keeps the choice inside the model token — `deepseek-v4-flash` (non-thinking) vs
+# `deepseek-v4-flash-thinking` — so it rides the existing `[backend:]model` grammar with no extra
+# provider-specific knob (D88). The marker is Watchdog's own grammar, not a real catalog id, so it
+# lives here, with the catalog that has to normalize it away before every lookup; `model_client.py`
+# imports both names rather than keeping a second copy that could drift. See that module's
+# `_openai_complete_async` for the wire toggle this resolves to.
+_DEEPSEEK_THINKING_SUFFIX = "-thinking"
+
+
+def _split_deepseek_thinking(model_id: str) -> tuple[str, bool]:
+    """(bare model id, thinking?) from a DeepSeek model token — strips a `-thinking` marker.
+    Non-thinking is the default (bare id), so extraction stays cheap unless thinking is opted in."""
+    if model_id.endswith(_DEEPSEEK_THINKING_SUFFIX):
+        return model_id[: -len(_DEEPSEEK_THINKING_SUFFIX)], True
+    return model_id, False
+
 # Claude pricing, USD/token: (input, output, cache_write_5m, cache_read).
 _PRICING = {
     m["id"]: (float(m["input"]), float(m["output"]), float(m["cache_write"]), float(m["cache_read"]))
@@ -147,11 +164,21 @@ def catalog_has_reasoning(model_id: str) -> bool:
     compact nudge into it, one without gets the explicit step-by-step form written into the
     visible completion instead, via `document.plan` (see extract_instructions.md).
 
+    A DeepSeek `-thinking` id counts too (D217): thinking mode returns `reasoning_content`
+    alongside `content`, which is a private channel by any reading, and the marker has to be
+    stripped for the entry to be found at all. Before that, every DeepSeek thinking call was handed
+    the explicit `document.plan` scaffold built for models with *no* channel — paying for a visible
+    plan while also thinking privately. The provider check keeps the stripping honest: a
+    non-DeepSeek id that merely ends in `-thinking` is not granted a channel by its name.
+
     False — the conservative default — for every other catalogued model (Haiku, DeepSeek's plain
     ids, Gemini) and for any uncatalogued id: never assume a channel that isn't confirmed."""
-    entry = _MODELS.get(model_id.lower())
+    bare, deepseek_thinking = _split_deepseek_thinking(model_id)
+    entry = _MODELS.get(bare.lower())
     if not entry:
         return False
+    if deepseek_thinking and entry.get("provider") == "deepseek":
+        return True
     if entry.get("reasoning") or entry.get("thinking"):
         return True
     tier = entry.get("tier")

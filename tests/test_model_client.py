@@ -2460,8 +2460,8 @@ def test_agent_query_usage_stays_none_when_nothing_present(monkeypatch):
 def test_wire_max_tokens_derives_from_catalog(backend, model_id):
     # #598: one per-model envelope — the catalogued `max_output_tokens` cap under
     # `_OUTPUT_HEADROOM` — replaces the old per-task base plus per-provider reasoning reserve.
-    bare = model_id[: -len(mc._DEEPSEEK_THINKING_SUFFIX)] if model_id.endswith(
-        mc._DEEPSEEK_THINKING_SUFFIX) else model_id
+    from watchdog.model_catalog import _split_deepseek_thinking
+    bare, _ = _split_deepseek_thinking(model_id)
     from watchdog.model_catalog import catalog_max_output_tokens
     cap = catalog_max_output_tokens(bare)
     assert cap is not None

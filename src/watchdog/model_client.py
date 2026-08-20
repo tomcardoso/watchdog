@@ -52,6 +52,7 @@ from watchdog.model_catalog import (
     catalog_tokenizer_ratio,
     fallback_context_window,
     fallback_is_reasoning,
+    _split_deepseek_thinking,
     fallback_max_output_tokens,
     price_multiplier,
     resolve_model_id,
@@ -1035,14 +1036,12 @@ def _openai_batch_cost(model_id: str, usage: dict | None) -> float | None:
 
 
 # DeepSeek V4 collapsed thinking/non-thinking into a single model id switched by a request param
-# (the old deepseek-chat/deepseek-reasoner split is deprecated). Watchdog keeps the choice inside
-# the model token — `deepseek-v4-flash` (non-thinking) vs `deepseek-v4-flash-thinking` — so it rides
-# the existing `[backend:]model` grammar with no extra provider-specific knob. The backend strips
-# this marker, uses the bare id for the request + cost lookup, and sends DeepSeek's explicit toggle.
-# The provider default is thinking-ENABLED, so we always send the toggle to pin the intended mode.
-# Toggle shape (OpenAI format): {"thinking": {"type": "enabled"|"disabled"}}. Docs:
+# (the old deepseek-chat/deepseek-reasoner split is deprecated). The backend strips the `-thinking`
+# marker (`_split_deepseek_thinking`, owned by `model_catalog` since the catalog has to normalize it
+# away before every lookup), uses the bare id for the request + cost lookup, and sends DeepSeek's
+# explicit toggle. The provider default is thinking-ENABLED, so we always send the toggle to pin the
+# intended mode. Toggle shape (OpenAI format): {"thinking": {"type": "enabled"|"disabled"}}. Docs:
 # https://api-docs.deepseek.com/guides/thinking_mode  (D88)
-_DEEPSEEK_THINKING_SUFFIX = "-thinking"
 
 # Transient-failure retry for the OpenAI-compatible backends (#354). The Anthropic SDK retries
 # 429/5xx internally (2 attempts, backoff); this httpx path had none, so a single transient
@@ -1051,14 +1050,6 @@ _DEEPSEEK_THINKING_SUFFIX = "-thinking"
 # the orchestrator stops the batch cleanly instead of hammering a limited provider.
 _TRANSIENT_RETRIES = 2
 _TRANSIENT_BACKOFF_S = 2.0
-
-
-def _split_deepseek_thinking(model_id: str) -> tuple[str, bool]:
-    """(bare model id, thinking?) from a DeepSeek model token — strips a `-thinking` marker.
-    Non-thinking is the default (bare id), so extraction stays cheap unless thinking is opted in."""
-    if model_id.endswith(_DEEPSEEK_THINKING_SUFFIX):
-        return model_id[: -len(_DEEPSEEK_THINKING_SUFFIX)], True
-    return model_id, False
 
 
 def _openai_response_format(base_url: str, schema: dict) -> dict:
