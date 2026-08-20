@@ -543,6 +543,30 @@ key from the *first* breakpoint, so `extract` and `verify` share a key while the
 `response_format` schemas mean they can never share a cache entry. Same routing slot, mutually
 unusable contents. See #586 for the related unexplained `digest` zero.
 
+### `extract_instructions.md`'s salience fix recovers the Harland miss on a single cheap re-run (2026-08-11, #572)
+
+Minimal spot-check, not a re-run of the corpus: one document (`pension-order`, the shorter/cheaper
+of the two documents #572 cited), one arm (`gpt-5.6-luna`, low effort — cheap, not the model that
+originally missed it), run `2026-08-11-0053`, $0.0059 / 9,017 input + 3,414 output tokens. Code
+version `5924cb49c` on `fix-572-extraction-salience`, the commit carrying #572's two new
+`extract_instructions.md` paragraphs (merged to `main` as #608).
+
+Derek Harland — missed entirely by `gpt-mini`'s pre-fix extraction (zero mentions in `key_facts`
+or `entities`, per the original issue) — now appears in two `key_facts` (p.1, considered as an
+affiant; p.5, as counsel for LU) and as a two-role `derek-harland` entity (`affiant of service in`
+the proceeding, `lawyer for` Laurentian University). This is the outcome the "check for recurrence
+before dismissing a procedural mention" paragraph was written to produce.
+
+Not run: the delta-preservation half of the fix (`first-report-monitor`'s Administration
+Charge/Directors' Charge figures) — that document is the larger, more expensive one, and this
+check was scoped to the minimal single-call spot-check requested, not a full verification pass.
+Also not established: whether this generalizes past one document and one model, since `gpt-mini`
+(the model that missed it) wasn't the one re-run, and a single sample doesn't rule out the
+run-to-run variance #581 already documented for this corpus. Treat this as a directional signal
+that the instruction change does what it was written to do, not as a closed loop on #572 — a full
+`gpt-mini-low/med/high` re-run against the fixed instructions, scored against the original
+2026-08-08 pass, would be the real confirmation.
+
 ## Corrections logged along the way
 
 - The original `bench-ex-sonnet-high`/`bench-ex-sonnet-med` vaults (run 2026-07-15, before #403's
