@@ -307,11 +307,11 @@ def explode_key_facts(extraction: dict) -> list[str]:
     A tag naming an id absent from ``entities`` is dropped rather than filed anywhere — there is
     nothing to attach it to, and inventing an entity here would bypass the schema's own required
     fields (name, type). Returns one warning per dropped tag so the loss is visible to the ingest
-    log instead of silent: the schema asks the model to write ``document.key_facts`` (with its
-    entity tags) before the top-level ``entities`` array that defines those ids (#570/D208 leans
-    on structured-output decoding filling properties in schema-declaration order), so a tag drifting
-    out of sync with the id the model later commits to in ``entities`` is a real failure mode, not
-    a hypothetical one.
+    log instead of silent: the schema now declares the top-level ``entities`` array before
+    ``document.key_facts`` (#651, following D208's own decode-order assumption), so the model
+    should have already committed the entity roster by the time it writes a tag — but a model can
+    still drift (naming an id it never added to ``entities``, or misspelling one it did), so this
+    stays a real failure mode worth a warning, not a hypothetical one the reorder fully closes.
     """
     by_id = {e["id"]: e for e in extraction.get("entities", []) if e.get("id")}
     warnings: list[str] = []

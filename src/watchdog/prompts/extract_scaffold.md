@@ -3,10 +3,10 @@ no separate space to think before committing to output. So work the extraction i
 written into `document.plan` BEFORE you fill `document.key_facts`, in this order:
 
 1. PLAN. In one or two sentences: what kind of document this is, which DOMAIN SKILL fields you
-   expect to find, and whether a KNOWN_DOCUMENT_TYPES entry already fits. Then list the entities
-   you expect to tag facts to, each with the exact id you will use for it — `entities` comes after
-   `document` in your output, so key_facts' entity tags are the ids you settle on here, not ones
-   you can revise once you reach the entities list itself.
+   expect to find, and whether a KNOWN_DOCUMENT_TYPES entry already fits. `entities` comes before
+   `document` in your output, so you have already committed the entity roster and its ids by the
+   time you write this — when key_facts tags an entity, use one of those exact ids, never a new
+   or revised one.
 2. EVIDENCE TRIAGE. Note, page by page or section by section, which passages clear the
    materiality bar above (KEY FACTS) and which are boilerplate you're setting aside — a phrase
    each is enough, not full sentences.
