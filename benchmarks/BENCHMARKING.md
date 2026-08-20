@@ -170,9 +170,14 @@ Candidate models per stage: Claude `haiku` / `sonnet` / `opus`, and DeepSeek `de
 - **Haiku has no effort knob** (`_EFFORT_UNSUPPORTED`) — `--extractor-effort` is ignored on Haiku.
   So a Haiku arm is a single point, not a high/medium/low sweep.
 - **The classifier has no effort knob at all.**
-- **DeepSeek's "effort" is its thinking toggle, not high/medium/low.** Test it by swapping the
-  model id: `deepseek:deepseek-v4-flash` (thinking off) vs `deepseek:deepseek-v4-flash-thinking` (on), same for
-  `-pro`. Tom's prior testing found non-thinking DeepSeek weak, so test both.
+- **DeepSeek's main knob is its thinking toggle**, swapped via the model id:
+  `deepseek:deepseek-v4-flash` (thinking off) vs `deepseek:deepseek-v4-flash-thinking` (on), same for
+  `-pro`. Tom's prior testing found non-thinking DeepSeek weak, so test both. Since 2026-08-13 the
+  thinking ids *also* take an effort level — `low`/`high`/`max` only (`medium`/`xhigh` are DeepSeek's
+  own aliases for `high` and are rejected here rather than run as duplicates, D217) — and a
+  thinking-off id still takes none. The sweep crosses the two knobs: a thinking-off arm per model
+  size, plus `low` and `high` on each thinking id. `max` is deliberately left out until `low` vs
+  `high` shows the knob moves anything on this corpus.
 
 ## What changed with #381 (read this before designing runs)
 
@@ -304,8 +309,10 @@ cp -r .watchdog/extracted ../captures/<vault>-extracted/   # what score_arms.py 
 the provider defaults to, which is neither reproducible nor comparable across providers. On OpenAI
 that default was measured burning a median 12K-24K *output* tokens per section call on this corpus
 (`gpt-mini` peaked at 46K against a 48K ceiling) — reasoning tokens dwarfing the JSON, on sections
-capped at ~7K estimated input tokens. Haiku and DeepSeek are the exceptions: they have no effort
-control at all (no `effort_levels` in `model_catalog.yaml`), and asking for one errors.
+capped at ~7K estimated input tokens. Haiku is the exception: it has no effort control at all (no `effort_levels`
+in `model_catalog.yaml`), and asking for one errors. DeepSeek is a half-exception — effort exists
+only on its `-thinking` ids (D217), so the thinking arms pin `low`/`high` like everyone else and
+the thinking-off arms pin nothing, because there is no knob on them to pin.
 
 `watchdog dig` only — **no `bark`**. Everything this step scores (material-fact recall,
 `must_not_miss`, coverage warnings) is in the staged extraction artifacts before any finalizer
@@ -326,10 +333,12 @@ watchdog dig --extractor-model sonnet --extractor-effort high
 | `bench-ex-sonnet-med` | `sonnet` | `medium` | #215 medium arm |
 | `bench-ex-haiku` | `haiku` | — (ignored) | #361: Haiku as shipped default? |
 | `bench-ex-opus-high` | `opus` | `high` | is Opus worth the premium? |
-| `bench-ex-ds-flash` | `deepseek:deepseek-v4-flash` | — | #361: DeepSeek, thinking off |
-| `bench-ex-ds-flash-think` | `deepseek:deepseek-v4-flash-thinking` | — | DeepSeek flash, thinking on |
-| `bench-ex-ds-pro` | `deepseek:deepseek-v4-pro` | — | DeepSeek pro, thinking off |
-| `bench-ex-ds-pro-think` | `deepseek:deepseek-v4-pro-thinking` | — | DeepSeek pro, thinking on |
+| `bench-ex-ds-flash` | `deepseek:deepseek-v4-flash` | — (none exists) | #361: DeepSeek, thinking off |
+| `bench-ex-ds-flash-think-low` | `deepseek:deepseek-v4-flash-thinking` | `low` | DeepSeek flash, thinking on |
+| `bench-ex-ds-flash-think-high` | `deepseek:deepseek-v4-flash-thinking` | `high` | ≡ the old unpinned `-think` arm |
+| `bench-ex-ds-pro` | `deepseek:deepseek-v4-pro` | — (none exists) | DeepSeek pro, thinking off |
+| `bench-ex-ds-pro-think-low` | `deepseek:deepseek-v4-pro-thinking` | `low` | DeepSeek pro, thinking on |
+| `bench-ex-ds-pro-think-high` | `deepseek:deepseek-v4-pro-thinking` | `high` | ≡ the old unpinned `-think` arm |
 
 **`claude-batch` arms.** Since D144 a batch no longer needs a run-wide pinned skill — each
 document resolves its own, so corpus-v1's per-document sidecar pins (D120) carry through and the

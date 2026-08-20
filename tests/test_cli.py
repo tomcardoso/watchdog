@@ -1467,12 +1467,12 @@ def test_auto_resolved_hint_ignores_extractor_effort(monkeypatch):
 
 
 def test_auto_resolved_hint_gemini_uses_catalogued_window_and_ratio():
-    # gemini-3.5-flash IS catalogued: 1M window * 0.6, over its measured 0.91 ratio (#617). Before
+    # gemini-3.7-flash IS catalogued: 1M window * 0.6, over its measured 0.91 ratio (#617). Before
     # #555 this read 44706, set by inverting an output-density fit rather than by either
     # catalogued number.
     out = _setup._auto_resolved_hint(
-        "section_token_threshold", {"extractor_model": "gemini:gemini-3.5-flash"})
-    assert "659340 — gemini:gemini-3.5-flash)" in out
+        "section_token_threshold", {"extractor_model": "gemini:gemini-3.7-flash"})
+    assert "659340 — gemini:gemini-3.7-flash)" in out
 
 
 def test_auto_resolved_hint_section_token_budget_key():

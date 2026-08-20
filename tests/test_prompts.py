@@ -226,7 +226,7 @@ def test_extract_prompt_carries_no_vault_state():
 @pytest.mark.parametrize("model", [
     "haiku",                # Claude, no thinking control at all
     "deepseek-v4-flash",    # DeepSeek's plain (non "-thinking") id
-    "gemini-3.5-flash",     # Gemini — no reasoning field in the catalog
+    "gemini-3.7-flash",     # Gemini — no reasoning field in the catalog
     "not-a-real-model",     # uncatalogued — conservative default is "no channel"
 ])
 def test_extract_prompt_adds_scaffold_for_a_non_reasoning_model(model):

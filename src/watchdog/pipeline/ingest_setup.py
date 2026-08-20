@@ -287,13 +287,18 @@ def _catalog_cost_projection(est_tokens: int, output_ratio: float | None) -> lis
     `_tokens_calibration` documents for the single-model estimate."""
     if output_ratio is None:
         return []
-    from watchdog.model_catalog import all_models, catalog_tokenizer_ratio
+    from watchdog.model_catalog import all_models, catalog_tokenizer_ratio, price_multiplier
     rows = []
     for m in all_models():
         model_tokens = est_tokens * (catalog_tokenizer_ratio(m["id"]) or 1.0)
         model_output = model_tokens * output_ratio
+        # Priced at the rate in force right now (D217): a model with a time-of-day schedule costs
+        # what it would cost to start the run at this moment, and carries the multiplier so the
+        # caller can say so — a row silently 2x its neighbours' rate reads as a catalog error.
+        multiplier = price_multiplier(m["id"])
         rows.append({"id": m["id"], "name": m["name"], "provider": m["provider"],
-                      "cost": model_tokens * m["input"] + model_output * m["output"]})
+                      "price_multiplier": multiplier,
+                      "cost": (model_tokens * m["input"] + model_output * m["output"]) * multiplier})
     rows.sort(key=lambda r: r["cost"])
     return rows
 

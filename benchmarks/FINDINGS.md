@@ -8,6 +8,18 @@ together replace.
 
 ## Findings so far
 
+**Every DeepSeek dollar figure below is understated, and every Gemini one names a model that is
+no longer in the catalog.** (Added 2026-08-20, D217.) DeepSeek raised all four V4 rates at 16:00
+UTC on 2026-08-16 and moved to peak/off-peak pricing: what these findings were costed at is 1.6x
+to 2.4x under the current off-peak rate and 3.1x to 4.7x under peak, and since output dominates
+extraction cost the practical correction is roughly 2x off-peak, 4x peak. The value comparison
+this bears on hardest is the "`ds-flash-think` is best value by a 36x margin" reading that #551's
+prior-art section is built from — at current rates that margin is several times smaller before any
+quality argument is made. The DeepSeek arms also now point at newer weights behind the same ids
+(`V4-Flash-0731`, `V4-Pro-0813` GA), and `gemini-3.5-flash`/`gemini-3.1-flash-lite` have been
+replaced by `gemini-3.7-flash`/`gemini-3.5-flash-lite`. `COST_MODEL_VERSION` is 4 as of this
+change; anything recorded under 3 or lower is a different cost model, not a comparable number.
+
 **DeepSeek's "thinking" toggle doesn't pay for itself on this corpus.** Confirmed on both model
 sizes, not a one-run fluke — `bench-ex2-ds-pro-think` reproduced the same anomaly
 `bench-ex2-ds-flash-think` showed while it was still mid-run:

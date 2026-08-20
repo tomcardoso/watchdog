@@ -53,6 +53,7 @@ from watchdog.model_catalog import (
     fallback_context_window,
     fallback_is_reasoning,
     fallback_max_output_tokens,
+    price_multiplier,
     resolve_model_id,
 )
 from watchdog.pipeline.json_io import _read_json_or
@@ -165,6 +166,16 @@ def _effort_levels(provider: str, model_id: str) -> set[str]:
     for a known id; an uncatalogued id (a raw id typed past the CLI's tier validation, or a
     local/OpenRouter model with no catalog entry at all, #380) falls back to a conservative,
     provider-wide default rather than guessing per-model capability we don't have."""
+    if provider == "deepseek":
+        # `-thinking` is a Watchdog-only routing marker (D88), not a real catalog id — strip it
+        # before the catalog lookup, the same normalization `_wire_max_tokens` does. Without this
+        # the thinking variants would read as uncatalogued and reject every level, when thinking
+        # mode is the only mode where DeepSeek's effort knob does anything: `reasoning_effort`
+        # tunes how deeply the model thinks, so a plain (thinking-disabled) id has no effort to
+        # take, and says so here rather than accepting a level the request would then contradict.
+        model_id, thinking = _split_deepseek_thinking(model_id)
+        if not thinking:
+            return set()
     known = catalog_effort_levels(model_id)
     if known is not None:
         return known
@@ -802,8 +813,12 @@ def _api_cost(model_id: str, usage) -> float | None:
     def g(name):
         return getattr(usage, name, 0) or 0
 
+    # `price_multiplier` is 1.0 for every Claude tier (no Anthropic model prices by the clock) —
+    # applied here anyway so the two cost functions stay one implementation of D217's rule rather
+    # than one that models it and one that would have to be found and fixed later.
     return (g("input_tokens") * inp + g("output_tokens") * outp
-            + g("cache_creation_input_tokens") * cw + g("cache_read_input_tokens") * cr)
+            + g("cache_creation_input_tokens") * cw
+            + g("cache_read_input_tokens") * cr) * price_multiplier(model_id)
 
 
 def _batch_cost(model_id: str, usage) -> float | None:
@@ -992,7 +1007,12 @@ def _openai_cost(model_id: str, usage: dict | None) -> float | None:
     not a live path.)
 
     Clamping keeps a provider reporting an unexpected combination of counters from driving the
-    uncached remainder negative and under-charging the call."""
+    uncached remainder negative and under-charging the call.
+
+    The whole figure is then scaled by `price_multiplier` (D217) — 1.0 for every model that
+    prices flat, and 2.0 for a DeepSeek call landing in one of its peak windows. It multiplies the
+    finished cost rather than each rate because the multiplier applies to every column equally,
+    which is how DeepSeek states it and the only shape `price_periods` allows."""
     rates = _OPENAI_PRICING.get(model_id)
     if not rates or not usage:
         return None
@@ -1003,7 +1023,7 @@ def _openai_cost(model_id: str, usage: dict | None) -> float | None:
     return ((prompt - cached - written) * inp
             + cached * cached_rate
             + written * write_rate
-            + (usage.get("completion_tokens", 0) or 0) * outp)
+            + (usage.get("completion_tokens", 0) or 0) * outp) * price_multiplier(model_id)
 
 
 def _openai_batch_cost(model_id: str, usage: dict | None) -> float | None:

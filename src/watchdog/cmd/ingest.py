@@ -179,7 +179,16 @@ def _format_all_models_estimate(rows: list[dict]) -> str:
     for r in rows:
         cost = r["cost"]
         cost_s = f"${cost:.4f}" if cost < 1 else f"${cost:,.2f}"
-        lines.append(f"    {r['name']:<{name_w}}  {_DIM}{r['provider']:<10}{_RESET}  {cost_s}")
+        # A model priced by the clock (D217) is quoted at the rate in force right now, and says
+        # which side of the schedule that is — otherwise the same command run two hours apart
+        # returns two different numbers for the same model with nothing to explain the gap.
+        rate = r.get("price_multiplier", 1.0)
+        note = ""
+        if rate > 1:
+            note = f"  {_DIM}(peak rate — this model is cheaper outside peak hours){_RESET}"
+        elif rate < 1:
+            note = f"  {_DIM}(off-peak rate — this model costs more during peak hours){_RESET}"
+        lines.append(f"    {r['name']:<{name_w}}  {_DIM}{r['provider']:<10}{_RESET}  {cost_s}{note}")
     return "\n".join(lines)
 
 

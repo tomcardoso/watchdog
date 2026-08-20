@@ -277,6 +277,105 @@ def test_resolve_effort(provider, model_id, effort, expected):
     assert mc._resolve_effort(provider, model_id, effort) == expected
 
 
+# ── DeepSeek's effort knob (added by the provider 2026-08-13, D217) ────────────────────────────
+
+def test_deepseek_effort_levels_reach_the_thinking_ids_only():
+    """`reasoning_effort` tunes how deeply DeepSeek thinks, so it exists only in thinking mode.
+    The `-thinking` marker is a Watchdog routing convention, not a catalog id, so the levels have
+    to survive stripping it — and the plain id has to report none, since a request pinning
+    `{"thinking": {"type": "disabled"}}` has nothing for a level to tune."""
+    assert mc._effort_levels("deepseek", "deepseek-v4-flash-thinking") == {"low", "high", "max"}
+    assert mc._effort_levels("deepseek", "deepseek-v4-pro-thinking") == {"low", "high", "max"}
+    assert mc._effort_levels("deepseek", "deepseek-v4-flash") == set()
+    assert mc._resolve_effort("deepseek", "deepseek-v4-pro-thinking", "max") == "max"
+    with pytest.raises(mc.ModelError, match="low"):
+        mc._resolve_effort("deepseek", "deepseek-v4-flash", "low")
+
+
+def test_deepseek_omits_the_alias_effort_levels():
+    """`medium` and `xhigh` are accepted by DeepSeek but documented as aliases for `high`
+    (api-docs.deepseek.com/guides/thinking_mode). They are left out so asking for one fails loudly
+    instead of running a duplicate of `high` under another name — and so `cmd/ingest.py`'s
+    implicit `medium` extractor default keeps being skipped on DeepSeek, as it always was."""
+    levels = mc._effort_levels("deepseek", "deepseek-v4-flash-thinking")
+    assert "medium" not in levels and "xhigh" not in levels
+    assert not mc.effort_supported("deepseek", "deepseek-v4-flash-thinking", "medium")
+
+
+# ── time-of-day pricing (D217) ─────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("hhmm, expected", [
+    ("00:59", 1.0),    # before the first window
+    ("01:00", 2.0),    # inclusive lower bound
+    ("03:59", 2.0),
+    ("04:00", 1.0),    # exclusive upper bound — the boundary minute is already off-peak
+    ("05:30", 1.0),    # the gap between DeepSeek's two peak windows
+    ("06:00", 2.0),
+    ("09:59", 2.0),
+    ("10:00", 1.0),
+    ("23:00", 1.0),
+])
+def test_price_multiplier_follows_the_declared_windows(hhmm, expected):
+    from datetime import UTC, datetime
+
+    from watchdog.model_catalog import price_multiplier
+    hh, mm = (int(p) for p in hhmm.split(":"))
+    at = datetime(2026, 8, 20, hh, mm, tzinfo=UTC)
+    assert price_multiplier("deepseek-v4-flash", at) == expected
+    assert price_multiplier("deepseek-v4-pro", at) == expected
+    assert price_multiplier("claude-sonnet-4-6", at) == 1.0     # flat-priced model, any hour
+    assert price_multiplier("not-a-real-model", at) == 1.0      # uncatalogued: never guess a surcharge
+
+
+def test_price_multiplier_converts_an_aware_datetime_to_utc():
+    """The windows are UTC, so an aware datetime is converted before it is read — the local hour
+    on the clock face is not what decides the rate."""
+    from datetime import UTC, datetime, timedelta, timezone
+
+    from watchdog.model_catalog import price_multiplier
+    eastern = timezone(timedelta(hours=-4))
+    # 22:00 EDT is 02:00 UTC — peak, though its local hour sits in neither window.
+    assert price_multiplier("deepseek-v4-flash", datetime(2026, 8, 20, 22, 0, tzinfo=eastern)) == 2.0
+    assert price_multiplier("deepseek-v4-flash", datetime(2026, 8, 20, 22, 0, tzinfo=UTC)) == 1.0
+    # 09:00 EDT is 13:00 UTC — off-peak, though its local hour sits inside the second window.
+    assert price_multiplier("deepseek-v4-flash", datetime(2026, 8, 20, 9, 0, tzinfo=eastern)) == 1.0
+    assert price_multiplier("deepseek-v4-flash", datetime(2026, 8, 20, 9, 0, tzinfo=UTC)) == 2.0
+
+
+def test_price_multiplier_window_wraps_midnight():
+    from datetime import UTC, datetime, time
+
+    from watchdog import model_catalog
+    assert model_catalog._in_window(time(23, 0), time(22, 0), time(2, 0))
+    assert model_catalog._in_window(time(1, 0), time(22, 0), time(2, 0))
+    assert not model_catalog._in_window(time(12, 0), time(22, 0), time(2, 0))
+    assert not model_catalog._in_window(time(9, 0), time(9, 0), time(9, 0))   # empty span
+    at = datetime(2026, 8, 20, 23, 30, tzinfo=UTC)
+    assert model_catalog.price_multiplier("deepseek-v4-flash", at) == 1.0
+
+
+def test_openai_cost_doubles_inside_a_peak_window(monkeypatch):
+    """The end-to-end rule: the same call costs twice as much inside a peak window, on every
+    column at once (input, output and the cache-hit rate), which is how DeepSeek states it."""
+    usage = {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000,
+             "prompt_cache_hit_tokens": 500_000}
+    monkeypatch.setattr(mc, "price_multiplier", lambda *_a, **_k: 1.0)
+    off_peak = mc._openai_cost("deepseek-v4-flash", usage)
+    monkeypatch.setattr(mc, "price_multiplier", lambda *_a, **_k: 2.0)
+    assert mc._openai_cost("deepseek-v4-flash", usage) == pytest.approx(2 * off_peak)
+
+
+def test_api_cost_applies_the_multiplier_too(monkeypatch):
+    """No Claude tier prices by the clock today, so this asserts the shared implementation rather
+    than a live rate: if Anthropic ever adopts one, `_api_cost` already honours it."""
+    class _U:
+        input_tokens, output_tokens = 1_000_000, 0
+        cache_creation_input_tokens = cache_read_input_tokens = 0
+
+    monkeypatch.setattr(mc, "price_multiplier", lambda *_a, **_k: 2.0)
+    assert mc._api_cost("claude-sonnet-4-6", _U()) == pytest.approx(2 * 3.0)
+
+
 # ── Opus 5 catalog entry (#635) — additive alongside Opus 4.8, same pattern as Sonnet 5 ────────
 
 def test_opus_5_tier_resolves():
@@ -316,7 +415,7 @@ def test_catalog_needs_thinking_param(model_id, needs_thinking_param):
     ("gpt-5.6-luna", True),        # OpenAI reasoning model
     ("gpt-5.4-nano", True),        # OpenAI reasoning model
     ("deepseek-v4-flash", False),  # no reasoning field in the catalog
-    ("gemini-3.5-flash", False),   # no reasoning field in the catalog
+    ("gemini-3.7-flash", False),   # no reasoning field in the catalog
     ("not-a-real-model", False),   # uncatalogued — never assume a channel that isn't confirmed
 ])
 def test_catalog_has_reasoning(model_id, has_reasoning):
@@ -425,8 +524,8 @@ def test_deepseek_rejects_xhigh(monkeypatch):
     ("gemini-2.5-flash", 1_000_000),
     ("gemini-2.5-flash-lite", 1_000_000),
     ("gemini-2.5-pro", 1_000_000),
-    ("gemini-3.5-flash", 1_000_000),
-    ("gemini-3.1-flash-lite", 1_000_000),
+    ("gemini-3.7-flash", 1_000_000),
+    ("gemini-3.5-flash-lite", 1_000_000),
     ("gemini-3.1-pro-preview", 1_000_000),
     ("gpt-5-mini", 400_000),
     ("gpt-4o", 128_000),
@@ -602,7 +701,7 @@ def test_context_window_ignores_backend_for_hosted_models():
     (None, 0.93),                # default tier (sonnet)
     ("sonnet-5", 1.28),          # new Claude tokenizer
     ("opus", 1.28),              # new Claude tokenizer (Opus 4.8) — same value
-    ("gemini-3.5-flash", 0.91),  # Gemini tokenizer
+    ("gemini-3.7-flash", 0.91),  # Gemini tokenizer
     ("gemini-3.1-pro-preview", 0.91),
     ("gpt-5.4-nano", 0.80),      # GPT-5.x tokenizer — measured by billed probe (#617)
     ("gpt-5.5", 0.80),           # same family, same value
@@ -718,9 +817,18 @@ def test_uncatalogued_reasoning_model_gets_a_family_sized_envelope():
             f"{model_id} fell through to the generic default envelope ({envelope})")
 
 
-def test_openai_cost():
+def _off_peak(monkeypatch):
+    """Pin `price_multiplier` to 1.0 so a DeepSeek dollar assertion means the same thing at every
+    hour of the day (D217). `mc` imported the name directly, so this patches it there, not on
+    `model_catalog`. Tests that are *about* the schedule call the real thing with an explicit
+    `at` instead — see `test_price_multiplier_*`."""
+    monkeypatch.setattr(mc, "price_multiplier", lambda *_a, **_k: 1.0)
+
+
+def test_openai_cost(monkeypatch):
+    _off_peak(monkeypatch)
     assert mc._openai_cost("deepseek-v4-flash",
-                           {"prompt_tokens": 1_000_000, "completion_tokens": 0}) == pytest.approx(0.14)
+                           {"prompt_tokens": 1_000_000, "completion_tokens": 0}) == pytest.approx(0.22)
     assert mc._openai_cost("unknown-model", {"prompt_tokens": 100}) is None
     assert mc._openai_cost("deepseek-v4-flash", None) is None
 
@@ -748,12 +856,32 @@ def test_openai_family_prices_match_the_published_rate_card(model_id, price_in, 
         == pytest.approx(price_in + price_out)
 
 
-def test_openai_cost_deepseek_cache_hit():
+def test_openai_cost_deepseek_cache_hit(monkeypatch):
     # DeepSeek reports prompt_tokens = hit + miss; the hit portion is priced at the cheap rate.
+    _off_peak(monkeypatch)
     cost = mc._openai_cost("deepseek-v4-flash",
                            {"prompt_tokens": 1_000_000, "completion_tokens": 0,
                             "prompt_cache_hit_tokens": 900_000, "prompt_cache_miss_tokens": 100_000})
-    assert cost == pytest.approx(100_000 * 0.14e-6 + 900_000 * 0.0028e-6)
+    assert cost == pytest.approx(100_000 * 0.22e-6 + 900_000 * 0.007e-6)
+
+
+@pytest.mark.parametrize("model_id, price_in, price_out", [
+    ("deepseek-v4-flash", 0.22, 0.66),
+    ("deepseek-v4-pro", 0.66, 1.98),
+    ("gemini-3.7-flash", 0.75, 3.75),
+    ("gemini-3.5-flash-lite", 0.30, 2.50),
+    ("gemini-3.1-pro-preview", 2.00, 12.00),
+])
+def test_deepseek_and_gemini_prices_match_the_published_rate_card(model_id, price_in, price_out,
+                                                                  monkeypatch):
+    """Per-model price sentinel, the DeepSeek/Gemini half of the OpenAI table above. Verified
+    2026-08-20 against api-docs.deepseek.com/quick_start/pricing (DeepSeek's OFF-PEAK column —
+    peak is 2x, applied by `price_multiplier`, which is why this pins it) and
+    ai.google.dev/gemini-api/docs/pricing. The DeepSeek rows in particular sat 1.6x-4.7x under the
+    real rate for four days after DeepSeek raised them, with nothing in the suite to notice."""
+    _off_peak(monkeypatch)
+    assert mc._openai_cost(model_id, {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
+        == pytest.approx(price_in + price_out)
 
 
 def test_openai_cost_openai_cache_hit():
@@ -816,14 +944,14 @@ def test_openai_batch_cost_none_for_unknown_model_or_usage():
 
 
 def test_openai_cost_prices_gemini_models():
-    # gemini-3.1-flash-lite: $0.25/1M input, $1.50/1M output.
-    assert mc._openai_cost("gemini-3.1-flash-lite",
+    # gemini-3.5-flash-lite: $0.30/1M input, $2.50/1M output.
+    assert mc._openai_cost("gemini-3.5-flash-lite",
                            {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
-        == pytest.approx(0.25 + 1.50)
-    # gemini-3.5-flash: $1.50/1M input, $9.00/1M output.
-    assert mc._openai_cost("gemini-3.5-flash",
+        == pytest.approx(0.30 + 2.50)
+    # gemini-3.7-flash: $0.75/1M input, $3.75/1M output (promotional, through 2026-12-31).
+    assert mc._openai_cost("gemini-3.7-flash",
                            {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
-        == pytest.approx(1.50 + 9.00)
+        == pytest.approx(0.75 + 3.75)
 
 
 # ── hidden reasoning tokens (#547) ────────────────────────────────────────────
@@ -912,12 +1040,12 @@ def test_gemini_hidden_reasoning_is_billed_as_output(monkeypatch):
     # Gemini call in proportion to how hard the model thought.
     _fake_usage_response(monkeypatch, {"prompt_tokens": 27147, "completion_tokens": 847,
                                        "total_tokens": 43131})
-    out = asyncio.run(mc._openai_complete_async("p", "gemini-3.5-flash", SCHEMA, "AIza-x", 64000,
+    out = asyncio.run(mc._openai_complete_async("p", "gemini-3.7-flash", SCHEMA, "AIza-x", 64000,
                                                 "high", base_url=mc._OPENAI_BASE["gemini"]))
     assert out["usage"]["completion_tokens"] == 15984
-    assert out["cost_usd"] == pytest.approx(27147 * 1.5e-6 + 15984 * 9e-6)
+    assert out["cost_usd"] == pytest.approx(27147 * 0.75e-6 + 15984 * 3.75e-6)
     # …and not the 19x-understated figure the visible answer alone would have produced.
-    assert out["cost_usd"] > mc._openai_cost("gemini-3.5-flash",
+    assert out["cost_usd"] > mc._openai_cost("gemini-3.7-flash",
                                              {"prompt_tokens": 27147, "completion_tokens": 847})
 
 
@@ -997,6 +1125,7 @@ def test_openai_429_carries_rate_limit_headers_on_the_exception(monkeypatch):
 
 def test_openai_backend_request_shape(monkeypatch):
     import httpx
+    _off_peak(monkeypatch)
     captured = {}
 
     class FakeResp:
@@ -1025,7 +1154,7 @@ def test_openai_backend_request_shape(monkeypatch):
     assert captured["body"]["reasoning_effort"] == "high"
     assert captured["body"]["response_format"] == {"type": "json_object"}
     assert "JSON" in captured["body"]["messages"][1]["content"]   # required for json_object mode
-    assert out["cost_usd"] == pytest.approx(10 * 0.14e-6 + 5 * 0.28e-6)
+    assert out["cost_usd"] == pytest.approx(10 * 0.22e-6 + 5 * 0.66e-6)
 
 
 def test_openai_backend_verifies_via_os_trust_store(monkeypatch):
@@ -1089,13 +1218,14 @@ def _fake_httpx(monkeypatch, captured):
 def test_deepseek_thinking_toggle(monkeypatch):
     # Bare id → thinking explicitly disabled (the non-thinking default), sent even though the
     # provider default is enabled, so the mode is pinned.
+    _off_peak(monkeypatch)
     captured = {}
     _fake_httpx(monkeypatch, captured)
     out = asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
                                                 base_url="https://api.deepseek.com"))
     assert captured["body"]["thinking"] == {"type": "disabled"}
     assert captured["body"]["model"] == "deepseek-v4-flash"        # marker not present
-    assert out["cost_usd"] == pytest.approx(10 * 0.14e-6 + 5 * 0.28e-6)
+    assert out["cost_usd"] == pytest.approx(10 * 0.22e-6 + 5 * 0.66e-6)
 
     # `-thinking` marker → thinking enabled; the bare id is used for the request + cost lookup.
     captured = {}
@@ -1104,7 +1234,7 @@ def test_deepseek_thinking_toggle(monkeypatch):
                                                 "sk-ds", 8000, base_url="https://api.deepseek.com"))
     assert captured["body"]["thinking"] == {"type": "enabled"}
     assert captured["body"]["model"] == "deepseek-v4-flash"        # stripped before the request
-    assert out["cost_usd"] == pytest.approx(10 * 0.14e-6 + 5 * 0.28e-6)   # priced on the bare id
+    assert out["cost_usd"] == pytest.approx(10 * 0.22e-6 + 5 * 0.66e-6)   # priced on the bare id
 
 
 def test_openai_backend_no_thinking_param(monkeypatch):
@@ -1192,15 +1322,15 @@ def test_openrouter_uses_max_tokens_even_for_an_openai_reasoning_style_id(monkey
 def test_gemini_backend_request_shape(monkeypatch):
     captured = {}
     _fake_httpx(monkeypatch, captured)
-    out = asyncio.run(mc._openai_complete_async("prompt", "gemini-3.1-flash-lite", SCHEMA, "AIza-x", 8000,
+    out = asyncio.run(mc._openai_complete_async("prompt", "gemini-3.5-flash-lite", SCHEMA, "AIza-x", 8000,
                                                 "low",
                                                 base_url="https://generativelanguage.googleapis.com/v1beta/openai"))
     assert captured["url"] == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     assert captured["headers"]["Authorization"] == "Bearer AIza-x"
-    assert captured["body"]["model"] == "gemini-3.1-flash-lite"   # no marker-stripping (DeepSeek-only)
+    assert captured["body"]["model"] == "gemini-3.5-flash-lite"   # no marker-stripping (DeepSeek-only)
     assert captured["body"]["reasoning_effort"] == "low"
     assert "thinking" not in captured["body"]                      # DeepSeek-only toggle
-    assert out["cost_usd"] == pytest.approx(10 * 0.25e-6 + 5 * 1.50e-6)
+    assert out["cost_usd"] == pytest.approx(10 * 0.30e-6 + 5 * 2.50e-6)
 
 
 # ── response_format: real json_schema on Gemini and OpenAI, json_object elsewhere (D98/D151) ────
@@ -2325,7 +2455,7 @@ def test_agent_query_usage_stays_none_when_nothing_present(monkeypatch):
     ("deepseek", "deepseek-v4-flash"),
     ("deepseek", "deepseek-v4-flash-thinking"),   # -thinking marker doesn't change the envelope
     ("openai", "gpt-5.4"),
-    ("gemini", "gemini-3.5-flash"),
+    ("gemini", "gemini-3.7-flash"),
 ])
 def test_wire_max_tokens_derives_from_catalog(backend, model_id):
     # #598: one per-model envelope — the catalogued `max_output_tokens` cap under
@@ -2349,7 +2479,7 @@ def test_wire_max_tokens_uncatalogued_falls_back_to_default():
 
 @pytest.mark.parametrize("backend, model", [
     ("openai", "gpt-5.4"),                # OpenAI reasoning model — used to get an effort-scaled reserve
-    ("gemini", "gemini-3.5-flash"),       # Gemini — used to get an effort-scaled reserve unconditionally
+    ("gemini", "gemini-3.7-flash"),       # Gemini — used to get an effort-scaled reserve unconditionally
     ("claude-api", "claude-sonnet-4-6"),  # never had a reserve
 ])
 def test_wire_max_tokens_is_deterministic_for_fixed_args(backend, model):
@@ -2372,7 +2502,7 @@ def test_output_ceiling_is_none_when_nothing_to_protect(backend, model):
 
 @pytest.mark.parametrize("backend, model", [
     ("openai", "gpt-5.4"),
-    ("gemini", "gemini-3.5-flash"),
+    ("gemini", "gemini-3.7-flash"),
     ("local", "llama-3.3-70b"),
     ("openrouter", "anthropic/claude-3.5-sonnet"),
 ])

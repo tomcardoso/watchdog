@@ -14,9 +14,10 @@ master_vault:
 
 extractor_sweep:
   vault_prefix: bench-ex
-  # Grouped by provider, then model, then effort. Haiku and DeepSeek have no effort control —
-  # asking for one errors. Everything else pins its effort explicitly. See BENCHMARKING.md for
-  # how to run these and FINDINGS.md for what past runs measured.
+  # Grouped by provider, then model, then effort. Haiku has no effort control and DeepSeek has one
+  # only in thinking mode (D217) — asking for one anywhere else errors. Everything that can pin an
+  # effort pins it explicitly. See BENCHMARKING.md for how to run these and FINDINGS.md for what
+  # past runs measured.
   #
   # `defaults:` (#559) — every arm here runs concurrently against the whole 6-document corpus
   # (`extract_concurrency` otherwise defaults to 20, which never binds on a 6-document run), and
@@ -50,16 +51,26 @@ extractor_sweep:
     - {id: gpt-luna-high,     extractor_model: "openai:gpt-5.6-luna", extractor_effort: high}
 
     # ── Gemini ──
-    - {id: gemini-flash-lite, extractor_model: "gemini:gemini-3.1-flash-lite", extractor_effort: low}
-    - {id: gemini-flash-low,  extractor_model: "gemini:gemini-3.5-flash", extractor_effort: low}
-    - {id: gemini-flash-med,  extractor_model: "gemini:gemini-3.5-flash", extractor_effort: medium}
-    - {id: gemini-flash-high, extractor_model: "gemini:gemini-3.5-flash", extractor_effort: high}
+    - {id: gemini-flash-lite, extractor_model: "gemini:gemini-3.5-flash-lite", extractor_effort: low}
+    - {id: gemini-flash-low,  extractor_model: "gemini:gemini-3.7-flash", extractor_effort: low}
+    - {id: gemini-flash-med,  extractor_model: "gemini:gemini-3.7-flash", extractor_effort: medium}
+    - {id: gemini-flash-high, extractor_model: "gemini:gemini-3.7-flash", extractor_effort: high}
 
-    # ── DeepSeek ── (the `-thinking` suffix is the only knob)
-    - {id: ds-flash,          extractor_model: "deepseek:deepseek-v4-flash"}
-    - {id: ds-flash-think,    extractor_model: "deepseek:deepseek-v4-flash-thinking"}
-    - {id: ds-pro,            extractor_model: "deepseek:deepseek-v4-pro"}
-    - {id: ds-pro-think,      extractor_model: "deepseek:deepseek-v4-pro-thinking"}
+    # ── DeepSeek ── two knobs now, not one (D217). `-thinking` switches thinking mode on, and
+    # since 2026-08-13 the thinking ids also take an effort level. Only `low`/`high` are swept:
+    # `medium`/`xhigh` are DeepSeek's own aliases for `high` and would be duplicate runs, and `max`
+    # is left out until `low`-vs-`high` shows the knob moves anything on this corpus at all. The
+    # thinking-off arms carry no effort because there is no thinking there to tune — that is the
+    # one gap in BENCHMARKING.md's "every arm pins an explicit effort" rule, and it is a property
+    # of the provider, not an omission. `ds-*-think-high` is what the old unpinned `ds-*-think`
+    # arm actually ran (DeepSeek's default effort is `high`), so archived `-think` figures compare
+    # against those two rows — subject to the checkpoint and price caveats in FINDINGS.md.
+    - {id: ds-flash,             extractor_model: "deepseek:deepseek-v4-flash"}
+    - {id: ds-flash-think-low,   extractor_model: "deepseek:deepseek-v4-flash-thinking", extractor_effort: low}
+    - {id: ds-flash-think-high,  extractor_model: "deepseek:deepseek-v4-flash-thinking", extractor_effort: high}
+    - {id: ds-pro,               extractor_model: "deepseek:deepseek-v4-pro"}
+    - {id: ds-pro-think-low,     extractor_model: "deepseek:deepseek-v4-pro-thinking", extractor_effort: low}
+    - {id: ds-pro-think-high,    extractor_model: "deepseek:deepseek-v4-pro-thinking", extractor_effort: high}
 
     # ── Paired comparisons ──
     # Each group isolates one variable and is meant to be run on its own with --arms, not as part
@@ -92,8 +103,8 @@ finalizer_sweep:
     - {id: sonnet-low,        finalizer_model: sonnet, finalizer_effort: low}
     - {id: ds-flash,          finalizer_model: "deepseek:deepseek-v4-flash"}
     - {id: ds-pro-think,      finalizer_model: "deepseek:deepseek-v4-pro-thinking"}
-    - {id: gemini-flash-lite, finalizer_model: "gemini:gemini-3.1-flash-lite"}
-    - {id: gemini-flash,      finalizer_model: "gemini:gemini-3.5-flash"}
+    - {id: gemini-flash-lite, finalizer_model: "gemini:gemini-3.5-flash-lite"}
+    - {id: gemini-flash,      finalizer_model: "gemini:gemini-3.7-flash"}
     # Opus dropped. OpenAI (#453 closed): the finalizer is near-constant cost per run, so one or
     # two arms is plenty — same D98 structured-output caveat as the extractor sweep (above)
     # applies here too.
@@ -113,7 +124,7 @@ classifier_sweep:
     - {id: haiku,             classifier_model: haiku}    # shipped default
     - {id: sonnet,            classifier_model: sonnet}
     - {id: ds-flash,          classifier_model: "deepseek:deepseek-v4-flash"}
-    - {id: gemini-flash-lite, classifier_model: "gemini:gemini-3.1-flash-lite"}
+    - {id: gemini-flash-lite, classifier_model: "gemini:gemini-3.5-flash-lite"}
   # Classifier has no effort knob (BENCHMARKING.md) — model only, no effort sweep. BLOCKED until
   # classify-corpus/ is populated with a type-diverse document set + expected.yaml labels;
   # run_benchmark.py detects an empty corpus_dir and skips this stage with a one-line notice, so

@@ -6,6 +6,7 @@ imports watchdog.cmd.base).
 """
 
 import importlib.resources
+from datetime import UTC, datetime, time
 
 import yaml
 
@@ -190,6 +191,57 @@ def catalog_tokenizer_ratio(model_id: str) -> float | None:
     for "no declared ratio" should treat None as 1.0 (`model_client.tokenizer_ratio` does this)."""
     entry = _MODELS.get(model_id.lower())
     return float(entry["tokenizer_ratio"]) if entry and "tokenizer_ratio" in entry else None
+
+
+def _parse_hhmm(value: str) -> time:
+    """`"01:00"` -> `time(1, 0)`. Raises on anything else, at import: a price window nobody can
+    parse would otherwise silently price every call at the base rate, which is the direction that
+    under-charges."""
+    hh, _, mm = str(value).partition(":")
+    return time(int(hh), int(mm))
+
+
+# model id -> [(start, end, multiplier), ...], UTC, in declaration order. Empty for the vast
+# majority of models, which price the same around the clock — see model_catalog.yaml's
+# `price_periods` comment for the shape and why the base rates are the cheap ones.
+_PRICE_PERIODS = {
+    m["id"]: [(_parse_hhmm(w["from"]), _parse_hhmm(w["to"]), float(w["multiplier"]))
+              for w in m["price_periods"]]
+    for m in _CATALOG["models"] if m.get("price_periods")
+}
+
+
+def _in_window(now: time, start: time, end: time) -> bool:
+    """Half-open `[start, end)` membership, wrapping midnight when `start > end` (`22:00`->
+    `02:00` is 22:00-23:59 plus 00:00-01:59). A window with `start == end` matches nothing rather
+    than everything: an empty span is the reading that can't accidentally double every rate."""
+    if start < end:
+        return start <= now < end
+    if start > end:
+        return now >= start or now < end
+    return False
+
+
+def price_multiplier(model_id: str, at: datetime | None = None) -> float:
+    """What `model_id`'s per-token rates are multiplied by right now (or at `at`) — 1.0 for every
+    model that prices flat around the clock, and a declared window's multiplier while the UTC
+    clock sits inside it (D217). See `model_catalog.yaml`'s `price_periods` comment.
+
+    `at` is interpreted in UTC: an aware datetime is converted, a naive one is assumed to already
+    be UTC (the shape `datetime.now(UTC)` produces, which is the default). Windows are matched in
+    declaration order and the first hit wins, so overlapping windows resolve to the earlier one
+    rather than compounding."""
+    windows = _PRICE_PERIODS.get(model_id.lower())
+    if not windows:
+        return 1.0
+    moment = at or datetime.now(UTC)
+    if moment.tzinfo is not None:
+        moment = moment.astimezone(UTC)
+    now = moment.time()
+    for start, end, multiplier in windows:
+        if _in_window(now, start, end):
+            return multiplier
+    return 1.0
 
 
 def all_models() -> list[dict]:

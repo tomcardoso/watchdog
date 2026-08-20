@@ -382,7 +382,7 @@ def ensure_provider_key(value: str) -> None:
     URL for a provider like `local`/`openrouter` that requires a user-supplied one (#380), and an
     API key for a provider that requires one (skipped for `local`, which usually needs none).
 
-    Picking, say, `gemini:gemini-3.1-flash-lite` for a stage used to leave that stage silently
+    Picking, say, `gemini:gemini-3.5-flash-lite` for a stage used to leave that stage silently
     unusable until the user separately remembered to run `watchdog auth` — the failure only
     surfaced mid-ingest. Asking here keeps "pick a model" and "be able to run it" together.
     A Claude tier, or a provider that's already fully configured, is a no-op.

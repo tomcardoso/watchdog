@@ -407,7 +407,7 @@ def main() -> None:
     _effort_choices = ["low", "medium", "high", "xhigh", "max"]
     _model_help = ("a Claude tier (sonnet/opus/haiku) or a backend:model form "
                    "(claude-api:opus, openai:gpt-5-mini, deepseek:deepseek-v4-flash, "
-                   "gemini:gemini-3.1-flash-lite, local:llama-3.3-70b, "
+                   "gemini:gemini-3.5-flash-lite, local:llama-3.3-70b, "
                    "openrouter:anthropic/claude-3.5-sonnet)")
     # Per-stage finalizer model overrides (issue #433): each routes just that post-ingest stage
     # to a different model than --finalizer-model, falling back to it when unset. Shared between

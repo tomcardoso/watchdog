@@ -258,12 +258,12 @@ def test_cmd_usage_run_flag_picks_specific_run(tmp_path, monkeypatch, capsys):
 def test_cmd_usage_shows_full_model_name_next_to_stage(tmp_path, monkeypatch, capsys):
     """The model column used to abbreviate by splitting on '-' and taking the second segment,
     which worked for 'claude-sonnet-4-6' -> 'sonnet' but mangled non-Claude ids like
-    'gemini-3.1-flash-lite' into '3.1'. The full model name is now printed once next to the
+    'gemini-3.5-flash-lite' into '3.5'. The full model name is now printed once next to the
     stage header instead (via the model catalog's pretty display_name, e.g. 'Gemini 3.1
     Flash-Lite'), and there's no more per-row Model column."""
     vault = _build_vault(tmp_path, runs={
         "usage-2026-01-01T00-00-00": [
-            _call(task="classify", model="gemini-3.1-flash-lite", cost_usd=0.001),
+            _call(task="classify", model="gemini-3.5-flash-lite", cost_usd=0.001),
         ],
     })
     monkeypatch.chdir(vault)
@@ -271,7 +271,7 @@ def test_cmd_usage_shows_full_model_name_next_to_stage(tmp_path, monkeypatch, ca
     cmd_usage(_args())
 
     out = capsys.readouterr().out
-    assert "CLASSIFIER" in out and "model: Gemini 3.1 Flash-Lite" in out
+    assert "CLASSIFIER" in out and "model: Gemini 3.5 Flash-Lite" in out
     assert "  Model  " not in out   # no more per-row Model column
 
 
@@ -282,7 +282,7 @@ def test_cmd_usage_flags_local_backend_as_not_actually_free(tmp_path, monkeypatc
     vault = _build_vault(tmp_path, runs={
         "usage-2026-01-01T00-00-00": [
             _call(task="extract", model="llama-3.3-70b", backend="local", cost_usd=0.0),
-            _call(task="classify", model="gemini-3.1-flash-lite", cost_usd=0.001),
+            _call(task="classify", model="gemini-3.5-flash-lite", cost_usd=0.001),
         ],
     })
     monkeypatch.chdir(vault)
@@ -305,7 +305,7 @@ def test_cmd_usage_shows_batch_lifecycle_note_for_a_batch_collected_stage(tmp_pa
             _call(task="extract", backend="claude-batch", filename="a.pdf",
                  batch_id="b1", batch_submitted_at="2026-07-29T02:54:46Z",
                  batch_ended_at="2026-07-29T03:36:02Z", batch_collected_at="2026-07-29T04:10:00Z"),
-            _call(task="classify", model="gemini-3.1-flash-lite", cost_usd=0.001),
+            _call(task="classify", model="gemini-3.5-flash-lite", cost_usd=0.001),
         ],
     })
     monkeypatch.chdir(vault)
