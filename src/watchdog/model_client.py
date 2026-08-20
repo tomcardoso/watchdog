@@ -52,7 +52,9 @@ from watchdog.model_catalog import (
     catalog_tokenizer_ratio,
     fallback_context_window,
     fallback_is_reasoning,
+    _split_deepseek_thinking,
     fallback_max_output_tokens,
+    price_multiplier,
     resolve_model_id,
 )
 from watchdog.pipeline.json_io import _read_json_or
@@ -165,6 +167,16 @@ def _effort_levels(provider: str, model_id: str) -> set[str]:
     for a known id; an uncatalogued id (a raw id typed past the CLI's tier validation, or a
     local/OpenRouter model with no catalog entry at all, #380) falls back to a conservative,
     provider-wide default rather than guessing per-model capability we don't have."""
+    if provider == "deepseek":
+        # `-thinking` is a Watchdog-only routing marker (D88), not a real catalog id — strip it
+        # before the catalog lookup, the same normalization `_wire_max_tokens` does. Without this
+        # the thinking variants would read as uncatalogued and reject every level, when thinking
+        # mode is the only mode where DeepSeek's effort knob does anything: `reasoning_effort`
+        # tunes how deeply the model thinks, so a plain (thinking-disabled) id has no effort to
+        # take, and says so here rather than accepting a level the request would then contradict.
+        model_id, thinking = _split_deepseek_thinking(model_id)
+        if not thinking:
+            return set()
     known = catalog_effort_levels(model_id)
     if known is not None:
         return known
@@ -802,8 +814,12 @@ def _api_cost(model_id: str, usage) -> float | None:
     def g(name):
         return getattr(usage, name, 0) or 0
 
+    # `price_multiplier` is 1.0 for every Claude tier (no Anthropic model prices by the clock) —
+    # applied here anyway so the two cost functions stay one implementation of D217's rule rather
+    # than one that models it and one that would have to be found and fixed later.
     return (g("input_tokens") * inp + g("output_tokens") * outp
-            + g("cache_creation_input_tokens") * cw + g("cache_read_input_tokens") * cr)
+            + g("cache_creation_input_tokens") * cw
+            + g("cache_read_input_tokens") * cr) * price_multiplier(model_id)
 
 
 def _batch_cost(model_id: str, usage) -> float | None:
@@ -992,7 +1008,12 @@ def _openai_cost(model_id: str, usage: dict | None) -> float | None:
     not a live path.)
 
     Clamping keeps a provider reporting an unexpected combination of counters from driving the
-    uncached remainder negative and under-charging the call."""
+    uncached remainder negative and under-charging the call.
+
+    The whole figure is then scaled by `price_multiplier` (D217) — 1.0 for every model that
+    prices flat, and 2.0 for a DeepSeek call landing in one of its peak windows. It multiplies the
+    finished cost rather than each rate because the multiplier applies to every column equally,
+    which is how DeepSeek states it and the only shape `price_periods` allows."""
     rates = _OPENAI_PRICING.get(model_id)
     if not rates or not usage:
         return None
@@ -1003,7 +1024,7 @@ def _openai_cost(model_id: str, usage: dict | None) -> float | None:
     return ((prompt - cached - written) * inp
             + cached * cached_rate
             + written * write_rate
-            + (usage.get("completion_tokens", 0) or 0) * outp)
+            + (usage.get("completion_tokens", 0) or 0) * outp) * price_multiplier(model_id)
 
 
 def _openai_batch_cost(model_id: str, usage: dict | None) -> float | None:
@@ -1015,14 +1036,12 @@ def _openai_batch_cost(model_id: str, usage: dict | None) -> float | None:
 
 
 # DeepSeek V4 collapsed thinking/non-thinking into a single model id switched by a request param
-# (the old deepseek-chat/deepseek-reasoner split is deprecated). Watchdog keeps the choice inside
-# the model token — `deepseek-v4-flash` (non-thinking) vs `deepseek-v4-flash-thinking` — so it rides
-# the existing `[backend:]model` grammar with no extra provider-specific knob. The backend strips
-# this marker, uses the bare id for the request + cost lookup, and sends DeepSeek's explicit toggle.
-# The provider default is thinking-ENABLED, so we always send the toggle to pin the intended mode.
-# Toggle shape (OpenAI format): {"thinking": {"type": "enabled"|"disabled"}}. Docs:
+# (the old deepseek-chat/deepseek-reasoner split is deprecated). The backend strips the `-thinking`
+# marker (`_split_deepseek_thinking`, owned by `model_catalog` since the catalog has to normalize it
+# away before every lookup), uses the bare id for the request + cost lookup, and sends DeepSeek's
+# explicit toggle. The provider default is thinking-ENABLED, so we always send the toggle to pin the
+# intended mode. Toggle shape (OpenAI format): {"thinking": {"type": "enabled"|"disabled"}}. Docs:
 # https://api-docs.deepseek.com/guides/thinking_mode  (D88)
-_DEEPSEEK_THINKING_SUFFIX = "-thinking"
 
 # Transient-failure retry for the OpenAI-compatible backends (#354). The Anthropic SDK retries
 # 429/5xx internally (2 attempts, backoff); this httpx path had none, so a single transient
@@ -1031,14 +1050,6 @@ _DEEPSEEK_THINKING_SUFFIX = "-thinking"
 # the orchestrator stops the batch cleanly instead of hammering a limited provider.
 _TRANSIENT_RETRIES = 2
 _TRANSIENT_BACKOFF_S = 2.0
-
-
-def _split_deepseek_thinking(model_id: str) -> tuple[str, bool]:
-    """(bare model id, thinking?) from a DeepSeek model token — strips a `-thinking` marker.
-    Non-thinking is the default (bare id), so extraction stays cheap unless thinking is opted in."""
-    if model_id.endswith(_DEEPSEEK_THINKING_SUFFIX):
-        return model_id[: -len(_DEEPSEEK_THINKING_SUFFIX)], True
-    return model_id, False
 
 
 def _openai_response_format(base_url: str, schema: dict) -> dict:

@@ -19,8 +19,9 @@ import yaml
 # figures apart instead of ranking them as if they meant the same thing. History: v1 = pre-D145
 # (Claude costs inflated by ~11.2K tokens/call from the agent SDK's tool definitions); v2 =
 # post-D145 but pre-#547 (Gemini thinking tokens went unpriced, so Gemini costs were floors, not
-# real totals); v3 = current.
-COST_MODEL_VERSION = 3
+# real totals); v3 = pre-D217 (DeepSeek priced at its pre-2026-08-16 flat rates, 1.6x-4.7x under
+# what the same call bills now, and no model priced by time of day at all); v4 = current.
+COST_MODEL_VERSION = 4
 
 
 def run_id(now: datetime | None = None, *, existing: set[str] | None = None) -> str:

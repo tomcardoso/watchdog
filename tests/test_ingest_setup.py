@@ -746,8 +746,17 @@ def test_cost_estimate_all_models_no_history_returns_empty(tmp_path):
     assert cost_estimate_all_models(vault, est_tokens=1000) == []
 
 
-def test_cost_estimate_all_models_projects_every_catalog_model(tmp_path):
+def _flat_prices(monkeypatch):
+    """Pin every model's time-of-day price multiplier to 1.0 (D217) for a test that is about
+    something else — without this, any assertion naming a DeepSeek dollar figure passes or fails
+    depending on what time of day the suite runs."""
+    from watchdog import model_catalog
+    monkeypatch.setattr(model_catalog, "price_multiplier", lambda *_a, **_k: 1.0)
+
+
+def test_cost_estimate_all_models_projects_every_catalog_model(tmp_path, monkeypatch):
     from watchdog.model_catalog import all_models
+    _flat_prices(monkeypatch)
     vault = _make_vault(tmp_path)
     _write_usage_file(vault, "20260101T000000Z", input_tokens=1000, cost_usd=1.0, output_tokens=500)
 
@@ -765,9 +774,10 @@ def test_cost_estimate_all_models_projects_every_catalog_model(tmp_path):
         2000 * 0.81 * ds["input"] + 1000 * 0.81 * ds["output"])
 
 
-def test_cost_estimate_all_models_ignores_runs_with_no_output_tokens(tmp_path):
+def test_cost_estimate_all_models_ignores_runs_with_no_output_tokens(tmp_path, monkeypatch):
     """A run with zero recorded output tokens can't contribute a ratio — must be skipped, not
     treated as an output:input ratio of 0 (which would zero out every model's output cost)."""
+    _flat_prices(monkeypatch)
     vault = _make_vault(tmp_path)
     _write_usage_file(vault, "20260101T000000Z", input_tokens=1000, cost_usd=1.0, output_tokens=0)
     _write_usage_file(vault, "20260102T000000Z", input_tokens=1000, cost_usd=1.0, output_tokens=1000)
@@ -783,12 +793,13 @@ def test_cost_estimate_all_models_ignores_runs_with_no_output_tokens(tmp_path):
         1000 * 0.81 * ds["input"] + 1000 * 0.81 * ds["output"])
 
 
-def test_cost_estimate_all_models_scales_by_each_models_tokenizer_ratio(tmp_path):
+def test_cost_estimate_all_models_scales_by_each_models_tokenizer_ratio(tmp_path, monkeypatch):
     # Every catalogued model's measured tokenizer_ratio (#574, remeasured #617) is applied to its
     # projected input AND output tokens, so each is priced against its own real token count for
     # the same text. The correction runs both directions: Sonnet 5's 1.28 prices it up, Sonnet
     # 4.6's 0.93 prices it down, and only a model with no declared ratio is projected as-is.
     from watchdog.model_catalog import all_models
+    _flat_prices(monkeypatch)
     vault = _make_vault(tmp_path)
     _write_usage_file(vault, "20260101T000000Z", input_tokens=1000, cost_usd=1.0, output_tokens=500)
 
@@ -805,9 +816,32 @@ def test_cost_estimate_all_models_scales_by_each_models_tokenizer_ratio(tmp_path
 
     assert by_id["claude-sonnet-5"] == pytest.approx(projected("claude-sonnet-5", 1.28))
     assert by_id["claude-sonnet-4-6"] == pytest.approx(projected("claude-sonnet-4-6", 0.93))
-    assert by_id["gemini-3.5-flash"] == pytest.approx(projected("gemini-3.5-flash", 0.91))
+    assert by_id["gemini-3.7-flash"] == pytest.approx(projected("gemini-3.7-flash", 0.91))
     assert by_id["gpt-5.4-nano"] == pytest.approx(projected("gpt-5.4-nano", 0.80))
     assert by_id["deepseek-v4-flash"] == pytest.approx(projected("deepseek-v4-flash", 0.81))
+
+
+def test_cost_estimate_all_models_prices_a_scheduled_model_at_the_current_rate(tmp_path,
+                                                                               monkeypatch):
+    """A model whose rates vary by the clock (D217) is projected at the rate in force right now,
+    and the row carries the multiplier that produced it so the caller can label the figure rather
+    than leaving it looking like a catalog error."""
+    from watchdog import model_catalog
+    vault = _make_vault(tmp_path)
+    _write_usage_file(vault, "20260101T000000Z", input_tokens=1000, cost_usd=1.0, output_tokens=500)
+
+    monkeypatch.setattr(model_catalog, "price_multiplier", lambda *_a, **_k: 1.0)
+    off_peak = {r["id"]: r for r in cost_estimate_all_models(vault, est_tokens=2000)}
+    monkeypatch.setattr(model_catalog, "price_multiplier",
+                        lambda model_id, *_a, **_k: 2.0 if model_id.startswith("deepseek") else 1.0)
+    peak = {r["id"]: r for r in cost_estimate_all_models(vault, est_tokens=2000)}
+
+    assert peak["deepseek-v4-flash"]["cost"] == pytest.approx(
+        2 * off_peak["deepseek-v4-flash"]["cost"])
+    assert peak["deepseek-v4-flash"]["price_multiplier"] == 2.0
+    assert peak["claude-sonnet-4-6"]["cost"] == pytest.approx(
+        off_peak["claude-sonnet-4-6"]["cost"])          # a flat-priced model never moves
+    assert peak["claude-sonnet-4-6"]["price_multiplier"] == 1.0
 
 
 def test_finalize_cost_estimate_all_models_no_standalone_history_returns_empty(tmp_path):

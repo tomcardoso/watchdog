@@ -6,6 +6,7 @@ imports watchdog.cmd.base).
 """
 
 import importlib.resources
+from datetime import datetime, time, timezone
 
 import yaml
 
@@ -29,6 +30,23 @@ def _tier_aliases(entry: dict) -> list[str]:
 
 
 _MODEL_IDS = {alias: m["id"] for m in _CATALOG["models"] for alias in _tier_aliases(m)}
+
+# DeepSeek V4 collapsed thinking/non-thinking into a single model id switched by a request param,
+# and Watchdog keeps the choice inside the model token — `deepseek-v4-flash` (non-thinking) vs
+# `deepseek-v4-flash-thinking` — so it rides the existing `[backend:]model` grammar with no extra
+# provider-specific knob (D88). The marker is Watchdog's own grammar, not a real catalog id, so it
+# lives here, with the catalog that has to normalize it away before every lookup; `model_client.py`
+# imports both names rather than keeping a second copy that could drift. See that module's
+# `_openai_complete_async` for the wire toggle this resolves to.
+_DEEPSEEK_THINKING_SUFFIX = "-thinking"
+
+
+def _split_deepseek_thinking(model_id: str) -> tuple[str, bool]:
+    """(bare model id, thinking?) from a DeepSeek model token — strips a `-thinking` marker.
+    Non-thinking is the default (bare id), so extraction stays cheap unless thinking is opted in."""
+    if model_id.endswith(_DEEPSEEK_THINKING_SUFFIX):
+        return model_id[: -len(_DEEPSEEK_THINKING_SUFFIX)], True
+    return model_id, False
 
 # Claude pricing, USD/token: (input, output, cache_write_5m, cache_read).
 _PRICING = {
@@ -146,11 +164,21 @@ def catalog_has_reasoning(model_id: str) -> bool:
     compact nudge into it, one without gets the explicit step-by-step form written into the
     visible completion instead, via `document.plan` (see extract_instructions.md).
 
+    A DeepSeek `-thinking` id counts too (D217): thinking mode returns `reasoning_content`
+    alongside `content`, which is a private channel by any reading, and the marker has to be
+    stripped for the entry to be found at all. Before that, every DeepSeek thinking call was handed
+    the explicit `document.plan` scaffold built for models with *no* channel — paying for a visible
+    plan while also thinking privately. The provider check keeps the stripping honest: a
+    non-DeepSeek id that merely ends in `-thinking` is not granted a channel by its name.
+
     False — the conservative default — for every other catalogued model (Haiku, DeepSeek's plain
     ids, Gemini) and for any uncatalogued id: never assume a channel that isn't confirmed."""
-    entry = _MODELS.get(model_id.lower())
+    bare, deepseek_thinking = _split_deepseek_thinking(model_id)
+    entry = _MODELS.get(bare.lower())
     if not entry:
         return False
+    if deepseek_thinking and entry.get("provider") == "deepseek":
+        return True
     if entry.get("reasoning") or entry.get("thinking"):
         return True
     tier = entry.get("tier")
@@ -190,6 +218,57 @@ def catalog_tokenizer_ratio(model_id: str) -> float | None:
     for "no declared ratio" should treat None as 1.0 (`model_client.tokenizer_ratio` does this)."""
     entry = _MODELS.get(model_id.lower())
     return float(entry["tokenizer_ratio"]) if entry and "tokenizer_ratio" in entry else None
+
+
+def _parse_hhmm(value: str) -> time:
+    """`"01:00"` -> `time(1, 0)`. Raises on anything else, at import: a price window nobody can
+    parse would otherwise silently price every call at the base rate, which is the direction that
+    under-charges."""
+    hh, _, mm = str(value).partition(":")
+    return time(int(hh), int(mm))
+
+
+# model id -> [(start, end, multiplier), ...], UTC, in declaration order. Empty for the vast
+# majority of models, which price the same around the clock — see model_catalog.yaml's
+# `price_periods` comment for the shape and why the base rates are the cheap ones.
+_PRICE_PERIODS = {
+    m["id"]: [(_parse_hhmm(w["from"]), _parse_hhmm(w["to"]), float(w["multiplier"]))
+              for w in m["price_periods"]]
+    for m in _CATALOG["models"] if m.get("price_periods")
+}
+
+
+def _in_window(now: time, start: time, end: time) -> bool:
+    """Half-open `[start, end)` membership, wrapping midnight when `start > end` (`22:00`->
+    `02:00` is 22:00-23:59 plus 00:00-01:59). A window with `start == end` matches nothing rather
+    than everything: an empty span is the reading that can't accidentally double every rate."""
+    if start < end:
+        return start <= now < end
+    if start > end:
+        return now >= start or now < end
+    return False
+
+
+def price_multiplier(model_id: str, at: datetime | None = None) -> float:
+    """What `model_id`'s per-token rates are multiplied by right now (or at `at`) — 1.0 for every
+    model that prices flat around the clock, and a declared window's multiplier while the UTC
+    clock sits inside it (D217). See `model_catalog.yaml`'s `price_periods` comment.
+
+    `at` is interpreted in UTC: an aware datetime is converted, a naive one is assumed to already
+    be UTC (the shape `datetime.now(timezone.utc)` produces, which is the default). Windows are matched in
+    declaration order and the first hit wins, so overlapping windows resolve to the earlier one
+    rather than compounding."""
+    windows = _PRICE_PERIODS.get(model_id.lower())
+    if not windows:
+        return 1.0
+    moment = at or datetime.now(timezone.utc)
+    if moment.tzinfo is not None:
+        moment = moment.astimezone(timezone.utc)
+    now = moment.time()
+    for start, end, multiplier in windows:
+        if _in_window(now, start, end):
+            return multiplier
+    return 1.0
 
 
 def all_models() -> list[dict]:

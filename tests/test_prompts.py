@@ -226,7 +226,7 @@ def test_extract_prompt_carries_no_vault_state():
 @pytest.mark.parametrize("model", [
     "haiku",                # Claude, no thinking control at all
     "deepseek-v4-flash",    # DeepSeek's plain (non "-thinking") id
-    "gemini-3.5-flash",     # Gemini — no reasoning field in the catalog
+    "gemini-3.7-flash",     # Gemini — no reasoning field in the catalog
     "not-a-real-model",     # uncatalogued — conservative default is "no channel"
 ])
 def test_extract_prompt_adds_scaffold_for_a_non_reasoning_model(model):
@@ -242,6 +242,30 @@ def test_extract_prompt_adds_scaffold_for_a_non_reasoning_model(model):
     text = _flat(p)
     assert "no private reasoning channel" in text
     assert "document.plan" in text
+
+
+@pytest.mark.parametrize("model", ["deepseek-v4-flash-thinking", "deepseek-v4-pro-thinking"])
+def test_extract_prompt_omits_scaffold_for_deepseek_in_thinking_mode(model):
+    """DeepSeek in thinking mode has a private channel — it returns `reasoning_content` beside
+    `content` — so it gets the compact nudge, not the explicit `document.plan` form written for
+    models without one (D217). The `-thinking` marker isn't a catalog id, so before the catalog
+    learned to strip it the lookup missed and every thinking call was handed the scaffold: a
+    visible plan paid for on top of the private thinking it was meant to substitute for."""
+    p = prompts.build_extract_prompt(
+        pages_text="x", skill_text="", sidecar=None, brief=None, known_document_types=[],
+        model=model)
+    text = _flat(p)
+    assert "no private reasoning channel" not in text
+    assert "document.plan" not in text
+
+
+def test_a_non_deepseek_id_ending_in_thinking_is_not_granted_a_channel():
+    """The marker is DeepSeek's grammar alone (D88). Stripping it off any id that happens to end
+    the same way would hand an unrelated model a reasoning channel on the strength of its name."""
+    from watchdog.model_catalog import catalog_has_reasoning
+    assert catalog_has_reasoning("deepseek-v4-flash-thinking") is True
+    assert catalog_has_reasoning("claude-haiku-4-5-thinking") is False
+    assert catalog_has_reasoning("gemini-3.7-flash-thinking") is False
 
 
 def test_extract_prompt_omits_scaffold_for_a_reasoning_model():

@@ -285,7 +285,7 @@ def test_model_defaults_ignores_the_output_ceiling(monkeypatch):
     # Pure input-window defaults on the very backends that used to be capped. Both models price
     # flat, so the surviving long-context clamp doesn't confound the assertion.
     assert section.model_defaults("gpt-5.4-mini", backend="openai") == (300_000, 150_000)
-    assert section.model_defaults("gemini-3.5-flash", backend="gemini") == (659_340, 329_670)
+    assert section.model_defaults("gemini-3.7-flash", backend="gemini") == (659_340, 329_670)
 
 
 def test_model_defaults_clamped_below_a_long_context_pricing_tier():
@@ -325,7 +325,7 @@ def test_model_defaults_unclamped_for_flat_priced_models():
     # (and a tokenizer) with a tiered one. gpt-5.4-mini shares gpt-5.4's 0.80 ratio but has a 400K
     # window, so it could never reach the boundary and must not be shrunk toward it.
     assert section.model_defaults("gpt-5.4-mini", backend="openai") == (300_000, 150_000)
-    assert section.model_defaults("gemini-3.5-flash", backend="gemini") == (659_340, 329_670)
+    assert section.model_defaults("gemini-3.7-flash", backend="gemini") == (659_340, 329_670)
     assert section.model_defaults("deepseek-v4-flash", backend="deepseek") == (740_740, 370_370)
     assert section.model_defaults("sonnet") == (129_032, 64_516)
 

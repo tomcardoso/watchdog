@@ -160,12 +160,14 @@ To isolate just one stage instead of the whole post-ingest step, pass one of the
 
   Projected list price by model, cheapest first (every input token priced as a
   cache miss — a rough ceiling, not what you'd actually pay with caching):
-    Gemini 2.5 Flash-Lite   gemini      $0.01
-    DeepSeek V4 Flash       deepseek    $0.01
+    Gemini 3.5 Flash-Lite   gemini      $0.01
+    DeepSeek V4 Flash       deepseek    $0.01  (peak rate — this model is cheaper outside peak hours)
     ...
     Claude Sonnet 4.6       anthropic   $0.14
     GPT-5.5                 openai      $0.24
 ```
+
+One provider's rates change by the hour: DeepSeek charges double during its peak hours (01:00-04:00 and 06:00-10:00 UTC), so a DeepSeek line is quoted at whichever rate is in force when you run the command and says which one that is. Running the same batch a few hours later can halve it. Nothing else in the catalog prices this way today.
 
 This is a comparison tool, not a billing forecast: every model is priced at its published per-token rate, scaled from this vault's own recent output:input token ratio, as if every input token were a cache miss — cache pricing varies by provider and usage pattern, so it isn't modeled here. It shows every catalog model, including all three Claude tiers, regardless of whether this vault is on subscription auth (where a real Claude run costs nothing extra beyond the subscription) — the table answers "what would each model's list price come to," not "what will I actually be billed." A vault with no usage history yet has nothing to project an output-token ratio from, so `--estimate-all` shows the same "not enough history" message `--estimate` already gives a first-run vault, with no per-model table.
 

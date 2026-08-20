@@ -530,7 +530,14 @@ so leaving it open would send an oversized document past the boundary in one who
 The clamp is applied in **real** tokens, before the ratio division, since that is the unit a
 provider meters; clamping the est-token result afterwards would let a sub-1.0 ratio divide it back
 up past the boundary, which is the ordering bug D198 found in the old output clamp. It is also what
-keeps `--estimate-all` truthful, since the cost model prices every model at one flat rate.
+keeps `--estimate-all` truthful, since the cost model prices every model at one flat rate per
+length. **Length is not the only axis a rate can vary on: `price_periods`** (D217) declares UTC
+windows in which a model's rates are multiplied — DeepSeek doubles every rate during its peak
+hours, and no clamp can dodge a boundary made of clock time the way `long_context_threshold`
+dodges one made of input length. `model_catalog.price_multiplier` resolves the multiplier in force
+at a given moment; `_api_cost`/`_openai_cost` apply it when a call is billed, so an archived cost
+records the rate that actually applied and is never re-priced later, and the pre-flight estimates
+apply it for the moment they are asked and label the row when it isn't the cheap one.
 When a `vault` is in scope (the real ingest path — `section.run` passes its own `vault` through
 automatically), `tokenizer_ratio` instead prefers an empirically-derived ratio from that vault's
 own usage history, pooled per model/backend from real per-call estimate-vs-actual token pairs
@@ -1252,7 +1259,8 @@ completed purge, and the CLI hint says so.
   and per-task policy, validates the JSON, retries on the same model on failure, and reports
   cost/latency. Backend registration metadata (provider, base URL, continuation/max-tokens
   support, batch-only) lives in one `_BACKEND_META` registry keyed by backend name, so a new
-  backend is one entry, not several parallel tables. Every model's id, pricing, context window,
+  backend is one entry, not several parallel tables. Every model's id, pricing (including any
+  time-of-day `price_periods` schedule, D217), context window,
   reasoning-model flag, and pretty display name is single-sourced in a hand-editable
   `model_catalog.yaml`, loaded by the dependency-free `model_catalog.py` (D142) — both
   `model_client.py` and `cmd/base.py` (the `watchdog context`/`_launch_claude` path) read from

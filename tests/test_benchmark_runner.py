@@ -785,11 +785,11 @@ def test_run_finalizer_arm_passes_arm_knobs_through(monkeypatch, tmp_path):
         captured["finalizer_effort"] = ns.finalizer_effort
     monkeypatch.setattr(wd_ingest, "cmd_finalize", _capture)
 
-    arm = {"id": "gemini-flash-lite", "finalizer_model": "gemini:gemini-3.1-flash-lite"}
+    arm = {"id": "gemini-flash-lite", "finalizer_model": "gemini:gemini-3.5-flash-lite"}
     result = rb.run_finalizer_arm(arm, tmp_path)
 
     assert result.ok is True
-    assert captured["finalizer_model"] == "gemini:gemini-3.1-flash-lite"
+    assert captured["finalizer_model"] == "gemini:gemini-3.5-flash-lite"
     assert captured["finalizer_effort"] is None
 
 
@@ -1981,16 +1981,31 @@ def test_reference_usage_files_no_match_returns_empty(tmp_path):
     assert cr.reference_usage_files(tmp_path, "deepseek-v4-flash", None, "deepseek") == []
 
 
-def test_fallback_estimate_prices_against_catalog_scaled_by_effort_ratio():
+def test_fallback_estimate_prices_against_catalog_scaled_by_effort_ratio(monkeypatch):
     """No archived run anywhere yet: price directly against the catalog's own published rate for
     this exact model, scaled by the documented per-effort ratio — not a fabricated dollar figure,
-    and clearly flagged (`projected: True`) as a rough placeholder rather than a calibrated one."""
+    and clearly flagged (`projected: True`) as a rough placeholder rather than a calibrated one.
+    Pinned to the off-peak rate (D217) so the assertion doesn't depend on the hour the suite runs;
+    the multiplier itself is covered in `test_fallback_estimate_applies_the_current_price_period`."""
+    from watchdog import model_catalog
+    monkeypatch.setattr(model_catalog, "price_multiplier", lambda *_a, **_k: 1.0)
     est = cr.fallback_estimate(1_000_000, "deepseek-v4-flash", "low")
     ratio = cr.DEFAULT_OUTPUT_RATIO_BY_EFFORT["low"]
-    expected = 1_000_000 * 0.14e-6 + 1_000_000 * ratio * 0.28e-6
+    expected = 1_000_000 * 0.22e-6 + 1_000_000 * ratio * 0.66e-6
     assert est["cost_low"] == est["cost_high"] == pytest.approx(expected)
     assert est["runs_used"] == 0
     assert est["projected"] is True
+
+
+def test_fallback_estimate_applies_the_current_price_period(monkeypatch):
+    """A benchmark arm on a clock-priced model (D217) is quoted at the rate in force when it is
+    asked, so a peak-hours estimate isn't quietly half the bill the arm will actually run up."""
+    from watchdog import model_catalog
+    monkeypatch.setattr(model_catalog, "price_multiplier", lambda *_a, **_k: 1.0)
+    off_peak = cr.fallback_estimate(1_000_000, "deepseek-v4-flash", "low")
+    monkeypatch.setattr(model_catalog, "price_multiplier", lambda *_a, **_k: 2.0)
+    peak = cr.fallback_estimate(1_000_000, "deepseek-v4-flash", "low")
+    assert peak["cost_low"] == pytest.approx(2 * off_peak["cost_low"])
 
 
 def test_fallback_estimate_unknown_model_returns_none():
@@ -2571,3 +2586,45 @@ def test_verifier_precision_single_arm_run_still_needs_no_arm(tmp_path):
     run = tmp_path / "run"
     (run / "artifacts" / "bench-ex-a" / "extracted").mkdir(parents=True)
     assert vp._source_dirs(str(run))[0].endswith("bench-ex-a/extracted")
+
+
+# ── the shipped benchmark.yaml itself ──────────────────────────────────────────────────────────
+
+def test_every_shipped_arm_pins_an_effort_its_model_accepts():
+    """A sweep arm that names an effort its model rejects fails at the first model call — after
+    the run has already seeded vaults and started spending on the arms before it. The catalog can
+    answer this for free, so it does, on the real `benchmarks/benchmark.yaml` rather than a
+    fixture. Tier aliases (`sonnet`, `sonnet-4.6`) are resolved first, exactly as the pipeline
+    does; a `deepseek:…-thinking` id is left alone, since `_effort_levels` is what knows how to
+    strip that marker (D217) and this is a test of the real path."""
+    from watchdog.model_client import _resolve_effort, provider_for_backend, resolve_model_id
+    config = yaml.safe_load((BENCHMARKS_DIR / "benchmark.yaml").read_text(encoding="utf-8"))
+    checked = 0
+    for stage in ("extractor_sweep", "finalizer_sweep", "classifier_sweep", "sdk_check"):
+        for arm in config[stage]["arms"]:
+            for kind in ("extractor", "finalizer", "classifier"):
+                model, effort = arm.get(f"{kind}_model"), arm.get(f"{kind}_effort")
+                if not model or effort is None:
+                    continue
+                backend, _, model_id = model.rpartition(":")
+                _resolve_effort(provider_for_backend(backend or None),
+                                resolve_model_id(model_id), effort)   # raises if unsupported
+                checked += 1
+    assert checked > 10, "expected the sweep to pin effort on most of its arms"
+
+
+def test_deepseek_arms_cross_thinking_with_effort():
+    """The DeepSeek sweep is a 2x2-ish grid, not one knob: thinking off (no effort — the provider
+    has none there), and `low`/`high` on each thinking id. `medium`/`xhigh` would be duplicates of
+    `high` under DeepSeek's own alias mapping, so their absence is deliberate (D217)."""
+    config = yaml.safe_load((BENCHMARKS_DIR / "benchmark.yaml").read_text(encoding="utf-8"))
+    ds = {a["id"]: a for a in config["extractor_sweep"]["arms"]
+          if a.get("extractor_model", "").startswith("deepseek:")}
+    assert set(ds) == {"ds-flash", "ds-flash-think-low", "ds-flash-think-high",
+                       "ds-pro", "ds-pro-think-low", "ds-pro-think-high"}
+    for arm_id, arm in ds.items():
+        thinking = arm["extractor_model"].endswith("-thinking")
+        assert thinking == ("think" in arm_id)
+        assert ("extractor_effort" in arm) is thinking, \
+            f"{arm_id}: effort belongs on the thinking arms and only on them"
+    assert {ds[a]["extractor_effort"] for a in ds if "think" in a} == {"low", "high"}

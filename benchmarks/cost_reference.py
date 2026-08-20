@@ -87,10 +87,14 @@ def fallback_estimate(est_tokens: int, model: str, effort: str | None) -> dict |
     `DEFAULT_OUTPUT_RATIO_BY_EFFORT`'s rough per-effort ratio. Returns `None` for a model not in
     the catalog, so a caller never fabricates a number from nothing.
     """
-    from watchdog.model_catalog import all_models
+    from watchdog.model_catalog import all_models, price_multiplier
     row = next((m for m in all_models() if m["id"] == model), None)
     if row is None:
         return None
     ratio = DEFAULT_OUTPUT_RATIO_BY_EFFORT.get(effort, DEFAULT_OUTPUT_RATIO_BY_EFFORT[None])
-    cost = est_tokens * row["input"] + est_tokens * ratio * row["output"]
+    # Priced at the rate in force now, for a model whose rates vary by the clock (D217) — a
+    # pre-flight figure for an arm about to run. An arm that runs long enough to cross a peak
+    # boundary is billed on both sides of it; only the archived per-call costs show that.
+    cost = ((est_tokens * row["input"] + est_tokens * ratio * row["output"])
+            * price_multiplier(model))
     return {"cost_low": cost, "cost_high": cost, "runs_used": 0, "projected": True}

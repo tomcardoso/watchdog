@@ -91,11 +91,38 @@
 # whose date has passed, not the last one in the list), and an individual value can be a
 # `{base, tiers}` object rather than a scalar. Both have produced a false "our catalog is wrong"
 # reading before — resolve them before trusting a surface diff against this file.
-# Speaking of tiers: this catalog prices every model at one flat rate and does not model
+# The dataset also goes stale in a way a diff won't show: its DeepSeek V4 rows still carried the
+# pre-2026-08-16 prices days after DeepSeek itself published the increase, so a provider's own
+# page is the authority when the two disagree, not the tie-breaker.
+# Speaking of tiers: this catalog prices every model at one flat rate PER LENGTH and does not model
 # context-length pricing tiers. It doesn't have to, because `long_context_threshold` keeps every
 # call below the length where any tier would kick in — see the next paragraph. Two boundaries are
 # known here: the large-window GPT-5.x models roughly double their rate above ~272K tokens, and
 # Gemini 3.1 Pro doubles above 200K.
+#
+# `price_periods` (D217) is the one axis this catalog DOES model, because no clamp can dodge it:
+# a rate that varies by the CLOCK. A model that declares it prices at the entry's own `input`/
+# `output`/`cached_input`/`cache_write` rates most of the time, and at those rates times a window's
+# `multiplier` while the clock is inside that window. Shape:
+#
+#     price_periods:
+#       - {from: "01:00", to: "04:00", multiplier: 2.0}
+#
+# Times are 24-hour **UTC** always — a provider publishing local hours must be converted here, at
+# authoring time, so nothing downstream has to carry a timezone. Each window is half-open,
+# `[from, to)`: a call landing exactly on `to` is outside it. A window whose `from` is later than
+# its `to` wraps midnight (`22:00`->`02:00`). Windows are matched in order and the first hit wins;
+# outside all of them the multiplier is 1.0, so the rates in the entry are the CHEAP rates and a
+# window only ever names the exception. Declaring the cheap side as the base is deliberate: a model
+# that later drops the scheme reverts to correct flat pricing by deleting the field.
+#
+# `model_catalog.price_multiplier()` resolves it against the current UTC time (or an explicit one),
+# and `model_client`'s `_api_cost`/`_openai_cost` apply it to the finished per-call figure — so a
+# call is billed at the rate in force WHEN IT RAN, which is also why nothing recomputes an archived
+# call's cost later (`cmd/usage.py` reads the stored `cost_usd` and never re-prices it). The
+# pre-flight estimates (`--estimate-all`, `benchmarks/cost_reference.fallback_estimate`) apply the
+# same multiplier for the moment they are asked, and mark the affected rows: a long run that
+# crosses a window boundary is billed on both sides of it, which no single-figure estimate can say.
 #
 # `long_context_threshold` (#555, D202) is the real-token input length at/above which a model bills
 # at a higher rate. `pipeline/section.py` clamps BOTH the sectioning threshold and the per-section
@@ -251,25 +278,54 @@ models:
     effort_levels: [low, medium, high, xhigh, max]
     tokenizer_ratio: 1.28     # copied from Opus 4.8/Sonnet 5 family, unconfirmed for this id (D206)
 
-  # DeepSeek V4 (1M-token window; cache-hit input is a ~50x discount on the miss rate)
+  # DeepSeek V4 (1M-token window; cache-hit input is a ~31x discount on the miss rate).
+  #
+  # PRICES REPLACED 2026-08-20 against api-docs.deepseek.com/quick_start/pricing. DeepSeek raised
+  # every V4 rate and introduced peak/off-peak pricing at 16:00 UTC on 2026-08-16, announced on
+  # api-docs.deepseek.com/updates alongside the V4-Pro GA release. The rates below are the
+  # OFF-PEAK ones, per `price_periods`' base-is-the-cheap-rate convention above; peak is exactly
+  # 2x on every column, which is DeepSeek's own framing ("off-peak rates are half of the peak
+  # rates"). What this catalog carried before (flash $0.14/$0.28, pro $0.435/$0.87, both flat) is
+  # 1.6x-2.4x below the new off-peak rate and 3.1x-4.7x below peak, so every archived benchmark
+  # and usage figure for a DeepSeek arm understates what the same run would cost today — see
+  # DECISIONS D217 and benchmarks/FINDINGS.md.
+  #
+  # `effort_levels` is new here too (DeepSeek added `reasoning_effort` on 2026-08-13, same
+  # release): thinking mode now takes low/high/max. `medium` and `xhigh` are deliberately NOT
+  # declared even though the API accepts them, because DeepSeek documents them as aliases —
+  # api-docs.deepseek.com/guides/thinking_mode maps `medium`->high and `xhigh`->high — and this
+  # field exists to make a level a user asks for either happen or fail loudly, not silently become
+  # a different one. The practical effect of leaving `medium` out is that `cmd/ingest.py`'s
+  # implicit `medium` extractor default keeps being skipped on DeepSeek exactly as it was before
+  # the field existed, so a DeepSeek run's effort is unchanged by this addition: the provider's own
+  # default, `high`, unless something asks for `low`/`max` explicitly. The levels here reach only
+  # the `-thinking` ids — `reasoning_effort` tunes how deeply the model thinks, so with thinking
+  # off there is nothing for it to tune, and `model_client._effort_levels` reports no levels at all
+  # for a plain id rather than accepting one the same request would then contradict.
   - id: deepseek-v4-flash
     name: DeepSeek V4 Flash
     provider: deepseek
-    input: 0.14e-6
-    output: 0.28e-6
-    cached_input: 0.0028e-6
+    input: 0.22e-6
+    output: 0.66e-6
+    cached_input: 0.007e-6
     context_window: 1_000_000
     max_output_tokens: 384_000
+    effort_levels: [low, high, max]
     tokenizer_ratio: 0.81     # measured #617, corpus-v1 2026-08-15 (DeepSeek V4 tokenizer)
+    price_periods: &deepseek_peak    # peak hours, UTC — 2x every rate above
+      - {from: "01:00", to: "04:00", multiplier: 2.0}
+      - {from: "06:00", to: "10:00", multiplier: 2.0}
   - id: deepseek-v4-pro
     name: DeepSeek V4 Pro
     provider: deepseek
-    input: 0.435e-6
-    output: 0.87e-6
-    cached_input: 0.003625e-6
+    input: 0.66e-6
+    output: 1.98e-6
+    cached_input: 0.022e-6
     context_window: 1_000_000
     max_output_tokens: 384_000
+    effort_levels: [low, high, max]
     tokenizer_ratio: 0.81     # measured #617, corpus-v1 2026-08-15 (DeepSeek V4 tokenizer)
+    price_periods: *deepseek_peak    # same windows as Flash — one schedule, both models
 
   # OpenAI GPT-5 family, standard tier (the -pro variants are excluded: no discounted cache
   # rate, and a flat 6x price jump over these for no clear quality benefit — see #473)
@@ -363,32 +419,53 @@ models:
     long_context_threshold: 272_000   # 2x input / 1.5x output above this, whole request (#555)
 
   # Gemini 3.x, standard tier at the <=200k-token rate (Pro's >200k rate is double — not
-  # modeled here, same simplification as elsewhere in this catalog). 3.5 Flash and 3.1
+  # modeled here, same simplification as elsewhere in this catalog). 3.7 Flash and 3.5
   # Flash-Lite are stable; 3.1 Pro Preview is a preview release (Google may deprecate it on
-  # two weeks' notice). Gemini 2.5 (Flash/Flash-Lite/Pro) is deliberately not catalogued
-  # (#583, D182): Google now 404s all three for API keys without prior usage of them,
-  # ahead of their own Oct 16 2026 shutdown date, and its own migration guidance points at
-  # 3.1 Flash-Lite / 3.5 Flash — the two rows below already cover that.
-  - id: gemini-3.5-flash
-    name: Gemini 3.5 Flash
+  # two weeks' notice) and remains the newest Pro — Google's Pro line has not moved past 3.1
+  # while the Flash line went to 3.7. Gemini 2.5 (Flash/Flash-Lite/Pro) is deliberately not
+  # catalogued (#583, D182): Google now 404s all three for API keys without prior usage of them,
+  # ahead of their own Oct 16 2026 shutdown date.
+  #
+  # Both Flash rows were REPLACED 2026-08-20, not added alongside their predecessors (D217).
+  # `gemini-3.5-flash` -> `gemini-3.7-flash`: 3.7 is stable, newer, Google's "most capable Flash",
+  # and half the price of the 3.5 Flash it replaces on input / 42% of it on output.
+  # `gemini-3.1-flash-lite` -> `gemini-3.5-flash-lite`: 3.1 Flash-Lite is now formally deprecated
+  # (ai.google.dev/gemini-api/docs/deprecations, shutdown no earlier than 2027-05-07) with 3.5
+  # Flash-Lite named by Google as its replacement. That one is a real increase, not a free swap:
+  # $0.25->$0.30 input, $1.50->$2.50 output. `gemini-3.6-flash` is skipped on purpose — same
+  # price as 3.7 and a release older, so it can only lose a cost/quality comparison.
+  #
+  # The 3.7 Flash rates below are PROMOTIONAL, in effect through 2026-12-31 (source:
+  # ai.google.dev/gemini-api/docs/pricing, fetched 2026-08-20). On 2027-01-01 they double, to
+  # $1.50 / $7.50 / $0.15 — a human flips those three numbers then, the same way Sonnet 5's
+  # introductory rate was handled, with no date-conditional logic here. This is a scheduled
+  # *price* change, not a `price_periods` schedule: that field models a rate that keeps cycling,
+  # not a one-way flip on a calendar date.
+  #
+  # `tokenizer_ratio` is copied from the Gemini family value, not re-measured for these two ids —
+  # permitted by this file's own convention above (all three previous Gemini entries returned
+  # byte-identical counts), and cheap to confirm properly, since Gemini's token counter is free:
+  # `benchmarks/tokenizer_ratio.py --count` re-measures both against corpus-v1 for $0.
+  - id: gemini-3.7-flash
+    name: Gemini 3.7 Flash
     provider: gemini
-    input: 1.50e-6
-    output: 9.00e-6
-    cached_input: 0.15e-6
+    input: 0.75e-6            # promotional through 2026-12-31; $1.50e-6 from 2027-01-01
+    output: 3.75e-6           # promotional through 2026-12-31; $7.50e-6 from 2027-01-01
+    cached_input: 0.075e-6    # promotional through 2026-12-31; $0.15e-6 from 2027-01-01
     context_window: 1_000_000
     max_output_tokens: 65_536
     effort_levels: [low, medium, high]
-    tokenizer_ratio: 0.91     # measured #617, corpus-v1 2026-08-15 (shared Gemini tokenizer)
-  - id: gemini-3.1-flash-lite
-    name: Gemini 3.1 Flash-Lite
+    tokenizer_ratio: 0.91     # Gemini family value (#617); not independently measured for this id
+  - id: gemini-3.5-flash-lite
+    name: Gemini 3.5 Flash-Lite
     provider: gemini
-    input: 0.25e-6
-    output: 1.50e-6
-    cached_input: 0.025e-6
+    input: 0.30e-6
+    output: 2.50e-6
+    cached_input: 0.03e-6
     context_window: 1_000_000
     max_output_tokens: 65_536
     effort_levels: [low, medium, high]
-    tokenizer_ratio: 0.91     # measured #617, corpus-v1 2026-08-15 (shared Gemini tokenizer)
+    tokenizer_ratio: 0.91     # Gemini family value (#617); not independently measured for this id
   - id: gemini-3.1-pro-preview
     name: Gemini 3.1 Pro Preview
     provider: gemini
