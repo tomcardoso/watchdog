@@ -316,11 +316,11 @@ def test_deepseek_omits_the_alias_effort_levels():
     ("23:00", 1.0),
 ])
 def test_price_multiplier_follows_the_declared_windows(hhmm, expected):
-    from datetime import UTC, datetime
+    from datetime import datetime, timezone
 
     from watchdog.model_catalog import price_multiplier
     hh, mm = (int(p) for p in hhmm.split(":"))
-    at = datetime(2026, 8, 20, hh, mm, tzinfo=UTC)
+    at = datetime(2026, 8, 20, hh, mm, tzinfo=timezone.utc)
     assert price_multiplier("deepseek-v4-flash", at) == expected
     assert price_multiplier("deepseek-v4-pro", at) == expected
     assert price_multiplier("claude-sonnet-4-6", at) == 1.0     # flat-priced model, any hour
@@ -330,27 +330,27 @@ def test_price_multiplier_follows_the_declared_windows(hhmm, expected):
 def test_price_multiplier_converts_an_aware_datetime_to_utc():
     """The windows are UTC, so an aware datetime is converted before it is read — the local hour
     on the clock face is not what decides the rate."""
-    from datetime import UTC, datetime, timedelta, timezone
+    from datetime import datetime, timedelta, timezone
 
     from watchdog.model_catalog import price_multiplier
     eastern = timezone(timedelta(hours=-4))
     # 22:00 EDT is 02:00 UTC — peak, though its local hour sits in neither window.
     assert price_multiplier("deepseek-v4-flash", datetime(2026, 8, 20, 22, 0, tzinfo=eastern)) == 2.0
-    assert price_multiplier("deepseek-v4-flash", datetime(2026, 8, 20, 22, 0, tzinfo=UTC)) == 1.0
+    assert price_multiplier("deepseek-v4-flash", datetime(2026, 8, 20, 22, 0, tzinfo=timezone.utc)) == 1.0
     # 09:00 EDT is 13:00 UTC — off-peak, though its local hour sits inside the second window.
     assert price_multiplier("deepseek-v4-flash", datetime(2026, 8, 20, 9, 0, tzinfo=eastern)) == 1.0
-    assert price_multiplier("deepseek-v4-flash", datetime(2026, 8, 20, 9, 0, tzinfo=UTC)) == 2.0
+    assert price_multiplier("deepseek-v4-flash", datetime(2026, 8, 20, 9, 0, tzinfo=timezone.utc)) == 2.0
 
 
 def test_price_multiplier_window_wraps_midnight():
-    from datetime import UTC, datetime, time
+    from datetime import datetime, time, timezone
 
     from watchdog import model_catalog
     assert model_catalog._in_window(time(23, 0), time(22, 0), time(2, 0))
     assert model_catalog._in_window(time(1, 0), time(22, 0), time(2, 0))
     assert not model_catalog._in_window(time(12, 0), time(22, 0), time(2, 0))
     assert not model_catalog._in_window(time(9, 0), time(9, 0), time(9, 0))   # empty span
-    at = datetime(2026, 8, 20, 23, 30, tzinfo=UTC)
+    at = datetime(2026, 8, 20, 23, 30, tzinfo=timezone.utc)
     assert model_catalog.price_multiplier("deepseek-v4-flash", at) == 1.0
 
 

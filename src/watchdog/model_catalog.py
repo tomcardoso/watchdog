@@ -6,7 +6,7 @@ imports watchdog.cmd.base).
 """
 
 import importlib.resources
-from datetime import UTC, datetime, time
+from datetime import datetime, time, timezone
 
 import yaml
 
@@ -255,15 +255,15 @@ def price_multiplier(model_id: str, at: datetime | None = None) -> float:
     clock sits inside it (D217). See `model_catalog.yaml`'s `price_periods` comment.
 
     `at` is interpreted in UTC: an aware datetime is converted, a naive one is assumed to already
-    be UTC (the shape `datetime.now(UTC)` produces, which is the default). Windows are matched in
+    be UTC (the shape `datetime.now(timezone.utc)` produces, which is the default). Windows are matched in
     declaration order and the first hit wins, so overlapping windows resolve to the earlier one
     rather than compounding."""
     windows = _PRICE_PERIODS.get(model_id.lower())
     if not windows:
         return 1.0
-    moment = at or datetime.now(UTC)
+    moment = at or datetime.now(timezone.utc)
     if moment.tzinfo is not None:
-        moment = moment.astimezone(UTC)
+        moment = moment.astimezone(timezone.utc)
     now = moment.time()
     for start, end, multiplier in windows:
         if _in_window(now, start, end):
