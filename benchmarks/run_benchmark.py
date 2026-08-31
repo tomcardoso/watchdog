@@ -312,6 +312,8 @@ def _stale_reason(vault: Path) -> str | None:
     queue = wd / "queue"
     if queue.is_dir() and any(queue.glob("*.json")):
         return "already has a queued/staged batch"
+    if (queue / "_failed").is_dir() and any((queue / "_failed").glob("*.json")):
+        return "has documents that failed a previous attempt (queue/_failed)"
     if any((wd / "tmp").glob("result_*.json")):
         return "has a batch pending finalization (extracted but not yet finalized)"
     if (wd / "registry" / "batch-pending.json").exists():

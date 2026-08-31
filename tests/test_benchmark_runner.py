@@ -183,6 +183,13 @@ def test_stale_reason_flags_queued_batch(tmp_path):
     assert "queued" in rb._stale_reason(vault)
 
 
+def test_stale_reason_flags_failed_queue(tmp_path):
+    vault = tmp_path / "vault"
+    (vault / ".watchdog" / "queue" / "_failed").mkdir(parents=True)
+    (vault / ".watchdog" / "queue" / "_failed" / "abc.json").write_text("{}")
+    assert "_failed" in rb._stale_reason(vault)
+
+
 def test_stale_reason_flags_pending_finalization(tmp_path):
     vault = tmp_path / "vault"
     (vault / ".watchdog" / "tmp").mkdir(parents=True)
