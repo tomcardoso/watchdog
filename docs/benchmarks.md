@@ -19,11 +19,14 @@ behind this (`benchmarks/run_benchmark.py`) is maintainer-only — it is not par
 
 ## What to expect
 
-Figures below come from the most recent completed run; see `benchmarks/<date>/docs-summary.md`
-for the exact numbers and `benchmarks/FINDINGS.md` for the fuller narrative behind them.
-
-*(No run has been scored end to end under the current tooling yet — this section fills in once
-one has. Historical, pre-automation figures are in `benchmarks/FINDINGS.md`.)*
+Every model and effort level that's been benchmarked gets one row in a maintainer-generated
+index — cost per page, speed per page, and how much of a document's material facts it recovered —
+so this section can eventually be "here's the table" rather than a narrative. That table isn't
+ready to publish yet: recall needs a person (or a model acting as a judge) to check each
+extraction against the source document, and that pass hasn't been run against the current answer
+key. Until it has, every model measured so far sits in a "measured, not yet judged" list rather
+than a rated one — see `benchmarks/FINDINGS.md` for the fuller narrative and caveats behind the
+numbers that do exist.
 
 ## Roadmap
 
@@ -52,3 +55,5 @@ A few things this benchmark doesn't cover yet:
   what it implied for a default.
 - `benchmarks/BENCHMARKING.md` — the full protocol `run_benchmark.py` automates, kept as
   reference and as a manual fallback.
+- `benchmarks/RUNBOOK.md` — the step-by-step procedure a maintainer follows to run a benchmark
+  pass and turn it into the index this page will eventually show.

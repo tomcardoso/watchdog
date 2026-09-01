@@ -579,6 +579,68 @@ that the instruction change does what it was written to do, not as a closed loop
 `gpt-mini-low/med/high` re-run against the fixed instructions, scored against the original
 2026-08-08 pass, would be the real confirmation.
 
+### Full 26-arm extractor sweep: `sonnet-4.6-high` is still the ceiling, but three arms match most of it at a fraction of the cost — and `sonnet-5` underperforms `sonnet-4.6` at every tier (2026-08-31, run `2026-08-31-1645`, #656)
+
+Run for the production model-selection decision: every Claude/OpenAI/Gemini/DeepSeek arm and
+effort tier in `extractor_sweep` at the time (26 arms), against the full 209-page, 6-document
+corpus. Code version `c257766fd` on `main` (clean tree). Numeric-anchored slice only — 119 fact
+items / 240 anchors, 57 `must_not_miss` items / 76 anchors — so this is roughly a third of the key
+items; the rest still needs the qualitative judge pass before this settles a default. Sub-item
+aggregation (anchors matched / anchors present) is what's ranked on, per the 2026-07-27 entry
+above; `REPORT.md`'s binary-per-item count is included alongside since that's what ships by
+default and flatters cheap arms.
+
+| Arm | Facts (sub-item) | must_not_miss (sub-item) | Facts (binary) | Cost | Docs |
+|---|---|---|---|---|---|
+| `sonnet-4.6-high` | **84%** (202/240) | **93%** (71/76) | 92% (110/119) | $9.710 | 6/6 |
+| `ds-pro-think-high` | 70% (167/240) | 68% (52/76) | 79% (94/119) | $0.414 | 6/6 |
+| `sonnet-4.6-low` | 69% (165/240) | 82% (62/76) | 76% (91/119) | $1.161 | 6/6 |
+| `ds-flash` | 68% (163/240) | 61% (46/76) | 76% (90/119) | $0.072 | 6/6 |
+| `gpt-nano-high` | 61% (146/240) | 66% (50/76) | 71% (84/119) | $0.270 | 6/6 |
+| `ds-flash-think-high` | 60% (145/240) | 58% (44/76) | 70% (83/119) | $0.150 | 6/6 |
+| `haiku` | 58% (140/240) | 59% (45/76) | 66% (79/119) | $0.418 | 6/6 |
+| `sonnet-4.6-med` | 58% (140/240) | 79% (60/76) | 66% (79/119) | $1.472 | 6/6 |
+| `ds-pro` | 58% (139/240) | 59% (45/76) | 68% (81/119) | $0.212 | 6/6 |
+| `gpt-luna-high` | 55% (131/240) | 74% (56/76) | 64% (76/119) | $0.150 | 6/6 |
+| `ds-pro-think-low` | 52% (126/240) | 50% (38/76) | 62% (74/119) | $0.303 | 6/6 |
+| `sonnet-5-high`* | 49% (118/240) | 62% (47/76) | 58% (69/119) | $1.398† | 6/6 |
+| `sonnet-5-med`* | 47% (112/240) | 49% (37/76) | 55% (65/119) | $1.026† | 6/6 |
+| `gemini-flash-high` | 47% (112/240) | 55% (42/76) | 54% (64/119) | $0.456 | 6/6 |
+| `sonnet-5-low` | 45% (109/240) | 46% (35/76) | 53% (63/119) | $0.888 | 6/6 |
+| `gpt-mini-low` | 43% (103/240) | 46% (35/76) | 49% (58/119) | $0.305 | 6/6 |
+| `gpt-luna-med` | 40% (97/240) | 42% (32/76) | 46% (55/119) | $0.081 | 6/6 |
+| `gpt-nano-med` | 40% (95/240) | 59% (45/76) | 48% (57/119) | $0.150 | 6/6 |
+| `gpt-mini-med` | 40% (95/240) | 42% (32/76) | 48% (57/119) | $1.005 | 6/6 |
+| `ds-flash-think-low` | 39% (93/240) | 42% (32/76) | 49% (58/119) | $0.101 | 6/6 |
+| `gpt-mini-high` | 35% (84/240) | 43% (33/76) | 41% (49/119) | $2.053 | 6/6 |
+| `gpt-luna-low` | 34% (82/240) | 39% (30/76) | 39% (47/119) | $0.069 | 6/6 |
+| `gemini-flash-low` | 34% (82/240) | 38% (29/76) | 41% (49/119) | $0.279 | 6/6 |
+| `gemini-flash-med` | 34% (82/240) | 47% (36/76) | 42% (50/119) | $0.292 | 6/6 |
+| `gpt-nano-low` | 32% (76/240) | 42% (32/76) | 34% (41/119) | $0.090 | 6/6 |
+| `gemini-flash-lite` | 18% (44/240) | 22% (17/76) | 21% (25/119) | $0.105 | 6/6 |
+
+\*`2026-08-31-1645`'s own `run.json`/`REPORT.md` report these two arms' recall as above but
+`documents_extracted: 0`, `cost_usd: 0.0` — an internal contradiction traced to #656: a separate,
+concurrent standalone run (`2026-08-31-1626`) targeting just these two arms succeeded and wrote
+real extractions into the same shared vault paths while `1645`'s own attempt at them was still
+failing on a credit-balance error, and `1645`'s scoring pass silently picked up `1626`'s files.
+The recall figures above are real and belong to these two arms, just not to this run — cost/docs
+are correspondingly pulled from `1626` (†) rather than `1645`.
+
+Reading it: `sonnet-4.6-high` is the clear sub-item ceiling, same arm the 2026-07-27 entry already
+flagged, but it's also the priciest arm here by a wide margin (~4.6¢/page) and the only one that
+needed retries or sectioned calls. No other arm is close on `Facts (sub-item)`, but three cluster
+well below it at a fraction of the cost: `ds-pro-think-high` (70%, $0.41), `sonnet-4.6-low` (69%,
+$1.16), and `ds-flash` (68%, $0.07) — `ds-flash` gets 81% of `sonnet-4.6-high`'s sub-item recall
+for 1/135th the cost. `sonnet-5` trails `sonnet-4.6` at every effort tier measured, which is
+notable enough to flag on its own, though it's also the arm class most touched by the
+contamination above, so treat its ranking as the least settled row in this table until a clean
+re-run confirms it.
+
+This does not settle a production default — it's the numeric-anchored third of the key items only,
+and the sub-item/binary split has flipped rankings before (2026-07-27 entry). The qualitative judge
+pass (RUNBOOK.md step 6) against a shortlist of these arms is the next step before choosing.
+
 ## Corrections logged along the way
 
 - The original `bench-ex-sonnet-high`/`bench-ex-sonnet-med` vaults (run 2026-07-15, before #403's
@@ -687,3 +749,14 @@ that the instruction change does what it was written to do, not as a closed loop
   work in that sentence, and it does not cancel evenly (see the D172 rescore, where the two arms'
   `must_not_miss` gap moved from −1 to +5 after bugs 1–3 alone, then settled at +1 once bug 4 was
   also fixed).
+- 2026-08-31 (#656): **two `bench run` invocations that overlap in wall-clock time and share an
+  arm id can silently cross-contaminate each other's report.** Vault paths are keyed by arm id
+  only, with no per-run scoping, so a concurrent run that succeeds on an arm can leave real
+  extraction files sitting in the shared vault for a sibling run's own (failed) attempt at that
+  same arm to inherit when its scoring pass reads the vault at write-time — the affected arm's
+  report shows a real recall figure alongside `documents_extracted: 0`/`cost_usd: 0.0`, which is
+  the tell. Found in the 26-arm sweep above (`sonnet-5-med`/`-high`). **General lesson: before
+  trusting any arm's row in a report, check that its recall figure is consistent with its own
+  `documents_extracted` and `cost_usd` — a non-zero recall next to zero docs/cost means the vault
+  was contaminated by something else, not that the arm quietly succeeded for free.** Not yet
+  fixed — #656 tracks it.

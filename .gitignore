@@ -12,6 +12,9 @@ benchmarks/.fixture-capture/
 # record; it states what a run meant *and* carries the caveats.
 benchmarks/runs/
 benchmarks/20[0-9][0-9]-[0-9][0-9]-*/
+# The #551 model index — regenerated from benchmarks/runs/ on demand, so it's only ever as
+# current as whichever runs happen to be kept locally. FINDINGS.md is still the durable record.
+benchmarks/index/
 # Qualitative judge output — generated per pass, meaningful only against the (ignored) run it
 # judged. The protocol beside it (build_packets.py, aggregate.py) stays tracked: that is what
 # makes one pass comparable to the next. The 2026-07-29 pass predates this rule and remains
