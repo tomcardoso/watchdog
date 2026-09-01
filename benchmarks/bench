@@ -23,6 +23,7 @@ Commands:
   arms                                        List arm ids from benchmark.yaml, by stage
   runs                                        List kept runs, newest first, with their commit
   score    <vault|dir> [...]                  Numeric-anchor recall scoring
+  index    [run_dir ...] [--judged FILE]      Per-model index (#551): facts/must_not_miss/cost/speed
   packets  --arms ID,... [--run DIR]          Build blinded qualitative judging packets
   judge    [DIR]                              Tally judgments into per-arm recall
   precision build|aggregate [...]             Verifier-added-fact precision (verify arms only)
@@ -96,6 +97,9 @@ PYEOF
         ;;
     score)
         exec "$VENV_PY" "$HERE/score_arms.py" "$@"
+        ;;
+    index)
+        exec "$VENV_PY" "$HERE/score_index.py" "$@"
         ;;
     packets)
         exec "$VENV_PY" "$HERE/qualitative/build_packets.py" "$@"

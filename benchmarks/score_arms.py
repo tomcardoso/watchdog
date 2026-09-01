@@ -189,12 +189,26 @@ def _strings(obj):
     return ""
 
 
+def _extracted_files(vault):
+    """The `extracted/*.json` artifacts for `vault`, checking both layouts a caller might pass:
+    a live vault nests them under `.watchdog/`, while a kept run directory's `artifacts/<arm>/`
+    holds `extracted/` directly (`bench_report.write_run`'s copy). The same dual check
+    `qualitative/build_packets.py`'s `load_extraction` already uses, so the #551 index can score
+    a run's archived artifacts — which outlive the live vault's next reset — the same way a live
+    vault scores."""
+    for sub in (("extracted",), (".watchdog", "extracted")):
+        d = os.path.join(vault, *sub)
+        if os.path.isdir(d):
+            return glob.glob(os.path.join(d, "*.json"))
+    return []
+
+
 def vault_doc_texts(vault):
     """Per-document extraction text, keyed by the document's sha256 (the artifact's own
     filename) — so a key item can be matched only against the extraction for the document it
     belongs to, instead of any document in the vault (#591)."""
     out = {}
-    for f in glob.glob(os.path.join(vault, ".watchdog", "extracted", "*.json")):
+    for f in _extracted_files(vault):
         sha = os.path.splitext(os.path.basename(f))[0]
         try:
             out[sha] = norm(_strings(json.loads(open(f, encoding="utf-8").read())))
@@ -212,12 +226,11 @@ def vault_text(vault):
 
 def vault_extracted_shas(vault):
     """The sha256 of every document this vault actually staged an extraction for — the filename
-    of each `.watchdog/extracted/<sha>.json` artifact, with no separate manifest to read (#559).
-    A vault whose arm was rate-limited or Ctrl-C'd partway through, or that lost individual
-    documents to per-document failures, simply has fewer of these files than a complete run — no
-    flag to check, just count what's actually there."""
-    return {os.path.splitext(os.path.basename(f))[0]
-           for f in glob.glob(os.path.join(vault, ".watchdog", "extracted", "*.json"))}
+    of each `extracted/<sha>.json` artifact (see `_extracted_files`), with no separate manifest
+    to read (#559). A vault whose arm was rate-limited or Ctrl-C'd partway through, or that lost
+    individual documents to per-document failures, simply has fewer of these files than a
+    complete run — no flag to check, just count what's actually there."""
+    return {os.path.splitext(os.path.basename(f))[0] for f in _extracted_files(vault)}
 
 
 def score_item(text, blob):

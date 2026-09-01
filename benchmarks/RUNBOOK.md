@@ -190,7 +190,27 @@ benchmarks/bench precision aggregate <out-dir>
 Read the `unsupported` rows first. An unsupported fact is a different and worse failure than a
 trivial one, and averaging the two together hides it.
 
-## 8. Write it down
+## 8. Update the model index
+
+```
+benchmarks/bench index [run_dir ...] [--judged benchmarks/<judge-pass-dir>/summary.json]
+```
+
+Regenerates `benchmarks/index/index.json`/`index.md` (#551) — one row per extractor arm: model,
+effort, facts, must_not_miss, cost/page, speed/page. With no arguments it reads every kept run
+under `benchmarks/runs/`. For each arm id it picks the most recent measurement that isn't
+`partial`/failed — never simply whichever run you pointed it at — so a run whose own attempt at an
+arm failed can't have its report scored off a sibling run's leftover vault contents for that same
+arm (#656); only when nothing clean exists anywhere does it fall back to a partial measurement,
+flagged. Pass `--judged` with step 6's `summary.json` to move the arm ids it covers into the rated
+table; every arm without a judge verdict lands in "measured, not yet judged" instead, with its
+numeric sub-item recall shown and clearly labelled as such — RUNBOOK step 6's warning about the
+numeric slice applies here too. Runs whose corpus/keys digest or scorer/cost-model version don't
+match the reference cohort are excluded and named, never silently blended in. `index.md` is a
+hand-paste fragment for `docs/benchmarks.md`, same convention as `docs-summary.md` — never
+auto-inserted.
+
+## 9. Write it down
 
 Add an entry to `FINDINGS.md` — the run directory is gitignored, so this is the only durable
 record. Say what the run *meant*, not just what it measured, and carry the caveats:

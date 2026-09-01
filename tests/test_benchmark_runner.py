@@ -28,6 +28,7 @@ import bench_report as br  # noqa: E402
 import cost_reference as cr  # noqa: E402
 import run_benchmark as rb  # noqa: E402
 import score_arms as sa  # noqa: E402
+import score_index as si  # noqa: E402
 import verifier_precision as vp  # noqa: E402
 
 import watchdog.cmd.ingest as wd_ingest  # noqa: E402
@@ -2635,3 +2636,148 @@ def test_deepseek_arms_cross_thinking_with_effort():
         assert ("extractor_effort" in arm) is thinking, \
             f"{arm_id}: effort belongs on the thinking arms and only on them"
     assert {ds[a]["extractor_effort"] for a in ds if "think" in a} == {"low", "high"}
+
+
+# ── score_index.py — the #551 model index ───────────────────────────────────────
+
+_COHORT_A = {"corpus_digest": "corpus-a", "keys_digest": "keys-a", "scorer": 2, "cost_model": 4}
+_COHORT_B = {"corpus_digest": "corpus-b", "keys_digest": "keys-b", "scorer": 2, "cost_model": 4}
+
+
+def _write_run(tmp_path, run_id, arms, cohort=_COHORT_A, extracted_by_vault=None):
+    """A `benchmarks/runs/<run_id>/` directory with a `run.json` and, for each entry in
+    `extracted_by_vault` ({vault_basename: {sha: extracted_doc_dict}}), the archived
+    `artifacts/<vault>/extracted/<sha>.json` files `score_index._sub_item_recall` reads."""
+    run_dir = tmp_path / "runs" / run_id
+    run_dir.mkdir(parents=True)
+    run_json = {
+        "run_id": run_id,
+        "frozen_refs": {"corpus_digest": cohort["corpus_digest"], "keys_digest": cohort["keys_digest"]},
+        "versions": {"scorer": cohort["scorer"], "cost_model": cohort["cost_model"]},
+        "arms": arms,
+    }
+    (run_dir / "run.json").write_text(json.dumps(run_json), encoding="utf-8")
+    for vault, docs in (extracted_by_vault or {}).items():
+        d = run_dir / "artifacts" / vault / "extracted"
+        d.mkdir(parents=True)
+        for sha, doc in docs.items():
+            (d / f"{sha}.json").write_text(json.dumps(doc), encoding="utf-8")
+    return run_dir
+
+
+def _extractor_arm(arm_id, *, vault=None, ok=True, partial=False, cost_usd=1.0, latency_s=10.0,
+                   pages_extracted=10, model="some-model", effort="medium", notional_cost=False,
+                   backends="claude-api (api-key)"):
+    return {
+        "arm_id": arm_id, "stage": "extractor", "vault": vault or f"bench-ex-{arm_id}",
+        "ok": ok, "partial": partial, "cost_usd": cost_usd, "latency_s": latency_s,
+        "pages_extracted": pages_extracted, "model": model, "effort": effort,
+        "notional_cost": notional_cost, "backends": backends,
+    }
+
+
+def test_cohort_key_reads_frozen_refs_and_versions():
+    run = {"frozen_refs": {"corpus_digest": "c", "keys_digest": "k"}, "versions": {"scorer": 2, "cost_model": 4}}
+    assert si.cohort_key(run) == ("c", "k", 2, 4)
+
+
+def test_build_index_prefers_a_clean_measurement_over_a_partial_one_regardless_of_recency(tmp_path):
+    """The #656 regression: an earlier run measured `sonnet-5-med` cleanly; a later run's own
+    attempt at the same arm id failed outright (partial, 0 pages) but its vault held leftover
+    extraction files from something else. The index must report the earlier run's real numbers,
+    not silently prefer whatever the most recent run says just because it is most recent."""
+    keys_dir = _write_key_with_document(
+        tmp_path, "doc-a", "sha-a", [{"id": "F1", "fact": "Revenue was $1,234,567 in 2024."}])
+    doc = {"document": {"note": "Revenue $1,234,567"}}
+
+    _write_run(tmp_path, "2026-08-01-1000",
+              [_extractor_arm("sonnet-5-med", cost_usd=2.0, pages_extracted=10)],
+              extracted_by_vault={"bench-ex-sonnet-5-med": {"sha-a": doc}})
+    _write_run(tmp_path, "2026-08-01-2000",
+              [_extractor_arm("sonnet-5-med", ok=False, partial=True, cost_usd=0.0,
+                              pages_extracted=0)],
+              # No extracted/ files at all for this run's own (failed) attempt.
+              extracted_by_vault={})
+
+    index = si.build_index(
+        [str(tmp_path / "runs" / "2026-08-01-1000"), str(tmp_path / "runs" / "2026-08-01-2000")],
+        keys_dir=keys_dir)
+
+    [row] = index["measured_not_yet_judged"]
+    assert row["source_run"] == "2026-08-01-1000"
+    assert row["facts"] == "1/1"
+    assert row["partial"] is False
+
+
+def test_build_index_falls_back_to_a_partial_measurement_when_nothing_clean_exists(tmp_path):
+    keys_dir = _write_key_with_document(tmp_path, "doc-a", "sha-a", [])
+    _write_run(tmp_path, "2026-08-01-1000",
+              [_extractor_arm("gpt-mini-low", ok=False, partial=True, cost_usd=0.0, pages_extracted=0)])
+
+    index = si.build_index([str(tmp_path / "runs" / "2026-08-01-1000")], keys_dir=keys_dir)
+
+    [row] = index["measured_not_yet_judged"]
+    assert row["partial"] is True
+
+
+def test_build_index_excludes_a_run_outside_the_reference_cohort(tmp_path):
+    """A run whose corpus/keys digests differ from the reference cohort must never contribute a
+    row — it answers a different, incomparable question — and must be named, not silently
+    dropped (#551's provenance-gate requirement)."""
+    keys_dir = _write_key_with_document(tmp_path, "doc-a", "sha-a", [])
+    _write_run(tmp_path, "2026-08-01-1000", [_extractor_arm("haiku")], cohort=_COHORT_A)
+    _write_run(tmp_path, "2026-08-02-1000", [_extractor_arm("haiku")], cohort=_COHORT_B)
+
+    index = si.build_index(
+        [str(tmp_path / "runs" / "2026-08-01-1000"), str(tmp_path / "runs" / "2026-08-02-1000")],
+        keys_dir=keys_dir)
+
+    # The reference cohort is the most recent run's (2026-08-02, cohort B) — the older run is the
+    # one excluded.
+    assert index["reference_cohort"]["corpus_digest"] == "corpus-b"
+    assert [e["run_id"] for e in index["excluded_runs"]] == ["2026-08-01-1000"]
+
+
+def test_build_index_splits_rated_from_measured_not_yet_judged(tmp_path):
+    keys_dir = _write_key_with_document(
+        tmp_path, "doc-a", "sha-a", [{"id": "F1", "fact": "Revenue was $1,234,567 in 2024."}])
+    _write_run(tmp_path, "2026-08-01-1000",
+              [_extractor_arm("judged-arm"), _extractor_arm("unjudged-arm")],
+              extracted_by_vault={
+                  "bench-ex-judged-arm": {"sha-a": {"document": {"note": "Revenue $1,234,567"}}},
+                  "bench-ex-unjudged-arm": {"sha-a": {"document": {"note": "no match here"}}},
+              })
+    judged_summary = {"judged-arm": {"facts": {"hit": 8, "total": 10, "pct": 80},
+                                     "must_not_miss": {"hit": 3, "total": 4, "pct": 75}}}
+
+    index = si.build_index([str(tmp_path / "runs" / "2026-08-01-1000")],
+                           judged_summary=judged_summary, keys_dir=keys_dir)
+
+    assert [r["arm_id"] for r in index["rated"]] == ["judged-arm"]
+    assert index["rated"][0]["facts"] == "8/10"
+    assert [r["arm_id"] for r in index["measured_not_yet_judged"]] == ["unjudged-arm"]
+
+
+def test_sorted_rows_handles_multiple_none_values_without_raising():
+    """Two rows with no cost figure at all (e.g. a partial arm with 0 pages) used to make the
+    ascending `cost`/`speed` sort compare `None < None`, which raises. Both must sort after every
+    row that does have a value, in either sort direction."""
+    rows = [
+        {"cost_per_page": 0.02, "must_not_miss_pct": 90},
+        {"cost_per_page": None, "must_not_miss_pct": None},
+        {"cost_per_page": 0.01, "must_not_miss_pct": 70},
+        {"cost_per_page": None, "must_not_miss_pct": None},
+    ]
+    by_cost = si._sorted_rows(rows, "cost")
+    assert [r["cost_per_page"] for r in by_cost] == [0.01, 0.02, None, None]
+
+    by_mnm = si._sorted_rows(rows, "must_not_miss")
+    assert [r["must_not_miss_pct"] for r in by_mnm] == [90, 70, None, None]
+
+
+def test_row_line_flags_notional_cost_with_a_tilde():
+    row = {"arm_id": "sonnet-sub", "model": "claude-sonnet-5", "effort": "medium",
+          "cost_per_page": 0.01, "speed_per_page_s": 1.0, "billing_class": "notional",
+          "partial": False, "facts_pct": 80, "facts": "8/10",
+          "must_not_miss_pct": None, "must_not_miss": None}
+    assert "~$0.0100/page" in si._row_line(row)
