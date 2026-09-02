@@ -1,26 +1,18 @@
 """Batch API integration for bulk whole-document extraction (#214, #530).
 
 Batch mode submits every whole-document (non-sectioned) extraction request in one provider batch
-— 50% off all token usage (stacking with the prompt caching wired in #213), at the cost of
-asynchronous completion (typically under an hour, up to 24h). `orchestrate._run_batch` is the
-sole caller; this module only knows the batch's own lifecycle (state, submit, status, collect) —
-it never touches the vault or calls postflight/write_vault, matching the existing
-preflight/postflight separation of concerns.
+— 50% off token usage, stacking with prompt caching (#213) — at the cost of asynchronous
+completion (typically under an hour, up to 24h). `orchestrate._run_batch` is the sole caller;
+this module only knows the batch's own lifecycle (state, submit, status, collect), never the
+vault, matching the preflight/postflight separation of concerns.
 
-Two providers are wired, dispatched by `backend` (`submit`/`status`/`collect`'s public entry
-points): Anthropic's Message Batches API (`claude-batch`, #214, inline requests via the
-`anthropic` SDK) and OpenAI's Batch API (`openai-batch`, #530, a JSONL file uploaded via `/v1/files`
-then referenced by `/v1/batches`, spoken over raw httpx — same no-new-SDK-dependency choice
-`model_client._openai_complete_async` already made, D37). The two APIs' request/response shapes
-differ enough that this is two real implementations behind one dispatcher, not a thin wrapper.
-
-State is a single `.watchdog/registry/batch-pending.json` per vault — only one batch is ever in
-flight at a time (mirroring `has_pending_finalization`'s "resolve the pending thing first"
-precedent) — durable across interruption, mirroring the research URL worklist (D46). The
-persisted state records which `backend` submitted it, so a later `watchdog dig` invocation
-resumes against the right provider even across an upgrade — state written before this field
-existed defaults to `claude-batch` on read (`orchestrate._resume_batch`).
-"""
+Two providers are wired behind `backend` (`submit`/`status`/`collect`'s dispatch): Anthropic's
+Message Batches API (`claude-batch`, #214) and OpenAI's Batch API (`openai-batch`, #530, JSONL
+over raw httpx, D37) — different enough shapes to be two real implementations, not a thin
+wrapper. State is a single `.watchdog/registry/batch-pending.json` per vault (only one batch in
+flight at a time), durable across interruption like the research URL worklist (D46); it records
+which `backend` submitted it so a later `watchdog dig` resumes against the right provider
+(state from before this field existed defaults to `claude-batch` on read)."""
 
 import datetime
 import json
@@ -56,20 +48,13 @@ def clear_state(vault: Path) -> None:
 
 def est_prompt_tokens(docs: list[dict]) -> dict[str, int]:
     """`{sha: chars/4 estimate of that doc's whole rendered prompt}`, persisted in the batch state
-    at submit time (#617).
-
-    The live path computes this inside `orchestrate._call_model`, which has the rendered prompt in
-    scope. A batch doesn't: the prompt is rendered here, at submission, and the usage record is
-    written by `_collect_batch_results` in a *later* invocation, by which point only the parsed
-    result and its usage remain. Without carrying it across, every batch-extracted call would lack
-    `est_prompt_tokens` and be skipped by `ingest_setup._model_tokenizer_calibration`, so a vault
-    that extracts exclusively on `claude-batch`/`openai-batch` could never calibrate its own
-    tokenizer ratio and would sit on the catalog constant forever.
-
-    Mirrors `_call_model`'s own normalization: a prompt is normally a string but may be a list of
-    Anthropic content blocks (A1, cache_control), and `json.dumps` gives that shape a stable text
-    form to measure — the same convention, so a batch record's estimate is comparable to a live
-    one's rather than being on its own scale."""
+    at submit time (#617). The live path computes this inside `_call_model`, which has the
+    rendered prompt in scope; a batch doesn't, since collection happens in a *later* invocation
+    with only the parsed result and usage left — without carrying it across, a vault extracting
+    exclusively via batch could never calibrate its tokenizer ratio
+    (`ingest_setup._model_tokenizer_calibration`). Mirrors `_call_model`'s own normalization
+    (string or Anthropic content-block list, A1) so a batch record's estimate is comparable to a
+    live one's."""
     return {d["sha"]: section.est_tokens(
         d["prompt"] if isinstance(d["prompt"], str) else json.dumps(d["prompt"], sort_keys=True))
         for d in docs}
@@ -118,22 +103,14 @@ async def collect(batch_id: str, api_key: str, model_id: str, backend: str = "cl
 
 async def _anthropic_submit(vault: Path, docs: list[dict], *, model: str, effort: str | None,
                             skills: dict[str, str], api_key: str, backend: str) -> str:
-    """`model` is a tier name or raw id (resolved via `model_client.resolve_model_id`); `effort`
-    is the abstract per-stage intent (D36), mapped to Claude's native value the same way a
-    single call would be. Reuses `model_client`'s task-budget/system-prompt constants directly
-    rather than duplicating them — this is the same request shape `_api_complete_async` builds
-    for a single call, just submitted as a batch of them.
-
-    `skills` maps each sha to the record-skill label its prompt was built with (D144). One batch
-    may mix skills — the skill is baked into that request's own prompt blocks, and the API treats
-    each request independently — but collection runs in a later process, so the mapping has to be
-    persisted rather than recomputed.
-
-    Sends `thinking` per request on the same `catalog_needs_thinking_param` gate the live
-    (`_api_complete_async`) and agent-sdk (`_agent_query`) paths already use (#635, D206) — this
-    path was the one Claude-calling caller left off that gate (#643), so a `thinking`-default-off
-    model extracted via `claude-batch` never actually reasoned regardless of #635 shipping.
-    """
+    """`model`/`effort` follow the same tier-resolution and abstract-intent mapping (D36) a
+    single call would use; this is the same request shape `_api_complete_async` builds, just
+    submitted as a batch. `skills` maps each sha to the record-skill label its prompt was built
+    with (D144) and must be persisted, since one batch may mix skills but collection runs in a
+    later process with no prompt left to inspect. Sends `thinking` per request on the same gate
+    the live and agent-sdk paths use (#635, D206) — this path was the one left off that gate
+    until #643, so a thinking-default-off model extracted via `claude-batch` never actually
+    reasoned even after #635 shipped."""
     model_id = model_client.resolve_model_id(model)
     effort_arg = model_client._resolve_effort("anthropic", model_id, effort)
     output_config = {"format": {"type": "json_schema", "schema": schemas.EXTRACTION}}
@@ -185,12 +162,9 @@ def _model_dump(obj) -> dict:
 
 
 def _iso(dt: datetime.datetime | None) -> str | None:
-    """A `MessageBatch` timestamp (a real `datetime`, per the SDK's own type) in the same
-    `%Y-%m-%dT%H:%M:%SZ` string shape `write_state` already stamps `submitted_at` with — so the
-    two are directly comparable without a second timestamp format anywhere in a batch's
-    lifecycle. `ended_at` is None until processing ends; passed through as None rather than a
-    placeholder string, since a caller that hasn't checked `processing_status` first shouldn't
-    be able to mistake "not finished yet" for a real timestamp."""
+    """A `MessageBatch` timestamp in the same string shape `write_state` stamps `submitted_at`
+    with, so the two are directly comparable. `None` (before processing ends) stays `None`
+    rather than a placeholder string, so it can't be mistaken for a real timestamp."""
     return dt.strftime(_TS_FMT) if dt is not None else None
 
 

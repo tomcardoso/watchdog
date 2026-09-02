@@ -1,14 +1,12 @@
 """`watchdog reindex` — rebuild `.embeddings/` and `.fulltext/` from on-disk vault state,
 with zero model calls (#218, #109).
 
-D38's tradeoff note: "changing `embed_model` requires a full re-chew" — true when embedding
-ran at chew time, before D43 moved it into `write_vault` (which needs extraction's title/
-type/entities for the contextual prefix). For an already-ingested vault those outputs
-already live in `documents.json`/`entities.json`, and the full per-page text lives in the
-morgue `<stem>.md` sibling files (D26) — so a full re-embed needs no OCR re-run and no model
-tokens, just local `embed.py` calls. This also unlocks retroactively upgrading an older vault
-to the hybrid (BM25 + rerank) corpus path (D43) without re-ingesting. The same on-disk state
-rebuilds the full-text (exact-term) index (`fulltext.py`) alongside it.
+Possible because embedding now runs at `write_vault` time, not chew time (D43) — an
+already-ingested vault's title/type/entities live in `documents.json`/`entities.json` and the
+full per-page text lives in the morgue `<stem>.md` files (D26), so a full re-embed needs no OCR
+re-run and no model tokens, just local `embed.py` calls. This also unlocks retroactively
+upgrading an older vault to the hybrid (BM25 + rerank) corpus path (D43) without re-ingesting.
+The same on-disk state rebuilds the full-text (exact-term) index (`fulltext.py`) alongside it.
 """
 
 import json

@@ -158,21 +158,13 @@ _THINKING_BY_DEFAULT_TIERS = {"sonnet-5", "opus-5"}
 
 def catalog_has_reasoning(model_id: str) -> bool:
     """Whether `model_id` has a private reasoning channel it can use before committing to its
-    visible answer — an OpenAI reasoning model (`reasoning: true`) or a Claude model with
-    `thinking` engaged, whether sent explicitly (`thinking: true`, #635) or on by default (Sonnet
-    5, Opus 5). Feeds the extraction scaffold's branch (#570): a model with a channel gets a
-    compact nudge into it, one without gets the explicit step-by-step form written into the
-    visible completion instead, via `document.plan` (see extract_instructions.md).
-
-    A DeepSeek `-thinking` id counts too (D217): thinking mode returns `reasoning_content`
-    alongside `content`, which is a private channel by any reading, and the marker has to be
-    stripped for the entry to be found at all. Before that, every DeepSeek thinking call was handed
-    the explicit `document.plan` scaffold built for models with *no* channel — paying for a visible
-    plan while also thinking privately. The provider check keeps the stripping honest: a
-    non-DeepSeek id that merely ends in `-thinking` is not granted a channel by its name.
-
-    False — the conservative default — for every other catalogued model (Haiku, DeepSeek's plain
-    ids, Gemini) and for any uncatalogued id: never assume a channel that isn't confirmed."""
+    visible answer — an OpenAI reasoning model, a Claude model with `thinking` engaged (explicit
+    or on-by-default), or a DeepSeek `-thinking` id (D217: its `reasoning_content` is a private
+    channel by any reading; the provider check keeps the marker-stripping honest, since a
+    non-DeepSeek id ending in `-thinking` isn't granted a channel by its name alone). Feeds the
+    extraction scaffold's branch (#570): a model with a channel gets a compact nudge into it, one
+    without gets the explicit step-by-step `document.plan` form instead. False — the conservative
+    default — for every other catalogued model and any uncatalogued id."""
     bare, deepseek_thinking = _split_deepseek_thinking(model_id)
     entry = _MODELS.get(bare.lower())
     if not entry:

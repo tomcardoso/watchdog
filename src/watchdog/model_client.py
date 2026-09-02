@@ -308,22 +308,15 @@ class ModelError(RuntimeError):
     """The model could not return schema-valid JSON, or the chosen backend can't run.
 
     `usage`/`cost_usd`/`attempts`/`model`/`backend`/`auth_mode` (D125) are set only when the
-    failure happened after at least one attempt actually called the model — the JSON-validation-
-    failure path and the truncation path in `acomplete_json` — so the real spend on a failed call
-    isn't lost. A backend/transport exception (raised before any usage exists) leaves these None.
-
-    `truncated` (#540) flags the specific case of an authoritative max-token cut (see the
-    `out.get("truncated")` branch below) — a structured signal a caller can act on (e.g. the
-    orchestrator's section-level re-split fallback) instead of matching on `last_err`'s message
-    text, which is prose meant for a human and free to change (#547 already changed one of these
-    strings once).
-
-    `starved` (#558) is set only alongside `truncated` and narrows it further: the max-token cut
-    happened because reasoning consumed the whole output budget before an answer was written (or
-    outweighed it), not because the answer itself overflowed. The two need different recovery —
-    re-splitting the input helps truncation but does nothing for starvation, since a smaller
-    input still gets the same reasoning envelope — so a caller must be able to tell them apart
-    rather than applying one recovery to both."""
+    failure happened after at least one attempt actually called the model, so real spend on a
+    failed call isn't lost; a backend/transport exception raised before any usage exists leaves
+    these None. `truncated` (#540) is a structured signal for an authoritative max-token cut, so
+    a caller can act on it (e.g. a section re-split) instead of matching on `last_err`'s
+    message text, which is free to change (#547 already changed one). `starved` (#558) narrows
+    `truncated` further: reasoning consumed the output budget rather than the answer itself
+    overflowing — a caller needs to tell the two apart, since re-splitting the input fixes
+    truncation but does nothing for starvation (a smaller input gets the same reasoning
+    envelope)."""
 
     def __init__(self, message: str, *, usage: dict | None = None, cost_usd: float | None = None,
                 attempts: int = 0, model: str | None = None, backend: str | None = None,
@@ -553,29 +546,14 @@ def _flatten_prompt(prompt: str | list[dict]) -> str:
 
 
 def _prompt_cache_key(prompt: str | list[dict]) -> str | None:
-    """A `prompt_cache_key` for OpenAI's Chat Completions API (#562), derived from the FIRST
+    """A `prompt_cache_key` for OpenAI's Chat Completions API, derived from the FIRST
     `cache_control` breakpoint in a content-block prompt — None for a plain string or a block
-    prompt with no breakpoint at all.
-
-    OpenAI's prompt-caching guide is explicit that this parameter matters: "On GPT-5.6 models
-    and later model families, you must set `prompt_cache_key` to use the more reliable matching
-    for both implicit and explicit caching," and it should be held "consistently across requests
-    that share long, common prefixes." Without it, routing falls back to a hash of roughly the
-    first 256 tokens, which is why cache_read_tokens measured 0 across every OpenAI call in a
-    fresh benchmark run despite extract/extract-section sharing a ~3,300-token prefix (#562).
-
-    First breakpoint, not last: `build_extract_prompt`/`build_section_prompt` place two
-    breakpoints — the first after the skill block (blocks 1+2: run-stable instructions + brief +
-    domain skill, genuinely shared across every call in a run that uses that skill), the second
-    (added by `prompts._document_block` only when the verification pass is on) after the
-    per-document text, which is unique to one call. Keying on the second would give nearly every
-    request its own key and scatter exactly the cross-document, same-skill routing that can
-    actually produce a hit; keying on the first groups calls by what they truly share.
-
-    This is only a routing hint, not a cache guarantee: OpenAI still matches on the actual prefix
-    hash first, so two prompts with the same key but different `response_format` schemas (e.g.
-    extract vs. verify, each with its own JSON schema serialized ahead of the system message)
-    still cannot share a cache entry — see D181."""
+    prompt with no breakpoint. Required by OpenAI for reliable cache matching on GPT-5.6+ (D181).
+    Keyed on the first (run-stable instructions+skill), not the second breakpoint that
+    `prompts._document_block` adds for the verify pass, since keying on the per-document one
+    would scatter exactly the cross-document routing that can produce a hit. Only a routing
+    hint, not a guarantee: two prompts with the same key but different `response_format` schemas
+    (extract vs. verify) still can't share a cache entry (D181)."""
     if not isinstance(prompt, list):
         return None
     for i, block in enumerate(prompt):
@@ -588,39 +566,20 @@ def _prompt_cache_key(prompt: str | list[dict]) -> str | None:
 
 def _openai_cache_blocks(prompt: str | list[dict]) -> list[dict] | None:
     """The user message's `content` as OpenAI text parts, with an explicit
-    `prompt_cache_breakpoint` on the block that ends the cacheable prefix (#586, D195) — or None
-    when this prompt has no breakpoint to mark and should be sent flattened, exactly as before.
+    `prompt_cache_breakpoint` on the block that ends the cacheable prefix (D195) — or None when
+    this prompt has no breakpoint to mark and should be sent flattened, exactly as before.
 
-    Only for the GPT-5.6 family and later, which changed the caching contract: the service places
-    one implicit breakpoint at the latest user message and, per OpenAI's prompt-caching guide,
-    "unlike earlier models, it does not automatically fall back to the longest matching unmarked
-    prefix before that breakpoint." Since `_openai_complete_async` sends the whole prompt as a
-    single user message, that implicit breakpoint lands at the very end of it — so an unmarked
-    request can only hit on a byte-identical whole-prompt repeat, and never on the run-stable
-    instructions+skill head that `prompts.py` goes to such lengths to keep at the front. That is
-    exactly what the archives show: across 440 recorded `gpt-5.6-luna` calls, every hit had
-    `input - cache_read == 3` (a whole-prompt replay in a self-consistency benchmark) and not one
-    was a partial prefix hit, while `gpt-5.4-mini` — an earlier family, longest-prefix fallback
-    still in effect — cached partially all along, `digest` included (#586).
+    Only for GPT-5.6+, which places its one implicit breakpoint at the very end of the whole
+    prompt (`_openai_complete_async` sends it as a single user message) — so an unmarked request
+    can only ever hit on a byte-identical whole-prompt repeat, never the run-stable
+    instructions+skill head (D195 has the measured evidence: 440 `gpt-5.6-luna` calls, zero
+    partial hits). Marks the FIRST breakpoint only, same reasoning as `_prompt_cache_key`; the
+    verify pass's second breakpoint is deliberately left unmarked, since extract/verify diverge
+    before it regardless (D181), and marking it would pay a 1.25x write for nothing.
 
-    Marks the FIRST breakpoint only, matching `_prompt_cache_key`'s choice and for the same
-    reason: it is the boundary of what calls genuinely share. `prompts._document_block`'s second
-    breakpoint (the verification pass, #535) is deliberately left unmarked here — extraction and
-    verification each serialize their own structured-output schema ahead of the system message,
-    so their prefixes diverge before either reaches the document text and no marking of the
-    document block could make them share one (D181). Leaving it unmarked also avoids paying the
-    1.25x write on a document's text that nothing will read back.
-
-    A plain-string prompt, or a block prompt with no breakpoint at all, returns None: there is
-    nothing to mark, and the caller must not then switch the request into explicit mode — doing
-    so would disable the implicit breakpoint and remove even the whole-prompt caching such a call
-    has today.
-
-    The `"\\n"` appended to every block but the last is what `_flatten_prompt`'s `"\\n".join`
-    puts between them. Adjacent text parts are concatenated with no separator of their own, so
-    carrying the newline in the part's own text keeps the rendered prompt byte-identical to the
-    flattened form this replaces — this change is meant to alter the request's cache metadata and
-    nothing the model actually reads."""
+    The `"\\n"` appended to every block but the last replaces the separator
+    `_flatten_prompt`'s `"\\n".join` used to provide, so the rendered prompt stays
+    byte-identical to the flattened form — this changes only the request's cache metadata."""
     if not isinstance(prompt, list):
         return None
     marked = None
@@ -832,36 +791,24 @@ def _batch_cost(model_id: str, usage) -> float | None:
 async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: dict,
                               api_key: str | None, max_tokens: int,
                               effort: str | None = None, prefix: str | None = None) -> dict:
-    """Raw Claude Messages API backend with structured outputs.
+    """Raw Claude Messages API backend with structured outputs. `prompt` may be a plain string
+    or a list of Anthropic content blocks with a `cache_control` breakpoint (A1) — the Messages
+    API's `content` field accepts either shape natively.
 
-    `prompt` may be a plain string or a list of Anthropic content blocks with a
-    `cache_control` breakpoint (A1) — the Messages API's `content` field accepts either
-    shape natively, so no conversion is needed here.
+    `prefix` (#343): a truncated call's partial output is prefilled as the assistant turn and
+    continued. `format` enforcement drops on a continuation (constrained decoding can't resume
+    mid-object; the shared shell validates the concatenation instead), and `thinking` drops too
+    (#635, D206) since Anthropic rejects prefilling while thinking is on — only the initial
+    attempt reasons, the resume-a-truncation retry doesn't. `finish_reason` mirrors `stop_reason`
+    so the shell can tell a max-token cut from a natural stop.
 
-    `prefix` (response pagination, #343): when set, the partial output of a truncated call is
-    prefilled as the assistant turn and the model continues it. Structured-output `format`
-    enforcement is dropped on a continuation (constrained decoding can't resume mid-object) —
-    the concatenation is validated by the shared shell — but `effort` is still carried so the
-    same reasoning depth applies (I4). `thinking` (#635, D206) is likewise dropped on a
-    continuation: Anthropic rejects prefilling the assistant turn while thinking is on, and this
-    is exactly what a continuation does. The initial attempt still thinks; only the retry-to-
-    resume-a-truncation path loses it, same shape as the `format` drop above. The returned
-    `finish_reason` mirrors `stop_reason` so the shell can tell a max-token cut (`max_tokens`)
-    from a natural stop.
-
-    Streams rather than calling `.create()` (#598). The Anthropic SDK refuses a *non-streaming*
-    request once `3600 * max_tokens / 128_000 > 600`, i.e. `max_tokens > 21,333`
-    (`Anthropic._calculate_nonstreaming_timeout`, anthropic 0.116.0) — comfortably below the
-    catalogued envelope this now sends (115,200 on Sonnet 4.6). Overriding the client's timeout
-    instead of switching to streaming would defeat the reason the guard exists in the first
-    place: a non-streaming call holds one silent connection open for the whole generation, and a
-    TLS-inspecting corporate proxy between here and the API will drop a long-idle one — trading a
-    self-healing truncation (caught by `finish_reason`, recovered by continuation) for a dropped
-    connection. Streaming keeps bytes flowing instead, so the connection stays alive for the
-    proxy. Do not revert this to `.create()` without re-deriving `max_tokens` back under 21,333.
-    `_MAX_CONTINUATIONS` pagination (below) stays as a safety net either way — it just stops
-    being a *routine* cost now that the wire ceiling is the model's real cap, not a fraction of
-    it."""
+    Streams rather than calling `.create()` (#598): the Anthropic SDK refuses a *non-streaming*
+    request once `max_tokens > 21,333` (`Anthropic._calculate_nonstreaming_timeout`, anthropic
+    0.116.0) — well below the catalogued envelope now sent (115,200 on Sonnet 4.6). Overriding
+    the client's timeout instead would defeat the point: a non-streaming call holds one silent
+    connection open for the whole generation, which a TLS-inspecting corporate proxy will drop —
+    streaming keeps bytes flowing so the connection stays alive. **Do not revert to `.create()`
+    without re-deriving `max_tokens` back under 21,333.**"""
     import anthropic
 
     messages = [{"role": "user", "content": prompt}]
@@ -1083,29 +1030,23 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
                                  effort: str | None = None, prefix: str | None = None,
                                  *, base_url: str) -> dict:
     """OpenAI-compatible Chat Completions backend — OpenAI, DeepSeek, Gemini (via its
-    OpenAI-compatibility endpoint, https://ai.google.dev/gemini-api/docs/openai), and any
-    other service that speaks the same wire format (selected by `base_url`).
+    OpenAI-compatibility endpoint), and any other service speaking the same wire format
+    (selected by `base_url`).
 
-    Structured output is requested via `_openai_response_format` (real `json_schema` enforcement
-    on Gemini; portable JSON-object mode + schema-in-prompt elsewhere, D98), then validated by
-    the shared `acomplete_json` shell either way — that local validation is a safety net, not the
-    only guard, once the provider itself enforces the schema. `effort` arrives already resolved
-    to the provider's native value (or None) and is sent as `reasoning_effort` (#125). No
-    provider-agnostic cache_control equivalent is wired here (A1 is Claude-only), so a
-    content-block prompt is flattened to plain text — but the first breakpoint's position (before
-    flattening) is still reused to derive a `prompt_cache_key` for the real OpenAI endpoint, per
-    `_prompt_cache_key` (#562).
+    Structured output goes via `_openai_response_format` (real `json_schema` enforcement on
+    Gemini; portable JSON-object mode + schema-in-prompt elsewhere, D98), then validated locally
+    as a safety net either way. `effort` arrives already resolved to the provider's native value
+    and is sent as `reasoning_effort` (#125). No provider-agnostic cache_control equivalent
+    exists here (A1 is Claude-only), so a content-block prompt is flattened, but the first
+    breakpoint's position is still reused to derive `prompt_cache_key` (D181) for the real
+    OpenAI endpoint.
 
-    DeepSeek carries an optional `-thinking` marker on the model id; it is stripped here and
-    translated into DeepSeek's explicit thinking toggle (default off — see #320).
-
-    `prefix` (response pagination, #343): DeepSeek's chat-prefix-completion beta continues a
-    truncated response — the partial output is appended as an assistant turn with `prefix: true`
-    against the `/beta` base, and structured-output enforcement is dropped (the model is
-    completing a partial object, not generating a fresh one). OpenAI and Gemini return a *new*
-    assistant message rather than continuing the given one, so they never prefill
-    (`supports_continuation=False` in `_BACKEND_META`) and always reach this with `prefix=None`. The returned
-    `finish_reason` lets the shell distinguish a max-token cut (`length`) from a natural stop."""
+    DeepSeek's optional `-thinking` model-id marker is stripped and translated to its explicit
+    thinking toggle (default off, #320). `prefix` (#343): only DeepSeek's chat-prefix-completion
+    beta continues a truncated response (partial output appended as an assistant turn with
+    `prefix: true`, structured-output enforcement dropped); OpenAI/Gemini return a *new*
+    assistant message instead and never prefill (`supports_continuation=False`). `finish_reason`
+    lets the shell distinguish a max-token cut (`length`) from a natural stop."""
     import ssl
 
     import httpx
@@ -1382,24 +1323,15 @@ def _wire_max_tokens(backend: str, model_id: str) -> int:
     """The `max_tokens` ceiling sent to the provider on the wire for `backend`/`model_id` — task-
     and effort-independent (#598).
 
-    `max_tokens` is a runaway guard, not a reservation: billing is on actual output, so there is
-    no cost to sending the model's real envelope on every call regardless of what the call is for
-    or how hard it's asked to think. The old per-task base (`_TASK_MAX_TOKENS`, 16,000) plus a
-    per-provider reasoning "reserve" bolted on top of it (DeepSeek thinking #337, OpenAI reasoning
-    models #354, Gemini #541) existed only because that base was itself a hardcoded guess shared
-    with chain-of-thought — every provider catalogued here draws reasoning/thinking tokens from
-    the SAME output budget as the visible answer (see `model_catalog.yaml`'s `max_output_tokens`
-    comment), so a ceiling sized only for the visible JSON starves reasoning the moment it grows.
-    Deriving the ceiling from the model's real catalogued cap removes that starvation mode at its
-    root, for every backend, instead of layering a per-provider patch on top of it.
-
-    Reasoning volume itself is not a function of effort alone — archived telemetry fit against
-    input length shows it also scales steeply with *input size* (up to ~2.3 tokens of thinking
-    per input token at high effort, roughly 12x the visible-output rate) — but that no longer
-    matters anywhere: the wire ceiling is the model's own envelope regardless, and as of #555
-    nothing reasons about how much of it reasoning will consume. `pipeline/section.py`'s
-    *input*-side sizing used to invert that estimate into a section budget; it no longer consults
-    this function at all (see D202), so this envelope is now purely a runaway guard on the wire."""
+    A runaway guard, not a reservation: billing is on actual output, so there's no cost to
+    sending the model's real catalogued envelope on every call. This replaced a hardcoded
+    per-task base (16,000) plus bolted-on per-provider reasoning "reserves" (#337/#354/#541),
+    which existed only because every provider draws reasoning tokens from the SAME output budget
+    as the visible answer — a ceiling sized for the visible JSON alone starves reasoning the
+    moment it grows. Deriving the ceiling from the real catalogued cap removes that starvation
+    mode at its root instead of patching it per provider. `pipeline/section.py`'s input-side
+    sizing no longer consults this function at all (D202) — this envelope is now purely a
+    runaway guard on the wire, not an input-budget input."""
     if backend == "deepseek":
         # `-thinking` is a Watchdog-only routing marker (D88), not a real catalog id — strip it
         # before consulting the catalog, the same normalization `_openai_complete_async` already

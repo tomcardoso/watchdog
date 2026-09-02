@@ -92,7 +92,7 @@ def run(vault: Path, sha256: str) -> dict:
 
 def main() -> None:
     if len(sys.argv) < 2:
-        sys.exit("Usage: watchdog pre-flight <sha256>")
+        sys.exit("Usage: python -m watchdog.pipeline.preflight <sha256>")
 
     vault = Path(".").resolve()
     if not (vault / ".watchdog").is_dir():

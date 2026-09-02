@@ -91,30 +91,13 @@ def _document_block(text: str, cache_document: bool, ttl: str) -> dict:
 def build_verify_prompt(base: list[dict], *, key_facts: list[dict],
                         entities: list[dict]) -> list[dict]:
     """The verification call's prompt: the extraction call's own blocks, unchanged, plus one
-    appended block (#535).
-
-    Taking `base` rather than rebuilding from the same inputs is the mechanism, not a
-    convenience — a shared prompt prefix only pays off if it is byte-identical, and the surest
-    way to guarantee that is to send the identical objects. It also means neither builder can
-    drift out of prefix-compatibility with this one: whatever the extractor was shown, the
-    verifier is shown too, including the extraction instructions themselves (the verifier needs
-    to know what "material fact" was defined to mean before it can say what is missing).
-
-    What that byte-identical prefix is worth depends on the backend. On `claude-api` it is the
-    whole cost case: `cache_control` is honoured on the wire, so the verifier re-reads the
-    document at the 0.1x rate. On OpenAI it buys the run-stable head of the prompt
-    (instructions + brief + skill, routed by the same `prompt_cache_key` as every other call
-    sharing that skill — `model_client._prompt_cache_key`) but never the document, which is the
-    bulk of it: each call's own structured-output schema is serialized as a prefix to the system
-    message, so extraction's prefix and this one diverge before either reaches the document text
-    (#562, D181).
-
-    `key_facts` is what the extractor produced; `entities` (id + name only) bounds the ids a
-    candidate fact may tag, so the verifier picks from the extraction's own graph rather than
-    coining ids that resolve to nothing. Only `basis`/`page`/`date`/`entities`/`fact`/`quote`
-    are carried through — the facts are sent as-is, since the verifier has to compare against
-    exactly what was recorded.
-    """
+    appended block (D172). Taking `base` rather than rebuilding from the same inputs guarantees
+    the shared prefix is byte-identical — the whole cost case on `claude-api`, where
+    `cache_control` lets the verifier re-read the document at the 0.1x rate; on OpenAI it only
+    buys the run-stable instructions/brief/skill head, never the document, since each call's own
+    structured-output schema diverges the prefix before the document text (D181). `entities` (id
+    + name only) bounds the ids a candidate fact may tag, so the verifier picks from the
+    extraction's own graph rather than coining ids that resolve to nothing."""
     known_ids = "\n".join(f"- {e.get('id')} | {e.get('name')}" for e in entities if e.get("id"))
     return base + [{"type": "text", "text": (
         f"\n{_text('verify')}\n\n"
@@ -159,23 +142,15 @@ def build_extract_prompt(*, pages_text: str, skill_text: str, sidecar: str | Non
                          processing: dict | None = None,
                          candidates: str | None = None,
                          cache_document: bool = False, model: str | None = None) -> list[dict]:
-    # Document identity (sha256/filename/original_path/page_count) and provenance
-    # (source/obtained) are stamped onto the result by Python — see
-    # orchestrate._stamp_document — so they are deliberately not asked of the model here.
+    # Document identity/provenance are stamped onto the result by Python (orchestrate.
+    # _stamp_document), not asked of the model. No vault state enters this prompt (D118):
+    # extraction is a pure function of the document, its skill, the brief, and its sidecar —
+    # entity resolution and contradiction detection moved to the finalizer's reconciliation pass.
     #
-    # No vault state enters this prompt (#381/D118): extraction is a pure function of the
-    # document, its skill, the brief, and its sidecar. Entity resolution and contradiction
-    # detection — the two jobs the old EXISTING_ENTITIES / EXISTING_TIMELINE blocks fed — moved
-    # to the finalizer's reconciliation pass, which is the only stage that sees all the claims
-    # at once. That also removes the prompt's single biggest and fastest-growing volatile block:
-    # every page of every document used to carry the vault's accumulated entity context.
-    #
-    # Returned as content blocks, not one string (A1): block 1 (instructions + brief) is
-    # constant for the whole run; block 2 (the domain skill) is constant per document type and
-    # carries the cache breakpoint, so blocks 1+2 together are the cacheable prefix — every
-    # extraction call sharing a skill within a run re-pays only the 0.1x cache-read rate for it.
-    # Block 3 is per-document volatile data and is never cached. `cache_ttl` is "1h" for batch
-    # submissions (#214) — see _cache_block.
+    # Returned as content blocks (block 1 instructions+brief, block 2 the skill carrying the
+    # cache breakpoint, block 3 per-document volatile data never cached) so calls sharing a skill
+    # within a run re-pay only the 0.1x cache-read rate for blocks 1+2. `cache_ttl` is "1h" for
+    # batch submissions (#214) — see `_cache_block`.
     stable = [_text("extract_instructions")]
     if _wants_scaffold(model):
         stable.append(f"\n{_text('extract_scaffold')}")
@@ -206,16 +181,11 @@ def build_section_prompt(*, pages_text: str, skill_text: str, carry_forward: str
                          processing: dict | None = None,
                          candidates: str | None = None, cache_ttl: str = "1h",
                          cache_document: bool = False, model: str | None = None) -> list[dict]:
-    # Same cache-block split as build_extract_prompt (A1): instructions + brief + skill lead,
-    # since those are the only parts stable across every section of one run — the section
-    # label/metadata-mode note, carry-forward, and section text change on every call, so they
-    # move after the skill block instead of leading (as in the old single-string layout) to
-    # keep the cacheable prefix at the front of the content array. `cache_ttl` defaults to "1h",
-    # unlike build_extract_prompt's "5m" default: a sectioned document's calls were originally
-    # always back-to-back within a few minutes, so 5m was plenty, but per-section checkpointing
-    # (#498) means a retry can now land on this document's next section anywhere from seconds to
-    # well past an hour later (a rate-limit backoff, a Ctrl-C resumed the next day) — the same
-    # reasoning that gave the batch-submission path (#214) its own "1h" override applies here too.
+    # Same cache-block split as build_extract_prompt: instructions + brief + skill lead as the
+    # stable prefix; section label, carry-forward, and section text change every call, so they
+    # come after. `cache_ttl` defaults to "1h" here (not "5m") because per-section checkpointing
+    # (#498) means a retry can land on the next section anywhere from seconds to well past an
+    # hour later.
     stable = [_text("extract_instructions")]
     if _wants_scaffold(model):
         stable.append(f"\n{_text('extract_scaffold')}")

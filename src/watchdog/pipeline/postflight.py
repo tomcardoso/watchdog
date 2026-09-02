@@ -511,7 +511,7 @@ def run(vault: Path, extraction_path: Path, warn=None) -> dict:
 
 def main() -> None:
     import argparse
-    parser = argparse.ArgumentParser(description="Watchdog post-flight processor")
+    parser = argparse.ArgumentParser(description="Watchdog postflight processor")
     parser.add_argument("--extraction", required=True, help="Path to extraction JSON")
     args = parser.parse_args()
 
