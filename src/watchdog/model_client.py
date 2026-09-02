@@ -143,7 +143,7 @@ _THINKING_ADAPTIVE = {"type": "adaptive", "display": "summarized"}
 
 # Reasoning-effort levels for the per-stage `effort` knob (D36) — an abstract intent the
 # pipeline passes down. `model_catalog.yaml`'s `effort_levels` is the single source of truth for
-# which of these a given model actually accepts (#518, D158) — real per-model coverage, not a
+# which of these a given model actually accepts (#518, D161) — real per-model coverage, not a
 # per-provider flag: it varies within a provider (Claude Sonnet 4.6 takes `max` but not `xhigh`)
 # as much as across providers. `_resolve_effort` below rejects an unsupported request loudly
 # rather than silently dropping it or sending a request the API would reject.
@@ -193,7 +193,7 @@ def _resolve_effort(provider: str, model_id: str, effort: str | None) -> str | N
     """Translate the abstract effort intent into the provider's native value, or None to omit.
 
     `model_catalog.yaml`'s `effort_levels` (via `_effort_levels` above) is the single source of
-    truth for whether `provider`/`model_id` accepts `effort` at all (#518, D158) — a request for
+    truth for whether `provider`/`model_id` accepts `effort` at all (#518, D161) — a request for
     an unsupported level fails loud with a clear error rather than being silently dropped or sent
     as a request the API would reject."""
     if not effort:

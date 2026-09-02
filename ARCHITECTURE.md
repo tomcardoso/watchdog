@@ -170,25 +170,14 @@ token count. `watchdog ingest --estimate` and `watchdog dig --estimate` print th
 and exit before the lock is touched.
 
 **Tokens-in calibration (D135).** The queue's `est_tokens` is a flat chars/4 heuristic
-(`section.est_tokens_from_pages`) with no awareness of prompt overhead or a document's actual
-density. Every successful extraction now carries its own naive estimate (`_compact_result`'s
-`est_input_tokens`) through to the run's usage totals alongside the real `input_tokens` the model
-reported, so `ingest_setup._tokens_calibration` can derive an actual/estimated ratio from a
-vault's own last 3 extraction runs and scale future `--estimate` output by it — the raw heuristic
-only when there's no such history yet. Deliberately scoped to the *displayed* estimate, not to
-`section.py`'s sectioning threshold: recalibrating what actually gets sent to the model on a
-still-thin, self-reported history would be a pipeline-behaviour change dressed up as a display fix.
-Not model-tokenizer-scoped (D180, #574): the derived ratio already absorbs whichever tokenizer the
-extractor behind that history actually used, so it only stays accurate while the extractor doesn't
-cross a tokenizer boundary between that history and the run being estimated — and there are four
-such families, not one, now that every catalogued tokenizer has been measured (D198, #617: Claude
-through Sonnet 4.6 at 0.93, Claude 4.7+ at 1.28, Gemini at 0.91, GPT-5.x at 0.80, DeepSeek V4 at
-0.81). Documented as a known gap
-rather than fixed, since correcting it needs grouping calibration runs by extractor model. Note
-this is a different quantity from `_model_tokenizer_calibration`'s, which D198 rescoped to divide
-by the whole prompt's estimate; this one stays a run-level, document-only comparison and so still
-carries prompt overhead inside it, which is tolerable for a displayed tokens-in figure but is
-exactly what made it wrong to feed sectioning.
+(`section.est_tokens_from_pages`); `ingest_setup._tokens_calibration` scales the displayed
+`--estimate` by the actual/estimated ratio from a vault's last 3 extraction runs, falling back to
+the raw heuristic with no history. Scoped to the *displayed* estimate only — `section.py`'s
+sectioning threshold (what actually gets sent to the model) is untouched, and this is a different,
+run-level quantity from `_model_tokenizer_calibration`'s per-prompt one (§13). Not
+tokenizer-scoped (D180, #574): the ratio only stays accurate while the extractor doesn't cross one
+of the four catalogued tokenizer families between that history and the run being estimated — a
+known, documented gap (D198, #617).
 
 **`watchdog bark --estimate` (D135).** Prices the batch already staged in `.watchdog/tmp/`
 (`result_<sha>.json` + `notes_<sha>.md`, chars/4) rather than a queue — `ingest_setup.
@@ -199,20 +188,14 @@ qualify — true only for a *standalone* `watchdog bark`, which #403 phase 4's s
 read (D129) is what makes estimable at all: before that, the finalizer's inputs were smeared
 across the retired `entity-fragments/` mechanism, not sitting in one place to measure.
 
-**`--estimate-all` (D143).** Extends either estimate across every model in `model_catalog.yaml`
-instead of just the configured stage's own model — `ingest_setup.cost_estimate_all_models`/
-`finalize_cost_estimate_all_models`. Unlike the single-model estimate above, a catalog model has
-no $/token run history of its own to draw on, so this prices `est_tokens` directly against each
-model's own catalog list rate rather than an empirical $/token ratio; the output side is
-projected from this vault's own recent output:input *token* ratio (backend-agnostic, `dig`/`bark`
-scoped the same way their own $/token ratios are), applied uniformly across every model. Every
-catalog model is shown, Claude tiers included, regardless of the vault's own auth mode — this is
-a list-price comparison across providers, not a projection of what this vault would actually be
-billed. Each row additionally scales `est_tokens` by that model's own measured `tokenizer_ratio`
-(D180, #574; D198, #617) — otherwise a single tokens-in figure would price every model as if the
-same text became the same number of real tokens on each, when the measured spread across
-catalogued tokenizers runs 0.80 to 1.28. Accurate as long as the vault's own calibration history
-stayed on the same tokenizer, same caveat D135's calibration carries below.
+**`--estimate-all` (D143).** Extends either estimate across every catalog model
+(`ingest_setup.cost_estimate_all_models`/`finalize_cost_estimate_all_models`), not just the
+configured stage's own. A catalog model has no $/token run history of its own, so this prices
+`est_tokens` against each model's published list rate instead, projecting the output side from
+this vault's own recent output:input token ratio applied uniformly. Every catalog model is shown
+regardless of the vault's own auth mode — a list-price comparison, not a projection of what this
+vault would be billed — and each row scales `est_tokens` by that model's own `tokenizer_ratio`
+(D180/D198) so the same text isn't priced as if it produced the same token count everywhere.
 
 **Lock acquisition is atomic** (`pipeline/locks.py`, D66). All three run locks — the ingest
 lock, the shared finalize lock, and chew's `.watchdog/.chew-lock` — are taken with
@@ -258,33 +241,22 @@ guess. D184 also settled the premise that motivated this work: OpenAI counts pro
 tokens toward its TPM limit, so the verify pass's OpenAI prompt-cache fix (D181/#577) bought cost
 savings but no rate-limit headroom.
 
-**Admission control (D185, #563).** Built on the observability above: a new document's dispatch
-is held back (`orchestrate._admit`) when the run's recent tokens/min, plus every *other*
-currently in-flight document's reservation (`_admission_reserved`), plus that document's own
-estimate (`section.est_tokens_from_pages`, read from `preflight.run`'s already-fetched output —
-computed for the whole queue once, up front, and reused for the existing already-extracted/
-already-staged skip check too, so a resumed run's free skips are never held up or reserved)
-would exceed a budget — the `extract_token_budget` config override if set, else the most recent
-`rate_limit.limit_tokens` any call this run has reported (`orchestrate._current_token_budget`),
-else nothing is gated (unchanged pre-#563 behaviour). The gate sits before the concurrency
-semaphore, not after, so a slot isn't held idle while waiting.
+**Admission control (D185, #563).** A new document's dispatch is held back (`orchestrate._admit`,
+gating before the concurrency semaphore so a slot isn't held idle) when the run's recent
+tokens/min, plus every *other* in-flight document's reservation (`_admission_reserved`), plus this
+document's own estimate, would exceed a budget — the `extract_token_budget` override if set, else
+the most recent `rate_limit.limit_tokens` reported this run, else ungated (pre-#563 behaviour).
 
-The reservation term is load-bearing: `run()` fires every queued document's dispatch at once, and
-asyncio runs each one's synchronous prefix — including its first `_admit` check — back to back in
-the same event-loop tick, before any of them has completed a real call. A check against recorded
-usage alone would see every concurrently-dispatched document as if it were the only one running,
-admitting an entire over-budget burst. `_guarded` sets `_admission_reserved[sha]` (via ordinary
-synchronous dict mutation) *before* calling `_admit`, so a later document in the same burst sees
-an earlier one's reservation the moment its own turn comes, and clears it in a `finally` once that
-document's whole `_guarded` call ends — `_admit` itself only reads the dict.
-
-Force-admits past a fixed wait cap regardless of the rate, since `_recent_token_rate`'s window
-only advances when a new call lands in `_usage` — if every in-flight document were ever
-simultaneously waiting on the gate, nothing would produce one, so the cap is what keeps that
-scenario from stalling a run forever rather than merely being unlikely. Auto-discovery never
-engages for `claude-agent-sdk` (Claude subscription auth): that backend's rate-limit detection
-reads a CLI transcript, not HTTP headers, so `rate_limit` is never populated on it —
-`extract_token_budget` is that path's only lever, not a fallback for it.
+The reservation dict is load-bearing, not an optimization: `run()` dispatches every queued
+document at once, and asyncio runs each one's synchronous prefix — including its first `_admit`
+check — in the same event-loop tick, before any of them has completed a real call, so checking
+recorded usage alone would let an entire over-budget burst through simultaneously. `_guarded` sets
+`_admission_reserved[sha]` before calling `_admit` and clears it in a `finally`, so a later
+document in the same burst sees an earlier one's reservation the moment its own turn comes; see
+D185 for the full race analysis. Force-admits past a fixed wait cap so a fully-reserved run can't
+stall forever, and never engages for `claude-agent-sdk` (its rate-limit detection reads a CLI
+transcript, not HTTP headers, so `rate_limit` is never populated) — `extract_token_budget` is that
+path's only lever there.
 
 ---
 
@@ -501,15 +473,12 @@ cap) and claude-agent-sdk (no enforced ceiling at all) — but it governs only t
 now, and sectioning never calls it. Truncation is handled where it is observable instead: the
 bounded re-split (D183, #540) and the starvation retry (#558).
 Finally, the threshold and budget are divided by `model_client.tokenizer_ratio` (D180, #574;
-remeasured D198, #617), correcting for the fact that the chars/4 `est_tokens` heuristic was
-calibrated against Claude's *old* tokenizer and mis-states every other one. Every catalogued
-value is measured against corpus-v1 by `benchmarks/tokenizer_ratio.py` — via each provider's own
-free token counter where one exists (Anthropic, Gemini), and a billed differential probe where
-none does (OpenAI, DeepSeek). Four tokenizers cover all fifteen catalogued models: 0.93 (Claude
-through Sonnet 4.6), 1.28 (Claude 4.7+: Opus 4.8, Sonnet 5), 0.91 (Gemini), 0.80 (GPT-5.x), 0.81
-(DeepSeek V4). The correction runs both ways, and *widening* is the common case — every tokenizer
-but Claude 4.7+ measures below 1.0, meaning chars/4 over-estimates it — which is safe because the
-threshold fraction reserves 40% of the window regardless. Only an uncatalogued id resolves to 1.0.
+measured against corpus-v1, D198, #617) — correcting the chars/4 `est_tokens` heuristic, which was
+calibrated against Claude's old tokenizer and mis-states every other one. Four tokenizers cover
+all fifteen catalogued models: 0.93 (Claude through Sonnet 4.6), 1.28 (Claude 4.7+: Opus 4.8,
+Sonnet 5), 0.91 (Gemini), 0.80 (GPT-5.x), 0.81 (DeepSeek V4) — an uncatalogued id resolves to 1.0.
+*Widening* (ratio < 1.0) is the common case and is safe on its own: the threshold fraction already
+reserves 40% of the window regardless.
 **One clamp sits between the window fraction and that division: `long_context_threshold`** (D202,
 #555), the catalogued real-token input length at which a model starts billing at a higher rate —
 ~272K on the large-window GPT-5.x models, 200K on Gemini 3.1 Pro, absent on the eleven that price
@@ -902,8 +871,8 @@ merge — deterministic, no model call, parallel to its registry surgery (§I1);
   registry manifest from an entity id to its display name, since not every backend reliably
   avoids echoing ids in prose (D107).
 
-An ingest run (`watchdog ingest`, or `watchdog dig`) prints the per-document summary; the briefing/hot/log files are the
-durable record a fresh session reads.
+An ingest run (`watchdog dig`, or the deprecated `watchdog ingest`) prints the per-document summary;
+the briefing/hot/log files are the durable record a fresh session reads.
 
 **`--skip-briefing` (D134, #410).** A flag on `ingest` and `bark`, not a separate command —
 plumbed as `skip_briefing` through `orchestrate.run`/`orchestrate.finalize` → `_post_ingest`,
@@ -1144,27 +1113,17 @@ lookup (names/aliases → id/note_path) for candidate matching; reading the full
 registry for every document would be wasteful. The manifest is the cheap index.
 
 **Merging duplicate entities (`watchdog merge-entities <keep-id> <merge-id>`, D54).**
-Code: `pipeline/merge_entities.py`, `cmd/merge_entities.py`. Ingest-time reconciliation
-(`_reconcile_entity_ids`, above) only catches slug drift *coined within one batch*; the
-same real-world entity extracted under two ids across separate ingests — the gap D39's
-Neo4j-export tradeoff note and the dashboard's "Possible duplicates"/"Single-source
-entities to review" views could only ever flag, never fix — needs a manual, deterministic
-merge. `merge()` unions `aliases`/`appears_in`/`roles`/`timeline_events` onto the
-surviving id and remaps every `role.target_id` **across the whole registry** that named
-the losing id (not just the two entities involved), dropping any role that would end up
-self-referential; `run()` additionally concatenates the losing note's `## Analysis` into
-the survivor's with dated provenance, redirects the losing note to a short stub linking
-to the survivor, regenerates any third-party entity note whose own Relationships section
-just changed, rebuilds the manifest and global timeline, and does a best-effort reindex
-of every note it touched. Must be run from inside the vault it mutates (no model calls,
-no project-name lookup needed). The merge keeps only one prose `## Summary` (the survivor's
-if it has one, else the loser's), so when both entities carried one the losing account is
-dropped; `run()` returns a `summary_dropped` flag and the CLI nudges a `/watchdog-entity
-<keep-id>` refresh to re-synthesize the Summary from all merged sources (#313). The
-merged-away entity's stale corpus/notes search-index
-entries are cleaned up by a subsequent `watchdog reindex` (D53), not by this command
-itself — a full rebuild is the existing, already-documented way to drop vectors for
-anything no longer in the registry.
+Code: `pipeline/merge_entities.py`, `cmd/merge_entities.py`. Fixes what ingest-time
+reconciliation (`_reconcile_entity_ids`, above) can't: the same real-world entity
+extracted under two ids across *separate* ingests, not just slug drift within one batch.
+`merge()` unions the losing entity's data onto the survivor and remaps every registry
+reference to it; `run()` layers the note-level work on top (Analysis concatenation,
+redirect stub, third-party note regeneration) — see D54 for the full mechanics. Must be
+run from inside the vault it mutates (no model calls, no project-name lookup needed).
+`run()` keeps only one prose `## Summary`, flagging `summary_dropped` when both entities
+had one so the CLI can nudge a `/watchdog-entity <keep-id>` refresh (#313); the
+merged-away entity's stale search-index entries are cleaned up by a later `watchdog
+reindex` (D53), not by this command itself.
 
 **Pre-mutation snapshots (`pipeline/backup.py`, D71).** `merge-entities`, ingest's
 `discard` choice (§4), and `delete --purge` all mutate or delete the registry with no
@@ -1224,74 +1183,77 @@ completed purge, and the CLI hint says so.
   and low is where it is meant to live. `model_client` maps a configured effort to each backend's native
   control (`output_config.effort` / `ClaudeAgentOptions.effort`) and drops it on Haiku-tier
   stages (classify, by default; any Haiku model), which reject `effort`. Overridable per run via
-  `--extractor-effort` / `--finalizer-effort` / `--classifier-effort`. **`effort` alone doesn't engage reasoning on every
-  Claude model** (#635): Anthropic's `thinking` (whether the model reasons at all) and `effort`
-  (how deep, once it does) are independent controls, and Sonnet 4.6/Opus 4.8 ship thinking OFF
-  by default — `effort` on those two tuned response verbosity only, not reasoning depth, until
-  this fix. `model_catalog.yaml`'s `thinking: true` flag marks a model that needs it sent
-  explicitly; `model_client.py` sends `{"type": "adaptive", "display": "summarized"}` for those
-  two, and sends nothing for Sonnet 5/Opus 5 (already on by default) or Haiku (no thinking
-  control at all) — never overriding a model's native default either way. Dropped again on a
-  continuation retry (response-pagination prefill is incompatible with thinking on), same shape
-  as the structured-output-enforcement drop on that path (D206).
-- **Model client** (`model_client.py`): the orchestrator's single entry to the model.
-  Routes each task to a backend — `claude-agent-sdk` (subscription login or API key — the
-  only backend that works on a subscription; it passes **both** `allowed_tools=[]` and
-  `tools=[]`, since only the latter keeps the built-in Claude Code tool suite out of the
-  request — ~11.2K tokens per call otherwise, D145), `claude-api` (raw Messages + structured
-  outputs, called via the Anthropic SDK's streaming helper rather than a single non-streaming
-  request — required once `max_tokens` exceeds the SDK's own ~21,333 non-streaming-timeout
-  guard, which the catalog-derived envelope now routinely does, D197), or the OpenAI-compatible
-  `openai`/`deepseek`/`gemini`/`local`/`openrouter` backends
-  (Chat Completions over httpx, one provider each via base URL; D37, D94, D139) — by auth mode
-  and per-task policy, validates the JSON, retries on the same model on failure, and reports
-  cost/latency. Backend registration metadata (provider, base URL, continuation/max-tokens
-  support, batch-only) lives in one `_BACKEND_META` registry keyed by backend name, so a new
-  backend is one entry, not several parallel tables. Every model's id, pricing (including any
-  time-of-day `price_periods` schedule, D217), context window,
-  reasoning-model flag, and pretty display name is single-sourced in a hand-editable
-  `model_catalog.yaml`, loaded by the dependency-free `model_catalog.py` (D142) — both
-  `model_client.py` and `cmd/base.py` (the `watchdog context`/`_launch_claude` path) read from
-  it, so there's no second, silently divergent copy of a model id. Structured-output enforcement
-  differs by provider on the OpenAI-compatible path:
-  Gemini gets a real `json_schema` response format using `schemas.py`'s schema as-authored (its
-  schema engine tolerates the same omit-optional-fields design unmodified). OpenAI also gets a
-  real, wire-enforced `json_schema` request (`strict: true`), but against a schema mechanically
-  derived by `model_client._to_strict_schema` — OpenAI's strict mode demands every property
-  appear in `required`, so the derived variant forces that and widens each newly-required
-  scalar property to a nullable union; `_denormalize_strict_json`/`_strip_none` then strip those
-  nulls back out of the response before it reaches the shared validate/prune path, so `schemas.py`'s
-  actual (non-strict) schema and every downstream reader's omitted-vs-null handling need no
-  OpenAI-specific carve-out (D151, issue #479). DeepSeek, local, and OpenRouter stay on portable
-  `json_object` + schema-in-prompt (D98) — DeepSeek's JSON mode has no schema field to send, and
-  local/OpenRouter route to an arbitrary model with no capability table to consult (D139).
-  **Provider
-  abstraction:** the abstract `effort` intent is mapped to each provider's native control by
-  a per-provider policy (`_EFFORT_POLICY`: Claude `output_config.effort`, OpenAI
-  `reasoning_effort` on reasoning models only, Gemini `reasoning_effort` unconditionally (every
-  current model accepts it, D94), DeepSeek none — its thinking mode is a separate
-  on/off carried in the model id via a `-thinking` suffix, default off, D88; local and OpenRouter
-  none either — an arbitrary self-hosted or OpenRouter-routed model has no capability table to
-  consult, so the safe default never sends a control a given model might reject, D139), and
-  `_resolve_backend_auth` resolves the key per backend — Claude backends via the
-  subscription/api-key mode, others via their own stored key (set interactively via `watchdog
-  auth`) independent of the Claude mode — plus, for `local`/`openrouter`, a **user-supplied base
-  URL** (`watchdog configure local_base_url`/`openrouter_base_url`, or their env-var overrides)
-  rather than the fixed URL the other three OpenAI-compatible backends bind at import time, and
-  no API key requirement for `local` specifically (most self-hosted runners don't check for one,
-  D139). A self-hosted model's id carries no vendor namespace to infer a context window from the
-  way hosted models' do, so `context_window` takes an explicit `backend` and, for `local`, consults
-  a `local_context_window` config override before falling back to a conservative default (D139)
-  rather than guessing from the substring table. Auth is resolved by `cmd/auth.py` (see #119, D37,
-  D93, D139). **Setup philosophy (D95):**
-  Claude Code is required — it runs the interactive investigation skills below and is the
-  ingestion default — but ingestion specifically can be routed to a cheaper metered provider
-  instead, since it is the token-heavy stage. `watchdog setup`'s auth step surfaces this
-  choice directly (offering to walk through picking a provider and a model for each of the
-  three ingest stages when the user is on a subscription), and `watchdog auth`'s status
-  display is split into a "Claude Code" section and an "Ingestion" section (showing, per
-  stage, which provider it resolves to and whether that provider is ready) rather than
-  favouring Claude's own settings.
+  `--extractor-effort` / `--finalizer-effort` / `--classifier-effort`. **`effort` alone doesn't
+  engage reasoning on every Claude model:** `thinking` and `effort` are independent Anthropic
+  controls, so `model_catalog.yaml`'s `thinking: true` flag (Sonnet 4.6/Opus 4.8, the two
+  off-by-default tiers) makes `model_client.py` send it explicitly alongside `effort` — dropped
+  again on a continuation retry, same shape as the structured-output-enforcement drop on that
+  path (D206).
+- **Model client** (`model_client.py`): the orchestrator's single entry to the model. Routes
+  each task to a backend by auth mode and per-task policy, validates the JSON, retries on the
+  same model on failure, and reports cost/latency.
+  - **Backends:** `claude-agent-sdk` (subscription login or API key — the only backend that
+    works on a subscription; it passes **both** `allowed_tools=[]` and `tools=[]`, since only
+    the latter keeps the built-in Claude Code tool suite out of the request — ~11.2K tokens per
+    call otherwise, D145), `claude-api` (raw Messages + structured outputs, called via the
+    Anthropic SDK's streaming helper rather than a single non-streaming request — required once
+    `max_tokens` exceeds the SDK's own ~21,333 non-streaming-timeout guard, which the
+    catalog-derived envelope now routinely does, D197), or the OpenAI-compatible
+    `openai`/`deepseek`/`gemini`/`local`/`openrouter` backends (Chat Completions over httpx, one
+    provider each via base URL; D37, D94, D139). Backend registration metadata (provider, base
+    URL, continuation/max-tokens support, batch-only) lives in one `_BACKEND_META` registry
+    keyed by backend name, so a new backend is one entry, not several parallel tables.
+  - **Model catalog:** every model's id, pricing (including any time-of-day `price_periods`
+    schedule, D217), context window, reasoning-model flag, and pretty display name is
+    single-sourced in a hand-editable `model_catalog.yaml`, loaded by the dependency-free
+    `model_catalog.py` (D142) — both `model_client.py` and `cmd/base.py` (the `watchdog
+    context`/`_launch_claude` path) read from it, so there's no second, silently divergent copy
+    of a model id.
+  - **Structured-output enforcement** differs by provider on the OpenAI-compatible path. Gemini
+    gets a real `json_schema` response format using `schemas.py`'s schema as-authored (its schema
+    engine tolerates the same omit-optional-fields design unmodified). OpenAI also gets a real,
+    wire-enforced `json_schema` request (`strict: true`), but against a schema mechanically
+    derived by `model_client._to_strict_schema` — OpenAI's strict mode demands every property
+    appear in `required`, so the derived variant forces that and widens each newly-required
+    scalar property to a nullable union; `_denormalize_strict_json`/`_strip_none` then strip
+    those nulls back out of the response before it reaches the shared validate/prune path, so
+    `schemas.py`'s actual (non-strict) schema and every downstream reader's omitted-vs-null
+    handling need no OpenAI-specific carve-out (D151, issue #479). DeepSeek, local, and
+    OpenRouter stay on portable `json_object` + schema-in-prompt (D98) — DeepSeek's JSON mode
+    has no schema field to send, and local/OpenRouter route to an arbitrary model with no
+    capability table to consult (D139).
+  - **Provider abstraction (effort + auth):** the abstract `effort` intent (`low`/`medium`/
+    `high`/`xhigh`/`max`) is checked against `model_catalog.yaml`'s per-model `effort_levels`
+    field — the single source of truth for which levels a given model actually accepts, since
+    coverage is per-model, not per-provider (Sonnet 4.6 takes `max` but not `xhigh`; Opus 4.8
+    takes both) — and `_resolve_effort` maps a supported level onto each provider's native
+    control (Claude `output_config.effort`, with `high` omitted as the model's own default;
+    OpenAI/Gemini `reasoning_effort`; DeepSeek none — its thinking mode is a separate on/off
+    carried in the model id via a `-thinking` suffix, default off, D88). An uncatalogued id
+    falls back to a conservative provider-wide default (an OpenAI reasoning model:
+    low/medium/high only; Gemini: low/medium/high unconditionally; everything else: none), and
+    any unsupported request fails loud with `ModelError` rather than being silently dropped or
+    sent as a request the API would reject (D161, issue #518 — superseding the earlier
+    per-provider `_EFFORT_POLICY` design D37 first shipped). `_resolve_backend_auth` resolves
+    the key per backend — Claude backends via the subscription/api-key mode, others via their
+    own stored key (set interactively via `watchdog auth`) independent of the Claude mode —
+    plus, for `local`/`openrouter`, a **user-supplied base URL** (`watchdog configure
+    local_base_url`/`openrouter_base_url`, or their env-var overrides) rather than the fixed URL
+    the other three OpenAI-compatible backends bind at import time, and no API key requirement
+    for `local` specifically (most self-hosted runners don't check for one, D139). A self-hosted
+    model's id carries no vendor namespace to infer a context window from the way hosted
+    models' do, so `context_window` takes an explicit `backend` and, for `local`, consults a
+    `local_context_window` config override before falling back to a conservative default (D139)
+    rather than guessing from the substring table. Auth is resolved by `cmd/auth.py` (see #119,
+    D37, D93, D139).
+  - **Setup philosophy (D95):** Claude Code is required — it runs the interactive investigation
+    skills below and is the ingestion default — but ingestion specifically can be routed to a
+    cheaper metered provider instead, since it is the token-heavy stage. `watchdog setup`'s auth
+    step surfaces this choice directly (offering to walk through picking a provider and a model
+    for each of the three ingest stages when the user is on a subscription), and `watchdog
+    auth`'s status display is split into a "Claude Code" section and an "Ingestion" section
+    (showing, per stage, which provider it resolves to and whether that provider is ready)
+    rather than favouring Claude's own settings.
 - **Claude Code skills** (in-vault, run interactively — *not* part of ingest):
   `watchdog-context`, `watchdog-entity`, `watchdog-query`, `watchdog-surface`,
   `watchdog-wiki`, `watchdog-health`, `watchdog-research` (§14). Ingest is the Python
@@ -1412,8 +1374,7 @@ source_type ⇥ relevance`). When the session ends, `watchdog research` download
   phone home even if opened directly. Playwright is an **optional dependency**
   (`watchdog-intel[web]`, plus a one-time `playwright install chromium`): when it isn't installed or
   a render fails for any reason, `deposit_one` falls back to the plain fetch, sanitized by `nh3`
-  (replacing the old two-tag regex). The sidecar's `capture: rendered|plain` field records which
-  path a deposit took.
+  (D61). The sidecar's `capture: rendered|plain` field records which path a deposit took.
 - **Per-doc rationale → sidecar; batch rationale → memo.** The connective tissue of a research round
   (what gap it targeted, what was pulled, what's still open) is written to a
   `briefings/research-<date>.md` memo as forward-looking leads — **never** `context.md`, which is the
