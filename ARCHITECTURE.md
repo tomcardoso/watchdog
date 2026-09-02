@@ -78,11 +78,6 @@ Two human-invoked phases, with a clean handoff via the queue:
    Python. Documents are extracted concurrently (semaphore-bounded); a failed document is
    logged and set aside (`_failed/`) without sinking the batch.
 
-> **Earlier design (through #117):** ingest launched the `/watchdog-ingest` Claude Code
-> skill, which orchestrated extractor subagents and a post-ingest subagent. #118 (W3)
-> replaced that skill-as-orchestrator with the Python orchestrator above so the model
-> stops paying reasoning tokens to act as a control-flow engine — see D18.
-
 ---
 
 ## 3. Chew (preprocessing)
@@ -495,15 +490,9 @@ reads far more of a document per call before sectioning. A 200K Claude window re
 historical 120K/60K defaults exactly; the two config keys default to the `auto` sentinel and
 accept an explicit `section_token_threshold`/`section_token_budget` integer as an advanced
 escape hatch (a pinned integer does not rescale when the extraction model changes).
-**The output ceiling does not enter into this.** It used to: for a backend enforcing a fixed
-`max_tokens` it can't paginate past (openai, gemini — D104, #343), the input default was
-additionally capped by inverting an affine fit of *total* output against that envelope, per
-reasoning `effort`, clamped to a measured-range bound (D187, #542). All of it was deleted in D202
-(#555) after the archive showed the cap never bound (peak output was 14–27% of the envelope on
-every model but one), that pooling the fit across models let one model's reasoning volume set
-every other's budget, and that the inversion degenerates wherever the fitted slope is near zero.
-`effort` is no longer a parameter of `model_defaults`/`section_token_threshold`/`section.run` at
-all. `output_ceiling_for_sectioning(backend, model)` still exists and still returns one per-model
+**The output ceiling does not enter into sectioning** (D202, #555). `effort` is not a parameter
+of `model_defaults`/`section_token_threshold`/`section.run`.
+`output_ceiling_for_sectioning(backend, model)` still exists and still returns one per-model
 wire envelope (`model_client._wire_max_tokens`, D197, #598) — the catalogued `max_output_tokens`
 cap under a 10% headroom, task- and effort-independent, with an uncatalogued id resolving through
 a documented per-family cap (`max_output_tokens_fallback`, shaped like `context_window_fallback`)
@@ -530,7 +519,7 @@ clamped to it — the threshold because it is what decides whether a document is
 so leaving it open would send an oversized document past the boundary in one whole-document call.
 The clamp is applied in **real** tokens, before the ratio division, since that is the unit a
 provider meters; clamping the est-token result afterwards would let a sub-1.0 ratio divide it back
-up past the boundary, which is the ordering bug D198 found in the old output clamp. It is also what
+up past the boundary (D198). It is also what
 keeps `--estimate-all` truthful, since the cost model prices every model at one flat rate per
 length. **Length is not the only axis a rate can vary on: `price_periods`** (D217) declares UTC
 windows in which a model's rates are multiplied — DeepSeek doubles every rate during its peak
@@ -670,20 +659,12 @@ once per vault (or vault copy).
 before extraction** (`_classify`, on the haiku tier) — not an embedding pre-pass, and no
 longer folded into the extractor.
 
-- **History.** An earlier design embedded the first N pages with a local fastembed
-  model (`bge-small-en-v1.5`) and matched them against embeddings of the skill files
-  to pre-assign a `document_type` at chew time.
-- **Why it was removed (issue #95).** The comparison was register-mismatched — a
-  document's text vs. *meta-text describing how to read that document type* — and
-  with ~35 adjacent skills the cosine similarity was noisy. Worse, a confident-wrong
-  classification was the *most* harmful outcome: it loaded the wrong domain skill.
-- **Why a dedicated model call wins.** The orchestrator sends a text excerpt + the skill
-  index (built in memory from the global catalog, `skills_catalog.build_index()`) to a
-  cheap model call that returns the skill filename; Python then reads that one skill (from
-  the global catalog) and injects it into the extraction prompt. Accurate, cheap, and it
-  keeps the extraction prompt lean (only the relevant skill, not the index). When the
-  skill-based extractor self-classified, that work was turns inside the expensive
-  extraction call (the #87 tax); a separate cheap call is cheaper.
+- **Mechanism.** The orchestrator sends a text excerpt + the skill index (built in memory from
+  the global catalog, `skills_catalog.build_index()`) to a cheap model call that returns the
+  skill filename; Python then reads that one skill (from the global catalog) and injects it
+  into the extraction prompt. Accurate, cheap, and it keeps the extraction prompt lean (only
+  the relevant skill, not the index). An earlier embedding-based pre-pass was register-mismatched
+  and noisy across ~35 adjacent skills (issue #95).
 - **Pinning.** `--skill` / `default_skill` skips this call entirely and uses one skill
   for the whole run (see §5, D21). A document's own `.yml` sidecar can also carry a
   `skill:` field pinning *that document alone* — read deterministically in Python
@@ -750,14 +731,11 @@ model.
 
 > **Post-ingest runs in the Python orchestrator.** Entity prose synthesis (this section)
 > and timeline reconciliation + briefing (§9) happen in `orchestrate._post_ingest`, each a
-> single deterministic-Python step wrapped around one model call. They were once a
-> per-entity synthesis fan-out (D16), then one bundled post-ingest subagent (D17), and now
-> plain function calls in the orchestrator (D18) — the progression that drove post-ingest
-> cost down.
+> single deterministic-Python step wrapped around one model call (D16–D18).
 
 Synthesizing an entity's prose across all its documents on every ingest would be
-expensive. Synthesizing nothing (the old behaviour) let a later document's summary
-clobber an earlier, richer one. The gate is **project-wide recurrence** (D26): an entity
+expensive, and synthesizing nothing would let a later document's summary clobber an
+earlier, richer one. The gate is **project-wide recurrence** (D26): an entity
 earns a synthesized summary once it appears in **2+ documents across the whole
 investigation**, otherwise it stays a deterministic stub.
 
@@ -774,8 +752,7 @@ investigation**, otherwise it stays a deterministic stub.
   entities named across the current batch's `.watchdog/extracted/<sha>.json` files (#403 phase 4,
   D129), the shas taken from the run's `result_*.json` set.
 - **No summary for single-document entities, and no inline revision.** Under D26 the extractor emits
-  no per-entity summary, so the old carryforward trick (pre-flight feeds the current `## Summary`
-  back and extraction *revises* it) is gone. A one-document entity simply has no Summary section —
+  no per-entity summary, so extraction never revises one inline. A one-document entity simply has no Summary section —
   its facts live in `## Analysis` and its connections in `## Relationships`, which is all an
   incidental actor needs. Summaries are only ever written by bundled synthesis, so a single new
   document can never silently overwrite an established one.
