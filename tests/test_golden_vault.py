@@ -122,7 +122,11 @@ def _run_fixture_ingest(tmp_path, monkeypatch) -> Path:
     _queue_doc(vault, sha="b" * 64, filename="beta.pdf",
                text="Acme Corp received a loan of $1,200,000 from Beta Bank.")
     _mock(monkeypatch, extraction=_extraction(sha="a" * 64, filename="alpha.pdf"))
-    asyncio.run(orchestrate.run(vault))
+    # extract_model pinned: this fixture's golden manifest records the requested model string in
+    # note/registry provenance, so it must stay independent of whatever the pipeline's own
+    # default happens to be — this test is about the #403 refactor's output stability, not about
+    # which model is the default.
+    asyncio.run(orchestrate.run(vault, extract_model="sonnet"))
     return vault
 
 

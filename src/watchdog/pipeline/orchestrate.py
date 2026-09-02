@@ -721,11 +721,11 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str,
 
 async def _classify(doc_excerpt: str, model: str, backend: str | None = None,
                     filename: str | None = None, sidecar: str | None = None,
-                    vault: Path | None = None) -> str:
+                    vault: Path | None = None, effort: str | None = None) -> str:
     r = await _call_model(
         task="classify", model=model, backend=backend, schema=schemas.CLASSIFY,
         prompt=prompts.build_classify_prompt(doc_excerpt, skills_catalog.build_index(), sidecar),
-        filename=filename, vault=vault,
+        filename=filename, vault=vault, effort=effort,
     )
     return r.parsed.get("skill") or "general-records.md"
 
@@ -1382,7 +1382,8 @@ def _fail(vault: Path, sha: str, filename: str, reason: str) -> dict:
 
 
 async def _resolve_skill(vault: Path, pf: dict, pinned_skill: str | None, classify_model: str,
-                         classify_pages: int, classify_backend: str | None, *, filename: str,
+                         classify_pages: int, classify_backend: str | None,
+                         classify_effort: str | None = None, *, filename: str,
                          on_classify=None) -> tuple[str, str]:
     """This document's record skill, as `(skill_text, skill_label)`, following D120's precedence:
     the document's own sidecar `skill:` pin, then a run-wide `--skill`/`default_skill`, then one
@@ -1402,7 +1403,7 @@ async def _resolve_skill(vault: Path, pf: dict, pinned_skill: str | None, classi
     # Classify on the first N pages (page-aware, not a mid-page char cut); the char cap is a guard.
     excerpt = _pages_text(pf.get("pages", [])[:max(1, classify_pages)])[:_CLASSIFY_EXCERPT_CHARS]
     skill = await _classify(excerpt, classify_model, classify_backend, filename=filename,
-                            sidecar=pf.get("sidecar"), vault=vault)
+                            sidecar=pf.get("sidecar"), vault=vault, effort=classify_effort)
     return (skills_catalog.read_skill(skill), skill.removesuffix(".md"))
 
 
@@ -1413,6 +1414,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
                             extract_effort: str | None = None,
                             extract_backend: str | None = None,
                             classify_backend: str | None = None,
+                            classify_effort: str | None = None,
                             force: bool = False, verify_pass: bool = False,
                             pf: dict | None = None) -> dict:
     # `pf` (#563): `run()`'s dispatch loop already calls `preflight.run` for every queued document
@@ -1468,7 +1470,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     # itself lives in `_resolve_skill`, shared with the batch path (D144).
     classified = not (_sidecar_skill(pf.get("sidecar"), filename=filename) or pinned_skill)
     skill_text, skill_label = await _resolve_skill(
-        vault, pf, pinned_skill, classify_model, classify_pages, classify_backend,
+        vault, pf, pinned_skill, classify_model, classify_pages, classify_backend, classify_effort,
         filename=filename,
         on_classify=lambda: _step(
             f"{_DIM}→  {filename}  {pg} · classifying…{_RESET}",
@@ -1797,7 +1799,8 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str | None, brie
 async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract_model: str,
                         pinned_skill: str | None, extract_effort: str | None, concurrency: int,
                         classify_model: str, classify_pages: int, classify_backend: str | None,
-                        api_key: str, force: bool = False, backend: str = "claude-batch") -> dict:
+                        api_key: str, force: bool = False, backend: str = "claude-batch",
+                        classify_effort: str | None = None) -> dict:
     """Split the queue into sectioned (→ synchronous single-call backend, via the normal
     `_extract_document`) and whole-document (→ one batch submission) shas, run the former, then
     submit the latter and return — submit-and-exit, not blocking-poll (a batch can take up to
@@ -1845,7 +1848,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
     async def _skill_for(pf: dict):
         async with sem:
             return await _resolve_skill(vault, pf, pinned_skill, classify_model, classify_pages,
-                                        classify_backend, filename=pf["filename"])
+                                        classify_backend, classify_effort, filename=pf["filename"])
 
     resolved = await asyncio.gather(*[_skill_for(pf) for _, pf in whole_docs])
 
@@ -1878,7 +1881,8 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
                 return await _extract_document(vault, sha, brief, extract_model, classify_model,
                                                classify_pages, pinned_skill, extract_effort,
                                                extract_backend=sectioned_backend,
-                                               classify_backend=classify_backend, force=force)
+                                               classify_backend=classify_backend,
+                                               classify_effort=classify_effort, force=force)
         results.extend(await asyncio.gather(*[_sectioned(s) for s in sectioned_shas]))
 
     if not batch_docs:
@@ -1905,7 +1909,7 @@ async def _run_batch(vault: Path, shas: list[str], brief: str | None, extract_mo
                      pinned_skill: str | None, extract_effort: str | None, concurrency: int,
                      classify_model: str, classify_pages: int,
                      classify_backend: str | None, backend: str = "claude-batch",
-                     force: bool = False) -> dict:
+                     force: bool = False, classify_effort: str | None = None) -> dict:
     """Entry point for `run` when `extract_backend` is a batch-mode backend
     (`model_client.BATCH_BACKENDS`). Defense-in-depth guard beyond `cmd_ingest`'s own check — a
     programmatic caller that skips CLI validation still gets a clear error rather than a
@@ -1937,7 +1941,7 @@ async def _run_batch(vault: Path, shas: list[str], brief: str | None, extract_mo
         return await _resume_batch(vault, state, pinned_skill, brief, api_key, force=force)
     return await _submit_batch(vault, shas, brief, extract_model, pinned_skill, extract_effort,
                                concurrency, classify_model, classify_pages, classify_backend,
-                               api_key, force=force, backend=backend)
+                               api_key, force=force, backend=backend, classify_effort=classify_effort)
 
 
 def _nudge_skill_pin(results: list) -> None:
@@ -2747,7 +2751,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
               pinned_skill: str | None = None,
               extract_effort: str | None = None, post_effort: str | None = None,
               extract_backend: str | None = None, post_backend: str | None = None,
-              classify_backend: str | None = None, wait: bool = False,
+              classify_backend: str | None = None, classify_effort: str | None = None,
+              wait: bool = False,
               skip_finalize: bool = False, force: bool = False,
               skip_briefing: bool = False, finalizer_overrides: dict | None = None,
               resume_hint: str = "watchdog dig", verify: bool = False,
@@ -2759,8 +2764,12 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     synthesis/timeline/briefing; `classify_model` the cheap document classifier,
     which sees the first `classify_pages` pages of each document. `pinned_skill`
     (a path to a skill file) skips classification and uses that skill for every document.
-    `extract_effort`/`post_effort` (`low`/`medium`/`high`) tune reasoning depth for the
-    extraction and post-ingest stages respectively (D36); classify has no effort knob.
+    `extract_effort`/`post_effort`/`classify_effort` (`low`/`medium`/`high`) tune reasoning depth
+    for the extraction, post-ingest, and classify stages respectively — classify gained this knob
+    (D221) since some models it can be routed to (e.g. the benchmark-recommended
+    openai:gpt-5.6-luna) actually support it; D36's original "no knob" was true only of Haiku,
+    the classifier's default, which rejects the parameter outright, and still applies to it —
+    `classify_effort` simply no-ops there like the others do on an effortless model.
     `*_backend` selects a non-default backend per stage (None → route by auth mode); a
     non-Claude backend's `*_model` is that provider's raw model id (D37).
     `wait` only changes the rate-limit notice text — the caller (`cmd_ingest`) owns the
@@ -2802,6 +2811,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         "extract_model": extract_model, "extract_effort": extract_effort,
         "extract_backend": extract_backend, "post_model": post_model, "post_effort": post_effort,
         "classify_model": classify_model, "classify_pages": classify_pages,
+        "classify_effort": classify_effort,
         "extract_token_budget": extract_token_budget, "verify": verify, "concurrency": concurrency,
     }
 
@@ -2825,7 +2835,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         brief = _read_brief(vault)
         batch_out = await _run_batch(vault, shas, brief, extract_model, pinned_skill,
                                      extract_effort, concurrency, classify_model, classify_pages,
-                                     classify_backend, backend=extract_backend, force=force)
+                                     classify_backend, backend=extract_backend, force=force,
+                                     classify_effort=classify_effort)
         results = batch_out["results"]
         cancelled_flag = False
         rate_limit_msg = None
@@ -2881,8 +2892,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             if skip_eligible:
                 return await _extract_document(vault, sha, brief, extract_model, classify_model,
                                                classify_pages, pinned_skill, extract_effort,
-                                               extract_backend, classify_backend, force=force,
-                                               verify_pass=verify, pf=pf)
+                                               extract_backend, classify_backend, classify_effort,
+                                               force=force, verify_pass=verify, pf=pf)
             # Reserved *before* calling `_admit` — and before this document has even been checked
             # for admission — so a sibling document dispatched in the same burst (every queued
             # document starts at once; see `_admission_reserved`'s own comment) sees this one
@@ -2901,8 +2912,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                     try:
                         return await _extract_document(vault, sha, brief, extract_model, classify_model,
                                                        classify_pages, pinned_skill, extract_effort,
-                                                       extract_backend, classify_backend, force=force,
-                                                       verify_pass=verify, pf=pf)
+                                                       extract_backend, classify_backend, classify_effort,
+                                                       force=force, verify_pass=verify, pf=pf)
                     except model_client.RateLimitError as e:  # session-wide — stop, leave queued for resume
                         if not cancelled.is_set():
                             print()
