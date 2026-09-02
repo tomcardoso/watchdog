@@ -72,7 +72,7 @@ _TEMPLATES_DIR = Path(__file__).parent.parent / "templates" / "vault"
 
 _VAULT_PERMISSIONS = [
     # watchdog commands the in-Claude-Code skills run (extraction is now a Python
-    # command — `watchdog ingest` — and needs no in-vault Bash permissions).
+    # command — `watchdog dig` / `watchdog bark` — and needs no in-vault Bash permissions).
     "Bash(watchdog entity-index)",
     "Bash(watchdog queue-status)",
     "Bash(watchdog is-duplicate *)",
@@ -362,7 +362,7 @@ _CMD_HELP: dict[str, dict] = {
         ],
         "notes": [
             "Reads `.watchdog/registry/usage/usage-<ts>.json`, written after every ingest run",
-            "(`watchdog ingest`, or `watchdog dig`/`watchdog bark`), and groups calls by stage (classifier/extractor/",
+            "(`watchdog dig`/`watchdog bark`), and groups calls by stage (classifier/extractor/",
             "finalizer, matching the CLI's own --classifier-model/--extractor-model/",
             "--finalizer-model flags). Extractor rows show the filename and page range (or",
             "section) each call covered.",

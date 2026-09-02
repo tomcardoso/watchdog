@@ -275,8 +275,8 @@ def _status() -> None:
     print()
 
     # Ingestion: which provider each pipeline stage is actually routed to, and whether that
-    # provider is ready — the thing that actually determines whether `watchdog ingest` will
-    # work, independent of Claude's mode above (#325).
+    # provider is ready — the thing that actually determines whether `watchdog dig`/`watchdog
+    # bark` will work, independent of Claude's mode above (#325).
     from watchdog.cmd.base import CONFIG_FILE
     config: dict = {}
     if CONFIG_FILE.exists():
@@ -457,22 +457,14 @@ def _ask_anthropic_mode() -> str | None:
 
 
 def setup_auth_interactive(interactive: bool | None = None) -> None:
-    """Interactive auth setup for `watchdog setup`.
-
-    Watchdog needs Claude Code to run: the interactive investigation commands
-    (/watchdog-query, /watchdog-surface, ...) always run on Claude, and it's the ingestion
-    default too — zero extra setup for a Claude-only user (D222 reaffirms this after briefly
-    trying an OpenAI default, D221; benchmark testing found OpenAI's GPT-5.6 Luna the stronger
-    ingestion choice, but making it the *shipped* default meant every install needed a second
-    provider's key even on a plain Claude subscription — recommended in the docs instead, not
-    forced). This sets up Claude access first (subscription or API key), and — on a
-    subscription — warns that ingesting more than a few documents can be token-heavy for a
-    Pro plan's session limits and offers to route ingestion to another provider instead —
-    a cheaper metered API (Luna named first, as the benchmark-recommended one), or a
-    local/self-hosted model (#380) — walking through picking that provider's models for the
-    three ingest stages if so (#325). Persists the choice; skips cleanly off a terminal.
-    `interactive` is overridable for testing.
-    """
+    """Interactive auth setup for `watchdog setup`. Claude stays the default for both the
+    interactive investigation commands and ingestion — zero extra setup for a Claude-only user
+    (D222). Sets up Claude access first (subscription or API key), then on a subscription warns
+    that ingesting more than a few documents can be token-heavy for a Pro plan's session limits
+    and offers to route ingestion elsewhere instead — a cheaper metered API (Luna named first, as
+    the benchmark-recommended one) or a local/self-hosted model (#380) — walking through picking
+    that provider's models for the three ingest stages if so (#325). Persists the choice; skips
+    cleanly off a terminal. `interactive` is overridable for testing."""
     if interactive is None:
         interactive = sys.stdin.isatty()
 

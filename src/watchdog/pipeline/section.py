@@ -58,41 +58,15 @@ _CHARS_PER_TOKEN = 4                # cheap heuristic
 _THRESHOLD_FRACTION = 0.6
 _BUDGET_FRACTION = 0.3
 
-# Sectioning is sized from the input window alone (#555, D202). It used to be additionally capped
-# by an output-derived input ceiling (#343, #542): predict a call's *total* (reasoning + visible)
-# output from its input size with an affine fit, then invert that fit against the model's wire
-# `max_output_tokens` envelope to find the largest input whose answer would still fit. That whole
-# apparatus — `_OUTPUT_DENSITY_BY_EFFORT`, `_invert_output_ceiling`, and the
-# `_MIN`/`_MAX_OUTPUT_CAPPED_BUDGET` clamps around it — is gone, for three measured reasons.
-#
-# It never bound. Across 673 archived extraction calls, peak output as a share of the model's own
-# wire envelope was 14% (gemini-3.5-flash medium), 27% (gpt-5.4-nano medium), 16% (gpt-5.6-luna
-# high). The only calls that ever reached a cap were gpt-5.4-mini at high effort, and they reached
-# the *old* 96,000 wire cap that #598 has since raised to 115,200. Nine of the fifteen catalogued
-# models share one `max_output_tokens` (128,000) and six paginate past it, so the ceiling could
-# not have distinguished between models even where it did apply.
-#
-# The fit pooled models that behave nothing alike. gpt-5.4-mini at high effort emits ~2.4 tokens
-# of chain-of-thought per input token; gemini-3.5-flash at the same effort emits essentially none
-# (per-model slope -0.002). Pooling let gpt-5.4-mini's appetite set Gemini's budget — which is how
-# one model came to get 50,000 at low effort and 5,660 at high, a 9x swing driven by a different
-# vendor's reasoning volume. That, not the ceilings, produced the spread #555 was filed about.
-#
-# And the inversion is ill-conditioned wherever the slope is near zero: dividing an envelope by a
-# marginal rate of -0.002 yields an unbounded budget, so the formula degenerates on exactly the
-# models it was meant to protect. `_MAX_OUTPUT_CAPPED_BUDGET` (50,000) was the constant holding
-# that degeneracy back — and it, rather than any property of the model, was what actually set the
-# budget on every ceiling-governed backend.
-#
-# Truncation is now handled where it is observable instead of predicted: `orchestrate`'s bounded
-# re-split (#540) halves a section that actually did truncate, and the starvation retry (#558)
-# drops one effort level. Both act on what happened; the fit acted on a guess with R² 0.05-0.37.
-#
-# Consequence worth stating plainly, because it looks like an omission: `effort` no longer affects
-# sectioning at all, and is no longer a parameter here. Effort changes how much a model *thinks*,
-# not how much room a call needs — and with the envelope no longer in the arithmetic there is
-# nothing left for it to scale. `output_ceiling_for_sectioning` still exists and still governs the
-# wire `max_tokens` sent on every call; it simply no longer feeds back into input sizing.
+# Sectioning is sized from the input window alone (D202) — no output-derived cap. An earlier
+# version predicted a call's total output from its input and clamped the input budget to fit the
+# model's output envelope; deleted because the clamp never bound in practice, pooled models with
+# wildly different reasoning volumes into one fit (producing #555's headline spread), and was
+# ill-conditioned wherever the fit's slope was near zero. Truncation is now handled where it's
+# observable instead of predicted (bounded re-split on actual truncation, a starvation retry that
+# drops one effort level). `effort` is consequently no longer a parameter here — it no longer has
+# anything left to scale; `output_ceiling_for_sectioning` still exists and governs wire
+# `max_tokens`, but no longer feeds back into input sizing.
 
 
 def _config_get(key: str, default):

@@ -1,12 +1,9 @@
 """Document-request ledger (#365).
 
-Ingest already told the journalist "you should get the hearing transcript this order cites" —
-but only as prose buried in the briefing's leads, indistinguishable from an open-ended
-investigative thread. A **document request** is a different kind of object: a concrete,
-known-to-exist artifact to go and acquire (a document type, the specific thing, why it matters,
-and often where to get it), not a thread to investigate. Splitting it out follows §I1: the model
-authors the content (``type``/``what``/``why_it_matters``/``likely_source``); Python stamps the
-id and provenance.
+A document request is a concrete, known-to-exist artifact to go acquire (a document type, the
+specific thing, why it matters, often where to get it) — distinct from an open-ended
+investigative lead. Splitting it out follows §I1: the model authors the content
+(``type``/``what``/``why_it_matters``/``likely_source``); Python stamps the id and provenance.
 
 Ledger at ``.watchdog/registry/requests.json``::
 
@@ -16,23 +13,14 @@ Ledger at ``.watchdog/registry/requests.json``::
         "added": "<iso>"
     }}}
 
-Request ids (``rid``, built by ``resolutions.request_id``) are content-keyed on the normalized
-``what`` text alone — vault-wide, not per source document (#416) — so re-recording the same
-request, whether a repair retry of the same document or a second document citing the same
-artifact under the same wording, converges onto one entry instead of duplicating; each citing
-document is appended to that entry's ``sources`` rather than spawning a new one. That only
-catches identical wording, though — a paraphrase of the same real document still lands as a
-separate entry, which ``orchestrate._post_ingest``'s document-request dedup pass (#416, D159)
-catches with a model call over the current open set, judging which entries name the same
-real-world document; ``merge_duplicates`` performs the fold. Resolution is otherwise manual —
-a ticked checkbox or ``watchdog resolve``, never auto-closed by matching a newly-ingested
-document — and a resolved or rendered request is never re-fed into any *other* model prompt
-(briefing bundle, pre-flight digests, extraction): the dedup pass is a narrow, bounded exception
-to that D111 rule, scoped to judging sameness among requests themselves, the same code/model
-split (§I1) entity reconciliation and timeline dedup already use. ``write_requests`` renders the
-still-open entries to the vault-root ``requests.md`` (a current-state view, overwritten each
-ingest, not an event log).
-"""
+Entries are content-keyed and deduped on the normalized ``what`` text — see `record` for the
+mechanism. That only catches identical wording; a paraphrase of the same real document lands as
+a separate entry, caught by a later model-judged dedup pass (``orchestrate._post_ingest``, #416,
+D159). Resolution is otherwise manual (a ticked checkbox or ``watchdog resolve``, never
+auto-closed), and a resolved/rendered request is never re-fed into any other model prompt — the
+dedup pass is D111's one narrow, bounded exception. ``write_requests`` renders the still-open
+entries to the vault-root ``requests.md`` (a current-state view, overwritten each ingest, not an
+event log)."""
 
 import datetime
 import json

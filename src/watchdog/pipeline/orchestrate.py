@@ -133,86 +133,26 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
                   est_input_tokens: int | None = None, est_prompt_tokens: int | None = None,
                   vault: Path | None = None, prompt_hash: str | None = None) -> None:
     """Append one call's usage to the run-scoped `_usage` accumulator, if one is active.
-    Tolerates both Anthropic-style (`input_tokens`/`output_tokens`) and OpenAI-compatible
-    (`prompt_tokens`/`completion_tokens`) usage dicts (D37) — the latter's cache-token fields
-    aren't modelled yet (matches `model_client._openai_cost`'s own v1 simplification).
+    Tolerates both Anthropic-style and OpenAI-compatible usage dicts (D37); takes explicit
+    fields rather than a `model_client.ModelResult` so a batch-collected item (D52, no live
+    call) can feed it too, not just `_call_model` (D64).
 
-    Takes explicit fields rather than a `model_client.ModelResult` so a batch-collected item
-    (D52, no live model call at this point) can feed it too, not just `_call_model` (D64).
-    `filename`/`detail` (e.g. a page range or section label) let a per-run usage file attribute
-    each call to a document, not just a task name (#247). `latency_s` is per-call wall-clock
-    time; batch-collected items have no live call to time, so they keep the 0.0 default (#317).
-    `effort` records the reasoning-effort tier the call was made with (or None if the model/task
-    doesn't take one), and `auth_mode` ("subscription"/"api-key") which billing lane paid for it
-    — both surfaced per call by `watchdog usage` (#319). `end_ts` is the call's completion time
-    (epoch seconds); paired with `latency_s` it gives each call a [start, end] interval, so
-    `watchdog usage` can report wall-clock elapsed per stage — the real time a concurrently-run
-    stage took — alongside the summed per-call time (#317 follow-up).
+    Most fields are copied onto the record only when the caller has them, so backends/tasks
+    that don't produce a given field leave the record shaped exactly as before (D124 `pruned`,
+    D125 `failed`, #354/#547 `reasoning_tokens`, #402 `api_ms`/`num_turns`, #563 `rate_limit`,
+    batch-only `stop_reason`/`batch_meta`). `filename`/`detail` attribute a call to a document,
+    not just a task name (#247); `latency_s`/`end_ts` give each call a wall-clock interval for
+    `watchdog usage` (#317); `effort`/`auth_mode` are surfaced the same way (#319).
 
-    `api_ms`/`num_turns` (#402) are the `claude-agent-sdk` harness's own timing — time actually
-    spent in API requests vs. the call's wall-clock `latency_s`, and the internal request count.
-    They're only added to the record when `usage` carries them, so records for every other
-    backend stay exactly as they were — a large `latency_s` − `api_ms` gap is the signature of
-    the harness throttling/backing off internally rather than the model itself being slow.
+    `est_input_tokens` (#606) is the naive chars/4 estimate for the document text alone;
+    `est_prompt_tokens` (#617) is the same estimate over the WHOLE rendered prompt (schema,
+    instructions, skill, carry-forward, document). Conflating the two undercounts the real
+    prompt overhead (~7,200-9,300 tokens/call on corpus-v1) and misreads the tokenizer ratio —
+    `est_prompt_tokens` is the correct denominator `ingest_setup._model_tokenizer_calibration`
+    needs, and unlike `est_input_tokens` it's set for every task.
 
-    `pruned` (D124): dotted/bracketed paths of any JSON keys the model emitted outside the
-    schema and that `model_client._prune_unknown` removed rather than failing validation over.
-    Only added when non-empty, so systematic schema drift stays visible in `watchdog usage`
-    without cluttering every ordinary record.
-
-    `failed` (D125): True when this record is a call that ultimately raised `ModelError` rather
-    than returning — every attempt still spent real tokens, so it's recorded like any other call
-    (and counted in the same subtotals) rather than vanishing from telemetry.
-
-    `reasoning_tokens` (#354), read from `usage["completion_tokens_details"]["reasoning_tokens"]`
-    when present (OpenAI reasoning models report it directly; Gemini's is reconstructed from its
-    token counts by `model_client._fold_in_hidden_reasoning`, #547), is copied onto the record —
-    the chain-of-thought share
-    of `output_tokens`, which had been arriving on every such call since D108 and thrown
-    away; it's the field that diagnosed the reasoning-starvation failure. Only added when it's
-    non-zero — OpenAI reports a 0 here for its *chat* models, which carries no more information
-    than the key's absence does — so every other backend's record shape is untouched.
-
-    `usage["stop_reason"]`, when present (currently only `batch_extract.collect`'s items carry
-    it), is copied to the record — a batch call's only truncation signal, since it has no
-    continuation/repair path a live call gets. `batch_meta`
-    (`{batch_id, submitted_at, ended_at, collected_at}`, from `_resume_batch`) is copied onto the
-    record when given, so a batch-collected item's usage row carries its own full lifecycle
-    instead of that living only in the transient `batch-pending.json` state that's deleted once
-    collection succeeds.
-
-    `rate_limit` (#563), when given, is the provider's own rate-limit response headers off this
-    call (`model_client._rate_limit_headers` — `limit_tokens`/`remaining_tokens`/`reset_tokens`),
-    copied onto the record so a run's usage file carries the provider's ground truth for what it
-    counted against the caller's per-minute budget alongside the tokens we ourselves logged.
-
-    `est_input_tokens` (#606 Part B), when given, is this call's own naive chars/4 estimate
-    (`section.est_tokens_from_pages`/`section.est_tokens`) for the DOCUMENT TEXT it sent —
-    mirroring how the *run-level* `totals.est_input_tokens` is already added in
-    `_write_usage_file`/`_end_usage_run`, but per call rather than summed once across a whole run.
-    Only set on `extract`/`extract-section` calls, the only tasks sectioning currently cares
-    about; every other task's record simply lacks the key, as before.
-
-    `est_prompt_tokens` (#617) is the same chars/4 estimate over the ENTIRE RENDERED PROMPT —
-    schema, extraction instructions, record skill, carry-forward entities, harvested candidates
-    and the document text alike. The distinction is the whole point, and getting it wrong is what
-    #617 was opened about: the provider's reported `input_tokens` counts the entire prompt, so
-    comparing it against document-text-only `est_input_tokens` measures
-    `tokenizer_ratio x (1 + prompt_overhead / document_tokens)` rather than the tokenizer ratio —
-    a bias that isn't even constant, since it shrinks as sections get bigger. Measured against
-    corpus-v1, that scaffolding is 7,200-9,300 real tokens per call, enough to read a true 1.09
-    ratio as 1.41. `est_prompt_tokens` is the like-for-like denominator that makes
-    `ingest_setup._model_tokenizer_calibration` a real tokenizer measurement; unlike
-    `est_input_tokens` it is set for EVERY task, since `_call_model` can compute it from the
-    prompt it already has without the caller passing anything.
-
-    `vault`/`prompt_hash` (#611) feed the global telemetry store (`telemetry_db.record_call`) in
-    addition to this run's own `_usage`/JSON file — `vault` attributes the row (the store is
-    global, not per-vault, D50/#611), `prompt_hash` is a sha256 of the actual prompt text sent,
-    computed by `_call_model` (which has it in scope) and None for the batch-collection call site
-    (no live prompt at collection time). The telemetry write is best-effort: any failure is
-    caught and logged as a WARN via `_log`, never allowed to fail or slow down the ingest it's
-    observing."""
+    `vault`/`prompt_hash` (D50/#611) feed the global telemetry store in addition to this run's
+    own usage file; that write is best-effort and never allowed to fail the ingest it observes."""
     if _usage is None:
         return
     u = usage or {}
@@ -288,32 +228,18 @@ async def _call_model(*, task, prompt, schema, model=None, backend=None,
                       ) -> "model_client.ModelResult":
     """Thin wrapper around `model_client.acomplete_json` that also records this call's usage
     (A2) — every reasoning call in the orchestrator goes through here instead of the client
-    directly, so telemetry can't silently miss a call site. `filename`/`detail` are passed
-    through to `_record_usage` unchanged (#247). `vault` (D124) is used to log a WARN line to
-    `ingest.log` when the call's JSON carried unexpected keys that were pruned rather than
-    failing validation, and (#611) to attribute this call's row in the global telemetry store —
-    pass it whenever a vault is in scope. `est_input_tokens` (#606 Part
-    B) is likewise passed straight through to `_record_usage`, when the caller has one — see its
-    own docstring.
+    directly, so telemetry can't silently miss a call site. `vault` both logs a WARN to
+    `ingest.log` when JSON keys were pruned (D124) and attributes the call in the global
+    telemetry store (#611) — pass it whenever a vault is in scope.
 
-    A `ModelError` that carries usage/cost (D125 — the JSON-validation-failure and truncation
-    paths in `acomplete_json`, the only ones where an attempt actually reached the model) is
-    still recorded, flagged `failed=True`, before re-raising unchanged — every attempt spent
-    real tokens even though none produced a usable result, and that spend used to vanish.
+    A `ModelError` that still carries usage/cost (D125 — validation-failure/truncation paths
+    that reached the model) is recorded with `failed=True` before re-raising, since that attempt
+    spent real tokens even though it produced nothing usable.
 
-    `prompt_hash` (#611) is a sha256 of `prompt` itself, computed once here rather than in
-    `_record_usage` since this is the one place the actual rendered prompt text is in scope.
-    `prompt` is normally a string, but a caller may instead pass a list of Anthropic content
-    blocks (A1, cache_control) — `json.dumps` gives a stable, hashable text form for that shape
-    too, without needing to special-case it.
-
-    `est_prompt_tokens` (#617) rides on that same observation: the rendered prompt is in scope
-    exactly here, so the whole-prompt chars/4 estimate is computed once alongside the hash rather
-    than threaded through every call site the way `est_input_tokens` is. That is what makes it
-    universal — every task gets it for free, including the ones that never pass an
-    `est_input_tokens` — and it is the like-for-like denominator
-    `ingest_setup._model_tokenizer_calibration` needs; see `_record_usage`'s docstring for why
-    the document-only estimate was the wrong one to divide by."""
+    `prompt_hash` and `est_prompt_tokens` are computed once here, the one place the actual
+    rendered prompt (string, or a list of Anthropic content blocks, A1) is in scope, rather than
+    threaded through every call site — see `_record_usage`'s docstring for why `est_prompt_tokens`
+    (#617) is the denominator that matters, not `est_input_tokens` (#606)."""
     prompt_text = prompt if isinstance(prompt, str) else json.dumps(prompt, sort_keys=True)
     prompt_hash = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()
     est_prompt_tokens = section.est_tokens(prompt_text)
@@ -1232,27 +1158,18 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
                              effort=None, backend=None, brief=None, verify_pass=False):
     """Sequential per-section extraction with carry-forward, then deterministic merge.
 
-    Each section's result is checkpointed to disk as it completes (#498) and replayed on a retry
-    that lands on the same plan, so a rate limit, Ctrl-C, or a failed post-flight doesn't discard
-    already-paid-for sections. Checkpoints are cleared once post-flight finally succeeds.
+    Each section's result is checkpointed to disk as it completes and replayed on a retry that
+    lands on the same plan, so a rate limit, Ctrl-C, or a failed post-flight doesn't discard
+    already-paid-for sections (#498); checkpoints clear once post-flight finally succeeds.
+    One repair attempt re-calls just section 1 if post-flight rejects on
+    morgue_entity_id/morgue_document_type, the fields only it is ever asked to supply — a later
+    section's output could never have fixed these anyway (#505).
 
-    One repair attempt if post-flight rejects on morgue_entity_id/morgue_document_type — the
-    fields only section 1 is ever asked to supply. Mirrors _simple_extract's repair loop, but
-    re-calls just section 1 rather than re-running the whole document, since a later section's
-    output could never have fixed these anyway (#505).
-
-    A truncated extract-section call gets one re-split retry (#540): the whole-document fallback
-    below `_extract_document`'s whole-doc branch never reached this already-sectioned path, so a
-    truncation here used to fail the document outright with no recovery at all. `parts`/
-    `entities_seen`/`carry` are rebuilt with `c.get("parts") or [c["parsed"]]` so a checkpoint
-    written before #540 (single `parsed`, no `parts`) still replays unchanged.
-
-    A *starved* extract-section call (#558) — reasoning ate the whole output budget, an input-size
-    problem the re-split above can't fix — gets a different one-shot retry instead: the same
-    section, re-run one effort level down via `_lower_effort`. Before #558 this shared the
-    re-split's bound: `ModelError.truncated` alone couldn't tell the two failures apart, so a
-    starved section was "recovered" by re-splitting into halves that starved again, and the
-    document failed outright exactly as it would with no recovery at all."""
+    Two distinct failures get two distinct one-shot retries, since neither is fixable by the
+    other's fix: a truncated call (input too large) gets a re-split into two sections (#540); a
+    *starved* call (reasoning alone ate the output budget — an input-size problem re-splitting
+    can't touch) gets the same section re-run one effort level down via `_lower_effort` instead
+    (#558)."""
     sections = plan["sections"]
     checkpoints = _load_section_checkpoints(vault, sha, sections)
     # Keyed by planned-section index rather than a flat list (#540): a re-split section contributes
@@ -2390,32 +2307,21 @@ def _batch_exact_fold(vault: Path, shas: list[str]) -> None:
     """Fold exact-name entity duplicates across a batch of staged extractions, before any of
     them commits to the vault (#403 phase 2).
 
-    Documents extract in parallel from a pre-flight snapshot taken at launch, so two documents
-    referencing the same real-world entity can coin different ids (e.g. 'ernst-and-young-inc'
-    vs 'ernst-young-inc'). This used to be reconciled by `write_vault._reconcile_entity_ids`
-    running per-document inside the registry lock, against a fresh read of the live registry —
-    the one place that saw entities written by concurrent extraction tasks earlier in the batch.
-    Now that commit is a separate, serial pass (phase 1), the same cross-document visibility is
-    available up front: walk the given `shas` in order (the caller passes them pre-sorted, see
-    D126) over a throwaway in-memory registry copy, reconciling each document's entities against
-    it with the same `_reconcile_entity_ids` and then folding that document's (already-
-    reconciled) entities into the copy with the same `_new_entity`/`_merge_entity` used at real
-    commit time — so later documents in the batch match against earlier ones exactly as they did
-    under the old per-document call. The real registry on disk is never touched here; the commit
-    pass still does the actual writes. Mutates each staged `.watchdog/extracted/<sha>.json` in
-    place (id remaps, alias appends, role-target remaps) so the commit pass that follows replays
-    already-folded entities.
-
-    `_add_reverse_role` is deliberately not simulated — it only appends roles onto entities
-    already in the registry copy and never mints a new id, so it cannot affect name/type/alias
-    matching for any later document.
+    Documents extract in parallel from a pre-flight snapshot, so two documents referencing the
+    same real-world entity can coin different ids (e.g. 'ernst-and-young-inc' vs
+    'ernst-young-inc'). Since commit is now a separate, serial pass (phase 1), this walks `shas`
+    in pre-sorted order (D126) over a throwaway in-memory registry copy, reconciling and folding
+    each document's entities with the same `_reconcile_entity_ids`/`_new_entity`/`_merge_entity`
+    real commit uses — so later documents match against earlier ones exactly as before, but the
+    real registry on disk is never touched here. Mutates each staged
+    `.watchdog/extracted/<sha>.json` in place (id remaps, alias appends, role-target remaps) so
+    the commit pass that follows replays already-folded entities. `_add_reverse_role` is
+    deliberately not simulated — it never mints a new id, so it can't affect matching.
 
     Also rewrites `morgue_entity_id` and every `document.key_facts[].entities` tag through the
-    same remap (#513) — both name an entity id by the same convention as `entities[].id` but sit
-    outside `_reconcile_entity_ids`'s own view, so without this they'd go stale whenever the
-    entity a document is filed under (or a fact is tagged against) gets folded into a different
-    canonical id later in the same batch.
-    """
+    same remap (#513) — both sit outside `_reconcile_entity_ids`'s own view, so without this
+    they'd go stale whenever the entity they name gets folded into a different id later in the
+    batch."""
     from watchdog.pipeline.write_vault import _merge_entity, _new_entity, _reconcile_entity_ids
 
     # Freshly parsed from disk, so this is already an in-memory copy independent of the real
@@ -2661,46 +2567,22 @@ async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None 
     post-ingest over the current on-disk state: file contradictions, synthesize multi-mention
     entities, reconcile the timeline, and write the briefing/hot.md/log.
 
-    Called at the tail of every ingest run (with this run's results in memory) and
-    standalone by ``watchdog bark`` (reading persisted ``result_*.json``) to complete a
-    post-ingest an earlier rate limit or interrupt left unfinished. On a clean pass the consumed
-    inputs (fragments, results, scratchpads) are cleared; if any step failed they are left in
-    place so a later finalize can retry.
+    One code path covers three entry points: the tail of every ingest run, standalone
+    ``watchdog bark`` (reading persisted ``result_*.json``), and resuming a post-ingest an
+    earlier rate limit/interrupt left unfinished. Order (#403 phase 3): exact-name fold →
+    pre-commit reconciliation → the commit pass (#403 phase 1, sorted sha order) → post-ingest.
+    On a clean pass the consumed inputs are cleared; a failed step leaves them in place so a
+    later finalize can retry. If reconciliation itself fails, nothing in this batch commits —
+    every staged artifact is left exactly as it was, still pending.
 
-    #403 phase 3 order: exact-name fold → pre-commit reconciliation (entity-duplicate resolution,
-    over the staged batch — ``_reconcile_pre_commit``) → the commit pass (#403 phase 1,
-    ``_commit_pending``, which replays ``write_vault.run`` over every
-    ``.watchdog/extracted/<sha>.json`` not yet in the registry, in sorted sha order) → post-ingest
-    (contradictions, synthesis, timeline, briefing). This is what covers this function's three
-    entry paths (ingest's tail, standalone ``watchdog bark``, and a resumed run after a
-    rate-limit stop) with one code path.
-
-    If reconciliation itself fails (rate limit / model error), nothing in this batch commits —
-    every staged artifact is left exactly as it was, still pending, so a later ``watchdog
-    finalize`` retries the whole sequence rather than committing half-reconciled state.
-
-    `force_shas` (#424) are shas that were force-re-extracted and already have a
-    `registry/documents.json` entry from an earlier ingest — `_pending_commits` would otherwise
-    treat them as already committed and silently drop them from this batch. Passing them here
-    puts them back through the commit pass (`_commit_extracted` overwrites their existing document
-    note and registry entry in place, the same replace-not-append path a repair retry of an
-    already-committed document already relied on) and the reconciliation bundle, so their touched
-    entities are re-synthesized along with the rest of this batch.
-
-    `skip_briefing` (#410) skips only the briefing model call — synthesis and the timeline still
-    run. Not an error, so it never sets `briefing_error`/leaves inputs pending the way a genuine
-    briefing failure does.
-
-    `finalizer_overrides` (#433) routes individual post-ingest stages to a different model than
-    `post_model`/`post_backend` — see `_reconcile_pre_commit` and `_post_ingest` for the keys it
-    accepts and how each falls back when absent.
-
-    `benchmark_arm_id` (#611) tags this run's telemetry rows in the global store when
-    `run_benchmark.py` is the caller (via `cmd_finalize`); None for an ordinary standalone
-    `watchdog bark`. Ignored when this call is nested inside `run()` (`standalone_usage` False
-    below) — `run()`'s own `_begin_usage_run` call already set the tag for the whole run,
-    extraction and finalize tail alike.
-    """
+    `force_shas` (#424) are already-committed shas being force-re-extracted, which
+    `_pending_commits` would otherwise silently drop as "already done" — passing them here puts
+    them back through both the commit pass (overwriting in place) and reconciliation.
+    `skip_briefing` (#410) skips only the briefing call, not synthesis/timeline, and isn't
+    treated as an error. `finalizer_overrides` (#433) routes individual post-ingest stages to a
+    model other than `post_model`/`post_backend`. `benchmark_arm_id` (#611) tags this run's
+    telemetry when `run_benchmark.py` is the caller; ignored when nested inside `run()`, which
+    already set the tag for the whole run."""
     global _usage
     standalone_usage = _usage is None   # not nested inside `run` — this call owns the usage file
     if standalone_usage:
@@ -2760,51 +2642,26 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
               benchmark_arm_id: str | None = None) -> dict:
     """Extract every queued document (bounded by `concurrency`), then post-ingest.
 
-    `extract_model` drives extraction (whole-doc + section, and the sectioned-doc digest); `post_model` drives
-    synthesis/timeline/briefing; `classify_model` the cheap document classifier,
-    which sees the first `classify_pages` pages of each document. `pinned_skill`
-    (a path to a skill file) skips classification and uses that skill for every document.
-    `extract_effort`/`post_effort`/`classify_effort` (`low`/`medium`/`high`) tune reasoning depth
-    for the extraction, post-ingest, and classify stages respectively — classify gained this knob
-    (D221) since some models it can be routed to (e.g. the benchmark-recommended
-    openai:gpt-5.6-luna) actually support it; D36's original "no knob" was true only of Haiku,
-    the classifier's default, which rejects the parameter outright, and still applies to it —
-    `classify_effort` simply no-ops there like the others do on an effortless model.
-    `*_backend` selects a non-default backend per stage (None → route by auth mode); a
-    non-Claude backend's `*_model` is that provider's raw model id (D37).
-    `wait` only changes the rate-limit notice text — the caller (`cmd_ingest`) owns the
-    actual sleep-and-resume loop; this function always stops cleanly on a rate limit.
-    `skip_finalize` (#384) stops the run after extraction — post-ingest (reconciliation,
-    synthesis, timeline, briefing) is never called, and none of its inputs
-    (`result_*.json`, `notes_*.md`) are cleared. That leaves
-    `has_pending_finalization(vault)` True so a later `watchdog bark` — possibly with a
-    different `--finalizer-model`, and possibly against a copy of the vault — can pick up
-    exactly where extraction left off.
-    `force` (#424) re-extracts every queued document even when a cached artifact or a committed
-    vault note already exists for its sha — `cmd_ingest` always pairs this with
-    `skip_finalize=True` so it can gate the overwrite of already-committed documents (via
-    `finalize`'s own `force_shas`) before anything is recommitted.
-    `skip_briefing` (#410) passes straight through to `finalize` — post-ingest still runs
-    reconciliation, synthesis, and the timeline, it just skips the briefing model call.
-    `finalizer_overrides` (#433) passes straight through to `finalize` — see its docstring for
-    the per-stage model/backend keys it accepts.
-    `resume_hint` (#441, D138) is the command a "re-run to resume/collect later" notice names —
-    `cmd_ingest` passes `watchdog dig` for a `dig` run and bare `watchdog` for the guided walk or
-    the deprecated `ingest`, so the extraction-side notices point back at the right entry point.
-    `verify` (#535) adds a second, cheap read of each document (or section) that lists the
-    material facts the extraction missed, merged deterministically by `pipeline.verify`. Off by
-    default and unsupported on `claude-batch`, which is asynchronous by construction — a
-    verification call needs the extraction it is verifying to already exist, and a batch's
-    results arrive in a later process, hours later, with no cached prefix left to read.
-    `extract_token_budget` (#563 admission control, D185) pins the tokens-per-minute ceiling a new
-    document's dispatch is held back against; `None` (the default) auto-discovers it from the
-    most recent call's `rate_limit.limit_tokens` instead — real for every backend except
-    `claude-agent-sdk` (Claude subscription auth), which never reports it, making this the only
-    lever on that path. Not consulted on a batch backend, which has no per-document dispatch loop
-    to gate.
-    `benchmark_arm_id` (#611) tags this run's telemetry rows in the global store — set by
-    `run_benchmark.py` via `cmd_extract`/`cmd_ingest`, None for an ordinary ingest.
-    """
+    `extract_model`/`post_model`/`classify_model` drive extraction, synthesis/timeline/briefing,
+    and the cheap classifier (first `classify_pages` pages) respectively; `pinned_skill` skips
+    classification entirely. `extract_effort`/`post_effort`/`classify_effort` tune reasoning
+    depth per stage — `classify_effort` (D221) no-ops on Haiku (the classifier's default, which
+    rejects the parameter, per D36) but applies on a model that supports it. `*_backend` selects
+    a non-default backend per stage; a non-Claude backend's `*_model` is that provider's raw
+    model id (D37).
+
+    `skip_finalize` (#384) stops after extraction without clearing post-ingest inputs, leaving
+    `has_pending_finalization(vault)` True so a later `watchdog bark` can pick up where it left
+    off. `force` (#424) re-extracts every queued document even if cached/committed — always
+    paired by `cmd_ingest` with `skip_finalize=True` so `finalize`'s own `force_shas` gates the
+    overwrite. `skip_briefing` (#410) and `finalizer_overrides` (#433) pass straight through to
+    `finalize` (see its docstring). `resume_hint` (#441, D138) is the command a resume notice
+    names. `verify` (#535) adds a second cheap pass listing missed facts; unsupported on
+    `claude-batch`, whose results arrive in a later process with no cached prefix to verify
+    against. `extract_token_budget` (#563, D185) pins the tokens/minute ceiling new-document
+    dispatch is held against; `None` auto-discovers it from the last call's rate-limit headers,
+    the only lever available on `claude-agent-sdk` (which never reports one). `benchmark_arm_id`
+    (#611) tags this run's telemetry when `run_benchmark.py` is the caller."""
     queue_dir = vault / ".watchdog" / "queue"
     shas = [f.stem for f in sorted(queue_dir.glob("*.json"))] if queue_dir.exists() else []
     config_snapshot = {

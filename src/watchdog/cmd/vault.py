@@ -1075,7 +1075,7 @@ def cmd_status(args) -> None:
         docs_data = _read_json(docs_file) if docs_file.exists() else {}
         ents_data = _read_json(ents_file) if ents_file.exists() else {}
     except json.JSONDecodeError as e:
-        sys.exit(f"Error: registry file is corrupt — {e}\nRun '/watchdog-health' to diagnose.")
+        sys.exit(f"Error: registry file is corrupt — {e}\nRun 'watchdog doctor' to diagnose.")
 
     total_pages = sum(d.get("page_count", 0) for d in docs_data.values())
     doc_types   = Counter(d["document_type"] for d in docs_data.values() if d.get("document_type"))

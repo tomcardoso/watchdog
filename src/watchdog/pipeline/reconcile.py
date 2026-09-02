@@ -1,46 +1,17 @@
 """
-Post-ingest reconciliation — entity resolution + contradiction detection (#381/D118).
-
-These are the two jobs extraction is structurally unable to do, and for the same reason: both
-need claims **side by side**, and extraction reads one document at a time. Extraction used to
-attempt both against a snapshot of the entity registry taken when that document's own extraction
-began — which meant a document could only ever be compared against the documents that happened to
-land ahead of it, and documents in the same concurrency wave could not see each other at all.
-
-The finalizer is the only stage that sees the whole entity set, so both jobs live here. It runs
-once per ingest, over the staged batch's extraction artifacts unioned with the registry, which
-makes it concurrency-immune, order-immune, and near-constant in cost (one call, like the briefing
-— it does not scale with page count).
+Post-ingest reconciliation — entity resolution + contradiction detection, run once per ingest
+over the whole entity set rather than inside extraction, since both jobs need claims **side by
+side** and extraction only ever sees one document at a time (D118 has the full rationale,
+including the blocking algorithm that keeps entity-pair comparison off a quadratic path).
 
 **Merges run before commit, contradictions after (#403 phase 3).** `build_bundle` and
-`apply_merges` read `.watchdog/extracted/<sha>.json` — the staged, not-yet-committed batch — so a
-confirmed duplicate between two documents landing in the same ingest is folded in the staged JSON
-itself; write_vault then commits the two as one entity and no post-commit note surgery (redirect
-stub, backup, "Merged from" provenance) is ever produced for a same-batch duplicate. A duplicate
-against an *already-committed* entity still gets that surgery (`merge_entities.run`), since that
-entity's note genuinely exists. Contradictions need the committed notes/documents to validate
-against (`contradiction.run` checks both doc slugs exist in `registry/documents.json`), so
-`apply_contradictions` runs after the commit pass, using the merge remap `apply_merges` returned.
-
-**The split with the deterministic writer.** `write_vault._reconcile_entity_ids` already folds
-*exact* normalized-name duplicates together, in-lock, at write time — that pass is untouched and
-still does the bulk of the work. What it deliberately will not do is collapse names that differ by
-a token ("Laurentian University" / "Laurentian University of Sudbury"), because auto-merging those
-carries real false-positive risk. Those are exactly the judgement calls, and they are what this
-module sends to the model.
-
-**Bundle size.** Naively, entity resolution is every entity against every other entity — one call
-that grows quadratically and eventually will not fit a context window. So Python blocks the field
-first (`candidate_pairs`): only pairs sharing a canonical type, with one name a token-subset of the
-other, identical in tokens (a word-order or stopword variant), or a high token overlap, and with at
-least one side touched by *this* run, are ever sent. The model confirms or rejects each pair by
-index. The contradiction half is bounded by the same recurrence gate synthesis uses (D26): an
-entity needs claims in two documents before two of its claims can disagree.
-
-I1 holds throughout: the model only ever answers *which* — which pairs are the same thing, which
-claims conflict. Every write is done by deterministic code that already exists — `merge_entities.
-run` for a merge, `contradiction.run` for a callout — so a model that names a nonexistent document
-or a stale entity id produces a skipped item and a warning, never a bad note.
+`apply_merges` read the staged, not-yet-committed batch (`.watchdog/extracted/<sha>.json`), so a
+duplicate between two documents landing in the same ingest is folded before `write_vault` ever
+commits them — no post-commit note surgery (redirect stub, backup, "Merged from" provenance) is
+needed for a same-batch duplicate. A duplicate against an *already-committed* entity still gets
+that surgery (`merge_entities.run`), since that entity's note already exists. Contradictions need
+the committed notes/documents to validate against, so `apply_contradictions` runs after the commit
+pass, using the merge remap `apply_merges` returned.
 """
 
 import json
@@ -216,26 +187,19 @@ def _staged_artifacts(vault: Path, shas: list[str]) -> list[tuple[str, dict]]:
 def build_bundle(vault: Path, shas: list[str]) -> dict:
     """Assemble the one reconciliation call's input: candidate duplicate pairs, and the claim
     ledger of every entity that could hold a contradiction — reconstructed from the staged batch
-    (`.watchdog/extracted/<sha>.json`, post exact-fold) unioned with the registry, rather than
-    from the committed vault (#403 phase 3). This runs *before* the commit pass, so a confirmed
-    merge between two of this batch's own documents can be applied as a staged id rewrite instead
-    of post-commit note surgery — see the module docstring.
+    unioned with the registry, rather than from the committed vault, so a same-batch merge can be
+    applied as a staged id rewrite instead of post-commit note surgery (#403 phase 3; see the
+    module docstring).
 
-    A **working entity map** — a deep copy of the registry, folded with each staged artifact's
-    entities via the same `write_vault._new_entity`/`_merge_entity` the real commit will use
-    (mirroring `orchestrate._batch_exact_fold`'s own pattern) — stands in for "the registry as it
-    will look once this batch commits", without writing anything. `touched` is every entity id
-    those staged artifacts contribute (replaces the old fragment-queue-based `_touched_ids`, which
-    only existed post-commit).
+    Builds a **working entity map** — a deep copy of the registry folded with each staged
+    artifact's entities, via the same `write_vault._new_entity`/`_merge_entity` the real commit
+    uses — standing in for "the registry once this batch commits," without writing anything.
 
-    The claim ledger is normally the entity note's ``## Analysis`` section — `write_vault` appends
-    a source-attributed block to it per document (`*<date>, via [[documents/<slug>|<title>]]:*`,
-    then that document's claims with page links). Pre-commit, that block does not exist yet for
-    this batch's own claims, so it is reconstructed here: the existing note's ``## Analysis`` (if
-    the entity was already committed before this batch) plus one rendered block per staged
-    document that touched it, in the same shape. This claims text feeds the model question only —
-    it is never written to disk — so a faithful-enough reconstruction is fine even though it will
-    not be byte-identical to what `write_vault` eventually renders.
+    The **claim ledger** is normally an entity note's ``## Analysis`` section, which `write_vault`
+    appends to per document at commit time. Pre-commit that block doesn't exist yet for this
+    batch's own claims, so it's reconstructed here from the existing note (if any) plus one
+    rendered block per staged document that touched the entity — close enough to feed the model,
+    even though it won't be byte-identical to what `write_vault` eventually writes.
     """
     entities_path = vault / ".watchdog" / "registry" / "entities.json"
     original_reg = _read_json_or(entities_path, {})
@@ -313,25 +277,18 @@ def build_bundle(vault: Path, shas: list[str]) -> dict:
 
 
 def _rewrite_staged_ids(vault: Path, shas: list[str], merge_id: str, keep_id: str) -> str | None:
-    """Rewrite `merge_id` -> `keep_id` across every staged artifact in the batch: every entity
-    ``id`` and every role ``target_id``, so any of this batch's own claims for the loser land on
-    the survivor once the commit pass replays `write_vault.run` over the (now-rewritten) staged
-    JSON — rather than resurrecting the merged-away id. Preserves the folded name as an alias on
-    the surviving staged entity, mirroring `write_vault._reconcile_entity_ids`.
+    """Rewrite `merge_id` -> `keep_id` across every staged artifact in the batch — entity `id`,
+    role `target_id`, `morgue_entity_id`, and `document.key_facts[].entities` tags (#513) — so the
+    loser's claims land on the survivor once the commit pass replays `write_vault.run`, rather
+    than resurrecting the merged-away id. Preserves the folded name as an alias, mirroring
+    `write_vault._reconcile_entity_ids`.
 
     Called for both merge-taxonomy branches (#403 phase 3): it *is* the merge when the loser was
-    never committed (nothing else would ever fold it), and it is a supplementary step alongside
-    `merge_entities.run` when the loser was already committed (that surgery only touches the
-    registry/notes on disk, not this batch's still-staged JSON).
+    never committed, and a supplementary step alongside `merge_entities.run` when it was already
+    committed (that surgery only touches disk, not this batch's still-staged JSON).
 
-    Also rewrites `morgue_entity_id` and every `document.key_facts[].entities` tag that names
-    `merge_id` (#513) — both name an entity id by the same convention as `entities[].id` /
-    `role.target_id` but sit outside this remap's original scope, so without this a document
-    filed under (or a fact tagged against) the merged-away id would go stale once the survivor
-    takes over.
-
-    Returns the merged-away entity's display name as it appeared in the batch (for the caller's
-    reporting), or None if the batch never staged it at all.
+    Returns the merged-away entity's display name (for the caller's reporting), or None if the
+    batch never staged it.
     """
     extracted_dir = vault / ".watchdog" / "extracted"
     merge_name = None
@@ -378,30 +335,25 @@ def apply_merges(vault: Path, shas: list[str], parsed: dict, bundle: dict, warn)
     """Apply every confirmed merge from a pre-commit reconciliation call (#403 phase 3), before
     any of this batch has been written to the vault.
 
-    Each confirmed merge names `keep_id` and (implicitly, the pair's other id) `merge_id`. At this
-    point each id is either **committed** (a key in `registry/entities.json` right now — including
-    a staged entity phase 2's exact fold already remapped onto an existing registry id) or
-    **batch-only** (only ever seen in this batch's staged JSON so far):
+    Each confirmed merge names `keep_id` and `merge_id`. At this point each id is either
+    **committed** (already a key in `registry/entities.json`) or **batch-only** (seen only in this
+    batch's staged JSON so far):
 
-    1. **Normalize direction:** if exactly one of the two is committed, force it to `keep` —
-       swapping the model's choice if needed — since the already-written entity always survives
-       and the new one folds onto it (its name stays primary; the folded name becomes an alias).
-       If both or neither are committed, honour the model's `keep_id`.
-    2. **Loser is batch-only:** a plain staged id rewrite (`_rewrite_staged_ids`) — no note, no
-       registry entry, so there is nothing for `merge_entities.run` to operate on. At commit,
-       `write_vault` merges the two staged entities into one naturally. This is the common case (a
-       duplicate caught within one ingest).
-    3. **Loser is committed** (so both are): the full `merge_entities.run` surgery, exactly as
-       before phase 3 — stub + backup + provenance ARE produced, since both entities really
-       existed — *plus* the same staged id rewrite, so any of this batch's own claims about the
-       loser land on the survivor rather than resurrecting the merged-away id.
+    1. **Normalize direction:** if exactly one id is committed, force it to `keep` — the
+       already-written entity always survives, its name stays primary. If both or neither are
+       committed, honour the model's `keep_id`.
+    2. **Loser is batch-only:** a plain staged id rewrite (`_rewrite_staged_ids`) — no note or
+       registry entry exists yet, so `write_vault` merges the two staged entities naturally at
+       commit. The common case.
+    3. **Loser is committed** (so both are): the full `merge_entities.run` surgery (stub, backup,
+       provenance), plus the same staged id rewrite, so this batch's own claims about the loser
+       land on the survivor rather than resurrecting the merged-away id.
 
-    Merges chain (a→b then b→c): each is resolved against an accumulating remap, following an
-    already-merged id to its current survivor. Returns
+    Merges chain (a→b then b→c) against an accumulating remap, flattened so every key points
+    straight at its final survivor. Returns
     ``{"merged": [...], "remap": {...}, "contradictions": parsed.get("contradictions") or []}`` —
-    the remap is flattened (every key points straight at its final survivor) for
-    `apply_contradictions`, which the caller runs later, post-commit; contradictions are carried
-    through unapplied — they need the committed vault to validate against.
+    contradictions are carried through unapplied, since they need the committed vault to validate
+    against (the caller applies them post-commit).
     """
     entities_path = vault / ".watchdog" / "registry" / "entities.json"
     registry_ids = set(_read_json_or(entities_path, []))

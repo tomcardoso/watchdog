@@ -360,7 +360,7 @@ _CONFIGURE_KEYS = {
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
             "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: unset.\n"
-            "  Override for a single run with: watchdog ingest --finalizer-reconciliation-model M"
+            "  Override for a single run with: watchdog bark --finalizer-reconciliation-model M"
         ),
         "type": "string",
         "default": None,
@@ -374,7 +374,7 @@ _CONFIGURE_KEYS = {
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
             "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: unset.\n"
-            "  Override for a single run with: watchdog ingest --finalizer-synthesis-model M"
+            "  Override for a single run with: watchdog bark --finalizer-synthesis-model M"
         ),
         "type": "string",
         "default": None,
@@ -388,7 +388,7 @@ _CONFIGURE_KEYS = {
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
             "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: unset.\n"
-            "  Override for a single run with: watchdog ingest --finalizer-timeline-model M"
+            "  Override for a single run with: watchdog bark --finalizer-timeline-model M"
         ),
         "type": "string",
         "default": None,
@@ -401,7 +401,7 @@ _CONFIGURE_KEYS = {
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
             "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: unset.\n"
-            "  Override for a single run with: watchdog ingest --finalizer-briefing-model M"
+            "  Override for a single run with: watchdog bark --finalizer-briefing-model M"
         ),
         "type": "string",
         "default": None,
@@ -895,28 +895,13 @@ def _persist(config: dict) -> None:
 
 def _auto_resolved_hint(key: str, config: dict) -> str:
     """Render 'auto' for a model-aware section budget along with the concrete value it currently
-    resolves to for the configured extractor model/backend, e.g. 'auto (129032 — sonnet)' for
-    plain Claude, or 'auto (150000 — openai:gpt-5-mini)' for a non-Claude backend — a bare model
-    name there would be misleading, since the resolved number depends on the backend too (#606).
-    `extractor_model` is parsed the same tolerant `[backend:]model` way
-    `cmd/ingest.py:_resolve_stage` does (rpartition on the last ':'), but never exits on an
-    unrecognized value — this only previews an already-stored, already-validated config value, so
-    a hard error here would be the wrong failure mode. Every Claude backend
-    (`model_client.CLAUDE_BACKENDS` — including an explicit `claude-api:`/`claude-agent-sdk:`
-    prefix, not just a bare tier name) keeps the plain pre-#606 format with no backend suffix:
-    naming the backend there would be technically accurate but inert, since it would never explain
-    why the number is what it is, only add noise.
-
-    No effort suffix (#555): sectioning is sized from the context window and tokenizer ratio alone,
-    so the resolved number no longer varies with `extractor_effort` and naming it here would imply
-    a dependency that isn't there.
-
-    `watchdog configure` is a global, vault-independent command (`CONFIG_FILE` lives under
-    `~/.watchdog/`; `cmd_configure` never touches a vault path) — there is no usage history to
-    calibrate the tokenizer ratio against here (#574 follow-up), so this preview always reflects
-    the static catalog ratio. That's by design, not an oversight: only a real ingest run (which
-    has vault context) can benefit from the calibrated ratio — see `section.model_defaults`'s own
-    `vault` parameter."""
+    resolves to, e.g. 'auto (129032 — sonnet)' for plain Claude, 'auto (150000 —
+    openai:gpt-5-mini)' for a non-Claude backend — the resolved number depends on the backend too
+    (D190), so a bare model name would be misleading. No effort suffix: sectioning no longer
+    varies with `extractor_effort` (D202). No calibrated tokenizer ratio either — `watchdog
+    configure` is vault-independent, so there's no usage history to calibrate against here (#574
+    follow-up); this preview always reflects the static catalog ratio, and only a real ingest run
+    (with vault context) benefits from the calibrated one."""
     from watchdog import model_client
     from watchdog.pipeline import section
     raw = config.get("extractor_model") or _CONFIGURE_KEYS["extractor_model"]["default"]

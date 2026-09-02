@@ -56,32 +56,16 @@ def scan_queue(vault: Path) -> list[dict]:
 
 
 def _real_input_tokens(totals: dict, backend: str | None = None) -> int:
-    """Total tokens the model actually processed as input for a run's calls (issue #470).
+    """Total tokens the model actually processed as input for a run's calls (#470).
 
-    On Anthropic, plain `input_tokens` badly undercounts once prompt caching is in play: a cache
-    hit or write moves the bulk of a call's input volume into `cache_read_tokens`/
-    `cache_write_tokens` instead, and those are reported as counts *additional* to
-    `input_tokens` — a sectioned extraction carrying a growing shared prefix can show
-    `input_tokens` in the single digits while the real content processed is orders of magnitude
-    larger. (The archived `claude-agent-sdk` arm is the extreme case: 18 input tokens against
-    230,155 cache-write tokens for the same six documents.) The naive chars/4 estimate this is
-    compared against counts a document's full text once regardless of how many cached/fresh calls
-    served it, so the comparison point needs the same full-volume accounting.
-
-    **Every other provider reports the opposite convention** (#617): OpenAI's `prompt_tokens`
-    already *includes* `prompt_tokens_details.cached_tokens`, and DeepSeek's already includes
-    `prompt_cache_hit_tokens` — the cached count is a breakdown OF the input total, not an
-    addition to it. Summing there double-counts every cached token. Measured on the archived
-    benchmark corpus this inflated `gpt-5.4-mini`'s apparent tokens-per-est-token by 12.6% (its
-    fitted ratio read 1.110 summed against 0.914 on `input_tokens` alone — and the *unsummed* fit
-    is the better one, r² 0.839 vs 0.747, which is the tell that the extra tokens were double
-    counting rather than signal).
-
-    So `backend` selects the convention. It is optional and defaults to the summing form, because
-    the run-level `totals` dict this is also called with has no single backend to key off — a run
-    may mix providers — and Anthropic is both the default backend and the only one where the
-    naive form is catastrophically wrong rather than mildly so. Pass it whenever the caller has a
-    single call's record in hand, as `_model_tokenizer_calibration` does."""
+    Anthropic reports a cache hit/write as counts *additional* to `input_tokens`, so they must be
+    summed in or a sectioned extraction with a growing shared prefix reads as near-zero input.
+    Every other provider reports the opposite convention (#617) — the cached count is already a
+    breakdown OF `prompt_tokens`, so summing there double-counts. `backend` selects the
+    convention; it defaults to the summing form since the run-level `totals` dict this is also
+    called with may mix providers, and Anthropic is both the default and the only backend where
+    the naive form is badly wrong rather than mildly so. Pass it when the caller has a single
+    call's record in hand, as `_model_tokenizer_calibration` does."""
     # Local import for the same circular-import reason `_model_tokenizer_calibration` has one:
     # `model_client.tokenizer_ratio` reaches back into this module.
     from watchdog.model_client import provider_for_backend
@@ -92,35 +76,15 @@ def _real_input_tokens(totals: dict, backend: str | None = None) -> int:
 
 
 def _tokens_calibration(vault: Path, max_runs: int = 3) -> float | None:
-    """Empirical correction factor for the naive chars/4 'tokens in' estimate (issue #417).
-
-    Every usage-<ts>.json written by a run that actually extracted documents now carries both
-    what was estimated for those documents at queue time (``totals.est_input_tokens``, the same
-    chars/4 heuristic ``scan_queue`` uses, summed by `orchestrate._compact_result`) and what
-    extraction really consumed (`_real_input_tokens`, #470) — their ratio is how far off the
-    heuristic ran, against this vault's own recent documents rather than a fixed global guess.
-    Averaged over the last `max_runs` such files (a blend here, unlike `cost_estimate`'s
-    deliberate low/high range for dollars: this feeds a single displayed token count, not a
-    range).
-
-    Only files carrying `est_input_tokens` are extraction runs — a standalone `watchdog bark`
-    never sets it (nothing was extracted), so it's silently skipped without a separate task-based
-    filter. A vault with no such history yet (first run since this shipped, or a vault that has
-    only ever run standalone finalizes) returns None, and callers fall back to the raw heuristic
-    rather than fabricate a correction. Not backend-aware: a queue about to extract on a different
-    provider than produced this history gets the same correction as any other — consistent with
-    `cost_estimate`'s own $/token ratio, which has never been backend-filtered either.
-
-    Not model-tokenizer-aware either (#574): this ratio already absorbs whatever tokenizer the
-    extraction model(s) behind the last `max_runs` history files actually used, since it's derived
-    empirically from their real `input_tokens`. That only stays correct while the extractor
-    doesn't cross the Claude tokenizer boundary (old tokenizer through Sonnet 4.6, new tokenizer
-    from Opus 4.8/Sonnet 5 on, #574) between the history and the upcoming run — a vault that
-    switches its extractor model across that boundary gets a calibration ratio computed against
-    the *other* tokenizer for one run's worth of history, same as switching providers already
-    does. Not scoped to the extractor model per history file to correct for this — would need
-    grouping calibration runs by model, a bigger change than this fix's scope.
-    """
+    """Empirical correction factor for the naive chars/4 'tokens in' estimate, averaged from this
+    vault's own last `max_runs` extraction usage files rather than a fixed global guess (#417):
+    the ratio of what `scan_queue` estimated to what extraction really consumed
+    (`_real_input_tokens`, #470). Only files carrying `est_input_tokens` are extraction runs (a
+    standalone `watchdog bark` never sets it), so those are skipped without a separate filter.
+    Not backend- or model-tokenizer-aware (#574) — the ratio absorbs whatever tokenizer produced
+    the history, so it drifts if the extractor model crosses the Claude tokenizer boundary
+    between that history and the upcoming run. Returns None with no history to calibrate from;
+    callers fall back to the raw heuristic rather than fabricate a correction."""
     from watchdog.pipeline import orchestrate
     ratios = []
     for uf in reversed(orchestrate.usage_files(vault)):
@@ -138,74 +102,20 @@ def _tokens_calibration(vault: Path, max_runs: int = 3) -> float | None:
 
 def _model_tokenizer_calibration(vault: Path, model: str | None, backend: str | None,
                                  max_records: int = 20, min_records: int = 3) -> float | None:
-    """Empirical, per-model correction factor for `model_client.tokenizer_ratio` (#606 Part B),
-    the same idea as `_tokens_calibration` above but scoped to one model/backend and pooled at
-    the individual-call level rather than the whole-run level.
-
-    `_tokens_calibration` compares a whole run's `totals.est_input_tokens` to its real input
-    tokens — one ratio per run, mixing every model that run happened to use. That's fine for a
-    single vault-wide "how far off is the naive heuristic" display, but the tokenizer ratio this
-    feeds (`model_client.tokenizer_ratio`) is a property of one specific model's tokenizer, not of
-    a run, so a run-level average would blend models with genuinely different tokenizers into one
-    number. Each individual usage record already carries its own `model`/`backend` (`orchestrate.
-    _record_usage`) — this scans those directly instead of `totals`.
-
-    `model`/`backend` are resolved to the catalog id the same way `tokenizer_ratio`/
-    `context_window` do (`resolve_model_id(model or DEFAULT_TIER)`), since that's what a record's
-    own `model` field stores (`ModelResult.model`/`r.model` — the resolved id, not a raw tier
-    name).
-
-    Pooled across records, not averaged per file: matching records for one model can be sparse —
-    a single file's extraction batch may contain only one or two calls to a given model — so
-    summing estimated and actual tokens across every matching record before dividing gives a
-    single stable ratio, rather than letting a file with few matches skew a per-file average as
-    much as a file with many. Scans `orchestrate.usage_files(vault)` most-recent-file-first (like
-    `_tokens_calibration`), stopping once `max_records` matching records have been collected —
-    recent history reflects the model's current tokenizer, and there's no reason to keep scanning
-    once there's enough to be stable.
-
-    Pools `extract` and `extract-section` calls together: the tokenizer ratio corrects for how
-    many real tokens a chunk of text turns into, a property of the model's tokenizer and the text
-    alone — not of which task sent that text — so a whole-document `extract` call and a single
-    section's `extract-section` call are equally valid evidence for the same ratio.
-
-    Divides by `est_prompt_tokens`, NOT `est_input_tokens` (#617, D197). This is the bug the
-    original #606 Part B version shipped with: `est_input_tokens` covers the document text only,
-    while the provider's reported input tokens cover the entire rendered prompt — schema,
-    extraction instructions, record skill, carry-forward entities, harvested candidates and the
-    document alike. Dividing one by the other measured
-    `tokenizer_ratio x (1 + prompt_overhead / document_tokens)`, and the bias was not even
-    constant: it shrank as sections grew, so a vault whose history happened to be section-heavy
-    calibrated to a larger ratio than a whole-document-heavy one for the same model and the same
-    tokenizer, and shrank its sectioning budget accordingly. Measured against corpus-v1 the
-    scaffolding is 7,200-9,300 real tokens per call, which read a true 1.09 Claude ratio as 1.41
-    and a true sub-1.0 GPT-5.4-nano ratio as 2.19.
-
-    One residue survives on `claude-agent-sdk` specifically. `est_prompt_tokens` measures the
-    prompt *this code* renders; the SDK then prepends its own system prompt and CLI preamble,
-    which we never see and therefore never estimate. Archived history puts that at roughly 930
-    real tokens per call — the three Claude backends fit the same slope (1.089-1.091) over the
-    same documents and differ only in intercept: 8,393 `claude-api`, 8,516 `claude-batch`, 9,326
-    `claude-agent-sdk`. So an SDK-backed vault calibrates a few per cent high, the same kind of
-    contamination this function was fixed for, an order of magnitude smaller. Left alone on
-    purpose: the ratio is scoped by `(model, backend)`, so the inflated figure is only ever
-    applied to SDK calls — which really do send those extra tokens — and a slightly more
-    conservative budget on the backend that sends more is the right direction. It is not evidence
-    about the tokenizer, though, which is why `model_catalog.yaml`'s constants come from
-    `count_tokens` (backend-free by construction) rather than from this.
-
-    Records written before #617 carry no `est_prompt_tokens` and are skipped rather than being
-    silently mixed in on the old denominator. A vault whose history is entirely pre-#617
-    therefore calibrates to None and falls back to the catalog constant — which is now itself a
-    measured figure (`model_catalog.yaml`, `benchmarks/tokenizer_ratio.py`), so the cold-start
-    fallback is real data rather than a vendor sentence, and the contaminated ratio stops being
-    preferred over it.
-
-    Returns `None` (not a noisy one-or-two-sample ratio) when fewer than `min_records` matching
-    records were found — a model tried once or twice in this vault shouldn't override the catalog
-    constant on a whim; callers fall back to it instead, exactly as `_tokens_calibration` falls
-    back to the raw chars/4 heuristic with no history at all. A model with no history yet trusts
-    the static catalog ratio until enough real calls accumulate to say otherwise."""
+    """Empirical, per-model correction factor for `model_client.tokenizer_ratio` (D190) — like
+    `_tokens_calibration` above, but scoped to one (model, backend) pair and pooled at the
+    individual-call level, since blending different models' tokenizers into one run-level ratio
+    would be wrong. Scans usage records most-recent-first, pools `extract`/`extract-section`
+    calls (the ratio is a property of the model and the text, not the task), and divides by
+    `est_prompt_tokens` — not `est_input_tokens`, a since-fixed bug that read a true 1.09 Claude
+    ratio as 1.41 by omitting the rest of the rendered prompt from the estimate (D198). Records
+    written before that fix carry no `est_prompt_tokens` and are skipped rather than mixed in on
+    the old denominator. `claude-agent-sdk` calibrates a few percent high regardless, since
+    `est_prompt_tokens` can't see the SDK's own preamble (D198) — left uncorrected on purpose,
+    since the ratio is scoped by `(model, backend)` and that backend really does send those extra
+    tokens. Returns None below `min_records` matching calls, so a model tried once or twice
+    doesn't override the catalog constant; callers fall back to it, same as `_tokens_calibration`
+    falls back to the raw heuristic."""
     from watchdog.model_catalog import resolve_model_id
     from watchdog.model_client import DEFAULT_TIER
     from watchdog.pipeline import orchestrate
@@ -265,26 +175,16 @@ def _output_token_ratio(vault: Path, max_runs: int, finalize_only: bool = False)
 
 
 def _catalog_cost_projection(est_tokens: int, output_ratio: float | None) -> list[dict]:
-    """Price `est_tokens` (already the calibrated 'tokens in' figure) against every model in
-    `model_catalog.yaml` at that model's own list price (#469) — unlike `cost_estimate`'s $/token
-    ratio (drawn from this vault's history of the model that actually ran), a model that has
-    never run here has no $/token history of its own to draw on, so this instead uses the
-    catalog's published per-token rates directly, scaled by `output_ratio` for the output side.
-    Priced as if every input token were a cache miss — the simplest apples-to-apples comparison,
-    and a deliberate overestimate rather than a guessed-at cache hit rate that would vary by
-    model and usage pattern. Every catalog model is included, including Claude tiers, regardless
-    of whether this vault is on subscription auth: this is list price for comparison, not a
-    projection of what you would actually be billed. Returns `[]` when there's no usage history
-    yet to derive `output_ratio` from — no dollar figure is invented from nothing.
-
-    `est_tokens` is a single figure projected uniformly across every catalog model (#469's own
-    design), which crosses the Claude tokenizer boundary (#574): it is calibrated (D135) against
-    whichever model actually produced this vault's usage history, on the old tokenizer by default
-    (the flat chars/4 heuristic itself, and Sonnet 4.6 remaining the default extractor). Each
-    row's own `tokenizer_ratio` is applied here so a new-tokenizer model (Opus 4.8, Sonnet 5) is
-    priced against its own higher real token count rather than the old-tokenizer figure verbatim
-    — accurate as long as the calibration source stayed on the old tokenizer, same caveat
-    `_tokens_calibration` documents for the single-model estimate."""
+    """Price `est_tokens` against every model in `model_catalog.yaml` at that model's own list
+    price (#469), scaled by `output_ratio` for the output side — unlike `cost_estimate`'s $/token
+    ratio (drawn from this vault's history of a model that actually ran), a model with no run
+    history here has no $/token of its own, so this prices every input token as a cache miss: a
+    deliberate overestimate rather than a guessed hit rate. Every catalog model is included
+    regardless of subscription auth — this is list price for comparison, not a real-billing
+    projection. Returns `[]` with no usage history to derive `output_ratio` from — no dollar
+    figure is invented. Each row's own `tokenizer_ratio` scales `est_tokens` so a new-tokenizer
+    model (Opus 4.8, Sonnet 5) prices against its real token count rather than the old-tokenizer
+    figure verbatim (#574, D135)."""
     if output_ratio is None:
         return []
     from watchdog.model_catalog import all_models, catalog_tokenizer_ratio, price_multiplier
@@ -321,25 +221,18 @@ def finalize_cost_estimate_all_models(vault: Path, est_tokens: int, max_runs: in
 
 def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
                    max_runs: int = 3, usage_files: list[Path] | None = None) -> dict:
-    """Pre-flight token/cost estimate for a queue (#269): the queue's own `est_tokens` (already
-    computed by `scan_queue`, and calibrated against this vault's own extraction history — #417,
-    see `_tokens_calibration`) times this vault's own $/token history, so a batch's rough cost is
-    visible at the confirm prompt instead of discovered mid-run. The $/token ratio is read fresh
-    from each of the last `max_runs` usage-*.json files (not averaged into one number) so the
-    result can be presented as a range — extraction output varies with document density, and a
-    single false-precise figure would undercut the trust this is meant to build.
-
-    Subscription auth (``claude-agent-sdk``) never gets a dollar figure: there's no real billing
-    to project, only a session-limit fraction this can't estimate honestly from token counts
-    alone. It still gets the calibrated token estimate, though — that's what a subscriber budgets
-    a session window against. With no usage history yet (first run), the token estimate alone is
-    returned — no invented dollar figure.
+    """Pre-flight token/cost estimate for a queue (#269): the queue's calibrated `est_tokens`
+    (`scan_queue`, `_tokens_calibration`, #417) times this vault's own $/token history, read
+    fresh from the last `max_runs` usage files rather than averaged, so the result is a range —
+    extraction output varies with document density, and a single false-precise figure would
+    undercut the trust this is meant to build. Subscription auth (``claude-agent-sdk``) never
+    gets a dollar figure, only the calibrated token estimate — there's no real billing to
+    project. With no usage history yet, only the token estimate is returned.
 
     ``usage_files``, when given, replaces this vault's own history as the $/token ratio source
-    (issue #478) — for a vault that is guaranteed to have none yet by design (every benchmark arm
-    is a freshly seeded vault, `BENCHMARKING.md`), the caller can instead supply usage files
-    archived from a prior run of the same model/effort/backend combination elsewhere.
-    """
+    (#478) — for a vault guaranteed to have none yet by design (every benchmark arm is a freshly
+    seeded vault, `BENCHMARKING.md`), the caller can supply usage files archived from a prior run
+    of the same model/effort/backend combination elsewhere."""
     documents = len(queue_files)
     pages = sum(f.get("page_count") or 0 for f in queue_files)
     raw_tokens = sum(f.get("est_tokens") or 0 for f in queue_files)
@@ -371,28 +264,17 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
 
 def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3,
                            usage_files: list[Path] | None = None) -> dict:
-    """Pre-flight cost estimate for `watchdog bark` (issue #417, a #403 follow-up).
+    """Pre-flight cost estimate for `watchdog bark` (#417, a #403 follow-up) — prices the staged
+    post-ingest corpus (`result_<sha>.json`/`notes_<sha>.md` in `.watchdog/tmp/`, readable
+    directly since #403) with the same chars/4 heuristic `scan_queue` applies to queued
+    documents. The $/token ratio only draws on usage files written by a *standalone* finalize
+    (every call in `orchestrate.FINALIZE_TASKS`) — an ingest's own finalize tail shares its run's
+    usage file with extraction and would misprice in either direction, so it's excluded. No
+    dollar figure with no standalone-finalize history yet, or on subscription auth
+    (`claude-agent-sdk`, D72) — same treatment `cost_estimate` gives.
 
-    `cost_estimate` above prices an ingest queue's *documents*; finalize's real work is
-    reconciliation + synthesis over the staged post-ingest corpus already sitting in
-    `.watchdog/tmp/` (`result_<sha>.json` + `notes_<sha>.md`) — #403 made synthesis read that
-    staged corpus directly, which is what makes a token estimate here newly possible at all.
-    'Tokens in' is the same chars/4 heuristic `scan_queue` applies to queued documents, just
-    pointed at the staged corpus instead.
-
-    The $/token ratio can't reuse `cost_estimate`'s own loop: a `run()` ingest's usage file is
-    extraction-dominated and would misprice a lone `watchdog bark` in either direction. Only
-    usage-<ts>.json files written by a *standalone* finalize qualify — every one of their calls
-    has to fall in `orchestrate.FINALIZE_TASKS`, which is only true when finalize ran on its own
-    (an ingest's own finalize tail shares its run's single usage file with extraction, so it
-    never qualifies). A vault that's never run a standalone `watchdog bark` gets the doc/token
-    counts with no dollar figure, the same "not enough history yet" treatment `cost_estimate`
-    gives a first-run vault. Subscription auth (`claude-agent-sdk`) never gets a dollar figure
-    either, for the same reason `cost_estimate` withholds one (D72): no real billing to project.
-
-    ``usage_files``, when given, replaces this vault's own history (issue #478) — see
-    `cost_estimate`'s own note on the same parameter.
-    """
+    ``usage_files``, when given, replaces this vault's own history (#478) — see
+    `cost_estimate`'s own note on the same parameter."""
     tmp = vault / ".watchdog" / "tmp"
     results = sorted(tmp.glob("result_*.json"))
     docs = len(results)

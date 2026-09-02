@@ -6,7 +6,7 @@ two ids — the dashboard's "Possible duplicates" view, the `/watchdog-health`
 near-duplicate check, and D39's Neo4j-export tradeoff note — this command is the fix.
 No model calls: it must be run from inside the vault it mutates, the same
 "run from inside the vault" convention `watchdog is-duplicate` / `watchdog
-post-flight` already use, since there's no useful project-name lookup for a command
+write-vault` already use, since there's no useful project-name lookup for a command
 that edits the registry in place."""
 
 import json

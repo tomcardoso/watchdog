@@ -13,7 +13,7 @@ set-union — no LLM reasoning:
   * document_requests unioned across sections, deduped by normalized `what` text (#365)
 
 The output is shape-identical to a single-document extraction JSON, so it feeds
-straight into `watchdog post-flight` unchanged.
+straight into postflight (`pipeline/postflight.py`) unchanged.
 """
 
 import json
@@ -230,7 +230,7 @@ def run(vault: Path, sha256: str) -> dict:
 
 def main() -> None:
     if len(sys.argv) < 2:
-        sys.exit("Usage: watchdog merge-sections <sha256>")
+        sys.exit("Usage: python -m watchdog.pipeline.merge <sha256>")
     vault = Path(".").resolve()
     if not (vault / ".watchdog").is_dir():
         sys.exit("Error: must be run from inside a Watchdog vault directory")
