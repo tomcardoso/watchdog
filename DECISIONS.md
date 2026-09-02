@@ -4,6 +4,234 @@ The dated record of architectural decisions, each operating within the **Invaria
 
 **Appending:** add the next `### D<n>` at the **end** (ascending, newest last). Keep entries concise — a few sentences of rationale, then the tradeoff. A decision earns an entry only if it forecloses a future option or would read as a bug without the rationale; pure refactors belong in the commit message. When a decision establishes or revises an invariant, update the Invariants section in ARCHITECTURE.md in the same change.
 
+<details>
+<summary><strong>Index — all 222 decisions, D1 to D222 (click to expand)</strong></summary>
+
+- **D1** — Local-first preprocessing
+- **D2** — Deterministic code writes, model decides
+- **D3** — Isolated extractor subagent per document — Superseded by D18.
+- **D4** — Classification at extraction time, by the model (§6)
+- **D5** — Structured vs. synthesized note split (§7)
+- **D6** — Contradictions as a discrete cited section, verified at extraction (§7)
+- **D7** — Carryforward + gated entity-synthesis (§8)
+- **D8** — Fragments as a write-time byproduct (§8)
+- **D9** — Raw-then-canonical timeline files (§9)
+- **D10** — MinHash near-dup, detect-only (§10)
+- **D11** — Separate lightweight manifest (§12)
+- **D12** — Generate records/_index.md by scanning the per-vault records dir — Superseded by D21.
+- **D13** — Sectioned extraction for large documents (§5)
+- **D14** — Timeline reconciliation + briefing in one finalize subagent — Superseded by D18.
+- **D15** — Runaway guard + ingest-abort (§5)
+- **D16** — Entity synthesis (§8) and finalize (§9) kept as separate subagents, not merged — Superseded by D17.
+- **D17** — Merge synthesis + finalize into one post-ingest subagent fed a Python-built bundle (§8, §9)
+- **D18** — Python orchestrator; the model is called only for reasoning (#118 W3)
+- **D19** — Force-section on whole-doc output overrun (§5)
+- **D20** — Configured model only — no automatic escalation; classifier model is its own knob
+- **D21** — Record skills are global, not per-vault (skills_catalog)
+- **D22** — Extractor emits structured evidence fragments instead of prose analysis; optional verbatim quote on fragments and key_facts (#107) — the extractor no longer emits fragments directly (D26); they are reconstructed from tagged key_facts, but everything downstream (the structured-claims-feed-synthesis digest, the ## Analysis render) is unchanged.
+- **D23** — Post-ingest is a re-runnable finalize step over per-run on-disk inputs (#135)
+- **D24** — Roles are extracted by target_id only; target_name/target_type are re-inflated deterministically (#140)
+- **D25** — confidence is omitted when high; absent ⇒ high (#140) — field reworked into basis by D34; the omit-default mechanism survives, the 4-level scale does not.
+- **D26** — Unified fact primitive: the model emits each material fact once on document.key_facts, tagged with entities + an optional date; postflight fans it back out (#140)
+- **D27** — Skip exact duplicates at chew, not just at ingest (#146)
+- **D28** — Task-prompt prose lives in prompts/.md templates, in a separate directory from record skills
+- **D29** — Stop round-tripping deterministic document fields through the model; stamp them in Python (#140 family)
+- **D30** — document_type is deduped against a per-vault registry (match-or-coin), its slug is derived, and dead/duplicate type fields are dropped (#140 cleanup, stacks on D29)
+- **D31** — Timeline-dedup returns kept indices, not echoed event objects; and collapses only pure restatements, never divergent accounts
+- **D32** — Advisory page-coverage warning flags a likely skim
+- **D33** — Briefing reads figures + chronology from key_facts; the scratchpad is slimmed to forward-looking leads (#150)
+- **D34** — confidence (4-level) → basis (stated/inferred) — provenance, not graded certainty (#143)
+- **D35** — Watch-word alerts are a deterministic post-ingest text scan, no model (#165)
+- **D36** — Per-stage reasoning-effort knobs as an output-token cost lever (#163)
+- **D37** — OpenAI-compatible backends (OpenAI, DeepSeek) behind a provider abstraction (#125)
+- **D38** — Corpus search indexes overlapping sub-page passage windows, not whole pages; corpus and notes are separate streams; bge query prefix + +/- arithmetic + advisory threshold (#138)
+- **D39** — watchdog export emits the entity graph as Neo4j-import CSV / Cypher, fully deterministically from entities.json (#69)
+- **D40** — Deterministic whole-vault lead sweep (pipeline/leads.py): named-but-unprofiled, recurring-isolated, unresolved-contradiction — surfaced post-ingest and via watchdog leads (#155, slice 1)
+- **D41** — Activate queries/ as the compounding-exploration log: /watchdog-query auto-persists substantive answers, which graduate to wiki/ threads (#155, slice 3)
+- **D42** — Native Obsidian Bases dashboard, replacing Dataview (#184)
+- **D43** — Hybrid corpus retrieval + contextual prefix; search index built at ingest (#185)
+- **D44** — watchdog-query gains a semantic lane over the corpus index (#189)
+- **D45** — Web research mode: agentic sourcing that re-enters via _INCOMING/ (#186)
+- **D46** — Research URL registry: a durable pending worklist; done-ness derived, not stored (#196)
+- **D47** — Optional Wayback Machine archiving of research sources (#201)
+- **D48** — watchdog fetch: a non-agentic bulk-URL front door (#197)
+- **D49** — Sectioned-extraction carry-forward: bounded + deduplicated, and the brief is now included
+- **D50** — Per-run model-call usage telemetry (issue #207)
+- **D51** — Prompt caching on the claude-api backend: extraction prompts are content blocks (issue #213)
+- **D52** — claude-batch: bulk extraction via the Message Batches API (issue #214)
+- **D53** — watchdog reindex: rebuild the search index from disk, no re-chew (issue #218)
+- **D54** — watchdog merge-entities <keep-id> <merge-id>: deterministic registry surgery to fix a duplicate entity (issue #219)
+- **D55** — Fourth lead-sweep signal: inferred facts to verify (issue #221)
+- **D56** — Fact/event dedup keys match on full text, not a truncated prefix (issue #231)
+- **D57** — Full-text (FTS5) search lane + batch search (issues #109, #110)
+- **D58** — Stripped the dead entity_ids field from the timeline NDJSON schema (issue #231)
+- **D59** — One global-timeline renderer, with document + entity attribution (issue #237)
+- **D60** — Bound the pre-flight entity digest at the matching layer, not by truncating content (issue #216)
+- **D61** — Rendered web capture: sandboxed JS execution, traded for faithful static+SPA snapshots (issue #200)
+- **D62** — Drop VERIFY_X509_STRICT on egress fetches so TLS-inspecting proxies don't break capture (issue #243)
+- **D63** — Reconcile timeline events that differ only in date precision (issue #239)
+- **D64** — Usage records carry per-call filename/detail, batch extraction usage is no longer silently dropped, and scripts/analyze-session reads usage-<ts>.json directly (issue #247)
+- **D65** — Raw timeline files are consumed at promotion/dedup, not retained (issue #250)
+- **D66** — Run locks are acquired atomically with O_CREAT|O_EXCL, not check-then-write (issue #257)
+- **D67** — write_vault is transactional around a single commit point; derived writes are idempotent (issue #259)
+- **D68** — A single resolution overlay gives leads, watch-word alerts, and contradictions a workable-queue property (issue #266)
+- **D69** — The registry write-lock gets a real Windows branch (msvcrt.locking), not just a documentation caveat (issue #258)
+- **D70** — Extraction provenance (record_skill_hash/extract_model/extract_effort) stamped per document (issue #268)
+- **D71** — Irreversible operations snapshot the files they're about to destroy (issue #270)
+- **D72** — Pre-flight cost estimate at the ingest confirm, from queue est_tokens × this vault's own usage history (issue #269)
+- **D73** — Cross-vault search: watchdog search --everywhere, the cheap first slice of #67 (issue #272)
+- **D74** — watchdog ingest --wait sleeps through a rate limit and auto-resumes (issue #271)
+- **D75** — Deterministic quote verification against the morgue text (issue #267)
+- **D76** — The registry contradictions list is the sole source for an entity note's rendered callouts; merges union it like every other list field (issue #288)
+- **D77** — document.summary becomes a whole-document digest; sectioned docs compose it post-merge (issue #279)
+- **D78** — Entity id/type sanitized before use as a path segment, in two layers; entity name / document title defanged before wikilink interpolation (issues #303, #305)
+- **D79** — watchdog.cmd.setup._persist chmods config.json to 0600 unconditionally (issue #304)
+- **D80** — Briefing gets extraction's output ceiling; on overrun it fails loudly rather than shipping a silently degraded retry (issue #296)
+- **D81** — Session skills report; only the pipeline writes pipeline-owned notes (prompt review)
+- **D82** — watchdog contradiction-add promotes a verified surface candidate into the note (issue #312)
+- **D83** — contradiction-add is an internal action, promoted via /watchdog-surface confirmation
+- **D84** — The classifier reads the document's provenance sidecar
+- **D85** — scripts/analyze-session folded into watchdog usage (issue #319)
+- **D86** — watchdog usage shows cache-write/effort/auth per call; usage files moved into Registry/usage/ (issues #317/#319 follow-up)
+- **D87** — User docs restructured: slim README plus a docs/ folder (issue #166)
+- **D88** — DeepSeek V4 readiness: corrected pricing, non-thinking default, thinking as a -thinking model marker (issue #320)
+- **D89** — Provider-aware sectioning: thresholds scale with the model context window (issue #321)
+- **D90** — Removed the embed_images config knob (dead-on-arrival visual path)
+- **D91** — Non-Claude pricing fidelity: OpenAI rates populated and cache-hit input modelled (issue #170)
+- **D92** — OpenAI request-shape: explicit capability table replaces the substring reasoning heuristic (issue #170)
+- **D93** — watchdog auth collapses to one interactive command; no more status/use/set/get/remove subcommands
+- **D94** — Gemini added as a fourth OpenAI-compatible backend, riding the existing shared client unmodified
+- **D95** — Claude Code is for general use; ingestion gets its own metered-provider setup wizard
+- **D96** — LiveRegion queries the terminal width straight from the OS, not shutil.get_terminal_size()
+- **D97** — Post-flight validation warnings (quote-verify, entity-id/date sanitization) route through the live region and the ingest log instead of a raw stderr print
+- **D98** — Gemini gets real json_schema structured output; OpenAI and DeepSeek stay on json_object
+- **D99** — Arrow-key picker's "↑/↓ move · Enter select · q cancel" hint is erased, not left in scrollback
+- **D100** — Post-flight warnings print after their own document's OK line, not whenever post-flight happened to run
+- **D101** — Chew's progress/ETA row is pinned to always render last in the live region, not wherever it was first inserted
+- **D102** — ingest.log gets a per-document START line, and usage records a per-call end_ts for wall-clock elapsed
+- **D103** — DeepSeek thinking-mode extraction/briefing get a higher max_tokens ceiling than non-thinking calls
+- **D104** — Response pagination + authoritative truncation detection: no truncated extraction is ever accepted
+- **D105** — Entity type is a closed six-value vocabulary, canonicalized deterministically at the write boundary
+- **D106** — Ruff linting in CI, conservative rule set, cli.py exempt from F401
+- **D107** — Briefing entity references are resolved against the registry manifest after synthesis, not trusted to the model
+- **D108** — OpenAI-compatible backend hardening: reasoning-model output ceiling + bounded 5xx retry
+- **D109** — Pre-flight hoists prior timeline events into one shared deduped list
+- **D110** — Embedded file metadata captured deterministically, presented as forgeable evidence, checked by a deterministic date-mismatch rule
+- **D111** — Document requests are a typed object distinct from a lead, moved out of scratchpad, resolved manually, never re-fed
+- **D112** — Figure-grounding advisory in post-flight is a warning, not a gate
+- **D113** — procurement-records merged into government-contracts; skills may not instruct external lookups (issue #68)
+- **D114** — Universal red flags hoisted to extract_instructions.md; skill red flags must be extractor-actionable
+- **D115** — land-registries merged into real-estate
+- **D116** — Catalog-wide overlap pass: every document type has exactly one owning skill
+- **D117** — Picking a model interactively prompts for that provider's key on the spot
+- **D118** — Extraction is stateless; entity resolution and contradiction detection move to a finalizer reconciliation pass (issue #381)
+- **D119** — .watchdog/Registry/ lowercased to .watchdog/registry/ (issue #385)
+- **D120** — A document's sidecar can pin its own record skill, overriding a run-wide --skill
+- **D121** — Chew filters a document's sidecar into the queue JSON and deletes the original; write_vault re-materializes it in morgue
+- **D122** — OpenAI-compatible backends (OpenAI/DeepSeek/Gemini) verify TLS via the OS trust store, not certifi's bundled list
+- **D123** — Tier 0: a deterministic + local-NER candidate harvest feeds a checklist into extraction (issue #361)
+- **D124** — Unknown JSON keys are pruned and logged rather than failing schema validation (#412)
+- **D125** — Failed model calls are recorded in usage telemetry, flagged failed: true
+- **D126** — Extraction stages to a durable, sha-keyed artifact; a serial commit pass replays write_vault at finalize-start (#403 phase 1)
+- **D127** — Batch-wide exact-name entity fold moves ahead of the commit pass (#403 phase 2)
+- **D128** — Entity-merge reconciliation runs before the commit pass; a reconcile failure defers the whole batch (#403 phase 3)
+- **D129** — Entity synthesis reads the staged extraction corpus; the entity-fragments/ mechanism is retired (#403 phase 4)
+- **D130** — extract/finalize are first-class pipeline-stage commands; ingest --no-finalize is removed (issue #425)
+- **D131** — --force re-ingests fully, re-queueing from the morgue, gated by an overwrite confirm between extract and finalize (issue #424)
+- **D132** — Usage telemetry is persisted per call, not just at end-of-run (issue #407)
+- **D133** — A standing public-records warning replaces the generic ingest confirm, defaulting to Acknowledge (issue #426)
+- **D134** — --skip-briefing skips only the briefing model call, not the rest of finalize (issue #410)
+- **D135** — Tokens-in estimate calibrated from real telemetry; watchdog finalize gets its own --estimate (issue #417)
+- **D136** — watchdog setup auto-tunes extract_concurrency to 3 on a Claude subscription that keeps ingestion (issue #400)
+- **D137** — finalizer_model gains four per-stage overrides (issue #433)
+- **D138** — ingest retired in favour of the guided walk; extract/finalize renamed to dig/bark (issue #441)
+- **D139** — local/openrouter backends: user-supplied base URL, optional API key (issue #380)
+- **D140** — extractor_effort defaults to medium, not high (issue #361)
+- **D141** — Figure-grounding warnings gain exact scale matching and a separate citation warning (issue #397)
+- **D142** — A single hand-editable model catalog (model_catalog.yaml/.py) replaces five parallel per-model tables (issue #453)
+- **D143** — --estimate-all projects a queue/batch estimate across the whole model catalog by list price, not by this vault's own $/token history (issue #469)
+- **D144** — claude-batch resolves each document's own skill instead of requiring a run-wide pin (issue #475)
+- **D145** — The agent-SDK backend disables built-in tools with tools=[], not just allowed_tools=[] (issue #475)
+- **D146** — Benchmark vaults get an isolated, gitignored shadow root instead of the real projects_dir, and both of cmd_new's registrations are undone (issue #475 follow-up)
+- **D147** — Section overlap scales with the section budget instead of a fixed token count; the output-ceiling budget is no longer halved a second time (issue #490)
+- **D148** — SECTION's document.key_facts is required on every section, and document is required at the top level (issue #496)
+- **D149** — SECTION's title/document_type/summary widened to nullable, section-only (issue #490 follow-up)
+- **D150** — _validate now path-qualifies error messages; SECTION.entities is optional and key_facts[].date is nullable (issue #490 follow-up)
+- **D151** — OpenAI gets real strict-mode json_schema structured output, via a mechanically-derived schema variant (issue #479)
+- **D152** — Sectioned extraction gets a section-1-only repair retry on post-flight rejection, mirroring _simple_extract's existing repair loop (issue #505)
+- **D153** — Zero key_facts on a substantive document is now a hard post-flight failure, not a silent OK (issues #507/#510)
+- **D154** — write_vault._defang extended from name/title to every free-text field written into a note (issue #508)
+- **D155** — merge.merge_extractions derives morgue_entity_id deterministically when section 1 leaves it empty (issue #505)
+- **D156** — run_benchmark.py gets a pre-flight vault-staleness gate and a resilient report path; cmd_extract/cmd_ingest gain non_interactive (issue #494)
+- **D157** — _extract_sectioned checkpoints each section to disk and resumes from it on retry (issue #498)
+- **D158** — document_requests are content-keyed vault-wide, not per source document (issue #416)
+- **D159** — A model pass judges near-duplicate document requests; Python performs the merge (issue #416)
+- **D160** — Pre-commit entity-id reconciliation now also rewrites morgue_entity_id and key_facts[].entities (issue #513)
+- **D161** — extractor_effort/finalizer_effort extended to xhigh/max; model_catalog.yaml's new effort_levels field becomes the single source of truth for effort capability, and an unsupported level now always fails loud (issue #518)
+- **D162** — watchdog auth mode switches also auto-tune extract_concurrency; the metered-path default rises from 5 to 20 (issue #493)
+- **D163** — _agent_query opts every call out of claude.ai connectors, telemetry, error reporting, and other non-essential CLI traffic (issue #491)
+- **D164** — Model-response fixtures are auto-captured during benchmark runs, not hand-authored (issue #352)
+- **D165** — Claude Sonnet 5 added to model_catalog.yaml as an explicit sonnet-5 tier alongside the existing sonnet/sonnet-4.6; tier becomes scalar-or-list (issues #361/#509)
+- **D166** — Benchmark cost preview borrows a $/token ratio from archived runs of the same model/effort/backend, falling back to a documented static ratio, instead of always reading the (always-empty) target vault (issue #478)
+- **D167** — Extraction prompt now forbids silently correcting an implausible printed date/figure/name; transcribe as printed and flag the inconsistency instead (issue #534)
+- **D168** — The OpenAI reasoning-model output ceiling scales with effort instead of D108's flat 48K, and a starved (zero-visible-output) truncation is reported distinctly from a partial one (issue #354)
+- **D169** — openai-batch: bulk extraction via OpenAI's Batch API, generalizing pipeline/batch_extract.py into a per-provider dispatch (issue #530)
+- **D170** — The model emits a short quote_locator instead of a full quote; Python resolves it against the page text at post-flight (issue #529)
+- **D171** — Gemini gets the same effort-scaled reasoning reserve as D168's OpenAI fix, on a reasoned (not yet measured) low/medium/high table (issue #541)
+- **D172** — A verification pass re-reads each document for the facts extraction missed, merged deterministically; off by default until its precision is measured (issue #535)
+- **D173** — Gemini's thinking tokens are reconstructed from the total_tokens gap and normalised into OpenAI's usage shape, rather than left unpriced and unreported (issue #547)
+- **D174** — Colour is auto-detected from stdout, overridable by NO_COLOR; no --color flag, and FORCE_COLOR deliberately ignored (issue #499)
+- **D175** — A truncated extract-section call re-splits just that section, checkpointed under the original section's index via a new parts list (issue #540)
+- **D176** — Exit code 2 marks a resumable dig/bark run; the mapping lives at CLI dispatch, not inside the commands (issue #499 follow-up)
+- **D177** — A quote_locator resolved on an adjacent page corrects fact["page"] only when unique document-wide; a locator split by a page break is recovered by joining two pages' text (issue #560)
+- **D178** — A benchmark arm's rate limit gets a bounded resume and its own report state; scoring is gated on which documents a vault actually extracted, not on a cancelled flag (issue #559)
+- **D179** — A starved extract call is retried once at the next effort level down, instead of going through D175's re-split; ModelError gains a starved flag distinct from truncated (issue #558)
+- **D180** — model_catalog.yaml gains a per-model tokenizer_ratio; section.model_defaults divides its window-derived threshold/budget by it (issue #574)
+- **D181** — OpenAI calls send prompt_cache_key derived from the first cache_control breakpoint; the verify pass's shared-prefix cost case is scoped to Anthropic (issue #562)
+- **D182** — gemini-2.5-flash/gemini-2.5-flash-lite/gemini-2.5-pro dropped from model_catalog.yaml (issue #583)
+- **D183** — Recorded: Gemini's OpenAI-compat endpoint caches on exact-request identity, not shared-prefix identity; nothing to fix, DeepSeek's archived 0% is a timing artifact (issue #562)
+- **D184** — OpenAI counts prompt-cache-hit tokens toward its TPM rate limit; #577's cache fix bought cost savings, not rate-limit headroom. _openai_complete_async/_api_complete_async capture the provider's own rate-limit response headers (issue #563)
+- **D185** — Admission control: a new document's dispatch is held back against a tokens-per-minute budget, auto-discovered from the provider's own rate-limit headers; Claude subscription auth is a documented exception, not a fallback case (issue #563)
+- **D186** — score_arms.py scored on numeric anchors matched against the whole vault, with a variant generator that could collapse an anchor to 1–3 undifferentiated characters and had no conversion for a plain-dollar figure at all; all fixed, plus a non-numeric fallback for identifier-only anchors (issue #591)
+- **D187** — section.py's output-ceiling-to-input-budget conversion becomes an effort-aware affine inversion against the real wire ceiling, replacing the flat _OUTPUT_PER_INPUT_RATIO = 0.8 (issue #542)
+- **D188** — Recorded: gpt-5.5/gpt-5.4's context_window was stale (400,000), not a deliberate pin; corrected to 1,050,000 (issue #599)
+- **D189** — is_garbled's document-level verdict is judged per sampled page, not over a blended blob; a page must be non-empty and every non-empty sampled page must individually read as garbled before OCR is forced (issue #580)
+- **D190** — _auto_resolved_hint gains a backend/effort-aware preview; tokenizer_ratio gains an optional vault-calibrated ratio, sourced from a new per-model, record-level pooled calibration in ingest_setup (issue #606)
+- **D191** — extract_instructions.md gains two salience/materiality instructions: preserve prior-and-new values for a stated change, and don't drop a name for reading procedural if it recurs in a different capacity (issue #572)
+- **D192** — the OCR decision moves from the document to the page: every page is scored, force-OCR is applied only to the pages that need it, and pages are grouped for conversion by verdict rather than contiguity (issue #605)
+- **D193** — a global SQLite telemetry store (telemetry_db.py) sits alongside the per-vault usage-<ts>.json files, additive and cross-vault, tagged for benchmark runs (issue #611)
+- **D194** — the benchmark is declared an end-to-end measurement, and the Initial Order's ocr_hazards block is deleted rather than wired into scoring (issue #579)
+- **D195** — GPT-5.6+ needs an EXPLICIT prompt-cache breakpoint: nothing on that family has ever prefix-cached, and its cache writes are billable (issue #586)
+- **D196** — sections are packed greedily from per-page token counts, not cut uniformly from the document average (issue #596)
+- **D197** — model_client.py's five hard-coded output-token constants are replaced by one per-model envelope derived from model_catalog.yaml's max_output_tokens; the synchronous Claude path switches to streaming (issue #598)
+- **D198** — every tokenizer_ratio is measured against corpus-v1 instead of quoted, and the vault calibration it feeds is fixed rather than retired (issue #617)
+- **D199** — The verifier's near-duplicate guard is scoped to the document rather than the section, and its containment threshold is fitted to graded data; the ledger's size is conceded to be a materiality problem, not a duplication one (issue #589)
+- **D200** — figure_verify's finding is annotated onto the fact so the vault shows it, but a figure found on another page still does not move the citation (issue #623)
+- **D201** — a hand-maintained SCORER_VERSION/COST_MODEL_VERSION pair marks which code produced a benchmark run's figures, alongside the fields the #551 index needs to compute recall/cost-per-page/speed-per-page per arm (issue #551)
+- **D202** — the output-density fit and its clamps are deleted; sectioning is sized from the context window and tokenizer ratio alone (issue #555)
+- **D203** — a computed figure is tagged inferred at the source, and the contradiction gate honours figure_verify's annotation when it isn't (issue #622)
+- **D204** — an elided quote verifies when its kept parts appear in order and close together, rather than being rejected outright (issue #630)
+- **D205** — extract_instructions.md warns, on every page, that the text is an automated conversion and its table structure may be wrong (issue #631)
+- **D206** — Claude backends now send thinking explicitly; Sonnet 4.6/Opus 4.8 reasoned at neither effort level before this (issue #635)
+- **D207** — the extraction prompt states no example fact count, because any number it names becomes a stopping point
+- **D208** — a model with no private reasoning channel gets an explicit plan/triage/consistency scaffold, via a new document.plan scratch field (issue #570 Phase 1)
+- **D209** — Claude's thinking-token count is folded into completion_tokens_details.reasoning_tokens, the same key every reader already checks (issue #643)
+- **D210** — claude-batch now sends thinking too, closing the gap D209 flagged (issue #643)
+- **D211** — a key_facts entity tag that names no entity in entities now warns instead of vanishing silently (issue #570 follow-up)
+- **D212** — document.summary's length guidance drops its sentence/paragraph counts, for the same reason D207 dropped the fact-count anchor
+- **D213** — figure_verify accepts a figure reported to fewer digits than the page prints it at, because most of what it was flagging as "derived" was a correct rounded reading (issue #622)
+- **D214** — a contradiction is flagged regardless of either claim's basis, reversing D203 and D34's gate (issue #622)
+- **D215** — the derived-figure signal reaches the lead sweep and synthesis, in its own field rather than by writing back to basis (issue #622)
+- **D216** — EXTRACTION/SECTION now declare entities before document, addressing the root cause D211 only made visible (issue #651)
+- **D217** — a model's rates may vary by the clock (price_periods), and the catalog's Gemini and DeepSeek rows are replaced rather than extended (issue #551 groundwork)
+- **D218** — the #551 model index is a measurement table, not a composite score, and it self-heals a run's own contaminated arms rather than trusting whichever run it's pointed at (issue #551)
+- **D219** — docs/benchmarks.md publishes a partial rated table rather than waiting for full arm coverage, and score_index.py's --judged flag now accepts several judge passes (issue #551)
+- **D220** — three gaps closed against the #551 design comment: real wall-clock speed (kept rankable), a reliability column sourced from run artifacts, and a link from configuration.md's model table (issue #551)
+- **D221** — GPT-5.6 Luna becomes the default for all three ingest stages, at high/high/low effort; classify gains a real effort knob for the first time (issues #361/#432/#531, following #551's benchmark)
+- **D222** — D221 reverted for the shipped default: Claude (Sonnet/Haiku) again, Luna kept only as a documented recommendation (issue #361, superseding D221's model-default choice)
+
+</details>
+
 ---
 
 ### D1 — Local-first preprocessing
