@@ -421,6 +421,10 @@ def test_status_lists_a_routed_key_as_in_use(home, tmp_path, monkeypatch, capsys
 
 def test_status_lists_an_unrouted_key_as_unused(home, tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
+    # Every stage explicitly routed to Claude — the pipeline default is openai:gpt-5.6-luna, so
+    # without this the stored openai key would actually be in use, not unrouted.
+    (tmp_path / "config.json").write_text(json.dumps(
+        {"classifier_model": "haiku", "extractor_model": "sonnet", "finalizer_model": "haiku"}))
     auth._save_state({"mode": "subscription", "keys": {"openai": "sk-openai-idle1234567"}})
     _tty(monkeypatch, False)
     auth.cmd_auth(object())
@@ -453,6 +457,9 @@ def test_status_lists_anthropic_key_under_providers_as_in_use(home, tmp_path, mo
     # Providers is meant to be the definitive list of stored keys — Anthropic used to be
     # filtered out of it unconditionally, which contradicted that claim.
     monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
+    # At least one stage routed to Claude — the pipeline default is openai:gpt-5.6-luna, so
+    # without this the stored anthropic key would be inactive, not in use.
+    (tmp_path / "config.json").write_text(json.dumps({"extractor_model": "sonnet"}))
     auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-api-key-123456"}})
     _tty(monkeypatch, False)
     auth.cmd_auth(object())
@@ -477,6 +484,9 @@ def test_status_claude_code_heading_has_no_ingestion_subtitle(home, monkeypatch,
 
 def test_status_ingestion_row_names_anthropic_mode(home, tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
+    # The pipeline default is openai:gpt-5.6-luna — route a stage to Claude explicitly so there's
+    # an anthropic-routed row to name a billing mode on.
+    (tmp_path / "config.json").write_text(json.dumps({"extractor_model": "sonnet"}))
     auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-anything-123456"}})
     _tty(monkeypatch, False)
     auth.cmd_auth(object())
@@ -486,6 +496,7 @@ def test_status_ingestion_row_names_anthropic_mode(home, tmp_path, monkeypatch, 
 
 def test_status_ingestion_row_names_anthropic_subscription_mode(home, tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
+    (tmp_path / "config.json").write_text(json.dumps({"extractor_model": "sonnet"}))
     auth._save_state({"mode": "subscription", "keys": {}})
     _tty(monkeypatch, False)
     auth.cmd_auth(object())

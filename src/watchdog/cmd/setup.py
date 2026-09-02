@@ -305,7 +305,10 @@ _CONFIGURE_KEYS = {
             "  classification is going wrong on ambiguous documents.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
             "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-3.5-flash-lite).\n"
-            "  Default: haiku.\n"
+            "  Default: haiku. Recommended alternative: openai:gpt-5.6-luna (with classifier_effort\n"
+            "  low), the strongest classifier in benchmark testing against real filings — see\n"
+            "  docs/benchmarks.md. Not the shipped default because it needs its own OpenAI key\n"
+            "  even on a plain Claude subscription.\n"
             "  Override for a single run with: watchdog dig --classifier-model M"
         ),
         "type": "string",
@@ -319,7 +322,10 @@ _CONFIGURE_KEYS = {
             "  Sonnet handles complex or ambiguous documents better.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
             "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-3.5-flash-lite).\n"
-            "  Default: sonnet.\n"
+            "  Default: sonnet. Recommended alternative: openai:gpt-5.6-luna (with extractor_effort\n"
+            "  high), which beat Sonnet at low effort outright in benchmark testing against real\n"
+            "  filings — see docs/benchmarks.md. Not the shipped default because it needs its own\n"
+            "  OpenAI key even on a plain Claude subscription.\n"
             "  DeepSeek thinking mode is off by default; append -thinking (deepseek:deepseek-v4-flash-thinking)\n"
             "  to enable it. Override for a single run with: watchdog dig --extractor-model M"
         ),
@@ -337,7 +343,9 @@ _CONFIGURE_KEYS = {
             "  duplicate entities slip through, or if contradictions are being missed.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
             "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-3.5-flash-lite).\n"
-            "  Default: haiku.\n"
+            "  Default: haiku. openai:gpt-5.6-luna is a reasonable alternative alongside\n"
+            "  extractor_model's — this stage has no dedicated benchmark of its own yet, so\n"
+            "  treat it as an extrapolation, not a measured recommendation.\n"
             "  Override for a single run with: watchdog bark --finalizer-model M"
         ),
         "type": "string",
@@ -404,13 +412,16 @@ _CONFIGURE_KEYS = {
             "How hard the extractor model thinks. Thinking tokens bill as output, so a lower\n"
             "  effort spends fewer tokens per document — the main cost lever for an extraction run.\n"
             "  'medium' is the default: benchmark testing found it ties 'high' on recall while\n"
-            "  cutting extraction output/cost substantially. Try 'high' if quality on a specific\n"
-            "  corpus seems to need it, or 'low' to cut cost further. Left unset, this default is\n"
-            "  skipped automatically for an extractor with no effort control at all (Haiku) —\n"
-            "  but setting it explicitly on a model that doesn't support that exact level errors\n"
-            "  rather than silently doing something else. 'xhigh'/'max' need a model that supports\n"
-            "  them specifically — OpenAI reasoning models (e.g. GPT-5.6) support both; Claude\n"
-            "  support varies by model (Sonnet 4.6 takes 'max' but not 'xhigh'; Opus 4.8 takes both).\n"
+            "  cutting extraction output/cost substantially — for Sonnet, the shipped default\n"
+            "  model. If you switch extractor_model to the benchmark-recommended\n"
+            "  openai:gpt-5.6-luna (see docs/benchmarks.md), use 'high' instead — Luna's own\n"
+            "  effort-vs-recall curve climbs with effort, unlike Sonnet's. Left unset, this\n"
+            "  default is skipped automatically for an extractor with no effort control at all\n"
+            "  (Haiku) — but setting it explicitly on a model that doesn't support that exact\n"
+            "  level errors rather than silently doing something else. 'xhigh'/'max' need a\n"
+            "  model that supports them specifically — OpenAI reasoning models (e.g. GPT-5.6)\n"
+            "  support both; Claude support varies by model (Sonnet 4.6 takes 'max' but not\n"
+            "  'xhigh'; Opus 4.8 takes both).\n"
             "  Valid values: low, medium, high, xhigh, max. Default: medium.\n"
             "  Override for a single run with: watchdog dig --extractor-effort E"
         ),
@@ -434,6 +445,23 @@ _CONFIGURE_KEYS = {
         ),
         "type": "enum",
         "default": "high",
+        "choices": ["low", "medium", "high", "xhigh", "max"],
+    },
+    "classifier_effort": {
+        "short": "Reasoning effort for document classification (default: low)",
+        "help": (
+            "How hard the classifier model thinks when picking a document's record skill.\n"
+            "  'low' is the default: classification is a quick lookup against a short excerpt,\n"
+            "  not a task reasoning helps with. Applied only when the resolved model actually\n"
+            "  supports it, same as extractor_effort/finalizer_effort, so an unconfigured\n"
+            "  pipeline never fails on a model with no effort control at all (e.g. Haiku).\n"
+            "  Setting it explicitly on a model that doesn't support that exact level errors\n"
+            "  rather than silently doing something else.\n"
+            "  Valid values: low, medium, high, xhigh, max. Default: low.\n"
+            "  Override for a single run with: watchdog dig --classifier-effort E"
+        ),
+        "type": "enum",
+        "default": "low",
         "choices": ["low", "medium", "high", "xhigh", "max"],
     },
     # ── Local / self-hosted models (#380) ───────────────────────────────────────
@@ -621,11 +649,11 @@ _CONFIGURE_SECTIONS = [
      ["extract_concurrency", "extract_token_budget", "classify_pages", "default_skill",
       "section_token_threshold", "section_token_budget", "section_overlap_tokens",
       "empty_extraction_min_words", "verify_extraction"]),
-    ("Models", "Which Claude model runs each step, and how hard it thinks.",
+    ("Models", "Which model runs each step, and how hard it thinks.",
      ["classifier_model", "extractor_model", "finalizer_model",
       "finalizer_reconciliation_model", "finalizer_synthesis_model",
       "finalizer_timeline_model", "finalizer_briefing_model",
-      "extractor_effort", "finalizer_effort", "verifier_effort",
+      "classifier_effort", "extractor_effort", "finalizer_effort", "verifier_effort",
       "local_base_url", "local_context_window", "openrouter_base_url"]),
     ("Deduplication", "Near-duplicate detection.",
      ["dup_threshold", "shingle_size"]),
@@ -891,8 +919,8 @@ def _auto_resolved_hint(key: str, config: dict) -> str:
     `vault` parameter."""
     from watchdog import model_client
     from watchdog.pipeline import section
-    raw = config.get("extractor_model")   # None ⇒ default tier
-    backend, _, model = (raw or "").rpartition(":")
+    raw = config.get("extractor_model") or _CONFIGURE_KEYS["extractor_model"]["default"]
+    backend, _, model = raw.rpartition(":")
     backend = backend or None
     model = model or None
     threshold, budget = section.model_defaults(model, backend=backend)

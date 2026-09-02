@@ -2432,7 +2432,7 @@ def test_record_skill_provenance_is_persisted(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault)
     _mock(monkeypatch, extraction=_extraction())     # classify mock returns general-records.md
-    asyncio.run(orchestrate.run(vault))              # extract_model defaults to "sonnet"
+    asyncio.run(orchestrate.run(vault, extract_model="sonnet"))   # pinned, independent of the pipeline default
 
     from watchdog import skills_catalog
     expected_hash = hashlib.sha256(
@@ -2518,7 +2518,7 @@ def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
             latency_s=2.5)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    summary = asyncio.run(orchestrate.run(vault))
+    summary = asyncio.run(orchestrate.run(vault, extract_model="sonnet"))  # pinned, independent of the pipeline default
     assert summary["extracted"] == 1
 
     usage_path = summary["usage_path"]
@@ -4250,7 +4250,8 @@ def test_submit_batch_openai_sections_via_openai_not_claude_api(tmp_path, monkey
     sectioned_calls = []
     async def fake_extract_document(vault, sha, brief, extract_model, classify_model,
                                     classify_pages, pinned_skill, extract_effort,
-                                    extract_backend, classify_backend, force=False):
+                                    extract_backend, classify_backend, classify_effort=None,
+                                    force=False):
         sectioned_calls.append(extract_backend)
         return {"sha256": sha, "filename": "big.pdf", "status": "ok", "record_skill": "s"}
     monkeypatch.setattr(orchestrate, "_extract_document", fake_extract_document)
@@ -4353,7 +4354,8 @@ def test_submit_batch_splits_sectioned_and_whole_doc(tmp_path, monkeypatch):
     sectioned_calls = []
     async def fake_extract_document(vault, sha, brief, extract_model, classify_model,
                                     classify_pages, pinned_skill, extract_effort,
-                                    extract_backend, classify_backend, force=False):
+                                    extract_backend, classify_backend, classify_effort=None,
+                                    force=False):
         sectioned_calls.append({"sha": sha, "extract_backend": extract_backend})
         return {"sha256": sha, "filename": f"{sha}.pdf", "status": "ok", "record_skill": "s"}
     monkeypatch.setattr(orchestrate, "_extract_document", fake_extract_document)

@@ -1407,9 +1407,19 @@ def test_display_value_section_auto_shows_resolved_number():
     # 129032 is sonnet's 120K window fraction over its measured 0.93 tokenizer_ratio (#617).
     out = _setup._display_value("section_token_threshold", "auto", {"extractor_model": "sonnet"})
     assert "auto" in out and "129032" in out and "sonnet" in out
-    # Unset (None) behaves the same as explicit 'auto'.
-    out_unset = _setup._display_value("section_token_threshold", None, {})
+    # Unset (None) behaves the same as explicit 'auto', for the same underlying model.
+    out_unset = _setup._display_value("section_token_threshold", None, {"extractor_model": "sonnet"})
     assert "auto" in out_unset and "129032" in out_unset
+
+
+def test_display_value_section_auto_resolves_the_real_pipeline_default_when_extractor_model_unset():
+    """A genuinely empty config (no extractor_model key at all) must resolve against the
+    pipeline's real default, not a stale hardcoded fallback — this is what a fresh install's
+    `watchdog configure` actually shows. Reads the expected default from _CONFIGURE_KEYS itself
+    rather than hardcoding it, so this doesn't need updating every time the default does."""
+    real_default = _setup._CONFIGURE_KEYS["extractor_model"]["default"]
+    out = _setup._display_value("section_token_threshold", "auto", {})
+    assert real_default in out
 
 
 # ── configure — auto-resolved hint respects backend/effort (#606) ──────────────
@@ -3174,13 +3184,12 @@ def test_cmd_ingest_and_cmd_finalize_agree_on_finalizer_default(wdg_home, tmp_pa
     monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
     calls = []
     monkeypatch.setattr(ing, "_resolve_stage",
-                         lambda *a, **k: (calls.append((a, k)), orig_resolve(*a, **k))[1])
+                         lambda *a, **k: calls.append(orig_resolve(*a, **k)) or calls[-1])
     monkeypatch.setattr("watchdog.pipeline.ingest_setup.run", _boom)
     with pytest.raises(_Stop):
         ing.cmd_ingest(args(), confirm=False)
     # Call order in cmd_ingest is extractor, finalizer, classifier.
-    _, finalizer_kwargs = calls[1]
-    finalizer_defaults["ingest"] = finalizer_kwargs.get("default")
+    finalizer_defaults["ingest"] = calls[1]
 
     # cmd_finalize: needs a pending finalization to proceed past its early-return guard.
     calls.clear()
@@ -3188,10 +3197,9 @@ def test_cmd_ingest_and_cmd_finalize_agree_on_finalizer_default(wdg_home, tmp_pa
     monkeypatch.setattr(ing, "_run_finalize", _boom)
     with pytest.raises(_Stop):
         ing.cmd_finalize(args())
-    _, finalizer_kwargs = calls[0]
-    finalizer_defaults["finalize"] = finalizer_kwargs.get("default")
+    finalizer_defaults["finalize"] = calls[0]
 
-    assert finalizer_defaults["ingest"] == finalizer_defaults["finalize"] == "haiku"
+    assert finalizer_defaults["ingest"] == finalizer_defaults["finalize"] == (None, "haiku")
 
 
 def test_pending_batch_dialog_flags_spend_and_safety(wdg_home, tmp_path, monkeypatch):
@@ -3388,11 +3396,11 @@ def test_format_models_line_shows_concurrency_only_when_explicitly_set(monkeypat
     from watchdog.cmd import ingest as ing
 
     without = ing._format_models_line("haiku", "haiku", None, "sonnet", None, "haiku",
-                                      "medium", None, None, concurrency=None)
+                                      extract_effort="medium", concurrency=None)
     assert "concurrency" not in without
 
     with_value = ing._format_models_line("haiku", "haiku", None, "sonnet", None, "haiku",
-                                         "medium", None, None, concurrency=2)
+                                         extract_effort="medium", concurrency=2)
     assert "concurrency" in with_value
     assert "2" in with_value.splitlines()[-1]
 
@@ -3404,12 +3412,23 @@ def test_format_models_line_omits_finalizer_for_dig(monkeypatch):
     from watchdog.cmd import ingest as ing
 
     for_dig = ing._format_models_line("haiku", "haiku", None, "sonnet", None, "haiku",
-                                      "medium", None, None, is_dig=True)
+                                      extract_effort="medium", is_dig=True)
     assert "finalizer" not in for_dig
 
     not_dig = ing._format_models_line("haiku", "haiku", None, "sonnet", None, "haiku",
-                                      "medium", None, None, is_dig=False)
+                                      extract_effort="medium", is_dig=False)
     assert "finalizer" in not_dig
+
+
+def test_format_models_line_shows_classify_effort_suffix():
+    """D221: classify gained an effort knob once its default model (Luna) could actually take
+    one — the classifier row must carry an "(effort: …)" suffix just like extractor/finalizer."""
+    from watchdog.cmd import ingest as ing
+
+    out = ing._format_models_line("openai:gpt-5.6-luna", "gpt-5.6-luna", None, "sonnet",
+                                   None, "haiku", classify_effort="low")
+    lines = {line.split()[0]: line for line in out.splitlines()}
+    assert "(effort: low)" in lines["classifier"]
 
 
 # ── ingest --estimate (#269) ────────────────────────────────────────────────────
@@ -3445,7 +3464,10 @@ def test_cmd_ingest_estimate_empty_queue(wdg_home, tmp_path, monkeypatch, capsys
 
 def test_cmd_ingest_estimate_subscription_mode_shows_no_dollar_figure(wdg_home, tmp_path, monkeypatch, capsys):
     """Subscription auth never gets a dollar figure (#269) — there's no real billing to
-    project, even if this vault happens to have usage history on disk."""
+    project, even if this vault happens to have usage history on disk. Only true when the
+    extractor is actually routed to Claude — the pipeline default (openai:gpt-5.6-luna) is
+    metered regardless of Claude subscription status, so this pins the extractor to exercise
+    what the test is actually about."""
     from watchdog.cmd import auth as auth_module
     from watchdog.cmd.ingest import cmd_ingest
     vault = _vault_with_queued_doc(tmp_path)
@@ -3456,7 +3478,7 @@ def test_cmd_ingest_estimate_subscription_mode_shows_no_dollar_figure(wdg_home, 
                                  "cache_read_tokens": 0, "cache_write_tokens": 0, "cost_usd": 5.0},
     }))
 
-    cmd_ingest(args(estimate=True), confirm=False)
+    cmd_ingest(args(estimate=True, extractor_model="sonnet"), confirm=False)
 
     out = capsys.readouterr().out
     assert "$" not in out
@@ -3582,6 +3604,8 @@ def test_cmd_finalize_estimate_nothing_pending(wdg_home, tmp_path, monkeypatch, 
 
 
 def test_cmd_finalize_estimate_subscription_mode_shows_no_dollar_figure(wdg_home, tmp_path, monkeypatch, capsys):
+    """Only true when the finalizer is actually routed to Claude — the pipeline default
+    (openai:gpt-5.6-luna) is metered regardless of Claude subscription status."""
     from watchdog.cmd import auth as auth_module
     from watchdog.cmd import ingest as ing
     vault = _vault_with_staged_finalize_corpus(tmp_path)
@@ -3592,7 +3616,7 @@ def test_cmd_finalize_estimate_subscription_mode_shows_no_dollar_figure(wdg_home
         "totals": {"input_tokens": 1000, "cost_usd": 5.0},
     }))
 
-    ing.cmd_finalize(args(estimate=True))
+    ing.cmd_finalize(args(estimate=True, finalizer_model="haiku"))
 
     out = capsys.readouterr().out
     assert "$" not in out

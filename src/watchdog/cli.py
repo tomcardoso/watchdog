@@ -462,6 +462,10 @@ def main() -> None:
                                "contradiction flagging, synthesis, timeline, briefing — "
                                "xhigh/max need a supporting model, OpenAI or Claude — "
                                "overrides watchdog configure (default: high)")
+    p_ingest.add_argument("--classifier-effort", choices=_effort_choices, default=None,
+                          dest="classifier_effort",
+                          help="Reasoning effort for document classification — "
+                               "overrides watchdog configure (default: low)")
     _add_finalizer_stage_flags(p_ingest)
     _add_verify_flag(p_ingest)
     p_ingest.add_argument("--concurrency", type=int, default=None,
@@ -510,6 +514,10 @@ def main() -> None:
                            help="Reasoning effort for extraction — lower spends fewer tokens; "
                                 "xhigh/max need a supporting model, OpenAI or Claude — "
                                 "overrides watchdog configure (default: medium)")
+    p_extract.add_argument("--classifier-effort", choices=_effort_choices, default=None,
+                           dest="classifier_effort",
+                           help="Reasoning effort for document classification — "
+                                "overrides watchdog configure (default: low)")
     _add_verify_flag(p_extract)
     p_extract.add_argument("--concurrency", type=int, default=None,
                            help="Documents extracted in parallel — overrides watchdog configure (default: 5)")

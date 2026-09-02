@@ -146,6 +146,7 @@ _CMD_HELP: dict[str, dict] = {
             ("--classifier-model M", "Override the document-classification model for this run — tier or backend:model; default from watchdog configure"),
             ("--extractor-effort E", "Reasoning effort for extraction (low/medium/high) — lower spends fewer tokens; default from watchdog configure"),
             ("--finalizer-effort E", "Reasoning effort for the post-ingest step (low/medium/high); default from watchdog configure"),
+            ("--classifier-effort E", "Reasoning effort for document classification (low/medium/high); default from watchdog configure"),
             ("--concurrency N",      "Documents extracted in parallel for this run (default from watchdog configure: 5)"),
             ("--classify-pages N",   "Pages shown to the document classifier for this run (default from watchdog configure: 5)"),
             ("--skill [NAME|PATH]",  "Pin a record skill (name or file path) for every document, skipping classification (no value = pick from the list)"),

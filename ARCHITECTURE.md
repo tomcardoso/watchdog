@@ -311,7 +311,8 @@ the instruction prose lives in editable templates under `prompts/*.md` — see D
    type strings the extractor may reuse. Entity resolution and the contradiction check that
    digest used to feed both moved to the finalizer (§8.5).
 2. **Classify** — one cheap model call (`model_client.acomplete_json`, `classifier_model`,
-   default haiku) over the document's first `classify_pages` pages, the document's `.yml`
+   default haiku; `classifier_effort` exists as a knob too, D221, but no-ops on Haiku) over the
+   document's first `classify_pages` pages, the document's `.yml`
    provenance sidecar when present, and the generated in-memory skill index, returning the
    closest domain-skill filename (§6). Python reads that one skill and injects it into the
    extraction prompt. **Skipped entirely when a skill is pinned** for the run (`--skill` /
@@ -678,11 +679,11 @@ longer folded into the extractor.
   classification was the *most* harmful outcome: it loaded the wrong domain skill.
 - **Why a dedicated model call wins.** The orchestrator sends a text excerpt + the skill
   index (built in memory from the global catalog, `skills_catalog.build_index()`) to a
-  cheap haiku call that returns the skill filename; Python then reads that one skill (from
+  cheap model call that returns the skill filename; Python then reads that one skill (from
   the global catalog) and injects it into the extraction prompt. Accurate, cheap, and it
   keeps the extraction prompt lean (only the relevant skill, not the index). When the
   skill-based extractor self-classified, that work was turns inside the expensive
-  extraction call (the #87 tax); a separate haiku call is cheaper.
+  extraction call (the #87 tax); a separate cheap call is cheaper.
 - **Pinning.** `--skill` / `default_skill` skips this call entirely and uses one skill
   for the whole run (see §5, D21). A document's own `.yml` sidecar can also carry a
   `skill:` field pinning *that document alone* — read deterministically in Python
@@ -1210,7 +1211,11 @@ completed purge, and the CLI hint says so.
 
 - **Models** (configurable via `watchdog configure`): `extractor_model` (default sonnet;
   extraction, whole-doc + section) and `finalizer_model` (default haiku; post-ingest
-  synthesis + timeline + briefing, §8–§9); classification runs on haiku. `extract_concurrency`
+  synthesis + timeline + briefing, §8–§9); classification runs on haiku. Benchmark testing
+  against real court-and-financial filings found OpenAI's GPT-5.6 Luna stronger for extraction
+  and classification (D221; see `docs/benchmarks.md`), recommended in the docs rather than
+  shipped as the default — it needs its own OpenAI key even on a plain Claude subscription,
+  and only the extractor side is actually benchmarked (D222). `extract_concurrency`
   (default 5) bounds parallel extraction. Each is overridable per run via the matching flag
   on `watchdog dig` (`--extractor-model` / `--concurrency`) or `watchdog bark`
   (`--finalizer-model`) — or on `watchdog ingest`, which takes both.
@@ -1226,17 +1231,23 @@ completed purge, and the CLI hint says so.
 - **Reasoning effort** (per-stage): `extractor_effort` and `finalizer_effort` (`low`/`medium`/
   `high`) tune how many thinking tokens each stage spends; thinking bills as output, so a
   lower effort is the per-run cost lever (D36). `extractor_effort` defaults to `medium` —
-  the corpus-v1 benchmark found it ties `high` on recall at meaningfully lower cost (D140).
+  the corpus-v1 benchmark found it ties `high` on recall at meaningfully lower cost (D140),
+  for Sonnet, the shipped default model; if you switch to the recommended Luna, use `high`
+  instead — its own recall climbs with effort on that corpus, unlike Sonnet's (D221/D222).
   `finalizer_effort` still defaults to `high` ≡ the model default (unbenchmarked; entity
   reconciliation is judgement-heavy cross-document reasoning, a different quality/cost
-  shape than extraction). `verifier_effort` (default `low`) is the third: the optional
+  shape than extraction). `classifier_effort` (default `low`, D221) is new: classify never had
+  an applied effort default before, since Haiku, its default model, rejects the parameter
+  outright — the knob exists now because some models it can be routed to (the recommended
+  Luna) actually support it, and no-ops cleanly on Haiku like the others do on an effortless
+  model. `verifier_effort` (default `low`) is the third original stage: the optional
   verification pass (§5, D172) runs on `extractor_model` — deliberately not independently
   configurable, since its whole cost case is re-reading the document out of the cache the
   extraction call wrote, and a cache belongs to one model — so effort is the only knob it has,
   and low is where it is meant to live. `model_client` maps a configured effort to each backend's native
   control (`output_config.effort` / `ClaudeAgentOptions.effort`) and drops it on Haiku-tier
-  stages (classify; any Haiku model), which reject `effort`. Overridable per run via
-  `--extractor-effort` / `--finalizer-effort`. **`effort` alone doesn't engage reasoning on every
+  stages (classify, by default; any Haiku model), which reject `effort`. Overridable per run via
+  `--extractor-effort` / `--finalizer-effort` / `--classifier-effort`. **`effort` alone doesn't engage reasoning on every
   Claude model** (#635): Anthropic's `thinking` (whether the model reasons at all) and `effort`
   (how deep, once it does) are independent controls, and Sonnet 4.6/Opus 4.8 ship thinking OFF
   by default — `effort` on those two tuned response verbosity only, not reasoning depth, until
@@ -1478,7 +1489,7 @@ Mechanically-checkable postconditions are guarded by named tests in `tests/test_
 - **I1 — Deterministic code writes; the model only reasons.** Anything derivable in Python (document identity, provenance, slugs, role targets, timeline fan-out) is stamped in code, never paid for in model output — and the model is not asked to restate as prose what it already emitted structurally. Carve-out: `document.summary` (#279) is a bounded, deliberate exception — a whole-document digest synthesized from `key_facts`, capped at three paragraphs and grounded (every claim in it must also exist in `key_facts`). That grounding is a **prompt instruction, not a verified postcondition** — unlike quote resolution, no code checks the digest against `key_facts`, so a hallucinated claim would not be caught. *History: D2, D18, D24–D26, D29–D31, D33, D34, D75, D77, D78, D170.*
 - **I2 — Local-first preprocessing.** The *source documents you were given* never leave the machine, and chew costs no API tokens. This is a boundary on **source-doc egress**, not a vow of web abstinence — the investigation layer runs as agentic Claude Code sessions and web research (§14, I5) is allowed, since anything on the open web is already public. *History: D1, D45.*
 - **I3 — Skills and prompt templates are global package resources** — read directly, never copied per-vault — and prompt templates live in their own directory so they never leak into the classifier index. *History: D21, D28.*
-- **I4 — Configured model and effort only; no automatic escalation.** Each stage's model *and* its reasoning effort are explicit knobs with stable defaults; a failed call retries on the *same* model at the *same* effort — the pipeline never silently bumps either to recover. Response pagination (D104) is not an exception: continuing a truncated response prefills the same model's partial output at the same effort to finish one reply, changing neither knob. `finalizer_model` is itself an aggregate over four sub-stages (reconciliation, synthesis, timeline, briefing) each independently overridable (D137) — the "stage" this invariant guards is the finest-grained one actually configured, aggregate or per-stage. The optional verification pass (§5, D172) is the one stage whose *model* is deliberately not a knob: it always runs on `extractor_model`, because on the Anthropic backend it exists to re-read a document out of the prefix cache the extraction call just wrote and a cache belongs to one model — pinning it elsewhere would silently cost the thing the pass is for. (On OpenAI-compatible backends that prefix can never be shared regardless, D181/#562 — the rule itself still stands, since pinning to one model is also just the simpler, uniform default.) Its effort is a knob (`verifier_effort`) like every other stage's. *History: D20, D36, D104, D137, D172, D181.*
+- **I4 — Configured model and effort only; no automatic escalation.** Each stage's model *and* its reasoning effort are explicit knobs with stable defaults; a failed call retries on the *same* model at the *same* effort — the pipeline never silently bumps either to recover. Response pagination (D104) is not an exception: continuing a truncated response prefills the same model's partial output at the same effort to finish one reply, changing neither knob. `finalizer_model` is itself an aggregate over four sub-stages (reconciliation, synthesis, timeline, briefing) each independently overridable (D137) — the "stage" this invariant guards is the finest-grained one actually configured, aggregate or per-stage. The optional verification pass (§5, D172) is the one stage whose *model* is deliberately not a knob: it always runs on `extractor_model`, because on the Anthropic backend it exists to re-read a document out of the prefix cache the extraction call just wrote and a cache belongs to one model — pinning it elsewhere would silently cost the thing the pass is for. (On OpenAI-compatible backends that prefix can never be shared regardless, D181/#562 — the rule itself still stands, since pinning to one model is also just the simpler, uniform default.) Its effort is a knob (`verifier_effort`) like every other stage's. *History: D20, D36, D104, D137, D172, D181, D221, D222.*
 - **I5 — Research output re-enters through `_INCOMING/`, never as a direct vault write.** Web research deposits findings as documents that flow through `chew → ingest`, keeping the deterministic pipeline the single writer (dedup, provenance, registry bookkeeping). Per-doc rationale rides the `.yml` sidecar; batch rationale goes to a `briefings/research-<date>.md` memo — never `context.md`. *History: D45, D46.*
 - **I6 — Anything parsed out of a source document is untrusted input.** Source documents are adversarial by assumption — they arrive from leaks, FOI releases, and hostile parties. Content read *from* a document (its embedded metadata, its XML parts) is data to be defanged before use — never a directive, and never a payload the parser can be exploded by: XML goes through `defusedxml`, never the stdlib `xml.etree` (which expands internal entities, making a crafted `.docx` a billion-laughs bomb); metadata values are allowlisted and length-capped before they can reach a prompt; a reader that fails degrades to an empty dict rather than taking chew down. *History: D78, D110, D154.*
 - **I7 — The vault mutates only at the finalize commit.** Extraction is a pure function of a document: it stages a durable `.watchdog/extracted/<sha>.json` and touches no committed vault state. Every write to that state — entity and document notes, the morgue, the registries, the timeline and search indexes — happens in one serial, sha-sorted commit pass at the top of `finalize` (`_commit_pending` replaying `write_vault.run`), after the pre-commit resolution steps (exact-name fold, entity-merge reconciliation) have run over the staged batch. Nothing before that pass writes a vault path, which is what makes the batch atomic: a reconcile failure leaves it wholly uncommitted and retriable, and `watchdog dig` (extraction with finalize held off) leaves the vault untouched by construction, not by convention. *History: D126, D127, D128, D129.*

@@ -200,13 +200,17 @@ def _effective_extract_backend(extract_backend: str | None, auth_mode: str) -> s
 
 
 def _format_models_line(classify_backend, classify_model, extract_backend, extract_model,
-                        post_backend, post_model, extract_effort=None, post_effort=None,
-                        finalizer_overrides=None, concurrency=None, is_dig=False) -> str:
+                        post_backend, post_model, classify_effort=None, extract_effort=None,
+                        post_effort=None, finalizer_overrides=None, concurrency=None,
+                        is_dig=False) -> str:
     """Which model runs each ingest stage — printed alongside the cost estimate before an
     ingest starts, so a run under a non-default provider (#325) is obvious up front instead of
     the older generic 'Using the configured provider(s).' notice. Stage names are padded to a
-    common width so the model values line up in a column (#411); classify has no effort knob
-    (D36), so only the extractor/finalizer rows can carry an "(effort: …)" suffix.
+    common width so the model values line up in a column (#411). Classify gained an effort knob
+    (D221) since some models it can be routed to (e.g. the benchmark-recommended
+    openai:gpt-5.6-luna) actually support it; D36's "no knob" is still true of Haiku, the
+    classifier's default, which rejects the parameter outright — `classify_effort` simply
+    no-ops there like the others do on an effortless model.
 
     `finalizer_overrides` (#433) adds one extra row per post-ingest stage whose resolved
     model/backend differs from the aggregate finalizer row — an unoverridden stage (the common
@@ -221,7 +225,7 @@ def _format_models_line(classify_backend, classify_model, extract_backend, extra
     which finalize inline), so which model would run it is irrelevant noise on this run's summary."""
     def label(backend, model):
         return f"{backend}:{model}" if backend else model
-    stages = [("classifier", classify_backend, classify_model, None),
+    stages = [("classifier", classify_backend, classify_model, classify_effort),
               ("extractor", extract_backend, extract_model, extract_effort)]
     if not is_dig:
         stages.append(("finalizer", post_backend, post_model, post_effort))
@@ -267,13 +271,15 @@ def _preview_ingest(vault: Path, args) -> tuple[str, str] | None:
     extract_effort = _effort(getattr(args, "extractor_effort", None), config.get("extractor_effort"),
                              default="medium", backend=extract_backend, model=extract_model)
     post_effort = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
+    classify_effort = _effort(getattr(args, "classifier_effort", None), config.get("classifier_effort"),
+                              default="low", backend=classify_backend, model=classify_model)
     finalizer_overrides = _resolve_finalizer_overrides(args, config, post_backend, post_model)
 
     auth_mode = resolve_auth()["mode"] if extract_backend is None else None
     est = cost_estimate(vault, queue_files, _effective_extract_backend(extract_backend, auth_mode))
     models_line = _format_models_line(classify_backend, classify_model,
                                       extract_backend, extract_model, post_backend, post_model,
-                                      extract_effort, post_effort, finalizer_overrides,
+                                      classify_effort, extract_effort, post_effort, finalizer_overrides,
                                       concurrency=getattr(args, "concurrency", None),
                                       is_dig=getattr(args, "command", None) == "dig")
     return _format_cost_estimate(est), models_line
@@ -815,6 +821,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
     extract_effort = _effort(getattr(args, "extractor_effort", None), config.get("extractor_effort"),
                              default="medium", backend=extract_backend, model=extract_model)
     post_effort    = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
+    classify_effort = _effort(getattr(args, "classifier_effort", None), config.get("classifier_effort"),
+                              default="low", backend=classify_backend, model=classify_model)
     try:
         concurrency = int(getattr(args, "concurrency", None) or config.get("extract_concurrency")
                           or _DEFAULT_EXTRACT_CONCURRENCY)
@@ -943,7 +951,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         est = cost_estimate(vault, result["queue_files"], _effective_extract_backend(extract_backend, a["mode"]))
         print(f"\n{_format_cost_estimate(est)}")
         print(_format_models_line(classify_backend, classify_model, extract_backend, extract_model,
-                                  post_backend, post_model, extract_effort, post_effort,
+                                  post_backend, post_model, classify_effort, extract_effort, post_effort,
                                   finalizer_overrides, concurrency=getattr(args, "concurrency", None),
                                   is_dig=is_dig))
     elif batch_pending:
@@ -1073,7 +1081,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                 iter_summary = asyncio.run(orchestrate.run(
                     vault, concurrency=concurrency, extract_model=extract_model, post_model=post_model,
                     classify_model=classify_model, classify_pages=classify_pages, pinned_skill=pinned_skill,
-                    extract_effort=extract_effort, post_effort=post_effort,
+                    extract_effort=extract_effort, post_effort=post_effort, classify_effort=classify_effort,
                     extract_backend=extract_backend, post_backend=post_backend,
                     classify_backend=classify_backend, wait=wait, skip_finalize=run_skip_finalize,
                     force=force, skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides,
