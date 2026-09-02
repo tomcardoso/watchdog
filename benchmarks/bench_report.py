@@ -39,10 +39,19 @@ def run_id(now: datetime | None = None, *, existing: set[str] | None = None) -> 
 
 
 def _usage_totals(usage: dict | None) -> dict:
+    from watchdog.cmd.usage import _wall_span
     calls = (usage or {}).get("calls", [])
     return {
         "cost_usd": sum(c.get("cost_usd") or 0.0 for c in calls),
+        # Summed per-call time — kept for REPORT.md's existing "Latency (summed)" column, which
+        # says exactly what it is. Overstates real elapsed time for any arm whose documents
+        # extracted concurrently (every extractor_sweep arm does, per its own `concurrency`
+        # setting): 6 documents run 3-at-a-time take roughly 1/3 this number in the real world.
         "latency_s": sum(c.get("latency_s") or 0.0 for c in calls),
+        # max(end) - min(start) across all calls — the real wall-clock the arm took, immune to
+        # concurrency inflating the number above. `None` when no call carries an `end_ts` (a run
+        # from before that field existed); callers needing a number fall back to `latency_s`.
+        "wall_clock_s": _wall_span(calls),
         "retries": sum(1 for c in calls if (c.get("attempts") or 1) > 1),
         "sectioned_calls": sum(1 for c in calls if c.get("task") == "extract-section"),
     }
@@ -485,6 +494,10 @@ def run_json(rid: str, results: list, scores: dict, config: dict, prov: dict,
             "error": r.error, "doc_errors": list(r.doc_errors),
             "backends": _backends(r.usage) or None,
             "cost_usd": round(u["cost_usd"], 6), "latency_s": round(u["latency_s"], 3),
+            # The #551 index's speed-per-page numerator: real elapsed time, not summed per-call
+            # latency (which overstates it for any arm whose documents extracted concurrently —
+            # every extractor_sweep arm does). `None` for a run from before `end_ts` was recorded.
+            "wall_clock_s": round(u["wall_clock_s"], 3) if u["wall_clock_s"] is not None else None,
             "retries": u["retries"], "sectioned_calls": u["sectioned_calls"],
             "facts": facts.get(vb), "must_not_miss": mnm.get(vb),
             # #559: a rate limit, a Ctrl-C, or per-document failures can all leave an extractor

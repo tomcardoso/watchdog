@@ -65,6 +65,10 @@ Or run `watchdog configure <key>` with no value to see that one key's help and c
 | `wayback_access_key` | *(unset)* | archive.org access key for `wayback_save`; masked in the listing. |
 | `wayback_secret_key` | *(unset)* | archive.org secret key, paired with the access key. |
 
+Choosing `classifier_model`, `extractor_model`, or `finalizer_model`? See
+[Benchmarks](benchmarks.md) for how each model and effort level actually performs on real
+documents, not just its price.
+
 ### OCR
 
 `auto` uses Apple Vision on macOS (fast, hardware-accelerated) and Tesseract elsewhere. `easyocr` and `rapidocr` need no system install but are generally less accurate on forms. `ocr_languages` applies to Apple Vision: leave it unset to auto-detect from the image, and set it explicitly only if detection produces poor results.
