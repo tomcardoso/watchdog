@@ -107,7 +107,7 @@ Three features run alongside every ingest; each has its full treatment in the [i
 
 If you hit a rate limit — a temporary cap on how much you can send the model — Watchdog stops cleanly and picks up where it left off next time you run it; see [troubleshooting](troubleshooting.md#hitting-rate-limits).
 
-Under the hood, `watchdog` runs three steps you can also run one at a time — `watchdog chew` (local preprocessing), `watchdog dig` (extraction), and `watchdog bark` (writing to the vault and the briefing). Running them separately is useful when you want to chew now and extract later, check what got extracted before it lands in the vault, or try more than one post-processing model against the same extraction. See the [command reference](commands.md#processing) for each one's flags in full.
+Under the hood, `watchdog` runs three steps you can also run one at a time — `watchdog chew` (local preprocessing), `watchdog dig` (extraction), and `watchdog bark` (writing to the vault and the briefing). Running them separately is useful when you want to chew now and extract later, check what got extracted before it lands in the vault, or try more than one post-processing model against the same extraction. See the [command reference](commands.md#processing) for each one's flags in full, or [Methodology](methodology.md) for a plain-English account of what each step actually does to your documents and why.
 
 ## Explore the vault in Obsidian
 
@@ -141,4 +141,4 @@ Claude answers using only the documents in your vault, and cites the source for 
 
 ## Where next
 
-The [investigating guide](investigating.md) covers everything you do from here — asking questions, searching, finding connections, researching on the web, and running the investigation day to day.
+The [investigating guide](investigating.md) covers everything you do from here — asking questions, searching, finding connections, researching on the web, and running the investigation day to day. If you want to understand what chew, dig, and bark actually do to your documents — and what the AI model does and doesn't see — read [Methodology](methodology.md).

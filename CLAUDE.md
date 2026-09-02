@@ -42,6 +42,9 @@ Two files, split by how often they're read. **[ARCHITECTURE.md](ARCHITECTURE.md)
 - `docs/configuration.md` — `watchdog configure` keys, defaults, model backends, cost
 - `docs/install.md` — install steps, prerequisites, optional installs
 - `docs/getting-started.md` / `docs/investigating.md` — workflow walkthroughs
+- `docs/methodology.md` — plain-English account of what chew/dig/bark do and why, and what the
+  auxiliary local models (Docling, GLiNER, the embedding/reranker pair) are for — zero code
+  background assumed; update when the pipeline's stages or their AI/local split changes
 - `docs/vault.md` — vault layout, entity-note structure, supported file types
 - `docs/skills.md` — the record-skill catalog (update when adding a skill)
 - `docs/troubleshooting.md` — failure modes and fixes
