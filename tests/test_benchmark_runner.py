@@ -883,6 +883,24 @@ def test_extractor_table_renders_scores_and_usage():
     assert "1 retries" in table
 
 
+def test_usage_totals_wall_clock_is_shorter_than_summed_latency_for_concurrent_calls():
+    """#551 gap: summed `latency_s` overstates real elapsed time for an arm whose documents
+    extracted concurrently. Two 100s calls that ran in parallel (same end_ts, so their [start,
+    end) intervals overlap entirely) took 100s of real wall-clock time, not 200s."""
+    usage = {"calls": [{"latency_s": 100, "end_ts": 1000.0},
+                       {"latency_s": 100, "end_ts": 1000.0}]}
+    totals = br._usage_totals(usage)
+    assert totals["latency_s"] == 200
+    assert totals["wall_clock_s"] == 100
+
+
+def test_usage_totals_wall_clock_none_when_no_call_carries_end_ts():
+    """A run from before `end_ts` was recorded — falls back to summed latency at the call site,
+    never a crash or a silently wrong number here."""
+    usage = {"calls": [{"latency_s": 50}]}
+    assert br._usage_totals(usage)["wall_clock_s"] is None
+
+
 def test_is_partial_true_for_rate_limited_arm():
     r = _arm_result(rate_limited=True, cancelled=True, documents_done=2, documents_total=6)
     assert br.is_partial(r) is True
@@ -2778,6 +2796,117 @@ def test_sorted_rows_handles_multiple_none_values_without_raising():
 def test_row_line_flags_notional_cost_with_a_tilde():
     row = {"arm_id": "sonnet-sub", "model": "claude-sonnet-5", "effort": "medium",
           "cost_per_page": 0.01, "speed_per_page_s": 1.0, "billing_class": "notional",
-          "partial": False, "facts_pct": 80, "facts": "8/10",
-          "must_not_miss_pct": None, "must_not_miss": None}
+          "sectioned_calls": 0, "reliability": "6/6", "partial": False,
+          "facts_pct": 80, "facts": "8/10", "must_not_miss_pct": None, "must_not_miss": None}
     assert "~$0.0100/page" in si._row_line(row)
+
+
+def test_row_line_flags_sectioned_speed_with_an_asterisk():
+    row = {"arm_id": "sonnet-high", "model": "claude-sonnet-4-6", "effort": "high",
+          "cost_per_page": 0.05, "speed_per_page_s": 47.1, "billing_class": "metered",
+          "sectioned_calls": 10, "reliability": "6/6", "partial": False,
+          "facts_pct": 80, "facts": "8/10", "must_not_miss_pct": None, "must_not_miss": None}
+    assert "47.1s\\*/page" in si._row_line(row)
+
+
+def test_row_line_shows_reliability_column():
+    row = {"arm_id": "gpt-nano-high", "model": "gpt-5.4-nano", "effort": "high",
+          "cost_per_page": 0.001, "speed_per_page_s": 5.0, "billing_class": "metered",
+          "sectioned_calls": 0, "reliability": "6/6 (2 gaps, 1 retry)", "partial": False,
+          "facts_pct": 80, "facts": "8/10", "must_not_miss_pct": None, "must_not_miss": None}
+    assert "6/6 (2 gaps, 1 retry)" in si._row_line(row)
+
+
+def test_reliability_str_reports_docs_only_when_nothing_else_to_flag():
+    assert si._reliability_str({"documents_total": 6, "documents_extracted": 6}) == "6/6"
+
+
+def test_reliability_str_flags_gaps_retries_and_doc_errors():
+    arm = {"documents_total": 6, "documents_extracted": 6, "coverage_gaps": 2, "retries": 1,
+          "doc_errors": ["doc1.pdf: x"]}
+    result = si._reliability_str(arm)
+    assert result == "6/6 (2 gaps, 1 retry, 1 doc error)"
+
+
+def test_reliability_str_dash_when_no_document_counts_at_all():
+    """A hard failure before the arm's first call has no document counts to report."""
+    assert si._reliability_str({}) == "—"
+
+
+def test_build_index_uses_wall_clock_speed_over_summed_latency(tmp_path):
+    """The real fix: an arm's `wall_clock_s` (real elapsed time), not its `latency_s` (summed
+    per-call time, which overstates elapsed time for concurrently-run documents), is what
+    speed_per_page_s divides by pages."""
+    keys_dir = _write_key_with_document(tmp_path, "doc-a", "sha-a", [])
+    arm = _extractor_arm("sonnet-high", pages_extracted=10)
+    arm["latency_s"] = 100.0   # summed across concurrent calls
+    arm["wall_clock_s"] = 20.0  # real elapsed time
+    _write_run(tmp_path, "2026-08-01-1000", [arm])
+
+    index = si.build_index([str(tmp_path / "runs" / "2026-08-01-1000")], keys_dir=keys_dir)
+
+    [row] = index["measured_not_yet_judged"]
+    assert row["speed_per_page_s"] == 2.0   # 20.0 / 10, not 100.0 / 10
+
+
+def test_build_index_falls_back_to_summed_latency_when_wall_clock_missing(tmp_path):
+    """A run archived before `wall_clock_s` existed has no such field — falls back to the older
+    summed-latency figure rather than reporting no speed at all."""
+    keys_dir = _write_key_with_document(tmp_path, "doc-a", "sha-a", [])
+    arm = _extractor_arm("sonnet-high", pages_extracted=10)
+    arm["latency_s"] = 50.0
+    _write_run(tmp_path, "2026-08-01-1000", [arm])
+
+    index = si.build_index([str(tmp_path / "runs" / "2026-08-01-1000")], keys_dir=keys_dir)
+
+    [row] = index["measured_not_yet_judged"]
+    assert row["speed_per_page_s"] == 5.0
+
+
+def test_render_markdown_names_sectioned_arms_in_a_standing_caveat(tmp_path):
+    """A sectioned arm's speed is real wall-clock, but sectioning count itself is still an open
+    confound (#555) — the rendered table must say so and name which arms it affects, not just
+    print the number silently."""
+    keys_dir = _write_key_with_document(tmp_path, "doc-a", "sha-a", [])
+    sectioned = _extractor_arm("sonnet-high", pages_extracted=10)
+    sectioned["sectioned_calls"] = 10
+    plain = _extractor_arm("ds-flash", pages_extracted=10)
+    _write_run(tmp_path, "2026-08-01-1000", [sectioned, plain])
+
+    index = si.build_index([str(tmp_path / "runs" / "2026-08-01-1000")], keys_dir=keys_dir)
+    md = si.render_markdown(index)
+
+    assert "Speed marked" in md
+    caveat_line = next(line for line in md.splitlines() if line.startswith("> Speed marked"))
+    assert "`sonnet-high`" in caveat_line
+    assert "ds-flash" not in caveat_line
+    assert "sectioning-count formula" in caveat_line
+
+
+def test_load_judged_summaries_merges_non_overlapping_files(tmp_path):
+    """Two judge passes covering different arms (RUNBOOK step 6's fixed small arm count per pass
+    means building up coverage takes several passes) merge into one rated set."""
+    p1 = tmp_path / "pass1.json"
+    p1.write_text(json.dumps({"summary": {"arm-a": {"facts": {"hit": 8, "total": 10, "pct": 80},
+                                                     "must_not_miss": {"hit": 3, "total": 4, "pct": 75}}}}))
+    p2 = tmp_path / "pass2.json"
+    p2.write_text(json.dumps({"summary": {"arm-b": {"facts": {"hit": 5, "total": 10, "pct": 50},
+                                                     "must_not_miss": {"hit": 2, "total": 4, "pct": 50}}}}))
+
+    merged = si._load_judged_summaries([str(p1), str(p2)])
+
+    assert set(merged) == {"arm-a", "arm-b"}
+
+
+def test_load_judged_summaries_refuses_an_arm_rated_by_two_passes(tmp_path):
+    """Two passes both rating the same arm id is refused, not silently resolved by
+    last-file-wins — there is no principled way to pick one pass's verdict over the other's."""
+    p1 = tmp_path / "pass1.json"
+    p1.write_text(json.dumps({"summary": {"arm-a": {"facts": {"hit": 8, "total": 10, "pct": 80},
+                                                     "must_not_miss": {"hit": 3, "total": 4, "pct": 75}}}}))
+    p2 = tmp_path / "pass2.json"
+    p2.write_text(json.dumps({"summary": {"arm-a": {"facts": {"hit": 1, "total": 10, "pct": 10},
+                                                     "must_not_miss": {"hit": 1, "total": 4, "pct": 25}}}}))
+
+    with pytest.raises(SystemExit, match="arm-a"):
+        si._load_judged_summaries([str(p1), str(p2)])

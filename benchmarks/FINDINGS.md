@@ -641,6 +641,159 @@ This does not settle a production default — it's the numeric-anchored third of
 and the sub-item/binary split has flipped rankings before (2026-07-27 entry). The qualitative judge
 pass (RUNBOOK.md step 6) against a shortlist of these arms is the next step before choosing.
 
+### First keys-v4 judge pass: `gpt-luna-high` beats `sonnet-4.6-low` outright on the qualitative slice — the numeric scorer alone would have picked the wrong cheap option (2026-09-02, #551)
+
+The first judge pass run against keys-v4 — every prior pass in this file was scored against the
+pre-#625 keys, a third the size and concentrated in each document's earlier pages. Judge: Opus 5,
+via six independent subagents (one per corpus document), each reading only that document's
+blinded packet — never the arm names, never each other's document, never this session's own
+commentary about which arm was expected to do well. Arms: `sonnet-4.6-high` (the reference
+ceiling), `sonnet-4.6-low` (the cheap in-family option), `gpt-luna-high` (the strongest cheap
+OpenAI candidate on the numeric slice). Packets and judgments built from the archived
+`2026-08-31-1645` run, not the live vaults. Hand-check passed: one `ungrounded` verdict
+(`sonnet-4.6-low` on `pension-order-2021-03-17`:F3, the Zoom/COVID detail) was checked directly
+against the raw extraction and confirmed absent — a real, discriminating call, not reflexive
+generosity.
+
+| Arm | Numeric facts (sub-item) | Numeric must_not_miss | **Judged facts** | **Judged must_not_miss** | Cost/page |
+|---|---|---|---|---|---|
+| `sonnet-4.6-high` | 84% (202/240) | 93% (71/76) | **81%** (203/251) | **78%** (98/126) | $0.0465 |
+| `gpt-luna-high` | 55% (131/240) | 74% (56/76) | **69%** (172/251) | **62%** (78/126) | $0.0007 |
+| `sonnet-4.6-low` | 69% (165/240) | 82% (62/76) | **56%** (140/251) | **49%** (62/126) | $0.0056 |
+
+**The two slices disagree on the ranking — exactly the failure mode #551's blocker 1 warned
+about.** On the numeric slice (the ~third of key items with a scorable anchor), `sonnet-4.6-low`
+looks ahead of `gpt-luna-high` (69%/82% vs 55%/74%). On the judged slice — the harder ~two-thirds
+numeric scoring can't see at all — `gpt-luna-high` beats `sonnet-4.6-low` outright on both facts
+(69% vs 56%) and must_not_miss (62% vs 49%), at roughly 1/8th the cost per page. A default chosen
+from the numeric table alone would have picked the worse-and-more-expensive option.
+`sonnet-4.6-high` remains the ceiling on both slices, with the smallest slice-to-slice movement of
+the three.
+
+**Caveats.** Three arms only — `gpt-mini`/`gpt-nano`/`haiku` and every DeepSeek/Gemini arm from
+the 26-arm sweep are still unjudged against keys-v4 and sit in `score_index.py`'s "measured, not
+yet judged" list. This does not generalize past the trio tested: it says OpenAI's cheap tier can
+beat Anthropic's cheap tier on this corpus, not that it always will. `qualitative/aggregate.py`'s
+own sanity-check line ("Total item-arm judgments: 1131 (expect 420)") is a stale hardcoded literal
+from the original 2026-07-29 pass's smaller keys (140 items × 3); 1131 is exactly right for
+377 items × 3 arms under keys-v4, and the printed "(expect 420)" should be read as noise, not a
+discrepancy — worth fixing in the script so it doesn't cause a false alarm on the next pass.
+
+### Second keys-v4 judge pass: `gpt-nano-high` is the best-value cheap arm judged so far, and both Anthropic budget options rank last (2026-09-02, #551)
+
+Follow-up pass, same protocol as the entry above with one deliberate departure: two arms, not
+three (`gpt-nano-high`, `haiku` — no reference arm, since `sonnet-4.6-high` had already been
+judged and Tom asked not to re-run it). RUNBOOK.md's locked judge prompt is written for exactly
+three labels (X/Y/Z); the prompt given to each subagent here was adapted to two (X/Y) rather than
+run as-is with a dummy third arm — a real, first-time departure from "run this identically every
+time," noted here so a reader comparing this pass's methodology to the first one knows why it
+differs and does not assume drift. Judge: Opus 5, six independent subagents, one per document,
+same blinding as the first pass.
+
+**One subagent nearly went unnoticed.** A Claude session usage limit was hit mid-pass, terminating
+three of the six subagents (`annual-financial-report-19-20`, `annual-financial-report-20-21`,
+`prefiling-report-monitor`) with an API error rather than a clean finish. All three had, in fact,
+already written a complete file to disk before the error surfaced — except
+`annual-financial-report-20-21`, missing exactly one verdict (`F16`'s `Y` grade). Caught only by
+checking every judgment file's item count and per-label completeness against its packet, not by
+trusting each subagent's own "graded successfully" report — the three interrupted subagents *did*
+each report success, because the interruption landed after the file write but before their final
+report could reflect it accurately in one case. Fixed with a small, separately-blinded subagent
+that graded only the missing `F16`/`Y` cell against the raw extraction (not shown the existing `X`
+verdict, to avoid anchoring), leaving the rest of the file untouched. **General lesson: after any
+judging pass, verify every judgment file's item-and-label completeness against its packet
+directly — an interrupted subagent's own summary is not sufficient evidence the file is whole.**
+
+Hand-check passed: an `ungrounded` verdict (`haiku` on `first-report-monitor`:F5 — the charges'
+priority ranking over other secured creditors) was checked directly against the raw extraction and
+confirmed correct: `haiku` states the charge amounts but never states the priority ranking.
+
+| Arm | Judged facts | Judged must_not_miss | Cost/page |
+|---|---|---|---|
+| `gpt-nano-high` | **73%** (182/251) | **62%** (78/126) | $0.0013 |
+| `haiku` | 60% (151/251) | 50% (63/126) | $0.0020 |
+
+Combined with the first pass, five arms are now judged against keys-v4:
+
+| Arm | Judged facts | Judged must_not_miss | Cost/page |
+|---|---|---|---|
+| `sonnet-4.6-high` | 81% (203/251) | 78% (98/126) | $0.0465 |
+| `gpt-nano-high` | 73% (182/251) | 62% (78/126) | $0.0013 |
+| `gpt-luna-high` | 69% (172/251) | 62% (78/126) | $0.0007 |
+| `haiku` | 60% (151/251) | 50% (63/126) | $0.0020 |
+| `sonnet-4.6-low` | 56% (140/251) | 49% (62/126) | $0.0056 |
+
+**`gpt-nano-high` is the strongest non-ceiling arm judged so far, on every axis that matters.**
+Best facts recall of the four non-ceiling arms, tied for best must_not_miss, and the cheapest of
+the three arms above `haiku` — 36x cheaper than `sonnet-4.6-high` and cheaper than `haiku` itself.
+Both of Anthropic's non-ceiling arms (`haiku`, `sonnet-4.6-low`) now rank at the bottom of the
+five-arm judged table on both metrics, `sonnet-4.6-low` last on both despite not being the
+cheapest of the five. Consistent with the first pass's finding: on this corpus, dropping effort or
+model tier *within* the Anthropic family loses more than switching to OpenAI's cheap tier does.
+
+**Caveats.** Same shape as the first pass's — five of the sweep's 26 arms are judged, every
+DeepSeek and Gemini arm (some of which scored competitively on the numeric slice — `ds-flash`,
+`ds-pro-think-high`) plus `gpt-mini` (excluded from judging on purpose, given the reasoning-token
+pathology found earlier this run) remain in "measured, not yet judged." This table answers
+"how do Anthropic's and OpenAI's arms compare so far," not "what is the best arm available" — the
+comparison was scoped to those two vendors on request, not because the others were checked and
+ruled out.
+
+### Third keys-v4 judge pass: DeepSeek's cheap tier beats every Anthropic/OpenAI arm below the ceiling, and Gemini's judged score inverts its numeric-slice showing (2026-09-02, #551)
+
+Third pass, back to the standard three-arm X/Y/Z protocol: `ds-pro-think-high`, `ds-flash`,
+`gemini-flash-high` — each vendor's strongest numeric-slice candidate outside Claude/OpenAI, filling
+the gap the first two passes' caveats named directly. Judge: Opus 5, six independent subagents,
+same blinding as prior passes. This time each subagent was asked to read its own output back and
+verify every item/label was present before reporting success — a direct response to the second
+pass's near-miss — and every file was independently re-checked against its packet afterward
+regardless, rather than trusting the self-report alone. All six came back complete and clean, no
+interruptions.
+
+Hand-check passed: a uniform `ungrounded` verdict across all three arms
+(`annual-financial-report-19-20`:F3, LU's "unwavering" commitment language) was checked directly
+against all three raw extractions and confirmed genuinely absent from every one — a real shared
+miss, not reflexive judge fatigue defaulting to the same tier across the board.
+
+| Arm | Judged facts | Judged must_not_miss | Cost/page |
+|---|---|---|---|
+| `ds-pro-think-high` | **71%** (179/251) | **64%** (81/126) | $0.0020 |
+| `ds-flash` | 69% (172/251) | 55% (69/126) | $0.0003 |
+| `gemini-flash-high` | 39% (97/251) | 46% (58/126) | $0.0022 |
+
+All eight arms swept so far are now judged against keys-v4:
+
+| Arm | Judged facts | Judged must_not_miss | Cost/page |
+|---|---|---|---|
+| `sonnet-4.6-high` | 81% (203/251) | 78% (98/126) | $0.0465 |
+| `ds-pro-think-high` | 71% (179/251) | 64% (81/126) | $0.0020 |
+| `gpt-nano-high` | 73% (182/251) | 62% (78/126) | $0.0013 |
+| `gpt-luna-high` | 69% (172/251) | 62% (78/126) | $0.0007 |
+| `ds-flash` | 69% (172/251) | 55% (69/126) | $0.0003 |
+| `haiku` | 60% (151/251) | 50% (63/126) | $0.0020 |
+| `sonnet-4.6-low` | 56% (140/251) | 49% (62/126) | $0.0056 |
+| `gemini-flash-high` | 39% (97/251) | 46% (58/126) | $0.0022 |
+
+**`ds-pro-think-high` is now the strongest non-ceiling arm on `must_not_miss`**, ahead of
+`gpt-nano-high` (64% vs 62%) at roughly 23x cheaper than `sonnet-4.6-high`. **`ds-flash` remains
+the standout value pick** — 69%/55% at $0.0003/page, the cheapest arm judged so far by a wide
+margin, and still beating both Anthropic non-ceiling arms on facts. **Gemini is the clearest
+numeric/judged disagreement seen across all three passes, and it runs the opposite direction from
+the first pass's finding.** `gemini-flash-high` led `gpt-luna-high` and effectively matched
+`gpt-nano-high` on the numeric slice (55% must_not_miss vs 62%/66%); judged, it drops to dead
+last of all eight arms on both metrics (39%/46%), well behind every other arm including
+`sonnet-4.6-low`. Where the first pass showed the numeric slice *punishing* a genuinely better
+arm (`gpt-luna-high` under `sonnet-4.6-low`), this shows it *flattering* one — the same instrument
+failing in both directions, on different arms, within one sweep. Neither a fixed correction
+factor nor "trust the numeric slice within a vendor" would have caught this; only the judge pass
+did.
+
+**Caveats.** Eight of the sweep's 26 arms are now judged — every effort tier below `high` for
+DeepSeek/Gemini/OpenAI (`gpt-mini` aside, excluded on purpose), and `sonnet-4.6-med`, remain
+unjudged. The Gemini finding is one arm at one effort tier; it says this specific
+configuration disagreed sharply with its own numeric-slice score, not that Gemini models
+generally do.
+
 ## Corrections logged along the way
 
 - The original `bench-ex-sonnet-high`/`bench-ex-sonnet-med` vaults (run 2026-07-15, before #403's
