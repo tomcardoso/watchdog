@@ -1,12 +1,12 @@
 # Watchdog
 
-**Document intelligence for journalists — drop records in, find the connections.**
+**Document intelligence for journalists — drop records in, find connections.**
 
 [![PyPI](https://img.shields.io/pypi/v/watchdog-intel)](https://pypi.org/project/watchdog-intel/) [![CI](https://github.com/tomcardoso/watchdog/actions/workflows/ci.yml/badge.svg)](https://github.com/tomcardoso/watchdog/actions/workflows/ci.yml)
 
 Watchdog is a command-line tool for journalists who accumulate large sets of public records — court filings, corporate records, freedom-of-information responses, land registries and so on. You drop documents into a folder, Watchdog reads every page, pulls out every person, company, address and relationship it finds, and builds them into a linked investigation vault you can search and question in plain English. Every extracted fact cites the document and page it came from.
 
-The vault lives in [Obsidian](https://obsidian.md), a free note-taking app, as ordinary files on your computer. The questions run in [Claude Code](https://claude.ai/download), Anthropic's AI assistant for the terminal.
+The vault lives in [Obsidian](https://obsidian.md), a free note-taking app, as ordinary files on your computer. The information-extraction work is carried by an LLM (be that Claude, ChatGPT, Gemini, DeepSeek, etc.). The questions run in [Claude Code](https://claude.ai/download), Anthropic's AI assistant for the terminal.
 
 > **This project is still a work in progress.** The core pipeline works and has been tested on macOS with real investigation documents. It is not yet battle-hardened. Feedback and contributions are welcome.
 
