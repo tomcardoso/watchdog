@@ -83,6 +83,7 @@ For a full first-investigation walkthrough, see [Getting started](https://github
 | Guide | What it covers |
 |-------|----------------|
 | [Install](https://github.com/tomcardoso/watchdog/blob/main/docs/install.md) | Getting Watchdog set up, written for first-time terminal users |
+| [Methodology](https://github.com/tomcardoso/watchdog/blob/main/docs/methodology.md) | What actually happens to your documents, and why, in plain English |
 | [Getting started](https://github.com/tomcardoso/watchdog/blob/main/docs/getting-started.md) | Your first investigation, start to finish |
 | [Investigating](https://github.com/tomcardoso/watchdog/blob/main/docs/investigating.md) | Day-to-day work: questions, search, leads, web research |
 | [Commands](https://github.com/tomcardoso/watchdog/blob/main/docs/commands.md) | The complete command reference |
