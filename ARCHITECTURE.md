@@ -572,8 +572,8 @@ strong models, almost always anchored by a money figure, date, percentage, prope
 court file number. Before the prompt is built, `pipeline/harvest.py` regex-harvests
 deterministic candidates (money, bare table figures, percentages, dates including French
 month names, court file numbers) from the same page-marked text, plus person/org/location
-names from the optional local GLiNER model (`harvest_entities`, import-guarded — a missing
-package or any model failure degrades to no entity candidates, never an ingest failure).
+names from the local GLiNER model (`harvest_entities`, mandatory dependency since D223 but still
+import-guarded — any model failure degrades to no entity candidates, never an ingest failure).
 Candidates are deduped per page, capped at 3 page-occurrences each (running headers/footers),
 and capped at 80 per page by kind priority, then rendered into a compact per-page checklist
 (`format_checklist`) that `build_extract_prompt`/`build_section_prompt` inject as a volatile

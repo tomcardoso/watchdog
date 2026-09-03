@@ -283,9 +283,10 @@ def _chunk_words(text: str) -> list[str]:
 
 
 def harvest_entities(text_by_page: dict[int, str]) -> list[dict]:
-    """Person/organization/location candidates via the optional local GLiNER model. Returns
-    `[]` silently whenever gliner isn't installed or the model fails in any way — NER is an
-    enrichment on top of the deterministic harvest, never a requirement for ingest to run."""
+    """Person/organization/location candidates via the local GLiNER model (mandatory dependency
+    since D223). Returns `[]` silently if the model fails to load or run for any reason — an
+    uncatalogued install (an editable checkout missing this dependency, a corrupted model cache)
+    degrades to the deterministic-only harvest rather than failing ingest."""
     try:
         model = _load_gliner()
     except Exception:

@@ -1,4 +1,5 @@
-"""Tier 0 candidate harvest (#361/D123): deterministic regex spans + optional GLiNER entities."""
+"""Tier 0 candidate harvest (#361/D123): deterministic regex spans + GLiNER entities (mandatory
+dependency since D223, though the runtime fallback below still degrades gracefully)."""
 
 import builtins
 import sys

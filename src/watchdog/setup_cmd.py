@@ -210,36 +210,6 @@ def _download_gliner_model():
         truststore.extract_from_ssl()
 
 
-def _ensure_gliner() -> None:
-    """Pre-download GLiNER if present; if missing, attempt to install it ourselves, falling
-    back to a manual install pointer only if that fails. Split out of `run` so tests of the
-    setup flow can stub it — the fallback is a real `pip install` that pulls in PyTorch."""
-    try:
-        _download_gliner_model()
-        _ok("Local name detection model (GLiNER)")
-    except ImportError:
-        print(f"  {_DIM}Installing GLiNER (local name detection) — this pulls in PyTorch and\n"
-              f"  may take several minutes on first run...{_RESET}")
-        result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "gliner"],
-            capture_output=True, text=True,
-        )
-        gliner_ready = False
-        if result.returncode == 0:
-            try:
-                _download_gliner_model()
-                _ok("Local name detection model (GLiNER)")
-                gliner_ready = True
-            except Exception:
-                pass
-        if not gliner_ready:
-            _warn("gliner not installed — the candidate harvest will skip name detection")
-            print(f"      {_DIM}Install it later with:{_RESET}")
-            print(f"        {_CYAN}{_extra_install_cmd('gliner')}{_RESET}")
-    except Exception as e:
-        _warn(f"GLiNER model download failed: {e}")
-
-
 def run(force: bool = False) -> None:
     if CONFIG_FILE.exists() and not force:
         print("  Watchdog is already set up. Use --force to re-run.")
@@ -343,10 +313,11 @@ def run(force: bool = False) -> None:
             _ok("Document conversion models (Docling)")
         except Exception as e:
             _warn(f"Docling model download failed: {e}")
-        # GLiNER (local named-entity recognition) is an optional extra, not installed by
-        # a base `watchdog-intel` install — it feeds the extraction candidate harvest's
-        # person/org/location detection (#361).
-        _ensure_gliner()
+        try:
+            _download_gliner_model()
+            _ok("Local name detection model (GLiNER)")
+        except Exception as e:
+            _warn(f"GLiNER model download failed: {e}")
 
     # 8. Write config
     WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
