@@ -76,4 +76,5 @@ Chew, search, and the two models above never leave your computer and never cost 
 - [Getting started](getting-started.md) — the practical walkthrough, from creating a vault to reading your first briefing.
 - [Configuration](configuration.md) — which model runs each stage, what it costs, and how to change either.
 - [Investigating](investigating.md) — everything you do with a vault day to day, once documents are in it.
+- [One document, from dropped file to result](https://claude.ai/code/artifact/d16050d6-3357-411c-9b88-26271a330435) — an illustrated walkthrough of chew and dig for a single document, with diagrams of the sectioning and OCR decisions and the token budgets involved.
 - `ARCHITECTURE.md`, in the project repository — the precise technical reference this page is a plain-English companion to.
