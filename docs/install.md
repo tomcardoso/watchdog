@@ -89,9 +89,7 @@ Wait for it to finish — you'll see a message saying the installation is comple
 watchdog setup
 ```
 
-Setup checks that qpdf and Ghostscript are installed, enables tab completion in your terminal, detects your machine's OCR engine, and downloads the models Watchdog uses for document conversion and search. The model download happens once and may take a few minutes on a slow connection.
-
-Setup also checks for GLiNER, an optional local model that recognizes names of people, organizations, and places in your documents during processing — this is called named-entity recognition, or NER. If it's missing, setup installs it automatically (it pulls in PyTorch, so this can take several minutes on a slow connection); if that install fails, setup prints the command to add it later instead (`pipx inject watchdog-intel gliner`) and moves on. Everything works without it — document processing just relies on the AI model alone to catch names, rather than having a mechanical check as backup.
+Setup checks that qpdf and Ghostscript are installed, enables tab completion in your terminal, detects your machine's OCR engine, and downloads the models Watchdog uses for document conversion, search, and name detection. The name-detection model (GLiNER, which spots people, organizations, and places as a backstop alongside the AI model's own reading — see [Methodology](methodology.md)) is the largest single download, at roughly 1.1GB; the rest add up to a few hundred megabytes more. All of it is a one-time download that may take a few minutes on a slow connection.
 
 Switching OCR engines (`watchdog configure ocr_engine tesseract`) works the same way: Watchdog installs the faster Tesseract binding for you automatically, provided the system Tesseract headers from the platform install steps above are already in place.
 

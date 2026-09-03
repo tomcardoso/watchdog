@@ -1665,10 +1665,6 @@ def test_setup_writes_auto_for_worker_keys(tmp_path, monkeypatch):
     monkeypatch.setattr(sc, "_ask_projects_dir", lambda: investigations)
     monkeypatch.setattr(sc, "_detect_shell",     lambda: (None, None))
     monkeypatch.setattr(sc, "_check_playwright", lambda: None)
-    # Never let the setup flow reach the real GLiNER path here: with gliner absent it falls
-    # back to a live `pip install` that pulls in PyTorch (a CI timeout), and with it present
-    # it loads the actual model.
-    monkeypatch.setattr(sc, "_ensure_gliner",    lambda: None)
 
     sc.run()
 
