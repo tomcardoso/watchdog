@@ -91,6 +91,11 @@ extractor_sweep:
     - {id: gpt-mini-low-noverify,   extractor_model: "openai:gpt-5.4-mini", extractor_effort: low, verify: false, concurrency: 3}
     - {id: gpt-luna-low-verify,     extractor_model: "openai:gpt-5.6-luna", extractor_effort: low, verify: true, concurrency: 3}
     - {id: gpt-luna-low-noverify,   extractor_model: "openai:gpt-5.6-luna", extractor_effort: low, verify: false, concurrency: 3}
+    #
+    # Verify-only follow-up on the med/high tiers (no noverify twin): the plain gpt-luna-med/
+    # gpt-luna-high arms above already carry a recent noverify baseline on the full corpus.
+    - {id: gpt-luna-med-verify,     extractor_model: "openai:gpt-5.6-luna", extractor_effort: medium, verify: true, concurrency: 3}
+    - {id: gpt-luna-high-verify,    extractor_model: "openai:gpt-5.6-luna", extractor_effort: high, verify: true, concurrency: 3}
 
 finalizer_sweep:
   vault_prefix: bench-fn
