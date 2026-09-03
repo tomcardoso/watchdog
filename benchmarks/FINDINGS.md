@@ -835,6 +835,21 @@ arm). **The numeric-only slice would have been directionally right but overstate
 the high-effort regression by more than double** — exactly the failure mode RUNBOOK.md's judge
 step exists to catch, just this time on magnitude rather than on which arm wins.
 
+**The high-effort regression is base-extraction variance, not verify actively removing
+anything.** `merge_candidates` only ever adds facts (`verify.py`) — there is no code path back
+from a merged extraction to a smaller one. Checked directly: of the 13 `must_not_miss` items
+that flip from hit (`gpt-luna-high`) to miss (`gpt-luna-high-verify`) in the judge's per-item
+verdicts, all 13 are items `gpt-luna-high-verify`'s own *base* extraction call never stated in
+the first place — not one is a case of verify's second pass overwriting or contradicting a
+correct fact. Verify's own job is to catch exactly this, and on these 13 items it didn't:
+`noverify`/`verify` are two independent API calls to the same model at the same effort, so a gap
+this size is consistent with #581's already-documented up-to-3× spread between independent
+samples of one arm, landing on this particular draw's base call rather than being caused by
+verify running at all. One pattern recurs enough to be more than noise, though: **Justice
+Morawetz's signature block is missed the identical way in three separate documents**
+(initial order, pension order, and the hand-checked item above) — tagged as an entity every
+time but never promoted into a stated fact, in both the base call and verify's own re-read.
+
 **Reading this together with the low-effort finding**: verification's value is effort-dependent,
 not a flat yes/no. It earns its cost cleanly at `medium`. At `high`, the model is already
 catching most of what verify would add, so the second pass mostly reconfirms rather than
