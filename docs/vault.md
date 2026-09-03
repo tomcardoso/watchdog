@@ -130,10 +130,11 @@ Contradictions are raised whatever the two claims are marked as — including wh
 | PDF | `.pdf` | Text-based or scanned, or a mix of both; OCR applied automatically, page by page, wherever the text layer is missing or garbled |
 | Word document | `.docx` | Tables and formatting preserved |
 | Excel spreadsheet | `.xlsx` | |
-| Image | `.jpg`, `.jpeg`, `.png`, `.tiff`, `.tif` | OCR applied automatically |
+| PowerPoint presentation | `.pptx` | |
+| Image | `.jpg`, `.jpeg`, `.png`, `.tiff`, `.tif`, `.bmp`, `.webp` | OCR applied automatically |
 | Web page | `.html`, `.htm` | |
-| Plain text | `.txt`, `.md` | |
-| Audio / video | `.mp3`, `.mp4`, `.m4a`, `.wav` | Requires the optional transcription install — see [Installation](install.md) |
+| Plain text | `.txt`, `.csv`, `.md` | |
+| Audio / video | `.mp3`, `.mp4`, `.m4a`, `.wav`, `.aac`, `.ogg`, `.flac`, `.avi`, `.mov` | Requires the optional transcription install — see [Installation](install.md) |
 
 ### Embedded file metadata
 

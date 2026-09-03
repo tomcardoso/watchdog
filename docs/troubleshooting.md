@@ -76,7 +76,7 @@ A rate limit is a cap on how much work the AI provider lets you do in a window o
 
 Two levers help when a rate limit stops a run anyway:
 
-Lower how many documents are extracted at once (the default is 5):
+Lower how many documents are extracted at once (the default is 20):
 
 ```bash
 watchdog dig --concurrency 2
